@@ -58,6 +58,10 @@ No spec file changes.
    - inside a section, the `describe` titles as sub-headings and each test as a sentence
      with ✅ passed / ❌ failed
    - a total at the top: passed, failed
+   - "❌ N test files failed to run" when a file has `status: 'failed'` but no failed test.
+     This catches a file that fails to load (no tests at all) and a file whose `beforeAll`
+     throws (its tests are marked skipped). Without it, such a file would vanish from the
+     page while the page still said "0 failed". The file's `message` is never printed
    - no source code, no absolute paths, no env values
    - plain HTML and inline CSS, readable at 390px, light and dark
 
@@ -68,6 +72,15 @@ behavior.
 
 `pnpm test:e2e:all` (`e2e/run-all.sh`) already writes one report per project. The build
 script copies them into the spec build folder.
+
+**What these public reports show when a test fails** (found in code review, 2026-09-29):
+the error message, the stack trace (usually with absolute `/Users/...` paths), and a
+snippet of the spec source. The feature page hides failure messages, but the Playwright
+reports do not. This is accepted: the repo is public, and the paths only show the local
+username. The secret guard scans the report data before publishing (the data is a zip
+inside each `index.html`, so it must be unzipped first). Screenshots cannot be scanned.
+**Do not turn on `trace` for spec runs** without checking what it records: a trace stores
+request headers.
 
 ### 4. Landing page
 
@@ -83,7 +96,11 @@ The full Vitest UI report, for developers, on its own subdomain
 - The build copies it to `spec-dist-dev/`, a separate folder.
 - **Secret guard:** before copying, the build unzips `html.meta.json.gz` and fails if it
   contains any of `sk_live`, `sk_test`, `DATABASE_URL`, `postgres://`, `postgresql://`,
-  `BEGIN PRIVATE KEY`. A failed guard stops the whole publish, both sites.
+  `BEGIN PRIVATE KEY`. A failed guard stops the whole publish, both sites. The report
+  holds all test source, so a test title or comment that names one of these also stops
+  it; the error text says so.
+- Since the code review, the same guard also covers the **public** site. See "Secret guard
+  and build order" in the implementation notes.
 - Public, like the spec site.
 - This page is not linked from the non-developer landing page.
 
@@ -125,10 +142,12 @@ What was built, and where it differs from the plan.
 | `e2e/playwright.config.ts` | top-level `use: { screenshot }`, `'on'` only when `SPEC_REPORT=1`. Playwright merges it key by key into each project's `use` |
 | `scripts/spec/features.mjs` | `renderFeaturePage(json)` (pure), and the shared page style used by the landing page |
 | `scripts/spec/playwright-stats.mjs` | reads pass/fail totals from a Playwright HTML report for the landing page |
-| `scripts/spec/secrets.mjs` | `findSecrets(text)` for the developer report guard |
-| `scripts/spec/build.mjs` | writes `spec-dist/` and `spec-dist-dev/` |
-| `scripts/spec/publish.sh` | runs tests, builds, deploys both sites |
-| `scripts/spec/*.test.mjs` | 32 `node --test` tests, run by `pnpm test:spec` and by `pnpm test` |
+| `scripts/spec/secrets.mjs` | `findSecrets(text)`: the patterns |
+| `scripts/spec/guard.mjs` | scans folders, gzip files, and the zip inside each Playwright `index.html`; skips images |
+| `scripts/spec/build.mjs` | scans everything, then writes `spec-dist/` and `spec-dist-dev/`. `SPEC_ROOT` env sets the repo root (tests only) |
+| `scripts/spec/publish.sh` | deletes old reports, runs tests, builds, deploys both sites |
+| `scripts/spec/test-zip.mjs` | zip and report fixtures shared by the tests |
+| `scripts/spec/*.test.mjs` | 57 `node --test` tests (including `build.test.mjs`, end to end on a temp folder), run by `pnpm test:spec` and by `pnpm test` |
 
 Differences from the plan:
 
@@ -152,6 +171,28 @@ Differences from the plan:
 - **The secret guard checks every file** in the Vitest html report, not only
   `html.meta.json.gz`, in case a later Vitest version stores data elsewhere.
 - **`publish.sh` skips the second deploy** when `spec-dist-dev/` was not built.
+- **`publish.sh` first deletes `apps/web/spec-report` and `playwright-report`.** Without
+  this, a run that crashes before writing its report would leave the old report on disk,
+  and it would be published under the new commit. Vitest and Playwright recreate the
+  folders themselves.
+
+### Secret guard and build order (after code review, 2026-09-29)
+
+`build.mjs` works in two phases:
+
+1. **Scan, write nothing.** The developer report (every file, `.gz` unzipped). Each
+   Playwright report (every entry of the zip inside its `index.html`). The feature page
+   and the landing page, built in memory. Image files and image zip entries are skipped.
+2. **Only if nothing was found:** delete and write `spec-dist/` and `spec-dist-dev/`.
+
+A found secret stops the build with exit 1, and both folders stay as they were.
+
+A Playwright report that **cannot be read** (broken zip, or no `playwrightReportBase64`
+tag, which means Playwright changed its layout) is not copied. Its card says "Not
+published: this report could not be checked for secrets." The rest of the site is still
+built, and the build exits 0. Rule: never publish anything that was not checked, and do
+not let one broken report hide the others. An unreadable developer report still stops the
+build.
 - Adding `wrangler` 4.143.0 moved two optional Storybook peers in the lockfile (`esbuild`
   0.27.7 → 0.28.1, `ws` 8.19.0 → 8.21.0). `build-storybook` still passes.
 - Biome does not cover `scripts/` (only `apps/web/src/**`). The scripts were formatted
