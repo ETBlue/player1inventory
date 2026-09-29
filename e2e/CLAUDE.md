@@ -504,6 +504,28 @@ toward location coverage. That is what `location-not-stocked-here.spec.ts` and
 `item-stock-pager.spec.ts` is different: it seeds several locations, and its scoping
 mutation did go red.
 
+## Page objects show as steps — call `withSteps(this)`
+
+Since 2026-09-29 every page object ends its constructor with `withSteps(this)`
+(`e2e/pages/step.ts`). It wraps each `async` method in `test.step`, so the HTML report —
+which non-developers read on the living spec site — shows `Check recipe "Pasta"` instead
+of raw locator calls.
+
+- **A new page object must call it too.** Without it, the class still works, but its
+  actions vanish from the report.
+- **The method name becomes the step name.** `addItemToCart('Milk')` shows as
+  `Add item to cart "Milk"`. Name methods as actions a reader understands.
+- **String, number and boolean arguments go into the name.** A seed id shows as a raw
+  string (`Navigate to "a11y-pager-item"`). Locators and objects are left out.
+- **Keep `get…` methods synchronous.** Only `async` methods are wrapped. A sync method
+  that returns a `Locator` is left alone; wrapping it would make it return a `Promise`.
+- **Create page objects only inside a test or hook.** `test.step` throws anywhere else.
+- Arrow-function fields and methods inherited from a parent class are not wrapped.
+
+`SPEC_REPORT=1` (set by `pnpm spec:publish`) turns on `screenshot: 'on'` in the top-level
+`use` of `playwright.config.ts`, so every test in the published report has a screenshot.
+Normal runs keep `'off'`.
+
 ## Nothing lints or type-checks `e2e/`
 
 `pnpm lint` and `pnpm check` scan `apps/web` only, and there is no root `biome.json`.

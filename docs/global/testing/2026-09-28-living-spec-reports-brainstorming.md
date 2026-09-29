@@ -174,6 +174,10 @@ Options considered:
 | Only `user can` / `user sees` (564) | Rejected — the other 263 are feature behavior too, and renaming them is churn |
 | **Any test whose own title starts with `user `** | **Adopted** |
 
+> **Correction (2026-09-29, after the build):** the real count of tests whose own title
+> starts with `user ` is **802**, not 564 + 263. Those two numbers were counted with `-t`,
+> which matches the full name including `describe` titles.
+
 How the filter is applied: **not** with `-t`. Vitest's `-t` matches the full name,
 including `describe` titles, so `-t "^user "` would miss every test inside a `describe`
 block. Instead the whole `apps/web` suite runs with the JSON reporter, and the build script

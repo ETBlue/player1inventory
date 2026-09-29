@@ -1,7 +1,7 @@
 # Design: Living Spec Reports (Step 1)
 
 Date: 2026-09-28
-Status: 🔲 Pending
+Status: 🚧 Built on `feature/living-spec-reports` (2026-09-29) — not yet deployed
 Brainstorming: [2026-09-28-living-spec-reports-brainstorming.md](2026-09-28-living-spec-reports-brainstorming.md)
 
 ## Goal
@@ -19,7 +19,7 @@ A public site at `spec.player1inventory.etblue.tw` with a landing page that link
 | Local mode | Playwright HTML report, `local` project | ~175 E2E tests, with steps |
 | Cloud mode | Playwright HTML report, `cloud` project | ~96 E2E tests, with steps |
 | Offline (PWA) | Playwright HTML report, `pwa` project | ~69 E2E tests, with steps |
-| Feature tests | custom page built from Vitest's JSON output | every `apps/web` test whose own title starts with `user ` (~827) |
+| Feature tests | custom page built from Vitest's JSON output | every `apps/web` test whose own title starts with `user ` (802 on 2026-09-29) |
 
 The landing page also shows the run date and the commit it was built from.
 
@@ -49,8 +49,9 @@ No spec file changes.
 1. Run the whole `apps/web` suite with `--reporter=default --reporter=json`, writing the
    JSON to a file. No `-t`: Vitest's `-t` matches the full name including `describe`
    titles, so an anchored pattern would miss tests inside a `describe` block.
-2. The build script keeps each test whose own `title` starts with `user ` (about 564
-   `user can` / `user sees` plus 263 other `user …` titles).
+2. The build script keeps each test whose own `title` starts with `user `. The first
+   run found **802**. (The earlier estimate of 564 + 263 was counted differently, with
+   `-t`, which matches the full name including `describe` titles.)
 3. It writes one HTML page, `features/index.html`:
    - a section per feature area, taken from the file path (for example
      `src/routes/items/…` → "Items", `src/hooks/…` → "Hooks")
@@ -113,6 +114,60 @@ Two Cloudflare Pages projects, direct upload, public:
 
 The user creates both projects and their custom domains once in the Cloudflare dashboard,
 and logs in with `wrangler login`.
+
+## Implementation notes (2026-09-29)
+
+What was built, and where it differs from the plan.
+
+| File | Purpose |
+|---|---|
+| `e2e/pages/step.ts` | `withSteps(this)`, called by all 13 page objects |
+| `e2e/playwright.config.ts` | top-level `use: { screenshot }`, `'on'` only when `SPEC_REPORT=1`. Playwright merges it key by key into each project's `use` |
+| `scripts/spec/features.mjs` | `renderFeaturePage(json)` (pure), and the shared page style used by the landing page |
+| `scripts/spec/playwright-stats.mjs` | reads pass/fail totals from a Playwright HTML report for the landing page |
+| `scripts/spec/secrets.mjs` | `findSecrets(text)` for the developer report guard |
+| `scripts/spec/build.mjs` | writes `spec-dist/` and `spec-dist-dev/` |
+| `scripts/spec/publish.sh` | runs tests, builds, deploys both sites |
+| `scripts/spec/*.test.mjs` | 32 `node --test` tests, run by `pnpm test:spec` and by `pnpm test` |
+
+Differences from the plan:
+
+- **Totals on the landing page** come from inside the Playwright HTML report: its
+  `index.html` embeds a zip (`<script id="playwrightReportBase64">`) with a `report.json`.
+  `playwright-stats.mjs` reads it with `node:zlib`. The tag id and the `report.json`
+  layout are internal to Playwright, so the reader never throws: if a Playwright upgrade
+  changes them, the card shows the link without totals and `spec:build` prints a warning.
+- **Each card shows when its tests ran**, not only when the site was built. `spec:build`
+  uses whatever reports are on disk, and they can be old.
+- **The feature page never prints failure messages.** They contain absolute paths and
+  source lines.
+- **Section names** come from the file path, with a small `NAMES` map for exceptions
+  (`routes/shouldRedirectToOnboarding.test.ts` → "Onboarding"). Settings routes go two
+  levels deep ("Settings · Tags"); other routes stop at the first level. The first run had
+  26 sections.
+- **`test:spec`** is `node --test "scripts/spec/*.test.mjs"`. The plan's
+  `node --test scripts/spec/` fails on Node 22, which does not accept a folder there.
+- **`pnpm test` now chains `pnpm test:spec`**, because `pnpm -r test` never runs the root
+  package's scripts.
+- **The secret guard checks every file** in the Vitest html report, not only
+  `html.meta.json.gz`, in case a later Vitest version stores data elsewhere.
+- **`publish.sh` skips the second deploy** when `spec-dist-dev/` was not built.
+- Adding `wrangler` 4.143.0 moved two optional Storybook peers in the lockfile (`esbuild`
+  0.27.7 → 0.28.1, `ws` 8.19.0 → 8.21.0). `build-storybook` still passes.
+- Biome does not cover `scripts/` (only `apps/web/src/**`). The scripts were formatted
+  once by hand with the web config.
+
+## One-time setup (the user)
+
+1. `pnpm exec wrangler login`
+2. In the Cloudflare dashboard → Workers & Pages → Create → Pages → **Direct upload**:
+   create project `p1i-spec`, then project `p1i-spec-dev`. (Or let the first
+   `wrangler pages deploy` create them; it asks.)
+3. On each project → Custom domains: add `spec.player1inventory.etblue.tw` to `p1i-spec`
+   and `dev-spec.player1inventory.etblue.tw` to `p1i-spec-dev`.
+4. `pnpm spec:publish`
+
+Other project names can be used with `SPEC_PAGES_PROJECT` and `SPEC_DEV_PAGES_PROJECT`.
 
 ## Out of scope for step 1
 
