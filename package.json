@@ -7,7 +7,7 @@
     "build": "pnpm codegen && pnpm --filter web build && pnpm --filter server build",
     "codegen": "graphql-codegen --config codegen.ts",
     "codegen:watch": "graphql-codegen --config codegen.ts --watch",
-    "test": "pnpm -r test",
+    "test": "pnpm -r test && pnpm test:spec",
     "test:web": "pnpm --filter web test",
     "test:watch": "pnpm --filter web test:watch",
     "test:ui": "pnpm --filter web test:ui",
