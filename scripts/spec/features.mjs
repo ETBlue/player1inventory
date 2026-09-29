@@ -31,7 +31,7 @@ export function escapeHtml(text) {
 
 // `shouldRedirectToOnboarding` → `Should redirect to onboarding`
 function toWords(name) {
-  if (NAMES[name]) return NAMES[name]
+  if (Object.hasOwn(NAMES, name)) return NAMES[name]
   const words = name
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
     .replace(/[-_]+/g, ' ')
@@ -119,6 +119,27 @@ export function selectFeatureTests(vitestJson) {
   return tests
 }
 
+/**
+ * How many test files failed without a failed test: the file itself has an
+ * error. This is a file that fails to load (an import or syntax error: no tests
+ * at all), or a file whose `beforeAll` hook threw (its tests are skipped).
+ * Such a file has no failed test to list, so without this count the page would
+ * say "0 failed". Only the count is used: the file's `message` holds absolute
+ * paths and source lines and must never be printed.
+ */
+export function countFilesNotRun(vitestJson) {
+  return (vitestJson?.testResults ?? []).filter(
+    (file) =>
+      file.status === 'failed' &&
+      !(file.assertionResults ?? []).some((test) => test.status === 'failed'),
+  ).length
+}
+
+/** "1 test file failed to run", "2 test files failed to run". */
+export function filesNotRunText(count) {
+  return `${count} test ${count === 1 ? 'file' : 'files'} failed to run`
+}
+
 /** `passed` / `failed` / `skipped` counts. Vitest's `pending` and `todo` count as skipped. */
 export function countStatuses(tests) {
   const totals = { passed: 0, failed: 0, skipped: 0 }
@@ -202,6 +223,7 @@ ${body}
 export function renderFeaturePage(vitestJson) {
   const tests = selectFeatureTests(vitestJson)
   const totals = countStatuses(tests)
+  const filesNotRun = countFilesNotRun(vitestJson)
 
   // Sections in order: pages, components, the rest; by name inside each rank.
   // Inside a section, groups and tests keep the order Vitest reported them in.
@@ -265,8 +287,8 @@ ${runDate}
 <span>✅ ${totals.passed} passed</span>
 <span class="${totals.failed ? 'fail' : ''}">❌ ${totals.failed} failed</span>
 <span>⏭ ${totals.skipped} skipped</span>
-</div>
-${tests.length === 0 ? '<p>No tests found.</p>' : `<h2>Contents</h2>\n<ul class="toc">\n${toc}\n</ul>`}
+${filesNotRun ? `<span class="fail">❌ ${filesNotRunText(filesNotRun)}</span>\n` : ''}</div>
+${filesNotRun ? '<p class="muted">A test file that fails to run has an error before its tests can finish. Its tests may be missing from this page.</p>\n' : ''}${tests.length === 0 ? '<p>No tests found.</p>' : `<h2>Contents</h2>\n<ul class="toc">\n${toc}\n</ul>`}
 ${body}`
 
   return page('Feature tests — Player 1 Inventory', content)
