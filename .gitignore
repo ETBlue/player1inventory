@@ -41,6 +41,10 @@ storybook-static
 playwright-report
 test-results
 
+# Living spec reports (scripts/spec/)
+spec-dist/
+apps/web/spec-report/
+
 # Environment variables
 apps/server/.env
 
