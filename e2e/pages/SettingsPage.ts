@@ -1,10 +1,12 @@
 import type { Download, Page } from '@playwright/test'
+import { withSteps } from './step'
 
 export class SettingsPage {
   readonly page: Page
 
   constructor(page: Page) {
     this.page = page
+    withSteps(this)
   }
 
   async createTagType(name: string) {

@@ -1,10 +1,12 @@
 import type { Locator, Page } from '@playwright/test'
+import { withSteps } from './step'
 
 export class ItemPage {
   readonly page: Page
 
   constructor(page: Page) {
     this.page = page
+    withSteps(this)
   }
 
   async fillName(name: string) {

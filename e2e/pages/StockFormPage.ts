@@ -1,4 +1,5 @@
 import type { Locator, Page } from '@playwright/test'
+import { withSteps } from './step'
 
 // The per-location stock form on the item-detail Stock tab
 // (`/items/$id/stock` → `StockFormPanel` → `ItemForm sections={['stock']}`).
@@ -7,7 +8,9 @@ import type { Locator, Page } from '@playwright/test'
 // (dots, chevrons, add/remove) lives in `StockPagerPage`.
 // (src/routes/items/$id/stock.tsx, src/components/item/ItemForm/ItemForm.tsx)
 export class StockFormPage {
-  constructor(readonly page: Page) {}
+  constructor(readonly page: Page) {
+    withSteps(this)
+  }
 
   async navigateTo(itemId: string) {
     await this.page.goto(`/items/${itemId}/stock`)
