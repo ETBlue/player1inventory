@@ -137,6 +137,48 @@ are worth their cost before spending most of the effort.
 | Where do the pages live? | New Pages project on its own subdomain; inside the design guide | **New Pages project**, `spec.player1inventory.etblue.tw` | The design guide builds from Git in Cloudflare and cannot run our tests there, so reports do not fit in its build |
 | How do page-object methods become steps? | A. auto-wrap all `async` methods; B. `@step` decorator per method; C. manual `test.step` in each method | **A. Auto-wrap** | 9 one-line edits instead of editing every method. Names come from the method name and arguments, e.g. `Check recipe "Pasta"`. Sync methods such as `getRecipeCheckbox` return a `Locator` and are left alone. A small name override can be added later for names that read badly |
 
+## Round 6: The Vitest `html` reporter failed its check (2026-09-29)
+
+Task 1 of the plan checked the built-in Vitest report with `-t "user (can|sees)"`. It did
+not pass:
+
+| Finding | Detail |
+|---|---|
+| Filtered-out tests are visible by default | 1,695 of 2,259 rows are grey "skipped"; the dashboard shows "1695 Skip / 2259 Total" |
+| No setting removes them | `HTMLReporter` in `@vitest/ui` 4.0.18 reads only `outputFile` and writes every file. The UI filter is not a URL parameter; it is saved in `localStorage` (`vitest-ui_task-tree-filter`) |
+| It publishes private details | the full source of all 249 test files, absolute local paths (`/Users/etblue/...`), and `config.env` values (`VITE_CLERK_PUBLISHABLE_KEY`, localhost GraphQL URLs) |
+| Not usable on a phone | at 390px the test tree is cut to a few characters |
+
+Also found:
+
+- **564** tests match `user (can|sees)`, not ~451 as first counted. The suite has 2,259
+  tests in 249 files.
+- **263** more titles start with "user" but do not match, for example "user who signs out
+  leaves no cached cloud data on the device" and "user still sees the app when restoring
+  fails".
+
+Options considered:
+
+| Option | Decision | Why |
+|---|---|---|
+| Built-in report, viewer ticks **Fail + Pass + Only Tests** | **Rejected** | Every viewer must do it by hand. The dashboard still counts 1,695 skipped. Source and env still published |
+| Built-in report + a `<script>` that presets the `localStorage` filter | **Rejected** | Depends on an undocumented storage key. Dashboard still wrong. Source and env still published |
+| Built-in report + a script that prunes `html.meta.json.gz` (decode with `flatted`, drop skipped tests and sources, gzip again) | **Rejected** | Tested and working: 83 files, 564 tests, correct dashboard. But it depends on the internal data format of `@vitest/ui`, so a Vitest upgrade can break it silently. Still not usable on a phone |
+| Leave Vitest out of step 1 | **Rejected** | Loses the feature tests from the spec for no strong reason |
+| **Custom page from Vitest's JSON output** | **Adopted** | The JSON format is stable and documented. We control what is shown: no source, no env, readable on a phone. About the same amount of code as the prune script |
+
+**Which tests count as feature tests?**
+
+| Option | Decision |
+|---|---|
+| Only `user can` / `user sees` (564) | Rejected — the other 263 are feature behavior too, and renaming them is churn |
+| **Any test whose own title starts with `user `** | **Adopted** |
+
+How the filter is applied: **not** with `-t`. Vitest's `-t` matches the full name,
+including `describe` titles, so `-t "^user "` would miss every test inside a `describe`
+block. Instead the whole `apps/web` suite runs with the JSON reporter, and the build script
+keeps each test whose own `title` starts with `user `. The run then skips nothing.
+
 ## Final decision
 
 Build step 1 as described in

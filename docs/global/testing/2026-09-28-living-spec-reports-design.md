@@ -19,7 +19,7 @@ A public site at `spec.player1inventory.etblue.tw` with a landing page that link
 | Local mode | Playwright HTML report, `local` project | ~175 E2E tests, with steps |
 | Cloud mode | Playwright HTML report, `cloud` project | ~96 E2E tests, with steps |
 | Offline (PWA) | Playwright HTML report, `pwa` project | ~69 E2E tests, with steps |
-| Feature tests | Vitest `html` reporter, filtered | the `user can …` / `user sees …` tests |
+| Feature tests | custom page built from Vitest's JSON output | every `apps/web` test whose own title starts with `user ` (~827) |
 
 The landing page also shows the run date and the commit it was built from.
 
@@ -39,14 +39,26 @@ of the object in `test.step`:
 
 No spec file changes.
 
-### 2. Vitest feature report
+### 2. Vitest feature page
 
-`vitest run -t "user (can|sees)" --reporter=html` with the output directory set to the
-spec build folder. Needs `@vitest/ui` as a dev dependency of `apps/web`.
+> Changed on 2026-09-29. The first design used Vitest's built-in `html` reporter with
+> `-t "user (can|sees)"`. Plan Task 1 showed it lists 1,695 filtered tests as "skipped",
+> publishes all test source and env values, and does not work on a phone. See Round 6 of
+> the brainstorming log.
 
-**Open risk, checked first in the plan:** how tests excluded by `-t` appear in the report.
-If they appear as ~1,950 "skipped" rows, the report is not readable and we return to the
-choice between this reporter and a small custom page.
+1. Run the whole `apps/web` suite with `--reporter=default --reporter=json`, writing the
+   JSON to a file. No `-t`: Vitest's `-t` matches the full name including `describe`
+   titles, so an anchored pattern would miss tests inside a `describe` block.
+2. The build script keeps each test whose own `title` starts with `user ` (about 564
+   `user can` / `user sees` plus 263 other `user …` titles).
+3. It writes one HTML page, `features/index.html`:
+   - a section per feature area, taken from the file path (for example
+     `src/routes/items/…` → "Items", `src/hooks/…` → "Hooks")
+   - inside a section, the `describe` titles as sub-headings and each test as a sentence
+     with ✅ passed / ❌ failed
+   - a total at the top: passed, failed
+   - no source code, no absolute paths, no env values
+   - plain HTML and inline CSS, readable at 390px, light and dark
 
 Only `apps/web` is included. `apps/server` tests are resolver tests, not user-facing
 behavior.
@@ -63,9 +75,9 @@ date and the commit SHA. Plain HTML and CSS, no framework.
 
 ### 5. Publish script — `pnpm spec:publish`
 
-1. Run the Vitest feature report.
+1. Run the `apps/web` suite with the JSON reporter.
 2. Run `pnpm test:e2e:all`.
-3. Build the spec folder (reports + landing page).
+3. Build the spec folder (Playwright reports + feature page + landing page).
 4. `wrangler pages deploy <folder> --project-name <name>`.
 
 It publishes **even when tests fail**. A failing test is information the reader should
@@ -93,7 +105,7 @@ domain once in the Cloudflare dashboard, and logs in with `wrangler login`.
 
 | Risk | What we do |
 |---|---|
-| Vitest report shows filtered tests as skipped | Checked in the first plan task, before building on it |
+| Vitest report shows filtered tests as skipped | Confirmed by plan Task 1. Replaced with a custom page (see part 2) |
 | Auto step names read badly | Add a name override for those methods later |
 | Screenshots show only on failure today | Check Playwright's `screenshot` setting; `'on'` makes the report heavier. Decide in the plan |
 | The report goes stale | Known until CI exists. The landing page shows the run date so a reader can see it |

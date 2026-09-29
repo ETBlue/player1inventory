@@ -9,12 +9,12 @@
 
 **Architecture:** A helper wraps every `async` page-object method in `test.step`, so the
 Playwright HTML report shows readable steps with no spec changes. A build script collects
-the three per-project Playwright reports and a filtered Vitest `html` report into one
-folder with a landing page. A publish script runs everything and uploads the folder with
+the three per-project Playwright reports, a feature page built from Vitest's JSON output,
+and a landing page into one folder. A publish script runs everything and uploads the folder with
 `wrangler pages deploy`.
 
-**Tech Stack:** Playwright 1.58 (`test.step`, HTML reporter), Vitest 4 (`html` reporter
-via `@vitest/ui`, already a dev dependency of `apps/web`), Node ESM script, bash,
+**Tech Stack:** Playwright 1.58 (`test.step`, HTML reporter), Vitest 4 (`json` reporter),
+Node ESM script, bash,
 Cloudflare `wrangler`.
 
 **Design:** [2026-09-28-living-spec-reports-design.md](2026-09-28-living-spec-reports-design.md)
@@ -28,7 +28,7 @@ Cloudflare `wrangler`.
 | `e2e/pages/step.ts` | create | `withSteps(obj)` helper |
 | `e2e/pages/*.ts`, `e2e/pages/settings/*.ts` (13 files) | modify | call `withSteps(this)` in each constructor |
 | `e2e/playwright.config.ts` | modify | `screenshot: 'on'` only when `SPEC_REPORT=1` |
-| `scripts/spec/build.mjs` | create | copy reports into `spec-dist/`, write landing page |
+| `scripts/spec/build.mjs`, `scripts/spec/features.mjs` (+ test) | create | copy reports into `spec-dist/`, write the feature page and the landing page |
 | `scripts/spec/publish.sh` | create | run tests, build, deploy, exit non-zero if tests failed |
 | `package.json` (root) | modify | `spec:vitest`, `spec:build`, `spec:publish` scripts; `wrangler` dev dependency |
 | `.gitignore` | modify | `spec-dist/`, `apps/web/spec-report/` |
@@ -37,7 +37,13 @@ Cloudflare `wrangler`.
 
 ---
 
-### Task 1: Check the Vitest `html` report with a `-t` filter (decision gate)
+### Task 1: Check the Vitest `html` report with a `-t` filter (decision gate) — ✅ done, gate FAILED
+
+> **Result (2026-09-29):** the report lists 1,695 of 2,259 tests as "skipped" by default,
+> no Vitest option removes them, it publishes all test source and `config.env` values, and
+> it does not work at 390px. The user chose a custom page from Vitest's JSON output
+> instead, and widened the filter to any test title starting with `user `. Task 4 below is
+> rewritten for that. Details: Round 6 of the brainstorming log.
 
 This task decides whether the design's Vitest choice holds. **Do not build on it until
 this task reports.**
@@ -225,10 +231,11 @@ both.
 
 ### Task 4: Build and publish scripts
 
-Starts only after the main session confirms the Task 1 gate.
+Rewritten on 2026-09-29 after the Task 1 gate failed.
 
 **Files:**
-- Create: `scripts/spec/build.mjs`, `scripts/spec/publish.sh`
+- Create: `scripts/spec/build.mjs`, `scripts/spec/features.mjs`,
+  `scripts/spec/features.test.mjs`, `scripts/spec/publish.sh`
 - Modify: root `package.json`, `.gitignore`
 
 - [ ] **Step 1: Root scripts and dependency**
@@ -238,31 +245,66 @@ pnpm add -Dw wrangler
 ```
 
 ```json
-"spec:vitest": "pnpm --filter web exec vitest run -t \"user (can|sees)\" --reporter=html --outputFile.html=spec-report/index.html",
+"spec:vitest": "pnpm --filter web exec vitest run --reporter=default --reporter=json --outputFile.json=spec-report/vitest.json",
 "spec:build": "node scripts/spec/build.mjs",
-"spec:publish": "bash scripts/spec/publish.sh"
+"spec:publish": "bash scripts/spec/publish.sh",
+"test:spec": "node --test scripts/spec/"
 ```
+
+No `-t`. Vitest's `-t` matches the full name including `describe` titles, so it cannot
+select "own title starts with `user `". The whole suite runs; the build script filters.
 
 `.gitignore`: add `spec-dist/` and `apps/web/spec-report/`.
 
-- [ ] **Step 2: `scripts/spec/build.mjs`**
+- [ ] **Step 2: `scripts/spec/features.mjs` — the feature page**
 
-Behavior:
+Export a function `renderFeaturePage(vitestJson)` that returns an HTML string. Keep it
+pure (no file access) so it can be tested.
+
+1. From `testResults[].assertionResults[]`, keep a test when its own `title` starts with
+   `user ` (case-sensitive, trailing space). Use `title`, not `fullName`.
+2. Turn each file's absolute `name` into a path relative to `apps/web/src`. Never print an
+   absolute path.
+3. Group into sections by feature area from that path:
+   - `routes/<x>/…` or `routes/<x>.tsx` → `<x>` in words (`settings/tags` → "Settings ·
+     Tags"; `index` → "Pantry")
+   - otherwise the first folder (`hooks` → "Hooks", `components/<x>` → "Components ·
+     <x>", `db` → "Database", `lib` → "Library")
+   - List the final section names in your report, so the user can rename them.
+4. Inside a section: `ancestorTitles` joined with " › " as a sub-heading, and each test as
+   one line with ✅ (passed) / ❌ (failed) / ⏭ (skipped or todo).
+5. At the top: totals (passed / failed / skipped) and a note that the page lists only tests
+   named "user …".
+6. Escape all test text for HTML.
+7. No source code, no env values, no absolute paths. Plain HTML, inline CSS, readable at
+   390px, light and dark via `prefers-color-scheme`.
+
+Test it with `node --test` in `scripts/spec/features.test.mjs` and a hand-made JSON
+fixture that has: a `user …` test inside a `describe` (must be kept), a non-`user` test
+(must be dropped), a title with `<script>` (must be escaped), a failed test (must show ❌),
+and a file path under `/Users/…` (must not appear in the output).
+
+Mutation checks: switch `title` to `fullName` and confirm the `describe` case goes red;
+remove the escaping and confirm the `<script>` case goes red. Report both.
+
+- [ ] **Step 3: `scripts/spec/build.mjs`**
+
 1. Delete and recreate `spec-dist/`.
 2. Copy `playwright-report/local`, `/cloud`, `/pwa` to `spec-dist/local`, `/cloud`,
    `/pwa`. A missing report is not an error: skip it and mark the link "not run" on the
    landing page.
-3. Copy `apps/web/spec-report/` to `spec-dist/features/`.
+3. Read `apps/web/spec-report/vitest.json` and write `spec-dist/features/index.html` with
+   `renderFeaturePage`. Missing JSON → "not run", as above.
 4. Write `spec-dist/index.html`: title "Player 1 Inventory — Spec", four links with a
-   one-line description each (Local mode, Cloud mode, Offline (PWA), Feature tests), the
-   build date (ISO, UTC), and the commit from `git rev-parse --short HEAD` plus a "dirty"
-   note if `git status --porcelain` is not empty. Plain HTML with inline CSS, readable on
-   a phone, light and dark via `prefers-color-scheme`.
+   one-line description each (Local mode, Cloud mode, Offline (PWA), Feature tests), and
+   the pass/fail totals for each where they can be read. Add the build date (ISO, UTC) and
+   the commit from `git rev-parse --short HEAD`, plus a "dirty" note if
+   `git status --porcelain` is not empty. Same look as the feature page.
 5. Print the folder size.
 
-No dependencies beyond Node built-ins (`node:fs`, `node:child_process`, `node:path`).
+Node built-ins only (`node:fs`, `node:child_process`, `node:path`).
 
-- [ ] **Step 3: `scripts/spec/publish.sh`**
+- [ ] **Step 4: `scripts/spec/publish.sh`**
 
 ```bash
 #!/usr/bin/env bash
@@ -284,16 +326,22 @@ pnpm exec wrangler pages deploy spec-dist --project-name "${SPEC_PAGES_PROJECT:-
 exit $failed
 ```
 
-- [ ] **Step 4: Verify the build without deploying**
+The Vitest step and the E2E step run one after the other, never at the same time (root
+`CLAUDE.md`: parallel runs starve the machine).
+
+- [ ] **Step 5: Verify the build without deploying**
 
 Run `pnpm spec:vitest`, then one small Playwright spec per project with the
 `PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report/<project>` layout `run-all.sh` uses, then
-`pnpm spec:build`. Serve `spec-dist/` with `npx vite preview --outDir spec-dist` and check
-with Playwright that all four links open a working report. Report the checks.
+`pnpm spec:build`. Serve `spec-dist/` with `python3 -m http.server` and check with
+Playwright that all four links open a working page, at desktop width and at 390px. Take
+screenshots and look at them. `grep -r "/Users/" spec-dist/features spec-dist/index.html`
+must find nothing. Report the counts on the feature page.
 
-Do **not** run `wrangler pages deploy` — it needs the user's Cloudflare login.
+Do **not** run `wrangler pages deploy`. It needs the user's Cloudflare login.
 
-- [ ] **Step 5: Commit** — `feat(spec): build and publish script for the living spec site`
+- [ ] **Step 6: Commit** — `feat(spec): build and publish script for the living spec site`
+
 
 ---
 
