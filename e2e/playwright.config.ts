@@ -155,6 +155,16 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: 1,
   reporter: 'html',
+  // Shared by all three projects. Playwright 1.58 merges this top-level `use`
+  // with each project's own `use` key by key (`mergeObjects` in
+  // playwright/lib/util.js), and a project key wins. No project sets
+  // `screenshot`, so this value reaches all three.
+  use: {
+    // Spec reports (`pnpm spec:publish`) attach a screenshot to every test, so a
+    // non-developer can see the screen. Normal runs keep the default (off), which
+    // keeps the report small and the run fast.
+    screenshot: process.env.SPEC_REPORT === '1' ? 'on' : 'off',
+  },
   projects: [
     {
       // Local mode: app reads from IndexedDB (Dexie). No backend needed.
