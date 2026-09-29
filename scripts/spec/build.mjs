@@ -10,6 +10,15 @@
 // `pnpm spec:publish`, which runs everything. A missing report is not an error:
 // its link says "Not run".
 //
+// It works in two phases:
+//   1. Read every report, make every page in memory, and run the secret guard
+//      on all of it. Nothing on disk changes in this phase.
+//   2. Only when the guard found nothing: delete and write both output folders.
+// So a failed guard leaves both folders as they were, and `publish.sh` stops
+// before any upload.
+//
+// SPEC_ROOT sets the repo root. Only the tests use it (build.test.mjs).
+//
 // Node built-ins only.
 
 import { execFileSync } from 'node:child_process'
@@ -17,26 +26,33 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
-  readdirSync,
   readFileSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, join, relative } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { gunzipSync } from 'node:zlib'
 import {
+  countFilesNotRun,
   countStatuses,
   escapeHtml,
+  filesNotRunText,
   page,
   renderFeaturePage,
   selectFeatureTests,
 } from './features.mjs'
+import {
+  listFiles,
+  scanFolder,
+  scanPlaywrightReport,
+  scanText,
+} from './guard.mjs'
 import { readPlaywrightStats } from './playwright-stats.mjs'
-import { findSecrets } from './secrets.mjs'
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
+const ROOT = process.env.SPEC_ROOT
+  ? resolve(process.env.SPEC_ROOT)
+  : join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const OUT = join(ROOT, 'spec-dist')
 const OUT_DEV = join(ROOT, 'spec-dist-dev')
 const VITEST_JSON = join(ROOT, 'apps/web/spec-report/vitest.json')
@@ -61,54 +77,35 @@ const PLAYWRIGHT = [
   },
 ]
 
-// ---------------------------------------------------------------------------
-// 1. Secret guard. It runs before anything is deleted or written, so a failed
-//    guard leaves both output folders as they were, and `publish.sh` stops
-//    before any upload.
-//
-//    The report data (test source, `config.env`) is in `html.meta.json.gz`, so
-//    that file is unzipped first. Every other file in the folder is checked
-//    too, as it is, in case a later Vitest version stores data elsewhere.
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// Phase 1: read, render and check. Nothing is written in this phase.
+// ===========================================================================
+
+/** Secret-like text found anywhere, as "<pattern> in <where>". */
+const problems = []
+
+// --- The developer site: the Vitest UI report. -----------------------------
+// The report data (test source, `config.env`) is in `html.meta.json.gz`.
+// `scanFolder` unzips it, and checks every other file in the folder too, in
+// case a later Vitest version stores data elsewhere. A file it cannot read
+// stops the build: this report is all or nothing.
 const hasDevReport =
   existsSync(join(VITEST_HTML, 'index.html')) && existsSync(VITEST_META)
 if (hasDevReport) {
-  const problems = []
-  for (const file of listFiles(VITEST_HTML)) {
-    let text
-    try {
-      const bytes = readFileSync(file)
-      text = (file.endsWith('.gz') ? gunzipSync(bytes) : bytes).toString(
-        'latin1',
-      )
-    } catch (error) {
-      console.error(
-        `spec:build: STOPPED. Cannot read ${relative(ROOT, file)} to check it for secrets: ${error.message}`,
-      )
-      process.exit(1)
-    }
-    for (const pattern of findSecrets(text))
-      problems.push(`${pattern} in ${relative(ROOT, file)}`)
-  }
-  if (problems.length > 0) {
+  try {
+    problems.push(...scanFolder(VITEST_HTML, 'apps/web/spec-report/html'))
+  } catch (error) {
     console.error(
-      'spec:build: STOPPED. The developer Vitest report contains text that looks like a secret:',
-    )
-    for (const problem of problems) console.error(`  - ${problem}`)
-    console.error(
-      'Nothing was written. Find where the value comes from (often a VITE_ env variable) and remove it.',
+      `spec:build: STOPPED. Cannot check the developer Vitest report for secrets: ${error.message}`,
     )
     process.exit(1)
   }
 }
 
-// ---------------------------------------------------------------------------
-// 2. The public spec site.
-// ---------------------------------------------------------------------------
-rmSync(OUT, { recursive: true, force: true })
-mkdirSync(OUT, { recursive: true })
-
+// --- The public site: Playwright reports. ----------------------------------
 const cards = []
+/** Playwright report folders that passed the checks, to copy in phase 2. */
+const copies = []
 
 for (const project of PLAYWRIGHT) {
   const source = join(ROOT, 'playwright-report', project.dir)
@@ -120,30 +117,55 @@ for (const project of PLAYWRIGHT) {
     cards.push({ ...project, href: null })
     continue
   }
-  cpSync(source, join(OUT, project.dir), { recursive: true })
+  // A report the guard cannot read is left out, and the rest of the site is
+  // still built. It is not published unchecked, and one broken report does
+  // not hide the others. A secret that IS found stops everything (below).
+  try {
+    problems.push(
+      ...scanPlaywrightReport(source, `playwright-report/${project.dir}`),
+    )
+  } catch (error) {
+    console.warn(
+      `spec:build: WARNING: cannot check "${project.dir}" for secrets, so it is not published: ${error.message}`,
+    )
+    cards.push({
+      ...project,
+      href: null,
+      note: 'Not published: this report could not be checked for secrets.',
+    })
+    continue
+  }
   const stats = readPlaywrightStats(readFileSync(index, 'utf8'))
   if (!stats)
     console.warn(
       `spec:build: cannot read the totals of "${project.dir}"; the link is shown without them.`,
     )
+  copies.push({ source, target: join(OUT, project.dir) })
   cards.push({ ...project, href: `${project.dir}/`, stats })
 }
 
+// --- The public site: the feature page. ------------------------------------
 const features = {
   dir: 'features',
   name: 'Feature tests',
   text: 'What the app does, one sentence per test.',
 }
+let featureHtml = null
 if (existsSync(VITEST_JSON)) {
   const json = JSON.parse(readFileSync(VITEST_JSON, 'utf8'))
-  mkdirSync(join(OUT, 'features'))
-  writeFileSync(join(OUT, 'features', 'index.html'), renderFeaturePage(json))
+  featureHtml = renderFeaturePage(json)
+  problems.push(...scanText(featureHtml, 'spec-dist/features/index.html'))
   const totals = countStatuses(selectFeatureTests(json))
   const startTime = Number.isFinite(json.startTime) ? json.startTime : null
   cards.push({
     ...features,
     href: 'features/',
-    stats: { ...totals, flaky: 0, startTime },
+    stats: {
+      ...totals,
+      flaky: 0,
+      filesNotRun: countFilesNotRun(json),
+      startTime,
+    },
   })
 } else {
   console.warn(
@@ -152,14 +174,41 @@ if (existsSync(VITEST_JSON)) {
   cards.push({ ...features, href: null })
 }
 
-writeFileSync(join(OUT, 'index.html'), renderLanding(cards))
+// --- The public site: the landing page. ------------------------------------
+const landingHtml = renderLanding(cards)
+problems.push(...scanText(landingHtml, 'spec-dist/index.html'))
 
-// ---------------------------------------------------------------------------
-// 3. The developer site: the Vitest UI report, copied as it is.
-// ---------------------------------------------------------------------------
+// --- The guard result. -----------------------------------------------------
+if (problems.length > 0) {
+  console.error(
+    'spec:build: STOPPED. The reports contain text that looks like a secret:',
+  )
+  for (const problem of problems) console.error(`  - ${problem}`)
+  console.error(
+    'Nothing was written. Find where the value comes from (often a VITE_ env variable) and remove it.',
+  )
+  console.error(
+    'A test title or a comment in a test file can also trigger this: the developer report contains all test source.',
+  )
+  process.exit(1)
+}
+
+// ===========================================================================
+// Phase 2: write. The guard has passed.
+// ===========================================================================
+rmSync(OUT, { recursive: true, force: true })
+mkdirSync(OUT, { recursive: true })
+// Copy exactly the folders the guard checked.
+for (const { source, target } of copies)
+  cpSync(source, target, { recursive: true })
+if (featureHtml !== null) {
+  mkdirSync(join(OUT, 'features'))
+  writeFileSync(join(OUT, 'features', 'index.html'), featureHtml)
+}
+writeFileSync(join(OUT, 'index.html'), landingHtml)
+
 rmSync(OUT_DEV, { recursive: true, force: true })
 if (hasDevReport) {
-  // Copy exactly the folder the guard checked.
   cpSync(VITEST_HTML, OUT_DEV, { recursive: true })
 } else {
   console.warn(
@@ -201,7 +250,9 @@ function renderLanding(items) {
         `<span>${escapeHtml(item.text)}</span>`,
       ]
       if (!item.href) {
-        lines.push('<span class="muted">Not run</span>')
+        lines.push(
+          `<span class="muted">${escapeHtml(item.note ?? 'Not run')}</span>`,
+        )
         return `<div class="card">\n${lines.join('\n')}\n</div>`
       }
       const s = item.stats
@@ -210,6 +261,10 @@ function renderLanding(items) {
           `✅ ${s.passed} passed`,
           `<span class="${s.failed ? 'fail' : ''}">❌ ${s.failed} failed</span>`,
         ]
+        if (s.filesNotRun)
+          parts.push(
+            `<span class="fail">❌ ${filesNotRunText(s.filesNotRun)}</span>`,
+          )
         if (s.flaky) parts.push(`${s.flaky} flaky`)
         if (s.skipped) parts.push(`⏭ ${s.skipped} skipped`)
         lines.push(`<span>${parts.join(' · ')}</span>`)
@@ -232,15 +287,11 @@ ${list}
   return page('Player 1 Inventory — Spec', body)
 }
 
-function listFiles(dir) {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const path = join(dir, entry.name)
-    return entry.isDirectory() ? listFiles(path) : [path]
-  })
-}
-
 function folderSize(dir) {
-  return listFiles(dir).reduce((total, file) => total + statSync(file).size, 0)
+  return listFiles(dir).reduce(
+    (total, file) => total + statSync(join(dir, file)).size,
+    0,
+  )
 }
 
 function formatSize(bytes) {

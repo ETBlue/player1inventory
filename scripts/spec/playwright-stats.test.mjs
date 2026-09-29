@@ -1,73 +1,48 @@
 // Run with: pnpm test:spec
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { deflateRawSync } from 'node:zlib'
-import { readPlaywrightStats } from './playwright-stats.mjs'
+import { readPlaywrightStats, readZipEntries } from './playwright-stats.mjs'
+import { makeZip, reportHtml } from './test-zip.mjs'
 
-// Build a zip the same shape Playwright writes: deflated entries, a central
-// directory, an end record. CRC fields are left at 0; the reader does not check them.
-function makeZip(entries) {
-  const locals = []
-  const centrals = []
-  let offset = 0
-  for (const [name, text] of Object.entries(entries)) {
-    const nameBytes = Buffer.from(name)
-    const raw = Buffer.from(text)
-    const data = deflateRawSync(raw)
-    const local = Buffer.alloc(30)
-    local.writeUInt32LE(0x04034b50, 0)
-    local.writeUInt16LE(8, 8)
-    local.writeUInt32LE(data.length, 18)
-    local.writeUInt32LE(raw.length, 22)
-    local.writeUInt16LE(nameBytes.length, 26)
-    const central = Buffer.alloc(46)
-    central.writeUInt32LE(0x02014b50, 0)
-    central.writeUInt16LE(8, 10)
-    central.writeUInt32LE(data.length, 20)
-    central.writeUInt32LE(raw.length, 24)
-    central.writeUInt16LE(nameBytes.length, 28)
-    central.writeUInt32LE(offset, 42)
-    locals.push(local, nameBytes, data)
-    centrals.push(central, nameBytes)
-    offset += 30 + nameBytes.length + data.length
-  }
-  const directory = Buffer.concat(centrals)
-  const end = Buffer.alloc(22)
-  end.writeUInt32LE(0x06054b50, 0)
-  end.writeUInt16LE(Object.keys(entries).length, 8)
-  end.writeUInt16LE(Object.keys(entries).length, 10)
-  end.writeUInt32LE(directory.length, 12)
-  end.writeUInt32LE(offset, 16)
-  return Buffer.concat([...locals, directory, end])
-}
+const REPORT_JSON = JSON.stringify({
+  startTime: 1790000000000,
+  stats: {
+    total: 10,
+    expected: 7,
+    unexpected: 1,
+    flaky: 0,
+    skipped: 2,
+    ok: false,
+  },
+})
 
-function reportHtml(zip) {
-  return `<html><body><script id="playwrightReportBase64" type="application/zip">data:application/zip;base64,${zip.toString('base64')}</script></body></html>`
+const STATS = {
+  passed: 7,
+  failed: 1,
+  flaky: 0,
+  skipped: 2,
+  startTime: 1790000000000,
 }
 
 describe('readPlaywrightStats', () => {
   it('reads the totals from report.json inside the embedded zip', () => {
+    const zip = makeZip({ 'abc.json': '{}', 'report.json': REPORT_JSON })
+    assert.deepEqual(readPlaywrightStats(reportHtml(zip)), STATS)
+  })
+
+  // Each field here catches one way to misread the zip layout:
+  // - the entry before report.json has a central extra field and a comment,
+  //   so the reader must skip them to find the next central record
+  // - report.json has a local extra field, so its data starts later
+  // - report.json is deflated with level 0, so its compressed size is larger
+  //   than its raw size, and reading the raw size cuts the data short
+  it('reads a zip with extra fields, a comment and a stored entry', () => {
     const zip = makeZip({
-      'abc.json': '{}',
-      'report.json': JSON.stringify({
-        startTime: 1790000000000,
-        stats: {
-          total: 10,
-          expected: 7,
-          unexpected: 1,
-          flaky: 0,
-          skipped: 2,
-          ok: false,
-        },
-      }),
+      'stored.txt': { data: 'plain text', method: 0 },
+      'abc.json': { data: '{}', centralExtra: 9, comment: 7 },
+      'report.json': { data: REPORT_JSON, level: 0, localExtra: 5 },
     })
-    assert.deepEqual(readPlaywrightStats(reportHtml(zip)), {
-      passed: 7,
-      failed: 1,
-      flaky: 0,
-      skipped: 2,
-      startTime: 1790000000000,
-    })
+    assert.deepEqual(readPlaywrightStats(reportHtml(zip)), STATS)
   })
 
   it('returns null when the report has no embedded zip', () => {
@@ -86,5 +61,28 @@ describe('readPlaywrightStats', () => {
       readPlaywrightStats(reportHtml(makeZip({ 'report.json': '{}' }))),
       null,
     )
+  })
+})
+
+describe('readZipEntries', () => {
+  it('returns every entry, stored and deflated, with its bytes', () => {
+    const zip = makeZip({
+      'stored.txt': { data: 'plain text', method: 0, localExtra: 3 },
+      'abc.json': { data: '{"a":1}', centralExtra: 4, comment: 2 },
+      'tiny.json': { data: 'x'.repeat(50), level: 0 },
+    })
+    const entries = readZipEntries(zip).map(({ name, data }) => [
+      name,
+      data.toString('utf8'),
+    ])
+    assert.deepEqual(entries, [
+      ['stored.txt', 'plain text'],
+      ['abc.json', '{"a":1}'],
+      ['tiny.json', 'x'.repeat(50)],
+    ])
+  })
+
+  it('throws on bytes that are not a zip', () => {
+    assert.throws(() => readZipEntries(Buffer.from('not a zip')))
   })
 })

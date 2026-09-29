@@ -1,9 +1,11 @@
-// Secret guard for the developer Vitest report (`spec-dist-dev/`).
+// The patterns of the secret guard (`guard.mjs`), for both sites.
 //
-// That report contains the full test source and Vitest's `config.env`. Every
-// `VITE_` value is public by design, but a real secret added with a `VITE_`
-// prefix by mistake would be published too. `build.mjs` runs this check before
-// it writes anything, and stops the build on any match.
+// The developer Vitest report (`spec-dist-dev/`) contains the full test source
+// and Vitest's `config.env`. Every `VITE_` value is public by design, but a
+// real secret added with a `VITE_` prefix by mistake would be published too.
+// The Playwright reports (`spec-dist/`) can show spec source and error text.
+// `build.mjs` runs the guard before it writes anything, and stops the build on
+// any match.
 //
 // Plain substrings, on purpose. A false match only stops a publish, which is
 // safe. A clever pattern that misses a real key is not.

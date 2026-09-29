@@ -9,7 +9,7 @@
 # can tell.
 #
 # It does NOT publish when `spec:build` fails. That includes the secret guard
-# in build.mjs: a secret in the developer report stops both uploads.
+# in build.mjs: a secret in any report or generated page stops both uploads.
 #
 # Needs a one-time `pnpm exec wrangler login`.
 set -uo pipefail
@@ -18,6 +18,13 @@ cd "$ROOT"
 
 export SPEC_REPORT=1   # e2e/playwright.config.ts: a screenshot for every test
 failed=0
+
+# Delete the reports of an earlier run first. If a test run crashes before it
+# writes its report, the old report would otherwise be published under this
+# commit. With the folder gone, its card says "Not run". Vitest and
+# `e2e/run-all.sh` (through Playwright's html reporter) create these folders
+# again themselves.
+rm -rf apps/web/spec-report playwright-report
 
 # One after the other, never at the same time: parallel test runs starve the
 # machine (root CLAUDE.md, Verification Gate).
