@@ -228,8 +228,10 @@ pnpm test                                        # BOTH suites — web + server,
 ```
 
 **`pnpm test` runs both workspaces.** The root script is `pnpm -r test`, which recurses into
-every workspace package that defines a `test` script — today `apps/web` (~1700 tests) and
-`apps/server` (~100). Both are `vitest run`, so the root command is non-interactive and
+every workspace package that defines a `test` script — today `apps/web` (**2259 tests**
+across 249 files) and `apps/server` (**259** across 20). Measured 2026-09-29; the figures
+here said ~1700 and ~100 until then, so re-measure rather than quote these. Both are
+`vitest run`, so the root command is non-interactive and
 never drops into watch mode. Packages without a `test` script (`apps/design`, `packages/types`)
 are skipped silently.
 
@@ -320,7 +322,7 @@ per row, four servers forced by passing a glob instead of an exact project name:
 
 The whole gate, `pnpm test:e2e:all`, measured 2026-09-24 after five specs joined the
 `cloud` project (issue #284): **13m49s**, all three green — local 170 passed / 5 skipped in
-3m16s, cloud **89 passed / 7 skipped** in 9m08s, pwa 69 passed in 1m25s. Cloud gained 13
+3m16s, cloud **90 passed / 7 skipped** in 9m08s, pwa 69 passed in 1m25s. Cloud gained 13
 passing tests and one skip that run only there. Earlier the same day, before those five
 specs, it was 12m39s with cloud at 76 passed / 6 skipped.
 
@@ -332,7 +334,7 @@ The two `offline banner a11y` tests moved from "runs in both `local` and `pwa`" 
 the contention is between the concurrent **servers**, not concurrent tests. Passing
 `--workers=N` on the command line does nothing.
 
-No `--grep`. Playwright's `webServer` config starts the servers for you. This runs **three** projects — **340 tests in 25 spec files** (measured 2026-09-24): **175 in `local`**, **96 in `cloud`** across 18 spec files, and **69 in `pwa`**. The `pwa` project arrived with the PWA work and uses a fourth port, `PWA_WEB_PORT 5176`, so four ports must be free before a run, not three.
+No `--grep`. Playwright's `webServer` config starts the servers for you. This runs **three** projects — **341 tests in 26 spec files** (measured 2026-09-29): **175 in `local`** across 22 spec files, **97 in `cloud`** across 19, and **69 in `pwa`** across 2. The `pwa` project arrived with the PWA work and uses a fourth port, `PWA_WEB_PORT 5176`, so four ports must be free before a run, not three.
 
 **Do not narrow the final run with `--grep`.** `--grep` matches a single joined string made of the project name, the spec file's path **relative to `e2e/tests/`**, every `describe` title, and the test title. An area word selects a test only if that exact word appears somewhere in that string. So a list of feature areas silently drops whole spec files whose names happen to use a different word form.
 

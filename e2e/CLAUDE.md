@@ -400,10 +400,11 @@ Reconciling against what the database actually holds is what keeps this working 
 PR 5 removes the dual-write. **Check it at that point** — if the mirror stops running,
 the reconcile should simply find nothing to remove.
 
-**The `cloud` project's `testMatch` is 18 files today** (`e2e/playwright.config.ts`),
+**The `cloud` project's `testMatch` is 19 files today** (`e2e/playwright.config.ts`),
 up from 13 on 2026-09-23. The five added on 2026-09-24 are `recipes-group.spec.ts`,
 `vendors-group.spec.ts`, `shelves.spec.ts`, `item-stock-input.spec.ts` and
-`item-stock-pager.spec.ts`. `--list` reports **96 cloud tests**, up from 76+6 skipped.
+`item-stock-pager.spec.ts`. `--list` reports **97 cloud tests**, up from 76+6 skipped. The 19th file is
+`cleanup-endpoint.spec.ts`, added 2026-09-27 for issue #319.
 
 ### `consumeAmount` and `targetUnit` — both helpers default to the product values
 
@@ -510,7 +511,7 @@ mutation did go red.
 therefore says nothing about this directory.
 
 To type-check a file you edited, write a temporary `tsconfig` and run `tsc --noEmit`.
-**Scope `include` to the files you are editing.** Three files carry pre-existing errors
+**Scope `include` to the files you are editing.** Four files carry pre-existing errors
 that will drown yours:
 
 | File | Pre-existing errors |
@@ -518,7 +519,17 @@ that will drown yours:
 | `e2e/playwright.config.ts` | 2 × `TS2580` (no `@types/node`) |
 | `e2e/tests/a11y.spec.ts` | 63 × `TS2559` on `AxeOptions` |
 | `e2e/tests/settings/import-export-cloud.spec.ts` | 3 × `TS2307` on `node:fs`, `node:path`, `node:url` (no `@types/node`) |
+| `e2e/tests/settings/import-export-local.spec.ts` | 4, same cause |
 
-Counts measured 2026-09-25. The a11y figure was **39** when this table was written; the
-file has grown since. Do not trust the number — take your own baseline first. Run `tsc`
-on the unchanged files, keep the output, then diff it against the run after your edit.
+Counts measured 2026-09-29; **74 errors in total** across `e2e/`. The a11y figure was
+**39** when this table was written; the file has grown since. The exact error CODES also
+depend on the tsconfig you write — `TS2580` and `TS2591` are the same missing-`@types/node`
+problem reported under different module settings.
+
+**Do not trust any number here.** Take your own baseline first: run `tsc` on the unchanged
+files, keep the output, then diff it against the run after your edit. Root `CLAUDE.md`
+makes this a rule, because subtracting a written count has twice produced invented
+failures.
+
+Tracked as issue #322 — nothing lints or type-checks this directory, so none of these 74
+errors is reported by any command in the verification gate.
