@@ -1,9 +1,10 @@
-// Build the living spec site from the latest test output. Nothing is uploaded.
+// Build the living spec sites from the latest test output. Nothing is uploaded.
 //
 //   spec-dist/       the public spec site for non-developers
 //     index.html       landing page
 //     local/ cloud/ pwa/   Playwright HTML reports (from `pnpm test:e2e:all`)
 //     features/        the feature page (from `pnpm spec:vitest`)
+//   spec-dist-dev/   the full Vitest UI report, for developers
 //
 // Run `pnpm spec:vitest` and `pnpm test:e2e:all` first, or use
 // `pnpm spec:publish`, which runs everything. A missing report is not an error:
@@ -22,8 +23,9 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { gunzipSync } from 'node:zlib'
 import {
   countStatuses,
   escapeHtml,
@@ -32,10 +34,14 @@ import {
   selectFeatureTests,
 } from './features.mjs'
 import { readPlaywrightStats } from './playwright-stats.mjs'
+import { findSecrets } from './secrets.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const OUT = join(ROOT, 'spec-dist')
+const OUT_DEV = join(ROOT, 'spec-dist-dev')
 const VITEST_JSON = join(ROOT, 'apps/web/spec-report/vitest.json')
+const VITEST_HTML = join(ROOT, 'apps/web/spec-report/html')
+const VITEST_META = join(VITEST_HTML, 'html.meta.json.gz')
 
 const PLAYWRIGHT = [
   {
@@ -56,7 +62,48 @@ const PLAYWRIGHT = [
 ]
 
 // ---------------------------------------------------------------------------
-// The public spec site.
+// 1. Secret guard. It runs before anything is deleted or written, so a failed
+//    guard leaves both output folders as they were, and `publish.sh` stops
+//    before any upload.
+//
+//    The report data (test source, `config.env`) is in `html.meta.json.gz`, so
+//    that file is unzipped first. Every other file in the folder is checked
+//    too, as it is, in case a later Vitest version stores data elsewhere.
+// ---------------------------------------------------------------------------
+const hasDevReport =
+  existsSync(join(VITEST_HTML, 'index.html')) && existsSync(VITEST_META)
+if (hasDevReport) {
+  const problems = []
+  for (const file of listFiles(VITEST_HTML)) {
+    let text
+    try {
+      const bytes = readFileSync(file)
+      text = (file.endsWith('.gz') ? gunzipSync(bytes) : bytes).toString(
+        'latin1',
+      )
+    } catch (error) {
+      console.error(
+        `spec:build: STOPPED. Cannot read ${relative(ROOT, file)} to check it for secrets: ${error.message}`,
+      )
+      process.exit(1)
+    }
+    for (const pattern of findSecrets(text))
+      problems.push(`${pattern} in ${relative(ROOT, file)}`)
+  }
+  if (problems.length > 0) {
+    console.error(
+      'spec:build: STOPPED. The developer Vitest report contains text that looks like a secret:',
+    )
+    for (const problem of problems) console.error(`  - ${problem}`)
+    console.error(
+      'Nothing was written. Find where the value comes from (often a VITE_ env variable) and remove it.',
+    )
+    process.exit(1)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 2. The public spec site.
 // ---------------------------------------------------------------------------
 rmSync(OUT, { recursive: true, force: true })
 mkdirSync(OUT, { recursive: true })
@@ -107,7 +154,22 @@ if (existsSync(VITEST_JSON)) {
 
 writeFileSync(join(OUT, 'index.html'), renderLanding(cards))
 
+// ---------------------------------------------------------------------------
+// 3. The developer site: the Vitest UI report, copied as it is.
+// ---------------------------------------------------------------------------
+rmSync(OUT_DEV, { recursive: true, force: true })
+if (hasDevReport) {
+  // Copy exactly the folder the guard checked.
+  cpSync(VITEST_HTML, OUT_DEV, { recursive: true })
+} else {
+  console.warn(
+    'spec:build: no Vitest html report at apps/web/spec-report/html — spec-dist-dev/ not written.',
+  )
+}
+
 console.log(`spec:build: spec-dist/ ${formatSize(folderSize(OUT))}`)
+if (existsSync(OUT_DEV))
+  console.log(`spec:build: spec-dist-dev/ ${formatSize(folderSize(OUT_DEV))}`)
 
 // ---------------------------------------------------------------------------
 

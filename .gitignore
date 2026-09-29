@@ -43,6 +43,7 @@ test-results
 
 # Living spec reports (scripts/spec/)
 spec-dist/
+spec-dist-dev/
 apps/web/spec-report/
 
 # Environment variables
