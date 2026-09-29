@@ -179,6 +179,37 @@ including `describe` titles, so `-t "^user "` would miss every test inside a `de
 block. Instead the whole `apps/web` suite runs with the JSON reporter, and the build script
 keeps each test whose own `title` starts with `user `. The run then skips nothing.
 
+## Round 7: Keep the Vitest UI report for developers (2026-09-29)
+
+**Request:** keep the original Vitest UI report as a developer tool, published on its own
+subdomain, apart from the non-developer spec.
+
+Facts that shaped the answer:
+
+- One Vitest run can write JSON and HTML at the same time
+  (`--reporter=default --reporter=json --reporter=html`). No second run is needed.
+- The developer report shows the **whole** suite, with no `-t`, so the "1,695 skipped
+  rows" problem from Round 6 does not happen.
+- A different subdomain needs a second Cloudflare Pages project. Every custom domain on one
+  project serves the same content.
+- It is a snapshot of the last `spec:publish` run. It does not replace the live
+  `pnpm test:ui`.
+
+The private details found in Round 6, looked at again for a developer audience:
+
+| What the report contains | Risk | Why |
+|---|---|---|
+| Full test source code | none | `ETBlue/player1inventory` is a public repo |
+| Absolute paths (`/Users/etblue/...`) | very low | shows the local username and folder layout |
+| `config.env` (`VITE_CLERK_PUBLISHABLE_KEY`, localhost URLs) | low today | every `VITE_` value is built into the app bundle, so it is public by design. The risk is a real secret added with a `VITE_` prefix by mistake |
+
+Decisions:
+
+| Question | Options | Decision | Why |
+|---|---|---|---|
+| Who can open it? | public + secret guard; private with Cloudflare Access | **Public + secret guard** | The repo is public and `VITE_` values are public by design. The build fails if the report contains a string that looks like a secret, so a mistake stops the publish instead of leaking |
+| When? | in step 1 as Task 4b; later on its own branch | **In step 1, Task 4b** | Small addition to the scripts Task 4 writes anyway |
+
 ## Final decision
 
 Build step 1 as described in

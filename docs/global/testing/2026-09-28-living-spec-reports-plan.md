@@ -245,7 +245,7 @@ pnpm add -Dw wrangler
 ```
 
 ```json
-"spec:vitest": "pnpm --filter web exec vitest run --reporter=default --reporter=json --outputFile.json=spec-report/vitest.json",
+"spec:vitest": "pnpm --filter web exec vitest run --reporter=default --reporter=json --reporter=html --outputFile.json=spec-report/vitest.json --outputFile.html=spec-report/html/index.html",
 "spec:build": "node scripts/spec/build.mjs",
 "spec:publish": "bash scripts/spec/publish.sh",
 "test:spec": "node --test scripts/spec/"
@@ -323,6 +323,7 @@ pnpm spec:vitest    || failed=1
 pnpm test:e2e:all   || failed=1
 pnpm spec:build     || exit 1   # nothing to publish
 pnpm exec wrangler pages deploy spec-dist --project-name "${SPEC_PAGES_PROJECT:-p1i-spec}" --branch main || exit 1
+pnpm exec wrangler pages deploy spec-dist-dev --project-name "${SPEC_DEV_PAGES_PROJECT:-p1i-spec-dev}" --branch main || exit 1
 exit $failed
 ```
 
@@ -345,6 +346,35 @@ Do **not** run `wrangler pages deploy`. It needs the user's Cloudflare login.
 
 ---
 
+### Task 4b: Developer Vitest report (added 2026-09-29)
+
+Design part 4b. Can be done together with Task 4 by the same agent.
+
+**Files:** `scripts/spec/build.mjs`, `scripts/spec/secrets.mjs` (+ test), `.gitignore`
+
+- [ ] **Step 1:** `spec:vitest` (Task 4 Step 1) already writes the html report to
+  `apps/web/spec-report/html/`. Confirm one run gives both the JSON and the html output.
+- [ ] **Step 2: Secret guard** — `scripts/spec/secrets.mjs` exports
+  `findSecrets(text) → string[]` (the patterns that matched). Patterns: `sk_live`,
+  `sk_test`, `DATABASE_URL`, `postgres://`, `postgresql://`, `BEGIN PRIVATE KEY`.
+  `node --test` cases: clean text → `[]`; each pattern → found; a `pk_test_…` Clerk
+  publishable key → **not** found. Mutation check: remove one pattern and confirm its
+  test goes red.
+- [ ] **Step 3: Build** — `build.mjs` deletes and recreates `spec-dist-dev/`. It unzips
+  `apps/web/spec-report/html/html.meta.json.gz` with `node:zlib`, runs `findSecrets` on
+  the text, and on any match prints the patterns and exits 1 **before** writing either
+  folder. Otherwise it copies `apps/web/spec-report/html/` to `spec-dist-dev/`. A missing
+  html report is not an error: skip `spec-dist-dev/` and print a warning; `publish.sh`
+  then skips the second deploy.
+- [ ] **Step 4: Verify** — serve `spec-dist-dev/` with `python3 -m http.server`, open it
+  with Playwright, confirm the dashboard shows the whole suite (about 2,259 tests, 0
+  skipped). Prove the guard end to end: put a fake `sk_test_x` into a copy of the meta file,
+  run the build against it, confirm exit 1 and that nothing was written.
+- [ ] **Step 5:** `.gitignore` adds `spec-dist-dev/`.
+- [ ] **Step 6: Commit** — `feat(spec): publish the full Vitest UI report for developers`
+
+---
+
 ### Task 5: Documentation
 
 **Files:** root `CLAUDE.md`, `e2e/CLAUDE.md`, design doc, `docs/INDEX.md`
@@ -355,8 +385,9 @@ Do **not** run `wrangler pages deploy`. It needs the user's Cloudflare login.
   `withSteps(this)`; `get…` methods stay synchronous; method names become step names, so
   name them as actions.
 - [ ] Design doc: status, any change from the plan, and **one-time setup** for the user:
-  `pnpm exec wrangler login`; create Pages project `p1i-spec` (direct upload); add custom
-  domain `spec.player1inventory.etblue.tw`.
+  `pnpm exec wrangler login`; create Pages projects `p1i-spec` and `p1i-spec-dev` (direct
+  upload); add custom domains `spec.player1inventory.etblue.tw` and
+  `dev-spec.player1inventory.etblue.tw`.
 - [ ] `docs/INDEX.md`: row status.
 - [ ] Commit — `docs(testing): living spec reports usage and setup`
 
