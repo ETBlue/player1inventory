@@ -28,6 +28,9 @@ pnpm storybook:build   # Build Storybook to apps/web/storybook-static/
 pnpm design            # Start design guide dev server (Astro/Starlight)
 pnpm design:build      # Build design guide to apps/design/dist/
 pnpm design:preview    # Preview built design guide locally
+pnpm spec:build        # Build the living spec sites from the test reports on disk (spec-dist/, spec-dist-dev/)
+pnpm spec:publish      # Run all tests, build, and upload both spec sites to Cloudflare Pages
+pnpm test:spec         # Test the spec site scripts in scripts/spec/ (node --test)
 ```
 
 ## Tech Stack
@@ -69,6 +72,24 @@ Components never access the database directly — they use Query hooks from `src
 ## Local Database & Dexie Schema
 
 > See `apps/web/src/db/CLAUDE.md` — schema versioning rules (forward-only, add a version rather than editing one, fresh DBs never run upgrade functions so `on('populate')` must seed too), the v14 `locations` / v15 `Item`+`ItemStock` / v16 global-stock-settings / v18 `Location.isDefault` migrations, the Item/ItemStock join (configuration on `Item`, per-location state on `ItemStock`), and the three cascades.
+
+## Living Spec Site
+
+Test results published as public HTML pages for non-developers, plus the full Vitest UI
+report for developers. Built by `scripts/spec/`, published with `pnpm spec:publish`.
+
+| Site | Cloudflare Pages project | Content |
+|---|---|---|
+| `spec.player1inventory.etblue.tw` | `p1i-spec` | landing page, the three Playwright reports, the feature page (every `apps/web` test whose own title starts with `user `) |
+| `dev-spec.player1inventory.etblue.tw` | `p1i-spec-dev` | the full Vitest UI report, behind a secret guard |
+
+> See `docs/global/testing/2026-09-28-living-spec-reports-design.md` for how it works and
+> the one-time Cloudflare setup, and the brainstorming log beside it for why.
+
+**Test names are what non-developers read.** A `user …` title appears on the public
+feature page as a sentence; any other title does not appear at all. Name feature tests
+`user can …` / `user sees …`. Keep role names (`location viewer cannot …`) for RBAC tests
+that really set up that role.
 
 ## Backend & Prisma Migrations
 
@@ -234,6 +255,10 @@ here said ~1700 and ~100 until then, so re-measure rather than quote these. Both
 `vitest run`, so the root command is non-interactive and
 never drops into watch mode. Packages without a `test` script (`apps/design`, `packages/types`)
 are skipped silently.
+
+After the two workspaces, `pnpm test` also runs `pnpm test:spec` — the `node --test`
+suite for `scripts/spec/`, the living spec site build. `pnpm -r` never runs the root
+package's own scripts, so without this chain those tests would run nowhere.
 
 There is **no separate server command to remember** — that was the bug. Narrower scripts
 still exist for the fast path when you know what you touched:

@@ -1,10 +1,13 @@
 import type { Locator, Page } from '@playwright/test'
+import { withSteps } from './step'
 
 // The item-detail Stock tab (`/items/$id/stock`) in local mode: a pager across
 // every location. Chrome is rendered only when more than one location exists.
 // (src/routes/items/$id/stock.tsx, src/components/item/LocationPager/LocationPager.tsx)
 export class StockPagerPage {
-  constructor(readonly page: Page) {}
+  constructor(readonly page: Page) {
+    withSteps(this)
+  }
 
   async navigateTo(itemId: string) {
     await this.page.goto(`/items/${itemId}/stock`)

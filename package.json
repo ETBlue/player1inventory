@@ -7,7 +7,7 @@
     "build": "pnpm codegen && pnpm --filter web build && pnpm --filter server build",
     "codegen": "graphql-codegen --config codegen.ts",
     "codegen:watch": "graphql-codegen --config codegen.ts --watch",
-    "test": "pnpm -r test",
+    "test": "pnpm -r test && pnpm test:spec",
     "test:web": "pnpm --filter web test",
     "test:watch": "pnpm --filter web test:watch",
     "test:ui": "pnpm --filter web test:ui",
@@ -28,6 +28,10 @@
     "design:build": "pnpm --filter design build",
     "design:preview": "pnpm --filter design preview",
     "dev:server": "pnpm --filter server dev",
+    "spec:vitest": "pnpm --filter web exec vitest run --reporter=default --reporter=json --reporter=html --outputFile.json=spec-report/vitest.json --outputFile.html=spec-report/html/index.html",
+    "spec:build": "node scripts/spec/build.mjs",
+    "spec:publish": "bash scripts/spec/publish.sh",
+    "test:spec": "node --test \"scripts/spec/*.test.mjs\"",
     "prepare": "husky"
   },
   "devDependencies": {
@@ -43,7 +47,8 @@
     "axe-playwright": "^2.2.2",
     "concurrently": "^9.2.1",
     "husky": "^9.1.7",
-    "lint-staged": "^16.2.7"
+    "lint-staged": "^16.2.7",
+    "wrangler": "^4.143.0"
   },
   "lint-staged": {
     "apps/web/src/**/*.{ts,tsx}": [

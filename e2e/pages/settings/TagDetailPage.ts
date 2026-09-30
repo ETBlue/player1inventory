@@ -1,10 +1,12 @@
 import type { Page, Locator } from '@playwright/test'
+import { withSteps } from '../step'
 
 export class TagDetailPage {
   readonly page: Page
 
   constructor(page: Page) {
     this.page = page
+    withSteps(this)
   }
 
   async navigateTo(id: string) {
