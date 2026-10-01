@@ -1,4 +1,5 @@
 import { requireLocationRole } from '../lib/authz.js'
+import { parseCartId } from '../lib/cartId.js'
 import { ensureDefaultLocation } from '../lib/defaultLocation.js'
 import { prisma } from '../lib/prisma.js'
 import { mirrorStockToDefaultLocation } from '../lib/stockDualWrite.js'
@@ -99,6 +100,89 @@ async function resolveLogLocations(
       // rather than `string | null`, because an empty-string fallback would
       // write a broken foreign key instead of failing.
       throw new Error('resolveLogLocations: no default location resolved')
+    }
+    return defaultLocationId
+  }
+}
+
+/**
+ * The location a cart id names, or `null` when the id names none.
+ *
+ * Since PR 3b `Cart.id` is `${locationId}:${vendorId | 'no-vendor'}`, so an
+ * imported cart's location rides inside its own primary key and needs no input
+ * field. `parseCartId` (lib/cartId.ts) splits on the FIRST colon, which is why
+ * this reuses it rather than splitting again: a vendor id that itself contains
+ * ':' then survives, and the two copies of the rule cannot drift.
+ *
+ * A vendor id with a colon is not hypothetical. Both id generators produce
+ * colon-free ids — `crypto.randomUUID()` in local mode
+ * (apps/web/src/db/operations.ts) and `@default(cuid())` in cloud
+ * (schema.prisma:63) — but `bulkCreateVendors` stores `VendorInput.id`
+ * verbatim, so a hand-edited backup can supply anything.
+ *
+ * Two shapes are deliberately NOT treated as "no location":
+ *
+ *  - `":vendor-1"` returns `''`, an empty location id. It carries a colon, so
+ *    it claims to name a location; it just names one that cannot exist.
+ *    Returning `''` rather than `null` sends it through `requireLocationRole`,
+ *    which refuses it. Falling back to the default here would write the cart
+ *    somewhere the payload never asked for.
+ *  - a bare id with no colon at all returns `null`, the ONLY fallback case:
+ *    a pre-3b backup, whose carts were keyed by vendor id alone.
+ */
+function locationIdInCartId(cartId: string): string | null {
+  if (!cartId.includes(':')) return null
+  return parseCartId(cartId).locationId
+}
+
+/**
+ * Decide which location each imported cart belongs to, BEFORE any row is
+ * written. The cart twin of `resolveLogLocations` above, and the same three
+ * shape decisions apply for the same reasons: each DISTINCT location checked
+ * once, every check before the write loop (these resolvers are not
+ * transactional), and the caller's default resolved only if some id needs it.
+ *
+ * The ownership check matters MORE here than it does for logs. `Cart.id` is a
+ * global primary key with no `userId` in it, and `prisma.cart.findUnique({
+ * where: { id } })` — the existence check both resolvers run — is unscoped. So
+ * the id in the payload is the only thing saying which location the row lands
+ * in, and it is attacker-controlled text. `requireLocationRole` (lib/authz.ts)
+ * is the one authorization seam for that question; never an inline comparison
+ * of `location.userId` against the caller (root CLAUDE.md, Authorization).
+ *
+ * `'member'` for the same reason as the log helper: it is the LOWEST role that
+ * may write under location RBAC, so a legitimate member of a shared location
+ * is not denied the day RBAC lands.
+ */
+async function resolveCartLocations(
+  ctx: Context,
+  userId: string,
+  carts: readonly { id: string }[],
+): Promise<(cartId: string) => string> {
+  const verified = new Set<string>()
+  let defaultLocationId: string | null = null
+
+  for (const cart of carts) {
+    const named = locationIdInCartId(cart.id)
+    if (named === null) {
+      if (defaultLocationId === null) {
+        defaultLocationId = await ensureDefaultLocation(userId)
+      }
+      continue
+    }
+    if (verified.has(named)) continue
+    await requireLocationRole(ctx, named, 'member')
+    verified.add(named)
+  }
+
+  return (cartId) => {
+    const named = locationIdInCartId(cartId)
+    if (named !== null) return named
+    if (defaultLocationId === null) {
+      // Unreachable, for the same reason as the log helper's twin: the loop
+      // above resolved the default for the first bare id, and this function is
+      // only called with ids from that same list.
+      throw new Error('resolveCartLocations: no default location resolved')
     }
     return defaultLocationId
   }
@@ -311,6 +395,10 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     bulkCreateShoppingCarts: async (_, { carts }, ctx) => {
       const userId = requireAuth(ctx)
       if (carts.length === 0) return []
+      // Verifies every location the payload's cart ids name before the first
+      // write, so a forbidden location fails the whole mutation with nothing
+      // written.
+      const locationIdFor = await resolveCartLocations(ctx, userId, carts)
       const results: Cart[] = []
       for (const cart of carts) {
         const { id, lastPurchasedAt } = cart
@@ -321,8 +409,10 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             id,
             lastPurchasedAt: lastPurchasedAt ? new Date(lastPurchasedAt as string) : undefined,
             userId,
-            // PR 4 rewrites the import surface to carry real locations.
-            locationId: await ensureDefaultLocation(userId),
+            // The location named by the cart's OWN id since PR 3b
+            // (`${locationId}:${vendorId}`), and the caller's default only for
+            // a pre-3b bare id. Both already verified above.
+            locationId: locationIdFor(id),
           },
         })
         results.push(created as unknown as Cart)
@@ -529,9 +619,15 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     bulkUpsertShoppingCarts: async (_, { carts }, ctx) => {
       const userId = requireAuth(ctx)
       if (carts.length === 0) return []
+      // Same pre-check as bulkCreateShoppingCarts: every location the payload's
+      // cart ids name is verified before the first write.
+      const locationIdFor = await resolveCartLocations(ctx, userId, carts)
       const results: Cart[] = []
       for (const cart of carts) {
         const { id, lastPurchasedAt } = cart
+        // `data` is built field by field, never spread from the input, so
+        // `locationId` cannot reach the `update` payload by accident. Keep it
+        // that way: see the comment on `create` below.
         const data = {
           lastPurchasedAt: lastPurchasedAt ? new Date(lastPurchasedAt as string) : undefined,
           userId,
@@ -539,8 +635,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         const upserted = await prisma.cart.upsert({
           where: { id },
           // locationId in `create` only, for the same reason as the log upsert
-          // above: a re-import must not move an existing cart.
-          create: { id, ...data, locationId: await ensureDefaultLocation(userId) },
+          // above: a re-import must not move an existing cart. The value comes
+          // from the cart's own id, verified above.
+          create: { id, ...data, locationId: locationIdFor(id) },
           update: data,
         })
         results.push(upserted as unknown as Cart)
