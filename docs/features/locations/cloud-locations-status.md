@@ -1,7 +1,8 @@
 # Cloud Locations — Status
 
 Status: 🔄 **In Progress** — PRs 0, 1, 2, 3a, 3b and 3c are ✅ **merged and deployed to
-production**. **PR 3 is complete.** PRs 4 and 5 are 🔲 pending. The three overdue smoke
+production**. **PR 3 is complete.** **PR 4 splits into 4a, 4b and 4c** (2026-10-02 — see
+*Amendment 2026-10-02* below). PRs 4a, 4b, 4c and 5 are 🔲 pending. The three overdue smoke
 tests were **automated on 2026-09-23** as `e2e/tests/location-scoped-writes.spec.ts` (4
 cloud test cases). One narrower check is still owed: nothing has run the new server code
 against data the PR 3b migration produced — see *The smoke tests are overdue, not pending*
@@ -48,7 +49,9 @@ PR 1 and PR 5 already use: additive changes first, destructive changes last.
 | **3a** | ✅ merged — [#291](https://github.com/ETBlue/player1inventory/pull/291) | The **additive** migration: `InventoryLog.locationId` and `Cart.locationId` added, backfilled and constrained. No `Cart.id` re-key. Inventory logs scoped by location, server and client. |
 | **3b** | ✅ merged — [#293](https://github.com/ETBlue/player1inventory/pull/293) — deployed 2026-09-19 | The destructive half: the `'no-vendor'` split, the composite `Cart.id` re-key, the cart resolvers, vendor carts at the right time, `checkout`, `consumeRecipes`, and **five** `!isCloud` bypasses (the plan said two). |
 | **3c** | ✅ merged — [#297](https://github.com/ETBlue/player1inventory/pull/297) — deployed 2026-09-21, **deploy unverified** | `applyUnitSwitch` and `removeItemFromLocation`'s cloud cascade. Two new features, blocked by neither 3a nor 3b. **PR 3 ends here.** |
-| **4** | 🔲 Pending | Import, export, post-login migration and purge (design §6). |
+| **4a** | 🔲 Pending | The GraphQL surface only — `allItemStocks`, `InventoryLog.locationId`, `InventoryLogInput.locationId`, `LocationInput`, `ItemStockImportInput`, four bulk mutations. **No web change, no behaviour change.** |
+| **4b** | 🔲 Pending | The payload shape and **both** import readers, in one diff: the single remap rule, lossless cloud export, `flattenPayloadForCloud` and `MigrationLocationWarningDialog` deleted, composite cart ids kept, 2 of the 6 `stockDualWrite` calls removed. |
+| **4c** | 🔲 Pending | Issue #320 — a two-user real-SQL spec for `purgeUserData`. Independent of 4a and 4b. |
 | **5** | 🔲 Pending | **Contract step:** drop the five `Item` columns, remove them from the GraphQL type and inputs, delete `apps/server/src/lib/stockDualWrite.ts` and all of its call sites. |
 
 Two pieces of follow-on work sit beside the PR series:
@@ -1243,3 +1246,58 @@ the only thing that tests the split.
 **Never point `pnpm verify:migration` at a production copy.** `scripts/verify-migration.ts`
 opens with `migrate reset`, which drops and recreates the public schema. Rehearsal 1 avoided
 it for this reason. See `apps/server/.env.example` for the rules on `PROD_COPY_DATABASE_URL`.
+
+
+---
+
+## Amendment 2026-10-02 — PR 4 splits into 4a, 4b and 4c
+
+Docs: [brainstorming](2026-10-02-brainstorming-pr4.md) ·
+[design](2026-10-02-cloud-locations-pr4-design.md) ·
+[PR 4a plan](2026-10-02-cloud-locations-plan-pr4a.md)
+
+Design §6 described PR 4 in about 40 lines. Measuring the code first found **8 stale
+claims** in it and **5 pieces of required work it does not mention** — a whole-account stock
+query, `locationId` on the `InventoryLog` type, `locationId` on `InventoryLogInput`, cart
+`locationId` parsed from the cart id, and removing 2 of the 6 `stockDualWrite` calls. The
+full list is in the design doc under *What §6 got wrong*.
+
+| PR | Contents | Why it stands alone |
+|---|---|---|
+| **4a** | The GraphQL surface only. No web change. | Nothing calls any of it. Zero behaviour change, safe to deploy alone. |
+| **4b** | The payload shape and both import readers, in one diff. | The export change **breaks** the import readers, so they cannot be separated. |
+| **4c** | Issue #320's two-user purge spec. | Touches none of the above. |
+
+**Why 4a and 4b cannot be cut the other way round.** The first split put lossless cloud
+export in 4a. That does not work. Two import readers use the **old payload shape as a
+signal**:
+
+| Export change | Reader that breaks | Evidence |
+|---|---|---|
+| Cloud export starts carrying `itemStocks` | `flattenPayloadForCloud` returns early when `itemStocks` is absent, treating absence as "already flat". A cloud → cloud import would start flattening: collapsed onto one location, cart prefixes stripped. | `apps/web/src/lib/importData.ts:359-365` |
+| Cloud export starts carrying `locations` | `deserializeLocation` derives `isDefault` from `raw.id === 'local'`. A cloud backup's ids are cuids, so nothing is flagged and `ensureDefaultLocationRow()` adds a stray empty default. | `apps/web/src/lib/importData.ts:136-143`, then `:1121` |
+
+### A live defect found while planning
+
+**The cloud import path strips the location prefix off cart ids.** `Cart.id` has been
+`${locationId}:${vendorId|'no-vendor'}` since PR 3b, and `importData.ts:403-413` slices the
+prefix off before upload. `Cart.id` is a global primary key, and
+`import.resolver.ts:277` looks a cart up by id with **no user scope**. So one user's cart
+items can be created pointing at another user's cart row.
+
+This is the same `'no-vendor'` cross-user leak PR 3b fixed in the resolvers. The re-key
+fixed the resolvers; import still strips.
+
+**It is traced through 6 files and not proved.** 4b's first task writes a two-user test and
+runs it on `main`. If it goes red the finding stands; if it passes, the trace has a mistake
+and the finding is withdrawn.
+
+### PR 5's teardown list shrinks
+
+4b removes the 2 `stockDualWrite` calls in the import path (`import.resolver.ts:88` and
+`:328`). Their markers say "REMOVED IN PR 5" in the header and "goes away with PR 4" in the
+body; the body is right. PR 5 is left with **4 calls in 4 files** plus the inline
+`applyUnitSwitch` block at `itemStock.resolver.ts:320-328`.
+
+Today's count, measured: **6 calls across 5 files**, and **7** `REMOVED IN PR 5` markers —
+not the five the earlier docs say. Count the markers, not the files.
