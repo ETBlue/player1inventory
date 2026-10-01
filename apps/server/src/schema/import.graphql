@@ -78,6 +78,41 @@ input CartItemInput {
   quantity: Int!
 }
 
+input LocationInput {
+  id: ID!
+  name: String!
+  order: Int!
+  createdAt: String!
+  updatedAt: String!
+  # NO `isDefault` FIELD, ON PURPOSE. `bulkCreateLocations` always writes
+  # `isDefault: false`, and `bulkUpsertLocations` never names the column at
+  # all, so an existing row keeps whatever flag it has.
+  #
+  # Three reasons, and each one is enough on its own:
+  #
+  #  1. The payload's default location is never uploaded as a row. The client
+  #     rewrites its id to the destination account's existing `isDefault` id
+  #     (design §6, brainstorming decision 7), so only NON-default locations
+  #     ever reach these mutations. A field only the remap could fill is a
+  #     field nothing fills.
+  #  2. `ensureDefaultLocation(userId)` (lib/defaultLocation.ts) already
+  #     guarantees the account has exactly one default, so the server does not
+  #     need the payload's opinion about which row that is.
+  #  3. The database would REJECT a second default, not accept it. PR 1's
+  #     migration adds `CREATE UNIQUE INDEX "Location_one_default_per_user_key"
+  #     ON "Location" ("userId") WHERE "isDefault"`
+  #     (20260830000000_add_location_and_item_stock/migration.sql:57). So
+  #     honouring the flag would not corrupt the account — it would make the
+  #     import DIE with an unhandled P2002, and under the "clear & import"
+  #     strategy that happens AFTER `clearAllData` has run, leaving the account
+  #     empty and the import dead.
+  #
+  # Note which way round point 3 is. The design doc and the PR 4a plan both say
+  # there is "no database constraint keeping it to one row per user". That is
+  # wrong — the index exists. The decision is the same either way; only the
+  # failure it prevents is different.
+}
+
 input ShelfInput {
   id: ID!
   name: String!
@@ -100,6 +135,7 @@ extend type Mutation {
   bulkCreateShoppingCarts(carts: [ShoppingCartInput!]!): [Cart!]!
   bulkCreateCartItems(cartItems: [CartItemInput!]!): [CartItem!]!
   bulkCreateShelves(shelves: [ShelfInput!]!): [Shelf!]!
+  bulkCreateLocations(locations: [LocationInput!]!): [Location!]!
 
   # Bulk upsert mutations — used for "replace conflicts" strategy (upserts by entity id)
   bulkUpsertItems(items: [ItemInput!]!): [Item!]!
@@ -111,6 +147,7 @@ extend type Mutation {
   bulkUpsertShoppingCarts(carts: [ShoppingCartInput!]!): [Cart!]!
   bulkUpsertCartItems(cartItems: [CartItemInput!]!): [CartItem!]!
   bulkUpsertShelves(shelves: [ShelfInput!]!): [Shelf!]!
+  bulkUpsertLocations(locations: [LocationInput!]!): [Location!]!
 
   # Clear all data — used for "clear & import" strategy
   clearAllData: Boolean!

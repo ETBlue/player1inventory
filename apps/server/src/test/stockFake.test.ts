@@ -127,6 +127,120 @@ describe('stockFake models the constraints resolvers rely on', () => {
     expect(fake.state.locations).toHaveLength(2)
   })
 
+  // ─── Location writes the import mutations rely on (PR 4a task 5) ──────────
+  //
+  // `bulkCreateLocations` / `bulkUpsertLocations` write the PAYLOAD's own id,
+  // so three things the other writers never needed are now load-bearing: the
+  // id is honoured, the primary key is enforced, and `upsert`'s `update`
+  // payload is applied separately from its `create`. Two of the four tests
+  // below are not reachable from any resolver today and are pinned here for
+  // the same reason as the P2002 tests above.
+
+  it('location.create honours data.id instead of generating one', async () => {
+    // Given an empty table
+    const fake = createStockFake()
+    fake.reset([], [])
+
+    // When a row is created WITH an id, the way the import mutations do
+    const row = await fake.client.location.create({
+      data: { id: 'loc_from_payload', name: 'Pantry', order: 3, isDefault: false, userId: 'user_1' },
+    })
+
+    // Then that exact id is stored. `inventoryLogFake` threw `data.id` away
+    // until PR 4a task 3, which made "the payload's ids are preserved"
+    // impossible to assert — and every row pointing at a location by id
+    // depends on it.
+    expect(row.id).toBe('loc_from_payload')
+    expect(fake.state.locations[0]?.id).toBe('loc_from_payload')
+  })
+
+  it('location.create still generates an id when the writer sends none', async () => {
+    // Given an empty table
+    const fake = createStockFake()
+    fake.reset([], [])
+
+    // When `ensureDefaultLocation` / `createLocation` create without an id
+    const row = await fake.client.location.create({
+      data: { name: 'My Home', order: 0, isDefault: true, userId: 'user_1' },
+    })
+
+    // Then the fake supplies one, as the database's @default(cuid()) would
+    expect(row.id).toMatch(/^loc-\d+$/)
+  })
+
+  it('a create reusing an existing location id throws P2002, the way the primary key does', async () => {
+    // Given another user already holds that id — `Location.id` is a GLOBAL
+    // primary key with no userId in it
+    const fake = createStockFake()
+    fake.reset([{ id: 'loc_taken', userId: 'user_2', isDefault: false }], [])
+
+    // When user_1's import tries to create the same id
+    const create = fake.client.location.create({
+      data: { id: 'loc_taken', name: 'Mine', order: 1, isDefault: false, userId: 'user_1' },
+    })
+
+    // Then it is rejected and the existing row is left alone. A fake that
+    // accepted the duplicate would hide a missing existence check in
+    // `bulkCreateLocations`.
+    await expect(create).rejects.toMatchObject({ code: 'P2002' })
+    expect(fake.state.locations).toHaveLength(1)
+    expect(fake.state.locations[0]?.userId).toBe('user_2')
+  })
+
+  it('location.upsert applies its update payload key by key and leaves omitted columns alone', async () => {
+    // Given a row that IS the user's default
+    const fake = createStockFake()
+    fake.reset(
+      [{ id: 'loc_a', userId: 'user_1', isDefault: true, name: 'Kitchen', order: 0 }],
+      [],
+    )
+
+    // When an upsert names only `name` and `order` — the exact shape
+    // `bulkUpsertLocations` sends, which deliberately omits `isDefault` and
+    // `userId`
+    const row = await fake.client.location.upsert({
+      where: { id: 'loc_a' },
+      create: { id: 'loc_a', name: 'Never', order: 9, isDefault: false, userId: 'user_other' },
+      update: { name: 'Kitchen Renamed', order: 2 },
+    })
+
+    // Then the named columns changed and the omitted ones did not. A fake that
+    // reused `create` for both — or ignored `update`, as
+    // `shoppingFake.cart.upsert` did until task 4 — would report a demoted
+    // default and a stolen row as if nothing had happened.
+    expect(row).toMatchObject({
+      name: 'Kitchen Renamed',
+      order: 2,
+      isDefault: true,
+      userId: 'user_1',
+    })
+    expect(fake.state.locations).toHaveLength(1)
+  })
+
+  it('an update promoting a SECOND row to default throws P2002', async () => {
+    // Given the user already has a default. Not reachable from any resolver
+    // today — no writer sets `isDefault` on update — so this is pinned here.
+    const fake = createStockFake()
+    fake.reset(
+      [
+        { id: 'loc_default', userId: 'user_1', isDefault: true },
+        { id: 'loc_other', userId: 'user_1', isDefault: false },
+      ],
+      [],
+    )
+
+    // When an update tries to make the second row default too
+    const update = fake.client.location.upsert({
+      where: { id: 'loc_other' },
+      create: { id: 'loc_other', userId: 'user_1' },
+      update: { isDefault: true },
+    })
+
+    // Then the partial index rejects it, as Postgres would on UPDATE
+    await expect(update).rejects.toMatchObject({ code: 'P2002' })
+    expect(fake.state.locations.filter((l) => l.isDefault)).toHaveLength(1)
+  })
+
   it('location.findFirst models Prisma where semantics — an absent key filters nothing', async () => {
     // Given two users, each with a default location
     const fake = createStockFake()

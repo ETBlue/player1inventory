@@ -4,8 +4,9 @@ import { ensureDefaultLocation } from '../lib/defaultLocation.js'
 import { prisma } from '../lib/prisma.js'
 import { mirrorStockToDefaultLocation } from '../lib/stockDualWrite.js'
 import { type Context, requireAuth } from '../context.js'
-import type { Cart, CartItem, InventoryLog, Item, Recipe, Resolvers, Shelf, Tag, TagType, Vendor } from '../generated/graphql.js'
-import type { ExpirationMode, Prisma, TagColor, TargetUnit } from '@prisma/client'
+import { toGraphQL as locationToGraphQL } from './location.resolver.js'
+import type { Cart, CartItem, InventoryLog, Item, Location, Recipe, Resolvers, Shelf, Tag, TagType, Vendor } from '../generated/graphql.js'
+import type { ExpirationMode, Prisma, Location as PrismaLocation, TagColor, TargetUnit } from '@prisma/client'
 
 // Map a Prisma item (with junction rows) to the GraphQL Item shape
 function itemToGraphQL(item: {
@@ -185,6 +186,68 @@ async function resolveCartLocations(
       throw new Error('resolveCartLocations: no default location resolved')
     }
     return defaultLocationId
+  }
+}
+
+/**
+ * Authorize every location id a payload names, BEFORE any row is written.
+ *
+ * `LocationInput.id` is attacker-controlled and `Location.id` is a GLOBAL
+ * primary key with no `userId` in it, so an id in the payload can name a row
+ * belonging to somebody else. Each distinct id falls into one of three cases:
+ *
+ *  - it exists and the caller holds a role on it → the caller's own row, so
+ *    `bulkCreate` skips it and `bulkUpsert` replaces it
+ *  - it exists and the caller does NOT → `requireLocationRole` throws
+ *    FORBIDDEN, and nothing is written at all
+ *  - it does not exist → free to create
+ *
+ * Why the unscoped `findUnique` comes first. The question it asks is "is this
+ * primary key taken", which is not an authorization question and has no user
+ * to scope by; only `id` is selected. The AUTHORIZATION decision is made
+ * entirely by `requireLocationRole` (lib/authz.ts), the one seam the whole
+ * series routes location checks through — never by comparing a row's `userId`
+ * to the caller's, which root CLAUDE.md forbids.
+ *
+ * `'member'` for the same reason as the log and cart helpers above: it is the
+ * LOWEST role that may write under location RBAC, so a legitimate member of a
+ * shared location is not denied the day RBAC lands.
+ *
+ * WITHOUT this pre-check, copying the house style verbatim would have shipped
+ * two cross-user holes, the same class task 4 found in the unscoped cart
+ * lookups:
+ *
+ *  - `bulkCreate` doing `findUnique({ where: { id } })` then `continue` would
+ *    SILENTLY DROP the caller's own location because a stranger holds that id,
+ *    and `bulkCreateShelves`'s closing `findMany({ where: { id: { in: ids } }})`
+ *    would then hand the stranger's row back to the caller
+ *  - `bulkUpsert` doing `upsert({ where: { id }, update: data })` would
+ *    OVERWRITE the stranger's row — and because `data` carries `userId`, it
+ *    would reassign the row to the caller, taking its stock, carts and logs
+ *    with it
+ *
+ * Three things about the shape, all for the same reasons as the log helper:
+ * each DISTINCT id is checked once; the whole check runs before the write loop
+ * because these bulk resolvers are not transactional; and it reads nothing it
+ * does not need.
+ *
+ * Accepted cost: a FORBIDDEN tells the caller that an id they named exists and
+ * is not theirs. Letting the write proceed would leak the same fact as an
+ * unhandled P2002, after a partial write — so this is the smaller of the two.
+ */
+async function requireOwnLocationIdsOrUnclaimed(
+  ctx: Context,
+  locations: readonly { id: string }[],
+): Promise<void> {
+  const checked = new Set<string>()
+  for (const { id } of locations) {
+    if (checked.has(id)) continue
+    checked.add(id)
+    const taken = await prisma.location.findUnique({
+      where: { id },
+      select: { id: true },
+    })
+    if (taken) await requireLocationRole(ctx, id, 'member')
   }
 }
 
@@ -689,6 +752,56 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       return inserted as unknown as Shelf[]
     },
 
+    // Locations are imported by their own ids so that every OTHER imported row
+    // — `ItemStock`, `Cart`, `InventoryLog` — can point at them by the id the
+    // payload already uses. See `LocationInput` in schema/import.graphql for
+    // why there is no `isDefault` field to honour.
+    //
+    // `updatedAt` is passed through, but whether the DATABASE keeps it is not
+    // proven here. `Location.updatedAt` is `@updatedAt` (schema.prisma:251),
+    // so the Prisma query engine may overwrite it with `now()`. What IS
+    // checked: the JS client never inspects the field's `isUpdatedAt`
+    // descriptor (`grep isUpdatedAt` over `runtime/library.js`, `client.js`
+    // and `index.js` all return 0), so the value reaches the engine as given
+    // and the engine decides. No unit test can settle it — every server test
+    // runs against a hand-written fake, and no cloud E2E spec asserts a
+    // preserved timestamp. The same open question applies to all 18 existing
+    // bulk mutations: `Item`, `Shelf` and `ItemStock` are `@updatedAt` too and
+    // their resolvers already pass explicit values. Worth knowing, not worth
+    // blocking on: the cost either way is one timestamp, not a wrong row.
+    bulkCreateLocations: async (_, { locations }, ctx) => {
+      const userId = requireAuth(ctx)
+      if (locations.length === 0) return []
+      await requireOwnLocationIdsOrUnclaimed(ctx, locations)
+      const results: Location[] = []
+      for (const { id, name, order, createdAt, updatedAt } of locations) {
+        // SCOPED to the caller, unlike the other 18 bulk creates. The
+        // pre-check has already refused every id held by somebody else, so
+        // anything this finds is the caller's own row — and anything it does
+        // not find is an id no row holds. An unscoped `findUnique` here would
+        // make `continue` mean two different things.
+        const existing = await prisma.location.findUnique({ where: { id, userId } })
+        if (existing) {
+          results.push(locationToGraphQL(existing as unknown as PrismaLocation))
+          continue
+        }
+        const row = await prisma.location.create({
+          data: {
+            id,
+            name,
+            order,
+            // Always false, never from the payload. See `LocationInput`.
+            isDefault: false,
+            createdAt: new Date(createdAt),
+            updatedAt: new Date(updatedAt),
+            userId,
+          },
+        })
+        results.push(locationToGraphQL(row as unknown as PrismaLocation))
+      }
+      return results
+    },
+
     bulkUpsertShelves: async (_, { shelves }, ctx) => {
       const userId = requireAuth(ctx)
       if (shelves.length === 0) return []
@@ -708,6 +821,51 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       )
       const inserted = await prisma.shelf.findMany({ where: { id: { in: shelves.map((s) => s.id) } } })
       return inserted as unknown as Shelf[]
+    },
+
+    bulkUpsertLocations: async (_, { locations }, ctx) => {
+      const userId = requireAuth(ctx)
+      if (locations.length === 0) return []
+      await requireOwnLocationIdsOrUnclaimed(ctx, locations)
+      const results: Location[] = []
+      for (const { id, name, order, createdAt, updatedAt } of locations) {
+        // `update` is NARROWER than `create`, on purpose — the other bulk
+        // upserts pass one `data` object to both, and here that would be two
+        // bugs:
+        //
+        //  - `isDefault: false` in `update` would DEMOTE the caller's own
+        //    default if the payload ever named its id, leaving the account with
+        //    no default at all; `ensureDefaultLocation` would then build a
+        //    spare "My Home" beside the real one. Omitting the column leaves
+        //    whatever flag the row already has.
+        //  - `userId` in `update` is the row-steal half of the hole the
+        //    pre-check closes. Leaving it out means a future edit that drops
+        //    the pre-check cannot reassign a row by accident.
+        //
+        // Same trap as task 3's `...rest` in `bulkUpsertInventoryLogs`, in a
+        // different shape: there the input field leaked INTO `update`, here a
+        // hardcoded column would have.
+        const row = await prisma.location.upsert({
+          where: { id },
+          create: {
+            id,
+            name,
+            order,
+            isDefault: false,
+            createdAt: new Date(createdAt),
+            updatedAt: new Date(updatedAt),
+            userId,
+          },
+          update: {
+            name,
+            order,
+            createdAt: new Date(createdAt),
+            updatedAt: new Date(updatedAt),
+          },
+        })
+        results.push(locationToGraphQL(row as unknown as PrismaLocation))
+      }
+      return results
     },
 
     // -------------------------------------------------------------------------

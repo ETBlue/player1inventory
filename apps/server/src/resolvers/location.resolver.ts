@@ -12,7 +12,12 @@ import type { Location as PrismaLocation } from '@prisma/client'
 // serializer, which coerces via Date.valueOf() (epoch milliseconds) before
 // it ever reaches toJSON(). Mirrors item.resolver.ts's and
 // itemStock.resolver.ts's toGraphQL.
-function toGraphQL(row: PrismaLocation): Location {
+// Exported because `import.resolver.ts`'s two bulk location mutations return
+// `[Location!]!` and must serialize identically. Same reason
+// `itemStock.resolver.ts` and `shelf.resolver.ts` import `item.resolver.ts`'s
+// `toGraphQL` instead of copying it: a second copy is a second place for the
+// ISO-string bug to come back.
+export function toGraphQL(row: PrismaLocation): Location {
   return {
     ...row,
     createdAt: row.createdAt.toISOString(),

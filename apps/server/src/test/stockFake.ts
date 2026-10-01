@@ -22,6 +22,13 @@
 //     catches P2002 and re-reads the winner. A fake that accepted the duplicate
 //     would leave that path untested, and a fake with no `create` at all would
 //     make "creates the default when the user has none" impossible to write.
+//     `location.upsert`'s update path enforces it too, since promoting a
+//     SECOND row to default is the write that would corrupt an account.
+//   - `location.create` HONOURS `data.id` and enforces the primary key.
+//     The import mutations (PR 4a task 5) write the payload's own id verbatim,
+//     so a fake that generated its own would make "the payload's ids are
+//     preserved" impossible to assert, and one that accepted a duplicate id
+//     would hide a missing existence check.
 //   - `findFirst` / `findUnique` model Prisma's own `where` semantics
 //     (`where.x === undefined || row.x === where.x`), never a hardcoded
 //     ownership or default-flag match. A fake that hardcoded
@@ -111,6 +118,19 @@ export class DefaultLocationConstraintError extends Error {
   code = 'P2002'
   constructor(userId: string) {
     super(`Unique constraint failed on the fields: (\`userId\`) — (${userId})`)
+  }
+}
+
+// P2002 from `Location.id`'s PRIMARY KEY. The import mutations write the
+// payload's own id verbatim, so two payload rows with one id — or a payload id
+// already held by ANOTHER user — reach `create` as a duplicate key. Without
+// this the fake would accept the duplicate, and a test of a resolver that
+// relies on its id check running first would pass against a resolver with no
+// id check at all.
+export class LocationIdConstraintError extends Error {
+  code = 'P2002'
+  constructor(id: string) {
+    super(`Unique constraint failed on the fields: (\`id\`) — (${id})`)
   }
 }
 
@@ -290,6 +310,71 @@ export function createStockFake() {
     return row
   }
 
+  // Both unique constraints on `Location` are enforced here, so every writer
+  // that reaches `create` sees what Postgres would do:
+  //   - the PRIMARY KEY on `id`, because the import mutations write the
+  //     payload's own id verbatim rather than letting the database make one
+  //   - the partial unique index on ("userId") WHERE "isDefault"
+  //
+  // `data.id` is HONOURED when present and generated only when absent.
+  // `ensureDefaultLocation` and `createLocation` send no id and still get one;
+  // `bulkCreateLocations` sends the payload's id and must get that exact id
+  // back, which is the single thing its "ids are preserved verbatim" test
+  // asserts. `inventoryLogFake` threw `data.id` away before PR 4a task 3 and
+  // made the same assertion impossible to write.
+  function insertLocation(data: Record<string, unknown>): FakeLocation {
+    const userId = data.userId as string
+    const isDefault = Boolean(data.isDefault)
+    const id = (data.id as string | undefined) ?? `loc-${++seq}`
+    if (state.locations.some((l) => l.id === id)) {
+      throw new LocationIdConstraintError(id)
+    }
+    if (isDefault && state.locations.some((l) => l.userId === userId && l.isDefault)) {
+      throw new DefaultLocationConstraintError(userId)
+    }
+    const now = new Date()
+    const row: FakeLocation = {
+      id,
+      userId,
+      isDefault,
+      name: data.name as string,
+      order: data.order as number,
+      createdAt: (data.createdAt as Date | undefined) ?? now,
+      updatedAt: (data.updatedAt as Date | undefined) ?? now,
+    }
+    state.locations.push(row)
+    return row
+  }
+
+  // `'key' in data` per field, not `data.key !== undefined`: the difference
+  // between "the writer did not mention this column" and "the writer set it"
+  // is the whole question for `isDefault` and `userId`, and a key the writer
+  // omitted must leave the stored value alone.
+  function applyLocationUpdate(
+    row: FakeLocation,
+    data: Record<string, unknown>,
+  ): FakeLocation {
+    if ('name' in data) row.name = data.name as string
+    if ('order' in data) row.order = data.order as number
+    if ('userId' in data) row.userId = data.userId as string
+    if ('createdAt' in data) row.createdAt = data.createdAt as Date
+    if ('updatedAt' in data) row.updatedAt = data.updatedAt as Date
+    if ('isDefault' in data) {
+      const next = Boolean(data.isDefault)
+      // The partial index applies to UPDATE too. Promoting a second row to
+      // default is the write that would corrupt an account, so it has to fail
+      // here as it would in Postgres.
+      if (
+        next &&
+        state.locations.some((l) => l.id !== row.id && l.userId === row.userId && l.isDefault)
+      ) {
+        throw new DefaultLocationConstraintError(row.userId)
+      }
+      row.isDefault = next
+    }
+    return row
+  }
+
   const client = {
     // Hoisted function declaration — defined below, next to the stores it
     // snapshots.
@@ -297,26 +382,35 @@ export function createStockFake() {
     location: {
       findFirst: async ({ where = {} }: { where?: Where } = {}) =>
         state.locations.find((l) => matchesLocation(l, where)) ?? null,
+      // Prisma's `findUnique` takes a WhereUniqueInput, which since Prisma 5
+      // may carry extra non-unique filters alongside the unique key — so
+      // `{ id, userId }` is a legal argument and MUST be applied, not reduced
+      // to `{ id }`. Same `matchesLocation` as `findFirst` for exactly that
+      // reason: a fake that answered on `id` alone would keep a scoped lookup
+      // green after the resolver dropped its `userId`.
+      findUnique: async ({ where }: { where: Where }) =>
+        state.locations.find((l) => matchesLocation(l, where)) ?? null,
       findMany: async ({ where = {} }: { where?: Where } = {}) =>
         state.locations.filter((l) => matchesLocation(l, where)),
-      create: async ({ data }: { data: Record<string, unknown> }) => {
-        const userId = data.userId as string
-        const isDefault = Boolean(data.isDefault)
-        if (isDefault && state.locations.some((l) => l.userId === userId && l.isDefault)) {
-          throw new DefaultLocationConstraintError(userId)
-        }
-        const now = new Date()
-        const row: FakeLocation = {
-          id: `loc-${++seq}`,
-          userId,
-          isDefault,
-          name: data.name as string,
-          order: data.order as number,
-          createdAt: now,
-          updatedAt: now,
-        }
-        state.locations.push(row)
-        return row
+      create: async ({ data }: { data: Record<string, unknown> }) =>
+        insertLocation(data),
+      // `create` and `update` are kept APART, and `update` is applied key by
+      // key. The import upserts deliberately pass a NARROWER `update` than
+      // their `create` — no `isDefault`, no `userId` — so a fake that reused
+      // `create` for both, or ignored `update` altogether, would hide both the
+      // demotion of an existing default and a row steal. That second failure
+      // is exactly what `shoppingFake.cart.upsert` did until PR 4a task 4.
+      upsert: async ({
+        where,
+        update,
+        create,
+      }: {
+        where: Where
+        update: Record<string, unknown>
+        create: Record<string, unknown>
+      }) => {
+        const row = state.locations.find((l) => matchesLocation(l, where))
+        return row ? applyLocationUpdate(row, update) : insertLocation(create)
       },
     },
     itemStock: {
