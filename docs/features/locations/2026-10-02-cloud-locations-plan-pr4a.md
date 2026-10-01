@@ -458,7 +458,7 @@ bulkUpsertItemStocks(itemStocks: [ItemStockImportInput!]!): [ItemStock!]!
 **Do not reuse or widen `ItemStockInput`** (`itemStock.graphql:72-78`). It is the
 partial-merge input for `upsertItemStock` — five optional fields, no identity fields, and a
 missing key means "leave that column alone". It is also referenced by
-`UnitSwitchStockConversionInput` (`itemStock.graphql:46-49`), so widening it would change
+`UnitSwitchStockConversionInput` (`itemStock.graphql:51-54`), so widening it would change
 `applyUnitSwitch`'s contract. Renaming it is also out: input type names appear in client
 operations, so a rename breaks a cached bundle. Put this reason in a comment next to the new
 input, or the next person will try to merge them.
@@ -485,6 +485,45 @@ read that and match the semantics.
 | a row naming another user's location is rejected | no row created |
 | a row naming another user's item is rejected | no row created |
 | two rows for the same `[itemId, locationId]` do not both insert | one row, no unhandled `P2002` |
+
+**Done 2026-10-02, commit `627a23f2`.** Server tests 311 → 340, in a new 24th file. 25
+tests in it plus 4 in `stockFake.test.ts`, not the 7 this task asked for.
+
+**The first test was red for the WRONG reason, and that nearly hid a real gap.** The
+original fixture used **one item at two locations**. Hardcoding `locationId` to the default
+then made both rows the same `[itemId, locationId]` pair, so the mutation check died with
+`P2002` — *not* with "the row is in the wrong location", and the location assertion never
+ran at all. A red test is not proof the test works; it has to go red **for the reason you
+claim**. The fixture now uses two different items at two different locations, so a wrong
+location *succeeds* and must be caught by reading the column:
+
+```
+-   "locationId": "loc_garage",
++   "locationId": "loc_kitchen",
+```
+
+A separate test covers one item at two locations.
+
+**Three ownership holes here, not one.** `ItemStock` has no `userId`, so there is nothing to
+reassign — instead an attacker redirects the row's **two parents**. `upsert` with `itemId`
+and `locationId` in the `update` payload moves the victim's row into the attacker's location
+and repoints it at the attacker's item: the quantities vanish from the victim's pantry and
+appear in the attacker's, under the victim's `createdAt`. Worse than the `Location` case in
+one way — the attacker needs only a stock row id, and the row carries real quantity data.
+
+**Local and cloud disagree on duplicate pairs, and cannot be made to agree.** The Dexie
+index `[itemId+locationId]` (`apps/web/src/db/index.ts:612`) is **not unique**, so local
+allows two rows on one pair; only Postgres enforces it. The comment at
+`importData.ts:1126` saying "that pair is unique" is true of cloud, not of the local schema.
+A hand-edited local DB with a duplicate pair cannot round-trip. Recorded in the resolver.
+
+**`requireOwnLocationIdsOrUnclaimed` does not fit here.** In task 5 an id no row holds is
+free to create; here a `locationId` no `Location` holds is a **broken foreign key**. Reusing
+it would have let that through. A separate `requireOwnItemStockRefs` was written instead.
+
+**The pair key separator matters.** `${itemId}:${locationId}` makes `("a:b","c")` and
+`("a","b:c")` the same key, and `ItemInput.id` is stored verbatim so a hand-edited backup can
+contain a colon — the same hazard task 4 hit in cart ids. It uses `\u0000`.
 
 ### Mutation check 6 (required)
 
