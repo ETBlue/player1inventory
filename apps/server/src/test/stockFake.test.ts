@@ -156,6 +156,50 @@ describe('stockFake models the constraints resolvers rely on', () => {
     const all = await fake.client.location.findMany({ where: { isDefault: true } })
     expect(all.map((l) => l.id)).toEqual(['loc_mine', 'loc_theirs'])
   })
+
+  // `itemStock.findMany({ where: { location: { userId } } })` — the relation
+  // filter every whole-account ItemStock read uses, because ItemStock has no
+  // userId column of its own (root CLAUDE.md, Authorization).
+  //
+  // Pinned here for the same reason the duplicate-create guard above is: no
+  // resolver tested THROUGH this fake uses the key today (`allItemStocks`,
+  // `itemStocksForItem` and `addItemToLocation` all live in
+  // itemStock.resolver.test.ts, which has its own hand-written mock), so the
+  // branch is unreachable from the resolver specs and one refactor away from
+  // being deleted as dead code. The next whole-account reader tested through
+  // this fake needs it: a fake that IGNORED the key would pass against a
+  // resolver with no user scope at all.
+  it('itemStock.findMany resolves the location relation filter through the Location row', async () => {
+    // Given two users, each with a location holding one stock row
+    const fake = createStockFake()
+    fake.reset(
+      [
+        { id: 'loc_mine', userId: 'user_1', isDefault: true },
+        { id: 'loc_mine_2', userId: 'user_1', isDefault: false },
+        { id: 'loc_theirs', userId: 'user_2', isDefault: true },
+      ],
+      [
+        makeStock({ id: 'st_mine', itemId: 'item_1', locationId: 'loc_mine' }),
+        makeStock({ id: 'st_mine_2', itemId: 'item_2', locationId: 'loc_mine_2' }),
+        makeStock({ id: 'st_theirs', itemId: 'item_3', locationId: 'loc_theirs' }),
+      ],
+    )
+
+    // When the rows are read through the relation filter
+    const mine = await fake.client.itemStock.findMany({
+      where: { location: { userId: 'user_1' } },
+    })
+
+    // Then BOTH of user_1's locations come back and user_2's row does not.
+    // Two locations is what makes this assertion mean anything — with one,
+    // "the caller's rows" and "this location's rows" are the same set.
+    expect(mine.map((s) => s.id)).toEqual(['st_mine', 'st_mine_2'])
+
+    // And an absent `location` key filters nothing, which is what makes a
+    // resolver that DROPS the scope visible instead of silently green
+    const unscoped = await fake.client.itemStock.findMany({})
+    expect(unscoped.map((s) => s.id)).toEqual(['st_mine', 'st_mine_2', 'st_theirs'])
+  })
 })
 
 // ── $transaction, added in PR 3c ─────────────────────────────────────────────

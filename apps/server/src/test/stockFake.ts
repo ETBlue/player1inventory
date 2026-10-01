@@ -27,6 +27,13 @@
 //     ownership or default-flag match. A fake that hardcoded
 //     `l.userId === where.userId` would keep a scoping test green after the
 //     resolver dropped the scope.
+//   - `itemStock`'s `where: { location: { userId } }` is RESOLVED, by following
+//     `ItemStock.locationId` to its Location row — not ignored. ItemStock has
+//     no userId column of its own, so that relation filter is the only user
+//     scope a whole-account stock read has. A fake that dropped the key it did
+//     not recognise would pass against a resolver with no scope at all, which
+//     is what happened to the cartItem fake in PR 3c. Unreachable from the
+//     resolver specs today, so pinned by `stockFake.test.ts`.
 //   - `{ increment: n }` is applied as an increment. A resolver that assigned
 //     the value instead is therefore distinguishable, which is the point of
 //     checkout using the atomic form.
@@ -116,10 +123,25 @@ function matchesLocation(row: FakeLocation, where: Where): boolean {
   return true
 }
 
-function matchesStock(row: FakeStock, where: Where): boolean {
+function matchesStock(row: FakeStock, where: Where, locations: FakeLocation[]): boolean {
   if (where.id !== undefined && row.id !== where.id) return false
   if (where.itemId !== undefined && row.itemId !== where.itemId) return false
   if (where.locationId !== undefined && row.locationId !== where.locationId) return false
+  // `location: { userId }` — the relation filter every whole-account ItemStock
+  // read uses, because ItemStock has no userId column of its own (root
+  // CLAUDE.md, Authorization). Resolved by following `ItemStock.locationId` to
+  // its Location row and reading that row's userId, the same way
+  // `cartItemFake.ts` resolves `cart: { locationId }`.
+  //
+  // Without this the fake would IGNORE a key it does not know, and every test
+  // of such a resolver would pass against a resolver with no user scope at
+  // all. That is the exact failure root CLAUDE.md records for the cartItem
+  // fake in PR 3c.
+  const location = where.location as { userId?: string } | undefined
+  if (location?.userId !== undefined) {
+    const owner = locations.find((l) => l.id === row.locationId)
+    if (owner?.userId !== location.userId) return false
+  }
   const compound = where.itemId_locationId as
     | { itemId: string; locationId: string }
     | undefined
@@ -299,14 +321,14 @@ export function createStockFake() {
     },
     itemStock: {
       findUnique: async ({ where }: { where: Where }) =>
-        state.itemStocks.find((s) => matchesStock(s, where)) ?? null,
+        state.itemStocks.find((s) => matchesStock(s, where, state.locations)) ?? null,
       findFirst: async ({ where = {} }: { where?: Where } = {}) =>
-        state.itemStocks.find((s) => matchesStock(s, where)) ?? null,
+        state.itemStocks.find((s) => matchesStock(s, where, state.locations)) ?? null,
       findMany: async ({ where = {} }: { where?: Where } = {}) =>
-        state.itemStocks.filter((s) => matchesStock(s, where)),
+        state.itemStocks.filter((s) => matchesStock(s, where, state.locations)),
       create: async ({ data }: { data: Record<string, unknown> }) => insert(data),
       update: async ({ where, data }: { where: Where; data: Record<string, unknown> }) => {
-        const row = state.itemStocks.find((s) => matchesStock(s, where))
+        const row = state.itemStocks.find((s) => matchesStock(s, where, state.locations))
         if (!row) throw new Error('ItemStock not found')
         return applyUpdate(row, data)
       },
@@ -319,12 +341,12 @@ export function createStockFake() {
         update: Record<string, unknown>
         create: Record<string, unknown>
       }) => {
-        const row = state.itemStocks.find((s) => matchesStock(s, where))
+        const row = state.itemStocks.find((s) => matchesStock(s, where, state.locations))
         return row ? applyUpdate(row, update) : insert(create)
       },
       deleteMany: async ({ where = {} }: { where?: Where } = {}) => {
         const before = state.itemStocks.length
-        state.itemStocks = state.itemStocks.filter((s) => !matchesStock(s, where))
+        state.itemStocks = state.itemStocks.filter((s) => !matchesStock(s, where, state.locations))
         return { count: before - state.itemStocks.length }
       },
     },
