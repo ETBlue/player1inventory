@@ -957,11 +957,12 @@ heading is worse than no heading: it reads as "nothing went wrong" when it means
 
 ```
 ## Summary
-Three things, in this order:
+Four things, in this order:
 1. Where this sits in the bigger picture, and what problem it solves.
 2. How it relates to other branches and PRs — what blocks it, what it blocks,
    what must merge or deploy first.
-3. What the user actually gets once this is merged AND deployed.
+3. **What the user gets (UX)** once this is merged AND deployed.
+4. **What the developer gets (DX)** — see below.
 
 ## Solutions
 What was explored, what was adopted, what was abandoned — and why each.
@@ -982,15 +983,40 @@ Anything a future reader needs that fits nowhere above.
 What is still missing, still owed, or still unproven.
 ```
 
-**Why the Summary has those three parts.** A reader who was not in the session
+**Why the Summary has those four parts.** A reader who was not in the session
 cannot reconstruct any of them from a diff. "What changed" is visible in the files;
-where it sits, what it depends on, and what a user gains are not.
+where it sits, what it depends on, and what the two audiences gain are not.
 
 **Point 3 is the one most often skipped, and it is the honest test.** If a PR
 gives the user nothing yet — groundwork, a column nothing reads, a fake that only
 tests can see — say exactly that. "Nothing user-visible; it unblocks X" is a
 complete and useful answer. Inventing a user benefit is worse than admitting there
 is none.
+
+**Point 4 — what the developer gets (DX) — is required, not optional.** The
+developer is a stakeholder of this project too, and most work in this repo changes
+their day more than it changes the end user's. A PR with "nothing user-visible" is
+very often the PR with the largest DX gain, so stopping at point 3 makes the work
+look empty when it is not.
+
+Say which of these the change gives, with the specifics:
+
+| DX gain | What to write |
+|---|---|
+| Less to remember | the rule or count that no longer has to be carried in someone's head |
+| Fewer ways to get it wrong | the mistake that is now impossible, or now caught |
+| Faster feedback | the command, and the before/after time |
+| Less code to maintain | files, call sites or markers deleted, with counts |
+| A failure that now has a name | the error text or test that replaces a silent wrong answer |
+| Honest documentation | the stale claim that was corrected, and where it had been copied to |
+
+The same honesty rule as point 3 applies in reverse: if a change **costs** DX —
+one more hand-maintained list, one more thing to keep in sync, a slower gate —
+say that too, and say why it was worth it. A section that only ever reports gains
+stops being read.
+
+**This applies to design docs and plans as well as PRs.** Both carry a *What the
+user gets* section and a *What the developer gets* section, for the same reason.
 
 **"Merged AND deployed" is deliberate.** A merged PR that has not been deployed
 gives the user nothing. Say which of the two has happened.
