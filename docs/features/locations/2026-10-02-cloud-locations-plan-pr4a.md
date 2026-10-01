@@ -63,8 +63,12 @@ and 4a is left with only the parts nothing reads yet.
 3. **Run the mutation check and report it.** Break the **source**, see the test go red,
    restore, see it green. "I added tests" and "I verified the test fails without the
    behaviour" are different claims. Only the second one counts.
-4. **Run `pnpm codegen` after every schema change** and commit the generated files with the
-   change. The root `pnpm build` runs codegen and fails on drift.
+4. **Run `pnpm codegen` after every schema change.** There is nothing to commit —
+   `apps/server/src/generated/` and `apps/web/src/generated/` are **gitignored**
+   (`.gitignore:58-59`) and `git ls-files` on both returns nothing. Run it to confirm the
+   new field lands in both files; the root `pnpm build` runs codegen itself and fails on
+   drift. *(Corrected 2026-10-02 after task 1 — this rule used to say "commit the
+   generated files", which is impossible.)*
 5. One commit per task, with scope: `feat(server): …`.
 
 ---
@@ -107,6 +111,24 @@ existing `itemStocks` resolver returns and match it exactly.
 | returns stock from every location the caller owns | two locations, two rows, both returned |
 | does not return another user's stock | user B's row is absent |
 | returns `[]` for a caller with no locations | empty array, not null |
+
+**Done 2026-10-02, commit `3fea034e`.** Two things turned out differently from this
+task's text:
+
+- The resolver snippet above omits `toGraphQL`, which would have shipped `createdAt`,
+  `updatedAt` and `dueDate` as epoch milliseconds — PR 1's bug again. The implementation
+  uses `toGraphQL` (`itemStock.resolver.ts:35-42`) and has a test asserting ISO strings.
+- `orderBy: { locationId: 'asc' }` is **not** a total order here. `itemStocksForItem` can
+  use it because it filters to one `itemId`; `allItemStocks` spans every item, so many rows
+  share a location and Postgres may return ties in any order — an export would differ run
+  to run. It uses `orderBy: [{ locationId: 'asc' }, { itemId: 'asc' }]`, a true total order
+  because of `@@unique([itemId, locationId])` (`schema.prisma:282`).
+
+It also fixed a loaded trap in the **shared** fake: `src/test/stockFake.ts`'s
+`matchesStock` dropped `where.location` on the floor, so any future test of a
+whole-account stock read written against that fake would have passed with no user scope at
+all. This is the same failure root `CLAUDE.md` records for the `cartItem` fake in PR 3c.
+Fixed and pinned in `stockFake.test.ts`.
 
 ### Mutation check 1 (required)
 
@@ -361,9 +383,9 @@ Delete the location ownership check. The fourth test must go red.
 
 ## Task 7 — codegen, gate, docs
 
-1. `pnpm codegen` from the repo root, and commit
-   `apps/server/src/generated/graphql.ts` and `apps/web/src/generated/graphql.ts`.
-   The web file changes even though no web code does, because the schema did.
+1. `pnpm codegen` from the repo root, and confirm the new fields are in both
+   `apps/server/src/generated/graphql.ts` and `apps/web/src/generated/graphql.ts`. Both
+   are gitignored, so nothing is committed — see ground rule 4.
 2. Run the full Verification Gate from the root `CLAUDE.md`, each command with an explicit
    path. The root `pnpm build` is the one that type-checks `apps/server`; `pnpm test`,
    `pnpm check` and `pnpm build-storybook` do not.
