@@ -55,21 +55,36 @@ and 4a is left with only the parts nothing reads yet.
    first — `git stash push -u -m "<tag>"` or a second worktree — and diff the **outputs**,
    not the numbers. Never subtract a count written in this plan or in a brief. The counts
    here were measured on 2026-10-02 and go stale on their own.
-2. **New server tests use the stateful fakes, not `vi.fn()` stubs.** `import.resolver.test.ts`
+2. **`import.resolver.test.ts`'s stubs CANNOT see an ownership check.** Measured in task 3:
+   `import.resolver.test.ts:195` does
+
+   ```ts
+   p.location.findFirst.mockResolvedValue(DEFAULT_LOCATION)
+   ```
+
+   which answers "yes, that location is yours" for **any** id, a stranger's included. So an
+   ownership check written against that file's stubs **can never fail**, and
+   `p.inventoryLog.create` / `p.cart.create` are recorders that cannot show which
+   `locationId` column was written. Tasks 4 and 6 add ownership checks in that same file's
+   resolvers: write the new tests in a **separate file** with the stateful fakes, as task 3
+   did (`import-inventoryLog-location.resolver.test.ts`). `vi.mock` is per file, so the
+   alternative is rewriting the 7 passing tests in the old one.
+
+3. **New server tests use the stateful fakes, not `vi.fn()` stubs.** `import.resolver.test.ts`
    and `purge.resolver.test.ts` use plain `vi.fn()` mocks that return a fixed value whatever
    the filter says. A test like that cannot see a wrong `where` clause. Use
    `apps/server/src/test/stockFake.ts` and its `runInTransaction`, and model Prisma's own
    semantics: `where.userId === undefined || row.userId === where.userId`.
-3. **Run the mutation check and report it.** Break the **source**, see the test go red,
+4. **Run the mutation check and report it.** Break the **source**, see the test go red,
    restore, see it green. "I added tests" and "I verified the test fails without the
    behaviour" are different claims. Only the second one counts.
-4. **Run `pnpm codegen` after every schema change.** There is nothing to commit —
+5. **Run `pnpm codegen` after every schema change.** There is nothing to commit —
    `apps/server/src/generated/` and `apps/web/src/generated/` are **gitignored**
    (`.gitignore:58-59`) and `git ls-files` on both returns nothing. Run it to confirm the
    new field lands in both files; the root `pnpm build` runs codegen itself and fails on
    drift. *(Corrected 2026-10-02 after task 1 — this rule used to say "commit the
    generated files", which is impossible.)*
-5. One commit per task, with scope: `feat(server): …`.
+6. One commit per task, with scope: `feat(server): …`.
 
 ---
 
@@ -213,6 +228,31 @@ Do the same in `bulkUpsertInventoryLogs` (`import.resolver.ts:432`).
 | a log with no `locationId` lands in the default | the fallback still works |
 | a log naming another user's location is rejected | the row is not created, and the caller gets an error |
 
+**Done 2026-10-02, commit `ebfb0f30`.** Server tests 268 → 277, in a new 21st file.
+Role chosen: **`'member'`** — the lowest role that may write under location RBAC. Asking for
+`'owner'` would pass today, because `requireLocationRole` ignores `role` before RBAC, and
+would then silently deny a legitimate member of a shared location the day RBAC lands.
+
+**Forbidden location: throw, and throw BEFORE the write loop.** `continue` would make a
+cross-user attempt look like a successful import that returned fewer rows, with no way to
+tell which rows vanished. And throwing from *inside* the loop is only half right — these
+bulk resolvers are not transactional, so rows written before the throw stay on disk.
+Resolving every distinct location id first means a payload naming a forbidden location
+writes **nothing at all**. Pinned by a test with an allowed row ahead of the forbidden one.
+
+Each distinct id is checked once, not once per row: a test asserts `location.findFirst` ran
+exactly 2 times for a 5-row payload spanning 2 locations.
+
+**A trap this task caught.** `bulkUpsertInventoryLogs` builds `data` from `...rest` and
+passes `data` as the upsert's **`update`** payload. Adding `locationId` to the input puts it
+in `rest` automatically — so the obvious patch would have made `update` carry it, and
+**re-importing a backup would move every existing log** to whatever location the payload
+named. `locationId` is destructured out in both resolvers to prevent it. The cart upsert now
+carries the same comment.
+
+Line numbers in this task's text have drifted: the hardcoded `locationId` was at `:239`, not
+`:238`, and the upsert's at `:448`, not `:432`.
+
 ### Mutation check 3 (required)
 
 Delete the ownership check. The third test must go red. This is the one mutation in 4a that
@@ -224,7 +264,9 @@ guards against a cross-user write, so it matters more than the other six.
 
 **Files:** `apps/server/src/resolvers/import.resolver.ts`.
 
-`bulkCreateShoppingCarts` (`:247`) and `bulkUpsertShoppingCarts` (`:458`) hardcode
+`bulkCreateShoppingCarts` (`:310`) and `bulkUpsertShoppingCarts` (`:530`) hardcode
+`locationId` at `:325` and `:543` respectively — re-measured 2026-10-02 after task 3, which
+moved them. They
 `locationId: await ensureDefaultLocation(userId)`. Since PR 3b the cart id **already
 carries** its location: `${locationId}:${vendorId|'no-vendor'}`. So no new input field is
 needed.
@@ -385,7 +427,7 @@ Delete the location ownership check. The fourth test must go red.
 
 1. `pnpm codegen` from the repo root, and confirm the new fields are in both
    `apps/server/src/generated/graphql.ts` and `apps/web/src/generated/graphql.ts`. Both
-   are gitignored, so nothing is committed — see ground rule 4.
+   are gitignored, so nothing is committed — see ground rule 5.
 2. Run the full Verification Gate from the root `CLAUDE.md`, each command with an explicit
    path. The root `pnpm build` is the one that type-checks `apps/server`; `pnpm test`,
    `pnpm check` and `pnpm build-storybook` do not.
