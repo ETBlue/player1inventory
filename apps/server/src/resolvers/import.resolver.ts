@@ -1,7 +1,8 @@
+import { requireLocationRole } from '../lib/authz.js'
 import { ensureDefaultLocation } from '../lib/defaultLocation.js'
 import { prisma } from '../lib/prisma.js'
 import { mirrorStockToDefaultLocation } from '../lib/stockDualWrite.js'
-import { requireAuth } from '../context.js'
+import { type Context, requireAuth } from '../context.js'
 import type { Cart, CartItem, InventoryLog, Item, Recipe, Resolvers, Shelf, Tag, TagType, Vendor } from '../generated/graphql.js'
 import type { ExpirationMode, Prisma, TagColor, TargetUnit } from '@prisma/client'
 
@@ -41,6 +42,66 @@ function itemToGraphQL(item: {
     updatedAt: item.updatedAt.toISOString(),
     dueDate: item.dueDate ? item.dueDate.toISOString() : null,
   } as unknown as Item
+}
+
+/**
+ * Decide which location each imported inventory log belongs to, BEFORE any row
+ * is written.
+ *
+ * An input `locationId` is attacker-controlled, so every id named by the
+ * payload is verified through `requireLocationRole` — the one authorization
+ * seam for location-scoped data (lib/authz.ts). A row naming a location the
+ * caller does not hold makes the whole mutation fail with FORBIDDEN. It must
+ * NOT fall back to the default: a silent fallback would write the log into a
+ * location the user never asked for and report success.
+ *
+ * Three things about the shape are deliberate:
+ *
+ *  - Each DISTINCT id is checked ONCE, not once per row. 500 logs across 3
+ *    locations cost 3 checks.
+ *  - The whole check runs before the write loop. These bulk resolvers are not
+ *    transactional, so throwing from inside the loop would leave the rows
+ *    already written behind. Checking first means a payload naming a forbidden
+ *    location writes nothing at all.
+ *  - The caller's default is resolved only when some row omits `locationId`,
+ *    so an import whose every row names a location does not create one.
+ *
+ * `'member'` is the role asked for because writing a log is a write, and
+ * member is the LOWEST role that may write under location RBAC (owner/member
+ * edit, viewer reads — docs/global/permissions/2026-08-29-design-location-rbac.md).
+ * Asking for `'owner'` would deny a legitimate member of a shared location
+ * once RBAC lands.
+ */
+async function resolveLogLocations(
+  ctx: Context,
+  userId: string,
+  logs: readonly { locationId?: string | null }[],
+): Promise<(inputLocationId: string | null | undefined) => string> {
+  const verified = new Set<string>()
+  let defaultLocationId: string | null = null
+
+  for (const log of logs) {
+    if (log.locationId) {
+      if (verified.has(log.locationId)) continue
+      await requireLocationRole(ctx, log.locationId, 'member')
+      verified.add(log.locationId)
+    } else if (defaultLocationId === null) {
+      defaultLocationId = await ensureDefaultLocation(userId)
+    }
+  }
+
+  return (inputLocationId) => {
+    if (inputLocationId) return inputLocationId
+    if (defaultLocationId === null) {
+      // Unreachable: the loop above resolved the default for the first row
+      // that omitted a location, and this function is only called with rows
+      // from that same list. It is here to keep the return type `string`
+      // rather than `string | null`, because an empty-string fallback would
+      // write a broken foreign key instead of failing.
+      throw new Error('resolveLogLocations: no default location resolved')
+    }
+    return defaultLocationId
+  }
 }
 
 export const importResolvers: Pick<Resolvers, 'Mutation'> = {
@@ -217,9 +278,14 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     bulkCreateInventoryLogs: async (_, { logs }, ctx) => {
       const userId = requireAuth(ctx)
       if (logs.length === 0) return []
+      // Verifies every location the payload names before the first write, so a
+      // forbidden location fails the whole mutation with nothing written.
+      const locationIdFor = await resolveLogLocations(ctx, userId, logs)
       const results: InventoryLog[] = []
       for (const log of logs) {
-        const { id, occurredAt, note, logParams, ...rest } = log
+        // `locationId` is pulled OUT of `rest`: it is set explicitly below
+        // from the verified value, never passed straight through.
+        const { id, occurredAt, note, logParams, locationId, ...rest } = log
         const existing = await prisma.inventoryLog.findUnique({ where: { id } })
         if (existing) continue
         const itemExists = await prisma.item.findUnique({ where: { id: (rest as { itemId: string }).itemId }, select: { id: true } })
@@ -231,11 +297,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             occurredAt: new Date(occurredAt),
             note: note ?? undefined,
             userId,
-            // PR 4 rewrites the import surface to carry real locations. Until
-            // then an imported log lands in the caller's default location,
-            // which is where PR 4's flat ItemInput already puts imported stock
-            // (design §8, dual-write site 5).
-            locationId: await ensureDefaultLocation(userId),
+            // The payload's own location when it names one, the caller's
+            // default when it does not. Both already verified.
+            locationId: locationIdFor(locationId),
             ...(logParams ? { logParams: logParams as Prisma.InputJsonValue } : {}),
           },
         })
@@ -432,9 +496,15 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     bulkUpsertInventoryLogs: async (_, { logs }, ctx) => {
       const userId = requireAuth(ctx)
       if (logs.length === 0) return []
+      // Same pre-check as bulkCreateInventoryLogs: every location the payload
+      // names is verified before the first write.
+      const locationIdFor = await resolveLogLocations(ctx, userId, logs)
       const results: InventoryLog[] = []
       for (const log of logs) {
-        const { id, occurredAt, note, logParams, ...rest } = log
+        // `locationId` MUST come out of `rest` here. `data` below is the
+        // `update` payload, and a `locationId` left in `rest` would move an
+        // existing log to the payload's location on every re-import.
+        const { id, occurredAt, note, logParams, locationId, ...rest } = log
         const data = {
           ...rest,
           occurredAt: new Date(occurredAt),
@@ -445,9 +515,10 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         const upserted = await prisma.inventoryLog.upsert({
           where: { id },
           // locationId sits in `create` only, never in `update`. An upsert that
-          // carried it into `update` would move an existing log to the caller's
-          // default location on every re-import. PR 4 rewrites this surface.
-          create: { id, ...data, locationId: await ensureDefaultLocation(userId) },
+          // carried it into `update` would move an existing log on every
+          // re-import. The value is the payload's own when it names one, the
+          // caller's default when it does not — both verified above.
+          create: { id, ...data, locationId: locationIdFor(locationId) },
           update: data,
         })
         results.push(upserted as unknown as InventoryLog)

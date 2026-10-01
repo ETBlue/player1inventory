@@ -23,9 +23,16 @@
 //     consumption logs and find purchases.
 //   - `orderBy: { occurredAt: 'asc' | 'desc' }`, so "most recent" is a real
 //     sort rather than the order the fixture happened to be seeded in.
-//   - `create` assigns an id and stores the row, so a write can be read back
-//     through the same `where` the read path uses. That is what makes
-//     "addInventoryLog wrote it at the location I named" testable.
+//   - `create` stores the row, so a write can be read back through the same
+//     `where` the read path uses. That is what makes "addInventoryLog wrote it
+//     at the location I named" testable. It KEEPS `data.id` when the caller
+//     supplies one and invents a sequential id otherwise: `addInventoryLog`
+//     supplies none, while the bulk import mutations must preserve the
+//     payload's original ids.
+//   - `findUnique` and `upsert` by id, which is how the bulk import mutations
+//     decide between skipping, inserting and replacing a row. `upsert` keeps
+//     `create` and `update` separate, so a resolver that wrongly carried
+//     `locationId` into `update` would be visible as a MOVED row.
 //
 // ── WHAT IT DOES NOT MODEL ──
 //
@@ -105,6 +112,26 @@ export function createInventoryLogFake() {
   const state: { logs: FakeInventoryLog[] } = { logs: [] }
   let seq = 0
 
+  // Hoisted out of the `client` literal so `upsert` can reuse it: a reference
+  // to `client.create` from inside `client`'s own initializer makes TypeScript
+  // infer `client` as `any`.
+  function insert(data: Record<string, unknown>): FakeInventoryLog {
+    const row: FakeInventoryLog = {
+      id: (data.id as string | undefined) ?? `log-${++seq}`,
+      itemId: data.itemId as string,
+      userId: data.userId as string,
+      locationId: data.locationId as string,
+      delta: (data.delta as number | null) ?? null,
+      quantity: (data.quantity as number | null) ?? null,
+      occurredAt: (data.occurredAt as Date | null) ?? null,
+      note: (data.note as string | null) ?? null,
+      logKey: (data.logKey as string | null) ?? null,
+      logParams: (data.logParams as Record<string, unknown> | null) ?? null,
+    }
+    state.logs.push(row)
+    return row
+  }
+
   const client = {
     findMany: async ({
       where = {},
@@ -124,21 +151,28 @@ export function createInventoryLogFake() {
       )[0] ?? null,
     count: async ({ where = {} }: { where?: Where } = {}) =>
       state.logs.filter((l) => matchesLog(l, where)).length,
-    create: async ({ data }: { data: Record<string, unknown> }) => {
-      const row: FakeInventoryLog = {
-        id: `log-${++seq}`,
-        itemId: data.itemId as string,
-        userId: data.userId as string,
-        locationId: data.locationId as string,
-        delta: (data.delta as number | null) ?? null,
-        quantity: (data.quantity as number | null) ?? null,
-        occurredAt: (data.occurredAt as Date | null) ?? null,
-        note: (data.note as string | null) ?? null,
-        logKey: (data.logKey as string | null) ?? null,
-        logParams: (data.logParams as Record<string, unknown> | null) ?? null,
+    findUnique: async ({ where = {} }: { where?: Where } = {}) =>
+      state.logs.find((l) => matchesLog(l, where)) ?? null,
+    create: async ({ data }: { data: Record<string, unknown> }) => insert(data),
+    upsert: async ({
+      where = {},
+      create,
+      update,
+    }: {
+      where?: Where
+      create: Record<string, unknown>
+      update: Record<string, unknown>
+    }) => {
+      const existing = state.logs.find((l) => matchesLog(l, where))
+      if (!existing) return insert(create)
+      // Only the keys `update` actually carries are applied — Prisma's own
+      // semantics, and the reason a stray `locationId` in `update` shows up
+      // here as a row that changed location.
+      for (const [key, value] of Object.entries(update)) {
+        if (value === undefined) continue
+        ;(existing as unknown as Record<string, unknown>)[key] = value
       }
-      state.logs.push(row)
-      return row
+      return existing
     },
   }
 

@@ -55,6 +55,15 @@ input InventoryLogInput {
   note: String
   logKey: String
   logParams: JSON
+  # OPTIONAL, not `ID!`, on purpose. A client built before cloud locations
+  # sends no such field, and making it required would reject every import
+  # that client issues. When it is absent the resolver falls back to the
+  # caller's default location, which is what the field replaced.
+  #
+  # Attacker-controlled. The resolvers verify it through
+  # `requireLocationRole(ctx, locationId, 'member')` before any row is
+  # written — a log in someone else's location would be a cross-user write.
+  locationId: ID
 }
 
 input ShoppingCartInput {
