@@ -361,12 +361,18 @@ bulkCreateLocations(locations: [LocationInput!]!): [Location!]!
 bulkUpsertLocations(locations: [LocationInput!]!): [Location!]!
 ```
 
-**No `isDefault` field, and the resolvers always write `false`.** `Location.isDefault` is
-`Boolean @default(false)` with no database constraint limiting it to one row per user. The
-remap rule means the payload's default location is never uploaded as a row — its id is
-rewritten to the destination's existing default — so only non-default locations arrive here.
-Accepting the flag would let a payload create a second default and nothing would stop it.
-Put that reason in a comment on the input.
+**No `isDefault` field, and the resolvers always write `false`.** The remap rule means the
+payload's default location is never uploaded as a row — its id is rewritten to the
+destination's existing default — so only non-default locations arrive here. Put the reason
+in a comment on the input.
+
+**Corrected 2026-10-02 by task 5:** this used to say there is "no database constraint
+limiting it to one row per user". There is —
+`CREATE UNIQUE INDEX "Location_one_default_per_user_key" ON "Location" ("userId") WHERE "isDefault"`,
+in `migrations/20260830000000_add_location_and_item_stock/migration.sql:57`. Prisma cannot
+express a partial index, so it is hand-written SQL and invisible in `schema.prisma`. So
+accepting the flag would not create a second default — it would **die with an unhandled
+`P2002` after `clearAllData` has already run**, leaving the account empty.
 
 Follow the existing shape of the 18 bulk mutations exactly
 (`import.resolver.ts:51-540`): `bulkCreate*` skips a row whose id already exists
@@ -382,6 +388,42 @@ Follow the existing shape of the 18 bulk mutations exactly
 | `bulkUpsert` replaces an existing row | name and order updated |
 | never writes `isDefault: true` | an input that somehow carries it has no effect |
 | the account's own default is untouched | the `isDefault` row still has exactly one holder |
+
+**Done 2026-10-02.** Server tests 290 → 311, in a new 23rd file. 16 tests, not the 6 this
+task asked for: "another user's location is not readable or writable" is two different
+holes in two different mutations, and the throw-before-any-write property needs its own test
+in each.
+
+**Following the house style verbatim would have shipped two cross-user holes.** This task's
+instruction to "match the existing house style exactly" conflicts with its own ownership
+requirement. The new mutations deviate, with a comment at each deviation:
+
+| Mutation | House style | What it does |
+|---|---|---|
+| `bulkCreate` | `findUnique({ where: { id } })` then `continue` | finds a **stranger's** row and silently drops the caller's own location, with no error |
+| `bulkUpsert` | `upsert({ where: { id }, update: data })` with `userId` in `data` | **overwrites the stranger's row and reassigns it to the caller**, taking its `ItemStock`, `Cart` and `InventoryLog` children |
+
+Both are fixed here by `requireOwnLocationIdsOrUnclaimed`, which runs before the write loop
+and routes the decision through `requireLocationRole(ctx, id, 'member')`.
+
+**The same two shapes exist in the other 18 bulk mutations** — measured after this task, all
+nine upserts use an unscoped `where: { id }` with `userId` in the `update` payload. That is
+out of PR 4a's scope and is filed as its own issue.
+
+**`bulkUpsert`'s `update` payload must be narrower than its `create`.** Every other bulk
+upsert passes one `data` object to both. Here that is two bugs: `isDefault: false` in
+`update` would **demote the caller's own default** if a payload ever named its id, leaving
+the account with none; and `userId` in `update` is the row-steal half above.
+
+**The `isDefault` test fixture must start with NO default row.** With a default present, the
+partial unique index makes a wrong `isDefault: true` write *fail* instead of *succeed
+wrongly* — so the test would go red for the wrong reason and prove nothing about the flag.
+
+**`updatedAt` is unresolved, and recorded as unresolved.** `grep isUpdatedAt` over the
+Prisma client runtime returns 0, so the JS client never inspects the descriptor and the Rust
+engine decides. No local test can settle it: every server test runs against a fake. The same
+open question already applies to the 18 existing bulk mutations, since `Item`, `Shelf` and
+`ItemStock` are all `@updatedAt` and their resolvers already pass explicit values.
 
 ### Mutation check 5 (required)
 

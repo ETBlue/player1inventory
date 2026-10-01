@@ -244,12 +244,28 @@ type Mutation {
 ```
 
 **`LocationInput` carries no `isDefault`, and the resolvers always write `false`.**
-`Location.isDefault` is `Boolean @default(false)` in Prisma (`schema.prisma`), with no
-database constraint keeping it to one row per user. The remap rule makes the field
-unnecessary: the payload's default location is never uploaded as a row at all — its id is
-rewritten to the destination's existing `isDefault` id, so only the **non-default**
-locations reach `bulkCreateLocations`. Accepting the flag would let a payload create a
-second default, and nothing in the schema would stop it.
+The remap rule makes the field unnecessary: the payload's default location is never
+uploaded as a row at all — its id is rewritten to the destination's existing `isDefault`
+id, so only the **non-default** locations reach `bulkCreateLocations`.
+
+> **Corrected 2026-10-02 by task 5.** This paragraph used to say there is "no database
+> constraint keeping it to one row per user", and that accepting the flag would let a
+> payload create a second default. **Both are wrong.** A partial unique index exists:
+>
+> ```sql
+> -- migrations/20260830000000_add_location_and_item_stock/migration.sql:57
+> CREATE UNIQUE INDEX "Location_one_default_per_user_key"
+>   ON "Location" ("userId") WHERE "isDefault";
+> ```
+>
+> Prisma cannot express a partial index, so it is hand-written SQL — which is why reading
+> `schema.prisma` alone makes it look absent. `ensureDefaultLocation`'s race-safety depends
+> on it.
+>
+> The decision does not change; its reason gets stronger. Accepting `isDefault` would not
+> create a second default. It would make the import **die with an unhandled `P2002`** — and
+> under the "clear and import" strategy that error arrives *after* `clearAllData` has run,
+> so the account is left empty and the import dead.
 
 `ensureDefaultLocation(userId)` already guarantees the account has exactly one default, so
 the server does not need the payload's opinion. This is the server-side half of brainstorming
