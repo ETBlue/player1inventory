@@ -45,6 +45,53 @@ groundwork so 4b can be one reviewable diff.
 **4c: nothing user-visible.** It is a test. What it protects is the "delete my data"
 action: it proves `purgeUserData` deletes all of your rows and none of anyone else's.
 
+## What the developer gets
+
+**4a: one rule removed from everyone's head.** Today an import resolver has to decide a
+location for every row it writes, because the payload does not carry one. Three resolvers
+hardcode `ensureDefaultLocation(userId)` under a comment apologising for it
+(`import.resolver.ts:238`, `:260`, and the two dual-write sites). After 4a the location
+comes from the data, so there is no decision left to get wrong.
+
+| DX gain | Specifics |
+|---|---|
+| Fewer ways to get it wrong | 3 hardcoded `ensureDefaultLocation` fallbacks stop being the only answer. Each one currently writes a row to a location the user did not choose, silently |
+| A failure that now has a name | an import naming someone else's location is **rejected**, through `requireLocationRole`. Today a wrong `locationId` cannot even be expressed, so the wrong row is written with no error |
+| Honest documentation | 8 stale claims in design §6 corrected, and 2 wrong counts (`stockDualWrite` is 6 calls behind 7 markers, not 5). Both had already been copied into task briefs |
+
+**DX cost of 4a, stated plainly:** two more hand-maintained lists. `LocationInput` and
+`ItemStockImportInput` each duplicate a Prisma model's field set, like the 9 import inputs
+already do, and nothing checks they stay in sync. The existing 18 bulk mutations have the
+same problem and it has not bitten yet. Worth it because the alternative — a generic bulk
+endpoint — would take the `where`-clause scoping out of per-model view, which is exactly
+what issue #320 is about.
+
+**4b: a large amount of code stops existing.**
+
+| DX gain | Specifics |
+|---|---|
+| Less code to maintain | `flattenPayloadForCloud` (72 lines), `resolveFlattenLocationId` (15 lines), `MigrationLocationWarningDialog` (4 files), 4 i18n keys × 2 languages, and 2 of the 6 `stockDualWrite` calls |
+| Less to remember | the "payload with no `itemStocks` is a cloud export" sniff test goes away. It is an invisible coupling between the export writer and two import readers, and it is the reason 4a and 4b cannot be cut the other way round |
+| Fewer ways to get it wrong | one remap rule replaces three different location decisions — flatten's chosen location, `deserializeLocation`'s id test, and the resolvers' default fallback |
+| PR 5 gets smaller | its teardown list drops from 6 calls to 4, plus the inline `applyUnitSwitch` block |
+
+**DX cost of 4b:** it removes the mirror that currently hides a broken stock upload. If the
+new upload has a bug, imported items are stocked **nowhere** — invisible in the pantry, no
+error. That is a real loss of safety net, and the reason 4b's test plan is the longest of
+the three.
+
+**4c: the "delete my data" path becomes testable at all.**
+
+| DX gain | Specifics |
+|---|---|
+| A failure that now has a name | an over-broad purge filter currently passes every test in the repo. After 4c it fails one, by name |
+| Less to remember | `purge-coverage.test.ts` checks 10 models and skips 4 on purpose. Nobody has to hold that exclusion list in mind to know whether a filter is covered |
+| Reusable fixture | the two-user cloud fixture is the first since PR 1, and 4b's cart-collision test needs the same thing |
+
+**DX cost of 4c:** cloud E2E gains a spec that needs two synthetic users, so the cleanup
+contract in `e2e/helpers/cloudTeardown.ts` has to cover both. One more thing to keep in
+sync.
+
 Both gains need a **deploy**, not just a merge. Railway auto-deploys `main` and runs
 `prisma migrate deploy` as its release command, so each PR deploys itself on merge. PR 4
 adds **no migration** — `Location` and `ItemStock` already exist — so the deploy is a

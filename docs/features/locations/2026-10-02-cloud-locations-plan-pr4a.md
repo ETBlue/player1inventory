@@ -20,6 +20,28 @@ merges, no client calls any of it.
 **What the user gets: nothing visible.** This is groundwork so 4b can be one reviewable
 diff. Say that plainly in the PR description rather than inventing a benefit.
 
+## What the developer gets
+
+**One rule leaves everyone's head: "which location does an imported row belong to?"**
+
+Today three import resolvers have to answer it, and all three answer it the same wrong way —
+`ensureDefaultLocation(userId)`, under a comment apologising for it
+(`import.resolver.ts:238`, `:260`, and the two dual-write sites). After 4a the location
+comes from the data.
+
+| DX gain | Specifics |
+|---|---|
+| Fewer ways to get it wrong | 3 hardcoded location fallbacks stop being the only answer. Each one currently writes a row into a location the user did not pick, with no error |
+| A failure that now has a name | an import naming someone else's location is rejected through `requireLocationRole`. Today a wrong `locationId` cannot even be expressed, so the wrong row is written silently |
+| Export becomes possible at all | `allItemStocks` is the field cloud export needs. Without it an export must fan out one request per location |
+| Honest comments | the two import dual-write markers say "PR 5" in the header and "PR 4" in the body. Task 7 makes both say **4b** |
+
+**DX cost, stated plainly:** two more hand-maintained inputs. `LocationInput` and
+`ItemStockImportInput` each duplicate a Prisma model's field set, and nothing checks they
+stay in sync — the same weakness the existing 9 import inputs have. Accepted because the
+alternative, one generic bulk endpoint, would move the per-model `where` scoping out of
+view, which is the exact problem issue #320 is about.
+
 ## Why it is separate
 
 Brainstorming decision 5. The first split put lossless cloud export in this PR too. That
