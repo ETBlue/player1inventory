@@ -799,9 +799,14 @@ shipped: `checkout` (cart.resolver.ts), `consumeRecipes` (recipe.resolver.ts), a
 `removeItemFromLocation` + `applyUnitSwitch` (itemStock.resolver.ts). It replaces the three
 manual smoke tests those PRs owed. It is the only cloud spec with no browser at all — it
 calls GraphQL through `makeGql` and asserts server state the same way, because what it
-tests is which `locationId` a row is written to, and `InventoryLog` exposes no `locationId`
-field to read back. It is therefore in the `local` project's `testIgnore` as well as the
-`cloud` project's `testMatch`.
+tests is which `locationId` a row is written to. It is therefore in the `local` project's
+`testIgnore` as well as the `cloud` project's `testMatch`.
+
+> This paragraph used to end "and `InventoryLog` exposes no `locationId` field to read
+> back". That was true until cloud-locations PR 4a task 2, which added `locationId: ID!` to
+> the `InventoryLog` GraphQL type. The spec still needs no change, and its reason for
+> having no browser still stands — but a new test may now assert a log's location through
+> GraphQL instead of through server state.
 
 Five more joined on 2026-09-24, also issue #284 — `recipes-group.spec.ts`,
 `vendors-group.spec.ts`, `shelves.spec.ts` (2 cloud test cases each),
