@@ -168,6 +168,99 @@ describe('stockFake models the constraints resolvers rely on', () => {
     expect(row.id).toMatch(/^loc-\d+$/)
   })
 
+  it('itemStock.create keeps the id and the timestamps the writer supplies', async () => {
+    // Given an import writing a backup's own id and timestamps verbatim
+    const fake = createStockFake()
+    fake.reset([{ id: 'loc_a', userId: 'user_1', isDefault: true }], [])
+    const created = new Date('2026-02-03T04:05:06.000Z')
+    const updated = new Date('2026-03-04T05:06:07.000Z')
+
+    // When the row is created
+    const row = await fake.client.itemStock.create({
+      data: {
+        id: 'stock_from_backup',
+        itemId: 'item_1',
+        locationId: 'loc_a',
+        createdAt: created,
+        updatedAt: updated,
+      },
+    })
+
+    // Then all three are stored as given. Before PR 4a task 6 this generated
+    // `stock-1` and stamped `new Date()` over both timestamps, which made
+    // "the payload's ids and timestamps are preserved" impossible to assert.
+    expect(row.id).toBe('stock_from_backup')
+    expect(row.createdAt).toEqual(created)
+    expect(row.updatedAt).toEqual(updated)
+  })
+
+  it('a create reusing an existing stock id throws P2002, the way the primary key does', async () => {
+    // Given another account's row already holds that id — `ItemStock.id` is a
+    // GLOBAL primary key, and this model has no userId column at all
+    const fake = createStockFake()
+    fake.reset(
+      [{ id: 'loc_theirs', userId: 'user_2', isDefault: true }],
+      [makeStock({ id: 'stock_taken', itemId: 'item_theirs', locationId: 'loc_theirs' })],
+    )
+
+    // When user_1's import tries to create the same id
+    const create = fake.client.itemStock.create({
+      data: { id: 'stock_taken', itemId: 'item_mine', locationId: 'loc_mine' },
+    })
+
+    // Then it is rejected and the existing row is left alone. A fake that
+    // accepted the duplicate would hide a missing id check in
+    // `bulkCreateItemStocks`.
+    await expect(create).rejects.toMatchObject({ code: 'P2002' })
+    expect(fake.state.itemStocks).toHaveLength(1)
+    expect(fake.state.itemStocks[0]?.locationId).toBe('loc_theirs')
+  })
+
+  it('itemStock.update MOVES a row when the writer names itemId or locationId', async () => {
+    // Given a stored row. No resolver reaches this today —
+    // `bulkUpsertItemStocks` keeps both join keys OUT of its `update` payload
+    // on purpose — so it is pinned here rather than left resting on a claim.
+    // What it guards is the row steal in the shape a model with NO userId
+    // column takes: there is nothing to reassign, so an attacker redirects the
+    // row's two PARENTS instead, and the quantities leave the victim's pantry.
+    // A fake that silently dropped these two keys would hide it.
+    const fake = createStockFake()
+    fake.reset(
+      [
+        { id: 'loc_theirs', userId: 'user_2', isDefault: true },
+        { id: 'loc_mine', userId: 'user_1', isDefault: true },
+      ],
+      [makeStock({ id: 'st_1', itemId: 'item_theirs', locationId: 'loc_theirs' })],
+    )
+
+    // When an update names both join keys
+    await fake.client.itemStock.update({
+      where: { id: 'st_1' },
+      data: { itemId: 'item_mine', locationId: 'loc_mine' },
+    })
+
+    // Then the row has moved to the other account's item and location
+    expect(fake.state.itemStocks[0]).toMatchObject({
+      itemId: 'item_mine',
+      locationId: 'loc_mine',
+    })
+  })
+
+  it('itemStock.delete throws when nothing matches, so a stale-pair drop cannot no-op', async () => {
+    // Given an empty store
+    const fake = createStockFake()
+    fake.reset([{ id: 'loc_a', userId: 'user_1', isDefault: true }], [])
+
+    // When a delete names an id no row holds
+    const del = fake.client.itemStock.delete({ where: { id: 'nope' } })
+
+    // Then it rejects. `bulkUpsertItemStocks` drops a stale row holding an
+    // incoming (itemId, locationId) pair under a different id; a fake that
+    // resolved silently would let a broken drop report success and the next
+    // insert would then die with P2002.
+    await expect(del).rejects.toThrow('ItemStock not found')
+  })
+
   it('a create reusing an existing location id throws P2002, the way the primary key does', async () => {
     // Given another user already holds that id — `Location.id` is a GLOBAL
     // primary key with no userId in it

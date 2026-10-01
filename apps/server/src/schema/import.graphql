@@ -113,6 +113,44 @@ input LocationInput {
   # failure it prevents is different.
 }
 
+# One ItemStock row from a backup: the per-(item x location) stock STATE.
+#
+# WHY THIS IS A SECOND INPUT AND NOT `ItemStockInput` (schema/itemStock.graphql:78).
+# The next reader will want to merge the two. They cannot be merged:
+#
+#  1. `ItemStockInput` is a PARTIAL-MERGE input. All five of its fields are
+#     optional and a MISSING key means "leave that column alone" — see `toData`
+#     in itemStock.resolver.ts. Import is a REPLACE: every column comes from
+#     the payload, so every field here is required. One input cannot mean both.
+#  2. `ItemStockInput` carries no identity at all. `upsertItemStock` takes
+#     `itemId` and `locationId` as its own arguments; a bulk payload has to
+#     carry `id`, `itemId` and `locationId` per row.
+#  3. Widening `ItemStockInput` would change a THIRD contract.
+#     `UnitSwitchStockConversionInput` (itemStock.graphql:51) embeds it as
+#     `quantities`, so new required fields there would break `applyUnitSwitch`.
+#  4. Renaming `ItemStockInput` to free the clean name is also out: input type
+#     names appear in client operations
+#     (`mutation UpsertItemStock($input: ItemStockInput!)`), so a rename breaks
+#     a cached bundle still running the old document.
+#
+# NO `userId` FIELD, and the resolvers write none. `ItemStock` has no `userId`
+# COLUMN, on purpose: it is scoped THROUGH its location (root CLAUDE.md,
+# Authorization). The field list below is every column of the Prisma model
+# (schema.prisma:267-284) and every field of the local `ItemStock` interface
+# (packages/types/src/index.ts:47), with nothing added and nothing dropped.
+input ItemStockImportInput {
+  id: ID!
+  itemId: ID!
+  locationId: ID!
+  targetQuantity: Float!
+  refillThreshold: Float!
+  packedQuantity: Float!
+  unpackedQuantity: Float!
+  dueDate: String
+  createdAt: String!
+  updatedAt: String!
+}
+
 input ShelfInput {
   id: ID!
   name: String!
@@ -136,6 +174,7 @@ extend type Mutation {
   bulkCreateCartItems(cartItems: [CartItemInput!]!): [CartItem!]!
   bulkCreateShelves(shelves: [ShelfInput!]!): [Shelf!]!
   bulkCreateLocations(locations: [LocationInput!]!): [Location!]!
+  bulkCreateItemStocks(itemStocks: [ItemStockImportInput!]!): [ItemStock!]!
 
   # Bulk upsert mutations — used for "replace conflicts" strategy (upserts by entity id)
   bulkUpsertItems(items: [ItemInput!]!): [Item!]!
@@ -148,6 +187,7 @@ extend type Mutation {
   bulkUpsertCartItems(cartItems: [CartItemInput!]!): [CartItem!]!
   bulkUpsertShelves(shelves: [ShelfInput!]!): [Shelf!]!
   bulkUpsertLocations(locations: [LocationInput!]!): [Location!]!
+  bulkUpsertItemStocks(itemStocks: [ItemStockImportInput!]!): [ItemStock!]!
 
   # Clear all data — used for "clear & import" strategy
   clearAllData: Boolean!

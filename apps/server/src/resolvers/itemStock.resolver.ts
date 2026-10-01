@@ -32,7 +32,7 @@ function toData(input: StockInput): Record<string, unknown> {
 // explicitly ISO-stringified here rather than left for the default String
 // scalar serializer, which coerces via Date.valueOf() (epoch milliseconds)
 // before it ever reaches toJSON(). Mirrors item.resolver.ts's toGraphQL.
-function toGraphQL(row: PrismaItemStock): ItemStock {
+export function toGraphQL(row: PrismaItemStock): ItemStock {
   return {
     ...row,
     createdAt: row.createdAt.toISOString(),

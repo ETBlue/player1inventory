@@ -1,3 +1,4 @@
+import { GraphQLError } from 'graphql'
 import { requireLocationRole } from '../lib/authz.js'
 import { parseCartId } from '../lib/cartId.js'
 import { ensureDefaultLocation } from '../lib/defaultLocation.js'
@@ -5,7 +6,8 @@ import { prisma } from '../lib/prisma.js'
 import { mirrorStockToDefaultLocation } from '../lib/stockDualWrite.js'
 import { type Context, requireAuth } from '../context.js'
 import { toGraphQL as locationToGraphQL } from './location.resolver.js'
-import type { Cart, CartItem, InventoryLog, Item, Location, Recipe, Resolvers, Shelf, Tag, TagType, Vendor } from '../generated/graphql.js'
+import { toGraphQL as itemStockToGraphQL } from './itemStock.resolver.js'
+import type { Cart, CartItem, InventoryLog, Item, ItemStock, Location, Recipe, Resolvers, Shelf, Tag, TagType, Vendor } from '../generated/graphql.js'
 import type { ExpirationMode, Prisma, Location as PrismaLocation, TagColor, TargetUnit } from '@prisma/client'
 
 // Map a Prisma item (with junction rows) to the GraphQL Item shape
@@ -248,6 +250,100 @@ async function requireOwnLocationIdsOrUnclaimed(
       select: { id: true },
     })
     if (taken) await requireLocationRole(ctx, id, 'member')
+  }
+}
+
+/**
+ * Authorize every id an ItemStock payload names, BEFORE any row is written.
+ *
+ * `ItemStock` is the only model in this file with THREE attacker-controlled
+ * ids per row, and it is the only one with no `userId` column of its own (root
+ * CLAUDE.md, Authorization — it is scoped THROUGH its location). So all three
+ * have to be resolved here:
+ *
+ *  - `locationId` — where the row will be WRITTEN. Must exist and the caller
+ *    must hold a role on it, so `requireLocationRole` is called
+ *    unconditionally. There is no "unclaimed id is free" case as there is for
+ *    `LocationInput`: an id no `Location` row holds is a broken foreign key,
+ *    not a new location.
+ *  - `itemId` — the row's other parent. `Item` DOES have a `userId` column, so
+ *    the check is a SCOPED query (`where: { id, userId }`) and never a
+ *    comparison of a fetched row's `userId` against the caller's, which root
+ *    CLAUDE.md forbids.
+ *  - `id` — the row's own primary key, GLOBAL and with no `userId` in it. If a
+ *    row already holds it, that row's OWN location must be one the caller
+ *    holds. This is the check `requireOwnLocationIdsOrUnclaimed` cannot serve:
+ *    there the id being checked IS a location id; here it is a stock id whose
+ *    location has to be read out of the stored row first.
+ *
+ * WITHOUT the `id` check, copying the house style verbatim ships the same two
+ * cross-user holes task 5 found, in the shape this model takes:
+ *
+ *  - `bulkCreate` doing `findUnique({ where: { id } })` then `continue` would
+ *    SILENTLY DROP the caller's own stock row because a stranger's row holds
+ *    that id — no error, and the item then shows as stocked nowhere.
+ *  - `bulkUpsert` doing `upsert({ where: { id }, update: data })` with
+ *    `itemId` and `locationId` in `data` would MOVE the stranger's row into
+ *    the caller's own location and repoint it at the caller's own item. That
+ *    is the row steal without a `userId` to reassign: the quantities for an
+ *    item the attacker never had leave the victim's pantry and appear in the
+ *    attacker's, under the victim's `createdAt`. Worse than the `Location`
+ *    case in one way — the attacker needs only a stock row id, and the row
+ *    carries real quantity data rather than a name.
+ *
+ * Three things about the shape, the same three as the helpers above: each
+ * DISTINCT id of each kind is checked ONCE, not once per row; the whole check
+ * runs before the write loop, because these bulk resolvers are not
+ * transactional and a throw from inside leaves earlier rows on disk; and it
+ * reads nothing it does not need.
+ *
+ * `'member'` for the same reason as every other helper here: it is the LOWEST
+ * role that may write under location RBAC, so a legitimate member of a shared
+ * location is not denied the day RBAC lands. Asking for `'owner'` would pass
+ * today, because `requireLocationRole` ignores `role` pre-RBAC, and deny them
+ * silently later.
+ */
+async function requireOwnItemStockRefs(
+  ctx: Context,
+  userId: string,
+  stocks: readonly { id: string; itemId: string; locationId: string }[],
+): Promise<void> {
+  const checkedLocations = new Set<string>()
+  for (const { locationId } of stocks) {
+    if (checkedLocations.has(locationId)) continue
+    checkedLocations.add(locationId)
+    await requireLocationRole(ctx, locationId, 'member')
+  }
+
+  const checkedItems = new Set<string>()
+  for (const { itemId } of stocks) {
+    if (checkedItems.has(itemId)) continue
+    checkedItems.add(itemId)
+    const own = await prisma.item.findFirst({
+      where: { id: itemId, userId },
+      select: { id: true },
+    })
+    // Same wording and code as `requireLocationRole`'s refusal, and for the
+    // same reason: "not yours" must be indistinguishable from "does not
+    // exist", or the mutation becomes a probe for other accounts' item ids.
+    if (!own) {
+      throw new GraphQLError('Forbidden', { extensions: { code: 'FORBIDDEN' } })
+    }
+  }
+
+  const checkedIds = new Set<string>()
+  for (const { id } of stocks) {
+    if (checkedIds.has(id)) continue
+    checkedIds.add(id)
+    // UNSCOPED on purpose, and only `locationId` is selected. The question is
+    // "is this primary key taken, and if so by a row in whose location" — the
+    // AUTHORIZATION decision is made entirely by `requireLocationRole` below,
+    // the one seam this series routes location checks through.
+    const taken = await prisma.itemStock.findUnique({
+      where: { id },
+      select: { locationId: true },
+    })
+    if (taken) await requireLocationRole(ctx, taken.locationId, 'member')
   }
 }
 
@@ -802,6 +898,83 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       return results
     },
 
+    // `updatedAt` is passed through from the payload, and whether it SURVIVES
+    // is unresolved. `ItemStock.updatedAt` is `@updatedAt` in Prisma
+    // (schema.prisma:277), and `grep isUpdatedAt` over the Prisma client
+    // runtime returns 0 — so the JS client never inspects the descriptor and
+    // the Rust engine decides. No test here can settle it: every server test
+    // runs against a hand-written fake, and no cloud E2E spec asserts a
+    // preserved timestamp. Task 5 recorded the same open question for
+    // `bulkUpsertLocations`, and it already applies to the 18 older bulk
+    // mutations — `Item`, `Shelf` and `ItemStock` are all `@updatedAt` and
+    // their resolvers already pass explicit values. Recorded, not claimed. The
+    // cost either way is one timestamp, not a wrong row.
+    /**
+     * "Skip conflicts" import of per-location stock.
+     *
+     * Two kinds of conflict, not one. The house style only knows the first:
+     *
+     *  - the payload's `id` is already taken → skip, keep the stored row
+     *  - the payload's `(itemId, locationId)` PAIR is already taken, by a row
+     *    with a DIFFERENT id → also skip. `@@unique([itemId, locationId])`
+     *    (schema.prisma:282) means the insert would raise P2002 otherwise, and
+     *    an unhandled P2002 under the "clear & import" strategy arrives AFTER
+     *    `clearAllData` has run, leaving the account empty and the import dead.
+     *
+     * Skipping is the right answer for BOTH under this strategy, and it
+     * matches local: `importItemStocks`
+     * (apps/web/src/lib/importData.ts:1127-1148) only ever imports stock whose
+     * ITEM was actually written, so "a skipped conflicting item keeps the
+     * stock it already has" is already the local rule.
+     *
+     * `seen` catches the same pair appearing TWICE in one payload, which the
+     * database lookup above cannot: neither row is stored yet when the first
+     * is examined. First row wins, consistent with skip-conflicts.
+     */
+    bulkCreateItemStocks: async (_, { itemStocks }, ctx) => {
+      const userId = requireAuth(ctx)
+      if (itemStocks.length === 0) return []
+      await requireOwnItemStockRefs(ctx, userId, itemStocks)
+      const results: ItemStock[] = []
+      const seen = new Set<string>()
+      for (const stock of itemStocks) {
+        const { id, itemId, locationId, createdAt, updatedAt, dueDate, ...quantities } = stock
+        // NUL as the separator, not ':'. Neither id generator makes one
+        // (`crypto.randomUUID()` locally, `@default(cuid())` in cloud) but
+        // `ItemInput.id` is stored verbatim, so a hand-edited backup can
+        // supply any text — and a ':' separator would make ("a:b", "c") and
+        // ("a", "b:c") the same key. Task 4 hit the same hazard in cart ids.
+        const pair = `${itemId}\u0000${locationId}`
+        if (seen.has(pair)) continue
+        seen.add(pair)
+        const existingById = await prisma.itemStock.findUnique({ where: { id } })
+        if (existingById) {
+          results.push(itemStockToGraphQL(existingById))
+          continue
+        }
+        const existingByPair = await prisma.itemStock.findFirst({
+          where: { itemId, locationId },
+        })
+        if (existingByPair) {
+          results.push(itemStockToGraphQL(existingByPair))
+          continue
+        }
+        const row = await prisma.itemStock.create({
+          data: {
+            id,
+            itemId,
+            locationId,
+            ...quantities,
+            dueDate: dueDate ? new Date(dueDate) : null,
+            createdAt: new Date(createdAt),
+            updatedAt: new Date(updatedAt),
+          },
+        })
+        results.push(itemStockToGraphQL(row))
+      }
+      return results
+    },
+
     bulkUpsertShelves: async (_, { shelves }, ctx) => {
       const userId = requireAuth(ctx)
       if (shelves.length === 0) return []
@@ -864,6 +1037,63 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           },
         })
         results.push(locationToGraphQL(row as unknown as PrismaLocation))
+      }
+      return results
+    },
+
+    /**
+     * "Replace conflicts" import of per-location stock.
+     *
+     * The pair conflict is resolved the way LOCAL resolves it, which is the
+     * only way a backup can round-trip unchanged. `importItemStocks`
+     * (apps/web/src/lib/importData.ts:1127-1148) deletes every stored row
+     * holding an incoming row's `(itemId, locationId)` pair under a DIFFERENT
+     * id, then `bulkPut`s the payload. So the payload's row wins and the stale
+     * one is dropped. Doing it the other way round here — keeping the stored
+     * row — would silently discard the quantities in the file the user chose
+     * to restore.
+     *
+     * The stale row is always the caller's own: `requireOwnItemStockRefs` has
+     * already proved the pair's location is one the caller holds, and nothing
+     * else can hold that pair.
+     *
+     * `seen` makes the LAST of two payload rows on one pair win, which is what
+     * `bulkPut` does for two rows with one id. Local keeps BOTH when the ids
+     * differ, because the Dexie index `[itemId+locationId]`
+     * (apps/web/src/db/index.ts:612) is NOT declared unique — only Postgres
+     * enforces the pair. That asymmetry predates this mutation and cannot be
+     * fixed here; a cloud row simply cannot exist twice on one pair.
+     *
+     * `update` is NARROWER than `create`, like `bulkUpsertLocations` and for a
+     * closely related reason: `itemId` and `locationId` in `update` would MOVE
+     * an existing row to another item or another location. The pre-check means
+     * the row is the caller's own either way, so this is defence in depth
+     * rather than the guard itself — but it is the shape the next reader should
+     * copy, not the shared-`data` shape the other nine upserts use.
+     */
+    bulkUpsertItemStocks: async (_, { itemStocks }, ctx) => {
+      const userId = requireAuth(ctx)
+      if (itemStocks.length === 0) return []
+      await requireOwnItemStockRefs(ctx, userId, itemStocks)
+      const results: ItemStock[] = []
+      for (const stock of itemStocks) {
+        const { id, itemId, locationId, createdAt, updatedAt, dueDate, ...quantities } = stock
+        const state = {
+          ...quantities,
+          dueDate: dueDate ? new Date(dueDate) : null,
+          createdAt: new Date(createdAt),
+          updatedAt: new Date(updatedAt),
+        }
+        const stale = await prisma.itemStock.findFirst({ where: { itemId, locationId } })
+        if (stale && stale.id !== id) {
+          await prisma.itemStock.delete({ where: { id: stale.id } })
+        }
+        const row = await prisma.itemStock.upsert({
+          where: { id },
+          create: { id, itemId, locationId, ...state },
+          update: state,
+        })
+        results.push(itemStockToGraphQL(row))
       }
       return results
     },
