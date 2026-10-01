@@ -302,6 +302,40 @@ rejoin `rest`.
 | a bare cart id falls back to the default | the pre-3b path still works |
 | a cart id naming another user's location is rejected | no row created |
 
+**Done 2026-10-02, commit `eda64a54`.** Server tests 277 → 290, in a new 22nd file. This
+task adds **no schema at all** — the location was already in `ShoppingCartInput.id`.
+
+**Do not hand-roll the split.** `parseCartId` already exists at
+`apps/server/src/lib/cartId.ts`, has existed since PR 3b, and `cartId.test.ts` pins it with
+16 tests against its `packages/types` twin — including a vendor id that contains a colon.
+This task's text suggested `const [maybeLocationId, ...rest] = id.split(':')`, which would
+have been a **third** copy of a rule that already had two guarded copies.
+
+`parseCartId` alone cannot serve import, though: for a bare id it returns
+`{ locationId: <the whole id> }`, which `requireLocationRole` then refuses. The pre-3b
+fallback needs a separate "is there a colon at all" test, which is what the new
+`locationIdInCartId` wrapper adds. It returns `string | null`, not a truthy value, so that
+`":vendor-1"` (empty location part) is refused rather than silently falling back.
+
+**Can a vendor id contain a colon? Yes**, through an import payload: `bulkCreateVendors`
+stores `VendorInput.id` verbatim and `VendorInput.id` is `ID!` with no format check. Neither
+id generator produces one — local is `crypto.randomUUID()` (`operations.ts:959`), cloud is
+`@default(cuid())` (`schema.prisma:63`) — but a hand-edited backup can supply anything.
+The mirror-image limit is that a **location** id containing a colon would be misparsed; that
+predates this work, from PR 3b's `cartIdFor`, and neither location id generator makes one.
+
+**A bug fixed on the way: `shoppingFake.cart.upsert` ignored its `update` payload.** Its
+comment claimed `update: {}` was the only payload any resolver passes. False —
+`bulkUpsertShoppingCarts` passes `update: data`. Nothing was broken in production, but
+**every test of a column that upsert writes was unpinned**. With the old fake, mutation
+check 3 would have gone red on the wrong line (`lastPurchasedAt`, not the location), so the
+obvious "fix" would have been to drop that assertion and leave a negative control that
+stays green against a resolver which moves every cart on re-import.
+
+**Task 3's `...rest` trap does not apply here.** `bulkUpsertShoppingCarts` builds `data`
+field by field and `ShoppingCartInput` has no `locationId` at all, so the accident cannot
+happen. A pinning test and a comment were added anyway.
+
 ### Mutation check 4 (required)
 
 Restore the hardcoded `ensureDefaultLocation(userId)`. The first test must go red.
