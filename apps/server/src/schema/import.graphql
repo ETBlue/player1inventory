@@ -107,10 +107,11 @@ input LocationInput {
   #     strategy that happens AFTER `clearAllData` has run, leaving the account
   #     empty and the import dead.
   #
-  # Note which way round point 3 is. The design doc and the PR 4a plan both say
-  # there is "no database constraint keeping it to one row per user". That is
-  # wrong — the index exists. The decision is the same either way; only the
-  # failure it prevents is different.
+  # Note which way round point 3 is. The PR 4 design doc and the PR 4a plan both
+  # SAID there is "no database constraint keeping it to one row per user". That
+  # was wrong — the index exists — and both were corrected on 2026-10-02
+  # (commit 9f5a7692). The decision is the same either way; only the failure it
+  # prevents is different.
 }
 
 # One ItemStock row from a backup: the per-(item x location) stock STATE.
