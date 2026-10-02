@@ -169,9 +169,29 @@ So the export change and the import change must land in the same PR.
 
 | PR | Contents | Why it stands alone |
 |---|---|---|
-| **4a** | The GraphQL surface only — `allItemStocks`, `InventoryLog.locationId` on the type, `InventoryLogInput.locationId`, `LocationInput`, `ItemStockImportInput`, and four bulk mutations. **No web change.** | Nothing calls any of it. Zero behaviour change, safe to deploy alone. |
+| **4a** | The GraphQL surface only — `allItemStocks`, `InventoryLog.locationId` on the type, `InventoryLogInput.locationId`, `LocationInput`, `ItemStockImportInput`, and four bulk mutations. **No web change.** | Nothing calls any of it. ~~Zero behaviour change, safe to deploy alone.~~ **See the note below — this half was wrong.** |
 | **4b** | The payload shape and **both** readers, in one diff. | The export change breaks the import readers, as measured above. |
 | **4c** | Issue #320's two-user purge spec. | Touches none of the above. Could land first. |
+
+**"Zero behaviour change" was wrong, and the E2E gate caught it.** Task 4 made an imported
+cart take its location from its own id and check it through `requireLocationRole`. **A
+server authorization check is a behaviour change even when no client calls the new
+surface** — and the composite cart path was already live, because a cloud export carries no
+`itemStocks`, so `flattenPayloadForCloud` returns early and cart ids keep their prefix.
+
+A cloud → cloud restore calls `clearAllData` first, which deletes the very `Location` rows
+the payload's cart ids name. Nothing uploads the payload's locations until 4b, so the check
+refused and the restore died with *"Import failed during Forbidden."* — **after** the
+account had been cleared. That is data loss, and it existed only on the unpushed branch.
+
+Fixed in task 8, by the user's decision: fall back to the caller's default when **no row
+holds** the named id, and refuse only when a row holds it and belongs to someone else. So
+4a is behaviour-neutral for a deleted or unknown location, and still refuses a stranger's
+live one — a deliberate behaviour change, stated rather than hidden. The full write-up is in
+the design doc under *4a is NOT behaviour-neutral*.
+
+No unit test could have found this. Every server test runs against a fake, and no fake
+models "`clearAllData` ran, then a cart arrives naming a row that no longer exists."
 
 **Note on 4c's order.** 4c builds a two-user cloud E2E fixture. 4b's cart-collision test
 needs the same fixture. Doing 4c first means building it once. This was offered and not
