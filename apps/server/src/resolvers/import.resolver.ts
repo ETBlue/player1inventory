@@ -377,18 +377,25 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             userId,
           },
         })
-        // DUAL-WRITE, REMOVED IN PR 5 (lib/stockDualWrite.ts). The import
+        // DUAL-WRITE, REMOVED IN PR 4b (lib/stockDualWrite.ts). The import
         // surface is FLAT — `ItemInput` carries the five stock fields inline
-        // with no `locationId`, and it does not gain `LocationInput` /
-        // `ItemStockInput` until PR 4 — but since PR 2 the cloud pantry reads
+        // with no `locationId` — but since PR 2 the cloud pantry reads
         // `ItemStock`, not those columns. Without this mirror every imported
         // item lands in the catalog and is stocked NOWHERE: invisible in the
         // pantry, with no error anywhere. Caught by
         // `e2e/tests/settings/import-export-cloud.spec.ts`.
         //
-        // The caller's default location, like the other dual-writes — PR 4
-        // gives the payload real locations and maps its default onto the
-        // destination's `isDefault` (design §6), and this goes away with it.
+        // PR 4a added `LocationInput`, `ItemStockImportInput` and their four
+        // bulk mutations, but no client calls them yet, so this mirror is
+        // still the only thing that stocks an imported item. **PR 4b** moves
+        // the client onto them and deletes this call — not PR 5, which the
+        // header used to say. The FILE outlives 4b: its other 4 calls (in
+        // item, itemStock, cart and recipe resolvers) go in PR 5, with
+        // `Item`'s five state columns.
+        //
+        // Until then the mirror writes the caller's DEFAULT location, like
+        // the other dual-writes. 4b maps the payload's default location onto
+        // the destination's `isDefault` instead (design §6).
         await mirrorStockToDefaultLocation(userId, id, {
           targetQuantity: rest.targetQuantity,
           refillThreshold: rest.refillThreshold,
@@ -626,18 +633,25 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           create: { id, ...data },
           update: data,
         })
-        // DUAL-WRITE, REMOVED IN PR 5 (lib/stockDualWrite.ts). The import
+        // DUAL-WRITE, REMOVED IN PR 4b (lib/stockDualWrite.ts). The import
         // surface is FLAT — `ItemInput` carries the five stock fields inline
-        // with no `locationId`, and it does not gain `LocationInput` /
-        // `ItemStockInput` until PR 4 — but since PR 2 the cloud pantry reads
+        // with no `locationId` — but since PR 2 the cloud pantry reads
         // `ItemStock`, not those columns. Without this mirror every imported
         // item lands in the catalog and is stocked NOWHERE: invisible in the
         // pantry, with no error anywhere. Caught by
         // `e2e/tests/settings/import-export-cloud.spec.ts`.
         //
-        // The caller's default location, like the other dual-writes — PR 4
-        // gives the payload real locations and maps its default onto the
-        // destination's `isDefault` (design §6), and this goes away with it.
+        // PR 4a added `LocationInput`, `ItemStockImportInput` and their four
+        // bulk mutations, but no client calls them yet, so this mirror is
+        // still the only thing that stocks an imported item. **PR 4b** moves
+        // the client onto them and deletes this call — not PR 5, which the
+        // header used to say. The FILE outlives 4b: its other 4 calls (in
+        // item, itemStock, cart and recipe resolvers) go in PR 5, with
+        // `Item`'s five state columns.
+        //
+        // Until then the mirror writes the caller's DEFAULT location, like
+        // the other dual-writes. 4b maps the payload's default location onto
+        // the destination's `isDefault` instead (design §6).
         await mirrorStockToDefaultLocation(userId, id, {
           targetQuantity: rest.targetQuantity,
           refillThreshold: rest.refillThreshold,
