@@ -103,7 +103,7 @@ plain code deploy.
 
 | PR | Contents | Risk |
 |---|---|---|
-| **4a** | The GraphQL surface only. No web change. | ~~Low. Nothing calls it.~~ **Measured 2026-10-02: NOT low.** Task 4 changes the behaviour of an existing mutation and breaks cloud → cloud import on its own — see *4a is NOT behaviour-neutral* under Verification. |
+| **4a** | The GraphQL surface only. No web change. | **Low again, after task 8 — but not because nothing calls it.** Task 4 changed the behaviour of an existing mutation and broke cloud → cloud import on its own; task 8 fixed that and the gate is green. 4a still refuses a cart naming a STRANGER's live location, which is a deliberate behaviour change and the reason the old “nothing calls it, so nothing can change” reasoning was wrong. See *4a is NOT behaviour-neutral* under Verification. |
 | **4b** | The payload shape and both import readers, in one diff. Includes the cart-id leak fix. | High. This is the data-movement rewrite. |
 | **4c** | Issue #320's two-user purge spec. | Low. Test only. |
 
@@ -545,13 +545,66 @@ location through `requireLocationRole`. In a **cloud → cloud** restore that id
 Before 4a the resolver ignored the id's prefix and wrote every cart to the caller's default
 location — wrong, but it worked.
 
-**So task 4 depends on 4b and cannot ship before it.** Three ways out, none chosen here:
+### How it was fixed — task 8, 2026-10-02
 
-| Option | Cost |
+Three ways out were put to the user. **The user chose option 2.**
+
+| Option | Cost | Chosen |
+|---|---|---|
+| 1. Move the strict check to 4b, where the client remaps locations | 4a keeps `ensureDefaultLocation` for carts; task 4's 13 tests move to 4b | no |
+| 2. Fall back to the default when the named location **does not exist**, and refuse only when it exists and is someone else's | needs an unscoped existence check next to `requireLocationRole`, the one thing this series routes all location checks through | **yes** |
+| 3. Pull the client half of 4b forward into 4a | 4a stops being the "nothing calls it" PR, which was its whole reason for existing | no |
+
+**Why option 2 and not option 1.** Option 1 is the smaller diff, but it leaves 4a shipping
+a resolver that silently writes every imported cart to the wrong location — the pre-4a bug —
+and moves 13 passing tests into a PR that has not been written. Option 2 keeps the
+authorization gain 4a was for and makes the one case that broke behave the way it did
+before. Option 3 was rejected because it merges 4a into 4b.
+
+**The rule `resolveCartLocations` implements now**, per distinct id named by a cart id:
+
+| Case | Result |
 |---|---|
-| Move the strict check to 4b, where the client remaps locations | 4a keeps `ensureDefaultLocation` for carts; task 4's 13 tests move to 4b |
-| Fall back to the default when the named location **does not exist**, and refuse only when it exists and is someone else's | needs an unscoped existence check next to `requireLocationRole`, the one thing this series routes all location checks through |
-| Pull the client half of 4b forward into 4a | 4a stops being the "nothing calls it" PR, which was its whole reason for existing |
+| no `Location` row holds it | write the cart to the caller's **default** |
+| a row holds it and the caller holds a role on it | write the cart **there** |
+| a row holds it and the caller does **not** | **FORBIDDEN**, nothing written at all |
+
+The unclaimed branch is reachable from three real payloads, so it does not become dead code
+after 4b: a pre-3b bare cart id, a cloud backup whose source locations `clearAllData` just
+deleted (4b removes only this one), and a hand-edited id naming nothing.
+
+**The accepted cost, stated plainly.** The unscoped `findUnique` tells a caller whether a
+location id exists at all. `requireLocationRole` reports "not yours" and "does not exist"
+with the same error on purpose, so the mutation cannot be used to probe another account's
+ids — and here the two answers become distinguishable. This is the same oracle task 5
+already accepted in `requireOwnLocationIdsOrUnclaimed`, for the same reason: the
+alternative is worse. Letting the write proceed leaks the same fact through an unhandled
+foreign-key error **after a partial write**, and these resolvers are not transactional, so
+that partial write stays on disk. The query reads one column and makes no authorization
+decision; the decision is still entirely `requireLocationRole`'s.
+
+One shape changed behaviour beyond the bug. `":vendor"` — a colon with an empty location
+prefix — was refused outright by task 4. It now takes the unclaimed fallback like any other
+id no row holds. A hand-edited backup *can* create a location whose id is `''`, because
+`LocationInput.id` is stored verbatim, and in that case the role check decides.
+
+**Measured after the fix**, same command, same machine:
+
+| Run | Result |
+|---|---|
+| `pnpm test:e2e --project=cloud e2e/tests/settings/import-export-cloud.spec.ts` before task 8 | 1 passed, **1 failed** (51.9s), twice |
+| the same command after task 8 | **2 passed** (47.5s) |
+| `pnpm test:server` | 340 passed / 24 files → **346 passed / 24 files** |
+
+Three mutation checks, each red for the reason claimed:
+
+| Mutation | Tests that went red | Failure text |
+|---|---|---|
+| the unclaimed branch refuses instead of falling back (task 4 restored) | 5 | `expected [ { message: 'Forbidden', …(3) } ] to be undefined` |
+| a stranger's live location falls back instead of refusing | 6 | `expected undefined to be 'Forbidden'` |
+| `ensureDefaultLocation(userId)` hardcoded for every cart | 7 | `expected 'loc_kitchen' to be 'loc_garage'` |
+
+The first two are a pair: each alone passes against a different wrong implementation.
 
 ### The cart leak is unproved
 

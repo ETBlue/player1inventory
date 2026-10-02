@@ -250,10 +250,11 @@ pnpm test                                        # BOTH suites — web + server,
 
 **`pnpm test` runs both workspaces.** The root script is `pnpm -r test`, which recurses into
 every workspace package that defines a `test` script — today `apps/web` (**2259 tests**
-across 249 files) and `apps/server` (**340** across 24). Measured 2026-10-02; the figures
+across 249 files) and `apps/server` (**346** across 24). Measured 2026-10-02; the figures
 here said ~1700 and ~100 until 2026-09-29, and `apps/server` said 259 across 20 until
-cloud locations PR 4a added 81 tests — 63 in 4 new files, 18 added to 3 existing ones —
-so re-measure rather than quote these. `apps/web` has not moved: PR 4a is server-only.
+cloud locations PR 4a added 87 tests — 69 in 4 new files, 18 added to 3 existing ones.
+It said **340** for a few hours on 2026-10-02, between 4a's task 7 and its task 8, which
+added the last 6 — so re-measure rather than quote these. `apps/web` has not moved: PR 4a is server-only.
 Both are
 `vitest run`, so the root command is non-interactive and
 never drops into watch mode. Packages without a `test` script (`apps/design`, `packages/types`)

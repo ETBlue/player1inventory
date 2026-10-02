@@ -52,7 +52,7 @@ PR 1 and PR 5 already use: additive changes first, destructive changes last.
 | **3a** | ✅ merged — [#291](https://github.com/ETBlue/player1inventory/pull/291) | The **additive** migration: `InventoryLog.locationId` and `Cart.locationId` added, backfilled and constrained. No `Cart.id` re-key. Inventory logs scoped by location, server and client. |
 | **3b** | ✅ merged — [#293](https://github.com/ETBlue/player1inventory/pull/293) — deployed 2026-09-19 | The destructive half: the `'no-vendor'` split, the composite `Cart.id` re-key, the cart resolvers, vendor carts at the right time, `checkout`, `consumeRecipes`, and **five** `!isCloud` bypasses (the plan said two). |
 | **3c** | ✅ merged — [#297](https://github.com/ETBlue/player1inventory/pull/297) — deployed 2026-09-21, **deploy unverified** | `applyUnitSwitch` and `removeItemFromLocation`'s cloud cascade. Two new features, blocked by neither 3a nor 3b. **PR 3 ends here.** |
-| **4a** | 🔄 built, **gate RED** — branch `feature/cloud-locations-pr4a`, `5fc7e9ca`‥`eb503758`; code in `3fea034e`, `6222e335`, `ebfb0f30`, `eda64a54`, `8b47f690`, `627a23f2`, `eb503758` | The GraphQL surface — `allItemStocks`, `InventoryLog.locationId`, `InventoryLogInput.locationId`, `LocationInput`, `ItemStockImportInput`, four bulk mutations, plus an imported cart's location read from its own id (no new input needed). No web change. Server tests 259 → 340 across 20 → 24 files, all green; all 7 mutation checks red. **But NOT behaviour-neutral:** task 4's cart check breaks cloud → cloud import (`import-export-cloud.spec.ts:133`). Must be resolved before merge. |
+| **4a** | 🔄 built, **full gate green**, not yet pushed — branch `feature/cloud-locations-pr4a`, `5fc7e9ca`‥`f0c1ddad`; code in `3fea034e`, `6222e335`, `ebfb0f30`, `eda64a54`, `8b47f690`, `627a23f2`, `eb503758`, `f0c1ddad` | The GraphQL surface — `allItemStocks`, `InventoryLog.locationId`, `InventoryLogInput.locationId`, `LocationInput`, `ItemStockImportInput`, four bulk mutations, plus an imported cart's location read from its own id (no new input needed). No web change. Server tests 259 → **346** across 20 → 24 files, all green; all **10** mutation checks red. **NOT behaviour-neutral, and task 8 (`f0c1ddad`) fixed the part that broke:** task 4's cart check refused a location id `clearAllData` had just deleted, killing cloud → cloud import (`import-export-cloud.spec.ts:133`). Carts now fall back to the caller's default when no row holds the named id, and refuse only a stranger's **live** location. That refusal stays and is a deliberate behaviour change. |
 | **4b** | 🔲 Pending | The payload shape and **both** import readers, in one diff: the single remap rule, lossless cloud export, `flattenPayloadForCloud` and `MigrationLocationWarningDialog` deleted, composite cart ids kept, 2 of the 6 `stockDualWrite` calls removed. |
 | **4c** | 🔲 Pending | Issue #320 — a two-user real-SQL spec for `purgeUserData`. Independent of 4a and 4b. |
 | **5** | 🔲 Pending | **Contract step:** drop the five `Item` columns, remove them from the GraphQL type and inputs, delete `apps/server/src/lib/stockDualWrite.ts` and all of its call sites. |
@@ -1267,9 +1267,31 @@ full list is in the design doc under *What §6 got wrong*.
 
 | PR | Contents | Why it stands alone |
 |---|---|---|
-| **4a** | The GraphQL surface only. No web change. | Nothing calls any of it. Zero behaviour change, safe to deploy alone. |
+| **4a** | The GraphQL surface only. No web change. | No client calls any of the new surface. It is **not** zero behaviour change: it tightens one existing mutation. Safe to deploy alone — see the note below. |
 | **4b** | The payload shape and both import readers, in one diff. | The export change **breaks** the import readers, so they cannot be separated. |
 | **4c** | Issue #320's two-user purge spec. | Touches none of the above. |
+
+**4a's behaviour change, stated precisely (task 8, 2026-10-02).** The row above used to
+read *"Nothing calls any of it. Zero behaviour change, safe to deploy alone."* The first
+sentence is true; the second was false, and the E2E gate caught it.
+`bulkCreateShoppingCarts` / `bulkUpsertShoppingCarts` are **existing** mutations the import
+client already calls, and 4a changed where they write. Nobody has to call the new surface
+for that to matter.
+
+What 4a does to an imported cart now:
+
+| Cart id names | Before 4a | 4a as first committed | 4a after task 8 |
+|---|---|---|---|
+| a live location of the caller's | caller's default | that location | that location |
+| a location **no row holds** — a deleted cloud backup id, or a pre-3b bare id | caller's default | **FORBIDDEN, whole import dies** | caller's default |
+| a **stranger's live** location | caller's default | FORBIDDEN | FORBIDDEN |
+
+Rows 1 and 3 are deliberate behaviour changes and they stay. Row 3 is the authorization
+gain 4a exists for: before 4a an imported cart naming someone else's location was written
+to the caller's default, which hid the attempt. Row 2 was the regression — it broke
+cloud → cloud restore outright ("Import failed during Forbidden.") and task 8 restored the
+old answer for it. The design doc has the measurement and the three options the user chose
+between, under *4a is NOT behaviour-neutral*.
 
 **Why 4a and 4b cannot be cut the other way round.** The first split put lossless cloud
 export in 4a. That does not work. Two import readers use the **old payload shape as a
@@ -1355,8 +1377,8 @@ of tests reporting as covered:
 All five are fixed, and `stockFake.test.ts` grew from 11 tests to 21 pinning the parts no
 resolver spec can reach.
 
-**4. 4a is not behaviour-neutral, and the E2E gate is RED because of it.** Measured in task
-7 on the committed branch:
+**4. 4a is not behaviour-neutral — the E2E gate caught it, and task 8 fixed it.** Measured
+in task 7 on the committed branch:
 
 | Run | Result |
 |---|---|
@@ -1365,16 +1387,31 @@ resolver spec can reach.
 | `pnpm test:e2e --project=cloud e2e/tests/settings/import-export-cloud.spec.ts` | 1 passed, **1 failed** (51.9s) |
 | the same command with task 4's cart change reverted | **2 passed** (43.2s) |
 
-One failure is real and repeats: `import-export-cloud.spec.ts:133`, *user can export and
-re-import cloud data (cloud → cloud)*. The page says **"Import failed during Forbidden."**
+One failure was real and repeated: `import-export-cloud.spec.ts:133`, *user can export and
+re-import cloud data (cloud → cloud)*. The page said **"Import failed during Forbidden."**
 The other cloud failure moved between runs (`cleanup-endpoint.spec.ts:129` the first time,
 with `Can't reach database server at ep-round-surf-…neon.tech:5432`;
 `settings/vendors.spec.ts:218` the second, a 30s navigation timeout), which is the
-starvation / flaky signature root `CLAUDE.md` describes — not a code failure.
+starvation / flaky signature root `CLAUDE.md` describes — not a code failure. It did not
+reappear in task 8's run, which is further evidence of that.
 
-The cause, and the three ways out, are written up in the
-[PR 4 design doc](2026-10-02-cloud-locations-pr4-design.md) under *4a is NOT
-behaviour-neutral*. In short: a cloud export's cart ids still name the **source** account's
-location, the import deletes those `Location` rows before uploading, nothing uploads the
-payload's locations until 4b, and task 4's `requireLocationRole` then refuses an id that no
-longer exists. Task 4 therefore depends on 4b.
+The cause: a cloud export's cart ids still name the **source** account's location, the
+import deletes those `Location` rows before uploading, nothing uploads the payload's
+locations until 4b, and task 4's `requireLocationRole` then refused an id that no longer
+existed.
+
+**Fixed in task 8** (`f0c1ddad`). The user chose option 2 of the three in the
+[PR 4 design doc](2026-10-02-cloud-locations-pr4-design.md): `resolveCartLocations` asks an
+unscoped `findUnique` whether any row holds the named id, falls back to the caller's default
+when none does, and routes the decision through `requireLocationRole` only when one does. So
+task 4 no longer depends on 4b. Measured after the fix:
+
+| Run | Result |
+|---|---|
+| `pnpm test:e2e --project=cloud e2e/tests/settings/import-export-cloud.spec.ts` | **2 passed** (47.5s) |
+| `pnpm test:e2e:all` | **GREEN.** local **170 / 5 skipped** (3m14s) · cloud **90 / 7 skipped** (9m12s) · pwa **69** (1m23s) |
+| `pnpm test:server` | 340 → **346 passed**, 24 files |
+
+The 3 extra mutation checks task 8 added are in the plan doc under *Task 8*, with their
+failure text. Checks 8 and 9 are a pair — "refuse an unclaimed id" and "accept a stranger's
+live location" are different wrong implementations and each check catches only one.

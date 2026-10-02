@@ -1,7 +1,7 @@
 # Cloud locations PR 4a — implementation plan
 
 **Date:** 2026-10-02
-**Status:** 🔄 Tasks 1–7 done, **E2E gate RED** — see task 7's Done note. Not pushed, no PR.
+**Status:** ✅ Tasks 1–8 done, **full gate green** (task 8 fixed the cart regression task 7's gate found). Not pushed, no PR — the main session does both.
 **Design:** [cloud locations PR 4 design](2026-10-02-cloud-locations-pr4-design.md)
 **Brainstorming:** [PR 4 brainstorming](2026-10-02-brainstorming-pr4.md)
 **Branch:** `feature/cloud-locations-pr4a`
@@ -622,17 +622,131 @@ change even with no client calling the new surface.
 
 ---
 
+## Task 8 — the cart regression, fixed (unplanned)
+
+Added 2026-10-02, after task 7's gate found a blocking cloud E2E failure. Not in the
+original plan. This plan is a record now, not a forecast.
+
+### What was wrong
+
+Task 4 made an imported cart take its location from its own id
+(`${locationId}:${vendorId | 'no-vendor'}`) and verify it through `requireLocationRole`.
+A cloud → cloud restore then died with **"Import failed during Forbidden."**
+
+1. A cloud export carries no `itemStocks`, so `flattenPayloadForCloud` returns early
+   (`apps/web/src/lib/importData.ts:365`) and the cart ids keep their composite form,
+   naming the **source** account's locations.
+2. The import calls `clearAllData` first, which deletes those very `Location` rows.
+3. Nothing uploads the payload's locations — `bulkCreateLocations` exists as of task 5,
+   but no client calls it until 4b.
+4. `requireLocationRole(ctx, <a deleted location id>, 'member')` refused, and because
+   "not yours" is indistinguishable from "does not exist" on purpose, the whole mutation
+   threw.
+
+### What was done
+
+The user chose option 2 of the three in the design doc: **fall back to the caller's default
+when no row holds the named id, and refuse only when a row holds it and belongs to someone
+else.** `resolveCartLocations` now does, once per **distinct** named id and all of it before
+the write loop:
+
+```ts
+const taken = await prisma.location.findUnique({ where: { id: named }, select: { id: true } })
+if (taken) {
+  await requireLocationRole(ctx, named, 'member')
+  resolved.set(named, named)
+} else {
+  resolved.set(named, await ensureDefault())
+}
+```
+
+One shape changed beyond the bug: `":vendor"` — a colon with an empty location prefix — was
+refused outright by task 4 and now takes the unclaimed fallback like any other unheld id.
+A hand-edited backup *can* create a location whose id is `''` (`LocationInput.id` is stored
+verbatim), and in that case the role check decides. Task 4's special case in
+`locationIdInCartId` is gone, so `null` there now means only "no colon at all".
+
+**A sibling, not task 5's helper.** `requireOwnLocationIdsOrUnclaimed` returns `void`,
+because for `LocationInput` an unclaimed id just means "free to create" and the caller needs
+no further answer. Here the resolver must know **which** ids came back unclaimed, so it can
+send those carts to the default. Same two-step pattern — unscoped existence check, then
+`requireLocationRole` — with a result instead of a bare assertion, and the same accepted
+oracle, documented in the helper's block comment.
+
+### Tests
+
+`import-cart-location.resolver.test.ts`: **13 → 19 cases.** One existing test changed its
+expectation (the `":vendor"` shape now falls back instead of being refused); the other 12
+are unchanged. The fixture keeps three locations and the live target is **not** the default,
+so "the location in the id" and "the caller's default" stay different answers.
+
+| New case | Mutations covered |
+|---|---|
+| an unclaimed id falls back to the default | create and upsert |
+| a mixed payload — live, deleted and bare ids — places each one separately | create and upsert |
+| a stranger's **live** location is still refused when an unclaimed id sits ahead of it | create and upsert |
+
+### Mutation checks 8, 9 and 10
+
+Checks 8 and 9 are a **pair**: each alone passes against a different wrong implementation.
+
+| # | Mutation | Red | Failure text |
+|---|---|---|---|
+| 8 | the unclaimed branch refuses instead of falling back (task 4 restored) | 5 tests | `expected [ { message: 'Forbidden', …(3) } ] to be undefined` |
+| 9 | a stranger's live location falls back instead of refusing | 6 tests | `expected undefined to be 'Forbidden'` |
+| 10 | `ensureDefaultLocation(userId)` hardcoded for every cart, id ignored | 7 tests | `expected 'loc_kitchen' to be 'loc_garage'` |
+
+Each was read, not just counted. Check 8 names the refusal that should not have happened,
+check 9 names the refusal that should have, and check 10 names the two locations —
+`loc_kitchen` is the default and `loc_garage` is the live non-default target. None went red
+for an incidental reason.
+
+### Measured
+
+Every number below was measured in this worktree, on the unmodified tree first where a
+baseline was needed.
+
+| Check | Result |
+|---|---|
+| `uptime` before starting | load average 2.03 — not starved |
+| `pnpm test:server` **baseline, unmodified tree** | 340 passed, 24 files — matches task 7 |
+| `pnpm test:server` after the fix | **346 passed, 24 files** |
+| `(cd apps/web && pnpm check)` baseline and after | 4 warnings both times, all in `src/routes/shopping/index.tsx` (187, 191, 211, 215) |
+| `pnpm codegen` | clean; `git status` stays clean (both generated files are gitignored) |
+| `(cd apps/web && pnpm lint)` | pass — the same 4 warnings |
+| `pnpm build` (root) | pass, exit 0 |
+| `grep 'TS6385' /tmp/p1i-build-task8.log` | no match |
+| `(cd apps/web && pnpm build-storybook)` | pass |
+| `pnpm test` (root, both workspaces) | `apps/server` **346 passed (24 files)**, `apps/web` **2259 passed (249 files)** — unchanged, 4a is still server-only — `test:spec` 57 pass / 0 fail |
+| `pnpm test:e2e --project=cloud e2e/tests/settings/import-export-cloud.spec.ts` | **2 passed (47.5s)** — was 1 passed / 1 failed |
+| `pnpm test:e2e:all` | **GREEN.** local **170 passed / 5 skipped** (3m14s) · cloud **90 passed / 7 skipped** (9m12s) · pwa **69 passed** (1m23s) |
+
+The E2E result is the exact baseline the design doc records for `main` at `dac2dcd4`. No
+flake appeared in this run, so task 7's second, moving cloud failure
+(`cleanup-endpoint.spec.ts:129`, then `settings/vendors.spec.ts:218`) did not need a
+re-run — which is itself evidence it was starvation, not code.
+
+### What this task's brief got wrong
+
+| The brief said | Truth |
+|---|---|
+| "Task 4's tests … (13 of them). **Some will need updating.**" — implying several | Exactly **one** needed its expectation changed: the `":vendor"` empty-prefix case. The other 12 pass unchanged, including both stranger-location refusals. |
+| `stockFake.ts`'s `location` store "already supports `findUnique` with `where: { id, userId }` **applied**" | True, and it matters in the opposite direction from what the sentence suggests. The new call passes `where: { id }` only, on purpose — an unscoped existence check. The fake's `matchesLocation` applies whatever keys it is given, so `{ id }` alone matches across accounts, which is what makes mutation check 9 able to go red. |
+| The suggested code shape used `const taken = named ? await findUnique(…) : null` | Truthiness sends `''` down the no-prefix path without ever asking the database. The code uses `named === null` instead, so `":vendor"` goes through the same existence check as any other id. Same answer today (no row holds `''`), one fewer special case, and correct if a hand-edited backup ever creates one. |
+
+---
+
 ## Expected baseline after 4a
 
 Measured on `main` at `dac2dcd4`. Re-measure rather than trusting these.
 
-| Check | Before | Expected after |
-|---|---|---|
-| `apps/server` tests | 259 passed, 20 files | 259 + the new cases |
-| `apps/web` tests | 2259 passed, 249 files | **2259, unchanged** — 4a touches no web code |
-| E2E local | 170 passed / 5 skipped | unchanged |
-| E2E cloud | 90 passed / 7 skipped | unchanged |
-| E2E pwa | 69 passed | unchanged |
+| Check | Before | Expected after | **Measured after task 8** |
+|---|---|---|---|
+| `apps/server` tests | 259 passed, 20 files | 259 + the new cases | **346 passed, 24 files** |
+| `apps/web` tests | 2259 passed, 249 files | **2259, unchanged** — 4a touches no web code | **2259, unchanged** ✅ |
+| E2E local | 170 passed / 5 skipped | unchanged | **170 / 5** ✅ (3m14s) |
+| E2E cloud | 90 passed / 7 skipped | unchanged | **90 / 7** ✅ (9m12s) |
+| E2E pwa | 69 passed | unchanged | **69** ✅ (1m23s) |
 | `stockDualWrite` calls | 6 across 5 files | **6, unchanged** — 4b removes two |
 | `REMOVED IN PR 5` markers | 7 | 7, with two re-labelled to 4b |
 
