@@ -2,7 +2,10 @@
 
 Status: 🔄 **In Progress** — PRs 0, 1, 2, 3a, 3b and 3c are ✅ **merged and deployed to
 production**. **PR 3 is complete.** **PR 4 splits into 4a, 4b and 4c** (2026-10-02 — see
-*Amendment 2026-10-02* below). PRs 4a, 4b, 4c and 5 are 🔲 pending. The three overdue smoke
+*Amendment 2026-10-02* below). **4a is built but BLOCKED** on
+`feature/cloud-locations-pr4a`: its server surface is complete and all 340 server tests
+pass, but one cloud E2E spec fails — a cloud → cloud import now dies with `Forbidden`. See
+*What 4a found*, item 4. 4b, 4c and 5 are 🔲 pending. The three overdue smoke
 tests were **automated on 2026-09-23** as `e2e/tests/location-scoped-writes.spec.ts` (4
 cloud test cases). One narrower check is still owed: nothing has run the new server code
 against data the PR 3b migration produced — see *The smoke tests are overdue, not pending*
@@ -49,7 +52,7 @@ PR 1 and PR 5 already use: additive changes first, destructive changes last.
 | **3a** | ✅ merged — [#291](https://github.com/ETBlue/player1inventory/pull/291) | The **additive** migration: `InventoryLog.locationId` and `Cart.locationId` added, backfilled and constrained. No `Cart.id` re-key. Inventory logs scoped by location, server and client. |
 | **3b** | ✅ merged — [#293](https://github.com/ETBlue/player1inventory/pull/293) — deployed 2026-09-19 | The destructive half: the `'no-vendor'` split, the composite `Cart.id` re-key, the cart resolvers, vendor carts at the right time, `checkout`, `consumeRecipes`, and **five** `!isCloud` bypasses (the plan said two). |
 | **3c** | ✅ merged — [#297](https://github.com/ETBlue/player1inventory/pull/297) — deployed 2026-09-21, **deploy unverified** | `applyUnitSwitch` and `removeItemFromLocation`'s cloud cascade. Two new features, blocked by neither 3a nor 3b. **PR 3 ends here.** |
-| **4a** | 🔲 Pending | The GraphQL surface only — `allItemStocks`, `InventoryLog.locationId`, `InventoryLogInput.locationId`, `LocationInput`, `ItemStockImportInput`, four bulk mutations. **No web change, no behaviour change.** |
+| **4a** | 🔄 built, **gate RED** — branch `feature/cloud-locations-pr4a`, `5fc7e9ca`‥`eb503758`; code in `3fea034e`, `6222e335`, `ebfb0f30`, `eda64a54`, `8b47f690`, `627a23f2`, `eb503758` | The GraphQL surface — `allItemStocks`, `InventoryLog.locationId`, `InventoryLogInput.locationId`, `LocationInput`, `ItemStockImportInput`, four bulk mutations, plus an imported cart's location read from its own id (no new input needed). No web change. Server tests 259 → 340 across 20 → 24 files, all green; all 7 mutation checks red. **But NOT behaviour-neutral:** task 4's cart check breaks cloud → cloud import (`import-export-cloud.spec.ts:133`). Must be resolved before merge. |
 | **4b** | 🔲 Pending | The payload shape and **both** import readers, in one diff: the single remap rule, lossless cloud export, `flattenPayloadForCloud` and `MigrationLocationWarningDialog` deleted, composite cart ids kept, 2 of the 6 `stockDualWrite` calls removed. |
 | **4c** | 🔲 Pending | Issue #320 — a two-user real-SQL spec for `purgeUserData`. Independent of 4a and 4b. |
 | **5** | 🔲 Pending | **Contract step:** drop the five `Item` columns, remove them from the GraphQL type and inputs, delete `apps/server/src/lib/stockDualWrite.ts` and all of its call sites. |
@@ -1294,10 +1297,84 @@ and the finding is withdrawn.
 
 ### PR 5's teardown list shrinks
 
-4b removes the 2 `stockDualWrite` calls in the import path (`import.resolver.ts:88` and
-`:328`). Their markers say "REMOVED IN PR 5" in the header and "goes away with PR 4" in the
-body; the body is right. PR 5 is left with **4 calls in 4 files** plus the inline
-`applyUnitSwitch` block at `itemStock.resolver.ts:320-328`.
+4b removes the 2 `stockDualWrite` calls in the import path — `import.resolver.ts:392` and
+`:641` after 4a, where the same two were at `:88` and `:328` when this was first written.
+Their markers used to say "REMOVED IN PR 5" in the header and "goes away with PR 4" in the
+body; the body was right, and 4a's task 7 made both halves say **4b** (`eb503758`). PR 5 is
+left with **4 calls in 4 files** plus the inline `applyUnitSwitch` block at
+`itemStock.resolver.ts:320-328`.
 
-Today's count, measured: **6 calls across 5 files**, and **7** `REMOVED IN PR 5` markers —
-not the five the earlier docs say. Count the markers, not the files.
+Counts measured again on 2026-10-02, after 4a: **6 calls across 5 files** and **7** markers
+— 5 still reading "REMOVED IN PR 5" and 2 now reading "REMOVED IN PR 4b". Earlier docs said
+five markers. Count the markers, not the files.
+
+### What 4a found
+
+**1. Issue [#327](https://github.com/ETBlue/player1inventory/issues/327) — the other nine
+bulk import mutation pairs have the same two cross-user holes 4a closed in its own.** Found
+by task 5 while writing `bulkCreateLocations` / `bulkUpsertLocations`, then checked against
+all nine:
+
+| Mutation family | The hole |
+|---|---|
+| all nine `bulkUpsert*` | an unscoped `where: { id }` with `userId` inside the `update` payload. A payload naming a row id someone else holds **overwrites that row and reassigns it to the caller**, taking its children with it |
+| all nine `bulkCreate*` | an unscoped `findUnique` then `continue`. The caller's **own** row is silently dropped because a stranger holds that id — no error, just fewer rows back |
+
+4a's four new mutations authorize every id the payload names **before** the write loop, via
+`requireLocationRole`. Fixing the nine existing ones is out of 4a's scope — the payloads,
+their resolvers and their tests are all different shapes — so it is filed rather than done.
+
+**2. The design doc's `Location.isDefault` claim was false.** It said there is "no database
+constraint keeping it to one row per user". There is:
+
+```sql
+CREATE UNIQUE INDEX "Location_one_default_per_user_key"
+  ON "Location" ("userId") WHERE "isDefault";
+```
+
+`apps/server/prisma/migrations/20260830000000_add_location_and_item_stock/migration.sql:57`.
+Prisma cannot express a partial index, so it is hand-written SQL and does **not** appear in
+`schema.prisma` — which is how the claim survived being read several times. It changes the
+consequence, not just the detail: honouring a payload's `isDefault` would not quietly create
+a second default, it would die with an unhandled `P2002` **after `clearAllData` has already
+run**, leaving the account empty. Corrected in the design doc and the plan by task 5
+(`9f5a7692`).
+
+**3. Five test doubles had holes, all found by a mutation check going red for the wrong
+reason or not at all.** Every server test runs against these fakes, so each hole was a set
+of tests reporting as covered:
+
+| Task | Fake | What no test could see |
+|---|---|---|
+| 1 | `stockFake.matchesStock` | it dropped `where: { location: { userId } }` — the only user scope a whole-account `ItemStock` read has. Any such test would have passed against a resolver with **no** scope |
+| 3 | `inventoryLogFake` | `create` invented its own id and there was no `findUnique` / `upsert`, so an import losing the payload's ids, or an `update` moving a log, was invisible |
+| 4 | `shoppingFake.cart.upsert` | it returned the existing row untouched and ignored `update`, so every column a cart upsert writes was unpinned |
+| 5 | `stockFake.location` | `create` dropped `data.id`, the primary key was not enforced, and `upsert` merged `create` and `update` together |
+| 6 | `stockFake.itemStock` | `create` threw away `data.id`, `createdAt` and `updatedAt`, raised no `P2002` on a taken id, and `update` ignored `itemId` / `locationId` — the exact two columns a row-steal moves |
+
+All five are fixed, and `stockFake.test.ts` grew from 11 tests to 21 pinning the parts no
+resolver spec can reach.
+
+**4. 4a is not behaviour-neutral, and the E2E gate is RED because of it.** Measured in task
+7 on the committed branch:
+
+| Run | Result |
+|---|---|
+| `pnpm test:e2e:all` | local 170 passed / 5 skipped (3m17s) · cloud **2 failed** / 7 skipped / 88 passed (9m33s) · pwa 69 passed (1m23s) |
+| `pnpm test:e2e --project=cloud` (re-run) | **2 failed** / 7 skipped / 88 passed (9.7m) — a different second failure each time |
+| `pnpm test:e2e --project=cloud e2e/tests/settings/import-export-cloud.spec.ts` | 1 passed, **1 failed** (51.9s) |
+| the same command with task 4's cart change reverted | **2 passed** (43.2s) |
+
+One failure is real and repeats: `import-export-cloud.spec.ts:133`, *user can export and
+re-import cloud data (cloud → cloud)*. The page says **"Import failed during Forbidden."**
+The other cloud failure moved between runs (`cleanup-endpoint.spec.ts:129` the first time,
+with `Can't reach database server at ep-round-surf-…neon.tech:5432`;
+`settings/vendors.spec.ts:218` the second, a 30s navigation timeout), which is the
+starvation / flaky signature root `CLAUDE.md` describes — not a code failure.
+
+The cause, and the three ways out, are written up in the
+[PR 4 design doc](2026-10-02-cloud-locations-pr4-design.md) under *4a is NOT
+behaviour-neutral*. In short: a cloud export's cart ids still name the **source** account's
+location, the import deletes those `Location` rows before uploading, nothing uploads the
+payload's locations until 4b, and task 4's `requireLocationRole` then refuses an id that no
+longer exists. Task 4 therefore depends on 4b.

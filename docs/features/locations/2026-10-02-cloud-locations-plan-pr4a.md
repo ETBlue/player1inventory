@@ -1,7 +1,7 @@
 # Cloud locations PR 4a — implementation plan
 
 **Date:** 2026-10-02
-**Status:** 🔲 Pending
+**Status:** 🔄 Tasks 1–7 done, **E2E gate RED** — see task 7's Done note. Not pushed, no PR.
 **Design:** [cloud locations PR 4 design](2026-10-02-cloud-locations-pr4-design.md)
 **Brainstorming:** [PR 4 brainstorming](2026-10-02-brainstorming-pr4.md)
 **Branch:** `feature/cloud-locations-pr4a`
@@ -127,8 +127,9 @@ existing `itemStocks` resolver returns and match it exactly.
 | does not return another user's stock | user B's row is absent |
 | returns `[]` for a caller with no locations | empty array, not null |
 
-**Done 2026-10-02, commit `3fea034e`.** Two things turned out differently from this
-task's text:
+**Done 2026-10-02, commit `3fea034e`.** Server tests 259 → 265 (measured in task 7 by
+running the suite at this commit). Two things turned out differently from this task's
+text:
 
 - The resolver snippet above omits `toGraphQL`, which would have shipped `createdAt`,
   `updatedAt` and `dueDate` as epoch milliseconds — PR 1's bug again. The implementation
@@ -183,10 +184,29 @@ backfilled then constrained. If any path can produce a null, declare `ID` and sa
 One resolver test: a log created through any existing writer comes back with the
 `locationId` it was written with.
 
+**Done 2026-10-02, commit `6222e335`.** Server tests 265 → 268 (measured in task 7 by
+running the suite at this commit), in the existing
+`inventoryLog.resolver.test.ts` (24 → 27 tests). No `select` anywhere on the read path, so
+nothing had to change in the resolver — only the schema. Declared `ID!`: PR 3a's migration
+`20260916000000_add_location_to_log_and_cart` added the column nullable, backfilled it from
+each owner's default location, raised an exception if any row was still NULL, and only then
+ran `SET NOT NULL`; no later migration touches it, and every resolver returning an
+`InventoryLog` returns the whole Prisma row. The reasoning is recorded as a GraphQL doc
+string on the field itself, not only here.
+
+It also corrected root `CLAUDE.md` (`d63d1f69`), which claimed `InventoryLog` exposes no
+`locationId` field — true when written, false from this commit on.
+
+*(This Done note was missing until task 7 added it; tasks 1 and 3–6 each wrote their own.)*
+
 ### Mutation check 2 (required)
 
 Hardcode the field to a wrong value in the resolver (or strip it from the `select` if one is
 used). The new test must go red.
+
+**Run in task 7: red.** Adding `locationId: () => 'loc_wrong'` to the `InventoryLog` field
+resolvers fails *each exported log reports the location it was written at* with
+`expected 'loc_wrong' to be 'loc_kitchen'`.
 
 ---
 
@@ -558,6 +578,47 @@ Delete the location ownership check. The fourth test must go red.
 7. Update the two import markers' comment text at `import.resolver.ts:76-87` and `:316-327`.
    They say "REMOVED IN PR 5" in the header and "goes away with PR 4" in the body. 4a does
    not remove them — **4b** does. Make both halves say 4b so the next reader is not misled.
+
+---
+
+**Done 2026-10-02.** Every gate command was run with an explicit path from the worktree
+root, and every count below was measured here rather than copied from this plan.
+
+| Command | Result |
+|---|---|
+| `uptime` before starting | load average 1.94 — not starved |
+| `pnpm codegen` | clean; `allItemStocks`, the 4 bulk mutations, both new inputs and `InventoryLog.locationId` all present in **both** generated files, and `git status` stays clean (they are gitignored) |
+| `(cd apps/web && pnpm lint)` | pass — 4 warnings, all pre-existing, all in `src/routes/shopping/index.tsx` (lines 187, 191, 211, 215) |
+| `pnpm build` (root) | pass, exit 0 — codegen + web `tsc -b` + vite + server `tsc` |
+| `grep 'TS6385' /tmp/p1i-build-pr4a.log` | no match |
+| `(cd apps/web && pnpm build-storybook)` | pass |
+| `(cd apps/web && pnpm check)` | pass — the same 4 warnings in the same file |
+| `pnpm test` (root, both workspaces) | pass — `apps/server` **340 passed (24 files)**, `apps/web` **2259 passed (249 files)**, `test:spec` 57 pass / 0 fail |
+| baseline at merge base `8f34529b` | `apps/server` **259 passed (20 files)** — measured by checking out `apps/server` at the base and removing the 4 files the branch adds, then restoring |
+| all 7 mutation checks | **all red, each for the reason claimed** — the failure text of each is in the design doc |
+| `pnpm test:e2e:all` | **RED.** local 170 / 5 skipped · cloud **2 failed**, 7 skipped, 88 passed · pwa 69 |
+
+**The E2E failure is real and it blocks the PR.** `import-export-cloud.spec.ts:133`
+(cloud → cloud) dies with "Import failed during Forbidden." It is task 4's cart-location
+check refusing a location id that `clearAllData` has just deleted and that nothing
+re-creates until 4b uploads the payload's locations. Reverting task 4's cart change turns
+the same command from 1 passed / 1 failed into 2 passed. Full write-up, with the three
+options, in the design doc under *4a is NOT behaviour-neutral*. **Nothing was pushed.**
+
+Documentation fixed in task 7:
+
+- the two import dual-write markers now say **4b** in the header as well as the body, and
+  no longer claim the import surface lacks `LocationInput` / `ItemStockImportInput` — 4a
+  added both (`eb503758`)
+- root `CLAUDE.md`'s server test count, 259/20 → **340/24**, with where the 81 new tests
+  are; and its "the server suite has hit this three times" fake list, now **five**
+- `docs/INDEX.md` and this status doc record 4a's state honestly, red gate included
+- the design doc carries the measured mutation outcomes and the behaviour-neutrality finding
+
+What this task's own brief got wrong: it said the expected E2E result is "the baseline
+unchanged", on the stated ground that 4a touches no web code and changes no behaviour. The
+first half is true and the second is not — a server-side authorization check is a behaviour
+change even with no client calling the new surface.
 
 ---
 

@@ -103,7 +103,7 @@ plain code deploy.
 
 | PR | Contents | Risk |
 |---|---|---|
-| **4a** | The GraphQL surface only. No web change. | Low. Nothing calls it. |
+| **4a** | The GraphQL surface only. No web change. | ~~Low. Nothing calls it.~~ **Measured 2026-10-02: NOT low.** Task 4 changes the behaviour of an existing mutation and breaks cloud → cloud import on its own — see *4a is NOT behaviour-neutral* under Verification. |
 | **4b** | The payload shape and both import readers, in one diff. Includes the cart-id leak fix. | High. This is the data-movement rewrite. |
 | **4c** | Issue #320's two-user purge spec. | Low. Test only. |
 
@@ -474,18 +474,84 @@ exact failure under *Write test doubles to model the constraint, not the happy p
 A green test proves nothing on its own. Each of these must be seen to go **red**, by
 breaking the **source**, not the fixture.
 
-| # | PR | Break this | The test that must go red |
-|---|---|---|---|
-| 1 | 4a | `allItemStocks` resolver scope → `{}` (no filter) | a resolver test asserting one user cannot read another's stock |
-| 2 | 4b | restore the cart prefix strip at `importData.ts:403-413` | the two-user cart-collision spec |
-| 3 | 4b | drop `itemStocks` from the remap, so the upload sends none | the cloud import E2E — imported items must be stocked, not catalog-only |
-| 4 | 4b | map every payload location to the destination default | an E2E asserting a two-location payload arrives as two locations |
-| 5 | 4b | restore `deserializeLocation`'s `raw.id === DEFAULT_LOCATION_ID` | a cloud → local import test asserting exactly one default and no stray row |
-| 6 | 4c | `purgeUserData`'s `item` filter → `{ userId: 'nobody' }` | the two-user purge spec, on the "A's rows are gone" half |
-| 7 | 4c | `purgeUserData`'s `item` filter → `{}` | the two-user purge spec, on the "B's rows survive" half |
+| # | PR | Break this | The test that must go red | Result |
+|---|---|---|---|---|
+| 1 | 4a | `allItemStocks` resolver scope → `{}` (no filter) | a resolver test asserting one user cannot read another's stock | ✅ red, measured 2026-10-02 — see the 4a table below |
+| 2 | 4b | restore the cart prefix strip at `importData.ts:403-413` | the two-user cart-collision spec | not run yet |
+| 3 | 4b | drop `itemStocks` from the remap, so the upload sends none | the cloud import E2E — imported items must be stocked, not catalog-only | not run yet |
+| 4 | 4b | map every payload location to the destination default | an E2E asserting a two-location payload arrives as two locations | not run yet |
+| 5 | 4b | restore `deserializeLocation`'s `raw.id === DEFAULT_LOCATION_ID` | a cloud → local import test asserting exactly one default and no stray row | not run yet |
+| 6 | 4c | `purgeUserData`'s `item` filter → `{ userId: 'nobody' }` | the two-user purge spec, on the "A's rows are gone" half | not run yet |
+| 7 | 4c | `purgeUserData`'s `item` filter → `{}` | the two-user purge spec, on the "B's rows survive" half | not run yet |
 
 Checks 6 and 7 are a **pair**, and both are needed. Each one alone passes against a
 different wrong implementation.
+
+**The numbering in the two documents does not line up.** This table numbers checks across
+all three PRs, so only its #1 belongs to 4a. The [PR 4a plan](2026-10-02-cloud-locations-plan-pr4a.md)
+numbers its own seven checks 1–7, all of them 4a. Plan check 1 is this table's check 1; the
+plan's 2–7 are extra 4a checks this table never listed.
+
+### 4a's seven mutation checks, measured
+
+All seven were run on 2026-10-02 in task 7, on the committed branch: break the **source**,
+run the one test, read the failure text, restore. Every one went red, and red **for the
+reason claimed** — the failure text is quoted, because "it went red" and "it went red
+because the behaviour is gone" are different claims (task 6 found a check that was red for
+the wrong reason; see the plan).
+
+| Plan # | Mutation | Test | Failure text |
+|---|---|---|---|
+| 1 | `allItemStocks` scope → no `where` | `itemStock.resolver.test.ts` › user cannot read another user's stock | `expected [ 'st-home', 'st-garage', 'st-theirs' ] to not include 'st-theirs'` |
+| 2 | an `InventoryLog.locationId` field resolver returning a constant | `inventoryLog.resolver.test.ts` › each exported log reports the location it was written at | `expected 'loc_wrong' to be 'loc_kitchen'` |
+| 3 | `resolveLogLocations`' `requireLocationRole` deleted | `import-inventoryLog-location.resolver.test.ts` › user importing a log that names someone else is refused | `expected undefined to be 'Forbidden'` |
+| 4 | cart location back to `ensureDefaultLocation(userId)` | `import-cart-location.resolver.test.ts` › user importing a cart gets it stored in the location its own id names | `expected 'loc_kitchen' to be 'loc_garage'` |
+| 5 | `bulkCreateLocations` writes `isDefault: true` | `import-location.resolver.test.ts` › never marked as the default **and** › keeps their own default untouched | `expected true to be false` and `expected [ { …(4) } ] to be undefined` — 2 failed, 1 passed |
+| 6 | `bulkCreateItemStocks` `locationId` → the caller's default | `import-itemStock.resolver.test.ts` › user importing stock gets each row in the location its own payload names | `expected { targetQuantity: 4, …(9) } to match object { itemId: 'item_milk', …(2) }` |
+| 7 | `requireOwnItemStockRefs`' location check deleted | `import-itemStock.resolver.test.ts` › user cannot import stock into another account's location | `expected undefined to be 'FORBIDDEN'` |
+
+### 4a is NOT behaviour-neutral — measured, 2026-10-02
+
+The rollout table above rates 4a *"Low. Nothing calls it."*, and
+[the status doc](cloud-locations-status.md) says *"Nothing calls any of it. Zero behaviour
+change, safe to deploy alone."* **Both are false, and the E2E gate caught it.** One cloud
+spec fails on the committed branch:
+
+```
+[cloud] › e2e/tests/settings/import-export-cloud.spec.ts:133
+         user can export and re-import cloud data (cloud → cloud)
+  Error: locator.waitFor: Test timeout of 30000ms exceeded
+         waiting for getByText('Import complete.') to be visible
+  page snapshot: "Import failed during Forbidden."
+```
+
+It is not flaky and not starvation. Run alone it is **1 passed, 1 failed (51.9s)**, twice.
+Revert task 4's cart-location change and the same command is **2 passed (43.2s)**.
+
+**Why.** Task 4 made an imported cart take its location from its own id and verify that
+location through `requireLocationRole`. In a **cloud → cloud** restore that id names the
+*source* account's location:
+
+1. a cloud export carries no `itemStocks`, so `flattenPayloadForCloud` returns early
+   (`importData.ts:365`) and the cart ids keep their `${locationId}:${vendorId}` form;
+2. the import clears the account first, which deletes those `Location` rows, and
+   `ensureDefaultLocation` then creates a fresh one with a new cuid;
+3. nothing uploads the payload's locations — `bulkCreateLocations` exists as of 4a but no
+   client calls it until 4b;
+4. so `requireLocationRole(ctx, <the deleted location id>, 'member')` refuses, and because
+   "not yours" is deliberately indistinguishable from "does not exist", the whole mutation
+   throws `Forbidden` and the import dies.
+
+Before 4a the resolver ignored the id's prefix and wrote every cart to the caller's default
+location — wrong, but it worked.
+
+**So task 4 depends on 4b and cannot ship before it.** Three ways out, none chosen here:
+
+| Option | Cost |
+|---|---|
+| Move the strict check to 4b, where the client remaps locations | 4a keeps `ensureDefaultLocation` for carts; task 4's 13 tests move to 4b |
+| Fall back to the default when the named location **does not exist**, and refuse only when it exists and is someone else's | needs an unscoped existence check next to `requireLocationRole`, the one thing this series routes all location checks through |
+| Pull the client half of 4b forward into 4a | 4a stops being the "nothing calls it" PR, which was its whole reason for existing |
 
 ### The cart leak is unproved
 
