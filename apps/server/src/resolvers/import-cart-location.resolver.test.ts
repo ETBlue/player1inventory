@@ -94,6 +94,11 @@ const STRANGER = 'user_stranger'
 const LOC_DEFAULT = 'loc_kitchen' // USER's default
 const LOC_OTHER = 'loc_garage' // USER's, NOT default — the target
 const LOC_STRANGER = 'loc_theirs' // STRANGER's — must be refused
+// No `Location` row holds this id, in any account. It is what a cloud → cloud
+// restore leaves behind: the cart ids name the SOURCE account's locations, and
+// `clearAllData` has already deleted those rows. Must fall back to the
+// caller's default, NOT be refused — task 8.
+const LOC_GONE = 'loc_deleted_by_clearAllData'
 
 const VENDOR = 'vendor_costco'
 
@@ -224,17 +229,71 @@ describe('bulkCreateShoppingCarts — the location comes from the cart id', () =
     expect(mockPrisma.$shoppingFake.state.carts).toHaveLength(0)
   })
 
-  it('user importing a cart id with an empty location part is refused', async () => {
-    // Given `":vendor"`, reachable from a hand-edited backup. It carries a
-    // colon, so it claims to name a location — it just names one that cannot
-    // exist. It must NOT fall back to the default.
+  it('user importing a cloud backup gets carts whose locations were deleted stored in their default location', async () => {
+    // Given a cart id naming a location NO row holds. This is the cloud →
+    // cloud restore case the E2E gate caught: a cloud export carries no
+    // `itemStocks`, so the cart ids keep their composite form naming the
+    // source account's locations, and the import's own `clearAllData` has
+    // already deleted those rows. Refusing here killed the whole restore with
+    // "Import failed during Forbidden."
+    const id = `${LOC_GONE}:${VENDOR}`
+
+    // When the import runs
+    const result = await exec(BULK_CREATE_CARTS, [{ id }])
+
+    // Then it falls back to the caller's default and nothing throws
+    expect(result.errors).toBeUndefined()
+    expect(storedLocationOf(id)).toBe(LOC_DEFAULT)
+  })
+
+  it('user importing a cart id with an empty location part gets it stored in their default location', async () => {
+    // Given `":vendor"`, reachable from a hand-edited backup. No `Location`
+    // row holds the id `''`, so it is unclaimed like any other unheld id and
+    // takes the same fallback. Task 4 refused this shape; task 8 unified it,
+    // because a backup CAN create a location whose id is `''` —
+    // `LocationInput.id` is stored verbatim — and then the role check decides.
     const id = `:${VENDOR}`
 
     // When the import runs
     const result = await exec(BULK_CREATE_CARTS, [{ id }])
 
-    // Then it is refused and nothing is written
+    // Then it falls back to the caller's default
+    expect(result.errors).toBeUndefined()
+    expect(storedLocationOf(id)).toBe(LOC_DEFAULT)
+  })
+
+  it('user importing a mix of live, deleted and bare cart ids gets each one placed correctly', async () => {
+    // Given all three shapes in one payload. The fixture has MORE THAN ONE
+    // location and the live one is NOT the default, so "the location in the
+    // id" and "the caller's default" are different answers — a resolver that
+    // ignored the id would fail the first assertion.
+    const live = `${LOC_OTHER}:${VENDOR}`
+    const gone = `${LOC_GONE}:${VENDOR}`
+    const bare = VENDOR
+
+    // When the import runs
+    const result = await exec(BULK_CREATE_CARTS, [{ id: live }, { id: gone }, { id: bare }])
+
+    // Then only the live id keeps its own location
+    expect(result.errors).toBeUndefined()
+    expect(storedLocationOf(live)).toBe(LOC_OTHER)
+    expect(storedLocationOf(gone)).toBe(LOC_DEFAULT)
+    expect(storedLocationOf(bare)).toBe(LOC_DEFAULT)
+  })
+
+  it('refuses a stranger\'s live location even when other ids in the payload are unclaimed', async () => {
+    // Given an unclaimed id — which now succeeds — ahead of a stranger's LIVE
+    // location. The fallback must not swallow the refusal: "no row holds it"
+    // and "a row holds it and it is not yours" are different answers.
+    const gone = `${LOC_GONE}:${VENDOR}`
+    const bad = `${LOC_STRANGER}:${VENDOR}`
+
+    // When the import runs
+    const result = await exec(BULK_CREATE_CARTS, [{ id: gone }, { id: bad }])
+
+    // Then the whole mutation is refused and nothing is written
     expect(result.errors?.[0]?.message).toBe('Forbidden')
+    expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
     expect(mockPrisma.$shoppingFake.state.carts).toHaveLength(0)
   })
 
@@ -302,6 +361,47 @@ describe('bulkUpsertShoppingCarts — the location comes from the cart id', () =
     // Then it falls back to the caller's default location
     expect(result.errors).toBeUndefined()
     expect(storedLocationOf(id)).toBe(LOC_DEFAULT)
+  })
+
+  it('user re-importing a cloud backup gets carts whose locations were deleted stored in their default location', async () => {
+    // Given the same deleted-location id, through the upsert path. A cloud →
+    // cloud restore uses "replace conflicts", so this is the mutation the
+    // failing E2E test actually ran.
+    const id = `${LOC_GONE}:${VENDOR}`
+
+    // When the upsert import runs
+    const result = await exec(BULK_UPSERT_CARTS, [{ id }])
+
+    // Then it falls back to the caller's default and nothing throws
+    expect(result.errors).toBeUndefined()
+    expect(storedLocationOf(id)).toBe(LOC_DEFAULT)
+  })
+
+  it('user re-importing a mix of live and deleted cart ids gets each one placed correctly', async () => {
+    // Given one live non-default location and one deleted one
+    const live = `${LOC_OTHER}:${VENDOR}`
+    const gone = `${LOC_GONE}:${VENDOR}`
+
+    // When the upsert import runs
+    const result = await exec(BULK_UPSERT_CARTS, [{ id: live }, { id: gone }])
+
+    // Then the live id keeps its own location and only the deleted one falls back
+    expect(result.errors).toBeUndefined()
+    expect(storedLocationOf(live)).toBe(LOC_OTHER)
+    expect(storedLocationOf(gone)).toBe(LOC_DEFAULT)
+  })
+
+  it('refuses a stranger\'s live location on re-import even when other ids are unclaimed', async () => {
+    // Given an unclaimed id ahead of a stranger's LIVE location
+    const gone = `${LOC_GONE}:${VENDOR}`
+    const bad = `${LOC_STRANGER}:${VENDOR}`
+
+    // When the upsert import runs
+    const result = await exec(BULK_UPSERT_CARTS, [{ id: gone }, { id: bad }])
+
+    // Then the whole mutation is refused and nothing is written
+    expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(mockPrisma.$shoppingFake.state.carts).toHaveLength(0)
   })
 
   it('user re-importing a cart that names someone else is refused and nothing is written', async () => {

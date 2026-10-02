@@ -109,7 +109,7 @@ async function resolveLogLocations(
 }
 
 /**
- * The location a cart id names, or `null` when the id names none.
+ * The location a cart id names, or `null` when the id carries no prefix at all.
  *
  * Since PR 3b `Cart.id` is `${locationId}:${vendorId | 'no-vendor'}`, so an
  * imported cart's location rides inside its own primary key and needs no input
@@ -123,15 +123,14 @@ async function resolveLogLocations(
  * (schema.prisma:63) — but `bulkCreateVendors` stores `VendorInput.id`
  * verbatim, so a hand-edited backup can supply anything.
  *
- * Two shapes are deliberately NOT treated as "no location":
- *
- *  - `":vendor-1"` returns `''`, an empty location id. It carries a colon, so
- *    it claims to name a location; it just names one that cannot exist.
- *    Returning `''` rather than `null` sends it through `requireLocationRole`,
- *    which refuses it. Falling back to the default here would write the cart
- *    somewhere the payload never asked for.
- *  - a bare id with no colon at all returns `null`, the ONLY fallback case:
- *    a pre-3b backup, whose carts were keyed by vendor id alone.
+ * `null` means ONLY "no colon in the id" — a pre-3b backup, whose carts were
+ * keyed by vendor id alone. Everything else, `":vendor-1"` included, returns
+ * the prefix as given, even when that prefix is the empty string. The caller
+ * then asks the database whether any `Location` row holds it; see
+ * `resolveCartLocations`. Task 4 special-cased `''` here so it could be refused
+ * outright, which task 8 removed — one rule ("is this id held by a location?")
+ * covers both shapes, and a hand-edited backup CAN create a location whose id
+ * is `''` because `LocationInput.id` is stored verbatim too.
  */
 function locationIdInCartId(cartId: string): string | null {
   if (!cartId.includes(':')) return null
@@ -145,49 +144,120 @@ function locationIdInCartId(cartId: string): string | null {
  * once, every check before the write loop (these resolvers are not
  * transactional), and the caller's default resolved only if some id needs it.
  *
- * The ownership check matters MORE here than it does for logs. `Cart.id` is a
- * global primary key with no `userId` in it, and `prisma.cart.findUnique({
- * where: { id } })` — the existence check both resolvers run — is unscoped. So
- * the id in the payload is the only thing saying which location the row lands
- * in, and it is attacker-controlled text. `requireLocationRole` (lib/authz.ts)
- * is the one authorization seam for that question; never an inline comparison
- * of `location.userId` against the caller (root CLAUDE.md, Authorization).
+ * ── THE RULE (task 8) ──
  *
- * `'member'` for the same reason as the log helper: it is the LOWEST role that
- * may write under location RBAC, so a legitimate member of a shared location
- * is not denied the day RBAC lands.
+ * Three cases per distinct id named by a cart id:
+ *
+ *  - no `Location` row holds it → write the cart to the caller's DEFAULT
+ *  - a row holds it and the caller holds a role on it → write the cart there
+ *  - a row holds it and the caller does NOT → `requireLocationRole` throws
+ *    FORBIDDEN, and nothing is written at all
+ *
+ * Task 4 shipped only the last two: an id no row held was sent straight to
+ * `requireLocationRole`, which refused it. That **broke cloud → cloud restore**
+ * and the E2E gate caught it. A cloud export carries no `itemStocks`, so
+ * `flattenPayloadForCloud` returns early (apps/web/src/lib/importData.ts:365)
+ * and the cart ids keep their composite form naming the SOURCE account's
+ * locations. The import calls `clearAllData` first, which deletes those very
+ * `Location` rows, and nothing re-creates them — `bulkCreateLocations` exists
+ * but no client calls it until PR 4b. So every cart id named a location that no
+ * longer existed, the mutation threw, and the restore died with
+ * "Import failed during Forbidden."
+ * (`e2e/tests/settings/import-export-cloud.spec.ts:133`; the measurement is in
+ * docs/features/locations/2026-10-02-cloud-locations-pr4-design.md under
+ * *4a is NOT behaviour-neutral*.)
+ *
+ * The unclaimed branch is therefore reachable from three real payloads: a
+ * pre-3b bare id, a cloud backup whose source locations were just deleted, and
+ * a hand-edited id naming nothing. PR 4b uploads the payload's locations before
+ * its carts, after which the second of those stops happening — but the first
+ * and third remain, so the branch does not become dead code.
+ *
+ * ── THE ACCEPTED COST ──
+ *
+ * The unscoped `findUnique` tells the caller whether a location id exists at
+ * all, which is an oracle `requireLocationRole` was written to deny: it reports
+ * "not yours" and "does not exist" with the same error on purpose, so the
+ * mutation cannot be used to probe another account's ids. Here the two answers
+ * become distinguishable — an unclaimed id succeeds, a stranger's id is
+ * refused.
+ *
+ * Accepted for the same reason task 5 accepted it in
+ * `requireOwnLocationIdsOrUnclaimed`: the alternative is worse. Letting the
+ * write proceed leaks the same fact through an unhandled foreign-key error
+ * AFTER a partial write, and these resolvers are not transactional, so that
+ * partial write stays on disk. The query reads one column, `id`, and makes no
+ * authorization decision; the decision is still entirely
+ * `requireLocationRole`'s (lib/authz.ts), never an inline comparison of
+ * `location.userId` against the caller (root CLAUDE.md, Authorization).
+ *
+ * Why this is not `requireOwnLocationIdsOrUnclaimed` itself: that helper
+ * returns `void`, because for `LocationInput` an unclaimed id simply means
+ * "free to create" and the caller needs no further answer. Here the resolver
+ * must KNOW which ids came back unclaimed, so it can send those carts to the
+ * default instead. Same two-step pattern — unscoped existence check, then
+ * `requireLocationRole` — with a result rather than a bare assertion.
+ *
+ * `'member'` for the same reason as every other helper here: it is the LOWEST
+ * role that may write under location RBAC, so a legitimate member of a shared
+ * location is not denied the day RBAC lands.
  */
 async function resolveCartLocations(
   ctx: Context,
   userId: string,
   carts: readonly { id: string }[],
 ): Promise<(cartId: string) => string> {
-  const verified = new Set<string>()
+  // Named location id → the location the cart is actually written to. Either
+  // the named id itself (it exists and is the caller's) or the caller's
+  // default (no row holds it). One entry per DISTINCT named id, so 500 carts
+  // across 3 locations cost 3 existence checks, not 500.
+  const resolved = new Map<string, string>()
   let defaultLocationId: string | null = null
+
+  // Resolved at most once per mutation, and only when some id needs it, so an
+  // import whose every cart names a live location of the caller's never creates
+  // a default.
+  async function ensureDefault(): Promise<string> {
+    if (defaultLocationId === null) {
+      defaultLocationId = await ensureDefaultLocation(userId)
+    }
+    return defaultLocationId
+  }
 
   for (const cart of carts) {
     const named = locationIdInCartId(cart.id)
     if (named === null) {
-      if (defaultLocationId === null) {
-        defaultLocationId = await ensureDefaultLocation(userId)
-      }
+      await ensureDefault()
       continue
     }
-    if (verified.has(named)) continue
-    await requireLocationRole(ctx, named, 'member')
-    verified.add(named)
+    if (resolved.has(named)) continue
+    // UNSCOPED on purpose, and only `id` is selected. The question is "is this
+    // primary key taken", which is not an authorization question and has no
+    // user to scope by. See the block comment above for the cost.
+    const taken = await prisma.location.findUnique({
+      where: { id: named },
+      select: { id: true },
+    })
+    if (taken) {
+      await requireLocationRole(ctx, named, 'member')
+      resolved.set(named, named)
+    } else {
+      resolved.set(named, await ensureDefault())
+    }
   }
 
   return (cartId) => {
     const named = locationIdInCartId(cartId)
-    if (named !== null) return named
-    if (defaultLocationId === null) {
-      // Unreachable, for the same reason as the log helper's twin: the loop
-      // above resolved the default for the first bare id, and this function is
-      // only called with ids from that same list.
-      throw new Error('resolveCartLocations: no default location resolved')
+    const target = named === null ? defaultLocationId : resolved.get(named)
+    if (target == null) {
+      // Unreachable: the loop above resolved every id in this list, and this
+      // function is only called with ids from that same list. It is here to
+      // keep the return type `string` rather than `string | undefined`,
+      // because an empty-string fallback would write a broken foreign key
+      // instead of failing.
+      throw new Error('resolveCartLocations: no location resolved for this cart')
     }
-    return defaultLocationId
+    return target
   }
 }
 
@@ -561,9 +631,10 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     bulkCreateShoppingCarts: async (_, { carts }, ctx) => {
       const userId = requireAuth(ctx)
       if (carts.length === 0) return []
-      // Verifies every location the payload's cart ids name before the first
-      // write, so a forbidden location fails the whole mutation with nothing
-      // written.
+      // Resolves every location the payload's cart ids name before the first
+      // write: a live location of the caller's is used, an unclaimed id falls
+      // back to the caller's default, and a stranger's live location fails the
+      // whole mutation with nothing written.
       const locationIdFor = await resolveCartLocations(ctx, userId, carts)
       const results: Cart[] = []
       for (const cart of carts) {
@@ -576,8 +647,10 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             lastPurchasedAt: lastPurchasedAt ? new Date(lastPurchasedAt as string) : undefined,
             userId,
             // The location named by the cart's OWN id since PR 3b
-            // (`${locationId}:${vendorId}`), and the caller's default only for
-            // a pre-3b bare id. Both already verified above.
+            // (`${locationId}:${vendorId}`), and the caller's default when no
+            // `Location` row holds that id — a pre-3b bare id, or a cloud
+            // backup whose source locations `clearAllData` just deleted. All
+            // resolved and verified above.
             locationId: locationIdFor(id),
           },
         })
@@ -793,7 +866,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       const userId = requireAuth(ctx)
       if (carts.length === 0) return []
       // Same pre-check as bulkCreateShoppingCarts: every location the payload's
-      // cart ids name is verified before the first write.
+      // cart ids name is resolved and verified before the first write.
       const locationIdFor = await resolveCartLocations(ctx, userId, carts)
       const results: Cart[] = []
       for (const cart of carts) {
@@ -809,7 +882,8 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           where: { id },
           // locationId in `create` only, for the same reason as the log upsert
           // above: a re-import must not move an existing cart. The value comes
-          // from the cart's own id, verified above.
+          // from the cart's own id when a `Location` row holds that id, and the
+          // caller's default when none does. Both resolved above.
           create: { id, ...data, locationId: locationIdFor(id) },
           update: data,
         })
