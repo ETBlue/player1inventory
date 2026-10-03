@@ -1,14 +1,15 @@
 # Cloud locations PR 4 — design
 
 **Date:** 2026-10-02
-**Status:** 🔲 Pending
+**Status:** 🔄 In Progress — **4a ✅ merged** ([#328](https://github.com/ETBlue/player1inventory/pull/328)),
+**4b 🔄 built** (2026-10-04 — gate red on **one** E2E test: the cloud → cloud round trip needs 36.5s against a 30s timeout; everything else green), **4c** 🔲 Pending
 **Supersedes:** §6 of the [cloud locations design](2026-08-30-cloud-locations-design.md),
 which described this work in about 40 lines and is stale in 8 places — see *What §6 got
 wrong* below.
 **Brainstorming:** [PR 4 brainstorming](2026-10-02-brainstorming-pr4.md)
 **Plans:** [PR 4a plan](2026-10-02-cloud-locations-plan-pr4a.md) ✅ merged ·
-[PR 4b plan](2026-10-03-cloud-locations-plan-pr4b.md) 🔲 — 4c is planned when scheduled,
-on purpose (brainstorming decision 9)
+[PR 4b plan](2026-10-03-cloud-locations-plan-pr4b.md) ✅ built — 4c is planned when
+scheduled, on purpose (brainstorming decision 9)
 
 ---
 
@@ -412,6 +413,12 @@ Their markers say "PR 5" in the header and "goes away with PR 4" in the body
 (`import.resolver.ts:76-87`). The body is right: once the payload carries real stock rows,
 mirroring item columns into the caller's default location is wrong, not just redundant.
 
+> **Measured again on 2026-10-04, after 4b task 6.** The counts above are the state
+> *before* 4b. After it: **4 calls in 4 files** and **5** `REMOVED IN PR 5` markers, plus
+> the inline block in `applyUnitSwitch`. The phrasing "7 `REMOVED IN PR 5` markers" used
+> elsewhere in these docs was never right after 4a — there were 5 saying PR 5 and 2 saying
+> PR 4b, 7 `DUAL-WRITE` markers of both kinds. Count the markers, not the files.
+
 **This is the sharpest risk in 4b.** That mirror is the only reason an imported item is
 visible in the cloud pantry today. Remove it, and if the new `itemStocks` upload has a bug,
 **every imported item lands in the catalog stocked nowhere — invisible, with no error**. The
@@ -577,9 +584,9 @@ breaking the **source**, not the fixture.
 | # | PR | Break this | The test that must go red | Result |
 |---|---|---|---|---|
 | 1 | 4a | `allItemStocks` resolver scope → `{}` (no filter) | a resolver test asserting one user cannot read another's stock | ✅ red, measured 2026-10-02 — see the 4a table below |
-| 2 | 4b | restore the cart prefix strip at `importData.ts:403-413` | the two-user cart-collision spec | not run yet |
-| 3 | 4b | drop `itemStocks` from the remap, so the upload sends none | the cloud import E2E — imported items must be stocked, not catalog-only | not run yet |
-| 4 | 4b | map every payload location to the destination default | an E2E asserting a two-location payload arrives as two locations | not run yet |
+| 2 | 4b | restore the cart prefix strip at `importData.ts:403-413` | the two-user cart-collision spec | **run — and the test named here CANNOT go red.** It is a negative control: `Cart.id` is a global primary key, so two users genuinely cannot both hold `'no-vendor'` and the spec is green with or without 4b. What did go red: task 1's unit test on `main`, `expected [ 'no-vendor', 'vendor_1' ] to deeply equal [ 'loc_garage:no-vendor', 'loc_garage:vendor_1' ]`; and task 8's cloud E2E, **2 red** on `cartItemCountByItem(itemId, locationId: <Office>)` — `Expected: 1 / Received: 0`, the stock assertions staying green |
+| 3 | 4b | drop `itemStocks` from the remap, so the upload sends none | the cloud import E2E — imported items must be stocked, not catalog-only | **run as "delete the `itemStocks` entity from `ENTITY_SPECS`" — 5 unit red (task 6) + 4 cloud E2E red (task 8).** Unit: `expected -1 to be greater than 5` — `BulkCreateItemStocks` absent from the mutation sequence entirely; also `expected 10 to be 11` from `computeTotalBatches`. E2E: two tests die at `verifyRelations` step 1, `getByRole('heading', { name: 'Fixture Item', level: 3 })` "element(s) not found" — the invisible-item symptom; the stray-default test says it directly, `expected [ "DEFAULT", "Fixture Cabin", "Fixture Office" ] to deeply equal []` |
+| 4 | 4b | map every payload location to the destination default | an E2E asserting a two-location payload arrives as two locations | **run — 12 unit red (task 5) + 4 cloud E2E red (task 8).** Unit: `expected [ 'local' ] to deeply equal [ 'cloud_cabin_cuid', …(2) ]` — all three locations collapsed into one row; 7 of the 12 are task 3's cloud-direction tests, which proves the rule really is shared. E2E, run as "force the uploaded `itemStocks` onto the caller's default": `expected [ "DEFAULT", "Fixture Cabin", "Fixture Office" ] to deeply equal [ "DEFAULT" ]` at `backupAssertions.ts:168`. Every fixture seeds **three** locations with three different quantities, which is what lets these fail |
 | 5 | 4b | ~~restore `deserializeLocation`'s `raw.id === DEFAULT_LOCATION_ID`~~ — **a no-op; that line was never changed.** Replaced by three real checks: remove the remap call; map every location to the default; drop `locations[].id` from the remap | the stray-row and remapped-name assertions | **run, 8 / 12 / 7 red** |
 | 6 | 4c | `purgeUserData`'s `item` filter → `{ userId: 'nobody' }` | the two-user purge spec, on the "A's rows are gone" half | not run yet |
 | 7 | 4c | `purgeUserData`'s `item` filter → `{}` | the two-user purge spec, on the "B's rows survive" half | not run yet |
@@ -609,6 +616,43 @@ the wrong reason; see the plan).
 | 5 | `bulkCreateLocations` writes `isDefault: true` | `import-location.resolver.test.ts` › never marked as the default **and** › keeps their own default untouched | `expected true to be false` and `expected [ { …(4) } ] to be undefined` — 2 failed, 1 passed |
 | 6 | `bulkCreateItemStocks` `locationId` → the caller's default | `import-itemStock.resolver.test.ts` › user importing stock gets each row in the location its own payload names | `expected { targetQuantity: 4, …(9) } to match object { itemId: 'item_milk', …(2) }` |
 | 7 | `requireOwnItemStockRefs`' location check deleted | `import-itemStock.resolver.test.ts` › user cannot import stock into another account's location | `expected undefined to be 'FORBIDDEN'` |
+
+### 4b's mutation checks, measured
+
+The table above lists 3 checks for 4b. **Fourteen were actually run**, across tasks 1 to 8,
+because several of the plan's checks turned out to be unrunnable as written and were
+replaced. Every one below went red, and red for the reason claimed.
+
+| Task | Mutation | Result |
+|---|---|---|
+| 1 | the cart filter-and-slice block replaced with a pass-through, then restored | both of task 1's tests went **green** with the pass-through and **red** again with the block restored — run unasked, and it is what proves those two tests are pinned to that exact code |
+| 3 | map **every** payload location onto the destination default | **12 red** (measured in task 5; 7 of them task 3's own cloud-direction tests, which proves the rule is shared): `expected [ 'local' ] to deeply equal [ 'cloud_cabin_cuid', …(2) ]` |
+| 3 | read the destination's locations **before** `clearAllData` | **1 red**: `expected [ 'cloud_default_before:vendor_1' ] to deeply equal [ 'cloud_default_after:vendor_1' ]`. The ordering hazard that broke PR 4a is now guarded by a named test, not only by a comment |
+| 3 | drop `locations[].id` from `applyLocationRemap`, keep the other four fields | **7 red**, including `expected 4 to be 3` — the stray extra default location. This is the check that proves the **fifth** field is needed |
+| 4 | `locations` moved after `shoppingCarts` | **3 red**: `expected 5 to be greater than 9` (stock before its location) and `expected 7 to be less than 6` (locations after the carts) |
+| 4 | `itemStocks` moved before `items` | **2 red**: `expected 5 to be greater than 6` |
+| 4 | `computeTotalBatches` left on a stale nine-entity list | **1 red**: `expected 9 to be 11` — it counted 9 batches while the loop sent 11 |
+| 5 | the remap call removed from `importLocalData` | **8 red**: `expected 4 to be 3` (the stray row), `expected 'cloud_default_cuid:vendor_1' to be 'local:vendor_1'`, `expected 'cloud_default_cuid' to be 'local'` (the log) |
+| 6 | `itemStocks` deleted from `ENTITY_SPECS` | **5 red** unit — `expected -1 to be greater than 5`, `BulkCreateItemStocks` absent from the sequence — plus **4 red** cloud E2E in task 8 |
+| 6 | the `bulkCreateItems` mirror restored | **1 red**, the create-side test only |
+| 6 | the `bulkUpsertItems` mirror restored | **1 red**, the upsert-side test only. Run **separately on purpose**: one test cannot pin two byte-identical calls, which is why the replacement is two `it`s |
+| 8 | uploaded `itemStocks` forced onto the caller's default location | **4 red** cloud E2E: `expected [ "DEFAULT", "Fixture Cabin", "Fixture Office" ] to deeply equal [ "DEFAULT" ]` |
+| 8 | `itemStocks` deleted from `ENTITY_SPECS`, seen through E2E | **4 red**: two die at `verifyRelations` step 1 with "element(s) not found" — the invisible-item symptom; the stray-default test says it directly, `… to deeply equal []` |
+| 8 | the cart prefix strip reinstated | **2 red**, exactly the two cart-column assertions: `cartItemCountByItem(itemId, locationId: <Office>)` `Expected: 1 / Received: 0`. The stock assertions stayed green, correctly |
+
+**Two of the plan's checks could not be run as written, and that is a finding, not an
+excuse.**
+
+| Plan check | Why it does not work |
+|---|---|
+| task 4's "a test asserting an imported cart's `locationId` **column** matches its id's prefix must go red" | no unit test can read a server column — the mock Apollo client records the mutation, not the database. The order tests assert the **sequence of mutation documents** instead, and task 8's E2E asserts the column |
+| task 5's "restore `deserializeLocation`'s `raw.id === DEFAULT_LOCATION_ID`" | a no-op: that line was never changed. The derive is correct and was kept — see the §1 note |
+
+**One check the plan asked for was never recorded as run.** Task 2's mutation check 1 — drop
+`itemStocks` from `fetchCloudPayload`'s `Promise.all` and watch the new export test go red —
+does not appear in task 2's note. The same loss is caught from the other end by task 6's and
+task 8's `ENTITY_SPECS` checks, but that is a different assertion in a different file. Noted
+rather than claimed.
 
 ### 4a is NOT behaviour-neutral — measured, 2026-10-02
 
