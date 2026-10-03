@@ -905,6 +905,117 @@ copy, and say which.
 
 ---
 
+**Done 2026-10-04** — `1d2a0c89`, `9739daee`. Cloud **2 -> 6** tests (6 passed, 2.0m),
+local **3 -> 4** (4 passed, 9.7s). Web **2281 -> 2285 / 248 files**; server unmoved at
+**347 / 24**. `pnpm build` clean, no `TS6385`. Biome: the same **4** pre-existing warnings
+in `src/routes/shopping/index.tsx` at 187, 191, 211, 215.
+
+**BOTH CLOUD TESTS WERE ALREADY RED ON THIS BRANCH, AND TASK 6'S WORST CASE HAD HAPPENED.**
+Measured at `293c82f8` before any edit: 2 failed, both on
+`getByRole('heading', { name: 'Fixture Item', level: 3 })` / "element(s) not found" — the
+imported item in the catalog and stocked nowhere, invisible in the pantry, with no error
+anywhere. Two independent causes:
+
+| Cause | Where it belongs |
+|---|---|
+| The spec's own cloud seed wrote an item and no stock row. Task 6 removed the mirror that used to cover for it | the spec |
+| **`importCloudData` never ran `upgradeLegacyPayload`**, and both fixtures were pre-v15 | **production** |
+
+**The second one is a regression this PR introduced, and it is now fixed** (`1d2a0c89`). A
+pre-v15 backup has no `itemStocks` key: stock is inline on each item and cart ids are bare.
+Task 3 deleted `flattenPayloadForCloud`, which used to send those inline columns up, and
+task 6 deleted the server mirror that turned them into a row. Nothing replaced either, so
+such a file imported into cloud mode lost **all** its stock and kept writing **bare cart
+ids** — issue #327's leak, still open on that one path. Measured before the fix: the
+mutations sent were `["BulkCreateItems", "BulkCreateShoppingCarts"]` and nothing else, with
+the cart id still `vendor_1`.
+
+`upgradeLegacyPayloadForCloud` guards on the **absent key and nothing else**. Running the
+whole of `upgradeLegacyPayload` on a post-v15 payload would also run `upgradeUnsplitItems`,
+and a cloud export's items carry the legacy stock columns as **0 rather than null** — so
+`hasInlineStock` answers true for every CATALOG-ONLY cloud item and a cloud -> cloud round
+trip would stock each of them at the default location. One of the four new unit tests pins
+that.
+
+**`computeTotalBatches` had to move.** On the `clear` path it ran on the raw payload,
+because the destination's default cannot be read until the clear has. The upgrade is the one
+step that changes an array's LENGTH, so the progress bar would have under-counted by one
+batch. It now runs on the prepared payload, with a fourth unit test asserting the final
+total equals the number of entity mutations actually sent.
+
+**THE FIXTURES SEED THREE LOCATIONS** — `Fixture Home` (default), `Fixture Office`,
+`Fixture Cabin` — with three different quantities (packed 2/7/3, target 4/9/5, refill
+1/2/0), one cart at the **non-default** Office, and two logs, one at the default and one at
+the Office, each carrying `logKey` and `logParams`. `cloud-backup.json`'s default id is
+`aaaaaa000000000000000010`; `local-backup.json`'s is the `local` sentinel. So each direction
+exercises the remap.
+
+**The location assertions live in ONE place**, `e2e/helpers/backupAssertions.ts`. The two
+`verifyRelations` copies had already drifted, and a third copy of the new checks would drift
+too. `e2e/helpers/stockReadback.ts` gained `readLocations`, mode-aware like its neighbours.
+
+**The cloud spec's own `seedCloudFixture` was EXTENDED, not replaced.** `e2e/helpers/
+cloudSeed.ts`'s `Fixture` type (helpers/fixture.ts) describes locations, vendors, items,
+stocks, shelves and recipes — and nothing else, while `verifyRelations` asserts a tag, a tag
+type, an inventory log and a cart item. Switching would have meant widening `Fixture` and
+both seed halves, touching the five other specs that use them, for no gain here. The
+extended seed writes locations FIRST (the non-default ones with the fixture's **own** ids
+through `bulkCreateLocations`, the default **mapped** onto the server's cuid), then stock.
+
+**No second user was needed.** Task 1's optional `userId` on `makeGql` / `cleanupCloudData`
+is untouched here.
+
+**A cart row's `locationId` COLUMN is read through
+`cartItemCountByItem(itemId, locationId:)`.** The `Cart` GraphQL type exposes `id` and
+`lastPurchasedAt` and nothing else, so there is no `locationId` field to select; that query
+resolves through `where: { itemId, userId, cart: { locationId } }`, so it reads the column
+rather than parsing the id. This is the real-SQL half of task 1's proof — task 1 pinned the
+id the client SENDS, and nothing had confirmed which column Postgres wrote.
+
+**FOUND AND PINNED: the backup's default-location NAME does not survive the import the UI
+runs, in either mode.** `ImportCard.tsx:111` runs the **`skip`** strategy whenever the
+payload raises no conflict, and `skip` means "add what is missing, change nothing already
+there". The remap has put the backup's default row on the id the destination already holds,
+so that row is always the one `skip` leaves alone — local filters it out by `existingIds`,
+cloud's `bulkCreateLocations` skips a taken id. Measured 2026-10-04: a backup whose default
+was called "Fixture Home" came back as `[ "Fixture Cabin", "My Home", "Fixture Office" ]` in
+**both** projects. Correct for `skip`, and no stock, cart or log is lost — a location row
+holds only a name and an order.
+
+**One wrong comment of my own, caught and corrected before it shipped.** The first version
+of `DESTINATION_DEFAULT_LOCATION_NAME` blamed task 4's create-pass routing for that name
+loss, and claimed local mode kept the backup's name while cloud did not. The local run
+disproved it: local gives "My Home" too, because the UI never reaches `clear`. The constant
+and both call-site comments now name the `skip` strategy as the cause.
+
+**Three mutation checks, all red for the reason claimed.**
+
+| Mutation | Result |
+|---|---|
+| uploaded `itemStocks` forced onto the caller's default location (`prepareCloudPayload`) | **4 red.** `expected [ "DEFAULT", "Fixture Cabin", "Fixture Office" ] to deeply equal [ "DEFAULT" ]` at `backupAssertions.ts:168` — every row collapsed onto the default. The cart and log tests stayed green, correctly: that mutation touches neither |
+| the `itemStocks` entity deleted from `ENTITY_SPECS` | **4 red.** Two die at `verifyRelations` step 1, `getByRole('heading', { name: 'Fixture Item', level: 3 })` "element(s) not found" — the invisible-item symptom task 6 made possible. The stray-default test says it **directly**: `expected [ "DEFAULT", "Fixture Cabin", "Fixture Office" ] to deeply equal []` — stocked nowhere |
+| the cart prefix strip reinstated (what task 3 deleted) | **2 red**, exactly the two cart-column assertions: `cartItemCountByItem(itemId, locationId: <Office>)` `Expected: 1 / Received: 0`. The stock assertions stayed green |
+
+So the three mutations hit three independent assertions, not one shared one.
+
+**Type-checked by hand, because nothing type-checks `e2e/` (issue #322).** A temporary
+`tsconfig.e2e-task8.json` scoped to the four touched files, `npx tsc --noEmit`, run on the
+**stashed** tree first and then on mine. Both runs printed the same **7** errors — 3
+`TS2307` in the cloud spec and 4 in the local spec, all `node:*` with no `@types/node`,
+exactly what `e2e/CLAUDE.md`'s table says. `diff` of the two outputs is empty, so the new
+code adds none. The temporary tsconfig was deleted.
+
+**What still cannot be seen by any test.**
+
+| Gap | Why |
+|---|---|
+| The `clear` strategy end to end | `ImportCard` reaches it only through the conflict dialog's "clear and import" button, and no spec drives that dialog. So `clearAllData` + re-import — the one path where the ordering hazard that broke PR 4a lives, and the one where local and cloud really do differ about the default location's name — is covered by unit tests only |
+| `replace`, and issue #330 | same reason. #330 (the shared `ImportSession` key with no mode in it) needs `replace` with rows in both passes |
+| A pre-v15 file through the real UI | the new coverage is four unit tests. Both E2E fixtures are post-v15 now, on purpose: a pre-v15 fixture cannot carry three locations, so it cannot see a wrong one |
+| `updatedAt` pass-through on the four new bulk mutations | still unresolved, as the plan's gap table says. These specs assert quantities and locations, never timestamps |
+| The LOCAL half of `readStocksForItem` in a cloud run | it reads IndexedDB, which a cloud run has none of. The helper branches on `baseURL`, so this is correct, but it means the local assertions and the cloud assertions are two different code paths proven separately, not one path proven twice |
+| A local export from a database whose items were never split | such a payload has `itemStocks: []`, so `upgradeLegacyPayloadForCloud`'s guard treats it as post-v15 and `upgradeUnsplitItems` does not run on the cloud path. Its inline stock is still dropped on an import into cloud. Left alone deliberately: the alternative over-stocks every catalog-only item (see above), and the state is a test artifact rather than something a Dexie upgrade leaves behind |
+
 ## Task 9 — gate and docs
 
 1. The full Verification Gate from root `CLAUDE.md`, each command with an explicit path.

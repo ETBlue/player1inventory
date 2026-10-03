@@ -488,7 +488,67 @@ Stock-tab pager uses (`apps/web/src/hooks/useItemStocks.ts`). Both return the sa
 `StockRow` shape, because the Dexie row and the GraphQL type use the same key names.
 
 Reach for it in any dual-mode spec that asserts on stock rows rather than on rendered
-text. `item-stock-input.spec.ts` and `item-stock-pager.spec.ts` are the two users today.
+text. `item-stock-input.spec.ts`, `item-stock-pager.spec.ts` and the two import/export
+specs are the users today.
+
+`readLocations(page, request, baseURL)` joined it on 2026-10-04 (cloud locations PR 4b
+task 8) and branches the same way: local reads the `locations` store, cloud runs the
+`locations` query. **Look a location up by NAME, never by id.** The ids differ between the
+modes on purpose — the local default is the `'local'` sentinel, a cloud default is a
+server-generated cuid, and the import remap rewrites the payload's default onto whichever
+one the destination holds.
+
+### `e2e/helpers/backupAssertions.ts` — the import/export location checks, written once
+
+`import-export-local.spec.ts` and `import-export-cloud.spec.ts` each have their own
+`verifyRelations`. The two had **already drifted** — the local copy grew a seventh check for
+the shelf that the cloud copy never got — and **neither asserted a location or a quantity at
+all**. So every imported item could land in the wrong location, or in NO location, and both
+specs still passed. Cloud locations PR 4b made that dangerous: its task 6 deleted
+`mirrorStockToDefaultLocation`, the server mirror that used to stock every imported item at
+the caller's default location and so hid exactly this failure.
+
+The new checks therefore live in **one** module, not a third copy:
+
+| Export | What it asserts |
+|---|---|
+| `expectFixtureLocations` | three locations, exactly one default, and that one's name |
+| `expectFixtureStockPerLocation` | one stock row per location, each with its own quantities |
+| `expectStockNotCollapsedOntoDefault` | the two non-default rows are not sitting on the default |
+
+**Both fixtures describe the same three locations under the same names, with the same three
+different quantities.** `e2e/fixtures/local-backup.json`'s default id is the `'local'`
+sentinel; `cloud-backup.json`'s is `aaaaaa000000000000000010`. Only the ids differ, so a
+fixture resolves a location by name and each direction exercises the remap.
+
+**Do not make those quantities equal, and do not drop to one location.** With one location,
+"the location the payload named" and "the caller's default" are the same id; with equal
+numbers, "each row kept its own location" and "every row landed on the default" give the
+same answer. Either way no assertion in this module can fail.
+
+**The backup's default-location NAME does not survive the import the UI runs, in either
+mode.** `ImportCard.tsx` line 111 runs the **`skip`** strategy whenever the payload raises no
+conflict, and `skip` means "add what is missing, change nothing that is already there". The
+remap has put the backup's default row on the id the destination already holds, so that row
+is always the one `skip` leaves alone: local filters it out by `existingIds`, cloud's
+`bulkCreateLocations` skips a taken id. Measured 2026-10-04 — a backup whose default was
+called "Fixture Home" came back as `[ "Fixture Cabin", "My Home", "Fixture Office" ]` in
+both projects. That is why `DESTINATION_DEFAULT_LOCATION_NAME` exists and why the default's
+expected name is a parameter rather than a constant in the fixture.
+
+**Reading a cart row's `locationId` COLUMN needs `cartItemCountByItem(itemId, locationId:)`.**
+The `Cart` GraphQL type (`apps/server/src/schema/cart.graphql`) exposes `id` and
+`lastPurchasedAt` and nothing else, so there is no `locationId` field to select. That query
+resolves through `where: { itemId, userId, cart: { locationId } }`, so it reads the column
+rather than parsing the id string — which is the whole difference between "the client sent
+the right id" and "Postgres wrote the right column".
+
+**A cloud seed must write stock of its own.** `import-export-cloud.spec.ts`'s own
+`seedCloudFixture` wrote items and no `ItemStock` rows, and relied on the server mirror. With
+that mirror gone both of its tests failed on `getByRole('heading', { name: 'Fixture Item',
+level: 3 })`, "element(s) not found" — the item was in the catalog and in no location. See
+"A seed that writes an item must also write its stock" above; the same rule applies to a
+spec's private seed, not only to `helpers/cloudSeed.ts`.
 
 ### The three group specs are NOT location coverage
 
