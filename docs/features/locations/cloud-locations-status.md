@@ -2,10 +2,10 @@
 
 Status: 🔄 **In Progress** — PRs 0, 1, 2, 3a, 3b and 3c are ✅ **merged and deployed to
 production**. **PR 3 is complete.** **PR 4 splits into 4a, 4b and 4c** (2026-10-02 — see
-*Amendment 2026-10-02* below). **4a is built but BLOCKED** on
-`feature/cloud-locations-pr4a`: its server surface is complete and all 340 server tests
-pass, but one cloud E2E spec fails — a cloud → cloud import now dies with `Forbidden`. See
-*What 4a found*, item 4. 4b, 4c and 5 are 🔲 pending. The three overdue smoke
+*Amendment 2026-10-02* below). **4a is ✅ merged** —
+[#328](https://github.com/ETBlue/player1inventory/pull/328), `fbdd8869`. **4b is ✅ built**
+on `feature/cloud-locations-pr4b`, **with the gate red on one E2E test** (the cloud → cloud round trip needs 36.5s against the default 30s timeout) and not yet pushed — see
+*Amendment 2026-10-04* below. 4c and 5 are 🔲 pending. The three overdue smoke
 tests were **automated on 2026-09-23** as `e2e/tests/location-scoped-writes.spec.ts` (4
 cloud test cases). One narrower check is still owed: nothing has run the new server code
 against data the PR 3b migration produced — see *The smoke tests are overdue, not pending*
@@ -22,6 +22,10 @@ Docs for this feature:
 [PR 3b plan](2026-09-17-cloud-locations-plan-pr3b.md) ·
 [PR 3c brainstorming](2026-09-20-brainstorming-pr3c.md) ·
 [PR 3c plan](2026-09-20-cloud-locations-plan-pr3c.md) ·
+[PR 4 brainstorming](2026-10-02-brainstorming-pr4.md) ·
+[PR 4 design](2026-10-02-cloud-locations-pr4-design.md) ·
+[PR 4a plan](2026-10-02-cloud-locations-plan-pr4a.md) ·
+[PR 4b plan](2026-10-03-cloud-locations-plan-pr4b.md) ·
 [**deploy runbook**](../../global/backend/2026-09-18-deploy-runbook-cart-rekey.md)
 
 > **Everything through PR 3c is already live in production.** Railway auto-deploys
@@ -52,8 +56,8 @@ PR 1 and PR 5 already use: additive changes first, destructive changes last.
 | **3a** | ✅ merged — [#291](https://github.com/ETBlue/player1inventory/pull/291) | The **additive** migration: `InventoryLog.locationId` and `Cart.locationId` added, backfilled and constrained. No `Cart.id` re-key. Inventory logs scoped by location, server and client. |
 | **3b** | ✅ merged — [#293](https://github.com/ETBlue/player1inventory/pull/293) — deployed 2026-09-19 | The destructive half: the `'no-vendor'` split, the composite `Cart.id` re-key, the cart resolvers, vendor carts at the right time, `checkout`, `consumeRecipes`, and **five** `!isCloud` bypasses (the plan said two). |
 | **3c** | ✅ merged — [#297](https://github.com/ETBlue/player1inventory/pull/297) — deployed 2026-09-21, **deploy unverified** | `applyUnitSwitch` and `removeItemFromLocation`'s cloud cascade. Two new features, blocked by neither 3a nor 3b. **PR 3 ends here.** |
-| **4a** | 🔄 built, **full gate green**, not yet pushed — branch `feature/cloud-locations-pr4a`, `5fc7e9ca`‥`f0c1ddad`; code in `3fea034e`, `6222e335`, `ebfb0f30`, `eda64a54`, `8b47f690`, `627a23f2`, `eb503758`, `f0c1ddad` | The GraphQL surface — `allItemStocks`, `InventoryLog.locationId`, `InventoryLogInput.locationId`, `LocationInput`, `ItemStockImportInput`, four bulk mutations, plus an imported cart's location read from its own id (no new input needed). No web change. Server tests 259 → **346** across 20 → 24 files, all green; all **10** mutation checks red. **NOT behaviour-neutral, and task 8 (`f0c1ddad`) fixed the part that broke:** task 4's cart check refused a location id `clearAllData` had just deleted, killing cloud → cloud import (`import-export-cloud.spec.ts:133`). Carts now fall back to the caller's default when no row holds the named id, and refuse only a stranger's **live** location. That refusal stays and is a deliberate behaviour change. |
-| **4b** | 🔲 Pending | The payload shape and **both** import readers, in one diff: the single remap rule, lossless cloud export, `flattenPayloadForCloud` and `MigrationLocationWarningDialog` deleted, composite cart ids kept, 2 of the 6 `stockDualWrite` calls removed. |
+| **4a** | ✅ merged — [#328](https://github.com/ETBlue/player1inventory/pull/328), `fbdd8869` | The GraphQL surface — `allItemStocks`, `InventoryLog.locationId`, `InventoryLogInput.locationId`, `LocationInput`, `ItemStockImportInput`, four bulk mutations, plus an imported cart's location read from its own id (no new input needed). No web change. Server tests 259 → **346** across 20 → 24 files, all green; all **10** mutation checks red. **NOT behaviour-neutral, and task 8 (`f0c1ddad`) fixed the part that broke:** task 4's cart check refused a location id `clearAllData` had just deleted, killing cloud → cloud import (`import-export-cloud.spec.ts:133`). Carts now fall back to the caller's default when no row holds the named id, and refuse only a stranger's **live** location. That refusal stays and is a deliberate behaviour change. |
+| **4b** | 🔄 built, **gate RED on one E2E test**, not yet pushed — the web (2285) and server (347) suites, `local` (171) and `pwa` (69) all pass; the `cloud` project fails 1 of 103: `import-export-cloud.spec.ts` › *user can export and re-import cloud data (cloud → cloud)* needs **36.5s** and the default test timeout is **30s** — branch `feature/cloud-locations-pr4b`, `915368fa`‥task 9 | The payload shape and **both** import readers, in one diff. Cloud export is lossless: `locations`, `itemStocks`, and each log's `locationId`, `logKey` and `logParams` (the last two were a pre-existing loss — a cloud backup dropped every log's message). One remap rule — *keep every payload location id, except the payload's default, which maps onto the destination's default* — applied to **five** fields in both directions, shared by the cloud and local readers. Deleted: `flattenPayloadForCloud`, `resolveFlattenLocationId` and its two helpers, the cart-prefix strip (issue #327's client half), `MigrationLocationWarningDialog` (4 files + 4 i18n keys × 2 languages), the dead `settings.import.unknownLocations` key, and 2 import `stockDualWrite` calls. Added: four bulk Apollo operations and one `ENTITY_SPECS` table that replaces three hand-maintained upload lists. Found and fixed a regression tasks 3 and 6 made together — `importCloudData` never ran `upgradeLegacyPayload`, so a pre-v15 backup imported into cloud mode lost **all** of its stock. Found and filed [issue #330](https://github.com/ETBlue/player1inventory/issues/330). See *Amendment 2026-10-04*. |
 | **4c** | 🔲 Pending | Issue #320 — a two-user real-SQL spec for `purgeUserData`. Independent of 4a and 4b. |
 | **5** | 🔲 Pending | **Contract step:** drop the five `Item` columns, remove them from the GraphQL type and inputs, delete `apps/server/src/lib/stockDualWrite.ts` and all of its call sites. |
 
@@ -1053,13 +1057,16 @@ PR 3c was blocked by neither 3a nor 3b.
 
 ### PR 4 owes
 
-PR 4's main scope is **import, export, post-login migration and purge**, design §6. Those
-four paths still know nothing about `Location`. Plus these two:
+PR 4's main scope is **import, export, post-login migration and purge**, design §6. Import,
+export and the post-login migration are done — 4a shipped the server surface, 4b shipped the
+client. **Purge is all that is left, and it is 4c** (issue #320).
 
-| Item | Why it matters |
+Both items this section used to list are now closed by 4b task 7:
+
+| Item | Closed how |
 |---|---|
-| Decide whether `usePostLoginMigration`'s copy id should be validated. | The hook copies by the **unvalidated** `readStoredLocationId('local')`; the dialog warns by the **validated** `resolveLocalActiveLocationId()`. They diverge when the slot names a **deleted** location: every item uploads with zeroed stock and every cart is dropped, silently, and the one-shot ref blocks a retry. |
-| Remove `locationResolved`'s `activeLocationId === DEFAULT_LOCATION_ID` branch. | Design §6 already schedules it. Since Task 6b the copy target is the local slot, so this gate no longer guards it. |
+| Decide whether `usePostLoginMigration`'s copy id should be validated. | ✅ The question is gone, not answered. The hook no longer picks a location at all: `importCloudData` lost its `locationId` option, because the remap keeps every location. There is no id left to validate. |
+| Remove `locationResolved`'s `activeLocationId === DEFAULT_LOCATION_ID` branch. | ✅ Removed. The "locations have loaded" half of the gate stays, with a corrected reason — it buys ordering, not the remap's input. See *Amendment 2026-10-04*. |
 
 ### PR 5 owes
 
@@ -1456,3 +1463,147 @@ grep -rnE "await (mirrorStock|mirrorStockToDefaultLocation|mirrorItemStockToItem
 
 `lib/stockDualWrite.ts` and `lib/defaultLocation.ts` both survive — the second must outlive
 PR 5, as its own comment says.
+
+---
+
+## Amendment 2026-10-04 — PR 4b is built
+
+Branch `feature/cloud-locations-pr4b`, nine tasks. **Not yet pushed, and the gate is red on one E2E test** — see *Verification, run 2026-10-04* at the end of this amendment.
+Plan: [PR 4b plan](2026-10-03-cloud-locations-plan-pr4b.md).
+
+What it shipped, in one list:
+
+| Area | Change |
+|---|---|
+| Cloud export | lossless — `locations`, `itemStocks`, and each log's `locationId`, `logKey` and `logParams`. `fetchCloudPayload` had **zero** tests before this; it has three now |
+| The remap rule | *keep every payload location id, except the payload's default, which maps onto the destination's default* — **five** fields (`locations[].id`, `itemStocks[].locationId`, `inventoryLogs[].locationId`, `shoppingCarts[].id`, `cartItems[].cartId`), one shared implementation, used in both directions |
+| Upload order | `locations` before `items`, `itemStocks` after. Three hand-maintained lists (`bulkCreate`'s array, `bulkUpsert`'s array, `computeTotalBatches`) became one `ENTITY_SPECS` table |
+| Deleted | `flattenPayloadForCloud`, `resolveFlattenLocationId` + 2 helpers, the cart-prefix strip, `MigrationLocationWarningDialog` (4 files), 4 i18n keys × 2 languages, the dead `settings.import.unknownLocations` key, 2 import `stockDualWrite` calls |
+| Migration gate | `migrationLocationId` and the `activeLocationId === DEFAULT_LOCATION_ID` branch removed; the "locations have loaded" half kept, with an honest reason |
+
+### Issue #330 — `replace` silently skips the rows it was asked to overwrite
+
+Found by task 4, filed as [#330](https://github.com/ETBlue/player1inventory/issues/330),
+**not fixed here**.
+
+On the `replace` strategy `bulkCreate` and `bulkUpsert` share **one** `ImportSession`, and
+the batch key is `${entityType}:${i}` with **no mode in it**. So when an entity has rows in
+both passes, the upsert pass finds the create pass's key and **skips its own batch**. A
+payload with one new item and one conflicting item therefore never updates the conflicting
+item — exactly the data the user chose to replace, silently not replaced.
+
+Reachable today for all **nine** older entities. Neither of 4b's two new entities can hit
+it, because `partitionPayload` routes each to exactly one pass. Recorded in a comment at the
+key line.
+
+It needs `replace` with rows in both passes, which no E2E spec drives — `ImportCard` reaches
+`replace` only through the conflict dialog, and nothing drives that dialog.
+
+### The regression tasks 3 and 6 made together, and the process rule it produced
+
+**`importCloudData` never ran `upgradeLegacyPayload`.** A pre-v15 backup imported into cloud
+mode **lost all of its stock**: every item landed in the catalog stocked nowhere, invisible
+in the pantry, with no error. Measured before the fix, the only mutations sent were
+`["BulkCreateItems", "BulkCreateShoppingCarts"]`, and the cart id was still the bare
+`vendor_1` — issue #327's leak, still open on that one path.
+
+Task 3 deleted `flattenPayloadForCloud`, which used to send a pre-v15 payload's inline stock
+columns up. Task 6 deleted the server mirror that turned those columns into an `ItemStock`
+row. **Neither half was replaced, and each task's own unit tests passed.** Task 8 found it
+only because it ran the E2E specs. Fixed in `1d2a0c89` by `prepareCloudPayload`, which runs
+the upgrade and then the remap.
+
+The guard is **the absent `itemStocks` key and nothing else**. Running the whole upgrade on a
+post-v15 payload also runs `upgradeUnsplitItems`, and a cloud export's items carry the legacy
+stock columns as **0, not null** — so `hasInlineStock` answers true for every *catalog-only*
+cloud item, and a cloud → cloud round trip would stock each one at the default location. A
+unit test pins that.
+
+**The rule, for the next multi-task PR: if a task deletes a code path, run the E2E spec that
+covers it in that task, not at the end.** Unit tests cannot see this class of failure. Task
+6 built a seven-link "the upload chain holds" table from source and fakes, and that table
+never mentioned the legacy path at all. Four tasks (4, 5, 6, 7) ran on a tree whose cloud
+import E2E was already red.
+
+### The migration gate's stated reason was false
+
+The PR 4 design doc and brainstorming decision 6 both said the gate exists because "the
+remap maps the payload's default onto THIS account's `isDefault` row, so the copy cannot
+start until the destination's locations are known".
+
+**`importCloudData` reads the destination's default itself**, with its own `network-only`
+`GetLocations` inside `fetchCloudDefaultLocationId`, on every strategy. The hook's
+`useLocations()` result feeds the remap nothing. So the option the user picked in decision 6
+was presented with a justification that does not hold, and decision 6's rejection note for
+deleting the gate rests on the same false premise.
+
+The gate is still worth keeping, for a **different** reason: the copy is one-shot and
+destructive, and on `clear` it deletes every `Location` row before the remap re-reads them,
+so it must not start while the hook's own `GetLocations` is in flight. That reason is argued
+from source, not measured. Both documents were corrected in `293c82f8`. Found by task 7,
+which refused to write the comment the plan dictated.
+
+### The dual-write counts, re-counted 2026-10-04
+
+Confirmed on the finished branch, not assumed: **4** `stockDualWrite` call sites in 4 files,
+**5** `REMOVED IN PR 5` markers, **0** `REMOVED IN PR 4b` markers. The table in *Amendment
+2026-10-03* is correct as written. `settings.import.unknownLocations` appears in no source
+or locale file — only in these docs.
+
+### Verification, run 2026-10-04 — one E2E test over its time budget
+
+Everything but one E2E test passes. Load average was 1.6–2.5 for the whole run, so this is
+**not** the starvation signature root `CLAUDE.md` describes.
+
+| Command | Result |
+|---|---|
+| `pnpm codegen` | pass |
+| `(cd apps/web && pnpm lint)` | pass — the same **4** pre-existing suppression warnings in `src/routes/shopping/index.tsx` at 187, 191, 211, 215 |
+| `pnpm build` (root, full) | pass. `grep 'TS6385'` → no match |
+| `(cd apps/web && pnpm build-storybook)` | pass |
+| `(cd apps/web && pnpm check)` | pass — the same 4 warnings |
+| `pnpm test` (both workspaces + `test:spec`) | pass — `apps/web` **2285 passed (2285)** across **248** files; `apps/server` **347 passed (347)** across **24**; `scripts/spec` 57 pass |
+| `pnpm test:e2e:all` → `local` | **PASS** — 171 passed / 5 skipped, 3m16s |
+| `pnpm test:e2e:all` → `cloud` | **FAIL(1)** — 95 passed / 1 failed / 7 skipped, 11m59s |
+| `pnpm test:e2e:all` → `pwa` | **PASS** — 69 passed, 1m24s |
+
+Against `main`'s last full gate (local 170/5, cloud 90/7, pwa 69): local **+1**, cloud
+**+6** collected (103 against 97), pwa unchanged. 4b accounts for 5 of the cloud 6 — 1 for
+`cart-id-cross-user-leak.spec.ts` and 4 because `import-export-cloud.spec.ts` went 2 → 6.
+
+**The one failure, and it is NOT a flake.**
+
+```
+[cloud] › e2e/tests/settings/import-export-cloud.spec.ts:314:1
+  › user can export and re-import cloud data (cloud → cloud)
+Test timeout of 30000ms exceeded.
+Error: expect(locator).toBeVisible() failed
+Locator: getByLabel('Remove Fixture Item')
+  at verifyRelations (import-export-cloud.spec.ts:246:70)
+```
+
+Three measurements say what it is:
+
+1. It failed in the full gate **and** again when the spec file ran alone, at load **1.65**.
+   A moving failure set is starvation; a repeat at low load is not.
+2. The **page snapshot taken at the moment of failure shows the element present** —
+   `checkbox "Remove Fixture Item" [checked]` on the recipe's Items tab. The data is
+   correct. The assertion lost a race, it did not read a wrong value.
+3. Re-run as a single test with `--timeout=90000`: **1 passed (36.5s)**.
+
+So the test needs about **36.5s** and the default `timeout` is **30s**. It cannot pass as
+written. Task 8's own note predicted this ("about 30s against a 30s timeout") and attributed
+one earlier failure to load; that reading was too generous — the test is simply over budget,
+and 4b's own new location and quantity readbacks are what pushed it there.
+
+**Not fixed here, on purpose.** The choice belongs to the user, because the three options
+trade different things:
+
+| Option | Cost |
+|---|---|
+| `test.setTimeout(60000)` on that one test | one line; hides that a cloud round trip now takes 36s |
+| raise `timeout` for the whole `cloud` project | every cloud test gets a longer leash, including ones where 30s is a useful alarm |
+| split `verifyRelations`' 7 UI steps across two tests | more wall time overall, but each test stays inside a 30s budget and names its own failure |
+
+Nothing else in the gate is red, and the branch must not be pushed until this is settled —
+`.husky/pre-push` runs `pnpm test`, which is green, so the hook will **not** catch it.
