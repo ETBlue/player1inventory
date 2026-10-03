@@ -77,10 +77,11 @@ vi.mock('../lib/prisma.js', () => ({
     },
     itemStock: {
       deleteMany: vi.fn(),
-      // The PR-2 dual-write: `bulkCreateItems` / `bulkUpsertItems` mirror the
-      // flat payload's inline stock into an `ItemStock` in the caller's default
-      // location, because the cloud pantry reads `ItemStock` and the import
-      // surface stays flat until PR 4.
+      // Kept so the two "no stock row from the item import" tests can assert
+      // `not.toHaveBeenCalled()`. Cloud locations PR 4b deleted the dual-write
+      // that used to call it; stock now arrives through
+      // `bulkCreateItemStocks` / `bulkUpsertItemStocks`, which this file does
+      // not exercise (see `import-itemStock.resolver.test.ts`).
       upsert: vi.fn(),
     },
     location: {
@@ -181,13 +182,19 @@ afterAll(async () => {
   await server.stop()
 })
 
-// The caller's default location, resolved by `defaultLocationId` in
-// `lib/stockDualWrite.ts`, which delegates to `ensureDefaultLocation` in
-// `lib/defaultLocation.ts`. That function never returns null — it creates the
-// location when the user has none (issue #287). This mock stands in for the
-// "already has one" branch, which is the common path. The bug itself is covered
-// by the no-location tests in `item.resolver.test.ts`, `cart.resolver.test.ts`
-// and `recipe.resolver.test.ts`, which use the stateful fake.
+// A default location for `ensureDefaultLocation` (lib/defaultLocation.ts) to
+// find, so `resolveLogLocations` and `resolveCartLocations` have a fallback.
+//
+// The mock is ARMED on purpose even though no test in this file expects it to
+// be called any more: the two "no stock row from the item import" tests assert
+// `p.location.findFirst` was NOT called, and an armed mock makes that fail with
+// "expected not to be called" instead of crashing on an undefined result.
+//
+// It answers "yes, that location is yours" for ANY id (ground rule 3 of the
+// PR 4b plan), so NO ownership or which-location assertion can fail in this
+// file. Those live in `import-itemStock.resolver.test.ts`,
+// `import-inventoryLog-location.resolver.test.ts` and the resolver tests that
+// use `src/test/stockFake.ts`.
 const DEFAULT_LOCATION = { id: 'loc_default', userId: 'user_import_test' }
 
 beforeEach(() => {
@@ -352,16 +359,28 @@ describe('bulkCreateItems', () => {
     }
   })
 
-  // ── The PR-2 dual-write onto ItemStock ────────────────────────────────────
+  // ── NO STOCK COMES FROM THE ITEM IMPORT (cloud locations PR 4b) ───────────
   //
-  // Since PR 2 the cloud pantry reads `ItemStock`, not `Item`'s legacy columns.
-  // The import surface is still FLAT (`ItemInput` carries stock inline with no
-  // `locationId`, until PR 4), so `bulkCreateItems` has to mirror the inline
-  // values into an `ItemStock` in the caller's default location. Without it an
-  // import completes "successfully" and every imported item is invisible in the
-  // pantry — no error, anywhere. Caught by
-  // `e2e/tests/settings/import-export-cloud.spec.ts`.
-  it('user importing items has each one stocked in their default location', async () => {
+  // THIS TEST REPLACES `user importing items has each one stocked in their
+  // default location`, which asserted the opposite. Until PR 4b both item
+  // import resolvers mirrored the payload's inline stock into an `ItemStock`
+  // in the CALLER'S DEFAULT location, because the import surface was flat and
+  // the cloud pantry reads `ItemStock`. The client now uploads real
+  // `ItemStock` rows through `bulkCreateItemStocks` / `bulkUpsertItemStocks`
+  // (PR 4a), each row naming its own location. A mirror here would collapse a
+  // multi-location pantry onto one location and overwrite those real rows, so
+  // writing no stock is now the contract.
+  //
+  // WHAT THIS FILE CAN AND CANNOT PROVE. Every Prisma model here is a plain
+  // `vi.fn()` call recorder, and `p.location.findFirst` answers
+  // `DEFAULT_LOCATION` for ANY id (`:195`), so no assertion about WHICH
+  // location a row landed in can fail in this file. "This resolver touched
+  // `itemStock` not at all" needs no `where` matching, which is exactly what
+  // a recorder can carry. The positive half of the contract — each stock row
+  // lands in the location its own payload names — is pinned in
+  // `import-itemStock.resolver.test.ts` against the stateful fake, whose
+  // fixture holds three locations so a hardcoded default is visible.
+  it('user importing items gets no stock row from the item import itself', async () => {
     // Given an item whose payload carries real stock values
     const prismaItem = makePrismaItem('item_abc123', 'Milk')
     p.item.findUnique.mockResolvedValue(null)
@@ -389,34 +408,18 @@ describe('bulkCreateItems', () => {
       { contextValue: CONTEXT },
     )
 
-    // Then an ItemStock row was written for (item × the caller's default
-    // location), carrying the payload's values — not the Item's columns alone
+    // Then the item is created and NO `ItemStock` row is written
     expect(response.body.kind).toBe('single')
     if (response.body.kind === 'single') {
       expect(response.body.singleResult.errors).toBeUndefined()
     }
-    expect(p.itemStock.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          itemId_locationId: {
-            itemId: 'item_abc123',
-            locationId: DEFAULT_LOCATION.id,
-          },
-        },
-        update: expect.objectContaining({
-          targetQuantity: 4,
-          refillThreshold: 2,
-          packedQuantity: 3,
-          unpackedQuantity: 1,
-        }),
-      }),
-    )
-    // And the location it resolved was scoped to the CALLER, not any default
-    expect(p.location.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ userId: 'user_import_test' }),
-      }),
-    )
+    expect(p.item.create).toHaveBeenCalledTimes(1)
+    expect(p.itemStock.upsert).not.toHaveBeenCalled()
+    // And the caller's default location is not even looked up. A second,
+    // independent guard: `mirrorStockToDefaultLocation` resolved it through
+    // `ensureDefaultLocation`, which is this `findFirst`. No other code path
+    // in `bulkCreateItems` reads a location.
+    expect(p.location.findFirst).not.toHaveBeenCalled()
   })
 
   it('rejects unauthenticated bulk-create requests', async () => {
@@ -472,6 +475,52 @@ describe('bulkUpsertItems', () => {
       expect(items[0].name).toBe('Updated Name')
       expect(items[1].name).toBe('Brand New')
     }
+  })
+
+  // The second half of the PR 4b removal. `bulkCreateItems` and
+  // `bulkUpsertItems` each held their OWN byte-identical
+  // `mirrorStockToDefaultLocation` call, so one test cannot pin both: with
+  // only the create-side test, putting the upsert-side mirror back would stay
+  // green. See the long comment above the create-side test for why writing no
+  // stock is the contract and for what this file's recorders can prove.
+  it('user replacing items gets no stock row from the item import itself', async () => {
+    // Given an item whose payload carries real stock values
+    const prismaItem = makePrismaItem('item_abc123', 'Milk')
+    p.item.upsert.mockResolvedValue(prismaItem)
+    p.itemTag.deleteMany.mockResolvedValue({ count: 0 })
+    p.itemVendor.deleteMany.mockResolvedValue({ count: 0 })
+    p.itemTag.createMany.mockResolvedValue({ count: 0 })
+    p.itemVendor.createMany.mockResolvedValue({ count: 0 })
+    p.item.findUniqueOrThrow.mockResolvedValue(prismaItem)
+
+    // When it is upserted
+    const response = await server.executeOperation(
+      {
+        query: BULK_UPSERT_ITEMS,
+        variables: {
+          items: [
+            makeItemInput({
+              id: 'item_abc123',
+              targetQuantity: 4,
+              refillThreshold: 2,
+              packedQuantity: 3,
+              unpackedQuantity: 1,
+            }),
+          ],
+        },
+      },
+      { contextValue: CONTEXT },
+    )
+
+    // Then the item is upserted and NO `ItemStock` row is written
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      expect(response.body.singleResult.errors).toBeUndefined()
+    }
+    expect(p.item.upsert).toHaveBeenCalledTimes(1)
+    expect(p.itemStock.upsert).not.toHaveBeenCalled()
+    // And the caller's default location is not even looked up
+    expect(p.location.findFirst).not.toHaveBeenCalled()
   })
 })
 
