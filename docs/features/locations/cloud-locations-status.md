@@ -1564,7 +1564,8 @@ Everything but one E2E test passes. Load average was 1.6–2.5 for the whole run
 | `(cd apps/web && pnpm check)` | pass — the same 4 warnings |
 | `pnpm test` (both workspaces + `test:spec`) | pass — `apps/web` **2285 passed (2285)** across **248** files; `apps/server` **347 passed (347)** across **24**; `scripts/spec` 57 pass |
 | `pnpm test:e2e:all` → `local` | **PASS** — 171 passed / 5 skipped, 3m16s |
-| `pnpm test:e2e:all` → `cloud` | **FAIL(1)** — 95 passed / 1 failed / 7 skipped, 11m59s |
+| `pnpm test:e2e:all` → `cloud`, first run | **FAIL(1)** — 95 passed / 1 failed / 7 skipped, 11m59s |
+| `pnpm test:e2e:all` → `cloud`, after the timeout fix | **PASS** — 96 passed / 7 skipped, 10m51s |
 | `pnpm test:e2e:all` → `pwa` | **PASS** — 69 passed, 1m24s |
 
 Against `main`'s last full gate (local 170/5, cloud 90/7, pwa 69): local **+1**, cloud

@@ -1165,7 +1165,8 @@ Everything except one cloud E2E test passes. Load average 1.6–2.5 throughout, 
 | `(cd apps/web && pnpm check)` | pass — the same 4 warnings |
 | `pnpm test` (repo root) | pass — `apps/web` `Test Files 248 passed (248)` / `Tests 2285 passed (2285)` in 57.86s; `apps/server` `Test Files 24 passed (24)` / `Tests 347 passed (347)` in 2.54s; `scripts/spec` 57 pass |
 | `pnpm test:e2e:all` → `local` | **PASS** — 5 skipped, 171 passed, 3m16s |
-| `pnpm test:e2e:all` → `cloud` | **FAIL(1)** — 1 failed, 7 skipped, 95 passed, 11m59s |
+| `pnpm test:e2e:all` → `cloud`, first run | **FAIL(1)** — 1 failed, 7 skipped, 95 passed, 11m59s |
+| `pnpm test:e2e:all` → `cloud`, after `33546f09` | **PASS** — 7 skipped, 96 passed, 10m51s |
 | `pnpm test:e2e:all` → `pwa` | **PASS** — 69 passed, 1m24s |
 
 Against `main`'s last full gate (local 170 passed / 5 skipped, cloud 90 / 7, pwa 69):
@@ -1271,3 +1272,26 @@ and naming its own failure).
 | The `cloud → cloud` E2E test is over its 30s time budget (36.5s). The gate is red on it | needs a decision — see task 9 |
 | The `clear` and `replace` strategies have no E2E coverage at all. `ImportCard` reaches them only through the conflict dialog, and no spec drives that dialog | open |
 | `importData.ts` is **net +331 lines** (2037 → 2368) despite the deletions. The design doc's *Less code to maintain* row counts what went, not the balance | accepted |
+
+
+---
+
+## Final gate — 2026-10-04, all three green
+
+`pnpm test:e2e:all`, exit 0, **15m33s**:
+
+| Project | Result | Time | Counts | vs `main` |
+|---|---|---|---|---|
+| `local` | PASS | 3m18s | 5 skipped, **171 passed** | 170 → 171 |
+| `cloud` | PASS | 10m51s | 7 skipped, **96 passed** | 90 → 96 |
+| `pwa` | PASS | 1m24s | **69 passed** | unchanged |
+
+The first run was red on one test. `cloud → cloud` needs **36.5s** against Playwright's
+default **30s**, and it had been misread once as a load flake. Three measurements settled it:
+it failed again with its spec running alone at load **1.65**; the page snapshot at the
+failure shows the element **present**, so the data had restored and only the assertion ran
+out of time; and the same test passes in 36.5s with `--timeout=90000`.
+
+Fixed in `33546f09` with `test.setTimeout(60000)` **on that one test**, not on the `cloud`
+project — the other five tests in the file pass inside 30s, and raising the project's budget
+would mean the next test that quietly grows to 45s tells nobody.

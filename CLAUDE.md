@@ -364,12 +364,17 @@ The two `offline banner a11y` tests moved from "runs in both `local` and `pwa`" 
 `pwa` only", which is why local now passes 170 where it passed 172 before — see
 **A11y Testing** below. This is issue #302.
 
-Measured again on 2026-10-04, on `feature/cloud-locations-pr4b` (cloud locations PR 4b):
-**16m39s** of Playwright time — local **171 passed / 5 skipped** in 3m16s, cloud **95
-passed / 1 failed / 7 skipped** in 11m59s, pwa **69 passed** in 1m24s. Load average stayed
-between 1.6 and 2.5 for the whole run. Cloud is the project that grows: 90 → 95 passing, and
-`settings/import-export-cloud.spec.ts` alone now takes about **2.1 minutes** where it took
+Measured again on 2026-10-04, on `feature/cloud-locations-pr4b` (cloud locations PR 4b),
+**all three green**: **15m33s** of Playwright time — local **171 passed / 5 skipped** in
+3m18s, cloud **96 passed / 7 skipped** in 10m51s, pwa **69 passed** in 1m24s. Load average
+stayed between 1.6 and 2.5. Cloud is the project that grows: 90 → 96 passing, and
+`settings/import-export-cloud.spec.ts` alone now takes about **2.0 minutes** where it took
 about 40 seconds, because PR 4b's round-trip tests read every location's quantities back.
+
+The first run of that gate was **red on one test**, and fixing it is where the 15m33s figure
+comes from. `cloud → cloud` needs **36.5s** against Playwright's default **30s** budget, so
+it now carries `test.setTimeout(60000)` — on that one test, not on the `cloud` project, so
+the other five tests in the file keep the 30s signal.
 
 **That run is also a worked example of telling a real failure from a phantom.** The one
 failing test repeated when its spec file ran **alone** at load 1.65, so it was not
