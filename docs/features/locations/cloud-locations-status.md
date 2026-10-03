@@ -1075,7 +1075,7 @@ Drop the five `Item` columns, remove them from the GraphQL type and inputs, and 
 | 5 | `import.resolver.ts` `bulkCreateItems` and `bulkUpsertItems` | `Item` → also `ItemStock` |
 | 6 | `itemStock.resolver.ts` `applyUnitSwitch` | **`ItemStock` → `Item`**, written with `tx` inside the transaction. **Added by PR 3c.** |
 
-`grep -rn "REMOVED IN PR 5" apps/server/src` is the checklist. It returns **7 markers across
+`grep -rn "REMOVED IN PR 5" apps/server/src` is the checklist. **As of 4b task 6 it returns 5** — see the 2026-10-03 note at the end of this file. Before 4a relabelled two of them it returned **7 markers across
 5 files**, not 6 — `import.resolver.ts` carries two (create and upsert) and
 `itemStock.resolver.ts` carries two (the `upsertItemStock` reverse mirror and
 `applyUnitSwitch`'s). Count the markers, not the files.
@@ -1326,7 +1326,7 @@ body; the body was right, and 4a's task 7 made both halves say **4b** (`eb503758
 left with **4 calls in 4 files** plus the inline `applyUnitSwitch` block at
 `itemStock.resolver.ts:320-328`.
 
-Counts measured again on 2026-10-02, after 4a: **6 calls across 5 files** and **7** markers
+Counts measured again on 2026-10-02, after 4a: **6 calls across 5 files** and **7** `DUAL-WRITE` markers (5 saying PR 5, 2 saying PR 4b)
 — 5 still reading "REMOVED IN PR 5" and 2 now reading "REMOVED IN PR 4b". Earlier docs said
 five markers. Count the markers, not the files.
 
@@ -1415,3 +1415,44 @@ task 4 no longer depends on 4b. Measured after the fix:
 The 3 extra mutation checks task 8 added are in the plan doc under *Task 8*, with their
 failure text. Checks 8 and 9 are a pair — "refuse an unclaimed id" and "accept a stranger's
 live location" are different wrong implementations and each check catches only one.
+
+
+---
+
+## Amendment 2026-10-03 — PR 4b task 6: the dual-write counts, settled
+
+The marker counts in this file and in the PR 4 design doc said "7 `REMOVED IN PR 5`
+markers". **That phrasing was never right after PR 4a.** There were 5 saying `REMOVED IN PR
+5` and 2 saying `REMOVED IN PR 4b` — 7 `DUAL-WRITE` markers of **both** kinds. 4b task 6
+caught the conflation.
+
+Measured on `feature/cloud-locations-pr4b` after task 6:
+
+| | Before 4a | After 4a | After 4b task 6 |
+|---|---|---|---|
+| `stockDualWrite` call sites | 6 in 5 files | 6 in 5 files | **4 in 4 files** |
+| `REMOVED IN PR 5` markers | 7 | 5 | **5** |
+| `REMOVED IN PR 4b` markers | 0 | 2 | **0** |
+
+The 4 remaining calls, the whole of **PR 5's teardown list**:
+
+| Call site | Function |
+|---|---|
+| `item.resolver.ts:191` | `mirrorStockToDefaultLocation` |
+| `itemStock.resolver.ts:137` | `mirrorItemStockToItem` |
+| `cart.resolver.ts:178` | `mirrorStock` |
+| `recipe.resolver.ts:103` | `mirrorStock` |
+
+Plus the inline block in `applyUnitSwitch`, which writes `tx.item.updateMany` directly
+because a mirror issued outside the transaction would survive a rollback.
+
+**The right grep for call sites**, since `grep -rn "mirrorStock"` returns 17 lines that are
+mostly comments:
+
+```bash
+grep -rnE "await (mirrorStock|mirrorStockToDefaultLocation|mirrorItemStockToItem)\(" \
+  apps/server/src/resolvers
+```
+
+`lib/stockDualWrite.ts` and `lib/defaultLocation.ts` both survive — the second must outlive
+PR 5, as its own comment says.

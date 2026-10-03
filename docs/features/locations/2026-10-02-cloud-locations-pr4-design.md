@@ -58,7 +58,7 @@ comes from the data, so there is no decision left to get wrong.
 |---|---|
 | Fewer ways to get it wrong | 3 hardcoded `ensureDefaultLocation` fallbacks stop being the only answer. Each one currently writes a row to a location the user did not choose, silently |
 | A failure that now has a name | an import naming someone else's location is **rejected**, through `requireLocationRole`. Today a wrong `locationId` cannot even be expressed, so the wrong row is written with no error |
-| Honest documentation | 8 stale claims in design §6 corrected, and 2 wrong counts (`stockDualWrite` is 6 calls behind 7 markers, not 5). Both had already been copied into task briefs |
+| Honest documentation | 8 stale claims in design §6 corrected, and 2 wrong counts (`stockDualWrite` is 6 calls behind 7 `DUAL-WRITE` markers, not 5). Both had already been copied into task briefs |
 
 **DX cost of 4a, stated plainly:** two more hand-maintained lists. `LocationInput` and
 `ItemStockImportInput` each duplicate a Prisma model's field set, like the 9 import inputs
@@ -400,7 +400,7 @@ row, so exactly one row is flagged and no extra row is created.
 
 ### Two of the six dual-writes go
 
-`stockDualWrite.ts` has **6 calls across 5 files** and **7 `REMOVED IN PR 5` markers**. Two
+`stockDualWrite.ts` has **6 calls across 5 files** and **7 `DUAL-WRITE` markers**. Two
 calls are in the import path:
 
 | Call site | Resolver |
