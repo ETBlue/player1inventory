@@ -106,6 +106,18 @@ The full Vitest UI report, for developers, on its own subdomain
 
 ### 5. Publish script — `pnpm spec:publish`
 
+0. Check the Cloudflare credentials, before any test runs (added 2026-10-03). The tests
+   take about 16 minutes, so a bad token must not wait until the upload to show up. The
+   script stops in seconds, with exit code 1, if any of these fail:
+   - `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are both set and not empty.
+   - `GET /user/tokens/verify` says the token is valid and `active`.
+   - `GET /accounts/<id>/pages/projects/<name>` returns 200 for both projects. This
+     proves the account ID and the Pages permission. A 404 prints the
+     `wrangler pages project create` command to run.
+
+   The token goes to `curl` through `--config -` on stdin, so it is never on a command
+   line and never in a message. `scripts/spec/publish.test.mjs` tests this with fake
+   `pnpm` and `curl` scripts and a temp `SPEC_ROOT`.
 1. Run the `apps/web` suite with the JSON reporter.
 2. Run `pnpm test:e2e:all`.
 3. Build the spec folder (Playwright reports + feature page + landing page).
@@ -146,9 +158,9 @@ What was built, and where it differs from the plan.
 | `scripts/spec/secrets.mjs` | `findSecrets(text)`: the patterns |
 | `scripts/spec/guard.mjs` | scans folders, gzip files, and the zip inside each Playwright `index.html`; skips images |
 | `scripts/spec/build.mjs` | scans everything, then writes `spec-dist/` and `spec-dist-dev/`. `SPEC_ROOT` env sets the repo root (tests only) |
-| `scripts/spec/publish.sh` | deletes old reports, runs tests, builds, deploys both sites |
+| `scripts/spec/publish.sh` | checks the Cloudflare credentials, deletes old reports, runs tests, builds, deploys both sites. `SPEC_ROOT` env sets the repo root (tests only) |
 | `scripts/spec/test-zip.mjs` | zip and report fixtures shared by the tests |
-| `scripts/spec/*.test.mjs` | 57 `node --test` tests (including `build.test.mjs`, end to end on a temp folder), run by `pnpm test:spec` and by `pnpm test` |
+| `scripts/spec/*.test.mjs` | 70 `node --test` tests (including `build.test.mjs`, end to end on a temp folder, and `publish.test.mjs`, which runs `publish.sh` with fake `pnpm` and `curl`), run by `pnpm test:spec` and by `pnpm test` |
 
 Differences from the plan:
 
@@ -237,6 +249,9 @@ export CLOUDFLARE_API_TOKEN="$(security find-generic-password -s p1i-cloudflare-
 export CLOUDFLARE_ACCOUNT_ID=<account id>
 pnpm spec:publish   # about 16 minutes: it runs every test
 ```
+
+The script checks the token, the account ID and both Pages projects first. If one is
+wrong, it stops in seconds, before any test runs, and says what to fix.
 
 To revoke access, delete the token in My Profile → API Tokens.
 
