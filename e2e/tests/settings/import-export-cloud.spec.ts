@@ -312,6 +312,22 @@ async function readLogs(
 }
 
 test('user can export and re-import cloud data (cloud → cloud)', async ({ page, request, baseURL }) => {
+  // This one test needs more than the default 30s. Measured 2026-10-04: it
+  // takes 36.5s. It is the only test here that does a FULL cloud round trip —
+  // seed, export, clearAllData, re-import — and then walks `verifyRelations`'
+  // seven UI steps plus PR 4b's location and quantity readbacks.
+  //
+  // NOT a flake, and it was first misread as one. Three measurements say so:
+  // it failed again when its spec ran alone at load average 1.65; the page
+  // snapshot taken at the failure shows the element PRESENT, so the data had
+  // restored correctly and only the assertion ran out of time; and the same
+  // test passes in 36.5s with `--timeout=90000`.
+  //
+  // Deliberately on this test and not on the `cloud` project. The other five
+  // tests in this file pass inside 30s, and raising the project's budget would
+  // mean the next test that quietly grows to 45s tells nobody.
+  test.setTimeout(60000)
+
   const settings = new SettingsPage(page)
 
   // Given: all fixture entities seeded via GraphQL
