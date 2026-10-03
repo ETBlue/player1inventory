@@ -534,17 +534,71 @@ async function fetchCloudDefaultLocationId(
   return locations.find((location) => location.isDefault)?.id ?? null
 }
 
-// Read the destination's default and apply the remap rule in one step. Every
-// caller is in `importCloudData`, and the ORDER of this call matters on the
-// `clear` strategy — see `fetchCloudDefaultLocationId`.
-async function remapPayloadForCloud(
+// A PRE-v15 backup carries its stock INLINE on each item, has no `itemStocks`
+// key at all, and uses BARE cart ids. `importLocalData` has always upgraded
+// such a payload (`upgradeLegacyPayload`). The cloud path never did, because
+// two now-deleted pieces covered for it:
+//
+//   - `flattenPayloadForCloud` (deleted in PR 4b task 3) returned early on a
+//     payload with no `itemStocks`, sending the items up with their inline
+//     stock columns intact;
+//   - `mirrorStockToDefaultLocation` (deleted server-side in PR 4b task 6)
+//     then wrote one `ItemStock` row per imported item at the caller's default
+//     location, which is what made the item visible in the cloud pantry.
+//
+// With both gone and nothing put in their place, a pre-v15 file imported into
+// cloud mode would land every item in the catalog stocked NOWHERE — invisible
+// in the pantry, with no error anywhere — and would keep writing bare cart
+// ids, the ownership leak of issue #327 that task 3 closed for every other
+// payload shape.
+//
+// Measured on this branch before this function existed: a pre-v15 payload sent
+// `["BulkCreateItems", "BulkCreateShoppingCarts"]` and nothing else — no
+// `itemStocks` variable in any mutation — with the cart id still `vendor_1`.
+//
+// THE GUARD IS THE ABSENT KEY AND NOTHING ELSE, on purpose. A payload that
+// already carries `itemStocks` must reach the server exactly as it does today.
+// Running the whole of `upgradeLegacyPayload` on a post-v15 payload would also
+// run `upgradeUnsplitItems`, and a cloud export's items carry the legacy stock
+// columns as 0 rather than null — so `hasInlineStock` answers true for every
+// CATALOG-ONLY cloud item, and a cloud -> cloud round trip would stock each of
+// them at the default location. That is a different bug, not a fix.
+//
+// `null` means the destination account reports no default location, which
+// `ensureDefaultLocation` makes impossible after a `locations` read. There is
+// no location to synthesise stock into then, so the payload is left alone.
+function upgradeLegacyPayloadForCloud(
+  payload: ExportPayload,
+  destinationDefaultLocationId: string | null,
+): ExportPayload {
+  if (payload.itemStocks !== undefined) return payload
+  if (destinationDefaultLocationId === null) return payload
+  return upgradeLegacyPayload(payload, destinationDefaultLocationId)
+}
+
+// Read the destination's default, upgrade a legacy payload onto it, then apply
+// the remap rule — in that order. Every caller is in `importCloudData`, and the
+// ORDER of this call matters on the `clear` strategy — see
+// `fetchCloudDefaultLocationId`.
+//
+// The upgrade runs BEFORE the remap, exactly as it does in `importLocalData`:
+// it can invent location ids of its own, and remapping afterwards is what keeps
+// an id it created inside the rule. In practice the remap is a no-op for a
+// pre-v15 payload — such a file names no default location, so
+// `findPayloadDefaultLocationId` returns null — and the upgrade has already
+// placed its rows on the destination's own default id.
+async function prepareCloudPayload(
   payload: ExportPayload,
   client: ApolloClient,
 ): Promise<ExportPayload> {
   const destinationDefaultLocationId = await fetchCloudDefaultLocationId(client)
-  return applyLocationRemap(
+  const upgraded = upgradeLegacyPayloadForCloud(
     payload,
-    buildLocationRemap(payload, destinationDefaultLocationId),
+    destinationDefaultLocationId,
+  )
+  return applyLocationRemap(
+    upgraded,
+    buildLocationRemap(upgraded, destinationDefaultLocationId),
   )
 }
 
@@ -1397,7 +1451,7 @@ export async function importLocalData(
   // `ensureDefaultLocationRow` adds a stray empty "local" default beside the
   // restored ones.
   //
-  // NO ORDERING HAZARD ON THIS SIDE, unlike `remapPayloadForCloud`. There the
+  // NO ORDERING HAZARD ON THIS SIDE, unlike `prepareCloudPayload`. There the
   // destination's default has to be read over the network, and reading it
   // before `clearAllData` returns an id that no longer exists. Here the
   // destination's default is the module constant DEFAULT_LOCATION_ID: the v18
@@ -2133,13 +2187,19 @@ export async function importCloudData(
     // picked the one location whose stock went up, because the cloud import
     // surface was flat. The remap rule (PR 4 design §1) keeps every location
     // now, so there is nothing to pick: the destination's default is read
-    // inside this function by `remapPayloadForCloud`.
+    // inside this function by `prepareCloudPayload`.
   },
 ): Promise<void> {
   const onProgress = options?.onProgress ?? (() => undefined)
-  // The session records the payload AS GIVEN. The remap rewrites ids, never
-  // the number of rows, so a resumed import re-derives the same batches from
-  // it — and on the `clear` path the remap cannot run until the clear has.
+  // The session records the payload AS GIVEN, because on the `clear` path
+  // `prepareCloudPayload` cannot run until the clear has. A resumed import
+  // re-derives its batch keys by running `prepareCloudPayload` again. The keys
+  // are `${entityType}:${i}`, so what has to match the first attempt is the
+  // row COUNT and ORDER per entity, and both are fixed: the remap rewrites ids
+  // only, and the legacy upgrade synthesises exactly one stock row per item,
+  // in item order. (Those synthesised rows get fresh `crypto.randomUUID()`
+  // ids on a resume. That is harmless — a batch with a new id is one that was
+  // never sent, since every sent batch is skipped by key.)
   const session: ImportSession = options?.session ?? {
     payload: rawPayload,
     strategy,
@@ -2148,24 +2208,31 @@ export async function importCloudData(
 
   try {
     if (strategy === 'clear') {
-      // Batch counts come from the raw payload: the remap changes no array's
-      // length, so the progress total is the same either way.
-      const totalBatches = computeTotalBatches(rawPayload)
-      onProgress({ completedBatches: 0, totalBatches, currentEntity: '' })
+      // The FIRST total is the raw payload's, because the destination's
+      // default location cannot be read until the clear has run. The remap
+      // changes no array's length, but `upgradeLegacyPayloadForCloud` does: a
+      // pre-v15 file has no `itemStocks` key and gains one row per item. So
+      // the total is recomputed from the prepared payload below, and this one
+      // only opens the progress bar.
+      onProgress({
+        completedBatches: 0,
+        totalBatches: computeTotalBatches(rawPayload),
+        currentEntity: '',
+      })
       await client.mutate({ mutation: ClearAllDataDocument })
       // AFTER the clear, never before. `clearAllData` deletes every Location
       // row and `ensureDefaultLocation` re-creates a default lazily on the
       // next `locations` read, so an id read first names a row that is gone by
       // the time the remap uses it. PR 4a shipped that exact bug and it cost a
       // full E2E gate run to find. See `fetchCloudDefaultLocationId`.
-      const payload = await remapPayloadForCloud(rawPayload, client)
+      const payload = await prepareCloudPayload(rawPayload, client)
       await bulkCreate({
         client,
         data: payload,
         session,
         onProgress,
         startCompleted: 0,
-        totalBatches,
+        totalBatches: computeTotalBatches(payload),
       })
       await client.resetStore()
       return
@@ -2174,7 +2241,7 @@ export async function importCloudData(
     // `skip` and `replace` delete nothing, so the destination's locations are
     // the same before and after. Remapping first is required all the same:
     // conflict detection, partitioning and batching all read the payload.
-    const payload = await remapPayloadForCloud(rawPayload, client)
+    const payload = await prepareCloudPayload(rawPayload, client)
     const existing = await fetchCloudExistingData(client)
     const conflicts = detectConflicts(payload, existing)
 

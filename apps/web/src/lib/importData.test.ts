@@ -3180,11 +3180,21 @@ describe('importCloudData — every location travels to cloud (PR 4b task 3)', (
   // Replaces the deleted `a cloud-shaped payload (no itemStocks) passes
   // through untouched`. The old test used the absent `itemStocks` key as the
   // signal "already flat"; 4b removed that sniff test. What survives is the
-  // outcome: a legacy payload names no default, so nothing is rewritten.
-  it('a legacy payload with no locations is uploaded unchanged', async () => {
-    // Given a pre-v15 backup: no `locations`, no `itemStocks`, bare cart ids
-    const payload = legacyPayload({
-      items: [{ ...makeItem('item-1', 'Milk'), packedQuantity: 7 }],
+  // outcome: a payload that names no default location gives the REMAP nothing
+  // to rewrite.
+  //
+  // THE PAYLOAD CARRIES AN EMPTY `itemStocks` KEY ON PURPOSE. Task 8 found
+  // that a payload with NO such key is pre-v15 and is upgraded before the
+  // remap runs — which does prefix its bare cart ids, with the destination's
+  // default. That is the fix, not a regression, and it has its own block:
+  // `importCloudData — a pre-v15 backup keeps its stock (PR 4b task 8)`. This
+  // test's subject is the remap alone, so it keeps the upgrade out of the way.
+  it('a payload naming no default location is uploaded unchanged', async () => {
+    // Given a payload with no `locations` and bare cart ids
+    const payload = emptyPayload({
+      items: [makeItem('item-1', 'Milk')],
+      locations: [],
+      itemStocks: [],
       shoppingCarts: [{ id: 'no-vendor' }],
       cartItems: [makeCartItem('ci-1', 'no-vendor', 'item-1')],
     })
@@ -3842,5 +3852,190 @@ describe('importLocalData — a cloud backup keeps every location (PR 4b task 5)
         .filter((l) => l.isDefault)
         .map((l) => l.id),
     ).toEqual([DEFAULT_LOCATION_ID])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// importCloudData — a PRE-v15 backup reaches cloud with its stock
+//
+// FOUND BY TASK 8, WHILE THE E2E SPECS WERE FAILING. Both cloud tests in
+// `e2e/tests/settings/import-export-cloud.spec.ts` were RED on this branch,
+// and this is one of the two causes.
+//
+// A pre-v15 backup has no `itemStocks` key: every item carries its stock
+// inline and every cart id is bare. `importLocalData` has always upgraded such
+// a payload; the cloud path never had to, because two now-deleted pieces
+// covered for it — `flattenPayloadForCloud` (task 3) passed the inline columns
+// straight up, and the server's `mirrorStockToDefaultLocation` (task 6) then
+// wrote one `ItemStock` row per imported item.
+//
+// Measured on this branch before the fix, with exactly the payload below: the
+// mutations sent were `["BulkCreateItems", "BulkCreateShoppingCarts"]` and
+// nothing else — no `itemStocks` variable anywhere — and the cart id was still
+// the bare `vendor_1`.
+// ---------------------------------------------------------------------------
+
+describe('importCloudData — a pre-v15 backup keeps its stock (PR 4b task 8)', () => {
+  const EMPTY_EXISTING = {
+    items: [],
+    tags: [],
+    tagTypes: [],
+    vendors: [],
+    recipes: [],
+    inventoryLogs: [],
+    shoppingCarts: [],
+    allCartItems: [],
+    shelves: [],
+  }
+
+  const DESTINATION = [
+    { id: 'cloud_default', name: 'My Home', order: 0, isDefault: true },
+  ]
+
+  function makeCloudClient(destinationLocations: unknown[] = DESTINATION) {
+    return {
+      mutate: vi.fn().mockResolvedValue({}),
+      resetStore: vi.fn().mockResolvedValue(undefined),
+      query: vi.fn().mockResolvedValue({
+        data: { ...EMPTY_EXISTING, locations: destinationLocations },
+      }),
+    }
+  }
+
+  /** The rows sent under one variable name, across every mutation Apollo saw. */
+  function sentOf(
+    client: { mutate: ReturnType<typeof vi.fn> },
+    key: string,
+  ): Record<string, unknown>[] {
+    const call = client.mutate.mock.calls.find(
+      (c) => (c[0]?.variables as Record<string, unknown>)?.[key] !== undefined,
+    )
+    if (!call) return []
+    return (call[0].variables as Record<string, Record<string, unknown>[]>)[key]
+  }
+
+  /** A pre-v15 item: stock inline, nothing split out. */
+  function legacyItem(id: string, name: string, packed: number) {
+    return {
+      ...makeItem(id, name),
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity: packed,
+      unpackedQuantity: 0,
+    }
+  }
+
+  it('user importing a pre-v15 backup into cloud has each item stocked, not left in the catalog alone', async () => {
+    // Given a pre-v15 backup: two items with inline stock, no `itemStocks` key
+    const payload = legacyPayload({
+      items: [legacyItem('item-1', 'Milk', 3), legacyItem('item-2', 'Eggs', 7)],
+    })
+    const client = makeCloudClient()
+
+    // When it is imported into cloud mode
+    await importCloudData(payload, 'skip', client as never)
+
+    // Then one stock row per item reaches the server, at the DESTINATION
+    // account's default location, carrying the inline quantities
+    expect(
+      sentOf(client, 'itemStocks').map((s) => ({
+        itemId: s.itemId,
+        locationId: s.locationId,
+        packedQuantity: s.packedQuantity,
+      })),
+    ).toEqual([
+      { itemId: 'item-1', locationId: 'cloud_default', packedQuantity: 3 },
+      { itemId: 'item-2', locationId: 'cloud_default', packedQuantity: 7 },
+    ])
+  })
+
+  it('user importing a pre-v15 backup into cloud gets its bare cart ids prefixed with a location', async () => {
+    // Given a pre-v15 backup whose cart ids carry no location prefix
+    const payload = legacyPayload({
+      items: [legacyItem('item-1', 'Milk', 3)],
+      shoppingCarts: [
+        makeShoppingCart('vendor_1'),
+        makeShoppingCart('no-vendor'),
+      ],
+      cartItems: [
+        makeCartItem('ci-1', 'vendor_1', 'item-1'),
+        makeCartItem('ci-2', 'no-vendor', 'item-1'),
+      ],
+    })
+    const client = makeCloudClient()
+
+    // When it is imported into cloud mode
+    await importCloudData(payload, 'skip', client as never)
+
+    // Then every cart id names the destination's default location. A bare id
+    // is the ownership leak of issue #327: `Cart.id` is a global primary key,
+    // so two accounts cannot both hold `no-vendor`.
+    expect(sentOf(client, 'carts').map((c) => c.id)).toEqual([
+      'cloud_default:vendor_1',
+      'cloud_default:no-vendor',
+    ])
+    expect(sentOf(client, 'cartItems').map((c) => c.cartId)).toEqual([
+      'cloud_default:vendor_1',
+      'cloud_default:no-vendor',
+    ])
+  })
+
+  it('user importing a post-v15 backup into cloud has nothing synthesised for a catalog-only item', async () => {
+    // Given a payload that DOES carry `itemStocks`, with one item stocked and
+    // one deliberately catalog-only. The catalog-only item still carries the
+    // legacy stock columns as 0 — which is what a cloud export writes — so a
+    // blanket upgrade would read it as unsplit and stock it.
+    const payload = emptyPayload({
+      items: [legacyItem('item-1', 'Milk', 3), legacyItem('item-2', 'Eggs', 0)],
+      locations: [
+        { id: 'cloud_default', name: 'My Home', order: 0, isDefault: true },
+      ],
+      itemStocks: [
+        {
+          id: 'stock-1',
+          itemId: 'item-1',
+          locationId: 'cloud_default',
+          targetQuantity: 4,
+          refillThreshold: 1,
+          packedQuantity: 3,
+          unpackedQuantity: 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+    })
+    const client = makeCloudClient()
+
+    // When it is imported into cloud mode
+    await importCloudData(payload, 'skip', client as never)
+
+    // Then only the row the payload listed is sent — `item-2` stays unstocked
+    expect(sentOf(client, 'itemStocks').map((s) => s.itemId)).toEqual([
+      'item-1',
+    ])
+  })
+
+  it('user watching the progress bar of a pre-v15 cloud import sees a total that includes the synthesised stock', async () => {
+    // Given a pre-v15 backup with two items and no `itemStocks` key, cleared
+    // first — the strategy whose batch total is computed before the payload is
+    // prepared
+    const payload = legacyPayload({
+      items: [legacyItem('item-1', 'Milk', 3), legacyItem('item-2', 'Eggs', 7)],
+    })
+    const client = makeCloudClient()
+    const totals: number[] = []
+
+    // When it is imported
+    await importCloudData(payload, 'clear', client as never, {
+      onProgress: (p) => totals.push(p.totalBatches),
+    })
+
+    // Then the total the bar settles on counts the stock batch the upgrade
+    // created. Reporting the raw payload's total instead would leave the bar
+    // one batch short of its own progress.
+    const sentEntities = client.mutate.mock.calls.filter(
+      (c) => c[0]?.variables !== undefined,
+    ).length
+    expect(totals.at(-1)).toBe(sentEntities)
   })
 })
