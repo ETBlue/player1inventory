@@ -1,7 +1,7 @@
 # Brainstorming — Households: sharing locations and handing over ownership
 
 **Date:** 2026-10-03
-**Status:** 🔄 In progress — roles and data model decided; flows (Section 2) and email still open
+**Status:** 🔄 In progress — roles, data model, first-phase hand-over and purge decided; flows (Section 2) still open
 **Branch:** `feature/households`
 **Builds on:** [Location RBAC](2026-08-29-design-location-rbac.md). This log **changes** that
 design: roles no longer live only on a `Location`. See *Decision 3* below.
@@ -185,6 +185,10 @@ scope.
 
 ### Decision 8 — Inactivity settings are the owner's choice
 
+> **⏸ Postponed on 2026-10-04 — see Decision 14.** The inactivity trigger, the claim and the
+> veto all move to a later cloud-improvement phase. This section is kept as the record of
+> what that phase should start from.
+
 **Question.** How should a claim work when the owner is inactive but the account exists?
 Offered: fixed 6 months + 30-day veto; owner picks 3 / 6 / 12 months; immediate claim.
 
@@ -203,6 +207,9 @@ owner has `vetoDays` to refuse → otherwise the claimant becomes owner.
 veto meaningless.
 
 ### Decision 9 — Owner deleted with no manager
+
+> **Changed on 2026-10-04 — see Decision 14.** Nobody "claims" in the first phase; eligible
+> people are *asked*. The order of who is eligible (managers first, then members) still holds.
 
 **Decided:** managers claim; with no managers, members claim (see Decision 6e); if only
 people with no edit rights remain, the household is deleted after 30 days. Until someone
@@ -261,18 +268,82 @@ create `User` rows, because the E2E header bypass skips Clerk.
 `userId` to `householdId` on seven models and removes `isDefault`; PRs 4b, 4c and 5 change
 the same code.
 
+### Decision 14 — First phase: ask, don't claim (2026-10-04)
+
+**Context.** The veto in Decision 8 needs email, because an inactive owner will not see an
+in-app banner. Clerk does not send our own custom emails, so this means a new email service
+(for example Resend or Postmark).
+
+**The user decided:** postpone the whole claim feature — inactivity trigger, claim, veto,
+email, `inactivityMonths`, `vetoDays` — to a later cloud-improvement phase. For now the app
+**asks** eligible people whether they want to take ownership, and they choose to accept.
+
+**Why (user's words, summarised).** In the near future there will be fewer than 5 users, all
+family members. An email service is not worth its cost for that.
+
+**Question.** What makes a hand-over "available" in the first phase?
+
+| Option | Result |
+|---|---|
+| **A. Account deleted only** | Only the Clerk `user.deleted` webhook starts it. No veto, because nobody is left to ask. Safe without email. |
+| B. Deleted, or inactive for N months | Without a veto, a manager could take over from an owner who is only on a long trip, with no warning. |
+
+**Decided: A, account deleted only.**
+
+**Consequence, accepted.** Story 2 ("when I pass away") works only after someone deletes the
+owner's Clerk account — the family, or the app admin. Inactivity can return in the later
+phase, together with email and the veto.
+
+**First-phase flow:**
+
+1. The Clerk `user.deleted` webhook arrives for a household owner.
+2. The household's `ownerId` becomes null.
+3. Eligible people see a prompt: "The owner is gone. Do you want to become the owner of
+   *<household>*?" — **Accept** / **Not now**. Eligible: managers; if none, members who
+   organize at least one location.
+4. The first person to accept becomes the owner. The prompt disappears for everyone else.
+5. "Not now" hides the prompt for that person. They can still accept later from
+   Settings › Household.
+
+The `User` model and the Clerk webhook (Decision 12) are still needed: the webhook is what
+starts the flow.
+
+### Decision 15 — Members see read-only Settings pages (2026-10-04)
+
+Members see Settings › Tags, Vendors, Recipes and Shelves as **read-only**. The create, edit
+and delete controls are hidden. This answers open point 3.
+
+### Decision 16 — Purging data, by role (2026-10-04)
+
+These replace today's `purgeUserData` ("delete all my data").
+
+| Who | Action | Deletes | Keeps |
+|---|---|---|---|
+| Owner | **Clear household** | the catalog (items, tags, tag types, vendors, recipes, shelves) and all locations, with everything in them | the household, its members and their household roles |
+| Owner | **Delete all locations** | all locations, with their stock, carts, logs and location roles | the catalog, the household, its members |
+| Location organizer | **Remove all items from this location** | the location's stock rows **and its cart** | the location, its roles, its **logs**, the catalog |
+
+**Why the cart goes.** Otherwise the cart still lists items that are no longer stocked at the
+location.
+
+**Why the logs stay.** Decision 5 hides location data from owners and managers so that history
+can show who changed what. Deleting logs would remove that history.
+
+**Every purge is recorded** — who ran it, which action, when — in an activity log that owner
+and managers can read. **Why:** without it nothing shows who emptied a location, which is
+exactly what bug tracing needs.
+
 ## Data model so far (cloud only)
 
 | Model | Fields | Notes |
 |---|---|---|
 | `User` (new) | `id`, `displayName`, `email`, `lastSeenAt`, `deletedAt` | Decision 12 |
-| `Household` (new) | `id`, `name`, `ownerId` (nullable), `inactivityMonths`, `vetoDays`, `ownerGoneAt` | `ownerId` is null after the owner is deleted, until a claim |
+| `Household` (new) | `id`, `name`, `ownerId` (nullable), `ownerGoneAt` | `ownerId` is null after the owner is deleted, until someone accepts. `inactivityMonths` and `vetoDays` are postponed (Decision 14) |
 | `HouseholdMember` (new) | `householdId`, `userId`, `role` (`owner` / `manager` / `member`), `joinedAt` | Primary key `(householdId, userId)` |
 | `LocationMember` (new) | `locationId`, `userId`, `role` (`organizer` / `viewer`) | Decision 3 |
 | `LocationRoleLog` (new) | actor, target, location, old role, new role, time | Decision 5 |
 | `LocationPreference` (new) | `userId`, `locationId`, `customOrder`, `lastVisitedAt` | Decision 6b |
 | `HouseholdInvite` (new) | `id`, `householdId`, `token`, household role, location roles, `createdBy`, `expiresAt`, `usedAt` | Decision 10 |
-| `OwnershipClaim` (new) | `householdId`, `claimantId`, `createdAt`, `vetoDeadline`, `status` | One open claim per household |
 | `Location`, `Item`, `Tag`, `TagType`, `Vendor`, `Recipe`, `Shelf` | `userId` → `householdId` | `Location` loses `order` and `isDefault`, gains `dataUpdatedAt` |
 | `InventoryLog` | gains `authorId` | History shows who made each change |
 | `ItemStock`, `Cart`, `CartItem` | no change | Already scoped through `Location` |
@@ -289,14 +360,16 @@ catalog and membership. This also fixes issue #273.
 
 ## Still open
 
-1. **Section 2 — the flows** must be redone for the two-level roles: invite and join, role
-   changes, leave and remove, transfer, both claim cases, create and delete household.
-   A first draft was written for the old one-level roles and is superseded.
-2. **Email.** The veto notice (Decision 8) needs to reach an owner who no longer opens the
-   app. Invites avoid email (Decision 10), but this notice cannot. Clerk does not send our own
-   custom emails, so this needs an email service (for example Resend or Postmark). Without
-   it, the veto works only if the owner happens to open the app during the veto period.
-3. **What members see of the catalog** when they cannot edit it — read-only everywhere, or
-   hidden Settings pages.
-4. **`purgeUserData`** ("delete all my data") must be redefined for shared households.
+1. **Section 2 — the flows** must be redone for the two-level roles and the first-phase
+   hand-over (Decision 14). A first draft was written for the old one-level roles and is
+   superseded.
+2. ~~Email~~ — postponed with the claim feature (Decision 14).
+3. ~~What members see of the catalog~~ — read-only Settings pages (Decision 15).
+4. ~~`purgeUserData`~~ — replaced by three role-based purge actions (Decision 16).
 5. **Import and export** must learn about households.
+
+## Postponed to a later cloud-improvement phase
+
+- Inactivity as a hand-over trigger, the owner's `inactivityMonths` setting.
+- Proactive claims and the veto period, the owner's `vetoDays` setting.
+- An email service for the veto notice.
