@@ -65,3 +65,58 @@ export async function readStockAt(
   const rows = await readStocksForItem(page, request, baseURL, itemId)
   return rows.find((stock) => stock.locationId === locationId)
 }
+
+export type LocationRow = {
+  id: string
+  name: string
+  isDefault: boolean
+}
+
+const LOCATIONS = `query { locations { id name isDefault } }`
+
+/**
+ * Every location the current backend holds, in whatever order it returns them.
+ *
+ * Mode-aware for the same reason `readStocksForItem` is: a cloud run has no
+ * IndexedDB, so reading the `locations` store there gives `[]` and any
+ * assertion built on it passes against every implementation.
+ *
+ * A LOCATION IS LOOKED UP BY NAME, NEVER BY ID — see `byName` below. The ids
+ * differ between the modes on purpose: the local default is the `'local'`
+ * sentinel, a cloud default is a server-generated cuid, and the import remap
+ * rewrites the payload's default onto whichever of the two the destination
+ * holds. The NAME is the one thing a fixture can assert in both directions.
+ */
+export async function readLocations(
+  page: Page,
+  request: APIRequestContext,
+  baseURL: string | undefined,
+): Promise<LocationRow[]> {
+  if (baseURL === CLOUD_WEB_URL) {
+    const gql = makeGql(request)
+    const { locations } = await gql<{ locations: LocationRow[] }>(LOCATIONS)
+    return locations
+  }
+  const rows = (await readRows(page, 'locations')) as unknown as Array<
+    LocationRow & { isDefault?: boolean }
+  >
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    isDefault: row.isDefault === true,
+  }))
+}
+
+/** `Record<locationName, locationId>`. Throws when two locations share a name. */
+export function byName(locations: LocationRow[]): Record<string, string> {
+  const map: Record<string, string> = {}
+  for (const location of locations) {
+    if (map[location.name] !== undefined) {
+      throw new Error(
+        `byName: two locations are both called "${location.name}" — ${JSON.stringify(locations)}`,
+      )
+    }
+    map[location.name] = location.id
+  }
+  return map
+}
