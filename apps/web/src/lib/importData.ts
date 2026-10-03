@@ -2129,12 +2129,11 @@ export async function importCloudData(
   options?: {
     onProgress?: (p: ImportProgress) => void
     session?: ImportSession
-    // DEAD SINCE PR 4b TASK 3, AND REMOVED BY TASK 7. It used to pick the one
-    // location whose stock went up, because the cloud import surface was flat.
-    // The remap rule keeps every location now, so there is nothing to pick and
-    // nothing reads this. It stays only so the two `usePostLoginMigration`
-    // call sites still type-check until task 7 deletes them with it.
-    locationId?: string
+    // NO `locationId` HERE, AND NONE IS COMING BACK. Until PR 4b this option
+    // picked the one location whose stock went up, because the cloud import
+    // surface was flat. The remap rule (PR 4 design §1) keeps every location
+    // now, so there is nothing to pick: the destination's default is read
+    // inside this function by `remapPayloadForCloud`.
   },
 ): Promise<void> {
   const onProgress = options?.onProgress ?? (() => undefined)

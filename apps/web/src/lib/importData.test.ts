@@ -3346,13 +3346,12 @@ describe('importCloudData — a cart id keeps its location prefix (PR 4b task 3)
     const client = makeCloudClient()
 
     // When the cloud upload payload is built
-    // NOTE: `locationId` is passed only so TODAY's flatten keeps these carts
-    // instead of dropping them, which makes the failure show the STRIP rather
-    // than the drop. Task 7 removes this option from `importCloudData`; delete
-    // the argument then. Every assertion below stands unchanged.
-    await importCloudData(payload, 'skip', client as never, {
-      locationId: 'loc_garage',
-    })
+    // NOTE: this call used to pass `{ locationId: 'loc_garage' }` so TODAY's
+    // flatten kept these carts instead of dropping them, which made the
+    // failure show the STRIP rather than the drop. Task 7 removed that option
+    // from `importCloudData`, so the argument is gone. Every assertion below
+    // stands unchanged.
+    await importCloudData(payload, 'skip', client as never)
 
     // Then both ids are still prefixed with the location they belong to
     expect(sentOf(client, 'carts').map((c) => c.id)).toEqual([

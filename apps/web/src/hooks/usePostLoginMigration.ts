@@ -4,8 +4,6 @@ import { useEffect, useRef, useState } from 'react'
 import { getAllItems } from '@/db/operations'
 import { fetchLocalPayload } from '@/lib/exportData'
 import { type ImportStrategy, importCloudData } from '@/lib/importData'
-import { DEFAULT_LOCATION_ID } from '@/types'
-import { readStoredLocationId, useActiveLocation } from './useActiveLocation'
 import { useLocations } from './useLocations'
 
 export const MIGRATION_PROMPTED_KEY = 'migration-prompted'
@@ -23,42 +21,43 @@ export function usePostLoginMigration() {
   const { isSignedIn, isLoaded } = useAuth()
   const [state, setState] = useState<MigrationState>('idle')
   const apolloClient = useApolloClient()
-  // Cloud HAS per-location ItemStock since PR 1, but the cloud IMPORT surface
-  // is still flat (`ItemInput` carries stock inline, no `locationId` — PR 4
-  // gives it `LocationInput`/`ItemStockInput`). So the copy sends the stock of
-  // ONE location out of the LOCAL payload `fetchLocalPayload` builds —
-  // `importCloudData` flattens the payload onto it.
-  //
-  // That id has to be a LOCAL one. This hook only ever runs in cloud mode (it
-  // is gated on `isSignedIn`), where `useActiveLocation().activeLocationId` is
-  // the cloud active id — a server-generated cuid naming a cloud `Location`.
-  // No `ItemStock` row in a local payload carries it, so flattening by it
-  // uploads every item with zeroed stock and drops every cart. Read the local
-  // slot instead: it holds the pantry the user was in before signing in.
-  const migrationLocationId = readStoredLocationId('local')
-  const { activeLocationId } = useActiveLocation()
   const { data: locations } = useLocations()
-  // Hold the one-shot auto-import until the app has settled on a location: the
-  // list has loaded and names the active id (the default is always allowed — it
-  // is undeletable, and gating on it would deadlock a table still being seeded).
+  // Hold the one-shot auto-import until this account's location list has
+  // resolved at least once.
   //
-  // NOTE (PR 4): since the copy id moved to the local slot above, this gate no
-  // longer validates the id being copied by. `useLocations()` returns the CLOUD
-  // list in cloud mode, so it cannot: validating the local slot against the
-  // local `locations` table is a separate decision, deliberately left to PR 4
-  // rather than guessed at here. The gate is kept because it still delays the
-  // destructive one-shot copy until the session has stabilised.
-  const locationResolved =
-    locations !== undefined &&
-    (activeLocationId === DEFAULT_LOCATION_ID ||
-      locations.some((loc) => loc.id === activeLocationId))
-  // The auto-import is one-shot. `locationResolved` is a dependency of the
-  // effect below, and MIGRATION_PROMPTED_KEY is only written once the import
-  // resolves — so without this guard a location change landing mid-flight would
-  // re-enter and start a second copy over the rows the first one just wrote.
-  // There is a real trigger: `ActiveLocationProvider` resets a stale stored id
-  // to the default once `useLocations()` resolves, which is asynchronous, and
-  // that flips `locationResolved`.
+  // PR 4b removed the other half of this gate. Until then the hook also picked
+  // ONE local location and passed it to `importCloudData` as the single
+  // location whose stock went up, because the cloud import surface was flat.
+  // The remap rule keeps every location now, so there is no id left to pick
+  // and none left to validate.
+  //
+  // Be careful about WHY this half survives. It is NOT what feeds the remap:
+  // `importCloudData` reads the destination's default itself, with its own
+  // `network-only` GetLocations query (`importData.ts`,
+  // `fetchCloudDefaultLocationId` → `remapPayloadForCloud`), on every
+  // strategy. So the copy cannot map the payload's default onto nothing even
+  // with no gate at all. What this gate buys is ordering: the copy is one-shot
+  // and destructive on the cloud side, and `clear` deletes every Location row
+  // before the remap re-reads them, so starting it while this hook's own
+  // GetLocations is still in flight lets a response that predates the clear
+  // land in the Apollo cache after it. Waiting for one resolved list keeps the
+  // session settled before the destructive write begins.
+  const locationsLoaded = locations !== undefined
+  // The auto-import is one-shot.
+  //
+  // `locationsLoaded` is a dependency of the effect below and it is a BOOLEAN,
+  // so a location being added or renamed does not re-fire the effect. What does
+  // is the list going unknown and then known again: `data` undefined →
+  // defined, so the boolean true → false → true.
+  //
+  // There is a concrete trigger, and it is inside the copy itself.
+  // `importCloudData` calls `client.resetStore()` at the end of the `clear`
+  // path, which empties the Apollo cache and refetches every active query —
+  // including the `GetLocations` behind `useLocations`. During that refetch
+  // `cloud.data` is undefined. MIGRATION_PROMPTED_KEY is written only once
+  // `importCloudData` RESOLVES, so the window is open while the copy is still
+  // running: without this ref the effect re-enters and starts a second `clear`
+  // import over the rows the first one just wrote.
   const autoImportStarted = useRef(false)
 
   useEffect(() => {
@@ -72,16 +71,14 @@ export function usePostLoginMigration() {
     if (storedStrategy) {
       // Only the auto-import is gated: it is one-shot and destructive on the
       // cloud side. The prompting path below merely decides whether to show the
-      // dialog, and the dialog gates its own confirm button on the same list.
-      if (!locationResolved) return
+      // dialog.
+      if (!locationsLoaded) return
       if (autoImportStarted.current) return
       autoImportStarted.current = true
       setState('auto-importing')
       fetchLocalPayload()
         .then((payload) =>
-          importCloudData(payload, storedStrategy, apolloClient, {
-            locationId: migrationLocationId,
-          }),
+          importCloudData(payload, storedStrategy, apolloClient),
         )
         .then(() => {
           localStorage.removeItem(MIGRATION_STRATEGY_KEY)
@@ -105,13 +102,7 @@ export function usePostLoginMigration() {
         localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
       }
     })
-  }, [
-    isLoaded,
-    isSignedIn,
-    apolloClient,
-    migrationLocationId,
-    locationResolved,
-  ])
+  }, [isLoaded, isSignedIn, apolloClient, locationsLoaded])
 
   function dismiss() {
     localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
@@ -122,9 +113,7 @@ export function usePostLoginMigration() {
     setState('importing')
     const payload = await fetchLocalPayload()
     const strategy = conflictResolution === 'replace' ? 'replace' : 'skip'
-    await importCloudData(payload, strategy, apolloClient, {
-      locationId: migrationLocationId,
-    })
+    await importCloudData(payload, strategy, apolloClient)
     localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
     setState('done')
   }
