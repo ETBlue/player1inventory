@@ -99,14 +99,18 @@ async function seedLocations(...entries: Array<[string, string]>) {
   )
 }
 
-// A backup file is always LOCAL-shaped — `fetchCloudPayload` writes no
-// `itemStocks` at all — so the id used to pick which location's stock goes up
-// must itself be a local one. The CLOUD active location is a server cuid that
-// no backup's `itemStocks` can ever mention, so using it makes every
-// multi-location backup unresolvable and the import is refused outright.
-const CLOUD_LOCATION_ID = 'clx7k2p9a0001qwer5678efgh'
-
-describe('ImportCard — cloud import scopes stock to the local active location', () => {
+// REWRITTEN BY CLOUD LOCATIONS PR 4b TASK 3. This describe held three its
+// that pinned `resolveFlattenLocationId`'s wiring: the card had to pick ONE of
+// the backup's locations and pass it as `importCloudData`'s `locationId`, and
+// had to REFUSE the import when the backup's locations were several and none
+// of them this device's. Both the function and the refusal are gone —
+// `importCloudData` carries every location through the remap rule (PR 4
+// design §1), so there is no choice to make and nothing to lose by making it
+// wrongly. The surviving rule is the inverse, and these two its assert it.
+//
+// The plan's list of dying tests named 14 its, all in `lib/importData.test.ts`.
+// These three were not on it.
+describe('ImportCard — cloud import carries every location', () => {
   afterEach(async () => {
     localStorage.clear()
     vi.mocked(importCloudData).mockClear()
@@ -114,50 +118,27 @@ describe('ImportCard — cloud import scopes stock to the local active location'
     await db.locations.clear()
   })
 
-  it('user importing a multi-location backup in cloud mode keeps their local location stock', async () => {
-    // Given cloud mode, whose active location is a server cuid, while the
-    // user's offline pantry was last on 'office' — and a backup holding stock
-    // for two local locations
+  it('user importing a multi-location backup in cloud mode is not asked to pick one', async () => {
+    // Given cloud mode and a backup holding stock for two local locations
     await seedLocations(['local', 'My Home'], ['office', 'Office'])
     localStorage.setItem('data-mode', 'cloud')
-    localStorage.setItem(activeLocationStorageKey('cloud'), CLOUD_LOCATION_ID)
     localStorage.setItem(activeLocationStorageKey('local'), 'office')
     const { container } = renderCard()
 
     // When the user picks a v15 backup file
     await uploadPayload(container, v15Payload('local', 'office'))
 
-    // Then the cloud import is told which location's stock to flatten — the
-    // cloud cuid matches neither, so the import would be refused entirely
+    // Then the import runs with NO location named — every location travels
     await waitFor(() => expect(importCloudData).toHaveBeenCalled())
-    expect(vi.mocked(importCloudData).mock.calls[0][3]).toMatchObject({
-      locationId: 'office',
-    })
+    expect(vi.mocked(importCloudData).mock.calls[0][3]).not.toHaveProperty(
+      'locationId',
+    )
     expect(toast.error).not.toHaveBeenCalled()
   })
 
-  it('user importing another devices backup keeps its stock instead of zeroing it', async () => {
-    // Given a backup written on another device, whose single location id does
-    // not exist here (this device only has 'local')
-    await seedLocations(['local', 'My Home'])
-    localStorage.setItem('data-mode', 'cloud')
-    const { container } = renderCard()
-
-    // When the user imports it
-    await uploadPayload(container, v15Payload('kitchen-a1b2'))
-
-    // Then the import flattens by the location the backup actually has —
-    // flattening by 'local' would have uploaded every item with zeroed stock
-    await waitFor(() => expect(importCloudData).toHaveBeenCalled())
-    expect(vi.mocked(importCloudData).mock.calls[0][3]).toMatchObject({
-      locationId: 'kitchen-a1b2',
-    })
-    expect(toast.error).not.toHaveBeenCalled()
-  })
-
-  it('user is told, not silently zeroed, when the backup locations are unknown', async () => {
-    // Given a backup holding stock in two locations, neither of them this
-    // device's — there is no safe way to pick one
+  it('user importing a backup whose locations are all unknown here is not refused', async () => {
+    // Given a backup written on another device, holding stock in two
+    // locations, neither of which exists here — the case the old code refused
     await seedLocations(['local', 'My Home'])
     localStorage.setItem('data-mode', 'cloud')
     const { container } = renderCard()
@@ -165,10 +146,9 @@ describe('ImportCard — cloud import scopes stock to the local active location'
     // When the user imports it
     await uploadPayload(container, v15Payload('kitchen-a1b2', 'garage-c3d4'))
 
-    // Then the import is refused with an explicit error instead of uploading
-    // zeroed stock and dropping every cart
-    await waitFor(() => expect(toast.error).toHaveBeenCalled())
-    expect(importCloudData).not.toHaveBeenCalled()
+    // Then it is imported, not refused: both locations are preserved
+    await waitFor(() => expect(importCloudData).toHaveBeenCalled())
+    expect(toast.error).not.toHaveBeenCalled()
   })
 })
 

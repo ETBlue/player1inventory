@@ -25,6 +25,8 @@ import {
   ClearAllDataDocument,
   GetItemsDocument,
   type GetItemsQuery,
+  GetLocationsDocument,
+  type GetLocationsQuery,
   GetRecipesDocument,
   type GetRecipesQuery,
   GetShelvesDocument,
@@ -57,7 +59,7 @@ import type {
   TagType,
   Vendor,
 } from '@/types'
-import { DEFAULT_LOCATION_ID } from '@/types'
+import { cartIdFor, DEFAULT_LOCATION_ID, parseCartId } from '@/types'
 import { deserializeRecipe, parseWireDate } from './deserialization'
 import type { ExportPayload } from './exportData'
 
@@ -83,13 +85,6 @@ const LOCAL_STOCK_FIELD_KEYS = [
   'packedQuantity',
   'unpackedQuantity',
   'dueDate',
-] as const
-
-// Every stock field, in either half. A pre-v15 backup (and a cloud payload,
-// whose Item still carries stock inline) holds all of them on the item.
-const STOCK_FIELD_KEYS = [
-  ...GLOBAL_STOCK_FIELD_KEYS,
-  ...LOCAL_STOCK_FIELD_KEYS,
 ] as const
 
 const DATE_FIELD_KEYS = ['dueDate', 'createdAt', 'updatedAt'] as const
@@ -337,166 +332,163 @@ function upgradeUnsplitItems(
   }
 }
 
-// The cloud IMPORT path is flat, even though cloud gained per-location
-// ItemStock in PR 1. `ItemInput` (apps/server/src/schema/import.graphql)
-// carries the five stock fields INLINE with no `locationId`, there is no
-// `ItemStockInput` or `LocationInput` beside it, and a cloud cart id is still a
-// bare `vendorId | 'no-vendor'` (composite ids land in PR 3). Copying a local
-// (post-v15) pantry up to cloud must therefore collapse the split shape back
-// down — otherwise every stock field arrives as `undefined` (they are non-null
-// in `ItemInput`, so the migration fails outright) and every cart id keeps a
-// `${locationId}:` prefix no cloud query ever looks up.
+// ---------------------------------------------------------------------------
+// THE REMAP RULE — cloud locations PR 4 design §1.
 //
-// PR 4 gives the import surface `LocationInput` / `ItemStockInput` and this
-// collapse goes away with them (design §6).
+//   Preserve payload location ids verbatim, except the payload's default,
+//   which maps onto the destination's default.
 //
-// Ruling (user, 2026-08-16): send the stock of the location that is ACTIVE at
-// migration time — it is what the user is looking at, and it is how the rest of
-// the app reads stock (`useActiveLocation()`). Data in other locations is NOT
-// migrated and is NOT preserved anywhere in cloud; the UI warns about that
-// before the copy runs (see `MigrationLocationWarningDialog`).
+// One rule, used in both directions. It replaces three separate location
+// decisions: `flattenPayloadForCloud`'s chosen location and
+// `resolveFlattenLocationId`'s fallback (both deleted in PR 4b task 3), and
+// the import resolvers' hardcoded `ensureDefaultLocation` (PR 4a).
 //
-// A payload with no `itemStocks` is already flat (cloud export, or a pre-v15
-// backup) and passes through untouched.
-export function flattenPayloadForCloud(
+// Why ONLY the default remaps: a cloud -> local -> cloud round trip then
+// preserves every id, and carts keep upserting by their composite
+// `${locationId}:${vendorId}` id. Only a FIRST copy between modes rewrites
+// anything, and only one location's worth.
+// ---------------------------------------------------------------------------
+
+// Which location the payload itself calls its default.
+//
+// `isDefault` is the primary answer. Dexie v18 carries it on every local row,
+// and a cloud backup records it too — `sanitiseCloudPayload`
+// (lib/exportData.ts) keeps the flag in the FILE even though `toLocationInput`
+// drops it on the way back up, because this function is the only reader that
+// can tell which row to remap.
+//
+// The `DEFAULT_LOCATION_ID` fallback is for a PRE-v18 local backup, which has
+// no `isDefault` key at all: in local mode the default has always been that
+// one id.
+//
+// `null` means the payload names no default — a pre-v15 file with no
+// `locations` array. Nothing is remapped then, which is right: such a payload
+// carries no per-location ids to rewrite either.
+function findPayloadDefaultLocationId(payload: ExportPayload): string | null {
+  const locations = (payload.locations ?? []) as Array<Record<string, unknown>>
+  const flagged = locations.find((row) => row.isDefault === true)
+  if (flagged !== undefined) return flagged.id as string
+  const legacyDefault = locations.find((row) => row.id === DEFAULT_LOCATION_ID)
+  return legacyDefault !== undefined ? (legacyDefault.id as string) : null
+}
+
+// Build the payload-id -> destination-id map. It holds AT MOST ONE
+// non-identity entry, by design; any id absent from the map is kept verbatim.
+export function buildLocationRemap(
   payload: ExportPayload,
-  locationId: string,
+  destinationDefaultLocationId: string | null,
+): Map<string, string> {
+  const remap = new Map<string, string>()
+  if (destinationDefaultLocationId === null) return remap
+  const payloadDefaultLocationId = findPayloadDefaultLocationId(payload)
+  if (payloadDefaultLocationId === null) return remap
+  if (payloadDefaultLocationId === destinationDefaultLocationId) return remap
+  remap.set(payloadDefaultLocationId, destinationDefaultLocationId)
+  return remap
+}
+
+// Rewrite every location id the payload carries, through `remap`.
+//
+// FIVE fields carry one, not the four the plan lists. `locations[].id` is
+// remapped as well, so the payload's default row lands ON the destination's
+// existing default instead of creating a second, stray location beside it.
+// `bulkCreateLocations` then finds that id already held by the caller's own row
+// and skips it (apps/server/src/resolvers/import.resolver.ts), which is what
+// the design means by "the payload's default is never uploaded as a row".
+//
+// Cart ids go through `parseCartId` / `cartIdFor`, never `split(':')`: a vendor
+// id may itself contain a colon, because `bulkCreateVendors` stores
+// `VendorInput.id` verbatim with no format check, and
+// apps/server/src/lib/cartId.test.ts pins 16 cases including that one. A BARE
+// cart id (no colon at all) parses as `{ locationId: <the whole id> }`, which
+// no real location matches, so it is left alone — a legacy payload keeps its
+// legacy ids.
+export function applyLocationRemap(
+  payload: ExportPayload,
+  remap: Map<string, string>,
 ): ExportPayload {
-  if (payload.itemStocks === undefined) return payload
+  if (remap.size === 0) return payload
 
-  const stockByItemId = new Map<string, Record<string, unknown>>()
-  for (const raw of payload.itemStocks as Array<Record<string, unknown>>) {
-    if (raw.locationId === locationId) {
-      stockByItemId.set(raw.itemId as string, raw)
-    }
+  const remapId = (id: string) => remap.get(id) ?? id
+  const remapCartId = (cartId: string) => {
+    const { locationId, vendorId } = parseCartId(cartId)
+    const mapped = remap.get(locationId)
+    return mapped === undefined ? cartId : cartIdFor(mapped, vendorId)
   }
 
-  // Every item is sent, stocked here or not — recipes, shelves and cart items
-  // reference item ids, so dropping an item would leave dangling references.
-  // An item with no stock in this location gets the same zeroed values the app
-  // itself displays for it (see ZERO_STOCK / joinItemStock in db/operations).
-  const items = (payload.items as Array<Record<string, unknown>>).map((raw) => {
-    const stock = stockByItemId.get(raw.id as string)
-    // Only the per-location STATE is zeroed: the configuration is the item's
-    // own since v16 and defaulting over it would send 'package'/1 for every
-    // measurement-tracked item. `targetUnit`/`consumeAmount` are non-null in
-    // the cloud input, so they fall back only when the item itself lacks them.
-    const item: Record<string, unknown> = {
-      ...raw,
-      targetUnit: raw.targetUnit ?? 'package',
-      consumeAmount: raw.consumeAmount ?? 1,
-      targetQuantity: 0,
-      refillThreshold: 0,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-    }
-    if (stock) {
-      for (const key of STOCK_FIELD_KEYS) {
-        if (stock[key] !== undefined) item[key] = stock[key]
-      }
-    }
-    return item
-  })
-
-  // Carts: keep this location's carts only and strip the prefix. Another
-  // location's cart would collide with it on the un-prefixed cloud id.
-  const prefix = `${locationId}:`
-  const keptCartIds = new Set<string>()
-  const shoppingCarts = (
-    payload.shoppingCarts as Array<Record<string, unknown>>
-  )
-    .filter((cart) => (cart.id as string).startsWith(prefix))
-    .map((cart) => {
-      const id = cart.id as string
-      keptCartIds.add(id)
-      return { ...cart, id: id.slice(prefix.length) }
-    })
-  const cartItems = (payload.cartItems as Array<Record<string, unknown>>)
-    .filter((cartItem) => keptCartIds.has(cartItem.cartId as string))
-    .map((cartItem) => ({
-      ...cartItem,
-      cartId: (cartItem.cartId as string).slice(prefix.length),
-    }))
-
-  // Logs: this location's, plus pre-Location logs that carry no locationId.
-  const inventoryLogs = (
-    payload.inventoryLogs as Array<Record<string, unknown>>
-  ).filter((log) => log.locationId == null || log.locationId === locationId)
-
-  // `itemStocks`/`locations` are local-only tables with no cloud counterpart —
-  // dropping them also marks the result as a flat (cloud-shaped) payload.
-  const { itemStocks, locations, ...rest } = payload
-  void itemStocks
-  void locations
-
-  return { ...rest, items, shoppingCarts, cartItems, inventoryLogs }
-}
-
-// Which location a payload should be flattened by, for the FILE-IMPORT path
-// only (`ImportCard` in cloud mode).
-//
-// The migration paths always flatten by the active location — Ruling A, and the
-// data is this device's own, so the location is guaranteed to exist. A backup
-// file is different: it was written on another device whose location ids need
-// not exist here (a cloud-only device has just `'local'`). Flattening by an id
-// the payload knows nothing about would upload every item with zeroed stock and
-// drop every cart — silently, where the pre-split code failed loudly.
-//
-//   - the requested location has stock in the payload → use it (Ruling A)
-//   - the payload's stock lives in exactly one other location → use that one:
-//     it is the only reading that preserves the data, no guessing involved
-//   - the payload's stock spans several locations, none of them the requested
-//     one → `null`. There is no safe answer; the caller must refuse the import
-//     rather than upload zeros.
-//   - no stock to flatten (no `itemStocks` table, or an empty one) → the same
-//     three rules are applied to the CART id prefixes instead. Zeroed stock is
-//     correct when there is none, but the carts still carry a location and
-//     flattening by one they do not use drops every cart and cart item silently.
-//   - nothing at all to go on → the request passes through; nothing can be lost.
-export function resolveFlattenLocationId(
-  payload: ExportPayload,
-  requestedLocationId: string,
-): string | null {
-  if (payload.itemStocks === undefined) return requestedLocationId
-
-  const locationIds = new Set(
-    (payload.itemStocks as Array<Record<string, unknown>>).map(
-      (stock) => stock.locationId as string,
+  return {
+    ...payload,
+    ...(payload.locations !== undefined
+      ? {
+          locations: (payload.locations as Array<Record<string, unknown>>).map(
+            (row) => ({ ...row, id: remapId(row.id as string) }),
+          ),
+        }
+      : {}),
+    ...(payload.itemStocks !== undefined
+      ? {
+          itemStocks: (
+            payload.itemStocks as Array<Record<string, unknown>>
+          ).map((row) => ({
+            ...row,
+            locationId: remapId(row.locationId as string),
+          })),
+        }
+      : {}),
+    // A pre-Location log carries no `locationId`. Leave it absent rather than
+    // inventing one — the server falls back to the caller's default for it.
+    inventoryLogs: (
+      payload.inventoryLogs as Array<Record<string, unknown>>
+    ).map((log) =>
+      log.locationId == null
+        ? log
+        : { ...log, locationId: remapId(log.locationId as string) },
     ),
-  )
-  if (locationIds.size === 0) {
-    return resolveByCartLocations(payload, requestedLocationId)
+    shoppingCarts: (
+      payload.shoppingCarts as Array<Record<string, unknown>>
+    ).map((cart) => ({ ...cart, id: remapCartId(cart.id as string) })),
+    cartItems: (payload.cartItems as Array<Record<string, unknown>>).map(
+      (cartItem) => ({
+        ...cartItem,
+        cartId: remapCartId(cartItem.cartId as string),
+      }),
+    ),
   }
-  return pickLocationId(locationIds, requestedLocationId)
 }
 
-// The locations a payload's cart ids are scoped to. Ids with no `:` are bare
-// (cloud-shaped or pre-v15) and name no location, so they are ignored.
-function resolveByCartLocations(
+// The destination account's default location id, or `null` when it has none.
+//
+// ── READ THIS AFTER `clearAllData`, NEVER BEFORE ──
+//
+// `clearAllData` deletes every `Location` row, and `ensureDefaultLocation`
+// re-creates a default LAZILY, on the next `locations` read. So an id read
+// before the clear names a row that no longer exists by the time the remap
+// uses it. PR 4a shipped exactly that bug — a location id that was valid when
+// read and gone when used — and it cost a full E2E gate run to find, because
+// no test fake models the deletion.
+async function fetchCloudDefaultLocationId(
+  client: ApolloClient,
+): Promise<string | null> {
+  const result = await client.query<GetLocationsQuery>({
+    query: GetLocationsDocument,
+    fetchPolicy: 'network-only',
+  })
+  const locations = result.data?.locations ?? []
+  return locations.find((location) => location.isDefault)?.id ?? null
+}
+
+// Read the destination's default and apply the remap rule in one step. Every
+// caller is in `importCloudData`, and the ORDER of this call matters on the
+// `clear` strategy — see `fetchCloudDefaultLocationId`.
+async function remapPayloadForCloud(
   payload: ExportPayload,
-  requestedLocationId: string,
-): string | null {
-  const cartLocationIds = new Set<string>()
-  for (const cart of payload.shoppingCarts as Array<Record<string, unknown>>) {
-    const id = cart.id as string
-    const idx = id.indexOf(':')
-    if (idx > 0) cartLocationIds.add(id.slice(0, idx))
-  }
-  if (cartLocationIds.size === 0) return requestedLocationId
-  return pickLocationId(cartLocationIds, requestedLocationId)
-}
-
-// Iterating (rather than indexing) keeps the value typed as `string` under
-// noUncheckedIndexedAccess.
-function pickLocationId(
-  locationIds: Set<string>,
-  requestedLocationId: string,
-): string | null {
-  if (locationIds.has(requestedLocationId)) return requestedLocationId
-  if (locationIds.size === 1) {
-    for (const onlyLocationId of locationIds) return onlyLocationId
-  }
-  return null
+  client: ApolloClient,
+): Promise<ExportPayload> {
+  const destinationDefaultLocationId = await fetchCloudDefaultLocationId(client)
+  return applyLocationRemap(
+    payload,
+    buildLocationRemap(payload, destinationDefaultLocationId),
+  )
 }
 
 // Normalize an imported permanent cart to the v13+ schema shape: keep only
@@ -1951,33 +1943,37 @@ export async function importCloudData(
   options?: {
     onProgress?: (p: ImportProgress) => void
     session?: ImportSession
-    // Which location's stock to send. The cloud IMPORT surface is still flat
-    // (`ItemInput` carries stock inline, with no `locationId` — see
-    // `flattenPayloadForCloud`), so a local (post-v15) payload is collapsed onto
-    // this one location. Defaults to the default location; callers thread the
-    // LOCAL slot (`readStoredLocationId('local')`), never the cloud active id.
+    // DEAD SINCE PR 4b TASK 3, AND REMOVED BY TASK 7. It used to pick the one
+    // location whose stock went up, because the cloud import surface was flat.
+    // The remap rule keeps every location now, so there is nothing to pick and
+    // nothing reads this. It stays only so the two `usePostLoginMigration`
+    // call sites still type-check until task 7 deletes them with it.
     locationId?: string
   },
 ): Promise<void> {
-  // Mirror of `importLocalData`'s `upgradeLegacyPayload`: collapse the local
-  // split shape down to the flat shape cloud expects, before anything reads
-  // the payload (conflict detection, partitioning and batching all see it).
-  const payload = flattenPayloadForCloud(
-    rawPayload,
-    options?.locationId ?? DEFAULT_LOCATION_ID,
-  )
   const onProgress = options?.onProgress ?? (() => undefined)
+  // The session records the payload AS GIVEN. The remap rewrites ids, never
+  // the number of rows, so a resumed import re-derives the same batches from
+  // it — and on the `clear` path the remap cannot run until the clear has.
   const session: ImportSession = options?.session ?? {
-    payload,
+    payload: rawPayload,
     strategy,
     completedBatchKeys: new Set(),
   }
 
   try {
     if (strategy === 'clear') {
-      const totalBatches = computeTotalBatches(payload)
+      // Batch counts come from the raw payload: the remap changes no array's
+      // length, so the progress total is the same either way.
+      const totalBatches = computeTotalBatches(rawPayload)
       onProgress({ completedBatches: 0, totalBatches, currentEntity: '' })
       await client.mutate({ mutation: ClearAllDataDocument })
+      // AFTER the clear, never before. `clearAllData` deletes every Location
+      // row and `ensureDefaultLocation` re-creates a default lazily on the
+      // next `locations` read, so an id read first names a row that is gone by
+      // the time the remap uses it. PR 4a shipped that exact bug and it cost a
+      // full E2E gate run to find. See `fetchCloudDefaultLocationId`.
+      const payload = await remapPayloadForCloud(rawPayload, client)
       await bulkCreate({
         client,
         data: payload,
@@ -1990,6 +1986,10 @@ export async function importCloudData(
       return
     }
 
+    // `skip` and `replace` delete nothing, so the destination's locations are
+    // the same before and after. Remapping first is required all the same:
+    // conflict detection, partitioning and batching all read the payload.
+    const payload = await remapPayloadForCloud(rawPayload, client)
     const existing = await fetchCloudExistingData(client)
     const conflicts = detectConflicts(payload, existing)
 

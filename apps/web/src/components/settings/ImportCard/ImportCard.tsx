@@ -12,10 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import {
-  readStoredLocationId,
-  useActiveLocation,
-} from '@/hooks/useActiveLocation'
+import { useActiveLocation } from '@/hooks/useActiveLocation'
 import { useDataMode } from '@/hooks/useDataMode'
 import type { ExportPayload } from '@/lib/exportData'
 import {
@@ -28,7 +25,6 @@ import {
   type ImportStrategy,
   importCloudData,
   importLocalData,
-  resolveFlattenLocationId,
 } from '@/lib/importData'
 import { ConflictDialog } from '../ConflictDialog'
 
@@ -151,30 +147,12 @@ export function ImportCard() {
 
     if (!payload) return
 
-    // Which of the BACKUP's locations goes up. Unlike the migration paths, the
-    // payload here is a file from another device, whose location ids need not
-    // exist on this one — flattening by an id the backup does not know would
-    // upload every item with zeroed stock and drop every cart.
-    // `resolveFlattenLocationId` falls back to the backup's own location when
-    // that is unambiguous, and returns null when it is not: refuse the import
-    // rather than lose the data silently (before the v15 split this case failed
-    // loudly on its own).
-    //
-    // The hint it picks with must be a LOCAL-format id, because a backup file is
-    // always local-shaped — `fetchCloudPayload` writes no `itemStocks` at all.
-    // `useActiveLocation().activeLocationId` is the CLOUD active id here (a
-    // server cuid), which no backup's `itemStocks` can ever mention, so every
-    // multi-location backup would resolve to null and be refused outright.
-    const locationId = resolveFlattenLocationId(
-      payload,
-      readStoredLocationId('local'),
-    )
-    if (locationId === null) {
-      toast.error(t('settings.import.unknownLocations'))
-      setImportStatus({ phase: 'idle' })
-      return
-    }
-
+    // No location has to be chosen any more. Until PR 4b this call picked ONE
+    // of the backup's locations to upload, because the cloud import surface was
+    // flat — and it refused the import outright when the backup's locations
+    // were several and none of them this device's. `importCloudData` now
+    // carries every location through the remap rule (PR 4 design §1), so there
+    // is nothing to choose and nothing to refuse.
     const session: ImportSession = existingSession ?? {
       payload,
       strategy,
@@ -197,7 +175,6 @@ export function ImportCard() {
           )
         },
         session,
-        locationId,
       })
       await client.resetStore()
       setImportStatus({ phase: 'done' })
