@@ -2577,6 +2577,171 @@ describe('importCloudData — local → cloud stock flattening (v15 split)', () 
   })
 })
 
+// ---------------------------------------------------------------------------
+// TARGET BEHAVIOUR FOR CLOUD LOCATIONS PR 4b. THIS BLOCK IS RED UNTIL TASK 3.
+//
+// Plan: docs/features/locations/2026-10-03-cloud-locations-plan-pr4b.md —
+// task 1 part 1 writes these tests, task 3 deletes the code that makes them
+// fail. A red result here is the CORRECT state of the tree until then.
+//
+// WHAT IS BEING PINNED
+//
+// A cart id carries its location. Local ids are
+// `${locationId}:${vendorId | 'no-vendor'}` (db/operations.ts:720), and cloud
+// ids have had the SAME shape since cloud-locations PR 3b
+// (apps/server/src/lib/cartId.ts). So the id must travel to cloud unchanged.
+//
+// `flattenPayloadForCloud` (importData.ts) still does two things to it, both
+// written before PR 3b and both wrong now:
+//
+//   1. it SLICES the location prefix off, so `loc_garage:no-vendor` is
+//      uploaded as the bare `no-vendor`;
+//   2. it DROPS every cart belonging to any other location.
+//
+// Why (1) is a cross-account hazard, read from the code:
+//
+//   - `Cart.id` is a GLOBAL primary key with no `userId` in it
+//     (apps/server/prisma/schema.prisma), so the first account to import a
+//     bare `no-vendor` holds that id for everybody;
+//   - `bulkCreateShoppingCarts` (import.resolver.ts:642) looks the id up with
+//     an UNSCOPED `findUnique({ where: { id } })` and `continue`s when it is
+//     taken, so the second account gets no cart row of its own;
+//   - `bulkCreateCartItems` (import.resolver.ts:669) resolves `cartId` with
+//     the same unscoped `findUnique`, so the second account's cart items are
+//     created pointing at the FIRST account's cart row.
+//
+// DO NOT make these tests pass by restoring the strip. The strip is the bug,
+// not the cure — its own comment ("would collide with it on the un-prefixed
+// cloud id") describes the world before PR 3b.
+//
+// The server-side half of the hazard — a bare id shared across two accounts —
+// is characterised in `e2e/tests/cart-id-cross-user-leak.spec.ts`. That spec
+// is GREEN today and stays green after this PR, so it is a negative control,
+// not the proof. These two tests are the proof.
+// ---------------------------------------------------------------------------
+
+describe('importCloudData — a cart id keeps its location prefix (PR 4b task 3)', () => {
+  function makeCloudClient() {
+    return {
+      mutate: vi.fn().mockResolvedValue({}),
+      resetStore: vi.fn().mockResolvedValue(undefined),
+      query: vi.fn().mockResolvedValue({
+        data: {
+          items: [],
+          tags: [],
+          tagTypes: [],
+          vendors: [],
+          recipes: [],
+          inventoryLogs: [],
+          shoppingCarts: [],
+          allCartItems: [],
+          shelves: [],
+        },
+      }),
+    }
+  }
+
+  /** The rows sent under one variable name, across every mutation Apollo saw. */
+  function sentOf(
+    client: { mutate: ReturnType<typeof vi.fn> },
+    key: string,
+  ): Record<string, unknown>[] {
+    const call = client.mutate.mock.calls.find(
+      (c) => (c[0]?.variables as Record<string, unknown>)?.[key] !== undefined,
+    )
+    if (!call) return []
+    return (call[0].variables as Record<string, Record<string, unknown>[]>)[key]
+  }
+
+  // Three locations: the payload's default plus two others. The carts below
+  // live at the NON-default ones on purpose. PR 4b's remap rule keeps every
+  // payload location id verbatim EXCEPT the payload's default, which maps onto
+  // the destination account's own default — so a cart prefixed with the
+  // payload default would legitimately change id and could not be asserted
+  // verbatim here.
+  const LOCATIONS = [
+    { id: 'local', name: 'My Home', order: 0, isDefault: true },
+    { id: 'loc_garage', name: 'my Garage', order: 1, isDefault: false },
+    { id: 'loc_office', name: 'Office', order: 2, isDefault: false },
+  ]
+
+  it('user copying a pantry to cloud keeps each cart id prefixed with its location', async () => {
+    // Given two carts at the Garage, named by the local composite id shape
+    const payload = emptyPayload({
+      items: [makeItem('item-1', 'Milk')],
+      locations: LOCATIONS,
+      itemStocks: [],
+      shoppingCarts: [
+        makeShoppingCart('loc_garage:no-vendor'),
+        makeShoppingCart('loc_garage:vendor_1'),
+      ],
+      cartItems: [
+        makeCartItem('ci-1', 'loc_garage:no-vendor', 'item-1'),
+        makeCartItem('ci-2', 'loc_garage:vendor_1', 'item-1'),
+      ],
+    })
+    const client = makeCloudClient()
+
+    // When the cloud upload payload is built
+    // NOTE: `locationId` is passed only so TODAY's flatten keeps these carts
+    // instead of dropping them, which makes the failure show the STRIP rather
+    // than the drop. Task 7 removes this option from `importCloudData`; delete
+    // the argument then. Every assertion below stands unchanged.
+    await importCloudData(payload, 'skip', client as never, {
+      locationId: 'loc_garage',
+    })
+
+    // Then both ids are still prefixed with the location they belong to
+    expect(sentOf(client, 'carts').map((c) => c.id)).toEqual([
+      'loc_garage:no-vendor',
+      'loc_garage:vendor_1',
+    ])
+
+    // And the cart items still point at those same ids
+    expect(
+      sentOf(client, 'cartItems').map((c) => ({ id: c.id, cartId: c.cartId })),
+    ).toEqual([
+      { id: 'ci-1', cartId: 'loc_garage:no-vendor' },
+      { id: 'ci-2', cartId: 'loc_garage:vendor_1' },
+    ])
+  })
+
+  it('user copying a pantry to cloud keeps the carts of every location, not just one', async () => {
+    // Given one cart at the Garage and one at the Office
+    const payload = emptyPayload({
+      items: [makeItem('item-1', 'Milk')],
+      locations: LOCATIONS,
+      itemStocks: [],
+      shoppingCarts: [
+        makeShoppingCart('loc_garage:vendor_1'),
+        makeShoppingCart('loc_office:no-vendor'),
+      ],
+      cartItems: [
+        makeCartItem('ci-1', 'loc_garage:vendor_1', 'item-1'),
+        makeCartItem('ci-2', 'loc_office:no-vendor', 'item-1'),
+      ],
+    })
+    const client = makeCloudClient()
+
+    // When the cloud upload payload is built, with no location named
+    await importCloudData(payload, 'skip', client as never)
+
+    // Then neither location's cart has been thrown away
+    expect(
+      sentOf(client, 'carts')
+        .map((c) => c.id as string)
+        .sort(),
+    ).toEqual(['loc_garage:vendor_1', 'loc_office:no-vendor'])
+
+    // And both cart items travel with them
+    expect(
+      sentOf(client, 'cartItems')
+        .map((c) => c.cartId as string)
+        .sort(),
+    ).toEqual(['loc_garage:vendor_1', 'loc_office:no-vendor'])
+  })
+})
+
 describe('importLocalData — carts are bootstrapped by every strategy', () => {
   beforeEach(clearAllTables)
   afterEach(clearAllTables)
