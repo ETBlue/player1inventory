@@ -611,6 +611,111 @@ exactly one default row and no stray row must go red.
 
 ---
 
+**Done 2026-10-03** — `b0dd69cb`. Web **2275 → 2285 passing** (+10), 249 files, all green.
+Server unmoved at **346 / 24** — no server file was touched. `pnpm build` clean, no
+`TS6385`. Biome: the same **4** pre-existing warnings in `src/routes/shopping/index.tsx`
+at 187, 191, 211, 215.
+
+**THIS TASK'S INSTRUCTION WAS WRONG, AND FOLLOWING IT WOULD HAVE BROKEN TWO REAL CASES.**
+Both this plan and the design's §1 note said to change `deserializeLocation` so it carries
+the file's `isDefault` instead of deriving it. The derive is correct and was kept. The real
+fix is one call in `importLocalData`; `deserializeLocation` got a comment only.
+
+Locally the flag and the id are the **same fact**: the v18 upgrade fn sets
+`isDefault = (id === DEFAULT_LOCATION_ID)` (`db/index.ts:628`) and `ensureDefaultLocation`
+only ever creates that one id. Once the remap has rewritten the payload default's id to
+`DEFAULT_LOCATION_ID`, deriving flags exactly that row. **Carrying the flag instead was run
+as a mutation and turned 4 tests red:**
+
+| Case | What carrying the flag does |
+|---|---|
+| a pre-v18 backup — no `isDefault` key anywhere | **zero** rows flagged. `ensureDefaultLocationRow` cannot repair it: the `local` row exists, so it returns early. `expected [] to deeply equal [ 'local' ]`, twice |
+| a hand-edited file flagging a second row | **two** rows flagged. `expected true to be false` and `expected [ 'office' ] to deeply equal [ 'local' ]` |
+
+The file's flag is **not** ignored — it is read one step earlier, by
+`findPayloadDefaultLocationId`, which is what decides the remap.
+
+**Mutation check 4 as written is a no-op**, for the same reason: the line it says to
+"restore" was never changed. The checks that do exercise the fix are below.
+
+**The shared rule was reused, not copied.** `buildLocationRemap` and `applyLocationRemap`
+were already exported and direction-agnostic, so the local side is one call with
+`DEFAULT_LOCATION_ID` as the destination default. No second rule exists to drift.
+
+**NO ORDERING HAZARD ON THIS SIDE.** The hazard that broke PR 4a cannot exist here, because
+the destination's default is **not read from the database at all** — it is the module
+constant `DEFAULT_LOCATION_ID` (`packages/types/src/index.ts:222`), guaranteed by the v18
+upgrade fn and `ensureDefaultLocation`. So the remap's position relative to
+`db.locations.clear()` does not matter. It sits before the clear, at the top of
+`importLocalData`, because `detectConflicts` and `partitionPayload` on the `skip` and
+`replace` paths must see remapped ids too. Written as a comment at the call site, including
+"do not improve it into a `db.locations` read".
+
+**One call covers all three strategies.** Each strategy hands the **whole** payload to
+`importLocations` and `importItemStocks`, so remapping once in `importLocalData` is enough
+— there are three call sites of each helper but only one place the ids have to be rewritten.
+
+| strategy | what the remapped default row does |
+|---|---|
+| `clear` | `bulkPut` writes it on `local`, with the backup's name |
+| `skip` | filtered out by `existingIds`, so the live `local` row keeps its own name — correct for "skip adds what is missing" |
+| `replace` | `bulkPut` overwrites the live `local` row, name included |
+
+**Applied AFTER `upgradeLegacyPayload`, not before.** That function can invent location ids
+of its own (it places a legacy payload's synthesised stock and cart prefixes in the caller's
+`locationId`), so remapping afterwards is what stops an id it created from escaping the rule.
+It also leaves `collapseStockConfig`'s existing `createdAt` tie-break untouched. The
+"no `itemStocks` means pre-v15" signal it reads is **unaffected** — task 2 made the cloud
+export carry `itemStocks`, so absence now means pre-v15 and nothing else, which is exactly
+what that branch assumes. Two stale comments on it were corrected: a cloud payload is no
+longer inline-stock-shaped, and its `locationId` parameter no longer decides where a cloud
+backup lands.
+
+**A COLLISION THE REMAP RULE DOES NOT COVER, found by an existing test.**
+`db/upgradeV18.test.ts:235` already pins a hand-edited payload where `local` carries
+`isDefault: false` and `office` carries `isDefault: true`. Under the bare rule, `office`
+remaps onto `local` — and the payload's own `local` row is already there, so two rows share
+one id and the write keeps one. **A location disappears.** `buildLocationRemap` now returns
+an empty map when the destination's default id is already held by a different payload row.
+Nothing is lost by that: the remap exists only to stop a stray *second* default appearing,
+and that cannot happen when the destination's default id is in the payload already. The
+guard went into the **shared** function, so it protects the cloud direction too.
+
+**For a pre-v18 backup with no `isDefault`, the payload's default is the row whose id is
+`DEFAULT_LOCATION_ID`** — `findPayloadDefaultLocationId`'s existing fallback. Every real
+pre-v18 local backup has that row, because the local default is undeletable. If a file has
+neither a flag nor that id, nothing is remapped and `ensureDefaultLocationRow` adds the
+`local` row: still exactly one default, plus one extra row. That is the honest answer —
+guessing a default from `order` or from array position would be inventing one.
+
+**Three mutation checks, all red for the reason claimed.**
+
+| Mutation | Result |
+|---|---|
+| the remap call removed from `importLocalData` | **8 red.** `expected 4 to be 3` (the stray row), `expected { id: 'local', name: 'My Home', … } to match object { name: 'Cloud Home' }`, `expected undefined to be 1` (stock at `local`), `expected 'cloud_default_cuid:vendor_1' to be 'local:vendor_1'`, `expected 'cloud_default_cuid' to be 'local'` (the log) |
+| every payload location mapped to the destination default, not just the payload's | **12 red** — 7 of them task 3's cloud-direction tests, which proves the rule really is shared. The one this task owns: `expected [ 'local' ] to deeply equal [ 'cloud_cabin_cuid', …(2) ]` — all three locations collapsed into one row |
+| `locations[].id` dropped from `applyLocationRemap`, the other four fields kept | **7 red**, including `expected 4 to be 3`. This is the check that proves the **fifth** field carries the stray-default fix |
+
+**One assertion is a negative control and is now labelled as one.** "Exactly one row has
+`isDefault: true`" **stays green** with the remap removed: the three cloud rows arrive
+unflagged, then `ensureDefaultLocationRow` adds one flagged `local` row — exactly one, just
+the wrong one. The assertions that actually fail are the flagged row's **name** and the
+**row count**. Both are in the same tests, with the measured failure text written beside
+them.
+
+**The fixtures seed THREE locations** — one default (`cloud_default_cuid`, flagged) and two
+others (`cloud_office_cuid`, `cloud_cabin_cuid`) — with three stock rows carrying three
+different quantities (1, 7, 3). With one non-default location, "map only the payload's
+default" and "map every location onto the local default" give the same answer.
+
+**10 new tests** in `apps/web/src/lib/importData.test.ts`, describe block
+`importLocalData — a cloud backup keeps every location (PR 4b task 5)`: one default row,
+no stray row, non-default ids verbatim, each quantity in its own location, a bare cart id
+left unprefixed, each log's location (including a log with none), `skip`, `replace`, a
+pre-v18 backup, and the collision guard.
+
+---
+
 ## Task 6 — remove the two import dual-writes
 
 | Marker | Resolver | The call it guards |
