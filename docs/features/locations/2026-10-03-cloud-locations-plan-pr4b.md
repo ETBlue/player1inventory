@@ -752,6 +752,77 @@ error.
 
 ---
 
+**Done 2026-10-03** — `0f21809e`, plus a doc-comment commit. Server **346 → 347**
+(+1: one test replaced, one added). Web unmoved at **2285 / 249**, all green — no web file
+was touched. `pnpm build` clean, no `TS6385`. Biome: the same **4** pre-existing warnings in
+`src/routes/shopping/index.tsx` at 187, 191, 211, 215.
+
+**Measured after the change**, not assumed: **4** `stockDualWrite` resolver calls
+(`item.resolver.ts:191`, `cart.resolver.ts:178`, `recipe.resolver.ts:103`,
+`itemStock.resolver.ts:137`) in 4 files, and **5** `REMOVED IN PR 5` markers. Both match
+what PR 5's teardown list should now say.
+
+**The brief's count of "down from 6 and 7" mixes two different things.** There were never 7
+`REMOVED IN PR 5` markers. There were **5 `REMOVED IN PR 5` plus 2 `REMOVED IN PR 4b`** — 7
+`DUAL-WRITE` markers of both kinds. The 5 was already 5 before this task, and the two
+removed markers were the 4b ones. The design doc's §3 phrasing ("7 `REMOVED IN PR 5`
+markers") has the same mistake.
+
+**THE UPLOAD CHAIN HOLDS, read link by link.** This matters because the deleted mirror was
+the only thing making an imported item visible in the cloud pantry.
+
+| Link | Where | Verdict |
+|---|---|---|
+| Local export carries stock | `exportData.ts:172-173` reads `db.itemStocks` and `db.locations` | holds |
+| Cloud export carries stock | `exportData.ts:313-314` from `locations` + `allItemStocks` | holds |
+| Remap rewrites ids, drops nothing | `importData.ts:540-549` | holds |
+| `itemStocks` is in the upload table | ONE `ENTITY_SPECS` entry with a real `select` and both a `create` and an `upsert` closure. Being in the list means both passes can send it — the brief's "in both passes" question is moot since task 4 merged the three arrays | holds |
+| All three strategies send it somewhere | `clear` → create pass, all rows; `skip` → create pass, only the newly added items' rows; `replace` → upsert pass, all rows | holds |
+| Server writes the row the payload names | `bulkCreateItemStocks` (`import.resolver.ts:1022`) and `bulkUpsertItemStocks` (`:1162`) take `locationId` per row | holds |
+| Pantry reads `ItemStock` | `PantryData($locationId)` → `itemStocks(locationId:)` (`itemStock.resolver.ts:46`) | holds |
+
+One honest caveat on `skip`: a payload item that conflicts **by name only** keeps an id no
+cloud row holds, so `stocksForItems` drops its stock on purpose — `requireOwnItemStockRefs`
+would answer `Forbidden` and kill the whole import. That is task 4's deliberate choice, and
+it means `skip` genuinely does not restock an item it skipped. Correct for `skip`, but worth
+knowing.
+
+**Both mutation checks went red, each for the reason claimed.**
+
+| Mutation | Result |
+|---|---|
+| `itemStocks` entity deleted from `ENTITY_SPECS` (`apps/web/src/lib/importData.ts`) | **5 red** in `importData.test.ts`, all in task 4's `locations and stock upload in dependency order` block. The sharpest: `expected -1 to be greater than 5` — `BulkCreateItemStocks` is absent from the mutation sequence entirely. Also `expected [ 'ClearAllData', …(10) ] to deeply equal [ 'ClearAllData', …(11) ]`, `expected [ … ] to include 'BulkUpsertItemStocks'`, and `expected 10 to be 11` from `computeTotalBatches` |
+| the `bulkCreateItems` mirror restored | **1 red**, the create-side test only: `expected "vi.fn()" to not be called at all, but actually been called 1 times` at `import.resolver.test.ts:417`, on `p.itemStock.upsert` |
+| the `bulkUpsertItems` mirror restored | **1 red**, the upsert-side test only, same message at `:521` |
+
+The two mirror checks were run **separately on purpose**. One test cannot pin two
+byte-identical calls: with only the create-side test, restoring the upsert-side mirror stays
+green. That is why the replacement is two `it`s, not one. Nothing here was unobservable — the
+mirror writes `itemStock.upsert`, and a `vi.fn()` recorder can see a call it should not have
+received even though it cannot see which location a row landed in.
+
+**Where the replacement test went, and why.** Both `it`s stayed in
+`import.resolver.test.ts`, in the `bulkCreateItems` and `bulkUpsertItems` describes. Ground
+rule 3 rules out a *which-location* assertion in that file, and that is exactly what these
+tests do **not** assert. "This resolver touched `itemStock` not at all" needs no `where`
+matching, so a call recorder carries it fine, and the subject is these two resolvers — they
+live here. The positive half of the new contract ("each row lands in the location its own
+payload names") was already covered before this task by
+`import-itemStock.resolver.test.ts:227` and `:596`, against the stateful fake with three
+locations in the fixture. Adding a third copy there would have duplicated it.
+
+**One more guard than asked for.** Each test also asserts `p.location.findFirst` was not
+called. `mirrorStockToDefaultLocation` resolved the default through `ensureDefaultLocation`,
+which is that `findFirst`, and no other path in either resolver reads a location. So a
+reinstated mirror fails two independent assertions, not one.
+
+**Four doc comments in `lib/stockDualWrite.ts` named `importData` as a caller** and are now
+fixed (its caller table, the "last three stay default-bound" list, the
+`defaultLocationId` warning, and `mirrorStockToDefaultLocation`'s own docstring). Comments
+are claims, and a stale one here invites the next reader to put the mirror back.
+
+---
+
 ## Task 7 — the migration gate and the warning dialog
 
 ### The gate
