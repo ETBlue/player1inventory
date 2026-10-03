@@ -359,13 +359,41 @@ four new mutations.
 the code** — only in the design doc. The real name is `flattenPayloadForCloud`, and the
 `void` block is at `importData.ts:426-430`, not `:414-418`.
 
-### `deserializeLocation` stops deriving `isDefault` from the id
+### `deserializeLocation` KEEPS deriving `isDefault` from the id
 
-`deserializeLocation` (`importData.ts:136-143`) sets `isDefault: raw.id ===
+> **This section said "stops deriving" until 2026-10-03. That was wrong**, and 4b task 5
+> proved it by running the change as a mutation: carrying the file's flag turns **4 tests
+> red**. The derive stays; only its comment changed.
+
+`deserializeLocation` (`importData.ts:137-144`) sets `isDefault: raw.id ===
 DEFAULT_LOCATION_ID` and ignores the file. That is correct while cloud backups carry no
 locations. Once they do, a cloud backup's cuid-keyed locations would all import unflagged,
-and `ensureDefaultLocationRow()` (`importData.ts:1121`) would add a stray empty default
-beside them.
+and `ensureDefaultLocationRow()` would add a stray empty default beside them.
+
+**The fix is the remap, not the derive.** Once the remap has rewritten the payload default's
+id to `DEFAULT_LOCATION_ID`, the derive flags exactly that row. The file's flag is **not**
+ignored — it is read one step earlier, by `findPayloadDefaultLocationId`, which is what
+decides the remap.
+
+Carrying the flag instead breaks two real cases:
+
+| Case | What carrying the flag does |
+|---|---|
+| a pre-v18 backup, with no `isDefault` key anywhere | **zero** rows flagged — and `ensureDefaultLocationRow` cannot repair it, because the `local` row exists so it returns early |
+| a hand-edited file flagging a second row | **two** rows flagged |
+
+Locally the flag and the id are the same fact: the v18 upgrade function sets
+`isDefault = (id === DEFAULT_LOCATION_ID)` (`db/index.ts:628`), and `ensureDefaultLocation`
+only ever creates that id.
+
+**A collision case neither this doc nor the plan predicted.** `db/upgradeV18.test.ts:235`
+pins a hand-edited payload where `local` is **not** flagged and `office` **is**. Under the
+bare rule `office` remaps onto `local` — but the payload already holds a `local` row, so two
+rows collide on one id and **a location disappears**. `buildLocationRemap` now returns an
+empty map when the destination's default id is already held by a different payload row.
+Nothing is lost: the remap exists only to stop a stray *second* default appearing, which
+cannot happen when the destination's default id is already in the payload. The guard is in
+the **shared** function, so both directions get it.
 
 4b applies the §1 remap on this side instead: the payload's default becomes the `'local'`
 row, so exactly one row is flagged and no extra row is created.
@@ -526,7 +554,7 @@ breaking the **source**, not the fixture.
 | 2 | 4b | restore the cart prefix strip at `importData.ts:403-413` | the two-user cart-collision spec | not run yet |
 | 3 | 4b | drop `itemStocks` from the remap, so the upload sends none | the cloud import E2E — imported items must be stocked, not catalog-only | not run yet |
 | 4 | 4b | map every payload location to the destination default | an E2E asserting a two-location payload arrives as two locations | not run yet |
-| 5 | 4b | restore `deserializeLocation`'s `raw.id === DEFAULT_LOCATION_ID` | a cloud → local import test asserting exactly one default and no stray row | not run yet |
+| 5 | 4b | ~~restore `deserializeLocation`'s `raw.id === DEFAULT_LOCATION_ID`~~ — **a no-op; that line was never changed.** Replaced by three real checks: remove the remap call; map every location to the default; drop `locations[].id` from the remap | the stray-row and remapped-name assertions | **run, 8 / 12 / 7 red** |
 | 6 | 4c | `purgeUserData`'s `item` filter → `{ userId: 'nobody' }` | the two-user purge spec, on the "A's rows are gone" half | not run yet |
 | 7 | 4c | `purgeUserData`'s `item` filter → `{}` | the two-user purge spec, on the "B's rows survive" half | not run yet |
 
