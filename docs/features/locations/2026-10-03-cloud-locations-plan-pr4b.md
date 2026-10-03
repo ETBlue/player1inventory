@@ -253,6 +253,28 @@ means the test reads the payload key without asserting its contents.
 
 ---
 
+**Done 2026-10-03.** Web tests **2259 → 2267 passing** (+8), still with only task 1's two
+intended failures. Server unmoved at 346/24. `pnpm build` clean.
+
+`fetchCloudPayload` had **zero** tests before this. It has three now, and the fixture seeds
+**two** locations with **different** quantities, so a change that reads only one location's
+stock fails instead of passing. The log sits at the **non-default** location on purpose: at
+the default, a restore that falls back to the default would land on the right answer by
+accident.
+
+**`InventoryLogInput` already accepts all three new fields**, all optional
+(`import.graphql:49-67`): `logKey: String`, `logParams: JSON`, `locationId: ID`.
+
+**Neither new array needs a filter**, and the reason `cartItems` is filtered does not
+transfer. `CartItem.userId` and `Cart.userId` are separate columns that **can** disagree —
+that is issue #327. `ItemStock` has no `userId` column at all, and its FK cascades to both
+`Item` and `Location` (`schema.prisma:279-280`) mean an orphan cannot exist. `locations` is
+unfiltered because the payload's default **must** be present for the remap to find it.
+
+**One ground rule was not followed, and the agent said so.** It did not run the whole suite
+on the unmodified tree before editing, and reported that its +8 arithmetic "corroborates the
+brief but is not the same as measuring it". Recording the admission rather than the number.
+
 ## Task 3 — the remap rule, and the mappers
 
 `apps/web/src/lib/importData.ts`.
@@ -316,7 +338,7 @@ is remapped onto the destination's existing default. `ItemStockImportInput`
 |---|---|---|---|
 | `importCloudData — local → cloud stock flattening (v15 split)` | 2256 | 7 | **all 7 die.** The last, `'a cloud-shaped payload (no itemStocks) passes through untouched'` (`:2559`), is the one encoding the signal 4b removes |
 | `resolveFlattenLocationId — cloud file import cannot silently zero stock` | 2665 | 7 | **all 7 die** with the function |
-| `cloud import input mappers — strip server-only fields` | 1480 | 13 | needs cases for the two new mappers and the three new log fields |
+| `cloud import input mappers — strip server-only fields` | 1480 | 13 → **18** | **already done by task 2**, including the `Date` → ISO path both directions need. Do not add them again |
 | `importCloudData — batched cloud import` | 1819 | 5 | batch-count and order assertions break — task 4 |
 
 **Do not delete a dying test without reading what it asserted.** Some encode behaviour 4b
@@ -349,13 +371,14 @@ Insert:
 progress bar overruns. Its header comment at `:1501-1507` already lists only eight entities
 — it is stale before you start.
 
-### Five new Apollo operations
+### Four new Apollo operations
 
-None exists yet — confirmed by `grep` over `apps/web/src/generated/graphql.ts`.
-`apollo/operations/import.graphql` holds 19 operations and ends at line 211.
+`BulkCreateLocations`, `BulkUpsertLocations`, `BulkCreateItemStocks`, `BulkUpsertItemStocks`.
 
-`AllItemStocks`, `BulkCreateLocations`, `BulkUpsertLocations`, `BulkCreateItemStocks`,
-`BulkUpsertItemStocks`.
+**Corrected 2026-10-03 after task 2:** this said *five*, including `AllItemStocks`, and
+claimed none existed. **Task 2 already created `AllItemStocks`**, in `export.graphql` beside
+`AllCartItems` — both are whole-account snapshot reads used by the export writer and by
+`fetchCloudExistingData`. Do not write a second copy.
 
 ### `fetchCloudExistingData` and `ExistingData`
 
