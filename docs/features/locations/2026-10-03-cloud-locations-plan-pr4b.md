@@ -1016,6 +1016,69 @@ code adds none. The temporary tsconfig was deleted.
 | The LOCAL half of `readStocksForItem` in a cloud run | it reads IndexedDB, which a cloud run has none of. The helper branches on `baseURL`, so this is correct, but it means the local assertions and the cloud assertions are two different code paths proven separately, not one path proven twice |
 | A local export from a database whose items were never split | such a payload has `itemStocks: []`, so `upgradeLegacyPayloadForCloud`'s guard treats it as post-v15 and `upgradeUnsplitItems` does not run on the cloud path. Its inline stock is still dropped on an import into cloud. Left alone deliberately: the alternative over-stocks every catalog-only item (see above), and the state is a test artifact rather than something a Dexie upgrade leaves behind |
 
+**Done 2026-10-04.** Cloud spec **2 → 6** tests, local **3 → 4**. Cloud project 99 → 103
+in 20 files, local 175 → 176 in 22. Web 2281 → 2285.
+
+### It found a real regression, not a test gap
+
+**`importCloudData` never ran `upgradeLegacyPayload`.** A pre-v15 backup imported into cloud
+mode **lost all of its stock**: every item landed in the catalog stocked nowhere, invisible in
+the pantry, with no error. Measured before the fix, the only mutations sent were
+`["BulkCreateItems", "BulkCreateShoppingCarts"]`, and the cart id was still the bare
+`vendor_1`.
+
+Task 3 deleted `flattenPayloadForCloud`, which used to send the inline columns up. Task 6
+deleted the mirror that turned them into a row. **Neither half was replaced, and each task's
+own tests passed.** Fixed in `1d2a0c89` by `prepareCloudPayload`, which runs the upgrade and
+then the remap.
+
+The guard is **the absent `itemStocks` key and nothing else**. Running the whole upgrade on a
+post-v15 payload also runs `upgradeUnsplitItems`, and a cloud export's items carry the legacy
+stock columns as **0, not null** — so `hasInlineStock` answers true for every *catalog-only*
+cloud item, and a cloud → cloud round trip would stock each one at the default. A unit test
+pins that.
+
+### A process failure of mine, worth a rule
+
+**I told task 8 "the suite is GREEN". It was not** — both cloud tests were already failing at
+`293c82f8`. I ran `pnpm test:web` and `pnpm test:server` after every task and **never ran the
+E2E specs**, so a regression introduced by tasks 3 and 6 sat undetected through tasks 4, 5, 6
+and 7.
+
+**Rule for the next multi-task PR: if a task deletes a code path, run the E2E spec that
+covers it in that task, not at the end.** Unit tests cannot see this class of failure — every
+assertion behind task 6's "the chain holds" judgement was against a fake, and the chain table
+it built never mentioned the legacy path at all.
+
+### One flake risk for task 9
+
+The `cloud → cloud` test takes about **30s against a 30s timeout**. It passed 6/6 four times
+at load 2–3, and failed once at load **16.46** with `Test timeout of 30000ms exceeded` — the
+starvation signature. It may flake in the full gate.
+
+### Other findings
+
+- **A cart row's `locationId` column needs `cartItemCountByItem(itemId, locationId:)`.** The
+  `Cart` GraphQL type exposes only `id` and `lastPurchasedAt`; that query resolves through
+  `where: { cart: { locationId } }`, so it reads the column rather than the id string. This is
+  the real-SQL half of task 1's proof.
+- **The log had to stay at the default location.** Both modes scope the item Log tab to the
+  *active* location, so moving the fixture's only log would have made `verifyRelations`' "one
+  log entry" read 0. A second log sits at the Office instead.
+- **`expectStockNotCollapsedOntoDefault` is a restatement, not coverage**, and is labelled as
+  such — all three mutations went red through other assertions.
+- The location checks live in one module, `e2e/helpers/backupAssertions.ts`, rather than a
+  third drifting copy. The two `verifyRelations` copies had already drifted.
+- **DX cost:** the cloud spec now takes ~1.9m, up from ~40s, so the gate gains about 70s.
+
+### An agent-caught false comment
+
+Its first version of `DESTINATION_DEFAULT_LOCATION_NAME` blamed task 4's create-pass routing
+for the lost default-location name, and claimed local kept the backup's name while cloud did
+not. **The local run disproved it** — local gives "My Home" too. The real cause is that
+`ImportCard.tsx:111` runs the **`skip`** strategy when nothing conflicts, and `skip` leaves
+the destination's existing default row alone in both modes. Corrected before committing.
+
 ## Task 9 — gate and docs
 
 1. The full Verification Gate from root `CLAUDE.md`, each command with an explicit path.
