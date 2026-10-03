@@ -352,7 +352,51 @@ needs **more than one** non-default location or the check cannot fail.
 
 ---
 
-## Task 4 — upload order and the five new operations
+**Done 2026-10-03.** **The suite is GREEN again: 2268 passed / 249 files.** Task 1's two
+tests pass, which was this task's success signal. `importData.ts` is **55 lines shorter**
+even after adding the remap.
+
+**The remap touches FIVE fields, not the four this plan listed.** `locations[].id` was
+missing. Without it the payload's default row keeps its own id and `bulkCreateLocations`
+creates a **stray extra location** beside the destination's real default. The design doc's
+§1 table had the same omission while its prose was right; both are now fixed.
+
+**A defect task 2 left, found and fixed here.** The cloud export dropped `isDefault`, so a
+cloud-sourced payload named no default and the remap was a no-op in that direction. The
+export **file** must carry the flag — it is the only place the import side can learn which
+location was the payload's default — while `LocationInput` has no such field, so
+`toLocationInput` still drops it for the **upload**. Two jobs, now correctly separated:
+`sanitiseCloudPayload` re-adds the flag after mapping. Task 2's one contradicting assertion
+was inverted, with the reason recorded. Commit `3322f322`.
+
+Left unfixed, it would have ended a cloud → cloud "clear and import" with a stray empty
+default location beside the restored one.
+
+**Three mutation checks, not two.** The extra one is the ordering hazard: reading the
+destination's locations **before** `clearAllData` now fails a named test
+(`user clearing cloud before an import maps onto the default that exists after the clear`)
+with `expected [ 'cloud_default_before:vendor_1' ] to deeply equal
+[ 'cloud_default_after:vendor_1' ]`. So the rule that broke PR 4a is guarded, not just
+commented.
+
+**Three more tests died than this plan counted.** `ImportCard/index.test.ts`'s describe
+`ImportCard — cloud import scopes stock to the local active location` held 3 `it`s pinning
+the deleted wiring; rewritten to 2 asserting the inverse rule. The plan's count of 14 covered
+`lib/importData.test.ts` only.
+
+**`parseCartId` is reachable from `apps/web`** via `@/types` → `@p1i/types`, the same copy
+`useShoppingCart.ts` uses. The `apps/server/src/lib/cartId.ts` duplicate exists only because
+plain Node cannot load that `.ts` in production.
+
+**`settings.import.unknownLocations` is dead** and was removed from both locale files.
+
+**Three traps worth keeping:** a bare cart id must gain no prefix (`parseCartId('no-vendor')`
+returns `{ locationId: 'no-vendor' }`, so a blind rebuild would make it
+`cloud_default:no-vendor`); a log with no `locationId` must stay without one, or it overrides
+the server's documented fallback; and the resumable-import session must record the **raw**
+payload, because on the `clear` path the remap cannot run until the clear has.
+
+## Task 4 — upload order and the four new operations
 
 ### The order
 

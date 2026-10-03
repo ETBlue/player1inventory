@@ -147,10 +147,27 @@ row.
 
 | Field | Shape |
 |---|---|
+| `locations[].id` | plain id — **added 2026-10-03, see below** |
 | `itemStocks[].locationId` | plain id |
 | `inventoryLogs[].locationId` | plain id — **new in 4a**, see §2 |
 | `shoppingCarts[].id` | `${locationId}:${vendorId\|'no-vendor'}` |
 | `cartItems[].cartId` | the same composite |
+
+> **This table said four fields until 2026-10-03. There are five.** `locations[].id` was
+> missing, and 4b task 3 caught it. Without remapping it, the payload's default row keeps its
+> own id and `bulkCreateLocations` creates it as a **stray extra location** beside the
+> destination's real default.
+>
+> The omission was in the table only — the PR 4a section of this same document already said
+> "its id is rewritten to the destination's existing `isDefault` id", which is the correct
+> five-field behaviour. **The table and the prose disagreed, and the task brief copied the
+> table.**
+>
+> One consequence worth stating: the export **file** must carry `isDefault`, because it is
+> the only place the import side can learn which location was the payload's default.
+> `LocationInput` has no such field, so `toLocationInput` drops it for the **upload** —
+> those are two different jobs. `sanitiseCloudPayload` re-adds the flag to the file after
+> mapping. Task 2 had dropped it from both and task 3 fixed it.
 
 **Legacy payloads need no new code.** `upgradeLegacyPayload` (`importData.ts:259-292`)
 already turns a pre-v15 payload's inline stock into `itemStocks` rows, placed in a location
