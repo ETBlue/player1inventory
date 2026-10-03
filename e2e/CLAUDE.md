@@ -400,11 +400,19 @@ Reconciling against what the database actually holds is what keeps this working 
 PR 5 removes the dual-write. **Check it at that point** — if the mirror stops running,
 the reconcile should simply find nothing to remove.
 
-**The `cloud` project's `testMatch` is 19 files today** (`e2e/playwright.config.ts`),
+**The `cloud` project's `testMatch` is 20 files today** (`e2e/playwright.config.ts`),
 up from 13 on 2026-09-23. The five added on 2026-09-24 are `recipes-group.spec.ts`,
 `vendors-group.spec.ts`, `shelves.spec.ts`, `item-stock-input.spec.ts` and
-`item-stock-pager.spec.ts`. `--list` reports **97 cloud tests**, up from 76+6 skipped. The 19th file is
-`cleanup-endpoint.spec.ts`, added 2026-09-27 for issue #319.
+`item-stock-pager.spec.ts`. The 19th file is
+`cleanup-endpoint.spec.ts`, added 2026-09-27 for issue #319. The 20th is
+`cart-id-cross-user-leak.spec.ts`, added 2026-10-03 by cloud locations PR 4b — the first
+cloud spec with **two** users, and a labelled negative control rather than coverage.
+
+**Cloud test counts, measured, not quoted:** `--list` reported **97** on 2026-09-24. A full
+`--project=cloud` run on 2026-10-04 at `feature/cloud-locations-pr4b` collected **103**. 4b
+added 5 of those: 1 for the leak spec and 4 because `import-export-cloud.spec.ts` went
+2 → 6. The remaining step from 97 to 98 happened between 2026-09-24 and 4b and is not
+attributable from this branch. Re-measure; do not subtract these.
 
 ### `consumeAmount` and `targetUnit` — both helpers default to the product values
 
