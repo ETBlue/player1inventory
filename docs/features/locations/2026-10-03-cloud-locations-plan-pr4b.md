@@ -424,12 +424,40 @@ claimed none existed. **Task 2 already created `AllItemStocks`**, in `export.gra
 `AllCartItems` — both are whole-account snapshot reads used by the export writer and by
 `fetchCloudExistingData`. Do not write a second copy.
 
-### `fetchCloudExistingData` and `ExistingData`
+### `fetchCloudExistingData` and `ExistingData` — **this instruction was WRONG**
 
-`fetchCloudExistingData` (`:1449-1499`) runs the **same nine queries** as
-`fetchCloudPayload`, and `ExistingData` (`:726-736`) has nine fields. Both need the two new
-entities, or conflict detection on the `skip` and `replace` paths cannot see an existing
-location or stock row.
+This section said both "need the two new entities, or conflict detection cannot see an
+existing location or stock row". **Following it would have broken every cloud import.**
+Corrected 2026-10-03 by task 4, which added **no** fields to either type:
+
+- A **location** would conflict on *every* cloud import. The remap rewrites the payload
+  default's id to the destination account's default, and that row always exists — so an id
+  check always matches, `hasConflicts` is always true, and **every import, including a clean
+  one, stops at the conflict dialog.**
+- A **stock** row's conflict is never the user's decision. It follows its item, and the item
+  is already in the summary.
+- Task 3 had already shipped this rule locally: `importLocations`'s comment says locations
+  are "never reported as conflicts, like carts".
+
+Adding the fields would also have cost two extra network queries per import that nothing
+reads. The reason is now written on the `ConflictSummary` type and at `detectConflicts`.
+
+**`partitionPayload` DID need changing, and this plan never mentioned it.** It builds
+`toCreate` with `{ ...payload }` and overrides nine keys, so both new arrays passed through
+the spread into **both** sides — every location and stock row uploaded twice on `replace`.
+The routing task 4 settled on:
+
+| strategy | `locations` | `itemStocks` |
+|---|---|---|
+| `clear` | create pass | create pass, all rows |
+| `skip` | create pass | create pass, **only the items actually added** |
+| `replace` | create pass | **upsert pass**, all rows |
+
+`locations` is on the create pass for every strategy, because the carts and logs that name
+them are sent on that pass — the upsert pass would place them *after* the carts, the exact
+silent failure this task exists to prevent. `itemStocks` is on the upsert pass for `replace`
+because `bulkCreateItemStocks` **skips** a row whose `(itemId, locationId)` pair is taken,
+so the create pass would silently discard the quantities the user asked to restore.
 
 ### Mutation check 3
 
@@ -532,6 +560,33 @@ is a unique partial index, so a second default would raise `P2002` **after** `cl
 had run.
 
 ---
+
+**Done 2026-10-03.** Web **2268 → 2275 passing**, all green. Server unmoved at 346/24.
+
+**The predicted DX cost became a gain.** This plan said three hand-maintained lists would
+have to agree. Task 4 unified them into one `ENTITY_SPECS` table of eleven entries, each
+holding a `create` and an `upsert` closure; `runBulkBatches(args, mode)` walks it for both
+passes and `computeTotalBatches` reduces over the same list. Adding an entity and forgetting
+a site is now impossible. The resumable-session key format is unchanged.
+
+**A pre-existing bug found and deliberately not fixed — now issue #330.** `bulkCreate` and
+`bulkUpsert` share one `ImportSession`, and the batch key is `${entityType}:${i}` with **no
+mode**. On `replace`, when an entity has rows in both passes, the upsert pass finds the
+create pass's key and **skips its own batch** — so a payload with one new item and one
+conflicting item never updates the conflicting item, which is exactly the data the user
+chose to replace. Reachable today for all nine older entities. Neither new entity can hit it,
+because each goes to exactly one pass. Recorded in a comment at the key line.
+
+**This plan's prediction about the batched-import tests was wrong.** It said
+`importCloudData — batched cloud import`'s batch-count and order assertions "will break".
+All 5 pass unchanged — their payloads carry only `items`, so both new entities have zero
+batches. The block that broke was `partitionPayload`'s `it.each` over the three strategies,
+now three named tests asserting the routing rules above.
+
+**One accepted behaviour change:** `replace` does not rename an existing cloud location to
+the name in the backup, where the local import does. Accepted on purpose, so locations stay
+on the create pass ahead of the carts. A location row holds only a name and an order, so no
+user data is lost.
 
 ## Task 5 — the local side of the remap
 
