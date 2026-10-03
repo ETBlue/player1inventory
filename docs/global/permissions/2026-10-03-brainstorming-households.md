@@ -1,7 +1,7 @@
 # Brainstorming — Households: sharing locations and handing over ownership
 
 **Date:** 2026-10-03
-**Status:** 🔄 In progress — roles, data model, first-phase hand-over and purge decided; flows (Section 2) still open
+**Status:** 🔄 In progress — roles, data model, first-phase hand-over and purge decided; flows decided; screens (Section 3) and import/export still open
 **Branch:** `feature/households`
 **Builds on:** [Location RBAC](2026-08-29-design-location-rbac.md). This log **changes** that
 design: roles no longer live only on a `Location`. See *Decision 3* below.
@@ -88,13 +88,14 @@ it, then **moved one step back and replaced it** with two levels:
 | Assign or remove managers | ✅ | ❌ | ❌ |
 | Edit the catalog (items, tags, vendors, recipes, shelves) | ✅ | ✅ | ❌ |
 | Invite members, remove members | ✅ | ✅ | ❌ |
-| Set organizers and viewers on any location | ✅ | ✅ | ❌ |
+| Set any location role (organizer, participant, viewer) on any location | ✅ | ✅ | ❌ |
 | Delete a location | ✅ | ✅ | ❌ |
 | See the list of all locations | ✅ | ✅ | ❌ (only their own) |
 | Create a location (the creator becomes its organizer) | ✅ | ✅ | ✅ |
 | Claim ownership when the owner is gone | — | ✅ | fallback, see Decision 6 |
 
-**Location roles.**
+**Location roles.** First version — **replaced on 2026-10-04 by Decision 17**, which adds a
+`participant` role between these two.
 
 | Action | Organizer | Viewer |
 |---|---|---|
@@ -333,6 +334,61 @@ can show who changed what. Deleting logs would remove that history.
 and managers can read. **Why:** without it nothing shows who emptied a location, which is
 exactly what bug tracing needs.
 
+### Decision 17 — Three location roles (2026-10-04)
+
+The user added a role between organizer and viewer. Each role includes all rights of the
+roles below it.
+
+| Action | Organizer | Participant | Viewer |
+|---|---|---|---|
+| Read stock, cart, logs | ✅ | ✅ | ✅ |
+| Edit pantry, shopping, cooking | ✅ | ✅ | ❌ |
+| Leave the location | ✅ | ✅ | ✅ |
+| Add or remove household members as participant / viewer | ✅ | ❌ | ❌ |
+| Rename the location | ✅ | ❌ | ❌ |
+| Remove all items from this location (Decision 16) | ✅ | ❌ | ❌ |
+
+Confirmed details:
+
+- Organizers do **not** make organizers, and cannot remove another organizer. Only owner and
+  manager give or remove the organizer role.
+- Rename and "remove all items" stay with organizers, not participants.
+- A member who creates a location becomes its organizer.
+
+**Why.** An organizer can share their own location with family without asking a manager,
+but cannot hand out the right to share it further.
+
+### Decision 18 — Default names (2026-10-04)
+
+| Thing | Default name |
+|---|---|
+| A new user's household | `<name>'s Household`, for example "ET's Household" |
+| A new household's first location | "Home" |
+
+`<name>` is the first name from Clerk; if Clerk has none, the part of the email before `@`.
+The name is translated, and the owner can rename the household. Existing users get the same
+name when their data moves into a household.
+
+**Why.** The first proposal, "My home", would confuse a person who sees several households in
+the switcher: each one would be called "My home".
+
+### Decision 19 — Answers to the Section 2 flow questions (2026-10-04)
+
+| # | Question | Decided |
+|---|---|---|
+| a | Can a person leave a location? | Yes, anyone, **even its only organizer**. |
+| b | A location with no organizer | Keeps working. Owner and manager can give the role to someone. |
+| c | Hand-over when no manager and no organizer-member is left | **All** remaining members get the "become owner?" prompt. |
+| d | Someone deletes their last household | Show an empty screen with a "Create a household" button. Do not create one by itself. |
+| e | Activity log | One `HouseholdActivity` table, replacing `LocationRoleLog`. It records location and household role changes, invites, joins, leaves, removals, ownership transfers and every purge. Owner and managers read it in Settings › Household › Activity. Stock changes stay in `InventoryLog`. |
+
+The rest of Section 2 was approved as presented: first sign-in creates a household and a
+"Home" location; invite links carry a household role and optional location roles; the owner
+manages managers; transfer needs the receiver to accept, and the old owner becomes manager;
+a deleted owner who was the only person deletes the household at once; a deleted non-owner
+keeps a `User` row with `deletedAt`, shown as "Deleted user"; only the owner deletes a
+household, by typing its name.
+
 ## Data model so far (cloud only)
 
 | Model | Fields | Notes |
@@ -340,8 +396,8 @@ exactly what bug tracing needs.
 | `User` (new) | `id`, `displayName`, `email`, `lastSeenAt`, `deletedAt` | Decision 12 |
 | `Household` (new) | `id`, `name`, `ownerId` (nullable), `ownerGoneAt` | `ownerId` is null after the owner is deleted, until someone accepts. `inactivityMonths` and `vetoDays` are postponed (Decision 14) |
 | `HouseholdMember` (new) | `householdId`, `userId`, `role` (`owner` / `manager` / `member`), `joinedAt` | Primary key `(householdId, userId)` |
-| `LocationMember` (new) | `locationId`, `userId`, `role` (`organizer` / `viewer`) | Decision 3 |
-| `LocationRoleLog` (new) | actor, target, location, old role, new role, time | Decision 5 |
+| `LocationMember` (new) | `locationId`, `userId`, `role` (`organizer` / `participant` / `viewer`) | Decisions 3 and 17 |
+| `HouseholdActivity` (new) | actor, action, target, details, time | Decision 19e. Replaces the `LocationRoleLog` of Decision 5 |
 | `LocationPreference` (new) | `userId`, `locationId`, `customOrder`, `lastVisitedAt` | Decision 6b |
 | `HouseholdInvite` (new) | `id`, `householdId`, `token`, household role, location roles, `createdBy`, `expiresAt`, `usedAt` | Decision 10 |
 | `Location`, `Item`, `Tag`, `TagType`, `Vendor`, `Recipe`, `Shelf` | `userId` → `householdId` | `Location` loses `order` and `isDefault`, gains `dataUpdatedAt` |
@@ -360,13 +416,12 @@ catalog and membership. This also fixes issue #273.
 
 ## Still open
 
-1. **Section 2 — the flows** must be redone for the two-level roles and the first-phase
-   hand-over (Decision 14). A first draft was written for the old one-level roles and is
-   superseded.
-2. ~~Email~~ — postponed with the claim feature (Decision 14).
-3. ~~What members see of the catalog~~ — read-only Settings pages (Decision 15).
-4. ~~`purgeUserData`~~ — replaced by three role-based purge actions (Decision 16).
-5. **Import and export** must learn about households.
+1. ~~Section 2, the flows~~ — approved (Decisions 17–19).
+2. **Section 3 — the screens**: Settings › Household, the two switchers, read-only pages.
+3. ~~Email~~ — postponed with the claim feature (Decision 14).
+4. ~~What members see of the catalog~~ — read-only Settings pages (Decision 15).
+5. ~~`purgeUserData`~~ — replaced by three role-based purge actions (Decision 16).
+6. **Import and export** must learn about households.
 
 ## Postponed to a later cloud-improvement phase
 
