@@ -240,6 +240,21 @@ The code already knew the design doc had gone stale. `usePostLoginMigration.ts:4
 the gate no longer validates the id being copied, and leaves the decision to PR 4 on
 purpose rather than guessing.
 
+> **Correction, 2026-10-03.** The decision stands; **the reason recorded for it does not.**
+> This entry said the remap needs the destination's locations, so the copy must wait for
+> them. It does not — `importCloudData` reads the destination's default itself
+> (`fetchCloudDefaultLocationId`, `importData.ts:526-534`), on every strategy. The gate feeds
+> the remap nothing.
+>
+> The rejection note below ("`autoImportStarted` alone would let the copy start before
+> `GetLocations` resolves, so the remap would map the payload's default onto nothing") rests
+> on the same false premise and is wrong for the same reason.
+>
+> The gate is kept for **ordering**: the copy is one-shot and destructive, and on `clear` it
+> deletes every `Location` row before the remap re-reads them, so it must not start while the
+> hook's own `GetLocations` is in flight. Found by 4b task 7, which refused to write the
+> dictated comment.
+
 **Rejected:** reading Dexie's `locations` table to validate the local slot. It puts an
 IndexedDB read inside a hook mounted in `__root.tsx:97`, so it would run for every signed-in
 page view — and after 4b there is no single id left to validate.

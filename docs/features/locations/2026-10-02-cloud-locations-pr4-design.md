@@ -439,11 +439,37 @@ const locationResolved =
     locations.some((loc) => loc.id === activeLocationId))
 
 // after
-// The remap maps the payload's default location onto THIS account's
-// isDefault row, so the copy cannot start until the destination's
-// locations are known.
+// NOT because the remap needs it — see the correction below.
 const locationsLoaded = locations !== undefined
 ```
+
+> **The reason given here until 2026-10-03 was FALSE.** It said "the remap maps the payload's
+> default location onto THIS account's `isDefault` row, so the copy cannot start until the
+> destination's locations are known". **`importCloudData` reads the destination's default
+> itself**, with its own `network-only` `GetLocations` inside
+> `fetchCloudDefaultLocationId` (`importData.ts:526-534`), on every strategy. The hook's
+> `useLocations()` result feeds the remap **nothing**.
+>
+> 4b task 7 caught it. The claim was repeated in brainstorming decision 6 — including in the
+> rejection note for deleting the gate — so the option the user chose was presented with a
+> justification that does not hold.
+>
+> **The gate is still worth keeping, for a different reason: ordering.** The copy is
+> one-shot and destructive. On the `clear` strategy `clearAllData` deletes every `Location`
+> row before the remap re-reads them, so the copy must not start while this hook's own
+> `GetLocations` is still in flight. That reason is argued from source and is **not**
+> measured — proving the Apollo-cache race needs a real client and a real clear, which is
+> cloud-E2E territory.
+>
+> **The mechanism behind keeping `autoImportStarted` was also wrong.** The doc said "a
+> location change mid-flight would start a second copy". It cannot: `locationsLoaded` is a
+> **boolean**, so adding or renaming a location keeps it `true` and the effect never
+> re-runs. The real re-entry trigger is inside the copy — `importCloudData` calls
+> `client.resetStore()` on the `clear` path, which empties the Apollo cache and refetches
+> `GetLocations`; during that refetch `locations` is `undefined`, so the boolean goes
+> `true → false → true` while the one-shot key is still unset. A test written to the old
+> mechanism **cannot fail**, and task 7's first attempt at that mutation check came back
+> green for exactly that reason.
 
 The stored id goes with it, because `importCloudData` loses its `locationId` option.
 
