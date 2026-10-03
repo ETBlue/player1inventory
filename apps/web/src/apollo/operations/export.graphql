@@ -1,11 +1,22 @@
+# Whole-account snapshot queries — the export/import path, not a screen.
+#
+# `locationId`, `logKey` and `logParams` are all three selected on purpose.
+# `locationId` records WHICH location each log belongs to, so a restore does not
+# put every log in one place (the field was added to the type by cloud locations
+# PR 4a). `logKey` and `logParams` carry the log's MESSAGE: `ItemLogs`
+# (inventoryLogs.graphql) has always selected them, this query never did, so
+# every cloud backup taken before PR 4b lost every log message.
 query InventoryLogs {
   inventoryLogs {
     id
     itemId
+    locationId
     delta
     quantity
     occurredAt
     note
+    logKey
+    logParams
   }
 }
 

@@ -1663,6 +1663,35 @@ describe('cloud import input mappers — strip server-only fields', () => {
     expect(result.occurredAt).toBe('2026-02-10T08:00:00.000Z')
   })
 
+  it('toInventoryLogInput keeps locationId, logKey and logParams', () => {
+    // Given a log that names its location and carries a translated message.
+    // All three fields were dropped by this mapper before cloud locations
+    // PR 4b, so a restored backup put every log in the default location with
+    // no message at all.
+    const rawLog = {
+      __typename: 'InventoryLog',
+      id: 'log-1',
+      itemId: 'item-1',
+      locationId: 'loc-office',
+      delta: -1,
+      quantity: 2,
+      occurredAt: '2026-02-10T08:00:00.000Z',
+      note: null,
+      logKey: 'log.cooked',
+      logParams: { recipe: 'Smoothie' },
+      userId: 'u1',
+    }
+
+    // When mapped to InventoryLogInput
+    const result = toInventoryLogInput(rawLog)
+
+    // Then the location and the message both survive
+    expect(result.locationId).toBe('loc-office')
+    expect(result.logKey).toBe('log.cooked')
+    expect(result.logParams).toEqual({ recipe: 'Smoothie' })
+    expect(result).not.toHaveProperty('userId')
+  })
+
   it('toLocationInput drops isDefault', () => {
     // Given a location row out of a cloud export, which DOES record isDefault
     // (GetLocations selects it) — but LocationInput has no such field, and

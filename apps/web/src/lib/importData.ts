@@ -621,6 +621,19 @@ export function toRecipeInput(recipe: Record<string, unknown>) {
   }
 }
 
+// `locationId`, `logKey` and `logParams` are all three passed through, and all
+// three are OPTIONAL on `InventoryLogInput` (schema/import.graphql:49-67).
+//
+// `locationId` is what cloud locations PR 4b needs: without it every imported
+// log lands in the caller's default location, which is the server's documented
+// fallback for an absent field. `logKey` and `logParams` carry the log's
+// MESSAGE — this mapper dropped them from the day it was written, so every
+// cloud backup lost every log message. The export query lost them too
+// (operations/export.graphql); both halves were fixed together in PR 4b.
+//
+// This mapper is shared: `sanitiseCloudPayload` (lib/exportData.ts) calls it on
+// the way OUT and the bulk import calls it on the way IN, so one change fixes
+// both directions.
 export function toInventoryLogInput(log: Record<string, unknown>) {
   const occurredAt =
     log.occurredAt instanceof Date
@@ -633,6 +646,9 @@ export function toInventoryLogInput(log: Record<string, unknown>) {
     quantity: log.quantity as number,
     occurredAt,
     note: log.note as string | undefined,
+    logKey: log.logKey as string | undefined,
+    logParams: log.logParams as Record<string, unknown> | undefined,
+    locationId: log.locationId as string | undefined,
   }
 }
 
