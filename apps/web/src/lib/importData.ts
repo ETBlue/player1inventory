@@ -705,6 +705,69 @@ export function toShelfInput(shelf: Record<string, unknown>) {
   }
 }
 
+// `LocationInput` (schema/import.graphql:81-115) has NO `isDefault` FIELD, so
+// this mapper must drop it. The payload's default location is never uploaded as
+// a row at all — the client rewrites its id onto the destination account's
+// existing `isDefault` row — and the database would REJECT a second default
+// rather than accept one: `Location_one_default_per_user_key` is a unique
+// partial index on `("userId") WHERE "isDefault"`. Sending the flag would make
+// the import die on an unhandled P2002 AFTER `clearAllData` had already run.
+export function toLocationInput(location: Record<string, unknown>) {
+  const createdAt =
+    location.createdAt instanceof Date
+      ? location.createdAt.toISOString()
+      : (location.createdAt as string)
+  const updatedAt =
+    location.updatedAt instanceof Date
+      ? location.updatedAt.toISOString()
+      : (location.updatedAt as string)
+  return {
+    id: location.id as string,
+    name: location.name as string,
+    order: location.order as number,
+    createdAt,
+    updatedAt,
+  }
+}
+
+// `ItemStockImportInput` (schema/import.graphql:142-153) is a REPLACE input:
+// every field is required except `dueDate`. It is a second input beside
+// `ItemStockInput` on purpose — that one is a partial merge where a missing key
+// means "leave the column alone", and one input cannot mean both.
+//
+// A LOCAL ItemStock row carries extra columns that the cloud keeps on `Item`
+// instead (`targetUnit`, `packageUnit`, `consumeAmount`, ...). They are dropped
+// here, like every other mapper drops what its Input does not accept.
+export function toItemStockInput(stock: Record<string, unknown>) {
+  const createdAt =
+    stock.createdAt instanceof Date
+      ? stock.createdAt.toISOString()
+      : (stock.createdAt as string)
+  const updatedAt =
+    stock.updatedAt instanceof Date
+      ? stock.updatedAt.toISOString()
+      : (stock.updatedAt as string)
+  // A local row holds `dueDate` as a Date; cloud sends an ISO string; an
+  // unexpired row has none. Only the field is optional, so `null` and
+  // `undefined` both have to become "no due date".
+  const dueDate =
+    stock.dueDate instanceof Date
+      ? stock.dueDate.toISOString()
+      : ((stock.dueDate ?? undefined) as string | undefined)
+  return {
+    id: stock.id as string,
+    itemId: stock.itemId as string,
+    locationId: stock.locationId as string,
+    targetQuantity: stock.targetQuantity as number,
+    refillThreshold: stock.refillThreshold as number,
+    packedQuantity: stock.packedQuantity as number,
+    unpackedQuantity: stock.unpackedQuantity as number,
+    dueDate,
+    createdAt,
+    updatedAt,
+  }
+}
+
 export interface ConflictEntry {
   id: string
   name: string

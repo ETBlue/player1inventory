@@ -15,6 +15,8 @@ import {
   toCartItemInput,
   toInventoryLogInput,
   toItemInput,
+  toItemStockInput,
+  toLocationInput,
   toRecipeInput,
   toShelfInput,
   toShoppingCartInput,
@@ -1659,6 +1661,110 @@ describe('cloud import input mappers — strip server-only fields', () => {
     expect(result).not.toHaveProperty('__typename')
     expect(result).not.toHaveProperty('userId')
     expect(result.occurredAt).toBe('2026-02-10T08:00:00.000Z')
+  })
+
+  it('toLocationInput drops isDefault', () => {
+    // Given a location row out of a cloud export, which DOES record isDefault
+    // (GetLocations selects it) — but LocationInput has no such field, and
+    // sending it would fail GraphQL validation
+    const rawLocation = {
+      __typename: 'Location',
+      id: 'loc-office',
+      name: 'Office',
+      order: 1,
+      isDefault: true,
+      userId: 'u1',
+      createdAt: '2026-02-01T00:00:00.000Z',
+      updatedAt: '2026-02-02T00:00:00.000Z',
+    }
+
+    // When mapped to LocationInput
+    const result = toLocationInput(rawLocation)
+
+    // Then the key is ABSENT, not `false` — the server accepts no such field
+    expect(result).not.toHaveProperty('isDefault')
+    expect(result).not.toHaveProperty('__typename')
+    expect(result).not.toHaveProperty('userId')
+
+    // And everything LocationInput does accept is present
+    expect(result).toEqual({
+      id: 'loc-office',
+      name: 'Office',
+      order: 1,
+      createdAt: '2026-02-01T00:00:00.000Z',
+      updatedAt: '2026-02-02T00:00:00.000Z',
+    })
+  })
+
+  it('toLocationInput converts Date timestamps out of a local backup', () => {
+    // Given a Dexie location row, whose timestamps are Date objects
+    const result = toLocationInput({
+      id: 'local',
+      name: 'My Home',
+      order: 0,
+      isDefault: true,
+      createdAt: new Date('2026-02-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-02-02T00:00:00.000Z'),
+    })
+
+    // Then they arrive as ISO strings, which is what LocationInput declares
+    expect(result.createdAt).toBe('2026-02-01T00:00:00.000Z')
+    expect(result.updatedAt).toBe('2026-02-02T00:00:00.000Z')
+  })
+
+  it('toItemStockInput keeps locationId and accepts a null dueDate', () => {
+    // Given a stock row with no expiration date. Apollo sends `null`, Dexie
+    // sends `undefined`, and `dueDate` is the one optional field on
+    // ItemStockImportInput — so both have to become "no due date"
+    const rawStock = {
+      __typename: 'ItemStock',
+      id: 'stock-office',
+      itemId: 'item-1',
+      locationId: 'loc-office',
+      targetQuantity: 1,
+      refillThreshold: 0,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      dueDate: null,
+      createdAt: '2026-02-01T00:00:00.000Z',
+      updatedAt: '2026-02-02T00:00:00.000Z',
+    }
+
+    // When mapped to ItemStockImportInput
+    const result = toItemStockInput(rawStock)
+
+    // Then the location is kept — it is what makes the row per-location
+    expect(result.locationId).toBe('loc-office')
+    expect(result.dueDate).toBeUndefined()
+    expect(result).not.toHaveProperty('__typename')
+    expect(result.packedQuantity).toBe(2)
+  })
+
+  it('toItemStockInput converts a Date dueDate and drops local-only columns', () => {
+    // Given a Dexie stock row: Date timestamps, plus the unit and packaging
+    // columns the cloud keeps on Item instead of ItemStock
+    const result = toItemStockInput({
+      id: 'stock-home',
+      itemId: 'item-1',
+      locationId: 'local',
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+      dueDate: new Date('2026-03-01T00:00:00.000Z'),
+      createdAt: new Date('2026-02-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-02-02T00:00:00.000Z'),
+      targetUnit: 'package',
+      packageUnit: 'bottle',
+      consumeAmount: 1,
+    })
+
+    // Then the dates are ISO and the local-only columns are gone
+    expect(result.dueDate).toBe('2026-03-01T00:00:00.000Z')
+    expect(result.createdAt).toBe('2026-02-01T00:00:00.000Z')
+    expect(result).not.toHaveProperty('targetUnit')
+    expect(result).not.toHaveProperty('packageUnit')
+    expect(result).not.toHaveProperty('consumeAmount')
   })
 
   it('toShoppingCartInput keeps only id + lastPurchasedAt, dropping legacy fields', () => {
