@@ -6,7 +6,9 @@ import {
   type AllCartItemsQuery,
   BulkCreateCartItemsDocument,
   BulkCreateInventoryLogsDocument,
+  BulkCreateItemStocksDocument,
   BulkCreateItemsDocument,
+  BulkCreateLocationsDocument,
   BulkCreateRecipesDocument,
   BulkCreateShelvesDocument,
   BulkCreateShoppingCartsDocument,
@@ -15,7 +17,9 @@ import {
   BulkCreateVendorsDocument,
   BulkUpsertCartItemsDocument,
   BulkUpsertInventoryLogsDocument,
+  BulkUpsertItemStocksDocument,
   BulkUpsertItemsDocument,
+  BulkUpsertLocationsDocument,
   BulkUpsertRecipesDocument,
   BulkUpsertShelvesDocument,
   BulkUpsertShoppingCartsDocument,
@@ -782,6 +786,20 @@ export interface ConflictEntry {
   matchReasons: ('id' | 'name')[]
 }
 
+// NINE entities, not the eleven an `ExportPayload` carries. `locations` and
+// `itemStocks` are deliberately absent, for two different reasons:
+//
+//   - A LOCATION would conflict on EVERY cloud import. The remap rewrites the
+//     payload's default location id to the destination account's default
+//     (`applyLocationRemap`), and that row always exists, so an id check here
+//     would always match and `hasConflicts` would always be true — every
+//     import, including a clean one, would stop at the conflict dialog. A
+//     location row also holds no destructible content: only a name and an
+//     order. Carts are left out for the same second reason.
+//   - A STOCK row's conflict is never the user's decision to make. It is
+//     always decided by its item, and the item is already in this summary.
+//     `partitionPayload` routes stock by strategy instead, matching what the
+//     local import does in `importItemStocks`.
 export interface ConflictSummary {
   items: ConflictEntry[]
   tags: ConflictEntry[]
@@ -944,6 +962,9 @@ export function detectConflicts(
       existing.shelves,
       (e) => (e as Shelf).id,
     ),
+    // `locations` and `itemStocks` are not checked at all. See the comment on
+    // `ConflictSummary` for why, and `partitionPayload` for where they go
+    // instead.
   }
 }
 
@@ -981,13 +1002,58 @@ function getConflictIds(entries: ConflictEntry[]): Set<string> {
   return new Set(entries.map((e) => e.id))
 }
 
+// Stock follows its ITEM, which is the rule the local import already applies
+// (`importItemStocks`) and the rule the server enforces:
+// `requireOwnItemStockRefs` (apps/server/src/resolvers/import.resolver.ts:376)
+// answers `Forbidden` for an `itemId` the account does not hold. On `skip` a
+// payload item that conflicts BY NAME ONLY keeps an id no cloud row has, so
+// sending its stock would end the whole import with that error.
+function stocksForItems(
+  payload: ExportPayload,
+  writtenItemIds: Set<string>,
+): unknown[] {
+  return ((payload.itemStocks ?? []) as Array<{ itemId: string }>).filter((s) =>
+    writtenItemIds.has(s.itemId),
+  )
+}
+
+// WHERE `locations` AND `itemStocks` GO, AND WHY THEY ARE NOT PARTITIONED BY
+// CONFLICT LIKE THE OTHER NINE.
+//
+// Neither is ever reported as a conflict (see `detectConflicts`), so there is
+// no conflict set to split them on. Each strategy sends all of its rows to
+// exactly ONE of the two passes, which also keeps them clear of the shared
+// batch-key bug noted in `runBulkBatches`:
+//
+// | strategy  | locations | itemStocks                        |
+// |-----------|-----------|-----------------------------------|
+// | `clear`   | toCreate  | toCreate (all rows)               |
+// | `skip`    | toCreate  | toCreate, only newly added items  |
+// | `replace` | toCreate  | toUpsert (all rows)               |
+//
+// `locations` always goes to the CREATE pass, on every strategy, because the
+// create pass is where `shoppingCarts` and `inventoryLogs` go on `skip` and
+// `replace` — and a cart whose location does not exist yet is written to the
+// account default instead, with no error. The cost is that `replace` does not
+// rename an existing location to the name in the backup, where the local
+// import does; a location row holds only a name and an order, so this loses no
+// user data.
+//
+// `itemStocks` goes to the UPSERT pass on `replace` because that is the only
+// pass that overwrites: `bulkCreateItemStocks` SKIPS a row whose
+// `(itemId, locationId)` pair is already taken, so sending stock to the create
+// pass on `replace` would silently discard the quantities in the file the user
+// chose to restore.
+
 export function partitionPayload(
   payload: ExportPayload,
   conflicts: ConflictSummary,
   strategy: ImportStrategy,
 ): { toCreate: ExportPayload; toUpsert: ExportPayload } {
   if (strategy === 'clear') {
-    // All entities go to toCreate; toUpsert is empty
+    // All entities go to toCreate; toUpsert is empty. The spread carries
+    // `locations` and `itemStocks` with everything else — nothing exists to
+    // conflict with after a clear.
     return {
       toCreate: { ...payload },
       toUpsert: emptyPayload(),
@@ -1008,12 +1074,16 @@ export function partitionPayload(
       shelves: getConflictIds(conflicts.shelves),
     }
 
+    // Hoisted because `itemStocks` is filtered by it too: on `skip` only a
+    // newly added item's stock goes up.
+    const itemsToCreate = (payload.items as IdOnlyEntity[]).filter(
+      (e) => !conflictIdSets.items.has(e.id),
+    )
+
     return {
       toCreate: {
         ...payload,
-        items: (payload.items as IdOnlyEntity[]).filter(
-          (e) => !conflictIdSets.items.has(e.id),
-        ),
+        items: itemsToCreate,
         tags: (payload.tags as IdOnlyEntity[]).filter(
           (e) => !conflictIdSets.tags.has(e.id),
         ),
@@ -1038,6 +1108,8 @@ export function partitionPayload(
         shelves: ((payload.shelves ?? []) as IdOnlyEntity[]).filter(
           (e) => !conflictIdSets.shelves.has(e.id),
         ),
+        locations: payload.locations ?? [],
+        itemStocks: stocksForItems(payload, itemIdsOf(itemsToCreate)),
       },
       toUpsert: emptyPayload(),
     }
@@ -1087,6 +1159,15 @@ export function partitionPayload(
       shelves: ((payload.shelves ?? []) as IdOnlyEntity[]).filter(
         (e) => !conflictIdSets.shelves.has(e.id),
       ),
+      // Every location, on the create pass — `bulkCreateLocations` keeps the
+      // row the account already has and creates the rest. It must happen here
+      // and not on the upsert pass, because the carts and logs below name
+      // these locations and are sent on this same pass.
+      locations: payload.locations ?? [],
+      // No stock on the create pass under `replace`: `bulkCreateItemStocks`
+      // skips an existing `(itemId, locationId)` pair, which would drop the
+      // quantities the user asked to restore. It all goes to `toUpsert`.
+      itemStocks: [],
     },
     toUpsert: {
       ...payload,
@@ -1117,6 +1198,13 @@ export function partitionPayload(
       shelves: ((payload.shelves ?? []) as IdOnlyEntity[]).filter((e) =>
         conflictIdSets.shelves.has(e.id),
       ),
+      // Already sent by the create pass above; sending them again would be a
+      // second batch under the same key.
+      locations: [],
+      // Every stock row, so the payload's quantities win. The upsert pass
+      // runs after the create pass, so both a brand-new item and a
+      // conflicting one exist by the time this is sent.
+      itemStocks: payload.itemStocks ?? [],
     },
   }
 }
@@ -1570,12 +1658,322 @@ async function fetchCloudExistingData(
 }
 
 // ---------------------------------------------------------------------------
-// Batched bulk create — processes each entity array in chunks of BATCH_SIZE.
-// Skips batches already recorded in session.completedBatchKeys.
-// Calls onProgress after each successful batch.
-// Entity order: tagTypes → tags → vendors → items → recipes → inventoryLogs →
-//               shoppingCarts → cartItems
+// The cloud upload table
+//
+// ONE list, read by three callers: the create pass, the upsert pass, and
+// `computeTotalBatches`. Those were three separate hardcoded arrays until
+// cloud locations PR 4b, and nothing checked that they matched. Missing the
+// third made the progress bar overrun with no error; missing the second left
+// an entity that `replace` never updated. Neither mistake is possible now.
+//
+// THE ORDER MATTERS, AND A WRONG ORDER PRODUCES NO ERROR AT ALL:
+//
+//   - `locations` must come BEFORE `items` and before `shoppingCarts`.
+//     `resolveCartLocations` (apps/server/src/resolvers/import.resolver.ts:205)
+//     sends a cart to the CALLER'S DEFAULT location when the cart id names a
+//     location that no row holds. A cart uploaded before its location exists
+//     therefore lands in the wrong location, with no error and nothing in the
+//     response to show it. `resolveLogLocations` does the same for logs.
+//   - `itemStocks` must come AFTER `items` and after `locations`. It is a
+//     child of both, and `requireOwnItemStockRefs` (import.resolver.ts:376)
+//     refuses an unknown item or location with `Forbidden`. On the `clear`
+//     strategy that error arrives AFTER `clearAllData` has run, which leaves
+//     the account empty and the import dead.
 // ---------------------------------------------------------------------------
+
+interface EntitySpec {
+  // Also the prefix of the batch key recorded in
+  // `ImportSession.completedBatchKeys`, so renaming one makes a resumed
+  // session re-send that entity's batches.
+  entityType: string
+  select: (data: ExportPayload) => unknown[]
+  create: (client: ApolloClient, batch: unknown[]) => Promise<void>
+  upsert: (client: ApolloClient, batch: unknown[]) => Promise<void>
+}
+
+const ENTITY_SPECS: EntitySpec[] = [
+  {
+    entityType: 'tagTypes',
+    select: (data) => data.tagTypes,
+    create: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkCreateTagTypesDocument,
+          variables: {
+            tagTypes: batch.map((t) =>
+              toTagTypeInput(t as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+    upsert: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkUpsertTagTypesDocument,
+          variables: {
+            tagTypes: batch.map((t) =>
+              toTagTypeInput(t as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+  },
+  {
+    entityType: 'tags',
+    select: (data) => data.tags,
+    create: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkCreateTagsDocument,
+          variables: {
+            tags: batch.map((t) => toTagInput(t as Record<string, unknown>)),
+          },
+        })
+        .then(() => undefined),
+    upsert: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkUpsertTagsDocument,
+          variables: {
+            tags: batch.map((t) => toTagInput(t as Record<string, unknown>)),
+          },
+        })
+        .then(() => undefined),
+  },
+  {
+    entityType: 'vendors',
+    select: (data) => data.vendors,
+    create: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkCreateVendorsDocument,
+          variables: {
+            vendors: batch.map((v) =>
+              toVendorInput(v as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+    upsert: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkUpsertVendorsDocument,
+          variables: {
+            vendors: batch.map((v) =>
+              toVendorInput(v as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+  },
+  // BEFORE `items`, and so before `shoppingCarts` and `inventoryLogs` too.
+  // See the block comment above for what breaks if this moves down.
+  {
+    entityType: 'locations',
+    select: (data) => data.locations ?? [],
+    create: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkCreateLocationsDocument,
+          variables: {
+            locations: batch.map((l) =>
+              toLocationInput(l as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+    upsert: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkUpsertLocationsDocument,
+          variables: {
+            locations: batch.map((l) =>
+              toLocationInput(l as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+  },
+  {
+    entityType: 'items',
+    select: (data) => data.items,
+    create: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkCreateItemsDocument,
+          variables: {
+            items: batch.map((i) => toItemInput(i as Record<string, unknown>)),
+          },
+        })
+        .then(() => undefined),
+    upsert: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkUpsertItemsDocument,
+          variables: {
+            items: batch.map((i) => toItemInput(i as Record<string, unknown>)),
+          },
+        })
+        .then(() => undefined),
+  },
+  // AFTER `items` and after `locations` — it is a child of both.
+  {
+    entityType: 'itemStocks',
+    select: (data) => data.itemStocks ?? [],
+    create: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkCreateItemStocksDocument,
+          variables: {
+            itemStocks: batch.map((s) =>
+              toItemStockInput(s as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+    upsert: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkUpsertItemStocksDocument,
+          variables: {
+            itemStocks: batch.map((s) =>
+              toItemStockInput(s as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+  },
+  {
+    entityType: 'recipes',
+    select: (data) => data.recipes,
+    create: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkCreateRecipesDocument,
+          variables: {
+            recipes: batch.map((r) =>
+              toRecipeInput(r as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+    upsert: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkUpsertRecipesDocument,
+          variables: {
+            recipes: batch.map((r) =>
+              toRecipeInput(r as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+  },
+  {
+    entityType: 'inventoryLogs',
+    select: (data) => data.inventoryLogs,
+    create: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkCreateInventoryLogsDocument,
+          variables: {
+            logs: batch.map((l) =>
+              toInventoryLogInput(l as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+    upsert: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkUpsertInventoryLogsDocument,
+          variables: {
+            logs: batch.map((l) =>
+              toInventoryLogInput(l as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+  },
+  {
+    entityType: 'shoppingCarts',
+    select: (data) => data.shoppingCarts,
+    create: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkCreateShoppingCartsDocument,
+          variables: {
+            carts: batch.map((c) =>
+              toShoppingCartInput(c as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+    upsert: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkUpsertShoppingCartsDocument,
+          variables: {
+            carts: batch.map((c) =>
+              toShoppingCartInput(c as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+  },
+  {
+    entityType: 'cartItems',
+    select: (data) => data.cartItems,
+    create: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkCreateCartItemsDocument,
+          variables: {
+            cartItems: batch.map((ci) =>
+              toCartItemInput(ci as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+    upsert: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkUpsertCartItemsDocument,
+          variables: {
+            cartItems: batch.map((ci) =>
+              toCartItemInput(ci as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+  },
+  {
+    entityType: 'shelves',
+    select: (data) => data.shelves ?? [],
+    create: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkCreateShelvesDocument,
+          variables: {
+            shelves: batch.map((s) =>
+              toShelfInput(s as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+    upsert: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkUpsertShelvesDocument,
+          variables: {
+            shelves: batch.map((s) =>
+              toShelfInput(s as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+  },
+]
 
 interface BatchedBulkArgs {
   client: ApolloClient
@@ -1586,165 +1984,38 @@ interface BatchedBulkArgs {
   totalBatches: number
 }
 
-async function bulkCreate(args: BatchedBulkArgs): Promise<number> {
+// Walk `ENTITY_SPECS` in order, send each entity's rows in chunks of
+// BATCH_SIZE, skip chunks the session already recorded, and report progress
+// after every chunk that was actually sent.
+async function runBulkBatches(
+  args: BatchedBulkArgs,
+  mode: 'create' | 'upsert',
+): Promise<number> {
   const { client, data, session, onProgress, totalBatches } = args
   let completedBatches = args.startCompleted
 
-  const entityGroups: Array<{
-    entityType: string
-    items: unknown[]
-    mutate: (batch: unknown[]) => Promise<void>
-  }> = [
-    {
-      entityType: 'tagTypes',
-      items: data.tagTypes,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkCreateTagTypesDocument,
-            variables: {
-              tagTypes: batch.map((t) =>
-                toTagTypeInput(t as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'tags',
-      items: data.tags,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkCreateTagsDocument,
-            variables: {
-              tags: batch.map((t) => toTagInput(t as Record<string, unknown>)),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'vendors',
-      items: data.vendors,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkCreateVendorsDocument,
-            variables: {
-              vendors: batch.map((v) =>
-                toVendorInput(v as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'items',
-      items: data.items,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkCreateItemsDocument,
-            variables: {
-              items: batch.map((i) =>
-                toItemInput(i as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'recipes',
-      items: data.recipes,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkCreateRecipesDocument,
-            variables: {
-              recipes: batch.map((r) =>
-                toRecipeInput(r as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'inventoryLogs',
-      items: data.inventoryLogs,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkCreateInventoryLogsDocument,
-            variables: {
-              logs: batch.map((l) =>
-                toInventoryLogInput(l as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'shoppingCarts',
-      items: data.shoppingCarts,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkCreateShoppingCartsDocument,
-            variables: {
-              carts: batch.map((c) =>
-                toShoppingCartInput(c as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'cartItems',
-      items: data.cartItems,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkCreateCartItemsDocument,
-            variables: {
-              cartItems: batch.map((ci) =>
-                toCartItemInput(ci as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'shelves',
-      items: data.shelves ?? [],
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkCreateShelvesDocument,
-            variables: {
-              shelves: batch.map((s) =>
-                toShelfInput(s as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-  ]
-
-  for (const group of entityGroups) {
-    const batches = chunk(group.items, BATCH_SIZE)
+  for (const spec of ENTITY_SPECS) {
+    const batches = chunk(spec.select(data), BATCH_SIZE)
     for (const [i, batch] of batches.entries()) {
-      const key = `${group.entityType}:${i}`
+      // The key does NOT carry `mode`, which is a PRE-EXISTING BUG and not
+      // this function's to fix: on the `replace` strategy `bulkCreate` and
+      // `bulkUpsert` share one session, so when both passes have rows for the
+      // same entity the upsert pass finds the create pass's key and skips its
+      // own batch. Neither entity added by PR 4b can hit it — `partitionPayload`
+      // sends `locations` only to `toCreate` and `itemStocks` only to
+      // `toUpsert`, so each has zero batches on the other pass.
+      const key = `${spec.entityType}:${i}`
       if (session.completedBatchKeys.has(key)) {
         completedBatches++
         continue
       }
-      await group.mutate(batch)
+      await (mode === 'create' ? spec.create : spec.upsert)(client, batch)
       session.completedBatchKeys.add(key)
       completedBatches++
       onProgress({
         completedBatches,
         totalBatches,
-        currentEntity: group.entityType,
+        currentEntity: spec.entityType,
       })
     }
   }
@@ -1752,187 +2023,20 @@ async function bulkCreate(args: BatchedBulkArgs): Promise<number> {
   return completedBatches
 }
 
-// ---------------------------------------------------------------------------
-// Batched bulk upsert — same structure as bulkCreate but uses Upsert mutations.
-// ---------------------------------------------------------------------------
-
-async function bulkUpsert(args: BatchedBulkArgs): Promise<number> {
-  const { client, data, session, onProgress, totalBatches } = args
-  let completedBatches = args.startCompleted
-
-  const entityGroups: Array<{
-    entityType: string
-    items: unknown[]
-    mutate: (batch: unknown[]) => Promise<void>
-  }> = [
-    {
-      entityType: 'tagTypes',
-      items: data.tagTypes,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkUpsertTagTypesDocument,
-            variables: {
-              tagTypes: batch.map((t) =>
-                toTagTypeInput(t as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'tags',
-      items: data.tags,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkUpsertTagsDocument,
-            variables: {
-              tags: batch.map((t) => toTagInput(t as Record<string, unknown>)),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'vendors',
-      items: data.vendors,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkUpsertVendorsDocument,
-            variables: {
-              vendors: batch.map((v) =>
-                toVendorInput(v as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'items',
-      items: data.items,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkUpsertItemsDocument,
-            variables: {
-              items: batch.map((i) =>
-                toItemInput(i as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'recipes',
-      items: data.recipes,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkUpsertRecipesDocument,
-            variables: {
-              recipes: batch.map((r) =>
-                toRecipeInput(r as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'inventoryLogs',
-      items: data.inventoryLogs,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkUpsertInventoryLogsDocument,
-            variables: {
-              logs: batch.map((l) =>
-                toInventoryLogInput(l as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'shoppingCarts',
-      items: data.shoppingCarts,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkUpsertShoppingCartsDocument,
-            variables: {
-              carts: batch.map((c) =>
-                toShoppingCartInput(c as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'cartItems',
-      items: data.cartItems,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkUpsertCartItemsDocument,
-            variables: {
-              cartItems: batch.map((ci) =>
-                toCartItemInput(ci as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'shelves',
-      items: data.shelves ?? [],
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkUpsertShelvesDocument,
-            variables: {
-              shelves: batch.map((s) =>
-                toShelfInput(s as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-  ]
-
-  for (const group of entityGroups) {
-    const batches = chunk(group.items, BATCH_SIZE)
-    for (const [i, batch] of batches.entries()) {
-      const key = `${group.entityType}:${i}`
-      if (session.completedBatchKeys.has(key)) {
-        completedBatches++
-        continue
-      }
-      await group.mutate(batch)
-      session.completedBatchKeys.add(key)
-      completedBatches++
-      onProgress({
-        completedBatches,
-        totalBatches,
-        currentEntity: group.entityType,
-      })
-    }
-  }
-
-  return completedBatches
+function bulkCreate(args: BatchedBulkArgs): Promise<number> {
+  return runBulkBatches(args, 'create')
 }
 
+function bulkUpsert(args: BatchedBulkArgs): Promise<number> {
+  return runBulkBatches(args, 'upsert')
+}
+
+// Derived from the SAME list the two passes walk, so a new entity can never be
+// counted in one place and sent in another.
 function computeTotalBatches(data: ExportPayload): number {
-  return (
-    chunk(data.tagTypes, BATCH_SIZE).length +
-    chunk(data.tags, BATCH_SIZE).length +
-    chunk(data.vendors, BATCH_SIZE).length +
-    chunk(data.items, BATCH_SIZE).length +
-    chunk(data.recipes, BATCH_SIZE).length +
-    chunk(data.inventoryLogs, BATCH_SIZE).length +
-    chunk(data.shoppingCarts, BATCH_SIZE).length +
-    chunk(data.cartItems, BATCH_SIZE).length +
-    chunk(data.shelves ?? [], BATCH_SIZE).length
+  return ENTITY_SPECS.reduce(
+    (total, spec) => total + chunk(spec.select(data), BATCH_SIZE).length,
+    0,
   )
 }
 

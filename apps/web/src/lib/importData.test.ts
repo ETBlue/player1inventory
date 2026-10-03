@@ -396,19 +396,19 @@ describe('partitionPayload', () => {
     expect(toUpsert.items).toHaveLength(0)
   })
 
-  // The v15-only tables are in no conflict set, so partitioning must carry them
-  // through untouched on every strategy. Nothing else asserts this: they were
-  // absent from the default payload helper until now, so an implementation that
-  // rebuilt `toCreate` table-by-table instead of spreading would have silently
-  // dropped every stock row and location — items would import stockless and the
-  // pantry would render empty.
-  it.each([
-    'skip',
-    'replace',
-    'clear',
-  ] as const)('user importing a v15 backup with %s keeps its itemStocks and locations', (strategy) => {
-    // Given a v15 payload carrying stock rows and locations
-    const v15Payload = emptyPayload({
+  // The v15-only tables are in no conflict set, so nothing may silently drop
+  // them: an implementation that rebuilt `toCreate` table-by-table instead of
+  // spreading would have lost every stock row and location, and items would
+  // import stockless with an empty pantry.
+  //
+  // They are NOT carried through identically on every strategy, which is what
+  // these three tests used to assert as one `it.each`. PR 4b task 4 made the
+  // cloud upload read them, and the two passes need them in different places —
+  // see the table above `partitionPayload`. The fixture is what makes the three
+  // rules distinguishable: `item-1` conflicts and `item-2` does not, and each
+  // has its own stock row.
+  function v15Payload() {
+    return emptyPayload({
       items: [existingItem, newItem],
       itemStocks: [
         { id: 'stock-1', itemId: 'item-1', locationId: 'local' },
@@ -416,19 +416,68 @@ describe('partitionPayload', () => {
       ],
       locations: [{ id: 'office', name: 'Office', order: 1 }],
     })
+  }
 
-    // When partitioning it
+  it('user importing a v15 backup with clear keeps every stock row and location', () => {
+    // Given a v15 payload carrying stock rows and locations
+    const payload = v15Payload()
+
+    // When partitioning it for the clear strategy
     const { toCreate } = partitionPayload(
-      v15Payload,
-      detectConflicts(v15Payload, existing),
-      strategy,
+      payload,
+      detectConflicts(payload, existing),
+      'clear',
     )
 
-    // Then both v15 tables survive intact
-    expect(toCreate.itemStocks).toHaveLength(2)
+    // Then every row goes to the create pass — nothing is left to conflict with
     expect((toCreate.itemStocks as Array<{ id: string }>).map((s) => s.id)) //
       .toEqual(['stock-1', 'stock-2'])
     expect(toCreate.locations).toHaveLength(1)
+  })
+
+  it('user importing a v15 backup with skip keeps the stock of the items it added', () => {
+    // Given a v15 payload whose `item-1` already exists and whose `item-2` does not
+    const payload = v15Payload()
+
+    // When partitioning it for the skip strategy
+    const { toCreate, toUpsert } = partitionPayload(
+      payload,
+      detectConflicts(payload, existing),
+      'skip',
+    )
+
+    // Then only the new item's stock goes up. `item-1` was skipped, so the
+    // stock it already has stays as it is — the rule `importItemStocks` uses
+    // locally, and the only rule the server accepts: `requireOwnItemStockRefs`
+    // refuses an item id the account does not hold.
+    expect((toCreate.itemStocks as Array<{ id: string }>).map((s) => s.id)) //
+      .toEqual(['stock-2'])
+    // And every location goes up, because a location is never a conflict
+    expect(toCreate.locations).toHaveLength(1)
+    expect(toUpsert.itemStocks ?? []).toHaveLength(0)
+  })
+
+  it('user importing a v15 backup with replace sends every stock row to the upsert pass', () => {
+    // Given the same v15 payload
+    const payload = v15Payload()
+
+    // When partitioning it for the replace strategy
+    const { toCreate, toUpsert } = partitionPayload(
+      payload,
+      detectConflicts(payload, existing),
+      'replace',
+    )
+
+    // Then no stock goes to the create pass: `bulkCreateItemStocks` skips a
+    // taken (itemId, locationId) pair, which would drop the quantities the
+    // user asked to restore
+    expect(toCreate.itemStocks).toHaveLength(0)
+    expect((toUpsert.itemStocks as Array<{ id: string }>).map((s) => s.id)) //
+      .toEqual(['stock-1', 'stock-2'])
+    // And locations go to the CREATE pass, never the upsert pass: the carts
+    // and logs that name them are sent on that same pass
+    expect(toCreate.locations).toHaveLength(1)
+    expect(toUpsert.locations).toHaveLength(0)
   })
 })
 
@@ -1946,6 +1995,384 @@ describe('toShelfInput', () => {
     expect(result.updatedAt).toBeTruthy()
     expect(() => new Date(result.createdAt)).not.toThrow()
     expect(() => new Date(result.updatedAt)).not.toThrow()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// importCloudData — locations and stock upload in dependency order
+// (cloud locations PR 4b task 4)
+//
+// EVERY TEST HERE ASSERTS THE SEQUENCE, NOT JUST THAT BOTH HAPPENED. A wrong
+// upload order produces no error at all:
+//
+//   - a cart uploaded before its location exists is written to the account's
+//     DEFAULT location by `resolveCartLocations`, silently;
+//   - stock uploaded before its item or location exists is refused with
+//     `Forbidden`, and on the `clear` strategy that lands after
+//     `clearAllData` has already emptied the account.
+//
+// "Both were called" passes against both of those, so it proves nothing.
+// ---------------------------------------------------------------------------
+
+describe('importCloudData — locations and stock upload in dependency order', () => {
+  // The GraphQL operation name of a document, e.g. 'BulkCreateLocations'.
+  // Comparing names rather than document objects keeps the failure message
+  // readable: a wrong order prints two lists of names.
+  function opName(doc: unknown): string {
+    const definitions = (
+      doc as { definitions: Array<{ name?: { value: string } }> }
+    ).definitions
+    return definitions[0]?.name?.value ?? '(anonymous)'
+  }
+
+  // The destination account's one location, flagged default. The remap maps
+  // the PAYLOAD's default onto this id and leaves every other id alone, so a
+  // fixture needs at least one non-default location to tell the two rules
+  // apart. This one seeds THREE.
+  const CLOUD_DEFAULT_ID = 'cloud_default'
+
+  function makeRecordingClient() {
+    const mutate = vi.fn().mockResolvedValue({})
+    const query = vi
+      .fn()
+      .mockImplementation(({ query: doc }: { query: unknown }) => {
+        if (opName(doc) === 'GetLocations') {
+          return Promise.resolve({
+            data: {
+              locations: [
+                {
+                  id: CLOUD_DEFAULT_ID,
+                  name: 'My Home',
+                  order: 0,
+                  isDefault: true,
+                  createdAt: '2026-01-01T00:00:00.000Z',
+                  updatedAt: '2026-01-01T00:00:00.000Z',
+                },
+              ],
+            },
+          })
+        }
+        return Promise.resolve({
+          data: {
+            items: [],
+            tags: [],
+            tagTypes: [],
+            vendors: [],
+            recipes: [],
+            inventoryLogs: [],
+            shoppingCarts: [],
+            allCartItems: [],
+            shelves: [],
+          },
+        })
+      })
+    return { mutate, query, resetStore: vi.fn().mockResolvedValue(undefined) }
+  }
+
+  function mutationOrder(client: { mutate: ReturnType<typeof vi.fn> }) {
+    return client.mutate.mock.calls.map((call) => opName(call[0].mutation))
+  }
+
+  function variablesOf(
+    client: { mutate: ReturnType<typeof vi.fn> },
+    operation: string,
+  ) {
+    const call = client.mutate.mock.calls.find(
+      (c) => opName(c[0].mutation) === operation,
+    )
+    return call?.[0].variables as Record<string, unknown> | undefined
+  }
+
+  function makeStock(
+    id: string,
+    itemId: string,
+    locationId: string,
+    packedQuantity: number,
+  ) {
+    return {
+      id,
+      itemId,
+      locationId,
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity,
+      unpackedQuantity: 0,
+      createdAt: new Date('2026-05-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-05-01T00:00:00.000Z'),
+    }
+  }
+
+  // One row in EVERY array, so every entity's mutation fires and the full
+  // sequence can be asserted. Three locations, two of them non-default, and
+  // three stock rows with three different quantities — so "each row keeps its
+  // own locationId" and "every row got the default" give different answers.
+  function fullPayload(): ExportPayload {
+    return emptyPayload({
+      tagTypes: [makeTagType('type-1', 'Category')],
+      tags: [makeTag('tag-1', 'Dairy')],
+      vendors: [makeVendor('vendor_1', 'Corner Shop')],
+      locations: [
+        {
+          id: 'loc_home',
+          name: 'Home',
+          order: 0,
+          isDefault: true,
+          createdAt: new Date('2026-05-01T00:00:00.000Z'),
+          updatedAt: new Date('2026-05-01T00:00:00.000Z'),
+        },
+        {
+          id: 'loc_garage',
+          name: 'Garage',
+          order: 1,
+          isDefault: false,
+          createdAt: new Date('2026-05-01T00:00:00.000Z'),
+          updatedAt: new Date('2026-05-01T00:00:00.000Z'),
+        },
+        {
+          id: 'loc_office',
+          name: 'Office',
+          order: 2,
+          isDefault: false,
+          createdAt: new Date('2026-05-01T00:00:00.000Z'),
+          updatedAt: new Date('2026-05-01T00:00:00.000Z'),
+        },
+      ],
+      items: [makeItem('item_1', 'Milk'), makeItem('item_2', 'Rice')],
+      itemStocks: [
+        makeStock('stock_home', 'item_1', 'loc_home', 1),
+        makeStock('stock_garage', 'item_1', 'loc_garage', 7),
+        makeStock('stock_office', 'item_2', 'loc_office', 3),
+      ],
+      recipes: [makeRecipe('recipe-1', 'Porridge')],
+      inventoryLogs: [makeInventoryLog('log-1')],
+      shoppingCarts: [makeShoppingCart('loc_garage:vendor_1')],
+      cartItems: [makeCartItem('ci-1', 'loc_garage:vendor_1', 'item_1')],
+      shelves: [
+        {
+          id: 'shelf-1',
+          name: 'Fridge',
+          type: 'selection',
+          order: 0,
+          itemIds: ['item_1'],
+          filterConfig: null,
+          createdAt: new Date('2026-05-01T00:00:00.000Z'),
+          updatedAt: new Date('2026-05-01T00:00:00.000Z'),
+        },
+      ],
+    })
+  }
+
+  it('user signing in has every location uploaded before any item or cart', async () => {
+    // Given a payload with three locations, two items, stock and a cart
+    const client = makeRecordingClient()
+
+    // When the whole payload is uploaded
+    await importCloudData(fullPayload(), 'clear', client as never)
+
+    // Then the exact sequence of mutations is the dependency order
+    expect(mutationOrder(client)).toEqual([
+      'ClearAllData',
+      'BulkCreateTagTypes',
+      'BulkCreateTags',
+      'BulkCreateVendors',
+      'BulkCreateLocations',
+      'BulkCreateItems',
+      'BulkCreateItemStocks',
+      'BulkCreateRecipes',
+      'BulkCreateInventoryLogs',
+      'BulkCreateShoppingCarts',
+      'BulkCreateCartItems',
+      'BulkCreateShelves',
+    ])
+
+    // And, said as the three constraints that matter, so a failure names which
+    // one broke
+    const order = mutationOrder(client)
+    expect(order.indexOf('BulkCreateLocations')).toBeLessThan(
+      order.indexOf('BulkCreateItems'),
+    )
+    expect(order.indexOf('BulkCreateLocations')).toBeLessThan(
+      order.indexOf('BulkCreateShoppingCarts'),
+    )
+    expect(order.indexOf('BulkCreateLocations')).toBeLessThan(
+      order.indexOf('BulkCreateInventoryLogs'),
+    )
+  })
+
+  it('user signing in has stock uploaded after the items and locations it points at', async () => {
+    // Given the same payload
+    const client = makeRecordingClient()
+
+    // When it is uploaded
+    await importCloudData(fullPayload(), 'clear', client as never)
+
+    // Then stock comes after BOTH of its parents — it is a child of each, and
+    // the server refuses an unknown one with `Forbidden`
+    const order = mutationOrder(client)
+    expect(order.indexOf('BulkCreateItemStocks')).toBeGreaterThan(
+      order.indexOf('BulkCreateItems'),
+    )
+    expect(order.indexOf('BulkCreateItemStocks')).toBeGreaterThan(
+      order.indexOf('BulkCreateLocations'),
+    )
+  })
+
+  it('user signing in keeps every location id except the payload default', async () => {
+    // Given a payload whose default is `loc_home` and whose other two
+    // locations are `loc_garage` and `loc_office`
+    const client = makeRecordingClient()
+
+    // When it is uploaded to an account whose default is `cloud_default`
+    await importCloudData(fullPayload(), 'clear', client as never)
+
+    // Then all three locations are uploaded in one batch: the payload default
+    // lands on the destination's default row, the other two keep their own ids
+    const uploaded = variablesOf(client, 'BulkCreateLocations')
+      ?.locations as Array<{ id: string; name: string }>
+    expect(uploaded.map((l) => l.id)).toEqual([
+      CLOUD_DEFAULT_ID,
+      'loc_garage',
+      'loc_office',
+    ])
+    expect(uploaded.map((l) => l.name)).toEqual(['Home', 'Garage', 'Office'])
+    // And `isDefault` is never sent — the column is a per-user unique partial
+    // index, so a second default would raise P2002 after `clearAllData`
+    expect(uploaded.every((l) => !('isDefault' in l))).toBe(true)
+  })
+
+  it('user signing in keeps each stock row at its own location', async () => {
+    // Given three stock rows at three different locations, with three
+    // different quantities
+    const client = makeRecordingClient()
+
+    // When the payload is uploaded
+    await importCloudData(fullPayload(), 'clear', client as never)
+
+    // Then each row carries its OWN locationId, not one shared location
+    const uploaded = variablesOf(client, 'BulkCreateItemStocks')
+      ?.itemStocks as Array<{
+      id: string
+      itemId: string
+      locationId: string
+      packedQuantity: number
+    }>
+    expect(uploaded.map((s) => [s.id, s.locationId, s.packedQuantity])).toEqual(
+      [
+        // the payload default, remapped onto the destination's default
+        ['stock_home', CLOUD_DEFAULT_ID, 1],
+        ['stock_garage', 'loc_garage', 7],
+        ['stock_office', 'loc_office', 3],
+      ],
+    )
+    // And the three locations really are three, not one repeated
+    expect(new Set(uploaded.map((s) => s.locationId)).size).toBe(3)
+  })
+
+  it('user replacing cloud data creates the locations first and upserts the stock last', async () => {
+    // Given an account that already holds `item_1` under the same id
+    const client = makeRecordingClient()
+    client.query.mockImplementation(({ query: doc }: { query: unknown }) => {
+      if (opName(doc) === 'GetLocations') {
+        return Promise.resolve({
+          data: {
+            locations: [
+              {
+                id: CLOUD_DEFAULT_ID,
+                name: 'My Home',
+                order: 0,
+                isDefault: true,
+                createdAt: '2026-01-01T00:00:00.000Z',
+                updatedAt: '2026-01-01T00:00:00.000Z',
+              },
+            ],
+          },
+        })
+      }
+      return Promise.resolve({
+        data: {
+          items: [{ id: 'item_1', name: 'Milk' }],
+          tags: [],
+          tagTypes: [],
+          vendors: [],
+          recipes: [],
+          inventoryLogs: [],
+          shoppingCarts: [],
+          allCartItems: [],
+          shelves: [],
+        },
+      })
+    })
+
+    // When the payload is imported with the replace strategy
+    await importCloudData(fullPayload(), 'replace', client as never)
+
+    // Then locations are CREATED, before the carts that name them, and stock
+    // is UPSERTED on the second pass so the payload's quantities win
+    const order = mutationOrder(client)
+    expect(order).toContain('BulkCreateLocations')
+    expect(order).not.toContain('BulkUpsertLocations')
+    expect(order).toContain('BulkUpsertItemStocks')
+    expect(order).not.toContain('BulkCreateItemStocks')
+    expect(order.indexOf('BulkCreateLocations')).toBeLessThan(
+      order.indexOf('BulkCreateShoppingCarts'),
+    )
+    expect(order.indexOf('BulkUpsertItemStocks')).toBeGreaterThan(
+      order.indexOf('BulkUpsertItems'),
+    )
+    // And all three stock rows go up, including the one for the item that
+    // already existed
+    const upserted = variablesOf(client, 'BulkUpsertItemStocks')
+      ?.itemStocks as Array<{ id: string }>
+    expect(upserted.map((s) => s.id)).toEqual([
+      'stock_home',
+      'stock_garage',
+      'stock_office',
+    ])
+  })
+
+  it('user watching the progress bar sees a total that matches what is sent', async () => {
+    // Given a payload with one batch for each of the eleven entities
+    const client = makeRecordingClient()
+    const progress: Array<{ completedBatches: number; totalBatches: number }> =
+      []
+
+    // When it is uploaded
+    await importCloudData(fullPayload(), 'clear', client as never, {
+      onProgress: (p) => progress.push(p),
+    })
+
+    // Then `computeTotalBatches` counted exactly the batches the loop sent —
+    // the eleven bulk mutations, not counting `ClearAllData`
+    const sentBatches = mutationOrder(client).filter(
+      (name) => name !== 'ClearAllData',
+    ).length
+    expect(sentBatches).toBe(11)
+    expect(progress[0].totalBatches).toBe(sentBatches)
+    // And the bar reaches the end rather than stopping short or overrunning
+    const last = progress[progress.length - 1]
+    expect(last.completedBatches).toBe(last.totalBatches)
+  })
+
+  it('user retrying a failed import does not re-send the locations and stock already sent', async () => {
+    // Given a session that already recorded the locations and stock batches
+    const client = makeRecordingClient()
+    const payload = fullPayload()
+    const session: ImportSession = {
+      payload,
+      strategy: 'clear',
+      completedBatchKeys: new Set(['locations:0', 'itemStocks:0']),
+    }
+
+    // When the import is retried with that session
+    await importCloudData(payload, 'clear', client as never, { session })
+
+    // Then neither is uploaded again
+    const order = mutationOrder(client)
+    expect(order).not.toContain('BulkCreateLocations')
+    expect(order).not.toContain('BulkCreateItemStocks')
+    // And every other entity still is
+    expect(order).toContain('BulkCreateItems')
+    expect(order).toContain('BulkCreateShoppingCarts')
   })
 })
 
