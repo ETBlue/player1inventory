@@ -1,6 +1,24 @@
 type InventoryLog {
   id: ID!
   itemId: ID!
+
+  """
+  The location the log was written against.
+
+  `ID!` and not `ID`. The Prisma column is NOT NULL (`schema.prisma:205`) and
+  carries a FK to `Location`. PR 3a's migration
+  (`20260916000000_add_location_to_log_and_cart`) added it nullable, backfilled
+  it from each owner's default location, raised an exception if any row was
+  still NULL, and only then ran `SET NOT NULL`. No later migration touches the
+  column. Every resolver that returns an `InventoryLog` returns the whole
+  Prisma row with no `select`, so no path can hand GraphQL a row without this
+  field.
+
+  Exposed by PR 4a for cloud export: a backup has to record which location
+  each log belongs to, or restoring it puts every log in one place.
+  """
+  locationId: ID!
+
   delta: Float!
   quantity: Float!
   occurredAt: String!

@@ -32,7 +32,7 @@ function toData(input: StockInput): Record<string, unknown> {
 // explicitly ISO-stringified here rather than left for the default String
 // scalar serializer, which coerces via Date.valueOf() (epoch milliseconds)
 // before it ever reaches toJSON(). Mirrors item.resolver.ts's toGraphQL.
-function toGraphQL(row: PrismaItemStock): ItemStock {
+export function toGraphQL(row: PrismaItemStock): ItemStock {
   return {
     ...row,
     createdAt: row.createdAt.toISOString(),
@@ -57,6 +57,31 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       const rows = await prisma.itemStock.findMany({
         where: { itemId, location: { userId } },
         orderBy: { locationId: 'asc' },
+      })
+      return (rows as unknown as PrismaItemStock[]).map(toGraphQL)
+    },
+
+    // Whole-account, across every location the caller owns. Cloud export needs
+    // all of it in one request; `itemStocks(locationId:)` would cost one
+    // request per location.
+    //
+    // `requireAuth`, NOT `requireLocationRole`: that helper takes a single
+    // `locationId` and this query names none. The scope is the relation filter
+    // `location: { userId }` — ItemStock has no userId of its own, by design
+    // (root CLAUDE.md, Authorization), and this is the same shape
+    // `itemStocksForItem` above and `purgeUserData` already use.
+    allItemStocks: async (_, __, ctx) => {
+      const userId = requireAuth(ctx)
+      // Postgres gives no ordering guarantee for findMany without orderBy, and
+      // an export that reorders its rows on every run produces a different
+      // file each time. `locationId` alone is not enough here: unlike
+      // `itemStocksForItem`, this query spans several items, so many rows share
+      // one location. `(locationId, itemId)` IS a total order, because
+      // @@unique([itemId, locationId]) (prisma/schema.prisma:282) makes the
+      // pair unique — no two rows can tie.
+      const rows = await prisma.itemStock.findMany({
+        where: { location: { userId } },
+        orderBy: [{ locationId: 'asc' }, { itemId: 'asc' }],
       })
       return (rows as unknown as PrismaItemStock[]).map(toGraphQL)
     },

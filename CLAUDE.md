@@ -250,8 +250,12 @@ pnpm test                                        # BOTH suites — web + server,
 
 **`pnpm test` runs both workspaces.** The root script is `pnpm -r test`, which recurses into
 every workspace package that defines a `test` script — today `apps/web` (**2259 tests**
-across 249 files) and `apps/server` (**259** across 20). Measured 2026-09-29; the figures
-here said ~1700 and ~100 until then, so re-measure rather than quote these. Both are
+across 249 files) and `apps/server` (**346** across 24). Measured 2026-10-02; the figures
+here said ~1700 and ~100 until 2026-09-29, and `apps/server` said 259 across 20 until
+cloud locations PR 4a added 87 tests — 69 in 4 new files, 18 added to 3 existing ones.
+It said **340** for a few hours on 2026-10-02, between 4a's task 7 and its task 8, which
+added the last 6 — so re-measure rather than quote these. `apps/web` has not moved: PR 4a is server-only.
+Both are
 `vitest run`, so the root command is non-interactive and
 never drops into watch mode. Packages without a `test` script (`apps/design`, `packages/types`)
 are skipped silently.
@@ -752,7 +756,7 @@ one means anything.
 
 **Write test doubles to model the constraint, not the happy path.** A fake that cannot
 distinguish the right implementation from a wrong one passes against both, exactly like a
-weak fixture. The server suite has hit this three times:
+weak fixture. The server suite has hit this five times:
 
 - a `findFirst` fake hardcoding `i.userId === where.userId` leaves an ownership guard green
   even when `userId` is dropped from the resolver. The fix is to model Prisma's own
@@ -765,6 +769,19 @@ weak fixture. The server suite has hit this three times:
   number. Every test would have passed against a resolver with no location scope at all. The
   fix is `src/test/cartItemFake.ts`, one shared matcher that resolves `cart` by following
   `CartItem.cartId` to its `Cart` row and reading that row's `locationId` column
+- an `upsert` fake that **ignores its `update` payload**. `shoppingFake.cart.upsert`
+  returned an existing row untouched, under a comment claiming `update: {}` was the only
+  payload any resolver passes. `bulkUpsertShoppingCarts` passes a real one, so every
+  column that upsert writes was unpinned — a wrong `locationId` in `update` was dropped
+  on the floor and the test passed either way. Found in PR 4a task 4; it now applies the
+  payload key by key, Prisma's own semantics
+- a `create` fake that **invents an id and throws away columns it was handed**.
+  `stockFake`'s `location` and `itemStock` stores and `inventoryLogFake` all did this. It
+  is harmless for resolvers that generate their own ids, and wrong for the 22 bulk import
+  mutations, which must preserve the payload's ids: no test could see an id being lost, a
+  `P2002` on a primary key already taken, or an `upsert` whose `update` moved a row. Found
+  in PR 4a tasks 3, 5 and 6. All three now honour `data.id`, enforce the primary key, and
+  keep `create` and `update` apart
 
 **The Prisma fake models `$transaction` rollback, and only one of its two forms.**
 `src/test/stockFake.ts` exports `runInTransaction`, which snapshots every registered store
@@ -799,9 +816,14 @@ shipped: `checkout` (cart.resolver.ts), `consumeRecipes` (recipe.resolver.ts), a
 `removeItemFromLocation` + `applyUnitSwitch` (itemStock.resolver.ts). It replaces the three
 manual smoke tests those PRs owed. It is the only cloud spec with no browser at all — it
 calls GraphQL through `makeGql` and asserts server state the same way, because what it
-tests is which `locationId` a row is written to, and `InventoryLog` exposes no `locationId`
-field to read back. It is therefore in the `local` project's `testIgnore` as well as the
-`cloud` project's `testMatch`.
+tests is which `locationId` a row is written to. It is therefore in the `local` project's
+`testIgnore` as well as the `cloud` project's `testMatch`.
+
+> This paragraph used to end "and `InventoryLog` exposes no `locationId` field to read
+> back". That was true until cloud-locations PR 4a task 2, which added `locationId: ID!` to
+> the `InventoryLog` GraphQL type. The spec still needs no change, and its reason for
+> having no browser still stands — but a new test may now assert a log's location through
+> GraphQL instead of through server state.
 
 Five more joined on 2026-09-24, also issue #284 — `recipes-group.spec.ts`,
 `vendors-group.spec.ts`, `shelves.spec.ts` (2 cloud test cases each),

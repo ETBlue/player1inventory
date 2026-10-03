@@ -55,6 +55,15 @@ input InventoryLogInput {
   note: String
   logKey: String
   logParams: JSON
+  # OPTIONAL, not `ID!`, on purpose. A client built before cloud locations
+  # sends no such field, and making it required would reject every import
+  # that client issues. When it is absent the resolver falls back to the
+  # caller's default location, which is what the field replaced.
+  #
+  # Attacker-controlled. The resolvers verify it through
+  # `requireLocationRole(ctx, locationId, 'member')` before any row is
+  # written — a log in someone else's location would be a cross-user write.
+  locationId: ID
 }
 
 input ShoppingCartInput {
@@ -67,6 +76,80 @@ input CartItemInput {
   cartId: ID!
   itemId: ID!
   quantity: Int!
+}
+
+input LocationInput {
+  id: ID!
+  name: String!
+  order: Int!
+  createdAt: String!
+  updatedAt: String!
+  # NO `isDefault` FIELD, ON PURPOSE. `bulkCreateLocations` always writes
+  # `isDefault: false`, and `bulkUpsertLocations` never names the column at
+  # all, so an existing row keeps whatever flag it has.
+  #
+  # Three reasons, and each one is enough on its own:
+  #
+  #  1. The payload's default location is never uploaded as a row. The client
+  #     rewrites its id to the destination account's existing `isDefault` id
+  #     (design §6, brainstorming decision 7), so only NON-default locations
+  #     ever reach these mutations. A field only the remap could fill is a
+  #     field nothing fills.
+  #  2. `ensureDefaultLocation(userId)` (lib/defaultLocation.ts) already
+  #     guarantees the account has exactly one default, so the server does not
+  #     need the payload's opinion about which row that is.
+  #  3. The database would REJECT a second default, not accept it. PR 1's
+  #     migration adds `CREATE UNIQUE INDEX "Location_one_default_per_user_key"
+  #     ON "Location" ("userId") WHERE "isDefault"`
+  #     (20260830000000_add_location_and_item_stock/migration.sql:57). So
+  #     honouring the flag would not corrupt the account — it would make the
+  #     import DIE with an unhandled P2002, and under the "clear & import"
+  #     strategy that happens AFTER `clearAllData` has run, leaving the account
+  #     empty and the import dead.
+  #
+  # Note which way round point 3 is. The PR 4 design doc and the PR 4a plan both
+  # SAID there is "no database constraint keeping it to one row per user". That
+  # was wrong — the index exists — and both were corrected on 2026-10-02
+  # (commit 9f5a7692). The decision is the same either way; only the failure it
+  # prevents is different.
+}
+
+# One ItemStock row from a backup: the per-(item x location) stock STATE.
+#
+# WHY THIS IS A SECOND INPUT AND NOT `ItemStockInput` (schema/itemStock.graphql:78).
+# The next reader will want to merge the two. They cannot be merged:
+#
+#  1. `ItemStockInput` is a PARTIAL-MERGE input. All five of its fields are
+#     optional and a MISSING key means "leave that column alone" — see `toData`
+#     in itemStock.resolver.ts. Import is a REPLACE: every column comes from
+#     the payload, so every field here is required. One input cannot mean both.
+#  2. `ItemStockInput` carries no identity at all. `upsertItemStock` takes
+#     `itemId` and `locationId` as its own arguments; a bulk payload has to
+#     carry `id`, `itemId` and `locationId` per row.
+#  3. Widening `ItemStockInput` would change a THIRD contract.
+#     `UnitSwitchStockConversionInput` (itemStock.graphql:51) embeds it as
+#     `quantities`, so new required fields there would break `applyUnitSwitch`.
+#  4. Renaming `ItemStockInput` to free the clean name is also out: input type
+#     names appear in client operations
+#     (`mutation UpsertItemStock($input: ItemStockInput!)`), so a rename breaks
+#     a cached bundle still running the old document.
+#
+# NO `userId` FIELD, and the resolvers write none. `ItemStock` has no `userId`
+# COLUMN, on purpose: it is scoped THROUGH its location (root CLAUDE.md,
+# Authorization). The field list below is every column of the Prisma model
+# (schema.prisma:267-284) and every field of the local `ItemStock` interface
+# (packages/types/src/index.ts:47), with nothing added and nothing dropped.
+input ItemStockImportInput {
+  id: ID!
+  itemId: ID!
+  locationId: ID!
+  targetQuantity: Float!
+  refillThreshold: Float!
+  packedQuantity: Float!
+  unpackedQuantity: Float!
+  dueDate: String
+  createdAt: String!
+  updatedAt: String!
 }
 
 input ShelfInput {
@@ -91,6 +174,8 @@ extend type Mutation {
   bulkCreateShoppingCarts(carts: [ShoppingCartInput!]!): [Cart!]!
   bulkCreateCartItems(cartItems: [CartItemInput!]!): [CartItem!]!
   bulkCreateShelves(shelves: [ShelfInput!]!): [Shelf!]!
+  bulkCreateLocations(locations: [LocationInput!]!): [Location!]!
+  bulkCreateItemStocks(itemStocks: [ItemStockImportInput!]!): [ItemStock!]!
 
   # Bulk upsert mutations — used for "replace conflicts" strategy (upserts by entity id)
   bulkUpsertItems(items: [ItemInput!]!): [Item!]!
@@ -102,6 +187,8 @@ extend type Mutation {
   bulkUpsertShoppingCarts(carts: [ShoppingCartInput!]!): [Cart!]!
   bulkUpsertCartItems(cartItems: [CartItemInput!]!): [CartItem!]!
   bulkUpsertShelves(shelves: [ShelfInput!]!): [Shelf!]!
+  bulkUpsertLocations(locations: [LocationInput!]!): [Location!]!
+  bulkUpsertItemStocks(itemStocks: [ItemStockImportInput!]!): [ItemStock!]!
 
   # Clear all data — used for "clear & import" strategy
   clearAllData: Boolean!

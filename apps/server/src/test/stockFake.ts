@@ -22,11 +22,39 @@
 //     catches P2002 and re-reads the winner. A fake that accepted the duplicate
 //     would leave that path untested, and a fake with no `create` at all would
 //     make "creates the default when the user has none" impossible to write.
+//     `location.upsert`'s update path enforces it too, since promoting a
+//     SECOND row to default is the write that would corrupt an account.
+//   - `itemStock.create` HONOURS `data.id`, `data.createdAt` and
+//     `data.updatedAt`, and enforces `ItemStock.id`'s PRIMARY KEY with P2002.
+//     The import mutations (PR 4a task 6) write all three from the payload
+//     verbatim, so a fake that generated its own would make "the payload's ids
+//     and timestamps are preserved" impossible to assert, and one that
+//     accepted a duplicate id would hide a missing existence check. Before
+//     task 6 it threw all three away.
+//   - `itemStock.update` applies `itemId` and `locationId` only when the
+//     writer names them. Carrying either into an upsert's `update` payload
+//     would MOVE an existing row to another item or another location, which is
+//     this model's version of the row steal task 5 found — `ItemStock` has no
+//     `userId` column to reassign, so its two parents are what an attacker can
+//     redirect.
+//   - `itemStock.delete` throws when no row matches, like Prisma's P2025.
+//   - `location.create` HONOURS `data.id` and enforces the primary key.
+//     The import mutations (PR 4a task 5) write the payload's own id verbatim,
+//     so a fake that generated its own would make "the payload's ids are
+//     preserved" impossible to assert, and one that accepted a duplicate id
+//     would hide a missing existence check.
 //   - `findFirst` / `findUnique` model Prisma's own `where` semantics
 //     (`where.x === undefined || row.x === where.x`), never a hardcoded
 //     ownership or default-flag match. A fake that hardcoded
 //     `l.userId === where.userId` would keep a scoping test green after the
 //     resolver dropped the scope.
+//   - `itemStock`'s `where: { location: { userId } }` is RESOLVED, by following
+//     `ItemStock.locationId` to its Location row — not ignored. ItemStock has
+//     no userId column of its own, so that relation filter is the only user
+//     scope a whole-account stock read has. A fake that dropped the key it did
+//     not recognise would pass against a resolver with no scope at all, which
+//     is what happened to the cartItem fake in PR 3c. Unreachable from the
+//     resolver specs today, so pinned by `stockFake.test.ts`.
 //   - `{ increment: n }` is applied as an increment. A resolver that assigned
 //     the value instead is therefore distinguishable, which is the point of
 //     checkout using the atomic form.
@@ -107,6 +135,33 @@ export class DefaultLocationConstraintError extends Error {
   }
 }
 
+// P2002 from `Location.id`'s PRIMARY KEY. The import mutations write the
+// payload's own id verbatim, so two payload rows with one id — or a payload id
+// already held by ANOTHER user — reach `create` as a duplicate key. Without
+// this the fake would accept the duplicate, and a test of a resolver that
+// relies on its id check running first would pass against a resolver with no
+// id check at all.
+export class LocationIdConstraintError extends Error {
+  code = 'P2002'
+  constructor(id: string) {
+    super(`Unique constraint failed on the fields: (\`id\`) — (${id})`)
+  }
+}
+
+// P2002 from `ItemStock.id`'s PRIMARY KEY. `bulkCreateItemStocks` /
+// `bulkUpsertItemStocks` write the payload's own id verbatim, so two payload
+// rows with one id — or a payload id already held by ANOTHER account's row —
+// reach `create` as a duplicate key. Without this the fake would accept the
+// duplicate, and a test of a resolver that relies on its id check running
+// first would pass against a resolver with no id check at all. The `Location`
+// twin above was added by PR 4a task 5 for the same reason.
+export class StockIdConstraintError extends Error {
+  code = 'P2002'
+  constructor(id: string) {
+    super(`Unique constraint failed on the fields: (\`id\`) — (${id})`)
+  }
+}
+
 function matchesLocation(row: FakeLocation, where: Where): boolean {
   // `undefined ||` on every key, deliberately: this is Prisma's semantics, and
   // it is what makes dropping a key from a resolver's where clause visible.
@@ -116,10 +171,25 @@ function matchesLocation(row: FakeLocation, where: Where): boolean {
   return true
 }
 
-function matchesStock(row: FakeStock, where: Where): boolean {
+function matchesStock(row: FakeStock, where: Where, locations: FakeLocation[]): boolean {
   if (where.id !== undefined && row.id !== where.id) return false
   if (where.itemId !== undefined && row.itemId !== where.itemId) return false
   if (where.locationId !== undefined && row.locationId !== where.locationId) return false
+  // `location: { userId }` — the relation filter every whole-account ItemStock
+  // read uses, because ItemStock has no userId column of its own (root
+  // CLAUDE.md, Authorization). Resolved by following `ItemStock.locationId` to
+  // its Location row and reading that row's userId, the same way
+  // `cartItemFake.ts` resolves `cart: { locationId }`.
+  //
+  // Without this the fake would IGNORE a key it does not know, and every test
+  // of such a resolver would pass against a resolver with no user scope at
+  // all. That is the exact failure root CLAUDE.md records for the cartItem
+  // fake in PR 3c.
+  const location = where.location as { userId?: string } | undefined
+  if (location?.userId !== undefined) {
+    const owner = locations.find((l) => l.id === row.locationId)
+    if (owner?.userId !== location.userId) return false
+  }
   const compound = where.itemId_locationId as
     | { itemId: string; locationId: string }
     | undefined
@@ -242,18 +312,44 @@ export function createStockFake() {
       data.refillThreshold as NumberWrite,
     )
     if ('dueDate' in data) row.dueDate = (data.dueDate as Date | null) ?? null
-    row.updatedAt = new Date()
+    // `'key' in data` per field, not `data.key !== undefined`: the difference
+    // between "the writer did not mention this column" and "the writer set it"
+    // is the whole question for `itemId` and `locationId`. A resolver that
+    // carried either into an upsert's `update` payload would MOVE an existing
+    // row to a different item or a different location — the `ItemStock`
+    // equivalent of the row steal task 5 found, since this model has no
+    // `userId` column to reassign. A fake that silently dropped the key would
+    // hide it.
+    if ('itemId' in data) row.itemId = data.itemId as string
+    if ('locationId' in data) row.locationId = data.locationId as string
+    if ('createdAt' in data) row.createdAt = data.createdAt as Date
+    // An explicit `updatedAt` wins; otherwise the fake stamps now, the way
+    // Prisma's `@updatedAt` does for a writer that names no value.
+    row.updatedAt = 'updatedAt' in data ? (data.updatedAt as Date) : new Date()
     return row
   }
 
+  // `data.id` is HONOURED when present and generated only when absent, and
+  // `data.createdAt` / `data.updatedAt` likewise. `upsertItemStock`,
+  // `addItemToLocation` and `mirrorStock` send none of the three and still get
+  // one each; `bulkCreateItemStocks` sends the payload's own id and timestamps
+  // and must get those exact values back, which is what its "ids and
+  // timestamps are preserved" assertions read. Before PR 4a task 6 this
+  // function threw all three away — the same hole task 3 found in
+  // `inventoryLogFake` and task 5 in `location.create`.
   function insert(data: Record<string, unknown>): FakeStock {
     const itemId = data.itemId as string
     const locationId = data.locationId as string
+    const id = (data.id as string | undefined) ?? `stock-${++seq}`
+    if (state.itemStocks.some((s) => s.id === id)) {
+      throw new StockIdConstraintError(id)
+    }
     if (state.itemStocks.some((s) => s.itemId === itemId && s.locationId === locationId)) {
       throw new UniqueConstraintError(itemId, locationId)
     }
+    const now = new Date()
     const row = makeStock({
-      id: `stock-${++seq}`,
+      id,
       itemId,
       locationId,
       targetQuantity: (data.targetQuantity as number) ?? 0,
@@ -261,10 +357,75 @@ export function createStockFake() {
       packedQuantity: (data.packedQuantity as number) ?? 0,
       unpackedQuantity: (data.unpackedQuantity as number) ?? 0,
       dueDate: (data.dueDate as Date | null) ?? null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      createdAt: (data.createdAt as Date | undefined) ?? now,
+      updatedAt: (data.updatedAt as Date | undefined) ?? now,
     })
     state.itemStocks.push(row)
+    return row
+  }
+
+  // Both unique constraints on `Location` are enforced here, so every writer
+  // that reaches `create` sees what Postgres would do:
+  //   - the PRIMARY KEY on `id`, because the import mutations write the
+  //     payload's own id verbatim rather than letting the database make one
+  //   - the partial unique index on ("userId") WHERE "isDefault"
+  //
+  // `data.id` is HONOURED when present and generated only when absent.
+  // `ensureDefaultLocation` and `createLocation` send no id and still get one;
+  // `bulkCreateLocations` sends the payload's id and must get that exact id
+  // back, which is the single thing its "ids are preserved verbatim" test
+  // asserts. `inventoryLogFake` threw `data.id` away before PR 4a task 3 and
+  // made the same assertion impossible to write.
+  function insertLocation(data: Record<string, unknown>): FakeLocation {
+    const userId = data.userId as string
+    const isDefault = Boolean(data.isDefault)
+    const id = (data.id as string | undefined) ?? `loc-${++seq}`
+    if (state.locations.some((l) => l.id === id)) {
+      throw new LocationIdConstraintError(id)
+    }
+    if (isDefault && state.locations.some((l) => l.userId === userId && l.isDefault)) {
+      throw new DefaultLocationConstraintError(userId)
+    }
+    const now = new Date()
+    const row: FakeLocation = {
+      id,
+      userId,
+      isDefault,
+      name: data.name as string,
+      order: data.order as number,
+      createdAt: (data.createdAt as Date | undefined) ?? now,
+      updatedAt: (data.updatedAt as Date | undefined) ?? now,
+    }
+    state.locations.push(row)
+    return row
+  }
+
+  // `'key' in data` per field, not `data.key !== undefined`: the difference
+  // between "the writer did not mention this column" and "the writer set it"
+  // is the whole question for `isDefault` and `userId`, and a key the writer
+  // omitted must leave the stored value alone.
+  function applyLocationUpdate(
+    row: FakeLocation,
+    data: Record<string, unknown>,
+  ): FakeLocation {
+    if ('name' in data) row.name = data.name as string
+    if ('order' in data) row.order = data.order as number
+    if ('userId' in data) row.userId = data.userId as string
+    if ('createdAt' in data) row.createdAt = data.createdAt as Date
+    if ('updatedAt' in data) row.updatedAt = data.updatedAt as Date
+    if ('isDefault' in data) {
+      const next = Boolean(data.isDefault)
+      // The partial index applies to UPDATE too. Promoting a second row to
+      // default is the write that would corrupt an account, so it has to fail
+      // here as it would in Postgres.
+      if (
+        next &&
+        state.locations.some((l) => l.id !== row.id && l.userId === row.userId && l.isDefault)
+      ) {
+        throw new DefaultLocationConstraintError(row.userId)
+      }
+      row.isDefault = next
+    }
     return row
   }
 
@@ -275,38 +436,47 @@ export function createStockFake() {
     location: {
       findFirst: async ({ where = {} }: { where?: Where } = {}) =>
         state.locations.find((l) => matchesLocation(l, where)) ?? null,
+      // Prisma's `findUnique` takes a WhereUniqueInput, which since Prisma 5
+      // may carry extra non-unique filters alongside the unique key — so
+      // `{ id, userId }` is a legal argument and MUST be applied, not reduced
+      // to `{ id }`. Same `matchesLocation` as `findFirst` for exactly that
+      // reason: a fake that answered on `id` alone would keep a scoped lookup
+      // green after the resolver dropped its `userId`.
+      findUnique: async ({ where }: { where: Where }) =>
+        state.locations.find((l) => matchesLocation(l, where)) ?? null,
       findMany: async ({ where = {} }: { where?: Where } = {}) =>
         state.locations.filter((l) => matchesLocation(l, where)),
-      create: async ({ data }: { data: Record<string, unknown> }) => {
-        const userId = data.userId as string
-        const isDefault = Boolean(data.isDefault)
-        if (isDefault && state.locations.some((l) => l.userId === userId && l.isDefault)) {
-          throw new DefaultLocationConstraintError(userId)
-        }
-        const now = new Date()
-        const row: FakeLocation = {
-          id: `loc-${++seq}`,
-          userId,
-          isDefault,
-          name: data.name as string,
-          order: data.order as number,
-          createdAt: now,
-          updatedAt: now,
-        }
-        state.locations.push(row)
-        return row
+      create: async ({ data }: { data: Record<string, unknown> }) =>
+        insertLocation(data),
+      // `create` and `update` are kept APART, and `update` is applied key by
+      // key. The import upserts deliberately pass a NARROWER `update` than
+      // their `create` — no `isDefault`, no `userId` — so a fake that reused
+      // `create` for both, or ignored `update` altogether, would hide both the
+      // demotion of an existing default and a row steal. That second failure
+      // is exactly what `shoppingFake.cart.upsert` did until PR 4a task 4.
+      upsert: async ({
+        where,
+        update,
+        create,
+      }: {
+        where: Where
+        update: Record<string, unknown>
+        create: Record<string, unknown>
+      }) => {
+        const row = state.locations.find((l) => matchesLocation(l, where))
+        return row ? applyLocationUpdate(row, update) : insertLocation(create)
       },
     },
     itemStock: {
       findUnique: async ({ where }: { where: Where }) =>
-        state.itemStocks.find((s) => matchesStock(s, where)) ?? null,
+        state.itemStocks.find((s) => matchesStock(s, where, state.locations)) ?? null,
       findFirst: async ({ where = {} }: { where?: Where } = {}) =>
-        state.itemStocks.find((s) => matchesStock(s, where)) ?? null,
+        state.itemStocks.find((s) => matchesStock(s, where, state.locations)) ?? null,
       findMany: async ({ where = {} }: { where?: Where } = {}) =>
-        state.itemStocks.filter((s) => matchesStock(s, where)),
+        state.itemStocks.filter((s) => matchesStock(s, where, state.locations)),
       create: async ({ data }: { data: Record<string, unknown> }) => insert(data),
       update: async ({ where, data }: { where: Where; data: Record<string, unknown> }) => {
-        const row = state.itemStocks.find((s) => matchesStock(s, where))
+        const row = state.itemStocks.find((s) => matchesStock(s, where, state.locations))
         if (!row) throw new Error('ItemStock not found')
         return applyUpdate(row, data)
       },
@@ -319,12 +489,24 @@ export function createStockFake() {
         update: Record<string, unknown>
         create: Record<string, unknown>
       }) => {
-        const row = state.itemStocks.find((s) => matchesStock(s, where))
+        const row = state.itemStocks.find((s) => matchesStock(s, where, state.locations))
         return row ? applyUpdate(row, update) : insert(create)
+      },
+      // `delete` throws when no row matches, the way Prisma raises P2025.
+      // `bulkUpsertItemStocks` drops a STALE row holding the payload's
+      // (itemId, locationId) pair under a different id, so it must be able to
+      // tell "I removed one" from "there was nothing there".
+      delete: async ({ where }: { where: Where }) => {
+        const index = state.itemStocks.findIndex((s) =>
+          matchesStock(s, where, state.locations),
+        )
+        if (index === -1) throw new Error('ItemStock not found')
+        const [row] = state.itemStocks.splice(index, 1)
+        return row
       },
       deleteMany: async ({ where = {} }: { where?: Where } = {}) => {
         const before = state.itemStocks.length
-        state.itemStocks = state.itemStocks.filter((s) => !matchesStock(s, where))
+        state.itemStocks = state.itemStocks.filter((s) => !matchesStock(s, where, state.locations))
         return { count: before - state.itemStocks.length }
       },
     },

@@ -17,6 +17,12 @@ extend type Query {
   itemStocks(locationId: ID!): [ItemStock!]!
   # Every location's row for one item — the Stock-tab all-locations pager.
   itemStocksForItem(itemId: ID!): [ItemStock!]!
+  # Every ItemStock the caller can reach, across all of their locations.
+  # Cloud export needs all of it in one request, and `itemStocks(locationId:)`
+  # cannot serve that — it would cost one request per location. Scoped THROUGH
+  # the location: ItemStock carries no userId column, by design (root
+  # CLAUDE.md, Authorization).
+  allItemStocks: [ItemStock!]!
 }
 
 extend type Mutation {

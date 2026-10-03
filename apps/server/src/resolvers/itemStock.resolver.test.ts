@@ -40,6 +40,9 @@ interface FakeLog {
   userId: string
 }
 
+// One `orderBy` clause. Prisma accepts one of these or an array of them.
+type OrderBy = Record<string, 'asc' | 'desc'>
+
 
 const { state, client } = vi.hoisted(() => {
   const state = {
@@ -134,7 +137,7 @@ const { state, client } = vi.hoisted(() => {
         orderBy,
       }: {
         where?: Record<string, unknown>
-        orderBy?: Record<string, 'asc' | 'desc'>
+        orderBy?: OrderBy | OrderBy[]
       }) => {
         const rows = state.itemStocks.filter((s) => stockMatches(s, where))
         // Only sorts when the resolver actually asks for it — mirrors
@@ -142,13 +145,23 @@ const { state, client } = vi.hoisted(() => {
         // resolver that drops the orderBy call gets insertion order back,
         // not an accidentally-correct sort.
         if (!orderBy) return rows
-        const [[field, dir]] = Object.entries(orderBy)
-        const sign = dir === 'desc' ? -1 : 1
+        // Prisma takes EITHER one object or an array of them, and applies an
+        // array in order as a tie-break chain. `allItemStocks` passes the
+        // array form, so a fake that read only the first key would sort by
+        // locationId and leave rows sharing a location in insertion order —
+        // it would report an ordering the resolver had not asked for.
+        const keys = (Array.isArray(orderBy) ? orderBy : [orderBy]).flatMap((o) =>
+          Object.entries(o),
+        )
         return [...rows].sort((a, b) => {
-          const av = (a as unknown as Record<string, unknown>)[field]
-          const bv = (b as unknown as Record<string, unknown>)[field]
-          if (av === bv) return 0
-          return (av as string) < (bv as string) ? -sign : sign
+          for (const [field, dir] of keys) {
+            const av = (a as unknown as Record<string, unknown>)[field]
+            const bv = (b as unknown as Record<string, unknown>)[field]
+            if (av === bv) continue
+            const sign = dir === 'desc' ? -1 : 1
+            return (av as string) < (bv as string) ? -sign : sign
+          }
+          return 0
         })
       },
       findUnique: async ({ where }: { where: Record<string, unknown> }) =>
@@ -349,6 +362,91 @@ describe('itemStock resolvers', () => {
 
     // Then the result is still ascending by locationId
     expect(res.data?.itemStocksForItem).toEqual([{ locationId: 'loc-a' }, { locationId: 'loc-a2' }])
+  })
+
+  // `allItemStocks` — whole-account, every location at once. The fixture's two
+  // user-a locations are what make these assertions mean anything: with one
+  // location, "all of the caller's stock" and "this location's stock" would be
+  // the same set and the query could not be told apart from `itemStocks`.
+  const ALL = `query Q { allItemStocks { id locationId } }`
+
+  it('user can read stock from every location they own', async () => {
+    // Given st-home is at loc-a and st-garage is at loc-a2 — two DIFFERENT
+    // locations of user-a (beforeEach)
+    // When user-a reads allItemStocks
+    const res = await run(ALL)
+
+    // Then both locations' rows come back. A resolver scoped to one location
+    // would return only one of these two.
+    expect(res.data?.allItemStocks).toEqual([
+      { id: 'st-home', locationId: 'loc-a' },
+      { id: 'st-garage', locationId: 'loc-a2' },
+    ])
+  })
+
+  it('user cannot read another user\'s stock', async () => {
+    // Given st-theirs is stocked at loc-b, which belongs to user-b
+    // When user-a reads allItemStocks
+    const res = await run(ALL)
+
+    // Then st-theirs is absent. This is the assertion that goes red when the
+    // resolver drops `where: { location: { userId } }`.
+    const ids = (res.data?.allItemStocks as { id: string }[]).map((s) => s.id)
+    expect(ids).not.toContain('st-theirs')
+    expect(ids).toEqual(['st-home', 'st-garage'])
+  })
+
+  it('user with no locations reads an empty list', async () => {
+    // Given user-c owns no location, so none of the three fixture rows is
+    // reachable through a location of theirs
+    const res = await run(ALL, {}, 'user-c')
+
+    // Then an empty array, not null and not an error — the field is
+    // [ItemStock!]!, so a null would be a schema violation the client sees as
+    // a failed export rather than an empty one
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.allItemStocks).toEqual([])
+  })
+
+  it('allItemStocks orders by locationId then itemId regardless of insertion order', async () => {
+    // Given two more rows at loc-a, inserted in DESCENDING itemId order and
+    // after the loc-a2 row already in the fixture. Rows sharing a location is
+    // the case `locationId` alone cannot order — it is why this query needs a
+    // second sort key where `itemStocksForItem` does not.
+    state.itemStocks.push(stock({ id: 'st-z', itemId: 'item-zucchini', locationId: 'loc-a' }))
+    state.itemStocks.push(stock({ id: 'st-b', itemId: 'item-bread', locationId: 'loc-a' }))
+
+    const res = await run(ALL)
+
+    // Then loc-a's three rows come first, sorted by itemId within the
+    // location, and loc-a2 last
+    expect(res.data?.allItemStocks).toEqual([
+      { id: 'st-b', locationId: 'loc-a' }, // item-bread
+      { id: 'st-home', locationId: 'loc-a' }, // item-milk
+      { id: 'st-z', locationId: 'loc-a' }, // item-zucchini
+      { id: 'st-garage', locationId: 'loc-a2' }, // item-far
+    ])
+  })
+
+  it('allItemStocks serializes dates as ISO strings, not epoch milliseconds', async () => {
+    // Given st-home carries a dueDate (beforeEach)
+    const res = await run(`query Q { allItemStocks { id dueDate createdAt updatedAt } }`)
+
+    // Then every date field is an ISO string. Without toGraphQL the default
+    // String scalar coerces a Date via valueOf() and these come out as epoch
+    // millisecond digits.
+    const rows = res.data?.allItemStocks as {
+      id: string
+      dueDate: string | null
+      createdAt: string
+      updatedAt: string
+    }[]
+    const home = rows.find((r) => r.id === 'st-home')
+    expect(home?.dueDate).toBe('2026-09-01T00:00:00.000Z')
+    for (const row of rows) {
+      expect(row.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/)
+      expect(row.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/)
+    }
   })
 
   it('user can upsert a stock that does not exist yet', async () => {

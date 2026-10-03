@@ -142,7 +142,7 @@ async function execOp(query: string, variables?: Record<string, unknown>, contex
 }
 
 const ITEM_LOGS = `query ItemLogs($itemId: ID!, $locationId: ID!) {
-  itemLogs(itemId: $itemId, locationId: $locationId) { id delta quantity occurredAt }
+  itemLogs(itemId: $itemId, locationId: $locationId) { id locationId delta quantity occurredAt }
 }`
 
 const LOG_COUNT = `query Count($itemId: ID!, $locationId: ID!) {
@@ -155,7 +155,7 @@ const LAST_PURCHASE = `query LastPurchaseDates($itemIds: [ID!]!, $locationId: ID
 
 const ADD_LOG = `mutation AddInventoryLog($itemId: ID!, $delta: Float!, $quantity: Float!, $occurredAt: String!, $locationId: ID!, $note: String) {
   addInventoryLog(itemId: $itemId, delta: $delta, quantity: $quantity, occurredAt: $occurredAt, locationId: $locationId, note: $note) {
-    id itemId delta quantity occurredAt note
+    id itemId locationId delta quantity occurredAt note
   }
 }`
 
@@ -180,7 +180,7 @@ const ADD_LOG_NO_LOCATION = `mutation AddInventoryLog($itemId: ID!, $delta: Floa
   addInventoryLog(itemId: $itemId, delta: $delta, quantity: $quantity, occurredAt: $occurredAt) { id }
 }`
 
-type LogRow = { id: string; delta: number; quantity: number; occurredAt: string }
+type LogRow = { id: string; locationId: string; delta: number; quantity: number; occurredAt: string }
 
 function errorCode(result: { errors?: readonly { extensions?: Record<string, unknown> }[] } | null) {
   return result?.errors?.[0]?.extensions?.code
@@ -341,6 +341,74 @@ describe('inventoryLogs', () => {
     expect(ids).toContain('log_k1')
     expect(ids).toContain('log_g1')
     expect(ids).not.toContain('log_s1')
+  })
+})
+
+// ─── InventoryLog.locationId (PR 4a, Task 2) ──────────────────────────────────
+//
+// The field is new on the GraphQL type; the Prisma column has existed since
+// PR 3a. Cloud export reads it, so a log has to report the location it was
+// written at — NOT the caller's default location.
+//
+// Every assertion below names a log at LOC_OTHER, which is NOT the caller's
+// default (LOC_DEFAULT is `isDefault: true` in seedLocations). A fixture with
+// one location, or one that only checked LOC_DEFAULT rows, could not tell
+// "the location the row names" apart from "the caller's default location".
+
+describe('InventoryLog.locationId', () => {
+  it('each exported log reports the location it was written at', async () => {
+    // Given the caller's 7 logs are split across LOC_DEFAULT and LOC_OTHER
+    // (see the fixture table above)
+
+    // When the caller exports every log
+    const result = await execOp(`query InventoryLogs { inventoryLogs { id locationId } }`)
+
+    // Then each log names its OWN location, not one shared value
+    expect(result?.errors).toBeUndefined()
+    const byId = new Map(
+      (result?.data?.inventoryLogs as { id: string; locationId: string }[]).map((l) => [
+        l.id,
+        l.locationId,
+      ]),
+    )
+    expect(byId.get('log_k1')).toBe(LOC_DEFAULT)
+    expect(byId.get('log_g1')).toBe(LOC_OTHER)
+    expect(byId.get('log_g2')).toBe(LOC_OTHER)
+    expect(byId.get('log_g9')).toBe(LOC_OTHER)
+
+    // And both locations really are represented, so a resolver returning one
+    // constant value for every row cannot pass
+    expect(new Set(byId.values())).toEqual(new Set([LOC_DEFAULT, LOC_OTHER]))
+  })
+
+  it('itemLogs reports the non-default location it was asked for', async () => {
+    // When the caller reads item_1 at LOC_OTHER
+    const result = await execOp(ITEM_LOGS, { itemId: 'item_1', locationId: LOC_OTHER })
+
+    // Then every returned log names LOC_OTHER
+    expect(result?.errors).toBeUndefined()
+    const logs = result?.data?.itemLogs as LogRow[]
+    expect(logs).toHaveLength(2)
+    expect(logs.map((l) => l.locationId)).toEqual([LOC_OTHER, LOC_OTHER])
+  })
+
+  it('user can add a log and read back the non-default location it was written at', async () => {
+    // Given the caller names LOC_OTHER, which is NOT their default location
+    const result = await execOp(ADD_LOG, {
+      itemId: 'item_new', delta: 3, quantity: 5, occurredAt: '2026-03-01T10:00:00.000Z', locationId: LOC_OTHER, note: null,
+    })
+
+    // Then the mutation's own payload reports LOC_OTHER
+    expect(result?.errors).toBeUndefined()
+    const created = result?.data?.addInventoryLog as { id: string; locationId: string }
+    expect(created.locationId).toBe(LOC_OTHER)
+
+    // And so does the export read of the same row
+    const exported = await execOp(`query InventoryLogs { inventoryLogs { id locationId } }`)
+    const row = (exported?.data?.inventoryLogs as { id: string; locationId: string }[]).find(
+      (l) => l.id === created.id,
+    )
+    expect(row?.locationId).toBe(LOC_OTHER)
   })
 })
 

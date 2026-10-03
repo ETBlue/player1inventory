@@ -27,8 +27,11 @@
 //     ownership match. A fake that hardcoded `c.userId === where.userId` would
 //     keep a scoping assertion green after the resolver dropped the scope.
 //
-// What it deliberately does NOT model: transactions, cart items, and
-// `lastPurchasedAt` updates. Those belong to `cart.resolver.test.ts`.
+// What it deliberately does NOT model: transactions, cart items, and the
+// `checkout` flow's own `lastPurchasedAt` bump. Those belong to
+// `cart.resolver.test.ts`. (`cart.upsert` DOES apply its `update` payload key
+// by key, so a column an upsert writes can be read back — see the note on
+// `upsert` below.)
 
 export interface FakeVendor {
   id: string
@@ -155,16 +158,29 @@ export function createShoppingFake() {
       upsert: async ({
         where,
         create,
+        update,
       }: {
         where: Where
         create: Record<string, unknown>
         update: Record<string, unknown>
       }) => {
         const existing = state.carts.find((c) => matchesCart(c, where))
-        // `update: {}` is the only update any resolver passes, so an existing
-        // row is returned unchanged rather than run through a merge that no
-        // caller exercises.
-        return existing ?? insertCart(create)
+        if (!existing) return insertCart(create)
+        // Only the keys `update` actually carries are applied — Prisma's own
+        // semantics, and what makes a stray `locationId` in `update` visible
+        // here as a cart that MOVED. This used to return the existing row
+        // untouched, on the grounds that `update: {}` was the only payload any
+        // resolver passed; `bulkUpsertShoppingCarts` passes a real one
+        // (import.resolver.ts), so an untouched return left the "a re-import
+        // must not move an existing cart" rule unpinned — the fake would have
+        // dropped the wrong `locationId` on the floor and the test would have
+        // passed either way. `vendor.resolver.ts`'s `update: {}` is unaffected:
+        // an empty object applies nothing.
+        for (const [key, value] of Object.entries(update)) {
+          if (value === undefined) continue
+          ;(existing as unknown as Record<string, unknown>)[key] = value
+        }
+        return existing
       },
       deleteMany: async ({ where = {} }: { where?: Where } = {}) => {
         const before = state.carts.length
