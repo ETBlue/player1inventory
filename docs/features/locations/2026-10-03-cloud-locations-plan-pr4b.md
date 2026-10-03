@@ -439,6 +439,100 @@ order matters — without it, the order is an unverified claim.
 
 ---
 
+**Done 2026-10-03** — `cbb5d7ad`, `457431e4`. Web **2268 → 2275 passing** (+7), 249 files,
+all green. Server unmoved at **346 / 24**. `pnpm build` clean, no `TS6385`. Biome: the same
+**4** pre-existing warnings in `src/routes/shopping/index.tsx`.
+
+**THE THREE HAND-MAINTAINED LISTS ARE NOW ONE.** `bulkCreate`'s array, `bulkUpsert`'s array
+and `computeTotalBatches` were structurally identical apart from the mutation document, so
+they became one `ENTITY_SPECS` table. `runBulkBatches(args, mode)` walks it for both passes
+and `computeTotalBatches` reduces over the same list. The resumable-session logic is
+untouched — the key is still `${entityType}:${i}`. The DX cost this plan warned about is
+therefore **not paid**: a new entity cannot be sent in one place and counted in another.
+
+**`partitionPayload` HAD TO CHANGE, AND THIS PLAN DID NOT MENTION IT.** It builds `toCreate`
+with `{ ...payload }` and then overrides nine keys, so the two new arrays passed through the
+spread into **both** sides. On `replace` that is every location and every stock row uploaded
+twice. The routing now is:
+
+| strategy | `locations` | `itemStocks` |
+|---|---|---|
+| `clear` | create pass | create pass, all rows |
+| `skip` | create pass | create pass, **only the items actually added** |
+| `replace` | create pass | **upsert pass**, all rows |
+
+Two reasons behind it, both needed:
+
+- `locations` goes to the **create** pass on every strategy, because the carts and logs that
+  name them are sent on that pass. Sending them on the upsert pass would put them *after*
+  the carts, which is the silent default-location failure this task exists to prevent. The
+  cost: `replace` does not rename an existing location to the backup's name, where the local
+  import does. A location row holds only a name and an order, so no user data is lost.
+- `itemStocks` goes to the **upsert** pass on `replace`, because `bulkCreateItemStocks`
+  **skips** a row whose `(itemId, locationId)` pair is already taken. Sending stock to the
+  create pass under `replace` would silently discard the quantities in the file the user
+  chose to restore.
+
+Routing each to exactly one pass also keeps them clear of the pre-existing bug below.
+
+**A PRE-EXISTING BUG FOUND, NOT FIXED.** On `replace`, `bulkCreate` and `bulkUpsert` share
+one `ImportSession` and one key format, `${entityType}:${i}`, with no mode in it. So when
+both passes carry rows for the same entity, the upsert pass finds the create pass's key and
+**skips its own batch**. A payload with one new item and one conflicting item therefore
+never updates the conflicting item — the exact data the user asked to replace. It is
+reachable today for all nine older entities and is independent of upload order, so it needs
+its own test and its own E2E pass. Recorded in a comment at the key, and neither new entity
+can hit it.
+
+**Four things this plan's task 4 got wrong.**
+
+1. **`fetchCloudExistingData` and `ExistingData` need NO new fields.** The plan said
+   "conflict detection on the `skip` and `replace` paths cannot see an existing location or
+   stock row" without them. Detection never looks: neither entity is ever a conflict, which
+   is the rule **task 3 already shipped for the local import** (`importLocations`'s own
+   comment says locations are "never reported as conflicts, like carts"). A location would
+   conflict on **every** cloud import — the remap rewrites the payload default's id to the
+   destination's default, and that row always exists — so `hasConflicts` would always be
+   true and every import, including a clean one, would stop at the conflict dialog. A stock
+   row's conflict is never the user's decision either; it follows its item, and the item is
+   already in the summary. Adding the two fields would have cost two network queries per
+   cloud import that nothing reads. `ConflictSummary` and `hasConflicts` are unchanged for
+   the same reason, with the decision written on the type.
+2. **The `importCloudData — batched cloud import` block did not break.** The plan predicted
+   its "batch-count and order assertions break — task 4". All 5 pass unchanged: its payloads
+   carry only `items`, so both new entities have zero batches and the total is the same.
+3. **Mutation check 3 as written cannot be run.** It says a test asserting "an imported
+   cart's `locationId` column matches its id's prefix must go red". No unit test can read a
+   server column — the mock client records the mutation, not the database. That assertion
+   belongs to a cloud E2E spec (task 8). The order tests assert the **sequence of mutation
+   documents** instead, which fails the same way for the same reason.
+4. Every line number in the task was stale, as ground rule 2 predicts: `bulkCreate` was at
+   `:1589` not `:1518`, `bulkUpsert` at `:1759` not `:1688`, `computeTotalBatches` at
+   `:1925` not `:1854`.
+
+**Three mutation checks, all red for the reason claimed.**
+
+| Mutation | Result |
+|---|---|
+| `locations` moved after `shoppingCarts` | **3 red.** The sequence test printed the moved line; `expected 5 to be greater than 9` (stock before its location); `expected 7 to be less than 6` (locations after the carts) |
+| `itemStocks` moved before `items` | **2 red.** `expected 5 to be greater than 6` — stock at index 5, items at 6 |
+| `computeTotalBatches` left on a stale nine-entity list | **1 red.** `expected 9 to be 11` — it counted 9 batches while the loop sent 11 |
+
+**The fixtures seed THREE locations** — one default plus two others — with three stock rows
+at three different locations carrying three different quantities (1, 7, 3). With one
+location, or with equal quantities, "each row keeps its own `locationId`" and "every row got
+the default" give the same answer.
+
+**The order tests assert the whole sequence**, not that both calls happened. "Both were
+called" passes against every wrong order, which is the only failure this task exists to
+prevent.
+
+**No `isDefault` reaches the wire.** One test asserts it: `Location_one_default_per_user_key`
+is a unique partial index, so a second default would raise `P2002` **after** `clearAllData`
+had run.
+
+---
+
 ## Task 5 — the local side of the remap
 
 `deserializeLocation` exists **twice**, and only one copy is this task's subject:
