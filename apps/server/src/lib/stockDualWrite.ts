@@ -35,8 +35,14 @@ import { prisma } from './prisma.js'
  * | `checkout` (cart.resolver.ts) | the location the CART names |
  * | `consumeRecipes` (recipe.resolver.ts) | the location the COOK names |
  * | `updateItem` (item.resolver.ts) | the caller's DEFAULT location |
- * | `importData` (import.resolver.ts) | the caller's DEFAULT location |
  * | `upsertItemStock` (itemStock.resolver.ts) | default only, see below |
+ *
+ * `bulkCreateItems` / `bulkUpsertItems` (import.resolver.ts) used to be a
+ * fourth row, also writing the caller's default. **Cloud locations PR 4b
+ * deleted both calls.** The client now uploads real `ItemStock` rows through
+ * `bulkCreateItemStocks` / `bulkUpsertItemStocks`, each naming its own
+ * location, so a mirror there would collapse a multi-location pantry onto one
+ * location. That is why this file has 4 calls left, not 6.
  *
  * The first two were the caller's default location until PR 3b Task 3. A user
  * who checked out while viewing their Garage moved their Kitchen's stock and
@@ -44,12 +50,11 @@ import { prisma } from './prisma.js'
  * cart's location within reach of `checkout`; Task 3 added `locationId` to
  * `ConsumeRecipesInput` for the other one.
  *
- * The last three stay default-bound ON PURPOSE, and it is not a leftover:
+ * The last two stay default-bound ON PURPOSE, and it is not a leftover:
  *
- *   - `updateItem` and `importData` mirror through
- *     `mirrorStockToDefaultLocation`. Both serve a client with NO location
- *     concept — a stale bundle that still sends the five state fields inline,
- *     and an old backup file. Neither has a location to name.
+ *   - `updateItem` mirrors through `mirrorStockToDefaultLocation`. It serves a
+ *     client with NO location concept — a stale bundle that still sends the
+ *     five state fields inline — so it has no location to name.
  *   - `upsertItemStock` mirrors the REVERSE direction through
  *     `mirrorItemStockToItem`, and its call site runs that only when the
  *     location it just wrote is the default one. See that function below for
@@ -114,7 +119,9 @@ function seed(value: NumberWrite | undefined): number {
  * **Do not call it from a new resolver.** Reaching for it is how a write ends up
  * in the wrong location silently. If a resolver knows its location, pass it to
  * `mirrorStock`; if it truly has none, say why in a comment at the call site,
- * the way `updateItem` and `importData` do.
+ * the way `updateItem` does. The import resolvers used to be the other
+ * example, until PR 4b gave them real locations and their mirrors were
+ * deleted.
  */
 export async function defaultLocationId(userId: string): Promise<string> {
   return ensureDefaultLocation(userId)
@@ -203,11 +210,16 @@ export async function mirrorItemStockToItem(
 /**
  * `mirrorStock` against the caller's default location.
  *
- * For the two callers that genuinely have no location: `updateItem` (a stale
- * bundle sending the five state fields inline) and `importData` (an old backup
- * file). PR 3b Task 3 left both alone on purpose — it moved `checkout` and
+ * ONE caller left since cloud locations PR 4b: `updateItem` (item.resolver.ts),
+ * a stale bundle sending the five state fields inline with no location to name.
+ * PR 3b Task 3 left it alone on purpose — it moved `checkout` and
  * `consumeRecipes` off the default location because those two DO know where
- * they are, and these two do not.
+ * they are, and `updateItem` does not.
+ *
+ * `bulkCreateItems` / `bulkUpsertItems` were the second caller until PR 4b.
+ * The import payload now carries real `ItemStock` rows, so the import knows
+ * its locations and mirroring onto the default would be wrong, not merely
+ * redundant.
  */
 export async function mirrorStockToDefaultLocation(
   userId: string,
