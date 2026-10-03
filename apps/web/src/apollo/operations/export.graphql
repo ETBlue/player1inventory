@@ -35,3 +35,25 @@ query AllCartItems {
     quantity
   }
 }
+
+# Every ItemStock row the caller can reach, across every location. It lives
+# here beside `AllCartItems` because both are whole-account export reads, and
+# both are read a second time by `fetchCloudExistingData` (lib/importData.ts)
+# to detect conflicts. The per-screen stock queries are in itemStocks.graphql.
+#
+# `itemStocks(locationId:)` cannot serve this — it would cost one request per
+# location, and a backup must see them all or it loses rows.
+query AllItemStocks {
+  allItemStocks {
+    id
+    itemId
+    locationId
+    targetQuantity
+    refillThreshold
+    packedQuantity
+    unpackedQuantity
+    dueDate
+    createdAt
+    updatedAt
+  }
+}

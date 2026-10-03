@@ -2,7 +2,9 @@ import type { ApolloClient } from '@apollo/client'
 import { db } from '@/db'
 import type {
   AllCartItemsQuery,
+  AllItemStocksQuery,
   GetItemsQuery,
+  GetLocationsQuery,
   GetRecipesQuery,
   GetShelvesQuery,
   GetTagsQuery,
@@ -13,7 +15,9 @@ import type {
 } from '@/generated/graphql'
 import {
   AllCartItemsDocument,
+  AllItemStocksDocument,
   GetItemsDocument,
+  GetLocationsDocument,
   GetRecipesDocument,
   GetShelvesDocument,
   GetTagsDocument,
@@ -26,6 +30,8 @@ import {
   toCartItemInput,
   toInventoryLogInput,
   toItemInput,
+  toItemStockInput,
+  toLocationInput,
   toRecipeInput,
   toShelfInput,
   toShoppingCartInput,
@@ -46,9 +52,23 @@ export interface ExportPayload {
   shoppingCarts: unknown[]
   cartItems: unknown[]
   shelves: unknown[]
-  // Local-only (v15 Item/ItemStock split). Absent on cloud exports — cloud
-  // items still carry stock inline — and on pre-v15 backups, whose absence is
-  // what marks a payload as legacy on the import side.
+  // The v15 Item/ItemStock split: per-location stock state, and the locations
+  // it points at. `fetchLocalPayload` has populated both since v15 and
+  // `fetchCloudPayload` populates both as of cloud locations PR 4b, so today
+  // only a PRE-v15 backup can be missing them. Still optional for exactly that
+  // reason — an old file must stay importable.
+  //
+  // THE ABSENCE OF THESE TWO KEYS USED TO BE A SIGNAL, AND IS NOT ANY MORE.
+  // Until PR 4b a cloud export carried neither, so three readers in
+  // lib/importData.ts treated "no itemStocks" as "this is a cloud payload,
+  // already flat":
+  //
+  //   - `upgradeLegacyPayload` (importData.ts:263) — PR 4b task 5 handles it
+  //   - `flattenPayloadForCloud` (importData.ts:365) — deleted by PR 4b task 3
+  //   - `resolveFlattenLocationId` (importData.ts:460) — deleted by task 3
+  //
+  // A cloud export now carries both, so absence means "pre-v15 file" and
+  // nothing else. Do not reintroduce a sniff test on these keys.
   itemStocks?: unknown[]
   locations?: unknown[]
 }
@@ -90,6 +110,23 @@ export function sanitiseCloudPayload(payload: ExportPayload): ExportPayload {
     shelves: payload.shelves.map((s) =>
       toShelfInput(s as Record<string, unknown>),
     ),
+    // Both keys are optional on `ExportPayload`, so a pre-v15 payload has
+    // neither. Leave the key absent in that case rather than writing `[]` —
+    // the import side still has to tell "no stock rows" from "an old file".
+    ...(payload.itemStocks != null
+      ? {
+          itemStocks: payload.itemStocks.map((st) =>
+            toItemStockInput(st as Record<string, unknown>),
+          ),
+        }
+      : {}),
+    ...(payload.locations != null
+      ? {
+          locations: payload.locations.map((l) =>
+            toLocationInput(l as Record<string, unknown>),
+          ),
+        }
+      : {}),
   }
 }
 
@@ -174,6 +211,8 @@ export async function fetchCloudPayload(
     shoppingCartsResult,
     allCartItemsResult,
     shelvesResult,
+    locationsResult,
+    itemStocksResult,
   ] = await Promise.all([
     client.query<GetItemsQuery>({ query: GetItemsDocument, fetchPolicy }),
     client.query<GetTagsQuery>({ query: GetTagsDocument, fetchPolicy }),
@@ -196,6 +235,20 @@ export async function fetchCloudPayload(
       fetchPolicy,
     }),
     client.query<GetShelvesQuery>({ query: GetShelvesDocument, fetchPolicy }),
+    // Reuses the pantry's own `GetLocations` — there is no second operation for
+    // export. It already selects every column `LocationInput` needs plus
+    // `isDefault`, which the backup records and `toLocationInput` drops on the
+    // way back up (see its comment for why the server refuses that field).
+    client.query<GetLocationsQuery>({
+      query: GetLocationsDocument,
+      fetchPolicy,
+    }),
+    // Every location's stock in ONE request. `itemStocks(locationId:)` would
+    // cost one request per location and a backup needs them all.
+    client.query<AllItemStocksQuery>({
+      query: AllItemStocksDocument,
+      fetchPolicy,
+    }),
   ])
 
   // Permanent carts — all carts are active (no status, no filtering needed)
@@ -226,6 +279,24 @@ export async function fetchCloudPayload(
     shoppingCarts: allShoppingCarts,
     cartItems: exportCartItems,
     shelves: userShelves,
+    // NEITHER OF THESE IS FILTERED, unlike `shelves` and `cartItems` above,
+    // and the reasons differ:
+    //
+    //   - `locations`: there is no system-row equivalent to filter out. Every
+    //     location is the user's own, the default one included — and the
+    //     default must be IN the payload, because the import side remaps its
+    //     id onto the destination account's default and cannot find it
+    //     otherwise.
+    //   - `itemStocks`: an orphan cannot exist. `ItemStock` has FK cascades to
+    //     both `Item` and `Location` (schema.prisma:279-280), `allItemStocks`
+    //     is scoped through the location (`{ location: { userId } }`), and
+    //     `locations` is scoped by the same user — so every row returned here
+    //     names a location that is also in `locations`. The `cartItems` filter
+    //     above exists because `CartItem.userId` and `Cart.userId` are
+    //     separate columns that CAN disagree (issue #327); `ItemStock` has no
+    //     `userId` column at all, so it has nothing to disagree with.
+    locations: locationsResult.data?.locations ?? [],
+    itemStocks: itemStocksResult.data?.allItemStocks ?? [],
   })
 
   return sanitiseCloudPayload(payload)
