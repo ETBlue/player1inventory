@@ -6,8 +6,9 @@
 which described this work in about 40 lines and is stale in 8 places — see *What §6 got
 wrong* below.
 **Brainstorming:** [PR 4 brainstorming](2026-10-02-brainstorming-pr4.md)
-**Plan:** [PR 4a plan](2026-10-02-cloud-locations-plan-pr4a.md) — 4b and 4c are planned
-later, on purpose (brainstorming decision 9)
+**Plans:** [PR 4a plan](2026-10-02-cloud-locations-plan-pr4a.md) ✅ merged ·
+[PR 4b plan](2026-10-03-cloud-locations-plan-pr4b.md) 🔲 — 4c is planned when scheduled,
+on purpose (brainstorming decision 9)
 
 ---
 
@@ -412,6 +413,34 @@ effect's dependency array (`:113`), so without the one-shot ref a location chang
 would start a second copy.
 
 ---
+
+### Two decisions taken 2026-10-03, when 4b was planned
+
+**The cart-leak proof is two tests doing two different jobs, and only one is evidence.**
+
+| Part | Where | On `main` | After 4b |
+|---|---|---|---|
+| the cart id keeps its location prefix | unit, `importData.test.ts` | **red** | green — the actual proof |
+| two users sending bare cart ids share one `Cart` row | API-only cloud spec | green | **still green** |
+
+Part 2 cannot go red then green. `Cart.id` is a global primary key, so two users genuinely
+cannot both hold `'no-vendor'`, and no client change fixes that — 4b's fix is to stop
+producing bare ids at all. So part 2 is a **negative control**: a labelled characterisation
+test of a hazard that survives this PR, pointing at issue #327. It must say so in its own
+header, or it reports as coverage it does not give.
+
+A second user is also harder than it looks. `makeGql` hardcodes `E2E_USER_ID`
+(`e2e/utils/cloud.ts:15`), and `VITE_E2E_TEST_USER_ID` is baked into the web build as a
+single value (`playwright.config.ts:8, 90`) — so the **browser cannot be a second user**.
+Part 2 has no browser, like `location-scoped-writes.spec.ts`.
+
+**Cloud export's lost log fields are fixed here too.** `export.graphql:1-10`'s
+`InventoryLogs` query selects six fields and drops `logKey` and `logParams`, which
+`ItemLogs` (`inventoryLogs.graphql:7-18`) already selects. So a cloud backup silently loses
+**every log's message** today — a pre-existing data loss, not one 4b causes. 4b has to edit
+that same query to add `locationId`, and this is the lossless-backup PR, so the two extra
+fields go in with it. `toInventoryLogInput` (`importData.ts:624-637`) must pass all three
+through; it is shared with `sanitiseCloudPayload`, so one change fixes export and import.
 
 ## 4. Purge — PR 4c
 
