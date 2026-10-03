@@ -487,12 +487,29 @@ describe('fetchCloudPayload — the cloud backup is lossless', () => {
     ])
     expect(locations.find((l) => l.id === 'loc-office')?.name).toBe('Office')
 
-    // And `isDefault` is dropped on the way through `toLocationInput` —
-    // LocationInput has no such field
+    // And `isDefault` IS kept in the file, while Apollo's `__typename` is not.
+    //
+    // THIS ASSERTION WAS INVERTED UNTIL PR 4b TASK 3. It read
+    // `not.toHaveProperty('isDefault')`, on the grounds that `LocationInput`
+    // has no such field — true, and not the question. The flag is never
+    // UPLOADED (`toLocationInput` drops it, and the server would reject a
+    // second default with a P2002), but the BACKUP FILE is the only place the
+    // import side can learn which of the payload's locations is its default.
+    // `findPayloadDefaultLocationId` (lib/importData.ts) reads this flag and
+    // nothing else, so dropping it here made the remap rule a no-op for every
+    // cloud-sourced payload: restoring your own cloud backup with "clear and
+    // import" would leave a stray empty default location beside the restored
+    // one, because `clearAllData` deletes the old default and
+    // `ensureDefaultLocation` creates a new id in its place.
+    //
+    // The comment beside the `GetLocations` call in `fetchCloudPayload`
+    // already claimed "the backup records it" while this test asserted the
+    // opposite. The comment was the intent; the test was the accident.
     for (const location of locations) {
-      expect(location).not.toHaveProperty('isDefault')
       expect(location).not.toHaveProperty('__typename')
     }
+    expect(locations.find((l) => l.id === 'loc-home')?.isDefault).toBe(true)
+    expect(locations.find((l) => l.id === 'loc-office')?.isDefault).toBe(false)
   })
 
   it('user can export the stock held in each location separately', async () => {
