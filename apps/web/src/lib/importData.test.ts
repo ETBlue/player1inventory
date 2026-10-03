@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { db } from '@/db'
+import { db, ensureDefaultLocationRow } from '@/db'
 import { addItemToLocation, getStockedItems } from '@/db/operations'
 import { ClearAllDataDocument } from '@/generated/graphql'
+import { DEFAULT_LOCATION_ID } from '@/types'
 import type { ExportPayload } from './exportData'
 import {
   applyLocationRemap,
@@ -3486,5 +3487,361 @@ describe('importLocalData — carts are bootstrapped by every strategy', () => {
     // Then the new vendor has a cart
     const cartIds = (await db.shoppingCarts.toArray()).map((c) => c.id)
     expect(cartIds).toContain('local:vendor-new')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PR 4b task 5 — THE REMAP RULE, cloud -> local direction.
+//
+//   Preserve payload location ids verbatim, except the payload's default,
+//   which maps onto the destination's default.
+//
+// On this side the destination's default is the constant DEFAULT_LOCATION_ID
+// ('local'), because the v18 upgrade fn and `ensureDefaultLocation` between
+// them guarantee the local default always has that id.
+//
+// THE FIXTURE SEEDS THREE LOCATIONS — one default and TWO others — with three
+// stock rows carrying three DIFFERENT quantities. With one non-default
+// location, "map only the payload's default" and "map every location onto the
+// local default" give the same answer, so the tests below could not tell a
+// correct implementation from a wrong one.
+// ---------------------------------------------------------------------------
+describe('importLocalData — a cloud backup keeps every location (PR 4b task 5)', () => {
+  beforeEach(clearAllTables)
+  afterEach(clearAllTables)
+
+  const CLOUD_DEFAULT = 'cloud_default_cuid'
+  const CLOUD_OFFICE = 'cloud_office_cuid'
+  const CLOUD_CABIN = 'cloud_cabin_cuid'
+
+  function makeLocationRow(
+    id: string,
+    name: string,
+    order: number,
+    isDefault: boolean,
+  ) {
+    return {
+      id,
+      name,
+      order,
+      isDefault,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+  }
+
+  function makeStockRow(
+    id: string,
+    locationId: string,
+    packedQuantity: number,
+  ) {
+    return {
+      id,
+      itemId: 'item-1',
+      locationId,
+      targetUnit: 'package' as const,
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+  }
+
+  // A cloud export as PR 4b task 2 now writes it: real `locations` (with
+  // `isDefault` kept in the file), real `itemStocks`, and logs carrying
+  // `locationId`. Every location id is a server cuid, so none of them matches
+  // DEFAULT_LOCATION_ID.
+  function cloudBackup(): ExportPayload {
+    return emptyPayload({
+      items: [
+        {
+          id: 'item-1',
+          name: 'Milk',
+          tagIds: [],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+      locations: [
+        makeLocationRow(CLOUD_DEFAULT, 'Cloud Home', 0, true),
+        makeLocationRow(CLOUD_OFFICE, 'Office', 1, false),
+        makeLocationRow(CLOUD_CABIN, 'Cabin', 2, false),
+      ],
+      itemStocks: [
+        makeStockRow('stock-default', CLOUD_DEFAULT, 1),
+        makeStockRow('stock-office', CLOUD_OFFICE, 7),
+        makeStockRow('stock-cabin', CLOUD_CABIN, 3),
+      ],
+      shoppingCarts: [
+        { id: `${CLOUD_DEFAULT}:vendor_1` },
+        { id: `${CLOUD_OFFICE}:vendor_2` },
+        // A BARE cart id, no colon at all. `parseCartId` reads the whole
+        // string as the location id, which no location matches, so it must be
+        // left exactly as it is — a blind rebuild would turn it into
+        // `local:no-vendor` and point it at a cart that is not this one.
+        { id: 'no-vendor' },
+      ],
+      cartItems: [
+        makeCartItem('ci-default', `${CLOUD_DEFAULT}:vendor_1`),
+        makeCartItem('ci-office', `${CLOUD_OFFICE}:vendor_2`),
+        makeCartItem('ci-bare', 'no-vendor'),
+      ],
+      inventoryLogs: [
+        { ...makeInventoryLog('log-at-default'), locationId: CLOUD_DEFAULT },
+        { ...makeInventoryLog('log-at-office'), locationId: CLOUD_OFFICE },
+        // A pre-Location log carries no `locationId` key at all.
+        makeInventoryLog('log-no-location'),
+      ],
+    })
+  }
+
+  it('user restoring a cloud backup gets exactly one default location', async () => {
+    // Given a cloud backup whose default location is a server cuid
+    const payload = cloudBackup()
+
+    // When the user restores it
+    await importLocalData(payload, 'clear')
+
+    // Then exactly one row is flagged, and it is the local default.
+    //
+    // THIS FIRST ASSERTION IS A NEGATIVE CONTROL, not the guard. Measured:
+    // with the remap removed it still passes, because the three cloud rows
+    // arrive unflagged and `ensureDefaultLocationRow` then adds one flagged
+    // 'local' row — exactly one, just the wrong one.
+    const locations = await db.locations.toArray()
+    expect(locations.filter((l) => l.isDefault).map((l) => l.id)).toEqual([
+      DEFAULT_LOCATION_ID,
+    ])
+    // THE NAME IS THE GUARD. The flagged row must be the backup's own default,
+    // carrying its name — not a placeholder 'My Home' that
+    // `ensureDefaultLocationRow` created because nothing matched. Without the
+    // remap this fails with: expected { id: 'local', name: 'My Home', … } to
+    // match object { name: 'Cloud Home' }
+    expect(await db.locations.get(DEFAULT_LOCATION_ID)).toMatchObject({
+      name: 'Cloud Home',
+    })
+  })
+
+  it('user restoring a cloud backup gets no stray extra location', async () => {
+    // Given a cloud backup with three locations
+    const payload = cloudBackup()
+
+    // When the user restores it
+    await importLocalData(payload, 'clear')
+
+    // Then the table holds exactly three rows — the payload's own count.
+    // Before the remap, no imported row matched DEFAULT_LOCATION_ID, so
+    // `ensureDefaultLocationRow` added a FOURTH, empty "local" default beside
+    // the three restored ones.
+    expect(await db.locations.count()).toBe(payload.locations?.length)
+  })
+
+  it("user restoring a cloud backup keeps its non-default locations' ids", async () => {
+    // Given a cloud backup with two non-default locations
+    const payload = cloudBackup()
+
+    // When the user restores it
+    await importLocalData(payload, 'clear')
+
+    // Then only the payload's default moved; both others kept their own id
+    expect((await db.locations.toArray()).map((l) => l.id).sort()).toEqual(
+      [DEFAULT_LOCATION_ID, CLOUD_CABIN, CLOUD_OFFICE].sort(),
+    )
+    expect(await db.locations.get(CLOUD_OFFICE)).toMatchObject({
+      name: 'Office',
+      isDefault: false,
+    })
+    expect(await db.locations.get(CLOUD_CABIN)).toMatchObject({
+      name: 'Cabin',
+      isDefault: false,
+    })
+  })
+
+  it('user restoring a cloud backup keeps each quantity in its own location', async () => {
+    // Given a cloud backup with three stock rows, three different quantities
+    const payload = cloudBackup()
+
+    // When the user restores it
+    await importLocalData(payload, 'clear')
+
+    // Then the row at the payload's default followed its location to 'local',
+    // and the other two stayed where they were — each with its own quantity
+    const byLocation = new Map(
+      (await db.itemStocks.toArray()).map((s) => [s.locationId, s]),
+    )
+    expect(byLocation.get(DEFAULT_LOCATION_ID)?.packedQuantity).toBe(1)
+    expect(byLocation.get(CLOUD_OFFICE)?.packedQuantity).toBe(7)
+    expect(byLocation.get(CLOUD_CABIN)?.packedQuantity).toBe(3)
+    expect(byLocation.has(CLOUD_DEFAULT)).toBe(false)
+
+    // And the pantry at the local default shows that location's quantity
+    const stocked = await getStockedItems(DEFAULT_LOCATION_ID)
+    expect(stocked).toHaveLength(1)
+    expect(stocked[0].packedQuantity).toBe(1)
+  })
+
+  it('user restoring a cloud backup keeps a bare cart id unprefixed', async () => {
+    // Given a cloud backup with two prefixed cart ids and one bare one
+    const payload = cloudBackup()
+
+    // When the user restores it
+    await importLocalData(payload, 'clear')
+
+    // Then the default's prefix was rewritten, the other prefix was not, and
+    // the bare id was left alone. Asserted through `cartItems`, because
+    // `bootstrapCartsForAllLocations` adds a sentinel cart per location and
+    // would otherwise blur the cart table.
+    const cartIdsByItem = new Map(
+      (await db.cartItems.toArray()).map((ci) => [ci.id, ci.cartId]),
+    )
+    expect(cartIdsByItem.get('ci-default')).toBe(
+      `${DEFAULT_LOCATION_ID}:vendor_1`,
+    )
+    expect(cartIdsByItem.get('ci-office')).toBe(`${CLOUD_OFFICE}:vendor_2`)
+    expect(cartIdsByItem.get('ci-bare')).toBe('no-vendor')
+
+    const cartIds = (await db.shoppingCarts.toArray()).map((c) => c.id)
+    expect(cartIds).toContain(`${DEFAULT_LOCATION_ID}:vendor_1`)
+    expect(cartIds).toContain(`${CLOUD_OFFICE}:vendor_2`)
+    expect(cartIds).toContain('no-vendor')
+    expect(cartIds).not.toContain(`${CLOUD_DEFAULT}:vendor_1`)
+  })
+
+  it("user restoring a cloud backup keeps each log's location", async () => {
+    // Given a cloud backup with a log at the default, one elsewhere, and one
+    // with no location at all
+    const payload = cloudBackup()
+
+    // When the user restores it
+    await importLocalData(payload, 'clear')
+
+    // Then the default's log moved, the other did not, and the log with no
+    // location still has none — inventing one would override the fallback
+    expect((await db.inventoryLogs.get('log-at-default'))?.locationId).toBe(
+      DEFAULT_LOCATION_ID,
+    )
+    expect((await db.inventoryLogs.get('log-at-office'))?.locationId).toBe(
+      CLOUD_OFFICE,
+    )
+    expect(
+      (await db.inventoryLogs.get('log-no-location'))?.locationId,
+    ).toBeUndefined()
+  })
+
+  it('user merging a cloud backup with skip keeps every location', async () => {
+    // Given a database that already holds its own default location
+    await ensureDefaultLocationRow()
+    const payload = cloudBackup()
+
+    // When the user merges the backup with the 'skip' strategy
+    await importLocalData(payload, 'skip')
+
+    // Then the payload's default landed on the existing local row (which keeps
+    // its own name, because `skip` only adds what is missing), the two others
+    // were added, and nothing extra appeared
+    expect((await db.locations.toArray()).map((l) => l.id).sort()).toEqual(
+      [DEFAULT_LOCATION_ID, CLOUD_CABIN, CLOUD_OFFICE].sort(),
+    )
+    expect(
+      (await db.locations.toArray())
+        .filter((l) => l.isDefault)
+        .map((l) => l.id),
+    ).toEqual([DEFAULT_LOCATION_ID])
+    const byLocation = new Map(
+      (await db.itemStocks.toArray()).map((s) => [s.locationId, s]),
+    )
+    expect(byLocation.get(DEFAULT_LOCATION_ID)?.packedQuantity).toBe(1)
+    expect(byLocation.get(CLOUD_OFFICE)?.packedQuantity).toBe(7)
+    expect(byLocation.get(CLOUD_CABIN)?.packedQuantity).toBe(3)
+  })
+
+  it('user merging a cloud backup with replace keeps every location', async () => {
+    // Given a database that already holds its own default location
+    await ensureDefaultLocationRow()
+    const payload = cloudBackup()
+
+    // When the user merges the backup with the 'replace' strategy
+    await importLocalData(payload, 'replace')
+
+    // Then the payload's default overwrote the existing local row, including
+    // its name, and the two others were added
+    expect((await db.locations.toArray()).map((l) => l.id).sort()).toEqual(
+      [DEFAULT_LOCATION_ID, CLOUD_CABIN, CLOUD_OFFICE].sort(),
+    )
+    expect(await db.locations.get(DEFAULT_LOCATION_ID)).toMatchObject({
+      name: 'Cloud Home',
+      isDefault: true,
+    })
+    const byLocation = new Map(
+      (await db.itemStocks.toArray()).map((s) => [s.locationId, s]),
+    )
+    expect(byLocation.get(DEFAULT_LOCATION_ID)?.packedQuantity).toBe(1)
+    expect(byLocation.get(CLOUD_OFFICE)?.packedQuantity).toBe(7)
+    expect(byLocation.get(CLOUD_CABIN)?.packedQuantity).toBe(3)
+  })
+
+  // A PRE-v18 backup carries no `isDefault` key on any location. The rule
+  // chosen for it: the payload's default is the row whose id is
+  // DEFAULT_LOCATION_ID, because a local default has always had that id and is
+  // undeletable, so every real pre-v18 local backup contains it. Nothing is
+  // guessed from `order` or from position.
+  it('user restoring a pre-v18 backup gets exactly one default and no stray row', async () => {
+    // Given a pre-v18 backup: three locations, no `isDefault` key anywhere
+    const payload = emptyPayload({
+      locations: [
+        { id: DEFAULT_LOCATION_ID, name: 'My Home', order: 0 },
+        { id: 'office', name: 'Office', order: 1 },
+        { id: 'cabin', name: 'Cabin', order: 2 },
+      ],
+    })
+
+    // When the user restores it
+    await importLocalData(payload, 'clear')
+
+    // Then the remap is an identity (the payload's default is already the
+    // local one), exactly one row is flagged, and no fourth row appeared
+    expect(await db.locations.count()).toBe(3)
+    expect(
+      (await db.locations.toArray())
+        .filter((l) => l.isDefault)
+        .map((l) => l.id),
+    ).toEqual([DEFAULT_LOCATION_ID])
+  })
+
+  // The collision case, which the remap rule on its own does not cover: the
+  // payload names one row as its default while a DIFFERENT row already holds
+  // DEFAULT_LOCATION_ID. Remapping would give two rows the same id and the
+  // write would keep only one, losing a location. `buildLocationRemap` returns
+  // an empty map instead, so every id survives.
+  it('user restoring a backup that flags another row loses no location', async () => {
+    // Given a hand-edited backup flagging 'office' while 'local' also exists
+    const payload = emptyPayload({
+      locations: [
+        {
+          id: DEFAULT_LOCATION_ID,
+          name: 'My Home',
+          order: 0,
+          isDefault: false,
+        },
+        { id: 'office', name: 'Office', order: 1, isDefault: true },
+        { id: 'cabin', name: 'Cabin', order: 2, isDefault: false },
+      ],
+    })
+
+    // When the user restores it
+    await importLocalData(payload, 'clear')
+
+    // Then all three ids survive and the local default is the only flagged row
+    expect((await db.locations.toArray()).map((l) => l.id).sort()).toEqual(
+      ['cabin', DEFAULT_LOCATION_ID, 'office'].sort(),
+    )
+    expect(
+      (await db.locations.toArray())
+        .filter((l) => l.isDefault)
+        .map((l) => l.id),
+    ).toEqual([DEFAULT_LOCATION_ID])
   })
 })

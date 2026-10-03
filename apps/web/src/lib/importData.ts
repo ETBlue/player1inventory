@@ -127,12 +127,30 @@ function deserializeItemStock(raw: Record<string, unknown>): ItemStock {
   return result as unknown as ItemStock
 }
 
-// `isDefault` (Dexie v18) is derived, not carried: a pre-v18 backup has no such
-// key at all, and a payload written elsewhere could name a different row as its
-// default. In local mode the default is always DEFAULT_LOCATION_ID, and
-// `ensureDefaultLocationRow` guarantees that row exists after every import — so
-// deriving here is what keeps exactly one row flagged, and keeps an imported
-// non-default location unflagged whatever the file says.
+// `isDefault` (Dexie v18) is DERIVED here, not copied from the file.
+//
+// WHY THIS IS CORRECT, AND WHY IT DIFFERS FROM THE SHARED COPY IN
+// lib/deserialization.ts (which keeps `isDefault` exactly as given).
+//
+// Locally the flag and the id are the same fact: the v18 upgrade fn sets
+// `isDefault = (id === DEFAULT_LOCATION_ID)` (db/index.ts) and
+// `ensureDefaultLocation` only ever creates that one id. So in this database
+// `isDefault` is true for exactly the row whose id is DEFAULT_LOCATION_ID,
+// and deriving it keeps that invariant whatever the file says.
+//
+// THE FILE'S OWN FLAG IS NOT IGNORED — it is read one step earlier, by
+// `findPayloadDefaultLocationId`, and the remap in `importLocalData` has
+// already rewritten the payload default's id to DEFAULT_LOCATION_ID by the
+// time this function sees the row. Deriving then flags exactly that row. Two
+// cases need the derive rather than the flag:
+//   - a PRE-v18 backup carries no `isDefault` key at all, so copying it would
+//     leave zero rows flagged (`ensureDefaultLocationRow` returns early when
+//     the `local` row already exists, so it would not repair it);
+//   - a hand-edited file naming two defaults cannot produce two flagged rows.
+//
+// The shared copy in lib/deserialization.ts reads CLOUD rows, where the
+// default's id is a server cuid and the flag is the only way to know. Do not
+// merge the two.
 function deserializeLocation(raw: Record<string, unknown>): Location {
   return {
     ...raw,
@@ -241,20 +259,33 @@ function collapseStockConfig(payload: ExportPayload): ExportPayload {
   return { ...payload, items, itemStocks }
 }
 
-// Upgrade a pre-v15 backup (or a cloud payload, which keeps stock inline on the
-// Item) to the split shape the local database expects since v15:
+// Upgrade a pre-v15 backup to the split shape the local database expects
+// since v15:
 //   - synthesise one ItemStock per item, in `locationId`, and strip the inline
 //     stock fields
 //   - re-key carts and cart items to `${locationId}:${vendorId|'no-vendor'}`
+//
+// This header used to say "a pre-v15 backup (or a cloud payload, which keeps
+// stock inline on the Item)". That stopped being true in PR 4b task 2: a cloud
+// export now carries `itemStocks` and `locations` of its own, so it takes the
+// already-split branch below. Absence of `itemStocks` now means "pre-v15 file"
+// and nothing else.
+//
 // A payload that already carries `itemStocks` is post-v15 — but only for the
 // items it actually has stock rows for; see `upgradeUnsplitItems`.
 //
-// `locationId` is the location the import targets. It mirrors the outbound
-// local → cloud rule (Ruling A: use the location ACTIVE at migration time) — a
-// cloud → local copy must land where the user is looking, or the pantry, every
-// group/detail view and the cart pages render empty after the reload with no
-// explanation. It defaults to the default location for callers with no active
-// location (boot-time and legacy paths).
+// `locationId` is where a PRE-v15 payload's synthesised stock and re-keyed
+// carts are placed, because such a payload names no location of its own. It
+// defaults to the default location for callers with no active location
+// (boot-time and legacy paths); the two UI call sites pass the active one
+// (components/settings/DataModeCard and ImportCard).
+//
+// IT NO LONGER DECIDES WHERE A CLOUD BACKUP LANDS. This paragraph used to
+// quote the outbound rule "use the location ACTIVE at migration time", because
+// a cloud payload carried no locations and had to be collapsed onto one. Since
+// PR 4b a cloud backup carries its own `locations` and `itemStocks`, and
+// `importLocalData`'s remap places them — so for any post-v15 payload this
+// parameter only affects items that still carry inline stock.
 function upgradeLegacyPayload(
   payload: ExportPayload,
   locationId: string,
@@ -387,6 +418,25 @@ export function buildLocationRemap(
   const payloadDefaultLocationId = findPayloadDefaultLocationId(payload)
   if (payloadDefaultLocationId === null) return remap
   if (payloadDefaultLocationId === destinationDefaultLocationId) return remap
+
+  // The destination's default id is already held by a DIFFERENT row in this
+  // payload. Remapping would give two payload rows the same id, and the write
+  // that follows keeps only one of them — a location would simply disappear.
+  // So keep every id verbatim instead.
+  //
+  // Nothing is lost by doing so. The remap exists only to stop a SECOND,
+  // stray default row appearing beside the destination's own, and that cannot
+  // happen when the destination's default id is in the payload already: that
+  // row is written, and on the local side `deserializeLocation` flags it.
+  //
+  // Only a hand-edited file reaches this branch. Neither exporter can write a
+  // payload whose default is one row while another row holds the destination's
+  // default id.
+  const locations = (payload.locations ?? []) as Array<Record<string, unknown>>
+  if (locations.some((row) => row.id === destinationDefaultLocationId)) {
+    return remap
+  }
+
   remap.set(payloadDefaultLocationId, destinationDefaultLocationId)
   return remap
 }
@@ -398,7 +448,10 @@ export function buildLocationRemap(
 // existing default instead of creating a second, stray location beside it.
 // `bulkCreateLocations` then finds that id already held by the caller's own row
 // and skips it (apps/server/src/resolvers/import.resolver.ts), which is what
-// the design means by "the payload's default is never uploaded as a row".
+// the design means by "the payload's default is never uploaded as a row". On
+// the cloud -> local side the same rewrite puts that row on
+// DEFAULT_LOCATION_ID, where `deserializeLocation` flags it and
+// `ensureDefaultLocationRow` therefore adds nothing.
 //
 // Cart ids go through `parseCartId` / `cartIdFor`, never `split(':')`: a vendor
 // id may itself contain a colon, because `bulkCreateVendors` stores
@@ -1331,10 +1384,39 @@ export async function importLocalData(
   strategy: ImportStrategy,
   locationId: string = DEFAULT_LOCATION_ID,
 ): Promise<void> {
-  // Pre-v15 backups (and cloud payloads) carry stock inline on the item and
-  // unscoped cart ids — upgrade them to the split shape before writing, into
-  // the caller's target location (the active one, for the UI paths).
-  const payload = upgradeLegacyPayload(rawPayload, locationId)
+  // Pre-v15 backups carry stock inline on the item and unscoped cart ids —
+  // upgrade them to the split shape before writing, into the caller's target
+  // location (the active one, for the UI paths). Since PR 4b task 2 a cloud
+  // export is already split, so this is a no-op for one.
+  const upgraded = upgradeLegacyPayload(rawPayload, locationId)
+
+  // THE REMAP RULE, cloud -> local direction (design §1): the payload's own
+  // default location maps onto THIS database's default, and every other
+  // location keeps its id. Without it a cloud backup's locations all arrive
+  // under their server cuids, no row matches DEFAULT_LOCATION_ID, and
+  // `ensureDefaultLocationRow` adds a stray empty "local" default beside the
+  // restored ones.
+  //
+  // NO ORDERING HAZARD ON THIS SIDE, unlike `remapPayloadForCloud`. There the
+  // destination's default has to be read over the network, and reading it
+  // before `clearAllData` returns an id that no longer exists. Here the
+  // destination's default is the module constant DEFAULT_LOCATION_ID: the v18
+  // upgrade fn and `ensureDefaultLocation` (db/index.ts) between them
+  // guarantee the local default is always that id. So nothing is read from the
+  // database, and the position of this line relative to `db.locations.clear()`
+  // below cannot matter. Do not "improve" it into a `db.locations` read.
+  //
+  // AFTER `upgradeLegacyPayload`, not before: that function can invent
+  // location ids of its own (it places a legacy payload's synthesised stock
+  // and cart prefixes in `locationId`), so remapping afterwards is what stops
+  // an id it created from escaping the rule.
+  //
+  // One call covers all three strategies, because each one hands the whole
+  // payload to `importLocations` / `importItemStocks`.
+  const payload = applyLocationRemap(
+    upgraded,
+    buildLocationRemap(upgraded, DEFAULT_LOCATION_ID),
+  )
 
   if (strategy === 'clear') {
     // Delete all tables in dependency order (children before parents)
