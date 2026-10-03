@@ -185,10 +185,20 @@ export async function expectFixtureStockPerLocation(
 /**
  * The non-default locations' stock is NOT at the default location.
  *
- * This is the assertion the two-location requirement exists for. With a
- * single-location fixture, "the location the payload named" and "the caller's
- * default" are the same id, so nothing could tell a correct import from one
- * that ignores location entirely.
+ * READ THIS AS A RESTATEMENT, NOT AS EXTRA COVERAGE.
+ * `expectFixtureStockPerLocation` already fails on any collapse onto the
+ * default, and it fails FIRST, so no mutation can single this function out.
+ * All three of task 8's mutation checks were red at
+ * `expectFixtureStockPerLocation` line 168 or at an earlier UI assertion; none
+ * of them ever reached this body. Root `CLAUDE.md` asks for exactly this
+ * label: an assertion that cannot be shown to catch something of its own is
+ * not evidence, whatever it reports.
+ *
+ * It is kept because it says the rule in the words a reader needs — "the
+ * payload's location, not the caller's default" — and because it reads the
+ * default by its `isDefault` FLAG rather than by name, which is one fewer thing
+ * to get wrong if the name assertions ever change. Do not count it toward
+ * coverage, and do not add a third such restatement.
  */
 export async function expectStockNotCollapsedOntoDefault(
   page: Page,
