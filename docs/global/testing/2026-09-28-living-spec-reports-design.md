@@ -129,8 +129,9 @@ Two Cloudflare Pages projects, direct upload, public:
 | `p1i-spec` | `spec.player1inventory.etblue.tw` | landing page, Playwright reports, feature page |
 | `p1i-spec-dev` | `dev-spec.player1inventory.etblue.tw` | full Vitest UI report |
 
-The user creates both projects and their custom domains once in the Cloudflare dashboard,
-and logs in with `wrangler login`.
+The user creates both projects and their custom domains once. Wrangler authenticates with
+a scoped API token (`CLOUDFLARE_API_TOKEN`, Cloudflare Pages: Edit only), not with
+`wrangler login`. See "One-time setup" below.
 
 ## Implementation notes (2026-09-29)
 
@@ -200,13 +201,44 @@ build.
 
 ## One-time setup (the user)
 
-1. `pnpm exec wrangler login`
-2. In the Cloudflare dashboard → Workers & Pages → Create → Pages → **Direct upload**:
-   create project `p1i-spec`, then project `p1i-spec-dev`. (Or let the first
-   `wrangler pages deploy` create them; it asks.)
-3. On each project → Custom domains: add `spec.player1inventory.etblue.tw` to `p1i-spec`
-   and `dev-spec.player1inventory.etblue.tw` to `p1i-spec-dev`.
-4. `pnpm spec:publish`
+> Changed on 2026-10-03: this section first said `pnpm exec wrangler login`. See Round 8
+> of the brainstorming log for why it now uses a scoped API token.
+
+Use a **scoped API token**, not `wrangler login`. `wrangler login` saves a broad token in a plain file in the home folder: it can change the whole Cloudflare account (DNS, Workers, other sites), and any program running as your user can read it. An API token with only **Cloudflare Pages: Edit** can do nothing except deploy Pages projects. It is also what a future CI job needs, because CI cannot open a browser.
+
+1. **Install dependencies** in the checkout you publish from, so `wrangler` 4.143.0 is in `node_modules`:
+   ```bash
+   pnpm install
+   ```
+2. **Create the API token.** Cloudflare dashboard → My Profile → API Tokens → Create Token → **Create Custom Token**:
+   - Permissions: `Account` · `Cloudflare Pages` · `Edit`
+   - Account Resources: `Include` · your account
+   - Nothing else. An expiry date is optional
+3. **Find the account ID.** Dashboard → Workers & Pages. The account ID is shown in the right-hand column.
+4. **Store the token outside the repo.** Never in a committed file. For example, in the macOS Keychain:
+   ```bash
+   security add-generic-password -a "$USER" -s p1i-cloudflare-pages -w   # prompts for the token
+   ```
+5. **Create the two Pages projects** (once):
+   ```bash
+   export CLOUDFLARE_API_TOKEN="$(security find-generic-password -s p1i-cloudflare-pages -w)"
+   export CLOUDFLARE_ACCOUNT_ID=<account id>
+   pnpm exec wrangler pages project create p1i-spec --production-branch main
+   pnpm exec wrangler pages project create p1i-spec-dev --production-branch main
+   ```
+   Creating them up front avoids an interactive prompt on the first deploy.
+6. **Add the custom domains** in the dashboard (Workers & Pages → project → Custom domains): `spec.player1inventory.etblue.tw` → `p1i-spec`, `dev-spec.player1inventory.etblue.tw` → `p1i-spec-dev`.
+7. Optional: turn off Wrangler's anonymous usage data with `pnpm exec wrangler telemetry disable`.
+
+## Each publish
+
+```bash
+export CLOUDFLARE_API_TOKEN="$(security find-generic-password -s p1i-cloudflare-pages -w)"
+export CLOUDFLARE_ACCOUNT_ID=<account id>
+pnpm spec:publish   # about 16 minutes: it runs every test
+```
+
+To revoke access, delete the token in My Profile → API Tokens.
 
 Other project names can be used with `SPEC_PAGES_PROJECT` and `SPEC_DEV_PAGES_PROJECT`.
 

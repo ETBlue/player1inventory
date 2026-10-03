@@ -214,6 +214,41 @@ Decisions:
 | Who can open it? | public + secret guard; private with Cloudflare Access | **Public + secret guard** | The repo is public and `VITE_` values are public by design. The build fails if the report contains a string that looks like a secret, so a mistake stops the publish instead of leaking |
 | When? | in step 1 as Task 4b; later on its own branch | **In step 1, Task 4b** | Small addition to the scripts Task 4 writes anyway |
 
+## Round 8: How Wrangler logs in (2026-10-03)
+
+The first setup said `pnpm exec wrangler login`. The user asked what that does, and whether
+Wrangler is safe.
+
+Facts checked:
+
+| Fact | Detail |
+|---|---|
+| Who makes Wrangler | Cloudflare. Source `github.com/cloudflare/workers-sdk`, npm publisher `wrangler-publisher <workers-devprod@cloudflare.com>`, license MIT OR Apache-2.0 |
+| Provenance | 4.143.0 has an SLSA provenance attestation: npm can verify it was built from that repo by Cloudflare's CI |
+| Install scripts | pnpm 10.28.2 runs install scripts only for packages in `onlyBuiltDependencies` (`@parcel/watcher`, `@prisma/engines`, `prisma`), so Wrangler's dependencies ran none |
+| What `wrangler login` does | an OAuth flow in the browser. It saves a **broad** token in a plain file in the home folder |
+
+Concerns, most important first:
+
+1. The `wrangler login` token can change the whole Cloudflare account (DNS, Workers, other
+   sites), and any program running as the user can read the file. This is the only real
+   concern.
+2. npm supply-chain attacks. True for every npm package; reduced by the lockfile and the
+   install-script allowlist above.
+3. What gets published. Handled by the secret guard (not screenshots).
+4. Anonymous telemetry. Privacy, not security. `wrangler telemetry disable` turns it off.
+
+| Option | Decision | Why |
+|---|---|---|
+| `wrangler login` | **Rejected** | Broad token, stored in a plain file |
+| **Scoped API token** (`CLOUDFLARE_API_TOKEN` with only Cloudflare Pages: Edit, plus `CLOUDFLARE_ACCOUNT_ID`), kept in the macOS Keychain | **Adopted** | Can only deploy Pages projects. It is also what a future CI job needs, because CI cannot open a browser |
+
+The two Pages projects are created with `wrangler pages project create`, so the first
+deploy does not stop at an interactive prompt.
+
+Not yet verified: that a token with only Pages: Edit is enough for
+`wrangler pages project create`. If it fails with a permission error, check this first.
+
 ## Final decision
 
 Build step 1 as described in
