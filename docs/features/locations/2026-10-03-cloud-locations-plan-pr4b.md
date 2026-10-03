@@ -62,23 +62,36 @@ with no error. That is a real loss of safety net and it is why task 8 exists.
 
 ## Ground rules for every task
 
-1. **Measure your own baseline.** Run the check on the unmodified tree first and diff the
+0. **THE WEB SUITE IS RED ON THIS BRANCH UNTIL TASK 3, ON PURPOSE.** Task 1 added two
+   failing tests in `apps/web/src/lib/importData.test.ts`, in the describe block
+   `importCloudData — a cart id keeps its location prefix (PR 4b task 3)`. They describe
+   behaviour task 3 builds. **Do not "fix" them, skip them, or delete them.** Measured
+   2026-10-03 at `640bbc53`: `pnpm test:web` gives **2 failed / 2259 passed (2261)**, 1
+   failed / 248 passed file. Any other failure is yours.
+
+1. **Run `pnpm install` and `pnpm codegen` first if the worktree is fresh.** This worktree
+   was made with a plain `git worktree add`, which skips the hook that does it, so
+   `node_modules/` and `src/generated/` may be missing. The symptom is
+   `vitest: command not found` or a missing generated type — not a code bug. `e2e/CLAUDE.md`
+   warns about the second one.
+
+2. **Measure your own baseline.** Run the check on the unmodified tree first and diff the
    **outputs**, not the numbers. Measured 2026-10-03 at `fbdd8869`: web **2259 tests / 249
    files**, server **346 / 24**. Every count in this plan goes stale on its own — PR 4a had
    six tasks in a row find a stale one.
-2. **`import.resolver.test.ts`'s stubs cannot see an ownership check.** `:195` does
+3. **`import.resolver.test.ts`'s stubs cannot see an ownership check.** `:195` does
    `p.location.findFirst.mockResolvedValue(DEFAULT_LOCATION)`, which answers yes for any id.
    Server-side tests touching ownership go in a separate file with the stateful fakes.
-3. **Read every fake before trusting it.** PR 4a found holes in five:
+4. **Read every fake before trusting it.** PR 4a found holes in five:
    `stockFake.matchesStock`, `inventoryLogFake` (no `findUnique`/`upsert`, discarded
    `data.id`), `shoppingFake.cart.upsert`, `stockFake.location.create`,
    `stockFake.itemStock.create`.
-4. **Run the mutation check and report it — and check it goes red for the reason you
+5. **Run the mutation check and report it — and check it goes red for the reason you
    claim.** PR 4a task 6 had a check go red on a `P2002` instead of the assertion it was
    testing, which proved nothing.
-5. **Run `pnpm codegen` after every schema or operation change.** Nothing to commit — both
+6. **Run `pnpm codegen` after every schema or operation change.** Nothing to commit — both
    generated directories are gitignored (`.gitignore:58-59`).
-6. One commit per task, with scope.
+7. One commit per task, with scope.
 
 ---
 
@@ -137,6 +150,49 @@ the `local` project's `testIgnore`.
 either surprises you, stop and say so before continuing.
 
 ---
+
+**Done 2026-10-03** — `915368fa`, `4a1c8f2f`, `640bbc53`. **The leak finding stands.**
+
+Part 1 is red, with the bare id the trace predicted:
+
+```
+FAIL src/lib/importData.test.ts > importCloudData — a cart id keeps its location prefix
+AssertionError: expected [ 'no-vendor', 'vendor_1' ]
+         to deeply equal [ 'loc_garage:no-vendor', 'loc_garage:vendor_1' ]
+```
+
+A second test shows the other half of the same loss: carts at any location other than the
+flattened one are **dropped entirely** (`expected [] to deeply equal [...]`).
+
+The agent also ran the check in reverse, unasked: replacing the filter-and-slice block with
+a pass-through turned both tests green, and restoring it turned them red again. So they are
+pinned on that exact code, not on something incidental.
+
+**Part 2 reproduces the leak end to end against real Postgres**, and the harm is readable
+two ways: `cartItemCountByItem(itemId)` answers `1` for user B, while the same query with
+B's own `locationId` answers `0`. B owns a cart item it can find at none of its own
+locations.
+
+Two things to carry forward:
+
+- **Task 1's first test passes `{ locationId: 'loc_garage' }` to `importCloudData`, and
+  task 7 removes that option.** Delete the argument then; the assertions stand. Neither this
+  plan nor task 1's brief spotted the collision — it is noted at the call site.
+- **The fixture's carts deliberately sit at non-default locations.** Task 3's remap maps the
+  payload's default onto the destination's default, so a cart prefixed with the payload
+  default will legitimately change id. Asserting it verbatim would let task 3 "fix" the test
+  task 1 exists to pin.
+
+`makeGql(request, userId)` and `cleanupCloudData(request, userId)` now take an optional user,
+defaulting to `E2E_USER_ID`, so all 18 existing call sites across 10 files are untouched.
+**Issue #320's two-user purge spec (4c) no longer has to build this.**
+
+Two things confirmed in passing, both already filed:
+
+- **#322** — nothing type-checks `e2e/`. There is no `e2e/tsconfig.json` and no tsconfig
+  includes the directory, so `pnpm build` cannot catch a type error in a spec.
+- **#324** — the flaky `cooking.stories.test.tsx` offline-banner test failed at load average
+  **28.09** and passed at **2.48**. Load-related, as suspected.
 
 ## Task 2 — cloud export becomes lossless
 
