@@ -1,7 +1,7 @@
 # Cloud locations PR 4b — implementation plan
 
 **Date:** 2026-10-03
-**Status:** 🔲 Pending
+**Status:** 🔄 Built 2026-10-04 — gate red on one E2E test, not yet pushed
 **Design:** [cloud locations PR 4 design](2026-10-02-cloud-locations-pr4-design.md)
 **Brainstorming:** [PR 4 brainstorming](2026-10-02-brainstorming-pr4.md)
 **Branch:** `feature/cloud-locations-pr4b`
@@ -869,6 +869,60 @@ test for the deleted dialog must be gone rather than silently skipped. Root `CLA
 
 ---
 
+**Done 2026-10-03** — `e2de5d2e`, `4f8de27e`, `31c1979c`, `293c82f8`.
+
+> **This note was written in task 9, from the four commits and their messages.** Task 7 left
+> no note of its own, so nothing here is attributed to the agent beyond what the diffs and
+> commit messages say. Read it as a record of what landed, not as a report of what was
+> measured.
+
+**THE COMMENT THIS TASK WAS TOLD TO WRITE WAS FALSE, AND TASK 7 REFUSED TO WRITE IT.** The
+plan above dictates the comment `// The remap maps the payload's default location onto THIS
+account's isDefault row, so the copy cannot start until the destination's locations are
+known`. `importCloudData` reads the destination's default **itself**, with its own
+`network-only` `GetLocations` inside `fetchCloudDefaultLocationId`, on every strategy. The
+hook's `useLocations()` result feeds the remap nothing, so the gate cannot be what the
+comment says it is. The same false reason appeared in the design doc and in brainstorming
+**decision 6** — which means the option the user chose there was presented with a
+justification that does not hold. Both documents were corrected in `293c82f8`.
+
+**The gate is still kept, for a different and honest reason:** the copy is one-shot and
+destructive, and on `clear` it deletes every `Location` row before the remap re-reads them,
+so it must not start while the hook's own `GetLocations` is in flight. That reason is argued
+from source, not measured, and the comment says so.
+
+**The stated mechanism for keeping `autoImportStarted` was also wrong.** `locationsLoaded`
+is a **boolean**, so "a location change mid-flight" does not re-fire the effect and a test
+written to that mechanism cannot fail. The real trigger is inside the copy:
+`importCloudData` calls `client.resetStore()` on the `clear` path, which refetches
+`GetLocations`, so the boolean goes true → false → true while `MIGRATION_PROMPTED_KEY` is
+still unset. The ref stays; its comment now names that trigger.
+
+**`importCloudData`'s `locationId` option is gone**, not just unused. Task 3 had left it in
+place documented as dead.
+
+**What the dialog deletion took with it.** 4 files / 154 lines in
+`MigrationLocationWarningDialog/` — including its `.stories.tsx` and its
+`.stories.test.tsx`, so the smoke test is **deleted, not silently skipped** (mutation check
+6's negative control). Both call sites went too, and with them more than the dialog:
+
+| Call site | Also removed |
+|---|---|
+| `PostLoginMigrationDialog` | the TanStack Query over the local `locations` table, `resolveLocalActiveLocationId`, and the `showLocationWarning` state that gated the prompt and disabled the Import button until that read landed. `importData('append')` **is** the copy, and it had two entry points; it is now called straight from the Import button |
+| `DataModeCard` | `requestEnableSwitch`, the `locationWarning` variant of `EnableFlow`, the `useLocations()` / `useActiveLocation()` reads, and `disabled={!locationsLoaded}` on all three strategy buttons. The card needs no location list at all now |
+
+**Tests rewritten, not deleted.** `PostLoginMigrationDialog/index.test.tsx` goes from 2
+describes / 5 `it`s to 1 / 3; `DataModeCard/index.test.tsx` loses 2 describes / 3 `it`s and
+gains 1 / 2. Both pin the inverse rule: one press copies the pantry, no location is named,
+and the strategy buttons no longer wait for a list. Two assertions are labelled **negative
+controls** — deleting a component cannot make its heading appear.
+
+**The 4 i18n keys** under `settings.migrationLocationWarning` (`title`, `description`,
+`leftBehind`, `continue`) are gone from both locale files. **`common.cancel` was kept** — the
+dialog used it and so do several others.
+
+---
+
 ## Task 8 — E2E that can actually see a wrong location
 
 **Neither `verifyRelations` copy asserts a location or a quantity today.** They are separate
@@ -1095,6 +1149,114 @@ the destination's existing default row alone in both modes. Corrected before com
 
 ---
 
+**Done 2026-10-04 — THE GATE IS RED ON ONE E2E TEST. The branch must not be pushed yet.**
+
+Everything except one cloud E2E test passes. Load average 1.6–2.5 throughout, so this is
+**not** the starvation signature.
+
+| Command | Result |
+|---|---|
+| `uptime` before starting | load 2.45 / 2.34 / 2.94 |
+| `pnpm codegen` | pass |
+| `(cd apps/web && pnpm lint)` | pass — 623 files, the same **4** pre-existing suppression warnings in `src/routes/shopping/index.tsx` at 187, 191, 211, 215 |
+| `pnpm build` (root, full) | pass — codegen + web `tsc -b && vite` + server `tsc`. No `error TS` lines |
+| `grep 'TS6385' /tmp/p1i-build-pr4b.log` | **no match** |
+| `(cd apps/web && pnpm build-storybook)` | pass, exit 0 |
+| `(cd apps/web && pnpm check)` | pass — the same 4 warnings |
+| `pnpm test` (repo root) | pass — `apps/web` `Test Files 248 passed (248)` / `Tests 2285 passed (2285)` in 57.86s; `apps/server` `Test Files 24 passed (24)` / `Tests 347 passed (347)` in 2.54s; `scripts/spec` 57 pass |
+| `pnpm test:e2e:all` → `local` | **PASS** — 5 skipped, 171 passed, 3m16s |
+| `pnpm test:e2e:all` → `cloud` | **FAIL(1)** — 1 failed, 7 skipped, 95 passed, 11m59s |
+| `pnpm test:e2e:all` → `pwa` | **PASS** — 69 passed, 1m24s |
+
+Against `main`'s last full gate (local 170 passed / 5 skipped, cloud 90 / 7, pwa 69):
+
+| Project | Collected now | Was | Gained |
+|---|---|---|---|
+| `local` | 176 in 22 files | 175 | **+1** — `import-export-local.spec.ts` 3 → 4 |
+| `cloud` | 103 in 20 files | 97 | **+6**, of which 4b owns 5: 1 for `cart-id-cross-user-leak.spec.ts` and 4 for `import-export-cloud.spec.ts` 2 → 6. The sixth arrived between 2026-09-24 and this branch and is not attributable from here |
+| `pwa` | 69 in 2 files | 69 | unchanged |
+
+### The failure, and why it is not the flake task 8 predicted
+
+```
+[cloud] › e2e/tests/settings/import-export-cloud.spec.ts:314:1
+  › user can export and re-import cloud data (cloud → cloud)
+Test timeout of 30000ms exceeded.
+Error: expect(locator).toBeVisible() failed
+Locator: getByLabel('Remove Fixture Item')
+Expected: visible / Error: element(s) not found
+  at verifyRelations (e2e/tests/settings/import-export-cloud.spec.ts:246:70)
+```
+
+Task 8 warned this test might flake under load. **It is not a flake.** Three measurements:
+
+1. It failed in the full gate, then failed **again** with its spec file run alone
+   (`--project=cloud e2e/tests/settings/import-export-cloud.spec.ts`, 5 passed / 1 failed,
+   2.1m) at load **1.65**. A failing set that moves is starvation; a repeat at low load is
+   not.
+2. **The page snapshot captured at the failure shows the element present** —
+   `checkbox "Remove Fixture Item" [checked]` on the recipe's Items tab, in
+   `test-results/…/error-context.md`. The round trip restored the data correctly. The
+   assertion lost a race; it did not read a wrong value.
+3. Re-run as a single test with `--timeout=90000`: **1 passed (36.5s)**.
+
+So the test needs about **36.5s** against the default 30s `timeout`, and cannot pass as
+written. 4b's own new location and quantity readbacks are what pushed it over.
+
+**Not fixed, on purpose** — the brief says a failure is a hard stop, and the three options
+trade different things: `test.setTimeout(60000)` on that one test (one line, hides that a
+cloud round trip now costs 36s); raising `timeout` for the whole `cloud` project (every
+cloud test gets a longer leash, including where 30s is a useful alarm); or splitting
+`verifyRelations`' seven UI steps across two tests (more wall time, each test inside budget
+and naming its own failure).
+
+**`.husky/pre-push` will not catch this.** It runs `pnpm test`, which is green.
+
+### Steps 5 and 6, verified rather than assumed
+
+- **4** `stockDualWrite` call sites, measured with
+  `grep -rnE "await (mirrorStock|mirrorStockToDefaultLocation|mirrorItemStockToItem)\(" apps/server/src/resolvers`:
+  `item.resolver.ts:191`, `cart.resolver.ts:178`, `recipe.resolver.ts:103`,
+  `itemStock.resolver.ts:137`.
+- **5** `REMOVED IN PR 5` markers, **0** `REMOVED IN PR 4b`. The table in the status doc's
+  *Amendment 2026-10-03* is correct as written.
+- **`settings.import.unknownLocations` is dead and gone.** It appears in no source file and
+  in neither locale file — only in these docs.
+- `readStoredLocationId` now has **no caller outside `useActiveLocation.tsx`**; the three
+  remaining hits are comments. `apps/web/src/hooks/CLAUDE.md` says so and is right.
+
+### Docs updated
+
+| File | What |
+|---|---|
+| `docs/INDEX.md` | rows 53 and 54 — 4a marked merged (`#328`), 4b's contents and gate state recorded, the cart-id leak moved from "not yet proved" to proved, and the PR 4b plan linked |
+| `cloud-locations-status.md` | header, the 4a/4b rows, *PR 4 owes* (both open items closed by task 7), and a new *Amendment 2026-10-04* carrying issue #330, the tasks 3+6 regression and its process rule, the migration gate's false reason, the dual-write re-count, and the gate run |
+| `2026-10-02-cloud-locations-pr4-design.md` | status header, the dual-write counts after 4b, mutation-check rows 2–4 filled in with measured failure text, and a new *4b's mutation checks, measured* table of the **14** checks actually run |
+| root `CLAUDE.md` | web/server counts 2259/249 + 346/24 → **2285/248 + 347/24**; the cloud `testMatch` 19 of 26 → **20 of 27**; two new paragraphs on `cart-id-cross-user-leak.spec.ts` (a labelled negative control) and on the two import/export specs; the E2E totals 341/26 → **348/27**; and the 2026-10-04 gate measurement, written as a worked example of telling a real failure from a phantom |
+| `e2e/CLAUDE.md` | `testMatch` 19 → **20** files, the 20th named, and measured cloud counts 97 → 103 |
+| this plan | task 7's missing Done note (reconstructed from its four commits and labelled as such) and this task 9 note |
+
+### What this brief got wrong
+
+1. **"Report the new numbers and say which project gained what" assumed the gate would be
+   green.** It is not. The brief's *If the gate fails* clause covered it, so no harm — but
+   the expected-outcome table ("cloud 99 → 103, local 175 → 176") reads as a prediction of
+   success and is the number a careless reader would copy forward.
+2. **Task 8's flake prediction was wrong in substance, not just in degree.** It said the
+   `cloud → cloud` test "may flake in the full gate" and attributed one earlier failure to
+   load 16.46. The test is **deterministically over budget** at 36.5s against 30s. Blaming
+   load once already is how it survived to task 9.
+3. **"Task 8 measured the cloud project at 20 files" — true. "cloud 99 → 103" — true.** But
+   the brief also said `main`'s last gate was "cloud 90 / 7", which totals 97, so the 99 it
+   quotes for this branch before task 8 cannot be derived from anything in the brief. The
+   +6 is real; only 5 of it belongs to 4b.
+4. **Step 2b asked for findings that were already written.** The migration gate's false
+   reason was corrected in `293c82f8` during task 7, and the dual-write counts in
+   *Amendment 2026-10-03*. Both were re-verified rather than re-written.
+5. **Step 2e said "fill in what you measured" for task 9 only.** Task 7 had no Done note at
+   all, which the brief did not flag even though it lists task 8's note as the most
+   important thing in the file. A missing note is easier to miss than a wrong one.
+
 ## Known gaps this PR will leave
 
 | Gap | Owner |
@@ -1105,3 +1267,7 @@ the destination's existing default row alone in both modes. Corrected before com
 | `updatedAt` pass-through on the four new bulk mutations is unresolved — no local test can settle it, because every server test runs against a fake | needs real SQL |
 | Local allows two `ItemStock` rows on one `[itemId, locationId]` pair (the Dexie index at `db/index.ts:612` is **not** unique) while Postgres forbids it, so such a local DB cannot round-trip | accepted |
 | PR 3b's migrated-data check — nothing has run the new server code against rows the re-key migration converted | still owed from 3b |
+| Issue **#330** — on `replace`, `bulkCreate` and `bulkUpsert` share one `ImportSession` and the batch key carries no mode, so the upsert pass skips any entity the create pass already keyed. Reachable for all nine older entities | #330, its own PR |
+| The `cloud → cloud` E2E test is over its 30s time budget (36.5s). The gate is red on it | needs a decision — see task 9 |
+| The `clear` and `replace` strategies have no E2E coverage at all. `ImportCard` reaches them only through the conflict dialog, and no spec drives that dialog | open |
+| `importData.ts` is **net +331 lines** (2037 → 2368) despite the deletions. The design doc's *Less code to maintain* row counts what went, not the balance | accepted |
