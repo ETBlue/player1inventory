@@ -4,7 +4,6 @@ import { Cloud, Database } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { clearCache } from '@/apollo/persistence'
-import { MigrationLocationWarningDialog } from '@/components/shared/MigrationLocationWarningDialog'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,12 +22,8 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import {
-  resolveLocalActiveLocationId,
-  useActiveLocation,
-} from '@/hooks/useActiveLocation'
+import { resolveLocalActiveLocationId } from '@/hooks/useActiveLocation'
 import { useDataMode } from '@/hooks/useDataMode'
-import { useLocations } from '@/hooks/useLocations'
 import {
   MIGRATION_PROMPTED_KEY,
   MIGRATION_STRATEGY_KEY,
@@ -41,14 +36,16 @@ import { type ImportStrategy, importLocalData } from '@/lib/importData'
 
 type SwitchFlow = 'idle' | 'copy' | 'conflict'
 type SignOutFlow = 'idle' | 'askOffline' | 'askMigrate' | 'migrating'
-// The multi-location warning carries the strategy the user picked, so
-// "showing the warning" and "knowing what to do on confirm" cannot drift apart.
+// NO `locationWarning` VARIANT. It used to carry the strategy the user picked
+// through `MigrationLocationWarningDialog`, which warned that only the active
+// location's stock would be copied. Cloud locations PR 4b made the copy carry
+// every location, so the warning stopped being true and both the dialog and
+// this variant are gone.
 type EnableFlow =
   | { kind: 'idle' }
   | { kind: 'confirm' }
   | { kind: 'copyAsk' }
   | { kind: 'strategyAsk' }
-  | { kind: 'locationWarning'; strategy: ImportStrategy }
 
 // Inner component that calls useUser() — only rendered when not in E2E mode
 function CloudModeSectionWithUser() {
@@ -262,20 +259,13 @@ export function DataModeCard() {
   const [enableFlow, setEnableFlow] = useState<EnableFlow>({ kind: 'idle' })
   const { t } = useTranslation()
 
-  // The copy itself runs after the reload, in `usePostLoginMigration`'s
-  // auto-import branch, and sends only the ACTIVE location's stock (cloud has no
-  // per-location ItemStock yet). Warn here — before the strategy is stored —
-  // whenever there is another location whose stock will be left behind.
-  const { data: locations } = useLocations()
-  const { activeLocationId, activeLocation } = useActiveLocation()
-  // Until the list has loaded there is no way to tell a single-location pantry
-  // from a multi-location one, and defaulting to "no warning" would let a fast
-  // click skip it. Hold the copy instead — `locations` is undefined only while
-  // the query is in flight.
-  const locationsLoaded = locations !== undefined
-  const otherLocations = (locations ?? []).filter(
-    (loc) => loc.id !== activeLocationId,
-  )
+  // NO LOCATION READ HERE ANY MORE. This card used to call `useLocations()`
+  // and `useActiveLocation()` to list the locations a local -> cloud copy would
+  // leave behind, and hold the three strategy buttons disabled until that list
+  // had loaded. The copy keeps every location since cloud locations PR 4b, so
+  // there is nothing to leave behind, nothing to warn about, and nothing to
+  // wait for. The copy itself still runs after the reload, in
+  // `usePostLoginMigration`'s auto-import branch.
 
   function doEnableSwitch(strategy?: ImportStrategy) {
     if (strategy) {
@@ -284,15 +274,6 @@ export function DataModeCard() {
     }
     localStorage.setItem(DATA_MODE_STORAGE_KEY, 'cloud')
     window.location.reload()
-  }
-
-  // Single-location pantries (the common case) get no extra confirmation.
-  function requestEnableSwitch(strategy: ImportStrategy) {
-    if (otherLocations.length === 0) {
-      doEnableSwitch(strategy)
-      return
-    }
-    setEnableFlow({ kind: 'locationWarning', strategy })
   }
 
   return (
@@ -420,38 +401,18 @@ export function DataModeCard() {
             >
               {t('common.cancel')}
             </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={!locationsLoaded}
-              onClick={() => requestEnableSwitch('skip')}
-            >
+            <AlertDialogAction onClick={() => doEnableSwitch('skip')}>
               {t('settings.dataMode.enableStrategyDialog.skip')}
             </AlertDialogAction>
-            <AlertDialogAction
-              disabled={!locationsLoaded}
-              onClick={() => requestEnableSwitch('replace')}
-            >
+            <AlertDialogAction onClick={() => doEnableSwitch('replace')}>
               {t('settings.dataMode.enableStrategyDialog.overwrite')}
             </AlertDialogAction>
-            <AlertDialogAction
-              disabled={!locationsLoaded}
-              onClick={() => requestEnableSwitch('clear')}
-            >
+            <AlertDialogAction onClick={() => doEnableSwitch('clear')}>
               {t('settings.dataMode.enableStrategyDialog.clearAndImport')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* ④ Multi-location warning — only when another location would be left behind */}
-      {enableFlow.kind === 'locationWarning' && (
-        <MigrationLocationWarningDialog
-          open
-          activeLocationName={activeLocation?.name ?? activeLocationId}
-          otherLocationNames={otherLocations.map((loc) => loc.name)}
-          onConfirm={() => doEnableSwitch(enableFlow.strategy)}
-          onCancel={() => setEnableFlow({ kind: 'strategyAsk' })}
-        />
-      )}
     </>
   )
 }

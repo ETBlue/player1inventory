@@ -103,99 +103,14 @@ async function seedLocations(...entries: Array<[string, string]>) {
   )
 }
 
-describe('PostLoginMigrationDialog — multi-location warning', () => {
-  // The sign-in copy flattens the local payload onto ONE location before it
-  // reaches cloud (`flattenPayloadForCloud`), so the user must be told what is
-  // left out.
+// REWRITTEN BY CLOUD LOCATIONS PR 4b TASK 7. This file held two describes and
+// 5 its, all about `MigrationLocationWarningDialog`: the warning named the one
+// local location whose stock would be copied and listed the ones left behind,
+// and the dialog read the LOCAL locations table to build it. The copy keeps
+// every location now, so the warning stopped being true and the component was
+// deleted. These 3 its pin what is left.
+describe('PostLoginMigrationDialog — signing in copies the local pantry', () => {
   beforeEach(async () => {
-    localStorage.removeItem('migration-prompted')
-    // A local pantry is what puts the hook into the 'prompting' state.
-    await db.items.put({
-      id: 'item-1',
-      name: 'Milk',
-      tagIds: [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    })
-  })
-
-  afterEach(async () => {
-    localStorage.clear()
-    vi.mocked(importCloudData).mockClear()
-    vi.mocked(getLocations).mockReset()
-    await db.items.clear()
-    await db.locations.clear()
-  })
-
-  it('user with several locations confirms the warning before the copy runs', async () => {
-    // Given two locations with 'office' active
-    await seedLocations(['local', 'My Home'], ['office', 'Office'])
-    localStorage.setItem(activeLocationStorageKey('local'), 'office')
-    const user = userEvent.setup()
-    renderDialog()
-
-    // When the user accepts the import prompt
-    await user.click(await screen.findByRole('button', { name: 'Import' }))
-
-    // Then the warning names the location being copied, and nothing is sent yet
-    expect(
-      await screen.findByRole('heading', {
-        name: 'Only Office will be copied',
-      }),
-    ).toBeInTheDocument()
-    expect(screen.getByText(/My Home/)).toBeInTheDocument()
-    expect(importCloudData).not.toHaveBeenCalled()
-
-    // When the user confirms
-    await user.click(screen.getByRole('button', { name: 'Copy anyway' }))
-
-    // Then the copy runs
-    await waitFor(() => expect(importCloudData).toHaveBeenCalled())
-  })
-
-  it('user with a single location is not warned', async () => {
-    // Given only the default location
-    await seedLocations(['local', 'My Home'])
-    const user = userEvent.setup()
-    renderDialog()
-
-    // When the user accepts the import prompt
-    await user.click(await screen.findByRole('button', { name: 'Import' }))
-
-    // Then the copy runs straight away — no extra confirmation
-    await waitFor(() => expect(importCloudData).toHaveBeenCalled())
-    expect(
-      screen.queryByRole('heading', { name: /will be copied/ }),
-    ).not.toBeInTheDocument()
-  })
-
-  it('user cannot start the copy while the location list is still loading', async () => {
-    // Given the location query has not resolved yet
-    vi.mocked(getLocations).mockReturnValue(new Promise(() => {}))
-    const user = userEvent.setup()
-    renderDialog()
-
-    // When the user accepts the import prompt
-    await user.click(await screen.findByRole('button', { name: 'Import' }))
-
-    // Then nothing is copied — treating an unresolved list as a single-location
-    // pantry would skip the warning for a multi-location user who clicks fast
-    expect(importCloudData).not.toHaveBeenCalled()
-  })
-})
-
-// The warning is about a LOCAL → cloud copy, and this dialog only ever runs in
-// cloud mode (its hook is gated on `isSignedIn`). Since `useLocations` became
-// dual-mode it hands cloud mode the CLOUD list, which is not what is being
-// copied — these two tests pin the dialog to the local list and the local
-// active id. The two stores are seeded to DISAGREE, so a dialog reading the
-// wrong one cannot pass either test.
-describe('PostLoginMigrationDialog — cloud mode reads the LOCAL locations', () => {
-  const CLOUD_HOME = 'clh0me00000000000000000a'
-  const CLOUD_OFFICE = 'clh0me00000000000000000b'
-
-  beforeEach(async () => {
-    localStorage.setItem('data-mode', 'cloud')
     localStorage.removeItem('migration-prompted')
     // A local pantry is what puts the hook into the 'prompting' state.
     await db.items.put({
@@ -220,51 +135,64 @@ describe('PostLoginMigrationDialog — cloud mode reads the LOCAL locations', ()
     await db.locations.clear()
   })
 
-  it('user with two LOCAL locations is warned even though cloud has only one', async () => {
-    // Given two local locations with 'office' active locally, and a cloud
-    // account holding a single location — nothing would be left behind if the
-    // dialog looked at the cloud list, but 'My Home' really would be
+  it('user with several locations has the whole pantry copied on one press', async () => {
+    // Given two LOCAL locations with 'office' active — the case that used to
+    // raise a warning because only one location's stock would travel
     await seedLocations(['local', 'My Home'], ['office', 'Office'])
     localStorage.setItem(activeLocationStorageKey('local'), 'office')
-    mockCloudLocations([{ id: CLOUD_HOME, name: 'Cloud Home' }])
-    localStorage.setItem(activeLocationStorageKey('cloud'), CLOUD_HOME)
     const user = userEvent.setup()
     renderDialog()
 
     // When the user accepts the import prompt
     await user.click(await screen.findByRole('button', { name: 'Import' }))
 
-    // Then the warning names the LOCAL location being copied and the local one
-    // left behind, and nothing is sent yet
-    expect(
-      await screen.findByRole('heading', {
-        name: 'Only Office will be copied',
-      }),
-    ).toBeInTheDocument()
-    expect(screen.getByText(/My Home/)).toBeInTheDocument()
-    expect(screen.queryByText(/Cloud Home/)).not.toBeInTheDocument()
-    expect(importCloudData).not.toHaveBeenCalled()
+    // Then the copy runs on that one press — no second confirmation, and the
+    // call names no location, so every location travels
+    await waitFor(() => expect(importCloudData).toHaveBeenCalled())
+    const call = vi.mocked(importCloudData).mock.calls[0]
+    expect(call[1]).toBe('skip')
+    expect(call[3]).toBeUndefined()
   })
 
-  it('user with one LOCAL location is not warned even though cloud has two', async () => {
-    // Given a single local location and a cloud account holding two — reading
-    // the cloud list here would interrupt a copy that leaves nothing behind
+  it('user with a single location has their pantry copied', async () => {
+    // Given only the default location
     await seedLocations(['local', 'My Home'])
-    mockCloudLocations([
-      { id: CLOUD_HOME, name: 'Cloud Home' },
-      { id: CLOUD_OFFICE, name: 'Cloud Office' },
-    ])
-    localStorage.setItem(activeLocationStorageKey('cloud'), CLOUD_HOME)
     const user = userEvent.setup()
     renderDialog()
 
     // When the user accepts the import prompt
     await user.click(await screen.findByRole('button', { name: 'Import' }))
 
-    // Then the copy runs straight away — no spurious confirmation
+    // Then the copy runs
+    await waitFor(() => expect(importCloudData).toHaveBeenCalled())
+  })
+
+  // NEGATIVE CONTROL, named as one. Deleting a component cannot make its
+  // heading appear, so this assertion passes trivially now. It is here to
+  // catch a re-introduced confirmation step, not as evidence of anything.
+  it('user is not asked a second question before the copy', async () => {
+    // Given a multi-location local pantry in cloud mode, where the cloud
+    // account holds a DIFFERENT single location — the old warning read one
+    // list or the other, so the two stores are seeded to disagree
+    await seedLocations(['local', 'My Home'], ['office', 'Office'])
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem(activeLocationStorageKey('local'), 'office')
+    mockCloudLocations([{ id: 'clh0me00000000000000000a', name: 'Cloud Home' }])
+    localStorage.setItem(
+      activeLocationStorageKey('cloud'),
+      'clh0me00000000000000000a',
+    )
+    const user = userEvent.setup()
+    renderDialog()
+
+    // When the user accepts the import prompt
+    await user.click(await screen.findByRole('button', { name: 'Import' }))
+
+    // Then no further dialog appears and the copy has already run
     await waitFor(() => expect(importCloudData).toHaveBeenCalled())
     expect(
       screen.queryByRole('heading', { name: /will be copied/ }),
     ).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Copy anyway' })).toBeNull()
   })
 })
