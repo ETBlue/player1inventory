@@ -366,10 +366,21 @@ describe('Recipe resolvers', () => {
 
 // ─── consumeRecipes ──────────────────────────────────────────────────────────
 //
-// Three groups, on purpose. The first pins the `Item` half of PR 2's
-// dual-write, the second the `ItemStock` half. Deleting either half must turn
-// exactly one group red — that pair is what "dual-write" means, and until PR 5
-// it is what keeps a browser on a stale bundle working.
+// Three groups, on purpose, and what they pin changed in cloud locations PR 5.
+//
+// The first two used to be the two halves of PR 2's dual-write — group 1 the
+// `Item` write, group 2 the `ItemStock` write — and deleting either half turned
+// exactly one group red. PR 5 deleted `Item`'s five state columns and the
+// `prisma.item.updateMany` that fed them, so there is no `Item` half left.
+// Group 1 now pins the end state of the ONE write (`writeStock`) plus the
+// inventory log; group 2 pins the stock row that write lands on.
+//
+// This file's prisma mock no longer carries an `item` store at all, so a
+// reinstated `Item` write throws `Cannot read properties of undefined` rather
+// than passing quietly. That is the guard, not an assertion — two
+// `expect(mockPrisma.item.updateMany).not.toHaveBeenCalled()` controls were
+// removed in PR 5 task 2 precisely because, with the source call gone, they
+// could never fail.
 //
 // The third group, at the bottom of this file, pins PR 3b Task 3: WHICH
 // location those writes land in. The first two groups cannot: they omit

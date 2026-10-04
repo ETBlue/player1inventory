@@ -18,10 +18,12 @@ import type { Context } from '../context.js'
 // with `itemStock.resolver.test.ts`.
 //
 // `location` and `itemStock` are a STATEFUL fake instead (src/test/stockFake.ts),
-// because checkout's PR-2 dual-write is only meaningful as an end state: the
+// because checkout's stock write is only meaningful as an end state: the
 // interesting questions are "did the row get the increment" and "was a missing
 // row created", neither of which a call recorder can answer without restating
-// the implementation. The fake enforces `@@unique([itemId, locationId])` and
+// the implementation. (That reason was first written for PR 2's dual-write
+// bridge. Cloud locations PR 5 deleted the bridge and made this write the only
+// one checkout makes, which makes the stateful fake MORE necessary, not less.) The fake enforces `@@unique([itemId, locationId])` and
 // models Prisma's `where` semantics — see that file for why both matter.
 vi.mock('../lib/prisma.js', async () => {
   const { createStockFake } = await import('../test/stockFake.js')
