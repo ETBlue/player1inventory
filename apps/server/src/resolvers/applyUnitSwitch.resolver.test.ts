@@ -22,15 +22,6 @@ interface FakeItem {
   targetUnit: string
   amountPerPackage: number | null
   consumeAmount: number
-  // The five legacy state columns PR 5 drops. Nothing writes them any more —
-  // PR 5 task 3 deleted the mirror — but `Item` still DECLARES them in GraphQL
-  // until task 4, and `MUTATION` below selects two, so the fixture must carry
-  // values or those non-null fields come back null.
-  targetQuantity: number
-  refillThreshold: number
-  packedQuantity: number
-  unpackedQuantity: number
-  dueDate: Date | null
   createdAt: Date
   updatedAt: Date
 }
@@ -170,8 +161,6 @@ const MUTATION = `
       name
       targetUnit
       amountPerPackage
-      targetQuantity
-      unpackedQuantity
     }
   }
 `
@@ -229,13 +218,6 @@ function seed() {
       targetUnit: 'measurement',
       amountPerPackage: 500,
       consumeAmount: 100,
-      // Left at 99 and never written. A test asserting these would be
-      // asserting the fixture, not the resolver.
-      targetQuantity: 99,
-      refillThreshold: 99,
-      packedQuantity: 99,
-      unpackedQuantity: 99,
-      dueDate: null,
       createdAt: new Date('2026-01-01T00:00:00.000Z'),
       updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     },

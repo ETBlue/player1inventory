@@ -9,20 +9,19 @@ import { toGraphQL as itemStockToGraphQL } from './itemStock.resolver.js'
 import type { Cart, CartItem, InventoryLog, Item, ItemStock, Location, Recipe, Resolvers, Shelf, Tag, TagType, Vendor } from '../generated/graphql.js'
 import type { ExpirationMode, Prisma, Location as PrismaLocation, TagColor, TargetUnit } from '@prisma/client'
 
-// Map a Prisma item (with junction rows) to the GraphQL Item shape
+// Map a Prisma item (with junction rows) to the GraphQL Item shape.
+//
+// Configuration only. Cloud locations PR 5 dropped the five per-location state
+// fields from `type Item`, so they are neither read here nor sent — stock rows
+// reach the client through `ItemStock`, each naming its location.
 function itemToGraphQL(item: {
   id: string
   name: string
   targetUnit: TargetUnit
-  targetQuantity: number
-  refillThreshold: number
-  packedQuantity: number
-  unpackedQuantity: number
   consumeAmount: number
   packageUnit?: string | null
   measurementUnit?: string | null
   amountPerPackage?: number | null
-  dueDate?: Date | null
   estimatedDueDays?: number | null
   expirationThreshold?: number | null
   expirationMode: ExpirationMode
@@ -43,7 +42,6 @@ function itemToGraphQL(item: {
     vendorIds: item.vendors.map((v) => v.vendorId),
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
-    dueDate: item.dueDate ? item.dueDate.toISOString() : null,
   } as unknown as Item
 }
 
@@ -426,11 +424,14 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       if (items.length === 0) return []
       const results: Item[] = []
       for (const item of items) {
-        const { id, tagIds, vendorIds, createdAt, updatedAt, dueDate, targetUnit, expirationThreshold, ...rest } = item
+        const { id, tagIds, vendorIds, createdAt, updatedAt, targetUnit, expirationThreshold, ...rest } = item
         // Skip if already exists
         const existing = await prisma.item.findUnique({ where: { id } })
         if (existing) continue
         const expirationMode = (rest as { expirationMode?: string }).expirationMode
+        // `...rest` is CONFIGURATION only — cloud locations PR 5 dropped the
+        // five per-location state fields from `ItemInput`, so no spread can
+        // reach a stock column from here.
         const created = await prisma.item.create({
           data: {
             id,
@@ -440,7 +441,6 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             expirationMode: expirationMode
               ? (expirationMode === 'days from purchase' ? 'days_from_purchase' : expirationMode as ExpirationMode)
               : 'disabled',
-            dueDate: dueDate ? new Date(dueDate) : undefined,
             createdAt: new Date(createdAt),
             updatedAt: new Date(updatedAt),
             userId,
@@ -677,8 +677,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       if (items.length === 0) return []
       const results: Item[] = []
       for (const item of items) {
-        const { id, tagIds, vendorIds, createdAt, updatedAt, dueDate, targetUnit, expirationThreshold, ...rest } = item
+        const { id, tagIds, vendorIds, createdAt, updatedAt, targetUnit, expirationThreshold, ...rest } = item
         const expirationMode = (rest as { expirationMode?: string }).expirationMode
+        // CONFIGURATION only — same reason as `bulkCreateItems` above.
         const data = {
           ...rest,
           targetUnit: targetUnit as TargetUnit,
@@ -686,7 +687,6 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           expirationMode: expirationMode
             ? (expirationMode === 'days from purchase' ? 'days_from_purchase' : expirationMode as ExpirationMode)
             : 'disabled',
-          dueDate: dueDate ? new Date(dueDate) : undefined,
           createdAt: new Date(createdAt),
           updatedAt: new Date(updatedAt),
           userId,

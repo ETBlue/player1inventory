@@ -281,16 +281,16 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         // The Item's own configuration — `targetUnit`, `amountPerPackage`,
         // `consumeAmount` and the rest — through the SAME mapping `updateItem`
-        // uses. The five per-location state keys are dropped first: they are
-        // `stockConversions`' to write, never the Item's. (`UpdateItemInput`
-        // still carries them until PR 5 task 4 removes them, which is why the
-        // deletes below are still needed.)
+        // uses.
+        //
+        // No per-location state can arrive this way any more. Until cloud
+        // locations PR 5 task 4, `UpdateItemInput` carried the five state
+        // fields and five `delete itemData.<field>` lines stood here to drop
+        // them before the write. The input no longer declares them and
+        // `buildItemUpdateData` cannot emit them, so the deletes were removed
+        // with the fields. Per-location state is `stockConversions`' to write,
+        // and only `writeStock` below writes it.
         const itemData = buildItemUpdateData(updates)
-        delete itemData.targetQuantity
-        delete itemData.refillThreshold
-        delete itemData.packedQuantity
-        delete itemData.unpackedQuantity
-        delete itemData.dueDate
         if (Object.keys(itemData).length > 0) {
           await tx.item.update({ where: { id: itemId }, data: itemData })
         }

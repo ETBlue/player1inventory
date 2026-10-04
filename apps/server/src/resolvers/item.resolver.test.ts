@@ -83,12 +83,7 @@ function makeItem(overrides: Partial<{
     measurementUnit: null,
     amountPerPackage: null,
     targetUnit: 'package',
-    targetQuantity: 0,
-    refillThreshold: 0,
-    packedQuantity: 0,
-    unpackedQuantity: 0,
     consumeAmount: 0,
-    dueDate: null,
     estimatedDueDays: null,
     expirationThreshold: null,
     expirationMode: 'disabled',
@@ -445,37 +440,6 @@ describe('Item resolvers', () => {
     expect(mockPrisma.itemTag.count).toHaveBeenCalledWith({ where: { tagId: 'tag_1' } })
   })
 
-  it('a stale client sending inline quantities no longer writes any stock row', async () => {
-    // Given an existing item. `UpdateItemInput` still CARRIES the five state
-    // fields — PR 5 task 4 removes them — so a browser on a pre-PR-2 bundle
-    // can still put them inline here. Until task 3 they were mirrored onto the
-    // caller's default `ItemStock` row.
-    const item = makeItem()
-    mockPrisma.item.findFirst.mockResolvedValue(item)
-    mockPrisma.item.update.mockResolvedValue(item)
-    mockPrisma.item.findUniqueOrThrow.mockResolvedValue(item)
-
-    // When a stale client sends them
-    const result = await execOp(
-      `mutation UpdateItem($id: ID!, $input: UpdateItemInput!) {
-        updateItem(id: $id, input: $input) { id }
-      }`,
-      { id: 'item_1', input: { packedQuantity: 7, targetQuantity: 9 } },
-    )
-
-    // Then the mutation succeeds and touches `Item` alone. This file's prisma
-    // mock has NO `location` and NO `itemStock` store, so reinstating the
-    // deleted mirror makes this throw instead of passing quietly — which is
-    // what makes the assertion falsifiable rather than a negative control that
-    // can never fail. Delete this test with the five fields in task 4.
-    expect(result?.errors).toBeUndefined()
-    expect(mockPrisma.item.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ packedQuantity: 7, targetQuantity: 9 }),
-      }),
-    )
-  })
-
   it('itemCountByVendor returns count from prisma.itemVendor.count', async () => {
     // Given 2 items from vendor_1
     mockPrisma.itemVendor.count.mockResolvedValue(2)
@@ -521,20 +485,5 @@ describe('Item resolvers', () => {
     const items = result?.data?.items as { createdAt: string; updatedAt: string }[]
     expect(items[0].createdAt).toBe(now.toISOString())
     expect(items[0].updatedAt).toBe(now.toISOString())
-  })
-
-  it('dueDate is an ISO string when set', async () => {
-    // Given an item with a dueDate
-    const due = new Date('2024-06-01T00:00:00.000Z')
-    const item = { ...makeItem(), dueDate: due }
-    mockPrisma.item.findMany.mockResolvedValue([item])
-
-    // When querying items
-    const result = await execOp(`query { items { dueDate } }`)
-
-    // Then dueDate is an ISO string
-    expect(result?.errors).toBeUndefined()
-    const items = result?.data?.items as { dueDate: string | null }[]
-    expect(items[0].dueDate).toBe(due.toISOString())
   })
 })
