@@ -531,6 +531,63 @@ against the schema and that is worth knowing on its own.
 
 ---
 
+**Done 2026-10-04.** Server **349 → 347**, web **2285 → 2283**. Net −327/+186 across 29
+files. `pnpm build` clean, 0 `TS6385`.
+
+### The finding: nothing in this repo catches an extra field sent to a GraphQL input
+
+**Mutation check 2 failed on its first attempt.** With `toItemInput` still sending the five
+after `ItemInput` dropped them, the root `pnpm build` **passed** and **all 2283 web tests
+passed**. Two reasons:
+
+- `tsc` does not excess-property-check a function **result** assigned to a typed parameter —
+  only a fresh object literal;
+- every test mocks the Apollo client instead of validating against the schema.
+
+The first thing that would have seen it is the cloud E2E import spec, **after the whole
+mutation had already failed**. So this task's brief offered two outcomes ("a test goes red, or
+the build fails") and the real answer was a third: **nothing caught it.**
+
+The fix is a return-type annotation, `ItemInputShape`, and it is now **the only guard**. The
+measurement is recorded in a comment above it so nobody removes it as noise. `ItemInputShape`
+rather than `ItemInput` because `exactOptionalPropertyTypes` is on and codegen types an
+optional input field as `T | null`; the mapped type keeps the key set exact — the half that
+catches an extra field — while allowing `undefined` as a value.
+
+**Mutation check 1 passed as hoped, and settles a question worth knowing:** codegen *does*
+validate documents against the schema. Leaving all eight documents stale gave **40 validation
+errors** and generated nothing — `Cannot query field "targetQuantity" on type "Item". Did you
+mean "targetUnit"?` So the root `pnpm build` cannot pass with a stale document, which is the
+stale-bundle break caught at build time instead of in a browser.
+
+### What this task's text got wrong
+
+| Said | Truth |
+|---|---|
+| mutation check 2: "a test must go red, or the build must fail" | **neither did** — see above. The guard had to be *added* before the check could work |
+| "four separate `cloudItem` fixture copies" | **eight** cloud-`Item`-shaped fixtures carried the five: the four named, plus three in `routes/items/$id/stock.test.tsx` and two in `stock.stories.tsx` / `stock.stories.test.tsx` |
+| `stripStockFields`'s fourth call site "may become dead" | **it is not, and must not be deleted.** `withLocationStock` operates on an already-joined `PantryItem` — `useItem` joins in **both** modes — so it never had anything to do with the cloud `Item`'s columns. `STOCK_FIELD_KEYS` and `pickStockFields` also stay; local-mode `db/operations.ts` uses them |
+| `toConfigInput`'s deletion loop "may become dead" | **still needed**, for a new reason: it maps a `PantryItem`, which still carries the five joined from `ItemStock`, and sending one to `updateItem` now fails validation outright |
+| the server test list | undercounted. `applyUnitSwitch.resolver.test.ts` is filed under task 3 but its `MUTATION` selected `targetQuantity` on `Item` — **6** tests failed on it. And `item.resolver.test.ts`'s `dueDate is an ISO string when set` had to go, unnamed in the brief |
+| did not mention | `applyUnitSwitch`'s **five dead `delete itemData.<field>` lines**, whose own comment names task 4 as the time to remove them |
+
+### Confirmed facts for the remaining tasks
+
+- **`createItem` writes nothing for the five**, safely: `schema.prisma` gives all four
+  quantities `Float @default(0)` and `dueDate DateTime?`, so an omitted column lands on exactly
+  the zero the resolver used to write by hand.
+- **`ConsumeRecipesItemInput` was not touched** — verified: `git diff --stat` on
+  `recipe.graphql` is empty and both fields are still there. The method was an exact multi-line
+  match asserted to occur once per declaration, never a field-name grep-replace.
+- **Nothing in `apps/web` still reads the five off a cloud `Item`.**
+- **69 `not.toHaveBeenCalled` matches repo-wide, 10 in touched files, none vacuous.** The two
+  4b import controls are armed — reinstating one `itemStock.upsert` turns one red. What they
+  cannot see is *which* location, which the file already says.
+- **Two tests pass vacuously if you only fix their type errors**
+  (`useItems.cloud.test.tsx`, `useShowStock.cloud.test.tsx`). Both were kept because each has a
+  real location-scoping fixture underneath, and the comments now say that is what carries the
+  assertion rather than the inline values.
+
 ## Task 5 — the migration
 
 Five bare drops. **No index or constraint touches any of the five on `Item`** — its only two
