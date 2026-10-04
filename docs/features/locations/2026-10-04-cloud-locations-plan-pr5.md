@@ -278,6 +278,56 @@ give the same answer.
 
 ---
 
+**Done 2026-10-04, commit `0c7b10b6`.** Server **357 → 358**, web unmoved at 2285/248.
+`REMOVED IN PR 5` markers **5 → 3**, and the 3 left are exactly task 3's two files.
+`finalQuantity` now comes from the saved row (`cart.resolver.ts:187`).
+
+**This task's test list of 10 undercounted by four, and two of the four were the dangerous
+kind.** Fourteen tests had to change, not ten. Four lived outside the two named `describe`
+groups, and **two of those were vacuous negative controls**:
+`expect(mockPrisma.item.update).not.toHaveBeenCalled()`. Once the source call is deleted, such
+an assertion **can never fail** — so it would have sat there reporting coverage of "refused
+before any write" while checking nothing, and it never turns red to announce itself. A
+count-based checklist cannot find those.
+
+The fix was better than replacing the assertions: the **`item` store was removed from both
+files' prisma mocks entirely**, so a reinstated `Item` write now throws
+`Cannot read properties of undefined` rather than passing quietly.
+
+Fate of the 14: **6 kept, 8 rewritten, 0 deleted.** Tests 4, 5, 9 and 10 assert *both* halves
+in one body, so this task's "the `ItemStock` half survives, the `Item` half goes" framing did
+not describe them — deleting them would have taken real stock coverage with it, including the
+whole of issue #287's regression guard.
+
+**A behaviour change this task's text did not mention.** The deleted `prisma.item.update` also
+carried `updatedAt: now`, so **checkout and cooking no longer bump `Item.updatedAt`**.
+
+The agent's conclusion — that nothing sees this — is right, but **its evidence was wrong** and
+the corrected version is what task 7 should rely on:
+
+| Claim | Truth |
+|---|---|
+| "`GetItem` and `GetItems` do not select `updatedAt`" | **They do**, at `items.graphql:22, 47, 67, 90`, and `itemStocks.graphql` selects it in six places |
+| nothing *acts* on it | **Confirmed.** No web code reads `.updatedAt` off an item, no server resolver has an `orderBy` on it, and the one local sort (`db/operations.ts:105`) is Dexie, not cloud |
+
+So it is selected and unused. Worth noting separately: `Item` carries
+`@@index([userId, updatedAt])` (`schema.prisma:99`) and **nothing orders by it** — a possible
+leftover, not PR 5's business.
+
+**Two more stale comments for task 3**, which this plan's task-3 list does not name:
+`cart.resolver.ts:38` and `inventoryLog.resolver.ts:42` both cite `mirrorItemStockToItem` and
+`lib/stockDualWrite.ts` to explain the "`userId` is a scope" rule. True today, wrong the
+moment task 3 deletes that module.
+
+**`location-scoped-writes.spec.ts` needs no edit** — the only cloud spec exercising `checkout`
+and `consumeRecipes` against real Postgres asserts through the `itemStocks` query, never
+`Item`'s columns. So task 8 gives this behaviour change real-SQL coverage for free.
+
+Both mutation checks red for the claimed reason. Mutation 1 (`finalQuantity` from the cart
+delta) turned **exactly one** test red — `"quantity": 10` vs `"quantity": 5` — which also says
+that test is the single guard on that number. Mutation 2 (delete the `writeStock` call) turned
+**8** red, so stock still updating is observable in 8 places.
+
 ## Task 3 — delete the `Item`-direction mirrors
 
 Three deletions, all writing `Item` from a stock row.
