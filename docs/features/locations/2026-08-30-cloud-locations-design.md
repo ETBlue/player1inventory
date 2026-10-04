@@ -480,6 +480,23 @@ would be precisely the vacuous-assertion error §7 exists to prevent.
 against whatever production looks like then, which is the point of running it fresh rather
 than trusting this one.
 
+> **Amendment 2026-10-05 — "production has exactly one user" is no longer true.**
+>
+> PR 5's pre-deploy reconciliation, run against a branch of production on 2026-10-05,
+> measured **5 `Location` rows across 2 distinct users**, with exactly one default location
+> per user. The 2026-09-16 rehearsal had seen 1 location and 1 user; that number was 19
+> days old and had changed.
+>
+> Several arguments in this document and in `cloud-locations-status.md` lean on the single
+> account — "a stale bundle keeps working for a single-location user", "every dual-write
+> target reduces to the same row". **Those arguments are stale.** The PR 5 reconciliation
+> still returned **0** divergent items and **0** items with no stock row, so the drop was
+> safe — but it was safe because it was measured, not because the argument held.
+>
+> This is the clearest case in the series of why the *Measure your own baseline* rule in
+> root `CLAUDE.md` exists. Details:
+> [`docs/global/backend/2026-10-05-deploy-runbook-item-column-drop.md`](../../global/backend/2026-10-05-deploy-runbook-item-column-drop.md) §3.
+
 ## 8. Rollout — five staged PRs
 
 Additive first, so a browser running a stale bundle keeps working until the final contract step.
@@ -491,7 +508,7 @@ Additive first, so a browser running a stale bundle keeps working until the fina
 | **2** | Web cloud path switches to the new types: `joinItemStock` extracted to `lib/itemStock.ts`, `PantryData` query, Apollo `keyArgs` policy, every `isCloud` bypass deleted, Dexie v18 + `isDefault`, per-mode storage key, corrected reconcile effect. |
 | **3** | Carts and logs: migration §4.5–4.7 (including the §5 `'no-vendor'` split), composite cart ids, location-scoped logs, `consumeRecipes` and `applyUnitSwitch` transactions. **Split into 3a / 3b / 3c on 2026-09-16 — see below.** |
 | **4** | Import / export / post-login migration / purge (§6). |
-| **5** | **Contract:** drop the five `Item` columns and remove them from the GraphQL type and inputs. **Delete `apps/server/src/lib/stockDualWrite.ts` and all FIVE of its call sites** — see below. |
+| **5** | **Contract:** drop the five `Item` columns and remove them from the GraphQL type and inputs. **Delete `apps/server/src/lib/stockDualWrite.ts` and all FIVE of its call sites** — see below. **The count and the instruction are both wrong; corrected 2026-10-05, see the amendment under *PR 5's teardown* below.** |
 
 Mirrors how locations itself (5 PRs) and unified item search (4 PRs) landed in this repo.
 
@@ -540,6 +557,12 @@ synthetic fixture is what tests it. PR 3b must not confuse the two.
 
 ### PR 5's teardown: five dual-write sites, not three
 
+> **Amendment 2026-10-05 — this whole section is history, and two of its numbers were
+> wrong before PR 5 even started.** Read the amendment at the end of the section before
+> acting on anything in it. The section is kept because its *directions* table is still the
+> clearest statement of which way each site wrote.
+
+
 PR 2's plan named three resolvers. Two more were added during implementation (Tasks 9b and
 10), and the teardown list must carry all five or one survives the contract step:
 
@@ -574,6 +597,34 @@ across 5 files** — `import.resolver.ts` carries two, one for `bulkCreateItems`
 
 This sentence said "four" until then, while the table directly above it listed five. The
 import paths were found in PR 2's task 10b and added to the table without updating the count.
+
+#### Amendment 2026-10-05 — what PR 5 actually found and did
+
+**PR 5 is implemented.** Both counts above are now 0, and two of this section's claims were
+wrong when PR 5 started.
+
+| This section said | Measured during PR 5 |
+|---|---|
+| "five dual-write sites" | **4 calls in 4 files, plus one inline block.** PR 4b task 6 had already deleted the two import ones (site 5), and PR 3c had added `applyUnitSwitch`'s inline block, which no `stockDualWrite` grep finds because it is not a call |
+| "**6 markers across 5 files**" | **5** markers after 4b, and **0** after PR 5 |
+| §8's rollout row: "delete `stockDualWrite.ts` and all FIVE of its call sites" | **Following that literally would have stopped cloud stock updating.** `mirrorStock` was the ONLY `ItemStock` write in both `checkout` and `consumeRecipes` |
+
+Measured on the finished PR 5 branch:
+
+| Check | Result |
+|---|---|
+| `grep -rn "REMOVED IN PR 5" apps/server/src` | **0** |
+| `grep -rnE "await (mirrorStock\|mirrorStockToDefaultLocation\|mirrorItemStockToItem)\(" apps/server/src/resolvers` | **0** |
+| `apps/server/src/lib/stockDualWrite.ts` | **deleted** |
+
+So PR 5 removed the bridge **in one direction** and promoted the other direction to being
+the real write. Sites 1 and 2 survive, renamed to `writeStock` in a new
+`lib/itemStockWrite.ts`; sites 3, 4 and `applyUnitSwitch`'s inline block are gone. The full
+record is in
+[`cloud-locations-status.md`](cloud-locations-status.md) under *PR 5 — done 2026-10-05*.
+
+**`apps/server/src/lib/defaultLocation.ts` survives PR 5** and dies in households H3. Three
+callers remain: `location.resolver.ts`, and two in `import.resolver.ts`.
 
 ## Open questions
 
