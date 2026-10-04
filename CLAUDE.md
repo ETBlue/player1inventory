@@ -86,6 +86,12 @@ report for developers. Built by `scripts/spec/`, published with `pnpm spec:publi
 > See `docs/global/testing/2026-09-28-living-spec-reports-design.md` for how it works and
 > the one-time Cloudflare setup, and the brainstorming log beside it for why.
 
+**Publishing needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in the environment.**
+The token has only the Cloudflare Pages: Edit permission and lives in the owner's macOS
+Keychain, never in the repo. Do not run `wrangler login`: it saves a broad, account-wide
+token in a plain file. `publish.sh` checks the token, the account ID and both Pages
+projects before any test runs, and stops in seconds if one is wrong.
+
 **Test names are what non-developers read.** A `user …` title appears on the public
 feature page as a sentence; any other title does not appear at all. Name feature tests
 `user can …` / `user sees …`. Keep role names (`location viewer cannot …`) for RBAC tests
