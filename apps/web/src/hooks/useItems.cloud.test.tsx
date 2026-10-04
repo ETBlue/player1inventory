@@ -73,15 +73,9 @@ const getLocationsMock = {
   },
 }
 
-// The cloud `Item` still declares the five stock STATE fields until PR 5. The
-// defaults here are the zeroes the server sends for an item nobody has written
-// inline stock to; `inline` is how a test gives an item the leftover values
-// that `stripStockFields` has to remove.
-const cloudItem = (
-  id: string,
-  name: string,
-  inline: Record<string, unknown> = {},
-) => ({
+// The cloud `Item` is CONFIGURATION ONLY since cloud locations PR 5. No stock
+// state can be put on one, so there is no `inline` override here.
+const cloudItem = (id: string, name: string) => ({
   __typename: 'Item' as const,
   id,
   name,
@@ -91,19 +85,13 @@ const cloudItem = (
   measurementUnit: null,
   amountPerPackage: null,
   targetUnit: 'package',
-  targetQuantity: 0,
-  refillThreshold: 0,
-  packedQuantity: 0,
-  unpackedQuantity: 0,
   consumeAmount: 1,
   expirationMode: null,
-  dueDate: null,
   estimatedDueDays: null,
   expirationThreshold: null,
   userId: 'user-1',
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
-  ...inline,
 })
 
 const cloudStock = (
@@ -128,19 +116,16 @@ const cloudStock = (
   updatedAt: '2026-02-02T00:00:00.000Z',
 })
 
-// THE FIXTURE IS THE TEST. Rice is stocked ONLY in Cloud Garage, and it carries
-// INLINE stock values on the `Item` itself — including a `dueDate`. Read from
-// Cloud Kitchen it must come back with no stock row, zeroed quantities, and no
-// due date: `ZERO_STOCK` has no `dueDate` key to overwrite the inline one with,
-// so only `stripStockFields` can remove it (lib/itemStock.ts).
+// THE FIXTURE IS THE TEST. Rice is stocked ONLY in Cloud Garage, with real
+// quantities there. Read from Cloud Kitchen it must come back with no stock
+// row, zeroed quantities and no due date — so a join that ignored the location
+// and took whatever row it found would be visible.
+//
+// Until cloud locations PR 5 the `Item` itself also carried inline stock values
+// including a `dueDate`, and `stripStockFields` had to remove them. The cloud
+// `Item` has no such fields now, so the fixture cannot set them.
 const MILK = cloudItem('item-milk', 'Milk')
-const RICE = cloudItem('item-rice', 'Rice', {
-  targetQuantity: 9,
-  refillThreshold: 3,
-  packedQuantity: 5,
-  unpackedQuantity: 2,
-  dueDate: '2026-12-24T00:00:00.000Z',
-})
+const RICE = cloudItem('item-rice', 'Rice')
 const FLOUR = cloudItem('item-flour', 'Flour')
 const CATALOG = [MILK, RICE, FLOUR]
 
@@ -339,8 +324,8 @@ describe('cloud pantry data (PantryData join)', () => {
   })
 
   it('user sees no stock state at all on an item stocked only elsewhere', async () => {
-    // Given Rice, stocked only in Cloud Garage, whose cloud Item still carries
-    // leftover inline stock values including a due date
+    // Given Rice, stocked only in Cloud Garage, with real quantities and no
+    // row at all in Cloud Kitchen
     const { result } = renderHook(() => usePantry(), { wrapper: makeWrapper() })
     await waitFor(() => expect(result.current.items.data).toHaveLength(3))
 
@@ -348,8 +333,8 @@ describe('cloud pantry data (PantryData join)', () => {
     const rice = byName(result.current.items.data, 'Rice')
 
     // Then it reads as unstocked here: no row id, zeroed quantities, and NO due
-    // date — the inline one must not survive the join (ZERO_STOCK has no
-    // dueDate key to overwrite it, so only stripStockFields can remove it)
+    // date. Rice's Cloud Garage row carries 5/2/4/1, so a join that ignored
+    // the location would show those numbers here instead of the zeroes.
     expect(rice?.stockId).toBeUndefined()
     expect(rice).toMatchObject({
       targetQuantity: 0,
@@ -359,7 +344,7 @@ describe('cloud pantry data (PantryData join)', () => {
       locationId: LOC_A,
     })
     expect(rice?.dueDate).toBeUndefined()
-    // and its global configuration is untouched by the strip
+    // and its global configuration still arrives
     expect(rice?.consumeAmount).toBe(1)
     expect(rice?.targetUnit).toBe('package')
   })

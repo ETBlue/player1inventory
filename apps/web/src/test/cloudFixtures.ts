@@ -61,14 +61,16 @@ export const bootstrapCartsMock = {
   result: { data: { bootstrapCarts: [] } },
 }
 
-// The cloud `Item` still declares the five stock STATE fields until PR 5. The
-// defaults here are the zeroes the server sends for an item nobody has written
-// inline stock to; `inline` is how a test gives an item leftover values that
-// `stripStockFields` has to remove before the per-location join.
+// The cloud `Item` is CONFIGURATION ONLY since cloud locations PR 5 dropped the
+// five stock STATE fields from it. There is no `inline` override parameter any
+// more, and adding one back would be wrong: a quantity or a due date can only
+// reach a test through `cloudStock`, which names its location. The `GetItems`
+// and `PantryData` selection sets this has to match live in
+// `apps/web/src/apollo/operations/`.
 export const cloudItem = (
   id: string,
   name: string,
-  inline: Record<string, unknown> = {},
+  overrides: Record<string, unknown> = {},
 ) => ({
   __typename: 'Item' as const,
   id,
@@ -79,19 +81,14 @@ export const cloudItem = (
   measurementUnit: null,
   amountPerPackage: null,
   targetUnit: 'package',
-  targetQuantity: 0,
-  refillThreshold: 0,
-  packedQuantity: 0,
-  unpackedQuantity: 0,
   consumeAmount: 1,
   expirationMode: null,
-  dueDate: null,
   estimatedDueDays: null,
   expirationThreshold: null,
   userId: 'user-1',
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
-  ...inline,
+  ...overrides,
 })
 
 export const cloudStock = (

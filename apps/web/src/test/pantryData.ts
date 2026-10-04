@@ -4,11 +4,13 @@ import { DEFAULT_LOCATION_ID } from '@/types'
 // pantry hooks now read (`hooks/useItems.ts`), stocking EVERY item in one
 // location.
 //
-// Cloud fixtures were written against `GetItems`, whose `Item` still declares
-// the five stock STATE fields until PR 5, so each fixture item already carries
-// the quantities its test asserts on. This lifts them into an `ItemStock` row —
-// the only place the join reads stock from — leaving those assertions intact
-// while the request underneath changes.
+// Cloud fixtures were written against `GetItems` back when its `Item` still
+// declared the five stock STATE fields, so each fixture item carries the
+// quantities its test asserts on as plain properties. Cloud locations PR 5
+// dropped those fields from the cloud `Item`, so such a property is now just
+// fixture data that the real API would never send; this helper lifts it into an
+// `ItemStock` row — the only place the join reads stock from — leaving those
+// assertions intact.
 //
 // NOT for tests about location scoping. Everything here is stocked in the same
 // location, so "stocked in the active location" and "exists at all" are the

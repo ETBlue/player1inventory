@@ -311,8 +311,10 @@ describe('cloud stock writes go to one location', () => {
       updates: { packedQuantity: 3, unpackedQuantity: 1 },
     })
 
-    // Then only the stock mutation was sent — sending the five state fields to
-    // `updateItem` as well would give one value two writers until PR 5
+    // Then only the stock mutation was sent. Since cloud locations PR 5
+    // `UpdateItemInput` does not even declare the five, so sending them to
+    // `updateItem` as well would now fail GraphQL validation outright; before
+    // PR 5 it merely gave one value two writers.
     expect(served.UpsertItemStock).toBe(1)
     expect(served.UpdateItem).toBeUndefined()
 

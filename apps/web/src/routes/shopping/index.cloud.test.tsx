@@ -79,6 +79,10 @@ const CLOUD_VENDOR = { id: 'vendor-costco', name: 'Costco' }
 // Sells only an item stocked at LOC_B, so it sinks below the divider.
 const ELSEWHERE_VENDOR = { id: 'vendor-bodega', name: 'Bodega' }
 
+// CONFIGURATION ONLY. Cloud locations PR 5 dropped the five stock state fields
+// from the cloud `Item`, so quantities live on the `stockRow` below and nowhere
+// else — which is also why `pantryData` can no longer copy a target off the
+// item it is building a row for.
 function cloudItem(
   id: string,
   name: string,
@@ -92,10 +96,6 @@ function cloudItem(
     tagIds: [],
     vendorIds,
     targetUnit: 'package',
-    targetQuantity: 10,
-    refillThreshold: 2,
-    packedQuantity: 5,
-    unpackedQuantity: 0,
     consumeAmount: 1,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -130,7 +130,10 @@ const COFFEE = cloudItem('item-coffee', 'Coffee', [ELSEWHERE_VENDOR.id])
 
 // `PantryData(locationId: LOC_A)` returns every global item plus only LOC_A's
 // stock rows — which is why Coffee has no row here.
-function pantryData(items: ReturnType<typeof cloudItem>[]) {
+function pantryData(
+  items: ReturnType<typeof cloudItem>[],
+  targetByItemId: Record<string, number> = {},
+) {
   return {
     ...emptyQuery,
     data: {
@@ -138,7 +141,13 @@ function pantryData(items: ReturnType<typeof cloudItem>[]) {
       itemStocks: items
         .filter((i) => i.id !== COFFEE.id)
         .map((i) =>
-          stockRow(i.id, LOC_A, { targetQuantity: i.targetQuantity }),
+          stockRow(
+            i.id,
+            LOC_A,
+            i.id in targetByItemId
+              ? { targetQuantity: targetByItemId[i.id] }
+              : {},
+          ),
         ),
     },
     networkStatus: 7,
@@ -160,14 +169,12 @@ const CLOUD_CART_ITEM = {
   quantity: 3,
 }
 
-// A cloud item with targetQuantity: 0 — stocked HERE but inactive. Since PR 3b
-// the card counts it in `inactiveCount` exactly as local does.
-const INACTIVE_SNACK = cloudItem(
-  'item-expired-snack',
-  'Expired Snack',
-  [CLOUD_VENDOR.id],
-  { targetQuantity: 0 },
-)
+// Stocked HERE but inactive — its LOC_A stock row carries `targetQuantity: 0`
+// (see the `stockRow(...)` calls below). Since PR 3b the card counts it in
+// `inactiveCount` exactly as local does.
+const INACTIVE_SNACK = cloudItem('item-expired-snack', 'Expired Snack', [
+  CLOUD_VENDOR.id,
+])
 
 describe('Shopping index page — cloud mode', () => {
   let queryClient: QueryClient

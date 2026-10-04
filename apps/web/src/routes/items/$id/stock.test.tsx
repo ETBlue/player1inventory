@@ -1247,10 +1247,6 @@ describe('Item stock tab', () => {
       id: 'item-cloud-cascade',
       name: 'Cloud Milk',
       targetUnit: 'package',
-      targetQuantity: 4,
-      refillThreshold: 2,
-      packedQuantity: 2,
-      unpackedQuantity: 0,
       consumeAmount: 1,
       createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
       updatedAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
@@ -1307,10 +1303,6 @@ describe('Item stock tab', () => {
       id: 'item-cloud-2',
       name: 'Cloud Milk',
       targetUnit: 'package',
-      targetQuantity: 4,
-      refillThreshold: 2,
-      packedQuantity: 2,
-      unpackedQuantity: 0,
       consumeAmount: 1,
       createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
       updatedAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
@@ -1359,10 +1351,6 @@ describe('Item stock tab', () => {
       name: 'Cloud Milk',
       packageUnit: 'bottle',
       targetUnit: 'package',
-      targetQuantity: 4,
-      refillThreshold: 2,
-      packedQuantity: 2,
-      unpackedQuantity: 0,
       consumeAmount: 1,
       createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
       updatedAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
@@ -1379,7 +1367,10 @@ describe('Item stock tab', () => {
       unpackedQuantity: 0,
     })
     const mockCloudUpdate = vi.fn().mockResolvedValue({
-      data: { updateItem: { ...cloudItem, packedQuantity: 5 } },
+      // `updateItem` returns the Item — CONFIGURATION only since cloud
+      // locations PR 5. The new packed quantity comes back from
+      // `upsertItemStock`, not from here.
+      data: { updateItem: cloudItem },
     })
     mockUseUpdateItemMutation.mockReturnValue([mockCloudUpdate, {}])
     const mockCloudUpsertStock = vi.fn().mockResolvedValue({
@@ -1547,14 +1538,9 @@ describe('Item stock tab', () => {
         name: 'Cloud Milk',
         packageUnit: 'bottle',
         targetUnit: 'package',
-        targetQuantity: 4,
-        refillThreshold: 2,
-        packedQuantity: 2,
-        unpackedQuantity: 0,
         consumeAmount: 1,
         expirationMode: 'days from purchase',
         estimatedDueDays: 7,
-        dueDate: '2026-12-24T00:00:00.000Z',
         createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
         updatedAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
       }
@@ -1571,7 +1557,10 @@ describe('Item stock tab', () => {
         dueDate: '2026-12-24T00:00:00.000Z',
       })
       const mockCloudUpdate = vi.fn().mockResolvedValue({
-        data: { updateItem: { ...cloudItem, packedQuantity: 5 } },
+        // `updateItem` returns the Item — CONFIGURATION only since cloud
+        // locations PR 5. The new packed quantity comes back from
+        // `upsertItemStock`, not from here.
+        data: { updateItem: cloudItem },
       })
       mockUseUpdateItemMutation.mockReturnValue([mockCloudUpdate, {}])
       const mockCloudUpsertStock = vi.fn().mockResolvedValue({
