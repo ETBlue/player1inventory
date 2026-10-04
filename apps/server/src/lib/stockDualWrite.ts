@@ -1,4 +1,5 @@
 import { ensureDefaultLocation } from './defaultLocation.js'
+import { type StockWrite, writeStock } from './itemStockWrite.js'
 import { prisma } from './prisma.js'
 
 /**
@@ -84,25 +85,11 @@ import { prisma } from './prisma.js'
  * the single writer and the divergence unrepresentable.
  */
 
-// A number, or Prisma's atomic increment form. `checkout` needs the latter so
-// two concurrent checkouts of the same item cannot lose an increment to a
-// read-modify-write race.
-type NumberWrite = number | { increment: number }
-
-export type StockMirror = {
-  targetQuantity?: number
-  refillThreshold?: number
-  packedQuantity?: NumberWrite
-  unpackedQuantity?: NumberWrite
-  dueDate?: Date | null
-}
-
-// The value a brand-new row should open at. An increment applied to a row that
-// does not exist yet is just the increment itself (the row's implicit 0 + n).
-function seed(value: NumberWrite | undefined): number {
-  if (value === undefined) return 0
-  return typeof value === 'number' ? value : value.increment
-}
+// An ALIAS, not a second declaration. The payload shape now belongs to
+// `lib/itemStockWrite.ts`, the module that performs the write; keeping a
+// hand-written copy here would let the two drift apart for the two PRs this
+// file still has left to live.
+export type StockMirror = StockWrite
 
 /**
  * The bridge's name for `ensureDefaultLocation` (lib/defaultLocation.ts): the
@@ -131,11 +118,22 @@ export async function defaultLocationId(userId: string): Promise<string> {
  * Mirror a stock write onto one location's `ItemStock`, creating the row if it
  * is missing.
  *
- * It does nothing when `data` is EMPTY, which is the only no-op left here. That
- * happens on a real path: `updateItem` calls
+ * The write itself is `writeStock` (lib/itemStockWrite.ts) — the same `upsert`
+ * this function used to perform inline, moved there so there is ONE place
+ * per-location stock is written. Tasks 2 and 3 of PR 5 move `checkout` and
+ * `consumeRecipes` onto `writeStock` directly and delete this function; until
+ * then it is a thin wrapper, kept so those two call sites change in one place
+ * rather than two.
+ *
+ * What this wrapper still owns is the EMPTY-`data` no-op, which `writeStock`
+ * does not have — it always writes, because it must return the saved row. The
+ * no-op happens on a real path: `updateItem` calls
  * `mirrorStockToDefaultLocation` on every update, and a current client's update
  * carries none of the five stock fields (a rename, a tag change). Upserting an
- * empty write would stock every renamed item in the default location.
+ * empty write would stock every renamed item in the default location. Note
+ * that `mirrorStockToDefaultLocation` makes the same test itself before it
+ * calls, so no current caller can reach the check below — `checkout` and
+ * `consumeRecipes` both pass an object literal whose keys are always present.
  *
  * A missing location is no longer a no-op. Until issue #287 this function's
  * caller returned early when the user had no `Location`, and the write was lost
@@ -152,19 +150,7 @@ export async function mirrorStock(
   data: StockMirror,
 ): Promise<void> {
   if (Object.keys(data).length === 0) return
-  await prisma.itemStock.upsert({
-    where: { itemId_locationId: { itemId, locationId } },
-    update: data,
-    create: {
-      itemId,
-      locationId,
-      targetQuantity: data.targetQuantity ?? 0,
-      refillThreshold: data.refillThreshold ?? 0,
-      packedQuantity: seed(data.packedQuantity),
-      unpackedQuantity: seed(data.unpackedQuantity),
-      dueDate: data.dueDate ?? null,
-    },
-  })
+  await writeStock(itemId, locationId, data)
 }
 
 /**
