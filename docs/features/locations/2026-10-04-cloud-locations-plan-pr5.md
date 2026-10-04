@@ -65,7 +65,7 @@ comes from.
 | Gain | Specifics |
 |---|---|
 | Less code | `stockDualWrite.ts` (232 lines) deleted. 5 `REMOVED IN PR 5` markers gone. ~21 dual-write tests across 5 files gone. `upsertItemStock`'s duplicate inline upsert folded away |
-| One way to write stock | `writeStock` in a new `lib/itemStockWrite.ts` becomes the single place cloud per-location stock is written. Today there are three: `mirrorStock`, `upsertItemStock`'s inline upsert, and `applyUnitSwitch`'s |
+| One way to write stock | `writeStock` in a new `lib/itemStockWrite.ts` replaces **two** duplicate general-purpose upserts — `mirrorStock`'s and `upsertItemStock`'s. **It does not become the only stock writer**, and the claim that it does was wrong: `applyUnitSwitch`'s write is transaction-bound, and three more (`addItemToLocation`, `bulkCreateItemStocks`, `bulkUpsertItemStocks`) have genuinely different contracts. Corrected 2026-10-04 by task 1 |
 | Less to remember | `Item` stops having two meanings. Today it carries both configuration and a copy of the default location's state, and four `stripStockFields` call sites exist to undo that |
 | Fewer ways to get it wrong | `Item`'s columns can currently hold values no `ItemStock` row has — `createItem` and both bulk item imports write them with no stock row. After PR 5 that divergence cannot exist |
 | Honest documentation | 3 stale dual-write counts corrected (§8.4 of the survey), plus 5 doc files that describe the bridge in the present tense |
@@ -189,6 +189,47 @@ saved row" test must go red. This is the check that protects task 2.
 
 ---
 
+**Done 2026-10-04.** Server **347 → 357** (+10 tests, +1 file). Web unmoved at 2285/248.
+Nothing deleted, so PR 5 is still fully reversible at this point.
+
+**This task's text contradicted itself and the agent caught it.** It asked for
+`Promise<ItemStock>` *and* for `writeStock` to "match what `mirrorStock` does today" on an
+empty `data`. `mirrorStock` writes nothing and returns `void` — a function that must return
+the saved row cannot decline to write one. `writeStock` always writes, and the file says why.
+
+It then checked the thing that makes that safe: **`mirrorStock`'s empty guard is unreachable
+from every one of its callers.** `mirrorStockToDefaultLocation` makes the same emptiness test
+itself before calling, and `checkout` and `consumeRecipes` both pass object literals whose
+keys are always present. So dropping the guard changes nothing observable.
+
+**`mirrorStock` has no unit tests at all.** This task's text said "its existing tests show the
+shape". There is no `stockDualWrite.test.ts`; the module is reached only through five resolver
+spec files. Nothing of those changed and nothing failed.
+
+**A real race was fixed on the way.** `upsertItemStock` went from 2 queries to 1. Two
+concurrent first writes for the same `(itemId, locationId)` pair could both find no row and
+both try to create one, and one would fail with `P2002`. Postgres applies
+`INSERT … ON CONFLICT DO UPDATE` as one statement.
+
+**And this task's own stop rule would have selected the worse implementation.** It said "if any
+`upsertItemStock` test needs editing, stop — that is a signal you changed behaviour". All 8
+failed, on a **missing mock method** (`itemStock.upsert` was absent from that file's
+hand-written prisma mock), not on a behaviour change. Read literally, the rule pointed at
+keeping the racy `findUnique`-then-branch shape to avoid editing a double. No assertion or
+`it(…)` block changed.
+
+**`stockFake`'s `itemStock` store handles `{ increment }` on update but not on create** — the
+create path stores the object verbatim. Safe to rely on, because the stored value is then an
+object where a number is expected and the assertion fails loudly. Mutation 2 proves it:
+`expected { increment: 6 } to be 6`.
+
+Five mutation checks, all red for the stated reason. Two of them are the required check split
+in half, and both halves are needed: returning `void` proves the test consumes the return
+value (`Cannot read properties of undefined`), and recomputing the total from the input proves
+the fixture can tell the saved row from the delta (`expected 5 to be 10`). The fixture starts
+at packed 2 / unpacked 3 and increments by 5, so the total (10), the delta (5) and the written
+column alone (7) are three different numbers.
+
 ## Task 2 — checkout and cooking write stock, not `Item`
 
 **This is the behaviour change.** Both resolvers stop writing `Item`'s columns and keep
@@ -257,6 +298,19 @@ Remove the now-unused imports: `cart.resolver.ts:6`, `recipe.resolver.ts:5`,
 mirror issued through the module-level `prisma` inside a `$transaction` callback runs outside
 the transaction, so a rollback would leave `Item` and `ItemStock` in different units. That
 reasoning dies with the block. Do not carry the comment forward.
+
+### One decision this task must make
+
+**Does `writeStock` gain a transaction-client parameter?**
+
+`applyUnitSwitch` has its own `tx.itemStock.upsert`, and it **has to**: its write belongs to a
+`prisma.$transaction`, while `writeStock` uses the module-level `prisma`. A call from inside
+that callback would run **outside** the transaction and survive a rollback — the same hazard
+the inline `Item` block's comment describes. Task 1 deliberately did not add the parameter,
+because nothing needed it then.
+
+So either `writeStock` takes an optional `tx`, or `applyUnitSwitch` keeps its own write and
+the two coexist. Decide, and say which and why.
 
 ### Do NOT delete
 
