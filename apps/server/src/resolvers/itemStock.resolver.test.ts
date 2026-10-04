@@ -95,6 +95,31 @@ const { state, client } = vi.hoisted(() => {
     return cartItemMatches(c, where, state.carts)
   }
 
+  type StockCreateData = Omit<FakeStock, 'id' | 'createdAt' | 'updatedAt'>
+
+  // The create and merge bodies `itemStock.create`, `.update` and `.upsert`
+  // all go through, so the three cannot answer differently from one another.
+  function insertStock(data: StockCreateData): FakeStock {
+    // Models @@unique([itemId, locationId]). It guards a resolver that
+    // creates unconditionally; it does NOT pin addItemToLocation's
+    // already-stocked branch, which its own assertions cover — making this
+    // dedupe instead of throw leaves all 17 specs here green (verified
+    // 2026-08-31, correcting an earlier comment that claimed otherwise).
+    if (state.itemStocks.some((s) => s.itemId === data.itemId && s.locationId === data.locationId)) {
+      throw new Error('Unique constraint failed on the fields: (`itemId`,`locationId`)')
+    }
+    const row: FakeStock = { ...data, id: `st-${++seq}`, createdAt: new Date(), updatedAt: new Date() }
+    state.itemStocks.push(row)
+    return row
+  }
+
+  function mergeStock(where: Record<string, unknown>, data: Partial<FakeStock>): FakeStock {
+    const row = state.itemStocks.find((s) => stockMatches(s, where))
+    if (!row) throw new Error('ItemStock not found')
+    Object.assign(row, data, { updatedAt: new Date() })
+    return row
+  }
+
   const client: Record<string, unknown> = {
     // The rollback implementation is stockFake's, imported rather than copied.
     // A second copy could silently do nothing, and then every atomicity claim
@@ -166,25 +191,33 @@ const { state, client } = vi.hoisted(() => {
       },
       findUnique: async ({ where }: { where: Record<string, unknown> }) =>
         state.itemStocks.find((s) => stockMatches(s, where)) ?? null,
-      create: async ({ data }: { data: Omit<FakeStock, 'id' | 'createdAt' | 'updatedAt'> }) => {
-        // Models @@unique([itemId, locationId]). It guards a resolver that
-        // creates unconditionally; it does NOT pin addItemToLocation's
-        // already-stocked branch, which its own assertions cover — making this
-        // dedupe instead of throw leaves all 17 specs here green (verified
-        // 2026-08-31, correcting an earlier comment that claimed otherwise).
-        if (state.itemStocks.some((s) => s.itemId === data.itemId && s.locationId === data.locationId)) {
-          throw new Error('Unique constraint failed on the fields: (`itemId`,`locationId`)')
-        }
-        const row: FakeStock = { ...data, id: `st-${++seq}`, createdAt: new Date(), updatedAt: new Date() }
-        state.itemStocks.push(row)
-        return row
-      },
-      update: async ({ where, data }: { where: Record<string, unknown>; data: Partial<FakeStock> }) => {
-        const row = state.itemStocks.find((s) => stockMatches(s, where))
-        if (!row) throw new Error('ItemStock not found')
-        Object.assign(row, data, { updatedAt: new Date() })
-        return row
-      },
+      create: async ({ data }: { data: StockCreateData }) => insertStock(data),
+      update: async ({ where, data }: { where: Record<string, unknown>; data: Partial<FakeStock> }) =>
+        mergeStock(where, data),
+      // `upsert`, added by cloud locations PR 5 task 1. `upsertItemStock` now
+      // writes through `writeStock` (lib/itemStockWrite.ts), which issues ONE
+      // `upsert` where the resolver used to branch on `findUnique` itself. No
+      // resolver this file exercises reached the method before, so the mock
+      // did not have it and all 8 upsertItemStock specs failed with
+      // "upsert is not a function" — a gap in the double, not a change in
+      // behaviour. No assertion in this file moved.
+      //
+      // Built from `insertStock` and `mergeStock`, the SAME two bodies
+      // `create` and `update` use. A fourth hand-written copy of the matching
+      // and merging rules could answer differently from them, and then a test
+      // would be reading the mock's opinion rather than the resolver's.
+      upsert: async ({
+        where,
+        update,
+        create,
+      }: {
+        where: Record<string, unknown>
+        update: Partial<FakeStock>
+        create: StockCreateData
+      }) =>
+        state.itemStocks.some((s) => stockMatches(s, where))
+          ? mergeStock(where, update)
+          : insertStock(create),
       deleteMany: async ({ where = {} }: { where?: Record<string, unknown> }) => {
         const before = state.itemStocks.length
         state.itemStocks = state.itemStocks.filter((s) => !stockMatches(s, where))
@@ -496,6 +529,29 @@ describe('itemStock resolvers', () => {
       { i: 'item-milk', l: 'loc-a', in: { dueDate: '2026-12-25T00:00:00.000Z' } },
     )
     expect(res.data?.upsertItemStock).toEqual({ dueDate: '2026-12-25T00:00:00.000Z' })
+  })
+
+  it('upsert with an empty input still returns a row of zeroes', async () => {
+    // Given item-new is stocked nowhere, and the input names no field at all
+    // When it is upserted
+    const res = await run(
+      `mutation M($i: ID!, $l: ID!, $in: ItemStockInput!) { upsertItemStock(itemId: $i, locationId: $l, input: $in) { targetQuantity refillThreshold packedQuantity unpackedQuantity dueDate } }`,
+      { i: 'item-new', l: 'loc-a2', in: {} },
+    )
+
+    // Then a row comes back, at zeroes. `upsertItemStock` returns
+    // `ItemStock!`, so declining to write would make this field null and the
+    // whole mutation an error. `writeStock` (lib/itemStockWrite.ts) therefore
+    // has NO empty-data early return, unlike the `mirrorStock` it replaced —
+    // this is the test that would catch one being added.
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.upsertItemStock).toEqual({
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      dueDate: null,
+    })
   })
 
   // The PR 5 dual-write, in the ItemStock -> Item direction. A stale bundle

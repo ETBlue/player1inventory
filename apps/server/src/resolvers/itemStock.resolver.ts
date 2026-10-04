@@ -1,6 +1,7 @@
 import { GraphQLError } from 'graphql'
 import { requireAuth } from '../context.js'
 import { requireLocationRole } from '../lib/authz.js'
+import { writeStock } from '../lib/itemStockWrite.js'
 import { prisma } from '../lib/prisma.js'
 import { mirrorItemStockToItem } from '../lib/stockDualWrite.js'
 import { buildItemUpdateData, toGraphQL as itemToGraphQL } from './item.resolver.js'
@@ -17,8 +18,21 @@ type StockInput = {
   dueDate?: string | null
 }
 
-function toData(input: StockInput): Record<string, unknown> {
-  const data: Record<string, unknown> = {}
+// Narrower than `StockWrite`: every number here is a plain number, never
+// Prisma's `{ increment: n }` form. That matters because `applyUnitSwitch`
+// below spreads this result into an `itemStock.create`, where a column typed
+// `number` cannot take the increment object. `StockData` is still assignable
+// to `StockWrite`, so `writeStock` takes it unchanged.
+type StockData = {
+  targetQuantity?: number
+  refillThreshold?: number
+  packedQuantity?: number
+  unpackedQuantity?: number
+  dueDate?: Date | null
+}
+
+function toData(input: StockInput): StockData {
+  const data: StockData = {}
   if (input.targetQuantity != null) data.targetQuantity = input.targetQuantity
   if (input.refillThreshold != null) data.refillThreshold = input.refillThreshold
   if (input.packedQuantity != null) data.packedQuantity = input.packedQuantity
@@ -96,27 +110,12 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // calling it would be a second query for a fact we hold.
       const location = await requireLocationRole(ctx, locationId, 'member')
       const data = toData(input as StockInput)
-      const existing = await prisma.itemStock.findUnique({
-        where: { itemId_locationId: { itemId, locationId } },
-      })
-      const row = existing
-        ? await prisma.itemStock.update({
-            where: { itemId_locationId: { itemId, locationId } },
-            data,
-          })
-        : await prisma.itemStock.create({
-            data: {
-              itemId,
-              locationId,
-              targetQuantity: 0,
-              refillThreshold: 0,
-              packedQuantity: 0,
-              unpackedQuantity: 0,
-              dueDate: null,
-              ...data,
-            },
-          })
-      const saved = row as unknown as PrismaItemStock
+      // `writeStock` (lib/itemStockWrite.ts) is the one place per-location
+      // stock is written. This resolver used to hold its own
+      // `findUnique`-then-`update`-or-`create` block with the same zero
+      // defaults — a second copy of the same upsert, which is how the two
+      // could have drifted apart on what an omitted field means.
+      const saved = await writeStock(itemId, locationId, data)
 
       // DUAL-WRITE, REMOVED IN PR 5 (lib/stockDualWrite.ts). This is the
       // mutation a CURRENT client sends its stock edits to (hooks/useItems.ts
