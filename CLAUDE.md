@@ -249,13 +249,18 @@ pnpm test                                        # BOTH suites — web + server,
 ```
 
 **`pnpm test` runs both workspaces.** The root script is `pnpm -r test`, which recurses into
-every workspace package that defines a `test` script — today `apps/web` (**2259 tests**
-across 249 files) and `apps/server` (**346** across 24). Measured 2026-10-02; the figures
-here said ~1700 and ~100 until 2026-09-29, and `apps/server` said 259 across 20 until
-cloud locations PR 4a added 87 tests — 69 in 4 new files, 18 added to 3 existing ones.
-It said **340** for a few hours on 2026-10-02, between 4a's task 7 and its task 8, which
-added the last 6 — so re-measure rather than quote these. `apps/web` has not moved: PR 4a is server-only.
-Both are
+every workspace package that defines a `test` script — today `apps/web` (**2285 tests**
+across 248 files) and `apps/server` (**347** across 24). Measured 2026-10-04 on
+`feature/cloud-locations-pr4b`.
+
+A short history of these two numbers, because they move almost every week and briefs keep
+quoting them: they said ~1700 and ~100 until 2026-09-29; `apps/server` said 259 across 20
+until cloud locations PR 4a added 87 tests (69 in 4 new files, 18 in 3 existing ones), and
+**340** for a few hours on 2026-10-02 between 4a's task 7 and its task 8. `apps/web` stood
+at 2259 across 249 through the whole of 4a, which is server-only. PR 4b moved it to **2285
+across 248** — more tests in fewer files, because it deleted `flattenPayloadForCloud` and
+`MigrationLocationWarningDialog` and the files that tested them. **Re-measure rather than
+quote any of this.** Both are
 `vitest run`, so the root command is non-interactive and
 never drops into watch mode. Packages without a `test` script (`apps/design`, `packages/types`)
 are skipped silently.
@@ -359,11 +364,31 @@ The two `offline banner a11y` tests moved from "runs in both `local` and `pwa`" 
 `pwa` only", which is why local now passes 170 where it passed 172 before — see
 **A11y Testing** below. This is issue #302.
 
+Measured again on 2026-10-04, on `feature/cloud-locations-pr4b` (cloud locations PR 4b),
+**all three green**: **15m33s** of Playwright time — local **171 passed / 5 skipped** in
+3m18s, cloud **96 passed / 7 skipped** in 10m51s, pwa **69 passed** in 1m24s. Load average
+stayed between 1.6 and 2.5. Cloud is the project that grows: 90 → 96 passing, and
+`settings/import-export-cloud.spec.ts` alone now takes about **2.0 minutes** where it took
+about 40 seconds, because PR 4b's round-trip tests read every location's quantities back.
+
+The first run of that gate was **red on one test**, and fixing it is where the 15m33s figure
+comes from. `cloud → cloud` needs **36.5s** against Playwright's default **30s** budget, so
+it now carries `test.setTimeout(60000)` — on that one test, not on the `cloud` project, so
+the other five tests in the file keep the 30s signal.
+
+**That run is also a worked example of telling a real failure from a phantom.** The one
+failing test repeated when its spec file ran **alone** at load 1.65, so it was not
+starvation; the page snapshot captured at the failure showed the element it was waiting for
+already present, so it was not a data bug; and re-run with `--timeout=90000` it passed in
+**36.5s**. The test needed more than the default 30s `timeout`. A test over its time budget
+fails with the same `Test timeout of 30000ms exceeded` text as a starved machine, so the
+text alone settles nothing — the repeat at low load and the timing measurement do.
+
 `workers: 1` and `fullyParallel: false` are already set in `e2e/playwright.config.ts`, so
 the contention is between the concurrent **servers**, not concurrent tests. Passing
 `--workers=N` on the command line does nothing.
 
-No `--grep`. Playwright's `webServer` config starts the servers for you. This runs **three** projects — **341 tests in 26 spec files** (measured 2026-09-29): **175 in `local`** across 22 spec files, **97 in `cloud`** across 19, and **69 in `pwa`** across 2. The `pwa` project arrived with the PWA work and uses a fourth port, `PWA_WEB_PORT 5176`, so four ports must be free before a run, not three.
+No `--grep`. Playwright's `webServer` config starts the servers for you. This runs **three** projects — **348 tests in 27 spec files** (measured 2026-10-04): **176 in `local`** across 22 spec files, **103 in `cloud`** across 20, and **69 in `pwa`** across 2. It said 341 in 26 files on 2026-09-29. The `pwa` project arrived with the PWA work and uses a fourth port, `PWA_WEB_PORT 5176`, so four ports must be free before a run, not three.
 
 **Do not narrow the final run with `--grep`.** `--grep` matches a single joined string made of the project name, the spec file's path **relative to `e2e/tests/`**, every `describe` title, and the test title. An area word selects a test only if that exact word appears somewhere in that string. So a list of feature areas silently drops whole spec files whose names happen to use a different word form.
 
@@ -799,11 +824,11 @@ Note also that **no *unit* test executes the resolvers against real SQL** — ev
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
 Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
 branch), but only for the spec files listed in the `cloud` project's `testMatch` in
-`e2e/playwright.config.ts` — that list is opt-in and covers **19 files today** (of 26 spec
-files in `e2e/tests/`). **A resolver exercised by no cloud spec has never touched SQL at
+`e2e/playwright.config.ts` — that list is opt-in and covers **20 files today** (of 27 spec
+files in `e2e/tests/`; measured 2026-10-04). **A resolver exercised by no cloud spec has never touched SQL at
 all**, and a manual smoke test is owed for anything transactional.
 
-Nine of those 19 cover location or stock surfaces. Three were added 2026-09-14 (issue #284):
+Nine of those 20 cover location or stock surfaces. Three were added 2026-09-14 (issue #284):
 `settings/locations.spec.ts`, `location-switcher.spec.ts` and
 `location-not-stocked-here.spec.ts` — 22 cloud test cases. They give the first real-SQL
 coverage of `createLocation`, `updateLocation`, `deleteLocation`, `reorderLocations`, the
@@ -843,6 +868,28 @@ models that route deletes, calls it, and asserts every returned deleted count is
 the string `prisma.<model>.deleteMany(` appears, never what `where` clause the call
 carries, so a filter matching nothing passes it. See `e2e/CLAUDE.md` for the measured
 before/after.
+
+`cart-id-cross-user-leak.spec.ts` joined on 2026-10-03 (cloud locations PR 4b task 1) — 1
+cloud test case, no browser, like the two above. **It is a labelled negative control, not
+coverage.** It reproduces issue #327 against real Postgres: two users each create a cart
+with the bare id `'no-vendor'`, and the second user's cart items end up in the first user's
+cart row. `Cart.id` is a global primary key, so that collision is real with or without 4b
+and the spec is green either way — the proof of 4b's client-side fix is a unit test in
+`apps/web/src/lib/importData.test.ts`. It is the **first cloud spec to use two users**:
+`makeGql(request, userId)` and `cleanupCloudData(request, userId)` now take an optional user
+id, defaulting to `E2E_USER_ID`, so the 18 existing call sites are untouched.
+
+`settings/import-export-cloud.spec.ts` grew from **2 to 6** cloud test cases in PR 4b task
+8, and `settings/import-export-local.spec.ts` from 3 to 4. Before that, **neither
+`verifyRelations` copy asserted a location or a quantity**, so every imported item could
+land in the wrong location and both specs still passed. They now read each location's
+quantities back through `e2e/helpers/stockReadback.ts` and assert them in one shared module,
+`e2e/helpers/backupAssertions.ts`. Their fixtures seed **three** locations with three
+different quantities, which is what lets those assertions fail. This is the first real-SQL
+coverage of the four bulk mutations 4a added — `bulkCreate`/`bulkUpsertLocations` and
+`bulkCreate`/`bulkUpsertItemStocks`. A cart row's `locationId` **column** is read through
+`cartItemCountByItem(itemId, locationId:)`, because the `Cart` GraphQL type exposes no
+`locationId` field.
 
 The warning above still holds for everything else — most resolvers are named by no cloud
 spec.

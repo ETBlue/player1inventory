@@ -6,7 +6,9 @@ import {
   type AllCartItemsQuery,
   BulkCreateCartItemsDocument,
   BulkCreateInventoryLogsDocument,
+  BulkCreateItemStocksDocument,
   BulkCreateItemsDocument,
+  BulkCreateLocationsDocument,
   BulkCreateRecipesDocument,
   BulkCreateShelvesDocument,
   BulkCreateShoppingCartsDocument,
@@ -15,7 +17,9 @@ import {
   BulkCreateVendorsDocument,
   BulkUpsertCartItemsDocument,
   BulkUpsertInventoryLogsDocument,
+  BulkUpsertItemStocksDocument,
   BulkUpsertItemsDocument,
+  BulkUpsertLocationsDocument,
   BulkUpsertRecipesDocument,
   BulkUpsertShelvesDocument,
   BulkUpsertShoppingCartsDocument,
@@ -25,6 +29,8 @@ import {
   ClearAllDataDocument,
   GetItemsDocument,
   type GetItemsQuery,
+  GetLocationsDocument,
+  type GetLocationsQuery,
   GetRecipesDocument,
   type GetRecipesQuery,
   GetShelvesDocument,
@@ -57,7 +63,7 @@ import type {
   TagType,
   Vendor,
 } from '@/types'
-import { DEFAULT_LOCATION_ID } from '@/types'
+import { cartIdFor, DEFAULT_LOCATION_ID, parseCartId } from '@/types'
 import { deserializeRecipe, parseWireDate } from './deserialization'
 import type { ExportPayload } from './exportData'
 
@@ -83,13 +89,6 @@ const LOCAL_STOCK_FIELD_KEYS = [
   'packedQuantity',
   'unpackedQuantity',
   'dueDate',
-] as const
-
-// Every stock field, in either half. A pre-v15 backup (and a cloud payload,
-// whose Item still carries stock inline) holds all of them on the item.
-const STOCK_FIELD_KEYS = [
-  ...GLOBAL_STOCK_FIELD_KEYS,
-  ...LOCAL_STOCK_FIELD_KEYS,
 ] as const
 
 const DATE_FIELD_KEYS = ['dueDate', 'createdAt', 'updatedAt'] as const
@@ -128,12 +127,30 @@ function deserializeItemStock(raw: Record<string, unknown>): ItemStock {
   return result as unknown as ItemStock
 }
 
-// `isDefault` (Dexie v18) is derived, not carried: a pre-v18 backup has no such
-// key at all, and a payload written elsewhere could name a different row as its
-// default. In local mode the default is always DEFAULT_LOCATION_ID, and
-// `ensureDefaultLocationRow` guarantees that row exists after every import — so
-// deriving here is what keeps exactly one row flagged, and keeps an imported
-// non-default location unflagged whatever the file says.
+// `isDefault` (Dexie v18) is DERIVED here, not copied from the file.
+//
+// WHY THIS IS CORRECT, AND WHY IT DIFFERS FROM THE SHARED COPY IN
+// lib/deserialization.ts (which keeps `isDefault` exactly as given).
+//
+// Locally the flag and the id are the same fact: the v18 upgrade fn sets
+// `isDefault = (id === DEFAULT_LOCATION_ID)` (db/index.ts) and
+// `ensureDefaultLocation` only ever creates that one id. So in this database
+// `isDefault` is true for exactly the row whose id is DEFAULT_LOCATION_ID,
+// and deriving it keeps that invariant whatever the file says.
+//
+// THE FILE'S OWN FLAG IS NOT IGNORED — it is read one step earlier, by
+// `findPayloadDefaultLocationId`, and the remap in `importLocalData` has
+// already rewritten the payload default's id to DEFAULT_LOCATION_ID by the
+// time this function sees the row. Deriving then flags exactly that row. Two
+// cases need the derive rather than the flag:
+//   - a PRE-v18 backup carries no `isDefault` key at all, so copying it would
+//     leave zero rows flagged (`ensureDefaultLocationRow` returns early when
+//     the `local` row already exists, so it would not repair it);
+//   - a hand-edited file naming two defaults cannot produce two flagged rows.
+//
+// The shared copy in lib/deserialization.ts reads CLOUD rows, where the
+// default's id is a server cuid and the flag is the only way to know. Do not
+// merge the two.
 function deserializeLocation(raw: Record<string, unknown>): Location {
   return {
     ...raw,
@@ -242,20 +259,33 @@ function collapseStockConfig(payload: ExportPayload): ExportPayload {
   return { ...payload, items, itemStocks }
 }
 
-// Upgrade a pre-v15 backup (or a cloud payload, which keeps stock inline on the
-// Item) to the split shape the local database expects since v15:
+// Upgrade a pre-v15 backup to the split shape the local database expects
+// since v15:
 //   - synthesise one ItemStock per item, in `locationId`, and strip the inline
 //     stock fields
 //   - re-key carts and cart items to `${locationId}:${vendorId|'no-vendor'}`
+//
+// This header used to say "a pre-v15 backup (or a cloud payload, which keeps
+// stock inline on the Item)". That stopped being true in PR 4b task 2: a cloud
+// export now carries `itemStocks` and `locations` of its own, so it takes the
+// already-split branch below. Absence of `itemStocks` now means "pre-v15 file"
+// and nothing else.
+//
 // A payload that already carries `itemStocks` is post-v15 — but only for the
 // items it actually has stock rows for; see `upgradeUnsplitItems`.
 //
-// `locationId` is the location the import targets. It mirrors the outbound
-// local → cloud rule (Ruling A: use the location ACTIVE at migration time) — a
-// cloud → local copy must land where the user is looking, or the pantry, every
-// group/detail view and the cart pages render empty after the reload with no
-// explanation. It defaults to the default location for callers with no active
-// location (boot-time and legacy paths).
+// `locationId` is where a PRE-v15 payload's synthesised stock and re-keyed
+// carts are placed, because such a payload names no location of its own. It
+// defaults to the default location for callers with no active location
+// (boot-time and legacy paths); the two UI call sites pass the active one
+// (components/settings/DataModeCard and ImportCard).
+//
+// IT NO LONGER DECIDES WHERE A CLOUD BACKUP LANDS. This paragraph used to
+// quote the outbound rule "use the location ACTIVE at migration time", because
+// a cloud payload carried no locations and had to be collapsed onto one. Since
+// PR 4b a cloud backup carries its own `locations` and `itemStocks`, and
+// `importLocalData`'s remap places them — so for any post-v15 payload this
+// parameter only affects items that still carry inline stock.
 function upgradeLegacyPayload(
   payload: ExportPayload,
   locationId: string,
@@ -337,166 +367,239 @@ function upgradeUnsplitItems(
   }
 }
 
-// The cloud IMPORT path is flat, even though cloud gained per-location
-// ItemStock in PR 1. `ItemInput` (apps/server/src/schema/import.graphql)
-// carries the five stock fields INLINE with no `locationId`, there is no
-// `ItemStockInput` or `LocationInput` beside it, and a cloud cart id is still a
-// bare `vendorId | 'no-vendor'` (composite ids land in PR 3). Copying a local
-// (post-v15) pantry up to cloud must therefore collapse the split shape back
-// down — otherwise every stock field arrives as `undefined` (they are non-null
-// in `ItemInput`, so the migration fails outright) and every cart id keeps a
-// `${locationId}:` prefix no cloud query ever looks up.
+// ---------------------------------------------------------------------------
+// THE REMAP RULE — cloud locations PR 4 design §1.
 //
-// PR 4 gives the import surface `LocationInput` / `ItemStockInput` and this
-// collapse goes away with them (design §6).
+//   Preserve payload location ids verbatim, except the payload's default,
+//   which maps onto the destination's default.
 //
-// Ruling (user, 2026-08-16): send the stock of the location that is ACTIVE at
-// migration time — it is what the user is looking at, and it is how the rest of
-// the app reads stock (`useActiveLocation()`). Data in other locations is NOT
-// migrated and is NOT preserved anywhere in cloud; the UI warns about that
-// before the copy runs (see `MigrationLocationWarningDialog`).
+// One rule, used in both directions. It replaces three separate location
+// decisions: `flattenPayloadForCloud`'s chosen location and
+// `resolveFlattenLocationId`'s fallback (both deleted in PR 4b task 3), and
+// the import resolvers' hardcoded `ensureDefaultLocation` (PR 4a).
 //
-// A payload with no `itemStocks` is already flat (cloud export, or a pre-v15
-// backup) and passes through untouched.
-export function flattenPayloadForCloud(
+// Why ONLY the default remaps: a cloud -> local -> cloud round trip then
+// preserves every id, and carts keep upserting by their composite
+// `${locationId}:${vendorId}` id. Only a FIRST copy between modes rewrites
+// anything, and only one location's worth.
+// ---------------------------------------------------------------------------
+
+// Which location the payload itself calls its default.
+//
+// `isDefault` is the primary answer. Dexie v18 carries it on every local row,
+// and a cloud backup records it too — `sanitiseCloudPayload`
+// (lib/exportData.ts) keeps the flag in the FILE even though `toLocationInput`
+// drops it on the way back up, because this function is the only reader that
+// can tell which row to remap.
+//
+// The `DEFAULT_LOCATION_ID` fallback is for a PRE-v18 local backup, which has
+// no `isDefault` key at all: in local mode the default has always been that
+// one id.
+//
+// `null` means the payload names no default — a pre-v15 file with no
+// `locations` array. Nothing is remapped then, which is right: such a payload
+// carries no per-location ids to rewrite either.
+function findPayloadDefaultLocationId(payload: ExportPayload): string | null {
+  const locations = (payload.locations ?? []) as Array<Record<string, unknown>>
+  const flagged = locations.find((row) => row.isDefault === true)
+  if (flagged !== undefined) return flagged.id as string
+  const legacyDefault = locations.find((row) => row.id === DEFAULT_LOCATION_ID)
+  return legacyDefault !== undefined ? (legacyDefault.id as string) : null
+}
+
+// Build the payload-id -> destination-id map. It holds AT MOST ONE
+// non-identity entry, by design; any id absent from the map is kept verbatim.
+export function buildLocationRemap(
   payload: ExportPayload,
-  locationId: string,
+  destinationDefaultLocationId: string | null,
+): Map<string, string> {
+  const remap = new Map<string, string>()
+  if (destinationDefaultLocationId === null) return remap
+  const payloadDefaultLocationId = findPayloadDefaultLocationId(payload)
+  if (payloadDefaultLocationId === null) return remap
+  if (payloadDefaultLocationId === destinationDefaultLocationId) return remap
+
+  // The destination's default id is already held by a DIFFERENT row in this
+  // payload. Remapping would give two payload rows the same id, and the write
+  // that follows keeps only one of them — a location would simply disappear.
+  // So keep every id verbatim instead.
+  //
+  // Nothing is lost by doing so. The remap exists only to stop a SECOND,
+  // stray default row appearing beside the destination's own, and that cannot
+  // happen when the destination's default id is in the payload already: that
+  // row is written, and on the local side `deserializeLocation` flags it.
+  //
+  // Only a hand-edited file reaches this branch. Neither exporter can write a
+  // payload whose default is one row while another row holds the destination's
+  // default id.
+  const locations = (payload.locations ?? []) as Array<Record<string, unknown>>
+  if (locations.some((row) => row.id === destinationDefaultLocationId)) {
+    return remap
+  }
+
+  remap.set(payloadDefaultLocationId, destinationDefaultLocationId)
+  return remap
+}
+
+// Rewrite every location id the payload carries, through `remap`.
+//
+// FIVE fields carry one, not the four the plan lists. `locations[].id` is
+// remapped as well, so the payload's default row lands ON the destination's
+// existing default instead of creating a second, stray location beside it.
+// `bulkCreateLocations` then finds that id already held by the caller's own row
+// and skips it (apps/server/src/resolvers/import.resolver.ts), which is what
+// the design means by "the payload's default is never uploaded as a row". On
+// the cloud -> local side the same rewrite puts that row on
+// DEFAULT_LOCATION_ID, where `deserializeLocation` flags it and
+// `ensureDefaultLocationRow` therefore adds nothing.
+//
+// Cart ids go through `parseCartId` / `cartIdFor`, never `split(':')`: a vendor
+// id may itself contain a colon, because `bulkCreateVendors` stores
+// `VendorInput.id` verbatim with no format check, and
+// apps/server/src/lib/cartId.test.ts pins 16 cases including that one. A BARE
+// cart id (no colon at all) parses as `{ locationId: <the whole id> }`, which
+// no real location matches, so it is left alone — a legacy payload keeps its
+// legacy ids.
+export function applyLocationRemap(
+  payload: ExportPayload,
+  remap: Map<string, string>,
 ): ExportPayload {
-  if (payload.itemStocks === undefined) return payload
+  if (remap.size === 0) return payload
 
-  const stockByItemId = new Map<string, Record<string, unknown>>()
-  for (const raw of payload.itemStocks as Array<Record<string, unknown>>) {
-    if (raw.locationId === locationId) {
-      stockByItemId.set(raw.itemId as string, raw)
-    }
+  const remapId = (id: string) => remap.get(id) ?? id
+  const remapCartId = (cartId: string) => {
+    const { locationId, vendorId } = parseCartId(cartId)
+    const mapped = remap.get(locationId)
+    return mapped === undefined ? cartId : cartIdFor(mapped, vendorId)
   }
 
-  // Every item is sent, stocked here or not — recipes, shelves and cart items
-  // reference item ids, so dropping an item would leave dangling references.
-  // An item with no stock in this location gets the same zeroed values the app
-  // itself displays for it (see ZERO_STOCK / joinItemStock in db/operations).
-  const items = (payload.items as Array<Record<string, unknown>>).map((raw) => {
-    const stock = stockByItemId.get(raw.id as string)
-    // Only the per-location STATE is zeroed: the configuration is the item's
-    // own since v16 and defaulting over it would send 'package'/1 for every
-    // measurement-tracked item. `targetUnit`/`consumeAmount` are non-null in
-    // the cloud input, so they fall back only when the item itself lacks them.
-    const item: Record<string, unknown> = {
-      ...raw,
-      targetUnit: raw.targetUnit ?? 'package',
-      consumeAmount: raw.consumeAmount ?? 1,
-      targetQuantity: 0,
-      refillThreshold: 0,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-    }
-    if (stock) {
-      for (const key of STOCK_FIELD_KEYS) {
-        if (stock[key] !== undefined) item[key] = stock[key]
-      }
-    }
-    return item
-  })
-
-  // Carts: keep this location's carts only and strip the prefix. Another
-  // location's cart would collide with it on the un-prefixed cloud id.
-  const prefix = `${locationId}:`
-  const keptCartIds = new Set<string>()
-  const shoppingCarts = (
-    payload.shoppingCarts as Array<Record<string, unknown>>
-  )
-    .filter((cart) => (cart.id as string).startsWith(prefix))
-    .map((cart) => {
-      const id = cart.id as string
-      keptCartIds.add(id)
-      return { ...cart, id: id.slice(prefix.length) }
-    })
-  const cartItems = (payload.cartItems as Array<Record<string, unknown>>)
-    .filter((cartItem) => keptCartIds.has(cartItem.cartId as string))
-    .map((cartItem) => ({
-      ...cartItem,
-      cartId: (cartItem.cartId as string).slice(prefix.length),
-    }))
-
-  // Logs: this location's, plus pre-Location logs that carry no locationId.
-  const inventoryLogs = (
-    payload.inventoryLogs as Array<Record<string, unknown>>
-  ).filter((log) => log.locationId == null || log.locationId === locationId)
-
-  // `itemStocks`/`locations` are local-only tables with no cloud counterpart —
-  // dropping them also marks the result as a flat (cloud-shaped) payload.
-  const { itemStocks, locations, ...rest } = payload
-  void itemStocks
-  void locations
-
-  return { ...rest, items, shoppingCarts, cartItems, inventoryLogs }
-}
-
-// Which location a payload should be flattened by, for the FILE-IMPORT path
-// only (`ImportCard` in cloud mode).
-//
-// The migration paths always flatten by the active location — Ruling A, and the
-// data is this device's own, so the location is guaranteed to exist. A backup
-// file is different: it was written on another device whose location ids need
-// not exist here (a cloud-only device has just `'local'`). Flattening by an id
-// the payload knows nothing about would upload every item with zeroed stock and
-// drop every cart — silently, where the pre-split code failed loudly.
-//
-//   - the requested location has stock in the payload → use it (Ruling A)
-//   - the payload's stock lives in exactly one other location → use that one:
-//     it is the only reading that preserves the data, no guessing involved
-//   - the payload's stock spans several locations, none of them the requested
-//     one → `null`. There is no safe answer; the caller must refuse the import
-//     rather than upload zeros.
-//   - no stock to flatten (no `itemStocks` table, or an empty one) → the same
-//     three rules are applied to the CART id prefixes instead. Zeroed stock is
-//     correct when there is none, but the carts still carry a location and
-//     flattening by one they do not use drops every cart and cart item silently.
-//   - nothing at all to go on → the request passes through; nothing can be lost.
-export function resolveFlattenLocationId(
-  payload: ExportPayload,
-  requestedLocationId: string,
-): string | null {
-  if (payload.itemStocks === undefined) return requestedLocationId
-
-  const locationIds = new Set(
-    (payload.itemStocks as Array<Record<string, unknown>>).map(
-      (stock) => stock.locationId as string,
+  return {
+    ...payload,
+    ...(payload.locations !== undefined
+      ? {
+          locations: (payload.locations as Array<Record<string, unknown>>).map(
+            (row) => ({ ...row, id: remapId(row.id as string) }),
+          ),
+        }
+      : {}),
+    ...(payload.itemStocks !== undefined
+      ? {
+          itemStocks: (
+            payload.itemStocks as Array<Record<string, unknown>>
+          ).map((row) => ({
+            ...row,
+            locationId: remapId(row.locationId as string),
+          })),
+        }
+      : {}),
+    // A pre-Location log carries no `locationId`. Leave it absent rather than
+    // inventing one — the server falls back to the caller's default for it.
+    inventoryLogs: (
+      payload.inventoryLogs as Array<Record<string, unknown>>
+    ).map((log) =>
+      log.locationId == null
+        ? log
+        : { ...log, locationId: remapId(log.locationId as string) },
     ),
-  )
-  if (locationIds.size === 0) {
-    return resolveByCartLocations(payload, requestedLocationId)
+    shoppingCarts: (
+      payload.shoppingCarts as Array<Record<string, unknown>>
+    ).map((cart) => ({ ...cart, id: remapCartId(cart.id as string) })),
+    cartItems: (payload.cartItems as Array<Record<string, unknown>>).map(
+      (cartItem) => ({
+        ...cartItem,
+        cartId: remapCartId(cartItem.cartId as string),
+      }),
+    ),
   }
-  return pickLocationId(locationIds, requestedLocationId)
 }
 
-// The locations a payload's cart ids are scoped to. Ids with no `:` are bare
-// (cloud-shaped or pre-v15) and name no location, so they are ignored.
-function resolveByCartLocations(
+// The destination account's default location id, or `null` when it has none.
+//
+// ── READ THIS AFTER `clearAllData`, NEVER BEFORE ──
+//
+// `clearAllData` deletes every `Location` row, and `ensureDefaultLocation`
+// re-creates a default LAZILY, on the next `locations` read. So an id read
+// before the clear names a row that no longer exists by the time the remap
+// uses it. PR 4a shipped exactly that bug — a location id that was valid when
+// read and gone when used — and it cost a full E2E gate run to find, because
+// no test fake models the deletion.
+async function fetchCloudDefaultLocationId(
+  client: ApolloClient,
+): Promise<string | null> {
+  const result = await client.query<GetLocationsQuery>({
+    query: GetLocationsDocument,
+    fetchPolicy: 'network-only',
+  })
+  const locations = result.data?.locations ?? []
+  return locations.find((location) => location.isDefault)?.id ?? null
+}
+
+// A PRE-v15 backup carries its stock INLINE on each item, has no `itemStocks`
+// key at all, and uses BARE cart ids. `importLocalData` has always upgraded
+// such a payload (`upgradeLegacyPayload`). The cloud path never did, because
+// two now-deleted pieces covered for it:
+//
+//   - `flattenPayloadForCloud` (deleted in PR 4b task 3) returned early on a
+//     payload with no `itemStocks`, sending the items up with their inline
+//     stock columns intact;
+//   - `mirrorStockToDefaultLocation` (deleted server-side in PR 4b task 6)
+//     then wrote one `ItemStock` row per imported item at the caller's default
+//     location, which is what made the item visible in the cloud pantry.
+//
+// With both gone and nothing put in their place, a pre-v15 file imported into
+// cloud mode would land every item in the catalog stocked NOWHERE — invisible
+// in the pantry, with no error anywhere — and would keep writing bare cart
+// ids, the ownership leak of issue #327 that task 3 closed for every other
+// payload shape.
+//
+// Measured on this branch before this function existed: a pre-v15 payload sent
+// `["BulkCreateItems", "BulkCreateShoppingCarts"]` and nothing else — no
+// `itemStocks` variable in any mutation — with the cart id still `vendor_1`.
+//
+// THE GUARD IS THE ABSENT KEY AND NOTHING ELSE, on purpose. A payload that
+// already carries `itemStocks` must reach the server exactly as it does today.
+// Running the whole of `upgradeLegacyPayload` on a post-v15 payload would also
+// run `upgradeUnsplitItems`, and a cloud export's items carry the legacy stock
+// columns as 0 rather than null — so `hasInlineStock` answers true for every
+// CATALOG-ONLY cloud item, and a cloud -> cloud round trip would stock each of
+// them at the default location. That is a different bug, not a fix.
+//
+// `null` means the destination account reports no default location, which
+// `ensureDefaultLocation` makes impossible after a `locations` read. There is
+// no location to synthesise stock into then, so the payload is left alone.
+function upgradeLegacyPayloadForCloud(
   payload: ExportPayload,
-  requestedLocationId: string,
-): string | null {
-  const cartLocationIds = new Set<string>()
-  for (const cart of payload.shoppingCarts as Array<Record<string, unknown>>) {
-    const id = cart.id as string
-    const idx = id.indexOf(':')
-    if (idx > 0) cartLocationIds.add(id.slice(0, idx))
-  }
-  if (cartLocationIds.size === 0) return requestedLocationId
-  return pickLocationId(cartLocationIds, requestedLocationId)
+  destinationDefaultLocationId: string | null,
+): ExportPayload {
+  if (payload.itemStocks !== undefined) return payload
+  if (destinationDefaultLocationId === null) return payload
+  return upgradeLegacyPayload(payload, destinationDefaultLocationId)
 }
 
-// Iterating (rather than indexing) keeps the value typed as `string` under
-// noUncheckedIndexedAccess.
-function pickLocationId(
-  locationIds: Set<string>,
-  requestedLocationId: string,
-): string | null {
-  if (locationIds.has(requestedLocationId)) return requestedLocationId
-  if (locationIds.size === 1) {
-    for (const onlyLocationId of locationIds) return onlyLocationId
-  }
-  return null
+// Read the destination's default, upgrade a legacy payload onto it, then apply
+// the remap rule — in that order. Every caller is in `importCloudData`, and the
+// ORDER of this call matters on the `clear` strategy — see
+// `fetchCloudDefaultLocationId`.
+//
+// The upgrade runs BEFORE the remap, exactly as it does in `importLocalData`:
+// it can invent location ids of its own, and remapping afterwards is what keeps
+// an id it created inside the rule. In practice the remap is a no-op for a
+// pre-v15 payload — such a file names no default location, so
+// `findPayloadDefaultLocationId` returns null — and the upgrade has already
+// placed its rows on the destination's own default id.
+async function prepareCloudPayload(
+  payload: ExportPayload,
+  client: ApolloClient,
+): Promise<ExportPayload> {
+  const destinationDefaultLocationId = await fetchCloudDefaultLocationId(client)
+  const upgraded = upgradeLegacyPayloadForCloud(
+    payload,
+    destinationDefaultLocationId,
+  )
+  return applyLocationRemap(
+    upgraded,
+    buildLocationRemap(upgraded, destinationDefaultLocationId),
+  )
 }
 
 // Normalize an imported permanent cart to the v13+ schema shape: keep only
@@ -621,6 +724,19 @@ export function toRecipeInput(recipe: Record<string, unknown>) {
   }
 }
 
+// `locationId`, `logKey` and `logParams` are all three passed through, and all
+// three are OPTIONAL on `InventoryLogInput` (schema/import.graphql:49-67).
+//
+// `locationId` is what cloud locations PR 4b needs: without it every imported
+// log lands in the caller's default location, which is the server's documented
+// fallback for an absent field. `logKey` and `logParams` carry the log's
+// MESSAGE — this mapper dropped them from the day it was written, so every
+// cloud backup lost every log message. The export query lost them too
+// (operations/export.graphql); both halves were fixed together in PR 4b.
+//
+// This mapper is shared: `sanitiseCloudPayload` (lib/exportData.ts) calls it on
+// the way OUT and the bulk import calls it on the way IN, so one change fixes
+// both directions.
 export function toInventoryLogInput(log: Record<string, unknown>) {
   const occurredAt =
     log.occurredAt instanceof Date
@@ -633,6 +749,9 @@ export function toInventoryLogInput(log: Record<string, unknown>) {
     quantity: log.quantity as number,
     occurredAt,
     note: log.note as string | undefined,
+    logKey: log.logKey as string | undefined,
+    logParams: log.logParams as Record<string, unknown> | undefined,
+    locationId: log.locationId as string | undefined,
   }
 }
 
@@ -705,12 +824,89 @@ export function toShelfInput(shelf: Record<string, unknown>) {
   }
 }
 
+// `LocationInput` (schema/import.graphql:81-115) has NO `isDefault` FIELD, so
+// this mapper must drop it. The payload's default location is never uploaded as
+// a row at all — the client rewrites its id onto the destination account's
+// existing `isDefault` row — and the database would REJECT a second default
+// rather than accept one: `Location_one_default_per_user_key` is a unique
+// partial index on `("userId") WHERE "isDefault"`. Sending the flag would make
+// the import die on an unhandled P2002 AFTER `clearAllData` had already run.
+export function toLocationInput(location: Record<string, unknown>) {
+  const createdAt =
+    location.createdAt instanceof Date
+      ? location.createdAt.toISOString()
+      : (location.createdAt as string)
+  const updatedAt =
+    location.updatedAt instanceof Date
+      ? location.updatedAt.toISOString()
+      : (location.updatedAt as string)
+  return {
+    id: location.id as string,
+    name: location.name as string,
+    order: location.order as number,
+    createdAt,
+    updatedAt,
+  }
+}
+
+// `ItemStockImportInput` (schema/import.graphql:142-153) is a REPLACE input:
+// every field is required except `dueDate`. It is a second input beside
+// `ItemStockInput` on purpose — that one is a partial merge where a missing key
+// means "leave the column alone", and one input cannot mean both.
+//
+// A LOCAL ItemStock row carries extra columns that the cloud keeps on `Item`
+// instead (`targetUnit`, `packageUnit`, `consumeAmount`, ...). They are dropped
+// here, like every other mapper drops what its Input does not accept.
+export function toItemStockInput(stock: Record<string, unknown>) {
+  const createdAt =
+    stock.createdAt instanceof Date
+      ? stock.createdAt.toISOString()
+      : (stock.createdAt as string)
+  const updatedAt =
+    stock.updatedAt instanceof Date
+      ? stock.updatedAt.toISOString()
+      : (stock.updatedAt as string)
+  // A local row holds `dueDate` as a Date; cloud sends an ISO string; an
+  // unexpired row has none. Only the field is optional, so `null` and
+  // `undefined` both have to become "no due date".
+  const dueDate =
+    stock.dueDate instanceof Date
+      ? stock.dueDate.toISOString()
+      : ((stock.dueDate ?? undefined) as string | undefined)
+  return {
+    id: stock.id as string,
+    itemId: stock.itemId as string,
+    locationId: stock.locationId as string,
+    targetQuantity: stock.targetQuantity as number,
+    refillThreshold: stock.refillThreshold as number,
+    packedQuantity: stock.packedQuantity as number,
+    unpackedQuantity: stock.unpackedQuantity as number,
+    dueDate,
+    createdAt,
+    updatedAt,
+  }
+}
+
 export interface ConflictEntry {
   id: string
   name: string
   matchReasons: ('id' | 'name')[]
 }
 
+// NINE entities, not the eleven an `ExportPayload` carries. `locations` and
+// `itemStocks` are deliberately absent, for two different reasons:
+//
+//   - A LOCATION would conflict on EVERY cloud import. The remap rewrites the
+//     payload's default location id to the destination account's default
+//     (`applyLocationRemap`), and that row always exists, so an id check here
+//     would always match and `hasConflicts` would always be true — every
+//     import, including a clean one, would stop at the conflict dialog. A
+//     location row also holds no destructible content: only a name and an
+//     order. Carts are left out for the same second reason.
+//   - A STOCK row's conflict is never the user's decision to make. It is
+//     always decided by its item, and the item is already in this summary.
+//     `partitionPayload` routes stock by strategy instead, matching what the
+//     local import does in `importItemStocks`.
 export interface ConflictSummary {
   items: ConflictEntry[]
   tags: ConflictEntry[]
@@ -873,6 +1069,9 @@ export function detectConflicts(
       existing.shelves,
       (e) => (e as Shelf).id,
     ),
+    // `locations` and `itemStocks` are not checked at all. See the comment on
+    // `ConflictSummary` for why, and `partitionPayload` for where they go
+    // instead.
   }
 }
 
@@ -910,13 +1109,58 @@ function getConflictIds(entries: ConflictEntry[]): Set<string> {
   return new Set(entries.map((e) => e.id))
 }
 
+// Stock follows its ITEM, which is the rule the local import already applies
+// (`importItemStocks`) and the rule the server enforces:
+// `requireOwnItemStockRefs` (apps/server/src/resolvers/import.resolver.ts:376)
+// answers `Forbidden` for an `itemId` the account does not hold. On `skip` a
+// payload item that conflicts BY NAME ONLY keeps an id no cloud row has, so
+// sending its stock would end the whole import with that error.
+function stocksForItems(
+  payload: ExportPayload,
+  writtenItemIds: Set<string>,
+): unknown[] {
+  return ((payload.itemStocks ?? []) as Array<{ itemId: string }>).filter((s) =>
+    writtenItemIds.has(s.itemId),
+  )
+}
+
+// WHERE `locations` AND `itemStocks` GO, AND WHY THEY ARE NOT PARTITIONED BY
+// CONFLICT LIKE THE OTHER NINE.
+//
+// Neither is ever reported as a conflict (see `detectConflicts`), so there is
+// no conflict set to split them on. Each strategy sends all of its rows to
+// exactly ONE of the two passes, which also keeps them clear of the shared
+// batch-key bug noted in `runBulkBatches`:
+//
+// | strategy  | locations | itemStocks                        |
+// |-----------|-----------|-----------------------------------|
+// | `clear`   | toCreate  | toCreate (all rows)               |
+// | `skip`    | toCreate  | toCreate, only newly added items  |
+// | `replace` | toCreate  | toUpsert (all rows)               |
+//
+// `locations` always goes to the CREATE pass, on every strategy, because the
+// create pass is where `shoppingCarts` and `inventoryLogs` go on `skip` and
+// `replace` — and a cart whose location does not exist yet is written to the
+// account default instead, with no error. The cost is that `replace` does not
+// rename an existing location to the name in the backup, where the local
+// import does; a location row holds only a name and an order, so this loses no
+// user data.
+//
+// `itemStocks` goes to the UPSERT pass on `replace` because that is the only
+// pass that overwrites: `bulkCreateItemStocks` SKIPS a row whose
+// `(itemId, locationId)` pair is already taken, so sending stock to the create
+// pass on `replace` would silently discard the quantities in the file the user
+// chose to restore.
+
 export function partitionPayload(
   payload: ExportPayload,
   conflicts: ConflictSummary,
   strategy: ImportStrategy,
 ): { toCreate: ExportPayload; toUpsert: ExportPayload } {
   if (strategy === 'clear') {
-    // All entities go to toCreate; toUpsert is empty
+    // All entities go to toCreate; toUpsert is empty. The spread carries
+    // `locations` and `itemStocks` with everything else — nothing exists to
+    // conflict with after a clear.
     return {
       toCreate: { ...payload },
       toUpsert: emptyPayload(),
@@ -937,12 +1181,16 @@ export function partitionPayload(
       shelves: getConflictIds(conflicts.shelves),
     }
 
+    // Hoisted because `itemStocks` is filtered by it too: on `skip` only a
+    // newly added item's stock goes up.
+    const itemsToCreate = (payload.items as IdOnlyEntity[]).filter(
+      (e) => !conflictIdSets.items.has(e.id),
+    )
+
     return {
       toCreate: {
         ...payload,
-        items: (payload.items as IdOnlyEntity[]).filter(
-          (e) => !conflictIdSets.items.has(e.id),
-        ),
+        items: itemsToCreate,
         tags: (payload.tags as IdOnlyEntity[]).filter(
           (e) => !conflictIdSets.tags.has(e.id),
         ),
@@ -967,6 +1215,8 @@ export function partitionPayload(
         shelves: ((payload.shelves ?? []) as IdOnlyEntity[]).filter(
           (e) => !conflictIdSets.shelves.has(e.id),
         ),
+        locations: payload.locations ?? [],
+        itemStocks: stocksForItems(payload, itemIdsOf(itemsToCreate)),
       },
       toUpsert: emptyPayload(),
     }
@@ -1016,6 +1266,15 @@ export function partitionPayload(
       shelves: ((payload.shelves ?? []) as IdOnlyEntity[]).filter(
         (e) => !conflictIdSets.shelves.has(e.id),
       ),
+      // Every location, on the create pass — `bulkCreateLocations` keeps the
+      // row the account already has and creates the rest. It must happen here
+      // and not on the upsert pass, because the carts and logs below name
+      // these locations and are sent on this same pass.
+      locations: payload.locations ?? [],
+      // No stock on the create pass under `replace`: `bulkCreateItemStocks`
+      // skips an existing `(itemId, locationId)` pair, which would drop the
+      // quantities the user asked to restore. It all goes to `toUpsert`.
+      itemStocks: [],
     },
     toUpsert: {
       ...payload,
@@ -1046,6 +1305,13 @@ export function partitionPayload(
       shelves: ((payload.shelves ?? []) as IdOnlyEntity[]).filter((e) =>
         conflictIdSets.shelves.has(e.id),
       ),
+      // Already sent by the create pass above; sending them again would be a
+      // second batch under the same key.
+      locations: [],
+      // Every stock row, so the payload's quantities win. The upsert pass
+      // runs after the create pass, so both a brand-new item and a
+      // conflicting one exist by the time this is sent.
+      itemStocks: payload.itemStocks ?? [],
     },
   }
 }
@@ -1172,10 +1438,39 @@ export async function importLocalData(
   strategy: ImportStrategy,
   locationId: string = DEFAULT_LOCATION_ID,
 ): Promise<void> {
-  // Pre-v15 backups (and cloud payloads) carry stock inline on the item and
-  // unscoped cart ids — upgrade them to the split shape before writing, into
-  // the caller's target location (the active one, for the UI paths).
-  const payload = upgradeLegacyPayload(rawPayload, locationId)
+  // Pre-v15 backups carry stock inline on the item and unscoped cart ids —
+  // upgrade them to the split shape before writing, into the caller's target
+  // location (the active one, for the UI paths). Since PR 4b task 2 a cloud
+  // export is already split, so this is a no-op for one.
+  const upgraded = upgradeLegacyPayload(rawPayload, locationId)
+
+  // THE REMAP RULE, cloud -> local direction (design §1): the payload's own
+  // default location maps onto THIS database's default, and every other
+  // location keeps its id. Without it a cloud backup's locations all arrive
+  // under their server cuids, no row matches DEFAULT_LOCATION_ID, and
+  // `ensureDefaultLocationRow` adds a stray empty "local" default beside the
+  // restored ones.
+  //
+  // NO ORDERING HAZARD ON THIS SIDE, unlike `prepareCloudPayload`. There the
+  // destination's default has to be read over the network, and reading it
+  // before `clearAllData` returns an id that no longer exists. Here the
+  // destination's default is the module constant DEFAULT_LOCATION_ID: the v18
+  // upgrade fn and `ensureDefaultLocation` (db/index.ts) between them
+  // guarantee the local default is always that id. So nothing is read from the
+  // database, and the position of this line relative to `db.locations.clear()`
+  // below cannot matter. Do not "improve" it into a `db.locations` read.
+  //
+  // AFTER `upgradeLegacyPayload`, not before: that function can invent
+  // location ids of its own (it places a legacy payload's synthesised stock
+  // and cart prefixes in `locationId`), so remapping afterwards is what stops
+  // an id it created from escaping the rule.
+  //
+  // One call covers all three strategies, because each one hands the whole
+  // payload to `importLocations` / `importItemStocks`.
+  const payload = applyLocationRemap(
+    upgraded,
+    buildLocationRemap(upgraded, DEFAULT_LOCATION_ID),
+  )
 
   if (strategy === 'clear') {
     // Delete all tables in dependency order (children before parents)
@@ -1499,12 +1794,322 @@ async function fetchCloudExistingData(
 }
 
 // ---------------------------------------------------------------------------
-// Batched bulk create — processes each entity array in chunks of BATCH_SIZE.
-// Skips batches already recorded in session.completedBatchKeys.
-// Calls onProgress after each successful batch.
-// Entity order: tagTypes → tags → vendors → items → recipes → inventoryLogs →
-//               shoppingCarts → cartItems
+// The cloud upload table
+//
+// ONE list, read by three callers: the create pass, the upsert pass, and
+// `computeTotalBatches`. Those were three separate hardcoded arrays until
+// cloud locations PR 4b, and nothing checked that they matched. Missing the
+// third made the progress bar overrun with no error; missing the second left
+// an entity that `replace` never updated. Neither mistake is possible now.
+//
+// THE ORDER MATTERS, AND A WRONG ORDER PRODUCES NO ERROR AT ALL:
+//
+//   - `locations` must come BEFORE `items` and before `shoppingCarts`.
+//     `resolveCartLocations` (apps/server/src/resolvers/import.resolver.ts:205)
+//     sends a cart to the CALLER'S DEFAULT location when the cart id names a
+//     location that no row holds. A cart uploaded before its location exists
+//     therefore lands in the wrong location, with no error and nothing in the
+//     response to show it. `resolveLogLocations` does the same for logs.
+//   - `itemStocks` must come AFTER `items` and after `locations`. It is a
+//     child of both, and `requireOwnItemStockRefs` (import.resolver.ts:376)
+//     refuses an unknown item or location with `Forbidden`. On the `clear`
+//     strategy that error arrives AFTER `clearAllData` has run, which leaves
+//     the account empty and the import dead.
 // ---------------------------------------------------------------------------
+
+interface EntitySpec {
+  // Also the prefix of the batch key recorded in
+  // `ImportSession.completedBatchKeys`, so renaming one makes a resumed
+  // session re-send that entity's batches.
+  entityType: string
+  select: (data: ExportPayload) => unknown[]
+  create: (client: ApolloClient, batch: unknown[]) => Promise<void>
+  upsert: (client: ApolloClient, batch: unknown[]) => Promise<void>
+}
+
+const ENTITY_SPECS: EntitySpec[] = [
+  {
+    entityType: 'tagTypes',
+    select: (data) => data.tagTypes,
+    create: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkCreateTagTypesDocument,
+          variables: {
+            tagTypes: batch.map((t) =>
+              toTagTypeInput(t as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+    upsert: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkUpsertTagTypesDocument,
+          variables: {
+            tagTypes: batch.map((t) =>
+              toTagTypeInput(t as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+  },
+  {
+    entityType: 'tags',
+    select: (data) => data.tags,
+    create: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkCreateTagsDocument,
+          variables: {
+            tags: batch.map((t) => toTagInput(t as Record<string, unknown>)),
+          },
+        })
+        .then(() => undefined),
+    upsert: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkUpsertTagsDocument,
+          variables: {
+            tags: batch.map((t) => toTagInput(t as Record<string, unknown>)),
+          },
+        })
+        .then(() => undefined),
+  },
+  {
+    entityType: 'vendors',
+    select: (data) => data.vendors,
+    create: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkCreateVendorsDocument,
+          variables: {
+            vendors: batch.map((v) =>
+              toVendorInput(v as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+    upsert: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkUpsertVendorsDocument,
+          variables: {
+            vendors: batch.map((v) =>
+              toVendorInput(v as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+  },
+  // BEFORE `items`, and so before `shoppingCarts` and `inventoryLogs` too.
+  // See the block comment above for what breaks if this moves down.
+  {
+    entityType: 'locations',
+    select: (data) => data.locations ?? [],
+    create: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkCreateLocationsDocument,
+          variables: {
+            locations: batch.map((l) =>
+              toLocationInput(l as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+    upsert: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkUpsertLocationsDocument,
+          variables: {
+            locations: batch.map((l) =>
+              toLocationInput(l as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+  },
+  {
+    entityType: 'items',
+    select: (data) => data.items,
+    create: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkCreateItemsDocument,
+          variables: {
+            items: batch.map((i) => toItemInput(i as Record<string, unknown>)),
+          },
+        })
+        .then(() => undefined),
+    upsert: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkUpsertItemsDocument,
+          variables: {
+            items: batch.map((i) => toItemInput(i as Record<string, unknown>)),
+          },
+        })
+        .then(() => undefined),
+  },
+  // AFTER `items` and after `locations` — it is a child of both.
+  {
+    entityType: 'itemStocks',
+    select: (data) => data.itemStocks ?? [],
+    create: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkCreateItemStocksDocument,
+          variables: {
+            itemStocks: batch.map((s) =>
+              toItemStockInput(s as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+    upsert: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkUpsertItemStocksDocument,
+          variables: {
+            itemStocks: batch.map((s) =>
+              toItemStockInput(s as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+  },
+  {
+    entityType: 'recipes',
+    select: (data) => data.recipes,
+    create: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkCreateRecipesDocument,
+          variables: {
+            recipes: batch.map((r) =>
+              toRecipeInput(r as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+    upsert: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkUpsertRecipesDocument,
+          variables: {
+            recipes: batch.map((r) =>
+              toRecipeInput(r as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+  },
+  {
+    entityType: 'inventoryLogs',
+    select: (data) => data.inventoryLogs,
+    create: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkCreateInventoryLogsDocument,
+          variables: {
+            logs: batch.map((l) =>
+              toInventoryLogInput(l as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+    upsert: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkUpsertInventoryLogsDocument,
+          variables: {
+            logs: batch.map((l) =>
+              toInventoryLogInput(l as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+  },
+  {
+    entityType: 'shoppingCarts',
+    select: (data) => data.shoppingCarts,
+    create: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkCreateShoppingCartsDocument,
+          variables: {
+            carts: batch.map((c) =>
+              toShoppingCartInput(c as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+    upsert: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkUpsertShoppingCartsDocument,
+          variables: {
+            carts: batch.map((c) =>
+              toShoppingCartInput(c as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+  },
+  {
+    entityType: 'cartItems',
+    select: (data) => data.cartItems,
+    create: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkCreateCartItemsDocument,
+          variables: {
+            cartItems: batch.map((ci) =>
+              toCartItemInput(ci as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+    upsert: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkUpsertCartItemsDocument,
+          variables: {
+            cartItems: batch.map((ci) =>
+              toCartItemInput(ci as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+  },
+  {
+    entityType: 'shelves',
+    select: (data) => data.shelves ?? [],
+    create: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkCreateShelvesDocument,
+          variables: {
+            shelves: batch.map((s) =>
+              toShelfInput(s as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+    upsert: (client, batch) =>
+      client
+        .mutate({
+          mutation: BulkUpsertShelvesDocument,
+          variables: {
+            shelves: batch.map((s) =>
+              toShelfInput(s as Record<string, unknown>),
+            ),
+          },
+        })
+        .then(() => undefined),
+  },
+]
 
 interface BatchedBulkArgs {
   client: ApolloClient
@@ -1515,165 +2120,38 @@ interface BatchedBulkArgs {
   totalBatches: number
 }
 
-async function bulkCreate(args: BatchedBulkArgs): Promise<number> {
+// Walk `ENTITY_SPECS` in order, send each entity's rows in chunks of
+// BATCH_SIZE, skip chunks the session already recorded, and report progress
+// after every chunk that was actually sent.
+async function runBulkBatches(
+  args: BatchedBulkArgs,
+  mode: 'create' | 'upsert',
+): Promise<number> {
   const { client, data, session, onProgress, totalBatches } = args
   let completedBatches = args.startCompleted
 
-  const entityGroups: Array<{
-    entityType: string
-    items: unknown[]
-    mutate: (batch: unknown[]) => Promise<void>
-  }> = [
-    {
-      entityType: 'tagTypes',
-      items: data.tagTypes,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkCreateTagTypesDocument,
-            variables: {
-              tagTypes: batch.map((t) =>
-                toTagTypeInput(t as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'tags',
-      items: data.tags,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkCreateTagsDocument,
-            variables: {
-              tags: batch.map((t) => toTagInput(t as Record<string, unknown>)),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'vendors',
-      items: data.vendors,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkCreateVendorsDocument,
-            variables: {
-              vendors: batch.map((v) =>
-                toVendorInput(v as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'items',
-      items: data.items,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkCreateItemsDocument,
-            variables: {
-              items: batch.map((i) =>
-                toItemInput(i as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'recipes',
-      items: data.recipes,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkCreateRecipesDocument,
-            variables: {
-              recipes: batch.map((r) =>
-                toRecipeInput(r as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'inventoryLogs',
-      items: data.inventoryLogs,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkCreateInventoryLogsDocument,
-            variables: {
-              logs: batch.map((l) =>
-                toInventoryLogInput(l as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'shoppingCarts',
-      items: data.shoppingCarts,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkCreateShoppingCartsDocument,
-            variables: {
-              carts: batch.map((c) =>
-                toShoppingCartInput(c as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'cartItems',
-      items: data.cartItems,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkCreateCartItemsDocument,
-            variables: {
-              cartItems: batch.map((ci) =>
-                toCartItemInput(ci as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'shelves',
-      items: data.shelves ?? [],
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkCreateShelvesDocument,
-            variables: {
-              shelves: batch.map((s) =>
-                toShelfInput(s as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-  ]
-
-  for (const group of entityGroups) {
-    const batches = chunk(group.items, BATCH_SIZE)
+  for (const spec of ENTITY_SPECS) {
+    const batches = chunk(spec.select(data), BATCH_SIZE)
     for (const [i, batch] of batches.entries()) {
-      const key = `${group.entityType}:${i}`
+      // The key does NOT carry `mode`, which is a PRE-EXISTING BUG and not
+      // this function's to fix: on the `replace` strategy `bulkCreate` and
+      // `bulkUpsert` share one session, so when both passes have rows for the
+      // same entity the upsert pass finds the create pass's key and skips its
+      // own batch. Neither entity added by PR 4b can hit it — `partitionPayload`
+      // sends `locations` only to `toCreate` and `itemStocks` only to
+      // `toUpsert`, so each has zero batches on the other pass.
+      const key = `${spec.entityType}:${i}`
       if (session.completedBatchKeys.has(key)) {
         completedBatches++
         continue
       }
-      await group.mutate(batch)
+      await (mode === 'create' ? spec.create : spec.upsert)(client, batch)
       session.completedBatchKeys.add(key)
       completedBatches++
       onProgress({
         completedBatches,
         totalBatches,
-        currentEntity: group.entityType,
+        currentEntity: spec.entityType,
       })
     }
   }
@@ -1681,187 +2159,20 @@ async function bulkCreate(args: BatchedBulkArgs): Promise<number> {
   return completedBatches
 }
 
-// ---------------------------------------------------------------------------
-// Batched bulk upsert — same structure as bulkCreate but uses Upsert mutations.
-// ---------------------------------------------------------------------------
-
-async function bulkUpsert(args: BatchedBulkArgs): Promise<number> {
-  const { client, data, session, onProgress, totalBatches } = args
-  let completedBatches = args.startCompleted
-
-  const entityGroups: Array<{
-    entityType: string
-    items: unknown[]
-    mutate: (batch: unknown[]) => Promise<void>
-  }> = [
-    {
-      entityType: 'tagTypes',
-      items: data.tagTypes,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkUpsertTagTypesDocument,
-            variables: {
-              tagTypes: batch.map((t) =>
-                toTagTypeInput(t as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'tags',
-      items: data.tags,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkUpsertTagsDocument,
-            variables: {
-              tags: batch.map((t) => toTagInput(t as Record<string, unknown>)),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'vendors',
-      items: data.vendors,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkUpsertVendorsDocument,
-            variables: {
-              vendors: batch.map((v) =>
-                toVendorInput(v as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'items',
-      items: data.items,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkUpsertItemsDocument,
-            variables: {
-              items: batch.map((i) =>
-                toItemInput(i as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'recipes',
-      items: data.recipes,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkUpsertRecipesDocument,
-            variables: {
-              recipes: batch.map((r) =>
-                toRecipeInput(r as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'inventoryLogs',
-      items: data.inventoryLogs,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkUpsertInventoryLogsDocument,
-            variables: {
-              logs: batch.map((l) =>
-                toInventoryLogInput(l as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'shoppingCarts',
-      items: data.shoppingCarts,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkUpsertShoppingCartsDocument,
-            variables: {
-              carts: batch.map((c) =>
-                toShoppingCartInput(c as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'cartItems',
-      items: data.cartItems,
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkUpsertCartItemsDocument,
-            variables: {
-              cartItems: batch.map((ci) =>
-                toCartItemInput(ci as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-    {
-      entityType: 'shelves',
-      items: data.shelves ?? [],
-      mutate: (batch) =>
-        client
-          .mutate({
-            mutation: BulkUpsertShelvesDocument,
-            variables: {
-              shelves: batch.map((s) =>
-                toShelfInput(s as Record<string, unknown>),
-              ),
-            },
-          })
-          .then(() => undefined),
-    },
-  ]
-
-  for (const group of entityGroups) {
-    const batches = chunk(group.items, BATCH_SIZE)
-    for (const [i, batch] of batches.entries()) {
-      const key = `${group.entityType}:${i}`
-      if (session.completedBatchKeys.has(key)) {
-        completedBatches++
-        continue
-      }
-      await group.mutate(batch)
-      session.completedBatchKeys.add(key)
-      completedBatches++
-      onProgress({
-        completedBatches,
-        totalBatches,
-        currentEntity: group.entityType,
-      })
-    }
-  }
-
-  return completedBatches
+function bulkCreate(args: BatchedBulkArgs): Promise<number> {
+  return runBulkBatches(args, 'create')
 }
 
+function bulkUpsert(args: BatchedBulkArgs): Promise<number> {
+  return runBulkBatches(args, 'upsert')
+}
+
+// Derived from the SAME list the two passes walk, so a new entity can never be
+// counted in one place and sent in another.
 function computeTotalBatches(data: ExportPayload): number {
-  return (
-    chunk(data.tagTypes, BATCH_SIZE).length +
-    chunk(data.tags, BATCH_SIZE).length +
-    chunk(data.vendors, BATCH_SIZE).length +
-    chunk(data.items, BATCH_SIZE).length +
-    chunk(data.recipes, BATCH_SIZE).length +
-    chunk(data.inventoryLogs, BATCH_SIZE).length +
-    chunk(data.shoppingCarts, BATCH_SIZE).length +
-    chunk(data.cartItems, BATCH_SIZE).length +
-    chunk(data.shelves ?? [], BATCH_SIZE).length
+  return ENTITY_SPECS.reduce(
+    (total, spec) => total + chunk(spec.select(data), BATCH_SIZE).length,
+    0,
   )
 }
 
@@ -1872,45 +2183,65 @@ export async function importCloudData(
   options?: {
     onProgress?: (p: ImportProgress) => void
     session?: ImportSession
-    // Which location's stock to send. The cloud IMPORT surface is still flat
-    // (`ItemInput` carries stock inline, with no `locationId` — see
-    // `flattenPayloadForCloud`), so a local (post-v15) payload is collapsed onto
-    // this one location. Defaults to the default location; callers thread the
-    // LOCAL slot (`readStoredLocationId('local')`), never the cloud active id.
-    locationId?: string
+    // NO `locationId` HERE, AND NONE IS COMING BACK. Until PR 4b this option
+    // picked the one location whose stock went up, because the cloud import
+    // surface was flat. The remap rule (PR 4 design §1) keeps every location
+    // now, so there is nothing to pick: the destination's default is read
+    // inside this function by `prepareCloudPayload`.
   },
 ): Promise<void> {
-  // Mirror of `importLocalData`'s `upgradeLegacyPayload`: collapse the local
-  // split shape down to the flat shape cloud expects, before anything reads
-  // the payload (conflict detection, partitioning and batching all see it).
-  const payload = flattenPayloadForCloud(
-    rawPayload,
-    options?.locationId ?? DEFAULT_LOCATION_ID,
-  )
   const onProgress = options?.onProgress ?? (() => undefined)
+  // The session records the payload AS GIVEN, because on the `clear` path
+  // `prepareCloudPayload` cannot run until the clear has. A resumed import
+  // re-derives its batch keys by running `prepareCloudPayload` again. The keys
+  // are `${entityType}:${i}`, so what has to match the first attempt is the
+  // row COUNT and ORDER per entity, and both are fixed: the remap rewrites ids
+  // only, and the legacy upgrade synthesises exactly one stock row per item,
+  // in item order. (Those synthesised rows get fresh `crypto.randomUUID()`
+  // ids on a resume. That is harmless — a batch with a new id is one that was
+  // never sent, since every sent batch is skipped by key.)
   const session: ImportSession = options?.session ?? {
-    payload,
+    payload: rawPayload,
     strategy,
     completedBatchKeys: new Set(),
   }
 
   try {
     if (strategy === 'clear') {
-      const totalBatches = computeTotalBatches(payload)
-      onProgress({ completedBatches: 0, totalBatches, currentEntity: '' })
+      // The FIRST total is the raw payload's, because the destination's
+      // default location cannot be read until the clear has run. The remap
+      // changes no array's length, but `upgradeLegacyPayloadForCloud` does: a
+      // pre-v15 file has no `itemStocks` key and gains one row per item. So
+      // the total is recomputed from the prepared payload below, and this one
+      // only opens the progress bar.
+      onProgress({
+        completedBatches: 0,
+        totalBatches: computeTotalBatches(rawPayload),
+        currentEntity: '',
+      })
       await client.mutate({ mutation: ClearAllDataDocument })
+      // AFTER the clear, never before. `clearAllData` deletes every Location
+      // row and `ensureDefaultLocation` re-creates a default lazily on the
+      // next `locations` read, so an id read first names a row that is gone by
+      // the time the remap uses it. PR 4a shipped that exact bug and it cost a
+      // full E2E gate run to find. See `fetchCloudDefaultLocationId`.
+      const payload = await prepareCloudPayload(rawPayload, client)
       await bulkCreate({
         client,
         data: payload,
         session,
         onProgress,
         startCompleted: 0,
-        totalBatches,
+        totalBatches: computeTotalBatches(payload),
       })
       await client.resetStore()
       return
     }
 
+    // `skip` and `replace` delete nothing, so the destination's locations are
+    // the same before and after. Remapping first is required all the same:
+    // conflict detection, partitioning and batching all read the payload.
+    const payload = await prepareCloudPayload(rawPayload, client)
     const existing = await fetchCloudExistingData(client)
     const conflicts = detectConflicts(payload, existing)
 

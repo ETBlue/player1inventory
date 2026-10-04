@@ -3,7 +3,6 @@ import { requireLocationRole } from '../lib/authz.js'
 import { parseCartId } from '../lib/cartId.js'
 import { ensureDefaultLocation } from '../lib/defaultLocation.js'
 import { prisma } from '../lib/prisma.js'
-import { mirrorStockToDefaultLocation } from '../lib/stockDualWrite.js'
 import { type Context, requireAuth } from '../context.js'
 import { toGraphQL as locationToGraphQL } from './location.resolver.js'
 import { toGraphQL as itemStockToGraphQL } from './itemStock.resolver.js'
@@ -447,32 +446,23 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             userId,
           },
         })
-        // DUAL-WRITE, REMOVED IN PR 4b (lib/stockDualWrite.ts). The import
-        // surface is FLAT — `ItemInput` carries the five stock fields inline
-        // with no `locationId` — but since PR 2 the cloud pantry reads
-        // `ItemStock`, not those columns. Without this mirror every imported
-        // item lands in the catalog and is stocked NOWHERE: invisible in the
-        // pantry, with no error anywhere. Caught by
-        // `e2e/tests/settings/import-export-cloud.spec.ts`.
+        // NO STOCK IS WRITTEN HERE, AND THAT IS THE POINT (cloud locations
+        // PR 4b). Until 4b this resolver mirrored the payload's inline stock
+        // into an `ItemStock` in the CALLER'S DEFAULT location, because the
+        // import surface was flat and the cloud pantry reads `ItemStock`. The
+        // client now uploads real `ItemStock` rows through
+        // `bulkCreateItemStocks` / `bulkUpsertItemStocks` (PR 4a), each row
+        // naming its own location, so mirroring here would collapse a
+        // multi-location pantry onto one location and fight the real rows.
         //
-        // PR 4a added `LocationInput`, `ItemStockImportInput` and their four
-        // bulk mutations, but no client calls them yet, so this mirror is
-        // still the only thing that stocks an imported item. **PR 4b** moves
-        // the client onto them and deletes this call — not PR 5, which the
-        // header used to say. The FILE outlives 4b: its other 4 calls (in
-        // item, itemStock, cart and recipe resolvers) go in PR 5, with
-        // `Item`'s five state columns.
+        // `ItemInput` still carries the five stock columns and they are still
+        // written to `Item` above, for a browser on a stale bundle that reads
+        // them. PR 5 drops those columns.
         //
-        // Until then the mirror writes the caller's DEFAULT location, like
-        // the other dual-writes. 4b maps the payload's default location onto
-        // the destination's `isDefault` instead (design §6).
-        await mirrorStockToDefaultLocation(userId, id, {
-          targetQuantity: rest.targetQuantity,
-          refillThreshold: rest.refillThreshold,
-          packedQuantity: rest.packedQuantity,
-          unpackedQuantity: rest.unpackedQuantity,
-          dueDate: dueDate ? new Date(dueDate) : null,
-        })
+        // DO NOT PUT A MIRROR BACK. If an imported item is invisible in the
+        // cloud pantry, the break is in the client's `itemStocks` upload
+        // (`apps/web/src/lib/importData.ts`, `ENTITY_SPECS`) or in
+        // `bulkCreateItemStocks` — not here.
         if (tagIds?.length) {
           const existingTags = await prisma.tag.findMany({
             where: { id: { in: tagIds } },
@@ -706,32 +696,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           create: { id, ...data },
           update: data,
         })
-        // DUAL-WRITE, REMOVED IN PR 4b (lib/stockDualWrite.ts). The import
-        // surface is FLAT — `ItemInput` carries the five stock fields inline
-        // with no `locationId` — but since PR 2 the cloud pantry reads
-        // `ItemStock`, not those columns. Without this mirror every imported
-        // item lands in the catalog and is stocked NOWHERE: invisible in the
-        // pantry, with no error anywhere. Caught by
-        // `e2e/tests/settings/import-export-cloud.spec.ts`.
-        //
-        // PR 4a added `LocationInput`, `ItemStockImportInput` and their four
-        // bulk mutations, but no client calls them yet, so this mirror is
-        // still the only thing that stocks an imported item. **PR 4b** moves
-        // the client onto them and deletes this call — not PR 5, which the
-        // header used to say. The FILE outlives 4b: its other 4 calls (in
-        // item, itemStock, cart and recipe resolvers) go in PR 5, with
-        // `Item`'s five state columns.
-        //
-        // Until then the mirror writes the caller's DEFAULT location, like
-        // the other dual-writes. 4b maps the payload's default location onto
-        // the destination's `isDefault` instead (design §6).
-        await mirrorStockToDefaultLocation(userId, id, {
-          targetQuantity: rest.targetQuantity,
-          refillThreshold: rest.refillThreshold,
-          packedQuantity: rest.packedQuantity,
-          unpackedQuantity: rest.unpackedQuantity,
-          dueDate: dueDate ? new Date(dueDate) : null,
-        })
+        // NO STOCK IS WRITTEN HERE either — same reason as `bulkCreateItems`
+        // above (cloud locations PR 4b). The client sends this payload's stock
+        // through `bulkUpsertItemStocks` on the second pass, after this one.
         // Replace junction rows
         await prisma.itemTag.deleteMany({ where: { itemId: id } })
         await prisma.itemVendor.deleteMany({ where: { itemId: id } })

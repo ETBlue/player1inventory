@@ -634,12 +634,6 @@
       "skip": "Skip",
       "autoImporting": "Copying local data to cloud…"
     },
-    "migrationLocationWarning": {
-      "title": "Only {{location}} will be copied",
-      "description": "Cloud mode does not support multiple locations yet, so only the stock in {{location}} is copied to your cloud account.",
-      "leftBehind": "Not copied: {{locations}}. That stock is not saved to the cloud at all — it stays on this device only.",
-      "continue": "Copy anyway"
-    },
     "export": {
       "label": "Download my data",
       "description": "Export all data as a JSON backup",
@@ -657,7 +651,6 @@
       "success": "Data imported successfully",
       "error": "Failed to import data",
       "invalidFile": "Invalid backup file",
-      "unknownLocations": "This backup stores its items across several locations, none of which exist on this device. Cloud mode holds one set of quantities per item, so there is no way to tell which location's quantities to upload. Restore the backup in offline mode first, pick a location there, then copy it to the cloud.",
       "entities": {
         "items": "Items",
         "tags": "Tags",

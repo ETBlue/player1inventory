@@ -208,6 +208,58 @@ mutation BulkUpsertShelves($shelves: [ShelfInput!]!) {
   }
 }
 
+mutation BulkCreateLocations($locations: [LocationInput!]!) {
+  bulkCreateLocations(locations: $locations) {
+    id
+    name
+    order
+    isDefault
+    createdAt
+    updatedAt
+  }
+}
+
+mutation BulkUpsertLocations($locations: [LocationInput!]!) {
+  bulkUpsertLocations(locations: $locations) {
+    id
+    name
+    order
+    isDefault
+    createdAt
+    updatedAt
+  }
+}
+
+mutation BulkCreateItemStocks($itemStocks: [ItemStockImportInput!]!) {
+  bulkCreateItemStocks(itemStocks: $itemStocks) {
+    id
+    itemId
+    locationId
+    targetQuantity
+    refillThreshold
+    packedQuantity
+    unpackedQuantity
+    dueDate
+    createdAt
+    updatedAt
+  }
+}
+
+mutation BulkUpsertItemStocks($itemStocks: [ItemStockImportInput!]!) {
+  bulkUpsertItemStocks(itemStocks: $itemStocks) {
+    id
+    itemId
+    locationId
+    targetQuantity
+    refillThreshold
+    packedQuantity
+    unpackedQuantity
+    dueDate
+    createdAt
+    updatedAt
+  }
+}
+
 mutation ClearAllData {
   clearAllData
 }

@@ -320,12 +320,18 @@ describe('DataModeCard', () => {
   })
 })
 
-describe('DataModeCard — multi-location migration warning', () => {
-  // Cloud has no per-location ItemStock (deferred in PR D). Copying a local
-  // pantry up therefore sends only the active location's stock, and the stock
-  // of every other location is silently left behind — so warn first.
+// REWRITTEN BY CLOUD LOCATIONS PR 4b TASK 7. Two describes and 3 its lived
+// here: `DataModeCard — multi-location migration warning` (2 its) pinned
+// `MigrationLocationWarningDialog`'s confirm/cancel flow, and
+// `DataModeCard — the warning cannot be skipped by timing` (1 it) pinned the
+// three strategy buttons being disabled until `useLocations()` had resolved.
+// The copy keeps every location now, so the warning stopped being true, the
+// component was deleted, and the card reads no location list at all. These 2
+// its pin the inverse rule.
+describe('DataModeCard — a copy to cloud carries every location', () => {
   afterEach(async () => {
     localStorage.clear()
+    vi.mocked(getLocations).mockReset()
     await db.locations.clear()
   })
 
@@ -350,8 +356,8 @@ describe('DataModeCard — multi-location migration warning', () => {
     await user.click(screen.getByRole('button', { name: 'Skip conflicts' }))
   }
 
-  it('user with several locations is warned which one gets copied', async () => {
-    // Given three locations with 'office' active
+  it('user with several locations is not asked which one to copy', async () => {
+    // Given three locations with 'office' active — the case that used to warn
     await seedLocations(
       ['local', 'My Home'],
       ['office', 'Office'],
@@ -370,64 +376,20 @@ describe('DataModeCard — multi-location migration warning', () => {
     // When the user picks a copy strategy
     await chooseCopyStrategy(user)
 
-    // Then the warning names the location being copied and the ones left behind
-    expect(
-      await screen.findByRole('heading', {
-        name: 'Only Office will be copied',
-      }),
-    ).toBeInTheDocument()
-    expect(screen.getByText(/My Home/)).toBeInTheDocument()
-    expect(screen.getByText(/Shed/)).toBeInTheDocument()
-
-    // And nothing is migrated until the user confirms
-    expect(localStorage.getItem('migration-strategy')).toBeNull()
-    expect(reloadMock).not.toHaveBeenCalled()
-
-    // When the user confirms
-    await user.click(screen.getByRole('button', { name: 'Copy anyway' }))
-
-    // Then the copy proceeds with the chosen strategy
+    // Then the switch happens on that one press — no extra confirmation
     expect(localStorage.getItem('migration-strategy')).toBe('skip')
     expect(localStorage.getItem('data-mode')).toBe('cloud')
     expect(reloadMock).toHaveBeenCalledOnce()
-  })
-
-  it('user with a single location is not warned', async () => {
-    // Given only the default location
-    await seedLocations(['local', 'My Home'])
-    const reloadMock = vi.fn()
-    Object.defineProperty(window, 'location', {
-      value: { ...window.location, reload: reloadMock },
-      writable: true,
-    })
-    const user = userEvent.setup()
-    renderCard()
-    await screen.findByRole('button', { name: 'Switch...' })
-
-    // When the user picks a copy strategy
-    await chooseCopyStrategy(user)
-
-    // Then no warning interrupts the common case — the copy starts immediately
+    // NEGATIVE CONTROL (deleting a component cannot make its heading appear)
     expect(
       screen.queryByRole('heading', { name: /will be copied/ }),
     ).not.toBeInTheDocument()
-    expect(localStorage.getItem('migration-strategy')).toBe('skip')
-    expect(reloadMock).toHaveBeenCalledOnce()
-  })
-})
-
-describe('DataModeCard — the warning cannot be skipped by timing', () => {
-  // `useLocations()` resolves asynchronously. Treating a not-yet-loaded list as
-  // "one location" would let a fast-clicking multi-location user start the copy
-  // with no warning at all, which is the unsafe default.
-  afterEach(async () => {
-    localStorage.clear()
-    vi.mocked(getLocations).mockReset()
-    await db.locations.clear()
   })
 
-  it('user cannot start the copy while the location list is still loading', async () => {
-    // Given the location query has not resolved yet
+  it('user can start the copy before the location list has loaded', async () => {
+    // Given the location query never resolves. The card used to disable all
+    // three strategy buttons until it did, so it could tell a single-location
+    // pantry from a multi-location one. It no longer needs to know.
     vi.mocked(getLocations).mockReturnValue(new Promise(() => {}))
     const reloadMock = vi.fn()
     Object.defineProperty(window, 'location', {
@@ -438,15 +400,12 @@ describe('DataModeCard — the warning cannot be skipped by timing', () => {
     renderCard()
 
     // When the user clicks through to a copy strategy
-    await user.click(screen.getByRole('button', { name: 'Switch...' }))
-    await user.click(screen.getByRole('button', { name: /switch to cloud/i }))
-    await user.click(screen.getByRole('button', { name: 'Yes, copy data' }))
-    await user.click(screen.getByRole('button', { name: 'Skip conflicts' }))
+    await chooseCopyStrategy(user)
 
-    // Then nothing is copied — the app cannot yet know whether to warn
-    expect(localStorage.getItem('migration-strategy')).toBeNull()
-    expect(localStorage.getItem('data-mode')).toBeNull()
-    expect(reloadMock).not.toHaveBeenCalled()
+    // Then the switch happens anyway
+    expect(localStorage.getItem('migration-strategy')).toBe('skip')
+    expect(localStorage.getItem('data-mode')).toBe('cloud')
+    expect(reloadMock).toHaveBeenCalledOnce()
   })
 })
 

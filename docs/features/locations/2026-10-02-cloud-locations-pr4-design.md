@@ -1,13 +1,15 @@
 # Cloud locations PR 4 — design
 
 **Date:** 2026-10-02
-**Status:** 🔲 Pending
+**Status:** 🔄 In Progress — **4a ✅ merged** ([#328](https://github.com/ETBlue/player1inventory/pull/328)),
+**4b 🔄 built** (2026-10-04 — gate red on **one** E2E test: the cloud → cloud round trip needs 36.5s against a 30s timeout; everything else green), **4c** 🔲 Pending
 **Supersedes:** §6 of the [cloud locations design](2026-08-30-cloud-locations-design.md),
 which described this work in about 40 lines and is stale in 8 places — see *What §6 got
 wrong* below.
 **Brainstorming:** [PR 4 brainstorming](2026-10-02-brainstorming-pr4.md)
-**Plan:** [PR 4a plan](2026-10-02-cloud-locations-plan-pr4a.md) — 4b and 4c are planned
-later, on purpose (brainstorming decision 9)
+**Plans:** [PR 4a plan](2026-10-02-cloud-locations-plan-pr4a.md) ✅ merged ·
+[PR 4b plan](2026-10-03-cloud-locations-plan-pr4b.md) ✅ built — 4c is planned when
+scheduled, on purpose (brainstorming decision 9)
 
 ---
 
@@ -57,7 +59,7 @@ comes from the data, so there is no decision left to get wrong.
 |---|---|
 | Fewer ways to get it wrong | 3 hardcoded `ensureDefaultLocation` fallbacks stop being the only answer. Each one currently writes a row to a location the user did not choose, silently |
 | A failure that now has a name | an import naming someone else's location is **rejected**, through `requireLocationRole`. Today a wrong `locationId` cannot even be expressed, so the wrong row is written with no error |
-| Honest documentation | 8 stale claims in design §6 corrected, and 2 wrong counts (`stockDualWrite` is 6 calls behind 7 markers, not 5). Both had already been copied into task briefs |
+| Honest documentation | 8 stale claims in design §6 corrected, and 2 wrong counts (`stockDualWrite` is 6 calls behind 7 `DUAL-WRITE` markers, not 5). Both had already been copied into task briefs |
 
 **DX cost of 4a, stated plainly:** two more hand-maintained lists. `LocationInput` and
 `ItemStockImportInput` each duplicate a Prisma model's field set, like the 9 import inputs
@@ -146,10 +148,27 @@ row.
 
 | Field | Shape |
 |---|---|
+| `locations[].id` | plain id — **added 2026-10-03, see below** |
 | `itemStocks[].locationId` | plain id |
 | `inventoryLogs[].locationId` | plain id — **new in 4a**, see §2 |
 | `shoppingCarts[].id` | `${locationId}:${vendorId\|'no-vendor'}` |
 | `cartItems[].cartId` | the same composite |
+
+> **This table said four fields until 2026-10-03. There are five.** `locations[].id` was
+> missing, and 4b task 3 caught it. Without remapping it, the payload's default row keeps its
+> own id and `bulkCreateLocations` creates it as a **stray extra location** beside the
+> destination's real default.
+>
+> The omission was in the table only — the PR 4a section of this same document already said
+> "its id is rewritten to the destination's existing `isDefault` id", which is the correct
+> five-field behaviour. **The table and the prose disagreed, and the task brief copied the
+> table.**
+>
+> One consequence worth stating: the export **file** must carry `isDefault`, because it is
+> the only place the import side can learn which location was the payload's default.
+> `LocationInput` has no such field, so `toLocationInput` drops it for the **upload** —
+> those are two different jobs. `sanitiseCloudPayload` re-adds the flag to the file after
+> mapping. Task 2 had dropped it from both and task 3 fixed it.
 
 **Legacy payloads need no new code.** `upgradeLegacyPayload` (`importData.ts:259-292`)
 already turns a pre-v15 payload's inline stock into `itemStocks` rows, placed in a location
@@ -341,20 +360,48 @@ four new mutations.
 the code** — only in the design doc. The real name is `flattenPayloadForCloud`, and the
 `void` block is at `importData.ts:426-430`, not `:414-418`.
 
-### `deserializeLocation` stops deriving `isDefault` from the id
+### `deserializeLocation` KEEPS deriving `isDefault` from the id
 
-`deserializeLocation` (`importData.ts:136-143`) sets `isDefault: raw.id ===
+> **This section said "stops deriving" until 2026-10-03. That was wrong**, and 4b task 5
+> proved it by running the change as a mutation: carrying the file's flag turns **4 tests
+> red**. The derive stays; only its comment changed.
+
+`deserializeLocation` (`importData.ts:137-144`) sets `isDefault: raw.id ===
 DEFAULT_LOCATION_ID` and ignores the file. That is correct while cloud backups carry no
 locations. Once they do, a cloud backup's cuid-keyed locations would all import unflagged,
-and `ensureDefaultLocationRow()` (`importData.ts:1121`) would add a stray empty default
-beside them.
+and `ensureDefaultLocationRow()` would add a stray empty default beside them.
+
+**The fix is the remap, not the derive.** Once the remap has rewritten the payload default's
+id to `DEFAULT_LOCATION_ID`, the derive flags exactly that row. The file's flag is **not**
+ignored — it is read one step earlier, by `findPayloadDefaultLocationId`, which is what
+decides the remap.
+
+Carrying the flag instead breaks two real cases:
+
+| Case | What carrying the flag does |
+|---|---|
+| a pre-v18 backup, with no `isDefault` key anywhere | **zero** rows flagged — and `ensureDefaultLocationRow` cannot repair it, because the `local` row exists so it returns early |
+| a hand-edited file flagging a second row | **two** rows flagged |
+
+Locally the flag and the id are the same fact: the v18 upgrade function sets
+`isDefault = (id === DEFAULT_LOCATION_ID)` (`db/index.ts:628`), and `ensureDefaultLocation`
+only ever creates that id.
+
+**A collision case neither this doc nor the plan predicted.** `db/upgradeV18.test.ts:235`
+pins a hand-edited payload where `local` is **not** flagged and `office` **is**. Under the
+bare rule `office` remaps onto `local` — but the payload already holds a `local` row, so two
+rows collide on one id and **a location disappears**. `buildLocationRemap` now returns an
+empty map when the destination's default id is already held by a different payload row.
+Nothing is lost: the remap exists only to stop a stray *second* default appearing, which
+cannot happen when the destination's default id is already in the payload. The guard is in
+the **shared** function, so both directions get it.
 
 4b applies the §1 remap on this side instead: the payload's default becomes the `'local'`
 row, so exactly one row is flagged and no extra row is created.
 
 ### Two of the six dual-writes go
 
-`stockDualWrite.ts` has **6 calls across 5 files** and **7 `REMOVED IN PR 5` markers**. Two
+`stockDualWrite.ts` has **6 calls across 5 files** and **7 `DUAL-WRITE` markers**. Two
 calls are in the import path:
 
 | Call site | Resolver |
@@ -365,6 +412,12 @@ calls are in the import path:
 Their markers say "PR 5" in the header and "goes away with PR 4" in the body
 (`import.resolver.ts:76-87`). The body is right: once the payload carries real stock rows,
 mirroring item columns into the caller's default location is wrong, not just redundant.
+
+> **Measured again on 2026-10-04, after 4b task 6.** The counts above are the state
+> *before* 4b. After it: **4 calls in 4 files** and **5** `REMOVED IN PR 5` markers, plus
+> the inline block in `applyUnitSwitch`. The phrasing "7 `REMOVED IN PR 5` markers" used
+> elsewhere in these docs was never right after 4a — there were 5 saying PR 5 and 2 saying
+> PR 4b, 7 `DUAL-WRITE` markers of both kinds. Count the markers, not the files.
 
 **This is the sharpest risk in 4b.** That mirror is the only reason an imported item is
 visible in the cloud pantry today. Remove it, and if the new `itemStocks` upload has a bug,
@@ -393,11 +446,37 @@ const locationResolved =
     locations.some((loc) => loc.id === activeLocationId))
 
 // after
-// The remap maps the payload's default location onto THIS account's
-// isDefault row, so the copy cannot start until the destination's
-// locations are known.
+// NOT because the remap needs it — see the correction below.
 const locationsLoaded = locations !== undefined
 ```
+
+> **The reason given here until 2026-10-03 was FALSE.** It said "the remap maps the payload's
+> default location onto THIS account's `isDefault` row, so the copy cannot start until the
+> destination's locations are known". **`importCloudData` reads the destination's default
+> itself**, with its own `network-only` `GetLocations` inside
+> `fetchCloudDefaultLocationId` (`importData.ts:526-534`), on every strategy. The hook's
+> `useLocations()` result feeds the remap **nothing**.
+>
+> 4b task 7 caught it. The claim was repeated in brainstorming decision 6 — including in the
+> rejection note for deleting the gate — so the option the user chose was presented with a
+> justification that does not hold.
+>
+> **The gate is still worth keeping, for a different reason: ordering.** The copy is
+> one-shot and destructive. On the `clear` strategy `clearAllData` deletes every `Location`
+> row before the remap re-reads them, so the copy must not start while this hook's own
+> `GetLocations` is still in flight. That reason is argued from source and is **not**
+> measured — proving the Apollo-cache race needs a real client and a real clear, which is
+> cloud-E2E territory.
+>
+> **The mechanism behind keeping `autoImportStarted` was also wrong.** The doc said "a
+> location change mid-flight would start a second copy". It cannot: `locationsLoaded` is a
+> **boolean**, so adding or renaming a location keeps it `true` and the effect never
+> re-runs. The real re-entry trigger is inside the copy — `importCloudData` calls
+> `client.resetStore()` on the `clear` path, which empties the Apollo cache and refetches
+> `GetLocations`; during that refetch `locations` is `undefined`, so the boolean goes
+> `true → false → true` while the one-shot key is still unset. A test written to the old
+> mechanism **cannot fail**, and task 7's first attempt at that mutation check came back
+> green for exactly that reason.
 
 The stored id goes with it, because `importCloudData` loses its `locationId` option.
 
@@ -412,6 +491,34 @@ effect's dependency array (`:113`), so without the one-shot ref a location chang
 would start a second copy.
 
 ---
+
+### Two decisions taken 2026-10-03, when 4b was planned
+
+**The cart-leak proof is two tests doing two different jobs, and only one is evidence.**
+
+| Part | Where | On `main` | After 4b |
+|---|---|---|---|
+| the cart id keeps its location prefix | unit, `importData.test.ts` | **red** | green — the actual proof |
+| two users sending bare cart ids share one `Cart` row | API-only cloud spec | green | **still green** |
+
+Part 2 cannot go red then green. `Cart.id` is a global primary key, so two users genuinely
+cannot both hold `'no-vendor'`, and no client change fixes that — 4b's fix is to stop
+producing bare ids at all. So part 2 is a **negative control**: a labelled characterisation
+test of a hazard that survives this PR, pointing at issue #327. It must say so in its own
+header, or it reports as coverage it does not give.
+
+A second user is also harder than it looks. `makeGql` hardcodes `E2E_USER_ID`
+(`e2e/utils/cloud.ts:15`), and `VITE_E2E_TEST_USER_ID` is baked into the web build as a
+single value (`playwright.config.ts:8, 90`) — so the **browser cannot be a second user**.
+Part 2 has no browser, like `location-scoped-writes.spec.ts`.
+
+**Cloud export's lost log fields are fixed here too.** `export.graphql:1-10`'s
+`InventoryLogs` query selects six fields and drops `logKey` and `logParams`, which
+`ItemLogs` (`inventoryLogs.graphql:7-18`) already selects. So a cloud backup silently loses
+**every log's message** today — a pre-existing data loss, not one 4b causes. 4b has to edit
+that same query to add `locationId`, and this is the lossless-backup PR, so the two extra
+fields go in with it. `toInventoryLogInput` (`importData.ts:624-637`) must pass all three
+through; it is shared with `sanitiseCloudPayload`, so one change fixes export and import.
 
 ## 4. Purge — PR 4c
 
@@ -477,10 +584,10 @@ breaking the **source**, not the fixture.
 | # | PR | Break this | The test that must go red | Result |
 |---|---|---|---|---|
 | 1 | 4a | `allItemStocks` resolver scope → `{}` (no filter) | a resolver test asserting one user cannot read another's stock | ✅ red, measured 2026-10-02 — see the 4a table below |
-| 2 | 4b | restore the cart prefix strip at `importData.ts:403-413` | the two-user cart-collision spec | not run yet |
-| 3 | 4b | drop `itemStocks` from the remap, so the upload sends none | the cloud import E2E — imported items must be stocked, not catalog-only | not run yet |
-| 4 | 4b | map every payload location to the destination default | an E2E asserting a two-location payload arrives as two locations | not run yet |
-| 5 | 4b | restore `deserializeLocation`'s `raw.id === DEFAULT_LOCATION_ID` | a cloud → local import test asserting exactly one default and no stray row | not run yet |
+| 2 | 4b | restore the cart prefix strip at `importData.ts:403-413` | the two-user cart-collision spec | **run — and the test named here CANNOT go red.** It is a negative control: `Cart.id` is a global primary key, so two users genuinely cannot both hold `'no-vendor'` and the spec is green with or without 4b. What did go red: task 1's unit test on `main`, `expected [ 'no-vendor', 'vendor_1' ] to deeply equal [ 'loc_garage:no-vendor', 'loc_garage:vendor_1' ]`; and task 8's cloud E2E, **2 red** on `cartItemCountByItem(itemId, locationId: <Office>)` — `Expected: 1 / Received: 0`, the stock assertions staying green |
+| 3 | 4b | drop `itemStocks` from the remap, so the upload sends none | the cloud import E2E — imported items must be stocked, not catalog-only | **run as "delete the `itemStocks` entity from `ENTITY_SPECS`" — 5 unit red (task 6) + 4 cloud E2E red (task 8).** Unit: `expected -1 to be greater than 5` — `BulkCreateItemStocks` absent from the mutation sequence entirely; also `expected 10 to be 11` from `computeTotalBatches`. E2E: two tests die at `verifyRelations` step 1, `getByRole('heading', { name: 'Fixture Item', level: 3 })` "element(s) not found" — the invisible-item symptom; the stray-default test says it directly, `expected [ "DEFAULT", "Fixture Cabin", "Fixture Office" ] to deeply equal []` |
+| 4 | 4b | map every payload location to the destination default | an E2E asserting a two-location payload arrives as two locations | **run — 12 unit red (task 5) + 4 cloud E2E red (task 8).** Unit: `expected [ 'local' ] to deeply equal [ 'cloud_cabin_cuid', …(2) ]` — all three locations collapsed into one row; 7 of the 12 are task 3's cloud-direction tests, which proves the rule really is shared. E2E, run as "force the uploaded `itemStocks` onto the caller's default": `expected [ "DEFAULT", "Fixture Cabin", "Fixture Office" ] to deeply equal [ "DEFAULT" ]` at `backupAssertions.ts:168`. Every fixture seeds **three** locations with three different quantities, which is what lets these fail |
+| 5 | 4b | ~~restore `deserializeLocation`'s `raw.id === DEFAULT_LOCATION_ID`~~ — **a no-op; that line was never changed.** Replaced by three real checks: remove the remap call; map every location to the default; drop `locations[].id` from the remap | the stray-row and remapped-name assertions | **run, 8 / 12 / 7 red** |
 | 6 | 4c | `purgeUserData`'s `item` filter → `{ userId: 'nobody' }` | the two-user purge spec, on the "A's rows are gone" half | not run yet |
 | 7 | 4c | `purgeUserData`'s `item` filter → `{}` | the two-user purge spec, on the "B's rows survive" half | not run yet |
 
@@ -509,6 +616,43 @@ the wrong reason; see the plan).
 | 5 | `bulkCreateLocations` writes `isDefault: true` | `import-location.resolver.test.ts` › never marked as the default **and** › keeps their own default untouched | `expected true to be false` and `expected [ { …(4) } ] to be undefined` — 2 failed, 1 passed |
 | 6 | `bulkCreateItemStocks` `locationId` → the caller's default | `import-itemStock.resolver.test.ts` › user importing stock gets each row in the location its own payload names | `expected { targetQuantity: 4, …(9) } to match object { itemId: 'item_milk', …(2) }` |
 | 7 | `requireOwnItemStockRefs`' location check deleted | `import-itemStock.resolver.test.ts` › user cannot import stock into another account's location | `expected undefined to be 'FORBIDDEN'` |
+
+### 4b's mutation checks, measured
+
+The table above lists 3 checks for 4b. **Fourteen were actually run**, across tasks 1 to 8,
+because several of the plan's checks turned out to be unrunnable as written and were
+replaced. Every one below went red, and red for the reason claimed.
+
+| Task | Mutation | Result |
+|---|---|---|
+| 1 | the cart filter-and-slice block replaced with a pass-through, then restored | both of task 1's tests went **green** with the pass-through and **red** again with the block restored — run unasked, and it is what proves those two tests are pinned to that exact code |
+| 3 | map **every** payload location onto the destination default | **12 red** (measured in task 5; 7 of them task 3's own cloud-direction tests, which proves the rule is shared): `expected [ 'local' ] to deeply equal [ 'cloud_cabin_cuid', …(2) ]` |
+| 3 | read the destination's locations **before** `clearAllData` | **1 red**: `expected [ 'cloud_default_before:vendor_1' ] to deeply equal [ 'cloud_default_after:vendor_1' ]`. The ordering hazard that broke PR 4a is now guarded by a named test, not only by a comment |
+| 3 | drop `locations[].id` from `applyLocationRemap`, keep the other four fields | **7 red**, including `expected 4 to be 3` — the stray extra default location. This is the check that proves the **fifth** field is needed |
+| 4 | `locations` moved after `shoppingCarts` | **3 red**: `expected 5 to be greater than 9` (stock before its location) and `expected 7 to be less than 6` (locations after the carts) |
+| 4 | `itemStocks` moved before `items` | **2 red**: `expected 5 to be greater than 6` |
+| 4 | `computeTotalBatches` left on a stale nine-entity list | **1 red**: `expected 9 to be 11` — it counted 9 batches while the loop sent 11 |
+| 5 | the remap call removed from `importLocalData` | **8 red**: `expected 4 to be 3` (the stray row), `expected 'cloud_default_cuid:vendor_1' to be 'local:vendor_1'`, `expected 'cloud_default_cuid' to be 'local'` (the log) |
+| 6 | `itemStocks` deleted from `ENTITY_SPECS` | **5 red** unit — `expected -1 to be greater than 5`, `BulkCreateItemStocks` absent from the sequence — plus **4 red** cloud E2E in task 8 |
+| 6 | the `bulkCreateItems` mirror restored | **1 red**, the create-side test only |
+| 6 | the `bulkUpsertItems` mirror restored | **1 red**, the upsert-side test only. Run **separately on purpose**: one test cannot pin two byte-identical calls, which is why the replacement is two `it`s |
+| 8 | uploaded `itemStocks` forced onto the caller's default location | **4 red** cloud E2E: `expected [ "DEFAULT", "Fixture Cabin", "Fixture Office" ] to deeply equal [ "DEFAULT" ]` |
+| 8 | `itemStocks` deleted from `ENTITY_SPECS`, seen through E2E | **4 red**: two die at `verifyRelations` step 1 with "element(s) not found" — the invisible-item symptom; the stray-default test says it directly, `… to deeply equal []` |
+| 8 | the cart prefix strip reinstated | **2 red**, exactly the two cart-column assertions: `cartItemCountByItem(itemId, locationId: <Office>)` `Expected: 1 / Received: 0`. The stock assertions stayed green, correctly |
+
+**Two of the plan's checks could not be run as written, and that is a finding, not an
+excuse.**
+
+| Plan check | Why it does not work |
+|---|---|
+| task 4's "a test asserting an imported cart's `locationId` **column** matches its id's prefix must go red" | no unit test can read a server column — the mock Apollo client records the mutation, not the database. The order tests assert the **sequence of mutation documents** instead, and task 8's E2E asserts the column |
+| task 5's "restore `deserializeLocation`'s `raw.id === DEFAULT_LOCATION_ID`" | a no-op: that line was never changed. The derive is correct and was kept — see the §1 note |
+
+**One check the plan asked for was never recorded as run.** Task 2's mutation check 1 — drop
+`itemStocks` from `fetchCloudPayload`'s `Promise.all` and watch the new export test go red —
+does not appear in task 2's note. The same loss is caught from the other end by task 6's and
+task 8's `ENTITY_SPECS` checks, but that is a different assertion in a different file. Noted
+rather than claimed.
 
 ### 4a is NOT behaviour-neutral — measured, 2026-10-02
 

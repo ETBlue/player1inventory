@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { db } from '@/db'
+import { db, ensureDefaultLocationRow } from '@/db'
 import { addItemToLocation, getStockedItems } from '@/db/operations'
+import { ClearAllDataDocument } from '@/generated/graphql'
+import { DEFAULT_LOCATION_ID } from '@/types'
 import type { ExportPayload } from './exportData'
 import {
+  applyLocationRemap,
+  buildLocationRemap,
   type ConflictSummary,
   detectConflicts,
   type ExistingData,
@@ -11,10 +15,11 @@ import {
   importCloudData,
   importLocalData,
   partitionPayload,
-  resolveFlattenLocationId,
   toCartItemInput,
   toInventoryLogInput,
   toItemInput,
+  toItemStockInput,
+  toLocationInput,
   toRecipeInput,
   toShelfInput,
   toShoppingCartInput,
@@ -392,19 +397,19 @@ describe('partitionPayload', () => {
     expect(toUpsert.items).toHaveLength(0)
   })
 
-  // The v15-only tables are in no conflict set, so partitioning must carry them
-  // through untouched on every strategy. Nothing else asserts this: they were
-  // absent from the default payload helper until now, so an implementation that
-  // rebuilt `toCreate` table-by-table instead of spreading would have silently
-  // dropped every stock row and location — items would import stockless and the
-  // pantry would render empty.
-  it.each([
-    'skip',
-    'replace',
-    'clear',
-  ] as const)('user importing a v15 backup with %s keeps its itemStocks and locations', (strategy) => {
-    // Given a v15 payload carrying stock rows and locations
-    const v15Payload = emptyPayload({
+  // The v15-only tables are in no conflict set, so nothing may silently drop
+  // them: an implementation that rebuilt `toCreate` table-by-table instead of
+  // spreading would have lost every stock row and location, and items would
+  // import stockless with an empty pantry.
+  //
+  // They are NOT carried through identically on every strategy, which is what
+  // these three tests used to assert as one `it.each`. PR 4b task 4 made the
+  // cloud upload read them, and the two passes need them in different places —
+  // see the table above `partitionPayload`. The fixture is what makes the three
+  // rules distinguishable: `item-1` conflicts and `item-2` does not, and each
+  // has its own stock row.
+  function v15Payload() {
+    return emptyPayload({
       items: [existingItem, newItem],
       itemStocks: [
         { id: 'stock-1', itemId: 'item-1', locationId: 'local' },
@@ -412,19 +417,68 @@ describe('partitionPayload', () => {
       ],
       locations: [{ id: 'office', name: 'Office', order: 1 }],
     })
+  }
 
-    // When partitioning it
+  it('user importing a v15 backup with clear keeps every stock row and location', () => {
+    // Given a v15 payload carrying stock rows and locations
+    const payload = v15Payload()
+
+    // When partitioning it for the clear strategy
     const { toCreate } = partitionPayload(
-      v15Payload,
-      detectConflicts(v15Payload, existing),
-      strategy,
+      payload,
+      detectConflicts(payload, existing),
+      'clear',
     )
 
-    // Then both v15 tables survive intact
-    expect(toCreate.itemStocks).toHaveLength(2)
+    // Then every row goes to the create pass — nothing is left to conflict with
     expect((toCreate.itemStocks as Array<{ id: string }>).map((s) => s.id)) //
       .toEqual(['stock-1', 'stock-2'])
     expect(toCreate.locations).toHaveLength(1)
+  })
+
+  it('user importing a v15 backup with skip keeps the stock of the items it added', () => {
+    // Given a v15 payload whose `item-1` already exists and whose `item-2` does not
+    const payload = v15Payload()
+
+    // When partitioning it for the skip strategy
+    const { toCreate, toUpsert } = partitionPayload(
+      payload,
+      detectConflicts(payload, existing),
+      'skip',
+    )
+
+    // Then only the new item's stock goes up. `item-1` was skipped, so the
+    // stock it already has stays as it is — the rule `importItemStocks` uses
+    // locally, and the only rule the server accepts: `requireOwnItemStockRefs`
+    // refuses an item id the account does not hold.
+    expect((toCreate.itemStocks as Array<{ id: string }>).map((s) => s.id)) //
+      .toEqual(['stock-2'])
+    // And every location goes up, because a location is never a conflict
+    expect(toCreate.locations).toHaveLength(1)
+    expect(toUpsert.itemStocks ?? []).toHaveLength(0)
+  })
+
+  it('user importing a v15 backup with replace sends every stock row to the upsert pass', () => {
+    // Given the same v15 payload
+    const payload = v15Payload()
+
+    // When partitioning it for the replace strategy
+    const { toCreate, toUpsert } = partitionPayload(
+      payload,
+      detectConflicts(payload, existing),
+      'replace',
+    )
+
+    // Then no stock goes to the create pass: `bulkCreateItemStocks` skips a
+    // taken (itemId, locationId) pair, which would drop the quantities the
+    // user asked to restore
+    expect(toCreate.itemStocks).toHaveLength(0)
+    expect((toUpsert.itemStocks as Array<{ id: string }>).map((s) => s.id)) //
+      .toEqual(['stock-1', 'stock-2'])
+    // And locations go to the CREATE pass, never the upsert pass: the carts
+    // and logs that name them are sent on that same pass
+    expect(toCreate.locations).toHaveLength(1)
+    expect(toUpsert.locations).toHaveLength(0)
   })
 })
 
@@ -1661,6 +1715,139 @@ describe('cloud import input mappers — strip server-only fields', () => {
     expect(result.occurredAt).toBe('2026-02-10T08:00:00.000Z')
   })
 
+  it('toInventoryLogInput keeps locationId, logKey and logParams', () => {
+    // Given a log that names its location and carries a translated message.
+    // All three fields were dropped by this mapper before cloud locations
+    // PR 4b, so a restored backup put every log in the default location with
+    // no message at all.
+    const rawLog = {
+      __typename: 'InventoryLog',
+      id: 'log-1',
+      itemId: 'item-1',
+      locationId: 'loc-office',
+      delta: -1,
+      quantity: 2,
+      occurredAt: '2026-02-10T08:00:00.000Z',
+      note: null,
+      logKey: 'log.cooked',
+      logParams: { recipe: 'Smoothie' },
+      userId: 'u1',
+    }
+
+    // When mapped to InventoryLogInput
+    const result = toInventoryLogInput(rawLog)
+
+    // Then the location and the message both survive
+    expect(result.locationId).toBe('loc-office')
+    expect(result.logKey).toBe('log.cooked')
+    expect(result.logParams).toEqual({ recipe: 'Smoothie' })
+    expect(result).not.toHaveProperty('userId')
+  })
+
+  it('toLocationInput drops isDefault', () => {
+    // Given a location row out of a cloud export, which DOES record isDefault
+    // (GetLocations selects it) — but LocationInput has no such field, and
+    // sending it would fail GraphQL validation
+    const rawLocation = {
+      __typename: 'Location',
+      id: 'loc-office',
+      name: 'Office',
+      order: 1,
+      isDefault: true,
+      userId: 'u1',
+      createdAt: '2026-02-01T00:00:00.000Z',
+      updatedAt: '2026-02-02T00:00:00.000Z',
+    }
+
+    // When mapped to LocationInput
+    const result = toLocationInput(rawLocation)
+
+    // Then the key is ABSENT, not `false` — the server accepts no such field
+    expect(result).not.toHaveProperty('isDefault')
+    expect(result).not.toHaveProperty('__typename')
+    expect(result).not.toHaveProperty('userId')
+
+    // And everything LocationInput does accept is present
+    expect(result).toEqual({
+      id: 'loc-office',
+      name: 'Office',
+      order: 1,
+      createdAt: '2026-02-01T00:00:00.000Z',
+      updatedAt: '2026-02-02T00:00:00.000Z',
+    })
+  })
+
+  it('toLocationInput converts Date timestamps out of a local backup', () => {
+    // Given a Dexie location row, whose timestamps are Date objects
+    const result = toLocationInput({
+      id: 'local',
+      name: 'My Home',
+      order: 0,
+      isDefault: true,
+      createdAt: new Date('2026-02-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-02-02T00:00:00.000Z'),
+    })
+
+    // Then they arrive as ISO strings, which is what LocationInput declares
+    expect(result.createdAt).toBe('2026-02-01T00:00:00.000Z')
+    expect(result.updatedAt).toBe('2026-02-02T00:00:00.000Z')
+  })
+
+  it('toItemStockInput keeps locationId and accepts a null dueDate', () => {
+    // Given a stock row with no expiration date. Apollo sends `null`, Dexie
+    // sends `undefined`, and `dueDate` is the one optional field on
+    // ItemStockImportInput — so both have to become "no due date"
+    const rawStock = {
+      __typename: 'ItemStock',
+      id: 'stock-office',
+      itemId: 'item-1',
+      locationId: 'loc-office',
+      targetQuantity: 1,
+      refillThreshold: 0,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      dueDate: null,
+      createdAt: '2026-02-01T00:00:00.000Z',
+      updatedAt: '2026-02-02T00:00:00.000Z',
+    }
+
+    // When mapped to ItemStockImportInput
+    const result = toItemStockInput(rawStock)
+
+    // Then the location is kept — it is what makes the row per-location
+    expect(result.locationId).toBe('loc-office')
+    expect(result.dueDate).toBeUndefined()
+    expect(result).not.toHaveProperty('__typename')
+    expect(result.packedQuantity).toBe(2)
+  })
+
+  it('toItemStockInput converts a Date dueDate and drops local-only columns', () => {
+    // Given a Dexie stock row: Date timestamps, plus the unit and packaging
+    // columns the cloud keeps on Item instead of ItemStock
+    const result = toItemStockInput({
+      id: 'stock-home',
+      itemId: 'item-1',
+      locationId: 'local',
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+      dueDate: new Date('2026-03-01T00:00:00.000Z'),
+      createdAt: new Date('2026-02-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-02-02T00:00:00.000Z'),
+      targetUnit: 'package',
+      packageUnit: 'bottle',
+      consumeAmount: 1,
+    })
+
+    // Then the dates are ISO and the local-only columns are gone
+    expect(result.dueDate).toBe('2026-03-01T00:00:00.000Z')
+    expect(result.createdAt).toBe('2026-02-01T00:00:00.000Z')
+    expect(result).not.toHaveProperty('targetUnit')
+    expect(result).not.toHaveProperty('packageUnit')
+    expect(result).not.toHaveProperty('consumeAmount')
+  })
+
   it('toShoppingCartInput keeps only id + lastPurchasedAt, dropping legacy fields', () => {
     const date = new Date('2026-03-01T10:00:00.000Z')
     const rawCart = {
@@ -1809,6 +1996,384 @@ describe('toShelfInput', () => {
     expect(result.updatedAt).toBeTruthy()
     expect(() => new Date(result.createdAt)).not.toThrow()
     expect(() => new Date(result.updatedAt)).not.toThrow()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// importCloudData — locations and stock upload in dependency order
+// (cloud locations PR 4b task 4)
+//
+// EVERY TEST HERE ASSERTS THE SEQUENCE, NOT JUST THAT BOTH HAPPENED. A wrong
+// upload order produces no error at all:
+//
+//   - a cart uploaded before its location exists is written to the account's
+//     DEFAULT location by `resolveCartLocations`, silently;
+//   - stock uploaded before its item or location exists is refused with
+//     `Forbidden`, and on the `clear` strategy that lands after
+//     `clearAllData` has already emptied the account.
+//
+// "Both were called" passes against both of those, so it proves nothing.
+// ---------------------------------------------------------------------------
+
+describe('importCloudData — locations and stock upload in dependency order', () => {
+  // The GraphQL operation name of a document, e.g. 'BulkCreateLocations'.
+  // Comparing names rather than document objects keeps the failure message
+  // readable: a wrong order prints two lists of names.
+  function opName(doc: unknown): string {
+    const definitions = (
+      doc as { definitions: Array<{ name?: { value: string } }> }
+    ).definitions
+    return definitions[0]?.name?.value ?? '(anonymous)'
+  }
+
+  // The destination account's one location, flagged default. The remap maps
+  // the PAYLOAD's default onto this id and leaves every other id alone, so a
+  // fixture needs at least one non-default location to tell the two rules
+  // apart. This one seeds THREE.
+  const CLOUD_DEFAULT_ID = 'cloud_default'
+
+  function makeRecordingClient() {
+    const mutate = vi.fn().mockResolvedValue({})
+    const query = vi
+      .fn()
+      .mockImplementation(({ query: doc }: { query: unknown }) => {
+        if (opName(doc) === 'GetLocations') {
+          return Promise.resolve({
+            data: {
+              locations: [
+                {
+                  id: CLOUD_DEFAULT_ID,
+                  name: 'My Home',
+                  order: 0,
+                  isDefault: true,
+                  createdAt: '2026-01-01T00:00:00.000Z',
+                  updatedAt: '2026-01-01T00:00:00.000Z',
+                },
+              ],
+            },
+          })
+        }
+        return Promise.resolve({
+          data: {
+            items: [],
+            tags: [],
+            tagTypes: [],
+            vendors: [],
+            recipes: [],
+            inventoryLogs: [],
+            shoppingCarts: [],
+            allCartItems: [],
+            shelves: [],
+          },
+        })
+      })
+    return { mutate, query, resetStore: vi.fn().mockResolvedValue(undefined) }
+  }
+
+  function mutationOrder(client: { mutate: ReturnType<typeof vi.fn> }) {
+    return client.mutate.mock.calls.map((call) => opName(call[0].mutation))
+  }
+
+  function variablesOf(
+    client: { mutate: ReturnType<typeof vi.fn> },
+    operation: string,
+  ) {
+    const call = client.mutate.mock.calls.find(
+      (c) => opName(c[0].mutation) === operation,
+    )
+    return call?.[0].variables as Record<string, unknown> | undefined
+  }
+
+  function makeStock(
+    id: string,
+    itemId: string,
+    locationId: string,
+    packedQuantity: number,
+  ) {
+    return {
+      id,
+      itemId,
+      locationId,
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity,
+      unpackedQuantity: 0,
+      createdAt: new Date('2026-05-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-05-01T00:00:00.000Z'),
+    }
+  }
+
+  // One row in EVERY array, so every entity's mutation fires and the full
+  // sequence can be asserted. Three locations, two of them non-default, and
+  // three stock rows with three different quantities — so "each row keeps its
+  // own locationId" and "every row got the default" give different answers.
+  function fullPayload(): ExportPayload {
+    return emptyPayload({
+      tagTypes: [makeTagType('type-1', 'Category')],
+      tags: [makeTag('tag-1', 'Dairy')],
+      vendors: [makeVendor('vendor_1', 'Corner Shop')],
+      locations: [
+        {
+          id: 'loc_home',
+          name: 'Home',
+          order: 0,
+          isDefault: true,
+          createdAt: new Date('2026-05-01T00:00:00.000Z'),
+          updatedAt: new Date('2026-05-01T00:00:00.000Z'),
+        },
+        {
+          id: 'loc_garage',
+          name: 'Garage',
+          order: 1,
+          isDefault: false,
+          createdAt: new Date('2026-05-01T00:00:00.000Z'),
+          updatedAt: new Date('2026-05-01T00:00:00.000Z'),
+        },
+        {
+          id: 'loc_office',
+          name: 'Office',
+          order: 2,
+          isDefault: false,
+          createdAt: new Date('2026-05-01T00:00:00.000Z'),
+          updatedAt: new Date('2026-05-01T00:00:00.000Z'),
+        },
+      ],
+      items: [makeItem('item_1', 'Milk'), makeItem('item_2', 'Rice')],
+      itemStocks: [
+        makeStock('stock_home', 'item_1', 'loc_home', 1),
+        makeStock('stock_garage', 'item_1', 'loc_garage', 7),
+        makeStock('stock_office', 'item_2', 'loc_office', 3),
+      ],
+      recipes: [makeRecipe('recipe-1', 'Porridge')],
+      inventoryLogs: [makeInventoryLog('log-1')],
+      shoppingCarts: [makeShoppingCart('loc_garage:vendor_1')],
+      cartItems: [makeCartItem('ci-1', 'loc_garage:vendor_1', 'item_1')],
+      shelves: [
+        {
+          id: 'shelf-1',
+          name: 'Fridge',
+          type: 'selection',
+          order: 0,
+          itemIds: ['item_1'],
+          filterConfig: null,
+          createdAt: new Date('2026-05-01T00:00:00.000Z'),
+          updatedAt: new Date('2026-05-01T00:00:00.000Z'),
+        },
+      ],
+    })
+  }
+
+  it('user signing in has every location uploaded before any item or cart', async () => {
+    // Given a payload with three locations, two items, stock and a cart
+    const client = makeRecordingClient()
+
+    // When the whole payload is uploaded
+    await importCloudData(fullPayload(), 'clear', client as never)
+
+    // Then the exact sequence of mutations is the dependency order
+    expect(mutationOrder(client)).toEqual([
+      'ClearAllData',
+      'BulkCreateTagTypes',
+      'BulkCreateTags',
+      'BulkCreateVendors',
+      'BulkCreateLocations',
+      'BulkCreateItems',
+      'BulkCreateItemStocks',
+      'BulkCreateRecipes',
+      'BulkCreateInventoryLogs',
+      'BulkCreateShoppingCarts',
+      'BulkCreateCartItems',
+      'BulkCreateShelves',
+    ])
+
+    // And, said as the three constraints that matter, so a failure names which
+    // one broke
+    const order = mutationOrder(client)
+    expect(order.indexOf('BulkCreateLocations')).toBeLessThan(
+      order.indexOf('BulkCreateItems'),
+    )
+    expect(order.indexOf('BulkCreateLocations')).toBeLessThan(
+      order.indexOf('BulkCreateShoppingCarts'),
+    )
+    expect(order.indexOf('BulkCreateLocations')).toBeLessThan(
+      order.indexOf('BulkCreateInventoryLogs'),
+    )
+  })
+
+  it('user signing in has stock uploaded after the items and locations it points at', async () => {
+    // Given the same payload
+    const client = makeRecordingClient()
+
+    // When it is uploaded
+    await importCloudData(fullPayload(), 'clear', client as never)
+
+    // Then stock comes after BOTH of its parents — it is a child of each, and
+    // the server refuses an unknown one with `Forbidden`
+    const order = mutationOrder(client)
+    expect(order.indexOf('BulkCreateItemStocks')).toBeGreaterThan(
+      order.indexOf('BulkCreateItems'),
+    )
+    expect(order.indexOf('BulkCreateItemStocks')).toBeGreaterThan(
+      order.indexOf('BulkCreateLocations'),
+    )
+  })
+
+  it('user signing in keeps every location id except the payload default', async () => {
+    // Given a payload whose default is `loc_home` and whose other two
+    // locations are `loc_garage` and `loc_office`
+    const client = makeRecordingClient()
+
+    // When it is uploaded to an account whose default is `cloud_default`
+    await importCloudData(fullPayload(), 'clear', client as never)
+
+    // Then all three locations are uploaded in one batch: the payload default
+    // lands on the destination's default row, the other two keep their own ids
+    const uploaded = variablesOf(client, 'BulkCreateLocations')
+      ?.locations as Array<{ id: string; name: string }>
+    expect(uploaded.map((l) => l.id)).toEqual([
+      CLOUD_DEFAULT_ID,
+      'loc_garage',
+      'loc_office',
+    ])
+    expect(uploaded.map((l) => l.name)).toEqual(['Home', 'Garage', 'Office'])
+    // And `isDefault` is never sent — the column is a per-user unique partial
+    // index, so a second default would raise P2002 after `clearAllData`
+    expect(uploaded.every((l) => !('isDefault' in l))).toBe(true)
+  })
+
+  it('user signing in keeps each stock row at its own location', async () => {
+    // Given three stock rows at three different locations, with three
+    // different quantities
+    const client = makeRecordingClient()
+
+    // When the payload is uploaded
+    await importCloudData(fullPayload(), 'clear', client as never)
+
+    // Then each row carries its OWN locationId, not one shared location
+    const uploaded = variablesOf(client, 'BulkCreateItemStocks')
+      ?.itemStocks as Array<{
+      id: string
+      itemId: string
+      locationId: string
+      packedQuantity: number
+    }>
+    expect(uploaded.map((s) => [s.id, s.locationId, s.packedQuantity])).toEqual(
+      [
+        // the payload default, remapped onto the destination's default
+        ['stock_home', CLOUD_DEFAULT_ID, 1],
+        ['stock_garage', 'loc_garage', 7],
+        ['stock_office', 'loc_office', 3],
+      ],
+    )
+    // And the three locations really are three, not one repeated
+    expect(new Set(uploaded.map((s) => s.locationId)).size).toBe(3)
+  })
+
+  it('user replacing cloud data creates the locations first and upserts the stock last', async () => {
+    // Given an account that already holds `item_1` under the same id
+    const client = makeRecordingClient()
+    client.query.mockImplementation(({ query: doc }: { query: unknown }) => {
+      if (opName(doc) === 'GetLocations') {
+        return Promise.resolve({
+          data: {
+            locations: [
+              {
+                id: CLOUD_DEFAULT_ID,
+                name: 'My Home',
+                order: 0,
+                isDefault: true,
+                createdAt: '2026-01-01T00:00:00.000Z',
+                updatedAt: '2026-01-01T00:00:00.000Z',
+              },
+            ],
+          },
+        })
+      }
+      return Promise.resolve({
+        data: {
+          items: [{ id: 'item_1', name: 'Milk' }],
+          tags: [],
+          tagTypes: [],
+          vendors: [],
+          recipes: [],
+          inventoryLogs: [],
+          shoppingCarts: [],
+          allCartItems: [],
+          shelves: [],
+        },
+      })
+    })
+
+    // When the payload is imported with the replace strategy
+    await importCloudData(fullPayload(), 'replace', client as never)
+
+    // Then locations are CREATED, before the carts that name them, and stock
+    // is UPSERTED on the second pass so the payload's quantities win
+    const order = mutationOrder(client)
+    expect(order).toContain('BulkCreateLocations')
+    expect(order).not.toContain('BulkUpsertLocations')
+    expect(order).toContain('BulkUpsertItemStocks')
+    expect(order).not.toContain('BulkCreateItemStocks')
+    expect(order.indexOf('BulkCreateLocations')).toBeLessThan(
+      order.indexOf('BulkCreateShoppingCarts'),
+    )
+    expect(order.indexOf('BulkUpsertItemStocks')).toBeGreaterThan(
+      order.indexOf('BulkUpsertItems'),
+    )
+    // And all three stock rows go up, including the one for the item that
+    // already existed
+    const upserted = variablesOf(client, 'BulkUpsertItemStocks')
+      ?.itemStocks as Array<{ id: string }>
+    expect(upserted.map((s) => s.id)).toEqual([
+      'stock_home',
+      'stock_garage',
+      'stock_office',
+    ])
+  })
+
+  it('user watching the progress bar sees a total that matches what is sent', async () => {
+    // Given a payload with one batch for each of the eleven entities
+    const client = makeRecordingClient()
+    const progress: Array<{ completedBatches: number; totalBatches: number }> =
+      []
+
+    // When it is uploaded
+    await importCloudData(fullPayload(), 'clear', client as never, {
+      onProgress: (p) => progress.push(p),
+    })
+
+    // Then `computeTotalBatches` counted exactly the batches the loop sent —
+    // the eleven bulk mutations, not counting `ClearAllData`
+    const sentBatches = mutationOrder(client).filter(
+      (name) => name !== 'ClearAllData',
+    ).length
+    expect(sentBatches).toBe(11)
+    expect(progress[0].totalBatches).toBe(sentBatches)
+    // And the bar reaches the end rather than stopping short or overrunning
+    const last = progress[progress.length - 1]
+    expect(last.completedBatches).toBe(last.totalBatches)
+  })
+
+  it('user retrying a failed import does not re-send the locations and stock already sent', async () => {
+    // Given a session that already recorded the locations and stock batches
+    const client = makeRecordingClient()
+    const payload = fullPayload()
+    const session: ImportSession = {
+      payload,
+      strategy: 'clear',
+      completedBatchKeys: new Set(['locations:0', 'itemStocks:0']),
+    }
+
+    // When the import is retried with that session
+    await importCloudData(payload, 'clear', client as never, { session })
+
+    // Then neither is uploaded again
+    const order = mutationOrder(client)
+    expect(order).not.toContain('BulkCreateLocations')
+    expect(order).not.toContain('BulkCreateItemStocks')
+    // And every other entity still is
+    expect(order).toContain('BulkCreateItems')
+    expect(order).toContain('BulkCreateShoppingCarts')
   })
 })
 
@@ -2253,10 +2818,485 @@ describe('importLocalData — recipe items merge on skip conflict', () => {
 // the migration flattens the ACTIVE location's stock back onto each item.
 // ---------------------------------------------------------------------------
 
-describe('importCloudData — local → cloud stock flattening (v15 split)', () => {
-  function makeCloudClient(mutateFn = vi.fn().mockResolvedValue({})) {
+// ---------------------------------------------------------------------------
+// THE REMAP RULE — cloud locations PR 4 design §1, built by PR 4b task 3.
+//
+//   Preserve payload location ids verbatim, except the payload's default,
+//   which maps onto the destination's default.
+//
+// This block replaces two describes that PR 4b deleted:
+//
+//   - `importCloudData — local → cloud stock flattening (v15 split)`, 7 its,
+//     which pinned the OPPOSITE behaviour: one location's stock inlined onto
+//     the item, every other location's carts and logs thrown away, cart ids
+//     stripped of their prefix;
+//   - `resolveFlattenLocationId — cloud file import cannot silently zero
+//     stock`, 7 its, which pinned WHICH location to collapse onto. There is no
+//     such choice any more, so the function and its tests went together.
+//
+// Three of those 14 covered a rule 4b keeps, in inverted form, and they are
+// re-asserted below: every location's logs travel, a legacy payload is not
+// rewritten, and a backup whose locations are all unknown here is neither
+// refused nor collapsed.
+// ---------------------------------------------------------------------------
+
+describe('buildLocationRemap / applyLocationRemap — the remap rule', () => {
+  // THREE locations: the payload's default plus TWO others. Two is the
+  // minimum that can catch "map every location onto the destination default"
+  // — with one non-default location that mutation is indistinguishable from
+  // the correct rule, because a single id mapped to a single id looks right
+  // either way.
+  const PAYLOAD_LOCATIONS = [
+    { id: 'local', name: 'My Home', order: 0, isDefault: true },
+    { id: 'loc_garage', name: 'my Garage', order: 1, isDefault: false },
+    { id: 'loc_office', name: 'Office', order: 2, isDefault: false },
+  ]
+
+  function stockAt(id: string, locationId: string) {
     return {
-      mutate: mutateFn,
+      id,
+      itemId: 'item-1',
+      locationId,
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+  }
+
+  function remapped(
+    payload: ExportPayload,
+    destinationDefaultId: string | null,
+  ) {
+    return applyLocationRemap(
+      payload,
+      buildLocationRemap(payload, destinationDefaultId),
+    )
+  }
+
+  it('maps the payload default onto the destination default and nothing else', () => {
+    // Given a payload with one default location and two others
+    const payload = emptyPayload({ locations: PAYLOAD_LOCATIONS })
+
+    // When the remap is built against a destination whose default is a cuid
+    const remap = buildLocationRemap(payload, 'cloud_default')
+
+    // Then it holds exactly one entry — identity is expressed by ABSENCE
+    expect([...remap.entries()]).toEqual([['local', 'cloud_default']])
+  })
+
+  it('a three-location payload still has three locations after the remap', () => {
+    // Given the same payload
+    const payload = emptyPayload({
+      locations: PAYLOAD_LOCATIONS,
+      itemStocks: [
+        stockAt('s-home', 'local'),
+        stockAt('s-garage', 'loc_garage'),
+        stockAt('s-office', 'loc_office'),
+      ],
+    })
+
+    // When it is remapped
+    const result = remapped(payload, 'cloud_default')
+
+    // Then only the default's id changed — the other two are verbatim
+    expect(
+      (result.locations as Array<{ id: string }>).map((l) => l.id),
+    ).toEqual(['cloud_default', 'loc_garage', 'loc_office'])
+
+    // And each stock row still names the location it was written for
+    expect(
+      (result.itemStocks as Array<{ id: string; locationId: string }>).map(
+        (s) => [s.id, s.locationId],
+      ),
+    ).toEqual([
+      ['s-home', 'cloud_default'],
+      ['s-garage', 'loc_garage'],
+      ['s-office', 'loc_office'],
+    ])
+  })
+
+  it('nothing is remapped when the destination has no default', () => {
+    // Given a payload with a default, and a destination that reports none
+    const payload = emptyPayload({ locations: PAYLOAD_LOCATIONS })
+
+    // Then the map is empty and every id is kept
+    expect(buildLocationRemap(payload, null).size).toBe(0)
+  })
+
+  it('nothing is remapped when both defaults already share an id', () => {
+    // Given a cloud → same-cloud restore: the payload default IS the
+    // destination default
+    const payload = emptyPayload({
+      locations: [
+        { id: 'cloud_default', name: 'Home', order: 0, isDefault: true },
+      ],
+    })
+
+    // Then there is no non-identity entry to make
+    expect(buildLocationRemap(payload, 'cloud_default').size).toBe(0)
+  })
+
+  it('a pre-v18 backup with no isDefault key treats the local id as its default', () => {
+    // Given a backup written before Dexie v18 added `Location.isDefault`
+    const payload = emptyPayload({
+      locations: [
+        { id: 'local', name: 'My Home', order: 0 },
+        { id: 'loc_garage', name: 'my Garage', order: 1 },
+      ],
+    })
+
+    // Then `DEFAULT_LOCATION_ID` is the default, because in local mode it
+    // always was
+    expect([...buildLocationRemap(payload, 'cloud_default').entries()]).toEqual(
+      [['local', 'cloud_default']],
+    )
+  })
+
+  it('a payload with no locations array names no default', () => {
+    // Given a pre-v15 file: no `locations` key at all
+    const payload = legacyPayload()
+
+    // Then nothing can be remapped, and nothing needs to be
+    expect(buildLocationRemap(payload, 'cloud_default').size).toBe(0)
+  })
+
+  it('a cart id whose vendor id contains a colon survives the remap', () => {
+    // Given a vendor id with a ':' in it — `bulkCreateVendors` stores
+    // `VendorInput.id` verbatim with no format check, so this is reachable
+    const payload = emptyPayload({
+      locations: PAYLOAD_LOCATIONS,
+      shoppingCarts: [
+        { id: 'local:ven:dor_1' },
+        { id: 'loc_garage:ven:dor_1' },
+      ],
+      cartItems: [
+        makeCartItem('ci-1', 'local:ven:dor_1', 'item-1'),
+        makeCartItem('ci-2', 'loc_garage:ven:dor_1', 'item-1'),
+      ],
+    })
+
+    // When remapped
+    const result = remapped(payload, 'cloud_default')
+
+    // Then only the LOCATION half moved; the vendor id kept both its parts
+    expect(
+      (result.shoppingCarts as Array<{ id: string }>).map((c) => c.id),
+    ).toEqual(['cloud_default:ven:dor_1', 'loc_garage:ven:dor_1'])
+    expect(
+      (result.cartItems as Array<{ cartId: string }>).map((ci) => ci.cartId),
+    ).toEqual(['cloud_default:ven:dor_1', 'loc_garage:ven:dor_1'])
+  })
+
+  it('a bare cart id with no colon is left alone', () => {
+    // Given a pre-PR-3b cart id that names no location
+    const payload = emptyPayload({
+      locations: PAYLOAD_LOCATIONS,
+      shoppingCarts: [{ id: 'no-vendor' }],
+      cartItems: [makeCartItem('ci-1', 'no-vendor', 'item-1')],
+    })
+
+    // Then it is not turned into `cloud_default:no-vendor` — no location
+    // matches the whole id, so the remap has nothing to say about it
+    const result = remapped(payload, 'cloud_default')
+    expect((result.shoppingCarts as Array<{ id: string }>)[0].id).toBe(
+      'no-vendor',
+    )
+    expect((result.cartItems as Array<{ cartId: string }>)[0].cartId).toBe(
+      'no-vendor',
+    )
+  })
+
+  it('a log keeps its own location, and a log with none stays without one', () => {
+    // Given three logs: one at the default, one elsewhere, one pre-Location
+    const payload = emptyPayload({
+      locations: PAYLOAD_LOCATIONS,
+      inventoryLogs: [
+        { ...makeInventoryLog('log-home'), locationId: 'local' },
+        { ...makeInventoryLog('log-garage'), locationId: 'loc_garage' },
+        makeInventoryLog('log-legacy'),
+      ],
+    })
+
+    // When remapped
+    const result = remapped(payload, 'cloud_default')
+
+    // Then only the default's log moved, and the un-scoped one gained no id
+    expect(
+      (result.inventoryLogs as Array<{ id: string; locationId?: string }>).map(
+        (l) => [l.id, l.locationId],
+      ),
+    ).toEqual([
+      ['log-home', 'cloud_default'],
+      ['log-garage', 'loc_garage'],
+      ['log-legacy', undefined],
+    ])
+  })
+})
+
+describe('importCloudData — every location travels to cloud (PR 4b task 3)', () => {
+  const EMPTY_EXISTING = {
+    items: [],
+    tags: [],
+    tagTypes: [],
+    vendors: [],
+    recipes: [],
+    inventoryLogs: [],
+    shoppingCarts: [],
+    allCartItems: [],
+    shelves: [],
+  }
+
+  function makeCloudClient(destinationLocations: unknown[] = []) {
+    return {
+      mutate: vi.fn().mockResolvedValue({}),
+      resetStore: vi.fn().mockResolvedValue(undefined),
+      query: vi.fn().mockResolvedValue({
+        data: { ...EMPTY_EXISTING, locations: destinationLocations },
+      }),
+    }
+  }
+
+  /** The rows sent under one variable name, across every mutation Apollo saw. */
+  function sentOf(
+    client: { mutate: ReturnType<typeof vi.fn> },
+    key: string,
+  ): Record<string, unknown>[] {
+    const call = client.mutate.mock.calls.find(
+      (c) => (c[0]?.variables as Record<string, unknown>)?.[key] !== undefined,
+    )
+    if (!call) return []
+    return (call[0].variables as Record<string, Record<string, unknown>[]>)[key]
+  }
+
+  const DESTINATION = [
+    { id: 'cloud_default', name: 'Home', order: 0, isDefault: true },
+  ]
+
+  const PAYLOAD_LOCATIONS = [
+    { id: 'local', name: 'My Home', order: 0, isDefault: true },
+    { id: 'loc_garage', name: 'my Garage', order: 1, isDefault: false },
+  ]
+
+  it('user copying a pantry to cloud sends the default location’s carts under the destination’s default id', async () => {
+    // Given one cart at the payload's default and one at the Garage
+    const payload = emptyPayload({
+      items: [makeItem('item-1', 'Milk')],
+      locations: PAYLOAD_LOCATIONS,
+      shoppingCarts: [{ id: 'local:vendor_1' }, { id: 'loc_garage:no-vendor' }],
+      cartItems: [
+        makeCartItem('ci-1', 'local:vendor_1', 'item-1'),
+        makeCartItem('ci-2', 'loc_garage:no-vendor', 'item-1'),
+      ],
+    })
+    const client = makeCloudClient(DESTINATION)
+
+    // When the pantry is copied up
+    await importCloudData(payload, 'skip', client as never)
+
+    // Then the default's cart arrives under the DESTINATION default's id,
+    // and the Garage's cart is untouched
+    expect(sentOf(client, 'carts').map((c) => c.id)).toEqual([
+      'cloud_default:vendor_1',
+      'loc_garage:no-vendor',
+    ])
+    expect(sentOf(client, 'cartItems').map((c) => c.cartId)).toEqual([
+      'cloud_default:vendor_1',
+      'loc_garage:no-vendor',
+    ])
+  })
+
+  // Replaces the deleted `inventory logs from other locations are not sent`.
+  // That test pinned the filter 4b removes; this one pins its absence.
+  it('user copying a pantry to cloud keeps the logs of every location', async () => {
+    // Given logs recorded at two locations plus one pre-Location log
+    const payload = emptyPayload({
+      items: [makeItem('item-1', 'Milk')],
+      locations: PAYLOAD_LOCATIONS,
+      inventoryLogs: [
+        { ...makeInventoryLog('log-home'), locationId: 'local' },
+        { ...makeInventoryLog('log-garage'), locationId: 'loc_garage' },
+        makeInventoryLog('log-legacy'),
+      ],
+    })
+    const client = makeCloudClient(DESTINATION)
+
+    // When the pantry is copied up
+    await importCloudData(payload, 'skip', client as never)
+
+    // Then all three travel, each naming the location it belongs to
+    expect(sentOf(client, 'logs').map((l) => [l.id, l.locationId])).toEqual([
+      ['log-home', 'cloud_default'],
+      ['log-garage', 'loc_garage'],
+      ['log-legacy', undefined],
+    ])
+  })
+
+  // THE ORDERING HAZARD. `clearAllData` deletes every Location row and
+  // `ensureDefaultLocation` re-creates a default lazily, so the destination's
+  // default id BEFORE the clear is not the one that exists after it. PR 4a
+  // shipped that bug and it cost a full E2E gate run to find.
+  it('user clearing cloud before an import maps onto the default that exists after the clear', async () => {
+    // Given a destination whose default id changes when the data is cleared
+    let cleared = false
+    const client = {
+      mutate: vi.fn(async (opts: { mutation: unknown }) => {
+        if (opts.mutation === ClearAllDataDocument) cleared = true
+        return {}
+      }),
+      resetStore: vi.fn().mockResolvedValue(undefined),
+      query: vi.fn(async () => ({
+        data: {
+          ...EMPTY_EXISTING,
+          locations: [
+            {
+              id: cleared ? 'cloud_default_after' : 'cloud_default_before',
+              name: 'Home',
+              order: 0,
+              isDefault: true,
+            },
+          ],
+        },
+      })),
+    }
+    const payload = emptyPayload({
+      items: [makeItem('item-1', 'Milk')],
+      locations: PAYLOAD_LOCATIONS,
+      shoppingCarts: [{ id: 'local:vendor_1' }],
+      cartItems: [makeCartItem('ci-1', 'local:vendor_1', 'item-1')],
+    })
+
+    // When the import clears cloud first
+    await importCloudData(payload, 'clear', client as never)
+
+    // Then the cart names the default that exists NOW, not the deleted one
+    expect(sentOf(client, 'carts').map((c) => c.id)).toEqual([
+      'cloud_default_after:vendor_1',
+    ])
+  })
+
+  // Replaces the deleted `a cloud-shaped payload (no itemStocks) passes
+  // through untouched`. The old test used the absent `itemStocks` key as the
+  // signal "already flat"; 4b removed that sniff test. What survives is the
+  // outcome: a payload that names no default location gives the REMAP nothing
+  // to rewrite.
+  //
+  // THE PAYLOAD CARRIES AN EMPTY `itemStocks` KEY ON PURPOSE. Task 8 found
+  // that a payload with NO such key is pre-v15 and is upgraded before the
+  // remap runs — which does prefix its bare cart ids, with the destination's
+  // default. That is the fix, not a regression, and it has its own block:
+  // `importCloudData — a pre-v15 backup keeps its stock (PR 4b task 8)`. This
+  // test's subject is the remap alone, so it keeps the upgrade out of the way.
+  it('a payload naming no default location is uploaded unchanged', async () => {
+    // Given a payload with no `locations` and bare cart ids
+    const payload = emptyPayload({
+      items: [makeItem('item-1', 'Milk')],
+      locations: [],
+      itemStocks: [],
+      shoppingCarts: [{ id: 'no-vendor' }],
+      cartItems: [makeCartItem('ci-1', 'no-vendor', 'item-1')],
+    })
+    const client = makeCloudClient(DESTINATION)
+
+    // When it is imported into cloud
+    await importCloudData(payload, 'skip', client as never)
+
+    // Then its ids are not rewritten
+    expect(sentOf(client, 'carts').map((c) => c.id)).toEqual(['no-vendor'])
+    expect(sentOf(client, 'cartItems').map((c) => c.cartId)).toEqual([
+      'no-vendor',
+    ])
+  })
+
+  // Replaces the three deleted `resolveFlattenLocationId` refusal tests. They
+  // asserted that a backup whose locations are unknown on this device must be
+  // REFUSED rather than collapsed onto one of them. 4b needs no such refusal:
+  // every location is carried, so there is nothing to lose and nothing to
+  // guess.
+  it('user restoring a backup from another device keeps all of its locations', async () => {
+    // Given a backup whose three location ids exist nowhere on this account
+    const payload = emptyPayload({
+      items: [makeItem('item-1', 'Milk')],
+      locations: [
+        { id: 'kitchen-a1b2', name: 'Kitchen', order: 0, isDefault: true },
+        { id: 'garage-c3d4', name: 'Garage', order: 1, isDefault: false },
+        { id: 'shed-e5f6', name: 'Shed', order: 2, isDefault: false },
+      ],
+      shoppingCarts: [
+        { id: 'kitchen-a1b2:vendor_1' },
+        { id: 'garage-c3d4:no-vendor' },
+        { id: 'shed-e5f6:no-vendor' },
+      ],
+      cartItems: [
+        makeCartItem('ci-1', 'kitchen-a1b2:vendor_1', 'item-1'),
+        makeCartItem('ci-2', 'garage-c3d4:no-vendor', 'item-1'),
+        makeCartItem('ci-3', 'shed-e5f6:no-vendor', 'item-1'),
+      ],
+    })
+    const client = makeCloudClient(DESTINATION)
+
+    // When it is imported
+    await importCloudData(payload, 'skip', client as never)
+
+    // Then no cart is dropped, and only the backup's own default is remapped
+    expect(sentOf(client, 'carts').map((c) => c.id)).toEqual([
+      'cloud_default:vendor_1',
+      'garage-c3d4:no-vendor',
+      'shed-e5f6:no-vendor',
+    ])
+    expect(sentOf(client, 'cartItems')).toHaveLength(3)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// TARGET BEHAVIOUR FOR CLOUD LOCATIONS PR 4b. THIS BLOCK IS RED UNTIL TASK 3.
+//
+// Plan: docs/features/locations/2026-10-03-cloud-locations-plan-pr4b.md —
+// task 1 part 1 writes these tests, task 3 deletes the code that makes them
+// fail. A red result here is the CORRECT state of the tree until then.
+//
+// WHAT IS BEING PINNED
+//
+// A cart id carries its location. Local ids are
+// `${locationId}:${vendorId | 'no-vendor'}` (db/operations.ts:720), and cloud
+// ids have had the SAME shape since cloud-locations PR 3b
+// (apps/server/src/lib/cartId.ts). So the id must travel to cloud unchanged.
+//
+// `flattenPayloadForCloud` (importData.ts) still does two things to it, both
+// written before PR 3b and both wrong now:
+//
+//   1. it SLICES the location prefix off, so `loc_garage:no-vendor` is
+//      uploaded as the bare `no-vendor`;
+//   2. it DROPS every cart belonging to any other location.
+//
+// Why (1) is a cross-account hazard, read from the code:
+//
+//   - `Cart.id` is a GLOBAL primary key with no `userId` in it
+//     (apps/server/prisma/schema.prisma), so the first account to import a
+//     bare `no-vendor` holds that id for everybody;
+//   - `bulkCreateShoppingCarts` (import.resolver.ts:642) looks the id up with
+//     an UNSCOPED `findUnique({ where: { id } })` and `continue`s when it is
+//     taken, so the second account gets no cart row of its own;
+//   - `bulkCreateCartItems` (import.resolver.ts:669) resolves `cartId` with
+//     the same unscoped `findUnique`, so the second account's cart items are
+//     created pointing at the FIRST account's cart row.
+//
+// DO NOT make these tests pass by restoring the strip. The strip is the bug,
+// not the cure — its own comment ("would collide with it on the un-prefixed
+// cloud id") describes the world before PR 3b.
+//
+// The server-side half of the hazard — a bare id shared across two accounts —
+// is characterised in `e2e/tests/cart-id-cross-user-leak.spec.ts`. That spec
+// is GREEN today and stays green after this PR, so it is a negative control,
+// not the proof. These two tests are the proof.
+// ---------------------------------------------------------------------------
+
+describe('importCloudData — a cart id keeps its location prefix (PR 4b task 3)', () => {
+  function makeCloudClient() {
+    return {
+      mutate: vi.fn().mockResolvedValue({}),
       resetStore: vi.fn().mockResolvedValue(undefined),
       query: vi.fn().mockResolvedValue({
         data: {
@@ -2274,306 +3314,103 @@ describe('importCloudData — local → cloud stock flattening (v15 split)', () 
     }
   }
 
-  // A post-v15 item row: identity only, no stock fields.
-  function splitItem(id: string, name: string) {
-    return {
-      id,
-      name,
-      tagIds: [],
-      createdAt: new Date('2026-01-01T00:00:00.000Z'),
-      updatedAt: new Date('2026-01-02T00:00:00.000Z'),
-    }
-  }
-
-  function stockRow(
-    id: string,
-    itemId: string,
-    locationId: string,
-    overrides: Record<string, unknown> = {},
-  ) {
-    return {
-      id,
-      itemId,
-      locationId,
-      targetUnit: 'package' as const,
-      targetQuantity: 4,
-      refillThreshold: 1,
-      packedQuantity: 3,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      ...overrides,
-    }
-  }
-
-  // Pull the variables of the first `items` mutation out of an Apollo mock.
-  function sentItems(client: { mutate: ReturnType<typeof vi.fn> }) {
-    const call = client.mutate.mock.calls.find(
-      (c) => (c[0]?.variables as { items?: unknown[] })?.items !== undefined,
-    )
-    return (call?.[0].variables as { items: Record<string, unknown>[] }).items
-  }
-
-  function sentOf(client: { mutate: ReturnType<typeof vi.fn> }, key: string) {
+  /** The rows sent under one variable name, across every mutation Apollo saw. */
+  function sentOf(
+    client: { mutate: ReturnType<typeof vi.fn> },
+    key: string,
+  ): Record<string, unknown>[] {
     const call = client.mutate.mock.calls.find(
       (c) => (c[0]?.variables as Record<string, unknown>)?.[key] !== undefined,
     )
-    return call
-      ? (call[0].variables as Record<string, Record<string, unknown>[]>)[key]
-      : undefined
+    if (!call) return []
+    return (call[0].variables as Record<string, Record<string, unknown>[]>)[key]
   }
 
-  it('user migrating to cloud sends the active location stock, not nulls', async () => {
-    // Given a local pantry where Milk is stocked in two locations
+  // Three locations: the payload's default plus two others. The carts below
+  // live at the NON-default ones on purpose. PR 4b's remap rule keeps every
+  // payload location id verbatim EXCEPT the payload's default, which maps onto
+  // the destination account's own default — so a cart prefixed with the
+  // payload default would legitimately change id and could not be asserted
+  // verbatim here.
+  const LOCATIONS = [
+    { id: 'local', name: 'My Home', order: 0, isDefault: true },
+    { id: 'loc_garage', name: 'my Garage', order: 1, isDefault: false },
+    { id: 'loc_office', name: 'Office', order: 2, isDefault: false },
+  ]
+
+  it('user copying a pantry to cloud keeps each cart id prefixed with its location', async () => {
+    // Given two carts at the Garage, named by the local composite id shape
     const payload = emptyPayload({
-      items: [splitItem('item-1', 'Milk')],
-      itemStocks: [
-        stockRow('stock-home', 'item-1', 'local', { packedQuantity: 3 }),
-        stockRow('stock-office', 'item-1', 'office', {
-          packedQuantity: 9,
-          targetQuantity: 12,
-          packageUnit: 'bottle',
-          dueDate: new Date('2026-06-01T00:00:00.000Z'),
-        }),
-      ],
-      locations: [
-        { id: 'local', name: 'My Home', order: 0 },
-        { id: 'office', name: 'Office', order: 1 },
-      ],
-    })
-    const client = makeCloudClient()
-
-    // When migrating with 'office' as the active location
-    await importCloudData(payload, 'skip', client as never, {
-      locationId: 'office',
-    })
-
-    // Then the item carries the office stock, fully populated
-    const items = sentItems(client)
-    expect(items).toHaveLength(1)
-    expect(items[0]).toMatchObject({
-      id: 'item-1',
-      name: 'Milk',
-      packedQuantity: 9,
-      targetQuantity: 12,
-      packageUnit: 'bottle',
-      targetUnit: 'package',
-      refillThreshold: 1,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-    })
-    // And the Date dueDate is serialised as an ISO string for GraphQL
-    expect(items[0].dueDate).toBe('2026-06-01T00:00:00.000Z')
-  })
-
-  // A cloud Item carries stock inline, so flattening must merge BOTH halves:
-  // the global configuration off the item and the state off the stock row.
-  // The zeroed defaults must not overwrite the item's own configuration.
-  it('user migrating to cloud keeps the item’s global settings alongside the location stock', async () => {
-    // Given a v16 payload: configuration on the item, state on the stock row
-    const payload = emptyPayload({
-      items: [
-        {
-          ...splitItem('item-1', 'Olive Oil'),
-          packageUnit: 'bottle',
-          measurementUnit: 'ml',
-          amountPerPackage: 750,
-          targetUnit: 'measurement',
-          consumeAmount: 15,
-          expirationMode: 'days from purchase',
-          estimatedDueDays: 180,
-          expirationThreshold: 14,
-        },
-      ],
-      itemStocks: [
-        {
-          id: 'stock-home',
-          itemId: 'item-1',
-          locationId: 'local',
-          targetQuantity: 1500,
-          refillThreshold: 250,
-          packedQuantity: 2,
-          unpackedQuantity: 300,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      ],
-    })
-    const client = makeCloudClient()
-
-    // When migrating with 'local' active
-    await importCloudData(payload, 'skip', client as never, {
-      locationId: 'local',
-    })
-
-    // Then the cloud item carries both halves
-    const items = sentItems(client)
-    expect(items[0]).toMatchObject({
-      id: 'item-1',
-      packageUnit: 'bottle',
-      measurementUnit: 'ml',
-      amountPerPackage: 750,
-      targetUnit: 'measurement',
-      consumeAmount: 15,
-      expirationMode: 'days from purchase',
-      estimatedDueDays: 180,
-      expirationThreshold: 14,
-      targetQuantity: 1500,
-      refillThreshold: 250,
-      packedQuantity: 2,
-      unpackedQuantity: 300,
-    })
-  })
-
-  it('an item not stocked in the active location keeps its global settings, with zeroed state', async () => {
-    // Given Rice's settings are global but it is not stocked where we are
-    const payload = emptyPayload({
-      items: [
-        {
-          ...splitItem('item-2', 'Rice'),
-          packageUnit: 'sack',
-          consumeAmount: 4,
-          targetUnit: 'package',
-        },
-      ],
-      itemStocks: [
-        {
-          id: 'stock-home',
-          itemId: 'item-2',
-          locationId: 'local',
-          targetQuantity: 3,
-          refillThreshold: 1,
-          packedQuantity: 5,
-          unpackedQuantity: 0,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      ],
-    })
-    const client = makeCloudClient()
-
-    // When migrating with 'office' active
-    await importCloudData(payload, 'skip', client as never, {
-      locationId: 'office',
-    })
-
-    // Then the state zeroes out but the configuration survives
-    const items = sentItems(client)
-    expect(items[0]).toMatchObject({
-      id: 'item-2',
-      packageUnit: 'sack',
-      consumeAmount: 4,
-      packedQuantity: 0,
-      targetQuantity: 0,
-    })
-  })
-
-  it('an item not stocked in the active location is still sent, with zeroed stock', async () => {
-    // Given Rice is only stocked in 'local' while 'office' is active
-    const payload = emptyPayload({
-      items: [splitItem('item-1', 'Milk'), splitItem('item-2', 'Rice')],
-      itemStocks: [
-        stockRow('stock-office', 'item-1', 'office', { packedQuantity: 9 }),
-        stockRow('stock-home', 'item-2', 'local', { packedQuantity: 5 }),
-      ],
-    })
-    const client = makeCloudClient()
-
-    // When migrating with 'office' active
-    await importCloudData(payload, 'skip', client as never, {
-      locationId: 'office',
-    })
-
-    // Then Rice is still sent (recipes/shelves reference it) but with the
-    // zeroed stock the app itself shows for an item absent from this location
-    const rice = sentItems(client).find((i) => i.id === 'item-2')
-    expect(rice).toMatchObject({
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      targetQuantity: 0,
-      refillThreshold: 0,
-      consumeAmount: 1,
-      targetUnit: 'package',
-    })
-    // And no other location's quantity leaks in
-    expect(rice?.packedQuantity).not.toBe(5)
-  })
-
-  it('cart ids lose the location prefix and other locations carts are dropped', async () => {
-    // Given carts in two locations (local ids are `${locationId}:${vendorId}`)
-    const payload = emptyPayload({
-      items: [splitItem('item-1', 'Milk')],
-      itemStocks: [stockRow('s1', 'item-1', 'office')],
+      items: [makeItem('item-1', 'Milk')],
+      locations: LOCATIONS,
+      itemStocks: [],
       shoppingCarts: [
-        { id: 'office:no-vendor' },
-        { id: 'office:vendor-1' },
-        { id: 'local:no-vendor' },
+        makeShoppingCart('loc_garage:no-vendor'),
+        makeShoppingCart('loc_garage:vendor_1'),
       ],
       cartItems: [
-        makeCartItem('ci-1', 'office:no-vendor', 'item-1'),
-        makeCartItem('ci-2', 'local:no-vendor', 'item-1'),
+        makeCartItem('ci-1', 'loc_garage:no-vendor', 'item-1'),
+        makeCartItem('ci-2', 'loc_garage:vendor_1', 'item-1'),
       ],
     })
     const client = makeCloudClient()
 
-    // When migrating with 'office' active
-    await importCloudData(payload, 'skip', client as never, {
-      locationId: 'office',
-    })
+    // When the cloud upload payload is built
+    // NOTE: this call used to pass `{ locationId: 'loc_garage' }` so TODAY's
+    // flatten kept these carts instead of dropping them, which made the
+    // failure show the STRIP rather than the drop. Task 7 removed that option
+    // from `importCloudData`, so the argument is gone. Every assertion below
+    // stands unchanged.
+    await importCloudData(payload, 'skip', client as never)
 
-    // Then cloud receives bare vendor-keyed cart ids for the active location only
-    const carts = sentOf(client, 'carts')
-    expect(carts?.map((c) => c.id).sort()).toEqual(['no-vendor', 'vendor-1'])
+    // Then both ids are still prefixed with the location they belong to
+    expect(sentOf(client, 'carts').map((c) => c.id)).toEqual([
+      'loc_garage:no-vendor',
+      'loc_garage:vendor_1',
+    ])
 
-    // And only that location's cart items travel, re-keyed to match
-    const cartItems = sentOf(client, 'cartItems')
-    expect(cartItems).toHaveLength(1)
-    expect(cartItems?.[0]).toMatchObject({ id: 'ci-1', cartId: 'no-vendor' })
+    // And the cart items still point at those same ids
+    expect(
+      sentOf(client, 'cartItems').map((c) => ({ id: c.id, cartId: c.cartId })),
+    ).toEqual([
+      { id: 'ci-1', cartId: 'loc_garage:no-vendor' },
+      { id: 'ci-2', cartId: 'loc_garage:vendor_1' },
+    ])
   })
 
-  it('inventory logs from other locations are not sent', async () => {
-    // Given logs recorded in two locations
+  it('user copying a pantry to cloud keeps the carts of every location, not just one', async () => {
+    // Given one cart at the Garage and one at the Office
     const payload = emptyPayload({
-      items: [splitItem('item-1', 'Milk')],
-      itemStocks: [stockRow('s1', 'item-1', 'office')],
-      inventoryLogs: [
-        { ...makeInventoryLog('log-office'), locationId: 'office' },
-        { ...makeInventoryLog('log-home'), locationId: 'local' },
-        // A pre-Location log with no locationId still belongs to the user
-        makeInventoryLog('log-legacy'),
+      items: [makeItem('item-1', 'Milk')],
+      locations: LOCATIONS,
+      itemStocks: [],
+      shoppingCarts: [
+        makeShoppingCart('loc_garage:vendor_1'),
+        makeShoppingCart('loc_office:no-vendor'),
+      ],
+      cartItems: [
+        makeCartItem('ci-1', 'loc_garage:vendor_1', 'item-1'),
+        makeCartItem('ci-2', 'loc_office:no-vendor', 'item-1'),
       ],
     })
     const client = makeCloudClient()
 
-    // When migrating with 'office' active
-    await importCloudData(payload, 'skip', client as never, {
-      locationId: 'office',
-    })
+    // When the cloud upload payload is built, with no location named
+    await importCloudData(payload, 'skip', client as never)
 
-    // Then only the active location's (and un-scoped) logs are sent
-    const logs = sentOf(client, 'logs')
-    expect(logs?.map((l) => l.id).sort()).toEqual(['log-legacy', 'log-office'])
-  })
+    // Then neither location's cart has been thrown away
+    expect(
+      sentOf(client, 'carts')
+        .map((c) => c.id as string)
+        .sort(),
+    ).toEqual(['loc_garage:vendor_1', 'loc_office:no-vendor'])
 
-  it('a cloud-shaped payload (no itemStocks) passes through untouched', async () => {
-    // Given a cloud/legacy payload whose stock still lives inline on the item
-    const payload = legacyPayload({
-      items: [{ ...makeItem('item-1', 'Milk'), packedQuantity: 7 }],
-      shoppingCarts: [{ id: 'no-vendor' }],
-      cartItems: [makeCartItem('ci-1', 'no-vendor', 'item-1')],
-    })
-    const client = makeCloudClient()
-
-    // When importing it into cloud
-    await importCloudData(payload, 'skip', client as never, {
-      locationId: 'office',
-    })
-
-    // Then nothing is flattened or re-keyed away
-    expect(sentItems(client)[0]).toMatchObject({ packedQuantity: 7 })
-    expect(sentOf(client, 'carts')?.[0]).toMatchObject({ id: 'no-vendor' })
-    expect(sentOf(client, 'cartItems')).toHaveLength(1)
+    // And both cart items travel with them
+    expect(
+      sentOf(client, 'cartItems')
+        .map((c) => c.cartId as string)
+        .sort(),
+    ).toEqual(['loc_garage:vendor_1', 'loc_office:no-vendor'])
   })
 })
 
@@ -2662,107 +3499,543 @@ describe('importLocalData — carts are bootstrapped by every strategy', () => {
   })
 })
 
-describe('resolveFlattenLocationId — cloud file import cannot silently zero stock', () => {
-  function payloadWithStockIn(...locationIds: string[]): ExportPayload {
+// ---------------------------------------------------------------------------
+// PR 4b task 5 — THE REMAP RULE, cloud -> local direction.
+//
+//   Preserve payload location ids verbatim, except the payload's default,
+//   which maps onto the destination's default.
+//
+// On this side the destination's default is the constant DEFAULT_LOCATION_ID
+// ('local'), because the v18 upgrade fn and `ensureDefaultLocation` between
+// them guarantee the local default always has that id.
+//
+// THE FIXTURE SEEDS THREE LOCATIONS — one default and TWO others — with three
+// stock rows carrying three DIFFERENT quantities. With one non-default
+// location, "map only the payload's default" and "map every location onto the
+// local default" give the same answer, so the tests below could not tell a
+// correct implementation from a wrong one.
+// ---------------------------------------------------------------------------
+describe('importLocalData — a cloud backup keeps every location (PR 4b task 5)', () => {
+  beforeEach(clearAllTables)
+  afterEach(clearAllTables)
+
+  const CLOUD_DEFAULT = 'cloud_default_cuid'
+  const CLOUD_OFFICE = 'cloud_office_cuid'
+  const CLOUD_CABIN = 'cloud_cabin_cuid'
+
+  function makeLocationRow(
+    id: string,
+    name: string,
+    order: number,
+    isDefault: boolean,
+  ) {
+    return {
+      id,
+      name,
+      order,
+      isDefault,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+  }
+
+  function makeStockRow(
+    id: string,
+    locationId: string,
+    packedQuantity: number,
+  ) {
+    return {
+      id,
+      itemId: 'item-1',
+      locationId,
+      targetUnit: 'package' as const,
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+  }
+
+  // A cloud export as PR 4b task 2 now writes it: real `locations` (with
+  // `isDefault` kept in the file), real `itemStocks`, and logs carrying
+  // `locationId`. Every location id is a server cuid, so none of them matches
+  // DEFAULT_LOCATION_ID.
+  function cloudBackup(): ExportPayload {
     return emptyPayload({
-      items: [{ id: 'item-1', name: 'Milk', tagIds: [] }],
-      itemStocks: locationIds.map((locationId, i) => ({
-        id: `stock-${i}`,
-        itemId: 'item-1',
-        locationId,
-        targetUnit: 'package',
-        targetQuantity: 4,
-        refillThreshold: 1,
-        packedQuantity: 3,
-        unpackedQuantity: 0,
-        consumeAmount: 1,
-      })),
+      items: [
+        {
+          id: 'item-1',
+          name: 'Milk',
+          tagIds: [],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+      locations: [
+        makeLocationRow(CLOUD_DEFAULT, 'Cloud Home', 0, true),
+        makeLocationRow(CLOUD_OFFICE, 'Office', 1, false),
+        makeLocationRow(CLOUD_CABIN, 'Cabin', 2, false),
+      ],
+      itemStocks: [
+        makeStockRow('stock-default', CLOUD_DEFAULT, 1),
+        makeStockRow('stock-office', CLOUD_OFFICE, 7),
+        makeStockRow('stock-cabin', CLOUD_CABIN, 3),
+      ],
+      shoppingCarts: [
+        { id: `${CLOUD_DEFAULT}:vendor_1` },
+        { id: `${CLOUD_OFFICE}:vendor_2` },
+        // A BARE cart id, no colon at all. `parseCartId` reads the whole
+        // string as the location id, which no location matches, so it must be
+        // left exactly as it is — a blind rebuild would turn it into
+        // `local:no-vendor` and point it at a cart that is not this one.
+        { id: 'no-vendor' },
+      ],
+      cartItems: [
+        makeCartItem('ci-default', `${CLOUD_DEFAULT}:vendor_1`),
+        makeCartItem('ci-office', `${CLOUD_OFFICE}:vendor_2`),
+        makeCartItem('ci-bare', 'no-vendor'),
+      ],
+      inventoryLogs: [
+        { ...makeInventoryLog('log-at-default'), locationId: CLOUD_DEFAULT },
+        { ...makeInventoryLog('log-at-office'), locationId: CLOUD_OFFICE },
+        // A pre-Location log carries no `locationId` key at all.
+        makeInventoryLog('log-no-location'),
+      ],
     })
   }
 
-  it('prefers the requested location when the backup has stock for it', () => {
-    // Given a backup holding stock in both locations
-    const payload = payloadWithStockIn('local', 'office')
+  it('user restoring a cloud backup gets exactly one default location', async () => {
+    // Given a cloud backup whose default location is a server cuid
+    const payload = cloudBackup()
 
-    // When resolving against the device's active location
-    // Then that location wins — Ruling A is unaffected
-    expect(resolveFlattenLocationId(payload, 'office')).toBe('office')
+    // When the user restores it
+    await importLocalData(payload, 'clear')
+
+    // Then exactly one row is flagged, and it is the local default.
+    //
+    // THIS FIRST ASSERTION IS A NEGATIVE CONTROL, not the guard. Measured:
+    // with the remap removed it still passes, because the three cloud rows
+    // arrive unflagged and `ensureDefaultLocationRow` then adds one flagged
+    // 'local' row — exactly one, just the wrong one.
+    const locations = await db.locations.toArray()
+    expect(locations.filter((l) => l.isDefault).map((l) => l.id)).toEqual([
+      DEFAULT_LOCATION_ID,
+    ])
+    // THE NAME IS THE GUARD. The flagged row must be the backup's own default,
+    // carrying its name — not a placeholder 'My Home' that
+    // `ensureDefaultLocationRow` created because nothing matched. Without the
+    // remap this fails with: expected { id: 'local', name: 'My Home', … } to
+    // match object { name: 'Cloud Home' }
+    expect(await db.locations.get(DEFAULT_LOCATION_ID)).toMatchObject({
+      name: 'Cloud Home',
+    })
   })
 
-  it('falls back to the backup single location when the requested one is absent', () => {
-    // Given a backup written on another device, whose only location id is
-    // unknown here (this device has just 'local')
-    const payload = payloadWithStockIn('kitchen-a1b2')
+  it('user restoring a cloud backup gets no stray extra location', async () => {
+    // Given a cloud backup with three locations
+    const payload = cloudBackup()
 
-    // When resolving against 'local'
-    // Then the one location the backup does have is used — flattening by
-    // 'local' would have uploaded every item with zeroed stock
-    expect(resolveFlattenLocationId(payload, 'local')).toBe('kitchen-a1b2')
+    // When the user restores it
+    await importLocalData(payload, 'clear')
+
+    // Then the table holds exactly three rows — the payload's own count.
+    // Before the remap, no imported row matched DEFAULT_LOCATION_ID, so
+    // `ensureDefaultLocationRow` added a FOURTH, empty "local" default beside
+    // the three restored ones.
+    expect(await db.locations.count()).toBe(payload.locations?.length)
   })
 
-  it('refuses to guess when the backup has several unknown locations', () => {
-    // Given a backup with stock in two locations, neither of them this device's
-    const payload = payloadWithStockIn('kitchen-a1b2', 'garage-c3d4')
+  it("user restoring a cloud backup keeps its non-default locations' ids", async () => {
+    // Given a cloud backup with two non-default locations
+    const payload = cloudBackup()
 
-    // When resolving against 'local'
-    // Then there is no safe answer — the caller must fail loudly rather than
-    // upload zeros for everything
-    expect(resolveFlattenLocationId(payload, 'local')).toBeNull()
-  })
+    // When the user restores it
+    await importLocalData(payload, 'clear')
 
-  it('passes the request through when there is no stock to flatten', () => {
-    // Given a cloud-shaped payload (no itemStocks at all) and one with an
-    // empty stock table and no carts — neither can lose anything by being
-    // flattened
-    expect(resolveFlattenLocationId(emptyPayload(), 'local')).toBe('local')
-    expect(resolveFlattenLocationId(payloadWithStockIn(), 'local')).toBe(
-      'local',
+    // Then only the payload's default moved; both others kept their own id
+    expect((await db.locations.toArray()).map((l) => l.id).sort()).toEqual(
+      [DEFAULT_LOCATION_ID, CLOUD_CABIN, CLOUD_OFFICE].sort(),
     )
+    expect(await db.locations.get(CLOUD_OFFICE)).toMatchObject({
+      name: 'Office',
+      isDefault: false,
+    })
+    expect(await db.locations.get(CLOUD_CABIN)).toMatchObject({
+      name: 'Cabin',
+      isDefault: false,
+    })
   })
 
-  // With no stock to disambiguate, the carts still carry a location prefix, and
-  // flattening by a location none of them use drops every cart and cart item
-  // silently. Zeroed stock is correct here (there is none); losing the carts is
-  // not.
-  function payloadWithCartsIn(...locationIds: string[]): ExportPayload {
-    return emptyPayload({
-      items: [{ id: 'item-1', name: 'Milk', tagIds: [] }],
-      itemStocks: [],
-      shoppingCarts: locationIds.map((locationId) => ({
-        id: `${locationId}:vendor-1`,
-      })),
-      cartItems: locationIds.map((locationId, i) => ({
-        id: `ci-${i}`,
-        cartId: `${locationId}:vendor-1`,
-        itemId: 'item-1',
-        quantity: 1,
-      })),
+  it('user restoring a cloud backup keeps each quantity in its own location', async () => {
+    // Given a cloud backup with three stock rows, three different quantities
+    const payload = cloudBackup()
+
+    // When the user restores it
+    await importLocalData(payload, 'clear')
+
+    // Then the row at the payload's default followed its location to 'local',
+    // and the other two stayed where they were — each with its own quantity
+    const byLocation = new Map(
+      (await db.itemStocks.toArray()).map((s) => [s.locationId, s]),
+    )
+    expect(byLocation.get(DEFAULT_LOCATION_ID)?.packedQuantity).toBe(1)
+    expect(byLocation.get(CLOUD_OFFICE)?.packedQuantity).toBe(7)
+    expect(byLocation.get(CLOUD_CABIN)?.packedQuantity).toBe(3)
+    expect(byLocation.has(CLOUD_DEFAULT)).toBe(false)
+
+    // And the pantry at the local default shows that location's quantity
+    const stocked = await getStockedItems(DEFAULT_LOCATION_ID)
+    expect(stocked).toHaveLength(1)
+    expect(stocked[0].packedQuantity).toBe(1)
+  })
+
+  it('user restoring a cloud backup keeps a bare cart id unprefixed', async () => {
+    // Given a cloud backup with two prefixed cart ids and one bare one
+    const payload = cloudBackup()
+
+    // When the user restores it
+    await importLocalData(payload, 'clear')
+
+    // Then the default's prefix was rewritten, the other prefix was not, and
+    // the bare id was left alone. Asserted through `cartItems`, because
+    // `bootstrapCartsForAllLocations` adds a sentinel cart per location and
+    // would otherwise blur the cart table.
+    const cartIdsByItem = new Map(
+      (await db.cartItems.toArray()).map((ci) => [ci.id, ci.cartId]),
+    )
+    expect(cartIdsByItem.get('ci-default')).toBe(
+      `${DEFAULT_LOCATION_ID}:vendor_1`,
+    )
+    expect(cartIdsByItem.get('ci-office')).toBe(`${CLOUD_OFFICE}:vendor_2`)
+    expect(cartIdsByItem.get('ci-bare')).toBe('no-vendor')
+
+    const cartIds = (await db.shoppingCarts.toArray()).map((c) => c.id)
+    expect(cartIds).toContain(`${DEFAULT_LOCATION_ID}:vendor_1`)
+    expect(cartIds).toContain(`${CLOUD_OFFICE}:vendor_2`)
+    expect(cartIds).toContain('no-vendor')
+    expect(cartIds).not.toContain(`${CLOUD_DEFAULT}:vendor_1`)
+  })
+
+  it("user restoring a cloud backup keeps each log's location", async () => {
+    // Given a cloud backup with a log at the default, one elsewhere, and one
+    // with no location at all
+    const payload = cloudBackup()
+
+    // When the user restores it
+    await importLocalData(payload, 'clear')
+
+    // Then the default's log moved, the other did not, and the log with no
+    // location still has none — inventing one would override the fallback
+    expect((await db.inventoryLogs.get('log-at-default'))?.locationId).toBe(
+      DEFAULT_LOCATION_ID,
+    )
+    expect((await db.inventoryLogs.get('log-at-office'))?.locationId).toBe(
+      CLOUD_OFFICE,
+    )
+    expect(
+      (await db.inventoryLogs.get('log-no-location'))?.locationId,
+    ).toBeUndefined()
+  })
+
+  it('user merging a cloud backup with skip keeps every location', async () => {
+    // Given a database that already holds its own default location
+    await ensureDefaultLocationRow()
+    const payload = cloudBackup()
+
+    // When the user merges the backup with the 'skip' strategy
+    await importLocalData(payload, 'skip')
+
+    // Then the payload's default landed on the existing local row (which keeps
+    // its own name, because `skip` only adds what is missing), the two others
+    // were added, and nothing extra appeared
+    expect((await db.locations.toArray()).map((l) => l.id).sort()).toEqual(
+      [DEFAULT_LOCATION_ID, CLOUD_CABIN, CLOUD_OFFICE].sort(),
+    )
+    expect(
+      (await db.locations.toArray())
+        .filter((l) => l.isDefault)
+        .map((l) => l.id),
+    ).toEqual([DEFAULT_LOCATION_ID])
+    const byLocation = new Map(
+      (await db.itemStocks.toArray()).map((s) => [s.locationId, s]),
+    )
+    expect(byLocation.get(DEFAULT_LOCATION_ID)?.packedQuantity).toBe(1)
+    expect(byLocation.get(CLOUD_OFFICE)?.packedQuantity).toBe(7)
+    expect(byLocation.get(CLOUD_CABIN)?.packedQuantity).toBe(3)
+  })
+
+  it('user merging a cloud backup with replace keeps every location', async () => {
+    // Given a database that already holds its own default location
+    await ensureDefaultLocationRow()
+    const payload = cloudBackup()
+
+    // When the user merges the backup with the 'replace' strategy
+    await importLocalData(payload, 'replace')
+
+    // Then the payload's default overwrote the existing local row, including
+    // its name, and the two others were added
+    expect((await db.locations.toArray()).map((l) => l.id).sort()).toEqual(
+      [DEFAULT_LOCATION_ID, CLOUD_CABIN, CLOUD_OFFICE].sort(),
+    )
+    expect(await db.locations.get(DEFAULT_LOCATION_ID)).toMatchObject({
+      name: 'Cloud Home',
+      isDefault: true,
     })
+    const byLocation = new Map(
+      (await db.itemStocks.toArray()).map((s) => [s.locationId, s]),
+    )
+    expect(byLocation.get(DEFAULT_LOCATION_ID)?.packedQuantity).toBe(1)
+    expect(byLocation.get(CLOUD_OFFICE)?.packedQuantity).toBe(7)
+    expect(byLocation.get(CLOUD_CABIN)?.packedQuantity).toBe(3)
+  })
+
+  // A PRE-v18 backup carries no `isDefault` key on any location. The rule
+  // chosen for it: the payload's default is the row whose id is
+  // DEFAULT_LOCATION_ID, because a local default has always had that id and is
+  // undeletable, so every real pre-v18 local backup contains it. Nothing is
+  // guessed from `order` or from position.
+  it('user restoring a pre-v18 backup gets exactly one default and no stray row', async () => {
+    // Given a pre-v18 backup: three locations, no `isDefault` key anywhere
+    const payload = emptyPayload({
+      locations: [
+        { id: DEFAULT_LOCATION_ID, name: 'My Home', order: 0 },
+        { id: 'office', name: 'Office', order: 1 },
+        { id: 'cabin', name: 'Cabin', order: 2 },
+      ],
+    })
+
+    // When the user restores it
+    await importLocalData(payload, 'clear')
+
+    // Then the remap is an identity (the payload's default is already the
+    // local one), exactly one row is flagged, and no fourth row appeared
+    expect(await db.locations.count()).toBe(3)
+    expect(
+      (await db.locations.toArray())
+        .filter((l) => l.isDefault)
+        .map((l) => l.id),
+    ).toEqual([DEFAULT_LOCATION_ID])
+  })
+
+  // The collision case, which the remap rule on its own does not cover: the
+  // payload names one row as its default while a DIFFERENT row already holds
+  // DEFAULT_LOCATION_ID. Remapping would give two rows the same id and the
+  // write would keep only one, losing a location. `buildLocationRemap` returns
+  // an empty map instead, so every id survives.
+  it('user restoring a backup that flags another row loses no location', async () => {
+    // Given a hand-edited backup flagging 'office' while 'local' also exists
+    const payload = emptyPayload({
+      locations: [
+        {
+          id: DEFAULT_LOCATION_ID,
+          name: 'My Home',
+          order: 0,
+          isDefault: false,
+        },
+        { id: 'office', name: 'Office', order: 1, isDefault: true },
+        { id: 'cabin', name: 'Cabin', order: 2, isDefault: false },
+      ],
+    })
+
+    // When the user restores it
+    await importLocalData(payload, 'clear')
+
+    // Then all three ids survive and the local default is the only flagged row
+    expect((await db.locations.toArray()).map((l) => l.id).sort()).toEqual(
+      ['cabin', DEFAULT_LOCATION_ID, 'office'].sort(),
+    )
+    expect(
+      (await db.locations.toArray())
+        .filter((l) => l.isDefault)
+        .map((l) => l.id),
+    ).toEqual([DEFAULT_LOCATION_ID])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// importCloudData — a PRE-v15 backup reaches cloud with its stock
+//
+// FOUND BY TASK 8, WHILE THE E2E SPECS WERE FAILING. Both cloud tests in
+// `e2e/tests/settings/import-export-cloud.spec.ts` were RED on this branch,
+// and this is one of the two causes.
+//
+// A pre-v15 backup has no `itemStocks` key: every item carries its stock
+// inline and every cart id is bare. `importLocalData` has always upgraded such
+// a payload; the cloud path never had to, because two now-deleted pieces
+// covered for it — `flattenPayloadForCloud` (task 3) passed the inline columns
+// straight up, and the server's `mirrorStockToDefaultLocation` (task 6) then
+// wrote one `ItemStock` row per imported item.
+//
+// Measured on this branch before the fix, with exactly the payload below: the
+// mutations sent were `["BulkCreateItems", "BulkCreateShoppingCarts"]` and
+// nothing else — no `itemStocks` variable anywhere — and the cart id was still
+// the bare `vendor_1`.
+// ---------------------------------------------------------------------------
+
+describe('importCloudData — a pre-v15 backup keeps its stock (PR 4b task 8)', () => {
+  const EMPTY_EXISTING = {
+    items: [],
+    tags: [],
+    tagTypes: [],
+    vendors: [],
+    recipes: [],
+    inventoryLogs: [],
+    shoppingCarts: [],
+    allCartItems: [],
+    shelves: [],
   }
 
-  it('falls back to the cart location when there is no stock to disambiguate', () => {
-    // Given a stock-less backup whose carts all belong to one other location
-    const payload = payloadWithCartsIn('kitchen-a1b2')
+  const DESTINATION = [
+    { id: 'cloud_default', name: 'My Home', order: 0, isDefault: true },
+  ]
 
-    // When resolving against 'local'
-    // Then the carts' own location is used — flattening by 'local' would have
-    // dropped every cart and cart item with no warning
-    expect(resolveFlattenLocationId(payload, 'local')).toBe('kitchen-a1b2')
+  function makeCloudClient(destinationLocations: unknown[] = DESTINATION) {
+    return {
+      mutate: vi.fn().mockResolvedValue({}),
+      resetStore: vi.fn().mockResolvedValue(undefined),
+      query: vi.fn().mockResolvedValue({
+        data: { ...EMPTY_EXISTING, locations: destinationLocations },
+      }),
+    }
+  }
+
+  /** The rows sent under one variable name, across every mutation Apollo saw. */
+  function sentOf(
+    client: { mutate: ReturnType<typeof vi.fn> },
+    key: string,
+  ): Record<string, unknown>[] {
+    const call = client.mutate.mock.calls.find(
+      (c) => (c[0]?.variables as Record<string, unknown>)?.[key] !== undefined,
+    )
+    if (!call) return []
+    return (call[0].variables as Record<string, Record<string, unknown>[]>)[key]
+  }
+
+  /** A pre-v15 item: stock inline, nothing split out. */
+  function legacyItem(id: string, name: string, packed: number) {
+    return {
+      ...makeItem(id, name),
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity: packed,
+      unpackedQuantity: 0,
+    }
+  }
+
+  it('user importing a pre-v15 backup into cloud has each item stocked, not left in the catalog alone', async () => {
+    // Given a pre-v15 backup: two items with inline stock, no `itemStocks` key
+    const payload = legacyPayload({
+      items: [legacyItem('item-1', 'Milk', 3), legacyItem('item-2', 'Eggs', 7)],
+    })
+    const client = makeCloudClient()
+
+    // When it is imported into cloud mode
+    await importCloudData(payload, 'skip', client as never)
+
+    // Then one stock row per item reaches the server, at the DESTINATION
+    // account's default location, carrying the inline quantities
+    expect(
+      sentOf(client, 'itemStocks').map((s) => ({
+        itemId: s.itemId,
+        locationId: s.locationId,
+        packedQuantity: s.packedQuantity,
+      })),
+    ).toEqual([
+      { itemId: 'item-1', locationId: 'cloud_default', packedQuantity: 3 },
+      { itemId: 'item-2', locationId: 'cloud_default', packedQuantity: 7 },
+    ])
   })
 
-  it('prefers the requested location when its carts are in the backup', () => {
-    // Given a stock-less backup with carts in both locations
-    const payload = payloadWithCartsIn('local', 'office')
+  it('user importing a pre-v15 backup into cloud gets its bare cart ids prefixed with a location', async () => {
+    // Given a pre-v15 backup whose cart ids carry no location prefix
+    const payload = legacyPayload({
+      items: [legacyItem('item-1', 'Milk', 3)],
+      shoppingCarts: [
+        makeShoppingCart('vendor_1'),
+        makeShoppingCart('no-vendor'),
+      ],
+      cartItems: [
+        makeCartItem('ci-1', 'vendor_1', 'item-1'),
+        makeCartItem('ci-2', 'no-vendor', 'item-1'),
+      ],
+    })
+    const client = makeCloudClient()
 
-    // Then the request still wins — Ruling A is unaffected
-    expect(resolveFlattenLocationId(payload, 'office')).toBe('office')
+    // When it is imported into cloud mode
+    await importCloudData(payload, 'skip', client as never)
+
+    // Then every cart id names the destination's default location. A bare id
+    // is the ownership leak of issue #327: `Cart.id` is a global primary key,
+    // so two accounts cannot both hold `no-vendor`.
+    expect(sentOf(client, 'carts').map((c) => c.id)).toEqual([
+      'cloud_default:vendor_1',
+      'cloud_default:no-vendor',
+    ])
+    expect(sentOf(client, 'cartItems').map((c) => c.cartId)).toEqual([
+      'cloud_default:vendor_1',
+      'cloud_default:no-vendor',
+    ])
   })
 
-  it('refuses to guess when stock-less carts span several unknown locations', () => {
-    // Given carts in two locations, neither of them this device's
-    const payload = payloadWithCartsIn('kitchen-a1b2', 'garage-c3d4')
+  it('user importing a post-v15 backup into cloud has nothing synthesised for a catalog-only item', async () => {
+    // Given a payload that DOES carry `itemStocks`, with one item stocked and
+    // one deliberately catalog-only. The catalog-only item still carries the
+    // legacy stock columns as 0 — which is what a cloud export writes — so a
+    // blanket upgrade would read it as unsplit and stock it.
+    const payload = emptyPayload({
+      items: [legacyItem('item-1', 'Milk', 3), legacyItem('item-2', 'Eggs', 0)],
+      locations: [
+        { id: 'cloud_default', name: 'My Home', order: 0, isDefault: true },
+      ],
+      itemStocks: [
+        {
+          id: 'stock-1',
+          itemId: 'item-1',
+          locationId: 'cloud_default',
+          targetQuantity: 4,
+          refillThreshold: 1,
+          packedQuantity: 3,
+          unpackedQuantity: 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+    })
+    const client = makeCloudClient()
 
-    // Then there is no safe answer — refuse rather than drop half the carts
-    expect(resolveFlattenLocationId(payload, 'local')).toBeNull()
+    // When it is imported into cloud mode
+    await importCloudData(payload, 'skip', client as never)
+
+    // Then only the row the payload listed is sent — `item-2` stays unstocked
+    expect(sentOf(client, 'itemStocks').map((s) => s.itemId)).toEqual([
+      'item-1',
+    ])
+  })
+
+  it('user watching the progress bar of a pre-v15 cloud import sees a total that includes the synthesised stock', async () => {
+    // Given a pre-v15 backup with two items and no `itemStocks` key, cleared
+    // first — the strategy whose batch total is computed before the payload is
+    // prepared
+    const payload = legacyPayload({
+      items: [legacyItem('item-1', 'Milk', 3), legacyItem('item-2', 'Eggs', 7)],
+    })
+    const client = makeCloudClient()
+    const totals: number[] = []
+
+    // When it is imported
+    await importCloudData(payload, 'clear', client as never, {
+      onProgress: (p) => totals.push(p.totalBatches),
+    })
+
+    // Then the total the bar settles on counts the stock batch the upgrade
+    // created. Reporting the raw payload's total instead would leave the bar
+    // one batch short of its own progress.
+    const sentEntities = client.mutate.mock.calls.filter(
+      (c) => c[0]?.variables !== undefined,
+    ).length
+    expect(totals.at(-1)).toBe(sentEntities)
   })
 })

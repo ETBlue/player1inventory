@@ -172,10 +172,12 @@ export default defineConfig({
       // pwa-offline.spec.ts needs a real service worker, which the dev
       // server this project runs against does not have — it only runs
       // under the 'pwa' project, against the built preview output.
-      // location-scoped-writes.spec.ts and cleanup-endpoint.spec.ts drive GraphQL
-      // directly against the cloud backend and never open a page — neither has a
-      // local-mode counterpart.
-      testIgnore: ['**/settings/import-export-cloud.spec.ts', '**/pwa-offline.spec.ts', '**/location-scoped-writes.spec.ts', '**/cleanup-endpoint.spec.ts'],
+      // location-scoped-writes.spec.ts, cleanup-endpoint.spec.ts and
+      // cart-id-cross-user-leak.spec.ts drive GraphQL directly against the cloud
+      // backend and never open a page — none has a local-mode counterpart. The
+      // last one also acts as a SECOND synthetic user, which the web build
+      // cannot be (VITE_E2E_TEST_USER_ID below is one value).
+      testIgnore: ['**/settings/import-export-cloud.spec.ts', '**/pwa-offline.spec.ts', '**/location-scoped-writes.spec.ts', '**/cleanup-endpoint.spec.ts', '**/cart-id-cross-user-leak.spec.ts'],
       use: { ...devices['Desktop Chrome'], baseURL: LOCAL_WEB_URL },
     },
     {
@@ -197,7 +199,7 @@ export default defineConfig({
           ],
         },
       },
-      testMatch: ['**/item-management.spec.ts', '**/settings/tags.spec.ts', '**/settings/vendors.spec.ts', '**/settings/recipes.spec.ts', '**/cooking.spec.ts', '**/item-list-state-restore.spec.ts', '**/tests/shopping.spec.ts', '**/tests/item-logs.spec.ts', '**/settings/import-export-cloud.spec.ts', '**/settings/locations.spec.ts', '**/location-switcher.spec.ts', '**/location-not-stocked-here.spec.ts', '**/location-scoped-writes.spec.ts', '**/recipes-group.spec.ts', '**/vendors-group.spec.ts', '**/tests/shelves.spec.ts', '**/item-stock-input.spec.ts', '**/item-stock-pager.spec.ts', '**/cleanup-endpoint.spec.ts'],
+      testMatch: ['**/item-management.spec.ts', '**/settings/tags.spec.ts', '**/settings/vendors.spec.ts', '**/settings/recipes.spec.ts', '**/cooking.spec.ts', '**/item-list-state-restore.spec.ts', '**/tests/shopping.spec.ts', '**/tests/item-logs.spec.ts', '**/settings/import-export-cloud.spec.ts', '**/settings/locations.spec.ts', '**/location-switcher.spec.ts', '**/location-not-stocked-here.spec.ts', '**/location-scoped-writes.spec.ts', '**/recipes-group.spec.ts', '**/vendors-group.spec.ts', '**/tests/shelves.spec.ts', '**/item-stock-input.spec.ts', '**/item-stock-pager.spec.ts', '**/cleanup-endpoint.spec.ts', '**/cart-id-cross-user-leak.spec.ts'],
     },
     {
       // The dev server has no service worker. It only exists in a real build,

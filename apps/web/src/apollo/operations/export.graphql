@@ -1,11 +1,22 @@
+# Whole-account snapshot queries — the export/import path, not a screen.
+#
+# `locationId`, `logKey` and `logParams` are all three selected on purpose.
+# `locationId` records WHICH location each log belongs to, so a restore does not
+# put every log in one place (the field was added to the type by cloud locations
+# PR 4a). `logKey` and `logParams` carry the log's MESSAGE: `ItemLogs`
+# (inventoryLogs.graphql) has always selected them, this query never did, so
+# every cloud backup taken before PR 4b lost every log message.
 query InventoryLogs {
   inventoryLogs {
     id
     itemId
+    locationId
     delta
     quantity
     occurredAt
     note
+    logKey
+    logParams
   }
 }
 
@@ -22,5 +33,27 @@ query AllCartItems {
     cartId
     itemId
     quantity
+  }
+}
+
+# Every ItemStock row the caller can reach, across every location. It lives
+# here beside `AllCartItems` because both are whole-account export reads, and
+# both are read a second time by `fetchCloudExistingData` (lib/importData.ts)
+# to detect conflicts. The per-screen stock queries are in itemStocks.graphql.
+#
+# `itemStocks(locationId:)` cannot serve this — it would cost one request per
+# location, and a backup must see them all or it loses rows.
+query AllItemStocks {
+  allItemStocks {
+    id
+    itemId
+    locationId
+    targetQuantity
+    refillThreshold
+    packedQuantity
+    unpackedQuantity
+    dueDate
+    createdAt
+    updatedAt
   }
 }

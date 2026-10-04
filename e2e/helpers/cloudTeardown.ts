@@ -36,11 +36,18 @@ export type CleanupResponse = {
 }
 
 /**
- * Delete every row owned by E2E_USER_ID, and return the per-model deleted counts.
+ * Delete every row owned by one user, and return the per-model deleted counts.
  *
  * Call it from both `beforeEach` and `afterEach`, guarded on
  * `baseURL === CLOUD_WEB_URL`. The `beforeEach` call is the guard against a
  * previous run that crashed before its teardown.
+ *
+ * `userId` defaults to `E2E_USER_ID`, which is the only account the browser can
+ * ever be. An API-only spec that writes as a second account (see
+ * `E2E_SECOND_USER_ID` in `e2e/constants.ts`) must call this helper ONCE PER
+ * USER in both hooks. One call deletes one user's rows — the route's `where`
+ * clause is `{ userId }` — so a second user's rows left behind survive into the
+ * next spec and fail it for a reason nobody will find.
  *
  * ── WHAT IT CHECKS ───────────────────────────────────────────────────────────
  *
@@ -63,13 +70,14 @@ export type CleanupResponse = {
  */
 export async function cleanupCloudData(
   request: APIRequestContext,
+  userId: string = E2E_USER_ID,
 ): Promise<CleanupResponse> {
   const response = await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
-    headers: { 'x-e2e-user-id': E2E_USER_ID },
+    headers: { 'x-e2e-user-id': userId },
   })
   if (!response.ok()) {
     throw new Error(
-      `cleanupCloudData: DELETE /e2e/cleanup returned ${response.status()} ${response.statusText()} — ${await response.text()}`,
+      `cleanupCloudData(${userId}): DELETE /e2e/cleanup returned ${response.status()} ${response.statusText()} — ${await response.text()}`,
     )
   }
 

@@ -8,8 +8,12 @@ import { DataModeCard } from '.'
 //   - useUser() from @clerk/react — shown in CloudMode only (email display)
 //   - useClerk() from @clerk/react — signOut, used in sign-out flow
 //   - useApolloClient() — used in switch/sign-out flows for fetchCloudPayload
-//   - useLocations() — TanStack Query read backing the multi-location copy
-//     warning, hence the QueryClientProvider decorator below
+//
+// It no longer calls useLocations(): cloud locations PR 4b deleted the
+// multi-location copy warning, because the copy keeps every location. The
+// QueryClientProvider decorator below is therefore no longer required by this
+// component; it is kept so a story stays renderable if any child picks up a
+// TanStack Query read again.
 //
 // Mocking strategy:
 //   - localStorage is set in each story's `beforeEach` to control mode
