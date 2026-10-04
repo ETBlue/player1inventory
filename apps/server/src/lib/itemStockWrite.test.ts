@@ -184,11 +184,12 @@ describe('writeStock', () => {
     // `mirrorStock` returned early on an empty `data` and wrote nothing; a
     // function that must return the saved row cannot decline to write one.
     //
-    // It changes no caller. `mirrorStockToDefaultLocation` makes the same
-    // empty test itself before calling, which is the guard that stops
-    // `updateItem` stocking every renamed item in the default location; and
-    // `upsertItemStock` already created a row of zeroes for an empty input,
-    // because its GraphQL field returns `ItemStock!`.
+    // It changed no caller then and has none now. The guard that mattered sat
+    // in `mirrorStockToDefaultLocation`, which made the same empty test before
+    // calling and so stopped `updateItem` stocking every renamed item in the
+    // default location — PR 5 task 3 deleted both that function and
+    // `updateItem`'s mirror. `upsertItemStock` already created a row of zeroes
+    // for an empty input, because its GraphQL field returns `ItemStock!`.
     //
     // Given item-bread is stocked nowhere
     // When an empty write names the Home location

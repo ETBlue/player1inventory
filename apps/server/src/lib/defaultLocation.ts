@@ -5,10 +5,16 @@ export const DEFAULT_LOCATION_NAME = 'My Home'
 /**
  * The id of the user's default location, creating it if they have none.
  *
- * Lives in `lib/` rather than in a resolver because two kinds of caller need
- * it: the `locations` query (location.resolver.ts) and the PR-2 stock
- * dual-write (stockDualWrite.ts, which `lib/` must not import a resolver for).
- * It also has to OUTLIVE PR 5, which deletes stockDualWrite.ts.
+ * Lives in `lib/` rather than in a resolver because more than one caller needs
+ * it and `lib/` must not import a resolver. Three callers today: the
+ * `locations` query (location.resolver.ts:32) and the two import resolvers
+ * (import.resolver.ts:92, :221).
+ *
+ * The PR-2 stock dual-write (lib/stockDualWrite.ts) was a fourth, and was the
+ * reason this function was extracted here in the first place. Cloud locations
+ * PR 5 deleted that module and this function outlived it, as its old comment
+ * said it would. It is NOT permanent: the households work removes
+ * `Location.isDefault` in phase H3, and this function goes with the column.
  *
  * Mirrors local mode, where `ensureDefaultLocation` is called from BOTH the
  * Dexie upgrade and `on('populate')` because a fresh database never runs

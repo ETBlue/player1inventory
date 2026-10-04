@@ -35,8 +35,13 @@ async function requireCartLocation(
 
 /**
  * `userId` in the `where` clauses below is a query SCOPE, not an authorization
- * decision — the same distinction lib/stockDualWrite.ts records for
- * `mirrorItemStockToItem`. Authorization is `requireCartLocation` above.
+ * decision. Root CLAUDE.md forbids `row.userId === ctx.userId` as a GUARD; it
+ * does not forbid `userId` inside a `where` clause, which only narrows what
+ * the query can match. Authorization is `requireCartLocation` above.
+ *
+ * This note used to cite `mirrorItemStockToItem` in lib/stockDualWrite.ts as
+ * the other place the distinction was written down. Cloud locations PR 5
+ * deleted that module; the rule did not change.
  */
 export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
   Query: {
