@@ -26,9 +26,12 @@ The households design (`feature/households`,
 
 Only phase H1 (the Settings layout) can start before this merges. H2 and H3 cannot.
 
-PR 5 is also a net win for that work: it deletes **2 of the 5** `Location.isDefault` reads in
-resolvers — `itemStock.resolver.ts:136` and the `defaultLocationIds` set at `:272-276` — and
-households removes the column entirely in H3.
+PR 5 is also a net win for that work: it deletes **both** `Location.isDefault` reads in
+`itemStock.resolver.ts` — the `upsertItemStock` branch and the `defaultLocationIds` set — and
+households removes the column entirely in H3. **Do not quote a total.** This plan said "2 of
+the 5 reads" and task 3 measured 6 occurrences of which 3 were reads; after task 3, what is
+left in that file is two **comments** explaining the removal. Counting `isDefault` by grep
+mixes reads, writes and comments, so **re-measure and say which kind** rather than subtracting.
 
 ## What the design doc gets wrong
 
@@ -390,6 +393,55 @@ found a way; this one may genuinely be unobservable once the columns are gone.
 
 ---
 
+**Done 2026-10-04.** Server **358 → 349** (10 tests deleted, 1 rewritten, 1 added).
+`stockDualWrite.ts` **deleted**. `REMOVED IN PR 5` markers **0**. `stockDualWrite` references
+**0**. Net −725/+214 lines across 12 files.
+
+**`writeStock` took the transaction-client parameter:**
+`writeStock(itemId, locationId, data, client: Prisma.TransactionClient = prisma)`.
+`applyUnitSwitch` passes its `tx` and its own upsert folded away — a third copy of the same
+upsert, with its own copy of the five zero defaults, gone. `PrismaClient` is assignable to
+`Omit<PrismaClient, ITXClientDenyList>`, so the default needs no cast.
+
+**The hazard that replaces the old one, written down at both ends:** omitting `tx` inside a
+`$transaction` callback **compiles, type-checks, and is silently wrong**. Nothing but the
+comments in `itemStockWrite.ts`'s header and at the `applyUnitSwitch` call site prevents it.
+
+**Two more vacuous negative controls, exactly as task 2 predicted.** Both
+`itemStock.resolver.test.ts` tests asserting `Item`'s columns "still read 99" stayed **green**
+after the source was deleted, because nothing writes them. Fixed task 2's way — by removing
+the capability, three times:
+
+| File | Removed from the fake | A reinstated mirror now gives |
+|---|---|---|
+| `item.resolver.test.ts` | the whole `stockFake` | `Cannot read properties of undefined (reading 'findFirst')` |
+| `itemStock.resolver.test.ts` | the `item` store, `FakeItem`, `state.items` | `… (reading 'updateMany')` |
+| `applyUnitSwitch.resolver.test.ts` | `item.updateMany` only | `tx.item.updateMany is not a function` |
+
+**It made an unobservable mutation observable instead of reporting it as unobservable.** Its
+first attempt at reinstating `updateItem`'s mirror came back **all green**, because after the
+five deletions **no surviving test sent inline stock fields to `updateItem`**, so the
+reinstated mirror's empty-data guard short-circuited. Rather than take the "I could not
+distinguish it" answer this task's brief offered, it added one test that makes the mutation
+red. That test **dies in task 4** and its comment says so.
+
+All three mutation checks red: 3 tests, 4 tests, and 1 test respectively.
+
+### A hard dependency on task 4
+
+**`updateItem` is now in an inconsistent intermediate state, on purpose.** It still writes
+`Item`'s five columns from `UpdateItemInput`, and nothing mirrors them onto `ItemStock`. So a
+client sending them inline changes a column nothing reads. **If task 4 slips, that is a
+silently-lost write.** Task 4 is not optional and cannot be deferred to a later PR.
+
+### What this task's text got wrong
+
+| Said | Truth |
+|---|---|
+| "all **six** exports are PR-5-only" | **five**: `StockMirror`, `defaultLocationId`, `mirrorStock`, `mirrorItemStockToItem`, `mirrorStockToDefaultLocation` |
+| heading: "Three deletions, **all writing `Item` from a stock row**" | only **two** do. `updateItem`'s `mirrorStockToDefaultLocation` runs the **opposite** way — it writes `ItemStock` from the input's five fields. The table at the top of this plan has it right; the heading did not |
+| four unused imports to remove | **two**. Task 2 had already repointed `cart.resolver.ts` and `recipe.resolver.ts` at `writeStock` |
+
 ## Task 4 — the contract: GraphQL, the 8 operations, and the senders
 
 **Everything in this task ships together or the API is broken.**
@@ -638,8 +690,12 @@ Known flake risk: `cloud → cloud` in `import-export-cloud.spec.ts` runs ~36.5s
 `test.setTimeout(60000)` for that reason. A failure there at high load is starvation; check
 `uptime` and re-run the spec alone.
 
-Re-count and report: `stockDualWrite` call sites (**expect 0**), `REMOVED IN PR 5` markers
-(**expect 0**), and `Location.isDefault` resolver reads (expect **3**, down from 5).
+Re-count and report: `stockDualWrite` call sites (**expect 0** — already true after task 3),
+`REMOVED IN PR 5` markers (**expect 0** — already true), and `Location.isDefault`. **For the
+last one, report reads, writes and comments separately** and do not subtract from any figure
+in this plan. The "expect 3" this task used to say was wrong whichever way it is counted; task
+3 measured 6 occurrences in non-test resolver and lib files, of which 3 were reads, and the two
+it removed leave comments behind at `itemStock.resolver.ts:121` and `:257`.
 
 ---
 
