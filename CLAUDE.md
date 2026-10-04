@@ -295,6 +295,29 @@ in the gate. That is exactly how three failing purge tests sat on `main` unnotic
 
 **Run the root `pnpm build`, not `(cd apps/web && pnpm build)`.** The root build is the *full* build — it runs `pnpm codegen` (regenerating GraphQL types from the current schema + operations, catching codegen drift) and type-checks **both** `apps/web` and `apps/server` via `tsc`. The web-only build skips codegen and the server, and `pnpm test` (vitest/esbuild), `pnpm check` (Biome), and `pnpm build-storybook` all skip a full type-check — so type-flow errors (e.g. `possibly null` from `.filter(Boolean)`) and codegen mismatches slip through every other check and only fail in the Cloudflare production build. The root `pnpm build` mirrors that production build and catches them locally.
 
+**Nothing in the gate regenerates the Prisma client, so nothing in the gate catches a
+dangling Prisma field reference.** Measured 2026-10-04 during cloud-locations PR 5 task 5:
+
+| Script | What it actually runs |
+|---|---|
+| root `pnpm codegen` | `graphql-codegen --config codegen.ts` — **GraphQL only** |
+| root `pnpm build` | `pnpm codegen && pnpm --filter web build && pnpm --filter server build`, and the server build is `tsc && cp` |
+| `prisma generate` | wired **only** to `apps/server`'s `postinstall` and `predev` |
+
+So after you edit `schema.prisma`, `tsc` compares your code against **whatever client was
+generated last** — possibly the pre-edit one. Proved with a throwaway file reading a dropped
+column: with the client regenerated it fails `TS2551: Property 'targetQuantity' does not
+exist … Did you mean 'targetUnit'?`; with a stale client it reports **zero errors**.
+
+**After any `schema.prisma` change, run `(cd apps/server && pnpm prisma generate)` by hand
+before you trust a type-check.**
+
+**`apps/server`'s build also does not type-check `scripts/`.** Its `tsconfig.json` has
+`include: ["src"]`; only `tsconfig.typecheck.json` adds `scripts`. And the gate above does not
+list `pnpm typecheck` at all, so **no gate command type-checks
+`apps/server/scripts/verify-migration.ts`** — the one script that proves a migration against
+real SQL. Run `(cd apps/server && pnpm typecheck)` by hand when you touch it.
+
 **Final phase only** — after all steps are complete, run the **whole** E2E suite with one
 command:
 

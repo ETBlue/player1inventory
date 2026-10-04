@@ -620,6 +620,64 @@ gate command reaches it.
 
 ---
 
+**Done 2026-10-04** — `ce2a4eda` (schema + migration) and `8609101e` (verification). Server
+**347**, web **2283**, both unmoved, which is what task 4 having removed every write path
+predicts. **Nothing was applied to any database** — see *What the user still has to do*.
+
+File created: `apps/server/prisma/migrations/20261004000000_drop_item_stock_state_columns/migration.sql`.
+
+**`prisma migrate diff` showed exactly five `ADD COLUMN`s on `Item`** and nothing else on that
+table, which is the check that the five drops are both right and complete. It also showed six
+statements of the pre-existing drift ground rule 2 warns about — `Cart.locationId` and
+`InventoryLog.locationId` missing because those two migrations are unapplied. Expecting only
+five would have looked like a mismatch.
+
+### The finding: nothing in the gate regenerates the Prisma client
+
+**This task's text claimed `pnpm codegen` regenerates the Prisma client. It does not, and
+neither does the root `pnpm build`.** Root `codegen` is `graphql-codegen` alone;
+`prisma generate` is wired only to `postinstall` and `predev`. So `tsc` compares your code
+against whatever client was generated last.
+
+Measured with a throwaway file reading a dropped column:
+
+| Prisma client | `pnpm --filter server typecheck` |
+|---|---|
+| regenerated from the edited schema | **fails** — `TS2551: … Did you mean 'targetUnit'?` |
+| stale, pre-PR-5 | **zero errors** |
+
+Also found: `apps/server`'s build does not type-check `scripts/`, and the gate does not list
+`pnpm typecheck`, so **no gate command type-checks `verify-migration.ts`**. Both are now
+recorded in root `CLAUDE.md`'s Verification Gate section, because they apply to every future
+schema change and not just this PR.
+
+### An existing assertion had to die, which this task's text did not say
+
+`verify-migration.ts` carried
+`assert(items[0]?.targetQuantity === 3, 'Item.targetQuantity survives (dropped in PR 5, not here)')`.
+Once PR 5 joins the `MIGRATIONS` list that `SELECT` throws Postgres `42703`. **Following this
+task's text literally — "add yours, and write assertions for it" — would have left the script
+broken.** It is replaced by a comment pointing at the `milk` assertion above it, which reads
+the same five values off `ItemStock` and is now the proof the data survived in its new home.
+
+### Why the `ItemStock`-still-present assertion is not padding
+
+`Item` and `ItemStock` declare the **same five field names**. Checking `Item` alone passes just
+as happily against `ALTER TABLE "ItemStock" DROP COLUMN "targetQuantity"` — the wrong table —
+as against the real migration. The second assertion is the only one that can tell those apart.
+A third checks `consumeAmount` survives on `Item`, catching a drop that took one column too
+many.
+
+Two implementation details recorded in comments: the columns are read from `information_schema`
+rather than with a `SELECT`, because `SELECT "dueDate" FROM "Item"` throws `42703` before
+`assert` is reached and a raw driver error is not the named `FAIL` the script exists to print;
+and both identifier columns need a `::text` cast, because `information_schema` uses the
+`sql_identifier` domain that Prisma's raw mapper does not know.
+
+**A dependency this plan did not state:** migration 4 depends on migration 1 *in the other
+direction*. PR 5 destroys the columns PR 1's backfill reads, so parking 4 without parking 1
+would reset to a database where PR 1 could not run.
+
 ## Task 6 — the runbook, and the production reconciliation
 
 PR 5 is irreversible: `migrate deploy` has no down step, and a dropped column's data is gone.
