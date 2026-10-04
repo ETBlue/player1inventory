@@ -131,24 +131,19 @@ export async function seedCloudFixture(
         name: item.name,
         tagIds: [],
         vendorIds: item.vendorIds ?? [],
-        // `ItemInput` is FLAT — it carries the five stock fields inline with no
-        // locationId, and they are required. They are left at 0 here because
-        // step 4 writes the real per-location numbers; whatever these become on
-        // `Item`'s legacy columns, the cloud pantry has read `ItemStock` since
-        // PR 2.
+        // `ItemInput` is CONFIGURATION ONLY since cloud locations PR 5 removed
+        // the five per-location state fields from it. Sending them here would
+        // fail GraphQL validation. The real per-location numbers are written in
+        // step 4, through `upsertItemStock`, which names its location.
         //
-        // `targetUnit` and `consumeAmount` are the exception: they are global
-        // item CONFIGURATION, not per-location state, so `ItemStockInput` has
-        // no field for them and step 4 cannot set them. What is written here is
-        // what the item keeps. The `?? 'package'` and `?? 1` fallbacks are the
-        // product defaults — `createItem` writes the same pair, and Prisma
-        // declares `consumeAmount Float @default(1)`. `seedLocalFixture` writes
-        // the same two values for an omitted key, so both modes match.
+        // `targetUnit` and `consumeAmount` are global item CONFIGURATION, not
+        // per-location state, so `ItemStockInput` has no field for them and
+        // step 4 cannot set them. What is written here is what the item keeps.
+        // The `?? 'package'` and `?? 1` fallbacks are the product defaults —
+        // `createItem` writes the same pair, and Prisma declares
+        // `consumeAmount Float @default(1)`. `seedLocalFixture` writes the same
+        // two values for an omitted key, so both modes match.
         targetUnit: item.targetUnit ?? 'package',
-        targetQuantity: 0,
-        refillThreshold: 0,
-        packedQuantity: 0,
-        unpackedQuantity: 0,
         consumeAmount: item.consumeAmount ?? 1,
         createdAt: now,
         updatedAt: now,
@@ -182,16 +177,16 @@ export async function seedCloudFixture(
 
   // 4. RECONCILE STOCK against what the database actually holds.
   //
-  // `bulkCreateItems` calls `mirrorStockToDefaultLocation`
-  // (import.resolver.ts), so an imported item lands with a stock row at the
-  // default location whether the fixture asks for one or not. A fixture whose
-  // point is "this item is stocked ONLY at the other location" is wrong until
-  // that extra row is deleted.
+  // `bulkCreateItems` writes NO stock row of its own — cloud locations PR 4b
+  // deleted the `mirrorStockToDefaultLocation` call it used to make, and PR 5
+  // removed the inline stock fields from `ItemInput` altogether. So step 3
+  // leaves every item stocked nowhere, and this step creates exactly the rows
+  // the fixture asks for.
   //
-  // The extra rows are READ BACK rather than predicted. Assuming what the
-  // mirror did is exactly the assumption that rots when PR 5 removes the
-  // dual-write: the seed would then delete a row that no longer exists, or
-  // worse, keep trusting a row that was never created.
+  // The rows are still READ BACK rather than predicted, and that is why this
+  // loop needed no change across either PR: it reconciles against what the
+  // database actually holds, so it is correct whether an extra row exists or
+  // not. Do not replace it with an assumption about what the server did.
   const wanted = new Set(
     fixture.stocks.map((s) => `${s.itemId}:${resolveLocation(s.location)}`),
   )

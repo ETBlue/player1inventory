@@ -43,6 +43,7 @@ import {
   type GetVendorsQuery,
   InventoryLogsDocument,
   type InventoryLogsQuery,
+  type ItemInput,
   ShoppingCartsDocument,
   type ShoppingCartsQuery,
   UpdateRecipeDocument,
@@ -559,10 +560,17 @@ async function fetchCloudDefaultLocationId(
 // THE GUARD IS THE ABSENT KEY AND NOTHING ELSE, on purpose. A payload that
 // already carries `itemStocks` must reach the server exactly as it does today.
 // Running the whole of `upgradeLegacyPayload` on a post-v15 payload would also
-// run `upgradeUnsplitItems`, and a cloud export's items carry the legacy stock
-// columns as 0 rather than null — so `hasInlineStock` answers true for every
-// CATALOG-ONLY cloud item, and a cloud -> cloud round trip would stock each of
-// them at the default location. That is a different bug, not a fix.
+// run `upgradeUnsplitItems`, which reads the payload's items for inline stock
+// and invents an `itemStocks` row from whatever it finds. On a post-v15 payload
+// that is wrong whatever the item rows happen to hold: the real per-location
+// rows are already in `payload.itemStocks`, so a second, synthesised set at the
+// default location would collide with them. That is a different bug, not a fix.
+//
+// (Until cloud locations PR 5 this paragraph gave a narrower reason — a cloud
+// export's items carried the legacy stock columns as 0 rather than null, so
+// `hasInlineStock` answered true for every catalog-only cloud item. PR 5
+// removed those columns from the cloud `Item`, so that particular symptom is
+// gone. The guard is still right, for the reason above.)
 //
 // `null` means the destination account reports no default location, which
 // `ensureDefaultLocation` makes impossible after a `locations` read. There is
@@ -649,7 +657,37 @@ export interface ImportSession {
 // These are used before passing payload objects as GraphQL mutation variables.
 // ---------------------------------------------------------------------------
 
-export function toItemInput(item: Record<string, unknown>) {
+// `ItemInput` is CONFIGURATION only since cloud locations PR 5 dropped the five
+// per-location state fields from it, so this mapper must not forward them —
+// they would be rejected by GraphQL validation, failing the whole mutation.
+//
+// THE RETURN TYPE ANNOTATION IS THE GUARD, and it is the only one. Nothing else
+// in the repo catches an extra key here: `tsc` does not excess-property-check a
+// function RESULT assigned to a typed parameter, every test mocks the Apollo
+// client rather than validating against the schema, and the cloud E2E import
+// spec would be the first thing to see it — after the whole mutation failed.
+// Measured during PR 5 task 4: with the five put back and no annotation, the
+// root `pnpm build` passed and all 2283 web tests passed. With the annotation
+// the build fails with
+//   TS2561: Object literal may only specify known properties, but
+//   'targetQuantity' does not exist in type 'ItemInputShape'.
+// Do not remove it, and do not widen it to `Record<string, unknown>`.
+//
+// Dropping them loses nothing. A pre-v15 payload carries the five inline on its
+// items, and `upgradeLegacyPayloadForCloud` has already turned them into real
+// `itemStocks` rows before any mutation runs, each row naming a location. A
+// post-v15 payload carries its own `itemStocks` array. Either way the stock
+// travels in `ItemStockImportInput`, never here.
+//
+// `ItemInputShape` rather than `ItemInput` itself for one reason:
+// `exactOptionalPropertyTypes: true` is on, and codegen types an optional input
+// field as `T | null` with no `| undefined`, so the plain type rejects the
+// `undefined`s this mapper emits for an absent optional (TS2375). The mapped
+// type keeps the KEY SET exact — which is what catches an extra field — and
+// allows `undefined` as a value.
+type ItemInputShape = { [K in keyof ItemInput]: ItemInput[K] | undefined }
+
+export function toItemInput(item: Record<string, unknown>): ItemInputShape {
   const createdAt =
     item.createdAt instanceof Date
       ? item.createdAt.toISOString()
@@ -668,16 +706,7 @@ export function toItemInput(item: Record<string, unknown>) {
     measurementUnit: item.measurementUnit as string | undefined,
     amountPerPackage: item.amountPerPackage as number | undefined,
     targetUnit: item.targetUnit as string,
-    targetQuantity: item.targetQuantity as number,
-    refillThreshold: item.refillThreshold as number,
-    packedQuantity: item.packedQuantity as number,
-    unpackedQuantity: item.unpackedQuantity as number,
     consumeAmount: item.consumeAmount as number,
-    // A local ItemStock carries `dueDate` as a Date (cloud sends a string).
-    dueDate:
-      item.dueDate instanceof Date
-        ? item.dueDate.toISOString()
-        : (item.dueDate as string | undefined),
     estimatedDueDays: item.estimatedDueDays as number | undefined,
     expirationThreshold: item.expirationThreshold as number | undefined,
     expirationMode: item.expirationMode as string | undefined,
