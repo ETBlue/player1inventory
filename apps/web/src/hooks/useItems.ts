@@ -46,7 +46,6 @@ import {
   joinItemStock,
   pickStockFields,
   STOCK_FIELD_KEYS,
-  stripStockFields,
 } from '@/lib/itemStock'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import type { Item, ItemStock, PantryItem, StockFields } from '@/types'
@@ -186,10 +185,14 @@ function touchesStock(updates: Partial<Item> & Partial<StockFields>): boolean {
 }
 
 // The same input with every stock key removed, so `updateItem` receives only
-// the global Item's own fields. Until PR 5 the cloud `Item` still HAS those
-// five columns, and the server still dual-writes anything it receives in them
-// — sending them here as well as to `upsertItemStock` would be two writers for
-// one value.
+// the global Item's own fields.
+//
+// `UpdateItemInput` no longer DECLARES the five since cloud locations PR 5, so
+// this is no longer about two writers for one value — it is about GraphQL
+// validation. `toUpdateItemInput` maps a `PantryItem`, which still carries the
+// five (joined from the active location's `ItemStock`), and sending an
+// undeclared field fails the whole mutation. Stock goes to `upsertItemStock`,
+// which names its location.
 function toConfigInput(
   updates: Partial<Item> & Partial<StockFields>,
 ): UpdateItemInput {
@@ -205,11 +208,12 @@ function toConfigInput(
 // itself is `joinItemStock` — the very same function the Dexie path calls, not
 // a cloud copy of it (that is why it was moved to `lib/itemStock.ts`).
 //
-// The cloud `Item` still declares the five stock STATE fields until PR 5, so
-// each row goes through `stripStockFields` FIRST. Without it the item's own
-// inline `dueDate` would survive the join for an item that has no row here —
+// Since cloud locations PR 5 the cloud `Item` carries NO stock state of its
+// own, so the catalog row joins straight onto the location's stock row. Until
+// PR 5 each row had to pass through `stripStockFields` first, or the item's own
+// inline `dueDate` survived the join for an item with no row here —
 // `ZERO_STOCK` carries no `dueDate` key to overwrite it with — and an item
-// stocked nowhere near this location would still render an expiry.
+// stocked nowhere near this location still rendered an expiry.
 //
 // `stockedOnly` selects the two consumers: the pantry's "stocked here" list
 // (`useStockedItems`) keeps only items with a row in this location, while the
@@ -233,7 +237,7 @@ function joinPantryData(
     : data.items
   return items.map((item) =>
     joinItemStock(
-      stripStockFields(deserializeItem(item as Record<string, unknown>)),
+      deserializeItem(item as Record<string, unknown>),
       stockByItemId.get(item.id),
       locationId,
     ),
@@ -423,7 +427,7 @@ export function useItem(id: string) {
       (row) => row.locationId === activeLocationId,
     )
     return joinItemStock(
-      stripStockFields(deserializeItem(raw as Record<string, unknown>)),
+      deserializeItem(raw as Record<string, unknown>),
       stock
         ? deserializeItemStock(stock as Record<string, unknown>)
         : undefined,
@@ -518,12 +522,10 @@ export function useCreateItem(options?: { catalogOnly?: boolean }) {
         await cloudCreate({ variables: { input: toCreateItemInput(input) } })
       ).data?.createItem
       if (!created) return undefined
-      // Stripped, for the same reason the PantryData join strips: until PR 5
-      // the cloud `Item` still carries the five state columns, and leaving them
-      // on would let the Item's inline values show through the join.
-      const item = stripStockFields(
-        deserializeItem(created as Record<string, unknown>),
-      )
+      // No strip needed: since cloud locations PR 5 `createItem` returns
+      // configuration only, so there are no inline state values that could
+      // show through the join below.
+      const item = deserializeItem(created as Record<string, unknown>)
       if (catalogOnly) return joinItemStock(item, undefined, activeLocationId)
 
       // Resolved at CALL time, not render time. On a fresh cloud session
@@ -546,8 +548,9 @@ export function useCreateItem(options?: { catalogOnly?: boolean }) {
       ).data?.upsertItemStock
       // Joined, so callers reading `stockId` / the stock fields off the result
       // (NewItemDialog's `onSuccess`, and through it the recipe-items dialog)
-      // see the row that was just written rather than the Item's inline
-      // columns, which PR 5 removes.
+      // see the row that was just written. Before cloud locations PR 5 the
+      // join also had to beat the Item's own inline columns; the cloud `Item`
+      // has none now, so the row is the only source.
       return joinItemStock(
         item,
         stockRow

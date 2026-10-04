@@ -15,10 +15,6 @@ describe('deserializeItem', () => {
       name: 'Milk',
       tagIds: [],
       targetUnit: 'package',
-      targetQuantity: 2,
-      refillThreshold: 1,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
       consumeAmount: 1,
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-02-01T00:00:00.000Z',
@@ -29,54 +25,12 @@ describe('deserializeItem', () => {
     expect(result.createdAt).toEqual(new Date('2026-01-01T00:00:00.000Z'))
   })
 
-  it('converts dueDate ISO string to Date when present', () => {
-    const raw = {
-      id: '1',
-      name: 'Milk',
-      tagIds: [],
-      targetUnit: 'package',
-      targetQuantity: 2,
-      refillThreshold: 1,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      dueDate: '2026-06-01T00:00:00.000Z',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-02-01T00:00:00.000Z',
-    }
-    const result = deserializeItem(raw)
-    expect(result.dueDate).toBeInstanceOf(Date)
-    expect(result.dueDate).toEqual(new Date('2026-06-01T00:00:00.000Z'))
-  })
-
-  it('leaves dueDate undefined when absent', () => {
-    const raw = {
-      id: '1',
-      name: 'Milk',
-      tagIds: [],
-      targetUnit: 'package',
-      targetQuantity: 2,
-      refillThreshold: 1,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-02-01T00:00:00.000Z',
-    }
-    const result = deserializeItem(raw)
-    expect(result.dueDate).toBeUndefined()
-  })
-
   it('passes through expirationMode string as-is', () => {
     const raw = {
       id: '1',
       name: 'Milk',
       tagIds: [],
       targetUnit: 'package',
-      targetQuantity: 2,
-      refillThreshold: 1,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
       consumeAmount: 1,
       expirationMode: 'days from purchase',
       createdAt: '2026-01-01T00:00:00.000Z',

@@ -43,6 +43,14 @@ export function pickStockFields(source: Record<string, unknown>): StockFields {
 
 // Reduce an already-joined PantryItem back to its global Item.
 //
+// One caller since cloud locations PR 5: `withLocationStock` in
+// `routes/items/$id/stock.tsx`, the Stock tab's all-locations pager, which
+// re-joins an item that `useItem` already joined with the ACTIVE location. It
+// is needed in BOTH modes — the input is a joined `PantryItem`, not a raw
+// catalog row, so this has nothing to do with the cloud `Item`'s old state
+// columns. PR 5 deleted the three cloud-only call sites in `hooks/useItems.ts`
+// that existed only to undo those columns.
+//
 // Re-joining a PantryItem with a DIFFERENT location's row without this is a
 // data-correctness bug, not a tidiness one: an ItemStock omits its unset
 // optional keys entirely (see ZERO_STOCK / pickStockFields), so spreading the
