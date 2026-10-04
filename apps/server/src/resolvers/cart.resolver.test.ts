@@ -45,9 +45,11 @@ vi.mock('../lib/prisma.js', async () => {
         delete: vi.fn(),
         deleteMany: vi.fn(),
       },
-      item: {
-        update: vi.fn(),
-      },
+      // No `item` store. Since PR 5 `checkout` writes no `Item` row at all —
+      // the five stock columns are gone and `writeStock` is the whole write.
+      // Leaving a `vi.fn()` here would make `expect(...).not.toHaveBeenCalled()`
+      // assertions possible that no implementation could ever fail; leaving it
+      // OUT makes a reinstated `Item` write throw instead of passing quietly.
       inventoryLog: {
         create: vi.fn(),
       },
@@ -81,9 +83,6 @@ const mockPrisma = prisma as unknown as {
     update: ReturnType<typeof vi.fn>
     delete: ReturnType<typeof vi.fn>
     deleteMany: ReturnType<typeof vi.fn>
-  }
-  item: {
-    update: ReturnType<typeof vi.fn>
   }
   inventoryLog: {
     create: ReturnType<typeof vi.fn>
@@ -657,7 +656,6 @@ describe('checkout', () => {
     // Given a cart with a buying item (qty > 0)
     const buyItem = makeCartItem({ itemId: 'item_milk', quantity: 3 })
     mockPrisma.cartItem.findMany.mockResolvedValue([buyItem])
-    mockPrisma.item.update.mockResolvedValue({ packedQuantity: 3, unpackedQuantity: 0 })
     mockPrisma.inventoryLog.create.mockResolvedValue({})
     const updatedCart = makeCart({ lastPurchasedAt: now })
     mockPrisma.cart.update.mockResolvedValue(updatedCart)
@@ -678,10 +676,14 @@ describe('checkout', () => {
     expect(checkedOut.lastPurchasedAt).toBe(now.toISOString())
     expect(Number.isNaN(new Date(checkedOut.lastPurchasedAt).getTime())).toBe(false)
 
-    // And item's packedQuantity was incremented
-    expect(mockPrisma.item.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ packedQuantity: { increment: 3 } }) }),
-    )
+    // And the cart location's stock row carries the increment. Until PR 5 this
+    // read `prisma.item.update`'s call arguments instead; `Item` has no
+    // `packedQuantity` column any more, and `ItemStock` is the only row written.
+    expect(
+      stockFake.state.itemStocks.find(
+        (st) => st.itemId === 'item_milk' && st.locationId === LOC_DEFAULT,
+      ),
+    ).toMatchObject({ packedQuantity: 3 })
 
     // And an inventory log was created
     expect(mockPrisma.inventoryLog.create).toHaveBeenCalledOnce()
@@ -692,7 +694,6 @@ describe('checkout', () => {
     const buyItem = makeCartItem({ id: 'ci_buy', itemId: 'item_milk', quantity: 2 })
     const pinnedItem = makeCartItem({ id: 'ci_pin', itemId: 'item_eggs', quantity: 0 })
     mockPrisma.cartItem.findMany.mockResolvedValue([buyItem, pinnedItem])
-    mockPrisma.item.update.mockResolvedValue({ packedQuantity: 2, unpackedQuantity: 0 })
     mockPrisma.inventoryLog.create.mockResolvedValue({})
     const updatedCart = makeCart({ lastPurchasedAt: now })
     mockPrisma.cart.update.mockResolvedValue(updatedCart)
@@ -722,7 +723,6 @@ describe('checkout', () => {
     // Given a cart with a buying item
     const buyItem = makeCartItem({ quantity: 1 })
     mockPrisma.cartItem.findMany.mockResolvedValue([buyItem])
-    mockPrisma.item.update.mockResolvedValue({ packedQuantity: 1, unpackedQuantity: 0 })
     mockPrisma.inventoryLog.create.mockResolvedValue({})
     const updatedCart = makeCart({ lastPurchasedAt: now })
     mockPrisma.cart.update.mockResolvedValue(updatedCart)
@@ -741,17 +741,22 @@ describe('checkout', () => {
   })
 })
 
-// ─── checkout: the PR-2 dual-write onto ItemStock ────────────────────────────
+// ─── checkout: the ItemStock write ───────────────────────────────────────────
 //
-// Every test above pins the `Item` half of the dual-write. These pin the
-// `ItemStock` half. The pair is the point: deleting either half must turn one
-// group red and leave the other green, which is what "dual" means and what a
-// browser on a stale bundle depends on until PR 5.
+// These used to be called "the dual-write onto ItemStock" and were the second
+// half of a pair: `Item`'s five stock columns were the source of truth, and
+// `ItemStock` held a copy for the cart's location. PR 5 dropped those columns,
+// so the write these tests pin is now the ONLY record a checkout leaves.
+//
+// The group that pinned the other half is gone with the columns. What survives
+// unchanged is the reason this group's fixture has three locations: a write
+// that landed in every location, or in the wrong one, is invisible against a
+// fixture with one.
 
-describe('checkout dual-writes onto ItemStock', () => {
+describe('checkout writes the cart location\'s ItemStock', () => {
   // The stock the checkout is topping up, plus a row for the same item in the
-  // user's OTHER location and in a stranger's. Without those a mirror that
-  // wrote every location — or the wrong one — would be invisible.
+  // user's OTHER location and in a stranger's. Without those a write that
+  // reached every location — or the wrong one — would be invisible.
   function seedStocks() {
     stockFake.reset(stockFake.state.locations, [
       makeStock({ id: 'st_default', itemId: 'item_milk', locationId: LOC_DEFAULT, packedQuantity: 2 }),
@@ -774,7 +779,6 @@ describe('checkout dual-writes onto ItemStock', () => {
     seedStocks()
     const buyItem = makeCartItem({ itemId: 'item_milk', quantity: 3 })
     mockPrisma.cartItem.findMany.mockResolvedValue([buyItem])
-    mockPrisma.item.update.mockResolvedValue({ packedQuantity: 5, unpackedQuantity: 0 })
     mockPrisma.inventoryLog.create.mockResolvedValue({})
     mockPrisma.cart.update.mockResolvedValue(makeCart({ lastPurchasedAt: now }))
     mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 1 })
@@ -801,7 +805,6 @@ describe('checkout dual-writes onto ItemStock', () => {
     stockFake.reset(stockFake.state.locations, [])
     const buyItem = makeCartItem({ itemId: 'item_new', quantity: 4 })
     mockPrisma.cartItem.findMany.mockResolvedValue([buyItem])
-    mockPrisma.item.update.mockResolvedValue({ packedQuantity: 4, unpackedQuantity: 0 })
     mockPrisma.inventoryLog.create.mockResolvedValue({})
     mockPrisma.cart.update.mockResolvedValue(makeCart({ lastPurchasedAt: now }))
     mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 1 })
@@ -827,7 +830,6 @@ describe('checkout dual-writes onto ItemStock', () => {
     seedStocks()
     const buyItem = makeCartItem({ itemId: 'item_milk', quantity: 3 })
     mockPrisma.cartItem.findMany.mockResolvedValue([buyItem])
-    mockPrisma.item.update.mockResolvedValue({ packedQuantity: 5, unpackedQuantity: 0 })
     mockPrisma.inventoryLog.create.mockResolvedValue({})
     mockPrisma.cart.update.mockResolvedValue(makeCart({ lastPurchasedAt: now }))
     mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 1 })
@@ -851,6 +853,56 @@ describe('checkout dual-writes onto ItemStock', () => {
     ).toHaveLength(1)
   })
 
+  it("user checking out has the log record the location's resulting ON-HAND total", async () => {
+    // Given the Kitchen already holds 2 packed and 3 unpacked Milk, and the
+    // cart buys 5 more.
+    //
+    // THE FIXTURE IS THE TEST. Those numbers make the three candidate answers
+    // three different numbers, so the assertion can say which source the
+    // resolver read:
+    //
+    //   | Candidate                      | Value |
+    //   |--------------------------------|-------|
+    //   | packed + unpacked AFTER (right)|  10   |
+    //   | the cart's delta               |   5   |
+    //   | the written column alone       |   7   |
+    //
+    // Against a row at 0/0 all three are 5 and the test proves nothing.
+    stockFake.reset(stockFake.state.locations, [
+      makeStock({
+        id: 'st_default',
+        itemId: 'item_milk',
+        locationId: LOC_DEFAULT,
+        packedQuantity: 2,
+        unpackedQuantity: 3,
+      }),
+    ])
+    mockPrisma.cartItem.findMany.mockResolvedValue([
+      makeCartItem({ itemId: 'item_milk', quantity: 5 }),
+    ])
+    mockPrisma.inventoryLog.create.mockResolvedValue({})
+    mockPrisma.cart.update.mockResolvedValue(makeCart({ lastPurchasedAt: now }))
+    mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 1 })
+
+    // When they check out
+    const result = await execOp(
+      `mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id } }`,
+      { cartId: `${LOC_DEFAULT}:no-vendor` },
+    )
+
+    // Then the row reads 7 packed / 3 unpacked
+    expect(result?.errors).toBeUndefined()
+    expect(stockAt(LOC_DEFAULT)).toMatchObject({ packedQuantity: 7, unpackedQuantity: 3 })
+
+    // And the log's `quantity` is 10 — the SAVED ROW's packed + unpacked, which
+    // is what `writeStock` returns the row for. Before PR 5 this number came
+    // from the `Item` row `prisma.item.update` returned; `Item` has no quantity
+    // columns now, and `ci.quantity` would give 5.
+    expect(mockPrisma.inventoryLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ itemId: 'item_milk', delta: 5, quantity: 10 }),
+    })
+  })
+
   it('pinned items do not move any stock', async () => {
     // Given a cart holding only a pinned item (quantity 0)
     seedStocks()
@@ -865,15 +917,18 @@ describe('checkout dual-writes onto ItemStock', () => {
       cartId: `${LOC_DEFAULT}:no-vendor`,
     })
 
-    // Then no stock row changed, in either half of the dual-write
+    // Then no stock row changed, and no row was created either — a resolver
+    // that ran `writeStock` for a pinned item would upsert a row at 0 and this
+    // length assertion is what sees it.
     expect(stockAt(LOC_DEFAULT)?.packedQuantity).toBe(2)
-    expect(mockPrisma.item.update).not.toHaveBeenCalled()
+    expect(stockFake.state.itemStocks).toHaveLength(3)
+    expect(mockPrisma.inventoryLog.create).not.toHaveBeenCalled()
   })
 
-  it('a user with no locations gets one, and the mirror still lands (issue #287)', async () => {
+  it('a user with no locations gets one, and the stock write still lands (issue #287)', async () => {
     // Given an account with no Location rows at all — a brand-new account that
-    // has never run the `locations` query. Until issue #287 the mirror returned
-    // early here and the purchased quantity was dropped with no error.
+    // has never run the `locations` query. Until issue #287 the stock write
+    // returned early here and the purchased quantity was dropped with no error.
     stockFake.reset([], [])
 
     // The account reads its location list first. Since PR 3b Task 4 a cart id
@@ -904,7 +959,6 @@ describe('checkout dual-writes onto ItemStock', () => {
 
     const buyItem = makeCartItem({ cartId: `${created?.id}:no-vendor`, itemId: 'item_milk', quantity: 2 })
     mockPrisma.cartItem.findMany.mockResolvedValue([buyItem])
-    mockPrisma.item.update.mockResolvedValue({ packedQuantity: 2, unpackedQuantity: 0 })
     mockPrisma.inventoryLog.create.mockResolvedValue({})
     mockPrisma.cart.update.mockResolvedValue(makeCart({ lastPurchasedAt: now }))
     mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 1 })
@@ -915,10 +969,9 @@ describe('checkout dual-writes onto ItemStock', () => {
       { cartId: `${created?.id}:no-vendor` },
     )
 
-    // Then the checkout succeeds, the Item half still ran, and the purchase
-    // landed in the location that was created for them
+    // Then the checkout succeeds and the purchase landed in the location that
+    // was created for them
     expect(result?.errors).toBeUndefined()
-    expect(mockPrisma.item.update).toHaveBeenCalledOnce()
     expect(stockFake.state.itemStocks).toHaveLength(1)
     expect(stockFake.state.itemStocks[0]).toMatchObject({
       itemId: 'item_milk',
@@ -958,7 +1011,6 @@ describe("checkout writes the CART's location, not the caller's default", () => 
     mockPrisma.cartItem.findMany.mockResolvedValue([
       makeCartItem({ cartId, itemId: 'item_milk', quantity: 3 }),
     ])
-    mockPrisma.item.update.mockResolvedValue({ packedQuantity: 5, unpackedQuantity: 0 })
     mockPrisma.inventoryLog.create.mockResolvedValue({})
     mockPrisma.cart.update.mockResolvedValue(makeCart({ id: cartId, lastPurchasedAt: now }))
     mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 1 })
@@ -1126,7 +1178,12 @@ describe('cross-user isolation', () => {
     // checkout stamped another user's shared row.
     expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
     expect(mockPrisma.cart.update).not.toHaveBeenCalled()
-    expect(mockPrisma.item.update).not.toHaveBeenCalled()
+    // And no stock row was created. This replaces an `item.update` assertion
+    // that PR 5 made impossible to fail — `checkout` writes no `Item` row now,
+    // so only the stock store can tell "refused before any write" from
+    // "wrote, then refused".
+    expect(stockFake.state.itemStocks).toHaveLength(0)
+    expect(mockPrisma.inventoryLog.create).not.toHaveBeenCalled()
   })
 
   it("user cannot add to a cart in a location they do not hold", async () => {
