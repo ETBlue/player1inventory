@@ -1,7 +1,7 @@
 # Brainstorming — Households: sharing locations and handing over ownership
 
 **Date:** 2026-10-03
-**Status:** 🔄 In progress — roles, data model, first-phase hand-over and purge decided; flows decided; screens and import/export decided; design doc next
+**Status:** 🔄 In progress — roles, data model, first-phase hand-over and purge decided; flows decided; all open points decided; see the design doc
 **Branch:** `feature/households`
 **Builds on:** [Location RBAC](2026-08-29-design-location-rbac.md). This log **changes** that
 design: roles no longer live only on a `Location`. See *Decision 3* below.
@@ -485,6 +485,33 @@ sign-in. They are its owner, so the import rules always allow it.
 
 **d. Cloud → local copy** copies what the user can read in the **active** household, as in
 (a). Local mode has no households, so only one household can be copied.
+
+### Decision 23 — The import rule after PR 4b (2026-10-04)
+
+**Context.** The branch was rebased onto `main` at `9b809f1b` (PR #331, cloud-locations PR 4b).
+4b added one rule for every import (`apps/web/src/lib/importData.ts:371-384`):
+
+> Keep every location id from the file as it is, except the file's default location, which
+> maps onto the destination's default.
+
+Decision 7 removes `isDefault` from cloud, so this rule loses its target and must be replaced.
+4b also left issue #327 open: the nine `bulkUpsert*` import mutations let one user take over
+another user's rows, and `e2e/tests/cart-id-cross-user-leak.spec.ts` shows the same for carts.
+Decision 22 did not cover a row whose id already belongs to **another** household.
+
+All four proposals were accepted:
+
+| # | Question | Decided |
+|---|---|---|
+| a | Local → cloud: where does the local "My Home" go? | The import asks which location to use, with the household's "Home" selected first, or **New location**. This is the same dialog as for an old file with no locations (Decision 7), so there is one dialog. |
+| b | Cloud → local: which cloud location becomes the local "My Home"? | The **active** location. Every other location keeps its id. |
+| c | Ids that already belong to another household | **Copied with new ids.** Every reference is rewritten (stock, carts, cart items, logs, item tags and vendors, recipe items). Nobody can take over another household's rows, and a household can be copied into a new one. |
+| d | Issue #327 | Fixed inside the households import work, not before. That work rewrites the same resolvers from `userId` to `householdId`, so fixing it first means writing the scoping twice. Issue #330 (`replace` skips rows) stays a separate fix. |
+
+Smaller findings from 4b, noted for the design: the server still sends unknown cart and log
+locations to `ensureDefaultLocation(userId)` (`import.resolver.ts:89-92`, `:140-221`), which
+becomes a role check; the server's default name is "My Home" (`lib/defaultLocation.ts:3`), and
+a new household's first location is "Home" (Decision 18).
 
 ## Data model so far (cloud only)
 
