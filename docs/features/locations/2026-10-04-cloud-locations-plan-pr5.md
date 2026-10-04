@@ -814,6 +814,202 @@ it removed leave comments behind at `itemStock.resolver.ts:121` and `:257`.
 
 ---
 
+**Done 2026-10-05 — THE GATE IS RED. The branch must not be pushed.**
+
+Every command in the Verification Gate passed. `pnpm test:e2e:all` did not: the `cloud`
+project went from a **96 passed / 7 skipped** baseline to **33 failed / 63 passed / 7
+skipped**. `local` and `pwa` are both unchanged and green.
+
+| Project | Result | Time | Counts | Baseline |
+|---|---|---|---|---|
+| `local` | **PASS** | 3m19s | 171 passed, 5 skipped | 171 / 5 — unchanged |
+| `cloud` | **FAIL** | 11m57s | **33 failed**, 63 passed, 7 skipped | 96 / 7 |
+| `pwa` | **PASS** | 1m26s | 69 passed | 69 — unchanged |
+
+Total Playwright time **16m42s**. Collected counts match the baseline exactly — local 176,
+cloud 103, pwa 69 — so nothing was lost from the suite; 33 tests that passed now fail.
+
+**These are not phantom failures.** Load average was **2.6 to 4.3** for the whole run, the
+errors are GraphQL validation errors with named fields rather than starvation symptoms, and
+the 23 timeout failures all stop at the same line in the same page-object method. The one
+genuine flake is listed as cause 4 below.
+
+### Cause 1 — `toCreateItemInput` sends `dueDate` on every cloud create. 23 tests.
+
+**This is a user-visible, blocking bug, not a test problem: in cloud mode the app cannot
+create an item at all.**
+
+`apps/web/src/hooks/useItems.ts:74-80`:
+
+```ts
+function toCreateItemInput(input: ItemMutationInput): CreateItemInput {
+  const { dueDate, ...rest } = input
+  return {
+    ...rest,
+    dueDate: dueDate instanceof Date ? dueDate.toISOString() : null,
+  } as CreateItemInput
+}
+```
+
+The returned object **always** carries a `dueDate` key — `null` when the form supplied no
+date. `CreateItemInput` no longer declares `dueDate`, and GraphQL rejects an undeclared
+field whatever its value, so `createItem` fails for every input. `...rest` additionally
+spreads the four quantity fields, because `ItemMutationInput` is
+`… & Partial<StockFields>`.
+
+All 23 failures are the same symptom: `TimeoutError: page.waitForURL: Timeout 10000ms
+exceeded` inside `ItemPage.save()`, because the app never navigates to `/items/:id`. The
+GraphQL error is raised in the browser, so it appears in no server log — which is why the
+failure text names a timeout and not the real cause.
+
+**This is exactly the hole task 4 measured and then fixed in only one of the three places
+it exists.** Task 4's own Done note records it: *"`tsc` does not excess-property-check a
+function **result** assigned to a typed parameter — only a fresh object literal"*. It added
+the `ItemInputShape` return-type annotation to `toItemInput` in `importData.ts` and left
+the two `as` casts in `useItems.ts` alone. There are exactly two such casts in
+`apps/web/src`:
+
+| Cast | Verdict |
+|---|---|
+| `useItems.ts:79` — `as CreateItemInput` | **the live bug** |
+| `useItems.ts:201` — `as UpdateItemInput`, inside `toConfigInput` | safe **by behaviour, not by type** — the line above it is `for (const key of STOCK_FIELD_KEYS) delete input[key]`. The cast would hide a regression here too |
+
+**Measured, not deduced.** Replacing the cast with a mapped return type
+`CreateItemInputShape` and running `(cd apps/web && npx tsc -b)` gives:
+
+```
+src/hooks/useItems.ts(81,5): error TS2353: Object literal may only specify known
+  properties, and 'dueDate' does not exist in type 'CreateItemInputShape'.
+```
+
+The experiment was reverted; the branch contains no fix.
+
+### Cause 2 — five E2E seeds still send the five through `UpdateItemInput` / `CreateItemInput`. 5 tests.
+
+| File:line | Input type | Sends |
+|---|---|---|
+| `e2e/tests/cooking.spec.ts:40` | `UpdateItemInput` | `packedQuantity: 10` |
+| `e2e/tests/cooking.spec.ts:49` | `UpdateItemInput` | `packedQuantity: 12` |
+| `e2e/tests/item-logs.spec.ts:26` | `UpdateItemInput` | `packedQuantity: 5` |
+| `e2e/tests/shopping.spec.ts:70-72` | `CreateItemInput` | `packedQuantity`, `targetQuantity`, `refillThreshold` |
+| `e2e/tests/shopping.spec.ts:476` | `CreateItemInput` | `targetQuantity`, `refillThreshold` |
+
+Exact server reply: `Field "packedQuantity" is not defined by type "UpdateItemInput". Did
+you mean "packageUnit"?`
+
+**`cooking.spec.ts` and `item-logs.spec.ts` need more than a field rename.** Neither calls
+`upsertItemStock` at all — both relied on the deleted `mirrorStockToDefaultLocation` to
+turn that `Item` write into a stock row. They need the write moved onto
+`upsertItemStock`, which is the rule `e2e/CLAUDE.md` already states under *A seed that
+writes an item must also write its stock*. `shopping.spec.ts` already follows its create
+with an `upsertItemStock`, so there the five only need removing from the create input.
+
+### Cause 3 — `import-export-cloud.spec.ts` seeds `bulkCreateItems` from the fixture verbatim. 4 tests.
+
+`e2e/tests/settings/import-export-cloud.spec.ts:136-139` passes `{ items:
+cloudFixture.items }` straight into `[ItemInput!]!`, and `e2e/fixtures/cloud-backup.json`'s
+items carry all four quantities. Server reply: `Field "targetQuantity" is not defined by
+type "ItemInput". Did you mean "targetUnit"?`
+
+**The fixture JSON itself is fine and should not be edited.** It is a backup *payload*, and
+the app's own import path strips the five correctly — that is what task 4's `ItemInputShape`
+guard protects. Only the spec's direct `bulkCreateItems` seed needs to strip them.
+
+### Cause 4 — one genuine environment flake. 1 test.
+
+`cleanup-endpoint.spec.ts:129` failed with `Can't reach database server at
+ep-round-surf-…:5432` raised from `prisma.item.findMany()` in `item.resolver.ts:92`. A Neon
+connection blip, nothing to do with PR 5. Re-run it alone to confirm.
+
+### What the gate DID prove
+
+- **`location-scoped-writes.spec.ts` passed all 4 tests**, so task 2's move of `checkout`
+  and `consumeRecipes` onto `writeStock` is correct against real Postgres, and
+  `finalQuantity` re-sourced from the saved row is right. This was the single most important
+  thing in PR 5 to confirm and it is confirmed.
+- **`settings/locations.spec.ts` passed all 6** and `item-stock-input` / `item-stock-pager`
+  passed, so the migrated E2E database and the server code agree. **No failure anywhere was
+  a missing column or an unknown Prisma field** — the migration itself is sound.
+- `local` 171 and `pwa` 69 unchanged, so nothing in local mode regressed.
+
+### The Verification Gate, every command
+
+| Command | Result |
+|---|---|
+| `pnpm codegen` | pass |
+| `(cd apps/server && pnpm prisma generate)` | pass — client v6.19.3, regenerated from the edited schema |
+| `(cd apps/web && pnpm lint)` | exit 0. 4 warnings, all pre-existing in `routes/shopping/index.tsx`, a file this branch never touched |
+| root `pnpm build` | exit 0, **0** `error TS` |
+| `(cd apps/web && pnpm build-storybook)` | exit 0. `storybook-static/index.json` lists 8 `pages-item-stock` story ids and no stray fixture export |
+| `(cd apps/web && pnpm check)` | exit 0 |
+| `grep 'TS6385' /tmp/p1i-build-pr5.log` | **0 matches** |
+| `pnpm test` | exit 0 — server **347 / 25 files**, web **2283 / 248 files**, `scripts/spec` **57** |
+| `(cd apps/server && pnpm typecheck)` | exit 0 — the only command that type-checks `scripts/verify-migration.ts` |
+
+**Both extra commands earned their place.** `prisma generate` is not in the documented gate
+and PR 5 edits `schema.prisma`; `pnpm typecheck` is not in it either and task 5 edited
+`verify-migration.ts`.
+
+### The three re-counts, measured on the finished branch
+
+| Grep | Count |
+|---|---|
+| `REMOVED IN PR 5` in `apps/server/src` | **0** |
+| `await (mirrorStock\|mirrorStockToDefaultLocation\|mirrorItemStockToItem)(` in `apps/server/src/resolvers` | **0** |
+| `stockDualWrite` imported anywhere in `apps/server/src`, `apps/web/src`, `e2e` | **0**. 29 text matches remain and every one is a past-tense comment or doc |
+
+**`Location.isDefault` — 15 lines in non-test resolver and lib files. Split by kind, and
+this plan is right that a single total means nothing:**
+
+| Kind | Count | Where |
+|---|---|---|
+| comments | **6** | `import.resolver.ts:909, :1064`; `itemStock.resolver.ts:121, :257`; `defaultLocation.ts:17, :44` |
+| writes | **4** | `import.resolver.ts:945, :1082`; `location.resolver.ts:47`; `defaultLocation.ts:58` |
+| reads | **4** | `location.resolver.ts:64`; `defaultLocation.ts:51, :63`; `authz.ts:32` (`select`) |
+| type declaration | **1** | `authz.ts:26`, `requireLocationRole`'s return type |
+
+`requireLocationRole` still selects and returns `isDefault`, and **exactly one of its 15
+call sites reads it** — `deleteLocation` (`location.resolver.ts:63-64`). Every other call
+site discards the result. That is correct, not dead code, and households H3 removes the
+column.
+
+### Two more things that still look wrong, neither blocking
+
+1. **The branch is 4 commits behind `origin/main`.** It is 22 ahead of its base `9b809f1b`,
+   but `origin/main` is now `92310481` (PR #329, the spec publish token). Those 4 commits
+   touch only root `CLAUDE.md`, two testing docs and `scripts/spec/`. The `CLAUDE.md` edit
+   is in the *Living Spec Site* section and PR 5's is in *Verification Gate*, so a rebase
+   should apply cleanly. Note that `pnpm test`'s `test:spec` leg ran the **pre-#329**
+   `publish.test.mjs` here, which is why it reports 57 tests.
+2. **Two comments went stale and task 7 missed them.**
+   `e2e/tests/cleanup-endpoint.spec.ts:182-183` says *"only `updateItem` mirrors stock to
+   the default location"* — that mirror is deleted. And `e2e/helpers/cloudSeed.ts:45` cites
+   `apps/server/src/lib/stockDualWrite.ts` by path without saying the file is gone, unlike
+   `e2e/CLAUDE.md:295` which does say so. The migration SQL's closing comment also still
+   reads *"Task 6 of the plan above writes the runbook … it lands in docs/global/backend/"*
+   in the future tense; the runbook exists at
+   `docs/global/backend/2026-10-05-deploy-runbook-item-column-drop.md`.
+
+### What this task's own brief got wrong
+
+Its risk list named the wrong failure. It said a cloud failure would be *"a missing column
+or an unknown field … the server code and the database must now agree"*. The database and
+the server agree perfectly — the migration is fine. What disagree are **the web client and
+the GraphQL schema**, and **the E2E seeds and the GraphQL schema**. The brief also expected
+the `cloud → cloud` timeout in `import-export-cloud.spec.ts` to be the one thing to watch;
+that test failed, but on a GraphQL validation error, not on its timeout.
+
+It also said PR 5 *"should not change any count"*. The collected counts did not change. 33
+results did.
+
+**Why no earlier gate could have caught any of this:** nothing type-checks `e2e/` — this
+plan's own *Known gaps* table lists it as **issue #322** — and the one web-side defect is
+hidden by an `as` cast, which `tsc` does not excess-property-check. Every web unit test
+mocks Apollo, so none of them validates a variable against the schema. The cloud E2E run is
+the first and only thing in the repo that could see any of it.
+
+---
+
 ## Known gaps this PR will leave
 
 | Gap | Owner |
