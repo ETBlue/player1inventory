@@ -1,7 +1,7 @@
 # Brainstorming — Households: sharing locations and handing over ownership
 
 **Date:** 2026-10-03
-**Status:** 🔄 In progress — roles, data model, first-phase hand-over and purge decided; flows decided; screens decided; import/export still open
+**Status:** 🔄 In progress — roles, data model, first-phase hand-over and purge decided; flows decided; screens and import/export decided; design doc next
 **Branch:** `feature/households`
 **Builds on:** [Location RBAC](2026-08-29-design-location-rbac.md). This log **changes** that
 design: roles no longer live only on a `Location`. See *Decision 3* below.
@@ -452,6 +452,40 @@ sees a **Create a household** screen.
 **DX cost, accepted.** Every E2E page object and test that uses an old `/settings/*` path
 must change. The route move should be its own PR.
 
+### Decision 22 — Import and export (2026-10-04)
+
+All four proposals were accepted as written.
+
+**a. Export: everyone exports what they can read.**
+
+| Part of the file | Included |
+|---|---|
+| Catalog (items, tags, tag types, vendors, recipes, shelves) | Yes. Everyone in the household can read it. |
+| Locations, with their stock, carts and logs | Only locations where the exporter has a role (organizer, participant or viewer) |
+| Members, roles, invites, activity | Never |
+
+**Why.** It follows Decision 5: an owner or manager with no role on a location cannot see its
+data in the app, so the export cannot include it either. Members, roles and activity are about
+other people, so they stay out of a file that can be shared.
+
+**b. Import: owner and manager only.** An import writes the catalog, and only they can change
+it (Decision 4).
+
+| A location in the file… | Result |
+|---|---|
+| does not exist in this household | Created. The importer becomes its organizer. |
+| exists, and the importer is organizer or participant there | Its stock, cart and logs are imported, with skip / replace as today. |
+| exists, but the importer is a viewer or has no role there | Skipped. The importer is told which ones. |
+
+An old file with no locations asks "Import into which location?" (Decision 7). Every import is
+written to `HouseholdActivity`.
+
+**c. Local → cloud copy** goes into the user's own household, the one created at first
+sign-in. They are its owner, so the import rules always allow it.
+
+**d. Cloud → local copy** copies what the user can read in the **active** household, as in
+(a). Local mode has no households, so only one household can be copied.
+
 ## Data model so far (cloud only)
 
 | Model | Fields | Notes |
@@ -484,7 +518,7 @@ catalog and membership. This also fixes issue #273.
 3. ~~Email~~ — postponed with the claim feature (Decision 14).
 4. ~~What members see of the catalog~~ — read-only Settings pages (Decision 15).
 5. ~~`purgeUserData`~~ — replaced by three role-based purge actions (Decision 16).
-6. **Import and export** must learn about households.
+6. ~~Import and export~~ — decided (Decision 22).
 
 ## Postponed to a later cloud-improvement phase
 
