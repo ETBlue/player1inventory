@@ -1,6 +1,5 @@
 import { GraphQLError } from 'graphql'
 import { prisma } from '../lib/prisma.js'
-import { mirrorStockToDefaultLocation } from '../lib/stockDualWrite.js'
 import { requireAuth } from '../context.js'
 import type { Item, Resolvers, UpdateItemInput } from '../generated/graphql.js'
 import type { ExpirationMode, Prisma, TargetUnit } from '@prisma/client'
@@ -176,25 +175,15 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         throw new GraphQLError('Item not found', { extensions: { code: 'NOT_FOUND' } })
       }
 
-      const { tagIds, vendorIds, dueDate, ...rest } = input
+      const { tagIds, vendorIds } = input
 
+      // `Item` only. Until cloud locations PR 5 this mutation ALSO mirrored any
+      // inline stock fields onto the caller's default `ItemStock` row, for a
+      // browser on a pre-PR-2 bundle that still sent the five state fields
+      // here with no location to name. PR 5 drops those columns from `Item`
+      // and `UpdateItemInput`, so there is nothing to mirror from. A current
+      // client already sends stock to `upsertItemStock(itemId, locationId)`.
       await prisma.item.update({ where: { id }, data: buildItemUpdateData(input) })
-
-      // DUAL-WRITE, REMOVED IN PR 5 (lib/stockDualWrite.ts). Unlike checkout and
-      // consumeRecipes this is a LEGACY path: a current client sends the five
-      // state fields to `upsertItemStock(itemId, locationId)` and this mutation
-      // never sees them (hooks/useItems.ts `toConfigInput`). What it covers is a
-      // browser on a stale bundle, which still puts them inline here — and has
-      // no location to name, so they land in the caller's default location.
-      // Only keys the input actually carried are mirrored: an absent key must
-      // stay absent, or a rename would zero the item's stock.
-      await mirrorStockToDefaultLocation(userId, id, {
-        ...(rest.targetQuantity != null ? { targetQuantity: rest.targetQuantity } : {}),
-        ...(rest.refillThreshold != null ? { refillThreshold: rest.refillThreshold } : {}),
-        ...(rest.packedQuantity != null ? { packedQuantity: rest.packedQuantity } : {}),
-        ...(rest.unpackedQuantity != null ? { unpackedQuantity: rest.unpackedQuantity } : {}),
-        ...(dueDate !== undefined ? { dueDate: dueDate ? new Date(dueDate) : null } : {}),
-      })
 
       // Replace junction rows wholesale when the field is explicitly provided
       if (tagIds !== undefined && tagIds !== null) {

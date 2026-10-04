@@ -1,5 +1,5 @@
 import { prisma } from './prisma.js'
-import type { ItemStock } from '@prisma/client'
+import type { ItemStock, Prisma } from '@prisma/client'
 
 /**
  * ══════════════════════════════════════════════════════════════════════════
@@ -52,13 +52,13 @@ import type { ItemStock } from '@prisma/client'
  *     absorbed, already behaved this way — its `findUnique`-then-`create`
  *     block wrote a row of zeroes for an empty input, because its GraphQL
  *     field returns `ItemStock!` and so must have a row.
- *   - `mirrorStock`'s own guard is unreachable from every one of its callers.
- *     `mirrorStockToDefaultLocation` tests `Object.keys(data).length === 0`
- *     itself before calling, and `checkout` and `consumeRecipes` both pass an
- *     object literal whose keys are always present. The guard that matters —
- *     the one stopping `updateItem` from stocking every renamed item in the
- *     default location — is the one in `mirrorStockToDefaultLocation`, and it
- *     stays there.
+ *   - `mirrorStock`'s own guard was unreachable from every one of its
+ *     callers anyway. `checkout` and `consumeRecipes` both pass an object
+ *     literal whose keys are always present. The one guard that MATTERED sat
+ *     in its caller `mirrorStockToDefaultLocation`: it stopped `updateItem`
+ *     from stocking every renamed item in the default location. PR 5 task 3
+ *     deleted that function along with `updateItem`'s mirror, so there is no
+ *     longer a caller that passes an empty `data` and does not want a row.
  *
  * ── AUTHORIZATION ──
  *
@@ -72,18 +72,35 @@ import type { ItemStock } from '@prisma/client'
  * | Caller | Authorized by |
  * |---|---|
  * | `upsertItemStock` (itemStock.resolver.ts) | `requireLocationRole` on the named location |
+ * | `applyUnitSwitch` (itemStock.resolver.ts) | `requireLocationRole` on EVERY location the switch names, before the transaction opens |
  * | `checkout` (cart.resolver.ts) | `requireCartLocation`, which parses the location out of the cart id and calls `requireLocationRole` |
  * | `consumeRecipes` (recipe.resolver.ts) | `requireLocationRole` on `input.locationId` |
  *
- * ── NOT THE ONLY WRITER YET ──
+ * ── THE LAST PARAMETER IS THE CLIENT TO WRITE THROUGH ──
  *
- * `applyUnitSwitch` (itemStock.resolver.ts) still has its own
- * `tx.itemStock.upsert`, and it has to: its write belongs to a
- * `prisma.$transaction`, and this function uses the module-level `prisma`
- * client, so a call from inside that callback would run OUTSIDE the
- * transaction and survive a rollback. Folding it in needs `writeStock` to
- * accept a transaction client. Nothing needs that today, so it does not take
- * one.
+ * `applyUnitSwitch` writes stock from inside a `prisma.$transaction`
+ * callback. A write issued through the module-level `prisma` from in there
+ * runs OUTSIDE the transaction and survives a rollback, which for a unit
+ * switch means `Item` left on the new unit while some location still holds
+ * old-unit numbers — the corruption that transaction exists to prevent. So
+ * the client is a parameter, defaulting to the module-level `prisma`.
+ *
+ * **Pass `tx` whenever the call sits inside a `$transaction` callback.**
+ * Omitting it there compiles and type-checks and is silently wrong; nothing
+ * but this sentence stops it.
+ *
+ * Cloud locations PR 5 task 3 added the parameter. Before it, `applyUnitSwitch`
+ * kept its own `tx.itemStock.upsert` — a third copy of this upsert, with its
+ * own hand-written list of the five zero defaults.
+ *
+ * ── STILL NOT THE ONLY STOCK WRITER ──
+ *
+ * Three writers have genuinely different contracts and stay separate:
+ * `addItemToLocation` (copy-on-add — it must CREATE, never update, and seeds
+ * from another location's row), and `bulkCreateItemStocks` /
+ * `bulkUpsertItemStocks` (import — they preserve the payload's own ids and
+ * timestamps). What this function owns is every per-location stock VALUE
+ * edit.
  */
 
 // A number, or Prisma's atomic increment form. `checkout` needs the latter so
@@ -122,8 +139,9 @@ export async function writeStock(
   itemId: string,
   locationId: string,
   data: StockWrite,
+  client: Prisma.TransactionClient = prisma,
 ): Promise<ItemStock> {
-  return prisma.itemStock.upsert({
+  return client.itemStock.upsert({
     where: { itemId_locationId: { itemId, locationId } },
     update: data,
     create: {
