@@ -1,7 +1,7 @@
 # Brainstorming — Households: sharing locations and handing over ownership
 
 **Date:** 2026-10-03
-**Status:** 🔄 In progress — roles, data model, first-phase hand-over and purge decided; flows decided; screens (Section 3) and import/export still open
+**Status:** 🔄 In progress — roles, data model, first-phase hand-over and purge decided; flows decided; screens decided; import/export still open
 **Branch:** `feature/households`
 **Builds on:** [Location RBAC](2026-08-29-design-location-rbac.md). This log **changes** that
 design: roles no longer live only on a `Location`. See *Decision 3* below.
@@ -389,6 +389,69 @@ a deleted owner who was the only person deletes the household at once; a deleted
 keeps a `User` row with `deletedAt`, shown as "Deleted user"; only the owner deletes a
 household, by typing its name.
 
+### Decision 20 — Settings becomes a household sidebar and a user sidebar (2026-10-04)
+
+**Context.** A first Section 3 draft put a household switcher above the location switcher, and
+a "Household" page at the top of Settings.
+
+**The user changed this.** Switching location happens often; switching household does not.
+So the household switcher moves out of the main navigation, and Settings is split in two.
+
+**Desktop, main sidebar.** The top half does not change (app name, location switcher,
+Pantry / Shopping / Cooking). At the bottom, **Settings** is replaced by two items:
+
+1. 🏠 household name (for example "ET's Household") — opens the household sidebar
+2. 👤 user name (for example "ETBlue") — opens the user sidebar
+
+**Desktop, household sidebar.** It replaces the main sidebar, with a back button at the top
+left. Items 1–8 render in the main area.
+
+| # | Item | Route |
+|---|---|---|
+| 1 | Config: household name, download / import data, danger zone | `/settings/household` |
+| 2 | Members, invites, leave, transfer owner | `/settings/household/members` |
+| 3 | Locations | `/settings/household/locations`, `/settings/household/locations/$id` |
+| 4–7 | Shelves, Vendors, Recipes, Tags | `/settings/household/shelves`, `/vendors`, `/recipes`, `/tags` |
+| 8 | Activity | `/settings/household/activity` |
+| 9 | Switch to… — a dropdown of households plus **Create new** | — |
+
+The item-9 dropdown looks as much as possible like the location switcher dropdown. This
+dropdown is where a user creates a new household.
+
+**Desktop, user sidebar.** It replaces the main sidebar, with a back button. Its content
+renders **inside the sidebar**; the main area does not change. Items: user name, email, theme,
+language, data mode (sign in / sign out), last sign-in and account created date. Name, email
+and the dates come from Clerk's `useUser()` in the browser.
+
+**Mobile.** The top bar and the Settings button in the bottom bar look the same as today.
+`/settings` becomes a two-item accordion: 🏠 household (open by default, holds the nine
+household items) and 👤 user (closed by default, content shown inside the accordion).
+
+**What this replaces.** The household switcher above the location switcher, its mobile row in
+the location dropdown, and the "Household" entry on the Settings home are all dropped.
+
+### Decision 21 — Section 3 details (2026-10-04)
+
+| # | Question | Decided |
+|---|---|---|
+| a | Local mode labels for the two bottom items | 🏠 "My data", 👤 "Preferences". The household sidebar hides Members, Activity and Switch to. The user sidebar hides name, email and dates. All other household UI is hidden in local mode. Routes stay the same as cloud. |
+| b | What decides which sidebar shows | Household sidebar: the URL (any `/settings/household/*`). User sidebar: sidebar state only, no URL. Back goes to the last Pantry / Shopping / Cooking page. |
+| c | Detail pages (tag, vendor, recipe, shelf, item) | Stay full-screen with no sidebar, as today. List pages show the household sidebar. |
+| d | Old URLs (`/settings/tags`, …) | **Dropped, no redirects.** The only production user is the developer. |
+| e | `/settings` on desktop | Redirects to `/settings/household`. The accordion is mobile only. |
+| f | Prompts (ownership offer, transfer request) | A banner at the top of the app. After "Not now" it hides for that person; they can still accept from the Members page. |
+| g | Location page | `/settings/household/locations/$id`: name, people, danger zone ("Remove all items"), leave. |
+
+The rest of the Section 3 draft stands: the location switcher lists only locations where the
+person has a role, in their own order, with a "View only" badge for viewers; a person with no
+location sees "You have no locations in this household yet" and a **Create a location**
+button; members see read-only catalog pages and read-only catalog fields on the item page;
+viewers see no edit controls; `/join/$token` is the invite page; a person with no household
+sees a **Create a household** screen.
+
+**DX cost, accepted.** Every E2E page object and test that uses an old `/settings/*` path
+must change. The route move should be its own PR.
+
 ## Data model so far (cloud only)
 
 | Model | Fields | Notes |
@@ -417,7 +480,7 @@ catalog and membership. This also fixes issue #273.
 ## Still open
 
 1. ~~Section 2, the flows~~ — approved (Decisions 17–19).
-2. **Section 3 — the screens**: Settings › Household, the two switchers, read-only pages.
+2. ~~Section 3, the screens~~ — decided (Decisions 20–21).
 3. ~~Email~~ — postponed with the claim feature (Decision 14).
 4. ~~What members see of the catalog~~ — read-only Settings pages (Decision 15).
 5. ~~`purgeUserData`~~ — replaced by three role-based purge actions (Decision 16).
