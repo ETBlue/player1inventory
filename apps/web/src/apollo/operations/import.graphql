@@ -8,12 +8,7 @@ mutation BulkCreateItems($items: [ItemInput!]!) {
     measurementUnit
     amountPerPackage
     targetUnit
-    targetQuantity
-    refillThreshold
-    packedQuantity
-    unpackedQuantity
     consumeAmount
-    dueDate
     estimatedDueDays
     expirationThreshold
     userId
@@ -98,12 +93,7 @@ mutation BulkUpsertItems($items: [ItemInput!]!) {
     measurementUnit
     amountPerPackage
     targetUnit
-    targetQuantity
-    refillThreshold
-    packedQuantity
-    unpackedQuantity
     consumeAmount
-    dueDate
     estimatedDueDays
     expirationThreshold
     userId

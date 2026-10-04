@@ -12,13 +12,8 @@ query PantryData($locationId: ID!) {
     measurementUnit
     amountPerPackage
     targetUnit
-    targetQuantity
-    refillThreshold
-    packedQuantity
-    unpackedQuantity
     consumeAmount
     expirationMode
-    dueDate
     estimatedDueDays
     expirationThreshold
     userId
@@ -105,13 +100,8 @@ mutation ApplyUnitSwitch($input: ApplyUnitSwitchInput!) {
     measurementUnit
     amountPerPackage
     targetUnit
-    targetQuantity
-    refillThreshold
-    packedQuantity
-    unpackedQuantity
     consumeAmount
     expirationMode
-    dueDate
     estimatedDueDays
     expirationThreshold
     updatedAt
