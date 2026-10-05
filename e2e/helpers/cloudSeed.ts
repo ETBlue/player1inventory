@@ -42,10 +42,12 @@ const UPSERT_STOCK = `mutation ($itemId: ID!, $locationId: ID!, $input: ItemStoc
  *
  * It began as a workaround for a server bug (issue #287, fixed 2026-09-16). A stock
  * write that arrived before the user's first `locations` query used to be dropped in
- * silence — `mirrorStockToDefaultLocation` (apps/server/src/lib/stockDualWrite.ts)
- * ended with `if (!locationId) return`, so the item was created, `Item`'s legacy
- * columns were set, and no `ItemStock` row was written. The pantry then rendered the
- * item below the "not stocked here" divider showing 0.
+ * silence — `mirrorStockToDefaultLocation` ended with `if (!locationId) return`, so
+ * the item was created, `Item`'s legacy columns were set, and no `ItemStock` row was
+ * written. The pantry then rendered the item below the "not stocked here" divider
+ * showing 0. That function lived in apps/server/src/lib/stockDualWrite.ts, WHICH NO
+ * LONGER EXISTS: cloud locations PR 5 deleted the whole module along with `Item`'s
+ * five state columns, so there is no bridge left to drop a write in silence.
  *
  * That is fixed at the source: `ensureDefaultLocation` (apps/server/src/lib/
  * defaultLocation.ts) now creates the location instead of returning null, and every

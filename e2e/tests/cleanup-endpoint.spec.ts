@@ -179,8 +179,11 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     // and the readback use.
     const itemId = createItem.id
 
-    // ItemStock — `createItem` writes none (only `updateItem` mirrors stock to
-    // the default location), so it is written here on purpose.
+    // ItemStock — `createItem` writes none, so it is written here on purpose.
+    // It never did: this used to read "only `updateItem` mirrors stock to the
+    // default location", and cloud locations PR 5 deleted that mirror along
+    // with `Item`'s five state columns. `upsertItemStock` is now the only way
+    // a seed gets a stock row, and it names its location.
     await gql(UPSERT_STOCK, {
       itemId,
       locationId: home.id,

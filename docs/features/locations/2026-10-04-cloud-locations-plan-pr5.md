@@ -1168,6 +1168,19 @@ Neither is blocking, and neither is new work this PR created.
    `toConfigInput` was **deliberately not** changed to an allow-list of `UpdateItemInput`'s own
    keys, which would have made the save succeed and the note vanish silently. A loud failure is
    the better of the two until the cloud schema gains the fields.
+3. **One stale comment stays stale on purpose.** The closing comment in
+   `prisma/migrations/20261004000000_drop_item_stock_state_columns/migration.sql` still reads
+   *"Task 6 of the plan above writes the runbook … it lands in docs/global/backend/"*, in the
+   future tense, for a runbook that exists at
+   `docs/global/backend/2026-10-05-deploy-runbook-item-column-drop.md`. It was corrected and
+   then **reverted**: `_prisma_migrations` stores a `checksum VARCHAR(64)` per migration, and
+   the schema engine reports an edited file as `was modified after it was applied`
+   (`editedMigrationNames` in `DiagnoseMigrationHistoryOutput` — both strings are in
+   `@prisma/engines/schema-engine-darwin-arm64`). This migration is already applied to the dev
+   database and to the cloud E2E Neon branch, so editing even a comment would make every later
+   `prisma migrate dev` / `migrate status` report drift. **An applied migration file is
+   frozen, comments included.** The two other stale comments task 8 listed, in
+   `e2e/tests/cleanup-endpoint.spec.ts` and `e2e/helpers/cloudSeed.ts`, are fixed.
 
 ### What this task's brief got wrong
 
