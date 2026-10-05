@@ -5,6 +5,7 @@ import { CookingPage } from '../pages/CookingPage'
 import { ItemPage } from '../pages/ItemPage'
 import { PantryPage } from '../pages/PantryPage'
 import { ShoppingPage } from '../pages/ShoppingPage'
+import { ensureCloudDefaultLocation } from '../helpers/cloudSeed'
 import { makeGql } from '../utils/cloud'
 
 // Seed one item with initial stock and a recipe that uses it.
@@ -17,13 +18,38 @@ async function seedCookingData(
 ): Promise<{ milkId: string }> {
   if (baseURL === CLOUD_WEB_URL) {
     const gql = makeGql(request)
+
+    // Reading `locations` is what makes the default location exist
+    // (`ensureDefaultLocation` in location.resolver.ts), and the stock write
+    // below has to name a location, so this comes first.
+    const home = await ensureCloudDefaultLocation(request)
+
     const { createItem: milk } = await gql<{ createItem: { id: string } }>(
       'mutation CreateItem($name: String!) { createItem(input: { name: $name }) { id } }',
       { name: 'Test Milk' },
     )
+
+    // The opening quantity goes to `upsertItemStock`, which NAMES its location.
+    //
+    // It used to ride inline on `updateItem`, and that worked only because of a
+    // server-side bridge: `updateItem` mirrored the five per-location state
+    // fields onto the caller's DEFAULT location's `ItemStock` row. Cloud
+    // locations PR 3 deleted that mirror and PR 5 removed the five from
+    // `UpdateItemInput` entirely, so the old seed now fails validation
+    // (`Field "packedQuantity" is not defined by type "UpdateItemInput". Did
+    // you mean "packageUnit"?`) AND, even if it did not, would write no stock
+    // row at all — leaving the item stocked nowhere, invisible in the pantry,
+    // and impossible to check out or cook. Two steps, the same two
+    // `useCreateItem`'s cloud branch takes (apps/web/src/hooks/useItems.ts).
     await gql(
-      'mutation UpdateItem($id: ID!, $input: UpdateItemInput!) { updateItem(id: $id, input: $input) { id } }',
-      { id: milk.id, input: { packedQuantity: 5 } },
+      `mutation Upsert($itemId: ID!, $locationId: ID!, $input: ItemStockInput!) {
+        upsertItemStock(itemId: $itemId, locationId: $locationId, input: $input) { id }
+      }`,
+      {
+        itemId: milk.id,
+        locationId: home.id,
+        input: { packedQuantity: 5 },
+      },
     )
     await gql(
       `mutation CreateRecipe($name: String!, $items: [RecipeItemInput!]) {
