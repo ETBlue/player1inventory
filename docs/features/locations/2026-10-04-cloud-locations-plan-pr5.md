@@ -1,7 +1,7 @@
 # Cloud locations PR 5 — implementation plan
 
 **Date:** 2026-10-04
-**Status:** 🔲 Pending
+**Status:** ✅ Implemented — the full gate is green as of 2026-10-05, task 9
 **Design:** [cloud locations design](2026-08-30-cloud-locations-design.md) §8 — **and that
 section's framing of PR 5 is wrong, see *What the design doc gets wrong* below**
 **Branch:** `feature/cloud-locations-pr5`
@@ -814,7 +814,9 @@ it removed leave comments behind at `itemStock.resolver.ts:121` and `:257`.
 
 ---
 
-**Done 2026-10-05 — THE GATE IS RED. The branch must not be pushed.**
+**Done 2026-10-05 — the gate was RED on this run. FIXED BY TASK 9 below; the numbers in
+this note are the pre-fix measurement and are kept because the diagnosis in it is what
+task 9 implemented. Read task 9 for the result.**
 
 Every command in the Verification Gate passed. `pnpm test:e2e:all` did not: the `cloud`
 project went from a **96 passed / 7 skipped** baseline to **33 failed / 63 passed / 7
@@ -1010,6 +1012,175 @@ the first and only thing in the repo that could see any of it.
 
 ---
 
+## Task 9 — the four causes, fixed
+
+**Unplanned.** Added after task 8's gate came back red. Task 8's analysis was correct on all
+four causes and nothing in it had to be re-investigated.
+
+### What changed
+
+| Cause | Fix | Files |
+|---|---|---|
+| 1 — every cloud `createItem` failed validation (23 tests) | `toCreateItemInput` now lists every key by name and emits none of the five | `apps/web/src/hooks/useItems.ts`, `useItems.test.tsx` |
+| 2 — five E2E seeds still sent the five (5 tests) | quantities moved onto `upsertItemStock`; the two create inputs cleaned | `e2e/tests/cooking.spec.ts`, `item-logs.spec.ts`, `shopping.spec.ts` |
+| 3 — `bulkCreateItems` seeded from the fixture verbatim (4 tests) | the five stripped at the call site, fixture JSON untouched | `e2e/tests/settings/import-export-cloud.spec.ts` |
+| 4 — a Neon blip (1 test) | nothing to fix | — |
+
+### The finding: a mapped return type alone would NOT have fixed cause 1
+
+Task 8 proved the diagnosis by swapping `useItems.ts`'s `as CreateItemInput` cast for a mapped
+return type and getting `TS2353` on `dueDate`. That is true, and it is **half the story**. tsc
+excess-property-checks only the keys an object literal **writes**; anything arriving through a
+spread is exempt. Measured 2026-10-05 with a four-case throwaway file:
+
+| form | an undeclared key is |
+|---|---|
+| `{ ...wide }` | **NOT** caught |
+| `const { b: _b, ...rest } = wide; return rest` | **NOT** caught |
+| `{ a: wide.a, b: wide.b }` | caught — `TS2353` |
+| `{ ...wide, b: 9 }` | caught on the explicit `b` only |
+
+So the annotation would have caught `dueDate`, which the old body wrote explicitly, and **would
+have missed all four quantities**, which rode in on `...rest`. The fix therefore lists all
+eleven keys by name, the shape `toItemInput` in `importData.ts` already had.
+
+**Where the `as` went, and why one stays.** The literal is checked against
+`CreateItemInputShape` on its way into an annotated `const`; only the already-checked value is
+widened to `CreateItemInput`. An assertion applied **to the literal** suppresses the check —
+that is precisely how the old code compiled. Restoring the pre-fix body verbatim gives **zero**
+type errors.
+
+**A mapped return type cannot be the public signature here.** `CreateItemInputShape` is not
+assignable to `CreateItemInput` under `exactOptionalPropertyTypes`
+(`TS2375: Type 'InputMaybe<number> | undefined' is not assignable to type 'InputMaybe<number>'`),
+and the generated mutation hooks type `variables` strictly, so three call sites break.
+`toItemInput` gets away with returning `ItemInputShape` only because `client.mutate`'s
+`variables` are not strictly bound. Two-step is the shape that works for both.
+
+### `ItemMutationInput` keeps its `Partial<StockFields>`
+
+Decided, and this is the opposite of what the task brief leaned toward. The type is right as it
+stands, because two of its three consumers **need** the five: `toCreateStockInput` builds the
+new item's `ItemStock` row out of them, and local mode's `createItem` splits them into the
+active location. Narrowing the type would also have bought nothing — a `...rest` spread copies
+real own properties at runtime whatever the static type says, so the GraphQL error would have
+survived a narrower parameter. The runtime drop is what fixes it, and listing the keys is what
+keeps it dropped.
+
+### A test that pinned the bug instead of catching it
+
+`useItems.test.tsx:301` asserted
+`toHaveBeenCalledWith({ variables: { input: { ...itemInput, dueDate: null } } })` — the exact
+broken payload, written out. It was green from PR 5 task 4 until now. It now asserts
+configuration only, plus a loop over the five:
+
+```ts
+for (const key of ['targetQuantity', …, 'dueDate'])
+  expect(Object.hasOwn(sent, key)).toBe(false)
+```
+
+That loop does the half the type system cannot. `toEqual` ignores an `undefined`-valued key, and
+so does Apollo's JSON serialisation of variables, so an `undefined` is harmless — a real value is
+not. More importantly, reinstating a `...input` spread inside the guarded literal **type-checks
+cleanly** and turns this loop red. The two guards are complementary, not redundant.
+
+### Type-checking `e2e/` would NOT have caught causes 2 and 3
+
+Task 8's note blames issue #322 (nothing type-checks `e2e/`) for causes 2 and 3 reaching the
+gate. #322 is real but it is **not sufficient**. `makeGql` (`e2e/utils/cloud.ts:21-23`) takes
+`query: string` and `variables: Record<string, unknown>` — no GraphQL input type is in scope at
+any seed call site, so a fully type-checked `e2e/` directory would still have compiled all five
+bad seeds. Fixing #322 does not close this hole; only a typed GraphQL client in `e2e/` would.
+
+Checked ad hoc anyway, with a temporary root `tsconfig.e2e-task9.json` scoped to the four
+touched specs (`typeRoots` pointed at both `node_modules/@types` and
+`apps/web/node_modules/@types`, else `TS2688` on `node`), confirmed with `--listFiles` that it
+really compiled them: **0 errors before the change and 0 after**, which is the measurement that
+makes the point above. The file was deleted afterwards.
+
+### Mutation checks — three, all red for the stated reason
+
+| # | What was broken | Result |
+|---|---|---|
+| 1a | `dueDate: null` put back as an explicit key in the guarded literal | **RED** — `src/hooks/useItems.ts(129,5): error TS2353: Object literal may only specify known properties, and 'dueDate' does not exist in type 'CreateItemInputShape'.` |
+| 1b | the whole pre-fix body restored verbatim (`as CreateItemInput` + `...rest` + `dueDate`) | **GREEN, 0 errors** — the finding above: the cast suppressed everything |
+| 1c | `targetQuantity` and `packedQuantity` put back explicitly | **RED** — `TS2561: … 'targetQuantity' does not exist in type 'CreateItemInputShape'. Did you mean to write 'targetUnit'?` |
+| 2 | `item-logs.spec.ts`'s seed reverted to the inline `updateItem` form, spec run alone in `cloud` | **RED, 1 of 3** — `Field "packedQuantity" is not defined by type "UpdateItemInput". Did you mean "packageUnit"?`, thrown from `seedCookingData` at `utils/cloud.ts:33`. 35.2s |
+| 3 | a `...input` spread reinstated inside the guarded literal | **tsc GREEN, vitest RED** — `AssertionError: expected { name: 'Cheese', tagIds: [], …(13) } to deeply equal { name: 'Cheese', tagIds: [], …(2) }` |
+
+Check 1b is the one worth keeping: it is the proof that the old form had **no** guard, not a
+weak one.
+### The gate, re-run in full
+
+Measured 2026-10-05 on the rebased branch (`origin/main` at `92310481`, 23 commits replayed).
+`uptime` 1-minute load average **2.33** immediately before the Playwright run and **3.43** at
+the end — well inside the window task 8 used, so no failure here could be starvation.
+
+| Command | Result |
+|---|---|
+| `pnpm codegen` | pass |
+| `(cd apps/server && pnpm prisma generate)` | pass — client v6.19.3 |
+| `(cd apps/web && pnpm lint)` | exit 0. 4 warnings, all pre-existing in `routes/shopping/index.tsx`, which this branch never touched |
+| root `pnpm build` | exit 0, **0** `error TS` |
+| `(cd apps/web && pnpm build-storybook)` | exit 0. 8 `pages-item-stock` story ids, no stray fixture export |
+| `(cd apps/web && pnpm check)` | exit 0 |
+| `grep 'TS6385' /tmp/p1i-build-t9.log` | **0 matches** |
+| `pnpm test` | exit 0 — server **347 / 25 files**, web **2283 / 248 files**, `scripts/spec` **70** |
+| `(cd apps/server && pnpm typecheck)` | exit 0 |
+
+`scripts/spec` is **70**, not the 57 task 8 reported. The rebase brought PR #329's
+`scripts/spec/` changes with it; nothing in PR 5 touches that directory.
+
+**`pnpm test:e2e:all` — all three projects PASS, every count back at the baseline.**
+
+| Project | Result | Time | Counts | Baseline |
+|---|---|---|---|---|
+| `local` | **PASS** | 3m25s | 171 passed, 5 skipped | 171 / 5 — unchanged |
+| `cloud` | **PASS** | 11m18s | **96 passed**, 7 skipped | 96 / 7 — restored |
+| `pwa` | **PASS** | 1m26s | 69 passed | 69 — unchanged |
+
+Total Playwright time **16m09s**. The 33 cloud failures are gone and no new one appeared.
+
+**Cause 4 did not recur.** `cleanup-endpoint.spec.ts` passed. Task 8's
+`Can't reach database server at ep-round-surf-…:5432` was a one-off Neon connection blip, as
+it said.
+
+### Still open after task 9
+
+Neither is blocking, and neither is new work this PR created.
+
+1. **`STOCK_FIELD_KEYS` cannot be proved exhaustive.** `toConfigInput` relies on it as a
+   deny-list, and a sixth per-location field added to `StockFields` without being added to the
+   list would leak into `updateItem` and break every cloud save. The obvious compile-time
+   assertion is **vacuous** as the constant is declared today: `STOCK_FIELD_KEYS` is typed
+   `(keyof StockFields)[]`, so `Exclude<keyof StockFields, (typeof STOCK_FIELD_KEYS)[number]>`
+   is always `never` whatever the array holds. Making it real needs
+   `as const satisfies readonly (keyof StockFields)[]`, which also forces a change at
+   `db/operations.ts:327` (`const stockKeys: (keyof StockFields)[] = STOCK_FIELD_KEYS` — a
+   readonly tuple is not assignable there). Left alone on purpose: it is local-mode code and
+   not one of the four causes.
+2. **A cloud user who types a note or a Wikidata URL still gets a failed save.** `ItemForm`
+   submits `wikidataUrl` and `note`; the cloud `Item` type declares neither. Today the keys
+   only reach the wire when they carry a real value — `buildInfoUpdates` sets them to
+   `undefined` when blank, and Apollo's JSON serialisation drops undefined-valued keys — so
+   every other Info-tab save works. `e2e/tests/item-management.spec.ts` already skips
+   `user can persist note and wikidata URL on the Info tab` in cloud with exactly this reason.
+   `toConfigInput` was **deliberately not** changed to an allow-list of `UpdateItemInput`'s own
+   keys, which would have made the save succeed and the note vanish silently. A loud failure is
+   the better of the two until the cloud schema gains the fields.
+
+### What this task's brief got wrong
+
+| Said | Truth |
+|---|---|
+| "Replace **both** `as` casts in `useItems.ts` with mapped return types" | works for `toCreateItemInput`; **impossible for `toConfigInput`**, which builds its result by deleting keys off a `Record<string, unknown>`. There is no object literal left for a check to apply to, so that cast stays — and unlike the other one it hides nothing |
+| implied the mapped return type is what catches the extra field | it catches only keys the literal **writes**. The four quantities came through `...rest` and no annotation would have seen them. The **explicit key list** is the guard |
+| "`useItems.ts:201` — safe by behaviour, not by type" (from task 8, quoted into this brief) | correct, and the brief then asked for a fix that cannot be applied there |
+| blamed issue #322 for causes 2 and 3 | #322 is real but **not sufficient**: `makeGql` takes `query: string` and `variables: Record<string, unknown>`, so no GraphQL input type is in scope at any seed call site. A fully type-checked `e2e/` still compiles all five bad seeds |
+| did not mention | `useItems.test.tsx:301` asserted the broken payload verbatim. The brief listed the source fix and not the test that had been certifying the bug as correct since task 4 |
+
+---
+
 ## Known gaps this PR will leave
 
 | Gap | Owner |
@@ -1018,6 +1189,8 @@ the first and only thing in the repo that could see any of it.
 | **Issue #327** — nine `bulkUpsert*` let one user take ownership of another's row | households H4 |
 | **Issue #320** — no real-SQL two-user purge test | households H4/H6 |
 | The `clear` and `replace` import strategies have no E2E coverage | — |
-| **Issue #322** — nothing type-checks `e2e/` | #322 |
+| **Issue #322** — nothing type-checks `e2e/`. **Fixing it alone would not have caught PR 5's five bad seeds**: `makeGql` takes `query: string` and `variables: Record<string, unknown>`, so no GraphQL input type is in scope at a seed call site. That needs a typed client in `e2e/`, which #322 does not cover | #322 |
+| `STOCK_FIELD_KEYS` cannot be proved exhaustive, so `toConfigInput`'s deny-list could silently miss a sixth per-location field. The obvious assertion is vacuous as the constant is declared — see *Still open after task 9* | — |
+| A cloud user who types a `note` or `wikidataUrl` still gets a failed Info-tab save; the cloud `Item` type declares neither field. Already skipped in `e2e/tests/item-management.spec.ts` | — |
 | `defaultLocation.ts` survives PR 5 and dies in households H3 | H3 |
 | PR 3b's migrated-data check — nothing has run the new server code against rows the re-key converted | still owed from 3b |
