@@ -69,14 +69,80 @@ type ItemMutationInput = Omit<
   Partial<Pick<Item, 'consumeAmount'>> &
   Partial<StockFields>
 
-// Map frontend Item (without id/timestamps) to the GraphQL CreateItemInput shape.
-// Converts dueDate from Date to ISO string; passes all other fields through.
+// Map frontend Item (without id/timestamps) to the GraphQL `CreateItemInput`.
+//
+// `CreateItemInput` is CONFIGURATION ONLY since cloud locations PR 5 dropped
+// the five per-location state fields from it. The new item's opening stock goes
+// to `upsertItemStock` instead — see `toCreateStockInput` below.
+//
+// EVERY KEY IS WRITTEN OUT BY NAME. That is the guard, not a style choice, and
+// it is the same guard `toItemInput` in `lib/importData.ts` carries. Measured
+// 2026-10-05, in this order:
+//
+//   | form                                  | an undeclared key is |
+//   |---------------------------------------|----------------------|
+//   | `{ ...rest }`                         | NOT caught           |
+//   | `const { x, ...rest } = input; rest`  | NOT caught           |
+//   | `{ a: input.a, b: input.b }`          | caught, TS2353       |
+//   | `{ ...rest, b: input.b }`             | caught on `b` only   |
+//
+// tsc excess-property-checks only the keys the literal WRITES; anything that
+// arrives through a spread is exempt. So a return-type annotation alone does
+// not protect this function — the explicit key list does. **Never reintroduce
+// a spread of the input here.**
+//
+// Nothing else in the repo would catch the mistake: every web test mocks the
+// Apollo client rather than validating against the schema, and nothing
+// type-checks `e2e/` (issue #322). The previous version of this function sent
+// `dueDate: null` plus the four quantities through `...rest` behind an
+// `as CreateItemInput` cast, so **every cloud create failed GraphQL
+// validation** and the app could not add an item at all. It cost 23 cloud E2E
+// tests and no other check in the gate saw it.
+//
+// `wikidataUrl` and `note` are absent on purpose: the cloud `Item` type
+// declares neither (a known cloud gap, see the skipped
+// `user can persist note and wikidata URL on the Info tab` in
+// `e2e/tests/item-management.spec.ts`). No create call site supplies them.
+//
+// The literal is checked against `CreateItemInputShape`, not against
+// `CreateItemInput` itself, for the reason `ItemInputShape` records in
+// `lib/importData.ts`: `exactOptionalPropertyTypes` is on, and codegen types an
+// optional input field as `T | null` with no `| undefined`, so the plain type
+// rejects the `undefined`s this mapper emits for an absent optional. The mapped
+// type keeps the KEY SET exact — the half that catches an extra field — and
+// allows `undefined` as a value. An `undefined` never reaches the wire: Apollo
+// serialises variables as JSON, and `JSON.stringify` drops undefined-valued
+// keys. (A `null` does NOT get dropped, which is precisely why the old
+// `dueDate: null` was fatal.)
+type CreateItemInputShape = {
+  [K in keyof CreateItemInput]: CreateItemInput[K] | undefined
+}
+
 function toCreateItemInput(input: ItemMutationInput): CreateItemInput {
-  const { dueDate, ...rest } = input
-  return {
-    ...rest,
-    dueDate: dueDate instanceof Date ? dueDate.toISOString() : null,
-  } as CreateItemInput
+  // TWO STEPS, and the order is the whole guard. The literal is checked
+  // against `CreateItemInputShape` on its way into an annotated `const`, which
+  // is where excess-property checking happens; only then is the already-checked
+  // value widened. Writing `return { … } as CreateItemInput` instead puts the
+  // assertion ON the literal, and an assertion SUPPRESSES the check — that is
+  // exactly how the old version compiled while sending five undeclared fields.
+  const shape: CreateItemInputShape = {
+    name: input.name,
+    tagIds: input.tagIds,
+    vendorIds: input.vendorIds,
+    targetUnit: input.targetUnit,
+    consumeAmount: input.consumeAmount,
+    packageUnit: input.packageUnit,
+    measurementUnit: input.measurementUnit,
+    amountPerPackage: input.amountPerPackage,
+    estimatedDueDays: input.estimatedDueDays,
+    expirationThreshold: input.expirationThreshold,
+    expirationMode: input.expirationMode,
+  }
+  // Safe to widen: the `undefined`s this shape may carry never reach the wire
+  // (Apollo serialises variables as JSON, which drops undefined-valued keys).
+  // The cast exists only because `exactOptionalPropertyTypes` will not let a
+  // `T | undefined` value fill codegen's `T | null` optional slot.
+  return shape as CreateItemInput
 }
 
 // Map frontend Item partial to the GraphQL UpdateItemInput shape.
@@ -193,6 +259,27 @@ function touchesStock(updates: Partial<Item> & Partial<StockFields>): boolean {
 // five (joined from the active location's `ItemStock`), and sending an
 // undeclared field fails the whole mutation. Stock goes to `upsertItemStock`,
 // which names its location.
+//
+// **`STOCK_FIELD_KEYS` is the guard here, and a return-type annotation cannot
+// be.** Measured 2026-10-05: tsc excess-property-checks only the keys an object
+// literal WRITES, and this function builds its result by deleting keys off a
+// `Record<string, unknown>`, so there is no literal left to check. Annotating
+// the return type buys nothing here, so the type stays `UpdateItemInput` and
+// the `as` below stays — unlike the one `toCreateItemInput` used to carry, this
+// one hides nothing, because there is no literal for it to suppress a check on.
+// If a sixth per-location field is ever added to `StockFields` without being
+// added to `STOCK_FIELD_KEYS`, nothing here or in the gate catches the leak.
+// See *Known gaps* in
+// `docs/features/locations/2026-10-04-cloud-locations-plan-pr5.md`.
+//
+// The deletion is a DENY-list on purpose, not an allow-list of
+// `UpdateItemInput`'s own keys. An allow-list would also silently drop
+// `wikidataUrl` and `note`, which `ItemForm` submits and the cloud `Item` type
+// does not declare. Today a cloud user who types a note gets a failed save; an
+// allow-list would make the note vanish with no error, which is worse. That
+// gap belongs to the cloud `Item` schema, not to this mapper — see the skipped
+// `user can persist note and wikidata URL on the Info tab` in
+// `e2e/tests/item-management.spec.ts`.
 function toConfigInput(
   updates: Partial<Item> & Partial<StockFields>,
 ): UpdateItemInput {
