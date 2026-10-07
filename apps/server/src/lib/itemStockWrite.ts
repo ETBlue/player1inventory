@@ -95,12 +95,16 @@ import type { ItemStock, Prisma } from '@prisma/client'
  *
  * ── STILL NOT THE ONLY STOCK WRITER ──
  *
- * Three writers have genuinely different contracts and stay separate:
- * `addItemToLocation` (copy-on-add — it must CREATE, never update, and seeds
- * from another location's row), and `bulkCreateItemStocks` /
- * `bulkUpsertItemStocks` (import — they preserve the payload's own ids and
- * timestamps). What this function owns is every per-location stock VALUE
- * edit.
+ * Two writers have genuinely different contracts and stay separate:
+ * `bulkCreateItemStocks` / `bulkUpsertItemStocks` (import — they preserve the
+ * payload's own ids and timestamps). What this function owns is every
+ * per-location stock VALUE edit.
+ *
+ * Copy-on-add is the third contract, and since 2026-10-07 it lives in THIS
+ * module as `ensureStockAtLocation` below rather than inline in the
+ * `addItemToLocation` resolver. It must CREATE, never update, and it seeds from
+ * another location's row — so it cannot be folded into `writeStock`, but it had
+ * two callers that needed it and only one copy of the source-row search.
  */
 
 // A number, or Prisma's atomic increment form. `checkout` needs the latter so
@@ -152,6 +156,98 @@ export async function writeStock(
       packedQuantity: seed(data.packedQuantity),
       unpackedQuantity: seed(data.unpackedQuantity),
       dueDate: data.dueDate ?? null,
+    },
+  })
+}
+
+/**
+ * Copy-on-add: make sure `itemId` is stocked at `locationId`, and return that
+ * row. The cloud counterpart of local `addItemToLocation`
+ * (apps/web/src/db/operations.ts).
+ *
+ * Already stocked there -> returns the existing row UNTOUCHED. Not stocked ->
+ * creates it, INHERITING `targetQuantity`, `refillThreshold` and `dueDate`
+ * from a source row and opening both on-hand quantities at 0. No source row at
+ * all -> everything opens at 0.
+ *
+ * Since the v16 split there is nothing to copy for units, packaging,
+ * expiration mode or consume amount: those are global `Item` fields the new
+ * location shares automatically.
+ *
+ * ── WHY THIS IS A SHARED FUNCTION AND NOT INLINE IN ONE RESOLVER ──
+ *
+ * It had two callers wanting the same thing and only one of them did it:
+ *
+ *   - `addItemToLocation` (resolvers/itemStock.resolver.ts) held this body
+ *     inline and inherited correctly.
+ *   - `checkout` (resolvers/cart.resolver.ts) did NOT. It called `writeStock`
+ *     with `packedQuantity: { increment }` alone, so a cart bought at a
+ *     location the item was not yet stocked at opened the row with
+ *     `targetQuantity: 0` — which every reader treats as "not active at this
+ *     location" (see `isInactiveHere` in apps/web/src/lib/quantityUtils.ts).
+ *     Local `checkout` has always called `addItemToLocation` here. Fixed
+ *     2026-10-07; the divergence is the thing being removed, not a feature.
+ *
+ * ── WHICH SOURCE ROW ──
+ *
+ * `sourceLocationId` when given and stocked, else the item's most recently
+ * updated row. **This is NOT identical to local mode**, whose parameter
+ * defaults to `DEFAULT_LOCATION_ID` and only falls back to the most-recent row
+ * when the item is not stocked there. That difference predates this function
+ * and is recorded, not fixed, here — see the comment on `runCloudAdd` in
+ * apps/web/src/hooks/useItems.ts. No caller passes a source in either mode.
+ *
+ * ── AUTHORIZATION ──
+ *
+ * Nothing here authorizes anything, exactly as in `writeStock` above. A caller
+ * must already hold `member` on `locationId`. `userId` is NOT an authorization
+ * check — it scopes the SOURCE search, so one user's row can never seed
+ * another user's location. `ItemStock` has no `userId` column, so that scope is
+ * the relation filter `location: { userId }` (root CLAUDE.md, Authorization).
+ *
+ * ── CONCURRENCY ──
+ *
+ * `findUnique` then `create` is not atomic: two concurrent first writes for one
+ * (item, location) pair can both decide the row is missing, and the loser gets
+ * P2002. That is inherited from the `addItemToLocation` resolver this was
+ * extracted from and is unchanged by the extraction. `writeStock` above avoids
+ * it with a single `upsert`; this cannot, because the created row's seed values
+ * must be read from ANOTHER row first, and an `upsert`'s `create` and `update`
+ * share one payload — so seeding through it would overwrite an existing row's
+ * `targetQuantity` on every call.
+ */
+export async function ensureStockAtLocation(
+  itemId: string,
+  locationId: string,
+  userId: string,
+  sourceLocationId?: string | null,
+  client: Prisma.TransactionClient = prisma,
+): Promise<ItemStock> {
+  const existing = await client.itemStock.findUnique({
+    where: { itemId_locationId: { itemId, locationId } },
+  })
+  if (existing) return existing
+
+  const all = await client.itemStock.findMany({
+    where: { itemId, location: { userId } },
+  })
+  const source =
+    (sourceLocationId
+      ? all.find((s: ItemStock) => s.locationId === sourceLocationId)
+      : undefined) ??
+    [...all].sort(
+      (a: ItemStock, b: ItemStock) => b.updatedAt.getTime() - a.updatedAt.getTime(),
+    )[0]
+
+  return client.itemStock.create({
+    data: {
+      itemId,
+      locationId,
+      targetQuantity: source?.targetQuantity ?? 0,
+      refillThreshold: source?.refillThreshold ?? 0,
+      dueDate: source?.dueDate ?? null,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
     },
   })
 }

@@ -1,7 +1,7 @@
 import { GraphQLError } from 'graphql'
 import { requireAuth } from '../context.js'
 import { requireLocationRole } from '../lib/authz.js'
-import { writeStock } from '../lib/itemStockWrite.js'
+import { ensureStockAtLocation, writeStock } from '../lib/itemStockWrite.js'
 import { prisma } from '../lib/prisma.js'
 import { buildItemUpdateData, toGraphQL as itemToGraphQL } from './item.resolver.js'
 import type { Item, ItemStock, Resolvers } from '../generated/graphql.js'
@@ -123,11 +123,15 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       return toGraphQL(saved)
     },
 
-    // Copy-on-add, matching local `addItemToLocation` (db/operations.ts:152).
-    // Since the v16 split there is nothing to copy for units, packaging,
-    // expiration mode or consume amount — those are global Item fields the new
-    // location shares automatically. Only targetQuantity, refillThreshold and
-    // dueDate are inherited; on-hand quantities always start at 0.
+    // Copy-on-add, matching local `addItemToLocation` (db/operations.ts).
+    //
+    // The body moved to `ensureStockAtLocation` (lib/itemStockWrite.ts) on
+    // 2026-10-07 so `checkout` could call the SAME copy-on-add instead of
+    // opening a row at `targetQuantity: 0`. Everything the old inline version
+    // did — the no-op on an already-stocked location, the source-row search
+    // scoped by `location: { userId }`, inheriting targetQuantity /
+    // refillThreshold / dueDate, zeroing the on-hand quantities — is unchanged
+    // and documented there.
     //
     // Neither this mutation nor `removeItemFromLocation` ever mirrored onto
     // `Item`'s legacy state columns, and that was deliberate rather than an
@@ -136,30 +140,7 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     addItemToLocation: async (_, { itemId, locationId, sourceLocationId }, ctx) => {
       const userId = requireAuth(ctx)
       await requireLocationRole(ctx, locationId, 'member')
-
-      const existing = await prisma.itemStock.findUnique({
-        where: { itemId_locationId: { itemId, locationId } },
-      })
-      if (existing) return toGraphQL(existing as unknown as PrismaItemStock)
-
-      const all = (await prisma.itemStock.findMany({
-        where: { itemId, location: { userId } },
-      })) as unknown as PrismaItemStock[]
-      const source =
-        (sourceLocationId ? all.find((s) => s.locationId === sourceLocationId) : undefined) ??
-        [...all].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0]
-
-      const row = await prisma.itemStock.create({
-        data: {
-          itemId,
-          locationId,
-          targetQuantity: source?.targetQuantity ?? 0,
-          refillThreshold: source?.refillThreshold ?? 0,
-          dueDate: source?.dueDate ?? null,
-          packedQuantity: 0,
-          unpackedQuantity: 0,
-        },
-      })
+      const row = await ensureStockAtLocation(itemId, locationId, userId, sourceLocationId)
       return toGraphQL(row as unknown as PrismaItemStock)
     },
 
