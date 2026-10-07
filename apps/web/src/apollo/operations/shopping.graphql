@@ -56,8 +56,23 @@ mutation RemoveFromCart($id: ID!) {
   removeFromCart(id: $id)
 }
 
-mutation Checkout($cartId: ID!, $note: String, $logKey: String, $logParams: JSON) {
-  checkout(cartId: $cartId, note: $note, logKey: $logKey, logParams: $logParams) {
+# `items` carries the on-hand total each log row records, computed here because
+# `amountPerPackage` is a global `Item` field the resolver cannot see. See the
+# doc string on `CheckoutItemInput` in apps/server/src/schema/cart.graphql.
+mutation Checkout(
+  $cartId: ID!
+  $items: [CheckoutItemInput!]!
+  $note: String
+  $logKey: String
+  $logParams: JSON
+) {
+  checkout(
+    cartId: $cartId
+    items: $items
+    note: $note
+    logKey: $logKey
+    logParams: $logParams
+  ) {
     id
     lastPurchasedAt
   }

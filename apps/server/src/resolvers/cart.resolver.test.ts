@@ -195,6 +195,22 @@ async function execOp(query: string, variables?: Record<string, unknown>, contex
   return r.body.kind === 'single' ? r.body.singleResult : null
 }
 
+// Since issue #336 `checkout` takes the log's on-hand total from the CLIENT:
+// `items: [CheckoutItemInput!]!`, required, with no server-side fallback. Every
+// checkout below therefore sends one, so this string is shared rather than
+// retyped per test.
+//
+// Note what this harness does NOT let a fake hide. `execOp` goes through
+// `server.executeOperation`, so the real `typeDefs` validate every variable
+// before a resolver runs: a test that forgot `items` fails with "argument
+// `items` ... is required", and the variables reach the resolver untouched. No
+// Prisma fake sits on that path — `items` is a GraphQL argument, not a `where`
+// key — so the failure mode root CLAUDE.md records for `cartItemFake` (a fake
+// silently dropping a key it does not know) cannot happen to this argument.
+const CHECKOUT = `mutation Checkout($cartId: ID!, $items: [CheckoutItemInput!]!) {
+  checkout(cartId: $cartId, items: $items) { id lastPurchasedAt }
+}`
+
 // ─── vendorCart ──────────────────────────────────────────────────────────────
 
 describe('vendorCart', () => {
@@ -664,10 +680,10 @@ describe('checkout', () => {
     mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 1 })
 
     // When checking out
-    const result = await execOp(
-      `mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id lastPurchasedAt } }`,
-      { cartId: `${LOC_DEFAULT}:no-vendor` },
-    )
+    const result = await execOp(CHECKOUT, {
+      cartId: `${LOC_DEFAULT}:no-vendor`,
+      items: [{ itemId: 'item_milk', quantity: 3 }],
+    })
 
     // Then the cart's lastPurchasedAt is set, as an ISO 8601 string.
     // `toBeDefined()` alone was vacuous here: it passed against the epoch-millis
@@ -702,10 +718,10 @@ describe('checkout', () => {
     mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 1 })
 
     // When checking out
-    const result = await execOp(
-      `mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id lastPurchasedAt } }`,
-      { cartId: `${LOC_DEFAULT}:no-vendor` },
-    )
+    const result = await execOp(CHECKOUT, {
+      cartId: `${LOC_DEFAULT}:no-vendor`,
+      items: [{ itemId: 'item_milk', quantity: 2 }],
+    })
 
     // Then no new cart is created (permanent cart model — pinned items just stay)
     expect(result?.errors).toBeUndefined()
@@ -731,10 +747,10 @@ describe('checkout', () => {
     mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 1 })
 
     // When checking out
-    await execOp(
-      `mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id } }`,
-      { cartId: `${LOC_DEFAULT}:no-vendor` },
-    )
+    await execOp(CHECKOUT, {
+      cartId: `${LOC_DEFAULT}:no-vendor`,
+      items: [{ itemId: 'item_1', quantity: 1 }],
+    })
 
     // Then only items with qty > 0 are removed
     expect(mockPrisma.cartItem.deleteMany).toHaveBeenCalledWith({
@@ -786,10 +802,10 @@ describe('checkout writes the cart location\'s ItemStock', () => {
     mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 1 })
 
     // When they buy 3 of it
-    const result = await execOp(
-      `mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id } }`,
-      { cartId: `${LOC_DEFAULT}:no-vendor` },
-    )
+    const result = await execOp(CHECKOUT, {
+      cartId: `${LOC_DEFAULT}:no-vendor`,
+      items: [{ itemId: 'item_milk', quantity: 5 }],
+    })
 
     // Then only the cart's location moved: 2 + 3
     expect(result?.errors).toBeUndefined()
@@ -812,8 +828,9 @@ describe('checkout writes the cart location\'s ItemStock', () => {
     mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 1 })
 
     // When they check out
-    await execOp(`mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id } }`, {
+    await execOp(CHECKOUT, {
       cartId: `${LOC_DEFAULT}:no-vendor`,
+      items: [{ itemId: 'item_new', quantity: 4 }],
     })
 
     // Then exactly one row exists, in the cart's location, opening at 4 —
@@ -853,10 +870,10 @@ describe('checkout writes the cart location\'s ItemStock', () => {
     mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 1 })
 
     // When they buy 2 from the KITCHEN's cart
-    const result = await execOp(
-      `mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id } }`,
-      { cartId: `${LOC_DEFAULT}:no-vendor` },
-    )
+    const result = await execOp(CHECKOUT, {
+      cartId: `${LOC_DEFAULT}:no-vendor`,
+      items: [{ itemId: 'item_milk', quantity: 2 }],
+    })
 
     // Then the Kitchen's new row INHERITED the Garage's stock settings and
     // zeroed only the quantities, which the increment then raised to 2.
@@ -893,13 +910,15 @@ describe('checkout writes the cart location\'s ItemStock', () => {
     mockPrisma.inventoryLog.create.mockResolvedValue({})
     mockPrisma.cart.update.mockResolvedValue(makeCart({ lastPurchasedAt: now }))
     mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 1 })
-    await execOp(`mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id } }`, {
+    await execOp(CHECKOUT, {
       cartId: `${LOC_DEFAULT}:no-vendor`,
+      items: [{ itemId: 'item_milk', quantity: 5 }],
     })
 
     // When a second checkout buys 3 more
-    await execOp(`mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id } }`, {
+    await execOp(CHECKOUT, {
       cartId: `${LOC_DEFAULT}:no-vendor`,
+      items: [{ itemId: 'item_milk', quantity: 8 }],
     })
 
     // Then the row reads 8, not 3 — the mirror increments, it does not assign
@@ -915,19 +934,26 @@ describe('checkout writes the cart location\'s ItemStock', () => {
 
   it("user checking out has the log record the location's resulting ON-HAND total", async () => {
     // Given the Kitchen already holds 2 packed and 3 unpacked Milk, and the
-    // cart buys 5 more.
+    // cart buys 5 more. Milk has no `amountPerPackage`, so the client's
+    // `getPackedTotal` is the plain sum and it sends 2 + 3 + 5 = 10.
     //
     // THE FIXTURE IS THE TEST. Those numbers make the three candidate answers
-    // three different numbers, so the assertion can say which source the
-    // resolver read:
+    // three different numbers, so the assertion can say which one the resolver
+    // stored:
     //
-    //   | Candidate                      | Value |
-    //   |--------------------------------|-------|
-    //   | packed + unpacked AFTER (right)|  10   |
-    //   | the cart's delta               |   5   |
-    //   | the written column alone       |   7   |
+    //   | Candidate                       | Value |
+    //   |---------------------------------|-------|
+    //   | the number `items` carries      |  10   |
+    //   | the cart's delta, `ci.quantity` |   5   |
+    //   | the written column alone        |   7   |
     //
     // Against a row at 0/0 all three are 5 and the test proves nothing.
+    //
+    // Since issue #336 that 10 arrives in `items` rather than being added up
+    // from the saved row. The group below is what pins the conversion; this
+    // test still earns its place because it is the only one whose fixture can
+    // catch a resolver that logged `ci.quantity` or the packed column instead
+    // of what it was handed.
     stockFake.reset(stockFake.state.locations, [
       makeStock({
         id: 'st_default',
@@ -945,19 +971,19 @@ describe('checkout writes the cart location\'s ItemStock', () => {
     mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 1 })
 
     // When they check out
-    const result = await execOp(
-      `mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id } }`,
-      { cartId: `${LOC_DEFAULT}:no-vendor` },
-    )
+    const result = await execOp(CHECKOUT, {
+      cartId: `${LOC_DEFAULT}:no-vendor`,
+      items: [{ itemId: 'item_milk', quantity: 10 }],
+    })
 
     // Then the row reads 7 packed / 3 unpacked
     expect(result?.errors).toBeUndefined()
     expect(stockAt(LOC_DEFAULT)).toMatchObject({ packedQuantity: 7, unpackedQuantity: 3 })
 
-    // And the log's `quantity` is 10 — the SAVED ROW's packed + unpacked, which
-    // is what `writeStock` returns the row for. Before PR 5 this number came
-    // from the `Item` row `prisma.item.update` returned; `Item` has no quantity
-    // columns now, and `ci.quantity` would give 5.
+    // And the log's `quantity` is 10 — the number `items` carried. It used to
+    // be computed here as the saved row's packed + unpacked, which gives the
+    // same 10 for an item with no `amountPerPackage` and a different answer
+    // when there is one (see the group below). `ci.quantity` would give 5.
     expect(mockPrisma.inventoryLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ itemId: 'item_milk', delta: 5, quantity: 10 }),
     })
@@ -973,9 +999,9 @@ describe('checkout writes the cart location\'s ItemStock', () => {
     mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 0 })
 
     // When the user checks out
-    await execOp(`mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id } }`, {
-      cartId: `${LOC_DEFAULT}:no-vendor`,
-    })
+    // `items` is empty, and legitimately so: nothing is being bought. The
+    // argument is non-null, not non-empty.
+    await execOp(CHECKOUT, { cartId: `${LOC_DEFAULT}:no-vendor`, items: [] })
 
     // Then no stock row changed, and no row was created either — a resolver
     // that ran `writeStock` for a pinned item would upsert a row at 0 and this
@@ -1024,10 +1050,10 @@ describe('checkout writes the cart location\'s ItemStock', () => {
     mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 1 })
 
     // When they check out
-    const result = await execOp(
-      `mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id } }`,
-      { cartId: `${created?.id}:no-vendor` },
-    )
+    const result = await execOp(CHECKOUT, {
+      cartId: `${created?.id}:no-vendor`,
+      items: [{ itemId: 'item_milk', quantity: 2 }],
+    })
 
     // Then the checkout succeeds and the purchase landed in the location that
     // was created for them
@@ -1038,6 +1064,148 @@ describe('checkout writes the cart location\'s ItemStock', () => {
       locationId: created?.id,
       packedQuantity: 2,
     })
+  })
+})
+
+// ─── checkout: issue #336, the client-computed log quantity ──────────────────
+//
+// `checkout` writes the log's `quantity` from `items`, the argument the CLIENT
+// fills in. It used to add the saved stock row's two columns together:
+// `stock.packedQuantity + stock.unpackedQuantity`.
+//
+// Those two answers are only DIFFERENT when the item has an `amountPerPackage`
+// AND a non-zero `unpackedQuantity`. With either missing, both give the same
+// number and no fixture can tell them apart. So every fixture here sets both.
+//
+// `amountPerPackage` lives on `Item`, and this spec has no `item` store at all
+// — the server never sees it. That is the point: the 6 below exists only to
+// explain why the client sends 3.5, a number the resolver could not have
+// produced from the integer columns it holds.
+
+describe('checkout logs the on-hand total the client computed', () => {
+  // amountPerPackage 6, 2 packed, 3 unpacked, buying 1:
+  //
+  //   getPackedTotal({ packedQuantity: 2, unpackedQuantity: 3,
+  //                    amountPerPackage: 6 })          = 2 + 3/6 = 2.5
+  //   + the cart quantity                              = 2.5 + 1 = 3.5
+  //
+  // The delta is added AFTER the division because it is already counted in
+  // packs. The old resolver logged (2 + 1) + 3 = 6.
+  const AMOUNT_PER_PACKAGE = 6
+  const PACKED = 2
+  const UNPACKED = 3
+  const DELTA = 1
+  const CONVERTED_TOTAL = PACKED + UNPACKED / AMOUNT_PER_PACKAGE + DELTA
+
+  function arrange(itemId: string, unpacked: number) {
+    stockFake.reset(stockFake.state.locations, [
+      makeStock({
+        id: 'st_default',
+        itemId,
+        locationId: LOC_DEFAULT,
+        packedQuantity: PACKED,
+        unpackedQuantity: unpacked,
+      }),
+    ])
+    mockPrisma.cartItem.findMany.mockResolvedValue([
+      makeCartItem({ itemId, quantity: DELTA }),
+    ])
+    mockPrisma.inventoryLog.create.mockResolvedValue({})
+    mockPrisma.cart.update.mockResolvedValue(makeCart({ lastPurchasedAt: now }))
+    mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 1 })
+  }
+
+  it('user checking out an item sold in packs sees the converted total in the log', async () => {
+    // Given Milk comes 6 to a pack, the Kitchen holds 2 packs and 3 loose, and
+    // the cart buys 1 more pack
+    arrange('item_milk', UNPACKED)
+
+    // When they check out, the client sending the total it computed
+    const result = await execOp(CHECKOUT, {
+      cartId: `${LOC_DEFAULT}:no-vendor`,
+      items: [{ itemId: 'item_milk', quantity: CONVERTED_TOTAL }],
+    })
+
+    // Then the log carries 3.5 — the 3 loose units counted as half a pack.
+    // The old resolver added the saved row's columns raw and logged 6, which
+    // is the exact number this assertion rules out.
+    expect(result?.errors).toBeUndefined()
+    expect(CONVERTED_TOTAL).toBe(3.5)
+    expect(mockPrisma.inventoryLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ itemId: 'item_milk', delta: 1, quantity: 3.5 }),
+    })
+
+    // And the stock row still moved by the delta in whole packs — the
+    // conversion changes what is LOGGED, never what is STORED
+    expect(
+      stockFake.state.itemStocks.find(
+        (st) => st.itemId === 'item_milk' && st.locationId === LOC_DEFAULT,
+      ),
+    ).toMatchObject({ packedQuantity: 3, unpackedQuantity: 3 })
+  })
+
+  // A NEGATIVE CONTROL, not coverage. The conversion lives on the client, so
+  // the server has no code that could apply it to the wrong item — this test
+  // stays green against the old raw-sum resolver too (2 + 3 + 1 = 6 either
+  // way). It is here to show the fix did not start bending numbers that must
+  // be passed through unchanged. The conversion itself is pinned by
+  // `getPackedTotal`'s own tests (apps/web/src/lib/quantityUtils.test.ts) and
+  // by the client call site.
+  it('an item with no amountPerPackage logs the plain sum it was sent', async () => {
+    // Given Eggs are not sold in packs, so the client's `getPackedTotal` is
+    // just packed + unpacked and it sends 2 + 3 + 1 = 6
+    arrange('item_eggs', UNPACKED)
+
+    // When they check out
+    const result = await execOp(CHECKOUT, {
+      cartId: `${LOC_DEFAULT}:no-vendor`,
+      items: [{ itemId: 'item_eggs', quantity: PACKED + UNPACKED + DELTA }],
+    })
+
+    // Then the log carries 6, unrounded and unconverted
+    expect(result?.errors).toBeUndefined()
+    expect(mockPrisma.inventoryLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ itemId: 'item_eggs', delta: 1, quantity: 6 }),
+    })
+  })
+
+  it('a bought item missing from items is BAD_USER_INPUT, and nothing is written', async () => {
+    // Given the cart buys two items but the client sent a total for only one.
+    // That is the accepted race: another device added Eggs to the cart after
+    // this client rendered it.
+    stockFake.reset(stockFake.state.locations, [
+      makeStock({ id: 'st_milk', itemId: 'item_milk', locationId: LOC_DEFAULT, packedQuantity: 2 }),
+    ])
+    mockPrisma.cartItem.findMany.mockResolvedValue([
+      makeCartItem({ id: 'ci_milk', itemId: 'item_milk', quantity: 1 }),
+      makeCartItem({ id: 'ci_eggs', itemId: 'item_eggs', quantity: 4 }),
+    ])
+    mockPrisma.inventoryLog.create.mockResolvedValue({})
+    mockPrisma.cart.update.mockResolvedValue(makeCart({ lastPurchasedAt: now }))
+    mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 2 })
+
+    // When they check out
+    const result = await execOp(CHECKOUT, {
+      cartId: `${LOC_DEFAULT}:no-vendor`,
+      items: [{ itemId: 'item_milk', quantity: 3 }],
+    })
+
+    // Then the whole checkout is refused, and the message names the item the
+    // client has to fetch again. There is NO fallback to packed + unpacked:
+    // that path is the bug being removed.
+    expect(result?.errors?.[0]?.extensions?.code).toBe('BAD_USER_INPUT')
+    expect(result?.errors?.[0]?.message).toContain('item_eggs')
+
+    // And nothing was written — not even for Milk, whose total WAS supplied
+    // and which the loop would have reached first. `checkout` runs no
+    // transaction, so every total is resolved before the first write rather
+    // than looked up inside the loop. These three assertions are what hold
+    // that order in place.
+    expect(
+      stockFake.state.itemStocks.find((st) => st.itemId === 'item_milk'),
+    ).toMatchObject({ packedQuantity: 2 })
+    expect(mockPrisma.inventoryLog.create).not.toHaveBeenCalled()
+    expect(mockPrisma.cart.update).not.toHaveBeenCalled()
   })
 })
 
@@ -1084,10 +1252,10 @@ describe("checkout writes the CART's location, not the caller's default", () => 
     arrangeBuy(cartId)
 
     // When they buy 3 of it
-    const result = await execOp(
-      `mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id } }`,
-      { cartId },
-    )
+    const result = await execOp(CHECKOUT, {
+      cartId,
+      items: [{ itemId: 'item_milk', quantity: 43 }],
+    })
 
     // Then the GARAGE's row moved: 40 + 3
     expect(result?.errors).toBeUndefined()
@@ -1108,10 +1276,10 @@ describe("checkout writes the CART's location, not the caller's default", () => 
     arrangeBuy(cartId)
 
     // When they check out
-    const result = await execOp(
-      `mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id } }`,
-      { cartId },
-    )
+    const result = await execOp(CHECKOUT, {
+      cartId,
+      items: [{ itemId: 'item_milk', quantity: 43 }],
+    })
 
     // Then the inventory log names the Garage, not the Kitchen. The log row and
     // the stock move it explains must never name different locations.
@@ -1130,9 +1298,7 @@ describe("checkout writes the CART's location, not the caller's default", () => 
     arrangeBuy(cartId)
 
     // When they check out
-    await execOp(`mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id } }`, {
-      cartId,
-    })
+    await execOp(CHECKOUT, { cartId, items: [{ itemId: 'item_milk', quantity: 5 }] })
 
     // Then the Kitchen moved and the Garage did not
     expect(stockAt(LOC_DEFAULT)?.packedQuantity).toBe(5)
@@ -1228,8 +1394,8 @@ describe('cross-user isolation', () => {
     // Given user_B names user_test123's cart
     // When user_B checks it out
     const result = await execOp(
-      `mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id } }`,
-      { cartId: `${LOC_DEFAULT}:no-vendor` },
+      CHECKOUT,
+      { cartId: `${LOC_DEFAULT}:no-vendor`, items: [{ itemId: 'item_milk', quantity: 1 }] },
       { userId: 'user_B' },
     )
 

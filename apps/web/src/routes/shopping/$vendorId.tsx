@@ -46,7 +46,11 @@ import { useShowStock } from '@/hooks/useShowStock'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { filterItems, filterItemsByRecipes } from '@/lib/filterUtils'
-import { isInactiveHere, isStockedHere } from '@/lib/quantityUtils'
+import {
+  getPackedTotal,
+  isInactiveHere,
+  isStockedHere,
+} from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import type { PantryItem } from '@/types'
 
@@ -311,6 +315,41 @@ function VendorCart() {
         : (item.vendorIds ?? []).includes(cartVendorId)
     })
     .reduce((sum, ci) => sum + ci.quantity, 0)
+
+  // What `checkout` writes into each inventory log's `quantity`: the item's
+  // on-hand total in PACKAGE units AFTER the purchase.
+  //
+  // Computed here because the cloud resolver cannot. `amountPerPackage` is a
+  // global `Item` field, and the resolver holds only the per-location
+  // `ItemStock` row — so it used to add `packedQuantity + unpackedQuantity`
+  // raw, which is 6 where local mode's `getPackedTotal` gives 3.5 for an item
+  // with `amountPerPackage` 6 holding 2 packed and 3 unpacked. Issue #336.
+  //
+  // THE ORDER OF THE TWO TERMS MATTERS. `getPackedTotal` runs on the
+  // PRE-purchase stock, and `ci.quantity` is added AFTER it, because the cart
+  // quantity is already counted in packs and must not be divided by
+  // `amountPerPackage`. This is exactly what local `checkout`
+  // (src/db/operations.ts) computes.
+  //
+  // `items` here is a `PantryItem`, so it carries the joined per-location
+  // stock AND the global `amountPerPackage`.
+  //
+  // The `ci.quantity > 0` filter must match the server's `buyingItems` rule
+  // (apps/server/src/resolvers/cart.resolver.ts). A bought item with no entry
+  // here fails the whole checkout with `BAD_USER_INPUT` — there is no
+  // fallback, so the two filters have to stay in step.
+  const checkoutLogQuantities = cartItems
+    .filter((ci) => ci.quantity > 0)
+    .flatMap((ci) => {
+      const item = items.find((i) => i.id === ci.itemId)
+      if (!item) return []
+      return [
+        {
+          itemId: ci.itemId,
+          quantity: getPackedTotal(item) + ci.quantity,
+        },
+      ]
+    })
 
   function handleToggleCart(item: PantryItem) {
     const ci = cartItemMap.get(item.id)
@@ -598,6 +637,7 @@ function VendorCart() {
                   try {
                     await checkout.mutateAsync({
                       cartId: cart.id,
+                      items: checkoutLogQuantities,
                       note,
                       logKey,
                       logParams,

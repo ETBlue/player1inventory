@@ -151,7 +151,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       return true
     },
 
-    checkout: async (_, { cartId, note, logKey, logParams }, ctx) => {
+    checkout: async (_, { cartId, items, note, logKey, logParams }, ctx) => {
       const userId = requireAuth(ctx)
       // The location the CART names, since PR 3b Task 3. `requireCartLocation`
       // parses it out of the cart id and authorizes it in one step, so the
@@ -167,9 +167,75 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       const buyingItems = cartItems.filter(ci => ci.quantity > 0)
       // Pinned items (quantity === 0) stay in the permanent cart — no migration needed
 
+      // The on-hand total each log row will record, as the CLIENT computed it.
+      // Built once here, not re-derived per item inside the loop below.
+      //
+      // ── WHY THE CLIENT SENDS THIS NUMBER ──
+      //
+      // The log's `quantity` is the item's on-hand total in PACKAGE units. An
+      // item sold in packs keeps a fractional remainder in `unpackedQuantity`,
+      // and turning that remainder back into a fraction of a pack needs
+      // `amountPerPackage` — a global field on `Item`, not on `ItemStock`. The
+      // only stock data this resolver can reach is the per-location
+      // `ItemStock` row, so it cannot do the conversion.
+      //
+      // The log's `quantity` used to be computed below, after the stock write,
+      // as `stock.packedQuantity + stock.unpackedQuantity` — the two columns
+      // added raw. Local mode runs `getPackedTotal({ packedQuantity,
+      // unpackedQuantity, amountPerPackage }) + cartItem.quantity` instead
+      // (apps/web/src/db/operations.ts and src/lib/quantityUtils.ts). The two
+      // disagree whenever an item has an `amountPerPackage` AND a non-zero
+      // `unpackedQuantity`: with `amountPerPackage` 6, 2 packed and 3 unpacked,
+      // buying 1 gave local 3.5 and cloud 6. That is issue #336.
+      //
+      // `consumeRecipes` already works this way — `ConsumeRecipesItemInput`
+      // carries a client-computed `quantity` for the same reason
+      // (src/schema/recipe.graphql).
+      //
+      // `delta` stays server-side as `ci.quantity`. Only the converted total
+      // needs a field the server cannot see.
+      const quantityByItemId = new Map(items.map((i) => [i.itemId, i.quantity]))
+
+      // Resolve every bought item's total BEFORE the first write, so a missing
+      // entry cannot leave half a checkout behind. `.map` runs to completion
+      // before the loop below starts, and `checkout` has no transaction.
+      //
+      // ── THERE IS NO FALLBACK, ON PURPOSE ──
+      //
+      // Falling back to `stock.packedQuantity + stock.unpackedQuantity` would
+      // restore the exact bug above, silently, for any client that stopped
+      // sending the field. A loud `BAD_USER_INPUT` naming the item is the
+      // chosen cost. It means checkout fails for a cloud client running an old
+      // bundle, until the user accepts the service-worker update prompt.
+      //
+      // ── THE ACCEPTED RACE ──
+      //
+      // The client computes these numbers from the cart it rendered. If another
+      // device adds a cart item between that render and the checkout, the new
+      // item has no entry here and the whole checkout fails. The user refetches
+      // and retries. Rare with one account per user, so this is recorded rather
+      // than solved.
+      //
+      // ── THE FILTER MUST MATCH ──
+      //
+      // The client sends one entry per cart item with `quantity > 0`, the same
+      // rule as `buyingItems` above. If either side's filter changes, change
+      // both, or a legitimate checkout starts failing on this error.
+      const purchases = buyingItems.map((ci) => {
+        const quantity = quantityByItemId.get(ci.itemId)
+        if (quantity === undefined) {
+          throw new GraphQLError(
+            `checkout: no quantity was supplied for item '${ci.itemId}'. ` +
+              'Every cart item with a quantity above zero needs an entry in `items`.',
+            { extensions: { code: 'BAD_USER_INPUT' } },
+          )
+        }
+        return { ci, quantity }
+      })
+
       const now = new Date()
 
-      for (const ci of buyingItems) {
+      for (const { ci, quantity: finalQuantity } of purchases) {
         // Stock the item at the cart's location if it is not stocked there yet,
         // the same copy-on-add local `checkout` has always run
         // (apps/web/src/db/operations.ts). A no-op on the normal path, where
@@ -197,19 +263,17 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
         // `increment` rather than a total computed in JavaScript, so two
         // concurrent checkouts of one item cannot lose an increment to a
         // read-modify-write race.
-        const stock = await writeStock(ci.itemId, cartLocationId, {
+        //
+        // The return value is no longer read. Until issue #336 this was `const
+        // stock = await writeStock(...)` and the next line added the saved
+        // row's two quantity columns together to get the log's `quantity`. That
+        // number now arrives in `items` — see the block above — so the saved
+        // row is not needed here. `writeStock` still returns the saved row,
+        // and `upsertItemStock` (resolvers/itemStock.resolver.ts) is now its
+        // only caller that reads it.
+        await writeStock(ci.itemId, cartLocationId, {
           packedQuantity: { increment: ci.quantity },
         })
-
-        // The resulting ON-HAND total at this location, read off the row that
-        // was just saved. It is NOT `ci.quantity`: the log records where the
-        // stock ended up, not how much was bought, and the two differ whenever
-        // the row started at anything but zero.
-        //
-        // Before PR 5 this read `Item`'s two quantity columns off the row the
-        // deleted `item.update` returned, which is why `writeStock` returns the
-        // saved row (lib/itemStockWrite.ts).
-        const finalQuantity = stock.packedQuantity + stock.unpackedQuantity
 
         await prisma.inventoryLog.create({
           data: {
