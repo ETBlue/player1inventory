@@ -479,6 +479,32 @@ call site (`ItemForm.tsx` line 809):
 So that test now depends on the fixture's `consumeAmount: 1`. It is still not a `step`
 test.
 
+### `amountPerPackage` — a spec that asserts a packed total must set it
+
+`FixtureItem` (`e2e/helpers/fixture.ts`) carries an optional `amountPerPackage`, added
+2026-10-08 for issue #336 and threaded through **both** seeders:
+`seedCloudFixture` writes `item.amountPerPackage ?? null`, and `seedLocalFixture` omits the
+key when the field is `undefined` (`Item.amountPerPackage` is optional in Dexie, so an
+explicit `undefined` is not the same as an absent key).
+
+**Set it whenever a spec asserts a packed total.** `getPackedTotal`
+(`apps/web/src/lib/quantityUtils.ts`) returns the plain sum `packedQuantity +
+unpackedQuantity` when `amountPerPackage` is unset or 0, and `packedQuantity +
+unpackedQuantity / amountPerPackage` when it is set. **So a fixture that omits it cannot
+tell the conversion from the plain sum, and a test of the conversion passes against code
+that does not convert.** A non-zero `unpackedQuantity` is needed too, for the same reason.
+
+`e2e/tests/location-scoped-writes.spec.ts` is the only spec using it today. It needed a
+**second** fixture, `PACKED_FIXTURE`, rather than an edit to the shared `FIXTURE`: `FIXTURE`
+has no `amountPerPackage` and `unpackedQuantity: 0` at both locations, and editing it would
+have changed the numbers the file's other tests assert.
+
+The field is **global item configuration**, so `ItemStockInput` has no place for it. It has
+to be written with the item.
+
+**Known gap: no local fixture sets it yet**, so `seedLocalFixture`'s pass-through has no
+test. The one spec that uses the field is cloud-only.
+
 ### Location order is assigned differently in the two modes — keep the default first
 
 | Helper | How it assigns `order` |

@@ -295,6 +295,66 @@ in the gate. That is exactly how three failing purge tests sat on `main` unnotic
 
 **Run the root `pnpm build`, not `(cd apps/web && pnpm build)`.** The root build is the *full* build — it runs `pnpm codegen` (regenerating GraphQL types from the current schema + operations, catching codegen drift) and type-checks **both** `apps/web` and `apps/server` via `tsc`. The web-only build skips codegen and the server, and `pnpm test` (vitest/esbuild), `pnpm check` (Biome), and `pnpm build-storybook` all skip a full type-check — so type-flow errors (e.g. `possibly null` from `.filter(Boolean)`) and codegen mismatches slip through every other check and only fail in the Cloudflare production build. The root `pnpm build` mirrors that production build and catches them locally.
 
+**No web test file is ever type-checked.** `apps/web/tsconfig.app.json:37` excludes
+`**/*.test.ts`, `**/*.test.tsx` and `**/*.stories.tsx`. So the root `pnpm build` type-checks
+source files only, and `pnpm test` runs through esbuild, which strips types without checking
+them. No command in the gate type-checks a test file.
+
+What this changes: "the argument is required, so `tsc` catches a call site that forgets it"
+is true for a source file and **false for a test file**. Cloud-parity PR A made `items`
+required on `useCheckout`'s `CheckoutArgs`. Three `useCheckout()` tests kept calling
+`mutate()` with no `items`, and the whole gate stayed green. Reading the test file is what
+found them.
+
+**So after adding a required field or argument, grep the test files for the call sites
+yourself.** `tsc` will not list them.
+
+**Nothing type-checks `e2e/` either.** The repo has seven tsconfigs —
+`apps/web/tsconfig.json`, `tsconfig.app.json`, `tsconfig.node.json`,
+`apps/server/tsconfig.json`, `tsconfig.scripts.json`, `apps/design/tsconfig.json` and
+`packages/types/tsconfig.json` — and not one includes `e2e/`. Playwright transpiles each spec
+without checking types, so a type error in a spec is reported nowhere. `pnpm lint` and
+`pnpm check` scan `apps/web` only, so nothing lints it either. That is why `e2e/CLAUDE.md`
+can record dozens of pre-existing type errors in `a11y.spec.ts` and three other files while
+every gate command passes — see its section *Nothing lints or type-checks `e2e/`*, and issue
+#322. **Take your own baseline before quoting any count from it.**
+
+**`pnpm codegen` is all-or-nothing, and its success line can mislead.** `codegen.ts` has one
+`generates` block with two outputs: `apps/server/src/generated/graphql.ts` (schema and
+resolver types) and `apps/web/src/generated/graphql.ts` (the same schema plus the documents in
+`apps/web/src/apollo/operations/*.graphql`). **If one web document fails to validate against
+the schema, NEITHER file is written.**
+
+Add a required argument to a server `.graphql` file while a web document still omits it, and
+the run prints this (measured during cloud-parity PR A task 1, and reproduced in a sandbox on
+2026-10-08):
+
+```
+✔ Generate to apps/server/src/generated/graphql.ts
+✖ Generate [FAILED: GraphQL Document Validation failed with 1 errors;
+  Error 0: Field "checkout" argument "items" of type "[CheckoutItemInput!]!" is required, but it was not provided.
+    at .../apps/web/src/apollo/operations/shopping.graphql:60:3]
+✔ Generate outputs
+  ✖ One or more errors occurred, no files were generated. To allow output on errors, set config.allowPartialOutputs=true
+```
+
+The `✔ Generate to apps/server/…` line prints **before** the failure and means nothing. In the
+sandbox run the output directory was empty afterwards. `graphql-codegen` exits **1**, so the
+gate does catch the failure — what misleads is the log, not the exit code.
+
+Check the output rather than the log:
+
+```bash
+grep -c CheckoutItemInput apps/server/src/generated/graphql.ts
+```
+
+**Planning consequence: a server schema change and the web documents that use it cannot be
+split into separate tasks or commits.** At the commit in between, codegen writes nothing. On
+your machine the previous generated files survive, so `tsc` silently compares your code
+against stale types. On a fresh checkout both files are missing — they are gitignored — so
+neither `apps/web` nor `apps/server` builds at all. Change the schema and its documents in one
+commit.
+
 **The gate regenerates the Prisma client** — since 2026-10-07. `apps/server`'s `build` and
 `typecheck` both start with `prisma generate`, so the root `pnpm build` catches a dangling
 Prisma field reference.
@@ -959,6 +1019,29 @@ dialog is visible *and* its radio pre-checked — not only the outcome.
 stocked here `targetQuantity: 0` and no entry in any `useItemSortData` map, so such rows
 **tie** under `stock` / `purchased` / `expiring` sorting (only `name` orders them) and all
 render `0/0`. Two assertions were vacuous for exactly this reason.
+
+**A per-file `vi.mock` factory REPLACES the one in `src/test/setup.ts`. It does not layer on
+it.** 29 test files under `apps/web/src` define their own
+`vi.mock('@/generated/graphql', …)`. Each returns a whole module object, so every key
+`setup.ts` set is gone unless that file sets it again. A guard added to a `setup.ts` stub can
+therefore look like a safeguard for the whole suite and be reached by no test that matters.
+
+Measured on 2026-10-08 on the `useCheckoutMutation` stub in `setup.ts`, by making it throw and
+running `pnpm test:web`:
+
+| What was made to throw | Result |
+|---|---|
+| the **hook** itself | **30 tests fail** in 3 files — `routes/shopping/$vendorId.test.tsx` (24), `routes/shopping/$vendorId.stories.test.tsx` (5), `routes/shopping/index.test.tsx` (1) |
+| the **mutate function it returns**, when called | **2289 passed / 249 files — fully green**, and the probe never fired |
+
+So the hook is reached, because those three pages cannot render without it. The function it
+hands back is called by **no test in the suite**. The tests that do run a cloud checkout live
+in `apps/web/src/hooks/useShoppingCart.test.ts`, and that file's own factory supplies its own
+`useCheckoutMutation`, so it never sees `setup.ts`'s stub.
+
+**Before trusting a stub in `setup.ts`, make it throw and run the suite.** A stub nothing
+reaches is not coverage. The two mutations above give opposite answers about the same stub, so
+which layer you break decides what you learn.
 
 **Why this is a rule here:** PR D shipped four tests that kept passing after the
 behaviour they nominally covered was deleted. A vacuous test is worse than no test — it
