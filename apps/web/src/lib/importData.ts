@@ -661,17 +661,30 @@ export interface ImportSession {
 // per-location state fields from it, so this mapper must not forward them —
 // they would be rejected by GraphQL validation, failing the whole mutation.
 //
-// THE RETURN TYPE ANNOTATION IS THE GUARD, and it is the only one. Nothing else
-// in the repo catches an extra key here: `tsc` does not excess-property-check a
-// function RESULT assigned to a typed parameter, every test mocks the Apollo
-// client rather than validating against the schema, and the cloud E2E import
-// spec would be the first thing to see it — after the whole mutation failed.
-// Measured during PR 5 task 4: with the five put back and no annotation, the
-// root `pnpm build` passed and all 2283 web tests passed. With the annotation
-// the build fails with
+// THE RETURN TYPE ANNOTATION IS THE GUARD AGAINST AN EXTRA KEY, and it is the
+// only one. Nothing else in the repo catches an extra key here: `tsc` does not
+// excess-property-check a function RESULT assigned to a typed parameter, every
+// test mocks the Apollo client rather than validating against the schema, and
+// the cloud E2E import spec would be the first thing to see it — after the
+// whole mutation failed. Measured during PR 5 task 4: with the five put back
+// and no annotation, the root `pnpm build` passed and all 2283 web tests
+// passed. With the annotation the build fails with
 //   TS2561: Object literal may only specify known properties, but
 //   'targetQuantity' does not exist in type 'ItemInputShape'.
 // Do not remove it, and do not widen it to `Record<string, unknown>`.
+//
+// WHAT IT DOES NOT CATCH: an OPTIONAL key going missing. `ItemInputShape` is a
+// mapped type over `keyof ItemInput`, and a mapped type keeps an optional key
+// optional, so dropping one is still a valid value of the type. Measured
+// 2026-10-08 (issue #335): with the `note` line below deleted,
+// `npx tsc -p tsconfig.app.json --noEmit` exits **0 with zero errors**. The
+// annotation catches an extra key and a missing REQUIRED key. For `wikidataUrl`
+// and `note` — both optional on `ItemInput` — UNIT TESTS ARE THE ONLY GUARD:
+// `user can restore a cloud backup that keeps an item's note and wikidata URL`
+// and `toItemInput leaves note and wikidataUrl undefined when the backup has
+// neither`, in importData.test.ts. The same mutation turns both of those RED.
+// Issue #335 and the #332 PR description both say this annotation means a key
+// cannot silently go missing. For an optional key that is wrong.
 //
 // Dropping them loses nothing. A pre-v15 payload carries the five inline on its
 // items, and `upgradeLegacyPayloadForCloud` has already turned them into real
@@ -683,8 +696,9 @@ export interface ImportSession {
 // `exactOptionalPropertyTypes: true` is on, and codegen types an optional input
 // field as `T | null` with no `| undefined`, so the plain type rejects the
 // `undefined`s this mapper emits for an absent optional (TS2375). The mapped
-// type keeps the KEY SET exact — which is what catches an extra field — and
-// allows `undefined` as a value.
+// type allows `undefined` as a value while still rejecting a key that
+// `ItemInput` does not declare — which is the half that catches an extra
+// field. It does NOT make the key set exact in the other direction; see above.
 type ItemInputShape = { [K in keyof ItemInput]: ItemInput[K] | undefined }
 
 export function toItemInput(item: Record<string, unknown>): ItemInputShape {

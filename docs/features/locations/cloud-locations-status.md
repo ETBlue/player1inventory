@@ -1139,6 +1139,14 @@ than `ItemInput` itself, because `exactOptionalPropertyTypes` is on and codegen 
 optional input field as `T | null`). **That annotation is now the only guard.** The
 measurement sits in a comment above it so nobody removes it as noise.
 
+**Scope correction, added 2026-10-08 (cloud-parity PR B, issue #335).** That annotation
+guards against an **extra** key and against a missing **required** key. It does **not** catch
+an **optional** key going missing: `ItemInputShape` is a mapped type over `keyof ItemInput`,
+and a mapped type keeps an optional key optional. Measured — with the `note` line deleted from
+`toItemInput`, `npx tsc -p tsconfig.app.json --noEmit` exits **0 with zero errors**. For an
+optional field, unit tests are the only guard. See
+`docs/global/cloud-parity/2026-10-08-parity-followup-design.md`, PR B's *What was built*.
+
 The other half of that check is good news: **codegen DOES validate documents against the
 schema.** Leaving all eight web documents stale gave **40 validation errors** and generated
 nothing — `Cannot query field "targetQuantity" on type "Item". Did you mean "targetUnit"?`
