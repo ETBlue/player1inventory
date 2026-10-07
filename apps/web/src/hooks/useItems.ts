@@ -954,8 +954,9 @@ export function useUpdateItem() {
     // `useStockedItems` (`['items', 'stocked', {locationId}]`).
     // `['itemStocks']` is a separate family and must be awaited alongside:
     // stock fields are written to an ItemStock row, which the raw-stock
-    // readers (`useItemStock` / `useItemStocks`, behind the Stock pager)
-    // read back.
+    // reader `useItemStocks`, behind the Stock pager, reads back. (It named
+    // `useItemStock` too until that hook was deleted on 2026-10-07 — it had no
+    // caller; see hooks/useItemStocks.ts.)
     onSuccess: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: ['items'] }),
