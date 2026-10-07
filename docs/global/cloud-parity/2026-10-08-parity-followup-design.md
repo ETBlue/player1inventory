@@ -1,7 +1,7 @@
 # Design — resolving the four cloud-parity findings (#333–#336)
 
 **Date:** 2026-10-08
-**Status:** 🔄 In Progress — PR A in build
+**Status:** 🔄 In Progress — PR A ✅ built, PR B ✅ built, PR C 🔲 pending
 **Brainstorming:** `2026-10-08-brainstorming-parity-followup.md` (same folder)
 **Base:** `main` at `d63bd81f` (the #338 merge)
 
@@ -21,7 +21,7 @@ Follows #332 and #338. Three PRs, in this order:
 | PR | Issue | Why this position |
 |---|---|---|
 | A | #336 | Self-contained. No migration, so nothing downstream depends on it. **✅ built 2026-10-08** |
-| B | #335 | Adds a migration |
+| B | #335 | Adds a migration. **✅ built 2026-10-08** |
 | C | #334 + #333 | #333 replays every committed migration, so it proves B's migration too |
 
 #333 must not run before B. `verify:migration` opens with `migrate reset`, replays the whole
@@ -33,7 +33,7 @@ migrations and one cloud E2E run covers both PRs.
 | PR | What changes for the user |
 |---|---|
 | A | The inventory log shows the same number in both modes. Today a cloud checkout of an item with `amountPerPackage` set logs a higher number than the same checkout in local mode. **It also breaks checkout for cloud clients that have not updated — see the warning below.** |
-| B | A cloud user can save a note or a Wikidata URL on an item's Info tab. Today that save fails. |
+| B | A cloud user can save a note or a Wikidata URL on an item's Info tab, **and clear one again**. Before B the save failed outright. **Built 2026-10-08, not yet deployed** — the user gets nothing until it is. |
 | C | Nothing. Tests and one safety guard. |
 
 ### 4. What the developer gets (DX)
@@ -319,9 +319,14 @@ value recorded months ago. The bound is recorded here and on #336.
 
 ## PR B — #335, `note` and `wikidataUrl` on the cloud side
 
+**Status: ✅ built on 2026-10-08**, branch `feature/cloud-item-note-wikidata`, six commits.
+The *Scope* list below is the design as written; *What was built* records where the result
+differs from it, and *What the issue and the plan got wrong* records five claims that were
+wrong.
+
 Both fields exist in `packages/types`, in `ItemForm`, and in the local Dexie `Item`. Neither
-exists in `schema.prisma` or in `item.graphql`. So the client sends a field the schema does
-not declare and GraphQL rejects the whole mutation — a cloud user typing a note gets a failed
+existed in `schema.prisma` or in `item.graphql`. So the client sent a field the schema does
+not declare and GraphQL rejected the whole mutation — a cloud user typing a note got a failed
 save.
 
 Scope:
@@ -330,20 +335,131 @@ Scope:
    nullable, so it is additive and needs no backfill.
 2. Both added to the GraphQL `Item`, `CreateItemInput` and `UpdateItemInput`.
 3. Both added to `ItemInput` in `import.graphql` and to `toItemInput`
-   (`apps/web/src/lib/importData.ts`), or a cloud backup loses them. `toItemInput` has a
-   return-type guard from #332 that fails the build if a key is not declared, so the two
-   halves cannot drift apart silently.
+   (`apps/web/src/lib/importData.ts`), or a cloud backup loses them.
 4. Both added to every selection set that lists `Item`'s fields. **Measure the count rather
-   than trusting a number.** #335 says eight; counting `amountPerPackage` as the marker gives
-   `items.graphql` 3, `itemStocks.graphql` 2, `import.graphql` 2. The pairs in
-   `items.graphql` and `itemStocks.graphql` carry comments promising they stay in step with a
-   sibling, so both halves of each pair move together.
+   than trusting a number.**
 5. `createItem` and `buildItemUpdateData` must actually persist them.
 6. Remove the `test.skip` at `e2e/tests/item-management.spec.ts:125` and confirm
    `user can persist note and wikidata URL on the Info tab` passes in `cloud`.
 
 **No deploy window.** Adding a field to a type is safe for an old bundle, unlike removing
 one. This is the opposite direction from #332's hazard, and the opposite of PR A's.
+
+### What was built
+
+| Commit | What it did |
+|---|---|
+| `44b3572d` | `note String?` and `wikidataUrl String?` on the Prisma `Item`; migration `20261008000000_add_item_note_and_wikidata_url` (two nullable `ADD COLUMN`, no backfill, no `RAISE EXCEPTION` guard); both fields on the GraphQL `Item`, `CreateItemInput`, `UpdateItemInput` and `ItemInput`; `createItem` and `buildItemUpdateData` persist them |
+| `ca80f67c` | `verify-migration.ts` assertions — four per field |
+| `8a147c8b` | both fields added to the `GetItem`, `GetItems`, `UpdateItem`, `PantryData` and `ApplyUnitSwitch` selection sets, and to `toItemInput` |
+| `b6d4f364` | **a second bug, found and fixed** — `toUpdateItemInput` had no `?? null` guard for these two fields, so a saved value could never be cleared. Plus two unit tests |
+| `63f3b919` | an unrelated flaky test fixed — the `OfflineBanner` sync time |
+| `eed5f19a` | the `test.skip` removed from `e2e/tests/item-management.spec.ts`, plus a new test `user can clear a saved note and wikidata URL` |
+
+Counts measured on the finished branch: server **359** tests / 25 files, web **2297** / 249
+files, `scripts/spec` **70**. `item-management.spec.ts` in the `cloud` project went from
+**10 passed / 1 skipped** to **12 passed / 0 skipped**.
+
+### Two resolver decisions that differ from each other on purpose
+
+Both live in `apps/server/src/resolvers/item.resolver.ts`, and getting either one backwards
+reintroduces a bug.
+
+| Function | What it does with the input | Why |
+|---|---|---|
+| `createItem` | uses the file's `strOr` helper, so an absent or null input becomes `undefined`, which Prisma writes as `NULL` | On a create there is no stored value to keep. `NULL` is what "no note" means, and it matches local mode, which stores that by leaving the optional field off the Dexie row. **Never `''`** — that would mean "the user typed a note and cleared it", a different fact |
+| `buildItemUpdateData` | passes the value through **raw**, so an explicit `null` clears the column | `strOr` here would map `null` to `undefined`, which the function reads as "leave it alone", and a saved note could never be removed |
+
+### Three selection sets were left without the fields on purpose
+
+Eight web operations list `Item`'s configuration fields. Five got the two new fields; three
+did not, and each `.graphql` file carries the reason:
+
+| Operation | File | Decision |
+|---|---|---|
+| `GetItem` | `items.graphql` | **added** — this is what the Info tab reads back after a save |
+| `GetItems` | `items.graphql` | **added** |
+| `UpdateItem` | `items.graphql` | **added** — the save's own response |
+| `PantryData` → `items` | `itemStocks.graphql` | **added** — its comment promises the set stays identical to `GetItems`, so both agree in the normalized cache |
+| `ApplyUnitSwitch` | `itemStocks.graphql` | **added** — its comment promises the set matches `UpdateItem`'s, same reason |
+| `CreateItem` | `items.graphql` | **not added.** `toCreateItemInput` never sends them, because no create call site supplies them — the two fields are only ever typed on the Info tab of an item that already exists. The response could only carry `null` for both, and the dialog then navigates to the Info tab, whose `GetItem` runs on `cache-and-network` and reads them anyway |
+| `BulkCreateItems` | `import.graphql` | **not added.** What the import sends UP is `ItemInput`, which does carry both. What comes BACK is thrown away: both item calls in `lib/importData.ts` end `.then(() => undefined)`, and all three import strategies finish with `await client.resetStore()`, which empties the cache. Adding the fields would put two more strings per imported item on the wire for nothing. `expirationMode` is absent from this set for the same reason |
+| `BulkUpsertItems` | `import.graphql` | **not added**, same reason as `BulkCreateItems` |
+
+### What the issue and the plan got wrong
+
+**1. The plan's table of 8 selection sets was wrong in two rows.** The plan used
+`amountPerPackage` as the marker for "this operation lists `Item`'s configuration fields" and
+got 8 matches. The real set is also 8, but a different 8.
+
+| The plan said | The truth |
+|---|---|
+| `shopping.graphql` → `RemoveFromCart` | **`RemoveFromCart` has no `Item` selection set at all.** It is `mutation RemoveFromCart($id: ID!) { removeFromCart(id: $id) }` and returns `Boolean`. The `amountPerPackage` match at `shopping.graphql:60` is inside a **comment**, which PR A added about `CheckoutItemInput` (commit `1a28bc4b`) |
+| `items.graphql` → `GetItems`, `GetItem`, `UpdateItem` | the file also carries `CreateItem`, which lists `Item` configuration fields but **not** `amountPerPackage`, so the marker missed it |
+
+`amountPerPackage` was a bad marker: it is absent from one operation that qualifies and present
+in one comment that does not. A grep for a field name finds comments as well as code.
+
+**2. `toItemInput`'s return-type guard does not do what #335 and the #332 PR description say
+it does.** Both say the guard added in #332 means a key cannot silently go missing. **That is
+false for an optional key.** Measured on this branch: with the `note` line deleted from
+`toItemInput`, `npx tsc -p tsconfig.app.json --noEmit` exits **0 with zero errors**.
+
+`ItemInputShape` is `{ [K in keyof ItemInput]: ItemInput[K] | undefined }`, and a mapped type
+keeps an optional key optional. `note` and `wikidataUrl` are both optional on `ItemInput`, so
+dropping either is still a valid value of the type.
+
+| The guard catches | The guard does not catch |
+|---|---|
+| an **extra** key `ItemInput` does not declare | an **optional** key going missing |
+| a missing **required** key | — |
+
+**For an optional field, unit tests are the only guard.** The same mutation turns two of them
+red — `user can restore a cloud backup that keeps an item's note and wikidata URL` and
+`toItemInput leaves note and wikidataUrl undefined when the backup has neither`, both in
+`apps/web/src/lib/importData.test.ts`. The correction is now written in the comment above
+`ItemInputShape` and in `docs/features/locations/cloud-locations-status.md`.
+
+**3. The issue's acceptance criterion was not sufficient.** #335 said removing the `test.skip`
+**is** the acceptance criterion. The un-skipped test — `user can persist note and wikidata URL
+on the Info tab` — fills both fields and reads them back, so it passes against the clearing bug
+`b6d4f364` fixed. Measured in the `cloud` project with the two `?? null` guards removed:
+**1 failed, 11 passed** — the new clearing test red, the filling test **green**. A criterion
+that names a test is only as strong as what that test can fail on. The bug has its own record:
+`docs/features/items/2026-10-08-bug-cloud-note-cannot-be-cleared.md`.
+
+**4. The migration count.** There were **12** migrations before this PR, so the new one is the
+**13th**. An earlier draft of the plan said 13 and 14th, because `ls apps/server/prisma/migrations | wc -l`
+counts `migration_lock.toml` as an entry. Count directories:
+`ls -d apps/server/prisma/migrations/*/ | wc -l`. The plan was corrected in `7fc41b1f` before
+task 1 ran, so nothing was built on the wrong number.
+
+**5. One prediction in a task brief was wrong about how skips are counted.** It expected
+removing the `test.skip` to change the `cloud` project's collected test count. It cannot:
+`test.skip(condition, reason)` inside a test body is a **runtime** skip, so Playwright has
+already collected the test and `--list` counts it either way. What moves is the runtime
+passed/skipped split. Recorded in `e2e/CLAUDE.md`.
+
+### `verify-migration.ts` — four assertions per field, and why the second one matters
+
+`ca80f67c` added them. They are **not** executed by any gate, and #333 in PR C is what will
+run them.
+
+| # | Assertion | What it catches |
+|---|---|---|
+| 1 | the column is present on `Item` | the migration did nothing |
+| 2 | the column is **absent** from `ItemStock` | the migration hit the **wrong table** |
+| 3 | `information_schema` reports `text` and `is_nullable = YES` | a `NOT NULL`, or the wrong type |
+| 4 | a row inserted with neither column set reads back `NULL`, not `''` | a `DEFAULT ''` on the column |
+
+**Half 2 is the one that is easy to skip and should not be.** `Item` and `ItemStock` share
+field names, which is exactly why #332's drop migration needed the same two halves in the
+other direction. A presence-only check on one table passes just as happily against a migration
+aimed at the other. Both of these fields are global item configuration, never per-location
+state, so `ItemStock` must not carry them.
+
+A fifth assertion writes both columns and reads the exact strings back, so assertion 4 cannot
+pass by the columns simply being unwritable.
 
 ---
 
@@ -412,3 +528,7 @@ re-run to confirm it still passes.
 | At most 19 existing cloud purchase logs may read high | Measured 2026-10-08. Deliberately not repaired — the exact set cannot be identified. See the section above |
 | #330 — `replace` silently does not overwrite | Stays open. PR C's spec 2 makes it reachable by a test |
 | How long PR A's required argument locks out a stale client | Unbounded, because `registerType: 'prompt'` waits for the user |
+| PR B's `verify-migration.ts` assertions have never been executed | Owed to #333, in PR C. Nothing in the gate runs that script |
+| PR B's migration is applied to the dev and E2E databases, not to production | Railway runs `prisma migrate deploy` as its release command, so it reaches production on merge. Not yet verified there |
+| No cloud E2E test covers `note` or `wikidataUrl` through the IMPORT path | `toItemInput` carries both and two unit tests guard it, but `settings/import-export-cloud.spec.ts` asserts neither field. Unit tests are the only guard for either one |
+| `CreateItem`, `BulkCreateItems` and `BulkUpsertItems` do not select the two fields | On purpose, with the reason in each `.graphql` file. A future call site that needs the value in the create response must add it |
