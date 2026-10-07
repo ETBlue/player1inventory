@@ -22,6 +22,12 @@ import { makeGql } from '../utils/cloud'
 // executed against SQL. `E2E_TEST_MODE=true` routes `prisma.ts` at
 // `TEST_DATABASE_URL` (a dedicated Neon branch), so these tests do.
 //
+// Since issue #336 it also covers ONE non-location behaviour of `checkout`:
+// the on-hand total the purchase log records. That number now arrives from the
+// client in the required `items` argument, and this file is the only place the
+// whole path runs against real SQL, so the assertion belongs here even though
+// it is not about location. It has its own fixture, `PACKED_FIXTURE`.
+//
 // ── WHY THE FIXTURE ALWAYS HAS TWO LOCATIONS ─────────────────────────────────
 //
 // THIS IS THE POINT OF THE FILE. With one location, "the cart's location",
@@ -77,6 +83,53 @@ const FIXTURE: Fixture = {
   recipes: [{ id: PANCAKES, name: 'Pancakes', items: [{ itemId: MILK, defaultAmount: 1 }] }],
 }
 
+// A SECOND fixture, used by exactly one test: the one that proves the purchase
+// log records the CONVERTED on-hand total (issue #336).
+//
+// FIXTURE above cannot prove it, and that is why this one exists rather than
+// FIXTURE being edited. `getPackedTotal`
+// (apps/web/src/lib/quantityUtils.ts) returns the plain sum
+// `packedQuantity + unpackedQuantity` whenever `amountPerPackage` is unset or
+// `unpackedQuantity` is 0 — and FIXTURE has no `amountPerPackage` and
+// `unpackedQuantity: 0` at both locations. So against FIXTURE the correct code
+// and the old buggy code give the SAME number, and a quantity assertion there
+// would pass either way. Editing FIXTURE instead would also have changed the
+// numbers the other three tests in this file assert on.
+//
+// ── WHY THESE EXACT NUMBERS ──
+//
+// `amountPerPackage` 6, 2 packed and 3 unpacked at OFFICE, buying 1. Three
+// different implementations give three DIFFERENT answers, so the test can tell
+// the right one from both wrong ones:
+//
+//   | What the code does                        | Logged quantity     |
+//   |-------------------------------------------|---------------------|
+//   | correct: getPackedTotal(pre) + delta      | 2 + 3/6 + 1 = 3.5   |
+//   | the old bug: packed + unpacked, raw, post | 3 + 3 = 6           |
+//   | delta folded into unpacked, then convert  | 2 + (3+1)/6 = 2.667 |
+//
+// The second row is MEASURED, not predicted: putting that line back in
+// `cart.resolver.ts` on 2026-10-08 failed this test with
+// `Expected: 3.5 / Received: 6`.
+//
+// HOME holds 9 packed and 1 unpacked, different from OFFICE's 2 and 3 on
+// purpose. Identical rows cannot tell "read the cart's location" from "read the
+// default location", the rule the whole file follows.
+const PACKED_FIXTURE: Fixture = {
+  locations: [
+    { key: 'HOME', name: 'My Home', isDefault: true },
+    { key: 'OFFICE', name: 'Office' },
+  ],
+  vendors: [],
+  items: [{ id: MILK, name: 'Milk', amountPerPackage: 6 }],
+  stocks: [
+    { itemId: MILK, location: 'HOME', targetQuantity: 10, refillThreshold: 1, packedQuantity: 9, unpackedQuantity: 1 },
+    { itemId: MILK, location: 'OFFICE', targetQuantity: 4, refillThreshold: 1, packedQuantity: 2, unpackedQuantity: 3 },
+  ],
+  shelves: [],
+  recipes: [],
+}
+
 type StockRow = {
   itemId: string
   locationId: string
@@ -106,8 +159,14 @@ const ITEM = `query ($id: ID!) { item(id: $id) { id targetUnit amountPerPackage 
 const ADD_TO_CART = `mutation ($cartId: ID!, $itemId: ID!, $quantity: Int!) {
   addToCart(cartId: $cartId, itemId: $itemId, quantity: $quantity) { id quantity }
 }`
-const CHECKOUT = `mutation ($cartId: ID!, $note: String) {
-  checkout(cartId: $cartId, note: $note) { id lastPurchasedAt }
+// `items` is REQUIRED (issue #336). It carries, per bought item, the on-hand
+// total in PACKAGE units that the CLIENT computed — see `CheckoutItemInput` in
+// apps/server/src/schema/cart.graphql for why the server cannot compute it.
+// Omitting it fails GraphQL validation with
+// `argument "items" of type "[CheckoutItemInput!]!" is required`, so every
+// caller below has to supply the number the web client would have sent.
+const CHECKOUT = `mutation ($cartId: ID!, $items: [CheckoutItemInput!]!, $note: String) {
+  checkout(cartId: $cartId, items: $items, note: $note) { id lastPurchasedAt }
 }`
 const CONSUME_RECIPES = `mutation ($input: ConsumeRecipesInput!) {
   consumeRecipes(input: $input) { allSucceeded itemResults { itemId success error } }
@@ -136,12 +195,20 @@ test.afterEach(async ({ request }) => {
   await cleanupCloudData(request)
 })
 
+/** Seed `fixture` and return the two real location ids it names. */
+async function seedFixture(
+  request: APIRequestContext,
+  fixture: Fixture,
+): Promise<{ home: string; office: string }> {
+  const locationIds = await seedCloudFixture(request, fixture)
+  return { home: locationIds.HOME, office: locationIds.OFFICE }
+}
+
 /** Seed FIXTURE and return the two real location ids. */
 async function seed(
   request: APIRequestContext,
 ): Promise<{ home: string; office: string }> {
-  const locationIds = await seedCloudFixture(request, FIXTURE)
-  return { home: locationIds.HOME, office: locationIds.OFFICE }
+  return seedFixture(request, FIXTURE)
 }
 
 test.describe('cloud location-scoped writes — checkout and cooking', () => {
@@ -162,7 +229,17 @@ test.describe('cloud location-scoped writes — checkout and cooking', () => {
     // vacuous rather than failing.
     expect(vendorCart.id).toBe(`${office}:no-vendor`)
     await gql(ADD_TO_CART, { cartId: vendorCart.id, itemId: MILK, quantity: 2 })
-    await gql(CHECKOUT, { cartId: vendorCart.id, note: 'bought at the office' })
+    // The total the web client would send: Milk has no `amountPerPackage` here,
+    // so `getPackedTotal({ packed: 5, unpacked: 0 })` is 5, plus the 2 bought.
+    // This fixture CANNOT prove the pack conversion — without an
+    // `amountPerPackage` the conversion and the plain sum give the same 7. The
+    // test that proves it is `user sees the converted on-hand total …` below,
+    // which seeds `PACKED_FIXTURE`.
+    await gql(CHECKOUT, {
+      cartId: vendorCart.id,
+      items: [{ itemId: MILK, quantity: 7 }],
+      note: 'bought at the office',
+    })
 
     // Then the inventory log is at the OFFICE
     const officeLogs = await gql<{ itemLogs: { delta: number; quantity: number; note: string | null }[] }>(
@@ -189,6 +266,81 @@ test.describe('cloud location-scoped writes — checkout and cooking', () => {
     )
     expect(stockAt(itemStocksForItem, office)?.packedQuantity).toBe(7)
     expect(stockAt(itemStocksForItem, home)?.packedQuantity).toBe(3)
+  })
+
+  test('user sees the converted on-hand total in the purchase log for an item sold in packs', async ({
+    request,
+  }) => {
+    // Given Milk sold in packs of 6, holding 2 packed and 3 unpacked at the
+    // Office (and a different 9 packed / 1 unpacked at My Home, the default)
+    const gql = makeGql(request)
+    const { home, office } = await seedFixture(request, PACKED_FIXTURE)
+    const { item } = await gql<{ item: { amountPerPackage: number | null } }>(ITEM, {
+      id: MILK,
+    })
+    // The fixture really did write the pack size. Without it this whole test is
+    // vacuous — `getPackedTotal` falls back to the plain sum, so the correct
+    // code and the old buggy code would both log 6 and the assertion below
+    // could not fail. A seed that silently dropped the field must not pass as
+    // coverage.
+    expect(item.amountPerPackage).toBe(6)
+
+    // When the user buys 1 Milk from the OFFICE cart, sending the total the web
+    // client computes: `getPackedTotal({ packed: 2, unpacked: 3,
+    // amountPerPackage: 6 }) + 1` = 2.5 + 1 = 3.5
+    // (apps/web/src/lib/checkoutQuantities.ts). The cart quantity is added
+    // AFTER the conversion, because it is already counted in packs.
+    const { vendorCart } = await gql<{ vendorCart: { id: string } }>(VENDOR_CART, {
+      locationId: office,
+    })
+    await gql(ADD_TO_CART, { cartId: vendorCart.id, itemId: MILK, quantity: 1 })
+    await gql(CHECKOUT, {
+      cartId: vendorCart.id,
+      items: [{ itemId: MILK, quantity: 3.5 }],
+      note: 'bought a pack at the office',
+    })
+
+    // Then the log records 3.5, the converted total — not 6, which is what the
+    // resolver wrote before issue #336 by adding the two stock columns raw
+    // (3 packed + 3 unpacked after the purchase). THIS IS THE ASSERTION THE FIX
+    // EXISTS FOR, and the only one in the repo that runs the whole path against
+    // real Postgres: every server unit test for `checkout` uses the
+    // hand-written Prisma fake in apps/server/src/test/.
+    const officeLogs = await gql<{
+      itemLogs: { delta: number; quantity: number; note: string | null }[]
+    }>(ITEM_LOGS, { itemId: MILK, locationId: office })
+    expect(officeLogs.itemLogs).toHaveLength(1)
+    expect(officeLogs.itemLogs[0].quantity).toBe(3.5)
+    // `delta` is still the server's own `ci.quantity` — only the converted
+    // total moved to the client, so a swap of the two fields fails here.
+    expect(officeLogs.itemLogs[0].delta).toBe(1)
+    expect(officeLogs.itemLogs[0].note).toBe('bought a pack at the office')
+
+    // And the DEFAULT location still has no log — the location assertion this
+    // file exists for, kept on the new test too.
+    const homeLogs = await gql<{ itemLogs: unknown[] }>(ITEM_LOGS, {
+      itemId: MILK,
+      locationId: home,
+    })
+    expect(homeLogs.itemLogs).toHaveLength(0)
+
+    // And the OFFICE stock row gained a whole pack while its unpacked
+    // remainder was left alone: 2 → 3 packed, 3 unpacked. `checkout` writes
+    // `packedQuantity: { increment: ci.quantity }` and touches nothing else, so
+    // a resolver that folded the purchase into `unpackedQuantity` fails here.
+    const { itemStocksForItem } = await gql<{ itemStocksForItem: StockRow[] }>(
+      STOCKS_FOR_ITEM,
+      { itemId: MILK },
+    )
+    expect(stockAt(itemStocksForItem, office)).toMatchObject({
+      packedQuantity: 3,
+      unpackedQuantity: 3,
+    })
+    // And My Home's row is untouched, at its own different numbers.
+    expect(stockAt(itemStocksForItem, home)).toMatchObject({
+      packedQuantity: 9,
+      unpackedQuantity: 1,
+    })
   })
 
   test('user can cook at a non-default location and the log lands there, not at the default', async ({

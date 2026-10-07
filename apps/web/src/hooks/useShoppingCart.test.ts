@@ -27,6 +27,13 @@ vi.mock('@/db/operations', async (importOriginal) => {
   }
 })
 
+// The `items` argument cloud `checkout` requires: each bought item's on-hand
+// total in PACKAGE units after the purchase, computed by the caller. Built by
+// `buildCheckoutLogQuantities` (src/lib/checkoutQuantities.ts), which owns the
+// formula and is unit-tested there. 3.5 is the value its documented fixture
+// produces — amountPerPackage 6, 2 packed, 3 unpacked, 1 bought.
+const CHECKOUT_ITEMS = [{ itemId: 'item-1', quantity: 3.5 }]
+
 const mockCloudCheckout = vi.fn().mockResolvedValue({
   data: { checkout: { id: 'cart-1', status: 'completed' } },
 })
@@ -223,10 +230,25 @@ describe('useCheckout (cloud mode)', () => {
     })
 
     await act(async () => {
-      await result.current.mutateAsync({ cartId: 'cart-123' })
+      await result.current.mutateAsync({
+        cartId: 'cart-123',
+        items: CHECKOUT_ITEMS,
+      })
     })
 
-    // Then the Apollo mutation must be called with GetItemsDocument in refetchQueries
+    // Then the computed per-item totals reach the server. Asserting the
+    // `items` VALUE, not just that the mutation fired: the hook dropping the
+    // argument leaves every refetchQueries assertion below green.
+    expect(mockCloudCheckout).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variables: expect.objectContaining({
+          cartId: 'cart-123',
+          items: CHECKOUT_ITEMS,
+        }),
+      }),
+    )
+
+    // And the Apollo mutation must be called with GetItemsDocument in refetchQueries
     // so that item packedQuantity values are refreshed after checkout
     expect(mockCloudCheckout).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -301,7 +323,13 @@ describe('useCheckout (local mode) — refetches lastPurchase for inactive queri
     })
 
     await act(async () => {
-      await result.current.mutateAsync({ cartId: 'cart-1' })
+      // `items` is required by `CheckoutArgs` even though the local branch
+      // ignores it — local `checkout` (src/db/operations.ts) computes the same
+      // number itself from the stock rows.
+      await result.current.mutateAsync({
+        cartId: 'cart-1',
+        items: CHECKOUT_ITEMS,
+      })
     })
 
     // Then: the lastPurchase queryFn must have been called (background refetch fired).
@@ -430,10 +458,18 @@ describe('useCheckout (cloud mode) — AllCartItems and AllCarts refetch strateg
     })
 
     await act(async () => {
-      await result.current.mutateAsync({ cartId: 'cart-123' })
+      await result.current.mutateAsync({
+        cartId: 'cart-123',
+        items: CHECKOUT_ITEMS,
+      })
     })
 
-    // Then the mutation call must include AllCartItems and AllCarts as DocumentNodes
+    // Then the computed per-item totals reach the server
+    expect(mockCloudCheckout.mock.calls[0][0].variables.items).toEqual(
+      CHECKOUT_ITEMS,
+    )
+
+    // And the mutation call must include AllCartItems and AllCarts as DocumentNodes
     expect(mockCloudCheckout).toHaveBeenCalled()
     const callArgs = mockCloudCheckout.mock.calls[0][0]
     const refetchQueries: unknown[] = callArgs?.refetchQueries ?? []

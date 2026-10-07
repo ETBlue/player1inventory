@@ -45,6 +45,7 @@ import { useScrollRestoration } from '@/hooks/useScrollRestoration'
 import { useShowStock } from '@/hooks/useShowStock'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
+import { buildCheckoutLogQuantities } from '@/lib/checkoutQuantities'
 import { filterItems, filterItemsByRecipes } from '@/lib/filterUtils'
 import { isInactiveHere, isStockedHere } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
@@ -311,6 +312,15 @@ function VendorCart() {
         : (item.vendorIds ?? []).includes(cartVendorId)
     })
     .reduce((sum, ci) => sum + ci.quantity, 0)
+
+  // What `checkout` writes into each inventory log's `quantity`: each bought
+  // item's on-hand total in PACKAGE units AFTER the purchase. The rule, the
+  // term order and the `ci.quantity > 0` filter all live in the helper, with
+  // unit tests in `lib/checkoutQuantities.test.ts`. Issue #336.
+  //
+  // `items` here is a `PantryItem`, so it carries the joined per-location
+  // stock AND the global `amountPerPackage` the helper needs.
+  const checkoutLogQuantities = buildCheckoutLogQuantities(cartItems, items)
 
   function handleToggleCart(item: PantryItem) {
     const ci = cartItemMap.get(item.id)
@@ -598,6 +608,7 @@ function VendorCart() {
                   try {
                     await checkout.mutateAsync({
                       cartId: cart.id,
+                      items: checkoutLogQuantities,
                       note,
                       logKey,
                       logParams,

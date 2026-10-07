@@ -50,6 +50,21 @@ export type FixtureItem = {
    * matching `createItem`. Set it only when the spec needs 'measurement'.
    */
   targetUnit?: 'package' | 'measurement'
+  /**
+   * How many measurement units one package holds. Omitting it leaves the field
+   * unset in both modes, which is what `createItem` writes for an item sold
+   * only in whole packs.
+   *
+   * SET IT WHEN A SPEC TESTS A PACKED TOTAL. `getPackedTotal`
+   * (apps/web/src/lib/quantityUtils.ts) returns `packedQuantity +
+   * unpackedQuantity` when this field is unset or 0, and `packedQuantity +
+   * unpackedQuantity / amountPerPackage` when it is set. So a fixture that
+   * omits it cannot tell the conversion from the plain sum, and any test of the
+   * conversion passes against code that does not convert. The field is global
+   * item configuration, so `ItemStockInput` has no place for it — it has to be
+   * written here, with the item.
+   */
+  amountPerPackage?: number
 }
 
 export type FixtureStock = {

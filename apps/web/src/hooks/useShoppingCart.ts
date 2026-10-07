@@ -251,6 +251,31 @@ export function useRemoveFromCart() {
   return localMutation
 }
 
+/**
+ * What `useCheckout` is called with.
+ *
+ * `items` is the on-hand total each inventory log row records, in PACKAGE
+ * units, computed by the CALLER. The cloud resolver cannot compute it:
+ * `amountPerPackage` is a global `Item` field and the resolver holds only the
+ * per-location `ItemStock` row. See the doc string on `CheckoutItemInput` in
+ * apps/server/src/schema/cart.graphql for the full reason and the formula.
+ *
+ * `useConsumeRecipes` already works this way, for the same reason.
+ *
+ * It is REQUIRED even though the LOCAL branch ignores it. Local mode computes
+ * the same number itself inside `checkout` (src/db/operations.ts) and never
+ * calls GraphQL. Making the field optional would let the one cloud call site
+ * drop it and fail at runtime with `BAD_USER_INPUT`; required means `tsc`
+ * catches that instead.
+ */
+interface CheckoutArgs {
+  cartId: string
+  items: { itemId: string; quantity: number }[]
+  note?: string
+  logKey?: string
+  logParams?: Record<string, string>
+}
+
 export function useCheckout() {
   const { mode } = useDataMode()
   const queryClient = useQueryClient()
@@ -259,16 +284,10 @@ export function useCheckout() {
   const client = useApolloClient()
 
   const localMutation = useMutation({
-    mutationFn: ({
-      cartId,
-      logKey,
-      logParams,
-    }: {
-      cartId: string
-      note?: string
-      logKey?: string
-      logParams?: Record<string, string>
-    }) =>
+    // `items` is destructured off nowhere here on purpose: local `checkout`
+    // reads the stock rows itself and computes the same total. Only the cloud
+    // branch has to be told.
+    mutationFn: ({ cartId, logKey, logParams }: CheckoutArgs) =>
       checkout(cartId, {
         ...(logKey ? { logKey } : {}),
         ...(logParams ? { logParams } : {}),
@@ -286,22 +305,16 @@ export function useCheckout() {
   if (mode === 'cloud') {
     return {
       mutate: (
-        {
-          cartId,
-          note,
-          logKey,
-          logParams,
-        }: {
-          cartId: string
-          note?: string
-          logKey?: string
-          logParams?: Record<string, string>
-        },
+        { cartId, items, note, logKey, logParams }: CheckoutArgs,
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
         cloudCheckout({
           variables: {
             cartId,
+            // Spread unconditionally, unlike the three optional fields below:
+            // `items` is non-null in the schema, and an empty list is a real
+            // (if pointless) checkout, not a missing argument.
+            items,
             ...(note ? { note } : {}),
             ...(logKey ? { logKey } : {}),
             ...(logParams ? { logParams } : {}),
@@ -336,18 +349,18 @@ export function useCheckout() {
         ),
       mutateAsync: async ({
         cartId,
+        items,
         note,
         logKey,
         logParams,
-      }: {
-        cartId: string
-        note?: string
-        logKey?: string
-        logParams?: Record<string, string>
-      }) => {
+      }: CheckoutArgs) => {
         const r = await cloudCheckout({
           variables: {
             cartId,
+            // Spread unconditionally, unlike the three optional fields below:
+            // `items` is non-null in the schema, and an empty list is a real
+            // (if pointless) checkout, not a missing argument.
+            items,
             ...(note ? { note } : {}),
             ...(logKey ? { logKey } : {}),
             ...(logParams ? { logParams } : {}),

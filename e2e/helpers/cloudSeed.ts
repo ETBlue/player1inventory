@@ -147,6 +147,12 @@ export async function seedCloudFixture(
         // two values for an omitted key, so both modes match.
         targetUnit: item.targetUnit ?? 'package',
         consumeAmount: item.consumeAmount ?? 1,
+        // Also global configuration, and nullable in `ItemInput`. An omitted
+        // key sends `null`, which is what an item sold only in whole packs
+        // holds. `seedLocalFixture` leaves the Dexie field unset for the same
+        // input, and `getPackedTotal` treats unset and null the same way, so
+        // both modes seed the same item.
+        amountPerPackage: item.amountPerPackage ?? null,
         createdAt: now,
         updatedAt: now,
       })),

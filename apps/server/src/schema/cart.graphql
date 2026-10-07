@@ -18,6 +18,47 @@ type CartItem {
   quantity: Int!
 }
 
+"""
+One bought item, with the on-hand total the CLIENT computed for its log row.
+
+── WHY THE CLIENT OWNS THIS NUMBER ──
+
+The log's `quantity` is the item's on-hand total in PACKAGE units after the
+purchase. Turning the unpacked remainder into a fraction of a pack needs
+`amountPerPackage`, which is a global field on `Item`, not on `ItemStock`. The
+resolver holds only the `ItemStock` row that `writeStock` returned, so it
+cannot do the conversion.
+
+It used to add the two columns raw — `stock.packedQuantity +
+stock.unpackedQuantity` — while local mode ran `getPackedTotal(...)` instead
+(apps/web/src/lib/quantityUtils.ts). The two answers differ whenever an item
+has an `amountPerPackage` AND a non-zero `unpackedQuantity`: with
+`amountPerPackage` 6, 2 packed and 3 unpacked, local logs 2.5 and cloud logged
+5. That is issue #336.
+
+`consumeRecipes` set this precedent: `ConsumeRecipesItemInput` already carries
+a client-computed `quantity` for the same reason (src/schema/recipe.graphql).
+
+── WHAT `quantity` MUST BE ──
+
+The POST-purchase total, already converted:
+
+    getPackedTotal({ packedQuantity, unpackedQuantity, amountPerPackage })
+      + cartItem.quantity
+
+Read `packedQuantity` and `unpackedQuantity` from the PRE-purchase stock row.
+The cart quantity is added AFTER the conversion, because the cart quantity is
+already counted in packs and must not be divided by `amountPerPackage`.
+
+Send one entry for every cart item with `quantity > 0` — the same rule the
+resolver's `buyingItems` filter uses. A bought item with no entry here fails
+the whole checkout with `BAD_USER_INPUT`; there is no fallback.
+"""
+input CheckoutItemInput {
+  itemId: ID!
+  quantity: Float!
+}
+
 extend type Query {
   """
   The permanent cart for one vendor at one location, created if it is missing.
@@ -77,8 +118,18 @@ extend type Mutation {
   Task 3 — is the location the stock move and the inventory log are written to.
   Both used to go to the caller's DEFAULT location, so a checkout made while
   viewing the Garage credited the Kitchen.
+
+  `items` carries the on-hand total each log row records, computed by the
+  client. It is REQUIRED and has no fallback — see `CheckoutItemInput` above
+  for why the client owns that number, and what breaks for an old client.
   """
-  checkout(cartId: ID!, note: String, logKey: String, logParams: JSON): Cart!
+  checkout(
+    cartId: ID!
+    items: [CheckoutItemInput!]!
+    note: String
+    logKey: String
+    logParams: JSON
+  ): Cart!
 
   "Empty one cart, pinned items included. The cart id names the location."
   abandonCart(cartId: ID!): Cart!
