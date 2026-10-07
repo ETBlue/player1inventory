@@ -267,9 +267,11 @@ function touchesStock(updates: Partial<Item> & Partial<StockFields>): boolean {
 // the return type buys nothing here, so the type stays `UpdateItemInput` and
 // the `as` below stays — unlike the one `toCreateItemInput` used to carry, this
 // one hides nothing, because there is no literal for it to suppress a check on.
-// If a sixth per-location field is ever added to `StockFields` without being
-// added to `STOCK_FIELD_KEYS`, nothing here or in the gate catches the leak.
-// See *Known gaps* in
+// A sixth per-location field added to `StockFields` and NOT added to
+// `STOCK_FIELD_KEYS` used to leak through here silently. It no longer can:
+// `STOCK_FIELD_KEYS` is an `as const satisfies` tuple with a type-level
+// exhaustiveness check beside it, so `tsc` fails and names the missing key.
+// That closes the *Known gaps* entry in
 // `docs/features/locations/2026-10-04-cloud-locations-plan-pr5.md`.
 //
 // The deletion is a DENY-list on purpose, not an allow-list of
@@ -952,8 +954,9 @@ export function useUpdateItem() {
     // `useStockedItems` (`['items', 'stocked', {locationId}]`).
     // `['itemStocks']` is a separate family and must be awaited alongside:
     // stock fields are written to an ItemStock row, which the raw-stock
-    // readers (`useItemStock` / `useItemStocks`, behind the Stock pager)
-    // read back.
+    // reader `useItemStocks`, behind the Stock pager, reads back. (It named
+    // `useItemStock` too until that hook was deleted on 2026-10-07 — it had no
+    // caller; see hooks/useItemStocks.ts.)
     onSuccess: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: ['items'] }),

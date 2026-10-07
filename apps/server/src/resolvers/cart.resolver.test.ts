@@ -827,6 +827,64 @@ describe('checkout writes the cart location\'s ItemStock', () => {
     })
   })
 
+  it('user can check out at a location the item is not stocked in and keep its stock settings', async () => {
+    // Given Milk is stocked ONLY in the Garage, with NON-ZERO stock settings,
+    // and is not stocked in the Kitchen at all.
+    //
+    // The non-zero values are what makes this test able to fail. With a source
+    // row at `targetQuantity: 0` — `makeStock`'s default — inheriting and
+    // zeroing give the same answer and the assertion cannot tell them apart.
+    const inheritedDue = new Date('2026-12-24T00:00:00.000Z')
+    stockFake.reset(stockFake.state.locations, [
+      makeStock({
+        id: 'st_other',
+        itemId: 'item_milk',
+        locationId: LOC_OTHER,
+        targetQuantity: 7,
+        refillThreshold: 3,
+        dueDate: inheritedDue,
+        packedQuantity: 40,
+      }),
+    ])
+    const buyItem = makeCartItem({ itemId: 'item_milk', quantity: 2 })
+    mockPrisma.cartItem.findMany.mockResolvedValue([buyItem])
+    mockPrisma.inventoryLog.create.mockResolvedValue({})
+    mockPrisma.cart.update.mockResolvedValue(makeCart({ lastPurchasedAt: now }))
+    mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 1 })
+
+    // When they buy 2 from the KITCHEN's cart
+    const result = await execOp(
+      `mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id } }`,
+      { cartId: `${LOC_DEFAULT}:no-vendor` },
+    )
+
+    // Then the Kitchen's new row INHERITED the Garage's stock settings and
+    // zeroed only the quantities, which the increment then raised to 2.
+    //
+    // `targetQuantity` is the load-bearing field: 0 there is what every reader
+    // treats as "not active at this location" (`isInactiveHere`,
+    // apps/web/src/lib/quantityUtils.ts), so a row opened at 0 would hold stock
+    // the user can never be prompted to buy again. Local `checkout` has always
+    // inherited here, through `addItemToLocation`; cloud did not until
+    // 2026-10-07.
+    expect(result?.errors).toBeUndefined()
+    expect(stockAt(LOC_DEFAULT)).toMatchObject({
+      targetQuantity: 7,
+      refillThreshold: 3,
+      dueDate: inheritedDue,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+    })
+
+    // And the Garage row it copied from is untouched — copy-on-add reads a
+    // source, it does not move it.
+    expect(stockAt(LOC_OTHER)).toMatchObject({
+      targetQuantity: 7,
+      refillThreshold: 3,
+      packedQuantity: 40,
+    })
+  })
+
   it('user checking out twice accumulates rather than overwriting', async () => {
     // Given a first checkout has already run against a row at 2
     seedStocks()

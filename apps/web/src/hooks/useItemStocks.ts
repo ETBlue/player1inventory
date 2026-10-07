@@ -1,36 +1,25 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
-import {
-  getItemStock,
-  getItemStocks,
-  getItemStocksByLocation,
-} from '@/db/operations'
+import { getItemStocks } from '@/db/operations'
 import { useItemStocksForItemQuery } from '@/generated/graphql'
 import { deserializeItemStock } from '@/lib/deserialization'
-import { useActiveLocation } from './useActiveLocation'
 import { useDataMode } from './useDataMode'
 
 // Per-(item × location) stock hooks — the RAW ItemStock rows, as opposed to the
 // joined stock that the pantry/shopping/cooking pages consume through
 // `useItems()` / `useItem()`.
 //
-// Only `useItemStocks` is dual-mode: it backs the Stock tab's all-locations
-// pager, which cloud gained in PR 2. `useItemStock` and
-// `useItemStocksForLocation` have no cloud caller today and stay Dexie-only;
-// the cloud reads they would need are `itemStocksForItem` filtered by location
-// and `itemStocks(locationId:)` respectively, both already in the schema.
-
-// The active-location ItemStock for an item (raw row; undefined if not stocked).
-// LOCAL ONLY — see above.
-export function useItemStock(itemId: string, locationId?: string) {
-  const { activeLocationId } = useActiveLocation()
-  const loc = locationId ?? activeLocationId
-  return useQuery({
-    queryKey: ['itemStocks', itemId, { locationId: loc }],
-    queryFn: () => getItemStock(itemId, loc),
-    enabled: !!itemId,
-  })
-}
+// `useItemStocks` is the only hook here, and it is dual-mode. It backs the Stock
+// tab's all-locations pager, which cloud gained in PR 2.
+//
+// Two Dexie-only siblings — `useItemStock(itemId, locationId?)` and
+// `useItemStocksForLocation(locationId?)` — were deleted on 2026-10-07. They had
+// no caller anywhere: no component, no test, no story. `hooks/index.ts` does
+// `export * from './useItemStocks'`, so both sat on the public barrel surface
+// while throwing in cloud mode, where they read Dexie regardless of mode. If
+// either is ever needed again, the cloud reads it would want are
+// `itemStocksForItem` filtered by location and `itemStocks(locationId:)` —
+// both already in the GraphQL schema.
 
 // All ItemStock rows for an item, across every location.
 //
@@ -88,15 +77,4 @@ export function useItemStocks(itemId: string) {
     isLoading: local.isPending ?? false,
     isError: local.isError,
   }
-}
-
-// All ItemStock rows stocked in a location (defaults to the active location).
-// LOCAL ONLY — see above.
-export function useItemStocksForLocation(locationId?: string) {
-  const { activeLocationId } = useActiveLocation()
-  const loc = locationId ?? activeLocationId
-  return useQuery({
-    queryKey: ['itemStocks', 'byLocation', { locationId: loc }],
-    queryFn: () => getItemStocksByLocation(loc),
-  })
 }

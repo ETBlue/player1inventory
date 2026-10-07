@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client'
 import { type LocationRole, requireLocationRole } from '../lib/authz.js'
 import { cartIdFor, parseCartId } from '../lib/cartId.js'
 import { prisma } from '../lib/prisma.js'
-import { writeStock } from '../lib/itemStockWrite.js'
+import { ensureStockAtLocation, writeStock } from '../lib/itemStockWrite.js'
 import { type Context, requireAuth } from '../context.js'
 import type { Cart, CartItem, Resolvers } from '../generated/graphql.js'
 
@@ -170,6 +170,26 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       const now = new Date()
 
       for (const ci of buyingItems) {
+        // Stock the item at the cart's location if it is not stocked there yet,
+        // the same copy-on-add local `checkout` has always run
+        // (apps/web/src/db/operations.ts). A no-op on the normal path, where
+        // the row already exists.
+        //
+        // Without it, `writeStock`'s `create` branch opened the row with
+        // `targetQuantity: 0` and `refillThreshold: 0` — and
+        // `targetQuantity === 0` is exactly what every reader treats as "not
+        // active at this location" (`isInactiveHere`,
+        // apps/web/src/lib/quantityUtils.ts). So the item arrived holding stock
+        // it could not be shopped for again. `ensureStockAtLocation` inherits
+        // those two and `dueDate` from a source row instead.
+        //
+        // **Not reachable from the UI today**, and fixed anyway: the cart page
+        // lists only items stocked at the location, and the item-search tail's
+        // third bucket offers "add to location", not "add to cart". This is the
+        // defensive path, and the two modes disagreeing on it is the thing
+        // being removed before households.
+        await ensureStockAtLocation(ci.itemId, cartLocationId, userId)
+
         // The cart location's own stock row, and since PR 5 the ONLY place the
         // purchase is recorded — `Item`'s five stock columns are gone, and with
         // them the `prisma.item.update` that used to run here first.
