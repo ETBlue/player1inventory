@@ -20,7 +20,7 @@ Follows #332 and #338. Three PRs, in this order:
 
 | PR | Issue | Why this position |
 |---|---|---|
-| A | #336 | Self-contained. No migration, so nothing downstream depends on it |
+| A | #336 | Self-contained. No migration, so nothing downstream depends on it. **✅ built 2026-10-08** |
 | B | #335 | Adds a migration |
 | C | #334 + #333 | #333 replays every committed migration, so it proves B's migration too |
 
@@ -84,6 +84,79 @@ device signed into cloud mode.
 ---
 
 ## PR A — #336, the checkout log quantity
+
+**Status: ✅ built on 2026-10-08**, branch `fix/checkout-log-quantity`, five commits. The
+sections below describe the design; *What was built* records where the result differs from it.
+
+### What was built
+
+| Commit | What it did |
+|---|---|
+| `e25a52f5` | this design doc, the brainstorming log and the PR A plan |
+| `1a28bc4b` | `checkout` gained a **required** `items: [CheckoutItemInput!]!`. The resolver resolves every total in a `.map` **before** its write loop, so a missing entry cannot leave half a checkout behind, and throws `GraphQLError` / `BAD_USER_INPUT` naming the `itemId`. No raw-sum fallback |
+| `946040dd` | the client rule moved into `apps/web/src/lib/checkoutQuantities.ts` (`buildCheckoutLogQuantities`), with 6 unit tests |
+| `5ebf2908` | `useCheckout` is asserted to forward the computed `items` |
+| `58854dcd` | `e2e/tests/location-scoped-writes.spec.ts` gained a real-SQL assertion on the logged quantity, and its broken `CHECKOUT` constant was repaired. `e2e/helpers/fixture.ts`'s `FixtureItem` gained `amountPerPackage`, threaded through `cloudSeed.ts` and `localSeed.ts` |
+
+Counts measured after the last commit: server **351** tests / 25 files, web **2289** / 249
+files, and `pnpm test:e2e --project=cloud e2e/tests/location-scoped-writes.spec.ts` gives
+**5 passed**.
+
+**One thing landed differently from the plan.** The plan put the list-building code at the one
+call site in `apps/web/src/routes/shopping/$vendorId.tsx`. It ended up in its own module,
+`apps/web/src/lib/checkoutQuantities.ts`, because the term order needs unit tests of its own
+and a route component is a poor place to test arithmetic. The call site is now one line
+(`$vendorId.tsx:323`).
+
+**Deploy:** the required argument breaks cloud checkout in both deploy orders until each user
+accepts the PWA update prompt. There is a runbook for the day:
+[`docs/global/backend/2026-10-08-deploy-runbook-checkout-items-arg.md`](../backend/2026-10-08-deploy-runbook-checkout-items-arg.md).
+
+### Three things the issue and this plan got wrong
+
+The first two are written up in full in the brainstorming log, section *Two things the issue
+text got wrong*. They are listed here only so a reader of this document knows they exist.
+
+| # | What was wrong | Where the full version is |
+|---|---|---|
+| 1 | #336 sketched a scalar `finalQuantity` argument. It cannot work: `checkout` writes **one log row per cart item**, so one scalar cannot carry N numbers. A per-item list was needed | brainstorming log, item 1 |
+| 2 | #336 said `packages/types` holds types only. It already exports runtime code — `cartIdFor`, `parseCartId`, `DEFAULT_PACKAGE_UNIT`, `DEFAULT_LOCATION_ID` | brainstorming log, item 2 |
+| 3 | **The server schema and the web documents cannot be split into separate tasks or commits.** Found during task 1 | below |
+
+**On #3.** `codegen.ts` has one `generates` block with two outputs, and if a web document
+fails to validate against the schema, **neither** output is written. Adding the required
+argument to `cart.graphql` while `shopping.graphql` still omitted it failed codegen with:
+
+```
+Error 0: Field "checkout" argument "items" of type "[CheckoutItemInput!]!" is required, but it was not provided.
+    at .../apps/web/src/apollo/operations/shopping.graphql:60:3
+```
+
+The log still printed `✔ Generate to apps/server/src/generated/graphql.ts` before the failure,
+which reads like a success and is not one. So the server half could not be built or
+type-checked on its own at that commit. Recorded in root `CLAUDE.md`'s *Verification Gate*
+section, with the way to check (`grep -c CheckoutItemInput
+apps/server/src/generated/graphql.ts`).
+
+### A correction to this plan's own worked example
+
+The plan listed three candidate answers for the fixture `amountPerPackage` 6, 2 packed, 3
+unpacked, buying 1, and called the third "the delta added before converting = 2.667".
+
+**That wording is not accurate, and it matters because it names a wrong implementation the
+test is supposed to rule out.** 2.667 only comes out if the delta is folded into
+`unpackedQuantity` before the conversion: `2 + (3+1)/6 = 2.667`. Adding it to
+`packedQuantity` and then converting gives `(2+1) + 3/6 = 3.5` — the **same** answer as the
+correct implementation, so the fixture cannot tell those two apart.
+
+**The fixture is still sound.** The two implementations that matter here differ: the correct
+one gives **3.5** and the shipped bug gave **6**. The 6 is measured, not predicted — putting
+`stock.packedQuantity + stock.unpackedQuantity` back in `cart.resolver.ts` on 2026-10-08
+failed the E2E test with `Expected: 3.5 / Received: 6`.
+
+The accurate version of the table is written where it is needed, in a comment in
+`e2e/tests/location-scoped-writes.spec.ts` (and again in
+`apps/web/src/lib/checkoutQuantities.test.ts`).
 
 ### The disagreement
 
@@ -174,6 +247,10 @@ checkout fails and the user retries after the refetch. One account per user toda
 rare. Recorded as a known gap rather than solved.
 
 ### Client
+
+> **The line numbers in this table are from before the work and are now stale.** The rule
+> also moved into its own module — see *What was built* above. Re-check any position here
+> rather than trusting it.
 
 | File | Change |
 |---|---|
