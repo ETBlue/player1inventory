@@ -2,7 +2,7 @@
 // resolver test suite runs entirely against a hand-written Prisma fake and
 // cannot exercise SQL at all.
 //
-// Four migrations are under test, applied in order:
+// Five migrations are under test, applied in order:
 //   1. 20260830000000_add_location_and_item_stock      (PR 1)  — Location, ItemStock
 //   2. 20260916000000_add_location_to_log_and_cart     (PR 3a) — InventoryLog.locationId,
 //      Cart.locationId
@@ -10,7 +10,12 @@
 //      'no-vendor' cart, then re-keys Cart.id to `${locationId}:${vendorId}`
 //   4. 20261004000000_drop_item_stock_state_columns    (PR 5)  — drops Item's five
 //      stock state columns, whose home is now ItemStock
-// All four must be parked together. Each one references what the previous one
+//   5. 20261008000000_add_item_note_and_wikidata_url   (#335)  — adds Item.note and
+//      Item.wikidataUrl, both nullable
+// This count and the MIGRATIONS array below must agree. The comment said "Four"
+// for a while after entry 5 was added, so check the array rather than trusting
+// this line.
+// All five must be parked together. Each one references what the previous one
 // creates, so resetting with only some of them parked would fail at reset time.
 // Migration 4 depends on 1 in the other direction too: it destroys the data
 // that 1's backfill reads, so parking 4 alone would reset to a database where
