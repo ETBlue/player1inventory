@@ -128,9 +128,13 @@ export async function addItemToLocation(
 //
 // Dexie only, as every function in this module is: the cloud path calls the
 // `removeItemFromLocation` MUTATION instead (`useRemoveItemFromLocation` picks
-// between the two). The cascade above has no cloud counterpart yet — that
-// resolver deletes the stock row alone, because cloud carts and inventory logs
-// gain a `locationId` in PR 3.
+// between the two). **The cascade above now matches in cloud** — the resolver
+// deletes the stock row, the item's logs at that location, and its entries in
+// that location's carts, in one `prisma.$transaction`
+// (apps/server/src/resolvers/itemStock.resolver.ts). This comment used to say
+// cloud "deletes the stock row alone, because cloud carts and inventory logs
+// gain a `locationId` in PR 3". PR 3a added those columns and PR 3c shipped the
+// cascade, so it had been false since 2026-09-21.
 export async function removeItemFromLocation(
   itemId: string,
   locationId: string = DEFAULT_LOCATION_ID,
