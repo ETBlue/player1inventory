@@ -7,6 +7,25 @@ Item detail pages use a tabbed layout. The toolbar order is **Info · Stock · R
 **1. Item Info (default tab, `/items/$id`, `Info` icon)** — everything global about the item
 
 - Identity: name + `wikidataUrl` + `note`
+  - **`wikidataUrl` and `note` work in cloud mode since 2026-10-08** (cloud-parity PR B, issue
+    #335) — saving **and** clearing. Before that date a cloud save of either one failed: the
+    cloud GraphQL `Item` type declared neither field, so the client sent a key the schema did
+    not know and GraphQL rejected the whole mutation. Both are now **nullable `TEXT` columns on
+    the cloud `Item`** (`note String?`, `wikidataUrl String?` in `schema.prisma`; migration
+    `20261008000000_add_item_note_and_wikidata_url`), and both are on the GraphQL `Item`,
+    `CreateItemInput`, `UpdateItemInput` and `ItemInput`.
+  - **Clearing is a separate path from filling, and it was separately broken.** It needs a
+    `?? null` guard in `toUpdateItemInput` (`hooks/useItems.ts`), exactly like the six other
+    clearable Info-tab fields: `buildInfoUpdates` sets the key to `undefined` when the user
+    empties the input, and Apollo's `JSON.stringify` drops an undefined-valued key, so without
+    the guard the server reads the field as absent and keeps the old text. Fixed the same day —
+    see `docs/features/items/2026-10-08-bug-cloud-note-cannot-be-cleared.md`. A test that fills
+    a field and reads it back cannot catch this; only a test that empties one can.
+  - **Both store `NULL` for "no value", never `''`.** `''` would mean "the user typed something
+    and then cleared it", which is a different fact. `createItem` on the server maps an absent
+    or null input to `undefined`, which Prisma writes as `NULL`; `buildItemUpdateData` passes
+    the value through raw so an explicit `null` clears the column. That matches local mode,
+    which stores "no note" by leaving the optional field off the Dexie row.
 - **Stock Settings** (global): Package Unit, Amount per Consume
 - **Advanced Stock Settings** (global): Track-in-measurement switch, Measurement Unit, Amount per Package, Calculate-Expiration-based-on, "Expires in (days)", "Warning in (days)"
 - All of it is one `ItemForm sections={['info']}`; Save persists identity **and** configuration via `buildInfoUpdates`, which routes to the `Item` — disabled when no changes made
@@ -72,6 +91,11 @@ The dialog used to hang off the **Stock** tab, where saving *one location's* `co
 - **Single location → no pager chrome at all** (no dots, no chevrons); `showPager = locations.length > 1` gates both the `LocationPager` and the `role="tabpanel"` wiring around the page
 
 *What Save writes in cloud:* `useUpdateItem({ id, updates, locationId })` splits the payload the way local mode does — configuration to `updateItem`, the five state fields to `upsertItemStock(itemId, locationId)`, **the location whose page is on screen**. The five fields are stripped from `updateItem` rather than sent to both — `toConfigInput` does it — and **since cloud locations PR 5 that strip is required for a new reason**. `UpdateItemInput` no longer declares the five, so sending them inline fails GraphQL validation outright and the save errors. Before PR 5 the reason was quieter and worse: `updateItem` had a server-side dual-write that targeted the caller's *default* location, so leaving them inline made a save in the Garage silently overwrite the Kitchen's row. The strip stays; only its failure mode changed, from silent corruption to a loud error.
+
+`toConfigInput`'s strip is a **deny-list** of the five stock keys, not an allow-list of
+`UpdateItemInput`'s own keys, and `wikidataUrl` and `note` are why. `ItemForm` submits both, so
+an allow-list that forgot them would drop them here with no error. Since 2026-10-08 (issue
+#335) they must reach the server — **do not start stripping them.**
 
 *What "Remove from location" destroys — and what it doesn't.* `removeItemFromLocation(itemId, locationId)` (`src/db/operations.ts`) deletes exactly the rows that only make sense alongside that `(item × location)` stock:
 - the `ItemStock` row for the pair,
