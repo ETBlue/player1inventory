@@ -183,7 +183,9 @@ describe('toUpdateItemInput', () => {
     // When converted to GraphQL input
     const result = toUpdateItemInput(input)
 
-    // Then the 7 optional clearable fields must be absent from the output
+    // Then the 9 optional clearable fields must be absent from the output
+    expect(result).not.toHaveProperty('wikidataUrl')
+    expect(result).not.toHaveProperty('note')
     expect(result).not.toHaveProperty('packageUnit')
     expect(result).not.toHaveProperty('measurementUnit')
     expect(result).not.toHaveProperty('amountPerPackage')
@@ -203,6 +205,44 @@ describe('toUpdateItemInput', () => {
 
     // Then packageUnit is present with value null
     expect(result).toHaveProperty('packageUnit', null)
+  })
+
+  // Issue #335. `buildInfoUpdates` (routes/items/$id/index.tsx) sets the key to
+  // `undefined` when the user empties the Info-tab field. Apollo DROPS an
+  // undefined-valued key from its JSON variables, so without a `?? null` guard
+  // the server reads the field as absent and keeps the old text. These two
+  // fields had no guard until #335, because until then the cloud `Item` type
+  // declared neither and every such save failed outright.
+  it('user can clear a saved note and wikidata URL in cloud mode', () => {
+    // Given an Info-tab save where the user emptied both fields
+    const input: Partial<Item> = {
+      name: 'Oat Milk',
+      wikidataUrl: undefined,
+      note: undefined,
+    }
+
+    // When converted to GraphQL input
+    const result = toUpdateItemInput(input)
+
+    // Then both are sent as null, which is the server's instruction to clear
+    // the column. `undefined` would be dropped and change nothing.
+    expect(result).toHaveProperty('wikidataUrl', null)
+    expect(result).toHaveProperty('note', null)
+  })
+
+  it('passes a filled note and wikidata URL straight through', () => {
+    // Given an Info-tab save with both fields filled
+    const input: Partial<Item> = {
+      wikidataUrl: 'https://www.wikidata.org/wiki/Q8495',
+      note: 'Buy the 1L carton.',
+    }
+
+    // When converted to GraphQL input
+    const result = toUpdateItemInput(input)
+
+    // Then the values reach the server unchanged
+    expect(result.wikidataUrl).toBe('https://www.wikidata.org/wiki/Q8495')
+    expect(result.note).toBe('Buy the 1L carton.')
   })
 
   it('serializes a full payload including all optional fields', () => {

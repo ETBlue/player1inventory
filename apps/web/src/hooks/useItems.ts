@@ -172,6 +172,17 @@ export function toUpdateItemInput(
     // rest may have written as undefined into explicit null, which the server reads as
     // an instruction to clear the field.
     ...rest,
+    // `wikidataUrl` and `note` need a guard of their own, exactly like the six
+    // below. `buildInfoUpdates` (routes/items/$id/index.tsx) sets the key to
+    // `undefined` when the user empties the field, Apollo's JSON variables
+    // DROP an undefined-valued key, and the server then reads the field as
+    // absent and leaves the old value in place. Without these two lines a
+    // saved note or URL cannot be removed in cloud mode. Added with issue
+    // #335, which is when the two fields first reached the cloud schema at
+    // all — before that every such save failed outright, so the gap was
+    // invisible.
+    ...('wikidataUrl' in rest && { wikidataUrl: rest.wikidataUrl ?? null }),
+    ...('note' in rest && { note: rest.note ?? null }),
     ...('packageUnit' in rest && { packageUnit: rest.packageUnit ?? null }),
     ...('measurementUnit' in rest && {
       measurementUnit: rest.measurementUnit ?? null,
