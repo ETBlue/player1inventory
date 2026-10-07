@@ -295,22 +295,22 @@ in the gate. That is exactly how three failing purge tests sat on `main` unnotic
 
 **Run the root `pnpm build`, not `(cd apps/web && pnpm build)`.** The root build is the *full* build — it runs `pnpm codegen` (regenerating GraphQL types from the current schema + operations, catching codegen drift) and type-checks **both** `apps/web` and `apps/server` via `tsc`. The web-only build skips codegen and the server, and `pnpm test` (vitest/esbuild), `pnpm check` (Biome), and `pnpm build-storybook` all skip a full type-check — so type-flow errors (e.g. `possibly null` from `.filter(Boolean)`) and codegen mismatches slip through every other check and only fail in the Cloudflare production build. The root `pnpm build` mirrors that production build and catches them locally.
 
-**Nothing in the gate regenerates the Prisma client, so nothing in the gate catches a
-dangling Prisma field reference.** Measured 2026-10-04 during cloud-locations PR 5 task 5:
+**The gate regenerates the Prisma client** — since 2026-10-07. `apps/server`'s `build` and
+`typecheck` both start with `prisma generate`, so the root `pnpm build` catches a dangling
+Prisma field reference.
 
-| Script | What it actually runs |
-|---|---|
-| root `pnpm codegen` | `graphql-codegen --config codegen.ts` — **GraphQL only** |
-| root `pnpm build` | `pnpm codegen && pnpm --filter web build && pnpm --filter server build`, and the server build is `tsc && cp` |
-| `prisma generate` | wired **only** to `apps/server`'s `postinstall` and `predev` |
+**Before that it did not, and the failure was silent.** Root `pnpm codegen` is
+`graphql-codegen` alone; `prisma generate` was wired only to `postinstall` and `predev`. So
+`tsc` compared your code against whatever client was generated last — possibly the pre-edit
+one. Measured 2026-10-04: a throwaway file reading a dropped column failed `TS2551` with the
+client regenerated and reported **zero errors** with a stale one.
 
-So after you edit `schema.prisma`, `tsc` compares your code against **whatever client was
-generated last** — possibly the pre-edit one. Proved with a throwaway file reading a dropped
-column: with the client regenerated it fails `TS2551: Property 'targetQuantity' does not
-exist … Did you mean 'targetUnit'?`; with a stale client it reports **zero errors**.
+Proved by mutation 2026-10-07: renaming `Item.targetUnit` in `schema.prisma` and running the
+root `pnpm build` with **no** manual generate now exits 2 with
+`src/resolvers/import.resolver.ts(439,13): error TS2353: … 'targetUnit' does not exist in type
+'(Without<ItemCreateInput, …`.
 
-**After any `schema.prisma` change, run `(cd apps/server && pnpm prisma generate)` by hand
-before you trust a type-check.**
+It costs **94ms** of generation, about 0.7s wall including startup.
 
 **`apps/server`'s build type-checks `scripts/`** — since 2026-10-07. Before that nothing ran
 it, so a type error in `apps/server/scripts/verify-migration.ts` — the one script that proves a
