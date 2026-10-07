@@ -75,6 +75,10 @@ export const cloudItem = (
   __typename: 'Item' as const,
   id,
   name,
+  // `GetItem`, `GetItems` and `PantryData` all select these two since issue
+  // #335, so a mock without them makes Apollo write a partial `Item` and warn.
+  wikidataUrl: null,
+  note: null,
   tagIds: [],
   vendorIds: [],
   packageUnit: null,

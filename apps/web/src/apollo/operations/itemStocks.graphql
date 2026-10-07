@@ -6,6 +6,8 @@ query PantryData($locationId: ID!) {
   items {
     id
     name
+    wikidataUrl
+    note
     tagIds
     vendorIds
     packageUnit
@@ -94,6 +96,8 @@ mutation ApplyUnitSwitch($input: ApplyUnitSwitchInput!) {
   applyUnitSwitch(input: $input) {
     id
     name
+    wikidataUrl
+    note
     tagIds
     vendorIds
     packageUnit

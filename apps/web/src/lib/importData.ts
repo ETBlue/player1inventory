@@ -699,6 +699,13 @@ export function toItemInput(item: Record<string, unknown>): ItemInputShape {
   return {
     id: item.id as string,
     name: item.name as string,
+    // Both are optional on `ItemInput`, so the return-type annotation below
+    // does NOT catch them going missing — a mapped type keeps an optional key
+    // optional. `toItemInput` keeps them from one unit test instead:
+    // `user can restore a cloud backup that keeps an item's note and wikidata
+    // URL` in importData.test.ts. Issue #335.
+    wikidataUrl: item.wikidataUrl as string | undefined,
+    note: item.note as string | undefined,
     tagIds: (item.tagIds ?? []) as string[],
     vendorIds:
       item.vendorIds != null ? (item.vendorIds as string[]) : undefined,
