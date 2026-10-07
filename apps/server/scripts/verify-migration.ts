@@ -102,6 +102,29 @@ async function columnNamesOf(table: string): Promise<Set<string>> {
   return new Set(rows.map((r) => r.column_name))
 }
 
+// One column's type and nullability, read from the catalog. Returns undefined
+// when the column does not exist, so a caller can assert on "missing" without
+// a raw driver error.
+//
+// Same two rules as `columnNamesOf` above: read the catalog rather than running
+// a `SELECT` on a column that may not be there, and cast every identifier
+// column with `::text`, because information_schema uses the `sql_identifier`
+// domain and Prisma's raw-query mapper does not know it.
+async function columnMetaOf(
+  table: string,
+  column: string,
+): Promise<{ dataType: string; isNullable: string } | undefined> {
+  const rows = await prisma.$queryRaw<{ data_type: string; is_nullable: string }[]>`
+    SELECT data_type::text AS data_type, is_nullable::text AS is_nullable
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name::text = ${table}
+      AND column_name::text = ${column}
+  `
+  const row = rows[0]
+  return row ? { dataType: row.data_type, isNullable: row.is_nullable } : undefined
+}
+
 // A fixture shaped like production BEFORE the migration: Item still carries
 // its five state fields inline, and there is no Location table yet.
 //
@@ -249,6 +272,7 @@ const MIGRATIONS = [
   '20260916000000_add_location_to_log_and_cart',
   '20260917000000_rekey_cart_to_location_vendor',
   '20261004000000_drop_item_stock_state_columns',
+  '20261008000000_add_item_note_and_wikidata_url',
 ] as const
 
 const PARKED_ROOT = join(SERVER_DIR, '.migration-under-test')
@@ -683,6 +707,69 @@ async function main(): Promise<void> {
   assert(
     itemColumns.has('consumeAmount'),
     '"Item"."consumeAmount" survives — it sits among the five in the model but is global configuration, not per-location state',
+  )
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 20261008000000 — Item."wikidataUrl" and Item."note" (issue #335)
+  // ══════════════════════════════════════════════════════════════════════
+  //
+  // Additive, so the assertion is "present", the opposite of the PR 5 block
+  // above. Three things are checked, because "the column exists" alone is a
+  // weak claim:
+  //
+  //   1. both columns are on "Item" — and NOT on "ItemStock", because these
+  //      two are global item configuration, not per-location state. A
+  //      migration aimed at the wrong table would pass a presence-only check
+  //      on the wrong half, exactly as PR 5's comment describes.
+  //   2. both are nullable TEXT. A NOT NULL column would have failed the
+  //      migration itself on this seeded fixture, but the type and the
+  //      nullability are what the resolvers rely on, so name them.
+  //   3. an INSERT that sets neither column reads back NULL, not ''. This is
+  //      the one a `DEFAULT ''` on the column would fail. "No note" and "a
+  //      note the user cleared" are different stored values, and local mode
+  //      stores the first as an absent optional field.
+  const itemColumnsAfterAdd = await columnNamesOf('Item')
+  const itemStockColumnsAfterAdd = await columnNamesOf('ItemStock')
+
+  for (const column of ['wikidataUrl', 'note'] as const) {
+    assert(
+      itemColumnsAfterAdd.has(column),
+      `"Item"."${column}" is present — the Info tab field that had nowhere to go in cloud mode before issue #335`,
+    )
+    assert(
+      !itemStockColumnsAfterAdd.has(column),
+      `"${column}" is NOT on "ItemStock" — it is global item configuration, so a migration that added it to the per-location table would be wrong`,
+    )
+    const meta = await columnMetaOf('Item', column)
+    assert(
+      meta?.dataType === 'text' && meta?.isNullable === 'YES',
+      `"Item"."${column}" is nullable text (read: ${meta ? `${meta.dataType}, nullable=${meta.isNullable}` : 'column missing'})`,
+    )
+  }
+
+  // user-a still owns item-a1 (Milk); item-a2 was deleted by the cascade check
+  // above, so insert a fresh row rather than reusing one.
+  await prisma.$executeRawUnsafe(`
+    INSERT INTO "Item" ("id","name","targetUnit","consumeAmount","expirationMode","userId","createdAt","updatedAt")
+    VALUES ('item-note-none','Plain','package',1,'disabled','user-a',NOW(),NOW())
+  `)
+  const plain = await prisma.item.findUnique({ where: { id: 'item-note-none' } })
+  assert(
+    plain?.note === null && plain?.wikidataUrl === null,
+    'an Item inserted with neither column set reads back NULL for both — not the empty string, which would mean "the user cleared a note they had typed"',
+  )
+
+  // And a row that DOES set them keeps the exact strings, so the assertion
+  // above cannot pass by the columns being unwritable.
+  await prisma.item.update({
+    where: { id: 'item-note-none' },
+    data: { note: 'buy the 500g pack', wikidataUrl: 'https://www.wikidata.org/wiki/Q8495' },
+  })
+  const written = await prisma.item.findUnique({ where: { id: 'item-note-none' } })
+  assert(
+    written?.note === 'buy the 500g pack' &&
+      written?.wikidataUrl === 'https://www.wikidata.org/wiki/Q8495',
+    'both columns store and return the exact strings they were given',
   )
 
   console.log('\nMigration verified.')
