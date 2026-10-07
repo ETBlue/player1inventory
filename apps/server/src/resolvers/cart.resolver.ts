@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client'
 import { type LocationRole, requireLocationRole } from '../lib/authz.js'
 import { cartIdFor, parseCartId } from '../lib/cartId.js'
 import { prisma } from '../lib/prisma.js'
-import { mirrorStock } from '../lib/stockDualWrite.js'
+import { writeStock } from '../lib/itemStockWrite.js'
 import { type Context, requireAuth } from '../context.js'
 import type { Cart, CartItem, Resolvers } from '../generated/graphql.js'
 
@@ -35,8 +35,13 @@ async function requireCartLocation(
 
 /**
  * `userId` in the `where` clauses below is a query SCOPE, not an authorization
- * decision — the same distinction lib/stockDualWrite.ts records for
- * `mirrorItemStockToItem`. Authorization is `requireCartLocation` above.
+ * decision. Root CLAUDE.md forbids `row.userId === ctx.userId` as a GUARD; it
+ * does not forbid `userId` inside a `where` clause, which only narrows what
+ * the query can match. Authorization is `requireCartLocation` above.
+ *
+ * This note used to cite `mirrorItemStockToItem` in lib/stockDualWrite.ts as
+ * the other place the distinction was written down. Cloud locations PR 5
+ * deleted that module; the rule did not change.
  */
 export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
   Query: {
@@ -165,19 +170,26 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       const now = new Date()
 
       for (const ci of buyingItems) {
-        const updatedItem = await prisma.item.update({
-          where: { id: ci.itemId },
-          data: { packedQuantity: { increment: ci.quantity }, updatedAt: now },
-        })
-        const finalQuantity = updatedItem.packedQuantity + updatedItem.unpackedQuantity
-
-        // DUAL-WRITE, REMOVED IN PR 5 (lib/stockDualWrite.ts). The same
-        // increment against the cart location's stock row. `increment` rather
-        // than the item's new total, so two concurrent checkouts of one item
-        // cannot lose an increment to a read-modify-write race.
-        await mirrorStock(ci.itemId, cartLocationId, {
+        // The cart location's own stock row, and since PR 5 the ONLY place the
+        // purchase is recorded — `Item`'s five stock columns are gone, and with
+        // them the `prisma.item.update` that used to run here first.
+        //
+        // `increment` rather than a total computed in JavaScript, so two
+        // concurrent checkouts of one item cannot lose an increment to a
+        // read-modify-write race.
+        const stock = await writeStock(ci.itemId, cartLocationId, {
           packedQuantity: { increment: ci.quantity },
         })
+
+        // The resulting ON-HAND total at this location, read off the row that
+        // was just saved. It is NOT `ci.quantity`: the log records where the
+        // stock ended up, not how much was bought, and the two differ whenever
+        // the row started at anything but zero.
+        //
+        // Before PR 5 this read `Item`'s two quantity columns off the row the
+        // deleted `item.update` returned, which is why `writeStock` returns the
+        // saved row (lib/itemStockWrite.ts).
+        const finalQuantity = stock.packedQuantity + stock.unpackedQuantity
 
         await prisma.inventoryLog.create({
           data: {
@@ -186,8 +198,8 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
             quantity: finalQuantity,
             occurredAt: now,
             userId,
-            // The cart's own location, the same one the stock mirror above
-            // wrote. A log row and the stock move it explains must never name
+            // The cart's own location, the same one the stock write above
+            // used. A log row and the stock move it explains must never name
             // different locations.
             locationId: cartLocationId,
             ...(note ? { note } : {}),

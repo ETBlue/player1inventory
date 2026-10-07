@@ -2,7 +2,7 @@ import { GraphQLError } from 'graphql'
 import type { Prisma } from '@prisma/client'
 import { requireLocationRole } from '../lib/authz.js'
 import { prisma } from '../lib/prisma.js'
-import { mirrorStock } from '../lib/stockDualWrite.js'
+import { writeStock } from '../lib/itemStockWrite.js'
 import { requireAuth } from '../context.js'
 import type { Recipe, Resolvers } from '../generated/graphql.js'
 
@@ -86,21 +86,14 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
 
       for (const item of items) {
         try {
-          await prisma.item.updateMany({
-            where: { id: item.itemId, userId },
-            data: {
-              packedQuantity: item.packedQuantity,
-              unpackedQuantity: item.unpackedQuantity,
-              updatedAt: occurredAtDate,
-            },
-          })
-
-          // DUAL-WRITE, REMOVED IN PR 5 (lib/stockDualWrite.ts).
+          // The cook location's own stock row, and since PR 5 the ONLY place
+          // the cook is recorded — `Item`'s five stock columns are gone, and
+          // with them the `prisma.item.updateMany` that used to run here first.
+          //
           // Absolute values, not a delta: the client has already computed the
-          // post-cooking quantities, and `Item`'s write above sets the very
-          // same two numbers. A failure here lands in this item's
-          // `itemResults` entry, exactly as an `Item` write failure does.
-          await mirrorStock(item.itemId, consumeLocationId, {
+          // post-cooking quantities. A failure here lands in this item's
+          // `itemResults` entry and leaves the other items alone.
+          await writeStock(item.itemId, consumeLocationId, {
             packedQuantity: item.packedQuantity,
             unpackedQuantity: item.unpackedQuantity,
           })
@@ -112,8 +105,8 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
               quantity: item.quantity,
               occurredAt: occurredAtDate,
               userId,
-              // The cook's own location, the same one the stock mirror above
-              // wrote. A log row and the stock move it explains must never name
+              // The cook's own location, the same one the stock write above
+              // used. A log row and the stock move it explains must never name
               // different locations.
               locationId: consumeLocationId,
               ...(item.note ? { note: item.note } : {}),

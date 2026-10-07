@@ -77,11 +77,17 @@ vi.mock('../lib/prisma.js', () => ({
     },
     itemStock: {
       deleteMany: vi.fn(),
-      // Kept so the two "no stock row from the item import" tests can assert
-      // `not.toHaveBeenCalled()`. Cloud locations PR 4b deleted the dual-write
-      // that used to call it; stock now arrives through
+      // Kept ARMED so the two "no stock row from the item import" tests can
+      // assert `not.toHaveBeenCalled()`. Cloud locations PR 4b deleted the
+      // dual-write that used to call it; stock now arrives through
       // `bulkCreateItemStocks` / `bulkUpsertItemStocks`, which this file does
       // not exercise (see `import-itemStock.resolver.test.ts`).
+      //
+      // Those two assertions are LABELLED NEGATIVE CONTROLS, and they are not
+      // the vacuous kind: an armed recorder records, so re-adding a mirror
+      // call to either resolver turns both of them red. What they cannot see
+      // is WHICH location a row would have landed in — see the long comment
+      // above the first of them.
       upsert: vi.fn(),
     },
     location: {
@@ -214,10 +220,6 @@ function makeItemInput(overrides: Partial<Record<string, unknown>> & { id: strin
     name: 'Milk',
     tagIds: [],
     targetUnit: 'package',
-    targetQuantity: 2,
-    refillThreshold: 1,
-    packedQuantity: 0,
-    unpackedQuantity: 0,
     consumeAmount: 1,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -230,17 +232,12 @@ function makePrismaItem(id: string, name = 'Milk') {
     id,
     name,
     targetUnit: 'package',
-    targetQuantity: 2,
-    refillThreshold: 1,
-    packedQuantity: 0,
-    unpackedQuantity: 0,
     consumeAmount: 1,
     expirationMode: 'disabled',
     userId: 'user_import_test',
     packageUnit: null,
     measurementUnit: null,
     amountPerPackage: null,
-    dueDate: null,
     estimatedDueDays: null,
     expirationThreshold: null,
     createdAt: new Date(),
@@ -381,7 +378,10 @@ describe('bulkCreateItems', () => {
   // `import-itemStock.resolver.test.ts` against the stateful fake, whose
   // fixture holds three locations so a hardcoded default is visible.
   it('user importing items gets no stock row from the item import itself', async () => {
-    // Given an item whose payload carries real stock values
+    // Given an item to import. Since cloud locations PR 5 the payload CANNOT
+    // carry stock values — `ItemInput` no longer declares the five state
+    // fields — so there is nothing left for a mirror to read. Until PR 5 this
+    // test handed the resolver real quantities to prove it ignored them.
     const prismaItem = makePrismaItem('item_abc123', 'Milk')
     p.item.findUnique.mockResolvedValue(null)
     p.item.create.mockResolvedValue(prismaItem)
@@ -395,13 +395,7 @@ describe('bulkCreateItems', () => {
         query: BULK_CREATE_ITEMS,
         variables: {
           items: [
-            makeItemInput({
-              id: 'item_abc123',
-              targetQuantity: 4,
-              refillThreshold: 2,
-              packedQuantity: 3,
-              unpackedQuantity: 1,
-            }),
+            makeItemInput({ id: 'item_abc123' }),
           ],
         },
       },
@@ -484,7 +478,8 @@ describe('bulkUpsertItems', () => {
   // green. See the long comment above the create-side test for why writing no
   // stock is the contract and for what this file's recorders can prove.
   it('user replacing items gets no stock row from the item import itself', async () => {
-    // Given an item whose payload carries real stock values
+    // Given an item to upsert — same shape as `bulkCreateItems` above, and
+    // since PR 5 the payload cannot carry stock values at all.
     const prismaItem = makePrismaItem('item_abc123', 'Milk')
     p.item.upsert.mockResolvedValue(prismaItem)
     p.itemTag.deleteMany.mockResolvedValue({ count: 0 })
@@ -499,13 +494,7 @@ describe('bulkUpsertItems', () => {
         query: BULK_UPSERT_ITEMS,
         variables: {
           items: [
-            makeItemInput({
-              id: 'item_abc123',
-              targetQuantity: 4,
-              refillThreshold: 2,
-              packedQuantity: 3,
-              unpackedQuantity: 1,
-            }),
+            makeItemInput({ id: 'item_abc123' }),
           ],
         },
       },

@@ -1,15 +1,19 @@
 import { GraphQLError } from 'graphql'
 import { prisma } from '../lib/prisma.js'
-import { mirrorStockToDefaultLocation } from '../lib/stockDualWrite.js'
 import { requireAuth } from '../context.js'
 import type { Item, Resolvers, UpdateItemInput } from '../generated/graphql.js'
 import type { ExpirationMode, Prisma, TargetUnit } from '@prisma/client'
 import type { Item as PrismaItem, ItemTag, ItemVendor } from '@prisma/client'
 
 // Map a Prisma item (with junction rows included) to the GraphQL Item shape.
-// GraphQL schema types createdAt, updatedAt as String! and dueDate as String.
+// GraphQL schema types createdAt and updatedAt as String!.
 // Exported for shelf.resolver.ts's applyShelfFilterPicks, which also returns
 // an Item! and needs the same mapping.
+//
+// The spread carries every remaining Prisma column, so the five per-location
+// state fields cloud locations PR 5 dropped from `type Item` leave the payload
+// on their own once the migration (task 5) drops the columns. Nothing here
+// names them.
 export function toGraphQL(item: PrismaItem & { tags: ItemTag[]; vendors: ItemVendor[] }): Item {
   // Prisma enum for 'days from purchase' is 'days_from_purchase' — map back to display string
   const expirationMode =
@@ -24,7 +28,6 @@ export function toGraphQL(item: PrismaItem & { tags: ItemTag[]; vendors: ItemVen
     vendorIds: item.vendors.map((v) => v.vendorId),
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
-    dueDate: item.dueDate ? item.dueDate.toISOString() : null,
   } as unknown as Item
 }
 
@@ -61,23 +64,23 @@ function strOr(v: string | null | undefined): string | undefined {
  * Extracted from `updateItem` so `applyUnitSwitch`
  * (itemStock.resolver.ts) writes the Item half of a unit switch through the
  * same mapping instead of a second copy that could drift from it.
+ *
+ * It maps CONFIGURATION only. Cloud locations PR 5 dropped the five
+ * per-location state fields from `UpdateItemInput`, so there is no longer any
+ * way to reach an `ItemStock` column from here — stock is written by
+ * `upsertItemStock` / `writeStock`, which name their location.
  */
 export function buildItemUpdateData(input: UpdateItemInput): Prisma.ItemUpdateInput {
-  const { dueDate, expirationMode, targetUnit, ...rest } = input
+  const { expirationMode, targetUnit, ...rest } = input
   return {
     ...(rest.name !== undefined && rest.name !== null ? { name: rest.name } : {}),
     ...(targetUnit !== undefined && targetUnit !== null ? { targetUnit: toTargetUnit(targetUnit) } : {}),
-    ...(rest.targetQuantity !== undefined ? { targetQuantity: numOr(rest.targetQuantity) } : {}),
-    ...(rest.refillThreshold !== undefined ? { refillThreshold: numOr(rest.refillThreshold) } : {}),
-    ...(rest.packedQuantity !== undefined ? { packedQuantity: numOr(rest.packedQuantity) } : {}),
-    ...(rest.unpackedQuantity !== undefined ? { unpackedQuantity: numOr(rest.unpackedQuantity) } : {}),
     ...(rest.consumeAmount !== undefined ? { consumeAmount: numOr(rest.consumeAmount) } : {}),
     ...(rest.packageUnit !== undefined ? { packageUnit: strOr(rest.packageUnit) } : {}),
     ...(rest.measurementUnit !== undefined ? { measurementUnit: strOr(rest.measurementUnit) } : {}),
     ...(rest.amountPerPackage !== undefined ? { amountPerPackage: numOr(rest.amountPerPackage) } : {}),
     ...(rest.estimatedDueDays !== undefined ? { estimatedDueDays: numOr(rest.estimatedDueDays) } : {}),
     ...(rest.expirationThreshold !== undefined ? { expirationThreshold: numOr(rest.expirationThreshold) } : {}),
-    ...(dueDate !== undefined ? { dueDate: dueDate ? new Date(dueDate) : null } : {}),
     ...(expirationMode !== undefined ? { expirationMode: toExpirationMode(expirationMode) } : {}),
   }
 }
@@ -121,16 +124,22 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
   Mutation: {
     createItem: async (_, { input }, ctx) => {
       const userId = requireAuth(ctx)
-      const { tagIds, vendorIds, dueDate, expirationMode, targetUnit, ...rest } = input
+      const { tagIds, vendorIds, expirationMode, targetUnit, ...rest } = input
 
+      // CONFIGURATION only. Cloud locations PR 5 removed the five per-location
+      // state fields from `CreateItemInput`, so nothing is written for them
+      // here and no value is lost: `schema.prisma` declares all four
+      // quantities `Float @default(0)` and `dueDate DateTime?`, so an omitted
+      // column lands on exactly the zero this code used to write by hand.
+      // Task 5 drops the columns outright.
+      //
+      // The new item's opening stock row is the client's second step —
+      // `upsertItemStock(itemId, locationId)`, which `useItems`'
+      // `runCloudCreate` calls right after this mutation.
       const item = await prisma.item.create({
         data: {
           // Required-field defaults (overridden by input if provided)
           targetUnit: toTargetUnit(targetUnit) ?? 'package',
-          targetQuantity: numOr(rest.targetQuantity) ?? 0,
-          refillThreshold: numOr(rest.refillThreshold) ?? 0,
-          packedQuantity: numOr(rest.packedQuantity) ?? 0,
-          unpackedQuantity: numOr(rest.unpackedQuantity) ?? 0,
           // Default 1 (designer ruling, 2026-08-24, reversing 6302ee97's 0),
           // mirroring local mode's createItem (apps/web/src/db/operations.ts):
           // a brand-new item must be valid by nature, so it never opens on
@@ -143,7 +152,6 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           amountPerPackage: numOr(rest.amountPerPackage),
           estimatedDueDays: numOr(rest.estimatedDueDays),
           expirationThreshold: numOr(rest.expirationThreshold),
-          dueDate: dueDate ? new Date(dueDate) : undefined,
           expirationMode: toExpirationMode(expirationMode),
           userId,
         },
@@ -176,25 +184,15 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         throw new GraphQLError('Item not found', { extensions: { code: 'NOT_FOUND' } })
       }
 
-      const { tagIds, vendorIds, dueDate, ...rest } = input
+      const { tagIds, vendorIds } = input
 
+      // `Item` only, and `UpdateItemInput` now makes that the only option:
+      // cloud locations PR 5 removed the five per-location state fields from
+      // it. Until PR 5 this mutation ALSO mirrored any inline stock fields
+      // onto the caller's default `ItemStock` row, for a browser on a pre-PR-2
+      // bundle that sent them here with no location to name. Stock is written
+      // by `upsertItemStock(itemId, locationId)` and nothing else.
       await prisma.item.update({ where: { id }, data: buildItemUpdateData(input) })
-
-      // DUAL-WRITE, REMOVED IN PR 5 (lib/stockDualWrite.ts). Unlike checkout and
-      // consumeRecipes this is a LEGACY path: a current client sends the five
-      // state fields to `upsertItemStock(itemId, locationId)` and this mutation
-      // never sees them (hooks/useItems.ts `toConfigInput`). What it covers is a
-      // browser on a stale bundle, which still puts them inline here — and has
-      // no location to name, so they land in the caller's default location.
-      // Only keys the input actually carried are mirrored: an absent key must
-      // stay absent, or a rename would zero the item's stock.
-      await mirrorStockToDefaultLocation(userId, id, {
-        ...(rest.targetQuantity != null ? { targetQuantity: rest.targetQuantity } : {}),
-        ...(rest.refillThreshold != null ? { refillThreshold: rest.refillThreshold } : {}),
-        ...(rest.packedQuantity != null ? { packedQuantity: rest.packedQuantity } : {}),
-        ...(rest.unpackedQuantity != null ? { unpackedQuantity: rest.unpackedQuantity } : {}),
-        ...(dueDate !== undefined ? { dueDate: dueDate ? new Date(dueDate) : null } : {}),
-      })
 
       // Replace junction rows wholesale when the field is explicitly provided
       if (tagIds !== undefined && tagIds !== null) {

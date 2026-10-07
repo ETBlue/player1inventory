@@ -2,14 +2,19 @@
 // resolver test suite runs entirely against a hand-written Prisma fake and
 // cannot exercise SQL at all.
 //
-// Three migrations are under test, applied in order:
+// Four migrations are under test, applied in order:
 //   1. 20260830000000_add_location_and_item_stock      (PR 1)  — Location, ItemStock
 //   2. 20260916000000_add_location_to_log_and_cart     (PR 3a) — InventoryLog.locationId,
 //      Cart.locationId
 //   3. 20260917000000_rekey_cart_to_location_vendor    (PR 3b) — splits the shared
 //      'no-vendor' cart, then re-keys Cart.id to `${locationId}:${vendorId}`
-// All three must be parked together. Each one references what the previous one
+//   4. 20261004000000_drop_item_stock_state_columns    (PR 5)  — drops Item's five
+//      stock state columns, whose home is now ItemStock
+// All four must be parked together. Each one references what the previous one
 // creates, so resetting with only some of them parked would fail at reset time.
+// Migration 4 depends on 1 in the other direction too: it destroys the data
+// that 1's backfill reads, so parking 4 alone would reset to a database where
+// Item has no such columns and 1's backfill could not compile.
 //
 // Destructive: drops and recreates the public schema of TEST_DATABASE_URL —
 // via TEST_DIRECT_URL, since Prisma Migrate always issues DDL through
@@ -69,6 +74,32 @@ const prisma = new PrismaClient({ datasources: { db: { url: TEST_URL } } })
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(`FAIL: ${message}`)
   console.log(`  ok — ${message}`)
+}
+
+// The five columns PR 5 drops from "Item". "ItemStock" declares the same five
+// names and keeps them — see the PR 5 assertions at the end of main().
+const STOCK_STATE_COLUMNS = [
+  'targetQuantity',
+  'refillThreshold',
+  'packedQuantity',
+  'unpackedQuantity',
+  'dueDate',
+] as const
+
+// The column names a table actually has, read from the catalog.
+//
+// A dropped column has to be checked this way round. `SELECT "dueDate" FROM
+// "Item"` on a table without it throws Postgres 42703 before `assert` is ever
+// reached, so the run fails with a raw driver error instead of a named FAIL —
+// and a FAIL that names the column is the whole point of this script.
+// The ::text casts matter: information_schema's columns are the
+// `sql_identifier` domain, a type Prisma's raw-query mapper does not know.
+async function columnNamesOf(table: string): Promise<Set<string>> {
+  const rows = await prisma.$queryRaw<{ column_name: string }[]>`
+    SELECT column_name::text AS column_name FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name::text = ${table}
+  `
+  return new Set(rows.map((r) => r.column_name))
 }
 
 // A fixture shaped like production BEFORE the migration: Item still carries
@@ -217,6 +248,7 @@ const MIGRATIONS = [
   '20260830000000_add_location_and_item_stock',
   '20260916000000_add_location_to_log_and_cart',
   '20260917000000_rekey_cart_to_location_vendor',
+  '20261004000000_drop_item_stock_state_columns',
 ] as const
 
 const PARKED_ROOT = join(SERVER_DIR, '.migration-under-test')
@@ -356,11 +388,13 @@ async function main(): Promise<void> {
     'all five state fields (targetQuantity, refillThreshold, packedQuantity, unpackedQuantity, dueDate) copied verbatim — refillThreshold/unpackedQuantity use distinct values so a field swap is catchable, and dueDate is non-NULL so a dropped/nulled column is catchable',
   )
 
-  // Item keeps its columns in this PR — a stale browser bundle still reads them.
-  const items = await prisma.$queryRawUnsafe<{ targetQuantity: number }[]>(
-    `SELECT "targetQuantity" FROM "Item" WHERE "id" = 'item-a1'`,
-  )
-  assert(items[0]?.targetQuantity === 3, 'Item.targetQuantity survives (dropped in PR 5, not here)')
+  // There used to be an assertion here that "Item"."targetQuantity" still read
+  // 3 — "dropped in PR 5, not here". PR 5 is now in this script's MIGRATIONS
+  // list, so the column is gone by the time the assertions run and that
+  // SELECT would throw 42703. It is replaced, inverted, by the PR 5 block at
+  // the end of this function. The `milk` assertion above is what proves the
+  // five values survived the drop: they are read off "ItemStock", their new
+  // home, after PR 5 has removed "Item"'s copy.
 
   // The partial unique index must actually reject a second default — and for
   // the right reason (P2002 / unique violation), not merely "some error".
@@ -612,6 +646,43 @@ async function main(): Promise<void> {
   assert(
     (await prisma.itemStock.count({ where: { itemId: 'item-a2' } })) === 0,
     'deleting an Item cascades to delete its ItemStock rows',
+  )
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PR 5 — Item's five stock state columns are gone, ItemStock's are not
+  // ══════════════════════════════════════════════════════════════════════
+  //
+  // BOTH halves are required, and the second is the one that earns its place.
+  // "Item" and "ItemStock" declare the SAME five field names, so a migration
+  // that dropped them from the wrong table is indistinguishable from the right
+  // one when you only look at "Item". Checking "Item" alone would pass against
+  //   ALTER TABLE "ItemStock" DROP COLUMN ...
+  // as happily as against the real migration.
+  //
+  // Row deletions earlier in this function cannot affect either answer — these
+  // read the catalog, not the data.
+  const itemColumns = await columnNamesOf('Item')
+  const itemStockColumns = await columnNamesOf('ItemStock')
+
+  const leftOnItem = STOCK_STATE_COLUMNS.filter((c) => itemColumns.has(c))
+  assert(
+    leftOnItem.length === 0,
+    `none of the five state columns is left on "Item"${leftOnItem.length ? ` (still present: ${leftOnItem.join(', ')})` : ''}`,
+  )
+
+  const missingOnItemStock = STOCK_STATE_COLUMNS.filter((c) => !itemStockColumns.has(c))
+  assert(
+    missingOnItemStock.length === 0,
+    `all five state columns are still on "ItemStock", their real home — this is the half that catches a drop aimed at the wrong table${missingOnItemStock.length ? ` (missing: ${missingOnItemStock.join(', ')})` : ''}`,
+  )
+
+  // The inverse control inside "Item" itself. "consumeAmount" sits between
+  // "unpackedQuantity" and "dueDate" in the model and looks like one of the
+  // five, but it is global configuration — one step size per item, the same in
+  // every location. A drop that took one column too many fails here.
+  assert(
+    itemColumns.has('consumeAmount'),
+    '"Item"."consumeAmount" survives — it sits among the five in the model but is global configuration, not per-location state',
   )
 
   console.log('\nMigration verified.')

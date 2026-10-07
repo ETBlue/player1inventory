@@ -66,9 +66,6 @@ test('user can see expiration badge updated after checkout without manual refres
           expirationMode: 'days from purchase',
           estimatedDueDays: 7,
           expirationThreshold: 30,
-          packedQuantity: 0,
-          targetQuantity: 1,
-          refillThreshold: 1,
         },
       },
     )
@@ -76,9 +73,11 @@ test('user can see expiration badge updated after checkout without manual refres
 
     // Stock it in the account's default location. Since cloud-locations PR 2
     // the cloud pantry reads `PantryData` and shows only items with an
-    // `ItemStock` row HERE — the raw `createItem` mutation writes the Item's
-    // legacy inline columns and no stock row, so without this the item is
-    // created and invisible. The app itself never takes this path:
+    // `ItemStock` row HERE, and since PR 5 `CreateItemInput` does not even
+    // DECLARE the five per-location state fields — sending one fails GraphQL
+    // validation outright (`Field "packedQuantity" is not defined by type
+    // "CreateItemInput"`), so the quantities below are the only place they can
+    // go. The app itself never takes the create-only path:
     // `useCreateItem`'s cloud branch always follows the create with an
     // `upsertItemStock` (see apps/web/src/hooks/useItems.ts). This seed has to
     // do the same two steps to stand in for it.
@@ -463,9 +462,13 @@ test('user can checkout from a vendor cart without affecting another vendor cart
 
 // Create a cloud item AND stock it at `locationId` — the two steps
 // `useCreateItem`'s cloud branch performs (apps/web/src/hooks/useItems.ts).
-// `createItem` alone writes the Item's legacy inline columns and no `ItemStock`
-// row, so the item exists but is stocked nowhere and the pantry, the vendor
-// cart page and the vendor card's count all leave it out.
+// `createItem` alone creates a catalog row and no `ItemStock` row, so the item
+// exists but is stocked nowhere and the pantry, the vendor cart page and the
+// vendor card's count all leave it out.
+//
+// Every quantity belongs on `upsertItemStock`. Since cloud-locations PR 5
+// `CreateItemInput` declares none of the five per-location state fields, so
+// passing one here fails GraphQL validation and the whole seed throws.
 async function createStockedItem(
   gql: ReturnType<typeof makeGql>,
   locationId: string,
@@ -473,7 +476,7 @@ async function createStockedItem(
 ): Promise<string> {
   const { createItem } = await gql<{ createItem: { id: string } }>(
     `mutation CreateItem($input: CreateItemInput!) { createItem(input: $input) { id } }`,
-    { input: { targetQuantity: 1, refillThreshold: 1, ...input } },
+    { input },
   )
   await gql(
     `mutation Upsert($itemId: ID!, $locationId: ID!, $input: ItemStockInput!) {

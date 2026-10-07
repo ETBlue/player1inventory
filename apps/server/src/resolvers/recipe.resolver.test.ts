@@ -6,11 +6,15 @@ import type { Context } from '../context.js'
 
 // ─── Mock Prisma ─────────────────────────────────────────────────────────────
 
-// `recipe` / `recipeItem` / `item` / `inventoryLog` are plain `vi.fn()` call
-// recorders. `location` and `itemStock` are the stateful fake
-// (src/test/stockFake.ts): consumeRecipes' PR-2 dual-write is an end state, and
-// the fake models `@@unique([itemId, locationId])` and Prisma's `where`
-// semantics so a resolver that dropped the scope cannot stay green.
+// `recipe` / `recipeItem` / `inventoryLog` are plain `vi.fn()` call recorders.
+// `location` and `itemStock` are the stateful fake (src/test/stockFake.ts):
+// consumeRecipes' stock write is an end state, and the fake models
+// `@@unique([itemId, locationId])` and Prisma's `where` semantics so a resolver
+// that dropped the scope cannot stay green.
+//
+// There is no `item` store. Since PR 5 `consumeRecipes` writes no `Item` row at
+// all — the five stock columns are gone and `writeStock` is the whole write. A
+// reinstated `Item` write throws here rather than passing quietly.
 vi.mock('../lib/prisma.js', async () => {
   const { createStockFake } = await import('../test/stockFake.js')
   const stockFake = createStockFake()
@@ -30,9 +34,6 @@ vi.mock('../lib/prisma.js', async () => {
         count: vi.fn(),
         createMany: vi.fn(),
         deleteMany: vi.fn(),
-      },
-      item: {
-        updateMany: vi.fn(),
       },
       inventoryLog: {
         create: vi.fn(),
@@ -63,9 +64,6 @@ const mockPrisma = prisma as unknown as {
     count: ReturnType<typeof vi.fn>
     createMany: ReturnType<typeof vi.fn>
     deleteMany: ReturnType<typeof vi.fn>
-  }
-  item: {
-    updateMany: ReturnType<typeof vi.fn>
   }
   inventoryLog: {
     create: ReturnType<typeof vi.fn>
@@ -368,10 +366,21 @@ describe('Recipe resolvers', () => {
 
 // ─── consumeRecipes ──────────────────────────────────────────────────────────
 //
-// Three groups, on purpose. The first pins the `Item` half of PR 2's
-// dual-write, the second the `ItemStock` half. Deleting either half must turn
-// exactly one group red — that pair is what "dual-write" means, and until PR 5
-// it is what keeps a browser on a stale bundle working.
+// Three groups, on purpose, and what they pin changed in cloud locations PR 5.
+//
+// The first two used to be the two halves of PR 2's dual-write — group 1 the
+// `Item` write, group 2 the `ItemStock` write — and deleting either half turned
+// exactly one group red. PR 5 deleted `Item`'s five state columns and the
+// `prisma.item.updateMany` that fed them, so there is no `Item` half left.
+// Group 1 now pins the end state of the ONE write (`writeStock`) plus the
+// inventory log; group 2 pins the stock row that write lands on.
+//
+// This file's prisma mock no longer carries an `item` store at all, so a
+// reinstated `Item` write throws `Cannot read properties of undefined` rather
+// than passing quietly. That is the guard, not an assertion — two
+// `expect(mockPrisma.item.updateMany).not.toHaveBeenCalled()` controls were
+// removed in PR 5 task 2 precisely because, with the source call gone, they
+// could never fail.
 //
 // The third group, at the bottom of this file, pins PR 3b Task 3: WHICH
 // location those writes land in. The first two groups cannot: they omit
@@ -415,32 +424,37 @@ const COOKED_MILK = {
   quantity: 1.5,
 }
 
-describe('consumeRecipes writes the Item columns', () => {
+// This group was called "consumeRecipes writes the Item columns" and asserted
+// `prisma.item.updateMany`'s call arguments. PR 5 dropped those columns, so the
+// cook's quantities now land on the named location's `ItemStock` row and nowhere
+// else. The test keeps its subject — "the quantities are written and a log is
+// recorded" — and reads it off the row instead of off a call recorder.
+describe('consumeRecipes writes the cooked quantities', () => {
   it('user cooking a recipe has each item\'s quantities written and a log recorded', async () => {
     // Given a cook that leaves Milk at 1 packed + 0.5 unpacked
-    mockPrisma.item.updateMany.mockResolvedValue({ count: 1 })
     mockPrisma.inventoryLog.create.mockResolvedValue({})
     mockPrisma.recipe.updateMany.mockResolvedValue({ count: 1 })
 
     // When the cook is submitted
     const result = await execOp(CONSUME, { input: consumeInput([COOKED_MILK], ['recipe_1']) })
 
-    // Then the Item's own columns were set to those numbers, scoped to the user
+    // Then the cook location's stock row holds those numbers
     expect(result?.errors).toBeUndefined()
     expect(result?.data?.consumeRecipes).toMatchObject({ allSucceeded: true })
-    expect(mockPrisma.item.updateMany).toHaveBeenCalledWith({
-      where: { id: 'item_milk', userId: 'user_test123' },
-      data: {
-        packedQuantity: 1,
-        unpackedQuantity: 0.5,
-        updatedAt: new Date('2026-03-01T12:00:00.000Z'),
-      },
-    })
+    expect(
+      stockFake.state.itemStocks.find(
+        (st) => st.itemId === 'item_milk' && st.locationId === LOC_DEFAULT,
+      ),
+    ).toMatchObject({ packedQuantity: 1, unpackedQuantity: 0.5 })
     expect(mockPrisma.inventoryLog.create).toHaveBeenCalledOnce()
   })
 })
 
-describe('consumeRecipes dual-writes onto ItemStock', () => {
+// These used to be called "the dual-write onto ItemStock" and were the second
+// half of a pair: `Item`'s five stock columns were the source of truth and
+// `ItemStock` held a copy for the cook's location. PR 5 dropped those columns,
+// so the write these tests pin is now the ONLY record a cook leaves.
+describe('consumeRecipes writes the cook location\'s ItemStock', () => {
   function stockAt(locationId: string) {
     return stockFake.state.itemStocks.find(
       (s) => s.itemId === 'item_milk' && s.locationId === locationId,
@@ -448,7 +462,6 @@ describe('consumeRecipes dual-writes onto ItemStock', () => {
   }
 
   beforeEach(() => {
-    mockPrisma.item.updateMany.mockResolvedValue({ count: 1 })
     mockPrisma.inventoryLog.create.mockResolvedValue({})
     mockPrisma.recipe.updateMany.mockResolvedValue({ count: 1 })
   })
@@ -514,9 +527,9 @@ describe('consumeRecipes dual-writes onto ItemStock', () => {
     expect(stockAt(LOC_DEFAULT)).toMatchObject({ packedQuantity: 0, unpackedQuantity: 0.25 })
   })
 
-  it('a user with no locations gets one, and the mirror still lands (issue #287)', async () => {
+  it('a user with no locations gets one, and the stock write still lands (issue #287)', async () => {
     // Given an account with no Location rows — a brand-new account that has
-    // never run the `locations` query. Until issue #287 the mirror returned
+    // never run the `locations` query. Until issue #287 the stock write returned
     // early here and the cooked quantities were dropped with no error.
     stockFake.reset([], [])
 
@@ -536,10 +549,9 @@ describe('consumeRecipes dual-writes onto ItemStock', () => {
       input: consumeInput([COOKED_MILK], [], created?.id),
     })
 
-    // Then the cook reports success, the Item half still ran, and the cooked
-    // quantities landed in the location that was created for them
+    // Then the cook reports success and the cooked quantities landed in the
+    // location that was created for them
     expect(result?.data?.consumeRecipes).toMatchObject({ allSucceeded: true })
-    expect(mockPrisma.item.updateMany).toHaveBeenCalledOnce()
     expect(stockFake.state.itemStocks).toHaveLength(1)
     expect(stockFake.state.itemStocks[0]).toMatchObject({
       itemId: 'item_milk',
@@ -567,15 +579,15 @@ describe('consumeRecipes dual-writes onto ItemStock', () => {
       },
     })
 
-    // Then the request fails and NOTHING is written — not the Item half either,
-    // because the whole operation is refused before any resolver runs.
+    // Then the request fails and NOTHING is written, because the whole
+    // operation is refused before any resolver runs.
     //
     // `BAD_USER_INPUT`, not `GRAPHQL_VALIDATION_FAILED`: a missing field of an
     // INPUT OBJECT is caught while coercing the variable, one stage later than
     // a missing field ARGUMENT. `vendorCart` and `createVendor` take theirs as
     // arguments and fail with `GRAPHQL_VALIDATION_FAILED` instead.
     expect(result?.errors?.[0]?.extensions?.code).toBe('BAD_USER_INPUT')
-    expect(mockPrisma.item.updateMany).not.toHaveBeenCalled()
+    expect(mockPrisma.inventoryLog.create).not.toHaveBeenCalled()
     expect(stockAt(LOC_DEFAULT)).toMatchObject({ packedQuantity: 3, unpackedQuantity: 1 })
   })
 })
@@ -598,7 +610,6 @@ describe("consumeRecipes writes the COOK's location, not the caller's default", 
   }
 
   beforeEach(() => {
-    mockPrisma.item.updateMany.mockResolvedValue({ count: 1 })
     mockPrisma.inventoryLog.create.mockResolvedValue({})
     mockPrisma.recipe.updateMany.mockResolvedValue({ count: 1 })
     stockFake.reset(stockFake.state.locations, [
@@ -654,9 +665,8 @@ describe("consumeRecipes writes the COOK's location, not the caller's default", 
     // Then the WHOLE mutation is refused, not one entry in itemResults
     expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
 
-    // And nothing was written: not the Item columns, not the log, and no stock
-    // row anywhere. The role check runs before the first write.
-    expect(mockPrisma.item.updateMany).not.toHaveBeenCalled()
+    // And nothing was written: not the log, and no stock row anywhere. The role
+    // check runs before the first write.
     expect(mockPrisma.inventoryLog.create).not.toHaveBeenCalled()
     expect(stockAt(LOC_STRANGER)).toMatchObject({ packedQuantity: 99, unpackedQuantity: 8 })
   })

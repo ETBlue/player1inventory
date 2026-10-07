@@ -38,8 +38,13 @@ async function requireLocation(
 
 /**
  * `userId` in the `where` clauses below is a query SCOPE, not an authorization
- * decision — the same distinction lib/stockDualWrite.ts records for
- * `mirrorItemStockToItem`. Authorization is `requireLocationRole` above.
+ * decision. Root CLAUDE.md forbids `row.userId === ctx.userId` as a GUARD; it
+ * does not forbid `userId` inside a `where` clause, which only narrows what
+ * the query can match. Authorization is `requireLocationRole` above.
+ *
+ * This note used to cite `mirrorItemStockToItem` in lib/stockDualWrite.ts as
+ * the other place the distinction was written down. Cloud locations PR 5
+ * deleted that module; the rule did not change.
  *
  * When location RBAC lands, these `userId` scopes must be dropped from the
  * three location-scoped queries: `InventoryLog.userId` records who WROTE the

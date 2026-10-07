@@ -750,6 +750,12 @@ Measured on `main` at `dac2dcd4`. Re-measure rather than trusting these.
 | `stockDualWrite` calls | 6 across 5 files | **6, unchanged** — 4b removes two |
 | `REMOVED IN PR 5` markers | 7 | 7, with two re-labelled to 4b |
 
+**Both rows in that table are now history, and the marker row was never re-measured.**
+Re-measured 2026-10-05 on the finished PR 5 branch: 4b took the calls to **4 in 4 files**
+and the markers to **5**, and PR 5 took both to **0**. `apps/server/src/lib/stockDualWrite.ts`
+is deleted. The "7 → 7" row above is what the plan *expected*; nobody checked it after task 8,
+which is how 5 got written down elsewhere as 7. Re-measure, never subtract.
+
 **If `apps/web`'s count moves, something is wrong.** 4a is server-only. A changed web count
 means a generated file changed a test's behaviour, and that needs explaining before the PR
 goes up.

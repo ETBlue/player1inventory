@@ -19,17 +19,13 @@ interface FakeStock {
   updatedAt: Date
 }
 
-// Only the five legacy state columns the PR 5 dual-write touches, plus the
-// ownership scope the mirror filters on.
-interface FakeItem {
-  id: string
-  userId: string
-  targetQuantity: number
-  refillThreshold: number
-  packedQuantity: number
-  unpackedQuantity: number
-  dueDate: Date | null
-}
+// NO `item` model in this file's fake, and that is on purpose. Until cloud
+// locations PR 5 it had one, because `upsertItemStock` mirrored the saved row
+// back onto `Item`'s five legacy state columns whenever the location was the
+// caller's default. PR 5 task 3 deleted that mirror. A fake that still carried
+// an `item` store would let a reinstated mirror pass quietly; with none, the
+// resolver throws `Cannot read properties of undefined (reading 'updateMany')`
+// — which is what makes the deletion observable.
 
 // The two families `removeItemFromLocation` cascades. Only the columns the
 // resolver filters on.
@@ -47,7 +43,6 @@ type OrderBy = Record<string, 'asc' | 'desc'>
 const { state, client } = vi.hoisted(() => {
   const state = {
     locations: [] as { id: string; userId: string; isDefault: boolean }[],
-    items: [] as FakeItem[],
     itemStocks: [] as FakeStock[],
     inventoryLogs: [] as FakeLog[],
     // `Cart` rows, because `CartItem` has NO locationId column of its own.
@@ -95,6 +90,31 @@ const { state, client } = vi.hoisted(() => {
     return cartItemMatches(c, where, state.carts)
   }
 
+  type StockCreateData = Omit<FakeStock, 'id' | 'createdAt' | 'updatedAt'>
+
+  // The create and merge bodies `itemStock.create`, `.update` and `.upsert`
+  // all go through, so the three cannot answer differently from one another.
+  function insertStock(data: StockCreateData): FakeStock {
+    // Models @@unique([itemId, locationId]). It guards a resolver that
+    // creates unconditionally; it does NOT pin addItemToLocation's
+    // already-stocked branch, which its own assertions cover — making this
+    // dedupe instead of throw leaves all 17 specs here green (verified
+    // 2026-08-31, correcting an earlier comment that claimed otherwise).
+    if (state.itemStocks.some((s) => s.itemId === data.itemId && s.locationId === data.locationId)) {
+      throw new Error('Unique constraint failed on the fields: (`itemId`,`locationId`)')
+    }
+    const row: FakeStock = { ...data, id: `st-${++seq}`, createdAt: new Date(), updatedAt: new Date() }
+    state.itemStocks.push(row)
+    return row
+  }
+
+  function mergeStock(where: Record<string, unknown>, data: Partial<FakeStock>): FakeStock {
+    const row = state.itemStocks.find((s) => stockMatches(s, where))
+    if (!row) throw new Error('ItemStock not found')
+    Object.assign(row, data, { updatedAt: new Date() })
+    return row
+  }
+
   const client: Record<string, unknown> = {
     // The rollback implementation is stockFake's, imported rather than copied.
     // A second copy could silently do nothing, and then every atomicity claim
@@ -110,26 +130,6 @@ const { state, client } = vi.hoisted(() => {
             (where.userId === undefined || l.userId === where.userId) &&
             (where.isDefault === undefined || l.isDefault === where.isDefault),
         ) ?? null,
-    },
-    item: {
-      // `undefined ||` on every key — Prisma's own where semantics, so a
-      // resolver that drops `userId` from the scope becomes visible rather
-      // than staying green against a hardcoded ownership match.
-      updateMany: async ({
-        where = {},
-        data,
-      }: {
-        where?: Record<string, unknown>
-        data: Partial<FakeItem>
-      }) => {
-        const rows = state.items.filter(
-          (i) =>
-            (where.id === undefined || i.id === where.id) &&
-            (where.userId === undefined || i.userId === where.userId),
-        )
-        for (const row of rows) Object.assign(row, data)
-        return { count: rows.length }
-      },
     },
     itemStock: {
       findMany: async ({
@@ -166,25 +166,33 @@ const { state, client } = vi.hoisted(() => {
       },
       findUnique: async ({ where }: { where: Record<string, unknown> }) =>
         state.itemStocks.find((s) => stockMatches(s, where)) ?? null,
-      create: async ({ data }: { data: Omit<FakeStock, 'id' | 'createdAt' | 'updatedAt'> }) => {
-        // Models @@unique([itemId, locationId]). It guards a resolver that
-        // creates unconditionally; it does NOT pin addItemToLocation's
-        // already-stocked branch, which its own assertions cover — making this
-        // dedupe instead of throw leaves all 17 specs here green (verified
-        // 2026-08-31, correcting an earlier comment that claimed otherwise).
-        if (state.itemStocks.some((s) => s.itemId === data.itemId && s.locationId === data.locationId)) {
-          throw new Error('Unique constraint failed on the fields: (`itemId`,`locationId`)')
-        }
-        const row: FakeStock = { ...data, id: `st-${++seq}`, createdAt: new Date(), updatedAt: new Date() }
-        state.itemStocks.push(row)
-        return row
-      },
-      update: async ({ where, data }: { where: Record<string, unknown>; data: Partial<FakeStock> }) => {
-        const row = state.itemStocks.find((s) => stockMatches(s, where))
-        if (!row) throw new Error('ItemStock not found')
-        Object.assign(row, data, { updatedAt: new Date() })
-        return row
-      },
+      create: async ({ data }: { data: StockCreateData }) => insertStock(data),
+      update: async ({ where, data }: { where: Record<string, unknown>; data: Partial<FakeStock> }) =>
+        mergeStock(where, data),
+      // `upsert`, added by cloud locations PR 5 task 1. `upsertItemStock` now
+      // writes through `writeStock` (lib/itemStockWrite.ts), which issues ONE
+      // `upsert` where the resolver used to branch on `findUnique` itself. No
+      // resolver this file exercises reached the method before, so the mock
+      // did not have it and all 8 upsertItemStock specs failed with
+      // "upsert is not a function" — a gap in the double, not a change in
+      // behaviour. No assertion in this file moved.
+      //
+      // Built from `insertStock` and `mergeStock`, the SAME two bodies
+      // `create` and `update` use. A fourth hand-written copy of the matching
+      // and merging rules could answer differently from them, and then a test
+      // would be reading the mock's opinion rather than the resolver's.
+      upsert: async ({
+        where,
+        update,
+        create,
+      }: {
+        where: Record<string, unknown>
+        update: Partial<FakeStock>
+        create: StockCreateData
+      }) =>
+        state.itemStocks.some((s) => stockMatches(s, where))
+          ? mergeStock(where, update)
+          : insertStock(create),
       deleteMany: async ({ where = {} }: { where?: Record<string, unknown> }) => {
         const before = state.itemStocks.length
         state.itemStocks = state.itemStocks.filter((s) => !stockMatches(s, where))
@@ -238,38 +246,6 @@ describe('itemStock resolvers', () => {
       { id: 'loc-a', userId: 'user-a', isDefault: true },
       { id: 'loc-a2', userId: 'user-a', isDefault: false },
       { id: 'loc-b', userId: 'user-b', isDefault: true },
-    ]
-    // The legacy `Item` columns the PR 5 dual-write mirrors onto. Their values
-    // deliberately differ from every ItemStock row's, so "the mirror ran" and
-    // "the fixture already said that" are distinguishable.
-    state.items = [
-      {
-        id: 'item-milk',
-        userId: 'user-a',
-        targetQuantity: 99,
-        refillThreshold: 99,
-        packedQuantity: 99,
-        unpackedQuantity: 99,
-        dueDate: null,
-      },
-      {
-        id: 'item-far',
-        userId: 'user-a',
-        targetQuantity: 99,
-        refillThreshold: 99,
-        packedQuantity: 99,
-        unpackedQuantity: 99,
-        dueDate: null,
-      },
-      {
-        id: 'item-new',
-        userId: 'user-a',
-        targetQuantity: 99,
-        refillThreshold: 99,
-        packedQuantity: 99,
-        unpackedQuantity: 99,
-        dueDate: null,
-      },
     ]
     state.itemStocks = [
       // dueDate is non-null so the upsert "omitted" and "cleared" cases are
@@ -498,103 +474,52 @@ describe('itemStock resolvers', () => {
     expect(res.data?.upsertItemStock).toEqual({ dueDate: '2026-12-25T00:00:00.000Z' })
   })
 
-  // The PR 5 dual-write, in the ItemStock -> Item direction. A stale bundle
-  // reads `Item`'s five legacy columns and has no location concept, so the
-  // DEFAULT location's stock is the value it must be shown — and an edit
-  // anywhere else must leave `Item` alone. Deleting these when `Item`'s columns
-  // go (lib/stockDualWrite.ts).
-  const UPSERT = `mutation M($i: ID!, $l: ID!, $in: ItemStockInput!) { upsertItemStock(itemId: $i, locationId: $l, input: $in) { packedQuantity } }`
-  const itemColumns = (id: string) => {
-    const row = state.items.find((i) => i.id === id)
-    if (!row) throw new Error(`no fixture item ${id}`)
-    const { id: _id, userId: _userId, ...columns } = row
-    return columns
-  }
+  it('upsert with an empty input still returns a row of zeroes', async () => {
+    // Given item-new is stocked nowhere, and the input names no field at all
+    // When it is upserted
+    const res = await run(
+      `mutation M($i: ID!, $l: ID!, $in: ItemStockInput!) { upsertItemStock(itemId: $i, locationId: $l, input: $in) { targetQuantity refillThreshold packedQuantity unpackedQuantity dueDate } }`,
+      { i: 'item-new', l: 'loc-a2', in: {} },
+    )
 
-  it('user editing stock at their default location also updates the item\'s legacy columns', async () => {
-    // Given loc-a is user-a's default and item-milk's Item columns all read 99
-    expect(state.locations.find((l) => l.id === 'loc-a')?.isDefault).toBe(true)
-
-    // When the user sets packedQuantity there
-    const res = await run(UPSERT, { i: 'item-milk', l: 'loc-a', in: { packedQuantity: 5 } })
-
-    // Then BOTH halves moved: the ItemStock row, and the Item columns a stale
-    // bundle still reads — mirrored as the whole saved row, so they equal the
-    // default location's stock rather than a partial merge of it
-    expect(res.data?.upsertItemStock).toEqual({ packedQuantity: 5 })
-    expect(state.itemStocks.find((s) => s.id === 'st-home')?.packedQuantity).toBe(5)
-    expect(itemColumns('item-milk')).toEqual({
-      targetQuantity: 3,
-      refillThreshold: 1,
-      packedQuantity: 5,
+    // Then a row comes back, at zeroes. `upsertItemStock` returns
+    // `ItemStock!`, so declining to write would make this field null and the
+    // whole mutation an error. `writeStock` (lib/itemStockWrite.ts) therefore
+    // has NO empty-data early return, unlike the `mirrorStock` it replaced —
+    // this is the test that would catch one being added.
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.upsertItemStock).toEqual({
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
       unpackedQuantity: 0,
-      dueDate: new Date('2026-09-01T00:00:00.000Z'),
+      dueDate: null,
     })
   })
 
-  it('user editing stock at a non-default location leaves the item\'s legacy columns alone', async () => {
+  // `upsertItemStock` writes the location it is GIVEN. Four tests here used to
+  // assert the other half of the PR 2 dual-write — the default location's row
+  // copied back onto `Item`'s five legacy state columns — and went with those
+  // columns in cloud locations PR 5. What survives is the half that is now the
+  // whole behaviour: the named location moves and no other row appears.
+  const UPSERT = `mutation M($i: ID!, $l: ID!, $in: ItemStockInput!) { upsertItemStock(itemId: $i, locationId: $l, input: $in) { packedQuantity } }`
+
+  it('user editing stock at a non-default location writes THAT location, not the default', async () => {
     // Given loc-a2 is NOT user-a's default, and item-far is stocked only there
     expect(state.locations.find((l) => l.id === 'loc-a2')?.isDefault).toBe(false)
+    expect(state.itemStocks.filter((s) => s.itemId === 'item-far')).toHaveLength(1)
 
     // When the user sets packedQuantity there
     const res = await run(UPSERT, { i: 'item-far', l: 'loc-a2', in: { packedQuantity: 5 } })
 
-    // Then only the ItemStock row moved. There is no correct single value to
-    // write onto `Item` for a non-default location, so a stale bundle keeps
-    // showing the default location's numbers rather than the Garage's.
+    // Then the garage row moved, and item-far STILL has exactly one row. A
+    // resolver that ignored `locationId` and wrote the caller's default would
+    // create a second row at loc-a and leave st-garage at its fixture 7, so
+    // the length is the assertion that tells the two apart.
     expect(res.data?.upsertItemStock).toEqual({ packedQuantity: 5 })
-    expect(state.itemStocks.find((s) => s.id === 'st-garage')?.packedQuantity).toBe(5)
-    expect(itemColumns('item-far')).toEqual({
-      targetQuantity: 99,
-      refillThreshold: 99,
-      packedQuantity: 99,
-      unpackedQuantity: 99,
-      dueDate: null,
-    })
-  })
-
-  it('creating a stock row at the default location mirrors the whole new row', async () => {
-    // Given item-new has no ItemStock anywhere, and Item columns reading 99
-    // When it is stocked at the default location with a partial input
-    await run(UPSERT, { i: 'item-new', l: 'loc-a', in: { targetQuantity: 4, packedQuantity: 1 } })
-
-    // Then the fields the input omitted land as the new row's zeroes, not as
-    // the leftover 99s — the mirror copies the saved row, not the input
-    expect(itemColumns('item-new')).toEqual({
-      targetQuantity: 4,
-      refillThreshold: 0,
-      packedQuantity: 1,
-      unpackedQuantity: 0,
-      dueDate: null,
-    })
-  })
-
-  it('the mirror never writes another user\'s item', async () => {
-    // Given user-b owns item-rice, and user-a upserts it into their OWN
-    // default location — `upsertItemStock` authorizes the LOCATION, not the
-    // item, so the stock row is written and the mirror is reached
-    state.items.push({
-      id: 'item-rice',
-      userId: 'user-b',
-      targetQuantity: 99,
-      refillThreshold: 99,
-      packedQuantity: 99,
-      unpackedQuantity: 99,
-      dueDate: null,
-    })
-
-    // When user-a upserts it at loc-a (their default)
-    await run(UPSERT, { i: 'item-rice', l: 'loc-a', in: { packedQuantity: 5 } })
-
-    // Then user-b's Item columns are untouched — the mirror's where clause
-    // scopes to the caller, so a foreign id matches no row
-    expect(itemColumns('item-rice')).toEqual({
-      targetQuantity: 99,
-      refillThreshold: 99,
-      packedQuantity: 99,
-      unpackedQuantity: 99,
-      dueDate: null,
-    })
+    const far = state.itemStocks.filter((s) => s.itemId === 'item-far')
+    expect(far).toHaveLength(1)
+    expect(far[0]).toMatchObject({ id: 'st-garage', locationId: 'loc-a2', packedQuantity: 5 })
   })
 
   it('user cannot upsert into another user\'s location', async () => {

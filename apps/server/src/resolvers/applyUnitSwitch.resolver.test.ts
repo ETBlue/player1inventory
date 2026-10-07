@@ -22,13 +22,6 @@ interface FakeItem {
   targetUnit: string
   amountPerPackage: number | null
   consumeAmount: number
-  // The five legacy state columns PR 5 drops. The dual-write mirrors the
-  // DEFAULT location's converted quantities onto them.
-  targetQuantity: number
-  refillThreshold: number
-  packedQuantity: number
-  unpackedQuantity: number
-  dueDate: Date | null
   createdAt: Date
   updatedAt: Date
 }
@@ -98,17 +91,13 @@ vi.mock('../lib/prisma.js', async () => {
       Object.assign(row, data, { updatedAt: new Date() })
       return withRelations(row)
     },
-    updateMany: async ({
-      where = {},
-      data,
-    }: {
-      where?: Where
-      data: Record<string, unknown>
-    }) => {
-      const rows = extra.items.filter((i) => matchesItem(i, where))
-      for (const row of rows) Object.assign(row, data)
-      return { count: rows.length }
-    },
+    // NO `updateMany`, on purpose. Until cloud locations PR 5 the resolver ran
+    // `tx.item.updateMany` inside the transaction, to copy the DEFAULT
+    // location's converted quantities onto `Item`'s five legacy state columns.
+    // PR 5 task 3 deleted that block. Keeping the method here would let a
+    // reinstated copy pass quietly; without it the transaction throws
+    // `tx.item.updateMany is not a function`, which is what makes the deletion
+    // observable.
   }
 
   const recipe = {
@@ -172,8 +161,6 @@ const MUTATION = `
       name
       targetUnit
       amountPerPackage
-      targetQuantity
-      unpackedQuantity
     }
   }
 `
@@ -231,13 +218,6 @@ function seed() {
       targetUnit: 'measurement',
       amountPerPackage: 500,
       consumeAmount: 100,
-      // Deliberately unlike either location's numbers, so "the mirror ran" and
-      // "the fixture already said that" are different observations.
-      targetQuantity: 99,
-      refillThreshold: 99,
-      packedQuantity: 99,
-      unpackedQuantity: 99,
-      dueDate: null,
       createdAt: new Date('2026-01-01T00:00:00.000Z'),
       updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     },
@@ -327,36 +307,13 @@ describe('applyUnitSwitch', () => {
     ])
   })
 
-  it("the DEFAULT location's converted numbers are mirrored onto Item's legacy columns", async () => {
-    // Given the dual-write bridge is still in place (removed in PR 5)
-    // When the switch runs
-    await run(MUTATION, { input: fullSwitch })
-
-    // Then `Item` holds the KITCHEN's numbers (the default location), never the
-    // garage's — a stale bundle renders one number per item and the default
-    // location's is the only correct one to show it
-    expect(flour()).toMatchObject({
-      targetQuantity: 2,
-      refillThreshold: 0.4,
-      unpackedQuantity: 0.5,
-    })
-  })
-
-  it('a switch that names only a NON-default location leaves Item’s legacy columns alone', async () => {
-    // Given a conversion for the garage only
-    const input = { ...fullSwitch, stockConversions: [{ locationId: LOC_GARAGE, quantities: GARAGE_AFTER }] }
-
-    // When the switch runs
-    const res = await run(MUTATION, { input })
-
-    // Then the garage converted
-    expect(res.errors).toBeUndefined()
-    expect(stockAt(LOC_GARAGE)?.targetQuantity).toBe(6)
-    // And `Item` still holds its fixture values — mirroring a garage edit would
-    // make a stale bundle report the garage's numbers as the kitchen's
-    expect(flour()?.targetQuantity).toBe(99)
-    expect(flour()?.unpackedQuantity).toBe(99)
-  })
+  // Two tests stood here until cloud locations PR 5 task 3. Both asserted
+  // `Item`'s five legacy state columns after a switch — one that the DEFAULT
+  // location's converted numbers were copied onto them, one that a
+  // non-default-only switch left them alone. PR 5 deletes the columns and the
+  // copy, so the second lost its subject entirely: with no default-location
+  // branch left in the resolver, a switch naming only the garage takes exactly
+  // the same path as one naming the kitchen.
 
   it('a failure on the LAST write rolls the item and every location back', async () => {
     // Given the recipe write will fail

@@ -290,9 +290,11 @@ cloud seed that writes stock therefore writes before anything has created a defa
 location.
 
 **Until 2026-09-16 that write was dropped in silence** (issue #287).
-`mirrorStockToDefaultLocation` (`apps/server/src/lib/stockDualWrite.ts`) ended with
-`if (!locationId) return`. The item was created, `Item`'s legacy columns were set, and no
-`ItemStock` row was written. The pantry then showed the item below the "not stocked here"
+`mirrorStockToDefaultLocation` ended with `if (!locationId) return`. The item was created,
+`Item`'s legacy columns were set, and no `ItemStock` row was written. (That function lived in
+`apps/server/src/lib/stockDualWrite.ts`, which **cloud locations PR 5 deleted** along with
+`Item`'s five legacy columns. The file no longer exists; the consequence in this section's
+heading — every cloud test starts with zero locations — is unchanged.) The pantry then showed the item below the "not stocked here"
 divider with a quantity of 0, and nothing anywhere reported an error.
 
 This caught `cooking.spec.ts` on 2026-09-14. Measured, not guessed: with `Location` removed
@@ -387,18 +389,27 @@ why `Fixture` references locations by a symbolic `key` (`'HOME'`, `'OFFICE'`) an
 by an id. A spec that hardcoded `'local'` — the local default-location sentinel — would
 name nothing at all in cloud mode.
 
-**`seedCloudFixture` reconciles stock; it does not assume.** `bulkCreateItems` calls
-`mirrorStockToDefaultLocation` (`apps/server/src/resolvers/import.resolver.ts`), so every
-seeded item arrives with a stock row at the default location whether the fixture asks for
-one or not — and since issue #287 that is true even when the user had no location at all
-when the import ran. The helper reads the real stock rows back and then:
+**`seedCloudFixture` reconciles stock; it does not assume — and that is why it needed no
+change across two PRs that inverted what the server does.**
+
+`bulkCreateItems` used to call `mirrorStockToDefaultLocation`, so every seeded item arrived
+with a stock row at the default location whether the fixture asked for one or not. **That is
+no longer true.** Cloud locations PR 4b task 6 deleted the call, and PR 5 removed the five
+inline stock fields from `ItemInput` altogether — so `bulkCreateItems` now writes **no stock
+row at all**, and step 3 of the seed leaves every item stocked nowhere.
+
+The helper still reads the real stock rows back rather than predicting them, which is
+exactly why it is correct under both behaviours. **Do not replace that read-back with an
+assumption about what the server did.** It reads, and then:
 
 - `upsertItemStock` for every `(item, location)` pair the fixture lists
 - `removeItemFromLocation` for every pair in the database that the fixture does not list
 
-Reconciling against what the database actually holds is what keeps this working when
-PR 5 removes the dual-write. **Check it at that point** — if the mirror stops running,
-the reconcile should simply find nothing to remove.
+Reconciling against what the database actually holds is what kept this working across both
+changes. **Checked at PR 5, as this paragraph used to ask:** with no mirror running, the
+reconcile finds nothing to remove and creates every row the fixture lists. No edit to the
+loop was needed in 4b or in PR 5 — which is the whole argument for reading state back
+instead of predicting it.
 
 **The `cloud` project's `testMatch` is 20 files today** (`e2e/playwright.config.ts`),
 up from 13 on 2026-09-23. The five added on 2026-09-24 are `recipes-group.spec.ts`,

@@ -29,25 +29,40 @@ async function seedDatabase(
     // default location itself, so this call is no longer what makes the test
     // pass. It stays because a seed that guarantees its own preconditions does
     // not depend on server behaviour to be correct.
-    await ensureCloudDefaultLocation(request)
+    const home = await ensureCloudDefaultLocation(request)
+
+    // The opening quantities go to `upsertItemStock`, which NAMES its location.
+    //
+    // They used to ride inline on `updateItem`, and that worked only because of
+    // a server-side bridge: `updateItem` mirrored the five per-location state
+    // fields onto the caller's DEFAULT location's `ItemStock` row. Cloud
+    // locations PR 3 deleted that mirror and PR 5 removed the five from
+    // `UpdateItemInput` entirely, so the old seed now fails validation
+    // (`Field "packedQuantity" is not defined by type "UpdateItemInput". Did
+    // you mean "packageUnit"?`) AND, even if it did not, would write no stock
+    // row at all — leaving both items stocked nowhere and the cooking page
+    // empty. Two steps per item, the same two `useCreateItem`'s cloud branch
+    // takes (apps/web/src/hooks/useItems.ts).
+    const stockAt = async (itemId: string, packedQuantity: number) => {
+      await gql(
+        `mutation Upsert($itemId: ID!, $locationId: ID!, $input: ItemStockInput!) {
+          upsertItemStock(itemId: $itemId, locationId: $locationId, input: $input) { id }
+        }`,
+        { itemId, locationId: home.id, input: { packedQuantity } },
+      )
+    }
 
     const { createItem: flour } = await gql<{ createItem: { id: string } }>(
       'mutation CreateItem($name: String!) { createItem(input: { name: $name }) { id } }',
       { name: 'Flour' },
     )
-    await gql(
-      'mutation UpdateItem($id: ID!, $input: UpdateItemInput!) { updateItem(id: $id, input: $input) { id } }',
-      { id: flour.id, input: { packedQuantity: 10 } },
-    )
+    await stockAt(flour.id, 10)
 
     const { createItem: eggs } = await gql<{ createItem: { id: string } }>(
       'mutation CreateItem($name: String!) { createItem(input: { name: $name }) { id } }',
       { name: 'Eggs' },
     )
-    await gql(
-      'mutation UpdateItem($id: ID!, $input: UpdateItemInput!) { updateItem(id: $id, input: $input) { id } }',
-      { id: eggs.id, input: { packedQuantity: 12 } },
-    )
+    await stockAt(eggs.id, 12)
 
     const { createRecipe: recipe } = await gql<{ createRecipe: { id: string } }>(
       `mutation CreateRecipe($name: String!, $items: [RecipeItemInput!]) {

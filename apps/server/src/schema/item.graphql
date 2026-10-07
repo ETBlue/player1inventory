@@ -7,12 +7,7 @@ type Item {
   measurementUnit: String
   amountPerPackage: Float
   targetUnit: String!
-  targetQuantity: Float!
-  refillThreshold: Float!
-  packedQuantity: Float!
-  unpackedQuantity: Float!
   consumeAmount: Float!
-  dueDate: String
   estimatedDueDays: Int
   expirationThreshold: Int
   expirationMode: String
@@ -40,15 +35,10 @@ input CreateItemInput {
   tagIds: [String!]
   vendorIds: [String!]
   targetUnit: String
-  targetQuantity: Float
-  refillThreshold: Float
-  packedQuantity: Float
-  unpackedQuantity: Float
   consumeAmount: Float
   packageUnit: String
   measurementUnit: String
   amountPerPackage: Float
-  dueDate: String
   estimatedDueDays: Int
   expirationThreshold: Int
   expirationMode: String
@@ -59,15 +49,10 @@ input UpdateItemInput {
   tagIds: [String!]
   vendorIds: [String!]
   targetUnit: String
-  targetQuantity: Float
-  refillThreshold: Float
-  packedQuantity: Float
-  unpackedQuantity: Float
   consumeAmount: Float
   packageUnit: String
   measurementUnit: String
   amountPerPackage: Float
-  dueDate: String
   estimatedDueDays: Int
   expirationThreshold: Int
   expirationMode: String

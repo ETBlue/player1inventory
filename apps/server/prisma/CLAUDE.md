@@ -152,12 +152,44 @@ rather than assuming the script rotted.
 Four things about it that are easy to get wrong:
 
 - **It parks migrations by NAME.** `scripts/verify-migration.ts` holds a `MIGRATIONS` list —
-  today `20260830000000_add_location_and_item_stock`,
-  `20260916000000_add_location_to_log_and_cart` and
-  `20260917000000_rekey_cart_to_location_vendor`. **Add your new migration to that list.** A
+  **four** entries today:
+  `20260830000000_add_location_and_item_stock`,
+  `20260916000000_add_location_to_log_and_cart`,
+  `20260917000000_rekey_cart_to_location_vendor` and
+  `20261004000000_drop_item_stock_state_columns` (cloud locations PR 5, three assertions).
+  **Add your new migration to that list.** A
   migration missing from it is not parked, so `migrate reset` replays it against a database
   that has not yet seen the migrations it depends on. Add assertions for it too: without new
   assertions the script re-proves the old migration and says nothing about yours.
+- **A column DROP inverts the usual assertion shape, and one assertion is not enough.** For
+  an additive migration you assert the new column is **present**. For a drop you need two
+  halves:
+  1. the columns are **absent** from the table that lost them, and
+  2. they are still **present** on the table that keeps them.
+
+  `Item` and `ItemStock` declare the **same five field names**
+  (`targetQuantity`, `refillThreshold`, `packedQuantity`, `unpackedQuantity`, `dueDate`), so
+  checking one table alone passes just as happily against a migration that dropped them from
+  the **wrong** table. Half 2 is the only assertion that can tell those two apart. PR 5 adds
+  a third for the same reason in the other direction: `Item`.`consumeAmount` must **survive**,
+  because it sits among the five in the model and is global configuration, not per-location
+  state — that assertion catches a drop that took one column too many.
+
+  Read the columns from `information_schema`, not with a `SELECT`. `SELECT "dueDate" FROM
+  "Item"` throws Postgres `42703` before `assert` is reached, and a raw driver error is not
+  the named `FAIL` the script exists to print. Cast both identifier columns with `::text` —
+  `information_schema` uses the `sql_identifier` domain, which Prisma's raw mapper does not
+  know.
+- **An existing assertion can be killed by a later migration joining the list.** PR 5 had to
+  delete `assert(items[0]?.targetQuantity === 3, …)`: once PR 5 is in `MIGRATIONS`, that
+  `SELECT` throws `42703`. Following "add yours, and write assertions for it" literally would
+  have left the script broken. When you add a migration, re-read every assertion already
+  there.
+- **The root `pnpm build` type-checks this script** — since 2026-10-07. `apps/server`'s
+  `build` is `tsc && tsc -p tsconfig.scripts.json && cp …`, and the second pass covers
+  `scripts/`. Before that nothing ran it, so a type error here passed the whole gate.
+  Proved by mutation: a deliberate `const x: number = "s"` gives
+  `scripts/verify-migration.ts(698,7): error TS2322` and pnpm exits 2.
 - **It is destructive**, and Prisma's own AI guardrail requires the user's real-time consent
   passed via `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`. Ask first.
 - **It refuses to run** unless `TEST_DATABASE_URL` *and* `TEST_DIRECT_URL` both resolve — by

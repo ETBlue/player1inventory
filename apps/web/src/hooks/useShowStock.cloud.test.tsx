@@ -33,13 +33,14 @@ vi.mock('@/generated/graphql', async (importOriginal) => await importOriginal())
 vi.mock('./useDataMode', () => ({ useDataMode: vi.fn() }))
 
 const MILK = cloudItem('item-milk', 'Milk')
-// Rice carries INLINE stock values on the cloud `Item` — the shape that made
-// the old bypass look harmless. Read from a location where it has no row it
+// Rice has a real stock row at LOC_B and none at LOC_A, so read from LOC_A it
 // must still read as unstocked.
-const RICE = cloudItem('item-rice', 'Rice', {
-  targetQuantity: 9,
-  packedQuantity: 5,
-})
+//
+// Until cloud locations PR 5 it also carried INLINE stock values on the cloud
+// `Item` — the shape that made the old bypass look harmless. The cloud `Item`
+// has no stock fields now, so that half of the fixture is gone; the LOC_B row
+// is what keeps the assertion falsifiable.
+const RICE = cloudItem('item-rice', 'Rice')
 
 const MILK_STOCK_A = cloudStock('stock-milk-a', 'item-milk', LOC_A, {
   targetQuantity: 4,

@@ -295,6 +295,50 @@ in the gate. That is exactly how three failing purge tests sat on `main` unnotic
 
 **Run the root `pnpm build`, not `(cd apps/web && pnpm build)`.** The root build is the *full* build — it runs `pnpm codegen` (regenerating GraphQL types from the current schema + operations, catching codegen drift) and type-checks **both** `apps/web` and `apps/server` via `tsc`. The web-only build skips codegen and the server, and `pnpm test` (vitest/esbuild), `pnpm check` (Biome), and `pnpm build-storybook` all skip a full type-check — so type-flow errors (e.g. `possibly null` from `.filter(Boolean)`) and codegen mismatches slip through every other check and only fail in the Cloudflare production build. The root `pnpm build` mirrors that production build and catches them locally.
 
+**The gate regenerates the Prisma client** — since 2026-10-07. `apps/server`'s `build` and
+`typecheck` both start with `prisma generate`, so the root `pnpm build` catches a dangling
+Prisma field reference.
+
+**Before that it did not, and the failure was silent.** Root `pnpm codegen` is
+`graphql-codegen` alone; `prisma generate` was wired only to `postinstall` and `predev`. So
+`tsc` compared your code against whatever client was generated last — possibly the pre-edit
+one. Measured 2026-10-04: a throwaway file reading a dropped column failed `TS2551` with the
+client regenerated and reported **zero errors** with a stale one.
+
+Proved by mutation 2026-10-07: renaming `Item.targetUnit` in `schema.prisma` and running the
+root `pnpm build` with **no** manual generate now exits 2 with
+`src/resolvers/import.resolver.ts(439,13): error TS2353: … 'targetUnit' does not exist in type
+'(Without<ItemCreateInput, …`.
+
+It costs **94ms** of generation, about 0.7s wall including startup.
+
+**`apps/server`'s build type-checks `scripts/`** — since 2026-10-07. Before that nothing ran
+it, so a type error in `apps/server/scripts/verify-migration.ts` — the one script that proves a
+migration against real SQL — passed the whole gate. Proved by mutation: a deliberate
+`const x: number = "s"` gives `scripts/verify-migration.ts(698,7): error TS2322` and pnpm
+exits 2.
+
+```
+build:     tsc && tsc -p tsconfig.scripts.json && cp src/schema/*.graphql dist/schema/
+typecheck: tsc --noEmit && tsc -p tsconfig.scripts.json
+```
+
+**The two passes do not overlap**, which is why this costs almost nothing: `tsc` checks and
+emits the **52** files under `src`, the second pass checks the **1** under `scripts`, and
+nothing is checked twice. The server build is **2.2s**. The first version of this fix reused
+the whole-project `typecheck` and so checked `src` twice — 105 files instead of 53, and 3.4s.
+
+Why two tsconfigs rather than one: `tsconfig.json` **emits**, with `rootDir: "src"` and
+`outDir: "dist"`. Adding `scripts` to its `include` moves `rootDir` to `.` and emits
+`dist/src/…` plus `dist/scripts/…`, which breaks `start: node dist/index.js`.
+`tsconfig.scripts.json` extends it with `rootDir: "."`, `noEmit: true` and
+`include: ["scripts"]`. **Do not merge them.**
+
+**The no-overlap trick depends on a fact that could change.** `scripts/` imports nothing from
+`src` today — only `@prisma/client` and node builtins. If a script ever imports from `src`,
+TypeScript pulls those files into the scripts program and checks them again, and the saving
+goes away. Correct either way, but measure before adding such an import.
+
 **Final phase only** — after all steps are complete, run the **whole** E2E suite with one
 command:
 

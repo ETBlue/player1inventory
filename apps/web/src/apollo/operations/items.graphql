@@ -8,13 +8,8 @@ query GetItem($id: ID!) {
     measurementUnit
     amountPerPackage
     targetUnit
-    targetQuantity
-    refillThreshold
-    packedQuantity
-    unpackedQuantity
     consumeAmount
     expirationMode
-    dueDate
     estimatedDueDays
     expirationThreshold
     userId
@@ -33,13 +28,8 @@ query GetItems {
     measurementUnit
     amountPerPackage
     targetUnit
-    targetQuantity
-    refillThreshold
-    packedQuantity
-    unpackedQuantity
     consumeAmount
     expirationMode
-    dueDate
     estimatedDueDays
     expirationThreshold
     userId
@@ -54,13 +44,8 @@ mutation CreateItem($input: CreateItemInput!) {
     name
     tagIds
     targetUnit
-    targetQuantity
-    refillThreshold
-    packedQuantity
-    unpackedQuantity
     consumeAmount
     expirationMode
-    dueDate
     estimatedDueDays
     expirationThreshold
     createdAt
@@ -78,13 +63,8 @@ mutation UpdateItem($id: ID!, $input: UpdateItemInput!) {
     measurementUnit
     amountPerPackage
     targetUnit
-    targetQuantity
-    refillThreshold
-    packedQuantity
-    unpackedQuantity
     consumeAmount
     expirationMode
-    dueDate
     estimatedDueDays
     expirationThreshold
     updatedAt

@@ -76,12 +76,7 @@ model Item {
   measurementUnit     String?
   amountPerPackage    Float?
   targetUnit          TargetUnit
-  targetQuantity      Float          @default(0)
-  refillThreshold     Float          @default(0)
-  packedQuantity      Float          @default(0)
-  unpackedQuantity    Float          @default(0)
   consumeAmount       Float          @default(1)
-  dueDate             DateTime?
   estimatedDueDays    Int?
   expirationThreshold Int?
   expirationMode      ExpirationMode @default(disabled)

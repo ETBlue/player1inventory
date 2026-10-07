@@ -1,4 +1,8 @@
 # Per-(item × location) stock STATE. Configuration lives on Item.
+#
+# Since cloud locations PR 5 this is the ONLY place the five state fields live.
+# `Item` no longer declares them, so a quantity or a due date can come from
+# nowhere else.
 type ItemStock {
   id: ID!
   itemId: ID!
@@ -66,10 +70,11 @@ input ApplyUnitSwitchInput {
   # The Item's own update — identity plus the GLOBAL stock configuration
   # (`targetUnit`, `amountPerPackage`, `consumeAmount`, ...).
   #
-  # The five per-location state fields this input still carries until PR 5
-  # drops them from `Item` are IGNORED here. Per-location state comes only
-  # from `stockConversions`, which names its location; leaving a second path
-  # open would give one value two writers.
+  # `UpdateItemInput` carries NO per-location state: cloud locations PR 5
+  # dropped the five state fields from it, so this input has only one path to
+  # per-location state and it is `stockConversions`, which names its location.
+  # Before PR 5 the fields were present here and deliberately IGNORED, to keep
+  # one value from having two writers.
   updates: UpdateItemInput!
   stockConversions: [UnitSwitchStockConversionInput!]!
   recipeUpdates: [UnitSwitchRecipeUpdateInput!]!

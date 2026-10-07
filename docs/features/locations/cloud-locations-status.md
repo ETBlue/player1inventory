@@ -57,9 +57,9 @@ PR 1 and PR 5 already use: additive changes first, destructive changes last.
 | **3b** | ✅ merged — [#293](https://github.com/ETBlue/player1inventory/pull/293) — deployed 2026-09-19 | The destructive half: the `'no-vendor'` split, the composite `Cart.id` re-key, the cart resolvers, vendor carts at the right time, `checkout`, `consumeRecipes`, and **five** `!isCloud` bypasses (the plan said two). |
 | **3c** | ✅ merged — [#297](https://github.com/ETBlue/player1inventory/pull/297) — deployed 2026-09-21, **deploy unverified** | `applyUnitSwitch` and `removeItemFromLocation`'s cloud cascade. Two new features, blocked by neither 3a nor 3b. **PR 3 ends here.** |
 | **4a** | ✅ merged — [#328](https://github.com/ETBlue/player1inventory/pull/328), `fbdd8869` | The GraphQL surface — `allItemStocks`, `InventoryLog.locationId`, `InventoryLogInput.locationId`, `LocationInput`, `ItemStockImportInput`, four bulk mutations, plus an imported cart's location read from its own id (no new input needed). No web change. Server tests 259 → **346** across 20 → 24 files, all green; all **10** mutation checks red. **NOT behaviour-neutral, and task 8 (`f0c1ddad`) fixed the part that broke:** task 4's cart check refused a location id `clearAllData` had just deleted, killing cloud → cloud import (`import-export-cloud.spec.ts:133`). Carts now fall back to the caller's default when no row holds the named id, and refuse only a stranger's **live** location. That refusal stays and is a deliberate behaviour change. |
-| **4b** | 🔄 built, **gate RED on one E2E test**, not yet pushed — the web (2285) and server (347) suites, `local` (171) and `pwa` (69) all pass; the `cloud` project fails 1 of 103: `import-export-cloud.spec.ts` › *user can export and re-import cloud data (cloud → cloud)* needs **36.5s** and the default test timeout is **30s** — branch `feature/cloud-locations-pr4b`, `915368fa`‥task 9 | The payload shape and **both** import readers, in one diff. Cloud export is lossless: `locations`, `itemStocks`, and each log's `locationId`, `logKey` and `logParams` (the last two were a pre-existing loss — a cloud backup dropped every log's message). One remap rule — *keep every payload location id, except the payload's default, which maps onto the destination's default* — applied to **five** fields in both directions, shared by the cloud and local readers. Deleted: `flattenPayloadForCloud`, `resolveFlattenLocationId` and its two helpers, the cart-prefix strip (issue #327's client half), `MigrationLocationWarningDialog` (4 files + 4 i18n keys × 2 languages), the dead `settings.import.unknownLocations` key, and 2 import `stockDualWrite` calls. Added: four bulk Apollo operations and one `ENTITY_SPECS` table that replaces three hand-maintained upload lists. Found and fixed a regression tasks 3 and 6 made together — `importCloudData` never ran `upgradeLegacyPayload`, so a pre-v15 backup imported into cloud mode lost **all** of its stock. Found and filed [issue #330](https://github.com/ETBlue/player1inventory/issues/330). See *Amendment 2026-10-04*. |
+| **4b** | ✅ merged — [#331](https://github.com/ETBlue/player1inventory/pull/331), `9b809f1b`. The one red E2E test was a test-budget failure, not a data failure: `cloud → cloud` in `import-export-cloud.spec.ts` needs **36.5s** against Playwright's default **30s**, and it now carries `test.setTimeout(60000)` on that one test so the other five keep the 30s signal | The payload shape and **both** import readers, in one diff. Cloud export is lossless: `locations`, `itemStocks`, and each log's `locationId`, `logKey` and `logParams` (the last two were a pre-existing loss — a cloud backup dropped every log's message). One remap rule — *keep every payload location id, except the payload's default, which maps onto the destination's default* — applied to **five** fields in both directions, shared by the cloud and local readers. Deleted: `flattenPayloadForCloud`, `resolveFlattenLocationId` and its two helpers, the cart-prefix strip (issue #327's client half), `MigrationLocationWarningDialog` (4 files + 4 i18n keys × 2 languages), the dead `settings.import.unknownLocations` key, and 2 import `stockDualWrite` calls. Added: four bulk Apollo operations and one `ENTITY_SPECS` table that replaces three hand-maintained upload lists. Found and fixed a regression tasks 3 and 6 made together — `importCloudData` never ran `upgradeLegacyPayload`, so a pre-v15 backup imported into cloud mode lost **all** of its stock. Found and filed [issue #330](https://github.com/ETBlue/player1inventory/issues/330). See *Amendment 2026-10-04*. |
 | **4c** | 🔲 Pending | Issue #320 — a two-user real-SQL spec for `purgeUserData`. Independent of 4a and 4b. |
-| **5** | 🔲 Pending | **Contract step:** drop the five `Item` columns, remove them from the GraphQL type and inputs, delete `apps/server/src/lib/stockDualWrite.ts` and all of its call sites. |
+| **5** | ✅ **built 2026-10-05, gate owed** — branch `feature/cloud-locations-pr5`, not yet pushed. Tasks 1–7 done; task 8 is the Verification Gate plus `pnpm test:e2e:all` | **Contract step, done.** The five `Item` columns are dropped (migration `20261004000000_drop_item_stock_state_columns`), removed from the `Item` GraphQL type and from `CreateItemInput`, `UpdateItemInput` and `ItemInput`, and `apps/server/src/lib/stockDualWrite.ts` is deleted. **Not a pure teardown:** `checkout` and `consumeRecipes` keep their stock write, renamed to `writeStock` in `lib/itemStockWrite.ts` — it was the only `ItemStock` write either resolver made. See *PR 5 — done 2026-10-05* below for the measured counts, and [the deploy runbook](../../global/backend/2026-10-05-deploy-runbook-item-column-drop.md) for the production reconciliation and the accepted stale-bundle break. **Unblocks households H2 and H3.** |
 
 Two pieces of follow-on work sit beside the PR series:
 
@@ -1068,30 +1068,111 @@ Both items this section used to list are now closed by 4b task 7:
 | Decide whether `usePostLoginMigration`'s copy id should be validated. | ✅ The question is gone, not answered. The hook no longer picks a location at all: `importCloudData` lost its `locationId` option, because the remap keeps every location. There is no id left to validate. |
 | Remove `locationResolved`'s `activeLocationId === DEFAULT_LOCATION_ID` branch. | ✅ Removed. The "locations have loaded" half of the gate stays, with a corrected reason — it buys ordering, not the remap's input. See *Amendment 2026-10-04*. |
 
-### PR 5 owes
+### PR 5 — done 2026-10-05
 
-Drop the five `Item` columns, remove them from the GraphQL type and inputs, and tear down
-**all six** dual-write sites:
+PR 5 dropped the five `Item` columns, removed them from the GraphQL type and the three
+inputs, and tore the bridge down completely.
 
-| # | Site | Direction |
+**Measured on the finished branch, not subtracted from any earlier figure:**
+
+| Check | Command | Result |
 |---|---|---|
-| 1 | `cart.resolver.ts` `checkout` | `Item` → also `ItemStock` |
-| 2 | `recipe.resolver.ts` `consumeRecipes` | `Item` → also `ItemStock` |
-| 3 | `item.resolver.ts` `updateItem` | `Item` → also `ItemStock` |
-| 4 | `itemStock.resolver.ts` `upsertItemStock` → `mirrorItemStockToItem` | **`ItemStock` → `Item`** (the reverse mirror) |
-| 5 | `import.resolver.ts` `bulkCreateItems` and `bulkUpsertItems` | `Item` → also `ItemStock` |
-| 6 | `itemStock.resolver.ts` `applyUnitSwitch` | **`ItemStock` → `Item`**, written with `tx` inside the transaction. **Added by PR 3c.** |
+| `REMOVED IN PR 5` markers | `grep -rn "REMOVED IN PR 5" apps/server/src` | **0** |
+| `stockDualWrite` resolver calls | `grep -rnE "await (mirrorStock\|mirrorStockToDefaultLocation\|mirrorItemStockToItem)\(" apps/server/src/resolvers` | **0** |
+| `apps/server/src/lib/stockDualWrite.ts` | — | **deleted** |
 
-`grep -rn "REMOVED IN PR 5" apps/server/src` is the checklist. **As of 4b task 6 it returns 5** — see the 2026-10-03 note at the end of this file. Before 4a relabelled two of them it returned **7 markers across
-5 files**, not 6 — `import.resolver.ts` carries two (create and upsert) and
-`itemStock.resolver.ts` carries two (the `upsertItemStock` reverse mirror and
-`applyUnitSwitch`'s). Count the markers, not the files.
+**This section used to say "all six dual-write sites" and it was wrong by the time anyone
+read it.** It listed `import.resolver.ts`'s `bulkCreateItems` and `bulkUpsertItems` as site
+5, which PR 4b task 6 had already deleted — and the paragraph directly under the table said
+so ("As of 4b task 6 it returns 5"), contradicting its own heading. The table said six, the
+grep said five, and the real figure PR 5 started from was **4 calls plus one inline block**.
 
-**Site 6 cannot call `mirrorItemStockToItem`.** That helper uses the module-level `prisma`,
-so its write would survive a `$transaction` rollback and leave `Item` and `ItemStock` in
-**different units**. PR 3c wrote it inline with `tx` for that reason. PR 5 deletes both. `addItemToLocation` and
-`removeItemFromLocation` have **no** mirror on purpose: they change membership, which
-`Item`'s columns cannot express.
+What PR 5 actually did with the sites that were left:
+
+| Site | Fate |
+|---|---|
+| `cart.resolver.ts` `checkout` | **survives, renamed.** `mirrorStock` was the only `ItemStock` write in `checkout`, so deleting it would have stopped cloud stock updating. It is now `writeStock` in `lib/itemStockWrite.ts`, and it **is** the source of truth rather than a mirror of one |
+| `recipe.resolver.ts` `consumeRecipes` | **survives, renamed.** Same reason |
+| `item.resolver.ts` `updateItem` → `mirrorStockToDefaultLocation` | **deleted.** `UpdateItemInput` lost the five fields |
+| `itemStock.resolver.ts` `upsertItemStock` → `mirrorItemStockToItem` | **deleted** |
+| `itemStock.resolver.ts` `applyUnitSwitch`'s inline `tx.item.updateMany` block | **deleted.** `writeStock` took an optional transaction-client parameter and `applyUnitSwitch` passes its `tx`, which also folded away a third copy of the same upsert |
+
+So PR 5 removed the bridge **in one direction** and promoted the other direction to being
+the real write. It was never a pure teardown, and the design doc's §8 framing — "delete
+`stockDualWrite.ts` and all FIVE of its call sites" — would have broken cloud checkout and
+cooking if followed literally.
+
+`addItemToLocation` and `removeItemFromLocation` had **no** mirror on purpose: they change
+membership, which `Item`'s columns cannot express.
+
+**Why `applyUnitSwitch` could not call `mirrorItemStockToItem`,** recorded because the
+hazard has a successor: that helper used the module-level `prisma`, so its write would have
+survived a `$transaction` rollback and left `Item` and `ItemStock` in **different units**.
+The replacement hazard is that omitting `tx` on a `writeStock` call inside a `$transaction`
+callback **compiles, type-checks, and is silently wrong**. Nothing but the comments in
+`itemStockWrite.ts`'s header and at the `applyUnitSwitch` call site prevents it.
+
+#### What PR 5 found that outlives it
+
+Four things, none of them about cloud locations.
+
+**1. Nothing in the gate regenerates the Prisma client.** So nothing in the gate catches a
+dangling Prisma field reference. Measured in task 5: with the client regenerated from the
+edited schema, a file reading a dropped column fails
+`TS2551: … Did you mean 'targetUnit'?`; with a stale client it reports **zero errors**.
+Root `codegen` is `graphql-codegen` alone, and `prisma generate` is wired only to
+`postinstall` and `predev`. **Already recorded in root `CLAUDE.md`'s *Verification Gate*
+section — read it there, it is not repeated here.** The same section also records that
+`apps/server`'s build does not type-check `scripts/`, so no gate command type-checks
+`verify-migration.ts`.
+
+**2. Nothing catches an extra field sent to a GraphQL input.** Task 4's mutation check
+failed on its first attempt: with `toItemInput` still sending the five fields after
+`ItemInput` had dropped them, the root `pnpm build` **passed** and **all 2283 web tests
+passed**. Two reasons — `tsc` does not excess-property-check a function **result** assigned
+to a typed parameter (only a fresh object literal), and every test mocks the Apollo client
+instead of validating against the schema. The first thing that would have seen it is the
+cloud E2E import spec, **after the whole mutation had already failed**.
+
+The fix is a return-type annotation on `toItemInput` (`ItemInputShape`, a mapped type rather
+than `ItemInput` itself, because `exactOptionalPropertyTypes` is on and codegen types an
+optional input field as `T | null`). **That annotation is now the only guard.** The
+measurement sits in a comment above it so nobody removes it as noise.
+
+The other half of that check is good news: **codegen DOES validate documents against the
+schema.** Leaving all eight web documents stale gave **40 validation errors** and generated
+nothing — `Cannot query field "targetQuantity" on type "Item". Did you mean "targetUnit"?`
+So the root `pnpm build` cannot pass with a stale document. The stale-bundle break is caught
+at build time, not in a browser.
+
+**3. The production reconciliation, and the stale argument it replaces.** Run 2026-10-05
+against a Neon branch of production, read-only:
+
+| Measure | Value |
+|---|---|
+| Items whose `Item` columns disagree with their default location's `ItemStock` row | **0** |
+| Items with no `ItemStock` row at all | **0** |
+| `Item` rows | 181 |
+| `ItemStock` rows | 184 |
+| `Location` rows | **5**, across **2** distinct users |
+| Default locations | 2 — one per user |
+
+So the drop was safe. **But the reason two documents gave for it being safe is now false.**
+Both this file and the design doc argued that divergence is near-impossible because
+production has **one user and one location**, so every dual-write target reduces to the same
+row. That was the 2026-09-16 measurement, and it was 19 days stale. The reconciliation still
+returns 0 — because it was measured, not because the argument holds. Both claims are
+corrected in place; see the amendments above and in
+[the design doc](2026-08-30-cloud-locations-design.md) §7.
+
+**4. Households H2 and H3 are unblocked once this merges.** The households design
+(`docs/global/permissions/2026-10-04-households-design.md`, on branch `feature/households`)
+names PR 5 as a hard blocker: it changes `userId` to `householdId` on seven models and
+removes `isDefault`, and PR 5 changes the same code. Only phase H1 (the Settings layout)
+could start before this. PR 5 also makes H3 smaller — it deletes **both** `Location.isDefault`
+reads in `itemStock.resolver.ts`, leaving two comments where they were. **Do not quote a
+total for `isDefault`**: a grep mixes reads, writes and comments, so re-measure and say which
+kind.
 
 ---
 
@@ -1133,6 +1214,25 @@ Design §8 states the invariant with no conditions. The precise version:
 The invariant that **is** held: a stale bundle keeps working for a single-location user
 editing their default location's stock. Per the production rehearsal, that is every
 current production account.
+
+> **Amendment 2026-10-05 — both halves of that last sentence are now false, for two
+> separate reasons.**
+>
+> **The data changed.** PR 5's pre-deploy reconciliation measured **5 `Location` rows
+> across 2 distinct users** on production, with one default each. The "every current
+> production account is single-location" claim came from the 2026-09-16 rehearsal and was
+> 19 days stale.
+>
+> **And PR 5 removed the invariant on purpose.** `Item` no longer declares the five
+> columns, so there is nothing left for a stale bundle to read. PRs 1 through 4b were all
+> designed so an old bundle kept working; **PR 5 ends that deliberately.** A browser
+> holding a pre-PR-5 bundle selects five fields that no longer exist, which fails GraphQL
+> validation and gives it a **blank pantry**. A reload fixes it. A Cloudflare Pages preview
+> built before PR 5 is **not** fixed by a reload.
+>
+> See
+> [`docs/global/backend/2026-10-05-deploy-runbook-item-column-drop.md`](../../global/backend/2026-10-05-deploy-runbook-item-column-drop.md)
+> §3.3 and §4.
 
 ---
 

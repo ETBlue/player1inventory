@@ -135,7 +135,33 @@ async function seedCloudFixture(
   )
   await gql(
     `mutation BulkCreateItems($items: [ItemInput!]!) { bulkCreateItems(items: $items) { id } }`,
-    { items: cloudFixture.items },
+    {
+      // The five per-location state fields are stripped HERE, at the call site,
+      // and NOT from `e2e/fixtures/cloud-backup.json`.
+      //
+      // The fixture is a backup PAYLOAD and carrying them is correct: a real
+      // pre-v15 export has them inline on each item, and that is the shape
+      // `upgradeLegacyPayloadForCloud` has to be able to read. What is not
+      // correct is forwarding them into `ItemInput`, which has declared none of
+      // the five since cloud locations PR 5 — the server answers `Field
+      // "targetQuantity" is not defined by type "ItemInput". Did you mean
+      // "targetUnit"?` and the whole seed throws.
+      //
+      // The app's own import path already does this, in `toItemInput`
+      // (apps/web/src/lib/importData.ts), so this seed is only matching it. The
+      // real per-location numbers arrive in the next step, through
+      // `bulkCreateItemStocks`, where each row names its location.
+      items: (cloudFixture.items as Array<Record<string, unknown>>).map(
+        ({
+          targetQuantity: _targetQuantity,
+          refillThreshold: _refillThreshold,
+          packedQuantity: _packedQuantity,
+          unpackedQuantity: _unpackedQuantity,
+          dueDate: _dueDate,
+          ...config
+        }) => config,
+      ),
+    },
   )
   // 2. STOCK, after the items and the locations it joins.
   //

@@ -1,29 +1,27 @@
 import type {
+  Item,
   ItemStock,
   Location,
-  PantryItem,
   Recipe,
   Shelf,
   ShoppingCart,
   Vendor,
 } from '@/types'
 
-// GraphQL returns dueDate/createdAt/updatedAt as ISO strings; convert to Date.
+// GraphQL returns createdAt/updatedAt as ISO strings; convert to Date.
 //
-// The return type is `PantryItem`, not `Item`, because the cloud `Item` type
-// still declares the five stock STATE fields (`apps/server/src/schema/
-// item.graphql`) — they are not dropped from it until PR 5. They are a
-// leftover, not a data source: since the pantry moved onto `ItemStock`, every
-// read site runs this result through `stripStockFields` before joining it with
-// the active location's row (`hooks/useItems.ts`), so a quantity or a due date
-// only ever comes from an `ItemStock`.
-export function deserializeItem(raw: Record<string, unknown>): PantryItem {
+// The return type is `Item`, the global catalog shape: cloud locations PR 5
+// removed the five stock STATE fields from the cloud `Item`
+// (`apps/server/src/schema/item.graphql`), so there is nothing per-location
+// left to carry and no `dueDate` to convert. A quantity or a due date reaches
+// the UI only through `deserializeItemStock` and `joinItemStock`
+// (`hooks/useItems.ts`).
+export function deserializeItem(raw: Record<string, unknown>): Item {
   return {
     ...raw,
-    dueDate: raw.dueDate ? new Date(raw.dueDate as string) : undefined,
     createdAt: new Date(raw.createdAt as string),
     updatedAt: new Date(raw.updatedAt as string),
-  } as PantryItem
+  } as Item
 }
 
 // GraphQL declares ItemStock's createdAt/updatedAt as `String!` and dueDate as

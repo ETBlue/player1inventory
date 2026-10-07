@@ -1,4 +1,10 @@
 # Input types for bulk import mutations
+#
+# `ItemInput` is the global item CONFIGURATION only. The five per-location state
+# fields — targetQuantity, refillThreshold, packedQuantity, unpackedQuantity,
+# dueDate — are NOT here: cloud locations PR 5 dropped them from `Item`, and an
+# imported payload's stock rows travel in `ItemStockImportInput` through
+# `bulkCreateItemStocks` / `bulkUpsertItemStocks`, each row naming its location.
 input ItemInput {
   id: ID!
   name: String!
@@ -8,12 +14,7 @@ input ItemInput {
   measurementUnit: String
   amountPerPackage: Float
   targetUnit: String!
-  targetQuantity: Float!
-  refillThreshold: Float!
-  packedQuantity: Float!
-  unpackedQuantity: Float!
   consumeAmount: Float!
-  dueDate: String
   estimatedDueDays: Int
   expirationThreshold: Int
   expirationMode: String

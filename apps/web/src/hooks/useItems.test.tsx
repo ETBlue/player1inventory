@@ -297,10 +297,50 @@ describe('useCreateItem (cloud mode)', () => {
     }
     const created = await result.current.mutateAsync(itemInput)
 
-    // Then it delegates to cloudCreate with wrapped input
-    expect(mockCloudCreate).toHaveBeenCalledWith({
-      variables: { input: { ...itemInput, dueDate: null } },
+    // Then it delegates to cloudCreate with CONFIGURATION ONLY.
+    //
+    // This assertion used to read
+    //   `expect(mockCloudCreate).toHaveBeenCalledWith({
+    //      variables: { input: { ...itemInput, dueDate: null } } })`
+    // which PINNED THE BUG instead of catching it. `CreateItemInput` has
+    // declared none of the five per-location state fields since cloud
+    // locations PR 5, so that payload failed GraphQL validation and NO cloud
+    // item could be created at all — 23 cloud E2E tests. The test stayed green
+    // the whole time, because every web test mocks the Apollo client rather
+    // than validating variables against the schema.
+    const sent = mockCloudCreate.mock.calls[0]?.[0]?.variables?.input as Record<
+      string,
+      unknown
+    >
+    expect(sent).toEqual({
+      name: 'Cheese',
+      tagIds: [],
+      targetUnit: 'package',
+      consumeAmount: 1,
     })
+
+    // And the five are absent as KEYS, not merely undefined-valued.
+    //
+    // This loop is the half `toEqual` cannot do, and it is the half that
+    // matters. `toEqual` ignores a key whose value is `undefined`, and so does
+    // Apollo's JSON serialisation of variables — so an undefined-valued key is
+    // harmless. A key carrying a real value is not: GraphQL rejects an
+    // undeclared input field whatever it holds, and `0` is a real value.
+    //
+    // It also catches the one mistake the compile-time guard in
+    // `toCreateItemInput` cannot see. tsc excess-property-checks only the keys
+    // an object literal WRITES; a `...input` spread is exempt, so reinstating
+    // the spread would type-check cleanly and send all four quantities again.
+    // Here it turns this loop red.
+    for (const key of [
+      'targetQuantity',
+      'refillThreshold',
+      'packedQuantity',
+      'unpackedQuantity',
+      'dueDate',
+    ]) {
+      expect(Object.hasOwn(sent, key)).toBe(false)
+    }
     expect((created as { name: string } | undefined)?.name).toBe('Cheese')
   })
 })

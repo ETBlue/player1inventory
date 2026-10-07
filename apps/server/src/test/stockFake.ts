@@ -1,5 +1,8 @@
 // A stateful Prisma double for `location` + `itemStock`, shared by the resolver
-// specs that exercise PR 2's dual-write (cart, recipe, item).
+// specs that write per-location stock (cart, recipe, item, itemStock). It was
+// written for PR 2's dual-write bridge, which cloud locations PR 5 deleted;
+// `ItemStock` is now the only place a cloud quantity lives, so these stores
+// are the real subject rather than one half of a mirror.
 //
 // NOT a test file, so `tsc` type-checks it — the same reasoning
 // `apps/web/src/test/cloudFixtures.ts` records for the web fixtures.
@@ -9,9 +12,10 @@
 //
 //   - `@@unique([itemId, locationId])` is enforced. A duplicate `create` throws
 //     the way real Postgres raises P2002. NOTE, because it would be easy to
-//     over-claim: no resolver reaches this today — `mirrorStock` upserts and
-//     `upsertItemStock` checks `findUnique` first — so making this dedupe
-//     instead of throw leaves every resolver spec green (verified 2026-08-31).
+//     over-claim: no resolver reaches this today — every stock VALUE write
+//     goes through `writeStock` (lib/itemStockWrite.ts), which upserts — so
+//     making this dedupe instead of throw leaves every resolver spec green
+//     (verified 2026-08-31, still true after PR 5 task 3).
 //     It guards a FUTURE writer that creates unconditionally, and because an
 //     unreachable guard invites deletion as dead code it is pinned directly by
 //     `stockFake.test.ts` rather than left resting on a claim.
@@ -65,8 +69,9 @@
 // and M recipes, and a half-applied switch leaves the item in mixed units with
 // no error anywhere. See `$transaction` below for what is and is not modelled.
 //
-// The dual-write itself is still NOT transactional (see lib/stockDualWrite.ts).
-// Adding `$transaction` here does not change that.
+// `writeStock` (lib/itemStockWrite.ts) takes the client to write through, so a
+// caller inside a `$transaction` callback passes `tx` and its stock write is
+// covered by the same rollback. `applyUnitSwitch` is the only such caller.
 
 export interface FakeLocation {
   id: string
@@ -330,9 +335,10 @@ export function createStockFake() {
   }
 
   // `data.id` is HONOURED when present and generated only when absent, and
-  // `data.createdAt` / `data.updatedAt` likewise. `upsertItemStock`,
-  // `addItemToLocation` and `mirrorStock` send none of the three and still get
-  // one each; `bulkCreateItemStocks` sends the payload's own id and timestamps
+  // `data.createdAt` / `data.updatedAt` likewise. `addItemToLocation` and
+  // `writeStock` (lib/itemStockWrite.ts, which `upsertItemStock`, `checkout`,
+  // `consumeRecipes` and `applyUnitSwitch` all write through) send none of the
+  // three and still get one each; `bulkCreateItemStocks` sends the payload's own id and timestamps
   // and must get those exact values back, which is what its "ids and
   // timestamps are preserved" assertions read. Before PR 4a task 6 this
   // function threw all three away — the same hole task 3 found in
