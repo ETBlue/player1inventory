@@ -7,7 +7,7 @@
   "scripts": {
     "predev": "prisma generate",
     "dev": "tsx watch src/index.ts",
-    "build": "tsc && cp src/schema/*.graphql dist/schema/",
+    "build": "pnpm typecheck && tsc && cp src/schema/*.graphql dist/schema/",
     "typecheck": "tsc -p tsconfig.typecheck.json",
     "verify:migration": "tsx scripts/verify-migration.ts",
     "start": "node dist/index.js",

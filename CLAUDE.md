@@ -312,11 +312,18 @@ exist … Did you mean 'targetUnit'?`; with a stale client it reports **zero err
 **After any `schema.prisma` change, run `(cd apps/server && pnpm prisma generate)` by hand
 before you trust a type-check.**
 
-**`apps/server`'s build also does not type-check `scripts/`.** Its `tsconfig.json` has
-`include: ["src"]`; only `tsconfig.typecheck.json` adds `scripts`. And the gate above does not
-list `pnpm typecheck` at all, so **no gate command type-checks
-`apps/server/scripts/verify-migration.ts`** — the one script that proves a migration against
-real SQL. Run `(cd apps/server && pnpm typecheck)` by hand when you touch it.
+**`apps/server`'s build DOES now type-check `scripts/`** — fixed 2026-10-07. Its `build`
+script is `pnpm typecheck && tsc && cp …`, so the root `pnpm build` fails on a type error in
+`apps/server/scripts/verify-migration.ts`, the one script that proves a migration against real
+SQL. Proved by mutation: a deliberate `const x: number = "s"` in that file gives
+`scripts/verify-migration.ts(699,7): error TS2322` and pnpm exits 2. It costs about **3.4s**,
+because `tsc` runs over `src` twice.
+
+Why two tsconfigs rather than one: `tsconfig.json` emits, with `rootDir: "src"` and
+`outDir: "dist"`. Adding `scripts` to its `include` would move `rootDir` to `.` and emit
+`dist/src/…` plus `dist/scripts/…`, which breaks `start: node dist/index.js`.
+`tsconfig.typecheck.json` extends it with `rootDir: "."`, `noEmit: true` and
+`include: ["src", "scripts"]`. **Do not merge them.**
 
 **Final phase only** — after all steps are complete, run the **whole** E2E suite with one
 command:
