@@ -119,11 +119,11 @@ test('user can edit an item name', async ({ page }) => {
   await expect(pantry.getItemCard('Edit Me')).not.toBeVisible()
 })
 
-test('user can persist note and wikidata URL on the Info tab', async ({ page, baseURL }) => {
-  // wikidataUrl/note are local-first Item fields; the cloud GraphQL Item type does not
-  // support them yet (deferred cloud TODO per the item-detail-tabs design doc).
-  test.skip(baseURL === CLOUD_WEB_URL, 'wikidataUrl/note not yet in cloud GraphQL schema')
-
+// `note` and `wikidataUrl` run in BOTH projects since 2026-10-08 (issue #335). This test
+// used to carry `test.skip(baseURL === CLOUD_WEB_URL)` because the cloud GraphQL `Item`
+// type declared neither field, so a cloud save of either one failed outright. Both now
+// exist on the Prisma model, in the GraphQL schema, and in the web selection sets.
+test('user can persist note and wikidata URL on the Info tab', async ({ page }) => {
   const pantry = new PantryPage(page)
   const item = new ItemPage(page)
 
@@ -145,6 +145,45 @@ test('user can persist note and wikidata URL on the Info tab', async ({ page, ba
   await page.goto(`/items/${itemId}`)
   await expect(item.getNoteInput()).toHaveValue(note)
   await expect(item.getWikidataUrlInput()).toHaveValue(wikidataUrl)
+})
+
+// CLEARING is a separate path from filling, and it was separately broken. `buildInfoUpdates`
+// (routes/items/$id/index.tsx) sets the key to `undefined` when the user empties the field.
+// Apollo drops an undefined-valued key out of its JSON variables, so the server saw the
+// field as absent and kept the old value. `toUpdateItemInput` (hooks/useItems.ts) now turns
+// each emptied field into an explicit `null`. The test above fills and reads back, so it
+// passes with or without that guard — only this test can fail on it.
+test('user can clear a saved note and wikidata URL', async ({ page }) => {
+  const pantry = new PantryPage(page)
+  const item = new ItemPage(page)
+
+  // Given an item that already has both Info-tab fields saved
+  await pantry.navigateTo()
+  await pantry.clickAddItem()
+  await item.fillName('Clearable Info Item')
+  await item.save()
+  const itemId = item.getCurrentItemId()
+
+  await item.fillNote('A note that should not survive.')
+  await item.fillWikidataUrl('https://www.wikidata.org/wiki/Q8495')
+  await item.saveExisting()
+
+  // Confirm the starting state, so an empty readback below cannot pass on a failed save
+  await page.goto(`/items/${itemId}`)
+  await expect(item.getNoteInput()).toHaveValue('A note that should not survive.')
+  await expect(item.getWikidataUrlInput()).toHaveValue(
+    'https://www.wikidata.org/wiki/Q8495',
+  )
+
+  // When user empties both fields and saves
+  await item.fillNote('')
+  await item.fillWikidataUrl('')
+  await item.saveExisting()
+
+  // Then reopening the Info tab shows both fields empty
+  await page.goto(`/items/${itemId}`)
+  await expect(item.getNoteInput()).toHaveValue('')
+  await expect(item.getWikidataUrlInput()).toHaveValue('')
 })
 
 test('user can assign a tag to an item', async ({ page, baseURL }) => {
