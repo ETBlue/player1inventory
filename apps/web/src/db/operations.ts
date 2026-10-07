@@ -817,9 +817,22 @@ export async function checkout(
 
   for (const cartItem of buyingItems) {
     const stock = await getItemStock(cartItem.itemId, locationId)
-    // Stock the item in this location if it isn't yet (copy-on-add semantics:
-    // start from zeroed stock). This keeps checkout robust even for items not
-    // previously stocked here.
+    // Stock the item in this location if it isn't yet. Copy-on-add zeroes only
+    // the two QUANTITIES — `targetQuantity`, `refillThreshold` and `dueDate`
+    // are INHERITED from a source row (the default location's, else the item's
+    // most recently updated), and everything opens at 0 only when the item is
+    // stocked nowhere at all. See `addItemToLocation` above.
+    //
+    // The wording here used to be "copy-on-add semantics: start from zeroed
+    // stock", which described half of that and read as though the new row
+    // opened inactive. Inheriting is the point: `targetQuantity === 0` is what
+    // every reader treats as "not active at this location" (`isInactiveHere`,
+    // lib/quantityUtils.ts), so a row opened at 0 would hold stock the user can
+    // never be prompted to buy again. Cloud `checkout` DID open rows that way
+    // until 2026-10-07 — see `ensureStockAtLocation` in
+    // apps/server/src/lib/itemStockWrite.ts.
+    //
+    // This keeps checkout robust even for items not previously stocked here.
     const base = stock ?? (await addItemToLocation(cartItem.itemId, locationId))
     // `amountPerPackage` is a global Item field since v16 — the stock row alone
     // cannot convert an unpacked measurement quantity into packs.

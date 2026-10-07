@@ -224,7 +224,44 @@ export function useDeleteLocation() {
   // location's carts and inventory logs — `Cart.locationId` and
   // `InventoryLog.locationId` both carry `onDelete: Cascade` since PR 3a — so
   // `AllCarts`, `AllCartItems` and `ItemLogs` observers can hold rows that are
-  // already gone. Adding them to this refetch list is an open gap.
+  // already gone.
+  //
+  // **Those stale rows are not reachable, so they are not refetched.** This
+  // comment claimed the opposite — "adding them to this refetch list is an open
+  // gap" — until it was checked on 2026-10-07. Each of the three is narrowed by
+  // location before anything renders it:
+  //
+  //   - `AllCarts` has exactly two readers, `useAllActiveCarts` and
+  //     `useLastPurchasedByVendor` (both hooks/useShoppingCart.ts), and both
+  //     filter to `activeLocationId` via `parseCartId`. The export/import paths
+  //     read `ShoppingCarts`, not this query.
+  //   - `AllCartItems` has one observer, `routes/shopping/index.tsx`. It groups
+  //     by `cartId`, but `cartItemsMap` is built from `useAllActiveCarts()` —
+  //     the already-narrowed list — so an entry whose `cartId` names a deleted
+  //     location is never looked up. `lib/exportData.ts` and
+  //     `lib/importData.ts` read it with `fetchPolicy: 'network-only'`, so they
+  //     do not touch the cache at all.
+  //   - `ItemLogs` is keyed by `{ itemId, locationId }`. Deleting the ACTIVE
+  //     location moves `activeLocationId` (`useActiveLocation`), which changes
+  //     the variables and fetches a different cache entry; deleting any other
+  //     location leaves a stale entry nobody is viewing.
+  //
+  // **What would make it reachable** — the narrowing above is by LOCATION, and
+  // that is the only reason this holds:
+  //
+  //   - any surface that reads `allCarts` / `allCartItems` WITHOUT filtering to
+  //     the active location (a cross-location shopping summary), or `itemLogs`
+  //     for a location other than the active one (an all-locations history, the
+  //     way the Stock tab already pages stock across locations);
+  //   - **households.** The design flags "a household switch must not show the
+  //     previous household's cached data" — see
+  //     `docs/global/permissions/2026-10-04-households-design.md`, which lives
+  //     on branch `feature/households`. A switch changes the ACCOUNT, not the
+  //     location, so a filter on `activeLocationId` does not catch it: while
+  //     that id still names the previous household's location, both `allCarts`
+  //     and `allCartItems` pass the filter and the previous household's cart
+  //     renders. The protection here is incidental to location scoping and does
+  //     not carry over.
   //
   // `PantryData` and `ItemStocksForItem` DO exist since Task 7 of this PR and
   // ARE invalidated by the cascade, but are deliberately left out: the only
