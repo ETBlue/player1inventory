@@ -93,6 +93,14 @@ export async function seedLocalFixture(
         // something else sets it explicitly.
         targetUnit: item.targetUnit ?? 'package',
         consumeAmount: item.consumeAmount ?? 1,
+        // Also global configuration. `amountPerPackage` is optional on the Item
+        // type (packages/types/src/index.ts), so an omitted key leaves the
+        // Dexie field absent rather than writing `undefined`. `seedCloudFixture`
+        // sends `null` for the same input and `getPackedTotal` reads both as
+        // "no pack size", so both modes seed the same item.
+        ...(item.amountPerPackage === undefined
+          ? {}
+          : { amountPerPackage: item.amountPerPackage }),
         createdAt: now,
         updatedAt: now,
       })),
