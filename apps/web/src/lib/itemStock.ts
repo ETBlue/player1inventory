@@ -19,13 +19,38 @@ export const ZERO_STOCK: StockFields = {
 
 // Every field `joinItemStock` copies from an ItemStock onto an Item. The eight
 // configuration fields are deliberately absent — they are the Item's own.
-export const STOCK_FIELD_KEYS: (keyof StockFields)[] = [
+//
+// **`as const satisfies` is required, not stylistic.** `satisfies` rejects a key
+// that is not in `StockFields`; `as const` keeps the literal tuple so the
+// exhaustiveness check below can read the keys back out. The former annotation,
+// `: (keyof StockFields)[]`, widened the element type to `keyof StockFields`
+// and made any exhaustiveness check vacuous — `Exclude<K, K>` is `never`
+// whatever the array holds, so a sixth `StockFields` field missing from this
+// list compiled clean and then leaked into `updateItem` / `toConfigInput`.
+export const STOCK_FIELD_KEYS = [
   'targetQuantity',
   'refillThreshold',
   'packedQuantity',
   'unpackedQuantity',
   'dueDate',
-]
+] as const satisfies readonly (keyof StockFields)[]
+
+// Type-level exhaustiveness check — zero runtime cost, no emitted code.
+//
+// `MissingStockFieldKey` is `never` only while STOCK_FIELD_KEYS lists every key
+// of `StockFields`. Add a sixth field to `StockFields` without adding it here
+// and `tsc` fails on the line below, naming the key:
+//   Type '"newField"' does not satisfy the constraint 'never'.
+type MissingStockFieldKey = Exclude<
+  keyof StockFields,
+  (typeof STOCK_FIELD_KEYS)[number]
+>
+type AssertNever<T extends never> = T
+
+// Exported only because `noUnusedLocals` is on: as a local alias `tsc` reports
+// `TS6196: declared but never used` and the check is deleted as dead. Nothing
+// imports this, and it emits no JavaScript.
+export type StockFieldKeysAreExhaustive = AssertNever<MissingStockFieldKey>
 
 // Pull just the stock fields off an object (drops join keys / metadata / undefined).
 export function pickStockFields(source: Record<string, unknown>): StockFields {

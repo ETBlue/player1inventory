@@ -328,11 +328,15 @@ async function writeItemUpdate(
   locationId: string,
   now: Date,
 ): Promise<void> {
-  const stockKeys: (keyof StockFields)[] = STOCK_FIELD_KEYS
+  // A Set, not the tuple itself: STOCK_FIELD_KEYS is a `readonly` literal tuple
+  // since the exhaustiveness check was added, so it is not assignable to a
+  // mutable `(keyof StockFields)[]` and `as string[]` on it is a cast TS now
+  // rejects. `has` needs neither.
+  const stockKeys: ReadonlySet<string> = new Set(STOCK_FIELD_KEYS)
   const stockUpdate: Partial<StockFields> = {}
   const itemUpdate: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(updates)) {
-    if ((stockKeys as string[]).includes(key)) {
+    if (stockKeys.has(key)) {
       // biome-ignore lint/suspicious/noExplicitAny: routing dynamic keys to the stock partial
       ;(stockUpdate as any)[key] = value
     } else {
