@@ -312,18 +312,32 @@ exist … Did you mean 'targetUnit'?`; with a stale client it reports **zero err
 **After any `schema.prisma` change, run `(cd apps/server && pnpm prisma generate)` by hand
 before you trust a type-check.**
 
-**`apps/server`'s build DOES now type-check `scripts/`** — fixed 2026-10-07. Its `build`
-script is `pnpm typecheck && tsc && cp …`, so the root `pnpm build` fails on a type error in
-`apps/server/scripts/verify-migration.ts`, the one script that proves a migration against real
-SQL. Proved by mutation: a deliberate `const x: number = "s"` in that file gives
-`scripts/verify-migration.ts(699,7): error TS2322` and pnpm exits 2. It costs about **3.4s**,
-because `tsc` runs over `src` twice.
+**`apps/server`'s build type-checks `scripts/`** — since 2026-10-07. Before that nothing ran
+it, so a type error in `apps/server/scripts/verify-migration.ts` — the one script that proves a
+migration against real SQL — passed the whole gate. Proved by mutation: a deliberate
+`const x: number = "s"` gives `scripts/verify-migration.ts(698,7): error TS2322` and pnpm
+exits 2.
 
-Why two tsconfigs rather than one: `tsconfig.json` emits, with `rootDir: "src"` and
-`outDir: "dist"`. Adding `scripts` to its `include` would move `rootDir` to `.` and emit
+```
+build:     tsc && tsc -p tsconfig.scripts.json && cp src/schema/*.graphql dist/schema/
+typecheck: tsc --noEmit && tsc -p tsconfig.scripts.json
+```
+
+**The two passes do not overlap**, which is why this costs almost nothing: `tsc` checks and
+emits the **52** files under `src`, the second pass checks the **1** under `scripts`, and
+nothing is checked twice. The server build is **2.2s**. The first version of this fix reused
+the whole-project `typecheck` and so checked `src` twice — 105 files instead of 53, and 3.4s.
+
+Why two tsconfigs rather than one: `tsconfig.json` **emits**, with `rootDir: "src"` and
+`outDir: "dist"`. Adding `scripts` to its `include` moves `rootDir` to `.` and emits
 `dist/src/…` plus `dist/scripts/…`, which breaks `start: node dist/index.js`.
-`tsconfig.typecheck.json` extends it with `rootDir: "."`, `noEmit: true` and
-`include: ["src", "scripts"]`. **Do not merge them.**
+`tsconfig.scripts.json` extends it with `rootDir: "."`, `noEmit: true` and
+`include: ["scripts"]`. **Do not merge them.**
+
+**The no-overlap trick depends on a fact that could change.** `scripts/` imports nothing from
+`src` today — only `@prisma/client` and node builtins. If a script ever imports from `src`,
+TypeScript pulls those files into the scripts program and checks them again, and the saving
+goes away. Correct either way, but measure before adding such an import.
 
 **Final phase only** — after all steps are complete, run the **whole** E2E suite with one
 command:

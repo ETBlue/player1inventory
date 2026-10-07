@@ -185,10 +185,11 @@ Four things about it that are easy to get wrong:
   `SELECT` throws `42703`. Following "add yours, and write assertions for it" literally would
   have left the script broken. When you add a migration, re-read every assertion already
   there.
-- **Nothing in the gate type-checks this script.** `apps/server`'s `tsconfig.json` has
-  `include: ["src"]`; only `tsconfig.typecheck.json` adds `scripts`, and the gate does not run
-  `pnpm typecheck`. Run `(cd apps/server && pnpm typecheck)` by hand when you touch it. See
-  root `CLAUDE.md`'s *Verification Gate*.
+- **The root `pnpm build` type-checks this script** — since 2026-10-07. `apps/server`'s
+  `build` is `tsc && tsc -p tsconfig.scripts.json && cp …`, and the second pass covers
+  `scripts/`. Before that nothing ran it, so a type error here passed the whole gate.
+  Proved by mutation: a deliberate `const x: number = "s"` gives
+  `scripts/verify-migration.ts(698,7): error TS2322` and pnpm exits 2.
 - **It is destructive**, and Prisma's own AI guardrail requires the user's real-time consent
   passed via `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`. Ask first.
 - **It refuses to run** unless `TEST_DATABASE_URL` *and* `TEST_DIRECT_URL` both resolve — by

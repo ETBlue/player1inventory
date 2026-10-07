@@ -1,0 +1,23 @@
+{
+  // Type-checks `scripts/` ONLY, and emits nothing.
+  //
+  // `scripts/` is excluded from `tsconfig.json` on purpose: that config emits,
+  // with `rootDir: "src"` and `outDir: "dist"`. Adding `scripts` to its
+  // `include` moves `rootDir` to `.` and emits `dist/src/…` plus
+  // `dist/scripts/…`, which breaks `start: node dist/index.js`.
+  //
+  // It includes `scripts` and NOT `src`, so the two passes do not overlap:
+  // `tsc` checks and emits the 52 files under `src`, this checks the ones under
+  // `scripts`, and nothing is checked twice. That is only safe because
+  // `scripts/` imports nothing from `src` — today only `@prisma/client` and
+  // node builtins. **If a script ever imports from `src`, TypeScript will pull
+  // those files into this program and check them again here.** That is correct
+  // but no longer free, so check what it costs before adding such an import.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true
+  },
+  "include": ["scripts"],
+  "exclude": ["node_modules", "dist"]
+}
