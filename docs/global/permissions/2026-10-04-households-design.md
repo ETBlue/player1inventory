@@ -7,7 +7,7 @@
 (23 decisions, with the reason for each — read it for the *why*; this doc gives the *what*)
 **Changes:** [Location RBAC](2026-08-29-design-location-rbac.md). Its binding rule stays. Its
 role table is replaced, and its six open questions are answered (see the last section).
-**Blocked by:** cloud-locations PR 5 (see *Sequencing*).
+**Blocked by:** nothing since 2026-10-08. Cloud-locations PR 5 merged as #332 (see *Sequencing*).
 **Fixes when built:** issue #273 (unchecked tag / vendor ids), issue #327 (import takes over
 another user's rows).
 
@@ -35,7 +35,7 @@ User stories:
 
 | Work | Relation |
 |---|---|
-| Cloud-locations PR 5 (drop `Item`'s stock columns and the dual-write bridge) | **Must merge first.** This design removes `Location.isDefault`, which the bridge still reads. |
+| Cloud-locations PR 5 (drop `Item`'s stock columns and the dual-write bridge) | ✅ Merged 2026-10-08 (#332). It deleted `lib/stockDualWrite.ts` and two of the `isDefault` reads. |
 | Issue #273 | Fixed here. Catalog ids are checked with `requireHouseholdRole`. |
 | Issue #327, cart-id leak (`e2e/tests/cart-id-cross-user-leak.spec.ts`) | Fixed here, in the import work (*Import and export*). |
 | Issue #330 (`replace` skips rows) | Not part of this. A separate fix. |
@@ -139,11 +139,28 @@ The member rules (read-only catalog) are a first version. They may change after 
 
 | Model | Change |
 |---|---|
-| `Location` | `userId` → `householdId`. **Drops** `order`, `isDefault` and the partial unique index on `isDefault`. **Adds** `dataUpdatedAt`, set by every write to its stock or cart |
+| `Location` | `userId` → `householdId`. **Drops** `order`, `isDefault` and the partial unique index on `isDefault`. **Adds** `dataUpdatedAt`, set by every write to its stock or cart (see *Writers of `dataUpdatedAt`*) |
 | `Item`, `Tag`, `TagType`, `Vendor`, `Recipe`, `Shelf` | `userId` → `householdId`. `Shelf.order` stays shared, because shelves are catalog |
 | `InventoryLog` | `userId` stays, and now means **the author**. Its scope comes from `locationId` |
 | `Cart` | **Drops** `userId`. A cart belongs to its location and is shared by everyone there. The composite id `${locationId}:${vendorId \| 'no-vendor'}` stays |
 | `ItemStock`, `CartItem`, `ItemTag`, `ItemVendor`, `RecipeItem` | No change. Already scoped through a parent |
+
+### Writers of `dataUpdatedAt`
+
+PR 5 added `writeStock` in `apps/server/src/lib/itemStockWrite.ts`, but it is **not** the only
+place stock is written. Its own plan says so. Each of these must set `Location.dataUpdatedAt`,
+or "sort by last updated" will be wrong for that path:
+
+| Writer | File |
+|---|---|
+| `writeStock` (used by `upsertItemStock`, `checkout`, `consumeRecipes`) | `lib/itemStockWrite.ts` |
+| `applyUnitSwitch` (writes inside its transaction) | `resolvers/itemStock.resolver.ts` |
+| `addItemToLocation`, `removeItemFromLocation` | `resolvers/itemStock.resolver.ts` |
+| `bulkCreateItemStocks`, `bulkUpsertItemStocks` | `resolvers/import.resolver.ts` |
+| every cart and cart item mutation | `resolvers/cart.resolver.ts` |
+
+The plan decides between calling a shared helper from each writer and a database trigger. A
+test must list the writers, so that a new one cannot be added without it.
 
 ### Migration of existing data
 
@@ -434,6 +451,18 @@ check ownership of every id they are given. This fixes issue #327 and the cart-i
 nine `bulkUpsert*` mutations take over another user's row, and the `bulkCreate*` ones silently
 drop it.
 
+### Server code this replaces
+
+These still read or write `isDefault` on `main` at `d63bd81f` and go in H3:
+
+| Code | What it does today |
+|---|---|
+| `lib/defaultLocation.ts` (`ensureDefaultLocation`) | Creates "My Home" for a user with none. Called by the `locations` query and the two import resolvers. Its own comment says it goes in H3 |
+| `lib/authz.ts` | `requireLocationRole` selects `isDefault` |
+| `resolvers/location.resolver.ts` | `createLocation` writes `isDefault: false`; `deleteLocation` refuses the default |
+| `resolvers/import.resolver.ts` | `bulkCreateLocations` / `bulkUpsertLocations` write `isDefault: false`; unknown cart and log locations fall back to `ensureDefaultLocation` |
+| `schema/location.graphql`, `schema/import.graphql` | `isDefault: Boolean!` and comments that explain it |
+
 ### Copying between local and cloud
 
 | Direction | What happens |
@@ -520,8 +549,19 @@ The root `CLAUDE.md` rules apply. Points special to this design:
 - **No email.** A person learns of an invite only from the link, and of an offer only by opening
   the app.
 - **`UserPreference` may be merged into `User`.** Left for the plan.
-- **Offline cloud cache.** The Apollo cache (`Player1InventoryCloudCache`) is keyed by query. A
-  household switch must not show the previous household's cached data. The plan must check this.
+- **Household switch shows the previous household's cart — confirmed, must be designed for.**
+  `main` now documents this in `apps/web/src/hooks/useLocations.ts` (the comment on
+  `useDeleteLocation`). `AllCarts` and `AllCartItems` are safe today only because their readers
+  filter by `activeLocationId`. A household switch changes the household, not the location, so
+  while `activeLocationId` still names a location of the previous household, its cart passes that
+  filter and renders. **Requirement:** a household switch must, in one step, set the active
+  location to one in the new household (or none), and clear the household-scoped Apollo cache
+  entries (`Player1InventoryCloudCache` is persisted, so the clear must reach it too). A test
+  must switch household with a cart in the old one and see no old cart rows.
+- **H3 breaks a stale browser bundle.** PR 5 was the first PR in the cloud-locations series that
+  was not safe for an old bundle, and accepted it. H3 changes the GraphQL scoping and removes
+  `isDefault` from the `Location` type, so it is the same kind of change. The plan must say so
+  and plan the deploy the same way.
 
 ## Answers to the RBAC doc's open questions
 
