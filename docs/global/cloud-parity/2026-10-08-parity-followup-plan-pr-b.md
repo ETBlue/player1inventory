@@ -71,7 +71,9 @@ promising they stay in step with a sibling, so both halves of such a pair move t
    is the simplest case in `apps/server/prisma/CLAUDE.md`: no backfill, so **no** `UPDATE`, and
    **no** `RAISE EXCEPTION` guard — those are only for a `NOT NULL` column on a table with rows.
    Name it `apps/server/prisma/migrations/20261008000000_add_item_note_and_wikidata_url/migration.sql`.
-   There are 13 migrations today, so this is the 14th.
+   There were **12** migrations before this one, so it is the **13th**. (An earlier draft of
+   this plan said 13 and 14th. That came from `ls apps/server/prisma/migrations | wc -l`, which
+   counts `migration_lock.toml` as an entry. Count directories: `ls -d .../migrations/*/ | wc -l`.)
 3. **Do NOT run `prisma migrate dev` and NEVER `prisma migrate reset`.** `migrate dev` can
    decide to reset, and `reset` drops the schema. Hand-write the SQL, then apply with
    `prisma migrate deploy`, which is additive and cannot drop anything.
