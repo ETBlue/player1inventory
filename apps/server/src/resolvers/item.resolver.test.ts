@@ -87,6 +87,8 @@ function makeItem(overrides: Partial<{
     estimatedDueDays: null,
     expirationThreshold: null,
     expirationMode: 'disabled',
+    wikidataUrl: null,
+    note: null,
     userId: overrides.userId ?? 'user_test123',
     createdAt: now,
     updatedAt: now,
@@ -485,5 +487,169 @@ describe('Item resolvers', () => {
     const items = result?.data?.items as { createdAt: string; updatedAt: string }[]
     expect(items[0].createdAt).toBe(now.toISOString())
     expect(items[0].updatedAt).toBe(now.toISOString())
+  })
+})
+
+// ─── note and wikidataUrl (issue #335) ───────────────────────────────────────
+//
+// Both are nullable TEXT columns on `Item`, added by
+// 20261008000000_add_item_note_and_wikidata_url. Before that the cloud schema
+// declared neither, so typing either one on the Info tab made the whole save
+// fail with a GraphQL validation error.
+//
+// Every test here asserts on the PAYLOAD handed to Prisma, not only on the
+// value GraphQL returns. `mockPrisma.item.create` and `.update` are plain
+// recorders whose resolved value is fixed by the test, so a read-back
+// assertion alone would pass against a resolver that dropped the field.
+
+describe('Item note and wikidataUrl', () => {
+  it('user can save a note and a Wikidata URL on a new item', async () => {
+    // Given a create whose resolved row echoes what the resolver asked for
+    const item = {
+      ...makeItem({ name: 'Milk' }),
+      note: 'buy the 500g pack',
+      wikidataUrl: 'https://www.wikidata.org/wiki/Q8495',
+    }
+    mockPrisma.item.create.mockResolvedValue(item)
+    mockPrisma.item.findUniqueOrThrow.mockResolvedValue(item)
+
+    // When the user creates an item with both fields filled in
+    const result = await execOp(
+      `mutation CreateItem($input: CreateItemInput!) {
+        createItem(input: $input) { id note wikidataUrl }
+      }`,
+      {
+        input: {
+          name: 'Milk',
+          note: 'buy the 500g pack',
+          wikidataUrl: 'https://www.wikidata.org/wiki/Q8495',
+        },
+      },
+    )
+
+    // Then both reach Prisma, and both come back out through `toGraphQL`
+    expect(result?.errors).toBeUndefined()
+    const data = mockPrisma.item.create.mock.calls[0][0].data
+    expect(data.note).toBe('buy the 500g pack')
+    expect(data.wikidataUrl).toBe('https://www.wikidata.org/wiki/Q8495')
+    expect(result?.data?.createItem).toMatchObject({
+      note: 'buy the 500g pack',
+      wikidataUrl: 'https://www.wikidata.org/wiki/Q8495',
+    })
+  })
+
+  it('createItem stores NULL, never an empty string, when neither field is given', async () => {
+    // Given a create of an item with no note and no Wikidata URL
+    const item = makeItem({ name: 'Flour' })
+    mockPrisma.item.create.mockResolvedValue(item)
+    mockPrisma.item.findUniqueOrThrow.mockResolvedValue(item)
+
+    // When the user creates it without those two fields
+    const result = await execOp(
+      `mutation CreateItem($input: CreateItemInput!) {
+        createItem(input: $input) { id note wikidataUrl }
+      }`,
+      { input: { name: 'Flour' } },
+    )
+
+    // Then Prisma is handed `undefined`, which it writes as NULL. `''` would
+    // be a DIFFERENT stored value — "the user typed a note and cleared it" —
+    // and local mode stores "no note" as an absent optional field.
+    expect(result?.errors).toBeUndefined()
+    const data = mockPrisma.item.create.mock.calls[0][0].data
+    expect(data.note).toBeUndefined()
+    expect(data.wikidataUrl).toBeUndefined()
+    expect(result?.data?.createItem).toMatchObject({ note: null, wikidataUrl: null })
+  })
+
+  it('user can save a note and a Wikidata URL on an existing item', async () => {
+    // Given an existing item with neither field set
+    const existing = makeItem({ id: 'item_1', name: 'Oil' })
+    const updated = {
+      ...makeItem({ id: 'item_1', name: 'Oil' }),
+      note: 'the glass bottle one',
+      wikidataUrl: 'https://www.wikidata.org/wiki/Q37562',
+    }
+    mockPrisma.item.findFirst.mockResolvedValue(existing)
+    mockPrisma.item.update.mockResolvedValue(updated)
+    mockPrisma.item.findUniqueOrThrow.mockResolvedValue(updated)
+
+    // When the user fills both in on the Info tab
+    const result = await execOp(
+      `mutation UpdateItem($id: ID!, $input: UpdateItemInput!) {
+        updateItem(id: $id, input: $input) { id note wikidataUrl }
+      }`,
+      {
+        id: 'item_1',
+        input: {
+          note: 'the glass bottle one',
+          wikidataUrl: 'https://www.wikidata.org/wiki/Q37562',
+        },
+      },
+    )
+
+    // Then `buildItemUpdateData` puts both in the update payload
+    expect(result?.errors).toBeUndefined()
+    const data = mockPrisma.item.update.mock.calls[0][0].data
+    expect(data.note).toBe('the glass bottle one')
+    expect(data.wikidataUrl).toBe('https://www.wikidata.org/wiki/Q37562')
+    expect(result?.data?.updateItem).toMatchObject({
+      note: 'the glass bottle one',
+      wikidataUrl: 'https://www.wikidata.org/wiki/Q37562',
+    })
+  })
+
+  it('user can clear a note and a Wikidata URL by sending null', async () => {
+    // Given an item that already carries both
+    const existing = {
+      ...makeItem({ id: 'item_1' }),
+      note: 'old note',
+      wikidataUrl: 'https://www.wikidata.org/wiki/Q8495',
+    }
+    const updated = makeItem({ id: 'item_1' })
+    mockPrisma.item.findFirst.mockResolvedValue(existing)
+    mockPrisma.item.update.mockResolvedValue(updated)
+    mockPrisma.item.findUniqueOrThrow.mockResolvedValue(updated)
+
+    // When the user empties both fields, so the client sends explicit nulls
+    const result = await execOp(
+      `mutation UpdateItem($id: ID!, $input: UpdateItemInput!) {
+        updateItem(id: $id, input: $input) { id note wikidataUrl }
+      }`,
+      { id: 'item_1', input: { note: null, wikidataUrl: null } },
+    )
+
+    // Then the nulls reach Prisma and clear the columns. Coercing them to
+    // `undefined` — which is what `strOr` does, and what every other optional
+    // field in `buildItemUpdateData` wants — would mean "leave it alone", and
+    // the user could never remove a note once saved.
+    expect(result?.errors).toBeUndefined()
+    const data = mockPrisma.item.update.mock.calls[0][0].data
+    expect(data.note).toBeNull()
+    expect(data.wikidataUrl).toBeNull()
+  })
+
+  it('updateItem names neither column when the input omits both', async () => {
+    // Given an item whose note must survive an unrelated rename
+    const existing = makeItem({ id: 'item_1', name: 'Oil' })
+    const updated = makeItem({ id: 'item_1', name: 'Olive Oil' })
+    mockPrisma.item.findFirst.mockResolvedValue(existing)
+    mockPrisma.item.update.mockResolvedValue(updated)
+    mockPrisma.item.findUniqueOrThrow.mockResolvedValue(updated)
+
+    // When only the name is sent
+    const result = await execOp(
+      `mutation UpdateItem($id: ID!, $input: UpdateItemInput!) {
+        updateItem(id: $id, input: $input) { id name }
+      }`,
+      { id: 'item_1', input: { name: 'Olive Oil' } },
+    )
+
+    // Then neither key appears in the update payload at all, so an existing
+    // note is left alone instead of being overwritten with NULL
+    expect(result?.errors).toBeUndefined()
+    const data = mockPrisma.item.update.mock.calls[0][0].data
+    expect('note' in data).toBe(false)
+    expect('wikidataUrl' in data).toBe(false)
   })
 })

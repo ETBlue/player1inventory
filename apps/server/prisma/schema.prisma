@@ -72,6 +72,11 @@ model Vendor {
 model Item {
   id                  String         @id @default(cuid())
   name                String
+  // Full URL to the Wikidata entity. Optional, non-indexed. Mirrors the local
+  // Dexie `Item` (packages/types/src/index.ts) so the two data modes match.
+  wikidataUrl         String?
+  // Free-text note about the item. Optional, non-indexed.
+  note                String?
   packageUnit         String?
   measurementUnit     String?
   amountPerPackage    Float?

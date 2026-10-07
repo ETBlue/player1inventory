@@ -240,6 +240,8 @@ function makePrismaItem(id: string, name = 'Milk') {
     amountPerPackage: null,
     estimatedDueDays: null,
     expirationThreshold: null,
+    wikidataUrl: null,
+    note: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     tags: [],
@@ -260,6 +262,23 @@ const BULK_UPSERT_ITEMS = `
 `
 
 const CLEAR_ALL_DATA = `mutation { clearAllData }`
+
+// Issue #335. Separate from BULK_CREATE_ITEMS / BULK_UPSERT_ITEMS above so the
+// existing tests keep their narrow selection sets.
+const BULK_CREATE_ITEMS_WITH_NOTE = `
+  mutation BulkCreateItems($items: [ItemInput!]!) {
+    bulkCreateItems(items: $items) { id note wikidataUrl }
+  }
+`
+
+const BULK_UPSERT_ITEMS_WITH_NOTE = `
+  mutation BulkUpsertItems($items: [ItemInput!]!) {
+    bulkUpsertItems(items: $items) { id note wikidataUrl }
+  }
+`
+
+const BACKUP_NOTE = 'buy the 500g pack'
+const BACKUP_WIKIDATA_URL = 'https://www.wikidata.org/wiki/Q8495'
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -554,5 +573,146 @@ describe('clearAllData', () => {
     expect(p.itemStock.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
       p.location.deleteMany.mock.invocationCallOrder[0],
     )
+  })
+})
+
+// ─── note and wikidataUrl through the import path (issue #335) ───────────────
+//
+// `ItemInput` now declares both fields, so a cloud backup carries them. Both
+// bulk resolvers pass them through inside their `...rest` spread rather than
+// naming them, so these tests assert on the PAYLOAD Prisma was handed — a
+// read-back assertion alone would pass against a resolver that dropped them,
+// because `p.item.create` is a recorder whose resolved row the test supplies.
+//
+// Each resolver needs its own test. They are separate function bodies with
+// separate destructures, so a future `const { note, ...rest }` in one of them
+// would leave the other green.
+
+describe('bulkCreateItems — note and wikidataUrl', () => {
+  it('user can restore a backup whose item carries a note and a Wikidata URL', async () => {
+    // Given no existing item, and a `create` that echoes what it is handed
+    // instead of inventing a row
+    p.item.findUnique.mockResolvedValue(null)
+    p.item.create.mockImplementation(async (args: { data: Record<string, unknown> }) => args.data)
+    p.itemTag.createMany.mockResolvedValue({ count: 0 })
+    p.itemVendor.createMany.mockResolvedValue({ count: 0 })
+    p.item.findUniqueOrThrow.mockImplementation(async () => ({
+      ...makePrismaItem('item_note_1', 'Milk'),
+      note: BACKUP_NOTE,
+      wikidataUrl: BACKUP_WIKIDATA_URL,
+    }))
+
+    // When the backup is restored
+    const response = await server.executeOperation(
+      {
+        query: BULK_CREATE_ITEMS_WITH_NOTE,
+        variables: {
+          items: [
+            makeItemInput({
+              id: 'item_note_1',
+              name: 'Milk',
+              note: BACKUP_NOTE,
+              wikidataUrl: BACKUP_WIKIDATA_URL,
+            }),
+          ],
+        },
+      },
+      { contextValue: CONTEXT },
+    )
+
+    // Then both values are written, and both come back out
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      expect(response.body.singleResult.errors).toBeUndefined()
+      const items = response.body.singleResult.data?.bulkCreateItems as Array<{
+        note: string | null
+        wikidataUrl: string | null
+      }>
+      expect(items[0].note).toBe(BACKUP_NOTE)
+      expect(items[0].wikidataUrl).toBe(BACKUP_WIKIDATA_URL)
+    }
+    const data = p.item.create.mock.calls[0][0].data
+    expect(data.note).toBe(BACKUP_NOTE)
+    expect(data.wikidataUrl).toBe(BACKUP_WIKIDATA_URL)
+  })
+
+  it('bulkCreateItems writes no empty string when the backup has no note', async () => {
+    // Given a backup item with neither field
+    p.item.findUnique.mockResolvedValue(null)
+    const prismaItem = makePrismaItem('item_note_2', 'Flour')
+    p.item.create.mockResolvedValue(prismaItem)
+    p.itemTag.createMany.mockResolvedValue({ count: 0 })
+    p.itemVendor.createMany.mockResolvedValue({ count: 0 })
+    p.item.findUniqueOrThrow.mockResolvedValue(prismaItem)
+
+    // When it is restored
+    const response = await server.executeOperation(
+      { query: BULK_CREATE_ITEMS_WITH_NOTE, variables: { items: [makeItemInput({ id: 'item_note_2' })] } },
+      { contextValue: CONTEXT },
+    )
+
+    // Then neither key is in the payload, so the column keeps its NULL
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      expect(response.body.singleResult.errors).toBeUndefined()
+    }
+    const data = p.item.create.mock.calls[0][0].data
+    expect(data.note).toBeUndefined()
+    expect(data.wikidataUrl).toBeUndefined()
+  })
+})
+
+describe('bulkUpsertItems — note and wikidataUrl', () => {
+  it('user can re-import a backup and keep the note and the Wikidata URL', async () => {
+    // Given an upsert that echoes its `create` payload
+    p.item.upsert.mockImplementation(async (args: { create: Record<string, unknown> }) => args.create)
+    p.itemTag.deleteMany.mockResolvedValue({ count: 0 })
+    p.itemVendor.deleteMany.mockResolvedValue({ count: 0 })
+    p.itemTag.createMany.mockResolvedValue({ count: 0 })
+    p.itemVendor.createMany.mockResolvedValue({ count: 0 })
+    p.item.findUniqueOrThrow.mockImplementation(async () => ({
+      ...makePrismaItem('item_note_3', 'Milk'),
+      note: BACKUP_NOTE,
+      wikidataUrl: BACKUP_WIKIDATA_URL,
+    }))
+
+    // When the same backup is imported over an existing database
+    const response = await server.executeOperation(
+      {
+        query: BULK_UPSERT_ITEMS_WITH_NOTE,
+        variables: {
+          items: [
+            makeItemInput({
+              id: 'item_note_3',
+              name: 'Milk',
+              note: BACKUP_NOTE,
+              wikidataUrl: BACKUP_WIKIDATA_URL,
+            }),
+          ],
+        },
+      },
+      { contextValue: CONTEXT },
+    )
+
+    // Then BOTH halves of the upsert carry the two values. The `update` half
+    // is the one that matters on a re-import of an item that already exists —
+    // an upsert whose `update` payload dropped them would leave the old row
+    // untouched and the test would still see the right values come back if it
+    // only read the response.
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      expect(response.body.singleResult.errors).toBeUndefined()
+      const items = response.body.singleResult.data?.bulkUpsertItems as Array<{
+        note: string | null
+        wikidataUrl: string | null
+      }>
+      expect(items[0].note).toBe(BACKUP_NOTE)
+      expect(items[0].wikidataUrl).toBe(BACKUP_WIKIDATA_URL)
+    }
+    const args = p.item.upsert.mock.calls[0][0]
+    expect(args.create.note).toBe(BACKUP_NOTE)
+    expect(args.create.wikidataUrl).toBe(BACKUP_WIKIDATA_URL)
+    expect(args.update.note).toBe(BACKUP_NOTE)
+    expect(args.update.wikidataUrl).toBe(BACKUP_WIKIDATA_URL)
   })
 })

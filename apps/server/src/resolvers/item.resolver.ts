@@ -82,6 +82,13 @@ export function buildItemUpdateData(input: UpdateItemInput): Prisma.ItemUpdateIn
     ...(rest.estimatedDueDays !== undefined ? { estimatedDueDays: numOr(rest.estimatedDueDays) } : {}),
     ...(rest.expirationThreshold !== undefined ? { expirationThreshold: numOr(rest.expirationThreshold) } : {}),
     ...(expirationMode !== undefined ? { expirationMode: toExpirationMode(expirationMode) } : {}),
+    // Issue #335. Both are nullable TEXT columns, so `strOr` turning an
+    // explicit null into `undefined` would mean "leave it alone" and the user
+    // could never clear a note. Pass the value through as it arrived: null
+    // clears the column, a string sets it, and an absent key is not listed
+    // here at all.
+    ...(rest.wikidataUrl !== undefined ? { wikidataUrl: rest.wikidataUrl } : {}),
+    ...(rest.note !== undefined ? { note: rest.note } : {}),
   }
 }
 
@@ -153,6 +160,13 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           estimatedDueDays: numOr(rest.estimatedDueDays),
           expirationThreshold: numOr(rest.expirationThreshold),
           expirationMode: toExpirationMode(expirationMode),
+          // Issue #335. `strOr` maps an absent or null input to `undefined`,
+          // which Prisma writes as NULL on these two nullable columns — the
+          // same "no value" the local Dexie `Item` stores by leaving the
+          // optional field off. Never '' : an empty string is a different
+          // stored value from "never set".
+          wikidataUrl: strOr(rest.wikidataUrl),
+          note: strOr(rest.note),
           userId,
         },
       })
