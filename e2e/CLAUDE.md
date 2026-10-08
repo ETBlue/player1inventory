@@ -411,13 +411,37 @@ reconcile finds nothing to remove and creates every row the fixture lists. No ed
 loop was needed in 4b or in PR 5 — which is the whole argument for reading state back
 instead of predicting it.
 
-**The `cloud` project's `testMatch` is 20 files today** (`e2e/playwright.config.ts`),
-up from 13 on 2026-09-23. The five added on 2026-09-24 are `recipes-group.spec.ts`,
+**The `cloud` project's `testMatch` is 22 files today** (`e2e/playwright.config.ts`),
+up from 13 on 2026-09-23. **Count the array rather than reusing that 22** — it is one line in
+the config and it grows most weeks:
+
+```bash
+awk "/name: 'cloud'/,0" e2e/playwright.config.ts \
+  | grep -m1 testMatch | grep -o "'\*\*/[^']*\.spec\.ts'" | wc -l
+```
+
+The `awk` range matters: the file holds **three** such lists — `local`'s `testIgnore`,
+`cloud`'s `testMatch` and `pwa`'s `testMatch` — and a grep over the whole file counts all 30
+entries instead of the 22 that belong to `cloud`.
+
+The five added on 2026-09-24 are `recipes-group.spec.ts`,
 `vendors-group.spec.ts`, `shelves.spec.ts`, `item-stock-input.spec.ts` and
 `item-stock-pager.spec.ts`. The 19th file is
 `cleanup-endpoint.spec.ts`, added 2026-09-27 for issue #319. The 20th is
 `cart-id-cross-user-leak.spec.ts`, added 2026-10-03 by cloud locations PR 4b — the first
 cloud spec with **two** users, and a labelled negative control rather than coverage.
+
+Files 21 and 22 arrived on 2026-10-08 with cloud-parity PR C (issue #334). They are the first
+E2E coverage of the `clear` and `replace` import strategies — before them only `skip` had ever
+run end to end, in either project:
+
+| File | What it covers | Projects |
+|---|---|---|
+| `settings/import-strategies.spec.ts` | `clear` and `replace` through `ImportCard`'s conflict dialog. 2 tests. `clear` is the only strategy that calls `clearAllData` (cloud) or the eleven `db.<table>.clear()` calls (local) | `local` **and** `cloud` |
+| `settings/data-mode-migration.spec.ts` | `clear` through `DataModeCard`'s switch-to-cloud flow — no file, no conflict. 1 test, no page in `local` could ever run it | `cloud` only (also in `local`'s `testIgnore`) |
+
+The `local` project is 23 spec files: 29 files under `e2e/tests/` minus the 6 in its
+`testIgnore`.
 
 **Cloud test counts, measured, not quoted. Measure your own — do not subtract any number
 below.** The one-line command:
@@ -433,12 +457,16 @@ What the number has been, so you can see how fast it moves rather than reuse a f
 | 2026-09-24 | — | 97 |
 | 2026-10-04 | `feature/cloud-locations-pr4b` | 103 |
 | 2026-10-08 | `feature/cloud-item-note-wikidata`, before its E2E commit | 104 |
-| 2026-10-08 | `feature/cloud-item-note-wikidata`, after it | **105** |
+| 2026-10-08 | `feature/cloud-item-note-wikidata`, after it | 105 |
+| 2026-10-08 | `feature/import-strategy-coverage` (cloud-parity PR C) | **108** |
 
 Attribution for the steps that are known: 4b added 5 (1 for the leak spec, 4 because
 `import-export-cloud.spec.ts` went 2 → 6). Cloud-parity PR A added 1 to
 `location-scoped-writes.spec.ts`, taking it 4 → 5. Cloud-parity PR B added 1,
-`user can clear a saved note and wikidata URL` in `item-management.spec.ts`. The step from 97
+`user can clear a saved note and wikidata URL` in `item-management.spec.ts`. Cloud-parity PR C
+added 3 — 2 in `settings/import-strategies.spec.ts` and 1 in
+`settings/data-mode-migration.spec.ts` — and 2 of those 3 also run in `local`, which collected
+**179** across its 23 files on the same branch. The step from 97
 to 98 happened between 2026-09-24 and 4b and cannot be attributed from here.
 
 **Runtime passed/skipped is a different number from the collected total, and only one of them
@@ -614,7 +642,7 @@ fixture resolves a location by name and each direction exercises the remap.
 numbers, "each row kept its own location" and "every row landed on the default" give the
 same answer. Either way no assertion in this module can fail.
 
-**The backup's default-location NAME does not survive the import the UI runs, in either
+**The backup's default-location NAME does not survive a `skip` import, in either
 mode.** `ImportCard.tsx` line 111 runs the **`skip`** strategy whenever the payload raises no
 conflict, and `skip` means "add what is missing, change nothing that is already there". The
 remap has put the backup's default row on the id the destination already holds, so that row
@@ -623,6 +651,32 @@ is always the one `skip` leaves alone: local filters it out by `existingIds`, cl
 called "Fixture Home" came back as `[ "Fixture Cabin", "My Home", "Fixture Office" ]` in
 both projects. That is why `DESTINATION_DEFAULT_LOCATION_NAME` exists and why the default's
 expected name is a parameter rather than a constant in the fixture.
+
+**`clear` and `replace` differ from `skip` — in LOCAL mode only.** `importLocations`
+(`apps/web/src/lib/importData.ts`) branches on `strategy === 'skip'` and on nothing else, so
+both other strategies `bulkPut` the whole location list and the local default row takes the
+backup's name. Cloud keeps "My Home" whatever the strategy, because `bulkCreateLocations`
+skips a row whose id is already taken. So a dual-mode spec running `clear` or `replace` must
+branch on `baseURL === CLOUD_WEB_URL` for the expected default name:
+
+| strategy | local expects | cloud expects |
+|---|---|---|
+| `skip` | `DESTINATION_DEFAULT_LOCATION_NAME` | `DESTINATION_DEFAULT_LOCATION_NAME` |
+| `replace`, `clear` | `FIXTURE_DEFAULT_LOCATION_NAME` | `DESTINATION_DEFAULT_LOCATION_NAME` |
+
+`settings/import-strategies.spec.ts` does that branch in `expectedDefaultLocationName`.
+
+**Until 2026-10-08 this section said no test covered `clear`, and that the UI reached it
+"only through the conflict dialog". Both were wrong by then.** Two specs cover it —
+`settings/import-strategies.spec.ts` in both projects, `settings/data-mode-migration.spec.ts`
+in cloud — and `DataModeCard`'s `enableStrategyDialog` reaches `clear` with no conflict and no
+file at all. The old note also gave the button as "clear and import"; it reads
+**"Clear & import"** (`settings.import.conflictDialog.clear`).
+
+**"Clear & import" is the same visible string in two different dialogs on the settings page.**
+Scope by role, not by text alone: `ConflictDialog` is a Radix `Dialog` (`role="dialog"`),
+`DataModeCard`'s three dialogs are Radix `AlertDialog`s (`role="alertdialog"`, string
+`settings.dataMode.enableStrategyDialog.clearAndImport`).
 
 **Reading a cart row's `locationId` COLUMN needs `cartItemCountByItem(itemId, locationId:)`.**
 The `Cart` GraphQL type (`apps/server/src/schema/cart.graphql`) exposes `id` and
@@ -651,6 +705,89 @@ toward location coverage. That is what `location-not-stocked-here.spec.ts` and
 
 `item-stock-pager.spec.ts` is different: it seeds several locations, and its scoping
 mutation did go red.
+
+## Driving a local → cloud migration from a cloud spec
+
+`e2e/tests/settings/data-mode-migration.spec.ts` (cloud-parity PR C, issue #334) is the only
+spec that seeds LOCAL IndexedDB data while running in the `cloud` project and then watches the
+app copy it up. Three things it had to get right are measured facts, not preferences.
+
+### Seed local data only AFTER a local-mode boot
+
+`main.tsx` calls `db.open()` **only** when the mode it read from `localStorage` is `local`. In
+cloud mode Dexie never runs, so the app database does not exist. Measured 2026-10-08 on port
+5174 (`CLOUD_WEB_URL`), reading `indexedDB.databases()`:
+
+| Point in the flow | Databases present |
+|---|---|
+| cloud-mode boot | `Player1InventoryCloudCache@10` only |
+| after `data-mode=local` + `reload()` | `Player1Inventory@180` **and** `Player1InventoryCloudCache@10` |
+
+`180` is IDB version 18 × 10, Dexie's schema v18 with all **11** stores. Seed before that boot
+and `indexedDB.open('Player1Inventory')` creates an empty database with **no object stores**,
+so the seed helper throws `NotFoundError: One of the specified object stores was not found` —
+the same error the stale-codegen section above describes, from a different cause.
+
+The order is therefore: `page.goto('/')` → write `data-mode=local` → `page.reload()` →
+`seedLocalFixture(page, …)`.
+
+### Do NOT set `data-mode` in `page.addInitScript`
+
+`addInitScript` re-runs on **every** document load. `DataModeCard.doEnableSwitch` writes
+`data-mode=cloud` and then reloads, so an init script would overwrite that value on the way
+through and send the flow straight back to local mode. Use `page.evaluate` plus
+`page.reload()`, which runs once.
+
+`e2e-skip-onboarding` is fine in an init script — it has to survive every reload, which is the
+opposite requirement.
+
+### The persisted Apollo cache cannot affect an E2E run
+
+Two independent reasons, both checked in source rather than assumed:
+
+- `createApolloClientForE2E` (`apps/web/src/apollo/client.ts:70-78`) builds its client with a
+  fresh `createCache()`. It never touches the module-level `cloudCache` that `restoreCache`
+  writes into, so nothing a previous run persisted reaches an E2E client.
+- `localStorage['cloud-cache-user-id']` is never written in E2E. Its only writer is
+  `setLastSignedInUserId`, called from `ApolloWrapper.tsx` line 107 — and `main.tsx` renders
+  `ApolloWrapper` only on the non-E2E cloud branch.
+
+So a cloud spec does not need to clear the Apollo cache, and a failure that looks like stale
+cloud data is something else.
+
+## `PostLoginMigrationDialog` mounts in E2E test mode — a production change made for a test
+
+Since cloud-parity PR C (2026-10-08), `__root.tsx` mounts `PostLoginMigrationDialog` whenever
+`mode === 'cloud'`, E2E or not. It used to be gated behind `!isE2ETestMode`. **Say this
+plainly: shipped code changed so that a test could reach a path.** `CloudAuthGuard` is still
+gated off — it calls `useAuth()` and would redirect the run to `/sign-in`.
+
+Why it was needed: `PostLoginMigrationDialog` is the only mount site of
+`usePostLoginMigration`, and that hook is what runs the `clear` import after
+`DataModeCard.doEnableSwitch('clear')` writes `migration-strategy`. With the old gate,
+`DataModeCard` wrote the key in E2E and nothing ever read it, so path 2 could not be driven at
+all. The hook's Clerk `useAuth()` call moved into a component shim
+(`PostLoginMigrationDialogWithClerk` / `PostLoginMigrationDialogE2E`), so the hook itself
+imports nothing from `@clerk/react`.
+
+**The risk, and why it is contained.** `usePostLoginMigration` can run `clearAllData`, which
+deletes every cloud row for the account. That destructive path now sits in every cloud spec's
+component tree. It cannot fire by accident, and this was checked in PR C task 1 rather than
+assumed:
+
+| Check | Result |
+|---|---|
+| What the `cloud` project seeds into each context | an inline `storageState` object with exactly **one** entry, `{ name: 'data-mode', value: 'cloud' }` (`e2e/playwright.config.ts`). Nothing is written back to it |
+| `grep -rnE "storageState\|globalSetup\|browser.newContext\|newPage\(\)" e2e/` | one config line and one comment. No `globalSetup`, no hand-made context, no spec that saves state |
+| Scope of Playwright's `page` / `context` fixtures | test-scoped, so a `localStorage` key written by one test is gone before the next starts |
+
+The hook needs a `migration-strategy` key to act, and nothing seeds one.
+
+**The one case this does not cover** is a test that puts `migration-strategy` into
+`localStorage` during its own run and keeps using the same page.
+`settings/data-mode-migration.spec.ts` does exactly that on purpose — it clicks through
+`DataModeCard`, which writes the key — so it clears IndexedDB, `localStorage` and
+`sessionStorage` in its own `afterEach` even though a fresh context would have done it.
 
 ## Page objects show as steps — call `withSteps(this)`
 
@@ -681,25 +818,32 @@ Normal runs keep `'off'`.
 therefore says nothing about this directory.
 
 To type-check a file you edited, write a temporary `tsconfig` and run `tsc --noEmit`.
-**Scope `include` to the files you are editing.** Four files carry pre-existing errors
+**Scope `include` to the files you are editing.** Five files carry pre-existing errors
 that will drown yours:
 
 | File | Pre-existing errors |
 |---|---|
-| `e2e/playwright.config.ts` | 2 × `TS2580` (no `@types/node`) |
+| `e2e/playwright.config.ts` | 5 × `TS2580` (no `@types/node`) — lines 45, 126, 154, 155, 166, all `process` |
 | `e2e/tests/a11y.spec.ts` | 63 × `TS2559` on `AxeOptions` |
 | `e2e/tests/settings/import-export-cloud.spec.ts` | 3 × `TS2307` on `node:fs`, `node:path`, `node:url` (no `@types/node`) |
 | `e2e/tests/settings/import-export-local.spec.ts` | 4, same cause |
+| `e2e/tests/settings/import-strategies.spec.ts` | 3, same cause |
 
-Counts measured 2026-09-29; **74 errors in total** across `e2e/`. The a11y figure was
-**39** when this table was written; the file has grown since. The exact error CODES also
+Counts measured 2026-10-08 with `moduleResolution: "bundler"`; **78 errors in total** across
+`e2e/`, and in those five files only. The exact error CODES
 depend on the tsconfig you write — `TS2580` and `TS2591` are the same missing-`@types/node`
 problem reported under different module settings.
+
+**This table has been wrong twice, in the way it warns about.** It said `a11y.spec.ts` carried
+**39** `TS2559` errors long after the file had grown to 63. It said
+`e2e/playwright.config.ts` carried **2** `TS2580` errors; the real number is 5 and has been
+since the `webServer` selection logic landed on 2026-09-24, which added the `process.argv` read
+at line 45. Both figures were true when written.
 
 **Do not trust any number here.** Take your own baseline first: run `tsc` on the unchanged
 files, keep the output, then diff it against the run after your edit. Root `CLAUDE.md`
 makes this a rule, because subtracting a written count has twice produced invented
 failures.
 
-Tracked as issue #322 — nothing lints or type-checks this directory, so none of these 74
+Tracked as issue #322 — nothing lints or type-checks this directory, so none of these 78
 errors is reported by any command in the verification gate.
