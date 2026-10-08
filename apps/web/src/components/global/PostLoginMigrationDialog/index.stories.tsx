@@ -7,10 +7,13 @@ import { noopApolloClient } from '@/test/apolloStub'
 import { PostLoginMigrationDialog } from '.'
 
 // PostLoginMigrationDialog uses:
-//   - usePostLoginMigration() → useAuth() from @clerk/react
-//     (mocked in Storybook via .storybook/mocks/clerk.tsx — always returns isSignedIn: true)
+//   - useAuth() from @clerk/react, in its own non-E2E branch
+//     (mocked in Storybook via .storybook/mocks/clerk.tsx — always returns isSignedIn: true).
+//     The hook itself no longer calls Clerk: the component reads isLoaded and
+//     isSignedIn and passes them in. Storybook has no VITE_E2E_TEST_USER_ID, so
+//     these stories always render the Clerk branch.
 //   - getAllItems() from db — async Dexie call
-//   - usePostLoginMigration() → useLocations(), which is dual-mode: its LOCAL
+//   - usePostLoginMigration(auth) → useLocations(), which is dual-mode: its LOCAL
 //     branch is a TanStack Query read (hence the QueryClientProvider
 //     decorator), and its cloud branch calls useGetLocationsQuery with
 //     skip:true — even a skipped Apollo hook needs a client in context (hence

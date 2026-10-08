@@ -1,5 +1,4 @@
 import { useApolloClient } from '@apollo/client/react'
-import { useAuth } from '@clerk/react'
 import { useEffect, useRef, useState } from 'react'
 import { getAllItems } from '@/db/operations'
 import { fetchLocalPayload } from '@/lib/exportData'
@@ -17,8 +16,20 @@ export type MigrationState =
   | 'auto-importing'
   | 'done'
 
-export function usePostLoginMigration() {
-  const { isSignedIn, isLoaded } = useAuth()
+/**
+ * Whether the session is signed in, as the caller sees it.
+ *
+ * This hook used to call Clerk's `useAuth()` itself. It takes the two values as
+ * an argument instead, so the hook can run with no `ClerkProvider` in the tree.
+ * `PostLoginMigrationDialog` picks where they come from: Clerk in the real app,
+ * a constant in E2E test mode.
+ */
+export type MigrationAuth = {
+  isLoaded: boolean
+  isSignedIn: boolean
+}
+
+export function usePostLoginMigration({ isLoaded, isSignedIn }: MigrationAuth) {
   const [state, setState] = useState<MigrationState>('idle')
   const apolloClient = useApolloClient()
   const { data: locations } = useLocations()

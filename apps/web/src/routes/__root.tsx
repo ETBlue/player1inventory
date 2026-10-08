@@ -23,6 +23,8 @@ import { shouldRedirectToOnboarding } from './shouldRedirectToOnboarding'
 
 // E2E test mode: VITE_E2E_TEST_USER_ID bypasses Clerk, so CloudAuthGuard
 // must not mount (it calls useAuth() which requires ClerkProvider context).
+//
+// This flag no longer gates PostLoginMigrationDialog — see the JSX below.
 const isE2ETestMode = !!import.meta.env.VITE_E2E_TEST_USER_ID
 
 export function CloudAuthGuard() {
@@ -91,12 +93,24 @@ function RootComponent() {
 
   return (
     <ActiveLocationProvider>
-      {mode === 'cloud' && !isE2ETestMode && (
-        <>
-          <CloudAuthGuard />
-          <PostLoginMigrationDialog />
-        </>
-      )}
+      {/*
+        CloudAuthGuard stays gated off in E2E test mode: it calls useAuth(),
+        which needs ClerkProvider context the E2E cloud tree does not render,
+        and it would send the run to /sign-in.
+      */}
+      {mode === 'cloud' && !isE2ETestMode && <CloudAuthGuard />}
+      {/*
+        PostLoginMigrationDialog mounts in E2E test mode as well. It is the only
+        mount site of usePostLoginMigration, so without this the whole
+        sign-in-then-copy path — including the destructive `clear` strategy —
+        could not be driven by a test at all (issue #334). This is a change to
+        shipped code made so a test can reach that path.
+
+        The dialog carries the Clerk/E2E split itself, and the comment on it
+        records why mounting a destructive path in every cloud spec is
+        contained.
+      */}
+      {mode === 'cloud' && <PostLoginMigrationDialog />}
       <Layout>
         {mode === 'cloud' && <OfflineBanner />}
         <Outlet />

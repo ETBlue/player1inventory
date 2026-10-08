@@ -98,6 +98,11 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   }
 })
 
+// The hook takes auth as an argument now — it no longer calls Clerk's
+// `useAuth()` itself. `PostLoginMigrationDialog` is where the Clerk/E2E split
+// lives, so every test here passes a signed-in session directly.
+const SIGNED_IN = { isLoaded: true, isSignedIn: true }
+
 const mockFetchLocalPayload = vi.mocked(fetchLocalPayload)
 const mockImportCloudData = vi.mocked(importCloudData)
 
@@ -160,7 +165,9 @@ describe('usePostLoginMigration — auto-import path', () => {
     )
 
     // When: the hook mounts
-    const { result } = renderHook(() => usePostLoginMigration(), { wrapper })
+    const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
+      wrapper,
+    })
 
     // Then: state transitions to 'done' (dialog closes) rather than staying 'auto-importing'
     await waitFor(() => {
@@ -183,7 +190,9 @@ describe('usePostLoginMigration — auto-import path', () => {
     mockImportCloudData.mockResolvedValue(undefined)
 
     // When: the hook mounts
-    const { result } = renderHook(() => usePostLoginMigration(), { wrapper })
+    const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
+      wrapper,
+    })
 
     // Then: state transitions to 'done'
     await waitFor(() => {
@@ -211,6 +220,50 @@ const CLOUD_OFFICE_ID = 'clx7k2p9a0001qwer5678efgh'
 // because the cloud import surface was flat. The remap rule keeps every
 // location now, so the option is gone and the two its with it. What replaces
 // them is the inverse rule: the copy names NO location.
+describe('usePostLoginMigration — the auth argument gates everything', () => {
+  // The hook no longer reads Clerk. If the argument were ignored, a signed-out
+  // session would start a copy.
+  it('no copy and no prompt while the session is not signed in', async () => {
+    // Given a stored strategy and a resolved location list, but a session that
+    // Clerk has loaded and reports as signed out
+    vi.mocked(getAllItems).mockResolvedValue([])
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
+    mockFetchLocalPayload.mockResolvedValue(emptyPayload)
+    mockImportCloudData.mockResolvedValue(undefined)
+
+    // When the hook mounts with that session
+    const { result } = renderHook(
+      () => usePostLoginMigration({ isLoaded: true, isSignedIn: false }),
+      { wrapper },
+    )
+
+    // Then nothing is copied and the strategy key survives for the next sign-in
+    await waitFor(() => expect(result.current.state).toBe('idle'))
+    expect(mockImportCloudData).not.toHaveBeenCalled()
+    expect(localStorage.getItem(MIGRATION_STRATEGY_KEY)).toBe('clear')
+    expect(localStorage.getItem(MIGRATION_PROMPTED_KEY)).toBeNull()
+  })
+
+  it('no copy while Clerk has not loaded yet', async () => {
+    // Given the same stored strategy, with Clerk still loading
+    vi.mocked(getAllItems).mockResolvedValue([])
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
+    mockFetchLocalPayload.mockResolvedValue(emptyPayload)
+    mockImportCloudData.mockResolvedValue(undefined)
+
+    // When the hook mounts
+    const { result } = renderHook(
+      () => usePostLoginMigration({ isLoaded: false, isSignedIn: false }),
+      { wrapper },
+    )
+
+    // Then nothing is copied
+    await waitFor(() => expect(result.current.state).toBe('idle'))
+    expect(mockImportCloudData).not.toHaveBeenCalled()
+    expect(localStorage.getItem(MIGRATION_STRATEGY_KEY)).toBe('clear')
+  })
+})
+
 describe('usePostLoginMigration — the copy names no location', () => {
   function seedCloudLocations() {
     // afterEach resets every mock, so re-arm the ones the hook reads. These
@@ -234,7 +287,9 @@ describe('usePostLoginMigration — the copy names no location', () => {
     mockImportCloudData.mockResolvedValue(undefined)
 
     // When the hook mounts and runs the auto-import
-    const { result } = renderHook(() => usePostLoginMigration(), { wrapper })
+    const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
+      wrapper,
+    })
     await waitFor(() => expect(result.current.state).toBe('done'))
 
     // Then no location is named: neither the local slot nor the cloud cuid is
@@ -254,7 +309,9 @@ describe('usePostLoginMigration — the copy names no location', () => {
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
     mockImportCloudData.mockResolvedValue(undefined)
 
-    const { result } = renderHook(() => usePostLoginMigration(), { wrapper })
+    const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
+      wrapper,
+    })
 
     // When the user confirms the import
     await result.current.importData('append')
@@ -286,7 +343,9 @@ describe('usePostLoginMigration — the auto-import waits for the location list'
     mockImportCloudData.mockResolvedValue(undefined)
 
     // When the hook mounts
-    const { result } = renderHook(() => usePostLoginMigration(), { wrapper })
+    const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
+      wrapper,
+    })
 
     // Then nothing is copied and the strategy key is still there to retry with
     await waitFor(() => expect(result.current.state).toBe('idle'))
@@ -307,9 +366,12 @@ describe('usePostLoginMigration — the auto-import waits for the location list'
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
     mockImportCloudData.mockResolvedValue(undefined)
-    const { result, rerender } = renderHook(() => usePostLoginMigration(), {
-      wrapper,
-    })
+    const { result, rerender } = renderHook(
+      () => usePostLoginMigration(SIGNED_IN),
+      {
+        wrapper,
+      },
+    )
     expect(mockImportCloudData).not.toHaveBeenCalled()
 
     // When GetLocations answers
@@ -350,7 +412,9 @@ describe('usePostLoginMigration — the auto-import runs once', () => {
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
     mockImportCloudData.mockReturnValue(new Promise(() => {}))
-    const { rerender } = renderHook(() => usePostLoginMigration(), { wrapper })
+    const { rerender } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
+      wrapper,
+    })
     await waitFor(() => expect(mockImportCloudData).toHaveBeenCalledTimes(1))
 
     // When the cache is reset mid-flight — GetLocations has no data, then has
@@ -400,7 +464,7 @@ describe('usePostLoginMigration — the auto-import runs once', () => {
     mockImportCloudData.mockReturnValue(new Promise(() => {}))
 
     // When the hook mounts and the provider resets the stale location
-    renderHook(() => usePostLoginMigration(), { wrapper })
+    renderHook(() => usePostLoginMigration(SIGNED_IN), { wrapper })
     await waitFor(() =>
       expect(localStorage.getItem(activeLocationStorageKey('cloud'))).toBe(
         CLOUD_HOME_ID,
