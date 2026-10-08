@@ -465,7 +465,7 @@ pass by the columns simply being unwritable.
 
 ## PR C — #334 and #333
 
-**Status: built.** Branch `feature/import-strategy-coverage`, 9 commits. Two items are still
+**Status: built.** Branch `feature/import-strategy-coverage` (count the commits with `git rev-list --count origin/main..HEAD` — a figure written here goes stale on the next commit, including the one that writes it). Two items are still
 owed and are listed under *Known gaps* below: the `verify:migration` **run** itself (the plan's
 task 5, which the branch owner runs, not an agent) and `pnpm test:e2e:all`.
 
