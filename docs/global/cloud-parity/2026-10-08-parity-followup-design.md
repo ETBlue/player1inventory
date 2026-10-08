@@ -465,56 +465,145 @@ pass by the columns simply being unwritable.
 
 ## PR C — #334 and #333
 
-### #334 — two E2E specs for the `clear` and `replace` strategies
+**Status: built.** Branch `feature/import-strategy-coverage`, 9 commits. Two items are still
+owed and are listed under *Known gaps* below: the `verify:migration` **run** itself (the plan's
+task 5, which the branch owner runs, not an agent) and `pnpm test:e2e:all`.
 
-Only `skip` is ever exercised today. Both import specs run `cleanupCloudData` in
-`beforeEach`, so the account is empty, no conflict can arise, and `ImportCard` never reaches
-its conflict dialog.
+### What was built
 
-There are two paths to a strategy, and the existing note in
-`e2e/helpers/backupAssertions.ts` names only the first.
+| Commit | What |
+|---|---|
+| `8a5e463d` | `assertNotAnotherDatabase` in `apps/server/scripts/databaseIsolation.ts`. `verify:migration` now refuses to run if either `TEST_*` URL resolves to the same host **and** database as **any** other `*_URL` in the environment, and the error names the offending variable. 15 unit tests, all green |
+| `0de113f1` | root `CLAUDE.md` records that guard and its cost — about **0.5s** on every server build, because the new test file pulls vitest's 46 declaration files into the `scripts` type-check pass |
+| `f807077e` | the PR C plan |
+| `2b572c65` | `PostLoginMigrationDialog` now mounts in E2E test mode. The Clerk `useAuth()` call moved into a component shim (`PostLoginMigrationDialogWithClerk` / `PostLoginMigrationDialogE2E`), so `usePostLoginMigration` imports nothing from `@clerk/react`. `CloudAuthGuard` stays gated off — it would redirect the run to `/sign-in` |
+| `ead226e1` | `apps/web/src/hooks/CLAUDE.md` for the hook's new auth argument |
+| `045125fe` | `e2e/tests/settings/import-strategies.spec.ts` — `clear` and `replace` through `ImportCard`'s conflict dialog, in **both** projects. 2 tests |
+| `35b5ab4e` | a comment in `importData.ts` naming the entity issue #330 actually hits |
+| `f4c467fc` | `e2e/tests/settings/data-mode-migration.spec.ts` — `clear` through `DataModeCard`'s switch-to-cloud flow, cloud only. 1 test |
+| task 4 | this section, `e2e/CLAUDE.md`, `e2e/helpers/backupAssertions.ts`, root `CLAUDE.md` and `docs/INDEX.md` |
 
-**Spec 1 — `DataModeCard`, no conflict needed.** Local mode with at least one item →
-Settings → "Switch…" → confirm → "Yes, copy data" → "Clear & import" → sign in, and
-`usePostLoginMigration` runs the `clear` import. This is the cheap one, and it is the only
-thing that will ever have run `clearAllData` end to end.
+Measured counts after the branch: server **374** tests / 26 files, web **2304** / 251 files,
+`cloud` **108** collected / 22 files, `local` **179** / 23 files.
 
-**Spec 2 — `ImportCard`'s conflict dialog, for `replace`.** Needs a fixture that collides
-on purpose. `detectConflicts` matches by id or name for items, tags, tagTypes, vendors and
-recipes, and by id only for inventoryLogs, cartItems and shelves. `shoppingCarts` is
-hardcoded to `[]` and can never conflict; `locations` and `itemStocks` are not checked at
-all. The fixture is the work here, not the clicks.
+### Four things the issues got wrong
 
-**"Clear & import" is the same string in two different dialogs**, so a spec matching on text
-alone must scope to the dialog it means.
+**#334 had the difficulty backwards.** It recommends driving path 2 first, because that path
+needs no conflict. Path 2 was in fact the only one that could not be driven at all: three
+blockers, each sufficient alone — no sign-in step exists in cloud E2E,
+`PostLoginMigrationDialog` was gated behind `!isE2ETestMode`, and `usePostLoginMigration`
+called Clerk's `useAuth()` in a tree with no `ClerkProvider`. Driving it needed a change to
+shipped code. Path 1, the conflict dialog, was the easy one and needed no change at all.
 
-Both specs join the `cloud` project's `testMatch`, and `local`'s `testIgnore` if cloud-only.
-`e2e/helpers/backupAssertions.ts` gets its note corrected to name both paths.
+**#334's scope assigned only `replace` to the conflict dialog.** `clear` is reachable there
+too, and that turned out to be the cheapest real coverage of `clearAllData` — one mutation in
+cloud, eleven `db.<table>.clear()` calls locally, and nothing had ever executed either.
 
-**#330 is not fixed here.** It is reachable only through `replace`, so spec 2 is what could
-catch it, but the fix stays its own issue.
+**#330 fires on `items`, and that is now measured rather than reasoned.**
+`runBulkBatches`' batch key is `${spec.entityType}:${i}` with no mode term, so the create pass
+and the upsert pass share one key space. The entities PR 4b added cannot hit it — `locations`
+goes only to `toCreate`, `itemStocks` only to `toUpsert` — but `items` has a batch on each
+pass whenever a payload holds one colliding item and one new one, which is what
+`import-strategies.spec.ts` seeds. Proved in task 2 by prefixing the key with `${mode}`: the
+cloud `replace` run then wrote the backup's name instead of keeping the stale one, and the spec
+failed on the line that expects the defect. The probe was reverted. **The spec asserts the
+current wrong value on purpose, so fixing #330 turns that line red.**
 
-### #333 — run `verify:migration`, and widen its guard
+**#333's guard gap was real**, proved with fabricated URLs rather than argued: the old
+`assertDistinctFromDev` printed `OLD GUARD: allowed the run` where the new
+`assertNotAnotherDatabase` refuses and names `PROD_COPY_DATABASE_URL`.
+
+### The trap: a fixture that could not tell `clear` from `replace`
+
+Task 3's first version of the path-2 spec was green when the mutation check pressed "Overwrite
+conflicts" instead of "Clear & import" — 17.5s, passing. The assertions were fine; the fixture
+was not. The cloud account was empty before the migration, so `clear` deleted nothing,
+`replace` collided with nothing, and both strategies left the same account behind.
+
+The fix was to seed one item and one location in cloud that the local payload never names.
+`clear` deletes them; `replace` and `skip` keep them, which gives an extra item and a fourth
+location. **A strategy that deletes needs something to delete.** Recorded in root `CLAUDE.md`
+under *Proving a Test Works*, beside the location-scoping example it rhymes with.
+
+### Two notes that were wrong, and are now corrected
+
+`e2e/helpers/backupAssertions.ts` and `e2e/CLAUDE.md` both claimed no test covered `clear` and
+that the UI reached it "only through the conflict dialog". Four errors between them:
+
+| Claim | Correction |
+|---|---|
+| "WHAT NO TEST HERE COVERS: the `clear` strategy" | Two specs cover it as of 2026-10-08 |
+| "the UI reaches it only through the conflict dialog" | `DataModeCard`'s `enableStrategyDialog` reaches it with no conflict and no file |
+| the button is "clear and import" | it reads **"Clear & import"** (`settings.import.conflictDialog.clear`) |
+| `replace` not mentioned | `importLocations` branches on `strategy === 'skip'` and nothing else, so `replace` renames the local default exactly as `clear` does |
+
+`e2e/CLAUDE.md` also carried two stale counts, both corrected by measurement: the `cloud`
+`testMatch` (20 files → **22**) and `e2e/playwright.config.ts`'s pre-existing type errors
+(**2** × `TS2580` → **5**, at lines 45, 126, 154, 155, 166, all `process`). The second had been
+wrong since 2026-09-24, when the `webServer` selection logic added the `process.argv` read at
+line 45. `apps/web/src/hooks/CLAUDE.md` said **eight** `usePostLoginMigration()` call sites in
+its test file; there are **ten** — eight use the `SIGNED_IN` constant and two pass a literal
+object.
+
+### Three measured facts a future spec author needs
+
+All three are recorded in `e2e/CLAUDE.md`, under *Driving a local → cloud migration from a
+cloud spec*.
+
+1. **Seeding local Dexie data on the cloud origin only works after a local-mode boot.**
+   `main.tsx` calls `db.open()` only when the mode is `local`. Measured on port 5174:
+   cloud-mode boot lists `Player1InventoryCloudCache@10` only; after `data-mode=local` plus a
+   reload it lists `Player1Inventory@180` as well. Seed first and `indexedDB.open` creates an
+   empty database with no object stores, so the seed throws `NotFoundError`.
+2. **Do not set `data-mode` in `page.addInitScript`.** That script re-runs on every document
+   load, so it would overwrite `data-mode=cloud` on the reload `doEnableSwitch` triggers and
+   send the flow back to local mode. Use `page.evaluate` plus `page.reload()`.
+   `e2e-skip-onboarding` is fine in an init script — it has to survive every reload.
+3. **The persisted Apollo cache cannot affect an E2E run.** `createApolloClientForE2E`
+   (`apps/web/src/apollo/client.ts:70-78`) builds its client with a fresh `createCache()` and
+   never touches the module-level `cloudCache` that `restoreCache` writes into. And
+   `localStorage['cloud-cache-user-id']` is never written in E2E: its only writer is
+   `setLastSignedInUserId`, called from `ApolloWrapper.tsx` line 107, and `main.tsx` renders
+   `ApolloWrapper` only on the non-E2E cloud branch.
+
+### Why mounting `PostLoginMigrationDialog` in E2E is safe
+
+This is a production change made so a test could reach a path. Saying it plainly matters more
+than justifying it. The risk is that a destructive path (`clearAllData`) now sits in every
+cloud spec's component tree. Three checks contain it, all run in task 1 rather than assumed:
+
+- the `cloud` project's `storageState` in `e2e/playwright.config.ts` is an **inline object**
+  with exactly one entry, `{ name: 'data-mode', value: 'cloud' }`, and nothing is written back
+  to it;
+- `grep -rnE "storageState|globalSetup|browser.newContext|newPage\(\)" e2e/` returns that one
+  config line and one comment — no `globalSetup`, no hand-made context, no spec that saves
+  state;
+- Playwright's `page` and `context` fixtures are test-scoped, so a key written by one test is
+  gone before the next starts.
+
+The hook needs a `migration-strategy` key to act, and nothing seeds one. **The case this does
+not cover** is a test where that key appears during its own run and the same page keeps being
+used. `data-mode-migration.spec.ts` is exactly that — it clicks through `DataModeCard`, which
+writes the key — so it clears IndexedDB, `localStorage` and `sessionStorage` in its own
+`afterEach` even though a fresh context would have done it anyway.
+
+### #333 — the guard, and the run that is still owed
 
 `apps/server/scripts/verify-migration.ts` is the only check in the repo that runs a migration
-against real SQL. #332 added three assertions to it and **none has ever been executed.**
+against real SQL. #332 added three assertions to it and PR B added four more per field;
+**none has ever been executed.** Running it is the plan's task 5.
 
-The second of the three is the one that matters: `Item` and `ItemStock` declare the same five
-field names, so checking `Item` alone passes just as well against a migration that dropped the
-columns from the wrong table.
+The guard change shipped. `assertDistinctFromDev` compared `TEST_*` against `DATABASE_URL` and
+`DIRECT_URL` only, so `PROD_COPY_DATABASE_URL` and `PROD_COPY_DIRECT_URL` — which sit in the
+same `apps/server/.env` — were not compared at all. `assertNotAnotherDatabase` refuses the run
+if either `TEST_*` URL resolves to the same host and database name as **any** other `*_URL` in
+the environment, and names the variable it collided with. It compares the resolved host and
+database, not the raw string, so a re-pasted URL in a different format is still caught.
 
-**The guard change.** Today the only protection is that `TEST_*` differs from the two dev
-variables. A `PROD_COPY_DATABASE_URL` sits in the same `.env`. `assertDistinctFromDev`
-becomes a deny-list: refuse to run if `TEST_DATABASE_URL` or `TEST_DIRECT_URL` resolves to
-the same **host and database name** as any other `*_URL` in the environment. Comparing the
-resolved host and database, not the raw string, so a re-pasted URL in a different format is
-still caught.
-
-**The run.** Needs no E2E suite running (ports and databases are shared across worktrees),
-and needs the user's real-time consent via `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`.
-That consent covers `TEST_DATABASE_URL` only — never `DATABASE_URL`, never a production copy.
-Afterwards the E2E database comes back empty at the latest schema, so the cloud project is
-re-run to confirm it still passes.
+The run itself needs the user's real-time consent through
+`PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`, covers `TEST_DATABASE_URL` only, and needs all
+four E2E ports free because it wipes that database. Afterwards the `cloud` project must be
+re-run, since the database it reads was just emptied.
 
 ---
 
@@ -526,9 +615,12 @@ re-run to confirm it still passes.
 | PR A's client-computed number cannot be checked by the server | The accepted cost of the chosen option |
 | PR A's race: the server buying an item the client did not send makes checkout fail | Recorded, not solved. Rare with one account per user |
 | At most 19 existing cloud purchase logs may read high | Measured 2026-10-08. Deliberately not repaired — the exact set cannot be identified. See the section above |
-| #330 — `replace` silently does not overwrite | Stays open. PR C's spec 2 makes it reachable by a test |
+| #330 — `replace` silently does not overwrite | Stays open. PR C made it reachable AND measured: it fires on `items`, proved by prefixing `runBulkBatches`' batch key with `${mode}`. `import-strategies.spec.ts` asserts the current wrong value on purpose, so fixing #330 turns that line red |
 | How long PR A's required argument locks out a stale client | Unbounded, because `registerType: 'prompt'` waits for the user |
-| PR B's `verify-migration.ts` assertions have never been executed | Owed to #333, in PR C. Nothing in the gate runs that script |
+| PR B's `verify-migration.ts` assertions have never been executed | **Still owed.** PR C widened the script's guard and unit-tested it (15 tests), but the run itself — the plan's task 5 — has not happened. Nothing in the gate runs that script |
+| PR C's `pnpm test:e2e:all` has not run | **Still owed.** The three new test cases are unproven end to end on this branch |
+| `PostLoginMigrationDialog` mounts in every cloud spec | Chosen on purpose, and a change to shipped code made for a test. Contained by the fresh browser context per test — see the PR C section for the three checks |
+| `replace` does not rename a cloud location | Accepted in PR 4b, unit-tested only. `import-strategies.spec.ts` now records the behaviour in both modes and says which answer is wrong |
 | PR B's migration is applied to the dev and E2E databases, not to production | Railway runs `prisma migrate deploy` as its release command, so it reaches production on merge. Not yet verified there |
 | No cloud E2E test covers `note` or `wikidataUrl` through the IMPORT path | `toItemInput` carries both and two unit tests guard it, but `settings/import-export-cloud.spec.ts` asserts neither field. Unit tests are the only guard for either one |
 | `CreateItem`, `BulkCreateItems` and `BulkUpsertItems` do not select the two fields | On purpose, with the reason in each `.graphql` file. A future call site that needs the value in the create response must add it |
