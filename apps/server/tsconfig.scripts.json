@@ -7,12 +7,18 @@
   // `dist/scripts/…`, which breaks `start: node dist/index.js`.
   //
   // It includes `scripts` and NOT `src`, so the two passes do not overlap:
-  // `tsc` checks and emits the 52 files under `src`, this checks the ones under
+  // `tsc` checks and emits the 53 files under `src`, this checks the 3 under
   // `scripts`, and nothing is checked twice. That is only safe because
-  // `scripts/` imports nothing from `src` — today only `@prisma/client` and
-  // node builtins. **If a script ever imports from `src`, TypeScript will pull
-  // those files into this program and check them again here.** That is correct
-  // but no longer free, so check what it costs before adding such an import.
+  // `scripts/` imports nothing from `src` — today only `@prisma/client`,
+  // `vitest`, node builtins and its own sibling modules. **If a script ever
+  // imports from `src`, TypeScript will pull those files into this program and
+  // check them again here.** That is correct but no longer free, so check what
+  // it costs before adding such an import.
+  //
+  // This pass covers test files too, which `apps/web`'s does not. That is why
+  // `scripts/databaseIsolation.test.ts` is type-checked. It costs about 0.5s of
+  // server build time, because importing `vitest` adds 46 declaration files —
+  // see the root CLAUDE.md for the measured before/after.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "rootDir": ".",
