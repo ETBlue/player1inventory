@@ -2190,6 +2190,15 @@ async function runBulkBatches(
       // own batch. Neither entity added by PR 4b can hit it — `partitionPayload`
       // sends `locations` only to `toCreate` and `itemStocks` only to
       // `toUpsert`, so each has zero batches on the other pass.
+      //
+      // `items` DOES hit it, and that is now measured rather than reasoned.
+      // `e2e/tests/settings/import-strategies.spec.ts` imports a backup holding
+      // one colliding item and one new one, so `items` has a batch on each pass:
+      // in `cloud` the colliding row keeps the destination's name, in `local`
+      // (which uses no batch keys at all) it takes the backup's. That spec
+      // records both answers and says which is wrong. Proved on 2026-10-08 by
+      // prefixing this key with `${mode}`: the cloud run then wrote the backup's
+      // name and the spec failed on the line that expects the defect.
       const key = `${spec.entityType}:${i}`
       if (session.completedBatchKeys.has(key)) {
         completedBatches++
