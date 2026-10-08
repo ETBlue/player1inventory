@@ -1,6 +1,10 @@
 type Item {
   id: ID!
   name: String!
+  # Full URL to the Wikidata entity. Optional; mirrors the local Dexie `Item`.
+  wikidataUrl: String
+  # Free-text note about the item. Optional.
+  note: String
   tagIds: [String!]!
   vendorIds: [String!]
   packageUnit: String
@@ -42,6 +46,8 @@ input CreateItemInput {
   estimatedDueDays: Int
   expirationThreshold: Int
   expirationMode: String
+  wikidataUrl: String
+  note: String
 }
 
 input UpdateItemInput {
@@ -56,4 +62,6 @@ input UpdateItemInput {
   estimatedDueDays: Int
   expirationThreshold: Int
   expirationMode: String
+  wikidataUrl: String
+  note: String
 }

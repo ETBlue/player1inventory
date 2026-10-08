@@ -419,11 +419,54 @@ up from 13 on 2026-09-23. The five added on 2026-09-24 are `recipes-group.spec.t
 `cart-id-cross-user-leak.spec.ts`, added 2026-10-03 by cloud locations PR 4b — the first
 cloud spec with **two** users, and a labelled negative control rather than coverage.
 
-**Cloud test counts, measured, not quoted:** `--list` reported **97** on 2026-09-24. A full
-`--project=cloud` run on 2026-10-04 at `feature/cloud-locations-pr4b` collected **103**. 4b
-added 5 of those: 1 for the leak spec and 4 because `import-export-cloud.spec.ts` went
-2 → 6. The remaining step from 97 to 98 happened between 2026-09-24 and 4b and is not
-attributable from this branch. Re-measure; do not subtract these.
+**Cloud test counts, measured, not quoted. Measure your own — do not subtract any number
+below.** The one-line command:
+
+```bash
+pnpm test:e2e --project=cloud --list | tail -3
+```
+
+What the number has been, so you can see how fast it moves rather than reuse a figure:
+
+| Date | Branch | Collected in `cloud` |
+|---|---|---|
+| 2026-09-24 | — | 97 |
+| 2026-10-04 | `feature/cloud-locations-pr4b` | 103 |
+| 2026-10-08 | `feature/cloud-item-note-wikidata`, before its E2E commit | 104 |
+| 2026-10-08 | `feature/cloud-item-note-wikidata`, after it | **105** |
+
+Attribution for the steps that are known: 4b added 5 (1 for the leak spec, 4 because
+`import-export-cloud.spec.ts` went 2 → 6). Cloud-parity PR A added 1 to
+`location-scoped-writes.spec.ts`, taking it 4 → 5. Cloud-parity PR B added 1,
+`user can clear a saved note and wikidata URL` in `item-management.spec.ts`. The step from 97
+to 98 happened between 2026-09-24 and 4b and cannot be attributed from here.
+
+**Runtime passed/skipped is a different number from the collected total, and only one of them
+moves when you remove a skip.** `test.skip(condition, 'reason')` **inside a test body** is a
+RUNTIME skip: Playwright has already collected the test, so `--list` counts it either way.
+Removing such a skip **cannot** change the collected total. It moves the passed/skipped split
+instead. A brief in cloud-parity PR B predicted a collected-count change from removing one and
+was wrong for exactly this reason.
+
+So when you want to know the effect of removing a skip, measure the split, not `--list`:
+
+```bash
+pnpm test:e2e --project=cloud e2e/tests/<file>.spec.ts   # read "N passed, M skipped"
+```
+
+Measured for PR B on `item-management.spec.ts` in `cloud`: **10 passed / 1 skipped** before,
+**12 passed / 0 skipped** after. Two of that +2 come from different causes — one test started
+running, and one test is new — which is why the collected total moved by 1 and the passing
+count by 2.
+
+**Moving the skip up to describe level does not change this.** A describe-level
+`test.skip(condition, reason)` is still a runtime skip, so its tests are still collected.
+`a11y.spec.ts`'s `offline banner a11y` block is the example: it carries
+`test.skip(() => test.info().project.name !== 'pwa', …)` at describe level, and the measured
+result is that the file **collects 66 under `local` and runs 64** (root `CLAUDE.md`,
+*A11y Testing*). Describe level changes only **when inside the run** the skip fires — early
+enough to stop the file's top-level `beforeEach`, which a body-level skip is too late for.
+Nothing in this repo removes a test from the `--list` total by condition.
 
 ### `consumeAmount` and `targetUnit` — both helpers default to the product values
 

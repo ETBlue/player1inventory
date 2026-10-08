@@ -81,6 +81,31 @@ Order inside phase 4 matters: `SET NOT NULL` first, then the FK, then the index.
 nullable column is legal but says less, and building the index last means it is built once,
 over final data.
 
+## Adding a NULLABLE column — the simplest case, and it needs none of the four phases
+
+`20261008000000_add_item_note_and_wikidata_url` (cloud-parity PR B, issue #335) is the model.
+It is two statements and nothing else:
+
+```sql
+ALTER TABLE "Item" ADD COLUMN     "wikidataUrl" TEXT,
+ADD COLUMN     "note" TEXT;
+```
+
+**No `UPDATE` backfill and no `RAISE EXCEPTION` guard.** Those two belong only to the
+`NOT NULL` shape above. Every existing row simply gets `NULL`, which no constraint rejects, so
+there is nothing to backfill and nothing for a guard to count. Adding either one here would be
+noise a later reader has to work out the purpose of.
+
+**Write into the SQL comment why the column is nullable, in data terms.** For these two fields
+the local Dexie `Item` declares both optional (`wikidataUrl?: string`, `note?: string`), so
+"absent" is how local mode already stores "no note", and SQL `NULL` is the same thing. That is
+why the resolvers map an absent input to `NULL` and never to `''` — see
+`apps/server/src/resolvers/item.resolver.ts`, where `createItem` uses the `strOr` helper and
+`buildItemUpdateData` on purpose does **not**, so an explicit `null` can clear the column.
+
+**It still needs its own `verify-migration.ts` assertions**, and "the column is present" alone
+is a weak claim. See the *ADD COLUMN needs the same two halves* bullet below.
+
 ## Re-keying a primary key
 
 `20260917000000_rekey_cart_to_location_vendor` rewrote `Cart.id` from the bare vendor id to
@@ -149,14 +174,21 @@ see ships unnoticed.
 manual runs. Run it whenever you touch a migration, and treat a stale failure as a real signal
 rather than assuming the script rotted.
 
-Four things about it that are easy to get wrong:
+These things about it are easy to get wrong. The list grows; count the bullets rather
+than trusting a number here — it said **four** when there were seven.
 
 - **It parks migrations by NAME.** `scripts/verify-migration.ts` holds a `MIGRATIONS` list —
-  **four** entries today:
+  **five** entries today:
   `20260830000000_add_location_and_item_stock`,
   `20260916000000_add_location_to_log_and_cart`,
-  `20260917000000_rekey_cart_to_location_vendor` and
-  `20261004000000_drop_item_stock_state_columns` (cloud locations PR 5, three assertions).
+  `20260917000000_rekey_cart_to_location_vendor`,
+  `20261004000000_drop_item_stock_state_columns` (cloud locations PR 5, three assertions) and
+  `20261008000000_add_item_note_and_wikidata_url` (cloud-parity PR B, issue #335, four
+  assertions — see the additive section below).
+  **Count the array rather than trusting this line.** It said **four** until 2026-10-08:
+  ```bash
+  grep -c "^  '2026" apps/server/scripts/verify-migration.ts
+  ```
   **Add your new migration to that list.** A
   migration missing from it is not parked, so `migrate reset` replays it against a database
   that has not yet seen the migrations it depends on. Add assertions for it too: without new
@@ -180,6 +212,31 @@ Four things about it that are easy to get wrong:
   the named `FAIL` the script exists to print. Cast both identifier columns with `::text` —
   `information_schema` uses the `sql_identifier` domain, which Prisma's raw mapper does not
   know.
+- **An ADD COLUMN needs the same two halves, for the same reason.** "Assert the new column is
+  present" is not enough when two tables share field names. The second half is: assert the
+  column is **absent** from the table that must not have it.
+
+  `20261008000000_add_item_note_and_wikidata_url` (issue #335) adds `note` and `wikidataUrl`
+  to `Item`. `Item` and `ItemStock` are the pair that shares field names here, so checking
+  `Item` alone would pass just as happily against a migration that wrote
+  `ALTER TABLE "ItemStock" ADD COLUMN` by mistake. Both fields are global item configuration,
+  never per-location state, so `ItemStock` must not carry them.
+
+  That migration's block in `verify-migration.ts` has **four** assertions per field, and the
+  last two are worth copying for any nullable text column:
+
+  | # | Assertion | What it catches |
+  |---|---|---|
+  | 1 | the column is on `Item` | the migration did nothing |
+  | 2 | the column is **not** on `ItemStock` | the migration hit the wrong table |
+  | 3 | `information_schema` reports `text` and `is_nullable = YES` | a `NOT NULL`, or the wrong type |
+  | 4 | a row inserted with neither column set reads back `NULL`, not `''` | a `DEFAULT ''` on the column |
+
+  Assertion 4 matters because `NULL` and `''` are **different stored values**. `NULL` means
+  "no note was ever set", which is what local mode stores by leaving the optional field off
+  the Dexie row. `''` would mean "the user typed a note and then cleared it". A `DEFAULT ''`
+  would make every pre-existing row look like the second one. One more write-then-read
+  assertion follows it, so assertion 4 cannot pass by the columns simply being unwritable.
 - **An existing assertion can be killed by a later migration joining the list.** PR 5 had to
   delete `assert(items[0]?.targetQuantity === 3, …)`: once PR 5 is in `MIGRATIONS`, that
   `SELECT` throws `42703`. Following "add yours, and write assertions for it" literally would

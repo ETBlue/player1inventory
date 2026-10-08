@@ -1572,6 +1572,61 @@ describe('cloud import input mappers — strip server-only fields', () => {
     expect(result.createdAt).toBe('2026-03-22T22:44:46.927Z')
   })
 
+  // Issue #335. Until the cloud `Item` schema declared these two,
+  // `toItemInput` could not send them and every cloud backup lost them on
+  // restore. The return-type annotation on `toItemInput` does NOT guard this:
+  // both keys are OPTIONAL on `ItemInput`, and a mapped type keeps an optional
+  // key optional, so dropping either one still compiles. These two tests are
+  // the only guard.
+  it("user can restore a cloud backup that keeps an item's note and wikidata URL", () => {
+    // Given a backup item carrying both fields
+    const rawItem = {
+      __typename: 'Item',
+      id: 'item-noted',
+      name: 'Oat Milk',
+      wikidataUrl: 'https://www.wikidata.org/wiki/Q1125341',
+      note: 'barista edition, the blue carton',
+      tagIds: [],
+      targetUnit: 'package',
+      consumeAmount: 1,
+      createdAt: '2026-03-22T22:44:46.927Z',
+      updatedAt: '2026-03-23T03:15:32.956Z',
+    }
+
+    // When mapped to ItemInput on the way back up to the cloud
+    const result = toItemInput(rawItem)
+
+    // Then both fields are still there, so the restore writes them
+    expect(result.wikidataUrl).toBe('https://www.wikidata.org/wiki/Q1125341')
+    expect(result.note).toBe('barista edition, the blue carton')
+  })
+
+  it('toItemInput leaves note and wikidataUrl undefined when the backup has neither', () => {
+    // Given a backup item with no note and no URL — the shape every item
+    // exported before issue #335 has
+    const rawItem = {
+      id: 'item-plain',
+      name: 'Rice',
+      tagIds: [],
+      targetUnit: 'package',
+      consumeAmount: 1,
+      createdAt: '2026-01-15T10:00:00.000Z',
+      updatedAt: '2026-01-15T10:00:00.000Z',
+    }
+
+    // When mapped to ItemInput
+    const result = toItemInput(rawItem)
+
+    // Then both are `undefined`, never the empty string. Apollo drops an
+    // undefined-valued key from the JSON variables, so the server sees the
+    // field as absent and `createItem` writes NULL — the same thing local mode
+    // stores for "no note".
+    expect(result.wikidataUrl).toBeUndefined()
+    expect(result.note).toBeUndefined()
+    expect(result).toHaveProperty('wikidataUrl')
+    expect(result).toHaveProperty('note')
+  })
+
   it('toItemInput converts Date createdAt/updatedAt to ISO strings', () => {
     // Given an item with Date objects (as produced by local export)
     const date = new Date('2026-01-15T10:00:00.000Z')

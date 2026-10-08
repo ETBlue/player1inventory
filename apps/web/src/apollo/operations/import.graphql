@@ -1,3 +1,11 @@
+# `wikidataUrl` and `note` are absent from the two item selection sets in this
+# file on purpose, unlike in `GetItem`, `GetItems` and `UpdateItem`. What the
+# import sends UP is `ItemInput`, built by `toItemInput` (lib/importData.ts),
+# and that does carry both. What comes BACK is thrown away: both item calls in
+# `lib/importData.ts` end `.then(() => undefined)`, and all three import strategies finish with `await client.resetStore()`, which
+# empties the Apollo cache. Adding the fields would put two more strings per
+# imported item on the wire for nothing. `expirationMode` is absent from both
+# of these sets too.
 mutation BulkCreateItems($items: [ItemInput!]!) {
   bulkCreateItems(items: $items) {
     id
@@ -83,6 +91,8 @@ mutation BulkCreateCartItems($cartItems: [CartItemInput!]!) {
   }
 }
 
+# `wikidataUrl` and `note` absent on purpose — see the comment on
+# `BulkCreateItems` at the top of this file.
 mutation BulkUpsertItems($items: [ItemInput!]!) {
   bulkUpsertItems(items: $items) {
     id

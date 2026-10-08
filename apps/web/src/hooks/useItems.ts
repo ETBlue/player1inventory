@@ -99,10 +99,16 @@ type ItemMutationInput = Omit<
 // validation** and the app could not add an item at all. It cost 23 cloud E2E
 // tests and no other check in the gate saw it.
 //
-// `wikidataUrl` and `note` are absent on purpose: the cloud `Item` type
-// declares neither (a known cloud gap, see the skipped
-// `user can persist note and wikidata URL on the Info tab` in
-// `e2e/tests/item-management.spec.ts`). No create call site supplies them.
+// `wikidataUrl` and `note` are absent on purpose, and the reason changed on
+// 2026-10-08 (issue #335). Until then the cloud `Item` type declared neither.
+// It now declares both, on `Item`, `CreateItemInput` and `UpdateItemInput`, so
+// the old reason is gone. The remaining reason is narrower: NO CREATE CALL
+// SITE SUPPLIES EITHER FIELD. All seven go through `useCreateItem`
+// (`NewItemDialog`, `ShelfDetailView`, `shopping/$vendorId`, and the four
+// settings item pickers) and none of them passes a note or a URL — both are
+// only ever typed on the Info tab of an item that already exists, which is the
+// `updateItem` path. Add either key here the moment a create form grows the
+// field, or it will be dropped with no error.
 //
 // The literal is checked against `CreateItemInputShape`, not against
 // `CreateItemInput` itself, for the reason `ItemInputShape` records in
@@ -166,6 +172,17 @@ export function toUpdateItemInput(
     // rest may have written as undefined into explicit null, which the server reads as
     // an instruction to clear the field.
     ...rest,
+    // `wikidataUrl` and `note` need a guard of their own, exactly like the six
+    // below. `buildInfoUpdates` (routes/items/$id/index.tsx) sets the key to
+    // `undefined` when the user empties the field, Apollo's JSON variables
+    // DROP an undefined-valued key, and the server then reads the field as
+    // absent and leaves the old value in place. Without these two lines a
+    // saved note or URL cannot be removed in cloud mode. Added with issue
+    // #335, which is when the two fields first reached the cloud schema at
+    // all — before that every such save failed outright, so the gap was
+    // invisible.
+    ...('wikidataUrl' in rest && { wikidataUrl: rest.wikidataUrl ?? null }),
+    ...('note' in rest && { note: rest.note ?? null }),
     ...('packageUnit' in rest && { packageUnit: rest.packageUnit ?? null }),
     ...('measurementUnit' in rest && {
       measurementUnit: rest.measurementUnit ?? null,
@@ -275,13 +292,18 @@ function touchesStock(updates: Partial<Item> & Partial<StockFields>): boolean {
 // `docs/features/locations/2026-10-04-cloud-locations-plan-pr5.md`.
 //
 // The deletion is a DENY-list on purpose, not an allow-list of
-// `UpdateItemInput`'s own keys. An allow-list would also silently drop
-// `wikidataUrl` and `note`, which `ItemForm` submits and the cloud `Item` type
-// does not declare. Today a cloud user who types a note gets a failed save; an
-// allow-list would make the note vanish with no error, which is worse. That
-// gap belongs to the cloud `Item` schema, not to this mapper — see the skipped
-// `user can persist note and wikidata URL on the Info tab` in
-// `e2e/tests/item-management.spec.ts`.
+// `UpdateItemInput`'s own keys, and `wikidataUrl` and `note` are why.
+// `ItemForm` submits both, so an allow-list that forgot them would drop them
+// here with no error.
+//
+// Updated 2026-10-08 (issue #335). Until then the cloud `Item` type declared
+// neither field, so a cloud user who typed a note got a FAILED SAVE — the
+// client sent a key the schema did not know and GraphQL rejected the whole
+// mutation. The deny-list was kept all the same, because a failed save is a
+// visible error and a silently dropped note is not. Both fields now exist on
+// the cloud `Item` type and on `UpdateItemInput`, and `UpdateItem`'s selection
+// set reads them back, so the save succeeds. They must keep reaching the
+// server: DO NOT start stripping them here.
 function toConfigInput(
   updates: Partial<Item> & Partial<StockFields>,
 ): UpdateItemInput {

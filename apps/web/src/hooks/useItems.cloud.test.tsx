@@ -75,10 +75,18 @@ const getLocationsMock = {
 
 // The cloud `Item` is CONFIGURATION ONLY since cloud locations PR 5. No stock
 // state can be put on one, so there is no `inline` override here.
-const cloudItem = (id: string, name: string) => ({
+const cloudItem = (
+  id: string,
+  name: string,
+  overrides: Record<string, unknown> = {},
+) => ({
   __typename: 'Item' as const,
   id,
   name,
+  // Both selected by `GetItem` and by `PantryData`'s `items` since issue #335.
+  // A fixture without them makes Apollo write a partial `Item` and warn.
+  wikidataUrl: null,
+  note: null,
   tagIds: [],
   vendorIds: [],
   packageUnit: null,
@@ -92,6 +100,7 @@ const cloudItem = (id: string, name: string) => ({
   userId: 'user-1',
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
+  ...overrides,
 })
 
 const cloudStock = (
@@ -124,7 +133,15 @@ const cloudStock = (
 // Until cloud locations PR 5 the `Item` itself also carried inline stock values
 // including a `dueDate`, and `stripStockFields` had to remove them. The cloud
 // `Item` has no such fields now, so the fixture cannot set them.
-const MILK = cloudItem('item-milk', 'Milk')
+// Milk is the ONLY one of the three carrying a note and a wikidata URL. Rice
+// and Flour keep both null, so an assertion on Milk's note cannot pass against
+// a read that handed the same text to every item. Issue #335.
+const MILK_WIKIDATA_URL = 'https://www.wikidata.org/wiki/Q8495'
+const MILK_NOTE = 'Buy the 1L carton; lactose-free preferred.'
+const MILK = cloudItem('item-milk', 'Milk', {
+  wikidataUrl: MILK_WIKIDATA_URL,
+  note: MILK_NOTE,
+})
 const RICE = cloudItem('item-rice', 'Rice')
 const FLOUR = cloudItem('item-flour', 'Flour')
 const CATALOG = [MILK, RICE, FLOUR]
@@ -278,6 +295,26 @@ describe('cloud pantry data (PantryData join)', () => {
     expect(byName(result.current.items.data, 'Rice')?.stockId).toBeUndefined()
   })
 
+  // Issue #335. `PantryData`'s `items` selection set must stay identical to
+  // `GetItems`', which its own comment in `itemStocks.graphql` promises — and
+  // `GetItems` is what `exportData.ts` reads to build a cloud backup. Drop
+  // either field from `PantryData` and this goes red.
+  it("user in cloud mode sees each catalog item's note and wikidata URL", async () => {
+    // Given the same catalog, where only Milk carries both fields
+    const { result } = renderHook(() => usePantry(), { wrapper: makeWrapper() })
+
+    // When the pantry data loads
+    await waitFor(() => expect(result.current.items.data).toHaveLength(3))
+
+    // Then Milk's own text comes through, and the other two stay empty
+    expect(byName(result.current.items.data, 'Milk')?.note).toBe(MILK_NOTE)
+    expect(byName(result.current.items.data, 'Milk')?.wikidataUrl).toBe(
+      MILK_WIKIDATA_URL,
+    )
+    expect(byName(result.current.items.data, 'Rice')?.note).toBeNull()
+    expect(byName(result.current.items.data, 'Flour')?.note).toBeNull()
+  })
+
   it('user in cloud mode sees only the items stocked here in the pantry', async () => {
     // Given the same catalog, with Rice stocked only in the other location
     const { result } = renderHook(() => usePantry(), { wrapper: makeWrapper() })
@@ -389,6 +426,41 @@ describe('cloud pantry data (PantryData join)', () => {
     expect(result.current.item.data?.dueDate).toEqual(
       new Date('2026-10-05T00:00:00.000Z'),
     )
+  })
+
+  // Issue #335. `GetItem` is the Info tab's own read — `itemToFormValues`
+  // (routes/items/$id/index.tsx) fills the Wikidata URL and Note inputs from
+  // exactly these two keys. Drop either from `GetItem`'s selection set and
+  // Apollo returns the item without it, so this test goes red.
+  it('user opening an item sees its note and wikidata URL', async () => {
+    // Given Milk, the only one of the three fixtures carrying both
+    const { result } = renderHook(() => useItem('item-milk'), {
+      wrapper: makeWrapper(),
+    })
+
+    // When its detail page loads
+    await waitFor(() => expect(result.current.data).toBeDefined())
+
+    // Then both fields arrive, so the Info tab can show them
+    expect(result.current.data?.wikidataUrl).toBe(MILK_WIKIDATA_URL)
+    expect(result.current.data?.note).toBe(MILK_NOTE)
+  })
+
+  it('user opening an item sees no note when it has none', async () => {
+    // Given Rice, which carries neither field — the shape of every item
+    // created before issue #335
+    const { result } = renderHook(() => useItem('item-rice'), {
+      wrapper: makeWrapper(),
+    })
+
+    // When its detail page loads
+    await waitFor(() => expect(result.current.data).toBeDefined())
+
+    // Then neither field carries Milk's text. This is the negative half: with
+    // only Milk in the fixture, "the note arrives" and "some note arrives"
+    // would be the same assertion.
+    expect(result.current.data?.wikidataUrl).toBeNull()
+    expect(result.current.data?.note).toBeNull()
   })
 
   it('user opening an item not stocked here sees no stock state on it', async () => {

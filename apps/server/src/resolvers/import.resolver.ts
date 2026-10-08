@@ -17,6 +17,11 @@ import type { ExpirationMode, Prisma, Location as PrismaLocation, TagColor, Targ
 function itemToGraphQL(item: {
   id: string
   name: string
+  // Issue #335. Declared here so the type says what the spread below carries;
+  // `type Item` exposes both, so a reader can see the Info tab's two fields
+  // make the round trip.
+  wikidataUrl?: string | null
+  note?: string | null
   targetUnit: TargetUnit
   consumeAmount: number
   packageUnit?: string | null
@@ -432,6 +437,11 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         // `...rest` is CONFIGURATION only — cloud locations PR 5 dropped the
         // five per-location state fields from `ItemInput`, so no spread can
         // reach a stock column from here.
+        //
+        // `wikidataUrl` and `note` (issue #335) travel inside this spread —
+        // they are not destructured above, so they need no line of their own.
+        // `import.resolver.test.ts` asserts they land, so a future destructure
+        // that forgets to put them back fails.
         const created = await prisma.item.create({
           data: {
             id,
@@ -680,6 +690,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         const { id, tagIds, vendorIds, createdAt, updatedAt, targetUnit, expirationThreshold, ...rest } = item
         const expirationMode = (rest as { expirationMode?: string }).expirationMode
         // CONFIGURATION only — same reason as `bulkCreateItems` above.
+        // `wikidataUrl` and `note` (issue #335) ride in `...rest` here too.
         const data = {
           ...rest,
           targetUnit: targetUnit as TargetUnit,

@@ -1,4 +1,9 @@
-import type { ApolloClient } from '@apollo/client'
+import {
+  ApolloClient,
+  ApolloLink,
+  InMemoryCache,
+  Observable,
+} from '@apollo/client'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
 import {
@@ -467,6 +472,84 @@ function makeCloudClient(
     }),
   } as unknown as ApolloClient
 }
+
+// A REAL ApolloClient, unlike `makeCloudClient` above. `makeCloudClient`
+// answers `query` from a Map keyed by the document and never reads the
+// selection set, so it cannot tell a complete `GetItems` from one missing a
+// field — every assertion built on it would pass either way. This client has a
+// real `InMemoryCache`, and `fetchCloudPayload` runs every query on
+// `network-only`, which writes the network result into the cache and reads it
+// back through the document. A field the document does not select is therefore
+// dropped before `fetchCloudPayload` ever sees it. Issue #335.
+function makeRealCloudClient(answers: Record<string, unknown>): ApolloClient {
+  const link = new ApolloLink(
+    (operation) =>
+      new Observable<{ data: unknown }>((observer) => {
+        observer.next({ data: answers[operation.operationName ?? ''] ?? {} })
+        observer.complete()
+      }),
+  )
+  return new ApolloClient({ link, cache: new InMemoryCache() })
+}
+
+// Every field `GetItems` selects, so the cache write is complete and the test
+// cannot fail for a missing unrelated field.
+const NOTED_CLOUD_ITEM = {
+  __typename: 'Item',
+  id: 'item-noted',
+  name: 'Oat Milk',
+  wikidataUrl: 'https://www.wikidata.org/wiki/Q1125341',
+  note: 'barista edition, the blue carton',
+  tagIds: [],
+  vendorIds: [],
+  packageUnit: null,
+  measurementUnit: null,
+  amountPerPackage: null,
+  targetUnit: 'package',
+  consumeAmount: 1,
+  expirationMode: null,
+  estimatedDueDays: null,
+  expirationThreshold: null,
+  userId: 'user-1',
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+}
+
+const EMPTY_CLOUD_ANSWERS = {
+  GetItems: { items: [] },
+  GetTags: { tags: [] },
+  GetTagTypes: { tagTypes: [] },
+  GetVendors: { vendors: [] },
+  GetRecipes: { recipes: [] },
+  InventoryLogs: { inventoryLogs: [] },
+  ShoppingCarts: { allCarts: [] },
+  AllCartItems: { allCartItems: [] },
+  GetShelves: { shelves: [] },
+  GetLocations: { locations: [] },
+  AllItemStocks: { allItemStocks: [] },
+}
+
+describe('fetchCloudPayload — item note and wikidata URL (issue #335)', () => {
+  it("user can export a cloud backup that keeps an item's note and wikidata URL", async () => {
+    // Given a cloud account holding one item with both fields set
+    const client = makeRealCloudClient({
+      ...EMPTY_CLOUD_ANSWERS,
+      GetItems: { items: [NOTED_CLOUD_ITEM] },
+    })
+
+    // When the cloud export payload is fetched
+    const payload = await fetchCloudPayload(client)
+
+    // Then both fields are in the file. `GetItems` is the only read that
+    // supplies items to a cloud backup, so dropping either field from its
+    // selection set loses it at EXPORT — before `toItemInput` on the way back
+    // up ever runs.
+    const items = (payload.items ?? []) as Array<Record<string, unknown>>
+    expect(items).toHaveLength(1)
+    expect(items[0]?.wikidataUrl).toBe('https://www.wikidata.org/wiki/Q1125341')
+    expect(items[0]?.note).toBe('barista edition, the blue carton')
+  })
+})
 
 describe('fetchCloudPayload — the cloud backup is lossless', () => {
   it('user can export every location, not only the default one', async () => {

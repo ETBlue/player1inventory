@@ -8,6 +8,10 @@
 input ItemInput {
   id: ID!
   name: String!
+  # Both optional, and both must be here or a cloud backup silently drops them
+  # on restore (issue #335).
+  wikidataUrl: String
+  note: String
   tagIds: [String!]!
   vendorIds: [String!]
   packageUnit: String

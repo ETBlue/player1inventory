@@ -73,7 +73,17 @@ describe('Pantry index stories smoke tests', () => {
       render(<Offline />)
       const banner = await screen.findByRole('status')
       expect(banner).toHaveTextContent(/offline/i)
-      expect(banner).toHaveTextContent(/hours ago/i)
+      // `waitFor`, not a bare `expect`. OfflineBanner starts with
+      // `storedSyncedAt` null and fills it from
+      // `void getLastSyncedAt().then(setStoredSyncedAt)` in a `useEffect`
+      // (components/global/OfflineBanner/OfflineBanner.tsx). `findByRole`
+      // resolves as soon as the banner EXISTS, which is one or more ticks
+      // before that promise settles, so a synchronous assertion here raced
+      // the read and lost under load. Measured 2026-10-08: it failed in 2 of
+      // 4 `pnpm test` runs at load average 9-21 and passed every time the
+      // file ran alone. The assertion is unchanged — it still fails if the
+      // time never renders.
+      await waitFor(() => expect(banner).toHaveTextContent(/hours ago/i))
     })
 
     it('does not open PostLoginMigrationDialog on top of the page', async () => {
