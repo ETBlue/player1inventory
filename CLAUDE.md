@@ -895,6 +895,15 @@ With one location, "count items stocked here" and "count every item" return the 
 number. **Every location-scoped test needs a fixture stocked only at *another*
 location** — see the `stockId` trap in `apps/web/src/lib/quantityUtils.ts`.
 
+**An EMPTY destination is the same failure.** Cloud-parity PR C's first version of
+`e2e/tests/settings/data-mode-migration.spec.ts` could not tell the `clear` import strategy
+from `replace`. The mutation check — press "Overwrite conflicts" instead of "Clear & import" —
+passed in 17.5s. The cause was the fixture: the cloud account was empty before the migration,
+so `clear` deleted nothing, `replace` collided with nothing, and both left the same account
+behind. The fix was to seed one item and one location in cloud that the local payload never
+names. `clear` deletes them; `replace` keeps them. **A strategy that deletes needs something
+to delete.**
+
 **Negative controls legitimately stay green.** "No divider renders when every group is
 stocked here" *should* pass when the partition is deleted — removing code does not add
 a divider. Those are fine, but they are not evidence. Name them as such rather than
