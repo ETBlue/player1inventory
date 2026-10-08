@@ -25,14 +25,17 @@
 // via TEST_DIRECT_URL, since Prisma Migrate always issues DDL through
 // `directUrl` (see prisma/schema.prisma), never the pooled `url`.
 // Refuses to run if TEST_DATABASE_URL or TEST_DIRECT_URL resolve — by parsed
-// host + pathname, not raw string equality — to the same database as either
-// DATABASE_URL or DIRECT_URL (dev). Raw equality would miss a pooled/direct
-// or query-param variant of the same underlying database.
+// host + pathname, not raw string equality — to the same database as ANY other
+// environment variable whose name ends in `_URL`. Raw equality would miss a
+// pooled/direct or query-param variant of the same underlying database. The
+// check lives in `scripts/databaseIsolation.ts` and is unit-tested in
+// `scripts/databaseIsolation.test.ts`.
 import { execSync } from 'node:child_process'
 import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Prisma, PrismaClient } from '@prisma/client'
+import { assertNotAnotherDatabase } from './databaseIsolation.js'
 
 const TEST_URL = process.env.TEST_DATABASE_URL
 const TEST_DIRECT = process.env.TEST_DIRECT_URL
@@ -41,37 +44,16 @@ if (!TEST_URL || !TEST_DIRECT) {
   throw new Error('TEST_DATABASE_URL and TEST_DIRECT_URL must be set (see .env.example)')
 }
 
-// Identity of the database a connection string points at, independent of
-// pooling mode or query-string differences (e.g. `?sslmode=require` on one
-// but not the other) — just enough to catch "this is secretly the same
-// database" without being fooled by cosmetic string differences.
-function databaseIdentity(rawUrl: string): string {
-  const parsed = new URL(rawUrl)
-  return `${parsed.host}${parsed.pathname}`
-}
-
-// Prisma Migrate uses `directUrl` for all DDL (migrate reset/deploy), and the
-// pooled `url` only for the query engine — so BOTH TEST_DATABASE_URL and
-// TEST_DIRECT_URL must be checked against BOTH DATABASE_URL and DIRECT_URL.
-// Checking only TEST_URL against DATABASE_URL (the original guard) misses the
+// The guard against dropping the wrong database's schema. Both TEST_* URLs are
+// checked, because Prisma Migrate issues all DDL through `directUrl` and uses
+// the pooled `url` only for the query engine — so checking only
+// TEST_DATABASE_URL against the others (the original guard) misses the
 // connection that actually issues the destructive DDL.
-function assertDistinctFromDev(label: string, rawUrl: string): void {
-  const target = databaseIdentity(rawUrl)
-  for (const [devLabel, devUrl] of [
-    ['DATABASE_URL', process.env.DATABASE_URL],
-    ['DIRECT_URL', process.env.DIRECT_URL],
-  ] as const) {
-    if (!devUrl) continue
-    if (databaseIdentity(devUrl) === target) {
-      throw new Error(
-        `${label} resolves to the same database (${target}) as ${devLabel} — refusing to run, this script drops the schema`,
-      )
-    }
-  }
-}
-
-assertDistinctFromDev('TEST_DATABASE_URL', TEST_URL)
-assertDistinctFromDev('TEST_DIRECT_URL', TEST_DIRECT)
+//
+// See `scripts/databaseIsolation.ts` for which variables are compared and why,
+// and `scripts/databaseIsolation.test.ts` for the cases it is proved against.
+assertNotAnotherDatabase('TEST_DATABASE_URL', TEST_URL, process.env)
+assertNotAnotherDatabase('TEST_DIRECT_URL', TEST_DIRECT, process.env)
 
 const env = { ...process.env, DATABASE_URL: TEST_URL, DIRECT_URL: TEST_DIRECT }
 const prisma = new PrismaClient({ datasources: { db: { url: TEST_URL } } })
