@@ -199,7 +199,7 @@ export default defineConfig({
           ],
         },
       },
-      testMatch: ['**/item-management.spec.ts', '**/settings/tags.spec.ts', '**/settings/vendors.spec.ts', '**/settings/recipes.spec.ts', '**/cooking.spec.ts', '**/item-list-state-restore.spec.ts', '**/tests/shopping.spec.ts', '**/tests/item-logs.spec.ts', '**/settings/import-export-cloud.spec.ts', '**/settings/locations.spec.ts', '**/location-switcher.spec.ts', '**/location-not-stocked-here.spec.ts', '**/location-scoped-writes.spec.ts', '**/recipes-group.spec.ts', '**/vendors-group.spec.ts', '**/tests/shelves.spec.ts', '**/item-stock-input.spec.ts', '**/item-stock-pager.spec.ts', '**/cleanup-endpoint.spec.ts', '**/cart-id-cross-user-leak.spec.ts'],
+      testMatch: ['**/item-management.spec.ts', '**/settings/tags.spec.ts', '**/settings/vendors.spec.ts', '**/settings/recipes.spec.ts', '**/cooking.spec.ts', '**/item-list-state-restore.spec.ts', '**/tests/shopping.spec.ts', '**/tests/item-logs.spec.ts', '**/settings/import-export-cloud.spec.ts', '**/settings/import-strategies.spec.ts', '**/settings/locations.spec.ts', '**/location-switcher.spec.ts', '**/location-not-stocked-here.spec.ts', '**/location-scoped-writes.spec.ts', '**/recipes-group.spec.ts', '**/vendors-group.spec.ts', '**/tests/shelves.spec.ts', '**/item-stock-input.spec.ts', '**/item-stock-pager.spec.ts', '**/cleanup-endpoint.spec.ts', '**/cart-id-cross-user-leak.spec.ts'],
     },
     {
       // The dev server has no service worker. It only exists in a real build,
