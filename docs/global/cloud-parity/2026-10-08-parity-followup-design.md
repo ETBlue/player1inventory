@@ -587,11 +587,33 @@ used. `data-mode-migration.spec.ts` is exactly that — it clicks through `DataM
 writes the key — so it clears IndexedDB, `localStorage` and `sessionStorage` in its own
 `afterEach` even though a fresh context would have done it anyway.
 
-### #333 — the guard, and the run that is still owed
+### #333 — the guard, and the run
 
 `apps/server/scripts/verify-migration.ts` is the only check in the repo that runs a migration
-against real SQL. #332 added three assertions to it and PR B added four more per field;
-**none has ever been executed.** Running it is the plan's task 5.
+against real SQL. #332 added three assertions to it and PR B added four more per field, and
+until 2026-10-08 **none had ever been executed.**
+
+**The run happened on 2026-10-08 and passed — exit 0, `Migration verified.`** All **13**
+committed migrations replayed in order against the E2E database, and every assertion printed
+`ok —`. The ones this was waiting for:
+
+| Assertion | Added by |
+|---|---|
+| none of the five state columns is left on `Item` | #332 |
+| **all five are still on `ItemStock`** — the half that catches a drop aimed at the wrong table | #332 |
+| `Item.consumeAmount` survives — catches a drop that took one column too many | #332 |
+| `Item.wikidataUrl` and `Item.note` are present, **and absent from `ItemStock`** | PR B |
+| both are nullable `text`, and an item inserted with neither set reads back **NULL, not `''`** | PR B |
+| both store and return the exact strings they were given | PR B |
+
+The widened guard also proved it does not refuse a correct setup: it ran clean against the real
+`TEST_*` pair, having refused fabricated colliding ones during its own testing.
+
+**Two assertions label themselves as not independently falsifiable** — the one counting 13
+distinct `userId`s among the `Location` rows, and the one checking every `ItemStock` sits under
+its default location. Each says in its own message why it cannot go red on its own and that it
+is a sanity check rather than evidence. That is the negative-control rule from the root
+`CLAUDE.md` written into the script.
 
 The guard change shipped. `assertDistinctFromDev` compared `TEST_*` against `DATABASE_URL` and
 `DIRECT_URL` only, so `PROD_COPY_DATABASE_URL` and `PROD_COPY_DIRECT_URL` — which sit in the
@@ -600,10 +622,15 @@ if either `TEST_*` URL resolves to the same host and database name as **any** ot
 the environment, and names the variable it collided with. It compares the resolved host and
 database, not the raw string, so a re-pasted URL in a different format is still caught.
 
-The run itself needs the user's real-time consent through
+The run needs the user's real-time consent through
 `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`, covers `TEST_DATABASE_URL` only, and needs all
-four E2E ports free because it wipes that database. Afterwards the `cloud` project must be
-re-run, since the database it reads was just emptied.
+four E2E ports free because it wipes that database. On 2026-10-08 the user granted it in these
+words: *"yes, I allow AI agent to run "migrate reset" against E2E database"*. Before running,
+`pgrep` for Playwright returned nothing and all four ports were free.
+
+Afterwards the `cloud` project must be re-run, because the database it reads was just emptied.
+The specs seed their own data, so it was expected to pass — see the Test Plan for whether it
+did.
 
 ---
 
