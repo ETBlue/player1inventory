@@ -8,23 +8,11 @@
  *
  * `isBeingBought` also lives in `packages/types/src/index.ts`, which
  * `apps/server` already declares as a dependency. The server CANNOT import it
- * at runtime today. Measured 2026-09-17 for `cartId.ts`, which carries its own
- * copy of the cart id rules for the same reason:
- *
- * | Command                         | Result |
- * |---------------------------------|--------|
- * | `tsc -p tsconfig.json`          | passes |
- * | `tsx src/index.ts` (pnpm dev)   | passes |
- * | `vitest run` (pnpm test:server) | passes |
- * | `node dist/index.js` (production) | **fails** |
- *
- * The production failure is `ERR_UNKNOWN_FILE_EXTENSION: Unknown file
- * extension ".ts"`. `@p1i/types` has no build step — its `exports` map points
- * at `./src/index.ts` — and `tsc` keeps the bare specifier in the emitted
- * JavaScript, so plain Node is asked to load a TypeScript file and refuses.
- * Only the production entry point breaks, which is the dangerous part: every
- * check in the verification gate stays green. See `cartId.ts` for why giving
- * `@p1i/types` a build step was judged too large a change.
+ * at runtime: `@p1i/types` ships raw TypeScript, so `node dist/index.js` fails
+ * with `ERR_UNKNOWN_FILE_EXTENSION` while every command in the verification
+ * gate passes. **`cartId.ts` carries the measurement and the reason** — read it
+ * there rather than here, because two copies of the explanation for why there
+ * are two copies of a rule is one layer too many.
  *
  * ── WHY A DRIFT BREAKS A REAL CHECKOUT ──
  *
