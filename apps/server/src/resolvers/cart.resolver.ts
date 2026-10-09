@@ -2,6 +2,7 @@ import { GraphQLError } from 'graphql'
 import type { Prisma } from '@prisma/client'
 import { type LocationRole, requireLocationRole } from '../lib/authz.js'
 import { cartIdFor, parseCartId } from '../lib/cartId.js'
+import { isBeingBought } from '../lib/checkout.js'
 import { prisma } from '../lib/prisma.js'
 import { ensureStockAtLocation, writeStock } from '../lib/itemStockWrite.js'
 import { type Context, requireAuth } from '../context.js'
@@ -164,8 +165,9 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       // reachable here.
       const cartLocationId = await requireCartLocation(ctx, cartId, 'member')
       const cartItems = await prisma.cartItem.findMany({ where: { cartId, userId } })
-      const buyingItems = cartItems.filter(ci => ci.quantity > 0)
-      // Pinned items (quantity === 0) stay in the permanent cart — no migration needed
+      // `isBeingBought` is `quantity > 0` (lib/checkout.js). Pinned items
+      // (quantity === 0) stay in the permanent cart — no migration needed.
+      const buyingItems = cartItems.filter(isBeingBought)
 
       // The on-hand total each log row will record, as the CLIENT computed it.
       // Built once here, not re-derived per item inside the loop below.
@@ -218,9 +220,13 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       //
       // ── THE FILTER MUST MATCH ──
       //
-      // The client sends one entry per cart item with `quantity > 0`, the same
-      // rule as `buyingItems` above. If either side's filter changes, change
-      // both, or a legitimate checkout starts failing on this error.
+      // The client sends one entry per cart item that `isBeingBought` accepts —
+      // the same rule as `buyingItems` above. Both sides now call a function
+      // named for that rule instead of repeating `ci.quantity > 0`: the client
+      // imports it from `@p1i/types`, this file keeps a second copy, and
+      // `src/lib/checkout.test.ts` compares the two. If the rule changes,
+      // change both copies in the same commit, or a legitimate checkout starts
+      // failing on this error.
       const purchases = buyingItems.map((ci) => {
         const quantity = quantityByItemId.get(ci.itemId)
         if (quantity === undefined) {
