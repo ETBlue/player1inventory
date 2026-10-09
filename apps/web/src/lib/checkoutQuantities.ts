@@ -1,4 +1,9 @@
-import type { CartItem, StockConfigFields, StockFields } from '@/types'
+import {
+  type CartItem,
+  isBeingBought,
+  type StockConfigFields,
+  type StockFields,
+} from '@/types'
 import { getPackedTotal } from './quantityUtils'
 
 /**
@@ -42,12 +47,15 @@ export function buildCheckoutLogQuantities(
 ): CheckoutLogQuantity[] {
   return (
     cartItems
-      // Must match the server's `buyingItems` rule, `ci.quantity > 0`
-      // (apps/server/src/resolvers/cart.resolver.ts:167). A bought item with
-      // no entry in the result fails the whole checkout with
-      // `BAD_USER_INPUT` — the resolver has no fallback on purpose, so the two
-      // filters have to stay in step.
-      .filter((ci) => ci.quantity > 0)
+      // `isBeingBought` is the SHARED rule, canonical copy in
+      // `packages/types/src/index.ts` (re-exported through `@/types`). The
+      // server's `buyingItems` filter must accept the same set: a bought item
+      // with no entry in the result fails the whole checkout with
+      // `BAD_USER_INPUT`, and the resolver has no fallback on purpose. The
+      // server cannot import `@p1i/types` at runtime, so it keeps a second
+      // copy in `apps/server/src/lib/checkout.ts`, and
+      // `apps/server/src/lib/checkout.test.ts` compares the two.
+      .filter(isBeingBought)
       .flatMap((ci) => {
         const item = items.find((i) => i.id === ci.itemId)
         // A cart row whose item is not in `items` is skipped rather than sent

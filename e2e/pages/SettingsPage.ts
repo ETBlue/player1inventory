@@ -1,4 +1,4 @@
-import type { Download, Page } from '@playwright/test'
+import type { Download, Locator, Page } from '@playwright/test'
 import { withSteps } from './step'
 
 export class SettingsPage {
@@ -40,6 +40,42 @@ export class SettingsPage {
   async triggerImport(filePath: string): Promise<void> {
     // Hidden file input in ImportCard (apps/web/src/components/settings/ImportCard/index.tsx)
     await this.page.locator('input[type="file"][accept=".json"]').setInputFiles(filePath)
+  }
+
+  /**
+   * `ImportCard`'s conflict dialog.
+   *
+   * SCOPED TO role="dialog" ON PURPOSE. "Clear & import" is the same visible
+   * string in two different dialogs, and the role is what separates them:
+   *
+   *   - `ConflictDialog` (src/components/settings/ConflictDialog) is built on
+   *     src/components/ui/dialog.tsx, which wraps `DialogPrimitive.Content`
+   *     from @radix-ui/react-dialog -> role="dialog";
+   *   - `DataModeCard`'s three dialogs are built on
+   *     src/components/ui/alert-dialog.tsx, which wraps
+   *     `AlertDialogPrimitive.Content` -> role="alertdialog".
+   *
+   * `/settings` renders both cards, and `ConflictDialog` is the only
+   * role="dialog" on the page, so this locator cannot match the wrong one.
+   */
+  getConflictDialog(): Locator {
+    return this.page.getByRole('dialog')
+  }
+
+  /**
+   * Press one of the four strategy buttons in the conflict dialog.
+   *
+   * The labels are `settings.import.conflictDialog.{cancel,skip,replace,clear}`
+   * in apps/web/src/i18n/locales/en.json. They are typed as a union so a typo
+   * is a compile error in an editor, even though nothing in the verification
+   * gate type-checks this directory (issue #322).
+   */
+  async chooseConflictStrategy(
+    label: 'Cancel' | 'Skip conflicts' | 'Replace matches' | 'Clear & import',
+  ): Promise<void> {
+    await this.getConflictDialog()
+      .getByRole('button', { name: label, exact: true })
+      .click()
   }
 
   async waitForImportDone(mode: 'local' | 'cloud'): Promise<void> {

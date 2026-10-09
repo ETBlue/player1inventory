@@ -250,12 +250,34 @@ than trusting a number here — it said **four** when there were seven.
 - **It is destructive**, and Prisma's own AI guardrail requires the user's real-time consent
   passed via `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`. Ask first.
 - **It refuses to run** unless `TEST_DATABASE_URL` *and* `TEST_DIRECT_URL` both resolve — by
-  parsed host + path, not string equality — to a different database from `DATABASE_URL` and
-  `DIRECT_URL`. Guarding only the pooled URL is insufficient: **Prisma Migrate issues DDL
-  through `directUrl`**, so that is the connection that actually drops the schema.
+  parsed host + path, not string equality — to a different database from **every other
+  environment variable whose name ends in `_URL`**. Guarding only the pooled URL is
+  insufficient: **Prisma Migrate issues DDL through `directUrl`**, so that is the connection
+  that actually drops the schema.
+
+  The check lives in `scripts/databaseIsolation.ts` (issue #333) and is unit-tested in
+  `scripts/databaseIsolation.test.ts` — 15 tests, all against fabricated URLs. The script
+  itself calls it at module top level, before any DDL.
+
+  **It used to compare `DATABASE_URL` and `DIRECT_URL` only**, a hardcoded pair. The same
+  `apps/server/.env` also holds `PROD_COPY_DATABASE_URL` and `PROD_COPY_DIRECT_URL`, so
+  pasting one of those into `TEST_DATABASE_URL` dropped the schema of a copy of production
+  without complaint. Measured 2026-10-08 with fabricated URLs: the old guard printed
+  `OLD GUARD: allowed the run`; the new one throws
+  `TEST_DATABASE_URL resolves to the same database (fake-host-prodcopy/dbProdCopy) as
+  PROD_COPY_DATABASE_URL — refusing to run, this script drops the schema`.
+
+  Two names are excluded from the comparison: `TEST_DATABASE_URL` and `TEST_DIRECT_URL`
+  themselves. On Neon the pooled host and the direct host are often different names for the
+  same database, so those two sharing an identity is a correct setup, not a mistake. Both are
+  still checked as targets.
+
+  A value that does not parse as a URL is skipped rather than crashing the run — an unrelated
+  variable ending in `_URL` may hold anything, and `new URL()` throws on a malformed value.
 - **Never point it at a copy of production.** For that, use an additive-only rehearsal:
   `migrate deploy` plus read-only assertions. See the *Production-data rehearsals* section of
-  `docs/features/locations/2026-08-30-cloud-locations-design.md` §7.
+  `docs/features/locations/2026-08-30-cloud-locations-design.md` §7. Since #333 the guard
+  enforces this for the `PROD_COPY_*` variables, so it is no longer a written rule only.
 
 ### Prove the env override before you write to any copy
 

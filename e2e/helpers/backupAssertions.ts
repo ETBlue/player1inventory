@@ -39,14 +39,17 @@ export const FIXTURE_NON_DEFAULT_LOCATION_NAMES = [
 export const FIXTURE_DEFAULT_LOCATION_NAME = 'Fixture Home'
 
 /**
- * The name the DESTINATION's default location keeps after a `skip` import.
+ * The name the DESTINATION's default location keeps after an import.
  *
  * It is the literal `'My Home'` in both modes: `apps/web/src/db/index.ts` line
  * 62 for Dexie's `on('populate')`, and `DEFAULT_LOCATION_NAME` in
  * `apps/server/src/lib/defaultLocation.ts` for `ensureDefaultLocation`.
  *
- * THE BACKUP'S DEFAULT-LOCATION NAME DOES NOT SURVIVE THE IMPORT THE UI RUNS,
- * in either mode, and that is correct rather than a defect. `ImportCard`
+ * It is the right expected value for EVERY cloud import, and for a LOCAL import
+ * that runs `skip`. The table further down says which case is which.
+ *
+ * THE BACKUP'S DEFAULT-LOCATION NAME DOES NOT SURVIVE A `skip` IMPORT, in either
+ * mode, and that is correct rather than a defect. `ImportCard`
  * (apps/web/src/components/settings/ImportCard/ImportCard.tsx line 111) runs
  * the `skip` strategy whenever the payload raises no conflict, and `skip`
  * means "add what is missing, change nothing that is already there". The remap
@@ -63,13 +66,47 @@ export const FIXTURE_DEFAULT_LOCATION_NAME = 'Fixture Home'
  * projects. The two non-default locations keep their names, because they are
  * genuinely missing from the destination and so `skip` adds them.
  *
- * WHAT NO TEST HERE COVERS: the `clear` strategy, which the UI reaches only
- * through the conflict dialog's "clear and import" button. On that path local
- * mode `bulkPut`s the remapped default row and DOES take the backup's name,
- * while cloud mode still skips it — PR 4b task 4's deliberate choice, made so
- * `locations` stays on the create pass ahead of the carts that name them. A
- * location row holds only a name and an order, so no stock, cart or log is
- * lost either way.
+ * `clear` AND `replace` ARE NOT DIFFERENT FROM EACH OTHER HERE, AND THEY DIFFER
+ * FROM `skip` IN LOCAL MODE ONLY. `importLocations` branches on
+ * `strategy === 'skip'` and on nothing else, so both of the other two strategies
+ * `bulkPut` the whole location list and the LOCAL default row takes the backup's
+ * name. Cloud does not follow: `bulkCreateLocations` skips a row whose id is
+ * already taken whatever the strategy, so the server's default keeps "My Home".
+ * That split was PR 4b task 4's choice, made so `locations` stays on the create
+ * pass ahead of the carts and logs that name them. A location row holds only a
+ * name and an order, so no stock, cart or log is lost either way.
+ *
+ * SO A SPEC THAT RUNS `clear` OR `replace` IN BOTH PROJECTS MUST BRANCH ON
+ * `baseURL === CLOUD_WEB_URL` for the default's expected name:
+ *
+ *   | strategy          | local expects                 | cloud expects                       |
+ *   |-------------------|-------------------------------|-------------------------------------|
+ *   | `skip`            | DESTINATION_DEFAULT_LOCATION_NAME | DESTINATION_DEFAULT_LOCATION_NAME |
+ *   | `replace`, `clear`| FIXTURE_DEFAULT_LOCATION_NAME | DESTINATION_DEFAULT_LOCATION_NAME   |
+ *
+ * `e2e/tests/settings/import-strategies.spec.ts` does that branch, in its
+ * `expectedDefaultLocationName` helper.
+ *
+ * WHAT COVERS `clear` AND `replace` — this paragraph used to read "WHAT NO TEST
+ * HERE COVERS: the `clear` strategy", which stopped being true on 2026-10-08:
+ *
+ *   - `e2e/tests/settings/import-strategies.spec.ts` — `clear` and `replace`
+ *     through `ImportCard`'s conflict dialog, in BOTH projects;
+ *   - `e2e/tests/settings/data-mode-migration.spec.ts` — `clear` through
+ *     `DataModeCard`'s switch-to-cloud flow, CLOUD only.
+ *
+ * THE CONFLICT DIALOG IS NOT THE ONLY DOOR, which that paragraph also got wrong.
+ * `DataModeCard`'s `enableStrategyDialog` reaches `clear` with NO conflict and no
+ * file at all: Settings → "Switch..." → "Switch to cloud" → "Yes, copy data" →
+ * "Clear & import".
+ *
+ * THE BUTTON READS "Clear & import", not "clear and import". It is
+ * `settings.import.conflictDialog.clear` in the conflict dialog and
+ * `settings.dataMode.enableStrategyDialog.clearAndImport` in `DataModeCard` — the
+ * same visible string in two different dialogs on the same settings page. A spec
+ * matching on text alone must scope to the one it means: `ConflictDialog` is a
+ * Radix `Dialog` (`role="dialog"`), `DataModeCard`'s three are Radix
+ * `AlertDialog`s (`role="alertdialog"`).
  */
 export const DESTINATION_DEFAULT_LOCATION_NAME = 'My Home'
 

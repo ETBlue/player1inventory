@@ -180,6 +180,41 @@ export interface CartItem {
   quantity: number
 }
 
+/**
+ * Is this cart row being bought on this trip?
+ *
+ * A row at quantity 0 is PINNED. It stays in the permanent cart, is not bought,
+ * and gets no inventory log. Anything above 0 is being bought.
+ *
+ * This is the canonical copy. Two sides must give the same answer:
+ *
+ * | Side | Where |
+ * |---|---|
+ * | web | `apps/web/src/lib/checkoutQuantities.ts` imports this function |
+ * | server | `apps/server/src/lib/checkout.ts` keeps a SECOND COPY |
+ *
+ * `apps/server` cannot import this file at runtime. `@p1i/types` has no build
+ * step, so `node dist/index.js` fails with `ERR_UNKNOWN_FILE_EXTENSION` while
+ * every check in the verification gate passes. `apps/server/src/lib/checkout.ts`
+ * carries the full measurement, and `apps/server/src/lib/checkout.test.ts`
+ * imports both copies and asserts they agree.
+ *
+ * ── WHY A DRIFT HERE BREAKS A REAL CHECKOUT ──
+ *
+ * The cloud `checkout` mutation takes a required `items` argument: one entry per
+ * bought cart row, carrying the on-hand total the client computed. The resolver
+ * throws `BAD_USER_INPUT` when a bought row has no entry, with no raw-sum
+ * fallback, on purpose (issue #336). So if the web filter became narrower than
+ * the server filter, the server would be buying a row the client sent no
+ * quantity for, and the user's whole checkout would fail.
+ *
+ * Do not change the rule here without changing `apps/server/src/lib/checkout.ts`
+ * in the same commit.
+ */
+export function isBeingBought(cartItem: { quantity: number }): boolean {
+  return cartItem.quantity > 0
+}
+
 export interface Vendor {
   id: string
   name: string

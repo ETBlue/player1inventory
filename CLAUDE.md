@@ -383,10 +383,24 @@ build:     tsc && tsc -p tsconfig.scripts.json && cp src/schema/*.graphql dist/s
 typecheck: tsc --noEmit && tsc -p tsconfig.scripts.json
 ```
 
-**The two passes do not overlap**, which is why this costs almost nothing: `tsc` checks and
-emits the **52** files under `src`, the second pass checks the **1** under `scripts`, and
-nothing is checked twice. The server build is **2.2s**. The first version of this fix reused
-the whole-project `typecheck` and so checked `src` twice — 105 files instead of 53, and 3.4s.
+**The two passes do not overlap**, which is why this costs little: `tsc` checks and emits the
+**53** files under `src`, the second pass checks the **3** under `scripts`, and nothing is
+checked twice. The first version of this fix reused the whole-project `typecheck` and so
+checked `src` twice — 105 files instead of 53, and 3.4s.
+
+**The server build is about 3.5s, and the `scripts` pass is no longer free.** Measured
+2026-10-08 on the same machine and commit, with and without the two files issue #333 added:
+
+| `scripts/` holds | Own files in the pass | Files incl. `.d.ts` | Server build |
+|---|---|---|---|
+| `verify-migration.ts` only | 1 | 188 | 3.04s, 2.89s, 3.09s, 3.08s |
+| plus `databaseIsolation.ts` and its `.test.ts` | 3 | 234 | 3.45s, 3.63s |
+
+The 46 extra declaration files are **vitest's types**, pulled in by the test file's
+`import … from 'vitest'`. That is the whole cost: about **0.5s** on every server build, in
+exchange for the destructive-database guard being type-checked and unit-tested. Stated as a
+cost on purpose — a test file under `scripts/` is not free the way a test file under `src/`
+is, because nothing type-checks `src` test files at all.
 
 Why two tsconfigs rather than one: `tsconfig.json` **emits**, with `rootDir: "src"` and
 `outDir: "dist"`. Adding `scripts` to its `include` moves `rootDir` to `.` and emits
@@ -395,9 +409,10 @@ Why two tsconfigs rather than one: `tsconfig.json` **emits**, with `rootDir: "sr
 `include: ["scripts"]`. **Do not merge them.**
 
 **The no-overlap trick depends on a fact that could change.** `scripts/` imports nothing from
-`src` today — only `@prisma/client` and node builtins. If a script ever imports from `src`,
-TypeScript pulls those files into the scripts program and checks them again, and the saving
-goes away. Correct either way, but measure before adding such an import.
+`src` today — only `@prisma/client`, `vitest`, node builtins, and its own sibling modules. If
+a script ever imports from `src`, TypeScript pulls those files into the scripts program and
+checks them again, and the saving goes away. Correct either way, but measure before adding
+such an import.
 
 **Final phase only** — after all steps are complete, run the **whole** E2E suite with one
 command:
@@ -879,6 +894,15 @@ expect(card).toHaveTextContent('3 in vendor')
 With one location, "count items stocked here" and "count every item" return the same
 number. **Every location-scoped test needs a fixture stocked only at *another*
 location** — see the `stockId` trap in `apps/web/src/lib/quantityUtils.ts`.
+
+**An EMPTY destination is the same failure.** Cloud-parity PR C's first version of
+`e2e/tests/settings/data-mode-migration.spec.ts` could not tell the `clear` import strategy
+from `replace`. The mutation check — press "Overwrite conflicts" instead of "Clear & import" —
+passed in 17.5s. The cause was the fixture: the cloud account was empty before the migration,
+so `clear` deleted nothing, `replace` collided with nothing, and both left the same account
+behind. The fix was to seed one item and one location in cloud that the local payload never
+names. `clear` deletes them; `replace` keeps them. **A strategy that deletes needs something
+to delete.**
 
 **Negative controls legitimately stay green.** "No divider renders when every group is
 stocked here" *should* pass when the partition is deleted — removing code does not add

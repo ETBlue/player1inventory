@@ -1,0 +1,198 @@
+{
+  "version": 1,
+  "exportedAt": "2026-03-24T00:00:00.000Z",
+  "tagTypes": [
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000001",
+      "name": "Fixture Category",
+      "color": "blue"
+    }
+  ],
+  "tags": [
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000002",
+      "name": "Fixture Tag",
+      "typeId": "aaaaaaaa-0000-0000-0000-000000000001"
+    }
+  ],
+  "vendors": [
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000003",
+      "name": "Fixture Vendor"
+    }
+  ],
+  "items": [
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000004",
+      "name": "Fixture Item",
+      "tagIds": [
+        "aaaaaaaa-0000-0000-0000-000000000002"
+      ],
+      "vendorIds": [
+        "aaaaaaaa-0000-0000-0000-000000000003"
+      ],
+      "targetUnit": "package",
+      "targetQuantity": 1,
+      "refillThreshold": 0,
+      "packedQuantity": 0,
+      "unpackedQuantity": 0,
+      "consumeAmount": 1,
+      "createdAt": "2026-03-24T00:00:00.000Z",
+      "updatedAt": "2026-03-24T00:00:00.000Z"
+    },
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000104",
+      "name": "Backup New Item",
+      "tagIds": [],
+      "vendorIds": [],
+      "targetUnit": "package",
+      "targetQuantity": 1,
+      "refillThreshold": 0,
+      "packedQuantity": 0,
+      "unpackedQuantity": 0,
+      "consumeAmount": 1,
+      "createdAt": "2026-03-24T00:00:00.000Z",
+      "updatedAt": "2026-03-24T00:00:00.000Z"
+    }
+  ],
+  "recipes": [
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000005",
+      "name": "Fixture Recipe",
+      "items": [
+        {
+          "itemId": "aaaaaaaa-0000-0000-0000-000000000004",
+          "defaultAmount": 1
+        }
+      ]
+    }
+  ],
+  "inventoryLogs": [
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000006",
+      "itemId": "aaaaaaaa-0000-0000-0000-000000000004",
+      "delta": 1,
+      "quantity": 1,
+      "occurredAt": "2026-03-24T00:00:00.000Z",
+      "locationId": "local",
+      "logKey": "log.purchased",
+      "logParams": {
+        "amount": 1,
+        "unit": "package"
+      }
+    },
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000016",
+      "itemId": "aaaaaaaa-0000-0000-0000-000000000004",
+      "delta": -1,
+      "quantity": 6,
+      "occurredAt": "2026-03-24T00:00:00.000Z",
+      "locationId": "aaaaaaaa-0000-0000-0000-000000000011",
+      "logKey": "log.consumed",
+      "logParams": {
+        "amount": 1,
+        "unit": "package"
+      }
+    }
+  ],
+  "shoppingCarts": [
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000011:aaaaaaaa-0000-0000-0000-000000000003",
+      "status": "active",
+      "createdAt": "2026-03-24T00:00:00.000Z"
+    }
+  ],
+  "cartItems": [
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000008",
+      "cartId": "aaaaaaaa-0000-0000-0000-000000000011:aaaaaaaa-0000-0000-0000-000000000003",
+      "itemId": "aaaaaaaa-0000-0000-0000-000000000004",
+      "quantity": 2
+    }
+  ],
+  "shelves": [
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000009",
+      "name": "Fixture Shelf",
+      "type": "selection",
+      "order": 1,
+      "itemIds": [
+        "aaaaaaaa-0000-0000-0000-000000000004"
+      ],
+      "createdAt": "2026-03-24T00:00:00.000Z",
+      "updatedAt": "2026-03-24T00:00:00.000Z"
+    }
+  ],
+  "locations": [
+    {
+      "id": "local",
+      "name": "Fixture Home",
+      "order": 0,
+      "isDefault": true,
+      "createdAt": "2026-03-24T00:00:00.000Z",
+      "updatedAt": "2026-03-24T00:00:00.000Z"
+    },
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000011",
+      "name": "Fixture Office",
+      "order": 1,
+      "isDefault": false,
+      "createdAt": "2026-03-24T00:00:00.000Z",
+      "updatedAt": "2026-03-24T00:00:00.000Z"
+    },
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000012",
+      "name": "Fixture Cabin",
+      "order": 2,
+      "isDefault": false,
+      "createdAt": "2026-03-24T00:00:00.000Z",
+      "updatedAt": "2026-03-24T00:00:00.000Z"
+    }
+  ],
+  "itemStocks": [
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000013",
+      "itemId": "aaaaaaaa-0000-0000-0000-000000000004",
+      "locationId": "local",
+      "targetQuantity": 4,
+      "refillThreshold": 1,
+      "packedQuantity": 2,
+      "unpackedQuantity": 0,
+      "createdAt": "2026-03-24T00:00:00.000Z",
+      "updatedAt": "2026-03-24T00:00:00.000Z"
+    },
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000014",
+      "itemId": "aaaaaaaa-0000-0000-0000-000000000004",
+      "locationId": "aaaaaaaa-0000-0000-0000-000000000011",
+      "targetQuantity": 9,
+      "refillThreshold": 2,
+      "packedQuantity": 7,
+      "unpackedQuantity": 0,
+      "createdAt": "2026-03-24T00:00:00.000Z",
+      "updatedAt": "2026-03-24T00:00:00.000Z"
+    },
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000015",
+      "itemId": "aaaaaaaa-0000-0000-0000-000000000004",
+      "locationId": "aaaaaaaa-0000-0000-0000-000000000012",
+      "targetQuantity": 5,
+      "refillThreshold": 0,
+      "packedQuantity": 3,
+      "unpackedQuantity": 0,
+      "createdAt": "2026-03-24T00:00:00.000Z",
+      "updatedAt": "2026-03-24T00:00:00.000Z"
+    },
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000113",
+      "itemId": "aaaaaaaa-0000-0000-0000-000000000104",
+      "locationId": "local",
+      "targetQuantity": 6,
+      "refillThreshold": 1,
+      "packedQuantity": 5,
+      "unpackedQuantity": 0,
+      "createdAt": "2026-03-24T00:00:00.000Z",
+      "updatedAt": "2026-03-24T00:00:00.000Z"
+    }
+  ]
+}
