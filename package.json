@@ -20,7 +20,6 @@
     "test:e2e:cloud:ui": "playwright test --config=e2e/playwright.config.ts --project=cloud --ui",
     "typecheck": "pnpm --filter web typecheck && pnpm --filter server typecheck && pnpm typecheck:e2e",
     "typecheck:e2e": "tsc -p e2e/tsconfig.json",
-    "typecheck:e2e:a11y": "tsc -p e2e/tsconfig.a11y.json",
     "lint": "pnpm --filter web lint && pnpm lint:e2e",
     "lint:e2e": "biome lint ./e2e",
     "format": "pnpm --filter web format",

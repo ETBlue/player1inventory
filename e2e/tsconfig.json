@@ -47,22 +47,11 @@
     "noEmit": true
   },
   "include": ["**/*.ts"],
-  "exclude": [
-    "node_modules",
-
-    // TEMPORARY — remove when issue #322 task 3 lands.
-    //
-    // `a11y.spec.ts` carries 63 × TS2559, all the same mistake repeated once per
-    // `checkA11y` call: `AXE_OPTIONS` is passed at the top level where
-    // `axe-playwright` wants it nested under an `axeOptions` key. Fixing it
-    // narrows the accessibility scan from axe's default rule set to four WCAG
-    // tags, so it needs a measurement first and is its own task.
-    //
-    // HOW TO KNOW THIS LINE CAN GO: run `pnpm typecheck:e2e:a11y`, which checks
-    // this one file with the same options. While it still prints TS2559 errors,
-    // the exclusion is earning its place. When it prints nothing, delete this
-    // line, delete `e2e/tsconfig.a11y.json`, and delete the
-    // `typecheck:e2e:a11y` script.
-    "tests/a11y.spec.ts"
-  ]
+  // NOTHING under `e2e/` is excluded any more. `tests/a11y.spec.ts` was, from
+  // 2026-10-11 until later the same day: it carried 63 × TS2559, one per
+  // `checkA11y` call, because `AXE_OPTIONS` was passed at the top level where
+  // `axe-playwright` wants it nested under `axeOptions`. Issue #322 task 3 fixed
+  // that, so the exclusion, `e2e/tsconfig.a11y.json` and the
+  // `typecheck:e2e:a11y` script all went with it.
+  "exclude": ["node_modules"]
 }
