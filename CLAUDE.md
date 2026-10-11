@@ -20,9 +20,12 @@ pnpm test:e2e      # Run E2E tests with Playwright (headless) — ONE project at
 pnpm test:e2e:all  # THE GATE — runs local, cloud and pwa as three separate invocations
 pnpm test:e2e:ui   # Run E2E tests with Playwright UI (interactive)
 pnpm test:e2e:debug # Debug E2E tests step-by-step
-pnpm lint         # Lint with Biome
-pnpm format       # Format with Biome
-pnpm check        # Run all Biome checks
+pnpm lint         # Lint with Biome — apps/web/src AND e2e/
+pnpm lint:e2e     # Lint e2e/ only (biome lint ./e2e, root biome.jsonc)
+pnpm format       # Format with Biome — apps/web/src only; e2e/ formatting is deferred
+pnpm check        # Run all Biome checks — apps/web/src only
+pnpm typecheck    # tsc for apps/web, apps/server and e2e/
+pnpm typecheck:e2e      # tsc -p e2e/tsconfig.json (also the last step of pnpm build)
 pnpm storybook         # Start Storybook dev server
 pnpm storybook:build   # Build Storybook to apps/web/storybook-static/
 pnpm design            # Start design guide dev server (Astro/Starlight)
@@ -246,13 +249,21 @@ This applies even when the fix seems obvious. The test serves as a regression gu
 After each implementation phase (each numbered step in an implementation plan), run the full quality gate. **Each command must be run with an explicit path** — do not rely on `cd` persisting between Bash tool calls:
 
 ```bash
-(cd apps/web && pnpm lint)
-pnpm build 2>&1 | tee /tmp/p1i-build.log   # FULL build from repo root: codegen + web (tsc -b && vite) + server (tsc)
+pnpm lint                                  # ROOT, not apps/web: web src + e2e/ (see below)
+pnpm build 2>&1 | tee /tmp/p1i-build.log   # FULL build from repo root: codegen + web (tsc -b && vite) + server (tsc) + e2e/ type-check
 (cd apps/web && pnpm build-storybook)
 (cd apps/web && pnpm check)
 grep 'TS6385' /tmp/p1i-build.log && echo "FAIL: deprecated imports found" || echo "OK: no deprecated imports"
 pnpm test                                        # BOTH suites — web + server, run from the repo root
 ```
+
+**The first line is the ROOT `pnpm lint`, not `(cd apps/web && pnpm lint)`.** Since
+2026-10-11 the root script is `pnpm --filter web lint && pnpm lint:e2e`, so it lints
+`apps/web/src` and `e2e/`. The web-only form skips `e2e/` entirely.
+
+**`pnpm build` now type-checks `e2e/` as well.** Its last step is `pnpm typecheck:e2e`
+(`tsc -p e2e/tsconfig.json`). There is no extra command to remember — the same way
+`apps/server`'s build already carries a second pass for `scripts/`.
 
 **`pnpm test` runs both workspaces.** The root script is `pnpm -r test`, which recurses into
 every workspace package that defines a `test` script — today `apps/web` (**2285 tests**
@@ -309,15 +320,60 @@ found them.
 **So after adding a required field or argument, grep the test files for the call sites
 yourself.** `tsc` will not list them.
 
-**Nothing type-checks `e2e/` either.** The repo has seven tsconfigs —
-`apps/web/tsconfig.json`, `tsconfig.app.json`, `tsconfig.node.json`,
-`apps/server/tsconfig.json`, `tsconfig.scripts.json`, `apps/design/tsconfig.json` and
-`packages/types/tsconfig.json` — and not one includes `e2e/`. Playwright transpiles each spec
-without checking types, so a type error in a spec is reported nowhere. `pnpm lint` and
-`pnpm check` scan `apps/web` only, so nothing lints it either. That is why `e2e/CLAUDE.md`
-can record dozens of pre-existing type errors in `a11y.spec.ts` and three other files while
-every gate command passes — see its section *Nothing lints or type-checks `e2e/`*, and issue
-#322. **Take your own baseline before quoting any count from it.**
+**`e2e/` IS type-checked and linted — since 2026-10-11 (issue #322).** Before that date
+nothing checked it: Playwright transpiles each spec with esbuild, which strips types without
+checking them, and both root Biome scripts were `pnpm --filter web …`. A type error in a
+spec was reported nowhere, which is how 63 `TS2559` errors sat in `a11y.spec.ts` while every
+gate command passed.
+
+| Command | What it does | In the gate via |
+|---|---|---|
+| `pnpm typecheck:e2e` | `tsc -p e2e/tsconfig.json` — every `.ts` under `e2e/`, no exclusions | the last step of root `pnpm build` |
+| `pnpm lint:e2e` | `biome lint ./e2e`, using the root `biome.jsonc` | the second half of root `pnpm lint` |
+
+For a few hours on 2026-10-11, `e2e/tests/a11y.spec.ts` was excluded from that tsconfig,
+with a second config `e2e/tsconfig.a11y.json` and a `typecheck:e2e:a11y` script as the
+removal condition. Issue #322 task 3 fixed the 63 `TS2559` errors, so all three are gone.
+**`pnpm typecheck:e2e` now covers every `.ts` under `e2e/`.** Proved by mutation the same
+day: flattening `AXE_OPTIONS` back to a bare `RunOptions` makes it exit 2 with 63 ×
+`TS2559` in that file.
+
+**Three traps when measuring `e2e/` type errors yourself.** All three were hit before this
+was wired up, and the first two look like success:
+
+- With `types: ["node"]` but `@types/node` unresolvable, `tsc` reports exactly **one**
+  error — `TS2688` — and bails before checking any file. `@types/node` is now a ROOT
+  devDependency for this reason; pnpm does not hoist, so a root-level program cannot see
+  `apps/web`'s copy. Check with `ls node_modules/@types/node`.
+- A probe tsconfig written to `/tmp` resolves `typeRoots` from `/tmp/node_modules/@types`,
+  which gives the same `TS2688`. Put the config inside the repo.
+- Leaving `DOM` out of `lib` inflates the count badly. Spec bodies run in Node, but their
+  `page.evaluate` and `addInitScript` callbacks run in the browser. Measured 2026-10-11:
+  `lib: ["ES2023"]` reports **210** errors, of which 147 are artefacts (121 × `TS2304`
+  `Cannot find name 'indexedDB'`, 23 × `TS7031`, and more). With `DOM` and `DOM.Iterable`
+  the count is **63**. The old figures of 74 and 78 came from probes with no node types.
+
+**Formatting `e2e/` is deferred, and the root Biome config says so.** `formatter` and
+`assist` are off in `biome.jsonc`. `e2e/` was written with no formatter, so turning Biome's
+on rewrites it: measured 2026-10-11, `biome format ./e2e --write` gives **1632 insertions
+and 646 deletions across 44 of 54 files**, and `biome check ./e2e` reported 64 errors (44
+formatting, 20 `assist/source/organizeImports`). `pnpm lint:e2e` still reports **13**
+warnings — 6 `noExplicitAny`, 7 `noNonNullAssertion` — which do not fail the command, the
+same way `apps/web`'s 4 warnings do not fail `pnpm check`.
+
+**The root config MUST stay `biome.jsonc`.** Biome reads comments in a `.jsonc` file and
+**silently ignores** a `biome.json` that contains any — no error, no warning — falling back
+to its own built-in defaults. Found 2026-10-11: as `biome.json` with comments,
+`biome lint ./e2e` checked **59** files instead of 54 and `biome check ./e2e` reported 79
+formatting errors in tabs and double quotes, which is Biome's default style and not this
+repo's. The warning count was unchanged at 13, so the lint output alone does not reveal it.
+**Check the file count.**
+
+The repo now has **eight** tsconfigs: `apps/web/tsconfig.json`, `tsconfig.app.json`,
+`tsconfig.node.json`, `apps/server/tsconfig.json`, `tsconfig.scripts.json`,
+`apps/design/tsconfig.json`, `packages/types/tsconfig.json` and `e2e/tsconfig.json`.
+
+**Take your own baseline before quoting any count above.**
 
 **`pnpm codegen` is all-or-nothing, and its success line can mislead.** `codegen.ts` has one
 `generates` block with two outputs: `apps/server/src/generated/graphql.ts` (schema and
@@ -1113,9 +1169,61 @@ you read one, do not trust it as evidence.
 
 **Biome lint (`pnpm lint`):** 37 a11y rules enabled in `apps/web/biome.json` — catches static violations (missing alt text, invalid ARIA, bad roles) at write time.
 
-**axe-playwright (`e2e/tests/a11y.spec.ts`):** Runtime a11y checks via `axe-core` targeting WCAG AA (`wcag2a`, `wcag2aa`, `wcag21aa`, `wcag22aa`) — the target is explicit via `AXE_OPTIONS` in the spec file. Covers **66 tests in `pwa`, and the same file collects 66 under `local` but runs 64** (counts measured 2026-09-20): 15 top-level page scans, 13 in `test.describe('detail page a11y')`, 27 in `test.describe('dark mode a11y')`, 9 mobile-viewport scans at 390×844 in `test.describe('mobile viewport a11y')`, and 2 in `test.describe('offline banner a11y')`. **Those last 2 run only in `pwa`** (since 2026-09-24, issue #302). They set `baseURL: PWA_WEB_URL`, so under `local` they ran against the same server with the same code — an exact duplicate — and they were the only reason a `--project=local` run needed the PWA preview server at all. A describe-level `test.skip` now skips them outside `pwa`. It has to be at describe level: the file's top-level `beforeEach` also calls `page.goto('/')`, so a body-level skip runs too late and the hook still hits port 5176. Run with `pnpm test:e2e a11y.spec.ts` — select it by path, not `--grep`. Dark mode is triggered by `page.addInitScript(() => localStorage.setItem('theme-preference', 'dark'))` in a `test.describe('dark mode a11y')` block.
+**axe-playwright (`e2e/tests/a11y.spec.ts`):** Runtime a11y checks via `axe-core` targeting WCAG AA (`wcag2a`, `wcag2aa`, `wcag21aa`, `wcag22aa`), set through `AXE_OPTIONS` in the spec file. **That filter only started working on 2026-10-11** — see *The WCAG filter had never applied* below. Covers **66 tests in `pwa`, and the same file collects 66 under `local` but runs 64** (counts measured 2026-09-20): 15 top-level page scans, 13 in `test.describe('detail page a11y')`, 27 in `test.describe('dark mode a11y')`, 9 mobile-viewport scans at 390×844 in `test.describe('mobile viewport a11y')`, and 2 in `test.describe('offline banner a11y')`. **Those last 2 run only in `pwa`** (since 2026-09-24, issue #302). They set `baseURL: PWA_WEB_URL`, so under `local` they ran against the same server with the same code — an exact duplicate — and they were the only reason a `--project=local` run needed the PWA preview server at all. A describe-level `test.skip` now skips them outside `pwa`. It has to be at describe level: the file's top-level `beforeEach` also calls `page.goto('/')`, so a body-level skip runs too late and the hook still hits port 5176. Run with `pnpm test:e2e a11y.spec.ts` — select it by path, not `--grep`. Dark mode is triggered by `page.addInitScript(() => localStorage.setItem('theme-preference', 'dark'))` in a `test.describe('dark mode a11y')` block.
 
 When adding a new page/route, add a corresponding test to `e2e/tests/a11y.spec.ts` for both light and dark mode.
+
+**The WCAG filter had never applied — found and fixed 2026-10-11 (issue #322 task 3).**
+`AXE_OPTIONS` was passed at the TOP level of `checkA11y`'s third argument. That argument is
+axe-playwright's own `AxeOptions` wrapper, and it forwards only `axeOptions.axeOptions` to
+axe (`axe-playwright/dist/index.js:111`), so the object was dropped and **axe ran with its
+own defaults**. The comment above the constant claimed the level was "explicitly set", and
+this section repeated it. Both were wrong. The 63 `TS2559` errors that said so were
+invisible because nothing type-checked `e2e/`.
+
+**The scans had been STRICTER than documented, not laxer. No violation was missed.** Axe's
+default set is a superset of the four tags: it also runs `best-practice` rules. So the fix
+NARROWS the gate, which is why it was measured first rather than just applied.
+
+Measured 2026-10-11 over **130 scans** — 64 in `local`, 66 in `pwa` — by running axe three
+times per scanned page (defaults, the WCAG tags, and the delta rules alone) and taking the
+union of `passes` + `violations` + `incomplete` + `inapplicable` rule ids:
+
+| Quantity | Count |
+|---|---|
+| rule ids evaluated with axe defaults | **89** |
+| rule ids evaluated with the four WCAG tags | **62** |
+| stopped running | **28** |
+| started running | **1** (`target-size`) |
+| of the 28, how many report a violation or an incomplete on any scanned page | **0** |
+
+The 28 that stopped are all tagged `best-practice` and none carries a WCAG tag:
+`accesskeys`, `aria-allowed-role`, `aria-dialog-name`, `aria-text`, `aria-treeitem-name`,
+`empty-heading`, `empty-table-header`, `frame-tested`, `heading-order`,
+`image-redundant-alt`, `label-title-only`, `landmark-banner-is-top-level`,
+`landmark-complementary-is-top-level`, `landmark-contentinfo-is-top-level`,
+`landmark-main-is-top-level`, `landmark-no-duplicate-banner`,
+`landmark-no-duplicate-contentinfo`, `landmark-no-duplicate-main`, `landmark-one-main`,
+`landmark-unique`, `meta-viewport-large`, `page-has-heading-one`,
+`presentation-role-conflict`, `region`, `scope-attr-valid`, `skip-link`, `tabindex`,
+`table-duplicate-name`.
+
+**One rule STARTED running: `target-size` (wcag22aa, SC 2.5.8).** Axe ships it
+`enabled: false`, so the default run skipped it. A tag filter overrides `enabled` —
+`matchTags` returns true on a tag match without consulting `rule.enabled` (axe.js:19848) —
+so naming `wcag22aa` turns it on. It passed all 130 scans. A comment in the spec had claimed
+`target-size` "still polices" the known-bad destructive confirm button; that was false until
+this fix, because the rule was not running at all.
+
+**To widen the gate again, add `'best-practice'` to `WCAG_AA_TAGS` in the spec file.**
+Nothing else needs to change. That is the one line to edit, recorded here so the narrowing
+is reversible rather than forgotten.
+
+Two shapes, one source of truth: `WCAG_AA_TAGS` feeds both `AXE_RUN_OPTIONS` (a bare axe
+`RunOptions`, for `getViolations`) and `AXE_OPTIONS` (the same thing nested, for
+`checkA11y`). The two dialog scans in `checkA11yExcludingContrastOn` use the first and now
+run the same rule set as the other 63; before this fix they also ran axe's defaults, so all
+65 agreed by accident.
 
 ### E2E Test Format
 

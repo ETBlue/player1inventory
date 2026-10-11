@@ -408,7 +408,7 @@ test('user can edit recipe name on Info tab', async ({ page, baseURL }) => {
 })
 
 test.describe('recipe item count after item assignment', () => {
-  test('recipe item count updates after item is assigned to a recipe', async ({ page, request, baseURL }) => {
+  test('recipe item count updates after item is assigned to a recipe', async ({ page, baseURL }) => {
     const recipes = new RecipesPage(page)
     const detail = new RecipeDetailPage(page)
 

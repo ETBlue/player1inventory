@@ -2,7 +2,6 @@ import { defineConfig, devices } from '@playwright/test'
 import {
   CLOUD_GRAPHQL_URL,
   CLOUD_SERVER_PORT,
-  CLOUD_SERVER_URL,
   CLOUD_WEB_PORT,
   CLOUD_WEB_URL,
   E2E_USER_ID,

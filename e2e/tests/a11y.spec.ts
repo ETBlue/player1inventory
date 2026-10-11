@@ -6,10 +6,48 @@ import { seedRows } from '../helpers/locationSeed'
 import { StockPagerPage } from '../pages/StockPagerPage'
 
 // WCAG AA target: 4.5:1 contrast ratio for normal text, 3:1 for large text.
-// Explicitly set runOnly so future tooling and AI agents know the intended level.
-const AXE_OPTIONS = {
-  runOnly: { type: 'tag' as const, values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] },
+//
+// FIXED 2026-10-11 (issue #322 task 3). Until that date these four tags were
+// passed at the TOP level of the third argument. `checkA11y`'s third parameter is
+// axe-playwright's own `AxeOptions` wrapper, and it forwards only
+// `axeOptions.axeOptions` to axe (`axe-playwright/dist/index.js:111`), so the
+// object was dropped and **axe ran with its own defaults for a year**. The comment
+// that used to sit here said the level was "explicitly set"; it was not.
+//
+// THE OLD BEHAVIOUR WAS STRICTER, NOT LAXER, so no violation was missed. Axe's
+// default set is the 89 rules with `enabled !== false` and no `experimental` /
+// `deprecated` tag; these four tags select 62. Measured 2026-10-11 over 130 scans
+// (64 in `local`, 66 in `pwa`), the switch costs 28 rules and gains 1:
+//
+//   STOPPED RUNNING — all 28 are tagged `best-practice`, none of them WCAG:
+//     accesskeys, aria-allowed-role, aria-dialog-name, aria-text,
+//     aria-treeitem-name, empty-heading, empty-table-header, frame-tested,
+//     heading-order, image-redundant-alt, label-title-only,
+//     landmark-banner-is-top-level, landmark-complementary-is-top-level,
+//     landmark-contentinfo-is-top-level, landmark-main-is-top-level,
+//     landmark-no-duplicate-banner, landmark-no-duplicate-contentinfo,
+//     landmark-no-duplicate-main, landmark-one-main, landmark-unique,
+//     meta-viewport-large, page-has-heading-one, presentation-role-conflict,
+//     region, scope-attr-valid, skip-link, tabindex, table-duplicate-name
+//
+//   STARTED RUNNING — `target-size` (wcag22aa, SC 2.5.8). Axe ships it
+//     `enabled: false`, so the default run skipped it. A tag filter overrides
+//     `enabled` (`matchTags` in axe.js:19848), so naming `wcag22aa` turns it on.
+//
+// NONE of the 28 reported a violation or an incomplete on any of the 130 scans,
+// and `target-size` passed all 130, which is why the narrowing was taken. To widen
+// again, add `'best-practice'` to the list below — nothing else changes.
+const WCAG_AA_TAGS = ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']
+
+// Bare axe `RunOptions`, for `getViolations`, which takes them directly.
+const AXE_RUN_OPTIONS = {
+  runOnly: { type: 'tag' as const, values: WCAG_AA_TAGS },
 }
+
+// The same options NESTED, for `checkA11y`, which wants them under `axeOptions`.
+// Keep the nesting: flattening it type-errors with TS2559 and silently restores
+// axe's defaults.
+const AXE_OPTIONS = { axeOptions: AXE_RUN_OPTIONS }
 
 // KNOWN PRE-EXISTING DEFECT — the filled destructive button (`variant="destructive"`,
 // used for the confirm action inside the SHARED `DeleteButton`) fails contrast.
@@ -43,6 +81,11 @@ const AXE_OPTIONS = {
 // `target-size` and the aria rules still police that button. Excluding it outright
 // would also hide any FUTURE violation on it.
 //
+// `target-size` in that list was FALSE until 2026-10-11. Axe ships it
+// `enabled: false`, and both scans below ran with axe's defaults, so nothing was
+// checking it. It runs now, because both scans name `wcag22aa` through
+// `AXE_RUN_OPTIONS`.
+//
 // REMOVAL CONDITION — checkable: once `opacity-90` is removed/raised on the
 // `buttonVariants` base class (or the confirm button opts out of it), delete this
 // constant, delete `checkA11yAllowingKnownConfirmContrast`, and change both call
@@ -56,23 +99,32 @@ const KNOWN_CONFIRM_CONTRAST_EXCLUSION = {
 // Two scans instead of one, so a known defect is excluded from a single RULE
 // rather than from every rule on that element.
 //
-// These use `getViolations`, not `checkA11y`, deliberately. `checkA11y`'s third
-// parameter is axe-playwright's own `AxeOptions` WRAPPER and it forwards only
-// `axeOptions.axeOptions` to axe — so handing it a bare axe `RunOptions` (as the 60
-// sibling scans in this file do with `AXE_OPTIONS`) silently runs axe with its
-// DEFAULTS and the option object has no effect. `getViolations(page, context,
-// runOptions)` takes `RunOptions` directly, so rule selection here actually applies.
-// The scan below therefore covers the same effective rule set as the siblings
-// (axe defaults), minus one rule on the given elements.
+// These use `getViolations`, not `checkA11y`. `checkA11y`'s third parameter is
+// axe-playwright's own `AxeOptions` WRAPPER and it forwards only
+// `axeOptions.axeOptions` to axe, while `getViolations(page, context, runOptions)`
+// takes a bare axe `RunOptions`. So the two take DIFFERENT shapes: `AXE_OPTIONS`
+// here, `AXE_RUN_OPTIONS` there. Both are built from `WCAG_AA_TAGS`, so the scans
+// below cover the same effective rule set as the other 63 in this file, minus one
+// rule on the given elements.
+//
+// Until 2026-10-11 the 63 siblings handed the bare `RunOptions` to `checkA11y`,
+// which dropped it, and the two scans below passed no `runOnly` at all — so all 65
+// ran with axe's defaults. They agreed by accident. Now they agree on purpose.
 async function checkA11yExcludingContrastOn(
   page: import('@playwright/test').Page,
   exclude: string[][],
   label: string,
 ) {
-  // 1. Every rule EXCEPT color-contrast, with nothing excluded — the excluded
-  //    element(s) are still policed for accessible name, target size, aria
-  //    validity and the rest.
+  // 1. Every WCAG AA rule EXCEPT color-contrast, with nothing excluded — the
+  //    excluded element(s) are still policed for accessible name, target size,
+  //    aria validity and the rest.
+  //
+  //    `rules` beats `runOnly` for a named rule: axe checks
+  //    `rules[id].enabled` BEFORE the tag filter (`ruleShouldRun` in
+  //    axe.js:19856-19869), so color-contrast is off here even though
+  //    `AXE_RUN_OPTIONS` selects it by tag.
   const nonContrast = await getViolations(page, undefined, {
+    ...AXE_RUN_OPTIONS,
     rules: { 'color-contrast': { enabled: false } },
   })
   expect(
@@ -82,6 +134,8 @@ async function checkA11yExcludingContrastOn(
 
   // 2. color-contrast alone, excluding only the known-bad element(s) — so a
   //    contrast regression anywhere else on the page still fails the test.
+  //    `runOnly.type === 'rule'` names one rule outright, so it needs no tag
+  //    filter; color-contrast is a WCAG AA rule either way.
   const contrast = await getViolations(
     page,
     { exclude },

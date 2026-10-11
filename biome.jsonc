@@ -1,0 +1,47 @@
+{
+  // Root Biome config. It covers `e2e/` and nothing else.
+  //
+  // IT MUST STAY A `.jsonc` FILE. Biome reads comments in `biome.jsonc` and
+  // SILENTLY IGNORES a `biome.json` that contains any — no error, no warning,
+  // and it falls back to its own built-in defaults. Found 2026-10-11: as
+  // `biome.json` with these comments, `biome lint ./e2e` checked 59 files
+  // instead of 54 (it picked up `e2e/fixtures/*.json` and the two tsconfigs)
+  // and `biome check ./e2e` reported 79 formatting errors in tabs and double
+  // quotes, which is Biome's default style and not this repo's. The lint count
+  // was unchanged at 13, because the rule set happened to match — so the lint
+  // output alone does not reveal the problem. Check the FILE COUNT.
+  "$schema": "https://biomejs.dev/schemas/2.3.13/schema.json",
+  "files": {
+    // `e2e/` ONLY. `apps/web` has its own `biome.json` and is untouched by this
+    // file — verified by running `(cd apps/web && pnpm check)` with and without
+    // it: 627 files, 4 warnings, both times.
+    //
+    // Before this file existed nothing linted `e2e/` (issue #322): both root
+    // scripts were `pnpm --filter web …`, and `apps/web/biome.json` scopes
+    // itself to `src/**`.
+    "includes": ["e2e/**/*.ts"]
+  },
+  "linter": {
+    "enabled": true,
+    "rules": { "recommended": true }
+  },
+  // FORMATTER AND ASSIST ARE OFF ON PURPOSE, and this is a deferral, not a
+  // decision that `e2e/` should go unformatted.
+  //
+  // `e2e/` was written with no formatter, so turning Biome's on rewrites almost
+  // all of it. Measured 2026-10-11 with `biome format ./e2e --write`: **1632
+  // insertions and 646 deletions across 44 of 54 files**, nearly all of it line
+  // rewrapping at the default 80-column width. `biome check ./e2e` reported 64
+  // errors — 44 formatting, 20 `assist/source/organizeImports`.
+  //
+  // That diff would bury the lint and type-check wiring this file is part of,
+  // so it is deferred to its own PR. Turning them on is then two flags here
+  // plus one `--write` run.
+  "formatter": { "enabled": false },
+  "assist": { "enabled": false },
+  // Dormant while `formatter.enabled` is false. Kept so the style is already
+  // recorded, and matches `apps/web/biome.json`.
+  "javascript": {
+    "formatter": { "quoteStyle": "single", "semicolons": "asNeeded" }
+  }
+}

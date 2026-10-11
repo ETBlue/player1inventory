@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@biomejs/biome':
+        specifier: ^2.3.13
+        version: 2.3.14
       '@commitlint/cli':
         specifier: ^20.4.1
         version: 20.4.1(@types/node@24.10.10)(typescript@5.9.3)
@@ -35,6 +38,9 @@ importers:
       '@playwright/test':
         specifier: ^1.58.2
         version: 1.58.2
+      '@types/node':
+        specifier: ^24.10.10
+        version: 24.10.10
       axe-playwright:
         specifier: ^2.2.2
         version: 2.2.2(playwright@1.58.2)
@@ -47,6 +53,9 @@ importers:
       lint-staged:
         specifier: ^16.2.7
         version: 16.2.7
+      typescript:
+        specifier: ~5.9.3
+        version: 5.9.3
       wrangler:
         specifier: ^4.143.0
         version: 4.143.0(@types/node@24.10.10)

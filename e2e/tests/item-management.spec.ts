@@ -186,7 +186,7 @@ test('user can clear a saved note and wikidata URL', async ({ page }) => {
   await expect(item.getWikidataUrlInput()).toHaveValue('')
 })
 
-test('user can assign a tag to an item', async ({ page, baseURL }) => {
+test('user can assign a tag to an item', async ({ page }) => {
   const pantry = new PantryPage(page)
   const item = new ItemPage(page)
   const settings = new SettingsPage(page)
@@ -205,7 +205,7 @@ test('user can assign a tag to an item', async ({ page, baseURL }) => {
   await expect(page.getByRole('button', { name: 'Dairy', pressed: true })).toBeVisible()
 })
 
-test('user can assign a vendor to an item', async ({ page, baseURL }) => {
+test('user can assign a vendor to an item', async ({ page }) => {
   const pantry = new PantryPage(page)
   const item = new ItemPage(page)
 

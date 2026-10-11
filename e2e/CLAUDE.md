@@ -811,39 +811,80 @@ of raw locator calls.
 `use` of `playwright.config.ts`, so every test in the published report has a screenshot.
 Normal runs keep `'off'`.
 
-## Nothing lints or type-checks `e2e/`
+## How `e2e/` is linted and type-checked
 
-`pnpm lint` and `pnpm check` scan `apps/web` only, and there is no root `biome.json`.
-`pnpm build` does not cover `e2e/` either. The verification gate in root `CLAUDE.md`
-therefore says nothing about this directory.
+Wired up 2026-10-11 (issue #322). Before that date nothing checked this directory at all.
 
-To type-check a file you edited, write a temporary `tsconfig` and run `tsc --noEmit`.
-**Scope `include` to the files you are editing.** Five files carry pre-existing errors
-that will drown yours:
+| Command | What it checks | Run in the gate by |
+|---|---|---|
+| `pnpm typecheck:e2e` | `tsc -p e2e/tsconfig.json` — every `.ts` here, no exclusions | the last step of root `pnpm build` |
+| `pnpm lint:e2e` | `biome lint ./e2e`, using the root `biome.jsonc` | the second half of root `pnpm lint` |
 
-| File | Pre-existing errors |
-|---|---|
-| `e2e/playwright.config.ts` | 5 × `TS2580` (no `@types/node`) — lines 45, 126, 154, 155, 166, all `process` |
-| `e2e/tests/a11y.spec.ts` | 63 × `TS2559` on `AxeOptions` |
-| `e2e/tests/settings/import-export-cloud.spec.ts` | 3 × `TS2307` on `node:fs`, `node:path`, `node:url` (no `@types/node`) |
-| `e2e/tests/settings/import-export-local.spec.ts` | 4, same cause |
-| `e2e/tests/settings/import-strategies.spec.ts` | 3, same cause |
+Run them from the repo root. Both are clean today except for 13 Biome **warnings**, which do
+not fail the command: 6 `lint/suspicious/noExplicitAny` and 7 `lint/style/noNonNullAssertion`.
 
-Counts measured 2026-10-08 with `moduleResolution: "bundler"`; **78 errors in total** across
-`e2e/`, and in those five files only. The exact error CODES
-depend on the tsconfig you write — `TS2580` and `TS2591` are the same missing-`@types/node`
-problem reported under different module settings.
+**Do not hand-roll a probe tsconfig any more.** `e2e/tsconfig.json` is the one to use, and
+`pnpm typecheck:e2e` is how to run it. Every probe written before this existed got the
+counts wrong, in one of three ways:
 
-**This table has been wrong twice, in the way it warns about.** It said `a11y.spec.ts` carried
-**39** `TS2559` errors long after the file had grown to 63. It said
-`e2e/playwright.config.ts` carried **2** `TS2580` errors; the real number is 5 and has been
-since the `webServer` selection logic landed on 2026-09-24, which added the `process.argv` read
-at line 45. Both figures were true when written.
+| Mistake | What `tsc` reports | Why it misleads |
+|---|---|---|
+| `types: ["node"]` with `@types/node` unresolvable | exactly **1** error, `TS2688` | `tsc` bails before checking any file. Looks like success |
+| the probe config written to `/tmp` | the same `TS2688` | `typeRoots` resolves from `/tmp/node_modules/@types` |
+| no `DOM` in `lib` | **210** errors | 147 are artefacts — 121 × `TS2304` `Cannot find name 'indexedDB'`, 23 × `TS7031`. Spec bodies run in Node, but `page.evaluate` and `addInitScript` callbacks run in the browser |
+| `types: []` | **78** errors | adds 10 × `TS2307` for `node:fs`/`node:path`/`node:url` and 5 × `TS2591` for `process` on top of the real ones |
 
-**Do not trust any number here.** Take your own baseline first: run `tsc` on the unchanged
-files, keep the output, then diff it against the run after your edit. Root `CLAUDE.md`
-makes this a rule, because subtracting a written count has twice produced invented
-failures.
+`@types/node` is a **root** devDependency for the first row's sake. pnpm does not hoist, so
+a root-level program cannot see `apps/web`'s copy. Check with `ls node_modules/@types/node`
+from the repo root.
 
-Tracked as issue #322 — nothing lints or type-checks this directory, so none of these 78
-errors is reported by any command in the verification gate.
+**The count was 63 errors when this was wired up on 2026-10-11, all `TS2559`, all in
+`e2e/tests/a11y.spec.ts`. It is 0 now** — task 3 fixed them later the same day. The old
+figures in this file — 78 in total across five files, with 5 × `TS2580` in
+`playwright.config.ts` — were all missing-`@types/node` artefacts except the 63. Earlier
+versions of this table also said 39 and 2 where the real numbers were 63 and 5. **Take your
+own baseline before quoting any number here.**
+
+### `a11y.spec.ts` was excluded for a few hours, and is not any more
+
+From the morning of 2026-10-11 until later that day, `e2e/tsconfig.json` excluded it. Its 63
+`TS2559` errors were one mistake repeated once per `checkA11y` call: `AXE_OPTIONS` was
+passed at the top level, where `axe-playwright` wants it nested under an `axeOptions` key.
+So axe ran with its own defaults and the WCAG AA filter the comment described never applied.
+
+Issue #322 task 3 measured what the filter would cost before applying it — 89 evaluated
+rules down to 62, 28 `best-practice` rules dropped, 1 WCAG 2.2 AA rule (`target-size`)
+gained, and none of the 28 reporting anything on 130 scans — then nested the options. With
+that done, three things were deleted: the `exclude` entry, `e2e/tsconfig.a11y.json`, and the
+`typecheck:e2e:a11y` script. The full rule list and the measurement are in the root
+`CLAUDE.md` under *A11y Testing*.
+
+`pnpm typecheck:e2e` now covers **every** `.ts` under `e2e/`. Proved by mutation on
+2026-10-11: flattening `AXE_OPTIONS` back to a bare `RunOptions` makes it exit 2 with 63 ×
+`TS2559` in that file.
+
+### Formatting is deferred
+
+`formatter` and `assist` are **off** in the root `biome.jsonc`. `e2e/` was written with no
+formatter, so turning Biome's on rewrites nearly all of it: measured 2026-10-11,
+`biome format ./e2e --write` gives **1632 insertions and 646 deletions across 44 of 54
+files**, almost all line rewrapping at 80 columns, and `biome check ./e2e` reported 64
+errors (44 formatting, 20 `assist/source/organizeImports`). That diff would have buried the
+wiring, so it is a follow-up. Turning it on is two flags in `biome.jsonc` plus one
+`--write` run.
+
+**The root config must stay `biome.jsonc`, not `biome.json`.** Biome reads comments in a
+`.jsonc` file and **silently ignores** a `biome.json` that contains any — no error, no
+warning — falling back to its own built-in defaults. Found 2026-10-11: as `biome.json` with
+comments, `biome lint ./e2e` checked **59** files instead of 54 (it picked up
+`e2e/fixtures/*.json` and the two tsconfigs) and `biome check ./e2e` reported 79 formatting
+errors in tabs and double quotes, which is Biome's default style and not this repo's. The
+warning count stayed at 13, so the lint output alone does not show the problem. **Check the
+file count.**
+
+### `e2e/tsconfig.json` does not change how Playwright runs
+
+Playwright does read a `tsconfig.json` next to a spec, but it uses only `allowJs`, `baseUrl`
+and `paths` from it (`playwright/lib/transform/transform.js:76-82`). `e2e/tsconfig.json`
+sets none of the three, so adding it cannot change how a spec transpiles. **Do not add
+`paths` or `baseUrl` to it without checking what Playwright then does with them.**
