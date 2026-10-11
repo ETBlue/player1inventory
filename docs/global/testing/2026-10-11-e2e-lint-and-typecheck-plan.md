@@ -140,6 +140,18 @@ Plus whatever new command task 1 wires in.
 
 **Baseline on this branch:** server **391** / 27 files, web **2304** / 251 files. Re-measure rather than subtracting.
 
+**A worktree with no `pnpm codegen` looks exactly like a starved machine.** Measured on this
+branch while taking that baseline: after `pnpm install` but before `pnpm codegen`, `pnpm test:web`
+reported **124 failed suites of 251** and **1176 tests passed** — about half the real count, with
+**zero** failed tests. That is the same shape the root `CLAUDE.md` describes as starvation. It was
+not. Every one of the 124 failed with `Failed to resolve import "@/generated/graphql"`, because the
+generated files are gitignored and a fresh worktree has none. `pnpm codegen` fixed it and the count
+returned to 2304 / 251.
+
+The tell that separates the two: starvation gives a failing set that **moves between runs** and
+tests that pass when run alone, while a missing codegen gives the **same** files every time and one
+identical resolve error in each. Check the first failure's message before reaching for load average.
+
 **Final phase:** the three projects as separate invocations, `cloud` in chunks. `a11y.spec.ts` runs in `local` and `pwa`, so both matter here — this PR touches it.
 
 Swap has been sitting near its limit all week; it reached 319 MB free during PR C. Two E2E failures in that PR were `socket hang up` and `read ECONNRESET`, both proved transient by running the spec alone and re-running the chunk. Expect the same and prove it the same way.
