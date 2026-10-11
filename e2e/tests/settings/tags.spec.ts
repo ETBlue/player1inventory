@@ -789,8 +789,6 @@ test('user can create a tag with a parent tag', async ({ page, baseURL }) => {
 test('user can delete a parent tag with cascade (deletes child tags too)', async ({ page, baseURL }) => {
   const tagsPage = new TagsPage(page)
 
-  let parentTagId: string
-
   if (baseURL === CLOUD_WEB_URL) {
     // Cloud: UI-driven setup — create tag type, parent tag "Chicken", child tag "Grilled Chicken"
     await tagsPage.navigateTo()
@@ -805,10 +803,14 @@ test('user can delete a parent tag with cascade (deletes child tags too)', async
     await tagsPage.submitTagDialog()
     await expect(tagsPage.getTagBadge('Chicken')).toBeVisible()
 
-    // Navigate to Chicken detail to get its ID from the URL
+    // Round-trip to Chicken's detail page and back. It used to read the tag id
+    // out of the URL into `parentTagId`, which nothing ever read — the test
+    // navigates by clicking the badge further down, not by id. The id read is
+    // gone; the navigation is left exactly as it was, because changing a cloud
+    // spec's click flow would need a cloud E2E run to prove safe and this
+    // change does not.
     await tagsPage.clickTagBadgeToNavigate('Chicken')
     await page.waitForURL(/\/settings\/tags\/[^/]/)
-    parentTagId = new URL(page.url()).pathname.split('/').filter(Boolean).pop()!
     await page.goBack()
 
     // Create child tag "Grilled Chicken" with parent "Chicken"
@@ -819,7 +821,7 @@ test('user can delete a parent tag with cascade (deletes child tags too)', async
     await expect(page.getByText(/^Grilled Chicken \(\d+\)$/)).toBeVisible()
   } else {
     // Local: seed tag type, parent tag "Chicken" (index 0), child tag "Grilled Chicken" (index 1)
-    const { tagIds } = await seedTagsWithParents(
+    await seedTagsWithParents(
       page,
       [{ name: 'Protein', color: 'green' }],
       [
@@ -827,7 +829,6 @@ test('user can delete a parent tag with cascade (deletes child tags too)', async
         { name: 'Grilled Chicken', typeIndex: 0, parentIndex: 0 },
       ],
     )
-    parentTagId = tagIds[0]
   }
 
   // Verify both tags appear on the tags list page
