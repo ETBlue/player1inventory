@@ -26,7 +26,6 @@ pnpm format       # Format with Biome — apps/web/src only; e2e/ formatting is 
 pnpm check        # Run all Biome checks — apps/web/src only
 pnpm typecheck    # tsc for apps/web, apps/server and e2e/
 pnpm typecheck:e2e      # tsc -p e2e/tsconfig.json (also the last step of pnpm build)
-pnpm typecheck:e2e:a11y # tsc for the one file e2e/tsconfig.json excludes — see issue #322 task 3
 pnpm storybook         # Start Storybook dev server
 pnpm storybook:build   # Build Storybook to apps/web/storybook-static/
 pnpm design            # Start design guide dev server (Astro/Starlight)
@@ -329,16 +328,15 @@ gate command passed.
 
 | Command | What it does | In the gate via |
 |---|---|---|
-| `pnpm typecheck:e2e` | `tsc -p e2e/tsconfig.json` — every `.ts` under `e2e/` except `tests/a11y.spec.ts` | the last step of root `pnpm build` |
+| `pnpm typecheck:e2e` | `tsc -p e2e/tsconfig.json` — every `.ts` under `e2e/`, no exclusions | the last step of root `pnpm build` |
 | `pnpm lint:e2e` | `biome lint ./e2e`, using the root `biome.jsonc` | the second half of root `pnpm lint` |
-| `pnpm typecheck:e2e:a11y` | `tsc -p e2e/tsconfig.a11y.json` — the one excluded file | **not in the gate** |
 
-`e2e/tests/a11y.spec.ts` is excluded from `e2e/tsconfig.json` on purpose. It carries 63
-`TS2559` errors, all the same mistake repeated once per `checkA11y` call. Fixing it narrows
-the accessibility scan, so it is a separate task (issue #322 task 3) that needs a
-measurement first. `pnpm typecheck:e2e:a11y` is how you check whether the exclusion is still
-needed: while it prints errors it is, and when it prints nothing, delete the exclusion,
-`e2e/tsconfig.a11y.json` and that script.
+For a few hours on 2026-10-11, `e2e/tests/a11y.spec.ts` was excluded from that tsconfig,
+with a second config `e2e/tsconfig.a11y.json` and a `typecheck:e2e:a11y` script as the
+removal condition. Issue #322 task 3 fixed the 63 `TS2559` errors, so all three are gone.
+**`pnpm typecheck:e2e` now covers every `.ts` under `e2e/`.** Proved by mutation the same
+day: flattening `AXE_OPTIONS` back to a bare `RunOptions` makes it exit 2 with 63 ×
+`TS2559` in that file.
 
 **Three traps when measuring `e2e/` type errors yourself.** All three were hit before this
 was wired up, and the first two look like success:
@@ -371,10 +369,9 @@ formatting errors in tabs and double quotes, which is Biome's default style and 
 repo's. The warning count was unchanged at 13, so the lint output alone does not reveal it.
 **Check the file count.**
 
-The repo now has **nine** tsconfigs: `apps/web/tsconfig.json`, `tsconfig.app.json`,
+The repo now has **eight** tsconfigs: `apps/web/tsconfig.json`, `tsconfig.app.json`,
 `tsconfig.node.json`, `apps/server/tsconfig.json`, `tsconfig.scripts.json`,
-`apps/design/tsconfig.json`, `packages/types/tsconfig.json`, `e2e/tsconfig.json` and
-`e2e/tsconfig.a11y.json`.
+`apps/design/tsconfig.json`, `packages/types/tsconfig.json` and `e2e/tsconfig.json`.
 
 **Take your own baseline before quoting any count above.**
 
@@ -1172,9 +1169,61 @@ you read one, do not trust it as evidence.
 
 **Biome lint (`pnpm lint`):** 37 a11y rules enabled in `apps/web/biome.json` — catches static violations (missing alt text, invalid ARIA, bad roles) at write time.
 
-**axe-playwright (`e2e/tests/a11y.spec.ts`):** Runtime a11y checks via `axe-core` targeting WCAG AA (`wcag2a`, `wcag2aa`, `wcag21aa`, `wcag22aa`) — the target is explicit via `AXE_OPTIONS` in the spec file. Covers **66 tests in `pwa`, and the same file collects 66 under `local` but runs 64** (counts measured 2026-09-20): 15 top-level page scans, 13 in `test.describe('detail page a11y')`, 27 in `test.describe('dark mode a11y')`, 9 mobile-viewport scans at 390×844 in `test.describe('mobile viewport a11y')`, and 2 in `test.describe('offline banner a11y')`. **Those last 2 run only in `pwa`** (since 2026-09-24, issue #302). They set `baseURL: PWA_WEB_URL`, so under `local` they ran against the same server with the same code — an exact duplicate — and they were the only reason a `--project=local` run needed the PWA preview server at all. A describe-level `test.skip` now skips them outside `pwa`. It has to be at describe level: the file's top-level `beforeEach` also calls `page.goto('/')`, so a body-level skip runs too late and the hook still hits port 5176. Run with `pnpm test:e2e a11y.spec.ts` — select it by path, not `--grep`. Dark mode is triggered by `page.addInitScript(() => localStorage.setItem('theme-preference', 'dark'))` in a `test.describe('dark mode a11y')` block.
+**axe-playwright (`e2e/tests/a11y.spec.ts`):** Runtime a11y checks via `axe-core` targeting WCAG AA (`wcag2a`, `wcag2aa`, `wcag21aa`, `wcag22aa`), set through `AXE_OPTIONS` in the spec file. **That filter only started working on 2026-10-11** — see *The WCAG filter had never applied* below. Covers **66 tests in `pwa`, and the same file collects 66 under `local` but runs 64** (counts measured 2026-09-20): 15 top-level page scans, 13 in `test.describe('detail page a11y')`, 27 in `test.describe('dark mode a11y')`, 9 mobile-viewport scans at 390×844 in `test.describe('mobile viewport a11y')`, and 2 in `test.describe('offline banner a11y')`. **Those last 2 run only in `pwa`** (since 2026-09-24, issue #302). They set `baseURL: PWA_WEB_URL`, so under `local` they ran against the same server with the same code — an exact duplicate — and they were the only reason a `--project=local` run needed the PWA preview server at all. A describe-level `test.skip` now skips them outside `pwa`. It has to be at describe level: the file's top-level `beforeEach` also calls `page.goto('/')`, so a body-level skip runs too late and the hook still hits port 5176. Run with `pnpm test:e2e a11y.spec.ts` — select it by path, not `--grep`. Dark mode is triggered by `page.addInitScript(() => localStorage.setItem('theme-preference', 'dark'))` in a `test.describe('dark mode a11y')` block.
 
 When adding a new page/route, add a corresponding test to `e2e/tests/a11y.spec.ts` for both light and dark mode.
+
+**The WCAG filter had never applied — found and fixed 2026-10-11 (issue #322 task 3).**
+`AXE_OPTIONS` was passed at the TOP level of `checkA11y`'s third argument. That argument is
+axe-playwright's own `AxeOptions` wrapper, and it forwards only `axeOptions.axeOptions` to
+axe (`axe-playwright/dist/index.js:111`), so the object was dropped and **axe ran with its
+own defaults**. The comment above the constant claimed the level was "explicitly set", and
+this section repeated it. Both were wrong. The 63 `TS2559` errors that said so were
+invisible because nothing type-checked `e2e/`.
+
+**The scans had been STRICTER than documented, not laxer. No violation was missed.** Axe's
+default set is a superset of the four tags: it also runs `best-practice` rules. So the fix
+NARROWS the gate, which is why it was measured first rather than just applied.
+
+Measured 2026-10-11 over **130 scans** — 64 in `local`, 66 in `pwa` — by running axe three
+times per scanned page (defaults, the WCAG tags, and the delta rules alone) and taking the
+union of `passes` + `violations` + `incomplete` + `inapplicable` rule ids:
+
+| Quantity | Count |
+|---|---|
+| rule ids evaluated with axe defaults | **89** |
+| rule ids evaluated with the four WCAG tags | **62** |
+| stopped running | **28** |
+| started running | **1** (`target-size`) |
+| of the 28, how many report a violation or an incomplete on any scanned page | **0** |
+
+The 28 that stopped are all tagged `best-practice` and none carries a WCAG tag:
+`accesskeys`, `aria-allowed-role`, `aria-dialog-name`, `aria-text`, `aria-treeitem-name`,
+`empty-heading`, `empty-table-header`, `frame-tested`, `heading-order`,
+`image-redundant-alt`, `label-title-only`, `landmark-banner-is-top-level`,
+`landmark-complementary-is-top-level`, `landmark-contentinfo-is-top-level`,
+`landmark-main-is-top-level`, `landmark-no-duplicate-banner`,
+`landmark-no-duplicate-contentinfo`, `landmark-no-duplicate-main`, `landmark-one-main`,
+`landmark-unique`, `meta-viewport-large`, `page-has-heading-one`,
+`presentation-role-conflict`, `region`, `scope-attr-valid`, `skip-link`, `tabindex`,
+`table-duplicate-name`.
+
+**One rule STARTED running: `target-size` (wcag22aa, SC 2.5.8).** Axe ships it
+`enabled: false`, so the default run skipped it. A tag filter overrides `enabled` —
+`matchTags` returns true on a tag match without consulting `rule.enabled` (axe.js:19848) —
+so naming `wcag22aa` turns it on. It passed all 130 scans. A comment in the spec had claimed
+`target-size` "still polices" the known-bad destructive confirm button; that was false until
+this fix, because the rule was not running at all.
+
+**To widen the gate again, add `'best-practice'` to `WCAG_AA_TAGS` in the spec file.**
+Nothing else needs to change. That is the one line to edit, recorded here so the narrowing
+is reversible rather than forgotten.
+
+Two shapes, one source of truth: `WCAG_AA_TAGS` feeds both `AXE_RUN_OPTIONS` (a bare axe
+`RunOptions`, for `getViolations`) and `AXE_OPTIONS` (the same thing nested, for
+`checkA11y`). The two dialog scans in `checkA11yExcludingContrastOn` use the first and now
+run the same rule set as the other 63; before this fix they also ran axe's defaults, so all
+65 agreed by accident.
 
 ### E2E Test Format
 

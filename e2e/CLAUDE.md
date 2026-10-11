@@ -817,9 +817,8 @@ Wired up 2026-10-11 (issue #322). Before that date nothing checked this director
 
 | Command | What it checks | Run in the gate by |
 |---|---|---|
-| `pnpm typecheck:e2e` | `tsc -p e2e/tsconfig.json` — every `.ts` here except `tests/a11y.spec.ts` | the last step of root `pnpm build` |
+| `pnpm typecheck:e2e` | `tsc -p e2e/tsconfig.json` — every `.ts` here, no exclusions | the last step of root `pnpm build` |
 | `pnpm lint:e2e` | `biome lint ./e2e`, using the root `biome.jsonc` | the second half of root `pnpm lint` |
-| `pnpm typecheck:e2e:a11y` | `tsc -p e2e/tsconfig.a11y.json` — the one excluded file | nothing. Not in the gate |
 
 Run them from the repo root. Both are clean today except for 13 Biome **warnings**, which do
 not fail the command: 6 `lint/suspicious/noExplicitAny` and 7 `lint/style/noNonNullAssertion`.
@@ -839,24 +838,30 @@ counts wrong, in one of three ways:
 a root-level program cannot see `apps/web`'s copy. Check with `ls node_modules/@types/node`
 from the repo root.
 
-**The honest count, measured 2026-10-11 with `e2e/tsconfig.json`: 63 errors, all `TS2559`,
-all in `e2e/tests/a11y.spec.ts`.** The old figures in this file — 78 in total across five
-files, with 5 × `TS2580` in `playwright.config.ts` — were all missing-`@types/node`
-artefacts except the 63. Earlier versions of this table also said 39 and 2 where the real
-numbers were 63 and 5. **Take your own baseline before quoting any number here.**
+**The count was 63 errors when this was wired up on 2026-10-11, all `TS2559`, all in
+`e2e/tests/a11y.spec.ts`. It is 0 now** — task 3 fixed them later the same day. The old
+figures in this file — 78 in total across five files, with 5 × `TS2580` in
+`playwright.config.ts` — were all missing-`@types/node` artefacts except the 63. Earlier
+versions of this table also said 39 and 2 where the real numbers were 63 and 5. **Take your
+own baseline before quoting any number here.**
 
-### Why `a11y.spec.ts` is excluded
+### `a11y.spec.ts` was excluded for a few hours, and is not any more
 
-`e2e/tsconfig.json` excludes it. Its 63 `TS2559` errors are one mistake repeated once per
-`checkA11y` call: `AXE_OPTIONS` is passed at the top level, where `axe-playwright` wants it
-nested under an `axeOptions` key. So axe has been running with its own defaults, and the
-WCAG AA filter the comment describes has never applied. Fixing it **narrows** the scan, so
-it needs a measurement first and is its own task — issue #322 task 3.
+From the morning of 2026-10-11 until later that day, `e2e/tsconfig.json` excluded it. Its 63
+`TS2559` errors were one mistake repeated once per `checkA11y` call: `AXE_OPTIONS` was
+passed at the top level, where `axe-playwright` wants it nested under an `axeOptions` key.
+So axe ran with its own defaults and the WCAG AA filter the comment described never applied.
 
-**How the next person knows the exclusion can go:** run `pnpm typecheck:e2e:a11y`. While it
-prints `TS2559` errors, the exclusion is still needed. When it prints nothing, task 3 is
-done — delete the `exclude` entry in `e2e/tsconfig.json`, delete `e2e/tsconfig.a11y.json`,
-and delete the `typecheck:e2e:a11y` script from the root `package.json`.
+Issue #322 task 3 measured what the filter would cost before applying it — 89 evaluated
+rules down to 62, 28 `best-practice` rules dropped, 1 WCAG 2.2 AA rule (`target-size`)
+gained, and none of the 28 reporting anything on 130 scans — then nested the options. With
+that done, three things were deleted: the `exclude` entry, `e2e/tsconfig.a11y.json`, and the
+`typecheck:e2e:a11y` script. The full rule list and the measurement are in the root
+`CLAUDE.md` under *A11y Testing*.
+
+`pnpm typecheck:e2e` now covers **every** `.ts` under `e2e/`. Proved by mutation on
+2026-10-11: flattening `AXE_OPTIONS` back to a bare `RunOptions` makes it exit 2 with 63 ×
+`TS2559` in that file.
 
 ### Formatting is deferred
 

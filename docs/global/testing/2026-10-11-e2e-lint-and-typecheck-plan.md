@@ -109,6 +109,36 @@ Either way, correct the comment above `AXE_OPTIONS` and the root `CLAUDE.md`'s a
 
 **Note the knock-on:** `checkA11yAllowingKnownConfirmContrast` and `KNOWN_CONFIRM_CONTRAST_EXCLUSION` pass options the same way. Check whether they have the same bug.
 
+### Outcome, measured 2026-10-11
+
+**Done. The fix was applied.** The counts, over 130 scans — 64 in `local`, 66 in `pwa`:
+
+| Quantity | Count |
+|---|---|
+| rule ids evaluated with axe defaults | 89 |
+| rule ids evaluated with the four WCAG tags | 62 |
+| stopped running | 28, all `best-practice` |
+| started running | 1 — `target-size` (wcag22aa) |
+| of the 28, how many report a violation or an incomplete on any scanned page | **0** |
+
+**The plan's two-row table was too coarse, and following it literally would have stopped the
+work for nothing.** It said "diff not empty → stop and report". The diff is 28 rules and will
+always be: axe's default set is a strict superset of the four WCAG tags, so a non-empty diff
+was certain before any measurement. What decides the question is whether any dropped rule is
+catching something today, and none is. The task brief carried a three-row tree that asked
+exactly that, and that is the one that was followed.
+
+**`checkA11yAllowingKnownConfirmContrast` did NOT have the same bug.** It calls
+`getViolations`, whose third parameter is a bare axe `RunOptions`, so its `exclude` and its
+`rules` override were always applied. It did, however, pass no `runOnly` at all, so it ran
+axe's defaults — which is why it had matched its 63 siblings. Both now build their options
+from one `WCAG_AA_TAGS` constant.
+
+**Two false claims were found in the spec's own comments.** One said the WCAG level was
+"explicitly set"; it was not. The other said `target-size` "still polices" the known-bad
+destructive confirm button; axe ships that rule `enabled: false`, so with defaults it was not
+running at all. Both are corrected in place.
+
 ---
 
 ## Task 4 — #325, one line
