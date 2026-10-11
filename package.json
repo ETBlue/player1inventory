@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently 'pnpm codegen:watch' 'pnpm --filter web dev' 'pnpm --filter server dev'",
-    "build": "pnpm codegen && pnpm --filter web build && pnpm --filter server build",
+    "build": "pnpm codegen && pnpm --filter web build && pnpm --filter server build && pnpm typecheck:e2e",
     "codegen": "graphql-codegen --config codegen.ts",
     "codegen:watch": "graphql-codegen --config codegen.ts --watch",
     "test": "pnpm -r test && pnpm test:spec",
@@ -18,7 +18,9 @@
     "test:e2e:debug": "playwright test --config=e2e/playwright.config.ts --debug",
     "test:e2e:cloud": "playwright test --config=e2e/playwright.config.ts --project=cloud",
     "test:e2e:cloud:ui": "playwright test --config=e2e/playwright.config.ts --project=cloud --ui",
-    "typecheck": "pnpm --filter web typecheck && pnpm --filter server typecheck",
+    "typecheck": "pnpm --filter web typecheck && pnpm --filter server typecheck && pnpm typecheck:e2e",
+    "typecheck:e2e": "tsc -p e2e/tsconfig.json",
+    "typecheck:e2e:a11y": "tsc -p e2e/tsconfig.a11y.json",
     "lint": "pnpm --filter web lint",
     "format": "pnpm --filter web format",
     "check": "pnpm --filter web check",
@@ -35,6 +37,7 @@
     "prepare": "husky"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.3.13",
     "@commitlint/cli": "^20.4.1",
     "@commitlint/config-conventional": "^20.4.1",
     "@graphql-codegen/cli": "^6.2.1",
@@ -44,10 +47,12 @@
     "@graphql-codegen/typescript-resolvers": "^5.1.7",
     "@parcel/watcher": "^2.5.6",
     "@playwright/test": "^1.58.2",
+    "@types/node": "^24.10.10",
     "axe-playwright": "^2.2.2",
     "concurrently": "^9.2.1",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
+    "typescript": "~5.9.3",
     "wrangler": "^4.143.0"
   },
   "lint-staged": {

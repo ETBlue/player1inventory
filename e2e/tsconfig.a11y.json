@@ -1,0 +1,16 @@
+{
+  // Type-checks `e2e/tests/a11y.spec.ts` ONLY — the one file `tsconfig.json`
+  // excludes. Run it with `pnpm typecheck:e2e:a11y`.
+  //
+  // It exists so the removal condition for that exclusion is one command rather
+  // than a comment nobody can test. While this prints 63 × TS2559, the
+  // exclusion is still needed. When it prints nothing, issue #322 task 3 is
+  // done: delete the exclusion in `tsconfig.json`, delete this file, and delete
+  // the `typecheck:e2e:a11y` script.
+  //
+  // It is NOT part of the verification gate. Adding it would make the gate red
+  // on a known bug that this PR is not allowed to fix.
+  "extends": "./tsconfig.json",
+  "include": ["tests/a11y.spec.ts"],
+  "exclude": []
+}

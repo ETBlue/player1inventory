@@ -1,0 +1,68 @@
+{
+  // Type-checks `e2e/` and emits nothing. Run it with `pnpm typecheck:e2e`;
+  // the root `pnpm build` runs it too, so the verification gate covers it.
+  //
+  // Before this file existed, NOTHING checked this directory (issue #322).
+  // Playwright transpiles each spec with esbuild, which strips types without
+  // checking them, so a type error in a spec was reported nowhere.
+  //
+  // WHY IT SITS HERE AND NOT AT THE REPO ROOT: every import under `e2e/` is
+  // relative or a bare package name — nothing reaches into `apps/web` or
+  // `apps/server` — so this is a self-contained program and belongs beside the
+  // files it checks. `apps/server/tsconfig.scripts.json` sits one level up from
+  // `scripts/` only because `apps/server/tsconfig.json` already holds the
+  // sibling slot and emits; there is no such conflict here.
+  //
+  // SAFE FOR PLAYWRIGHT: Playwright does read a `tsconfig.json` next to a spec,
+  // but it uses only `allowJs`, `baseUrl` and `paths` from it
+  // (playwright/lib/transform/transform.js:76-82). This file sets none of the
+  // three, so adding it changes nothing about how specs run.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+
+    // BOTH libs are needed, and leaving DOM out is the mistake to avoid.
+    // The spec bodies run in Node, but their `page.evaluate` and
+    // `addInitScript` callbacks run in the browser and touch `indexedDB`,
+    // `localStorage`, `document` and `requestAnimationFrame`. Measured
+    // 2026-10-11: `lib: ["ES2023"]` alone reports 210 errors, of which 147 are
+    // artefacts of the missing DOM lib (121 × TS2304 `Cannot find name
+    // 'indexedDB'`, 23 × TS7031, and more). With DOM the count is 63.
+    //
+    // The cost of DOM is that browser globals are also in scope in the Node
+    // half of a spec, so using `document` outside an `evaluate` callback still
+    // type-checks. `apps/web` makes the same trade.
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+
+    // `@types/node` is a ROOT devDependency for this line's sake. pnpm does not
+    // hoist, so without it `typeRoots` finds nothing and `tsc` reports exactly
+    // one error — TS2688, "Cannot find type definition file for 'node'" — and
+    // bails before checking any file. That looks like success and is not.
+    // Check with `ls node_modules/@types/node` from the repo root.
+    "types": ["node"],
+
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["**/*.ts"],
+  "exclude": [
+    "node_modules",
+
+    // TEMPORARY — remove when issue #322 task 3 lands.
+    //
+    // `a11y.spec.ts` carries 63 × TS2559, all the same mistake repeated once per
+    // `checkA11y` call: `AXE_OPTIONS` is passed at the top level where
+    // `axe-playwright` wants it nested under an `axeOptions` key. Fixing it
+    // narrows the accessibility scan from axe's default rule set to four WCAG
+    // tags, so it needs a measurement first and is its own task.
+    //
+    // HOW TO KNOW THIS LINE CAN GO: run `pnpm typecheck:e2e:a11y`, which checks
+    // this one file with the same options. While it still prints TS2559 errors,
+    // the exclusion is earning its place. When it prints nothing, delete this
+    // line, delete `e2e/tsconfig.a11y.json`, and delete the
+    // `typecheck:e2e:a11y` script.
+    "tests/a11y.spec.ts"
+  ]
+}
