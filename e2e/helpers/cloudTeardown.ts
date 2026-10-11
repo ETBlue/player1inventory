@@ -72,12 +72,16 @@ export async function cleanupCloudData(
   request: APIRequestContext,
   userId: string = E2E_USER_ID,
 ): Promise<CleanupResponse> {
-  const response = await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
+  // One URL for the request and for every error message below. Issue #325: all
+  // three messages used to spell out the literal `/e2e/cleanup`, so they dropped
+  // the host and port, and would have kept naming the old path after a rename.
+  const url = `${CLOUD_SERVER_URL}/e2e/cleanup`
+  const response = await request.delete(url, {
     headers: { 'x-e2e-user-id': userId },
   })
   if (!response.ok()) {
     throw new Error(
-      `cleanupCloudData(${userId}): DELETE /e2e/cleanup returned ${response.status()} ${response.statusText()} — ${await response.text()}`,
+      `cleanupCloudData(${userId}): DELETE ${url} returned ${response.status()} ${response.statusText()} — ${await response.text()}`,
     )
   }
 
@@ -85,7 +89,7 @@ export async function cleanupCloudData(
   const deleted = body.deleted
   if (!deleted || typeof deleted !== 'object') {
     throw new Error(
-      `cleanupCloudData: DELETE /e2e/cleanup returned no "deleted" object — got ${JSON.stringify(body)}`,
+      `cleanupCloudData: DELETE ${url} returned no "deleted" object — got ${JSON.stringify(body)}`,
     )
   }
 
@@ -94,7 +98,7 @@ export async function cleanupCloudData(
   )
   if (missing.length > 0) {
     throw new Error(
-      `cleanupCloudData: DELETE /e2e/cleanup returned no deleted count for ${missing.join(', ')} — a model was dropped from the delete list in apps/server/src/index.ts. Got ${JSON.stringify(deleted)}`,
+      `cleanupCloudData: DELETE ${url} returned no deleted count for ${missing.join(', ')} — a model was dropped from the delete list in apps/server/src/index.ts. Got ${JSON.stringify(deleted)}`,
     )
   }
 
