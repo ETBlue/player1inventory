@@ -112,18 +112,18 @@ because `pantry.*` had no key for the detail views at all.
 | Key | English | Traditional Chinese |
 |---|---|---|
 | `noItems` | No items | 沒有品項 |
-| `vendor.allAssigned` | All items are assigned to vendors | 所有品項都已指定供應商 |
-| `vendor.noneAssigned` | No items are assigned to this vendor | 沒有品項指定給這個供應商 |
-| `recipe.allAssigned` | All items are assigned to recipes | 所有品項都已加入食譜 |
-| `recipe.noneAssigned` | No items are assigned to this recipe | 沒有品項加入這個食譜 |
-| `shelf.allAssigned` | All items are assigned to shelves | 所有品項都已放上貨架 |
+| `vendor.allAssigned` | All items are assigned to vendors | 沒有未指定供應商的品項 |
+| `vendor.noneAssigned` | No items are assigned to this vendor | 沒有任何品項指定給這個供應商 |
+| `recipe.allAssigned` | All items are assigned to recipes | 沒有未加入食譜的品項 |
+| `recipe.noneAssigned` | No items are assigned to this recipe | 沒有任何品項加入這個食譜 |
+| `shelf.allAssigned` | All items are assigned to shelves | 沒有未放上貨架的品項 |
 | `shelf.noFilterMatch` | No items match the filter | 沒有符合篩選條件的品項 |
 | `shelf.searchToAdd` | Search to add items to this shelf | 可以透過搜尋功能新增品項到這個貨架 |
 | `noMatch.title` | No matching items | 沒有符合的品項 |
-| `noMatch.vendor` | No item from this vendor matches your search | 這個供應商沒有符合搜尋條件的品項 |
-| `noMatch.recipe` | No item in this recipe matches your search | 這個食譜沒有符合搜尋條件的品項 |
-| `noMatch.shelf` | No item on this shelf matches your search | 這個貨架沒有符合搜尋條件的品項 |
-| `noMatch.shelfFilters` | No item on this shelf matches the current filters | 這個貨架沒有符合目前篩選條件的品項 |
+| `noMatch.vendor` | No item from this vendor matches your search | 沒有符合搜尋條件的品項指定給這個供應商 |
+| `noMatch.recipe` | No item in this recipe matches your search | 沒有符合搜尋條件的品項加入這個食譜 |
+| `noMatch.shelf` | No item on this shelf matches your search | 沒有符合搜尋條件的品項加入這個貨架 |
+| `noMatch.shelfFilters` | No item on this shelf matches the current filters | 沒有符合篩選條件的品項加入這個貨架 |
 
 Two notes for anyone editing them:
 
