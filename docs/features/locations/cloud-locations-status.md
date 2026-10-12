@@ -1592,20 +1592,26 @@ What it shipped, in one list:
 ### Issue #330 — `replace` silently skips the rows it was asked to overwrite
 
 Found by task 4, filed as [#330](https://github.com/ETBlue/player1inventory/issues/330),
-**not fixed here**.
+**not fixed here**. **✅ Fixed on 2026-10-12** on `fix/import-replace-batch-key` — see
+[the bug doc](../settings/2026-10-12-bug-import-replace-batch-key.md). What follows is 4b's
+record of the defect, kept as written.
 
 On the `replace` strategy `bulkCreate` and `bulkUpsert` share **one** `ImportSession`, and
-the batch key is `${entityType}:${i}` with **no mode in it**. So when an entity has rows in
-both passes, the upsert pass finds the create pass's key and **skips its own batch**. A
-payload with one new item and one conflicting item therefore never updates the conflicting
+the batch key was `${entityType}:${i}` with **no mode in it**. So when an entity had rows in
+both passes, the upsert pass found the create pass's key and **skipped its own batch**. A
+payload with one new item and one conflicting item therefore never updated the conflicting
 item — exactly the data the user chose to replace, silently not replaced.
 
-Reachable today for all **nine** older entities. Neither of 4b's two new entities can hit
-it, because `partitionPayload` routes each to exactly one pass. Recorded in a comment at the
-key line.
+Reachable for all **nine** older entities. Neither of 4b's two new entities could hit it,
+because `partitionPayload` routes each to exactly one pass. Recorded in a comment at the key
+line.
 
-It needs `replace` with rows in both passes, which no E2E spec drives — `ImportCard` reaches
-`replace` only through the conflict dialog, and nothing drives that dialog.
+**The last paragraph here used to read "it needs `replace` with rows in both passes, which no
+E2E spec drives".** That stopped being true before the fix: cloud-parity PR C added
+`e2e/tests/settings/import-strategies.spec.ts`, which drives the conflict dialog and builds
+exactly that mixed fixture. That spec is now the regression guard — the key is
+`${mode}:${entityType}:${i}`, and dropping `mode` again makes its cloud run report
+`Expected: "Fixture Item" / Received: "Stale Name"`.
 
 ### The regression tasks 3 and 6 made together, and the process rule it produced
 
