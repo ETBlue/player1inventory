@@ -11,7 +11,7 @@ PR 2 of two. PR 1 (#345) made `e2e/` type-checked and linted, which is why it we
 
 Every server unit test runs against a hand-written Prisma fake. **A resolver named by no `cloud` spec has never run against real Postgres.** Issue #284 found three real bugs that way which ~2000 passing unit tests could not see.
 
-Measured on this branch: **29 spec files under `e2e/tests/`, 22 in the `cloud` project's `testMatch`, 7 outside.**
+Measured when this plan was written: **29 spec files under `e2e/tests/`, 22 in the `cloud` project's `testMatch`, 7 outside.** After the three tasks below: **25 in, 4 outside.**
 
 ## What the investigation changed
 
@@ -177,3 +177,115 @@ Nothing. Tests.
 | Honest documentation | two false comments that each told a reader this work was not worth doing |
 
 **DX cost:** the `cloud` project grows by three files and about 1.5 minutes, on a machine where swap already reaches its limit.
+
+---
+
+## Outcome — all four tasks done, 2026-10-12
+
+| Commit | What |
+|---|---|
+| `b713036c` | this plan |
+| `fca94bf4` | `settings/shelves.spec.ts` into cloud, and its delete assertion made real |
+| `6e774b42` | `Fixture` gains `tagTypes?`, `tags?`, `items[].tagIds?`, threaded through both seed helpers |
+| `0ac6f632` | `settings-global-pages.spec.ts` test 1 into cloud; test 2 skipped there |
+| `a9dcdb7d` | `Fixture` gains `shelves[].filterConfig`; the inline shelf type becomes a named `FixtureShelf` |
+| `3aa6df52` | `unified-item-search.spec.ts` (10 tests) into cloud |
+
+Measured after the last commit: **cloud 121 collected across 25 files** (from 108 / 22),
+**local 179 across 23 files — unchanged**, web **2304 / 251**, server **391 / 27**.
+`local` did not move because all three specs already ran there, and the only skip added is a
+runtime one.
+
+**`applyShelfFilterPicks` passed first contact with Postgres.** 2 tests in 29.9s, with no
+adjustment to the spec or to the resolver. The plan told the implementer to "expect the
+possibility of a real failure on first contact" — that was the right thing to write, and it
+did not happen. The next reader should not expect drama here.
+
+## What #323 got wrong
+
+| Claim in the issue | What is true |
+|---|---|
+| `onboarding.spec.ts` is a cloud candidate | **It is not.** `useOnboardingSetup` writes to Dexie in both modes, so its third test would reach zero resolvers in cloud and still pass `toHaveURL('/')`. Now filed as the product gap **#347** |
+| four `Fixture` gaps | **six.** `shelves[].filterConfig` and `items[].tagIds` were missing from its account. Of its own four, `inventoryLogs` and `cartItems`/`shoppingCarts` are needed by none of these specs |
+| — | **`applyShelfFilterPicks` is never named**, and it was the highest-value target in the issue |
+| — | **The cheapest spec and the most valuable spec are different.** `settings/shelves.spec.ts` is 1 test and seconds; `unified-item-search.spec.ts` is 10 tests and about 1.5 minutes, and it is the one that reaches the transaction |
+
+## What this plan got wrong
+
+- **Task 3's mutation check said "drop one of its `createMany` calls".** "One of" can be
+  satisfied by the choice that proves nothing. Measured: commenting out
+  `tx.itemTag.createMany` (`shelf.resolver.ts:116`) turns **2 tests red**; commenting out
+  `tx.itemVendor.createMany` (`:123`) leaves **all 10 passing**. A mutation check must name
+  the specific branch, and must check that the other branches are reached at all.
+- **Task 3 treated test 4's literal `'no-vendor'` URL as an open risk. It never was.** It is
+  a route param sentinel: `apps/web/src/routes/shopping/$vendorId.tsx:63` maps it to `null`
+  before `useVendorCart` sees it. Issue #327's cart-id collision came from an import payload,
+  not from this route.
+- **The plan did not predict the assertion hole task 1 found**, which turned out to be the
+  most valuable finding in the PR. See below.
+
+## The finding that outlives this PR
+
+**An absence or zero-count assertion placed after a mutation can be satisfied by the loading
+state.** Measured 2026-10-12:
+
+| Spec | Assertion | Mutation | Result |
+|---|---|---|---|
+| `settings/shelves.spec.ts` in `cloud` | `expect(getByText('My Test Shelf')).not.toBeVisible()` | `deleteShelf` resolver made a no-op returning `true` | **passed** in 11.1s |
+| the same spec at `HEAD` before this PR, in `local` | the same assertion | local `deleteShelf` in `db/operations.ts` made a no-op | **passed** |
+| `settings-global-pages.spec.ts` | two `toHaveCount(0)` checks | — | the same shape, caught by reading it before running |
+
+The page renders an empty list while its refetch is in flight, so the first paint satisfies
+the absence check and the test ends before the real data arrives.
+
+**This was not caused by moving specs into cloud.** The local-only spec had the same hole and
+nobody had seen it. Writing the mutation check is what exposed this class of bug.
+
+The fix is to assert something **present** first, so the list is proven rendered, and then
+assert the absence — or to read the state back from the backend. A fixed
+`page.waitForTimeout` also works and goes stale, so it was rejected.
+
+Three more lessons came out of tasks 2 and 3, all recorded in root `CLAUDE.md` under
+*Proving a Test Works (Mutation Check)*:
+
+- **The obvious locator is often the weak one.** `getByRole('checkbox', { name: 'Remove Milk' })`
+  makes a broken behaviour fail as a locator timeout. `/^(Add|Remove) Milk$/` makes the same
+  mutation fail as `Expected: checked / Received: unchecked`.
+- **`expect(plainValue)` has no auto-retry, and `.click()` resolves before the mutation
+  commits.** A plain backend readback after a click fails against **correct** code — measured,
+  `Expected value: "item-milk" / Received array: []`. Use `expect.poll`.
+- **The branches of one transaction are not interchangeable.** See above.
+
+## Two false comments corrected
+
+- `settings-global-pages.spec.ts` said cloud has no `ItemStock` and no locations, so neither
+  behaviour was meaningful there. Untrue since cloud-locations PR 1, and the likeliest reason
+  nobody tried the file in cloud for seven months.
+- `unified-item-search.spec.ts` referred to "the `test.skip` guards below". That file has
+  never had a single `test.skip` call. The `cloud` project's `testMatch` was the only thing
+  excluding it.
+
+## Known gaps
+
+**Write the coverage claim honestly: `applyShelfFilterPicks` now runs against real SQL, and
+its tag branch is covered by mutation. Its vendor and recipe branches, and its concurrency
+guard, are not.** All three gaps were measured on 2026-10-12, not guessed:
+
+1. **`tx.itemVendor.createMany` (`shelf.resolver.ts:123`) is reached by no test.** Commenting
+   it out leaves all 10 cloud tests passing. Both filter shelves in the spec use tag axes
+   only, so `addVendorIds` is always empty.
+2. **`tx.recipeItem.create` (`:137`) is reached by no test.** No filter shelf in the spec has
+   a recipe axis.
+3. **The `READ COMMITTED` deadlock the resolver's own comment guards against is unproven.**
+   The tests are serial single-writer (`workers: 1`, `fullyParallel: false`), so nothing races
+   a concurrent `updateItem` on the same item.
+
+Also still open:
+
+- **`onboarding.spec.ts` stays out of `cloud`** until #347 makes `useOnboardingSetup`
+  mode-aware.
+- **`settings/shelves.spec.ts` seeds one location and no items**, so it says nothing about
+  location scoping or shelf membership. Same for `settings-global-pages.spec.ts`: one
+  location means "stock here" and "stock anywhere" are the same rows.
+- **`Fixture` still has no `inventoryLogs` and no `cartItems` / `shoppingCarts`**, the two
+  gaps #323 listed that these three specs did not need.
