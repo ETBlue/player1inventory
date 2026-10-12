@@ -209,7 +209,9 @@ describe('Pantry index stories smoke tests', () => {
     render(<VendorDetailViewSearchNoMatch />)
     expect(await screen.findByText('No matching items')).toBeInTheDocument()
     expect(
-      screen.getByText('No item from this vendor matches your search'),
+      screen.getByText(
+        'No item matching your search is assigned to this vendor',
+      ),
     ).toBeInTheDocument()
     // The empty-group message would be a false statement here — Milk
     // Chocolate IS assigned to Costco.

@@ -118,12 +118,12 @@ because `pantry.*` had no key for the detail views at all.
 | `recipe.noneAssigned` | No items are assigned to this recipe | 沒有任何品項加入這個食譜 |
 | `shelf.allAssigned` | All items are assigned to shelves | 沒有未放上貨架的品項 |
 | `shelf.noFilterMatch` | No items match the filter | 沒有符合篩選條件的品項 |
-| `shelf.searchToAdd` | Search to add items to this shelf | 可以透過搜尋功能新增品項到這個貨架 |
+| `shelf.searchToAdd` | Search to add items to this shelf | 可以透過搜尋功能將品項放上這個貨架 |
 | `noMatch.title` | No matching items | 沒有符合的品項 |
-| `noMatch.vendor` | No item from this vendor matches your search | 沒有符合搜尋條件的品項指定給這個供應商 |
-| `noMatch.recipe` | No item in this recipe matches your search | 沒有符合搜尋條件的品項加入這個食譜 |
-| `noMatch.shelf` | No item on this shelf matches your search | 沒有符合搜尋條件的品項加入這個貨架 |
-| `noMatch.shelfFilters` | No item on this shelf matches the current filters | 沒有符合篩選條件的品項加入這個貨架 |
+| `noMatch.vendor` | No item matching your search is assigned to this vendor | 沒有符合搜尋條件的品項指定給這個供應商 |
+| `noMatch.recipe` | No item matching your search is assigned to this recipe | 沒有符合搜尋條件的品項加入這個食譜 |
+| `noMatch.shelf` | No item matching your search is on this shelf | 沒有符合搜尋條件的品項放上這個貨架 |
+| `noMatch.shelfFilters` | No item matching the filter is on this shelf | 沒有符合篩選條件的品項放上這個貨架 |
 
 Two notes for anyone editing them:
 
@@ -136,8 +136,39 @@ Two notes for anyone editing them:
 
 The nearest existing wording, `shopping.emptyFiltered.title` ("No items match the
 current filters"), was not reused for the search cases: it talks about filters, and
-these messages are about a search term. It **was** the model for
-`noMatch.shelfFilters`, which really is about filters.
+these messages are about a search term. It was the first model for
+`noMatch.shelfFilters`, which really is about filters, but the copy revision below
+replaced that shape.
+
+#### Copy revision, same day
+
+The first version of these 13 strings gave the empty-group case and the no-match case
+two different sentence shapes. The owner rewrote the Traditional Chinese so the two
+read as a matched pair, then the English followed.
+
+The Chinese shape is: 沒有 + qualifier + 品項 + relationship clause. Only the
+qualifier changes between the pair — 任何 for the empty case, 符合搜尋條件的 or
+符合篩選條件的 for the no-match case. The shelf verb was also unified to 放上.
+
+The four `noMatch.*` descriptions in `en.json` now use the same shape: the qualifier
+sits on the subject and the relationship clause is the same as its partner's.
+
+| Key | English before | English after |
+|---|---|---|
+| `noMatch.vendor` | No item from this vendor matches your search | No item matching your search is assigned to this vendor |
+| `noMatch.recipe` | No item in this recipe matches your search | No item matching your search is assigned to this recipe |
+| `noMatch.shelf` | No item on this shelf matches your search | No item matching your search is on this shelf |
+| `noMatch.shelfFilters` | No item on this shelf matches the current filters | No item matching the filter is on this shelf |
+
+`noMatch.title` ("No matching items") was not touched, and neither was any
+`noneAssigned`, `allAssigned`, `noFilterMatch` or `searchToAdd` value.
+
+The shelf keys say "is on this shelf" rather than "is assigned to this shelf". That
+matches TW's 放上 and `shelf.searchToAdd` ("Search to add items to this shelf"): an
+item is *added to* a shelf, and then it *is on* it.
+
+Checked after the edit: all 13 `pantry.detail.*` values are different from each other,
+and none equals any of the other 581 string values in `en.json`.
 
 ## Test Added
 
@@ -175,16 +206,27 @@ Every one was run, and every one went red on exactly the right test.
 
 | Mutation | Result |
 |---|---|
-| `VendorDetailView` guard back to `sortedItems.length === 0` | 1 failed / 51 passed. `TestingLibraryElementError: Unable to find an element with the text: No matching items.` on the new vendor test |
-| `RecipeDetailView` guard back to `sortedItems.length === 0` | 1 failed / 51 passed. Same error text, on the new recipe test |
-| `ShelfDetailView` guard back to `sortedInShelfItems.length === 0` | 1 failed / 51 passed. Same error text, on the new shelf test |
-| `ShelfDetailView`: always use `noMatch.shelf`, dropping the `trimmedSearch` branch | 1 failed / 52 passed. `Unable to find an element with the text: No item on this shelf matches the current filters.` on the filter test |
-| `t('pantry.detail.noMatch.vendor')` renamed to a key that does not exist | 1 failed / 51 passed. `Unable to find an element with the text: No item from this vendor matches your search.` |
+| `VendorDetailView` guard back to `sortedItems.length === 0` | 1 failed / 52 passed. `TestingLibraryElementError: Unable to find an element with the text: No matching items.` on the new vendor test |
+| `RecipeDetailView` guard back to `sortedItems.length === 0` | 1 failed / 52 passed. Same error text, on the new recipe test |
+| `ShelfDetailView` guard back to `sortedInShelfItems.length === 0` | **2** failed / 51 passed. Same error text, on the new shelf test AND on the unsorted-filter test — both reach this one guard |
+| `ShelfDetailView`: always use `noMatch.shelf`, dropping the `trimmedSearch` branch | 1 failed / 52 passed. `Unable to find an element with the text: No item matching the filter is on this shelf.` on the filter test |
+| `t('pantry.detail.noMatch.vendor')` renamed to a key that does not exist | 2 failed / 75 passed across `index.test.tsx` + `index.stories.test.tsx`. `Unable to find an element with the text: No item matching your search is assigned to this vendor.` in both |
 | `t('pantry.detail.vendor.noneAssigned')` renamed to a key that does not exist | 1 failed / 52 passed. `Unable to find an element with the text: No items are assigned to this vendor.` — so the extracted strings are asserted too, not only the new ones |
 
 **In all three guard mutations the three renamed empty-group tests stayed green.**
 That is the point of the rename: those fixtures cannot see this bug, and the new ones
 can.
+
+**Every row above was re-run after the copy revision**, with
+`npx vitest run src/routes/index.test.tsx src/routes/index.stories.test.tsx` from
+`apps/web`. Changing a test assertion to match new copy is exactly how a test stops
+being able to fail, so the whole table was re-measured rather than edited.
+
+The re-run corrected three figures that had been wrong since the first write-up. The
+file holds **53** tests, so "1 failed / 51 passed" cannot be right for any of them:
+the two single-failure guard rows are 1 failed / **52** passed, and the
+`ShelfDetailView` guard row is **2** failed / 51 passed. The bad-key row also now
+names both files, because the story smoke test asserts the same string.
 
 The i18n change is covered by tests for the English text only. The Traditional Chinese
 strings are checked for key parity by

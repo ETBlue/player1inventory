@@ -161,10 +161,10 @@
       },
       "noMatch": {
         "title": "No matching items",
-        "vendor": "No item from this vendor matches your search",
-        "recipe": "No item in this recipe matches your search",
-        "shelf": "No item on this shelf matches your search",
-        "shelfFilters": "No item on this shelf matches the current filters"
+        "vendor": "No item matching your search is assigned to this vendor",
+        "recipe": "No item matching your search is assigned to this recipe",
+        "shelf": "No item matching your search is on this shelf",
+        "shelfFilters": "No item matching the filter is on this shelf"
       }
     },
     "empty": {

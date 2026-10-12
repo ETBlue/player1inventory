@@ -1262,7 +1262,7 @@ describe('Home page filtering integration', () => {
       // And the pane is NOT blank — it carries the no-match message
       expect(screen.getByText('No matching items')).toBeInTheDocument()
       expect(
-        screen.getByText('No item on this shelf matches your search'),
+        screen.getByText('No item matching your search is on this shelf'),
       ).toBeInTheDocument()
 
       // And NOT the empty-group message, which would be a false statement:
@@ -1323,10 +1323,10 @@ describe('Home page filtering integration', () => {
       // search wording and not the empty-group wording
       expect(screen.getByText('No matching items')).toBeInTheDocument()
       expect(
-        screen.getByText('No item on this shelf matches the current filters'),
+        screen.getByText('No item matching the filter is on this shelf'),
       ).toBeInTheDocument()
       expect(
-        screen.queryByText('No item on this shelf matches your search'),
+        screen.queryByText('No item matching your search is on this shelf'),
       ).not.toBeInTheDocument()
       expect(screen.queryByText('No items')).not.toBeInTheDocument()
       expect(
@@ -1893,7 +1893,9 @@ describe('Home page filtering integration', () => {
       // And the pane is NOT blank — it carries the no-match message
       expect(screen.getByText('No matching items')).toBeInTheDocument()
       expect(
-        screen.getByText('No item from this vendor matches your search'),
+        screen.getByText(
+          'No item matching your search is assigned to this vendor',
+        ),
       ).toBeInTheDocument()
 
       // And NOT the empty-group message, which would be a false statement:
@@ -2290,7 +2292,9 @@ describe('Home page filtering integration', () => {
       // And the pane is NOT blank — it carries the no-match message
       expect(screen.getByText('No matching items')).toBeInTheDocument()
       expect(
-        screen.getByText('No item in this recipe matches your search'),
+        screen.getByText(
+          'No item matching your search is assigned to this recipe',
+        ),
       ).toBeInTheDocument()
 
       // And NOT the empty-group message, which would be a false statement:
