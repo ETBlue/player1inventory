@@ -11,10 +11,17 @@ import {
 // E2E_USER_ID.
 //
 // Every entity except a location keeps the fixture's own fixed id: `ItemInput`,
-// `VendorInput`, `ShelfInput` and `RecipeInput` all declare `id: ID!`. There is
-// no `LocationInput` and no `ItemStockInput` in the import schema until PR 4,
-// so location ids have to come back from the server and stock is written one
-// row at a time through `upsertItemStock`.
+// `VendorInput`, `TagTypeInput`, `TagInput`, `ShelfInput` and `RecipeInput` all
+// declare `id: ID!`.
+//
+// A LOCATION IS THE EXCEPTION, and not for want of a mutation: cloud locations
+// PR 4a added `bulkCreateLocations(LocationInput)` and
+// `bulkCreateItemStocks(ItemStockImportInput)`, so the import schema now has
+// both. (This comment claimed it had neither "until PR 4" — that stopped being
+// true when 4a landed.) The reason is the fixture itself: `FixtureLocation`
+// carries a symbolic `key`, never an id, so there is no location id to import.
+// Ids come back from `createLocation`, and stock is written one row at a time
+// through `upsertItemStock`.
 
 type LocationRow = { id: string; name: string; isDefault: boolean }
 type StockRow = { itemId: string; locationId: string }
@@ -23,6 +30,8 @@ const LOCATIONS_QUERY = `query { locations { id name isDefault } }`
 const CREATE_LOCATION = `mutation ($name: String!) { createLocation(name: $name) { id name isDefault } }`
 const RENAME_LOCATION = `mutation ($id: ID!, $name: String!) { updateLocation(id: $id, input: { name: $name }) { id name } }`
 const BULK_VENDORS = `mutation ($vendors: [VendorInput!]!) { bulkCreateVendors(vendors: $vendors) { id } }`
+const BULK_TAG_TYPES = `mutation ($tagTypes: [TagTypeInput!]!) { bulkCreateTagTypes(tagTypes: $tagTypes) { id } }`
+const BULK_TAGS = `mutation ($tags: [TagInput!]!) { bulkCreateTags(tags: $tags) { id } }`
 const BULK_ITEMS = `mutation ($items: [ItemInput!]!) { bulkCreateItems(items: $items) { id } }`
 const BULK_SHELVES = `mutation ($shelves: [ShelfInput!]!) { bulkCreateShelves(shelves: $shelves) { id } }`
 const BULK_RECIPES = `mutation ($recipes: [RecipeInput!]!) { bulkCreateRecipes(recipes: $recipes) { id } }`
@@ -126,12 +135,42 @@ export async function seedCloudFixture(
     await gql(BULK_VENDORS, { vendors: fixture.vendors })
   }
 
+  // TAG TYPES BEFORE TAGS, AND BOTH BEFORE ITEMS. Two silent drops make this
+  // order mandatory rather than tidy:
+  //   * `bulkCreateTags` keeps only tags whose `typeId` already exists as a
+  //     `TagType` row (import.resolver.ts line 512).
+  //   * `bulkCreateItems` keeps only `tagIds` that already exist as a `Tag`
+  //     row (import.resolver.ts line 476).
+  // Neither raises an error, so the wrong order gives a seed that answers 200
+  // and writes less than the fixture asked for.
+  //
+  // `TagTypeInput` and `TagInput` both declare `id: ID!`, so these rows keep
+  // the fixture's own ids and a spec can navigate by literal id. Neither input
+  // has a timestamp field, which is why no `now` is sent here.
+  if (fixture.tagTypes && fixture.tagTypes.length > 0) {
+    await gql(BULK_TAG_TYPES, { tagTypes: fixture.tagTypes })
+  }
+
+  if (fixture.tags && fixture.tags.length > 0) {
+    await gql(BULK_TAGS, {
+      tags: fixture.tags.map((tag) => ({
+        id: tag.id,
+        name: tag.name,
+        typeId: tag.typeId,
+        // Nullable in `TagInput`. An omitted key sends `null`, which is what a
+        // top-level tag holds; `seedLocalFixture` leaves the Dexie field unset
+        // for the same input.
+        parentId: tag.parentId ?? null,
+      })),
+    })
+  }
+
   if (fixture.items.length > 0) {
     await gql(BULK_ITEMS, {
       items: fixture.items.map((item) => ({
         id: item.id,
         name: item.name,
-        tagIds: [],
+        tagIds: item.tagIds ?? [],
         vendorIds: item.vendorIds ?? [],
         // `ItemInput` is CONFIGURATION ONLY since cloud locations PR 5 removed
         // the five per-location state fields from it. Sending them here would

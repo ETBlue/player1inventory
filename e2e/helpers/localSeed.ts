@@ -66,6 +66,42 @@ export async function seedLocalFixture(
     )
   }
 
+  // Tag types first, then tags, then items. Local Dexie has no foreign keys,
+  // so this order is not required here — it matches `seedCloudFixture`, where
+  // it IS required, so the two paths stay readable side by side.
+  //
+  // Neither row carries a timestamp: `createTagType` and `createTag`
+  // (apps/web/src/db/operations.ts) write none, and `TagType` / `Tag`
+  // (packages/types/src/index.ts) declare none. The old hand-written seed in
+  // settings-global-pages.spec.ts added `createdAt` / `updatedAt` to both,
+  // which no app-created row has.
+  if (fixture.tagTypes && fixture.tagTypes.length > 0) {
+    await seedRows(
+      page,
+      'tagTypes',
+      fixture.tagTypes.map((tagType) => ({
+        id: tagType.id,
+        name: tagType.name,
+        color: tagType.color,
+      })),
+    )
+  }
+
+  if (fixture.tags && fixture.tags.length > 0) {
+    await seedRows(
+      page,
+      'tags',
+      fixture.tags.map((tag) => ({
+        id: tag.id,
+        name: tag.name,
+        typeId: tag.typeId,
+        // `Tag.parentId` is optional, so an omitted key leaves the Dexie field
+        // absent rather than writing `undefined`.
+        ...(tag.parentId === undefined ? {} : { parentId: tag.parentId }),
+      })),
+    )
+  }
+
   if (fixture.items.length > 0) {
     await seedRows(
       page,
@@ -73,7 +109,7 @@ export async function seedLocalFixture(
       fixture.items.map((item) => ({
         id: item.id,
         name: item.name,
-        tagIds: [],
+        tagIds: item.tagIds ?? [],
         vendorIds: item.vendorIds ?? [],
         // These two are global item CONFIGURATION, not per-location state, so
         // they belong on the item row. When the fixture omits them this writes
