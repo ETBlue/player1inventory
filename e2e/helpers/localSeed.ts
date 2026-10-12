@@ -173,6 +173,14 @@ export async function seedLocalFixture(
         type: shelf.type,
         order: shelf.order,
         itemIds: shelf.itemIds,
+        // `Shelf.filterConfig` is optional (packages/types/src/index.ts), so an
+        // omitted key leaves the Dexie field absent rather than writing
+        // `undefined` — the same pattern as `amountPerPackage` above.
+        // `seedCloudFixture` sends `null` for the same input, which is what
+        // `bulkCreateShelves` turns into an unset JSON column.
+        ...(shelf.filterConfig === undefined
+          ? {}
+          : { filterConfig: shelf.filterConfig }),
         createdAt: now,
         updatedAt: now,
       })),

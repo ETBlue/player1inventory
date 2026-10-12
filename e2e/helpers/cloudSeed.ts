@@ -206,6 +206,18 @@ export async function seedCloudFixture(
         type: shelf.type,
         order: shelf.order,
         itemIds: shelf.itemIds,
+        // Nullable in `ShelfInput`, and `bulkCreateShelves` writes
+        // `filterConfig ? filterConfig : undefined`, so a `null` here leaves
+        // the JSON column unset — what a selection shelf holds.
+        //
+        // A FILTER SHELF IS WRITTEN AFTER ITS AXES, which is why this runs in
+        // step 3 below the tag, vendor and recipe imports rather than beside
+        // the locations. Nothing validates the ids inside `filterConfig` — the
+        // column is opaque JSON — so a shelf written first would be stored
+        // intact and still render an inert `groupNote` instead of the action
+        // button a spec presses. The order is for the SPEC's sake, not the
+        // server's.
+        filterConfig: shelf.filterConfig ?? null,
         createdAt: now,
         updatedAt: now,
       })),
