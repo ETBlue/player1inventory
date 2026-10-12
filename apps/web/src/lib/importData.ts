@@ -648,7 +648,10 @@ export interface ImportProgress {
 export interface ImportSession {
   payload: ExportPayload
   strategy: ImportStrategy
-  completedBatchKeys: Set<string> // key format: `${entityType}:${batchIndex}`
+  // Key format: `${mode}:${entityType}:${batchIndex}`, where `mode` is
+  // `create` or `upsert`. The `mode` term is required — see `runBulkBatches`
+  // and issue #330.
+  completedBatchKeys: Set<string>
 }
 
 // ---------------------------------------------------------------------------
@@ -1355,8 +1358,11 @@ export function partitionPayload(
       shelves: ((payload.shelves ?? []) as IdOnlyEntity[]).filter((e) =>
         conflictIdSets.shelves.has(e.id),
       ),
-      // Already sent by the create pass above; sending them again would be a
-      // second batch under the same key.
+      // Already sent by the create pass above. Sending them again would be a
+      // second, pointless round trip for rows the create pass already wrote.
+      // (Before issue #330 was fixed the two passes shared one key space, so
+      // the second send would also have collided with the first pass's key.
+      // The keys now carry `mode`, so the reason is the wasted work alone.)
       locations: [],
       // Every stock row, so the payload's quantities win. The upsert pass
       // runs after the create pass, so both a brand-new item and a
@@ -1868,9 +1874,9 @@ async function fetchCloudExistingData(
 // ---------------------------------------------------------------------------
 
 interface EntitySpec {
-  // Also the prefix of the batch key recorded in
-  // `ImportSession.completedBatchKeys`, so renaming one makes a resumed
-  // session re-send that entity's batches.
+  // Also the MIDDLE term of the batch key recorded in
+  // `ImportSession.completedBatchKeys` (`${mode}:${entityType}:${batchIndex}`),
+  // so renaming one makes a resumed session re-send that entity's batches.
   entityType: string
   select: (data: ExportPayload) => unknown[]
   create: (client: ApolloClient, batch: unknown[]) => Promise<void>
@@ -2183,23 +2189,22 @@ async function runBulkBatches(
   for (const spec of ENTITY_SPECS) {
     const batches = chunk(spec.select(data), BATCH_SIZE)
     for (const [i, batch] of batches.entries()) {
-      // The key does NOT carry `mode`, which is a PRE-EXISTING BUG and not
-      // this function's to fix: on the `replace` strategy `bulkCreate` and
-      // `bulkUpsert` share one session, so when both passes have rows for the
-      // same entity the upsert pass finds the create pass's key and skips its
-      // own batch. Neither entity added by PR 4b can hit it — `partitionPayload`
-      // sends `locations` only to `toCreate` and `itemStocks` only to
-      // `toUpsert`, so each has zero batches on the other pass.
+      // `mode` MUST stay in the key. On the `replace` strategy `bulkCreate` and
+      // `bulkUpsert` share one `ImportSession`, so without it the two passes
+      // share one key space: when an entity has rows on both passes, the create
+      // pass records `items:0` and the upsert pass then finds that key and skips
+      // its own batch. `bulkUpsertItems` was never called and the rows the user
+      // asked to overwrite kept the destination's values. That was issue #330,
+      // fixed on 2026-10-12.
       //
-      // `items` DOES hit it, and that is now measured rather than reasoned.
+      // The two entities PR 4b added could not hit it — `partitionPayload` sends
+      // `locations` only to `toCreate` and `itemStocks` only to `toUpsert`, so
+      // each has zero batches on the other pass. `items` could, and did.
       // `e2e/tests/settings/import-strategies.spec.ts` imports a backup holding
-      // one colliding item and one new one, so `items` has a batch on each pass:
-      // in `cloud` the colliding row keeps the destination's name, in `local`
-      // (which uses no batch keys at all) it takes the backup's. That spec
-      // records both answers and says which is wrong. Proved on 2026-10-08 by
-      // prefixing this key with `${mode}`: the cloud run then wrote the backup's
-      // name and the spec failed on the line that expects the defect.
-      const key = `${spec.entityType}:${i}`
+      // one colliding item and one new one, so `items` has a batch on each pass.
+      // That spec is the regression guard: dropping `mode` from this key makes
+      // its cloud run read `Stale Name` where it wants `Fixture Item`.
+      const key = `${mode}:${spec.entityType}:${i}`
       if (session.completedBatchKeys.has(key)) {
         completedBatches++
         continue
@@ -2253,8 +2258,8 @@ export async function importCloudData(
   // The session records the payload AS GIVEN, because on the `clear` path
   // `prepareCloudPayload` cannot run until the clear has. A resumed import
   // re-derives its batch keys by running `prepareCloudPayload` again. The keys
-  // are `${entityType}:${i}`, so what has to match the first attempt is the
-  // row COUNT and ORDER per entity, and both are fixed: the remap rewrites ids
+  // are `${mode}:${entityType}:${i}`, so what has to match the first attempt is
+  // the row COUNT and ORDER per entity, and both are fixed: the remap rewrites ids
   // only, and the legacy upgrade synthesises exactly one stock row per item,
   // in item order. (Those synthesised rows get fresh `crypto.randomUUID()`
   // ids on a resume. That is harmless — a batch with a new id is one that was

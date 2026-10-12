@@ -55,73 +55,26 @@ export const Loading: Story = {
 }
 
 // ---------------------------------------------------------------------------
-// Progress / error / done state stories
-// These render the visual fragments directly rather than driving state through
-// ImportCard, keeping them simple and reliable for Storybook and smoke tests.
+// There are deliberately NO stories for the cloud import's progress, error and
+// done phases.
+//
+// Three such stories lived here until 2026-10-13. Each was a hand-written
+// static `<div>` that never mounted `ImportCard`, so each showed markup the
+// component cannot produce — and had drifted: they used `text-sm` where the
+// component uses `text-xs`, and a progress track class `bg-muted` that is not
+// a token in this repo at all (the only `bg-muted` in `apps/web/src`), so that
+// track rendered with no background. Their smoke tests asserted text inside
+// those fixtures, which means deleting the real error branch from
+// `ImportCard.tsx` left them green: false coverage.
+//
+// Those three phases are state inside `ImportCard`, reachable only by driving
+// `importCloudData` to reject or resolve. A story cannot `vi.mock`, so putting
+// the real component into those phases needs Storybook module mocking
+// (`sb.mock` in `.storybook/preview.tsx`, which is repo-wide) plus a `play`
+// function that uploads a file. That was judged too much machinery for one
+// visual reference.
+//
+// The error phase and its Retry button are covered instead by
+// `index.test.tsx` — "user retrying a failed cloud import resumes the session
+// the failure carried", which mocks `importCloudData` with `vi.mock`.
 // ---------------------------------------------------------------------------
-
-function ImportingProgressStory() {
-  return (
-    <div className="p-4 max-w-sm space-y-2">
-      <p className="text-sm text-foreground-muted">Importing Items…</p>
-      <div className="w-full bg-muted rounded-full h-2">
-        <div
-          className="bg-importance-primary-background h-2 rounded-full transition-all"
-          style={{ width: '50%' }}
-        />
-      </div>
-      <p className="text-xs text-foreground-muted">8 / 16 batches</p>
-    </div>
-  )
-}
-
-function ImportErrorStory() {
-  return (
-    <div className="p-4 max-w-sm space-y-2">
-      <p className="text-sm text-importance-destructive-foreground">
-        Import failed during Network error.
-      </p>
-      <button
-        type="button"
-        className="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium"
-      >
-        Retry
-      </button>
-    </div>
-  )
-}
-
-function ImportDoneStory() {
-  return (
-    <div className="p-4 max-w-sm">
-      <p className="text-sm text-status-ok-foreground">Import complete.</p>
-    </div>
-  )
-}
-
-export const ImportingProgress: Story = {
-  name: 'Importing — progress bar at 50%',
-  render: () => <ImportingProgressStory />,
-  beforeEach() {
-    localStorage.setItem('data-mode', 'cloud')
-    return () => localStorage.removeItem('data-mode')
-  },
-}
-
-export const ImportError: Story = {
-  name: 'Error — failed with retry button',
-  render: () => <ImportErrorStory />,
-  beforeEach() {
-    localStorage.setItem('data-mode', 'cloud')
-    return () => localStorage.removeItem('data-mode')
-  },
-}
-
-export const ImportDone: Story = {
-  name: 'Done — success message',
-  render: () => <ImportDoneStory />,
-  beforeEach() {
-    localStorage.setItem('data-mode', 'cloud')
-    return () => localStorage.removeItem('data-mode')
-  },
-}

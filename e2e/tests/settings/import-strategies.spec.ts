@@ -69,8 +69,10 @@ const COLLIDING_ITEM_SEED_NAME = 'Stale Name'
  * sends a non-conflicting row to `toCreate` and a conflicting one to `toUpsert`,
  * so with this item present the `items` entity type has rows on BOTH passes.
  * A fixture where every item collides leaves `toCreate.items` empty, and then
- * issue #330 — `runBulkBatches`' batch key `${spec.entityType}:${i}` carries no
- * mode term, so the two passes share one key space — cannot show at all.
+ * issue #330 — `runBulkBatches` built its batch key as `${spec.entityType}:${i}`
+ * with no mode term, so the two passes shared one key space — cannot show at
+ * all. The key is now `${mode}:${spec.entityType}:${i}`, and this item is what
+ * keeps the guard able to fail.
  */
 const NEW_ITEM_ID = 'aaaaaaaa-0000-0000-0000-000000000104'
 const NEW_ITEM_NAME = 'Backup New Item'
@@ -437,24 +439,26 @@ test('user can replace the matching rows and keep everything else', async ({
 
   // And the colliding item's own NAME.
   //
-  // THE TWO MODES DISAGREE HERE, AND ONLY ONE OF THEM IS RIGHT. Local mode
-  // writes "Fixture Item": `importLocalData`'s `replace` branch calls
-  // `db.items.bulkPut(toUpsert.items)` directly, with no batch bookkeeping.
+  // THE TWO MODES NOW AGREE, AND THIS IS THE REGRESSION GUARD FOR ISSUE #330,
+  // fixed by PR "fix(import): put the pass in the batch key" on 2026-10-12.
   //
-  // CLOUD MODE KEEPS "Stale Name", AND THAT IS ISSUE #330. `runBulkBatches`
-  // (apps/web/src/lib/importData.ts) builds its resume key as
-  // `${spec.entityType}:${i}` with NO term for the pass, and `bulkCreate` and
-  // `bulkUpsert` share one `ImportSession`. The create pass sends "Backup New
-  // Item" as batch `items:0` and records that key; the upsert pass then finds
-  // `items:0` already present and SKIPS its own batch, so `bulkUpsertItems` is
-  // never called and the destination's row is never overwritten.
+  // Both write "Fixture Item". Local mode always did: `importLocalData`'s
+  // `replace` branch calls `db.items.bulkPut(toUpsert.items)` directly, with no
+  // batch bookkeeping. Cloud mode used to keep "Stale Name", because
+  // `runBulkBatches` (apps/web/src/lib/importData.ts) built its resume key as
+  // `${spec.entityType}:${i}` with NO term for the pass, while `bulkCreate` and
+  // `bulkUpsert` share one `ImportSession`. The create pass sent "Backup New
+  // Item" as batch `items:0` and recorded that key; the upsert pass then found
+  // `items:0` already present and SKIPPED its own batch, so `bulkUpsertItems`
+  // was never called and the destination's row was never overwritten. The key
+  // now carries the pass, so the two batches no longer collide.
   //
-  // The expected value below therefore RECORDS THE DEFECT rather than hiding it.
-  // Fixing #330 — adding the pass to the key — makes this assertion fail and say
-  // so, which is the signal a reader needs. The stock assertion above is
-  // unaffected, because `partitionPayload` gives `itemStocks` zero batches on the
-  // create pass, so the upsert pass's `itemStocks:0` key is free.
-  expect(names[COLLIDING_ITEM_ID]).toBe(
-    isCloud(baseURL) ? COLLIDING_ITEM_SEED_NAME : COLLIDING_ITEM_BACKUP_NAME,
-  )
+  // Dropping `mode` from that key again makes this line fail in `cloud` with
+  // `Expected: "Fixture Item" / Received: "Stale Name"`. Measured 2026-10-12.
+  //
+  // The stock assertion above was never affected, and that is still true:
+  // `partitionPayload` gives `itemStocks` zero batches on the create pass
+  // (`toCreate.itemStocks` is a literal `[]` under `replace`), so the upsert
+  // pass's `itemStocks:0` key was free even before the fix.
+  expect(names[COLLIDING_ITEM_ID]).toBe(COLLIDING_ITEM_BACKUP_NAME)
 })

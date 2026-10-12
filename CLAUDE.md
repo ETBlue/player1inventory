@@ -201,6 +201,33 @@ Before creating a PR, update all relevant documentation:
 
 **Smoke tests:** every `.stories.tsx` has a matching `.stories.test.tsx` using `composeStories` + React Testing Library. Assert a key UI element (role, text, heading) — not `container.firstChild` or `'Loading...'`.
 
+**A story that renders its own static markup instead of the component satisfies that
+rule and proves nothing.** `ImportCard`'s `index.stories.tsx` carried three such stories
+until 2026-10-13 — `ImportingProgress`, `ImportError` and `ImportDone`, each a
+hand-written `<div>` with a `render:` function that never mounted `ImportCard`. Their
+smoke tests asserted text inside those fixtures, so they passed against any version of
+the component. Measured: deleting the whole 23-line `phase === 'error'` branch from
+`ImportCard.tsx` left the story test **4 of 4 green**, "ImportError renders Retry
+button" included.
+
+Two tells, both visible by reading the file:
+
+| Tell | What it means |
+|---|---|
+| the story has a `render:` returning markup, not the component | the smoke test is testing the story |
+| the markup's classes differ from the component's | the fake has drifted, so it is not a visual reference either |
+
+Those three had drifted: `text-sm` where the component uses `text-xs`, and `bg-muted`
+on the progress track where the component uses `bg-background-elevated`. `bg-muted`
+matched no token in `design-tokens/theme.css` and was the only one in `apps/web/src`,
+so the track rendered with no background at all.
+
+**A component phase reachable only through a module it imports gets a `.test.tsx`, not a
+story.** A story cannot `vi.mock`. Storybook 10.2.6 does support `sb.mock`, but it is
+declared repo-wide in `.storybook/preview.tsx` and still needs a `play` function to drive
+the component into the phase. For `ImportCard`'s error phase that was judged too much
+machinery, so the three fakes were deleted and the coverage lives in `index.test.tsx`.
+
 **Never `export` a fixture from a `.stories.tsx`.** CSF treats **every** named export as a story, so an exported plain object becomes a sidebar entry that fails to render when opened. Keep fixtures module-local (`const`, no `export`). `stock.stories.tsx` exported three (`CLOUD_ITEM`, `CLOUD_LOCATIONS`, `CLOUD_STOCKS`) and produced three broken entries — `pages-item-stock--cloud-item`, `--cloud-locations`, `--cloud-stocks`. If a fixture really must be shared, put it in a separate module (like `@/test/cloudFixtures.ts`) or list it in the meta's `excludeStories`.
 
 `pnpm build-storybook` compiles such a file without complaint, so it proves nothing here. The sidebar is built from `apps/web/storybook-static/index.json`; check that file for the story ids:
