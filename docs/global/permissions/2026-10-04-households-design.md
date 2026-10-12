@@ -143,7 +143,8 @@ The member rules (read-only catalog) are a first version. They may change after 
 | `Item`, `Tag`, `TagType`, `Vendor`, `Recipe`, `Shelf` | `userId` → `householdId`. `Shelf.order` stays shared, because shelves are catalog |
 | `InventoryLog` | `userId` stays, and now means **the author**. Its scope comes from `locationId` |
 | `Cart` | **Drops** `userId`. A cart belongs to its location and is shared by everyone there. The composite id `${locationId}:${vendorId \| 'no-vendor'}` stays |
-| `ItemStock`, `CartItem`, `ItemTag`, `ItemVendor`, `RecipeItem` | No change. Already scoped through a parent |
+| `CartItem` | `userId` stays, and now means **added by**. It stops being a scope: today every cart query filters cart items by `{ cartId, userId }` (`resolvers/cart.resolver.ts`), so in a shared cart each person would see only the items they added. Scope comes from the cart's location. Showing "added by" on screen is for a later phase |
+| `ItemStock`, `ItemTag`, `ItemVendor`, `RecipeItem` | No change. Already scoped through a parent |
 
 ### Writers of `dataUpdatedAt`
 
@@ -185,6 +186,11 @@ A user who never invites anyone sees the same pantry as before.
 | A new household's first location | "Home". A normal location, with nothing special about it |
 
 ## Authorization
+
+**Role names in code.** `LocationRole` in `apps/server/src/lib/authz.ts` is still
+`'viewer' | 'member' | 'owner'`, and resolvers pass `'member'` (for example `checkout`). H3
+renames it to `'viewer' | 'participant' | 'organizer'`, so `member` means only the household
+role.
 
 The RBAC doc's rule stays: **never write `row.userId === ctx.userId` as an authorization check.**
 
@@ -287,6 +293,28 @@ Only account deletion starts a hand-over in this phase. See *Postponed*.
 - Only the owner deletes a household, by typing its name to confirm. Everyone loses access.
 - A person with no household sees a screen with a **Create a household** button. The app does
   not create one by itself.
+
+### Checkout with a shared cart
+
+`checkout` (`resolvers/cart.resolver.ts`) was written for one person per account. Its own
+comment calls a cart row added during checkout "rare with one account per user". In a shared
+cart it is common, and there are two more problems:
+
+| Case | Today | Rule in this design |
+|---|---|---|
+| Someone adds a row after you opened the cart | The whole checkout fails with `BAD_USER_INPUT` | Checkout buys **only the cart rows the client sent**. Rows added later stay in the cart |
+| Two people press checkout at the same time | No transaction. Both add the stock, so the purchase counts **twice** | Checkout runs in **one transaction** that removes the rows it buys. If they are already gone, it fails with "This cart was just checked out. Refresh to see it." |
+| Someone changes the stock just before your checkout | The log stores the on-hand total the client computed, which is now wrong, with no error | The **server** computes the total from the saved `ItemStock` row, inside the transaction |
+
+**Why the total moved to the client, and how this keeps that fix.** Parity-followup PR A (issue
+#336) moved the log total to the client because the conversion needs `Item.amountPerPackage`,
+and the resolver had only the `ItemStock` row. The server can read the `Item` in the same
+transaction. The plan must move the conversion rule (`buildCheckoutLogQuantities`,
+`apps/web/src/lib/checkoutQuantities.ts`) to code both sides can use, and keep its 6 unit
+tests passing against the server version.
+
+`consumeRecipes` sends a client-computed total for the same reason, so it has the same stale
+total problem and gets the same fix.
 
 ### Purge
 
@@ -558,6 +586,22 @@ The root `CLAUDE.md` rules apply. Points special to this design:
   location to one in the new household (or none), and clear the household-scoped Apollo cache
   entries (`Player1InventoryCloudCache` is persisted, so the clear must reach it too). A test
   must switch household with a cart in the old one and see no old cart rows.
+- **E2E specs that depend on the default location.** `e2e/tests/settings/data-mode-migration.spec.ts`
+  and `e2e/tests/settings/import-strategies.spec.ts` (added after this design was first written)
+  expect `isDefault`, the name "My Home", and a local → cloud copy that finishes **without** a
+  dialog. The helpers `e2e/helpers/backupAssertions.ts` and `e2e/helpers/cloudSeed.ts` find the
+  default by its flag. H3 and H4 must rewrite all of them.
+- **Issue #330 is pinned on purpose.** `import-strategies.spec.ts:440-459` expects the wrong
+  value. Fixing #330 turns it red, and that is expected.
+- **A second signed-in user in cloud E2E needs new test support.** The browser always runs as
+  one fixed test user (`VITE_E2E_TEST_USER_ID`), and the API takes the user from the
+  `x-e2e-user-id` header. A two-user spec needs a browser context per user. There is no
+  test route yet to create a `User` row or to send a fake `user.deleted`.
+- **H3's migration joins `verify:migration`.** It must be added to the `MIGRATIONS` list in
+  `apps/server/scripts/verify-migration.ts`. That script now refuses to run if a test database
+  URL equals any other database URL in the environment.
+- **H1 touches about 48 route lines in 13 E2E files**, 23 of them in `a11y.spec.ts`. `e2e/` is
+  now type-checked and linted inside the root `pnpm build`.
 - **H3 breaks a stale browser bundle.** PR 5 was the first PR in the cloud-locations series that
   was not safe for an old bundle, and accepted it. H3 changes the GraphQL scoping and removes
   `isDefault` from the `Location` type, so it is the same kind of change. The plan must say so

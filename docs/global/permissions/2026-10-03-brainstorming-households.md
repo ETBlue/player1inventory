@@ -513,6 +513,26 @@ locations to `ensureDefaultLocation(userId)` (`import.resolver.ts:89-92`, `:140-
 becomes a role check; the server's default name is "My Home" (`lib/defaultLocation.ts:3`), and
 a new household's first location is "Home" (Decision 18).
 
+### Decision 24 — Shared cart items and checkout (2026-10-12)
+
+**Context.** After rebasing onto `main` at `2067e24a`, two facts showed the design was wrong:
+
+- `CartItem` has its own `userId`, and every cart query filters cart items by
+  `{ cartId, userId }`. The design said `CartItem` needed no change. In a shared cart, each person
+  would see only the items they added themselves.
+- `checkout` has no transaction, and fails when a cart row appears after the page rendered. Its
+  comment calls that "rare with one account per user". In a shared cart it is common, and two
+  people checking out at once would count the purchase twice.
+
+**Decided:**
+
+| # | Question | Decided |
+|---|---|---|
+| a | `CartItem.userId` | **Keep it as "added by".** It stops being a scope. Showing it on screen can come later. **Why:** the data is already there, and it helps bug tracing (Decision 5) |
+| b | Rows added during checkout | Checkout buys only the rows the client sent. The others stay in the cart |
+| c | Two checkouts at once | One transaction that removes the rows it buys. The second fails with "This cart was just checked out. Refresh to see it." |
+| d | The log's on-hand total | Computed on the server from the saved stock row, inside the transaction. The client computed it since PR A (issue #336) only because the conversion needs `Item.amountPerPackage`; the server can read that too. `consumeRecipes` gets the same fix |
+
 ## Data model so far (cloud only)
 
 | Model | Fields | Notes |
