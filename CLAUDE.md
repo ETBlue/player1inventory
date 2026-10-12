@@ -960,6 +960,55 @@ behind. The fix was to seed one item and one location in cloud that the local pa
 names. `clear` deletes them; `replace` keeps them. **A strategy that deletes needs something
 to delete.**
 
+**An absence or a zero count can be satisfied by the loading state.** Two E2E specs, two
+different assertions, one hole. Measured 2026-10-12 (issue #323):
+
+| Spec | Assertion | Mutation | Result |
+|---|---|---|---|
+| `e2e/tests/settings/shelves.spec.ts` | `expect(getByText('My Test Shelf')).not.toBeVisible()` | cloud `deleteShelf` made a no-op returning `true` | **passed** in 11.1s |
+| the same spec before that work, running in `local` only | the same assertion | local `deleteShelf` in `apps/web/src/db/operations.ts` made a no-op | **passed** |
+| `e2e/tests/settings-global-pages.spec.ts` | two `toHaveCount(0)` checks | — | same shape, caught by reading it |
+
+The page renders an empty list while its refetch is still in flight. The first paint
+satisfies the absence check, and the test is over before the real data arrives.
+
+**The fix: assert something PRESENT first, then assert the absence.** That proves the list is
+rendered. Better still, read the state back from the backend — `readShelves` in that spec,
+`e2e/helpers/stockReadback.ts` for `ItemStock`. A fixed `page.waitForTimeout` also works and
+goes stale, so do not use it.
+
+**This was not caused by moving the spec into cloud.** The local-only version had the same
+hole and nobody had seen it. Writing the mutation check is what found it.
+
+**The obvious locator is often the weak one.** `settings-global-pages.spec.ts` wanted
+`getByRole('checkbox', { name: 'Remove Milk' })`. With the behaviour broken that element does
+not exist, so the mutation failed as a locator timeout — which proves much less than a value
+difference. The locator now matches either label, `/^(Add|Remove) Milk$/`, and the same
+mutation fails as `Expected: checked / Received: unchecked`. **Prefer a locator that still
+resolves when the behaviour is broken, so the assertion fails on the value.**
+
+**`expect(plainValue)` has no auto-retry, and a click resolves before the mutation commits.**
+`expect(locator)` retries; `expect(someArray)` does not. And `.click()` resolves when the
+click is dispatched, not when the write it starts has landed. So a backend readback placed
+right after a click **fails against correct code**: measured 2026-10-12 in `cloud` with the
+resolver unmodified, test 6 of `unified-item-search.spec.ts` reported `Expected value:
+"item-milk" / Received array: []`. **Use `expect.poll` for a backend readback that follows a
+click.** A "before" readback, asserting an id is not there yet, stays a plain `expect` — it is
+a negative control, and the state it reads holds from the seed onward.
+
+**The branches of one transaction are not interchangeable.** A task brief for issue #323 said
+to "drop one of its `createMany` calls" to prove the new spec covers `applyShelfFilterPicks`.
+Measured 2026-10-12 in `cloud`:
+
+| Line commented out | Result |
+|---|---|
+| `tx.itemTag.createMany` (`apps/server/src/resolvers/shelf.resolver.ts:116`) | **2 tests red** |
+| `tx.itemVendor.createMany` (same file, line 123) | **all 10 pass** |
+
+So "one of" can be satisfied by the choice that proves nothing. **Name the specific branch,
+and check that the other branches are reached at all.** Here they are not — see the
+`applyShelfFilterPicks` gaps listed later in this section.
+
 **Negative controls legitimately stay green.** "No divider renders when every group is
 stocked here" *should* pass when the partition is deleted — removing code does not add
 a divider. Those are fine, but they are not evidence. Name them as such rather than
@@ -1014,11 +1063,27 @@ Note also that **no *unit* test executes the resolvers against real SQL** — ev
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
 Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
 branch), but only for the spec files listed in the `cloud` project's `testMatch` in
-`e2e/playwright.config.ts` — that list is opt-in and covers **20 files today** (of 27 spec
-files in `e2e/tests/`; measured 2026-10-04). **A resolver exercised by no cloud spec has never touched SQL at
-all**, and a manual smoke test is owed for anything transactional.
+`e2e/playwright.config.ts` — that list is opt-in and covers **25 of the 29 spec files in
+`e2e/tests/`** (measured 2026-10-12). **Count it rather than quote it.** This line said
+"20 files today (of 27 spec files)" until 2026-10-12, by which point both numbers were wrong
+by 3:
 
-Nine of those 20 cover location or stock surfaces. Three were added 2026-09-14 (issue #284):
+```bash
+awk "/name: 'cloud'/,0" e2e/playwright.config.ts \
+  | grep -m1 testMatch | grep -o "'\*\*/[^']*\.spec\.ts'" | wc -l   # cloud's testMatch
+find e2e/tests -name '*.spec.ts' | wc -l                            # every spec file
+```
+
+The 4 files outside the `cloud` project today are `a11y.spec.ts`, `pwa-offline.spec.ts`,
+`settings/import-export-local.spec.ts` and `onboarding.spec.ts`. The first three cannot run
+there. **`onboarding.spec.ts` could be listed and must not be** — see issue #347:
+`useOnboardingSetup` writes to Dexie in both modes, so a cloud run of its template test
+would reach zero resolvers and still pass its URL assertion.
+
+**A resolver exercised by no cloud spec has never touched SQL at all**, and a manual smoke
+test is owed for anything transactional.
+
+Nine of those 25 cover location or stock surfaces. Three were added 2026-09-14 (issue #284):
 `settings/locations.spec.ts`, `location-switcher.spec.ts` and
 `location-not-stocked-here.spec.ts` — 22 cloud test cases. They give the first real-SQL
 coverage of `createLocation`, `updateLocation`, `deleteLocation`, `reorderLocations`, the
@@ -1080,6 +1145,36 @@ coverage of the four bulk mutations 4a added — `bulkCreate`/`bulkUpsertLocatio
 `bulkCreate`/`bulkUpsertItemStocks`. A cart row's `locationId` **column** is read through
 `cartItemCountByItem(itemId, locationId:)`, because the `Cart` GraphQL type exposes no
 `locationId` field.
+
+Three more joined on 2026-10-12 (issue #323) — `settings/shelves.spec.ts` (1 cloud test
+case), `settings-global-pages.spec.ts` (2 collected, 1 run — its second test carries a
+`test.skip` for cloud, because `Sidebar.tsx` has no data-mode branch and a cloud run would
+measure the same markup twice) and `unified-item-search.spec.ts` (10). The `cloud` project
+went 108 → **121** collected and 22 → **25** files. They give the first real-SQL coverage of
+four resolvers in `apps/server/src/resolvers/shelf.resolver.ts`: `shelf(id:)` (line 17),
+`updateShelf(itemIds:)` (38), `deleteShelf` (50) and **`applyShelfFilterPicks`** (85).
+
+`applyShelfFilterPicks` is the one that mattered. It is a `prisma.$transaction` doing
+`deleteMany` plus `createMany` on the composite-key `ItemTag` and `ItemVendor` join tables, a
+`recipeItem.create` and a `findUniqueOrThrow`, and its own comment describes a Postgres
+`READ COMMITTED` deadlock it skips the delete+recreate to avoid. The Prisma fake models only
+the interactive-callback form of `$transaction`, so real SQL was the only way to run it.
+**It passed first contact with Postgres** — 2 tests in 29.9s, with no adjustment to the spec
+or the resolver.
+
+**Only its tag branch is covered. Write the claim that way.** Three gaps, all measured on
+2026-10-12:
+
+| Gap | Evidence |
+|---|---|
+| `tx.itemVendor.createMany` (line 123) is reached by no test | commenting it out leaves all 10 cloud tests passing — every filter shelf in the spec uses tag axes only, so `addVendorIds` is always empty |
+| `tx.recipeItem.create` (line 137) is reached by no test | no filter shelf in the spec has a recipe axis |
+| the `READ COMMITTED` deadlock its comment guards against is unproven | `workers: 1` and `fullyParallel: false` make the run a serial single writer, so nothing races a concurrent `updateItem` on the same item |
+
+`settings-global-pages.spec.ts` reaches no new resolver. What its cloud run adds is the path
+the stock takes: in local the quantities come out of Dexie on the item's own row, in cloud
+they arrive in a separate `itemStocks(locationId:)` field and are joined in the browser, and
+`showStock={false}` has to suppress both. A narrow gain, said plainly.
 
 The warning above still holds for everything else — most resolvers are named by no cloud
 spec.

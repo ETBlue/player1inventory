@@ -23,9 +23,37 @@ export type FixtureLocation = {
   isDefault?: boolean
 }
 
+export type FixtureTagType = {
+  id: string
+  name: string
+  /** A `TagColor` value — 'blue', 'green', … (packages/types/src/index.ts). */
+  color: string
+}
+
+export type FixtureTag = {
+  id: string
+  name: string
+  /** A `tagTypes[].id`. `bulkCreateTags` DROPS a tag whose type is missing. */
+  typeId: string
+  /** Another `tags[].id`. Omit for a top-level tag. */
+  parentId?: string
+}
+
 export type FixtureItem = {
   id: string
   name: string
+  /**
+   * `tags[].id` values. Omitting it gives an item with no tags in both modes.
+   *
+   * In cloud this becomes `ItemInput.tagIds`, and `bulkCreateItems`
+   * (apps/server/src/resolvers/import.resolver.ts line 476) keeps only the ids
+   * that already exist as a `Tag` row — it drops the rest in silence. So the
+   * fixture's `tagTypes` and `tags` are written BEFORE its items, and a spec
+   * that asserts on a tag link must assert the LINK, not just that the item
+   * rendered: an item whose tagIds were dropped still appears on a tag's Items
+   * tab, in the unassigned group.
+   */
+  tagIds?: string[]
   vendorIds?: string[]
   /**
    * The item's global step size. Omitting it gives **1** in both modes — the
@@ -67,6 +95,41 @@ export type FixtureItem = {
   amountPerPackage?: number
 }
 
+export type FixtureFilterConfig = {
+  tagIds?: string[]
+  vendorIds?: string[]
+  recipeIds?: string[]
+}
+
+export type FixtureShelf = {
+  id: string
+  name: string
+  /** 'filter' or 'selection'. A filter shelf needs `filterConfig`. */
+  type: string
+  order: number
+  itemIds: string[]
+  /**
+   * Which axes a FILTER shelf matches on. OPTIONAL, and meaningless on a
+   * selection shelf, whose members are `itemIds`.
+   *
+   * The two shapes are already identical, so no translation is needed:
+   * `FilterConfig` (packages/types/src/index.ts) and `FilterConfigInput`
+   * (apps/server/src/schema/shelf.graphql) both declare the same three
+   * optional string arrays.
+   *
+   * EVERY ID IN HERE MUST ALREADY EXIST when the shelf is written. The ids
+   * name `tags[].id`, `vendors[].id` and `recipes[].id`, and nothing checks
+   * them: `bulkCreateShelves` (apps/server/src/resolvers/import.resolver.ts
+   * line 900) stores `filterConfig` as an opaque JSON column, so an id naming
+   * no row is written without complaint in BOTH modes. A filter shelf whose
+   * axis names a deleted entity renders an inert `groupNote` instead of an
+   * action button (ShelfDetailView.tsx line 215) — so a wrong id here does
+   * not fail the seed, it silently removes the button a spec is about to
+   * press.
+   */
+  filterConfig?: FixtureFilterConfig
+}
+
 export type FixtureStock = {
   itemId: string
   /** A `locations[].key`. */
@@ -80,15 +143,18 @@ export type FixtureStock = {
 export type Fixture = {
   locations: FixtureLocation[]
   vendors: { id: string; name: string }[]
+  /**
+   * Tag types, written before `tags`. OPTIONAL, unlike the six keys around it:
+   * 13 fixture literals existed when this key was added and none of them has a
+   * tag, so requiring it would have added `tagTypes: []` to 13 specs that say
+   * nothing about tags. `items[].tagIds` is optional for the same reason.
+   */
+  tagTypes?: FixtureTagType[]
+  /** Tags, written after `tagTypes` and before `items`. See `FixtureTagType`. */
+  tags?: FixtureTag[]
   items: FixtureItem[]
   stocks: FixtureStock[]
-  shelves: {
-    id: string
-    name: string
-    type: string
-    order: number
-    itemIds: string[]
-  }[]
+  shelves: FixtureShelf[]
   recipes: {
     id: string
     name: string

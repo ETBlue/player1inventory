@@ -363,7 +363,7 @@ fixture **once, as plain data**, and lets each mode translate it:
 
 | File | Role |
 |---|---|
-| `e2e/helpers/fixture.ts` | the `Fixture` type — locations, vendors, items, stocks, shelves, recipes |
+| `e2e/helpers/fixture.ts` | the `Fixture` type — `locations`, `vendors`, `tagTypes?`, `tags?`, `items`, `stocks`, `shelves`, `recipes`. `tagTypes` and `tags` are optional, and so are `items[].tagIds` and `shelves[].filterConfig` — see the two sections on them below |
 | `e2e/helpers/localSeed.ts` | `seedLocalFixture(page, fixture)` — writes it to IndexedDB |
 | `e2e/helpers/cloudSeed.ts` | `seedCloudFixture(request, fixture)` — writes it through GraphQL |
 
@@ -411,8 +411,8 @@ reconcile finds nothing to remove and creates every row the fixture lists. No ed
 loop was needed in 4b or in PR 5 — which is the whole argument for reading state back
 instead of predicting it.
 
-**The `cloud` project's `testMatch` is 22 files today** (`e2e/playwright.config.ts`),
-up from 13 on 2026-09-23. **Count the array rather than reusing that 22** — it is one line in
+**The `cloud` project's `testMatch` is 25 files today** (`e2e/playwright.config.ts`),
+up from 13 on 2026-09-23. **Count the array rather than reusing that 25** — it is one line in
 the config and it grows most weeks:
 
 ```bash
@@ -421,8 +421,8 @@ awk "/name: 'cloud'/,0" e2e/playwright.config.ts \
 ```
 
 The `awk` range matters: the file holds **three** such lists — `local`'s `testIgnore`,
-`cloud`'s `testMatch` and `pwa`'s `testMatch` — and a grep over the whole file counts all 30
-entries instead of the 22 that belong to `cloud`.
+`cloud`'s `testMatch` and `pwa`'s `testMatch` — and a grep over the whole file counts all 33
+entries instead of the 25 that belong to `cloud`.
 
 The five added on 2026-09-24 are `recipes-group.spec.ts`,
 `vendors-group.spec.ts`, `shelves.spec.ts`, `item-stock-input.spec.ts` and
@@ -439,6 +439,42 @@ run end to end, in either project:
 |---|---|---|
 | `settings/import-strategies.spec.ts` | `clear` and `replace` through `ImportCard`'s conflict dialog. 2 tests. `clear` is the only strategy that calls `clearAllData` (cloud) or the eleven `db.<table>.clear()` calls (local) | `local` **and** `cloud` |
 | `settings/data-mode-migration.spec.ts` | `clear` through `DataModeCard`'s switch-to-cloud flow — no file, no conflict. 1 test, no page in `local` could ever run it | `cloud` only (also in `local`'s `testIgnore`) |
+
+Files 23, 24 and 25 arrived on 2026-10-12 with issue #323. All three already ran in `local`
+and now run in both:
+
+| File | Tests in `cloud` | What the cloud run adds |
+|---|---|---|
+| `settings/shelves.spec.ts` | 1 | first real-SQL coverage of `shelf(id:)` (`apps/server/src/resolvers/shelf.resolver.ts:17`) and `deleteShelf` (`:50`) |
+| `settings-global-pages.spec.ts` | 2 collected, 1 run | no new resolver. Its second test carries a `test.skip` for cloud — `Sidebar.tsx` has no data-mode branch, so a cloud run would measure the same markup twice |
+| `unified-item-search.spec.ts` | 10 | first real-SQL coverage of **`applyShelfFilterPicks`** (`:85`) and of `updateShelf(itemIds:)` (`:38`) |
+
+**`applyShelfFilterPicks` was the target worth the work, and issue #323 never names it.** It
+is a `prisma.$transaction` doing `deleteMany` plus `createMany` on the composite-key
+`ItemTag` and `ItemVendor` join tables, a `recipeItem.create` and a `findUniqueOrThrow`, and
+its own comment describes a Postgres `READ COMMITTED` deadlock it skips the delete+recreate
+to avoid. **It passed first contact with Postgres** — 2 tests in 29.9s, no adjustment to the
+spec or the resolver. No drama to expect here.
+
+**Three gaps, so do not write "`applyShelfFilterPicks` is covered".** Write "it runs against
+real SQL, and its tag branch is covered by mutation". All three measured 2026-10-12:
+
+1. **`tx.itemVendor.createMany` (line 123) is reached by no test.** Commenting it out leaves
+   all 10 cloud tests passing. Both filter shelves in the spec use tag axes only, so
+   `addVendorIds` is always empty.
+2. **`tx.recipeItem.create` (line 137) is reached by no test.** No filter shelf in the spec
+   has a recipe axis.
+3. **The `READ COMMITTED` deadlock is unproven.** `workers: 1` and `fullyParallel: false`
+   make the run a serial single writer, so nothing races a concurrent `updateItem` on the
+   same item.
+
+**One file that could join `cloud` and must not: `onboarding.spec.ts`.** Issue #323 rated it
+a candidate. `useOnboardingSetup` imports `createItem`, `createTag`, `createTagType` and
+`createVendor` from `@/db/operations`, which is pure Dexie — `grep -c "apollo\|useQuery\|gql"
+apps/web/src/db/operations.ts` returns **0** — and the hook's own comment says "Local-mode
+only". So in cloud its template test would write to IndexedDB, reach **zero** resolvers, and
+still pass `await expect(page).toHaveURL('/')`. That is a test reporting as covered while
+covering nothing. The product gap is issue **#347**.
 
 The `local` project is 23 spec files: 29 files under `e2e/tests/` minus the 6 in its
 `testIgnore`.
@@ -458,7 +494,8 @@ What the number has been, so you can see how fast it moves rather than reuse a f
 | 2026-10-04 | `feature/cloud-locations-pr4b` | 103 |
 | 2026-10-08 | `feature/cloud-item-note-wikidata`, before its E2E commit | 104 |
 | 2026-10-08 | `feature/cloud-item-note-wikidata`, after it | 105 |
-| 2026-10-08 | `feature/import-strategy-coverage` (cloud-parity PR C) | **108** |
+| 2026-10-08 | `feature/import-strategy-coverage` (cloud-parity PR C) | 108 |
+| 2026-10-12 | `feature/cloud-spec-coverage` (issue #323) | **121** |
 
 Attribution for the steps that are known: 4b added 5 (1 for the leak spec, 4 because
 `import-export-cloud.spec.ts` went 2 → 6). Cloud-parity PR A added 1 to
@@ -466,7 +503,9 @@ Attribution for the steps that are known: 4b added 5 (1 for the leak spec, 4 bec
 `user can clear a saved note and wikidata URL` in `item-management.spec.ts`. Cloud-parity PR C
 added 3 — 2 in `settings/import-strategies.spec.ts` and 1 in
 `settings/data-mode-migration.spec.ts` — and 2 of those 3 also run in `local`, which collected
-**179** across its 23 files on the same branch. The step from 97
+**179** across its 23 files on the same branch. Issue #323 added **13**: 1 + 2 + 10 for the
+three files it moved into `cloud`, and **`local` stayed at 179**, because all three already
+ran there and the only skip it added is a runtime one. The step from 97
 to 98 happened between 2026-09-24 and 4b and cannot be attributed from here.
 
 **Runtime passed/skipped is a different number from the collected total, and only one of them
@@ -575,6 +614,52 @@ to be written with the item.
 
 **Known gap: no local fixture sets it yet**, so `seedLocalFixture`'s pass-through has no
 test. The one spec that uses the field is cloud-only.
+
+### `tagTypes`, `tags` and `items[].tagIds` — three keys, one order
+
+Added 2026-10-12 for issue #323 task 2, and threaded through **both** seeders. All three are
+**optional**: 13 fixture literals existed when they were added and none of them has a tag, so
+making them required would have added `tagTypes: []` to 13 specs that say nothing about tags.
+
+**Write them in this order: tag types, then tags, then items.** Each step drops ids the
+previous step has not created yet, and it drops them in silence:
+
+| Step | What it drops |
+|---|---|
+| `bulkCreateTags` | any tag whose `typeId` is not already a `TagType` row |
+| `bulkCreateItems` | any id in `tagIds` that is not already a `Tag` row (`apps/server/src/resolvers/import.resolver.ts` line 476) |
+
+Both seeders already do this, so a fixture only has to fill the keys in.
+`seedCloudFixture` used to hardcode `tagIds: []` when it called `bulkCreateItems`; it now
+sends `item.tagIds ?? []`.
+
+**A spec that cares about a tag link must assert the LINK, not that the item rendered.** An
+item whose `tagIds` were dropped still appears on a tag's Items tab — in the unassigned
+group. `settings-global-pages.spec.ts` asserts
+`getByRole('checkbox', { name: /^(Add|Remove) Milk$/ })` is **checked** for exactly this
+reason.
+
+### `shelves[].filterConfig` — nothing validates the ids inside it
+
+Added 2026-10-12 for issue #323 task 3, in both seeders. The same change named the inline
+shelf type `FixtureShelf`. **No translation is needed:** `FilterConfig`
+(`packages/types/src/index.ts`) and `FilterConfigInput`
+(`apps/server/src/schema/shelf.graphql`) declare the same three optional string arrays.
+
+**Every id in it must already exist when the shelf is written, and nothing checks that.**
+`bulkCreateShelves` stores `filterConfig` as an opaque JSON column, so an id naming no row is
+written without complaint in **both** modes. A filter shelf whose axis names a missing entity
+renders an inert `groupNote` instead of an action button — `canJoinFilterShelf` is false
+(`apps/web/src/components/pantry/ShelfDetailView.tsx` line 219). So a wrong id
+does not fail the seed — it quietly removes the button the spec is about to press.
+
+**Assert the seed as a precondition.** `unified-item-search.spec.ts` reads the shelf back and
+checks `filterConfig.tagIds` before it touches the page. Measured 2026-10-12, both halves of
+the threading fail there with `Expected value: "tag-snacks" / Received array: []` —
+`seedCloudFixture` sending `filterConfig: null`, and `seedLocalFixture` omitting the key.
+Without that assertion the cloud run failed much later, as
+`locator.click: Test timeout of 30000ms exceeded` — a missing element, which says far less
+than a missing id.
 
 ### Location order is assigned differently in the two modes — keep the default first
 
