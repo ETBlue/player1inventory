@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
@@ -7,7 +7,8 @@ import {
   ActiveLocationProvider,
   activeLocationStorageKey,
 } from '@/hooks/useActiveLocation'
-import { importCloudData } from '@/lib/importData'
+import type { ExportPayload } from '@/lib/exportData'
+import { type ImportSession, importCloudData } from '@/lib/importData'
 import { ImportCard } from '.'
 
 // Only the cloud write path is stubbed; conflict detection and the local path
@@ -149,6 +150,67 @@ describe('ImportCard — cloud import carries every location', () => {
     // Then it is imported, not refused: both locations are preserved
     await waitFor(() => expect(importCloudData).toHaveBeenCalled())
     expect(toast.error).not.toHaveBeenCalled()
+  })
+})
+
+// The error phase and its Retry button are cloud-only. What this describe
+// covers is the hop between them: the session the failure carried must be the
+// SAME session the retry hands back. If it is not, `importCloudData` starts a
+// fresh session, every batch key is gone, and the retry re-sends the batches
+// the first attempt already wrote.
+//
+// `lib/importData.test.ts` already covers the library side of that contract
+// (three its, at :2415, :2506 and :2532). Nothing covered the UI wiring that
+// connects the two — `ImportCard.tsx:183` reading `err.session`, :187 storing
+// it, and :287-293 passing it back.
+describe('ImportCard — Retry resumes the session the failure carried', () => {
+  afterEach(async () => {
+    localStorage.clear()
+    vi.mocked(importCloudData).mockClear()
+    vi.mocked(toast.error).mockClear()
+    await db.locations.clear()
+  })
+
+  it('user retrying a failed cloud import resumes the session the failure carried', async () => {
+    // Given cloud mode, and a first attempt that fails with a partly-done
+    // session attached to the thrown error
+    await seedLocations(['local', 'My Home'])
+    localStorage.setItem('data-mode', 'cloud')
+    const payload = v15Payload('local')
+    const failedSession: ImportSession = {
+      payload: payload as unknown as ExportPayload,
+      strategy: 'skip',
+      completedBatchKeys: new Set(['create:items:0']),
+    }
+    const failure = Object.assign(new Error('items'), {
+      session: failedSession,
+    })
+    vi.mocked(importCloudData).mockRejectedValueOnce(failure)
+    const { container } = renderCard()
+
+    // When the user imports the backup and the import fails
+    await uploadPayload(container, payload)
+    await waitFor(() => expect(importCloudData).toHaveBeenCalledTimes(1))
+
+    // Then the error message renders — the `phase: 'error'` branch is reached
+    expect(
+      await screen.findByText('Import failed during items.'),
+    ).toBeInTheDocument()
+
+    // And a Retry button renders
+    const retry = screen.getByRole('button', { name: 'Retry' })
+
+    // When the user presses Retry
+    fireEvent.click(retry)
+
+    // Then the second call carries the SAME session object back, with the
+    // batch key the first attempt recorded still in it
+    await waitFor(() => expect(importCloudData).toHaveBeenCalledTimes(2))
+    const secondOptions = vi.mocked(importCloudData).mock.calls[1]?.[3]
+    expect(secondOptions?.session).toBe(failedSession)
+    expect([...(secondOptions?.session?.completedBatchKeys ?? [])]).toEqual([
+      'create:items:0',
+    ])
   })
 })
 
