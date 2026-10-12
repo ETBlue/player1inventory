@@ -1178,7 +1178,7 @@ describe('Home page filtering integration', () => {
       ).not.toBeInTheDocument()
     })
 
-    it('user sees the empty state, not a blank pane, when a search matches nothing and the tail is empty', async () => {
+    it('user sees the empty-group state, not a blank pane, when an empty group is searched and nothing matches', async () => {
       // Given a selection shelf with no items and NOTHING stocked at the
       // active location — the entire catalog lives at the Office. Both
       // halves matter: an empty shelf AND an empty active location are what
@@ -1211,6 +1211,127 @@ describe('Home page filtering integration', () => {
       expect(
         screen.getByText('Search to add items to this shelf'),
       ).toBeInTheDocument()
+    })
+
+    it('user sees a no-match message, not a blank pane, when the shelf HAS items and the search matches none of them', async () => {
+      // Given a selection shelf that HOLDS Milk, stocked at the active
+      // location. This is the OPPOSITE fixture to the empty-group test
+      // above, and the difference is the whole point: with an empty shelf
+      // the pre-search count is already 0, so the old guard fired and the
+      // message rendered either way. Only a shelf that HAS items can tell
+      // a guard on the pre-search list from one on the post-search list.
+      const milk = await createItem({
+        name: 'Milk',
+        tagIds: [],
+        ...itemDefaults,
+      })
+      const shelf = await createShelf({
+        name: 'Fridge',
+        type: 'selection',
+        order: 0,
+        itemIds: [milk.id],
+      })
+
+      renderShelfDetail(shelf.id)
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Fridge', level: 1 })
+
+      // And the list really renders Milk before any search runs, so the
+      // narrowing below is observable rather than assumed
+      expect(
+        await screen.findByRole('heading', { name: 'Milk' }),
+      ).toBeInTheDocument()
+      expect(screen.queryByText('No matching items')).not.toBeInTheDocument()
+
+      // When the user searches for a string NO item matches, anywhere
+      await openSearch(user, 'zzz')
+      expect(screen.getByPlaceholderText(/search items/i)).toHaveValue('zzz')
+
+      // Then Milk leaves the list — it was narrowed away, not never drawn
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('heading', { name: 'Milk' }),
+        ).not.toBeInTheDocument()
+      })
+
+      // And the tail is empty: both buckets hold only items whose name
+      // contains the query, so a query matching nothing empties both
+      expect(screen.queryByText(/not stocked here/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+
+      // And the pane is NOT blank — it carries the no-match message
+      expect(screen.getByText('No matching items')).toBeInTheDocument()
+      expect(
+        screen.getByText('No item on this shelf matches your search'),
+      ).toBeInTheDocument()
+
+      // And NOT the empty-group message, which would be a false statement:
+      // the shelf does hold an item. Widening the guard without adding the
+      // second message would print exactly this.
+      expect(screen.queryByText('No items')).not.toBeInTheDocument()
+      expect(
+        screen.queryByText('Search to add items to this shelf'),
+      ).not.toBeInTheDocument()
+    })
+
+    it('user sees a no-match message, not a blank pane, when a filter on the unsorted shelf page excludes every item', async () => {
+      // Given the unsorted shelf page (no shelves exist, so it holds
+      // everything) with Milk stocked at the active location and carrying NO
+      // tag, plus a Vegetables tag to filter by.
+      //
+      // This is the ONE detail view whose list is narrowed by something
+      // other than the search box: `hideFiltersToggle={!isUnsorted}`, so the
+      // unsorted page has the tag / vendor / recipe filters. A message
+      // naming a search would be false here, which is why
+      // `ShelfDetailView` picks between two no-match descriptions on
+      // `trimmedSearch`.
+      const categoryType = await createTagType({
+        name: 'Category',
+        color: 'blue',
+      })
+      // The tag only has to EXIST, so the filter dropdown offers it — the
+      // test picks it through the UI below rather than by id.
+      await createTag({ typeId: categoryType.id, name: 'Vegetables' })
+      await createItem({ name: 'Milk', tagIds: [], ...itemDefaults })
+
+      renderShelfDetail('unsorted')
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Unsorted', level: 1 })
+
+      // And the list really renders Milk before any filter is applied
+      expect(
+        await screen.findByRole('heading', { name: 'Milk' }),
+      ).toBeInTheDocument()
+
+      // When the user applies the Vegetables filter, which Milk does not
+      // carry
+      await user.click(screen.getByRole('button', { name: /toggle filters/i }))
+      await user.click(screen.getByRole('button', { name: /category/i }))
+      await user.click(
+        screen.getByRole('menuitemcheckbox', { name: /vegetables/i }),
+      )
+      await user.keyboard('{Escape}')
+
+      // Then Milk leaves the list
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('heading', { name: 'Milk' }),
+        ).not.toBeInTheDocument()
+      })
+
+      // And the pane is NOT blank — it carries the FILTER wording, not the
+      // search wording and not the empty-group wording
+      expect(screen.getByText('No matching items')).toBeInTheDocument()
+      expect(
+        screen.getByText('No item on this shelf matches the current filters'),
+      ).toBeInTheDocument()
+      expect(
+        screen.queryByText('No item on this shelf matches your search'),
+      ).not.toBeInTheDocument()
+      expect(screen.queryByText('No items')).not.toBeInTheDocument()
+      expect(
+        screen.queryByText('All items are assigned to shelves'),
+      ).not.toBeInTheDocument()
     })
 
     it('the two-step gate: "Add to {location}" does not also add the item to the shelf, a second "Add to shelf" press does', async () => {
@@ -1698,7 +1819,7 @@ describe('Home page filtering integration', () => {
       expect(screen.queryByText(/jug/)).not.toBeInTheDocument()
     })
 
-    it('user sees the empty state, not a blank pane, when a search matches nothing and the tail is empty', async () => {
+    it('user sees the empty-group state, not a blank pane, when an empty group is searched and nothing matches', async () => {
       // Given a vendor with no items and NOTHING stocked at the active
       // location — the entire catalog lives at the Office. Both halves
       // matter: an empty group AND an empty active location are what make
@@ -1726,6 +1847,62 @@ describe('Home page filtering integration', () => {
       expect(
         screen.getByText('No items are assigned to this vendor'),
       ).toBeInTheDocument()
+    })
+
+    it('user sees a no-match message, not a blank pane, when the vendor HAS items and the search matches none of them', async () => {
+      // Given Costco holding Milk, stocked at the active location. This is
+      // the OPPOSITE fixture to the empty-group test above: with no items
+      // the pre-search count is already 0, so the old guard fired and the
+      // message rendered either way. Only a vendor that HAS items can tell
+      // a guard on the pre-search list from one on the post-search list.
+      const vendor = await createVendor('Costco')
+      await createItem({
+        name: 'Milk',
+        tagIds: [],
+        vendorIds: [vendor.id],
+        ...itemDefaults,
+      })
+
+      renderVendorDetail(vendor.id)
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Costco', level: 1 })
+
+      // And the list really renders Milk before any search runs, so the
+      // narrowing below is observable rather than assumed
+      expect(
+        await screen.findByRole('heading', { name: 'Milk' }),
+      ).toBeInTheDocument()
+      expect(screen.queryByText('No matching items')).not.toBeInTheDocument()
+
+      // When the user searches for a string NO item matches, anywhere
+      await openSearch(user, 'zzz')
+      expect(screen.getByPlaceholderText(/search items/i)).toHaveValue('zzz')
+
+      // Then Milk leaves the list — it was narrowed away, not never drawn
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('heading', { name: 'Milk' }),
+        ).not.toBeInTheDocument()
+      })
+
+      // And the tail is empty: both buckets hold only items whose name
+      // contains the query, so a query matching nothing empties both
+      expect(screen.queryByText(/not stocked here/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+
+      // And the pane is NOT blank — it carries the no-match message
+      expect(screen.getByText('No matching items')).toBeInTheDocument()
+      expect(
+        screen.getByText('No item from this vendor matches your search'),
+      ).toBeInTheDocument()
+
+      // And NOT the empty-group message, which would be a false statement:
+      // Milk IS assigned to Costco. Widening the guard without adding the
+      // second message would print exactly this.
+      expect(screen.queryByText('No items')).not.toBeInTheDocument()
+      expect(
+        screen.queryByText('No items are assigned to this vendor'),
+      ).not.toBeInTheDocument()
     })
 
     it('the two-step gate: "Add to {location}" stocks the item without applying the vendor, and a second "Apply {vendor}" press applies it', async () => {
@@ -2037,7 +2214,7 @@ describe('Home page filtering integration', () => {
       expect(screen.queryByText(/jug/)).not.toBeInTheDocument()
     })
 
-    it('user sees the empty state, not a blank pane, when a search matches nothing and the tail is empty', async () => {
+    it('user sees the empty-group state, not a blank pane, when an empty group is searched and nothing matches', async () => {
       // Given a recipe with no items and NOTHING stocked at the active
       // location — the entire catalog lives at the Office. Both halves
       // matter: an empty group AND an empty active location are what make
@@ -2065,6 +2242,64 @@ describe('Home page filtering integration', () => {
       expect(
         screen.getByText('No items are assigned to this recipe'),
       ).toBeInTheDocument()
+    })
+
+    it('user sees a no-match message, not a blank pane, when the recipe HAS items and the search matches none of them', async () => {
+      // Given the recipe Pasta holding Milk, stocked at the active location.
+      // This is the OPPOSITE fixture to the empty-group test above: with no
+      // items the pre-search count is already 0, so the old guard fired and
+      // the message rendered either way. Only a recipe that HAS items can
+      // tell a guard on the pre-search list from one on the post-search list.
+      const milk = await createItem({
+        name: 'Milk',
+        tagIds: [],
+        ...itemDefaults,
+      })
+      const recipe = await createRecipe({
+        name: 'Pasta',
+        items: [{ itemId: milk.id, defaultAmount: 1 }],
+      })
+
+      renderRecipeDetail(recipe.id)
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Pasta', level: 1 })
+
+      // And the list really renders Milk before any search runs, so the
+      // narrowing below is observable rather than assumed
+      expect(
+        await screen.findByRole('heading', { name: 'Milk' }),
+      ).toBeInTheDocument()
+      expect(screen.queryByText('No matching items')).not.toBeInTheDocument()
+
+      // When the user searches for a string NO item matches, anywhere
+      await openSearch(user, 'zzz')
+      expect(screen.getByPlaceholderText(/search items/i)).toHaveValue('zzz')
+
+      // Then Milk leaves the list — it was narrowed away, not never drawn
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('heading', { name: 'Milk' }),
+        ).not.toBeInTheDocument()
+      })
+
+      // And the tail is empty: both buckets hold only items whose name
+      // contains the query, so a query matching nothing empties both
+      expect(screen.queryByText(/not stocked here/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+
+      // And the pane is NOT blank — it carries the no-match message
+      expect(screen.getByText('No matching items')).toBeInTheDocument()
+      expect(
+        screen.getByText('No item in this recipe matches your search'),
+      ).toBeInTheDocument()
+
+      // And NOT the empty-group message, which would be a false statement:
+      // Milk IS in Pasta. Widening the guard without adding the second
+      // message would print exactly this.
+      expect(screen.queryByText('No items')).not.toBeInTheDocument()
+      expect(
+        screen.queryByText('No items are assigned to this recipe'),
+      ).not.toBeInTheDocument()
     })
 
     it('the two-step gate: "Add to {location}" stocks the item without adding it to the recipe, and a second "Add to recipe" press adds it', async () => {

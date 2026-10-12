@@ -144,6 +144,29 @@
     "searchPlaceholder": "搜尋食譜或材料..."
   },
   "pantry": {
+    "detail": {
+      "noItems": "沒有品項",
+      "vendor": {
+        "allAssigned": "所有品項都已指定供應商",
+        "noneAssigned": "沒有品項指定給這個供應商"
+      },
+      "recipe": {
+        "allAssigned": "所有品項都已加入食譜",
+        "noneAssigned": "沒有品項加入這個食譜"
+      },
+      "shelf": {
+        "allAssigned": "所有品項都已放上貨架",
+        "noFilterMatch": "沒有符合篩選條件的品項",
+        "searchToAdd": "可以透過搜尋功能新增品項到這個貨架"
+      },
+      "noMatch": {
+        "title": "沒有符合的品項",
+        "vendor": "這個供應商沒有符合搜尋條件的品項",
+        "recipe": "這個食譜沒有符合搜尋條件的品項",
+        "shelf": "這個貨架沒有符合搜尋條件的品項",
+        "shelfFilters": "這個貨架沒有符合目前篩選條件的品項"
+      }
+    },
     "empty": {
       "title": "尚未建立物資清單",
       "description": "趕快來打造你的儲藏室吧",

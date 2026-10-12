@@ -523,16 +523,47 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
 
           {trimmedSearch && <ItemSearchTail {...tailProps} />}
 
-          {!hasTail && sortedInShelfItems.length === 0 && (
+          {/* The guard reads the POST-search list; the message is chosen off
+              the PRE-search list. Both halves are needed. Gating on
+              `sortedInShelfItems` alone left a populated shelf searched for a
+              non-matching query with no list, no tail and no message — a
+              blank pane (issue #267). Widening the guard alone would print
+              one of the three messages below while the shelf DOES hold items
+              that merely do not match. Same arrangement as
+              `routes/shopping/$vendorId.tsx`.
+
+              The inner `trimmedSearch` branch is this view only. On the
+              `unsorted` page `displayedInShelfItems` is also narrowed by the
+              tag / vendor / recipe filters (`hideFiltersToggle={!isUnsorted}`
+              above), so the list can be emptied with no search running at
+              all, and a message naming a search would be wrong there. The
+              other two detail views pass `hideFiltersToggle={true}` and
+              narrow by search only, so they need no such branch. */}
+          {!hasTail && displayedInShelfItems.length === 0 && (
             <div className="text-center py-12 text-foreground-muted">
-              <p className="font-medium">No items</p>
-              <p className="text-sm mt-1">
-                {isUnsorted
-                  ? 'All items are assigned to shelves'
-                  : shelf?.type === 'filter'
-                    ? 'No items match the filter'
-                    : 'Search to add items to this shelf'}
-              </p>
+              {sortedInShelfItems.length > 0 ? (
+                <>
+                  <p className="font-medium">
+                    {t('pantry.detail.noMatch.title')}
+                  </p>
+                  <p className="text-sm mt-1">
+                    {trimmedSearch
+                      ? t('pantry.detail.noMatch.shelf')
+                      : t('pantry.detail.noMatch.shelfFilters')}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-medium">{t('pantry.detail.noItems')}</p>
+                  <p className="text-sm mt-1">
+                    {isUnsorted
+                      ? t('pantry.detail.shelf.allAssigned')
+                      : shelf?.type === 'filter'
+                        ? t('pantry.detail.shelf.noFilterMatch')
+                        : t('pantry.detail.shelf.searchToAdd')}
+                  </p>
+                </>
+              )}
             </div>
           )}
         </div>

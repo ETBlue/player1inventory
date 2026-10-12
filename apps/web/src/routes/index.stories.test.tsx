@@ -16,6 +16,7 @@ const {
   ShelfDetailViewSearchTail,
   VendorDetailView,
   VendorDetailViewSearchTail,
+  VendorDetailViewSearchNoMatch,
   RecipeDetailView,
   RecipeDetailViewSearchTail,
 } = composeStories(stories)
@@ -201,6 +202,20 @@ describe('Pantry index stories smoke tests', () => {
     ).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: 'Apply Costco: Milk Powder' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('VendorDetailViewSearchNoMatch shows the no-match message, not the empty-group one', async () => {
+    render(<VendorDetailViewSearchNoMatch />)
+    expect(await screen.findByText('No matching items')).toBeInTheDocument()
+    expect(
+      screen.getByText('No item from this vendor matches your search'),
+    ).toBeInTheDocument()
+    // The empty-group message would be a false statement here — Milk
+    // Chocolate IS assigned to Costco.
+    expect(screen.queryByText('No items')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('No items are assigned to this vendor'),
     ).not.toBeInTheDocument()
   })
 

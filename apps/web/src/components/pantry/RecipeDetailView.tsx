@@ -350,14 +350,35 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
 
           {trimmedSearch && <ItemSearchTail {...tailProps} />}
 
-          {!hasTail && sortedItems.length === 0 && (
+          {/* The guard reads the POST-search list; the message is chosen off
+              the PRE-search list. Both halves are needed. Gating on
+              `sortedItems` alone left a populated recipe searched for a
+              non-matching query with no list, no tail and no message — a
+              blank pane (issue #267). Widening the guard alone would print
+              "No items are assigned to this recipe" while items ARE assigned
+              and merely do not match the query. Same arrangement as
+              `routes/shopping/$vendorId.tsx`. */}
+          {!hasTail && displayedItems.length === 0 && (
             <div className="text-center py-12 text-foreground-muted">
-              <p className="font-medium">No items</p>
-              <p className="text-sm mt-1">
-                {isUnsorted
-                  ? 'All items are assigned to recipes'
-                  : 'No items are assigned to this recipe'}
-              </p>
+              {sortedItems.length > 0 ? (
+                <>
+                  <p className="font-medium">
+                    {t('pantry.detail.noMatch.title')}
+                  </p>
+                  <p className="text-sm mt-1">
+                    {t('pantry.detail.noMatch.recipe')}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-medium">{t('pantry.detail.noItems')}</p>
+                  <p className="text-sm mt-1">
+                    {isUnsorted
+                      ? t('pantry.detail.recipe.allAssigned')
+                      : t('pantry.detail.recipe.noneAssigned')}
+                  </p>
+                </>
+              )}
             </div>
           )}
         </div>

@@ -144,6 +144,29 @@
     "searchPlaceholder": "Search recipes or items..."
   },
   "pantry": {
+    "detail": {
+      "noItems": "No items",
+      "vendor": {
+        "allAssigned": "All items are assigned to vendors",
+        "noneAssigned": "No items are assigned to this vendor"
+      },
+      "recipe": {
+        "allAssigned": "All items are assigned to recipes",
+        "noneAssigned": "No items are assigned to this recipe"
+      },
+      "shelf": {
+        "allAssigned": "All items are assigned to shelves",
+        "noFilterMatch": "No items match the filter",
+        "searchToAdd": "Search to add items to this shelf"
+      },
+      "noMatch": {
+        "title": "No matching items",
+        "vendor": "No item from this vendor matches your search",
+        "recipe": "No item in this recipe matches your search",
+        "shelf": "No item on this shelf matches your search",
+        "shelfFilters": "No item on this shelf matches the current filters"
+      }
+    },
     "empty": {
       "title": "Your pantry is empty",
       "description": "Come build your pantry!",
