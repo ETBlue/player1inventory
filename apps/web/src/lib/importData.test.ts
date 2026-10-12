@@ -30,6 +30,16 @@ import {
 
 // --- Minimal fixture helpers ---
 
+// The GraphQL operation name of a document, so a test can say WHICH mutation
+// was sent and not only how many were. Module level because two describe blocks
+// need it.
+function opNameOf(doc: unknown): string {
+  const definitions = (
+    doc as { definitions: Array<{ name?: { value: string } }> }
+  ).definitions
+  return definitions[0]?.name?.value ?? '(anonymous)'
+}
+
 function makeItem(id: string, name: string) {
   return {
     id,
@@ -2074,13 +2084,6 @@ describe('importCloudData — locations and stock upload in dependency order', (
   // The GraphQL operation name of a document, e.g. 'BulkCreateLocations'.
   // Comparing names rather than document objects keeps the failure message
   // readable: a wrong order prints two lists of names.
-  function opName(doc: unknown): string {
-    const definitions = (
-      doc as { definitions: Array<{ name?: { value: string } }> }
-    ).definitions
-    return definitions[0]?.name?.value ?? '(anonymous)'
-  }
-
   // The destination account's one location, flagged default. The remap maps
   // the PAYLOAD's default onto this id and leaves every other id alone, so a
   // fixture needs at least one non-default location to tell the two rules
@@ -2092,7 +2095,7 @@ describe('importCloudData — locations and stock upload in dependency order', (
     const query = vi
       .fn()
       .mockImplementation(({ query: doc }: { query: unknown }) => {
-        if (opName(doc) === 'GetLocations') {
+        if (opNameOf(doc) === 'GetLocations') {
           return Promise.resolve({
             data: {
               locations: [
@@ -2126,7 +2129,7 @@ describe('importCloudData — locations and stock upload in dependency order', (
   }
 
   function mutationOrder(client: { mutate: ReturnType<typeof vi.fn> }) {
-    return client.mutate.mock.calls.map((call) => opName(call[0].mutation))
+    return client.mutate.mock.calls.map((call) => opNameOf(call[0].mutation))
   }
 
   function variablesOf(
@@ -2134,7 +2137,7 @@ describe('importCloudData — locations and stock upload in dependency order', (
     operation: string,
   ) {
     const call = client.mutate.mock.calls.find(
-      (c) => opName(c[0].mutation) === operation,
+      (c) => opNameOf(c[0].mutation) === operation,
     )
     return call?.[0].variables as Record<string, unknown> | undefined
   }
@@ -2328,7 +2331,7 @@ describe('importCloudData — locations and stock upload in dependency order', (
     // Given an account that already holds `item_1` under the same id
     const client = makeRecordingClient()
     client.query.mockImplementation(({ query: doc }: { query: unknown }) => {
-      if (opName(doc) === 'GetLocations') {
+      if (opNameOf(doc) === 'GetLocations') {
         return Promise.resolve({
           data: {
             locations: [
@@ -2416,7 +2419,11 @@ describe('importCloudData — locations and stock upload in dependency order', (
     const session: ImportSession = {
       payload,
       strategy: 'clear',
-      completedBatchKeys: new Set(['locations:0', 'itemStocks:0']),
+      // `create:` prefix because `clear` runs the create pass only
+      completedBatchKeys: new Set([
+        'create:locations:0',
+        'create:itemStocks:0',
+      ]),
     }
 
     // When the import is retried with that session
@@ -2501,11 +2508,12 @@ describe('importCloudData — batched cloud import', () => {
     const payload = makePayloadWithItems(60)
     const client = makeMockClient()
 
-    // And a session where batch 0 (items:0) is already complete
+    // And a session where batch 0 (create:items:0) is already complete.
+    // `skip` runs the create pass only, so the key carries the `create` mode.
     const session: ImportSession = {
       payload,
       strategy: 'skip',
-      completedBatchKeys: new Set(['items:0']),
+      completedBatchKeys: new Set(['create:items:0']),
     }
 
     // When retrying the import
@@ -2550,8 +2558,69 @@ describe('importCloudData — batched cloud import', () => {
 
     // And the session records batch 0 as completed but not batch 1
     const completedKeys = caughtError?.session?.completedBatchKeys
-    expect(completedKeys?.has('items:0')).toBe(true)
-    expect(completedKeys?.has('items:1')).toBe(false)
+    expect(completedKeys?.has('create:items:0')).toBe(true)
+    expect(completedKeys?.has('create:items:1')).toBe(false)
+  })
+
+  // Issue #330. The fixture is what makes this test able to fail: ONE item that
+  // the destination already holds and ONE it does not, so `partitionPayload`
+  // under `replace` gives the `items` entity a batch on BOTH passes. With a
+  // fixture where every item collides, `toCreate.items` is empty and the two
+  // passes cannot collide at all. None of the other five tests in this block
+  // mixes the two.
+  it('user replacing cloud data has a conflicting item really overwritten', async () => {
+    // Given one item the destination already holds under a different name
+    const CONFLICTING_ID = 'item-collides'
+    const NEW_ID = 'item-new'
+    const payload = emptyPayload({
+      items: [
+        makeItem(CONFLICTING_ID, 'Backup Name'),
+        makeItem(NEW_ID, 'Backup New Item'),
+      ],
+    })
+    const mutate = vi.fn().mockResolvedValue({})
+    const client = {
+      mutate,
+      resetStore: vi.fn().mockResolvedValue(undefined),
+      query: vi.fn().mockResolvedValue({
+        data: {
+          items: [{ id: CONFLICTING_ID, name: 'Stale Name' }],
+          tags: [],
+          tagTypes: [],
+          vendors: [],
+          recipes: [],
+          inventoryLogs: [],
+          shoppingCarts: [],
+          allCartItems: [],
+          shelves: [],
+        },
+      }),
+    }
+
+    // When the user imports it with the `replace` strategy
+    await importCloudData(payload, 'replace', client as never, {})
+
+    // Then the UPSERT mutation was really sent, and it carried the conflicting
+    // row.
+    //
+    // Written as "collect the ids every BulkUpsertItems call carried, then
+    // compare the list" on purpose, twice over. Asserting the call COUNT would
+    // also pass against an implementation that sent the create batch twice, so
+    // the document name is part of the filter. And `find(...)` plus
+    // `toBeDefined()` would fail as "expected undefined to be defined" when the
+    // bug is back, which says much less than a value difference: this form
+    // reports `[] vs ['item-collides']`.
+    const idsSentBy = (operation: string) =>
+      mutate.mock.calls
+        .filter((call) => opNameOf(call[0].mutation) === operation)
+        .flatMap((call) =>
+          (call[0].variables.items as Array<{ id: string }>).map((i) => i.id),
+        )
+
+    expect(idsSentBy('BulkUpsertItems')).toEqual([CONFLICTING_ID])
+
+    // And the create pass still sent the new row, under its own key
+    expect(idsSentBy('BulkCreateItems')).toEqual([NEW_ID])
   })
 
   it('merges newly created item IDs into a conflicting shelf on skip (cloud)', async () => {
