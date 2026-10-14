@@ -564,8 +564,8 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
                   <p className="text-sm mt-1">
                     {isUnsorted
                       ? trimmedSearch
-                        ? t('pantry.detail.noMatch.unsorted')
-                        : t('pantry.detail.noMatch.unsortedFilters')
+                        ? t('pantry.detail.noMatch.shelfUnsorted')
+                        : t('pantry.detail.noMatch.shelfUnsortedFilters')
                       : t('pantry.detail.noMatch.shelf')}
                   </p>
                 </>
