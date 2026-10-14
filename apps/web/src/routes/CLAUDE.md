@@ -123,20 +123,24 @@ Both take `inGroupIds` from `inScopeItems` — the page's **pre-search**, locati
 
   **Fixed 2026-10-13. Both halves are needed, and doing only one is a trap.** Widening the guard to the post-search list alone makes the block print "No items are assigned to this vendor" while items ARE assigned and merely do not match — a false statement in place of a blank pane. So the guard moved to the post-search list AND a second message was added, the arrangement `shopping/$vendorId.tsx` already shipped: one guard, a nested ternary on the pre-search count. The new copy lives in `pantry.detail.*` (`noMatch.title` plus a per-view sentence); the three blocks' previously hardcoded English moved into the same namespace at the same time.
 
-  **`ShelfDetailView` carries two extra branches the other two do not need, and both pick a message — neither changes the guard.** It renders two different pages off one `shelfId`: a real shelf, listing the items **on** it, and the `unsorted` page (`shelfId === 'unsorted'`), listing the items on **no** shelf.
+  **All three views pick the no-match message off `isUnsorted`, and `ShelfDetailView` reads one more condition on top. None of these branches changes the guard.** Each view renders two different pages off one id: a real group, listing the items in it, and the `unsorted` page (`id === 'unsorted'`), listing the items in **no** group.
 
-  - **`isUnsorted` picks the wording.** "is on this shelf" is false about every row of the `unsorted` page, so that page has its own two keys. Added 2026-10-14; before that the branch read `trimmedSearch` alone and said "is on this shelf" on both pages.
-  - **`trimmedSearch` picks the trigger.** Its toolbar is `hideFiltersToggle={!isUnsorted}`, so on the `unsorted` page the list is also narrowed by the tag / vendor / recipe filters, with no search running, and a message naming a search would be wrong there.
+  - **`isUnsorted` picks the wording, in all three views.** "is assigned to this vendor" / "this recipe" / "is on this shelf" is false about every row of the `unsorted` page, so each `unsorted` page has its own key. Added 2026-10-14 for the shelf view and 2026-10-15 for the other two; before those dates each branch said "this {group}" on both pages.
+  - **`trimmedSearch` picks the trigger, in `ShelfDetailView` only.** Its toolbar is `hideFiltersToggle={!isUnsorted}`, so on the `unsorted` page the list is also narrowed by the tag / vendor / recipe filters, with no search running, and a message naming a search would be wrong there.
 
-  | Page | Trigger | Key |
-  |---|---|---|
-  | a real shelf | search | `pantry.detail.noMatch.shelf` |
-  | `unsorted` | search | `pantry.detail.noMatch.unsorted` |
-  | `unsorted` | filters, no search | `pantry.detail.noMatch.unsortedFilters` |
+  | View | Page | Trigger | Key |
+  |---|---|---|---|
+  | `VendorDetailView` | a real vendor | search | `pantry.detail.noMatch.vendor` |
+  | `VendorDetailView` | `unsorted` ("No vendor") | search | `pantry.detail.noMatch.vendorUnsorted` |
+  | `RecipeDetailView` | a real recipe | search | `pantry.detail.noMatch.recipe` |
+  | `RecipeDetailView` | `unsorted` ("Not added to recipe") | search | `pantry.detail.noMatch.recipeUnsorted` |
+  | `ShelfDetailView` | a real shelf | search | `pantry.detail.noMatch.shelf` |
+  | `ShelfDetailView` | `unsorted` | search | `pantry.detail.noMatch.shelfUnsorted` |
+  | `ShelfDetailView` | `unsorted` | filters, no search | `pantry.detail.noMatch.shelfUnsortedFilters` |
 
-  **A real shelf needs no filter key — that case cannot be reached.** It has no filters toggle at all, and with no search text and `!isUnsorted` the `displayedInShelfItems` memo returns `sortedInShelfItems` unchanged, so an empty displayed list implies an empty source list, which takes the empty-group branch instead. The vendor and recipe views pass `hideFiltersToggle={true}` and narrow by search only, so they need neither branch.
+  **Only `ShelfDetailView`'s `unsorted` page has a filter case, so it is the only view with three keys.** A real shelf has no filters toggle at all, and with no search text and `!isUnsorted` the `displayedInShelfItems` memo returns `sortedInShelfItems` unchanged, so an empty displayed list implies an empty source list, which takes the empty-group branch instead. The vendor and recipe views pass `hideFiltersToggle={true}` on **both** pages and their `displayedItems` memo returns `sortedItems` unchanged with no search text, so their filter case cannot be reached either — two keys each.
 
-  **Eight tests in `routes/index.test.tsx` pin this** — two per view, plus the shelf filter case and the `unsorted` search case. The three older ones were renamed to *"user sees the empty-group state…"*: their fixtures build a group with NO items, where the pre-search count is already 0, so they pass against the broken guard as well as the fixed one. The other five build a group that HAS items; three of them fail when the guard is reverted, and the two `unsorted` ones also fail when the `isUnsorted` branch is dropped.
+  **Ten tests in `routes/index.test.tsx` pin this** — two per view, plus the shelf filter case, plus one `unsorted` search case per view. The three older ones were renamed to *"user sees the empty-group state…"*: their fixtures build a group with NO items, where the pre-search count is already 0, so they pass against the broken guard as well as the fixed one. The other seven build a group that HAS items; each fails when its own view's guard is reverted, and the four `unsorted` ones also fail when their view's `isUnsorted` branch is dropped.
 
 ### Item List Filter Pipeline
 
