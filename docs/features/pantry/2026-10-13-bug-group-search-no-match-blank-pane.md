@@ -94,20 +94,38 @@ a replacement for one of them.
 **`ShelfDetailView` also needed a fifth state the other two do not.** Its toolbar is
 `hideFiltersToggle={!isUnsorted}`, so on the `unsorted` page the list is narrowed by
 the tag / vendor / recipe filters as well, with no search running. A message naming a
-search would be false there, so its no-match description picks between
-`pantry.detail.noMatch.shelf` (a search is live) and
-`pantry.detail.noMatch.shelfFilters` (it is not). That filter case was its own blank
-pane before this fix, with the same three conditions true at once. The vendor and
-recipe views pass `hideFiltersToggle={true}` and narrow by search only, so they need
-no such branch.
+search would be false there. That filter case was its own blank pane before this fix,
+with the same three conditions true at once. The vendor and recipe views pass
+`hideFiltersToggle={true}` and narrow by search only, so they need no such branch.
+
+**The no-match description reads `isUnsorted` as well as `trimmedSearch`** — see the
+copy revision of 2026-10-14 below. The first version of this fix branched on
+`trimmedSearch` alone, so both of its messages ended "is on this shelf", which is a
+false statement on a page that lists the items on no shelf. Three keys now cover the
+three reachable cases:
+
+| Page | Trigger | Key |
+|---|---|---|
+| a real shelf | search | `pantry.detail.noMatch.shelf` |
+| `unsorted` | search | `pantry.detail.noMatch.unsorted` |
+| `unsorted` | filters, no search | `pantry.detail.noMatch.unsortedFilters` |
+
+A real shelf has no filter case to name, so it needs no fourth key. Two things make
+that unreachable: `hideFiltersToggle={!isUnsorted}` means a real shelf page has no
+filters toggle at all, and the `displayedInShelfItems` memo returns
+`sortedInShelfItems` unchanged when there is no search text and `!isUnsorted`, so an
+empty displayed list there implies an empty source list — which takes the
+empty-group branch instead.
 
 ### i18n
 
 All ten strings in the three blocks were hardcoded English, so the whole block
 rendered in English for a Traditional Chinese user. They are now translated, together
-with the new no-match copy, in a new `pantry.detail.*` namespace — 13 keys in
-`apps/web/src/i18n/locales/en.json` and the same 13 in `tw.json`. The namespace is new
+with the new no-match copy, in a new `pantry.detail.*` namespace — 14 keys in
+`apps/web/src/i18n/locales/en.json` and the same 14 in `tw.json`. The namespace is new
 because `pantry.*` had no key for the detail views at all.
+
+The table below is generated from those two files, not written by hand.
 
 | Key | English | Traditional Chinese |
 |---|---|---|
@@ -123,7 +141,8 @@ because `pantry.*` had no key for the detail views at all.
 | `noMatch.vendor` | No item matching your search is assigned to this vendor | 沒有符合搜尋條件的品項指定給這個供應商 |
 | `noMatch.recipe` | No item matching your search is assigned to this recipe | 沒有符合搜尋條件的品項加入這個食譜 |
 | `noMatch.shelf` | No item matching your search is on this shelf | 沒有符合搜尋條件的品項放上這個貨架 |
-| `noMatch.shelfFilters` | No item matching the filter is on this shelf | 沒有符合篩選條件的品項放上這個貨架 |
+| `noMatch.unsorted` | No item matching your search is without a shelf | 沒有符合搜尋條件且未放上貨架的品項 |
+| `noMatch.unsortedFilters` | No item matching the filter is without a shelf | 沒有符合篩選條件且未放上貨架的品項 |
 
 Two notes for anyone editing them:
 
@@ -136,14 +155,14 @@ Two notes for anyone editing them:
 
 The nearest existing wording, `shopping.emptyFiltered.title` ("No items match the
 current filters"), was not reused for the search cases: it talks about filters, and
-these messages are about a search term. It was the first model for
-`noMatch.shelfFilters`, which really is about filters, but the copy revision below
-replaced that shape.
+these messages are about a search term. It was the first model for the filter key
+(then named `noMatch.shelfFilters`, since renamed to `noMatch.unsortedFilters`),
+which really is about filters, but the copy revisions below replaced that shape.
 
 #### Copy revision, same day
 
-The first version of these 13 strings gave the empty-group case and the no-match case
-two different sentence shapes. The owner rewrote the Traditional Chinese so the two
+The first version of these strings — 13 of them at that point — gave the empty-group
+case and the no-match case two different sentence shapes. The owner rewrote the Traditional Chinese so the two
 read as a matched pair, then the English followed.
 
 The Chinese shape is: 沒有 + qualifier + 品項 + relationship clause. Only the
@@ -167,14 +186,66 @@ The shelf keys say "is on this shelf" rather than "is assigned to this shelf". T
 matches TW's 放上 and `shelf.searchToAdd` ("Search to add items to this shelf"): an
 item is *added to* a shelf, and then it *is on* it.
 
-Checked after the edit: all 13 `pantry.detail.*` values are different from each other,
-and none equals any of the other 581 string values in `en.json`.
+Checked after the edit: all 13 `pantry.detail.*` values then present were different
+from each other, and none equalled any of the other 581 string values in `en.json`.
+
+#### Copy revision, 2026-10-14 — the unsorted page gets its own two keys
+
+The 2026-10-13 copy above left one statement false. `ShelfDetailView` renders two
+different pages, and the no-match branch did not know which one it was on:
+
+| Page | `shelfId` | Lists |
+|---|---|---|
+| a real shelf | that shelf's id | the items **on** that shelf |
+| Unsorted | the literal `'unsorted'` | the items on **no** shelf |
+
+The empty-group branch was already mode-aware — it checks `isUnsorted` and says
+`shelf.allAssigned` ("All items are assigned to shelves"), wording that never calls
+the Unsorted page "this shelf". The no-match branch branched on `trimmedSearch`
+alone, and both of its keys ended "is on this shelf". On the Unsorted page that is
+wrong about every row.
+
+`noMatch.shelfFilters` was wrong in **every** case it rendered, because the
+no-filter-match case is reachable only on the Unsorted page. So it was renamed rather
+than kept beside a new key:
+
+| Key | Change |
+|---|---|
+| `noMatch.shelf` | kept, unchanged — it is correct for a real shelf |
+| `noMatch.unsorted` | **new** — the Unsorted page, search case |
+| `noMatch.unsortedFilters` | **renamed** from `noMatch.shelfFilters` |
+
+The key count went 13 → 14. No reference to `shelfFilters` is left anywhere in
+`apps/web/src` or `e2e/`.
+
+The two new values keep the pair rule: the qualifier goes on the subject, and the
+relationship clause matches the partner message `shelf.allAssigned`.
+
+| Key | English | Traditional Chinese |
+|---|---|---|
+| `noMatch.unsorted` | No item matching your search is without a shelf | 沒有符合搜尋條件且未放上貨架的品項 |
+| `noMatch.unsortedFilters` | No item matching the filter is without a shelf | 沒有符合篩選條件且未放上貨架的品項 |
+
+English says "is without a shelf", not "is not on a shelf". Both are accurate; the
+second puts two negatives in one short sentence ("No item … is not on a shelf"),
+which is harder to read.
+
+The Traditional Chinese inserts the qualifier into the shape `shelf.allAssigned`
+already uses — 沒有未放上貨架的品項 — joined with 且, and keeps 放上 as the shelf
+verb. **These two values are not reviewed by a native speaker and no test asserts
+them.** The previous two revisions of this copy were both owner rewrites, so treat
+them as drafts.
+
+`ShelfDetailView.tsx` carries a comment saying the branch reads `isUnsorted` on
+purpose, so the next editor does not collapse it back.
 
 ## Test Added
 
-`apps/web/src/routes/index.test.tsx` — 3 new tests plus 1 for the shelf filter case.
+`apps/web/src/routes/index.test.tsx` — 3 new tests plus 1 for the shelf filter case,
+then 1 more on 2026-10-14 for the Unsorted search case.
 `apps/web/src/routes/index.stories.tsx` + `index.stories.test.tsx` — 1 story and its
-smoke test. The file went from 49 to 53 tests; the stories file from 23 to 24.
+smoke test. The file went from 49 to 53 tests, then to **54**; the stories file from
+23 to 24. The web suite went from 2308 to **2309**.
 
 **The three existing tests were renamed, not reused.** They were called
 *"user sees the empty state, not a blank pane, when a search matches nothing and the
@@ -194,6 +265,7 @@ active location, searched for a query matching nothing:
 | `user sees a no-match message, not a blank pane, when the vendor HAS items and the search matches none of them` | `VendorDetailView` |
 | `user sees a no-match message, not a blank pane, when the recipe HAS items and the search matches none of them` | `RecipeDetailView` |
 | `user sees a no-match message, not a blank pane, when a filter on the unsorted shelf page excludes every item` | `ShelfDetailView`, filter branch |
+| `user sees the unsorted wording, not the shelf wording, when the unsorted shelf page HAS items and the search matches none of them` | `ShelfDetailView`, Unsorted search branch (added 2026-10-14) |
 
 Each one asserts the item's heading is present **before** the search, then gone after
 it, then the no-match message present and the empty-group message absent. The first
@@ -208,8 +280,8 @@ Every one was run, and every one went red on exactly the right test.
 |---|---|
 | `VendorDetailView` guard back to `sortedItems.length === 0` | 1 failed / 52 passed. `TestingLibraryElementError: Unable to find an element with the text: No matching items.` on the new vendor test |
 | `RecipeDetailView` guard back to `sortedItems.length === 0` | 1 failed / 52 passed. Same error text, on the new recipe test |
-| `ShelfDetailView` guard back to `sortedInShelfItems.length === 0` | **2** failed / 51 passed. Same error text, on the new shelf test AND on the unsorted-filter test — both reach this one guard |
-| `ShelfDetailView`: always use `noMatch.shelf`, dropping the `trimmedSearch` branch | 1 failed / 52 passed. `Unable to find an element with the text: No item matching the filter is on this shelf.` on the filter test |
+| `ShelfDetailView` guard back to `sortedInShelfItems.length === 0` | **2** failed / 51 passed. Same error text, on the new shelf test AND on the unsorted-filter test — both reach this one guard. **Now 3 failed / 51 passed** — see the 2026-10-14 table below |
+| `ShelfDetailView`: always use `noMatch.shelf`, dropping the `trimmedSearch` branch | 1 failed / 52 passed. `Unable to find an element with the text: No item matching the filter is on this shelf.` on the filter test. Superseded 2026-10-14, when that branch became `isUnsorted` first |
 | `t('pantry.detail.noMatch.vendor')` renamed to a key that does not exist | 2 failed / 75 passed across `index.test.tsx` + `index.stories.test.tsx`. `Unable to find an element with the text: No item matching your search is assigned to this vendor.` in both |
 | `t('pantry.detail.vendor.noneAssigned')` renamed to a key that does not exist | 1 failed / 52 passed. `Unable to find an element with the text: No items are assigned to this vendor.` — so the extracted strings are asserted too, not only the new ones |
 
@@ -227,6 +299,22 @@ file holds **53** tests, so "1 failed / 51 passed" cannot be right for any of th
 the two single-failure guard rows are 1 failed / **52** passed, and the
 `ShelfDetailView` guard row is **2** failed / 51 passed. The bad-key row also now
 names both files, because the story smoke test asserts the same string.
+
+#### Mutation checks for the 2026-10-14 revision
+
+Run from `apps/web` with `npx vitest run src/routes/index.test.tsx`, which holds
+**54** tests after the new one.
+
+| Mutation | Result |
+|---|---|
+| drop the `isUnsorted` check in the no-match branch, so it always uses `noMatch.shelf` | **2 failed / 52 passed**. The new Unsorted test: `TestingLibraryElementError: Unable to find an element with the text: No item matching your search is without a shelf.` The unsorted-filter test: the same error for `No item matching the filter is without a shelf.` |
+| the same mutation, with the new test's "present" assertion removed, to check its "absent" assertion alone | **1 failed / 53 skipped**. `expect(element).not.toBeInTheDocument()` — the real-shelf wording was found on the page. So both halves of the new test catch this mutation, not just the first one to run |
+| `ShelfDetailView` guard back to `sortedInShelfItems.length === 0` | **3 failed / 51 passed** — one more than before, because the new test reaches the same guard. All three: `Unable to find an element with the text: No matching items.` The 3 empty-group tests stayed **green** (`-t "empty-group"` → 3 passed / 51 skipped) |
+| `t('pantry.detail.noMatch.unsortedFilters')` pointed at `noMatch.unsortedFiltersTypo` | **1 failed / 53 passed**. `Unable to find an element with the text: No item matching the filter is without a shelf.` on the unsorted-filter test |
+
+The first row is the one that proves the mode-awareness is real. The second row
+matters because `getByText` throws before any later assertion runs, so without it the
+"absent" assertion would be unproven.
 
 The i18n change is covered by tests for the English text only. The Traditional Chinese
 strings are checked for key parity by
