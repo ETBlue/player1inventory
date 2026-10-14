@@ -164,7 +164,8 @@
         "vendor": "No item matching your search is assigned to this vendor",
         "recipe": "No item matching your search is assigned to this recipe",
         "shelf": "No item matching your search is on this shelf",
-        "shelfFilters": "No item matching the filter is on this shelf"
+        "unsorted": "No item matching your search is without a shelf",
+        "unsortedFilters": "No item matching the filter is without a shelf"
       }
     },
     "empty": {

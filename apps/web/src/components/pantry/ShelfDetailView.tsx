@@ -532,13 +532,28 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
               that merely do not match. Same arrangement as
               `routes/shopping/$vendorId.tsx`.
 
-              The inner `trimmedSearch` branch is this view only. On the
-              `unsorted` page `displayedInShelfItems` is also narrowed by the
-              tag / vendor / recipe filters (`hideFiltersToggle={!isUnsorted}`
-              above), so the list can be emptied with no search running at
-              all, and a message naming a search would be wrong there. The
-              other two detail views pass `hideFiltersToggle={true}` and
-              narrow by search only, so they need no such branch. */}
+              The two inner branches are this view only.
+
+              `isUnsorted` picks the wording, the same way the empty-group
+              message below does. This component renders two different
+              pages: a real shelf, which lists the items ON it, and the
+              `unsorted` page, which lists the items on NO shelf. On the
+              `unsorted` page "is on this shelf" would be a false statement
+              about every row, so those two cases get their own keys. Do not
+              collapse this branch.
+
+              `trimmedSearch` picks between the search wording and the
+              filter wording. On the `unsorted` page
+              `displayedInShelfItems` is also narrowed by the tag / vendor /
+              recipe filters (`hideFiltersToggle={!isUnsorted}` above), so
+              the list can be emptied with no search running at all, and a
+              message naming a search would be wrong there. A real shelf has
+              no filters toggle, so its filter case cannot be reached and
+              needs no key — with no search and `!isUnsorted` the
+              `displayedInShelfItems` memo returns `sortedInShelfItems`
+              unchanged, which takes the other branch below. The other two
+              detail views pass `hideFiltersToggle={true}` and narrow by
+              search only, so they need no such branch. */}
           {!hasTail && displayedInShelfItems.length === 0 && (
             <div className="text-center py-12 text-foreground-muted">
               {sortedInShelfItems.length > 0 ? (
@@ -547,9 +562,11 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
                     {t('pantry.detail.noMatch.title')}
                   </p>
                   <p className="text-sm mt-1">
-                    {trimmedSearch
-                      ? t('pantry.detail.noMatch.shelf')
-                      : t('pantry.detail.noMatch.shelfFilters')}
+                    {isUnsorted
+                      ? trimmedSearch
+                        ? t('pantry.detail.noMatch.unsorted')
+                        : t('pantry.detail.noMatch.unsortedFilters')
+                      : t('pantry.detail.noMatch.shelf')}
                   </p>
                 </>
               ) : (

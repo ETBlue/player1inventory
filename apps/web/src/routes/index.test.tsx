@@ -1319,15 +1319,85 @@ describe('Home page filtering integration', () => {
         ).not.toBeInTheDocument()
       })
 
-      // And the pane is NOT blank — it carries the FILTER wording, not the
-      // search wording and not the empty-group wording
+      // And the pane is NOT blank — it carries the FILTER wording for the
+      // unsorted page, not the search wording and not the empty-group
+      // wording. The unsorted page lists items on NO shelf, so a message
+      // ending "is on this shelf" would be false about every row — which is
+      // why the branch reads `isUnsorted` as well as `trimmedSearch`.
       expect(screen.getByText('No matching items')).toBeInTheDocument()
       expect(
-        screen.getByText('No item matching the filter is on this shelf'),
+        screen.getByText('No item matching the filter is without a shelf'),
       ).toBeInTheDocument()
       expect(
         screen.queryByText('No item matching your search is on this shelf'),
       ).not.toBeInTheDocument()
+      expect(
+        screen.queryByText('No item matching the filter is on this shelf'),
+      ).not.toBeInTheDocument()
+      expect(screen.queryByText('No items')).not.toBeInTheDocument()
+      expect(
+        screen.queryByText('All items are assigned to shelves'),
+      ).not.toBeInTheDocument()
+    })
+
+    it('user sees the unsorted wording, not the shelf wording, when the unsorted shelf page HAS items and the search matches none of them', async () => {
+      // Given the unsorted shelf page (no shelves exist, so it holds
+      // everything) with Milk stocked at the active location.
+      //
+      // The page lists the items on NO shelf, so the real-shelf message
+      // "No item matching your search is on this shelf" would be false
+      // about every row here. A populated page is what makes the two
+      // messages distinguishable: with an empty page the empty-group
+      // branch renders instead and neither no-match message appears.
+      await createItem({ name: 'Milk', tagIds: [], ...itemDefaults })
+
+      renderShelfDetail('unsorted')
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Unsorted', level: 1 })
+
+      // And the list really renders Milk before any search runs, so the
+      // narrowing below is observable rather than assumed
+      expect(
+        await screen.findByRole('heading', { name: 'Milk' }),
+      ).toBeInTheDocument()
+      expect(screen.queryByText('No matching items')).not.toBeInTheDocument()
+
+      // When the user searches for a string NO item matches, anywhere
+      await openSearch(user, 'zzz')
+      expect(screen.getByPlaceholderText(/search items/i)).toHaveValue('zzz')
+
+      // Then Milk leaves the list — it was narrowed away, not never drawn
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('heading', { name: 'Milk' }),
+        ).not.toBeInTheDocument()
+      })
+
+      // And the tail is empty: both buckets hold only items whose name
+      // contains the query, so a query matching nothing empties both
+      expect(screen.queryByText(/not stocked here/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+
+      // And the pane carries the UNSORTED search wording
+      expect(screen.getByText('No matching items')).toBeInTheDocument()
+      expect(
+        screen.getByText('No item matching your search is without a shelf'),
+      ).toBeInTheDocument()
+
+      // And NOT the real-shelf wording. This is the assertion that proves
+      // the branch picked the right message rather than merely rendering
+      // something: both strings pass the two checks above.
+      expect(
+        screen.queryByText('No item matching your search is on this shelf'),
+      ).not.toBeInTheDocument()
+
+      // And NOT the filter wording, which names the wrong trigger
+      expect(
+        screen.queryByText('No item matching the filter is without a shelf'),
+      ).not.toBeInTheDocument()
+
+      // And NOT the empty-group message, which would be a false statement:
+      // the page does hold an item.
       expect(screen.queryByText('No items')).not.toBeInTheDocument()
       expect(
         screen.queryByText('All items are assigned to shelves'),
