@@ -1977,6 +1977,67 @@ describe('Home page filtering integration', () => {
       ).not.toBeInTheDocument()
     })
 
+    it('user sees the unsorted wording, not the vendor wording, when the "No vendor" page HAS items and the search matches none of them', async () => {
+      // Given the unsorted ("No vendor") page with Milk, which carries no
+      // vendor, stocked at the active location.
+      //
+      // The page lists the items assigned to NO vendor, so the real-vendor
+      // message "No item matching your search is assigned to this vendor"
+      // would be false about every row here. A populated page is what makes
+      // the two messages distinguishable: with an empty page the empty-group
+      // branch renders instead and neither no-match message appears.
+      await createItem({ name: 'Milk', tagIds: [], ...itemDefaults })
+
+      renderVendorDetail('unsorted')
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'No vendor', level: 1 })
+
+      // And the list really renders Milk before any search runs, so the
+      // narrowing below is observable rather than assumed
+      expect(
+        await screen.findByRole('heading', { name: 'Milk' }),
+      ).toBeInTheDocument()
+      expect(screen.queryByText('No matching items')).not.toBeInTheDocument()
+
+      // When the user searches for a string NO item matches, anywhere
+      await openSearch(user, 'zzz')
+      expect(screen.getByPlaceholderText(/search items/i)).toHaveValue('zzz')
+
+      // Then Milk leaves the list — it was narrowed away, not never drawn
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('heading', { name: 'Milk' }),
+        ).not.toBeInTheDocument()
+      })
+
+      // And the tail is empty: both buckets hold only items whose name
+      // contains the query, so a query matching nothing empties both
+      expect(screen.queryByText(/not stocked here/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+
+      // And the pane carries the UNSORTED wording
+      expect(screen.getByText('No matching items')).toBeInTheDocument()
+      expect(
+        screen.getByText('No item matching your search is without a vendor'),
+      ).toBeInTheDocument()
+
+      // And NOT the real-vendor wording. This is the assertion that proves
+      // the branch picked the right message rather than merely rendering
+      // something: both strings pass the two checks above.
+      expect(
+        screen.queryByText(
+          'No item matching your search is assigned to this vendor',
+        ),
+      ).not.toBeInTheDocument()
+
+      // And NOT the empty-group message, which would be a false statement:
+      // the page does hold an item.
+      expect(screen.queryByText('No items')).not.toBeInTheDocument()
+      expect(
+        screen.queryByText('All items are assigned to vendors'),
+      ).not.toBeInTheDocument()
+    })
+
     it('the two-step gate: "Add to {location}" stocks the item without applying the vendor, and a second "Apply {vendor}" press applies it', async () => {
       // Given a vendor with no items, and Milk stocked ONLY at the Office and
       // carrying NO vendor
@@ -2373,6 +2434,70 @@ describe('Home page filtering integration', () => {
       expect(screen.queryByText('No items')).not.toBeInTheDocument()
       expect(
         screen.queryByText('No items are assigned to this recipe'),
+      ).not.toBeInTheDocument()
+    })
+
+    it('user sees the unsorted wording, not the recipe wording, when the "Not added to recipe" page HAS items and the search matches none of them', async () => {
+      // Given the unsorted ("Not added to recipe") page with Milk, which carries no
+      // recipe, stocked at the active location.
+      //
+      // The page lists the items assigned to NO recipe, so the real-recipe
+      // message "No item matching your search is assigned to this recipe"
+      // would be false about every row here. A populated page is what makes
+      // the two messages distinguishable: with an empty page the empty-group
+      // branch renders instead and neither no-match message appears.
+      await createItem({ name: 'Milk', tagIds: [], ...itemDefaults })
+
+      renderRecipeDetail('unsorted')
+      const user = userEvent.setup()
+      await screen.findByRole('heading', {
+        name: 'Not added to recipe',
+        level: 1,
+      })
+
+      // And the list really renders Milk before any search runs, so the
+      // narrowing below is observable rather than assumed
+      expect(
+        await screen.findByRole('heading', { name: 'Milk' }),
+      ).toBeInTheDocument()
+      expect(screen.queryByText('No matching items')).not.toBeInTheDocument()
+
+      // When the user searches for a string NO item matches, anywhere
+      await openSearch(user, 'zzz')
+      expect(screen.getByPlaceholderText(/search items/i)).toHaveValue('zzz')
+
+      // Then Milk leaves the list — it was narrowed away, not never drawn
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('heading', { name: 'Milk' }),
+        ).not.toBeInTheDocument()
+      })
+
+      // And the tail is empty: both buckets hold only items whose name
+      // contains the query, so a query matching nothing empties both
+      expect(screen.queryByText(/not stocked here/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+
+      // And the pane carries the UNSORTED wording
+      expect(screen.getByText('No matching items')).toBeInTheDocument()
+      expect(
+        screen.getByText('No item matching your search is without a recipe'),
+      ).toBeInTheDocument()
+
+      // And NOT the real-recipe wording. This is the assertion that proves
+      // the branch picked the right message rather than merely rendering
+      // something: both strings pass the two checks above.
+      expect(
+        screen.queryByText(
+          'No item matching your search is assigned to this recipe',
+        ),
+      ).not.toBeInTheDocument()
+
+      // And NOT the empty-group message, which would be a false statement:
+      // the page does hold an item.
+      expect(screen.queryByText('No items')).not.toBeInTheDocument()
+      expect(
+        screen.queryByText('All items are assigned to recipes'),
       ).not.toBeInTheDocument()
     })
 

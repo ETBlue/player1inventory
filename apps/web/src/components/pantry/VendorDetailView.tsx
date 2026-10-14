@@ -359,8 +359,27 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
                   <p className="font-medium">
                     {t('pantry.detail.noMatch.title')}
                   </p>
+                  {/* Mode-aware on `isUnsorted`, the same way the
+                      empty-group branch just below is. This component renders
+                      two pages: a real vendor, which lists the items assigned
+                      to it, and the `unsorted` ("No vendor") page, which lists
+                      the items assigned to NO vendor. On the `unsorted` page
+                      "is assigned to this vendor" would be a false statement
+                      about every row, so that case gets its own key. Do not
+                      collapse this branch.
+
+                      There is no filter case to name here, unlike
+                      `ShelfDetailView`: this view passes
+                      `hideFiltersToggle={true}` on both pages, and the
+                      `displayedItems` memo returns `sortedItems` unchanged
+                      when there is no search text — so an empty displayed
+                      list with no search implies an empty source list, which
+                      takes the empty-group branch below instead. Two keys,
+                      not three. */}
                   <p className="text-sm mt-1">
-                    {t('pantry.detail.noMatch.vendor')}
+                    {isUnsorted
+                      ? t('pantry.detail.noMatch.vendorUnsorted')
+                      : t('pantry.detail.noMatch.vendor')}
                   </p>
                 </>
               ) : (

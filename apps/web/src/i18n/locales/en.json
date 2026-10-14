@@ -162,7 +162,9 @@
       "noMatch": {
         "title": "No matching items",
         "vendor": "No item matching your search is assigned to this vendor",
+        "vendorUnsorted": "No item matching your search is without a vendor",
         "recipe": "No item matching your search is assigned to this recipe",
+        "recipeUnsorted": "No item matching your search is without a recipe",
         "shelf": "No item matching your search is on this shelf",
         "shelfUnsorted": "No item matching your search is without a shelf",
         "shelfUnsortedFilters": "No item matching the filter is without a shelf"

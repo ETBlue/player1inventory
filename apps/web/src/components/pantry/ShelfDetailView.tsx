@@ -552,8 +552,10 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
               needs no key — with no search and `!isUnsorted` the
               `displayedInShelfItems` memo returns `sortedInShelfItems`
               unchanged, which takes the other branch below. The other two
-              detail views pass `hideFiltersToggle={true}` and narrow by
-              search only, so they need no such branch. */}
+              detail views read `isUnsorted` here as well, but they pass
+              `hideFiltersToggle={true}` on both pages and narrow by search
+              only, so they need no filter branch — two keys each, not
+              three. */}
           {!hasTail && displayedInShelfItems.length === 0 && (
             <div className="text-center py-12 text-foreground-muted">
               {sortedInShelfItems.length > 0 ? (

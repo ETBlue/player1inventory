@@ -365,8 +365,27 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
                   <p className="font-medium">
                     {t('pantry.detail.noMatch.title')}
                   </p>
+                  {/* Mode-aware on `isUnsorted`, the same way the
+                      empty-group branch just below is. This component renders
+                      two pages: a real recipe, which lists the items assigned
+                      to it, and the `unsorted` ("Not added to recipe") page,
+                      which lists the items assigned to NO recipe. On the
+                      `unsorted` page "is assigned to this recipe" would be a
+                      false statement about every row, so that case gets its
+                      own key. Do not collapse this branch.
+
+                      There is no filter case to name here, unlike
+                      `ShelfDetailView`: this view passes
+                      `hideFiltersToggle={true}` on both pages, and the
+                      `displayedItems` memo returns `sortedItems` unchanged
+                      when there is no search text — so an empty displayed
+                      list with no search implies an empty source list, which
+                      takes the empty-group branch below instead. Two keys,
+                      not three. */}
                   <p className="text-sm mt-1">
-                    {t('pantry.detail.noMatch.recipe')}
+                    {isUnsorted
+                      ? t('pantry.detail.noMatch.recipeUnsorted')
+                      : t('pantry.detail.noMatch.recipe')}
                   </p>
                 </>
               ) : (
