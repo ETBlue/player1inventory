@@ -366,6 +366,55 @@ relationship, so they are already true on both pages. `settings.vendors.items.em
 and `settings.recipes.items.empty` do name "this vendor" / "this recipe", but those
 pages exist only for a real row and have no `unsorted` mode.
 
+#### i18n follow-up, 2026-10-15 — `PantryListView`'s own filtered empty state
+
+`PantryListView` was the model this branch copied: it already had the two-branch
+empty-state structure, so it needed no behaviour change. But both strings in its
+second branch were still hardcoded English, at `PantryListView.tsx:318` and `:320`:
+
+```tsx
+<p>No items match the current filters.</p>
+<p className="text-sm mt-1">
+  Try adjusting or clearing your filters.
+</p>
+```
+
+They now read from a new `pantry.emptyFiltered.*`, a sibling of the existing
+`pantry.empty.*`. The naming copies `shopping.empty.*` / `shopping.emptyFiltered.*`,
+the same pair on the cart page.
+
+| Key | English | Traditional Chinese |
+|---|---|---|
+| `pantry.emptyFiltered.title` | No items match the current filters | 沒有符合篩選條件的品項 |
+| `pantry.emptyFiltered.description` | Try adjusting or clearing your filters | 可以調整或清除篩選條件 |
+
+**These two keys are deliberately NOT in the table above.** That table covers
+`pantry.detail.*` only, and the script that regenerates it reads
+`['pantry']['detail']`, so adding a `pantry.emptyFiltered.*` row would break the
+check it exists for. The detail views and the flat list are two different blocks in
+two different namespaces.
+
+**The English lost two full stops.** The source said "No items match the current
+filters." and "Try adjusting or clearing your filters." This is a user-visible text
+change. The reason: the first sentence already existed as a key value twice without a
+stop — `shopping.emptyFiltered.title` and `settings.tags.items.emptyFiltered` — and so
+do all 16 `pantry.detail.*` values and `pantry.empty.title`. Keeping the stop would
+have made one key differ from its two twins by one character. Both lines dropped it,
+not just the first, so the block follows one rule.
+
+**Both Traditional Chinese values are unreviewed.** `title` reuses
+`settings.tags.items.emptyFiltered`'s existing value word for word. `description` is
+new copy: `shopping.emptyFiltered.description` is an empty string, so there was no
+Chinese anywhere for "Try adjusting or clearing your filters". No test asserts a TW
+string, and the owner rewrote this branch's Chinese four times, so treat both as
+drafts.
+
+**One existing test already asserted the title; nothing asserted the description.**
+`apps/web/src/routes/index.test.tsx:220`, inside *user can filter items by selecting
+tags*, has `getByText(/no items match the current filters/i)`. The regex carries no
+full stop, so dropping it left that test green and it needed no edit. The description
+line was asserted nowhere, which is why the new test below was added.
+
 ## Test Added
 
 `apps/web/src/routes/index.test.tsx` — 3 new tests plus 1 for the shelf filter case,
@@ -385,6 +434,12 @@ renders — the fixture cannot tell broken code from correct code. They are now
 *"user sees the empty-group state, not a blank pane, when an empty group is searched
 and nothing matches"*, which says what they actually do, and they stay as a negative
 control: they pass against the broken guard as well as the fixed one.
+
+One more test joined on 2026-10-15 for the i18n follow-up above:
+`user sees a no-match message, not a blank list, when the pantry HAS items and a
+filter excludes every one`, on `PantryListView`. `index.test.tsx` went from 56 to
+**57** tests and the web suite from 2311 to **2312**. It is the only test that asserts
+`pantry.emptyFiltered.description`.
 
 The new tests use the opposite fixture — a group that **has** an item, stocked at the
 active location, searched for a query matching nothing:
@@ -470,6 +525,21 @@ asserts both a present string and an absent string on the same branch, a failure
 present assertion stops the absent one from ever running. Removing the present
 assertion and re-running the mutation is what proves the absent half.
 
+#### Mutation checks for the 2026-10-15 i18n follow-up
+
+Run from `apps/web` with `npx vitest run src/routes/index.test.tsx`, which holds
+**57** tests after the new one.
+
+| Mutation | Result |
+|---|---|
+| `t('pantry.emptyFiltered.title')` pointed at `pantry.emptyFiltered.titleTypo` | **2 failed / 55 passed**. The new test: `TestingLibraryElementError: Unable to find an element with the text: No items match the current filters.` And *user can filter items by selecting tags*, line 220, with the same error for its regex `/no items match the current filters/i` |
+| `t('pantry.emptyFiltered.description')` pointed at `pantry.emptyFiltered.descriptionTypo` | **1 failed / 56 passed**. Only the new test: `Unable to find an element with the text: Try adjusting or clearing your filters.` So the description was unproven before this test and the title was not |
+| `const tagFiltered = filterItems(items, filterState, tags)` replaced with `const tagFiltered = items`, so the tag filter is ignored and the list never empties | **1 failed / 56 skipped** with the new test selected alone (and **5 failed / 52 passed** for the whole file). `Unable to find an element with the text: No items match the current filters.` |
+| the same mutation, with the new test's two "present" assertions removed, to check its "absent" assertions alone | **1 failed / 56 skipped**. `expect(element).not.toBeInTheDocument()` at line 907 — Milk's heading was still on the page. So both halves catch it |
+
+The first row is the measurement that shows the two keys are not interchangeable: the
+title mutation fails two tests, the description mutation fails one.
+
 The i18n change is covered by tests for the English text only. The Traditional Chinese
 strings are checked for key parity by
 `apps/web/src/i18n/locales/locales.test.ts` and read by no assertion, so their wording
@@ -488,6 +558,7 @@ Branch `fix/group-search-no-match`.
 | `refactor(i18n): name the two Unsorted shelf no-match keys by view` | `noMatch.unsorted` → `noMatch.shelfUnsorted`, `noMatch.unsortedFilters` → `noMatch.shelfUnsortedFilters`, in both locales and in `ShelfDetailView` (2026-10-15) |
 | `fix(pantry): name the right page in the Unsorted no-match message` | `VendorDetailView` and `RecipeDetailView`, their two new keys in both locales, the two new tests (2026-10-15) |
 | `docs(pantry): record the Unsorted vendor and recipe keys` | the 2026-10-15 sections of this doc and the two `CLAUDE.md` files |
+| `fix(pantry): translate the filtered empty state on the flat pantry list` | `PantryListView`, the two `pantry.emptyFiltered.*` keys in both locales, one new test, and this section (2026-10-15) |
 
 E2E is **owed, not run** — another session held the machine, and only one Playwright
 suite can run here at a time. The specs that matter are
@@ -499,5 +570,8 @@ suite can run here at a time. The specs that matter are
 `No matching items`, `No item matching`, `without a vendor`, `without a recipe`,
 `without a shelf` and `unsortedFilters`. The only hit for `pantry.detail` is a prose
 comment in `e2e/tests/settings/shelves.spec.ts:36` that says "the pantry detail view",
-not a key. So no spec needs editing; the run is still owed as a regression check on the
+not a key. Re-checked for the i18n follow-up: 0 matches for
+`No items match`, `Try adjusting`, `current filters` and `emptyFiltered`. The only hit
+for `pantry.empty` is a prose comment in `e2e/tests/location-switcher.spec.ts:219`
+naming `pantry.empty.title`, a key this follow-up did not touch. So no spec needs editing; the run is still owed as a regression check on the
 pages themselves.

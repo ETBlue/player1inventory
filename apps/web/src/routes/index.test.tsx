@@ -869,6 +869,50 @@ describe('Home page filtering integration', () => {
     })
   })
 
+  it('user sees a no-match message, not a blank list, when the pantry HAS items and a filter excludes every one', async () => {
+    // Given a Vegetables tag that no item carries, and Milk stocked here.
+    // The pantry is NOT empty, so this must reach the filtered empty state
+    // and not the "Your pantry is empty" CTA above it.
+    const categoryType = await createTagType({
+      name: 'Category',
+      color: 'blue',
+    })
+    await createTag({ typeId: categoryType.id, name: 'Vegetables' })
+    await createItem({ name: 'Milk', tagIds: [], ...itemDefaults })
+
+    renderApp()
+    const user = userEvent.setup()
+
+    // Milk's heading is asserted FIRST, so the list is proven to have
+    // rendered before the filter narrows it. Without this, the assertions
+    // below would also pass on a page that never rendered an item at all.
+    expect(
+      await screen.findByRole('heading', { name: 'Milk' }),
+    ).toBeInTheDocument()
+
+    // When the user turns on the Vegetables filter, which no item matches
+    await user.click(screen.getByRole('button', { name: /toggle filters/i }))
+    await user.click(screen.getByRole('button', { name: /category/i }))
+    await user.click(
+      screen.getByRole('menuitemcheckbox', { name: /vegetables/i }),
+    )
+
+    // Then both lines of the filtered empty state render
+    expect(
+      await screen.findByText('No items match the current filters'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('Try adjusting or clearing your filters'),
+    ).toBeInTheDocument()
+
+    // And the list really was narrowed, and the empty-pantry CTA did not
+    // take over — the pantry does hold an item
+    expect(
+      screen.queryByRole('heading', { name: 'Milk' }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText(/your pantry is empty/i)).not.toBeInTheDocument()
+  })
+
   describe('search tail (unified item search)', () => {
     it('user can see an item stocked only at another location under "not stocked here"', async () => {
       // Given Eggs is stocked here, and Milk is stocked ONLY at the Office

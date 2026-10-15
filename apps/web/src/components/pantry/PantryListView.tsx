@@ -315,9 +315,9 @@ export function PantryListView() {
           </div>
         ) : sortedItems.length === 0 && !hasTail ? (
           <div className="text-center py-12 text-foreground-muted">
-            <p>No items match the current filters.</p>
+            <p>{t('pantry.emptyFiltered.title')}</p>
             <p className="text-sm mt-1">
-              Try adjusting or clearing your filters.
+              {t('pantry.emptyFiltered.description')}
             </p>
           </div>
         ) : (

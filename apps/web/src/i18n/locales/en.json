@@ -175,6 +175,10 @@
       "description": "Come build your pantry!",
       "createButton": "Create item"
     },
+    "emptyFiltered": {
+      "title": "No items match the current filters",
+      "description": "Try adjusting or clearing your filters"
+    },
     "shelfCard": {
       "items_one": "{{count}} item",
       "items_other": "{{count}} items",
