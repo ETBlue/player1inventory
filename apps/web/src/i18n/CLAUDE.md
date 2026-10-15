@@ -71,6 +71,64 @@ const { t } = useTranslation()
 
 **Common i18n keys:** `common.*` covers `cancel`, `delete`, `deleting`, `nameLabel`, `save`, `saving`, `discard`, `goBack`, `unsavedTitle`, `unsavedDescription`, `done`, `back`, `confirm`, `add`, `edit`, `clear`, `fillToFull`, `manage`, `asc`, `desc`, `search`, `tags`, `filters`, `notStockedHere` (plural, the group-list divider label), `notInThisList` (plural, `ItemSearchTail`'s in-location divider label), `expiresOn` / `expiresOnHint` (the per-location due-date field's label/hint, shared by `ItemForm`'s Stock tab and `QuickUpdateDialog` — promoted 2026-08-27 from `items.form.expirationDueDate.*` once a second caller needed the same string) — reuse these instead of adding entity-specific duplicates.
 
+**`pantry.detail.*` keys** (the empty-state block in the three pantry group detail views — `VendorDetailView`, `RecipeDetailView`, `ShelfDetailView`). Added 2026-10-13 with the issue #267 fix; before that all ten strings in those three blocks were hardcoded English, so the whole block rendered in English for a TW user. **16 keys** in `en.json` and the same 16 in `tw.json` — 13 on 2026-10-13, 14 on 2026-10-14, 16 on 2026-10-15. Count them rather than quote this.
+
+| Key | English |
+|---|---|
+| `noItems` | `"No items"` — the shared title of the empty-GROUP state, used by all three views |
+| `vendor.allAssigned` / `vendor.noneAssigned` | `"All items are assigned to vendors"` / `"No items are assigned to this vendor"` |
+| `recipe.allAssigned` / `recipe.noneAssigned` | `"All items are assigned to recipes"` / `"No items are assigned to this recipe"` |
+| `shelf.allAssigned` / `shelf.noFilterMatch` / `shelf.searchToAdd` | `"All items are assigned to shelves"` / `"No items match the filter"` / `"Search to add items to this shelf"` |
+| `noMatch.title` | `"No matching items"` — the title of the NO-MATCH state, shared by all three views |
+| `noMatch.vendor` / `noMatch.recipe` / `noMatch.shelf` | the per-view sentence for a REAL group, e.g. `"No item matching your search is assigned to this vendor"` |
+| `noMatch.vendorUnsorted` | `"No item matching your search is without a vendor"` — `VendorDetailView`'s `unsorted` ("No vendor") page, search case. Added 2026-10-15 |
+| `noMatch.recipeUnsorted` | `"No item matching your search is without a recipe"` — `RecipeDetailView`'s `unsorted` ("Not added to recipe") page, search case. Added 2026-10-15 |
+| `noMatch.shelfUnsorted` | `"No item matching your search is without a shelf"` — `ShelfDetailView`'s `unsorted` page, search case |
+| `noMatch.shelfUnsortedFilters` | `"No item matching the filter is without a shelf"` — `ShelfDetailView`'s `unsorted` page, where the filters narrow the list with no search running |
+
+Four things to keep in mind when editing these:
+
+- **The empty-group state and the no-match state are different states, and their titles must stay different strings.** `noItems` is `"No items"` and `noMatch.title` is `"No matching items"`. Several tests assert one is absent while the other is present, using exact string matching, so making them equal would make those assertions meaningless.
+- **A `noMatch.*` sentence and its empty-group partner are a matched pair. They must differ only by the qualifier, and the qualifier goes on the subject.** Revised 2026-10-13. The relationship clause stays the same in both, so `vendor.noneAssigned` is `"No items are assigned to this vendor"` and `noMatch.vendor` is `"No item matching your search is assigned to this vendor"`. Traditional Chinese follows the same shape: 沒有 + qualifier + 品項 + relationship clause, with 任何 for the empty case and 符合搜尋條件的 / 符合篩選條件的 for the no-match case. The real-shelf key uses "is on this shelf" to match TW's 放上 verb and `shelf.searchToAdd` (`"Search to add items to this shelf"`). **The four `*Unsorted` keys pair with their view's `allAssigned` value instead**, because the `unsorted` page lists the items in no group at all. So they say "is without a {group}" and, in TW, insert the qualifier into that value's own shape with 且, keeping that view's own verb:
+
+  | `*Unsorted` key | Partner | English | TW |
+  |---|---|---|---|
+  | `noMatch.vendorUnsorted` | `vendor.allAssigned` (沒有未指定供應商的品項) | is without a vendor | 沒有符合搜尋條件且未指定供應商的品項 |
+  | `noMatch.recipeUnsorted` | `recipe.allAssigned` (沒有未加入食譜的品項) | is without a recipe | 沒有符合搜尋條件且未加入食譜的品項 |
+  | `noMatch.shelfUnsorted` | `shelf.allAssigned` (沒有未放上貨架的品項) | is without a shelf | 沒有符合搜尋條件且未放上貨架的品項 |
+  | `noMatch.shelfUnsortedFilters` | the same partner | is without a shelf | 沒有符合篩選條件且未放上貨架的品項 |
+
+  Do not rewrite one half of a pair on its own. **The four TW `*Unsorted` values are drafts.** No test asserts a TW string, and the owner rewrote this copy three times in two days, so treat them as unreviewed.
+- **All three no-match branches are mode-aware on `isUnsorted`. Do not collapse any of them.** Each of the three views renders two pages: a real group, listing the items in it, and the `unsorted` page, listing the items in **no** group. On the `unsorted` page a message naming "this vendor" / "this recipe" / "this shelf" is false about every row. The reachable cases:
+
+  | View | Page | Trigger | Key |
+  |---|---|---|---|
+  | `VendorDetailView` | a real vendor | search | `noMatch.vendor` |
+  | `VendorDetailView` | `unsorted` ("No vendor") | search | `noMatch.vendorUnsorted` |
+  | `RecipeDetailView` | a real recipe | search | `noMatch.recipe` |
+  | `RecipeDetailView` | `unsorted` ("Not added to recipe") | search | `noMatch.recipeUnsorted` |
+  | `ShelfDetailView` | a real shelf | search | `noMatch.shelf` |
+  | `ShelfDetailView` | `unsorted` | search | `noMatch.shelfUnsorted` |
+  | `ShelfDetailView` | `unsorted` | filters, no search | `noMatch.shelfUnsortedFilters` |
+
+  **Only `ShelfDetailView` has a filter case, so only it needs a third key.** Its toolbar is `hideFiltersToggle={!isUnsorted}`, so on the `unsorted` page the tag / vendor / recipe filters can empty the list with no search running. A real shelf has no filters toggle, and with no search text and `!isUnsorted` the `displayedInShelfItems` memo returns `sortedInShelfItems` unchanged, so an empty displayed list implies an empty source list and takes the empty-group branch instead. The other two views pass `hideFiltersToggle={true}` on **both** pages and their `displayedItems` memo returns `sortedItems` unchanged with no search text, so their filter case cannot be reached — two keys each, not three.
+
+  History: `ShelfDetailView` read `trimmedSearch` alone until 2026-10-14, and the other two read nothing at all until 2026-10-15, so all three said "this {group}" on a page where that is false about every row.
+- **None of these keys interpolates an entity name**, so none needs the `capitalize` span the naming rule above describes. `"No items are assigned to this vendor"` says *this vendor*, not the vendor's name, on purpose.
+
+**`pantry.emptyFiltered.*` keys** (the *filtered* empty state in `PantryListView`, the flat pantry list with no `?groupBy`). Added 2026-10-15. **2 keys** — `title` and `description` — in `en.json` and the same 2 in `tw.json`. Before that both strings were hardcoded English in `PantryListView.tsx`, so a TW user saw English there.
+
+| Key | English | TW |
+|---|---|---|
+| `title` | `"No items match the current filters"` | 沒有符合篩選條件的品項 |
+| `description` | `"Try adjusting or clearing your filters"` | 可以調整或清除篩選條件 |
+
+Three things to keep in mind when editing these:
+
+- **They are `pantry.empty.*`'s sibling, not part of `pantry.detail.*`.** `pantry.empty.*` is the state for a pantry with no items at all; this is the state for a pantry that HAS items which the current filters exclude. The two render from one ternary chain in `PantryListView.tsx`, `items.length === 0` first. The naming copies `shopping.empty.*` / `shopping.emptyFiltered.*`, which is the same pair on the cart page. `pantry.detail.*` belongs to the three group detail views and is a different block.
+- **The English dropped its two full stops when it moved into these keys.** It was `"No items match the current filters."` and `"Try adjusting or clearing your filters."` in the source. The same sentence already existed in two other keys without a stop — `shopping.emptyFiltered.title` and `settings.tags.items.emptyFiltered` — and so do all 16 `pantry.detail.*` values and `pantry.empty.title`, so keeping it would have made one key differ from its twins by one character.
+- **Both TW values are drafts.** No test asserts a TW string, and the owner rewrote this branch's Chinese four times, so treat them as unreviewed. `title` reuses `settings.tags.items.emptyFiltered`'s existing value word for word. `description` is new copy — there was no Chinese for it anywhere, because `shopping.emptyFiltered.description` is an empty string.
+
 **`items.searchTail.*` keys** (unified item search — `ItemSearchTail` and its callers): `rowAction` (`"{{action}}: {{name}}"` — every row's accessible name, since the visible label is identical down a section), `addToLocation` (`"Add to {{location}}"` — bucket 3's button on every surface), `applyVendor` (`"Apply {{vendor}}"` — bucket 2 on the cart page and, since PR C, on vendor detail), `inVendors` (`"In {{vendors}}"` — the inert `groupNote` on both the no-vendor cart and vendor detail's "No vendor" page, `normal-case` per the vendor-name display rule), `addToRecipe` (`"Add to recipe"` / `"加入食譜"` — recipe detail's bucket-2 action, PR C; it takes **no** interpolation, unlike `applyVendor`, because the recipe's name is already the page heading), `inRecipes` (`"In {{recipes}}"` / `"屬於 {{recipes}}"` — the inert `groupNote` on recipe detail's "Not added to recipe" page, PR C; rendered `capitalize`, the mirror image of `inVendors`' `normal-case`, since recipe names *are* subject to the title-case convention), `addToShelf` (`"Add to shelf"` — a selection shelf's bucket-2 action, PR B; also a satisfiable filter shelf's `groupAction` label since PR D — same key, same visible text, both shelf types append the item to their own list) and `notMatchingShelf` (`"Doesn't match this shelf's filters"` — a filter shelf's inert `groupNote`, PR B; narrowed by PR D to only an **unsatisfiable** shelf, one whose `filterConfig` names a vendor or recipe axis with no live entity left to satisfy it — every other filter shelf gets the real `groupAction` above instead).
 
 **`items.searchTail.filterPicks.*` keys** (PR D's `ShelfFilterPicksDialog`, the per-axis picker a filter shelf's `groupAction` always opens — since a 2026-08-28 designer ruling reversed the original direct-apply bypass, it opens even when every axis offers just one pre-selected option): `title` (`"Add {{name}} to {{shelf}}"` — the dialog heading), `vendorAxis` / `recipeAxis` (`"Vendor"` / `"Recipe"` — labels for those two axis kinds; a tag axis is labelled by its own tag type's name instead, read directly off `FilterAxis.typeName` rather than translated), `met` (`"Already set: {{name}}"` — the read-only line for an axis the item already satisfies), `error` (`"Couldn't add to this shelf. Try again."` — shown inline on a rejected `onConfirm`, dialog stays open), `confirm` (`"Add"`) and `cancel` (`"Cancel"`).

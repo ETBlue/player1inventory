@@ -144,10 +144,40 @@
     "searchPlaceholder": "搜尋食譜或材料..."
   },
   "pantry": {
+    "detail": {
+      "noItems": "沒有品項",
+      "vendor": {
+        "allAssigned": "沒有未指定供應商的品項",
+        "noneAssigned": "沒有任何品項指定給這個供應商"
+      },
+      "recipe": {
+        "allAssigned": "沒有未加入食譜的品項",
+        "noneAssigned": "沒有任何品項加入這個食譜"
+      },
+      "shelf": {
+        "allAssigned": "沒有未放上貨架的品項",
+        "noFilterMatch": "沒有符合篩選條件的品項",
+        "searchToAdd": "可以透過搜尋功能將品項放上這個貨架"
+      },
+      "noMatch": {
+        "title": "沒有符合的品項",
+        "vendor": "沒有符合搜尋條件的品項指定給這個供應商",
+        "vendorUnsorted": "沒有符合搜尋條件且未指定供應商的品項",
+        "recipe": "沒有符合搜尋條件的品項加入這個食譜",
+        "recipeUnsorted": "沒有符合搜尋條件且未加入食譜的品項",
+        "shelf": "沒有符合搜尋條件的品項放上這個貨架",
+        "shelfUnsorted": "沒有符合搜尋條件且未放上貨架的品項",
+        "shelfUnsortedFilters": "沒有符合篩選條件且未放上貨架的品項"
+      }
+    },
     "empty": {
       "title": "尚未建立物資清單",
       "description": "趕快來打造你的儲藏室吧",
       "createButton": "新增品項"
+    },
+    "emptyFiltered": {
+      "title": "沒有符合篩選條件的品項",
+      "description": "可以調整或清除篩選條件"
     },
     "shelfCard": {
       "items_one": "{{count}} 項",

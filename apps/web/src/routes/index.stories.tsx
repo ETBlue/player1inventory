@@ -803,6 +803,68 @@ function VendorDetailViewSearchTailStory() {
   )
 }
 
+// The no-match state (issue #267): the vendor HOLDS an item, and the search
+// term matches nothing — not this page's list and not the global catalog, so
+// both tail buckets are empty too. Before the fix this rendered a completely
+// blank content pane. The same markup and the same two keys serve the shelf
+// and recipe detail views, with their own sentence.
+function VendorDetailViewSearchNoMatchStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+  const [vendorId, setVendorId] = useState('')
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+
+      const vendor = await createVendor('Costco')
+
+      // Stocked here AND carrying the vendor, so the pre-search list is NOT
+      // empty — that is what makes this the no-match state rather than the
+      // empty-group one.
+      await createItem({
+        name: 'Milk Chocolate',
+        tagIds: [],
+        vendorIds: [vendor.id],
+        targetUnit: 'package' as const,
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      })
+
+      setVendorId(vendor.id)
+      setReady(true)
+    }
+    setup()
+  }, [])
+
+  if (!ready || !vendorId) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({
+      initialEntries: [`/?groupBy=vendor&id=${vendorId}&q=zzz`],
+    }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
 function RecipeDetailViewSearchTailStory() {
   const [queryClient] = useState(
     () =>
@@ -923,6 +985,10 @@ export const VendorDetailView: Story = {
 
 export const VendorDetailViewSearchTail: Story = {
   render: () => <VendorDetailViewSearchTailStory />,
+}
+
+export const VendorDetailViewSearchNoMatch: Story = {
+  render: () => <VendorDetailViewSearchNoMatchStory />,
 }
 
 export const RecipeDetailView: Story = {
