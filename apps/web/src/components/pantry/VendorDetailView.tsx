@@ -344,14 +344,54 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
 
           {trimmedSearch && <ItemSearchTail {...tailProps} />}
 
-          {!hasTail && sortedItems.length === 0 && (
+          {/* The guard reads the POST-search list; the message is chosen off
+              the PRE-search list. Both halves are needed. Gating on
+              `sortedItems` alone left a populated vendor searched for a
+              non-matching query with no list, no tail and no message — a
+              blank pane (issue #267). Widening the guard alone would print
+              "No items are assigned to this vendor" while items ARE
+              assigned and merely do not match the query. Same arrangement as
+              `routes/shopping/$vendorId.tsx`. */}
+          {!hasTail && displayedItems.length === 0 && (
             <div className="text-center py-12 text-foreground-muted">
-              <p className="font-medium">No items</p>
-              <p className="text-sm mt-1">
-                {isUnsorted
-                  ? 'All items are assigned to vendors'
-                  : 'No items are assigned to this vendor'}
-              </p>
+              {sortedItems.length > 0 ? (
+                <>
+                  <p className="font-medium">
+                    {t('pantry.detail.noMatch.title')}
+                  </p>
+                  {/* Mode-aware on `isUnsorted`, the same way the
+                      empty-group branch just below is. This component renders
+                      two pages: a real vendor, which lists the items assigned
+                      to it, and the `unsorted` ("No vendor") page, which lists
+                      the items assigned to NO vendor. On the `unsorted` page
+                      "is assigned to this vendor" would be a false statement
+                      about every row, so that case gets its own key. Do not
+                      collapse this branch.
+
+                      There is no filter case to name here, unlike
+                      `ShelfDetailView`: this view passes
+                      `hideFiltersToggle={true}` on both pages, and the
+                      `displayedItems` memo returns `sortedItems` unchanged
+                      when there is no search text — so an empty displayed
+                      list with no search implies an empty source list, which
+                      takes the empty-group branch below instead. Two keys,
+                      not three. */}
+                  <p className="text-sm mt-1">
+                    {isUnsorted
+                      ? t('pantry.detail.noMatch.vendorUnsorted')
+                      : t('pantry.detail.noMatch.vendor')}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-medium">{t('pantry.detail.noItems')}</p>
+                  <p className="text-sm mt-1">
+                    {isUnsorted
+                      ? t('pantry.detail.vendor.allAssigned')
+                      : t('pantry.detail.vendor.noneAssigned')}
+                  </p>
+                </>
+              )}
             </div>
           )}
         </div>

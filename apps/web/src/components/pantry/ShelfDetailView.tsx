@@ -523,16 +523,66 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
 
           {trimmedSearch && <ItemSearchTail {...tailProps} />}
 
-          {!hasTail && sortedInShelfItems.length === 0 && (
+          {/* The guard reads the POST-search list; the message is chosen off
+              the PRE-search list. Both halves are needed. Gating on
+              `sortedInShelfItems` alone left a populated shelf searched for a
+              non-matching query with no list, no tail and no message — a
+              blank pane (issue #267). Widening the guard alone would print
+              one of the three messages below while the shelf DOES hold items
+              that merely do not match. Same arrangement as
+              `routes/shopping/$vendorId.tsx`.
+
+              The two inner branches are this view only.
+
+              `isUnsorted` picks the wording, the same way the empty-group
+              message below does. This component renders two different
+              pages: a real shelf, which lists the items ON it, and the
+              `unsorted` page, which lists the items on NO shelf. On the
+              `unsorted` page "is on this shelf" would be a false statement
+              about every row, so those two cases get their own keys. Do not
+              collapse this branch.
+
+              `trimmedSearch` picks between the search wording and the
+              filter wording. On the `unsorted` page
+              `displayedInShelfItems` is also narrowed by the tag / vendor /
+              recipe filters (`hideFiltersToggle={!isUnsorted}` above), so
+              the list can be emptied with no search running at all, and a
+              message naming a search would be wrong there. A real shelf has
+              no filters toggle, so its filter case cannot be reached and
+              needs no key — with no search and `!isUnsorted` the
+              `displayedInShelfItems` memo returns `sortedInShelfItems`
+              unchanged, which takes the other branch below. The other two
+              detail views read `isUnsorted` here as well, but they pass
+              `hideFiltersToggle={true}` on both pages and narrow by search
+              only, so they need no filter branch — two keys each, not
+              three. */}
+          {!hasTail && displayedInShelfItems.length === 0 && (
             <div className="text-center py-12 text-foreground-muted">
-              <p className="font-medium">No items</p>
-              <p className="text-sm mt-1">
-                {isUnsorted
-                  ? 'All items are assigned to shelves'
-                  : shelf?.type === 'filter'
-                    ? 'No items match the filter'
-                    : 'Search to add items to this shelf'}
-              </p>
+              {sortedInShelfItems.length > 0 ? (
+                <>
+                  <p className="font-medium">
+                    {t('pantry.detail.noMatch.title')}
+                  </p>
+                  <p className="text-sm mt-1">
+                    {isUnsorted
+                      ? trimmedSearch
+                        ? t('pantry.detail.noMatch.shelfUnsorted')
+                        : t('pantry.detail.noMatch.shelfUnsortedFilters')
+                      : t('pantry.detail.noMatch.shelf')}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-medium">{t('pantry.detail.noItems')}</p>
+                  <p className="text-sm mt-1">
+                    {isUnsorted
+                      ? t('pantry.detail.shelf.allAssigned')
+                      : shelf?.type === 'filter'
+                        ? t('pantry.detail.shelf.noFilterMatch')
+                        : t('pantry.detail.shelf.searchToAdd')}
+                  </p>
+                </>
+              )}
             </div>
           )}
         </div>
