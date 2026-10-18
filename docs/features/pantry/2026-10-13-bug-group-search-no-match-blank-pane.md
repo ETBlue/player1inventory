@@ -545,6 +545,132 @@ strings are checked for key parity by
 `apps/web/src/i18n/locales/locales.test.ts` and read by no assertion, so their wording
 is unproven by tests.
 
+## Behaviour follow-up, 2026-10-18 — search versus filters on the flat pantry list
+
+A separate defect in the same block, found while reading the 2026-10-15 follow-up.
+**This one is a behaviour fix, not an i18n change.** The two new keys are a consequence
+of the fix, not its subject.
+
+**The bug.** `PantryListView` had one message for an emptied list, and it always named
+the filters:
+
+```
+No items match the current filters
+Try adjusting or clearing your filters
+```
+
+But two different things can empty that list, and the message named only one of them. A
+user who typed a search matching nothing, with no filter set anywhere, was told to
+adjust filters they never applied.
+
+**Why the two causes cannot both be at work.** `PantryListView.tsx:130-131` builds the
+displayed list like this:
+
+```tsx
+const sortedItems = sortItems(
+  search.trim() ? searchedItems : filteredItems,
+  …
+)
+```
+
+`searchedItems` is built from the full `items` list (line 112-113) and applies no
+filter. `filteredItems` is the tag / vendor / recipe chain (line 116-120) and applies no
+search. So **search and filters are mutually exclusive on this page** — the same thing
+`apps/web/src/routes/CLAUDE.md` records under *Item List Filter Pipeline* for every item
+list page. Re-verified by reading the source on 2026-10-18.
+
+**The fix.** The message now branches on `search.trim()`, the **same** condition line
+131 uses, so the message cannot disagree with the list it describes. A search wins over
+filters, because line 131 ignores the filters while a search is live.
+
+| Situation | Message |
+|---|---|
+| a search is active and matched nothing | `pantry.emptySearch.*` |
+| no search, filters narrowed the list to zero | `pantry.emptyFiltered.*` |
+
+**The two new keys** — a sibling of `pantry.empty.*` and `pantry.emptyFiltered.*`, not
+part of the `pantry.detail.*` table above:
+
+| Key | English | TW |
+|---|---|---|
+| `pantry.emptySearch.title` | No matching items | 沒有符合的品項 |
+| `pantry.emptySearch.description` | Try a different search term | 可以試試其他關鍵字 |
+
+No trailing full stop, following the convention `bf494d07` set.
+
+**`title` is the same string as `pantry.detail.noMatch.title`, and that is safe.** The
+two render in different components and never at the same time. Checked on 2026-10-18: no
+test asserts `"No matching items"` is absent in a flat-pantry context. All six such
+assertions in `apps/web/src/routes/index.test.tsx` are negative controls taken *before* a
+search, on a detail page — two after `renderShelfDetail`, two after `renderVendorDetail`,
+two after `renderRecipeDetail`. This does not touch the `noItems` / `noMatch.title` rule
+in `apps/web/src/i18n/CLAUDE.md`, which forbids making *those two* equal because one
+block shows them both.
+
+**`description` is new copy in both languages.** No key said "Try a different search
+term" before. The Chinese mirrors the shape of `pantry.emptyFiltered.description`
+(可以調整或清除篩選條件). **Both TW values need the repo owner's review** — no test asserts a
+TW string.
+
+### Test added
+
+One test in `apps/web/src/routes/index.test.tsx`, beside the one `bf494d07` added:
+
+*user sees a search no-match message, not the filter one, when the pantry HAS items and
+the search matches none of them*
+
+Fixture: Milk stocked at the active location, **no filter set**, and the search term
+`zzz`, which matches no item anywhere in the catalog — so both tail buckets are empty and
+`hasTail` is false. Without an empty tail the block does not render at all. It asserts
+Milk's heading present **before** the search, both new lines present after it, and both
+filter lines **absent**.
+
+### Mutation checks for the 2026-10-18 behaviour fix
+
+Run from `apps/web` with `npx vitest run src/routes/index.test.tsx`, which holds **58**
+tests after the new one.
+
+| Mutation | Result |
+|---|---|
+| the new branch collapsed to the filter message — `{search.trim() ? (` replaced with `{false ? (` at line 334 | **1 failed / 57 passed**. The new test: `TestingLibraryElementError: Unable to find an element with the text: No matching items.` |
+| the reverse — the same line replaced with `{true ? (`, so the search message always shows | **2 failed / 56 passed**. *user can filter items by selecting tags*: `Unable to find an element with the text: /no items match the current filters/i`. And *user sees a no-match message, not a blank list, when the pantry HAS items and a filter excludes every one*, the `bf494d07` test: `Unable to find an element with the text: No items match the current filters.` |
+| `t('pantry.emptySearch.description')` pointed at `pantry.emptySearch.descriptionTypo` | **1 failed / 57 passed**. The new test: `Unable to find an element with the text: Try a different search term.` |
+| `t('pantry.emptySearch.title')` pointed at `pantry.emptySearch.titleTypo` | **1 failed / 57 passed**. The same test, with `Unable to find an element with the text: No matching items.` **One test covers both keys**, unlike the 2026-10-15 round where the title mutation failed two tests |
+| the first mutation again, with the new test's two "present" assertions removed, to measure its "absent" assertions alone | **1 failed / 57 passed**. `expect(element).not.toBeInTheDocument()` — `expected document not to contain element, found <p>`. So the absent half catches it on its own |
+
+**The two directions are independently covered.** The first mutation fails only the new
+test; the second fails only the two older filter tests. Neither mutation can stand in for
+the other, so neither direction is resting on the other's assertions.
+
+The fifth row repeats the measurement the 2026-10-14 and 2026-10-15 rounds both recorded,
+because the trap is still live: `getByText` throws, so a failure in a present assertion
+stops the absent assertion on the same branch from ever running.
+
+### One more component has this shape, and it is not fixed
+
+A sweep of `apps/web/src` on 2026-10-18 found exactly one other mode-blind empty state:
+
+| File | Displayed list | Empty-state branch | Keys |
+|---|---|---|---|
+| `apps/web/src/routes/shopping/$vendorId.tsx` | line 176, `const displayItems = search.trim() ? searchedItems : filteredItems` | line 512 | `shopping.empty.*` or `shopping.emptyFiltered.*` |
+
+The cart page chooses its message on `vendorScopedItems.length === 0` — a pre-search
+count — and never on whether a search is running. `shopping.emptyFiltered.title` is "No
+items match the current filters", and the page does render real filters
+(`ItemListToolbar` at line 457 with no `hideFiltersToggle`), so both causes are live
+there, exactly the shape fixed here. **Out of scope for this branch; not fixed.**
+
+The three group detail views are fine: `ShelfDetailView` already branches on
+`trimmedSearch` and has its own filter key, and `VendorDetailView` and
+`RecipeDetailView` pass `hideFiltersToggle={true}` on both of their pages and read no
+`filterState`, so no filter can empty their lists.
+
+The four Settings assignment tabs (`settings/{tags,vendors,recipes}/$id/items.tsx`,
+`settings/shelves/$shelfId/items.tsx`) and `routes/cooking.tsx` have a **different**
+defect: they gate their message on `!search.trim()` or on a pre-search count, so a search
+matching nothing shows no message at all. That is the original issue #267 blank-pane
+shape on five more surfaces. Also out of scope, also not fixed.
+
 ## PR / Commit
 
 Branch `fix/group-search-no-match`.
@@ -559,6 +685,8 @@ Branch `fix/group-search-no-match`.
 | `fix(pantry): name the right page in the Unsorted no-match message` | `VendorDetailView` and `RecipeDetailView`, their two new keys in both locales, the two new tests (2026-10-15) |
 | `docs(pantry): record the Unsorted vendor and recipe keys` | the 2026-10-15 sections of this doc and the two `CLAUDE.md` files |
 | `fix(pantry): translate the filtered empty state on the flat pantry list` | `PantryListView`, the two `pantry.emptyFiltered.*` keys in both locales, one new test, and this section (2026-10-15) |
+| `fix(pantry): name the search, not the filters, on the flat pantry no-match` | `PantryListView`'s message branch, the two `pantry.emptySearch.*` keys in both locales, one new test (2026-10-18) |
+| `docs(pantry): record the search-versus-filter empty state` | the 2026-10-18 section of this doc and the two `CLAUDE.md` files |
 
 E2E is **owed, not run** — another session held the machine, and only one Playwright
 suite can run here at a time. The specs that matter are
@@ -575,3 +703,10 @@ not a key. Re-checked for the i18n follow-up: 0 matches for
 for `pantry.empty` is a prose comment in `e2e/tests/location-switcher.spec.ts:219`
 naming `pantry.empty.title`, a key this follow-up did not touch. So no spec needs editing; the run is still owed as a regression check on the
 pages themselves.
+
+Re-checked again for the 2026-10-18 behaviour fix: 0 matches in `e2e/` for `emptySearch`,
+`No matching items`, `Try a different search term`, `沒有符合的品項` and
+`可以試試其他關鍵字`. The one `pantry.empty` hit is still the prose comment at
+`e2e/tests/location-switcher.spec.ts:219`, and the assertion beside it reads "Your pantry
+is empty" with **no search running**, so it takes the `items.length === 0` branch this fix
+does not touch. No spec needs editing.
