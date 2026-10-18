@@ -913,6 +913,56 @@ describe('Home page filtering integration', () => {
     expect(screen.queryByText(/your pantry is empty/i)).not.toBeInTheDocument()
   })
 
+  it('user sees a search no-match message, not the filter one, when the pantry HAS items and the search matches none of them', async () => {
+    // Given Milk stocked here and NO filter set. The search term below
+    // matches no item anywhere in the catalog, so both tail buckets are
+    // empty and `hasTail` is false — without that the empty-state block
+    // does not render at all.
+    await createItem({ name: 'Milk', tagIds: [], ...itemDefaults })
+
+    renderApp()
+    const user = userEvent.setup()
+
+    // Milk's heading is asserted FIRST, so the list is proven to have
+    // rendered before the search narrows it.
+    expect(
+      await screen.findByRole('heading', { name: 'Milk' }),
+    ).toBeInTheDocument()
+
+    // When the user searches for a string no item matches
+    await openSearch(user, 'zzz')
+    expect(screen.getByPlaceholderText(/search items/i)).toHaveValue('zzz')
+
+    // Then Milk leaves the list — it was narrowed away, not never drawn
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('heading', { name: 'Milk' }),
+      ).not.toBeInTheDocument()
+    })
+
+    // And the tail is empty, so the empty-state block is reached
+    expect(screen.queryByText(/not stocked here/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+
+    // Then both lines of the SEARCH empty state render
+    expect(await screen.findByText('No matching items')).toBeInTheDocument()
+    expect(screen.getByText('Try a different search term')).toBeInTheDocument()
+
+    // And NOT the filter wording, which would be a false statement: the
+    // user applied no filter. This is the assertion that proves the branch
+    // chose, rather than merely rendering something.
+    expect(
+      screen.queryByText('No items match the current filters'),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('Try adjusting or clearing your filters'),
+    ).not.toBeInTheDocument()
+
+    // And the empty-pantry CTA did not take over — the pantry does hold an
+    // item
+    expect(screen.queryByText(/your pantry is empty/i)).not.toBeInTheDocument()
+  })
+
   describe('search tail (unified item search)', () => {
     it('user can see an item stocked only at another location under "not stocked here"', async () => {
       // Given Eggs is stocked here, and Milk is stocked ONLY at the Office

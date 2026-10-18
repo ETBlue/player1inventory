@@ -315,10 +315,37 @@ export function PantryListView() {
           </div>
         ) : sortedItems.length === 0 && !hasTail ? (
           <div className="text-center py-12 text-foreground-muted">
-            <p>{t('pantry.emptyFiltered.title')}</p>
-            <p className="text-sm mt-1">
-              {t('pantry.emptyFiltered.description')}
-            </p>
+            {/* `search.trim()` picks the wording, and it has to be the SAME
+                condition the displayed list is built from — line 131 above
+                reads `search.trim() ? searchedItems : filteredItems`, so a
+                live search makes the list ignore every tag / vendor /
+                recipe filter. While a search runs, the only thing that can
+                have emptied the list is the search itself, even when
+                filters are also set; with no search, the only thing that
+                can have emptied it is the filters. Showing the filter
+                wording in both cases told a user who had applied no filter
+                to adjust filters they never set.
+
+                This page has only these two cases, where
+                `ShelfDetailView` has three: the wording there also depends
+                on which page the component is rendering (a real shelf, or
+                the `unsorted` page), and this component renders one page
+                only. */}
+            {search.trim() ? (
+              <>
+                <p>{t('pantry.emptySearch.title')}</p>
+                <p className="text-sm mt-1">
+                  {t('pantry.emptySearch.description')}
+                </p>
+              </>
+            ) : (
+              <>
+                <p>{t('pantry.emptyFiltered.title')}</p>
+                <p className="text-sm mt-1">
+                  {t('pantry.emptyFiltered.description')}
+                </p>
+              </>
+            )}
           </div>
         ) : (
           <div className="bg-background-base flex flex-col gap-px mb-4">
