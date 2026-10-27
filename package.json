@@ -55,6 +55,9 @@
     "typescript": "~5.9.3",
     "wrangler": "^4.143.0"
   },
+  "engines": {
+    "node": ">=22.17.1"
+  },
   "lint-staged": {
     "apps/web/src/**/*.{ts,tsx}": [
       "pnpm --filter web check --write --unsafe"
