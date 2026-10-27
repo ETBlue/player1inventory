@@ -506,7 +506,7 @@ All four proposals were accepted:
 | a | Local → cloud: where does the local "My Home" go? | The import asks which location to use, with the household's "Home" selected first, or **New location**. This is the same dialog as for an old file with no locations (Decision 7), so there is one dialog. |
 | b | Cloud → local: which cloud location becomes the local "My Home"? | The **active** location. Every other location keeps its id. |
 | c | Ids that already belong to another household | **Copied with new ids.** Every reference is rewritten (stock, carts, cart items, logs, item tags and vendors, recipe items). Nobody can take over another household's rows, and a household can be copied into a new one. |
-| d | Issue #327 | Fixed inside the households import work, not before. That work rewrites the same resolvers from `userId` to `householdId`, so fixing it first means writing the scoping twice. Issue #330 (`replace` skips rows) stays a separate fix. |
+| d | Issue #327 | Fixed inside the households import work, not before. That work rewrites the same resolvers from `userId` to `householdId`, so fixing it first means writing the scoping twice. Issue #330 (`replace` skips rows) stays a separate fix. (It was fixed on 2026-10-12, in #350.) |
 
 Smaller findings from 4b, noted for the design: the server still sends unknown cart and log
 locations to `ensureDefaultLocation(userId)` (`import.resolver.ts:89-92`, `:140-221`), which

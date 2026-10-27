@@ -38,7 +38,7 @@ User stories:
 | Cloud-locations PR 5 (drop `Item`'s stock columns and the dual-write bridge) | ✅ Merged 2026-10-08 (#332). It deleted `lib/stockDualWrite.ts` and two of the `isDefault` reads. |
 | Issue #273 | Fixed here. Catalog ids are checked with `requireHouseholdRole`. |
 | Issue #327, cart-id leak (`e2e/tests/cart-id-cross-user-leak.spec.ts`) | Fixed here, in the import work (*Import and export*). |
-| Issue #330 (`replace` skips rows) | Not part of this. A separate fix. |
+| Issue #330 (`replace` skips rows) | ✅ Fixed 2026-10-12 (#350), before this work. The import rewrite here must keep the fix (see *Known gaps*). |
 | Local mode | Not changed, except for the Settings layout and route moves. |
 
 ### What the user gets (once merged AND deployed)
@@ -591,8 +591,14 @@ The root `CLAUDE.md` rules apply. Points special to this design:
   expect `isDefault`, the name "My Home", and a local → cloud copy that finishes **without** a
   dialog. The helpers `e2e/helpers/backupAssertions.ts` and `e2e/helpers/cloudSeed.ts` find the
   default by its flag. H3 and H4 must rewrite all of them.
-- **Issue #330 is pinned on purpose.** `import-strategies.spec.ts:440-459` expects the wrong
-  value. Fixing #330 turns it red, and that is expected.
+- **The import rewrite must keep the #330 fix.** Issue #330 was fixed on 2026-10-12 (#350).
+  `runBulkBatches` in `apps/web/src/lib/importData.ts` now builds its resume key as
+  `${mode}:${entityType}:${batchIndex}`. H4 changes the id rule in the same file. If the
+  `mode` term is lost, the `replace` strategy skips the upsert pass again in cloud. The guard
+  is the last assertion of `user can replace the matching rows and keep everything else` in
+  `e2e/tests/settings/import-strategies.spec.ts`. That spec also depends on the default
+  location (see above), so H4 must rewrite it **without** losing its colliding item plus its
+  new item. With only colliding items, `toCreate.items` is empty and the guard cannot fail.
 - **A second signed-in user in cloud E2E needs new test support.** The browser always runs as
   one fixed test user (`VITE_E2E_TEST_USER_ID`), and the API takes the user from the
   `x-e2e-user-id` header. A two-user spec needs a browser context per user. There is no
