@@ -15,6 +15,10 @@ vi.mock('virtual:pwa-register', () => ({
 // tests. E2E tests set this flag via addInitScript; here we set it globally so
 // route-level stories and integration tests that start with an empty DB keep
 // rendering their intended route instead of being redirected.
+//
+// `localStorage` below is jsdom's, repointed by ./nodeWebStorage.ts, which
+// vitest.config.ts runs before this file. Read that file if this line ever
+// throws "setItem is not a function".
 beforeEach(() => {
   localStorage.setItem('e2e-skip-onboarding', 'true')
 })
