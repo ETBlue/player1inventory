@@ -646,6 +646,31 @@ A narrowed run is for the fast loop while you work. The final phase runs everyth
   investigating a single failure. The tell is that consecutive runs produce **disjoint**
   failure sets and each named test passes when run on its own. Do not run the suite
   concurrently with `pnpm build` or E2E; re-run it alone, and only then believe it.
+- **`localStorage.setItem is not a function` in every test file means the wrong Node.**
+  The symptom is `TypeError: localStorage.setItem is not a function` at
+  `apps/web/src/test/setup.ts`, repeated across all 251 web test files, so the whole
+  suite fails at once. The cause is the Node version, not the code: Node 25 enables the
+  Web Storage API by default and defines a method-less `localStorage` global, and
+  vitest's jsdom environment does not overwrite a global that already exists, so Node's
+  placeholder shadows jsdom's working `Storage`. Node 22 defines no such global.
+  Check it:
+
+  ```bash
+  node -v                                        # which Node is really on PATH
+  node -e "console.log(typeof localStorage)"     # "object" = Node 25, "undefined" = Node 22
+  ```
+
+  `object` outside a browser means the wrong Node. Use the version in `.node-version`
+  at the repo root. A non-interactive shell often puts Homebrew's Node first even when
+  `mise current` reports the pinned one, so check `node -v` inside the same shell that
+  runs the tests.
+
+  `apps/web/src/test/nodeWebStorage.ts` repoints both storage globals at jsdom's own
+  objects, so the suite passes on **both** Node 22.17.1 and Node 25.8.0 (measured
+  2026-10-27: 2313 tests / 251 files green on each). If that fix ever breaks, the suite
+  throws one named error from that file instead of the cryptic `setItem` failure. It is
+  the first entry in `setupFiles` and must stay first, because `setup.ts` imports
+  `../i18n`, whose language detector reads `localStorage` at import time.
 - E2E failures on the final phase are a hard stop — fix before finishing the branch; the branch must not be pushed until all E2E tests pass
 - **Measure your own baseline. Never subtract a count written in a doc or a brief.**
   Counts in this file, in `e2e/CLAUDE.md` and in task briefs were all true when
