@@ -300,6 +300,17 @@ async function resolveCartLocations(
  *    would reassign the row to the caller, taking its stock, carts and logs
  *    with it
  *
+ * UPDATED 2026-10-28 (issue #327): the 18 older bulk mutations DID ship both of
+ * those holes, and they no longer do. They now route every payload id through
+ * `requireOwnRowIdsOrUnclaimed` below, `userId` is out of all nine `update`
+ * payloads, and all 12 closing reads are scoped — including the
+ * `bulkCreateShelves` `findMany` named above, which is now
+ * `findMany({ where: { id: { in: ids }, userId } })`. So the list above reads
+ * as history: it is why this pre-check exists, not a description of the file's
+ * current state. The one remaining difference is that this helper returns
+ * `void` while `requireOwnRowIdsOrUnclaimed` returns the ids the caller already
+ * owns.
+ *
  * Three things about the shape, all for the same reasons as the log helper:
  * each DISTINCT id is checked once; the whole check runs before the write loop
  * because these bulk resolvers are not transactional; and it reads nothing it
