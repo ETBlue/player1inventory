@@ -46,6 +46,13 @@ vi.mock('../lib/prisma.js', async () => {
       },
       inventoryLog: {
         findUnique: vi.fn(log.client.findUnique),
+        // Needed by `requireOwnRowOrUnclaimed` (lib/authz.ts), the ownership
+        // guard task 7 added to both log import mutations. The guard reads
+        // `findUnique` first and `findFirst` only when that id is already
+        // taken, which the "does not move an existing log" test below reaches.
+        // Without this key that test died with
+        // `delegateFor(...).findFirst is not a function`.
+        findFirst: vi.fn(log.client.findFirst),
         findMany: vi.fn(log.client.findMany),
         create: vi.fn(log.client.create),
         upsert: vi.fn(log.client.upsert),

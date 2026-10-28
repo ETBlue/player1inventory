@@ -700,13 +700,27 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // Verifies every location the payload names before the first write, so a
       // forbidden location fails the whole mutation with nothing written.
       const locationIdFor = await resolveLogLocations(ctx, userId, logs)
+      // Authorizes every LOG id the payload names. It runs AFTER
+      // `resolveLogLocations` on purpose, so a forbidden location is still
+      // refused first and the existing location tests keep their error.
+      //
+      // The two checks guard different columns. `resolveLogLocations` guards
+      // the location a log is written TO, which arrives in its own input field.
+      // This guards the log's OWN primary key, which is global and carries no
+      // location at all. Without it the UNSCOPED `findUnique` this replaces
+      // read a stranger's log as "already exists" and SILENTLY DROPPED the
+      // caller's own log — no error, no count.
+      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'inventoryLog', logs)
       const results: InventoryLog[] = []
       for (const log of logs) {
         // `locationId` is pulled OUT of `rest`: it is set explicitly below
         // from the verified value, never passed straight through.
         const { id, occurredAt, note, logParams, locationId, ...rest } = log
-        const existing = await prisma.inventoryLog.findUnique({ where: { id } })
-        if (existing) continue
+        // After the guard an id is one of exactly two things: a log the caller
+        // already owns (skip it) or an id no row holds (free to write). The
+        // per-row read this replaces was unscoped, so it could not tell those
+        // two apart.
+        if (ownIds.has(id)) continue
         const itemExists = await prisma.item.findUnique({ where: { id: (rest as { itemId: string }).itemId }, select: { id: true } })
         if (!itemExists) continue
         const created = await prisma.inventoryLog.create({
@@ -724,6 +738,11 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         })
         results.push(created as unknown as InventoryLog)
       }
+      // NO CLOSING READ, on purpose. Each row returned is the row
+      // `inventoryLog.create` itself wrote, and the guard above is what makes
+      // that row the caller's own, so there is nothing here to scope by
+      // `userId`. The eight mutations that DO close with a read scope it; this
+      // one has no read. Design decision 5.
       return results
     },
 
@@ -976,6 +995,11 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // Same pre-check as bulkCreateInventoryLogs: every location the payload
       // names is verified before the first write.
       const locationIdFor = await resolveLogLocations(ctx, userId, logs)
+      // The same log-id guard as `bulkCreateInventoryLogs`, in the same place:
+      // after the location check, so a forbidden location is still refused
+      // first. Without it an `upsert` on a bare `{ id }` with `userId` inside
+      // `update` OVERWROTE another account's log and took ownership of it.
+      await requireOwnRowIdsOrUnclaimed(ctx, 'inventoryLog', logs)
       const results: InventoryLog[] = []
       for (const log of logs) {
         // `locationId` MUST come out of `rest` here. `data` below is the
@@ -986,20 +1010,30 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           ...rest,
           occurredAt: new Date(occurredAt),
           note: note ?? undefined,
-          userId,
           ...(logParams ? { logParams: logParams as Prisma.InputJsonValue } : {}),
         }
         const upserted = await prisma.inventoryLog.upsert({
           where: { id },
-          // locationId sits in `create` only, never in `update`. An upsert that
-          // carried it into `update` would move an existing log on every
-          // re-import. The value is the payload's own when it names one, the
-          // caller's default when it does not — both verified above.
-          create: { id, ...data, locationId: locationIdFor(locationId) },
+          // `userId` and `locationId` live in `create` only, each for its own
+          // reason.
+          //
+          // `userId`: a row's owner is not something an import may rewrite.
+          // Leaving it out means a future edit that drops the guard above
+          // still cannot hand another account's log to the importer. Same
+          // shape as `bulkUpsertLocations`.
+          //
+          // `locationId`: an upsert that carried it into `update` would MOVE an
+          // existing log on every re-import. The value is the payload's own
+          // when it names one, the caller's default when it does not — both
+          // verified above.
+          create: { id, ...data, userId, locationId: locationIdFor(locationId) },
           update: data,
         })
         results.push(upserted as unknown as InventoryLog)
       }
+      // NO CLOSING READ — same reason as `bulkCreateInventoryLogs` above. The
+      // returned row is the one `inventoryLog.upsert` wrote, and the guard is
+      // what makes it the caller's own. Design decision 5.
       return results
     },
 
