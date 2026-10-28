@@ -483,12 +483,19 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     bulkCreateItems: async (_, { items }, ctx) => {
       const userId = requireAuth(ctx)
       if (items.length === 0) return []
+      // Authorizes every id the payload names BEFORE the first write, and
+      // returns the ids the caller ALREADY OWNS. A payload naming another
+      // account's item id fails the whole mutation with nothing written.
+      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'item', items)
       const results: Item[] = []
       for (const item of items) {
         const { id, tagIds, vendorIds, createdAt, updatedAt, targetUnit, expirationThreshold, ...rest } = item
-        // Skip if already exists
-        const existing = await prisma.item.findUnique({ where: { id } })
-        if (existing) continue
+        // Skip the caller's OWN existing row. The per-row
+        // `findUnique({ where: { id } })` this replaces was UNSCOPED, so a
+        // stranger's row read as "already exists" and the caller's own item
+        // was dropped with no error and no count. After the guard above an id
+        // is one of exactly two things: the caller's own row (here) or free.
+        if (ownIds.has(id)) continue
         const expirationMode = (rest as { expirationMode?: string }).expirationMode
         // `...rest` is CONFIGURATION only — cloud locations PR 5 dropped the
         // five per-location state fields from `ItemInput`, so no spread can
@@ -548,8 +555,15 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             skipDuplicates: true,
           })
         }
+        // SCOPED. Defence in depth, not the guard — after the pre-pass no
+        // stranger's row can be in range. It is added for the reason
+        // `bulkCreateLocations` records: an unscoped read makes a miss mean
+        // two different things, and a future edit that drops the guard then
+        // has nothing catching it. `findUniqueOrThrow` takes the same
+        // `WhereUniqueInput` as `findUnique`, which since Prisma 5 may carry
+        // extra non-unique filters, so the `userId` here is type-legal.
         const full = await prisma.item.findUniqueOrThrow({
-          where: { id: created.id },
+          where: { id: created.id, userId },
           include: { tags: true, vendors: true },
         })
         results.push(itemToGraphQL(full))
@@ -651,11 +665,14 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     bulkCreateRecipes: async (_, { recipes }, ctx) => {
       const userId = requireAuth(ctx)
       if (recipes.length === 0) return []
+      // Same guard, same position and same reason as `bulkCreateItems` above.
+      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'recipe', recipes)
       const results: Recipe[] = []
       for (const recipe of recipes) {
         const { id, items, lastCookedAt } = recipe
-        const existing = await prisma.recipe.findUnique({ where: { id } })
-        if (existing) continue
+        // Skip the caller's OWN existing row — same replacement and same
+        // reason as `bulkCreateItems` above.
+        if (ownIds.has(id)) continue
         await prisma.recipe.create({
           data: {
             id,
@@ -670,7 +687,8 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             skipDuplicates: true,
           })
         }
-        const full = await prisma.recipe.findUniqueOrThrow({ where: { id }, include: { items: true } })
+        // SCOPED — same reason as `bulkCreateItems`' closing read above.
+        const full = await prisma.recipe.findUniqueOrThrow({ where: { id, userId }, include: { items: true } })
         results.push(full as unknown as Recipe)
       }
       return results
@@ -766,6 +784,10 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     bulkUpsertItems: async (_, { items }, ctx) => {
       const userId = requireAuth(ctx)
       if (items.length === 0) return []
+      // Authorizes every id the payload names BEFORE the first write. Without
+      // it an `upsert` on a bare `{ id }` with `userId` inside `update`
+      // overwrote another account's item AND took ownership of it.
+      await requireOwnRowIdsOrUnclaimed(ctx, 'item', items)
       const results: Item[] = []
       for (const item of items) {
         const { id, tagIds, vendorIds, createdAt, updatedAt, targetUnit, expirationThreshold, ...rest } = item
@@ -781,11 +803,15 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             : 'disabled',
           createdAt: new Date(createdAt),
           updatedAt: new Date(updatedAt),
-          userId,
         }
         await prisma.item.upsert({
           where: { id },
-          create: { id, ...data },
+          create: { id, ...data, userId },
+          // `userId` is in `create` and NOT in `update` — the shape
+          // `bulkUpsertLocations` uses. A row's owner is not something an
+          // import may rewrite, and leaving the column out of `update` means a
+          // future edit that drops the guard above cannot reassign a row by
+          // accident.
           update: data,
         })
         // NO STOCK IS WRITTEN HERE either — same reason as `bulkCreateItems`
@@ -804,8 +830,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             data: vendorIds.map((vendorId) => ({ itemId: id, vendorId })),
           })
         }
+        // SCOPED — same reason as `bulkCreateItems`' closing read above.
         const full = await prisma.item.findUniqueOrThrow({
-          where: { id },
+          where: { id, userId },
           include: { tags: true, vendors: true },
         })
         results.push(itemToGraphQL(full))
@@ -882,17 +909,20 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     bulkUpsertRecipes: async (_, { recipes }, ctx) => {
       const userId = requireAuth(ctx)
       if (recipes.length === 0) return []
+      // Same guard, same position and same reason as `bulkUpsertItems` above.
+      await requireOwnRowIdsOrUnclaimed(ctx, 'recipe', recipes)
       const results: Recipe[] = []
       for (const recipe of recipes) {
         const { id, items, lastCookedAt } = recipe
         const data = {
           name: recipe.name,
-          userId,
           lastCookedAt: lastCookedAt ? new Date(lastCookedAt) : undefined,
         }
         await prisma.recipe.upsert({
           where: { id },
-          create: { id, ...data },
+          create: { id, ...data, userId },
+          // `userId` is in `create` and NOT in `update` — same shape and same
+          // reason as `bulkUpsertItems` above.
           update: data,
         })
         if (items != null) {
@@ -903,7 +933,8 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             })
           }
         }
-        const full = await prisma.recipe.findUniqueOrThrow({ where: { id }, include: { items: true } })
+        // SCOPED — same reason as `bulkCreateItems`' closing read above.
+        const full = await prisma.recipe.findUniqueOrThrow({ where: { id, userId }, include: { items: true } })
         results.push(full as unknown as Recipe)
       }
       return results
