@@ -1,3 +1,4 @@
+import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
@@ -25,6 +26,24 @@ vi.mock('@/lib/exportData', async (importOriginal) => {
 vi.mock('@/lib/importData', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/importData')>()
   return { ...actual, importCloudData: vi.fn().mockResolvedValue(undefined) }
+})
+
+// A STABLE apollo client, for the same reason `usePostLoginMigration.test.ts`
+// stubs one: `src/test/setup.ts`'s `useApolloClient` returns a NEW object on
+// every call, and that object is a dependency of the hook's effect. So the
+// effect re-ran on every render, and once the auto-import's `catch` had removed
+// the strategy key the re-run fell through to the prompting branch and set
+// 'prompting' again — which replaced the error dialog within one render.
+// Measured 2026-10-28 while writing the refusal test below.
+const stableApolloClient = {
+  cache: { evict: vi.fn(), gc: vi.fn() },
+  query: vi.fn().mockResolvedValue({ data: {} }),
+  mutate: vi.fn().mockResolvedValue({ data: {} }),
+  resetStore: vi.fn().mockResolvedValue(null),
+}
+vi.mock('@apollo/client/react', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@apollo/client/react')>()
+  return { ...original, useApolloClient: vi.fn(() => stableApolloClient) }
 })
 
 // The CLOUD location list, served to `useLocations` in cloud mode. It is
@@ -101,6 +120,16 @@ async function seedLocations(...entries: Array<[string, string]>) {
       updatedAt: now,
     })),
   )
+}
+
+// What the server sends when the payload names a row id another account holds.
+// The code in `extensions` is what `isForbiddenImportError` reads — the message
+// is the bare word `Forbidden`, which the server also sends for "that row does
+// not exist", so the text alone cannot tell the two apart.
+function forbiddenError() {
+  return new CombinedGraphQLErrors({
+    errors: [{ message: 'Forbidden', extensions: { code: 'FORBIDDEN' } }],
+  })
 }
 
 // REWRITTEN BY CLOUD LOCATIONS PR 4b TASK 7. This file held two describes and
@@ -194,5 +223,62 @@ describe('PostLoginMigrationDialog — signing in copies the local pantry', () =
       screen.queryByRole('heading', { name: /will be copied/ }),
     ).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Copy anyway' })).toBeNull()
+  })
+
+  // There is no story for this, on purpose. The error state is reachable only
+  // by making `importCloudData` reject, which needs `vi.mock`, and a story
+  // cannot do that — the same reason `ImportCard`'s error phase lives in its
+  // `index.test.tsx` and its three hand-written fake stories were deleted on
+  // 2026-10-13.
+  //
+  // Driven through the AUTO-IMPORT path, not the Import button, and the choice
+  // matters. The prompting branch of the hook's effect calls `setState`
+  // ('prompting') every time the effect re-runs, and it re-runs when the
+  // location list goes from unknown to known. Pressing Import before that flip
+  // lands puts the hook into 'error' and then straight back to 'prompting', so
+  // a test that clicks the button races the Dexie location read — measured
+  // 2026-10-28: it rendered the prompt again, not the error. The auto-import
+  // cannot race it, because it only starts once the list is known, so no
+  // further flip is left to overwrite the error. The Import-button path's own
+  // state is pinned in `hooks/usePostLoginMigration.test.ts` instead.
+  it('user sees why the copy was refused', async () => {
+    // Given a stored copy strategy and a server that refuses the copy, because
+    // the local data names a row id another cloud account holds.
+    // `getLocations` is armed here rather than seeded through Dexie: the
+    // `afterEach` above RESETS that mock, so by this test it resolves to
+    // nothing and `locationsLoaded` would stay false — the auto-import would
+    // never start and the prompt would show instead. Measured 2026-10-28.
+    const now = new Date()
+    vi.mocked(getLocations).mockResolvedValue([
+      {
+        id: 'local',
+        name: 'My Home',
+        order: 0,
+        isDefault: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ])
+    localStorage.setItem('migration-strategy', 'clear')
+    vi.mocked(importCloudData).mockRejectedValueOnce(forbiddenError())
+
+    // When the copy runs by itself after sign-in
+    renderDialog()
+
+    // Then the refusal is explained, rather than the dialog closing as if the
+    // copy had worked or sitting on 'Copying…' for ever
+    expect(
+      await screen.findByText(
+        /belong to another cloud account, so the copy was refused/,
+      ),
+    ).toBeInTheDocument()
+
+    // And there is one button to close it
+    expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument()
+
+    // And the progress dialog it replaced is gone, so two are never up at once
+    expect(
+      screen.queryByText('Copying local data to cloud…'),
+    ).not.toBeInTheDocument()
   })
 })

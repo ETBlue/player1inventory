@@ -2,7 +2,11 @@ import { useApolloClient } from '@apollo/client/react'
 import { useEffect, useRef, useState } from 'react'
 import { getAllItems } from '@/db/operations'
 import { fetchLocalPayload } from '@/lib/exportData'
-import { type ImportStrategy, importCloudData } from '@/lib/importData'
+import {
+  type ImportStrategy,
+  importCloudData,
+  isForbiddenImportError,
+} from '@/lib/importData'
 import { useLocations } from './useLocations'
 
 export const MIGRATION_PROMPTED_KEY = 'migration-prompted'
@@ -15,6 +19,32 @@ export type MigrationState =
   | 'importing'
   | 'auto-importing'
   | 'done'
+  | 'error'
+
+/**
+ * Why the copy failed, in the two parts the dialog needs.
+ *
+ * `forbidden` is the server refusing a row that belongs to another cloud
+ * account. It decides WHICH sentence the user reads, and it is computed in the
+ * `catch` rather than at render time, because only the thrown error carries the
+ * `FORBIDDEN` extension. `message` is the raw text, interpolated by the generic
+ * sentence alone — for a cross-account refusal it is the bare word `Forbidden`,
+ * which tells the user nothing.
+ */
+export type MigrationError = {
+  forbidden: boolean
+  message: string
+}
+
+// `isForbiddenImportError` reads `extensions.code`, not the message text. It is
+// the one detector for this refusal and `ImportCard` uses the same one — see
+// its doc comment in `lib/importData.ts`.
+function toMigrationError(err: unknown): MigrationError {
+  return {
+    forbidden: isForbiddenImportError(err),
+    message: err instanceof Error ? err.message : String(err),
+  }
+}
 
 /**
  * Whether the session is signed in, as the caller sees it.
@@ -31,6 +61,7 @@ export type MigrationAuth = {
 
 export function usePostLoginMigration({ isLoaded, isSignedIn }: MigrationAuth) {
   const [state, setState] = useState<MigrationState>('idle')
+  const [error, setError] = useState<MigrationError | null>(null)
   const apolloClient = useApolloClient()
   const { data: locations } = useLocations()
   // Hold the one-shot auto-import until this account's location list has
@@ -96,12 +127,21 @@ export function usePostLoginMigration({ isLoaded, isSignedIn }: MigrationAuth) {
           localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
           setState('done')
         })
-        .catch(() => {
-          // Import failed — clean up strategy key and dismiss so the user
-          // isn't stuck. MIGRATION_PROMPTED_KEY is intentionally NOT set here
-          // so the user can retry after refreshing.
+        .catch((err) => {
+          // The copy failed. The state is 'error', so the dialog tells the user
+          // so and gives them a button to close it. It used to be 'done', which
+          // closed the dialog as if the copy had worked and left the user in a
+          // half-copied account with no message at all.
+          //
+          // Both localStorage decisions are unchanged, and for the same two
+          // reasons as before:
+          //   - MIGRATION_STRATEGY_KEY is removed, so the next mount does not
+          //     take the auto-import branch again and loop on the same failure.
+          //   - MIGRATION_PROMPTED_KEY stays unset, so a refresh still offers
+          //     the copy and the user can retry.
           localStorage.removeItem(MIGRATION_STRATEGY_KEY)
-          setState('done')
+          setError(toMigrationError(err))
+          setState('error')
         })
       return
     }
@@ -120,14 +160,24 @@ export function usePostLoginMigration({ isLoaded, isSignedIn }: MigrationAuth) {
     setState('done')
   }
 
+  // The body is wrapped because `PostLoginMigrationDialog` calls this from
+  // `onClick={() => importData('append')}` and does not await it. Without the
+  // catch a failed copy was an unhandled promise rejection: nothing set a new
+  // state, so the dialog stayed on 'importing' — the Import button disabled and
+  // reading '...' — for the rest of the session.
   async function importData(conflictResolution: 'append' | 'replace') {
     setState('importing')
-    const payload = await fetchLocalPayload()
-    const strategy = conflictResolution === 'replace' ? 'replace' : 'skip'
-    await importCloudData(payload, strategy, apolloClient)
-    localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
-    setState('done')
+    try {
+      const payload = await fetchLocalPayload()
+      const strategy = conflictResolution === 'replace' ? 'replace' : 'skip'
+      await importCloudData(payload, strategy, apolloClient)
+      localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
+      setState('done')
+    } catch (err) {
+      setError(toMigrationError(err))
+      setState('error')
+    }
   }
 
-  return { state, dismiss, importData }
+  return { state, error, dismiss, importData }
 }

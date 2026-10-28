@@ -666,7 +666,10 @@
       "description": "You have local data on this device. Would you like to import it to your cloud account?",
       "import": "Import",
       "skip": "Skip",
-      "autoImporting": "Copying local data to cloud…"
+      "autoImporting": "Copying local data to cloud…",
+      "errorTitle": "Copy failed",
+      "errorForbidden": "Some rows in your local data belong to another cloud account, so the copy was refused. Nothing was copied. Your local data is unchanged.",
+      "errorOther": "The copy failed: {{message}}"
     },
     "export": {
       "label": "Download my data",

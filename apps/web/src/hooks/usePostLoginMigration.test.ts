@@ -1,3 +1,4 @@
+import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { createElement, type ReactNode } from 'react'
@@ -20,10 +21,18 @@ vi.mock('@/lib/exportData', () => ({
   fetchLocalPayload: vi.fn(),
 }))
 
-// Mock importCloudData — controlled per test
-vi.mock('@/lib/importData', () => ({
-  importCloudData: vi.fn(),
-}))
+// Mock importCloudData — controlled per test.
+//
+// Spread the real module rather than returning a bare object: the hook also
+// imports `isForbiddenImportError`, and a factory that omits it hands the hook
+// `undefined` and throws in the `catch` it is supposed to serve. Spreading also
+// means the tests below run the REAL detector, which reads `extensions.code`,
+// so a rejection has to carry a genuine `CombinedGraphQLErrors` to be reported
+// as forbidden.
+vi.mock('@/lib/importData', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/importData')>()
+  return { ...actual, importCloudData: vi.fn() }
+})
 
 // Mock the Dexie operations the hook (and ActiveLocationProvider) reach for:
 // getAllItems drives the prompting path, getLocations backs useLocations' LOCAL
@@ -106,6 +115,16 @@ const SIGNED_IN = { isLoaded: true, isSignedIn: true }
 const mockFetchLocalPayload = vi.mocked(fetchLocalPayload)
 const mockImportCloudData = vi.mocked(importCloudData)
 
+// What the server sends when a payload names a row id another account holds:
+// the bare word `Forbidden` with the code in `extensions`. The message is
+// deliberately the same one the server sends for "that row does not exist", so
+// only the code tells the two apart — see `isForbiddenImportError`.
+function forbiddenError() {
+  return new CombinedGraphQLErrors({
+    errors: [{ message: 'Forbidden', extensions: { code: 'FORBIDDEN' } }],
+  })
+}
+
 const emptyPayload = {
   version: 1 as const,
   exportedAt: new Date().toISOString(),
@@ -154,31 +173,64 @@ afterEach(() => {
 })
 
 describe('usePostLoginMigration — auto-import path', () => {
-  it('transitions to done even when importCloudData rejects', async () => {
-    // Given: MIGRATION_STRATEGY_KEY is set to 'clear'
+  // REWRITTEN BY TASK 11 OF THE IMPORT OWNERSHIP GUARD. It used to be
+  // `transitions to done even when importCloudData rejects` and asserted the
+  // state was 'done'. That behaviour is the bug: the dialog closed as if the
+  // copy had worked, so the user was left in a half-copied cloud account and
+  // was told nothing. Both localStorage assertions below are unchanged.
+  it('user sees an error when the automatic copy is refused', async () => {
+    // Given a stored 'clear' strategy, and a server that refuses the copy
+    // because the local data names another account's row id
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
-
-    // And: fetchLocalPayload resolves and importCloudData rejects with an error
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
     mockImportCloudData.mockImplementation(() =>
-      Promise.reject(new Error('resetStore failed: GraphQL error')),
+      Promise.reject(forbiddenError()),
     )
 
-    // When: the hook mounts
+    // When the hook mounts and runs the auto-import
     const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
       wrapper,
     })
 
-    // Then: state transitions to 'done' (dialog closes) rather than staying 'auto-importing'
+    // Then the state is 'error', not 'done', so the dialog can say so
     await waitFor(() => {
-      expect(result.current.state).toBe('done')
+      expect(result.current.state).toBe('error')
     })
+
+    // And the refusal is reported as a cross-account one, which is what picks
+    // the sentence the user reads
+    expect(result.current.error?.forbidden).toBe(true)
 
     // And: MIGRATION_STRATEGY_KEY is removed so the failed import doesn't loop
     expect(localStorage.getItem(MIGRATION_STRATEGY_KEY)).toBeNull()
 
     // And: MIGRATION_PROMPTED_KEY is NOT set — we preserve the ability to retry
     expect(localStorage.getItem(MIGRATION_PROMPTED_KEY)).toBeNull()
+  })
+
+  it('user sees a generic error when the automatic copy fails for another reason', async () => {
+    // Given a stored strategy and a failure that is NOT a refusal
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
+    mockFetchLocalPayload.mockResolvedValue(emptyPayload)
+    mockImportCloudData.mockImplementation(() =>
+      Promise.reject(new Error('resetStore failed: GraphQL error')),
+    )
+
+    // When the hook mounts and runs the auto-import
+    const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
+      wrapper,
+    })
+
+    // Then the state is 'error' and the message is carried through for the
+    // generic sentence, with `forbidden` false — a plain Error saying anything
+    // at all is not a cross-account refusal
+    await waitFor(() => {
+      expect(result.current.state).toBe('error')
+    })
+    expect(result.current.error).toEqual({
+      forbidden: false,
+      message: 'resetStore failed: GraphQL error',
+    })
   })
 
   it('transitions to done and sets prompted key when importCloudData succeeds', async () => {
@@ -204,6 +256,47 @@ describe('usePostLoginMigration — auto-import path', () => {
 
     // And: MIGRATION_STRATEGY_KEY is removed
     expect(localStorage.getItem(MIGRATION_STRATEGY_KEY)).toBeNull()
+  })
+})
+
+describe('usePostLoginMigration — the Import button path', () => {
+  // `PostLoginMigrationDialog` calls this from
+  // `onClick={() => importData('append')}` and does not await it. Before the
+  // try/catch a refusal was an unhandled promise rejection: nothing set a new
+  // state, so the dialog sat on 'importing' with its Import button disabled
+  // and reading '...' for the rest of the session.
+  it('user sees an error when they press Import and it is refused', async () => {
+    // Given a local pantry and no stored strategy, so the user is prompted
+    // rather than auto-imported, and a server that refuses the copy.
+    // The pantry has to be non-empty: with no local items the effect writes
+    // MIGRATION_PROMPTED_KEY itself and never prompts, and the last assertion
+    // below would then be reading the effect's write rather than the failure's.
+    vi.mocked(getAllItems).mockResolvedValue([
+      { id: 'item-1', name: 'Milk' },
+    ] as unknown as Awaited<ReturnType<typeof getAllItems>>)
+    mockFetchLocalPayload.mockResolvedValue(emptyPayload)
+    mockImportCloudData.mockImplementation(() =>
+      Promise.reject(forbiddenError()),
+    )
+    const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
+      wrapper,
+    })
+    await waitFor(() => expect(result.current.state).toBe('prompting'))
+
+    // When the user presses Import
+    // The promise RESOLVING is half of what is asserted here: a rejection
+    // would be the unhandled one this task removed.
+    await act(async () => {
+      await expect(result.current.importData('append')).resolves.toBeUndefined()
+    })
+
+    // Then the state is 'error' and not left on 'importing'
+    expect(result.current.state).toBe('error')
+    expect(result.current.error?.forbidden).toBe(true)
+
+    // And MIGRATION_PROMPTED_KEY is not set by the failure, so a refresh still
+    // offers the copy
+    expect(localStorage.getItem(MIGRATION_PROMPTED_KEY)).toBeNull()
   })
 })
 

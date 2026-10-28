@@ -61,7 +61,7 @@ function PostLoginMigrationDialogE2E() {
 }
 
 function MigrationDialogs({ isLoaded, isSignedIn }: MigrationAuth) {
-  const { state, dismiss, importData } = usePostLoginMigration({
+  const { state, error, dismiss, importData } = usePostLoginMigration({
     isLoaded,
     isSignedIn,
   })
@@ -117,6 +117,35 @@ function MigrationDialogs({ isLoaded, isSignedIn }: MigrationAuth) {
               {state === 'importing'
                 ? '...'
                 : t('settings.postLoginMigration.import')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* The copy failed.
+          Both failing paths land here — the auto-import after a stored
+          strategy, and the Import button above. Before this dialog existed the
+          first one set 'done' and said nothing, and the second one left an
+          unhandled rejection with the prompt stuck on '...'.
+          The prompting dialog's `open` condition stays
+          'prompting' || 'importing', so these two never show at once. */}
+      <AlertDialog open={state === 'error'}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('settings.postLoginMigration.errorTitle')}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogDescription>
+            {error?.forbidden
+              ? t('settings.postLoginMigration.errorForbidden')
+              : t('settings.postLoginMigration.errorOther', {
+                  message: error?.message ?? '',
+                })}
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={dismiss}>
+              {t('common.done')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -666,7 +666,10 @@
       "description": "此裝置上有本地資料。是否要匯入您的雲端帳戶？",
       "import": "匯入",
       "skip": "略過",
-      "autoImporting": "正在將本機資料複製到雲端…"
+      "autoImporting": "正在將本機資料複製到雲端…",
+      "errorTitle": "複製失敗",
+      "errorForbidden": "本機資料裡有些資料屬於別的雲端帳號，所以複製被拒絕了，沒有複製任何資料，您的本機資料沒有變動",
+      "errorOther": "複製失敗：{{message}}"
     },
     "export": {
       "label": "下載我的資料",
