@@ -206,6 +206,13 @@ const LOC_OTHER = 'loc_garage' // USER's, NOT default
 const LOC_STRANGER = 'loc_theirs' // STRANGER's — must be refused
 
 const ITEM = 'item_milk' // USER's
+// The STRANGER's item, and an id no item row holds. Plan task 8 scoped both
+// log mutations' `itemId` lookup, and these two are what make a scoped lookup
+// distinguishable from an unscoped one. With only `ITEM` in the store, "an
+// item that exists" and "an item the caller owns" give the SAME answer and a
+// reference test could not fail.
+const ITEM_THEIRS = 'item_theirs' // STRANGER's
+const ITEM_GONE = 'item_gone' // no Item row holds it
 
 const LOG_MINE = 'log_mine' // USER's, at LOC_OTHER
 const LOG_THEIRS = 'log_theirs' // STRANGER's, at LOC_STRANGER — must be refused
@@ -254,7 +261,10 @@ beforeEach(() => {
     },
   ])
 
-  mockPrisma.$item.reset([{ id: ITEM, userId: USER, name: 'Milk' }])
+  mockPrisma.$item.reset([
+    { id: ITEM, userId: USER, name: 'Milk' },
+    { id: ITEM_THEIRS, userId: STRANGER, name: 'Theirs' },
+  ])
 })
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -324,10 +334,12 @@ const UPSERT_LOGS = `mutation ($logs: [InventoryLogInput!]!) { bulkUpsertInvento
 
 const logIn = (
   id: string,
-  extra: { locationId?: string; quantity?: number; delta?: number } = {},
+  extra: { locationId?: string; quantity?: number; delta?: number; itemId?: string } = {},
 ) => ({
   id,
-  itemId: ITEM,
+  // `itemId` defaults to the CALLER's own item, so every existing test keeps
+  // passing the scoped lookup plan task 8 added. A reference test overrides it.
+  itemId: extra.itemId ?? ITEM,
   delta: extra.delta ?? 1,
   quantity: extra.quantity ?? 1,
   occurredAt: PAYLOAD_OCCURRED,
@@ -499,5 +511,105 @@ describe('InventoryLog ownership', () => {
       quantity: 3,
     })
     expect(storedLog(LOG_FREE)?.locationId).not.toBe(LOC_DEFAULT)
+  })
+})
+
+// ─── Cross-model reference: InventoryLog → Item ──────────────────────────────
+//
+// Plan task 8. The guard above protects each log's OWN primary key. This
+// protects the OTHER id — the `itemId` the payload attaches its own log to.
+//
+// `bulkCreateInventoryLogs` looked it up with an UNSCOPED
+// `findUnique({ where: { id } })`, and `bulkUpsertInventoryLogs` did not look
+// it up at all. So the caller's own log could point at a STRANGER's item, and
+// on the upsert path an `itemId` no row held reached Postgres as an unhandled
+// foreign-key `P2003`.
+//
+// A reference the caller may not use is SKIPPED, not refused — the rest of the
+// batch still lands. The resolver comments say why: a partial backup
+// legitimately names an item that is gone, and making "not yours"
+// distinguishable from "not there" turns the mutation into a probe for another
+// account's item ids. The `ITEM_GONE` test below pins the two answers as the
+// same.
+
+describe('InventoryLog → Item references', () => {
+  it("user importing a log for another account's item gets nothing written", async () => {
+    // Given a FREE log id naming the STRANGER's item, at a location the CALLER
+    // owns, so the location guard refuses nothing
+    const payload = [logIn(LOG_FREE, { itemId: ITEM_THEIRS, quantity: 99 })]
+
+    // When the create-path import runs
+    const result = await exec(CREATE_LOGS, payload)
+
+    // Then nothing is written and nothing is returned
+    expect(result.errors).toBeUndefined()
+    expect(result.data?.bulkCreateInventoryLogs).toEqual([])
+    expect(storedLog(LOG_FREE)).toBeUndefined()
+    expect(mockPrisma.$log.state.rows).toHaveLength(2)
+  })
+
+  it('user importing a log for an item that no longer exists gets the same answer', async () => {
+    // Given a FREE log id naming an item id NO row holds. This is the NEGATIVE
+    // CONTROL for the `continue`-not-FORBIDDEN decision: a deleted item and a
+    // stranger's item must be indistinguishable.
+    const payload = [logIn(LOG_FREE, { itemId: ITEM_GONE })]
+
+    // When the create-path import runs
+    const result = await exec(CREATE_LOGS, payload)
+
+    // Then the answer is the same as above: skipped, no error
+    expect(result.errors).toBeUndefined()
+    expect(result.data?.bulkCreateInventoryLogs).toEqual([])
+    expect(storedLog(LOG_FREE)).toBeUndefined()
+  })
+
+  it("user replacing a log cannot attach it to another account's item", async () => {
+    // Given a FREE log id on the UPSERT path naming the STRANGER's item. This
+    // mutation had no item check at all before plan task 8.
+    const payload = [logIn(LOG_FREE, { itemId: ITEM_THEIRS, quantity: 99 })]
+
+    // When the upsert-path import runs
+    const result = await exec(UPSERT_LOGS, payload)
+
+    // Then nothing is written
+    expect(result.errors).toBeUndefined()
+    expect(result.data?.bulkUpsertInventoryLogs).toEqual([])
+    expect(storedLog(LOG_FREE)).toBeUndefined()
+    expect(mockPrisma.$log.state.rows).toHaveLength(2)
+  })
+
+  it("user replacing their own log cannot repoint it at another account's item", async () => {
+    // Given the CALLER's OWN log id on the upsert path, naming the STRANGER's
+    // item. `itemId` rides in this mutation's `update` payload, so before task
+    // 8 this repointed an existing log of the caller's at the stranger's item.
+    const payload = [logIn(LOG_MINE, { itemId: ITEM_THEIRS, quantity: 99 })]
+
+    // When the upsert-path import runs
+    const result = await exec(UPSERT_LOGS, payload)
+
+    // Then the row is skipped: it still names the caller's own item and keeps
+    // its stored quantity, not the payload's
+    expect(result.errors).toBeUndefined()
+    expect(result.data?.bulkUpsertInventoryLogs).toEqual([])
+    expect(storedLog(LOG_MINE)).toMatchObject({ userId: USER, itemId: ITEM, quantity: 1 })
+  })
+
+  it('user replacing a log for an item they own still gets it written', async () => {
+    // Given a FREE log id on the upsert path naming the CALLER's own item. A
+    // lookup that refused everything would pass all four tests above.
+    const payload = [logIn(LOG_FREE, { itemId: ITEM, quantity: 3 })]
+
+    // When the upsert-path import runs
+    const result = await exec(UPSERT_LOGS, payload)
+
+    // Then the row is written, owned by the caller, at the NON-default
+    // location the payload named
+    expect(result.errors).toBeUndefined()
+    expect(storedLog(LOG_FREE)).toMatchObject({
+      userId: USER,
+      itemId: ITEM,
+      locationId: LOC_OTHER,
+      quantity: 3,
+    })
   })
 })

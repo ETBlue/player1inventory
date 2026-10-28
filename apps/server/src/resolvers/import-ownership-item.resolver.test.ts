@@ -177,11 +177,20 @@ vi.mock('../lib/prisma.js', async () => {
     }),
   })
 
-  // `bulkCreateItems` filters the payload's `tagIds` through
-  // `tag.findMany({ where: { id: { in: tagIds } } })`, so a tag row has to
-  // exist for a junction row to be written at all.
+  // Both item mutations filter the payload's `tagIds` through
+  // `tag.findMany({ where: { id: { in: tagIds }, userId } })`, so a tag row
+  // has to exist AND belong to the caller for a junction row to be written at
+  // all. `userId` in that `where` is plan task 8; before it the read was
+  // unscoped on the create path and absent on the upsert path.
   const tag = createOwnedRowFake<{ id: string; userId: string; name: string }>({
     model: 'Tag',
+  })
+
+  // Same for `vendorIds`, where plan task 8 added the filter outright — both
+  // item mutations wrote every `vendorId` the payload named with no lookup at
+  // all, so this store did not exist in this file before.
+  const vendor = createOwnedRowFake<{ id: string; userId: string; name: string }>({
+    model: 'Vendor',
   })
 
   // `findUnique` and `findUniqueOrThrow` are wrapped in a `vi.fn` on top of
@@ -206,6 +215,7 @@ vi.mock('../lib/prisma.js', async () => {
       item: wrap(item.client),
       recipe: wrap(recipe.client),
       tag: tag.client,
+      vendor: vendor.client,
       itemTag: itemTag.client,
       itemVendor: itemVendor.client,
       recipeItem: recipeItem.client,
@@ -215,6 +225,7 @@ vi.mock('../lib/prisma.js', async () => {
       $item: item,
       $recipe: recipe,
       $tag: tag,
+      $vendor: vendor,
       $itemTag: itemTag,
       $itemVendor: itemVendor,
       $recipeItem: recipeItem,
@@ -237,6 +248,7 @@ type ItemRow = {
 }
 type RecipeRow = { id: string; userId: string; name: string; lastCookedAt: Date | null }
 type TagRow = { id: string; userId: string; name: string }
+type VendorRow = { id: string; userId: string; name: string }
 type JunctionFake = {
   state: { rows: Record<string, unknown>[] }
   reset: (rows?: Record<string, unknown>[]) => void
@@ -254,6 +266,7 @@ const mockPrisma = prisma as unknown as {
   $item: OwnedRowFake<ItemRow>
   $recipe: OwnedRowFake<RecipeRow>
   $tag: OwnedRowFake<TagRow>
+  $vendor: OwnedRowFake<VendorRow>
   $itemTag: JunctionFake
   $itemVendor: JunctionFake
   $recipeItem: JunctionFake
@@ -301,8 +314,18 @@ const RECIPE_MINE = 'recipe_mine'
 const RECIPE_THEIRS = 'recipe_theirs'
 const RECIPE_FREE = 'recipe_free'
 
-const TAG_ID = 'tag_dairy'
-const VENDOR_ID = 'vendor_costco'
+const TAG_ID = 'tag_dairy' // USER's
+const VENDOR_ID = 'vendor_costco' // USER's
+
+// The STRANGER's tag and vendor, and an id no row holds. Plan task 8 scoped
+// the `tagId` / `vendorId` lookups in both item mutations, and these three are
+// what make a scoped lookup distinguishable from an unscoped one. With only
+// `TAG_ID` and `VENDOR_ID` in the stores, "a tag that exists" and "a tag the
+// caller owns" give the SAME answer, so every reference test would pass
+// against a resolver with no scope at all.
+const TAG_THEIRS = 'tag_theirs'
+const VENDOR_THEIRS = 'vendor_theirs'
+const TAG_GONE = 'tag_gone' // no Tag row holds it
 
 const TS = new Date('2026-01-01T00:00:00.000Z')
 const LAST_COOKED = new Date('2026-05-06T07:08:09.000Z')
@@ -331,7 +354,17 @@ beforeEach(() => {
     { id: RECIPE_MINE, userId: USER, name: 'Pancakes', lastCookedAt: LAST_COOKED },
     { id: RECIPE_THEIRS, userId: STRANGER, name: 'Theirs', lastCookedAt: null },
   ])
-  mockPrisma.$tag.reset([{ id: TAG_ID, userId: USER, name: 'Dairy' }])
+  mockPrisma.$tag.reset([
+    { id: TAG_ID, userId: USER, name: 'Dairy' },
+    { id: TAG_THEIRS, userId: STRANGER, name: 'Theirs' },
+  ])
+  // A `Vendor` row for `VENDOR_ID` has to exist now: before plan task 8 both
+  // item mutations wrote a `vendorId` with no lookup, so this store was not
+  // needed at all.
+  mockPrisma.$vendor.reset([
+    { id: VENDOR_ID, userId: USER, name: 'Costco' },
+    { id: VENDOR_THEIRS, userId: STRANGER, name: 'Theirs' },
+  ])
   mockPrisma.$itemTag.reset([
     { itemId: ITEM_MINE, tagId: TAG_ID },
     { itemId: ITEM_THEIRS, tagId: TAG_ID },
@@ -719,5 +752,239 @@ describe('Recipe ownership', () => {
       id: RECIPE_FREE,
       userId: USER,
     })
+  })
+})
+
+// ─── Cross-model references: Item → Tag, Item → Vendor ───────────────────────
+//
+// Plan task 8. The guards above protect each row's OWN primary key. These
+// protect the OTHER id in a reference — the `tagId` and `vendorId` the payload
+// attaches its own item to.
+//
+// Before task 8 the create path filtered `tagIds` through an UNSCOPED
+// `tag.findMany`, and nothing at all checked `vendorIds` on either path or
+// `tagIds` on the upsert path. So the caller's own item could carry an
+// `ItemTag` or `ItemVendor` row pointing at a STRANGER's tag or vendor.
+//
+// A reference the caller may not use is SKIPPED, not refused — the item still
+// lands, only the edge is dropped. The resolver comments say why: a partial
+// backup legitimately names a tag the user has since deleted, and making "not
+// yours" distinguishable from "not there" turns the mutation into a probe for
+// another account's ids. The `TAG_GONE` test below is what pins the two
+// answers as the same.
+
+describe('Item → Tag and Item → Vendor references', () => {
+  it("user importing an item tagged with another account's tag gets the item and no tag link", async () => {
+    // Given a FREE item id carrying the STRANGER's tag id
+    const payload = [itemIn(ITEM_FREE, 'Fine', { tagIds: [TAG_THEIRS] })]
+
+    // When the create-path import runs
+    const result = await exec(CREATE_ITEMS, { items: payload })
+
+    // Then the item is written and owned by the caller, and NO `ItemTag` row
+    // names it. The two junction stores still hold exactly the two rows per
+    // table the fixture seeded.
+    expect(result.errors).toBeUndefined()
+    expect(mockPrisma.$item.state.rows.find((r) => r.id === ITEM_FREE)?.userId).toBe(USER)
+    expect(mockPrisma.$itemTag.state.rows.filter((r) => r.itemId === ITEM_FREE)).toEqual([])
+    // And the returned row says so too, so the client cannot be told the link
+    // exists when it does not.
+    expect(
+      (result.data?.bulkCreateItems as { id: string; tagIds: string[] }[])[0].tagIds,
+    ).toEqual([])
+  })
+
+  it("user importing an item tagged with a tag that no longer exists gets the same answer", async () => {
+    // Given a FREE item id carrying an id NO tag row holds. This is the
+    // NEGATIVE CONTROL for the `continue`-not-FORBIDDEN decision: a deleted
+    // tag and a stranger's tag must be indistinguishable, or the mutation
+    // tells the caller which ids exist in other accounts.
+    const payload = [itemIn(ITEM_FREE, 'Fine', { tagIds: [TAG_GONE] })]
+
+    // When the create-path import runs
+    const result = await exec(CREATE_ITEMS, { items: payload })
+
+    // Then the answer is the same as the test above: item written, no link, no
+    // error.
+    expect(result.errors).toBeUndefined()
+    expect(mockPrisma.$item.state.rows.find((r) => r.id === ITEM_FREE)?.userId).toBe(USER)
+    expect(mockPrisma.$itemTag.state.rows.filter((r) => r.itemId === ITEM_FREE)).toEqual([])
+  })
+
+  it('user importing an item tagged with their own tag gets the tag link', async () => {
+    // Given a FREE item id carrying the CALLER's own tag id. Without this, a
+    // filter that returned nothing at all would pass every test above.
+    const payload = [itemIn(ITEM_FREE, 'Fine', { tagIds: [TAG_ID] })]
+
+    // When the create-path import runs
+    const result = await exec(CREATE_ITEMS, { items: payload })
+
+    // Then the link is written
+    expect(result.errors).toBeUndefined()
+    expect(mockPrisma.$itemTag.state.rows.filter((r) => r.itemId === ITEM_FREE)).toEqual([
+      { itemId: ITEM_FREE, tagId: TAG_ID },
+    ])
+  })
+
+  it("user importing an item from another account's vendor gets the item and no vendor link", async () => {
+    // Given a FREE item id carrying the STRANGER's vendor id
+    const payload = [itemIn(ITEM_FREE, 'Fine', { vendorIds: [VENDOR_THEIRS] })]
+
+    // When the create-path import runs
+    const result = await exec(CREATE_ITEMS, { items: payload })
+
+    // Then the item is written and NO `ItemVendor` row names it
+    expect(result.errors).toBeUndefined()
+    expect(mockPrisma.$item.state.rows.find((r) => r.id === ITEM_FREE)?.userId).toBe(USER)
+    expect(mockPrisma.$itemVendor.state.rows.filter((r) => r.itemId === ITEM_FREE)).toEqual([])
+  })
+
+  it('user importing an item from their own vendor gets the vendor link', async () => {
+    // Given a FREE item id carrying the CALLER's own vendor id
+    const payload = [itemIn(ITEM_FREE, 'Fine', { vendorIds: [VENDOR_ID] })]
+
+    // When the create-path import runs
+    const result = await exec(CREATE_ITEMS, { items: payload })
+
+    // Then the link is written
+    expect(result.errors).toBeUndefined()
+    expect(mockPrisma.$itemVendor.state.rows.filter((r) => r.itemId === ITEM_FREE)).toEqual([
+      { itemId: ITEM_FREE, vendorId: VENDOR_ID },
+    ])
+  })
+
+  // The two upsert negatives are SEPARATE tests, one per reference, on purpose.
+  // A single test asserting both junction stores goes red for either filter,
+  // so its red text cannot say WHICH one broke — the "name the specific
+  // branch" rule in root CLAUDE.md. Split, each filter has its own signal.
+
+  it("user replacing their own item cannot attach another account's tag to it", async () => {
+    // Given the CALLER's OWN item id on the upsert path, carrying the
+    // STRANGER's tag. `bulkUpsertItems` deletes this item's links first and
+    // rewrites them, so before task 8 this payload left `ITEM_MINE` pointing
+    // at the stranger's tag.
+    const payload = [itemIn(ITEM_MINE, 'Renamed', { tagIds: [TAG_THEIRS] })]
+
+    // When the upsert-path import runs
+    const result = await exec(UPSERT_ITEMS, { items: payload })
+
+    // Then the item is replaced and carries NO tag link: the old one was
+    // deleted by `deleteMany`, which is correct, and the new one was not
+    // written.
+    expect(result.errors).toBeUndefined()
+    expect(mockPrisma.$item.state.rows.find((r) => r.id === ITEM_MINE)?.name).toBe('Renamed')
+    expect(mockPrisma.$itemTag.state.rows.filter((r) => r.itemId === ITEM_MINE)).toEqual([])
+  })
+
+  it("user replacing their own item cannot attach another account's vendor to it", async () => {
+    // Given the CALLER's OWN item id on the upsert path, carrying the
+    // STRANGER's vendor
+    const payload = [itemIn(ITEM_MINE, 'Renamed', { vendorIds: [VENDOR_THEIRS] })]
+
+    // When the upsert-path import runs
+    const result = await exec(UPSERT_ITEMS, { items: payload })
+
+    // Then the item is replaced and carries NO vendor link
+    expect(result.errors).toBeUndefined()
+    expect(mockPrisma.$item.state.rows.find((r) => r.id === ITEM_MINE)?.name).toBe('Renamed')
+    expect(mockPrisma.$itemVendor.state.rows.filter((r) => r.itemId === ITEM_MINE)).toEqual([])
+  })
+
+  it('user replacing their own item keeps the tag and vendor links they do own', async () => {
+    // Given the CALLER's OWN item id carrying their OWN tag and vendor. This
+    // is the positive half of the test above — a filter that dropped
+    // everything would pass that one.
+    const payload = [itemIn(ITEM_MINE, 'Renamed', { tagIds: [TAG_ID], vendorIds: [VENDOR_ID] })]
+
+    // When the upsert-path import runs
+    const result = await exec(UPSERT_ITEMS, { items: payload })
+
+    // Then both links are rewritten
+    expect(result.errors).toBeUndefined()
+    expect(mockPrisma.$itemTag.state.rows.filter((r) => r.itemId === ITEM_MINE)).toEqual([
+      { itemId: ITEM_MINE, tagId: TAG_ID },
+    ])
+    expect(mockPrisma.$itemVendor.state.rows.filter((r) => r.itemId === ITEM_MINE)).toEqual([
+      { itemId: ITEM_MINE, vendorId: VENDOR_ID },
+    ])
+  })
+})
+
+// ─── Cross-model reference: Recipe → Item ────────────────────────────────────
+//
+// Plan task 8. Both recipe mutations wrote every `items[].itemId` the payload
+// named straight into `RecipeItem` with NO lookup at all, so a recipe of the
+// caller's could list a STRANGER's item as an ingredient.
+//
+// `ITEM_THEIRS` is the stranger's item from the fixture at the top of the
+// file, so no new fixture is needed here.
+
+describe('Recipe → Item references', () => {
+  it("user importing a recipe with another account's item gets the recipe and no ingredient", async () => {
+    // Given a FREE recipe id listing the STRANGER's item as an ingredient
+    const payload = [
+      recipeIn(RECIPE_FREE, 'Fine', { items: [{ itemId: ITEM_THEIRS, defaultAmount: 3 }] }),
+    ]
+
+    // When the create-path import runs
+    const result = await exec(CREATE_RECIPES, { recipes: payload })
+
+    // Then the recipe is written, owned by the caller, with no `RecipeItem`
+    // row naming it
+    expect(result.errors).toBeUndefined()
+    expect(mockPrisma.$recipe.state.rows.find((r) => r.id === RECIPE_FREE)?.userId).toBe(USER)
+    expect(mockPrisma.$recipeItem.state.rows.filter((r) => r.recipeId === RECIPE_FREE)).toEqual([])
+  })
+
+  it('user importing a recipe with their own item gets the ingredient', async () => {
+    // Given a FREE recipe id listing the CALLER's OWN item
+    const payload = [
+      recipeIn(RECIPE_FREE, 'Fine', { items: [{ itemId: ITEM_MINE, defaultAmount: 3 }] }),
+    ]
+
+    // When the create-path import runs
+    const result = await exec(CREATE_RECIPES, { recipes: payload })
+
+    // Then the ingredient is written
+    expect(result.errors).toBeUndefined()
+    expect(mockPrisma.$recipeItem.state.rows.filter((r) => r.recipeId === RECIPE_FREE)).toEqual([
+      { recipeId: RECIPE_FREE, itemId: ITEM_MINE, defaultAmount: 3 },
+    ])
+  })
+
+  it("user replacing their own recipe cannot add another account's item as an ingredient", async () => {
+    // Given the CALLER's OWN recipe id on the upsert path, listing the
+    // STRANGER's item. `bulkUpsertRecipes` deletes this recipe's ingredients
+    // first and rewrites them, so before task 8 this payload left
+    // `RECIPE_MINE` pointing at the stranger's item.
+    const payload = [
+      recipeIn(RECIPE_MINE, 'Pancakes', { items: [{ itemId: ITEM_THEIRS, defaultAmount: 9 }] }),
+    ]
+
+    // When the upsert-path import runs
+    const result = await exec(UPSERT_RECIPES, { recipes: payload })
+
+    // Then the recipe has no ingredients: the old one was deleted, which is
+    // correct, and the stranger's was not written
+    expect(result.errors).toBeUndefined()
+    expect(mockPrisma.$recipeItem.state.rows.filter((r) => r.recipeId === RECIPE_MINE)).toEqual([])
+  })
+
+  it('user replacing their own recipe keeps the ingredients they do own', async () => {
+    // Given the CALLER's OWN recipe id listing their OWN item with a new
+    // amount. This is the positive half — a filter that dropped everything
+    // would pass the test above.
+    const payload = [
+      recipeIn(RECIPE_MINE, 'Pancakes', { items: [{ itemId: ITEM_MINE, defaultAmount: 9 }] }),
+    ]
+
+    // When the upsert-path import runs
+    const result = await exec(UPSERT_RECIPES, { recipes: payload })
+
+    // Then the ingredient is rewritten with the payload's amount
+    expect(result.errors).toBeUndefined()
+    expect(mockPrisma.$recipeItem.state.rows.filter((r) => r.recipeId === RECIPE_MINE)).toEqual([
+      { recipeId: RECIPE_MINE, itemId: ITEM_MINE, defaultAmount: 9 },
+    ])
   })
 })

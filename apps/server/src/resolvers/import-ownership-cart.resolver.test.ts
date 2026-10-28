@@ -218,6 +218,13 @@ const CART_FREE = `${LOC_OTHER}:vendor_new` // no cart row holds it
 
 const ITEM_MINE = 'item_milk' // USER's
 const ITEM_OTHER = 'item_rice' // USER's second item
+// The STRANGER's item, and an id no item row holds. Plan task 8 scoped both
+// cart-item mutations' `cartId` and `itemId` lookups, and these two are what
+// make a scoped lookup distinguishable from an unscoped one. With only the
+// caller's two items in the store, "an item that exists" and "an item the
+// caller owns" give the SAME answer and a reference test could not fail.
+const ITEM_THEIRS = 'item_theirs' // STRANGER's
+const ITEM_GONE = 'item_gone' // no Item row holds it
 
 const CI_MINE = 'ci_mine' // USER's
 const CI_THEIRS = 'ci_theirs' // STRANGER's — must be refused
@@ -261,6 +268,7 @@ beforeEach(() => {
   mockPrisma.$item.reset([
     { id: ITEM_MINE, userId: USER, name: 'Milk' },
     { id: ITEM_OTHER, userId: USER, name: 'Rice' },
+    { id: ITEM_THEIRS, userId: STRANGER, name: 'Theirs' },
   ])
 })
 
@@ -623,5 +631,163 @@ describe('CartItem ownership', () => {
     expect(result.errors).toBeUndefined()
     expect(result.data?.bulkCreateCartItems).toEqual([])
     expect(storedCartItem(CI_MINE)?.quantity).toBe(2)
+  })
+})
+
+// ─── Cross-model references: CartItem → Cart, CartItem → Item ────────────────
+//
+// Plan task 8. The guards above protect each row's OWN primary key. These
+// protect the OTHER two ids in a `CartItem` — the `cartId` and `itemId` the
+// payload attaches its own row to.
+//
+// `bulkCreateCartItems` looked both up with an UNSCOPED
+// `findUnique({ where: { id } })`, and `bulkUpsertCartItems` did not look them
+// up at all. So the caller's own cart item could land inside a STRANGER's
+// cart. That is exactly what `e2e/tests/cart-id-cross-user-leak.spec.ts`
+// demonstrates against real Postgres, with the same bare cart id `no-vendor`
+// this file uses for `CART_THEIRS`.
+//
+// A reference the caller may not use is SKIPPED, not refused — the rest of the
+// batch still lands. The resolver comments say why: a partial backup
+// legitimately names a cart or item that is gone, and making "not yours"
+// distinguishable from "not there" turns the mutation into a probe for another
+// account's ids. The `_GONE` tests below pin the two answers as the same.
+
+describe('CartItem → Cart and CartItem → Item references', () => {
+  it("user importing a cart item for another account's cart gets nothing written", async () => {
+    // Given a FREE cart-item id pointing at the STRANGER's cart. The cart id
+    // is bare, so no location guard is involved — only the scoped `cartId`
+    // lookup can stop this.
+    const payload = [cartItemIn(CI_FREE, { cartId: CART_THEIRS })]
+
+    // When the create-path import runs
+    const result = await exec(CREATE_CART_ITEMS, { cartItems: payload })
+
+    // Then nothing is written and nothing is returned. The two seeded cart
+    // items are all that remain, and the stranger's cart gained nothing.
+    expect(result.errors).toBeUndefined()
+    expect(result.data?.bulkCreateCartItems).toEqual([])
+    expect(storedCartItem(CI_FREE)).toBeUndefined()
+    expect(mockPrisma.$cartItem.state.rows).toHaveLength(2)
+  })
+
+  it('user importing a cart item for a cart that no longer exists gets the same answer', async () => {
+    // Given a FREE cart-item id pointing at a cart id NO row holds. This is
+    // the NEGATIVE CONTROL for the `continue`-not-FORBIDDEN decision: a
+    // deleted cart and a stranger's cart must be indistinguishable.
+    const payload = [cartItemIn(CI_FREE, { cartId: `${LOC_OTHER}:vendor_nobody` })]
+
+    // When the create-path import runs
+    const result = await exec(CREATE_CART_ITEMS, { cartItems: payload })
+
+    // Then the answer is the same as above: skipped, no error
+    expect(result.errors).toBeUndefined()
+    expect(result.data?.bulkCreateCartItems).toEqual([])
+    expect(storedCartItem(CI_FREE)).toBeUndefined()
+  })
+
+  it("user importing a cart item for another account's item gets nothing written", async () => {
+    // Given a FREE cart-item id in the CALLER's own cart but naming the
+    // STRANGER's item
+    const payload = [cartItemIn(CI_FREE, { cartId: CART_MINE, itemId: ITEM_THEIRS })]
+
+    // When the create-path import runs
+    const result = await exec(CREATE_CART_ITEMS, { cartItems: payload })
+
+    // Then nothing is written
+    expect(result.errors).toBeUndefined()
+    expect(result.data?.bulkCreateCartItems).toEqual([])
+    expect(storedCartItem(CI_FREE)).toBeUndefined()
+  })
+
+  it('user importing a cart item for an item that no longer exists gets the same answer', async () => {
+    // Given a FREE cart-item id naming an item id NO row holds — the negative
+    // control for `itemId`, matching the one for `cartId` above
+    const payload = [cartItemIn(CI_FREE, { cartId: CART_MINE, itemId: ITEM_GONE })]
+
+    // When the create-path import runs
+    const result = await exec(CREATE_CART_ITEMS, { cartItems: payload })
+
+    // Then the answer is the same
+    expect(result.errors).toBeUndefined()
+    expect(result.data?.bulkCreateCartItems).toEqual([])
+    expect(storedCartItem(CI_FREE)).toBeUndefined()
+  })
+
+  it('user importing a cart item for their own cart and item gets it written', async () => {
+    // Given a FREE cart-item id naming the CALLER's own cart and item. A
+    // lookup that refused everything would pass all four tests above.
+    const payload = [cartItemIn(CI_FREE, { cartId: CART_OTHER, itemId: ITEM_OTHER, quantity: 4 })]
+
+    // When the create-path import runs
+    const result = await exec(CREATE_CART_ITEMS, { cartItems: payload })
+
+    // Then the row is written into the cart the payload named — `CART_OTHER`,
+    // not `CART_MINE`, so a resolver that hardcoded one cart is visible
+    expect(result.errors).toBeUndefined()
+    expect(storedCartItem(CI_FREE)).toMatchObject({
+      userId: USER,
+      cartId: CART_OTHER,
+      itemId: ITEM_OTHER,
+      quantity: 4,
+    })
+  })
+
+  it("user replacing their own cart item cannot move it into another account's cart", async () => {
+    // Given the CALLER's OWN cart-item id on the upsert path, pointing at the
+    // STRANGER's cart. `cartId` STAYS in this mutation's `update` payload on
+    // purpose (design decision 3), so before task 8 this moved the caller's
+    // row straight into the stranger's cart.
+    const payload = [cartItemIn(CI_MINE, { cartId: CART_THEIRS, quantity: 11 })]
+
+    // When the upsert-path import runs
+    const result = await exec(UPSERT_CART_ITEMS, { cartItems: payload })
+
+    // Then the row is skipped: it has NOT moved and its quantity is the stored
+    // one, not the payload's
+    expect(result.errors).toBeUndefined()
+    expect(result.data?.bulkUpsertCartItems).toEqual([])
+    expect(storedCartItem(CI_MINE)).toMatchObject({
+      userId: USER,
+      cartId: CART_MINE,
+      quantity: 2,
+    })
+  })
+
+  it("user replacing their own cart item cannot repoint it at another account's item", async () => {
+    // Given the CALLER's OWN cart-item id on the upsert path, naming the
+    // STRANGER's item. `itemId` also stays in `update`.
+    const payload = [cartItemIn(CI_MINE, { cartId: CART_MINE, itemId: ITEM_THEIRS, quantity: 11 })]
+
+    // When the upsert-path import runs
+    const result = await exec(UPSERT_CART_ITEMS, { cartItems: payload })
+
+    // Then the row is skipped and still names the caller's own item
+    expect(result.errors).toBeUndefined()
+    expect(result.data?.bulkUpsertCartItems).toEqual([])
+    expect(storedCartItem(CI_MINE)).toMatchObject({
+      userId: USER,
+      itemId: ITEM_MINE,
+      quantity: 2,
+    })
+  })
+
+  it('user replacing their own cart item still moves it between carts and items they own', async () => {
+    // Given the CALLER's OWN cart-item id moved to their OTHER cart and OTHER
+    // item. This is the positive half: the two tests above would pass against
+    // a lookup that refused everything, and this is what stops that.
+    const payload = [cartItemIn(CI_MINE, { cartId: CART_OTHER, itemId: ITEM_OTHER, quantity: 6 })]
+
+    // When the upsert-path import runs
+    const result = await exec(UPSERT_CART_ITEMS, { cartItems: payload })
+
+    // Then the row really moved
+    expect(result.errors).toBeUndefined()
+    expect(storedCartItem(CI_MINE)).toMatchObject({
+      userId: USER,
+      cartId: CART_OTHER,
+      itemId: ITEM_OTHER,
+      quantity: 6,
+    })
   })
 })

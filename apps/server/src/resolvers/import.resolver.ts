@@ -536,9 +536,26 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         // cloud pantry, the break is in the client's `itemStocks` upload
         // (`apps/web/src/lib/importData.ts`, `ENTITY_SPECS`) or in
         // `bulkCreateItemStocks` — not here.
+        // SCOPED BY `userId`, and a tag the caller does not own is SKIPPED —
+        // not refused. Plan task 8.
+        //
+        // Why skip rather than throw FORBIDDEN. A reference that does not
+        // resolve is a normal thing in a partial backup: a user exports, then
+        // deletes the tag, then re-imports. This filter already dropped an
+        // unknown `tagId` silently, and a tag the caller may not use has to be
+        // treated the same way — "you may not use this id" and "no row holds
+        // this id" must be indistinguishable, or the mutation becomes a probe
+        // for another account's tag ids. `requireOwnItemStockRefs` throws for
+        // its `itemId` only because `ItemStock` has no other scope to fall
+        // back on; here the row itself is already guarded, so only the EDGE is
+        // dropped and the item still lands.
+        //
+        // Before the `userId`, this read was UNSCOPED, so the caller's own
+        // item could be linked to a STRANGER's tag — a cross-account
+        // `ItemTag` row.
         if (tagIds?.length) {
           const existingTags = await prisma.tag.findMany({
-            where: { id: { in: tagIds } },
+            where: { id: { in: tagIds }, userId },
             select: { id: true },
           })
           const validTagIds = existingTags.map((t) => t.id)
@@ -549,11 +566,22 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             })
           }
         }
+        // The same filter for vendors, where there was NO check at all before
+        // plan task 8 — any `vendorId` the payload named was written straight
+        // into `ItemVendor`, a stranger's included. Skip, not refuse, for the
+        // reason spelled out above the tag filter.
         if (vendorIds?.length) {
-          await prisma.itemVendor.createMany({
-            data: vendorIds.map((vendorId) => ({ itemId: id, vendorId })),
-            skipDuplicates: true,
+          const existingVendors = await prisma.vendor.findMany({
+            where: { id: { in: vendorIds }, userId },
+            select: { id: true },
           })
+          const validVendorIds = existingVendors.map((v) => v.id)
+          if (validVendorIds.length > 0) {
+            await prisma.itemVendor.createMany({
+              data: validVendorIds.map((vendorId) => ({ itemId: id, vendorId })),
+              skipDuplicates: true,
+            })
+          }
         }
         // SCOPED. Defence in depth, not the guard — after the pre-pass no
         // stranger's row can be in range. It is added for the reason
@@ -582,9 +610,17 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       })
       // Filter out tags whose typeId references a TagType that doesn't exist
       // (orphaned tags from deleted TagTypes in the source data).
+      //
+      // SCOPED BY `userId` since plan task 8. `Tag.typeId` is a foreign key to
+      // `TagType`, and this read was UNSCOPED, so the caller's own tag could
+      // point at a STRANGER's tag type. Skip, not refuse: a tag whose type the
+      // caller may not use is dropped exactly like a tag whose type no longer
+      // exists, which is the behaviour this filter already had. See the long
+      // comment above `bulkCreateItems`' tag filter for why skip is right here
+      // and a throw is right in `requireOwnItemStockRefs`.
       const typeIds = [...new Set(docs.map((d) => d.typeId as string))]
       const existingTypeIds = await prisma.tagType.findMany({
-        where: { id: { in: typeIds } },
+        where: { id: { in: typeIds }, userId },
         select: { id: true },
       })
       const validTypeIdSet = new Set(existingTypeIds.map((t) => t.id))
@@ -681,11 +717,24 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             lastCookedAt: lastCookedAt ? new Date(lastCookedAt) : undefined,
           },
         })
+        // SCOPED BY `userId` since plan task 8, where there was NO check at
+        // all before: any `itemId` the payload named went straight into
+        // `RecipeItem`, a stranger's included. An ingredient the caller does
+        // not own is SKIPPED and the recipe still lands — skip, not refuse,
+        // for the reason spelled out above `bulkCreateItems`' tag filter.
         if (items?.length) {
-          await prisma.recipeItem.createMany({
-            data: items.map((i) => ({ recipeId: id, itemId: i.itemId, defaultAmount: i.defaultAmount })),
-            skipDuplicates: true,
+          const ownItems = await prisma.item.findMany({
+            where: { id: { in: items.map((i) => i.itemId) }, userId },
+            select: { id: true },
           })
+          const ownItemIds = new Set(ownItems.map((i) => i.id))
+          const validItems = items.filter((i) => ownItemIds.has(i.itemId))
+          if (validItems.length > 0) {
+            await prisma.recipeItem.createMany({
+              data: validItems.map((i) => ({ recipeId: id, itemId: i.itemId, defaultAmount: i.defaultAmount })),
+              skipDuplicates: true,
+            })
+          }
         }
         // SCOPED — same reason as `bulkCreateItems`' closing read above.
         const full = await prisma.recipe.findUniqueOrThrow({ where: { id, userId }, include: { items: true } })
@@ -721,7 +770,18 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         // per-row read this replaces was unscoped, so it could not tell those
         // two apart.
         if (ownIds.has(id)) continue
-        const itemExists = await prisma.item.findUnique({ where: { id: (rest as { itemId: string }).itemId }, select: { id: true } })
+        // SCOPED BY `userId` since plan task 8 — a `findFirst`, because
+        // `{ id, userId }` is not a unique key. The read this replaces was a
+        // plain `findUnique({ where: { id } })`, so a log of the caller's
+        // could be attached to a STRANGER's item.
+        //
+        // The existing `continue` STAYS. A log whose item the caller may not
+        // use is skipped exactly like a log whose item no longer exists, which
+        // is what this check already did. Refusing instead would both break a
+        // partial backup and turn the mutation into a probe for another
+        // account's item ids. Same pattern as `requireOwnItemStockRefs:450`,
+        // which throws only because `ItemStock` has no other scope.
+        const itemExists = await prisma.item.findFirst({ where: { id: (rest as { itemId: string }).itemId, userId }, select: { id: true } })
         if (!itemExists) continue
         const created = await prisma.inventoryLog.create({
           data: {
@@ -809,12 +869,26 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         const { id, cartId, itemId, quantity } = ci
         // Own row → skip. Unclaimed → write. After the guard nothing else can
         // reach here, so the per-row read this replaces has nothing left to
-        // find out. `cartId` and `itemId` are still looked up UNSCOPED below:
-        // that is a separate hole, and plan task 8 closes it.
+        // find out.
         if (ownIds.has(id)) continue
-        const cartExists = await prisma.cart.findUnique({ where: { id: cartId }, select: { id: true } })
+        // BOTH references are SCOPED BY `userId` since plan task 8, each a
+        // `findFirst` because `{ id, userId }` is not a unique key. The two
+        // reads this replaces were plain `findUnique({ where: { id } })`, and
+        // the `cartId` one is the exact hole
+        // `e2e/tests/cart-id-cross-user-leak.spec.ts` demonstrates against
+        // real Postgres: account B's `CartItem` rows landing inside account
+        // A's `Cart`.
+        //
+        // The existing `continue` STAYS on both. A cart or item the caller may
+        // not use is skipped exactly like one that does not exist, which is
+        // what these checks already did. A partial backup legitimately names a
+        // parent that is gone, and making "not yours" distinguishable from
+        // "not there" would turn the mutation into a probe for another
+        // account's ids. Same pattern as `requireOwnItemStockRefs:450`, which
+        // throws only because `ItemStock` has no other scope.
+        const cartExists = await prisma.cart.findFirst({ where: { id: cartId, userId }, select: { id: true } })
         if (!cartExists) continue
-        const itemExists = await prisma.item.findUnique({ where: { id: itemId }, select: { id: true } })
+        const itemExists = await prisma.item.findFirst({ where: { id: itemId, userId }, select: { id: true } })
         if (!itemExists) continue
         const created = await prisma.cartItem.create({
           data: { id, cartId, itemId, quantity, userId },
@@ -869,15 +943,45 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         // Replace junction rows
         await prisma.itemTag.deleteMany({ where: { itemId: id } })
         await prisma.itemVendor.deleteMany({ where: { itemId: id } })
+        // BOTH filters are SCOPED BY `userId` since plan task 8, where this
+        // mutation had NO check on either reference — every `tagId` and
+        // `vendorId` the payload named went straight into `ItemTag` /
+        // `ItemVendor`, a stranger's included. A reference the caller does not
+        // own is SKIPPED and the item still lands; see the long comment above
+        // `bulkCreateItems`' tag filter for why skip and not FORBIDDEN.
+        //
+        // SIDE EFFECT ON THE `P2003` THE DESIGN DOC RECORDS. `itemVendor.createMany`
+        // below still carries no `skipDuplicates`, which is unchanged. But the
+        // design noted that an unknown `vendorId` reached Postgres and raised
+        // an UNHANDLED foreign-key `P2003`; after this filter no unknown or
+        // stranger-owned id can reach it, because every surviving id came back
+        // from a `Vendor` row of the caller's. The same was true of `tagId`.
+        // So that `P2003` is no longer reachable through either reference.
+        // Not asserted here: the server suite runs against a fake with no
+        // foreign keys, so only a real-Postgres test could prove it.
         if (tagIds?.length) {
-          await prisma.itemTag.createMany({
-            data: tagIds.map((tagId) => ({ itemId: id, tagId })),
+          const existingTags = await prisma.tag.findMany({
+            where: { id: { in: tagIds }, userId },
+            select: { id: true },
           })
+          const validTagIds = existingTags.map((t) => t.id)
+          if (validTagIds.length > 0) {
+            await prisma.itemTag.createMany({
+              data: validTagIds.map((tagId) => ({ itemId: id, tagId })),
+            })
+          }
         }
         if (vendorIds?.length) {
-          await prisma.itemVendor.createMany({
-            data: vendorIds.map((vendorId) => ({ itemId: id, vendorId })),
+          const existingVendors = await prisma.vendor.findMany({
+            where: { id: { in: vendorIds }, userId },
+            select: { id: true },
           })
+          const validVendorIds = existingVendors.map((v) => v.id)
+          if (validVendorIds.length > 0) {
+            await prisma.itemVendor.createMany({
+              data: validVendorIds.map((vendorId) => ({ itemId: id, vendorId })),
+            })
+          }
         }
         // SCOPED — same reason as `bulkCreateItems`' closing read above.
         const full = await prisma.item.findUniqueOrThrow({
@@ -974,12 +1078,28 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           // reason as `bulkUpsertItems` above.
           update: data,
         })
+        // SCOPED BY `userId` since plan task 8, where there was NO check at
+        // all. An ingredient the caller does not own is SKIPPED and the recipe
+        // still lands — skip, not refuse, for the reason spelled out above
+        // `bulkCreateItems`' tag filter.
+        //
+        // `recipeItem.deleteMany` above is keyed on `recipeId`, which the
+        // row-id guard has already proved is the caller's own recipe, so this
+        // filter is not what protects a stranger's `RecipeItem` rows.
         if (items != null) {
           await prisma.recipeItem.deleteMany({ where: { recipeId: id } })
           if (items.length) {
-            await prisma.recipeItem.createMany({
-              data: items.map((i) => ({ recipeId: id, itemId: i.itemId, defaultAmount: i.defaultAmount })),
+            const ownItems = await prisma.item.findMany({
+              where: { id: { in: items.map((i) => i.itemId) }, userId },
+              select: { id: true },
             })
+            const ownItemIds = new Set(ownItems.map((i) => i.id))
+            const validItems = items.filter((i) => ownItemIds.has(i.itemId))
+            if (validItems.length > 0) {
+              await prisma.recipeItem.createMany({
+                data: validItems.map((i) => ({ recipeId: id, itemId: i.itemId, defaultAmount: i.defaultAmount })),
+              })
+            }
           }
         }
         // SCOPED — same reason as `bulkCreateItems`' closing read above.
@@ -1012,6 +1132,16 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           note: note ?? undefined,
           ...(logParams ? { logParams: logParams as Prisma.InputJsonValue } : {}),
         }
+        // SCOPED BY `userId`, and SKIPPED when it does not resolve. New in
+        // plan task 8: this mutation had NO item check at all, so a log of the
+        // caller's could be attached to a STRANGER's item, and an `itemId` no
+        // row held reached Postgres as an unhandled foreign-key `P2003`.
+        //
+        // The `continue` matches `bulkCreateInventoryLogs` above exactly, so
+        // the two siblings now agree on what an unusable `itemId` means: the
+        // log is dropped, not refused, and the rest of the batch still lands.
+        const itemExists = await prisma.item.findFirst({ where: { id: (rest as { itemId: string }).itemId, userId }, select: { id: true } })
+        if (!itemExists) continue
         const upserted = await prisma.inventoryLog.upsert({
           where: { id },
           // `userId` and `locationId` live in `create` only, each for its own
@@ -1107,6 +1237,23 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         // may rewrite, and because a future edit that drops the guard above
         // must still not be able to reassign a cart item.
         const data = { cartId, itemId, quantity }
+        // BOTH references are SCOPED BY `userId`, and SKIPPED when they do not
+        // resolve. New in plan task 8: this mutation had NO check on either
+        // one, so the `replace` import strategy could write the caller's cart
+        // item into a STRANGER's cart — the same leak
+        // `e2e/tests/cart-id-cross-user-leak.spec.ts` demonstrates on the
+        // create path — and an id no row held reached Postgres as an unhandled
+        // foreign-key `P2003`.
+        //
+        // The `continue` matches `bulkCreateCartItems` above exactly, so the
+        // two siblings now agree on what an unusable parent means: the cart
+        // item is dropped, not refused, and the rest of the batch still lands.
+        // That also keeps `replace` and `skip` giving the same answer for a
+        // partial backup whose cart or item is gone.
+        const cartExists = await prisma.cart.findFirst({ where: { id: cartId, userId }, select: { id: true } })
+        if (!cartExists) continue
+        const itemExists = await prisma.item.findFirst({ where: { id: itemId, userId }, select: { id: true } })
+        if (!itemExists) continue
         const upserted = await prisma.cartItem.upsert({
           where: { id },
           create: { id, ...data, userId },

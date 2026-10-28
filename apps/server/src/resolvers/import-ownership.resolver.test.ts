@@ -289,7 +289,7 @@ const UPSERT_SHELVES = `mutation ($shelves: [ShelfInput!]!) { bulkUpsertShelves(
 
 // ─── Input builders ──────────────────────────────────────────────────────────
 
-const tagIn = (id: string, name: string) => ({ id, name, typeId: TT_MINE, parentId: null })
+const tagIn = (id: string, name: string, typeId: string = TT_MINE) => ({ id, name, typeId, parentId: null })
 const ttIn = (id: string, name: string) => ({ id, name, color: 'green' })
 const venIn = (id: string, name: string) => ({ id, name })
 const shelfIn = (id: string, name: string) => ({
@@ -624,5 +624,76 @@ describe('Shelf ownership', () => {
     const result = await exec(UPSERT_SHELVES, { shelves: [shelfIn(SHELF_THEIRS, 'Stolen')] })
     expect(result.errors).toBeUndefined()
     expect(result.data?.bulkUpsertShelves).toEqual([])
+  })
+})
+
+// ─── Cross-model reference: Tag → TagType ────────────────────────────────────
+//
+// Plan task 8. The guards above protect each row's OWN primary key. This
+// protects the OTHER id — the `typeId` a tag is attached to.
+//
+// `bulkCreateTags` already filtered out a tag whose `typeId` named no
+// `TagType` row, but that read was UNSCOPED, so a tag of the caller's could
+// point at a STRANGER's tag type. Plan task 8 added `userId` to it.
+//
+// The filter already SKIPPED the whole tag row rather than refusing the
+// mutation, and task 8 keeps that: a tag whose type the caller may not use is
+// dropped exactly like a tag whose type was deleted. `TT_FREE` below is the
+// negative control that pins the two answers as the same.
+//
+// `bulkUpsertTags` is NOT covered here and is NOT fixed. See the report's
+// Known gaps: that mutation passes `typeId` and `parentId` through in a
+// `...rest` spread inside one `Promise.all`, with no per-row skip to hook a
+// filter onto, so scoping it is a restructure rather than one line.
+
+describe('Tag → TagType references', () => {
+  it("user importing a tag under another account's tag type gets no tag written", async () => {
+    // Given a FREE tag id whose `typeId` names the STRANGER's tag type
+    const payload = [tagIn(TAG_FREE, 'Fine', TT_THEIRS)]
+
+    // When the create-path import runs
+    const result = await exec(CREATE_TAGS, { tags: payload })
+
+    // Then the tag is skipped: nothing is returned and the two seeded tags are
+    // all that remain
+    expect(result.errors).toBeUndefined()
+    expect(result.data?.bulkCreateTags).toEqual([])
+    expect(mockPrisma.$tag.state.rows.map((r) => r.id).sort()).toEqual(
+      [TAG_MINE, TAG_THEIRS].sort(),
+    )
+  })
+
+  it('user importing a tag under a tag type that no longer exists gets the same answer', async () => {
+    // Given a FREE tag id whose `typeId` names an id NO tag type holds. This
+    // is the NEGATIVE CONTROL for the skip-not-FORBIDDEN decision: a deleted
+    // tag type and a stranger's tag type must be indistinguishable, or the
+    // mutation tells the caller which ids exist in other accounts.
+    const payload = [tagIn(TAG_FREE, 'Fine', TT_FREE)]
+
+    // When the create-path import runs
+    const result = await exec(CREATE_TAGS, { tags: payload })
+
+    // Then the answer is the same as above
+    expect(result.errors).toBeUndefined()
+    expect(result.data?.bulkCreateTags).toEqual([])
+    expect(mockPrisma.$tag.state.rows.map((r) => r.id).sort()).toEqual(
+      [TAG_MINE, TAG_THEIRS].sort(),
+    )
+  })
+
+  it('user importing a tag under their own tag type gets it written', async () => {
+    // Given a FREE tag id under the CALLER's OWN tag type. A filter that
+    // dropped everything would pass both tests above.
+    const payload = [tagIn(TAG_FREE, 'Fine', TT_MINE)]
+
+    // When the create-path import runs
+    const result = await exec(CREATE_TAGS, { tags: payload })
+
+    // Then the tag is written, owned by the caller, under the type it named
+    expect(result.errors).toBeUndefined()
+    expect(mockPrisma.$tag.state.rows.find((r) => r.id === TAG_FREE)).toMatchObject({
+      userId: USER,
+      typeId: TT_MINE,
+    })
   })
 })
