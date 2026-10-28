@@ -153,9 +153,15 @@ export async function requireOwnRowOrUnclaimed(
     select: { id: true },
   })
 
-  // Same wording and code as `requireLocationRole`'s refusal above, and for the
-  // same reason: "not yours" must be indistinguishable from "does not exist",
-  // or the mutation becomes a probe for other accounts' row ids.
+  // Same wording and code as `requireLocationRole`'s refusal above, so a
+  // refusal reveals neither which model nor who owns the row.
+  //
+  // Note what this does NOT hide, because it cannot: a free id returns
+  // `'unclaimed'` and a stranger's id throws, so the caller can tell those two
+  // apart. An import has to be able to create new rows, so that difference is
+  // unavoidable. What protects the ids is that they are `cuid()` and cannot be
+  // guessed. `requireLocationRole` above is stricter — it refuses a missing id
+  // too — and the reason stated there does not carry over here unchanged.
   if (!own) {
     throw new GraphQLError('Forbidden', { extensions: { code: 'FORBIDDEN' } })
   }
