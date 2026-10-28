@@ -321,7 +321,7 @@ const baseItem = (id: string, userId: string, name: string): ItemRow => ({
 })
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  vi.resetAllMocks()
 
   mockPrisma.$item.reset([
     baseItem(ITEM_MINE, USER, 'Milk'),

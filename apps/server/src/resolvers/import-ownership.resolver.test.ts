@@ -183,7 +183,7 @@ const PAYLOAD_CREATED = '2026-02-03T04:05:06.000Z'
 const PAYLOAD_UPDATED = '2026-03-04T05:06:07.000Z'
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  vi.resetAllMocks()
 
   // Both tag types are seeded because `bulkCreateTags` filters out a tag whose
   // `typeId` names no TagType row. Every tag below therefore uses `TT_MINE`.
