@@ -5,6 +5,27 @@ Branch: `fix/import-ownership-guard`, based on `main` at `aafb2d44`
 Issue: [#327](https://github.com/ETBlue/player1inventory/issues/327)
 Plan: `docs/features/settings/2026-10-28-import-ownership-guard-plan.md`
 
+## What this document got wrong
+
+Tasks 1 to 11 ran and every one of them found something here that was wrong or
+unmeasured. The corrections are left **in place**, marked
+`Corrected 2026-10-28` or `Measured 2026-10-28`, so a reader can see what was
+believed and what turned out to be the case. The list, with the section each
+sits in:
+
+| Section | What was wrong |
+|---|---|
+| decision 1 | the stated reason for the byte-identical refusal does not apply to this helper |
+| decision 2 | `satisfies Record<OwnedModel, OwnedRowDelegate>` was unmeasured. It type-checks, and it catches less than hoped |
+| decision 5 | `findUniqueOrThrow` accepting `where: { id, userId }` was unmeasured. It does |
+| decision 5 | two of the four closing reads cannot be proved behaviourally at all |
+| decision 8 | "six lookups" is **13 lookups across 9 mutations**, and three mutations were missed |
+| decision 8 | the junction tables' three `deleteMany` calls were not covered by the "no guard needed" argument |
+| decision 8 | the `P2003` note is now reasoned, not measured |
+| *The fakes* | `'key' in data` for `upsert`'s update payload is **wrong for this codebase** |
+| *The fakes* | `createMany({ skipDuplicates: true })` was already modelled once |
+| decision 8 | a line citation went stale (`:394-397` is now `:450-453`) |
+
 ## The problem
 
 `apps/server/src/resolvers/import.resolver.ts` has 18 bulk import mutations that
@@ -45,7 +66,7 @@ hit — see *The `clear` strategy stays destructive* below.
 | A failure that now has a name | `FORBIDDEN` with the message `Forbidden`, instead of a dropped row or a reassigned owner. |
 | Fewer ways to get it wrong | One function, `requireOwnRowOrUnclaimed` in `lib/authz.ts`, is the only place account ownership is decided. There is no `row.userId === ctx.userId` anywhere. |
 | One place for RBAC | Two seams instead of N call sites: `requireLocationRole` for location-scoped data, `requireOwnRowOrUnclaimed` for account-scoped data. |
-| A test double that can fail | `src/test/ownedRowFake.ts`, one generic stateful fake serving all nine models, and the **only** place `createMany({ skipDuplicates: true })` is modelled. It throws on a `where` key it does not understand, so a relation filter can never be dropped on the floor. |
+| A test double that can fail | `src/test/ownedRowFake.ts`, one generic stateful fake serving all nine models, and the only place `createMany({ skipDuplicates: true })` is modelled **for these nine models**. It throws on a `where` key it does not understand, so a relation filter can never be dropped on the floor. |
 | Fewer queries | The pre-pass returns the ids the caller already owns, so five `bulkCreate*` mutations lose their per-row `findUnique`. |
 | Honest documentation | `cart-id-cross-user-leak.spec.ts` stops being a characterisation of an open hazard and becomes the proof that the hazard is closed. |
 
@@ -78,6 +99,9 @@ interface OwnedRowDelegate {
 function delegateFor(model: OwnedModel): OwnedRowDelegate {
   // Resolved PER CALL, not captured at module load, so a test that swaps a
   // method on the mocked `prisma` after import still sees its own swap.
+  //
+  // AS SHIPPED this is a `satisfies Record<OwnedModel, OwnedRowDelegate>`
+  // table, not this cast. See decision 2's measured answer below.
   return (prisma as unknown as Record<OwnedModel, OwnedRowDelegate>)[model]
 }
 
@@ -100,9 +124,8 @@ export async function requireOwnRowOrUnclaimed(
     where: { id, userId },
     select: { id: true },
   })
-  // Same wording and code as `requireLocationRole`'s refusal, and for the same
-  // reason: "not yours" must be indistinguishable from "does not exist", or
-  // the mutation becomes a probe for other accounts' row ids.
+  // Same wording and code as `requireLocationRole`'s refusal, so a refusal
+  // reveals neither which model nor who owns the row.
   if (!own) {
     throw new GraphQLError('Forbidden', { extensions: { code: 'FORBIDDEN' } })
   }
@@ -113,6 +136,26 @@ export async function requireOwnRowOrUnclaimed(
 Three cases per id: mine → `'own'`, somebody else's → throws, nobody's →
 `'unclaimed'`. The "somebody else's" case cannot be returned, so a call site
 cannot ignore it.
+
+**Corrected 2026-10-28 (commit `95b61fa7`).** The snippet above used to carry
+this reason for the byte-identical refusal:
+
+> "not yours" must be indistinguishable from "does not exist", or the mutation
+> becomes a probe for other accounts' row ids.
+
+**That reason is true of `requireLocationRole` and false of this helper.**
+`requireLocationRole` refuses both cases with the same error. This helper
+cannot: an id no row holds returns `'unclaimed'` and the import proceeds, so a
+caller **can** tell a free id from a stranger's id.
+
+That difference cannot be removed. An import has to create new rows, so it has
+to learn whether an id is free. What protects the ids is that they are `cuid()`
+and cannot be guessed, and that the refusal names neither the model nor the
+owner.
+
+The refusal itself is unchanged and still right. Only the stated reason was
+wrong. The code comment in `apps/server/src/lib/authz.ts` now says this, and
+so does root `CLAUDE.md` under *Authorization (cloud)*.
 
 **`import.resolver.ts`** gains the per-batch loop, next to
 `requireOwnLocationIdsOrUnclaimed` (312-326) and shaped the same way:
@@ -182,17 +225,33 @@ Two alternatives were rejected:
 | Pass `prisma.tag` itself as a parameter | `prisma[model]` is a union of nine generated delegate types. Calling a method on that union is a known TypeScript failure ("none of those signatures are compatible with each other"). Passing the delegate explicitly at each call site avoids the union but then nothing checks that the delegate matches the model the write uses either. |
 | Nine per-model helpers | Nine copies of the same three-case logic, each able to be wrong in a way nothing catches. |
 
-**Unverified, and task 1 must settle it:** whether
-`satisfies Record<OwnedModel, OwnedRowDelegate>` type-checks against the real
-generated delegates. Prisma 6.19.3's `findUnique` is
-`findUnique<T extends TagFindUniqueArgs>(args: SelectSubset<T, TagFindUniqueArgs>)`,
-a generic method, and assignability to a non-generic target signature should
-instantiate `T` from the target. It is likely to work and it was not measured.
-If `tsc` rejects it, keep the single `as unknown as` cast in `delegateFor` with
-a comment, and add a runtime check that both methods exist.
+**Measured 2026-10-28 (task 1), answering what this section left open:
+`satisfies Record<OwnedModel, OwnedRowDelegate>` DOES type-check** against
+Prisma 6.19.3's generated delegates. The reasoning above was right: `findUnique`
+is a generic method, and assignability to a non-generic target instantiates its
+type parameter from the target. So the `as unknown as` cast this section allowed
+as a fallback is **not used**, and no runtime method check is needed.
+
+**What `satisfies` catches, and what it does not.** Both halves matter, and the
+second half is why per-call-site tests are still required. Measured the same
+day:
+
+| Written in the delegate table | `tsc` |
+|---|---|
+| `itemTag: prisma.itemTag` — a composite-key model, no `id` | **TS2322**, caught |
+| any value that is not a Prisma delegate at all | **TS2322**, caught |
+| `item: prisma.itemStock` — has an `id`, has **no** `userId` column | **accepted**, not caught |
+| `item: prisma.tag` — two models that are both in the table | **accepted**, not caught |
+
+The `itemStock` case is the surprising one, and the reason is plain: a `where`
+object carrying an extra key is assignable to `ItemStockWhereInput` because
+excess-property checking applies only to a **fresh object literal**, not to a
+type-level assignability check. A comment in `apps/server/src/lib/authz.ts`
+records both halves.
 
 **The remaining risk, named:** a wrong model literal
-(`requireOwnRowIdsOrUnclaimed(ctx, 'tag', shelves)`) compiles. Each of the 18
+(`requireOwnRowIdsOrUnclaimed(ctx, 'tag', shelves)`) compiles, and the table
+above shows `satisfies` cannot narrow that risk either. Each of the 18
 mutations therefore gets its own test, and each guard's deletion must turn a
 **named** test red.
 
@@ -270,10 +329,30 @@ to scope it". Their mutation check is on the guard, not on a read: delete the
 guard and the returned row is the stranger's.
 
 `where: { id, userId }` on `findUnique` is already in use at
-`bulkCreateLocations:945`, so it is type-legal in Prisma 6.19.3. Whether
-`findUniqueOrThrow` accepts the same extra filter is **unverified**; task 5
-must confirm it with `tsc`. `FindUniqueOrThrowArgs.where` is the same
-`WhereUniqueInput` type, so it should.
+`bulkCreateLocations:945`, so it is type-legal in Prisma 6.19.3.
+
+**Measured 2026-10-28 (task 5), answering what this section left open:
+`findUniqueOrThrow` accepts the same extra filter.** The reasoning above was
+right — `FindUniqueOrThrowArgs.where` is the same `WhereUniqueInput` type. The
+check is real, not silently ignored: adding `nonsenseColumn: 1` to the same
+`where` fails with **TS2353**, so `tsc` is reading the object rather than
+widening it away.
+
+**Corrected 2026-10-28 (task 5): the four closing `findUniqueOrThrow` reads are
+NOT equally testable. Two of them cannot be proved behaviourally at all.**
+
+| Read | Provable by a test? |
+|---|---|
+| `bulkUpsertItems` 726, `bulkUpsertRecipes` 804 | **yes.** Drop `userId` and a named test goes red: the returned row is the stranger's |
+| `bulkCreateItems` 495, `bulkCreateRecipes` 592 | **no.** On the create path the id reaching the read is always free, because `create` raises `P2002` on a taken id before the read is ever reached. Dropping `userId` there changes no observable behaviour |
+
+The two create-path reads are covered by **labelled call-shape assertions**
+instead — the test asserts the `where` object the resolver passed, and says in
+its own name that it is a call-shape check, not a behaviour check. They are
+defence in depth against a future edit that drops the pre-check, which is the
+reason `bulkCreateLocations:945` gives, and that reason cannot be expressed as a
+behaviour today. Counting them as behavioural coverage would have been the
+mistake.
 
 **No scoped `upsert` `where`.** No code in this repo does one and its runtime
 behaviour was not verified. The four correct mutations pre-check and then
@@ -418,15 +497,67 @@ success-versus-`P2003` makes the mutation a probe for which ids exist.
 `cart-id-cross-user-leak.spec.ts` demonstrates the worst of it: account B's
 `CartItem` rows end up inside account A's `Cart`.
 
-**Decision: scope these six lookups, in one separable task (plan task 8).**
-`requireOwnItemStockRefs:394-397` already sets the pattern —
-`findFirst({ where: { id: itemId, userId }, select: { id: true } })`. It is the
-same class of hole and it is cheap. It is the one task that can be dropped if
-the PR gets too large; the design records it either way.
+**Decision: scope these lookups, in one separable task (plan task 8).**
+`requireOwnItemStockRefs` already sets the pattern —
+`findFirst({ where: { id, userId }, select: { id: true } })`. This document
+cited it as `requireOwnItemStockRefs:394-397`; **as shipped it is
+`import.resolver.ts:450-453`, inside a function that now starts at line 434**.
+Two matching citations in `apps/web/src/lib/importData.ts` were corrected in
+task 10 for the same reason. It is the same
+class of hole and it is cheap. It was the one task that could have been dropped
+if the PR got too large.
 
-Not fixed, and noted: `bulkUpsertItems:721-723` calls
+**Task 8 was DONE, not dropped.**
+
+**Corrected 2026-10-28 (task 8): this section said "these six lookups". It is
+13 lookups across 9 mutations.** The table above already listed more than six
+rows, and it missed three mutations entirely: `bulkUpsertCartItems`,
+`bulkUpsertInventoryLogs`, and `bulkCreateTags`' `typeId`. The real list, all
+now scoped by `userId`:
+
+| Mutation | Reference(s) scoped | Before |
+|---|---|---|
+| `bulkCreateItems` | `tagId`, `vendorId` | `tagId` unscoped, `vendorId` no check |
+| `bulkUpsertItems` | `tagId`, `vendorId` | no check on either |
+| `bulkCreateTags` | `typeId` | unscoped |
+| `bulkCreateRecipes` | `items[].itemId` | no check |
+| `bulkUpsertRecipes` | `items[].itemId` | no check |
+| `bulkCreateInventoryLogs` | `itemId` | unscoped |
+| `bulkUpsertInventoryLogs` | `itemId` | no check |
+| `bulkCreateCartItems` | `cartId`, `itemId` | both unscoped |
+| `bulkUpsertCartItems` | `cartId`, `itemId` | no check on either |
+
+A reference that does not resolve is still **skipped**, not refused, and each
+site carries a comment saying so. A partial backup legitimately names a parent
+the user has since deleted, and making "not yours" distinguishable from "not
+there" would turn these mutations into a probe for another account's ids.
+`requireOwnItemStockRefs` throws only because `ItemStock` has no other scope.
+
+**Corrected 2026-10-28 (task 5): "they need no guard of their own" covers the
+WRITES to the junction tables. It does not cover three `deleteMany` calls, and
+those were a real hole.** `bulkUpsertItems` runs
+`itemTag.deleteMany({ where: { itemId: id } })` and
+`itemVendor.deleteMany({ where: { itemId: id } })`, and `bulkUpsertRecipes` runs
+`recipeItem.deleteMany({ where: { recipeId: id } })` — each keyed on the
+**payload's** id, with no owner check before them. So a payload naming a
+stranger's item or recipe id **deleted that account's tag, vendor and
+recipe-item links**. That is destruction of the victim's data, not a steal, and
+the "every write is keyed by a guarded parent" argument says nothing about it.
+The row guard closes it, because it refuses the payload id before any
+`deleteMany` runs. Two tests in
+`apps/server/src/resolvers/import-ownership-item.resolver.test.ts` assert those
+links survive.
+
+Previously noted here as "not fixed": `bulkUpsertItems` calls
 `itemVendor.createMany` with **no** `skipDuplicates` and no existence check, so
-an unknown `vendorId` raises an unhandled `P2003`. Pre-existing, out of scope.
+an unknown `vendorId` raises an unhandled `P2003`.
+
+**Updated 2026-10-28 (task 8): no longer reachable through these references,
+and this is REASONED, not measured.** Task 8's scoped `vendor` and `tag`
+filters mean no unknown or stranger-owned id can reach that `createMany`. Task
+8 did **not** test it: every server test runs against a hand-written Prisma
+fake, and no fake in this repo models foreign keys, so there is nothing that
+could raise a `P2003` for a test to observe. Treat it as argued.
 
 ## The schema does not change
 
@@ -469,8 +600,14 @@ combines `stockFake` with a purpose-built scoped `item` store. The others:
 | `shoppingFake.ts` | `vendor.create` ignores `data.id` and generates `vendor-${++seq}` (106-107); no `vendor.upsert`, no `vendor.createMany`, no `vendor.findUnique` | **unchanged.** Do not extend it. The vendor tests use `ownedRowFake`, which honours `data.id`. `shoppingFake` stays as `cartBootstrap.test.ts` needs it. |
 
 **`createMany({ skipDuplicates: true })` support goes in one shared place:
-`ownedRowFake`.** `shoppingFake.cart.createMany` already models it (139-155)
-and stays where it is; nothing else does.
+`ownedRowFake`.** `shoppingFake.cart.createMany` already models it (139-155),
+including the `P2002` throw when the flag is absent, and stays where it is;
+nothing else does.
+
+**Corrected 2026-10-28:** this document's *What the developer gets* table and
+the plan both claimed `ownedRowFake` is the **only** place it is modelled, or
+that no existing fake models it. Both overstate. The accurate claim is
+"modelled nowhere for these nine models".
 
 `ownedRowFake` must model these constraints, each for a reason root `CLAUDE.md`
 already records:
@@ -487,9 +624,17 @@ already records:
 - `createMany({ skipDuplicates: true })` skips a duplicate id; without the flag
   it throws `P2002`.
 - `upsert` keeps `create` and `update` **apart** and applies `update` key by
-  key with `'key' in data`, not `data.key !== undefined`. That is what makes a
-  `userId` left in `update` visible as a row that changed owner — the
-  `shoppingFake.cart.upsert` failure of PR 4a task 4.
+  key. That is what makes a `userId` left in `update` visible as a row that
+  changed owner — the `shoppingFake.cart.upsert` failure of PR 4a task 4.
+
+  **Corrected 2026-10-28 (task 2, confirmed by mutation in task 5): this line
+  said `'key' in data`, not `data.key !== undefined`. That is backwards for
+  this codebase.** `bulkUpsertRecipes` passes
+  `lastCookedAt: lastCookedAt ? new Date(lastCookedAt) : undefined`, and Prisma
+  treats an explicit `undefined` as "this key was not mentioned". With
+  `'key' in data` the fake would write `undefined` over a stored column and make
+  a **correct** resolver fail its test. `ownedRowFake` uses
+  `value !== undefined`, which is Prisma's own rule.
 - `findUniqueOrThrow` throws `P2025` when nothing matches.
 - an optional `relations` hook so `Item`'s `include: { tags, vendors }` and
   `Recipe`'s `include: { items }` resolve out of junction stores the test file
@@ -522,7 +667,9 @@ conflict (stated at its lines 34-38), so every other entity's upsert batch is
 empty.
 
 **`e2e/tests/cart-id-cross-user-leak.spec.ts` goes RED when the guard lands,
-and that is the best news in this PR.** Its first test has account B call
+and that is the best news in this PR.** (Done in task 9. The rewrite has not
+been **run** yet — the Playwright gate is task 13.) Its first test has account B
+call
 `bulkCreateShoppingCarts` with the id `'no-vendor'`, which account A already
 holds, and asserts `expect(createdForB.bulkCreateShoppingCarts).toEqual([])`
 (line 166). With the guard that call throws `FORBIDDEN`, so the assertion fails.
@@ -544,8 +691,19 @@ Two-user cloud testing works through `e2e/utils/cloud.ts:17-36`,
 2. No real-SQL coverage for eight of the nine upserts. See the plan's closing
    section.
 3. A wrong `OwnedModel` literal compiles. Only the per-mutation tests catch it.
-4. `bulkUpsertItems`' unguarded `itemVendor.createMany` can still raise an
-   unhandled `P2003`.
+4. `bulkUpsertItems`' `itemVendor.createMany` still carries no
+   `skipDuplicates`. Task 8 scoped the `vendorId` lookup ahead of it, so no
+   unknown or stranger-owned id can reach it through these references any more
+   — but that is **argued, not measured**: no server test models foreign keys,
+   so no test can observe a `P2003`.
 5. Whether `@updatedAt` columns keep a payload's `updatedAt` is still
-   unresolved, as `bulkCreateLocations`' comment at 963-973 records. Untouched
-   here.
+   unresolved, as `bulkCreateLocations`' comment records. Untouched here.
+6. Two of the four closing `findUniqueOrThrow` reads —
+   `bulkCreateItems` and `bulkCreateRecipes` — are covered only by labelled
+   call-shape assertions. See decision 5: on the create path no behaviour can
+   distinguish the scoped read from the unscoped one.
+7. Two comments in `import.resolver.ts` still describe a world where the other
+   bulk mutations are unguarded: line 1325 ("SCOPED to the caller, unlike the
+   other 18 bulk creates") and the `bulkCreateLocations` doc block at 290-302,
+   whose `bulkCreateShelves` example of an unscoped closing `findMany` is now
+   fixed. Only the second was corrected in task 12; line 1325 is still stale.

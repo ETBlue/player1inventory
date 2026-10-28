@@ -5,6 +5,11 @@ Branch: `fix/import-ownership-guard`, based on `main` at `aafb2d44`
 Design: `docs/features/settings/2026-10-28-design-import-ownership-guard.md`
 Issue: [#327](https://github.com/ETBlue/player1inventory/issues/327)
 
+> **Status: tasks 1 to 12 done, task 13 (the gate) not yet run.** Task 8 was
+> **done**, not dropped. Read *What this plan got wrong* at the end before
+> trusting any count or any predicted error text in the task bodies — the task
+> bodies are left as written so the two can be compared.
+
 ## What the user gets
 
 Nothing new to look at. A hand-edited backup can no longer take over another
@@ -23,7 +28,7 @@ been emptied. The user is told so in words.
 | A failure that now has a name | `FORBIDDEN`, instead of a dropped row or a reassigned owner |
 | Fewer ways to get it wrong | one function, `requireOwnRowOrUnclaimed` in `lib/authz.ts`, decides account ownership for all nine models |
 | One place for RBAC | two seams: `requireLocationRole` for location-scoped data, `requireOwnRowOrUnclaimed` for account-scoped data |
-| A test double that can fail | `src/test/ownedRowFake.ts` serves all nine models and is the only place `createMany({ skipDuplicates: true })` is modelled; it throws on a `where` key it does not understand |
+| A test double that can fail | `src/test/ownedRowFake.ts` serves all nine models and is the only place `createMany({ skipDuplicates: true })` is modelled **for those nine**; it throws on a `where` key it does not understand. `shoppingFake.cart.createMany` already modelled the flag for `Cart` |
 | Fewer queries | five `bulkCreate*` mutations lose their per-row `findUnique` |
 | Honest documentation | `cart-id-cross-user-leak.spec.ts` flips from "an open hazard" to "the leak is closed" |
 
@@ -145,8 +150,8 @@ ones:
 | **throws** on a `where` key whose shape it does not understand | the `cartItemFake` failure of PR 3c: a dropped relation filter left every test green against a resolver with no scope |
 | `id` as a string **or** `{ in: [...] }` | eight closing reads use `{ in: ids }` |
 | `create` / `createMany` honour `data.id`, enforce the primary key with `P2002` | a fake that invents ids makes "the payload's ids are preserved" impossible to assert |
-| `createMany({ skipDuplicates: true })` skips; without the flag it throws `P2002` | TagTypes, Vendors, Tags and Shelves write this way, and **no existing fake models it** |
-| `upsert` keeps `create` and `update` apart, applies `update` with `'key' in data` | this is what makes a `userId` left in `update` visible as a row that changed owner |
+| `createMany({ skipDuplicates: true })` skips; without the flag it throws `P2002` | TagTypes, Vendors, Tags and Shelves write this way. **Wrong as written: `shoppingFake.cart.createMany` already models it, `P2002` throw included. The accurate claim is "modelled nowhere for these nine models"** |
+| `upsert` keeps `create` and `update` apart, applies `update` with `'key' in data` | **Wrong as written — see *What this plan got wrong*. `ownedRowFake` uses `value !== undefined`, Prisma's own rule** |
 | `findUniqueOrThrow` throws `P2025` | four closing reads use it |
 | optional `relations` hook | `Item`'s `include: { tags, vendors }`, `Recipe`'s `include: { items }` |
 
@@ -517,8 +522,9 @@ PR's only real-SQL two-user proof, so it must be rewritten, not deleted.
    - `THIS IS A NEGATIVE CONTROL, AND IT STAYS GREEN AFTER PR 4b` (39-54) —
      delete it. It is no longer a negative control. It has a red-to-green
      transition now, and that is the point.
-   - `THE UNDERLYING CLASS OF HOLE IS IS ISSUE #327` (55-60) — rewrite to say
-     #327 is closed and name this PR.
+   - `THE UNDERLYING CLASS OF HOLE IS ISSUE #327` (55-60) — rewrite to say
+     #327 is closed and name this PR. (This plan wrote the heading as
+     `IS IS ISSUE #327`; the file never said that.)
 3. Leave test 2 (`a location-prefixed cart id gives each account its own cart
    row`, from line 226) alone. Both ids are free, so the guard changes nothing.
 4. `cleanupBothUsers` (103-108) in both `beforeEach` and `afterEach` stays —
@@ -779,3 +785,105 @@ per entity to `strategy-backup.json`, seed the matching row in
 `seedDestination` under a different name, and assert the destination's value
 after `replace`. Give it its own spec file rather than growing
 `import-strategies.spec.ts`, so the 30s budget stays with the existing tests.
+
+---
+
+## Final counts
+
+Measured on this worktree on 2026-10-28, at commit `6fdca652` (task 11's tip),
+with `pnpm --filter server test`, `pnpm --filter web test` and `pnpm test:spec`:
+
+| Suite | Baseline (plan rule 1) | After tasks 1-11 |
+|---|---|---|
+| `apps/server` | 391 tests / 27 files | **522 / 32** |
+| `apps/web` | 2313 / 251 | **2321 / 251** |
+| `scripts/spec` | 70 | **70** |
+
+All green. The server gained **131** tests: 125 in five new files and 6 added to
+`src/lib/authz.test.ts`.
+
+| New file | Tests |
+|---|---|
+| `apps/server/src/test/ownedRowFake.test.ts` | 30 |
+| `apps/server/src/resolvers/import-ownership.resolver.test.ts` | 31 |
+| `apps/server/src/resolvers/import-ownership-item.resolver.test.ts` | 29 |
+| `apps/server/src/resolvers/import-ownership-cart.resolver.test.ts` | 22 |
+| `apps/server/src/resolvers/import-ownership-log.resolver.test.ts` | 13 |
+
+The web suite gained **8**: 5 in task 10 (`importData.test.ts` and
+`ImportCard/index.test.tsx`) and 3 in task 11
+(`usePostLoginMigration.test.ts` and `PostLoginMigrationDialog/index.test.tsx`).
+One existing test, `transitions to done even when importCloudData rejects`, was
+**rewritten** rather than added to: the behaviour it pinned was the bug.
+
+Task 13 has not run. `pnpm lint`, `pnpm build`, `pnpm build-storybook`,
+`pnpm check` and `pnpm test:e2e:all` are all still owed, and
+`docs/INDEX.md` stays at 🔲 Pending until they pass.
+
+---
+
+## What this plan got wrong
+
+Every one of the eleven tasks found at least one thing wrong here. They are
+grouped below so the pattern is visible rather than buried.
+
+### 1. Every predicted red text was wrong or differently worded. In all eleven tasks.
+
+Every task reported this. No `Expect red` cell matched the text the runner
+printed. The mutations themselves were right — each named mutation did turn the
+named test red — so the **choice** of mutation was sound and only the quoted
+text was not.
+
+Three reasons, and they are structural rather than careless:
+
+| Reason | Example |
+|---|---|
+| The wording depends on the **kind** of closing read. A `findMany` prints an array diff, a `findUniqueOrThrow` prints a `P2025`, a mutation with no closing read prints whatever the write threw. | the plan predicted `expected [ 'tt_mine', 'tt_theirs' ] to deeply equal [ 'tt_mine' ]` for the `bulkUpsertTagTypes` closing read. The test as written asserts `toEqual([])` against the full GraphQL rows, so the diff has a different shape **and** the test has a different title — `bulkCreateTagTypes' closing read does not return a tag type the caller does not own`, not `a tag type the caller does not own is not returned` |
+| Deleting a check often changes the **failure mode**, not just the value. Removing a guard can let the write reach `ownedRowFake`, which then raises `P2002` — so the test fails on a thrown Prisma error, not on a missing `FORBIDDEN`. | the `bulkCreate*` guard deletions |
+| It depends on how the test observes the refusal. A test that does `await expect(...).rejects.toThrow(/Forbidden/)` prints one thing; a test that reads `result.errors?.[0]?.extensions?.code` prints `expected undefined to be 'FORBIDDEN'`. | the plan predicted the second form everywhere; several tests use the first |
+
+**Lesson for the next plan: name the mutation and the test, and stop there.**
+A predicted error string is a claim nobody can check until the run, and a wrong
+one costs the agent time deciding whether it has a different failure.
+
+### 2. Answers to the three questions the plan left open
+
+| Question | Answer |
+|---|---|
+| Does `satisfies Record<OwnedModel, OwnedRowDelegate>` type-check? (task 1) | **Yes.** No `as unknown as` cast and no runtime method check are used. It catches `prisma.itemTag` and any non-delegate with `TS2322`. It does **not** catch `prisma.itemStock` (an `id` but no `userId`) or a swap between two models already in the table |
+| Does `findUniqueOrThrow` accept `where: { id, userId }`? (task 5) | **Yes**, and the check is real: adding `nonsenseColumn: 1` fails with `TS2353` |
+| Was task 8 done or dropped? | **Done.** And its scope was wrong here — see below |
+
+### 3. Per-task divergences
+
+| Task | What the plan said | What happened |
+|---|---|---|
+| 1 | step 1 asks for the helper **and** its doc comment | the agent reported writing the corrected refusal comment and did not write it. Fixed in a separate commit, `95b61fa7`, found by reading the file rather than the report |
+| 2 | `upsert` applies `update` with `'key' in data` | **wrong for this codebase.** `bulkUpsertRecipes` passes an explicit `undefined`, which Prisma treats as "not mentioned", so `'key' in data` would make a correct resolver fail. `ownedRowFake` uses `value !== undefined` |
+| 2 | `createMany({ skipDuplicates: true })` is "modelled by no existing fake" | `shoppingFake.cart.createMany` models it, `P2002` throw included |
+| 3 | "every one of its 11 tests would die with `prisma.tag.findFirst is not a function`" | the first failure is `findUnique`, not `findFirst`: that factory had **no `findUnique` at all** on `tag`, `tagType`, `vendor` or `shelf`. Measured with a throwaway probe: **13 of 18** guard calls failed on `findUnique` |
+| 3 | "this task runs before tasks 4-7 so those tasks see a clean baseline" | it did not give a clean baseline. `import.resolver.test.ts`'s `skips duplicate IDs instead of throwing` armed `item.findUnique` with a **two-value `mockResolvedValueOnce` queue**; the guard's own `findUnique` ate the first value. Task 5 had to rekey that arming on `args.where.id` (commit `867cdb28`). The same class of miss hit tasks 6 and 7: `import-cart-location.resolver.test.ts` needed `cart.findFirst` and `import-inventoryLog-location.resolver.test.ts` needed `inventoryLog.findFirst`, neither of which task 3 touched because task 3's scope was one file |
+| 4 | "16 tests minimum" plus 8 scoped-read tests | 31 tests in the file |
+| 4 | step 7 asks for 8 scoped-closing-read tests, as if they could be written straight | they cannot. **After the guard, no stranger's row can be in range of a closing read**, so there is nothing for the scope to filter and the test passes either way. The file adds a `simulateGuardMiss(delegate)` helper that queues one `findUnique → null` so the guard reads the stranger's id as unclaimed, then asserts the scoped read still returns nothing. It is labelled in the file as NOT proof that the guard refuses the id — the four `FORBIDDEN` tests per model are that — and in two of the eight the simulated miss lets a real write reach the stranger's row, on purpose |
+| 5 | lists all four closing `findUniqueOrThrow` reads as equally testable | the two **create-path** reads cannot be proved behaviourally: `create` raises `P2002` on a taken id before the read is reached. Covered by labelled call-shape assertions instead |
+| 5 | says nothing about `deleteMany` | found a second, different hole: `bulkUpsertItems` ran `itemTag.deleteMany({ where: { itemId: id } })` and `itemVendor.deleteMany(...)`, and `bulkUpsertRecipes` ran `recipeItem.deleteMany({ where: { recipeId: id } })`, all on the payload's id with no owner check. A payload naming a stranger's id **deleted that account's links**. Destruction, not a steal |
+| 5 | — | used `git checkout -- <file>` to undo a mutation and silently reverted its own four edits to a previous task's commit, producing **14 failures** that were an artefact. Recorded in root `CLAUDE.md` |
+| 6 | the test file needs "a small scoped `item` store" | used `ownedRowFake` for `item` too, so the store enforces the primary key and the `userId` NOT NULL |
+| 6 | — | the stranger's cart id **must be bare**, not location-prefixed. A composite id naming the stranger's location is refused by `resolveCartLocations` first, so every test in the file would have passed with the new guard deleted. A fixture trap the plan did not name |
+| 6 | — | `vi.clearAllMocks()` leaves a queued `mockImplementationOnce` in place, so a mutation that stops the code consuming it produces one **phantom** red in a later test. `vi.resetAllMocks()` drops the queue. Two files brought in line in commit `0a74f224`; recorded in root `CLAUDE.md` |
+| 7 | "decide and record: `ownedRowFake`, or add `findFirst` to `inventoryLogFake`" | chose `ownedRowFake`. Only it enforces the primary key with `P2002`, throws on an unknown `where` key, and requires a `userId` on write |
+| 8 | "scope these **six** lookups" | **13 lookups across 9 mutations.** The design's own table already listed more than six, and three mutations were missing entirely: `bulkUpsertCartItems`, `bulkUpsertInventoryLogs`, and `bulkCreateTags`' `typeId` |
+| 8 | — | the note that `bulkUpsertItems`' `itemVendor.createMany` can raise an unhandled `P2003` is now **argued, not measured**. No server test models foreign keys, so no test can observe a `P2003` |
+| 9 | the file's heading is `THE UNDERLYING CLASS OF HOLE IS IS ISSUE #327` | the file never said `IS IS`. The typo was this plan's |
+| 10 | — | the design snippet and two comments in `apps/web/src/lib/importData.ts` cited `import.resolver.ts:376` for `requireOwnItemStockRefs`. It is at **`:434`**, with the scoped pattern at `:450-453` |
+| 10 | — | the guarded-mutation count is **22**, not 18: 18 via `requireOwnRowOrUnclaimed`, 2 via `requireOwnLocationIdsOrUnclaimed`, 2 via `requireOwnItemStockRefs`. Several briefs in this series said 18, which is only the first group |
+| 11 | — | nothing diverged. The one plan-predicted RED (`transitions to done even when importCloudData rejects`) happened as described |
+
+### 4. What the plan got right
+
+Worth saying, because the list above is long. The task order held: no task had
+to be reordered or split. Rule 4 (two-user fixtures only) caught every hole the
+guard was written for. Rule 1's baseline figures — server 391 / 27, web
+2313 / 251, spec 70 — were correct, so no task reported an invented regression.
+And task 8, the one marked droppable, was the task that found the largest
+undercount in the design.
