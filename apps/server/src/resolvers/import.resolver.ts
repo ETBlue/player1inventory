@@ -735,11 +735,24 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // back to the caller's default, and a stranger's live location fails the
       // whole mutation with nothing written.
       const locationIdFor = await resolveCartLocations(ctx, userId, carts)
+      // Authorizes every CART id the payload names. It runs AFTER
+      // `resolveCartLocations` on purpose, so a stranger's live location is
+      // still refused first and the existing location tests keep their error.
+      //
+      // The two checks guard different columns. `resolveCartLocations` guards
+      // the location a cart is written TO; this guards the cart's OWN primary
+      // key, which is global and carries no `userId`. Without it the UNSCOPED
+      // `findUnique` this replaces read a stranger's cart as "already exists"
+      // and SILENTLY DROPPED the caller's own cart — no error, no count.
+      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'cart', carts)
       const results: Cart[] = []
       for (const cart of carts) {
         const { id, lastPurchasedAt } = cart
-        const existing = await prisma.cart.findUnique({ where: { id } })
-        if (existing) continue
+        // After the guard an id is one of exactly two things: a cart the
+        // caller already owns (skip it) or an id no row holds (free to
+        // write). The per-row read this replaces was unscoped, so it could
+        // not tell those two apart.
+        if (ownIds.has(id)) continue
         const created = await prisma.cart.create({
           data: {
             id,
@@ -755,17 +768,31 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         })
         results.push(created as unknown as Cart)
       }
+      // NO CLOSING READ, on purpose. Each row returned is the row
+      // `cart.create` itself wrote, and the guard above is what makes that row
+      // the caller's own, so there is nothing here to scope by `userId`. The
+      // eight mutations that DO close with a read scope it; this one has no
+      // read. Design decision 5.
       return results
     },
 
     bulkCreateCartItems: async (_, { cartItems }, ctx) => {
       const userId = requireAuth(ctx)
       if (cartItems.length === 0) return []
+      // Authorizes every cart-item id the payload names BEFORE the first
+      // write. `CartItem.id` is a global primary key with no `userId` in it,
+      // so an id in the payload can name a stranger's row. Without the guard
+      // the UNSCOPED `findUnique` this replaces read that row as "already
+      // exists" and silently dropped the caller's own cart item.
+      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'cartItem', cartItems)
       const results: CartItem[] = []
       for (const ci of cartItems) {
         const { id, cartId, itemId, quantity } = ci
-        const existing = await prisma.cartItem.findUnique({ where: { id } })
-        if (existing) continue
+        // Own row → skip. Unclaimed → write. After the guard nothing else can
+        // reach here, so the per-row read this replaces has nothing left to
+        // find out. `cartId` and `itemId` are still looked up UNSCOPED below:
+        // that is a separate hole, and plan task 8 closes it.
+        if (ownIds.has(id)) continue
         const cartExists = await prisma.cart.findUnique({ where: { id: cartId }, select: { id: true } })
         if (!cartExists) continue
         const itemExists = await prisma.item.findUnique({ where: { id: itemId }, select: { id: true } })
@@ -775,6 +802,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         })
         results.push(created as unknown as CartItem)
       }
+      // NO CLOSING READ — same reason as `bulkCreateShoppingCarts` above. The
+      // returned row is the one `cartItem.create` wrote, and the guard is what
+      // makes it the caller's own. Design decision 5.
       return results
     },
 
@@ -979,44 +1009,80 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // Same pre-check as bulkCreateShoppingCarts: every location the payload's
       // cart ids name is resolved and verified before the first write.
       const locationIdFor = await resolveCartLocations(ctx, userId, carts)
+      // The same cart-id guard as `bulkCreateShoppingCarts`, in the same
+      // place: after the location check, so a stranger's live location is
+      // still refused first. Without it an `upsert` on a bare `{ id }` with
+      // `userId` inside `update` OVERWROTE another account's cart and took
+      // ownership of it.
+      await requireOwnRowIdsOrUnclaimed(ctx, 'cart', carts)
       const results: Cart[] = []
       for (const cart of carts) {
         const { id, lastPurchasedAt } = cart
         // `data` is built field by field, never spread from the input, so
-        // `locationId` cannot reach the `update` payload by accident. Keep it
-        // that way: see the comment on `create` below.
+        // neither `userId` nor `locationId` can reach the `update` payload by
+        // accident. Keep it that way: see the comment on `create` below.
         const data = {
           lastPurchasedAt: lastPurchasedAt ? new Date(lastPurchasedAt as string) : undefined,
-          userId,
         }
         const upserted = await prisma.cart.upsert({
           where: { id },
-          // locationId in `create` only, for the same reason as the log upsert
-          // above: a re-import must not move an existing cart. The value comes
-          // from the cart's own id when a `Location` row holds that id, and the
+          // `userId` and `locationId` live in `create` only, each for its own
+          // reason.
+          //
+          // `userId`: a row's owner is not something an import may rewrite.
+          // Leaving it out means a future edit that drops the guard above
+          // still cannot hand another account's cart to the importer. Same
+          // shape as `bulkUpsertLocations`.
+          //
+          // `locationId`: the same reason as the log upsert above — a
+          // re-import must not MOVE an existing cart. The value comes from the
+          // cart's own id when a `Location` row holds that id, and the
           // caller's default when none does. Both resolved above.
-          create: { id, ...data, locationId: locationIdFor(id) },
+          create: { id, ...data, userId, locationId: locationIdFor(id) },
           update: data,
         })
         results.push(upserted as unknown as Cart)
       }
+      // NO CLOSING READ — same reason as the two creates above. The returned
+      // row is the one `cart.upsert` wrote, and the guard is what makes it the
+      // caller's own. Design decision 5.
       return results
     },
 
     bulkUpsertCartItems: async (_, { cartItems }, ctx) => {
       const userId = requireAuth(ctx)
       if (cartItems.length === 0) return []
+      // Authorizes every cart-item id the payload names BEFORE the first
+      // write. Without it an `upsert` on a bare `{ id }` with `userId` inside
+      // `update` overwrote another account's cart item and took ownership of
+      // it.
+      await requireOwnRowIdsOrUnclaimed(ctx, 'cartItem', cartItems)
       const results: CartItem[] = []
       for (const ci of cartItems) {
         const { id, cartId, itemId, quantity } = ci
-        const data = { cartId, itemId, quantity, userId }
+        // `cartId` and `itemId` STAY in `update`. Only `userId` comes out.
+        //
+        // This differs on purpose from `bulkUpsertItemStocks`, which drops
+        // BOTH of its parents: there the pair IS the row's identity and a
+        // backup may not move it. Here local `importCartItems` does a Dexie
+        // `bulkPut`, which replaces the whole row including both columns, so
+        // dropping them would make the cloud `replace` strategy disagree with
+        // the local one. Design decision 3.
+        //
+        // `userId` comes out because a row's owner is not something an import
+        // may rewrite, and because a future edit that drops the guard above
+        // must still not be able to reassign a cart item.
+        const data = { cartId, itemId, quantity }
         const upserted = await prisma.cartItem.upsert({
           where: { id },
-          create: { id, ...data },
+          create: { id, ...data, userId },
           update: data,
         })
         results.push(upserted as unknown as CartItem)
       }
+      // NO CLOSING READ — same reason as the three above. The returned row is
+      // the one `cartItem.upsert` wrote, and the guard is what makes it the
+      // caller's own. Design decision 5.
       return results
     },
 

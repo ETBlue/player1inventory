@@ -46,6 +46,15 @@ vi.mock('../lib/prisma.js', async () => {
       },
       cart: {
         findUnique: vi.fn(shopping.client.cart.findUnique),
+        // Added by the ownership guard (issue #327, task 6). The guard reads
+        // `cart.findUnique` first and `cart.findFirst` second, so a test that
+        // re-imports a cart id a row ALREADY holds reaches `findFirst` — and
+        // without this key it died with
+        // "delegateFor(...).findFirst is not a function". `shoppingFake`
+        // already had the method; only this mock did not expose it. Its
+        // `matchesCart` applies `where` key by key, so the guard's
+        // `{ id, userId }` really is scoped here.
+        findFirst: vi.fn(shopping.client.cart.findFirst),
         findMany: vi.fn(shopping.client.cart.findMany),
         create: vi.fn(shopping.client.cart.create),
         upsert: vi.fn(shopping.client.cart.upsert),
