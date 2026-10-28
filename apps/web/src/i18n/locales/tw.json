@@ -680,6 +680,8 @@
       "importing": "正在匯入 {{entity}}…",
       "batchProgress": "{{completed}} / {{total}} 批次",
       "importError": "匯入 {{entity}} 時失敗了。",
+      "importErrorForbidden": "檔案裡有些資料屬於別的帳號，所以匯入被拒絕了，沒有匯入任何資料",
+      "importErrorForbiddenAfterClear": "檔案裡有些資料屬於別的帳號，所以匯入被拒絕了。系統上的資料在那之前已經清空了，您的備份檔案沒有變動",
       "retry": "再試一次",
       "importDone": "匯入完成。",
       "success": "資料匯入成功",

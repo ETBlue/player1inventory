@@ -1,4 +1,5 @@
 import type { ApolloClient } from '@apollo/client'
+import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { db, ensureDefaultLocationRow } from '@/db'
 import { bootstrapCarts } from '@/db/operations'
 import {
@@ -1164,7 +1165,7 @@ function getConflictIds(entries: ConflictEntry[]): Set<string> {
 
 // Stock follows its ITEM, which is the rule the local import already applies
 // (`importItemStocks`) and the rule the server enforces:
-// `requireOwnItemStockRefs` (apps/server/src/resolvers/import.resolver.ts:376)
+// `requireOwnItemStockRefs` (apps/server/src/resolvers/import.resolver.ts:434)
 // answers `Forbidden` for an `itemId` the account does not hold. On `skip` a
 // payload item that conflicts BY NAME ONLY keeps an id no cloud row has, so
 // sending its stock would end the whole import with that error.
@@ -1867,10 +1868,40 @@ async function fetchCloudExistingData(
 //     therefore lands in the wrong location, with no error and nothing in the
 //     response to show it. `resolveLogLocations` does the same for logs.
 //   - `itemStocks` must come AFTER `items` and after `locations`. It is a
-//     child of both, and `requireOwnItemStockRefs` (import.resolver.ts:376)
-//     refuses an unknown item or location with `Forbidden`. On the `clear`
-//     strategy that error arrives AFTER `clearAllData` has run, which leaves
-//     the account empty and the import dead.
+//     child of both, and `requireOwnItemStockRefs` (import.resolver.ts:434)
+//     refuses an unknown item or location with `Forbidden`.
+//
+// A `Forbidden` NO LONGER COMES FROM `itemStocks` ALONE. Since the import
+// ownership guard (issue #327) every bulk mutation in `import.resolver.ts`
+// answers `Forbidden` for a payload id that names ANOTHER ACCOUNT'S row.
+// Measured on 2026-10-28: 22 of these mutations are guarded — 18 through
+// `requireOwnRowOrUnclaimed` (lib/authz.ts:134), 2 through
+// `requireOwnLocationIdsOrUnclaimed` (import.resolver.ts:312) and 2 through
+// `requireOwnItemStockRefs` (:434) — and 13 cross-model reference lookups
+// across 9 of them are scoped by `userId` as well. So ANY entity in this list
+// can now end the import, not just the last one.
+//
+// ON THE `clear` STRATEGY THAT ERROR STILL ARRIVES AFTER `clearAllData` HAS
+// RUN, which leaves the account empty and the import dead. Accepted, with a
+// client-side mitigation, in design decision 6 of
+// docs/features/settings/2026-10-28-design-import-ownership-guard.md: the
+// window is narrow, because after the clear the caller owns no rows, so a
+// `Forbidden` on `clear` means the file really does carry another account's
+// row ids and cannot be triggered by the user's own data.
+//
+// What the user is told, instead of the old bare word `Forbidden`:
+// `settings.import.importErrorForbiddenAfterClear` — some rows in this file
+// belong to another account, so the import was refused; the cloud data was
+// already cleared before that happened; the backup file is unchanged.
+// `ImportCard` picks that key over `settings.import.importErrorForbidden` from
+// the session's own strategy, and `isForbiddenImportError` below is what tells
+// the two sentences apart from every other failure.
+//
+// The follow-up that would remove the problem rather than explain it:
+// validate every payload id before `clearAllData` runs. It needs a new
+// GraphQL query, so it is a separate PR — `pnpm codegen` is all-or-nothing
+// across both outputs, so a schema change and its web documents cannot be
+// split.
 // ---------------------------------------------------------------------------
 
 interface EntitySpec {
@@ -2237,6 +2268,31 @@ function computeTotalBatches(data: ExportPayload): number {
   return ENTITY_SPECS.reduce(
     (total, spec) => total + chunk(spec.select(data), BATCH_SIZE).length,
     0,
+  )
+}
+
+/**
+ * Whether an import error is the server refusing a row that belongs to another
+ * account — `FORBIDDEN`, raised by `requireOwnRowOrUnclaimed`,
+ * `requireLocationRole` or `requireOwnItemStockRefs`.
+ *
+ * READS `extensions.code`, NOT the message text, and must keep doing so.
+ * Apollo's `message` for this is the bare word `Forbidden`, which is also what
+ * the server sends for "row does not exist" ON PURPOSE, so that "not yours"
+ * and "not there" stay indistinguishable. A string match would therefore break
+ * the day that copy changes, and it would also treat any other error whose
+ * message happens to read `Forbidden` as a cross-account refusal.
+ *
+ * `CombinedGraphQLErrors.is` is a brand check on `Symbol.for('apollo.error')`,
+ * so it holds across module copies, and the class extends `Error`, so
+ * `importCloudData`'s catch (:2484) rethrows the same object with the class
+ * intact. Both were measured out of process on 2026-10-28 against
+ * `@apollo/client` 4.1.6.
+ */
+export function isForbiddenImportError(err: unknown): boolean {
+  return (
+    CombinedGraphQLErrors.is(err) &&
+    err.errors.some((e) => e.extensions?.code === 'FORBIDDEN')
   )
 }
 

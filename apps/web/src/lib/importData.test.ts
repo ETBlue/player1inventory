@@ -1,3 +1,4 @@
+import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db, ensureDefaultLocationRow } from '@/db'
 import { addItemToLocation, getStockedItems } from '@/db/operations'
@@ -14,6 +15,7 @@ import {
   type ImportSession,
   importCloudData,
   importLocalData,
+  isForbiddenImportError,
   partitionPayload,
   toCartItemInput,
   toInventoryLogInput,
@@ -4161,5 +4163,48 @@ describe('importCloudData — a pre-v15 backup keeps its stock (PR 4b task 8)', 
       (c) => c[0]?.variables !== undefined,
     ).length
     expect(totals.at(-1)).toBe(sentEntities)
+  })
+})
+
+// `isForbiddenImportError` is the ONE place the client decides that a failed
+// import was a cross-account refusal. Three callers read it: `ImportCard` and
+// the two paths in `usePostLoginMigration`.
+//
+// The middle test is the one that matters. The server's message for this is the
+// bare word `Forbidden`, so a string match passes it too — and a string match
+// breaks the day the copy changes, and mislabels any other error whose message
+// happens to read `Forbidden`.
+describe('isForbiddenImportError', () => {
+  it('user sees a FORBIDDEN refusal recognised by its extension code', () => {
+    // Given the error Apollo builds from a server `FORBIDDEN` response
+    const err = new CombinedGraphQLErrors({
+      errors: [{ message: 'Forbidden', extensions: { code: 'FORBIDDEN' } }],
+    })
+
+    // When the import error is classified
+    // Then it is a cross-account refusal
+    expect(isForbiddenImportError(err)).toBe(true)
+  })
+
+  it('a plain Error saying Forbidden is not a FORBIDDEN import error', () => {
+    // Given an ordinary Error whose message happens to read `Forbidden`
+    const err = new Error('Forbidden')
+
+    // When it is classified
+    // Then it is NOT a refusal — the code is read, never the message
+    expect(isForbiddenImportError(err)).toBe(false)
+  })
+
+  it('a BAD_USER_INPUT error is not a FORBIDDEN import error', () => {
+    // Given a GraphQL error carrying a different extension code
+    const err = new CombinedGraphQLErrors({
+      errors: [
+        { message: 'Bad input', extensions: { code: 'BAD_USER_INPUT' } },
+      ],
+    })
+
+    // When it is classified
+    // Then it is NOT a refusal
+    expect(isForbiddenImportError(err)).toBe(false)
   })
 })

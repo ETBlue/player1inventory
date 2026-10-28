@@ -680,6 +680,8 @@
       "importing": "Importing {{entity}}…",
       "batchProgress": "{{completed}} / {{total}} batches",
       "importError": "Import failed during {{entity}}.",
+      "importErrorForbidden": "Some rows in this file belong to another account, so the import was refused. Nothing was imported.",
+      "importErrorForbiddenAfterClear": "Some rows in this file belong to another account, so the import was refused. Your cloud data was already cleared before that happened. Your backup file is unchanged.",
       "retry": "Retry",
       "importDone": "Import complete.",
       "success": "Data imported successfully",
