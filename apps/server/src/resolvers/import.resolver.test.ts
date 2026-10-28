@@ -233,10 +233,11 @@ afterAll(async () => {
 // `findFirst` only if that found a row. `ownedDelegates` below arms both to
 // `null` for ANY id on all nine `OwnedModel` delegates, so every id this file
 // imports reads as UNCLAIMED and the guard returns `'unclaimed'`. `findFirst`
-// is armed as well as `findUnique` so that a test which overrides `findUnique`
-// — the duplicate-id test does — still gets `null` from the second read
-// instead of crashing. So NO ownership assertion can fail in this file
-// either. Those tests live in their own files:
+// is armed as well as `findUnique` because the guard reads it second, so a
+// test that overrides `findUnique` to say "this id IS taken" must say who
+// holds it too — the duplicate-id test overrides both, for that reason. So NO
+// ownership assertion can fail in this file either. Those tests live in their
+// own files:
 //
 // - `import-ownership.resolver.test.ts` — Tag, TagType, Vendor, Shelf
 // - `import-ownership-item.resolver.test.ts` — Item and Recipe
@@ -271,7 +272,7 @@ beforeEach(() => {
   p.itemStock.upsert.mockImplementation(async (args: unknown) => args)
   // "Nobody holds this id" for every id. A test that needs the opposite
   // overrides it in its own body, the way `skips duplicate IDs instead of
-  // throwing` already does with `mockResolvedValueOnce`.
+  // throwing` does with a `mockImplementation` keyed on `args.where.id`.
   for (const delegate of ownedDelegates) {
     delegate.findUnique.mockResolvedValue(null)
     delegate.findFirst.mockResolvedValue(null)
@@ -383,10 +384,26 @@ describe('bulkCreateItems', () => {
   })
 
   it('skips duplicate IDs instead of throwing', async () => {
-    // Given item_existing already exists and item_new does not
-    p.item.findUnique
-      .mockResolvedValueOnce({ id: 'item_existing' }) // exists — skip
-      .mockResolvedValueOnce(null) // new — create
+    // Given item_existing already exists AND IS THE CALLER'S OWN, and
+    // item_new exists nowhere.
+    //
+    // Keyed on the id, not a `mockResolvedValueOnce` queue. The queue this
+    // replaces broke when the ownership guard landed (issue #327 task 5):
+    // `requireOwnRowOrUnclaimed` calls `item.findUnique` FIRST, so the guard
+    // ate the queued `{ id: 'item_existing' }`, read `findFirst` as `null`,
+    // and failed the whole mutation with `Forbidden`. The resolver's own skip
+    // then received the queued `null`.
+    //
+    // `findFirst` answers the same way because the guard reads it second to
+    // decide ownership. Returning the row there is what says "this existing
+    // row is the caller's", which is the case this test has always been
+    // about. A guard that read `findFirst` as `null` would mean "somebody
+    // else holds that id", and the correct answer to that is `FORBIDDEN`, not
+    // a skip — `import-ownership-item.resolver.test.ts` covers it.
+    const existingOnly = async (args: { where: { id: string } }) =>
+      args.where.id === 'item_existing' ? { id: 'item_existing' } : null
+    p.item.findUnique.mockImplementation(existingOnly)
+    p.item.findFirst.mockImplementation(existingOnly)
     const prismaItem = makePrismaItem('item_new', 'New Item')
     p.item.create.mockResolvedValue(prismaItem)
     p.itemTag.createMany.mockResolvedValue({ count: 0 })
