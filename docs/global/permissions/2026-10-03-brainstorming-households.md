@@ -548,8 +548,44 @@ import mutations. A file that holds another account's row id is now refused as a
 | The check is "in the **target** household", not "in any of my households" | A user in two households would otherwise move rows from one to the other on import. |
 | The helper keeps telling "free" from "taken" | An import must create rows. #354 states this exception on purpose. |
 
-**Still open:** rule 2 of the new id rule (Decision 23) says "copy with a new id", but `main`
-now refuses. The user is asked which one H4 keeps.
+**Left open here:** rule 2 of the new id rule (Decision 23) said "copy with a new id", but
+`main` now refuses. Decision 26 answers it.
+
+### Decision 26 — Refuse an import that holds another household's ids (2026-10-30)
+
+**Question.** A file holds ids that already belong to another household. Should H4 refuse the
+whole import (what `main` does since #354), or copy those rows with new ids (Decision 23,
+rule 2)?
+
+**Why it matters.** Every id is a global primary key, and import writes by id. If household A's
+backup is imported into household B, the import finds A's own rows. Changing their household
+would move them out of A. This is true for every table, not only items. It can also happen
+with a family member's backup, or a cloud → local → cloud round trip into another household.
+
+| Option | Cost |
+|---|---|
+| A. Refuse the whole import (Recommended) | Small. It is built and tested in #354. Only the message changes, from "another account" to "another household" |
+| B. Copy with new ids | Large. The client cannot see other households' rows, so it needs a new server query to learn which ids are taken. Then it must rewrite every reference: stock, carts, cart ids, cart items, logs, item tags and vendors, recipe items, shelf `itemIds` and `filterConfig` |
+
+**The user's follow-up.** The user plans a far-future **global pool** of items and vendors. The
+site owner keeps it, with names in several languages and tag and vendor links. Households reuse
+global entities as prototypes: each household keeps its own copy, which it can change and reset
+to the prototype's values. The user asked whether this changes the import policy.
+
+**Answer given.** It does not change the policy, as long as an instance gets its **own id** plus
+a separate `prototypeId`. Reusing the prototype's id cannot work, because one id names one row,
+so households could not change their own copy. With separate ids, ids stay local to one
+household. A backup carries only the `prototypeId` link. An import never writes a prototype
+row. A missing prototype drops the link and keeps the instance. The pool does make A better for
+now: a future cross-household copy would likely match rows by `prototypeId`, not by id. So an
+id-remap copy (option B) built now would probably be replaced.
+
+**Decision.** A. Refuse the whole import, and change the message to say "another household".
+Postpone copying between households, and the global pool with the constraints above.
+
+**Reason.** It is already built and tested. The case it blocks is rare with fewer than 5 users.
+And option B's work would likely be redone when the pool lands.
+
 
 ## Data model so far (cloud only)
 
@@ -590,3 +626,5 @@ catalog and membership. This also fixes issue #273.
 - Inactivity as a hand-over trigger, the owner's `inactivityMonths` setting.
 - Proactive claims and the veto period, the owner's `vetoDays` setting.
 - An email service for the veto notice.
+- Copying rows from one household into another (Decision 26).
+- A global pool of prototype items, tags and vendors, kept by the site owner (Decision 26).

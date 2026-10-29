@@ -4,7 +4,7 @@
 **Status:** 🔲 Designed, not built
 **Branch:** `feature/households`
 **Brainstorming log:** [2026-10-03-brainstorming-households.md](2026-10-03-brainstorming-households.md)
-(25 decisions, with the reason for each — read it for the *why*; this doc gives the *what*)
+(26 decisions, with the reason for each — read it for the *why*; this doc gives the *what*)
 **Changes:** [Location RBAC](2026-08-29-design-location-rbac.md). Its binding rule stays. Its
 role table is replaced, and its six open questions are answered (see the last section).
 **Blocked by:** nothing since 2026-10-08. Cloud-locations PR 5 merged as #332 (see *Sequencing*).
@@ -474,7 +474,7 @@ A banner at the top of the app shows each open `OwnershipOffer`:
 | does not exist anywhere | Created with its id. The importer becomes its organizer |
 | exists in this household, importer is organizer or participant | Its stock, cart and logs are imported, with skip / replace as today |
 | exists in this household, importer is viewer or has no role | Skipped. The importer is told which ones |
-| exists in **another** household | Copied with a new id (see below). The importer becomes its organizer |
+| exists in **another** household | The whole import is refused (see rule 2 below) |
 
 ### The new id rule
 
@@ -484,11 +484,12 @@ needs a cloud default, and cloud no longer has one.
 
 The new rule:
 
-1. **Keep every id**, except in the two cases below.
-2. **An id that already belongs to another household gets a new id**, for any table: locations,
-   items, tags, tag types, vendors, recipes, shelves, carts. Every reference to it is rewritten:
-   stock, carts and cart ids, cart items, logs, item tags and vendors, recipe items, shelf
-   `itemIds` and `filterConfig`.
+1. **Keep every id**, except in case 3 below.
+2. **If any id in the file already belongs to another household, the whole import is refused.**
+   This applies to every table. Nothing is written. The message says: "Some rows in this file
+   belong to another household, so the import was refused. Nothing was imported." This applies
+   even when the importer is a member of that other household. Otherwise the import would
+   move that household's rows into the target household (Decision 26).
 3. **The local default location** (id `'local'`) and **a file with no locations** both ask
    "Import into which location?" The household's "Home" is selected first, and **New location**
    is an option. This is one dialog for both cases.
@@ -496,8 +497,14 @@ The new rule:
 Rule 2 is enforced by the **server**, not trusted from the client. Since #354 (2026-10-28) the
 bulk import resolvers already check ownership of every id through `requireOwnRowOrUnclaimed`,
 and an import that holds another account's id is **refused as a whole** with `FORBIDDEN`
-(nothing is written). **Rule 2 asks for more than that: a copy with a new id, not a refusal.**
-Which of the two H4 keeps is an open question, see *Known gaps*.
+(nothing is written). H4 keeps this behaviour. It changes two things:
+
+- the guard's body checks the **target** household (see *Authorization*)
+- the message says "another household" where it now says "another account". The i18n keys are
+  `settings.import.importErrorForbidden`, `settings.import.importErrorForbiddenAfterClear` and
+  `settings.postLoginMigration.errorForbidden`, in `en.json` and `tw.json`.
+
+Copying rows from one household into another is postponed (see *Postponed*).
 
 ### Server code this replaces
 
@@ -552,6 +559,23 @@ has data when it is built.
 | Inactivity as a hand-over trigger, with an owner setting (default 6 months, allowed 1–60) | Without a veto, it could hand over the household of an owner who is only on a long trip |
 | Proactive claims, with a veto period (default 30 days, allowed 7–365) | The veto must reach an owner who no longer opens the app, which needs email |
 | An email service (e.g. Resend or Postmark) | Not worth the cost for fewer than 5 users, all family |
+| Copying rows from one household into another | It needs a new server query to find taken ids, and a remap of every reference. A future global pool would likely change how rows are matched, so building it now would probably be redone |
+| A global pool of shared items, tags and vendors, kept by the site owner, with names in several languages. Households reuse them as prototypes: each household keeps its own copy, which it can change and reset to the prototype's values | A large feature of its own. Two constraints for whoever designs it are listed below |
+
+**Constraints for the global pool**, decided now so that this design does not block it
+(Decision 26):
+
+1. **An instance gets its own id, plus a separate `prototypeId` field.** It never reuses the
+   prototype's id. One id names one row, so a shared id would stop households from changing
+   their own copy. With separate ids, ids stay local to one household, and the import rules
+   above stay as they are.
+2. **An import never writes a prototype row.** A backup carries only the `prototypeId` link.
+   If the prototype exists, the link is kept. If it does not, the link is dropped and the
+   instance is kept. This is how #354 already treats a `tagId` that does not resolve.
+3. **Only the site owner writes prototypes.** That is a new role, above households.
+4. **Copying between households is redesigned with the pool.** It would likely match rows by
+   `prototypeId` (both eggs come from the global egg, so they merge), and give the other rows
+   new ids.
 
 Consequence: in this phase, story 2 works only after someone deletes the owner's Clerk account.
 
@@ -589,12 +613,10 @@ The root `CLAUDE.md` rules apply. Points special to this design:
 
 ## Known gaps and risks
 
-- **Open: refuse or copy when a file holds another household's id.** Rule 2 of *The new id
-  rule* says "copy with a new id". `main` since #354 refuses the whole import. To copy, the
-  client must learn which ids are taken elsewhere, because it cannot see other households'
-  rows. That needs a new server query, and the remap must cover every reference listed in
-  rule 2. The user decides this before the plan is written. The refusal message today says
-  "another account"; under households it should say "another household".
+- **No way to copy one household into another in this phase.** A backup of household A
+  cannot be imported into household B while A still holds its rows. It is refused (rule 2 of
+  *The new id rule*). Creating household B and filling it from A's backup is the case that
+  hits this. With fewer than 5 users it is rare.
 - **Node is pinned to 22.17.1** (`.node-version`, `engines` in `package.json`, #353). Node 25
   breaks the web suite with `localStorage.setItem is not a function` in every file. Every
   implementation brief must say so.
