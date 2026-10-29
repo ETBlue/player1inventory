@@ -1,0 +1,196 @@
+{
+  // Type-checks the test and story files under `src/`, and emits nothing.
+  //
+  // `tsconfig.app.json` excludes `**/*.test.ts`, `**/*.test.tsx` and
+  // `**/*.stories.tsx`, so before this file existed NO web test or story file
+  // was type-checked by anything. `pnpm test` runs through vitest/esbuild,
+  // which strips types without checking them. That is issue #340: a required
+  // argument added to a source file is enforced at every source call site and
+  // at none of the test call sites.
+  //
+  // Why a separate config and NOT a wider `include` in `tsconfig.app.json`:
+  // that config is the one `tsc -b` builds. Adding these files to it would put
+  // test code in the build graph. `apps/server/tsconfig.scripts.json` carries
+  // the same note for the same reason. **Do not merge the two.**
+  //
+  // THE TWO PASSES OVERLAP HERE, unlike `apps/server`'s. Test files import
+  // from `src`, so TypeScript pulls those source files into this program and
+  // checks them a second time. Measured 2026-10-30: 1390 files in the
+  // `tsconfig.app.json` pass, 1728 in this one. The cost is recorded in the
+  // root CLAUDE.md.
+  //
+  // THREE THINGS IN `include` THAT ARE NOT OBVIOUS, each measured:
+  //
+  // 1. `src/main.tsx` holds the TanStack Router `Register` interface
+  //    augmentation (main.tsx:51). Without it in the program, every
+  //    `navigate({ search: (prev) => … })` callback loses its type and reports
+  //    TS7006 `Parameter 'prev' implicitly has an 'any' type` — in SOURCE
+  //    files, which are clean under `tsconfig.app.json`. Measured: 4 such
+  //    errors in `src/routes/cooking.tsx` and 2 in
+  //    `src/components/recipe/CookingControlBar/CookingControlBar.tsx`.
+  //
+  // 2. `src/test` holds `setup.ts`, whose first line is
+  //    `import '@testing-library/jest-dom/vitest'`. That import is what
+  //    declares `toBeInTheDocument`, `toHaveTextContent` and the rest on
+  //    vitest's `Assertion`. No test file imports it — vitest loads it through
+  //    `setupFiles` — so without `src/test` in the program the matchers are
+  //    unknown. Measured: 1704 extra errors across 235 files.
+  //
+  // 3. `vitest/globals` in `types`, because `vitest.config.ts` sets
+  //    `globals: true`, so `describe` / `it` / `expect` / `vi` are ambient.
+  //
+  // THE `exclude` LIST BELOW IS A BACKLOG, NOT A POLICY. These 115 files
+  // carried 726 pre-existing type errors when this config was added
+  // (measured 2026-10-30, 92 files of their own plus the knock-on files
+  // described next). Fixing them is issue #340 step 3, file by file. 243 test
+  // and story files ARE checked. Removing a file from this list is the unit of
+  // that work.
+  //
+  // TWO TRAPS WHEN EDITING THIS LIST:
+  //
+  // a. `exclude` only removes a file from the program's ROOT set. A file that
+  //    an INCLUDED file imports is still pulled in and still checked. That is
+  //    why 22 clean `*.stories.test.tsx` smoke tests are on this list: each
+  //    one calls `composeStories` on a `*.stories.tsx` that is excluded, so
+  //    excluding the story alone left 45 errors reported. The pair has to move
+  //    together, in both directions.
+  //
+  // b. `src/hooks/useItems.test.ts` and `src/hooks/useItems.test.tsx` both
+  //    exist. TypeScript's `include` expansion keeps only ONE file per path
+  //    minus extension, and `.ts` wins, so `useItems.test.tsx` is INVISIBLE to
+  //    this config while `useItems.test.ts` is in the root set. Both are
+  //    excluded here. When the `.ts` one is fixed and removed, the `.tsx` one
+  //    disappears from the program again — check it by hand.
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    // No `tsBuildInfoFile` and no `incremental`: this config is run with
+    // `tsc -p`, not `tsc -b`, so it writes no build info and re-checks
+    // everything on every run.
+    "noEmit": true,
+    "types": ["vite/client", "vite-plugin-pwa/client", "vitest/globals"]
+  },
+  "include": [
+    "src/main.tsx",
+    "src/test",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.stories.tsx"
+  ],
+  "exclude": [
+    "src/apollo/offlineWriteLink.test.ts",
+    "src/components/global/PostLoginMigrationDialog/index.e2eMode.test.tsx",
+    "src/components/global/PostLoginMigrationDialog/index.stories.test.tsx",
+    "src/components/global/PostLoginMigrationDialog/index.stories.tsx",
+    "src/components/global/PostLoginMigrationDialog/index.test.tsx",
+    "src/components/global/Sidebar/Sidebar.test.tsx",
+    "src/components/item/ItemCard/ItemCard.pantry.stories.test.tsx",
+    "src/components/item/ItemCard/ItemCard.pantry.stories.tsx",
+    "src/components/item/ItemCard/ItemCard.test.tsx",
+    "src/components/item/ItemFilters/ItemFilters.stories.test.tsx",
+    "src/components/item/ItemFilters/ItemFilters.stories.tsx",
+    "src/components/item/ItemFilters/ItemFilters.test.tsx",
+    "src/components/item/ItemForm/ItemForm.stories.test.tsx",
+    "src/components/item/ItemForm/ItemForm.stories.tsx",
+    "src/components/item/ItemForm/ItemForm.test.tsx",
+    "src/components/item/ItemListToolbar/ItemListToolbar.stories.test.tsx",
+    "src/components/item/ItemListToolbar/ItemListToolbar.stories.tsx",
+    "src/components/item/ItemProgressBar/ItemProgressBar.stories.test.tsx",
+    "src/components/item/ItemProgressBar/ItemProgressBar.stories.tsx",
+    "src/components/item/ItemProgressBar/ItemProgressBar.test.tsx",
+    "src/components/item/ItemSearchTail/ItemSearchTail.stories.test.tsx",
+    "src/components/item/ItemSearchTail/ItemSearchTail.stories.tsx",
+    "src/components/item/NewItemDialog/NewItemDialog.cloud.test.tsx",
+    "src/components/item/NewItemDialog/NewItemDialog.stories.test.tsx",
+    "src/components/item/NewItemDialog/NewItemDialog.stories.tsx",
+    "src/components/item/QuickUpdateDialog/QuickUpdateDialog.test.tsx",
+    "src/components/location/LocationList/LocationList.stories.test.tsx",
+    "src/components/pantry/ShelfDetailView.test.tsx",
+    "src/components/settings/ConflictDialog/index.stories.test.tsx",
+    "src/components/settings/ConflictDialog/index.stories.tsx",
+    "src/components/settings/DataModeCard/index.stories.test.tsx",
+    "src/components/settings/DataModeCard/index.stories.tsx",
+    "src/components/settings/DataModeCard/index.test.tsx",
+    "src/components/settings/ExportCard/index.stories.test.tsx",
+    "src/components/settings/ExportCard/index.stories.tsx",
+    "src/components/settings/ExportCard/index.test.tsx",
+    "src/components/settings/ImportCard/index.stories.test.tsx",
+    "src/components/settings/ImportCard/index.stories.tsx",
+    "src/components/settings/ImportCard/index.test.tsx",
+    "src/components/shared/DeleteButton/DeleteButton.test.tsx",
+    "src/components/shelf/ShelfList/ShelfList.stories.test.tsx",
+    "src/components/shelf/ShelfList/ShelfList.stories.tsx",
+    "src/components/tag/EditTagTypeDialog/EditTagTypeDialog.stories.test.tsx",
+    "src/components/tag/EditTagTypeDialog/EditTagTypeDialog.stories.tsx",
+    "src/components/tag/TagInfoForm/TagInfoForm.test.tsx",
+    "src/components/tag/TagInfoForm/index.stories.test.tsx",
+    "src/components/tag/TagInfoForm/index.stories.tsx",
+    "src/components/vendor/VendorFilterDropdown/VendorFilterDropdown.stories.test.tsx",
+    "src/components/vendor/VendorFilterDropdown/VendorFilterDropdown.stories.tsx",
+    "src/db/migrations.test.ts",
+    "src/db/operations.test.ts",
+    "src/db/upgradeV15.test.ts",
+    "src/hooks/cloudFetchPolicy.cloud.test.tsx",
+    "src/hooks/useActiveLocation.test.tsx",
+    "src/hooks/useAppNavigation.test.ts",
+    "src/hooks/useInventoryLogs.cloud.test.tsx",
+    "src/hooks/useInventoryLogs.test.ts",
+    "src/hooks/useItemSearchTail.test.ts",
+    "src/hooks/useItemSearchTailWiring.test.tsx",
+    "src/hooks/useItems.cloud.test.tsx",
+    "src/hooks/useItems.test.ts",
+    "src/hooks/useItems.test.tsx",
+    "src/hooks/useLocations.test.tsx",
+    "src/hooks/useNavigationTracker.test.ts",
+    "src/hooks/usePostLoginMigration.test.ts",
+    "src/hooks/useRecipeItemCounts.test.ts",
+    "src/hooks/useShoppingCart.test.ts",
+    "src/hooks/useTagItemCounts.test.ts",
+    "src/hooks/useTags.test.ts",
+    "src/hooks/useUrlSearchAndFilters.test.ts",
+    "src/hooks/useVendorCartCounts.test.ts",
+    "src/hooks/useVendorItemCounts.test.ts",
+    "src/lib/checkoutQuantities.test.ts",
+    "src/lib/expiration.test.ts",
+    "src/lib/exportData.test.ts",
+    "src/lib/filterUtils.test.ts",
+    "src/lib/importData.test.ts",
+    "src/lib/quantityUtils.test.ts",
+    "src/lib/shelfUtils.test.ts",
+    "src/lib/sortUtils.test.ts",
+    "src/lib/tagSortUtils.test.ts",
+    "src/lib/tagUtils.test.ts",
+    "src/routes/__root.e2eMigration.test.tsx",
+    "src/routes/cooking.cloud.test.tsx",
+    "src/routes/cooking.stories.test.tsx",
+    "src/routes/cooking.stories.tsx",
+    "src/routes/cooking.test.tsx",
+    "src/routes/index.test.tsx",
+    "src/routes/items/$id.test.tsx",
+    "src/routes/items/$id/relation/recipes.test.tsx",
+    "src/routes/items/$id/relation/tags.stories.test.tsx",
+    "src/routes/items/$id/relation/tags.stories.tsx",
+    "src/routes/items/$id/relation/tags.test.tsx",
+    "src/routes/items/$id/relation/vendors.test.tsx",
+    "src/routes/items/$id/stock.stories.test.tsx",
+    "src/routes/items/$id/stock.stories.tsx",
+    "src/routes/items/$id/stock.test.tsx",
+    "src/routes/settings/index.test.tsx",
+    "src/routes/settings/recipes/$id/items.test.tsx",
+    "src/routes/settings/shelves/$shelfId/index.test.tsx",
+    "src/routes/settings/shelves/$shelfId/items.stories.test.tsx",
+    "src/routes/settings/shelves/$shelfId/items.stories.tsx",
+    "src/routes/settings/tags.test.tsx",
+    "src/routes/settings/tags/$id.test.tsx",
+    "src/routes/settings/tags/$id/index.stories.test.tsx",
+    "src/routes/settings/tags/$id/index.stories.tsx",
+    "src/routes/settings/tags/$id/items.test.tsx",
+    "src/routes/settings/tags/index.test.tsx",
+    "src/routes/settings/vendors.test.tsx",
+    "src/routes/settings/vendors/$id.test.tsx",
+    "src/routes/settings/vendors/$id/items.test.tsx",
+    "src/routes/shopping/$vendorId.test.tsx",
+    "src/routes/shopping/index.cloud.test.tsx",
+    "src/stories/Colors.stories.test.tsx",
+    "src/stories/Colors.stories.tsx"
+  ]
+}
