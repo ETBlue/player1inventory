@@ -14,7 +14,8 @@
   "files": {
     // `e2e/` ONLY. `apps/web` has its own `biome.json` and is untouched by this
     // file — verified by running `(cd apps/web && pnpm check)` with and without
-    // it: 627 files, 4 warnings, both times.
+    // it: 628 files, 4 warnings, both times (re-measured 2026-10-30; it said
+    // 627 when this file was written on 2026-10-11).
     //
     // Before this file existed nothing linted `e2e/` (issue #322): both root
     // scripts were `pnpm --filter web …`, and `apps/web/biome.json` scopes
@@ -25,22 +26,34 @@
     "enabled": true,
     "rules": { "recommended": true }
   },
-  // FORMATTER AND ASSIST ARE OFF ON PURPOSE, and this is a deferral, not a
-  // decision that `e2e/` should go unformatted.
+  // Formatter and import sorting are ON since 2026-10-30 (issue #346). They
+  // were off for 19 days, from the day this file was created (issue #322) to
+  // the day `e2e/` was swept.
   //
-  // `e2e/` was written with no formatter, so turning Biome's on rewrites almost
-  // all of it. Measured 2026-10-11 with `biome format ./e2e --write`: **1632
-  // insertions and 646 deletions across 44 of 54 files**, nearly all of it line
-  // rewrapping at the default 80-column width. `biome check ./e2e` reported 64
-  // errors — 44 formatting, 20 `assist/source/organizeImports`.
+  // `e2e/` was written with no formatter, so turning them on rewrote almost all
+  // of it in one commit: 1699 insertions and 684 deletions across 46 of 54
+  // files, nearly all of it line rewrapping at the default 80-column width.
+  // Before the sweep `biome check ./e2e` reported 65 errors — 45 `format` and
+  // 20 `assist/source/organizeImports`. (This file said 64 / 44 / 20 when it
+  // was written on 2026-10-11; one spec was added in between. Measure, do not
+  // quote.)
   //
-  // That diff would bury the lint and type-check wiring this file is part of,
-  // so it is deferred to its own PR. Turning them on is then two flags here
-  // plus one `--write` run.
-  "formatter": { "enabled": false },
-  "assist": { "enabled": false },
-  // Dormant while `formatter.enabled` is false. Kept so the style is already
-  // recorded, and matches `apps/web/biome.json`.
+  // The sweep changed no behaviour, and that was checked rather than assumed.
+  // Every one of the 46 files is AST-identical outside its import block, and no
+  // import binding changed anywhere — same modules, same names. 11 files had
+  // their import statements reordered, which is safe here because no `e2e/`
+  // module runs code at import time: the only top-level statements that are not
+  // declarations are the `test(...)` and `test.describe(...)` registrations in
+  // the spec files, and no spec file is imported by anything.
+  //
+  // The settings below match `apps/web/biome.json` exactly, so one style covers
+  // the whole repo.
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2
+  },
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "javascript": {
     "formatter": { "quoteStyle": "single", "semicolons": "asNeeded" }
   }
