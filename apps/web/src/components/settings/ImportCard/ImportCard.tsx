@@ -25,6 +25,7 @@ import {
   type ImportStrategy,
   importCloudData,
   importLocalData,
+  isForbiddenImportError,
 } from '@/lib/importData'
 import { ConflictDialog } from '../ConflictDialog'
 
@@ -47,6 +48,26 @@ function validateExportPayload(data: unknown): data is ExportPayload {
   return REQUIRED_FIELDS.every((field) => field in obj)
 }
 
+// WHICH of the three error sentences the error phase shows.
+//
+// The `clear` strategy needs its own sentence because `clearAllData` runs
+// FIRST (`importData.ts`, the `clear` branch of `importCloudData`), so a
+// refusal arrives after the account has been emptied. The user has to be told
+// that both things happened — design decision 6 of
+// docs/features/settings/2026-10-28-design-import-ownership-guard.md.
+//
+// `errorKind` is read here and not recomputed: the thrown error is gone by
+// render time, and only it carried the `FORBIDDEN` extension.
+function importErrorKeyFor(status: {
+  errorKind: 'forbidden' | 'other'
+  session: ImportSession
+}): string {
+  if (status.errorKind !== 'forbidden') return 'settings.import.importError'
+  return status.session.strategy === 'clear'
+    ? 'settings.import.importErrorForbiddenAfterClear'
+    : 'settings.import.importErrorForbidden'
+}
+
 type ImportStatus =
   | { phase: 'idle' }
   | { phase: 'conflict'; conflicts: ConflictSummary; payload: ExportPayload }
@@ -55,7 +76,18 @@ type ImportStatus =
       progress: ImportProgress
       session: ImportSession
     }
-  | { phase: 'error'; errorEntity: string; session: ImportSession }
+  // `errorKind` decides WHICH sentence the error phase renders, and it is
+  // computed in the `catch` rather than in the render, because only the thrown
+  // error carries the `FORBIDDEN` extension. `errorEntity` is the raw message
+  // and is interpolated by the `'other'` sentence alone — for a cross-account
+  // refusal it is the bare word `Forbidden`, which is not an entity name and
+  // tells the user nothing.
+  | {
+      phase: 'error'
+      errorEntity: string
+      errorKind: 'forbidden' | 'other'
+      session: ImportSession
+    }
   | { phase: 'done' }
 
 export function ImportCard() {
@@ -184,6 +216,7 @@ export function ImportCard() {
       setImportStatus({
         phase: 'error',
         errorEntity: (err as Error).message,
+        errorKind: isForbiddenImportError(err) ? 'forbidden' : 'other',
         session: importSession ?? {
           payload,
           strategy,
@@ -277,7 +310,7 @@ export function ImportCard() {
           {importStatus.phase === 'error' && (
             <div className="space-y-1">
               <p className="text-xs text-importance-destructive-foreground">
-                {t('settings.import.importError', {
+                {t(importErrorKeyFor(importStatus), {
                   entity: importStatus.errorEntity,
                 })}
               </p>

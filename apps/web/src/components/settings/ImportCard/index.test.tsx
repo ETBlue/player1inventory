@@ -1,3 +1,4 @@
+import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
@@ -278,5 +279,104 @@ describe('ImportCard — local import lands in the active location', () => {
     })
     const stocks = await db.itemStocks.toArray()
     expect(stocks[0].locationId).toBe('office')
+  })
+})
+
+// WHICH sentence the error phase shows when the server refuses the import
+// because the file names another account's row ids.
+//
+// Before the import ownership guard (issue #327) this phase rendered
+// `settings.import.importError` — "Import failed during {{entity}}." — with the
+// raw Apollo message interpolated as the entity. For a refusal that message is
+// the bare word `Forbidden`, so the user read "Import failed during Forbidden."
+// `Forbidden` is not an entity, and the sentence says nothing about what to do.
+//
+// The `clear` strategy needs a SECOND sentence, not the same one. `clearAllData`
+// runs before the uploads, so on `clear` the refusal arrives with the account
+// already emptied — design decision 6 of
+// docs/features/settings/2026-10-28-design-import-ownership-guard.md. The user
+// has to be told both things happened.
+//
+// The strategy is read off the session the failure carried, which is how the
+// real `importCloudData` reports it (its catch attaches `session`, and the
+// session records the strategy the import ran with). So these two tests differ
+// in exactly one input: that strategy.
+describe('ImportCard — a cross-account refusal says so in words', () => {
+  afterEach(async () => {
+    localStorage.clear()
+    vi.mocked(importCloudData).mockClear()
+    vi.mocked(toast.error).mockClear()
+    await db.locations.clear()
+  })
+
+  // The error Apollo builds from the server's `FORBIDDEN` response, carrying
+  // the session the way `importCloudData`'s own catch does.
+  function forbiddenFailure(strategy: ImportSession['strategy']) {
+    const payload = v15Payload('local')
+    const session: ImportSession = {
+      payload: payload as unknown as ExportPayload,
+      strategy,
+      completedBatchKeys: new Set(),
+    }
+    const err = new CombinedGraphQLErrors({
+      errors: [{ message: 'Forbidden', extensions: { code: 'FORBIDDEN' } }],
+    })
+    return { payload, failure: Object.assign(err, { session }) }
+  }
+
+  it('user sees why a cross-account import was refused', async () => {
+    // Given cloud mode and a `replace` import the server refuses with FORBIDDEN
+    await seedLocations(['local', 'My Home'])
+    localStorage.setItem('data-mode', 'cloud')
+    const { payload, failure } = forbiddenFailure('replace')
+    vi.mocked(importCloudData).mockRejectedValueOnce(failure)
+    const { container } = renderCard()
+
+    // When the user imports the backup and the import is refused
+    await uploadPayload(container, payload)
+    await waitFor(() => expect(importCloudData).toHaveBeenCalledTimes(1))
+
+    // Then the refusal is explained, and nothing was imported
+    expect(
+      await screen.findByText(
+        'Some rows in this file belong to another account, so the import was refused. Nothing was imported.',
+      ),
+    ).toBeInTheDocument()
+
+    // And the raw word `Forbidden` is never printed as an entity name
+    expect(
+      screen.queryByText('Import failed during Forbidden.'),
+    ).not.toBeInTheDocument()
+
+    // And the Retry button is still offered
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+  })
+
+  it('user sees that their cloud data was cleared before the refusal', async () => {
+    // Given the same refusal, on the `clear` strategy — `clearAllData` has
+    // already run by the time the server refuses
+    await seedLocations(['local', 'My Home'])
+    localStorage.setItem('data-mode', 'cloud')
+    const { payload, failure } = forbiddenFailure('clear')
+    vi.mocked(importCloudData).mockRejectedValueOnce(failure)
+    const { container } = renderCard()
+
+    // When the user imports the backup and the import is refused
+    await uploadPayload(container, payload)
+    await waitFor(() => expect(importCloudData).toHaveBeenCalledTimes(1))
+
+    // Then the sentence says the cloud data is gone and the file is not
+    expect(
+      await screen.findByText(
+        'Some rows in this file belong to another account, so the import was refused. Your cloud data was already cleared before that happened. Your backup file is unchanged.',
+      ),
+    ).toBeInTheDocument()
+
+    // And NOT the sentence that claims nothing happened
+    expect(
+      screen.queryByText(
+        'Some rows in this file belong to another account, so the import was refused. Nothing was imported.',
+      ),
+    ).not.toBeInTheDocument()
   })
 })

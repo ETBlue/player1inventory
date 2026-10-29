@@ -109,6 +109,22 @@ that really set up that role.
 > See `docs/global/permissions/2026-08-29-design-location-rbac.md` — permissions bind to **location RBAC**: rights come from the role held on a `Location` (owner/member edit, viewer reads), not from having created the row. Decided, **not yet built** — cloud models are still scoped by a flat `userId`, with one deliberate exception: **`ItemStock` carries no `userId` column at all**. It is scoped *through* its location (`where: { location: { userId } }`), the shape RBAC needs, and the same pattern `RecipeItem` already uses (`{ recipe: { userId } }`). A `userId` column there would put the forbidden `stock.userId === ctx.userId` guard within easy reach at every call site — do not add one. Every `ItemStock` resolver goes through `requireLocationRole(locationId, role)` instead, which is the one function body RBAC will fill in.
 >
 > **Never write `row.userId === ctx.userId` as an authorization check.** It is not merely premature: it denies a legitimate `member` editing a shared location's data, which is the point of the feature, and it would have to be torn out of every call site when RBAC lands. If a guard is needed now, put it behind a helper whose signature already takes the location and the required role, so RBAC becomes one function body rather than N call sites. Local mode is single-user IndexedDB and is out of scope — no role check belongs in `apps/web/src/db/`.
+>
+> **There is a second seam: `requireOwnRowOrUnclaimed` in `apps/server/src/lib/authz.ts`.** Added 2026-10-28 (issue #327). It decides account ownership for the **nine models that belong to no location**, so `requireLocationRole` cannot reach them: `Item`, `Tag`, `TagType`, `Vendor`, `Recipe`, `InventoryLog`, `Cart`, `CartItem`, `Shelf`. One row id gets one of three answers — the caller's own row returns `'own'`, somebody else's row **throws** `FORBIDDEN`, an id no row holds returns `'unclaimed'`. The "somebody else's" case throws instead of returning, so a call site cannot ignore it. No call site compares a `userId`.
+>
+> **Its body is what changes when households or RBAC land.** `where: { id, userId }` becomes whatever the new scope is, and no call site moves. That is the same contract `requireLocationRole` carries, and it is why the model is passed as a string literal (`OwnedModel`) rather than a delegate.
+>
+> **One thing it does NOT share with `requireLocationRole`: a free id is distinguishable from a stranger's id.** `requireLocationRole` refuses "not found" and "not yours" with the same error on purpose. `requireOwnRowOrUnclaimed` cannot: an import has to create new rows, so an unclaimed id must return `'unclaimed'` and let the write proceed. What protects the ids is that they are `cuid()` and cannot be guessed, and that the refusal names neither the model nor the owner. Do not copy `requireLocationRole`'s stated reason onto this helper — the first version of its comment and of the design doc both did, and both were wrong.
+>
+> **22 bulk import mutations in `apps/server/src/resolvers/import.resolver.ts` are guarded.** Counted 2026-10-28: **18** through `requireOwnRowOrUnclaimed` (reached by the per-batch `requireOwnRowIdsOrUnclaimed` in that file), **2** through `requireOwnLocationIdsOrUnclaimed`, **2** through `requireOwnItemStockRefs`. Several task briefs said 18, which is only the first group. Count them rather than quoting this:
+>
+> ```bash
+> grep -c 'requireOwnRowIdsOrUnclaimed(ctx' apps/server/src/resolvers/import.resolver.ts      # 18
+> grep -c 'requireOwnLocationIdsOrUnclaimed(ctx' apps/server/src/resolvers/import.resolver.ts # 2
+> grep -c 'requireOwnItemStockRefs(ctx' apps/server/src/resolvers/import.resolver.ts          # 2
+> ```
+>
+> Nine of those 22 also scope the **other** id in a reference — the `tagId`, `vendorId`, `itemId`, `cartId` or `typeId` a payload attaches its own row to. That is **13** lookups, and a reference that does not resolve is still SKIPPED, not refused: a partial backup legitimately names a parent the user has since deleted. See `docs/features/settings/2026-10-28-design-import-ownership-guard.md`.
 
 ## Project Structure
 
@@ -293,17 +309,21 @@ pnpm test                                        # BOTH suites — web + server,
 `apps/server`'s build already carries a second pass for `scripts/`.
 
 **`pnpm test` runs both workspaces.** The root script is `pnpm -r test`, which recurses into
-every workspace package that defines a `test` script — today `apps/web` (**2285 tests**
-across 248 files) and `apps/server` (**347** across 24). Measured 2026-10-04 on
-`feature/cloud-locations-pr4b`.
+every workspace package that defines a `test` script — today `apps/web` (**2321 tests**
+across 251 files) and `apps/server` (**522** across 32). Measured 2026-10-28 on
+`fix/import-ownership-guard`, plus **70** in `scripts/spec` from `pnpm test:spec`.
 
-A short history of these two numbers, because they move almost every week and briefs keep
+A short history of these numbers, because they move almost every week and briefs keep
 quoting them: they said ~1700 and ~100 until 2026-09-29; `apps/server` said 259 across 20
 until cloud locations PR 4a added 87 tests (69 in 4 new files, 18 in 3 existing ones), and
 **340** for a few hours on 2026-10-02 between 4a's task 7 and its task 8. `apps/web` stood
 at 2259 across 249 through the whole of 4a, which is server-only. PR 4b moved it to **2285
 across 248** — more tests in fewer files, because it deleted `flattenPayloadForCloud` and
-`MigrationLocationWarningDialog` and the files that tested them. **Re-measure rather than
+`MigrationLocationWarningDialog` and the files that tested them, and it said that until
+2026-10-28. The import ownership guard (issue #327) then moved `apps/server` from **391 / 27**
+to **522 / 32** — **131** new tests, 125 of them in 5 new files and 6 added to
+`src/lib/authz.test.ts`, almost all two-user ownership fixtures — and `apps/web` from
+2313 / 251 to **2321 / 251**. **Re-measure rather than
 quote any of this.** Both are
 `vitest run`, so the root command is non-interactive and
 never drops into watch mode. Packages without a `test` script (`apps/design`, `packages/types`)
@@ -1070,9 +1090,39 @@ counting them toward coverage.
 verified these tests fail without the behaviour" are different claims; only the second
 one means anything.
 
+**Never undo a mutation with `git checkout -- <file>` while the branch has uncommitted
+work.** That command restores the file to `HEAD`, which on a multi-task branch is a
+*previous task's* commit — so it silently throws away every edit you have made since. It
+happened on 2026-10-28, task 5 of issue #327: the restore reverted the task's own four
+resolver edits mid-run and produced **14 failing tests** that looked catastrophic and were
+an artefact of the restore, not of the code.
+
+**The safe way: copy the finished, green files aside first, then restore from the copies.**
+
+```bash
+cp apps/server/src/resolvers/import.resolver.ts /tmp/green-import.resolver.ts   # before the mutation
+# …break the line, run the test, see it red…
+cp /tmp/green-import.resolver.ts apps/server/src/resolvers/import.resolver.ts   # restore
+```
+
+Committing before each mutation check also works. `git stash` does not: it stashes the
+whole tree, including the mutation you are trying to isolate.
+
+**`vi.clearAllMocks()` leaves a queued `mockImplementationOnce` in place.** It clears call
+records only. So when a mutation stops the code that would have consumed that queued stub,
+the stub survives into a **later** test and makes that test fail for an unrelated reason.
+Measured in task 6 of issue #327: one extra red test that read as a second failure and was
+an artefact of the first.
+
+**Use `vi.resetAllMocks()` in any file whose helpers queue a `…Once` stub.** It drops the
+queue, and since Vitest 2 `mockReset` restores the implementation handed to `vi.fn(impl)`,
+so a wrapped fake delegate keeps its real behaviour. It is unsafe only in a file that arms a
+`mockReturnValue` / `mockResolvedValue` at **module scope**, which `resetAllMocks` would
+wipe — check for that before switching.
+
 **Write test doubles to model the constraint, not the happy path.** A fake that cannot
 distinguish the right implementation from a wrong one passes against both, exactly like a
-weak fixture. The server suite has hit this five times:
+weak fixture. The server suite has hit this six times:
 
 - a `findFirst` fake hardcoding `i.userId === where.userId` leaves an ownership guard green
   even when `userId` is dropped from the resolver. The fix is to model Prisma's own
@@ -1098,6 +1148,43 @@ weak fixture. The server suite has hit this five times:
   `P2002` on a primary key already taken, or an `upsert` whose `update` moved a row. Found
   in PR 4a tasks 3, 5 and 6. All three now honour `data.id`, enforce the primary key, and
   keep `create` and `update` apart
+- **no fake at all.** Nine models' ownership was untestable. **Five of the nine —
+  `Item`, `Tag`, `TagType`, `Recipe` and `Shelf` — had no Prisma double anywhere in
+  `apps/server/src/test/`**, and `createMany({ skipDuplicates: true })` was modelled for one
+  model only (`shoppingFake.cart.createMany`). The doubles that covered the other four could
+  not be reused: `shoppingFake.vendor.create` ignores `data.id` and generates
+  `vendor-${++seq}` (line 106), `cartItemFake` exports **no client at all** — only the
+  `cartItemMatches` matcher — and `inventoryLogFake` has no `findFirst`. A missing fake does
+  not report as missing. It reports as "no test for this model", which reads like a gap in
+  coverage rather than a gap that cannot be closed. Fixed 2026-10-28 (issue #327) by
+  `apps/server/src/test/ownedRowFake.ts`
+
+**`ownedRowFake` is the shared double for the nine account-scoped models** — `Item`, `Tag`,
+`TagType`, `Vendor`, `Recipe`, `InventoryLog`, `Cart`, `CartItem` and `Shelf`. One generic
+stateful store, `createOwnedRowFake<Row extends { id: string; userId: string }>`. Use it;
+do not write a per-model double beside it. What it models, each for a failure listed above:
+
+| It does | Because |
+|---|---|
+| applies `where` **key by key** (`where.x === undefined \|\| row.x === where.x`), with `id` and `userId` as a string or `{ in: [...] }` | a hardcoded `row.userId === where.userId` keeps a scoping test green after the resolver drops the scope |
+| **throws** on a `where` key it does not understand | the `cartItemFake` failure above — a dropped relation filter was ignored silently |
+| `create` and `createMany` honour `data.id` and raise `P2002` on a taken id | the 22 bulk import mutations must preserve the payload's ids |
+| `createMany({ skipDuplicates: true })` skips a taken id; **without** the flag it raises `P2002` | four `bulkCreate*` write this way, and only `shoppingFake.cart.createMany` modelled it before |
+| `create` and `createMany` require a `userId` | it is NOT NULL on all nine models |
+| `upsert` keeps `create` and `update` apart and applies `update` key by key | this is what makes a `userId` left in `update` visible as a row that changed owner |
+| `findUniqueOrThrow` raises `P2025` | four closing reads use it |
+| an optional `relations` hook | `Item`'s `include: { tags, vendors }` and `Recipe`'s `include: { items }` resolve out of junction stores the test file owns |
+
+**It applies an `update` payload with `value !== undefined`, not `'key' in data`** — Prisma's
+own rule, and the opposite of what the design doc for issue #327 specified. `'key' in data`
+is wrong for this codebase: `bulkUpsertRecipes` passes
+`lastCookedAt: … : undefined`, Prisma treats an explicit `undefined` as "not mentioned", and
+`'key' in data` would write `undefined` over a stored column — making a **correct** resolver
+fail its test. Decided in task 2 of that branch and confirmed by mutation in task 5.
+
+`ownedRowFake.test.ts` pins each row of that table directly, because several are unreachable
+from the resolvers and an unreachable guard invites deletion as dead code — the reasoning
+`stockFake.test.ts` records.
 
 **The Prisma fake models `$transaction` rollback, and only one of its two forms.**
 `src/test/stockFake.ts` exports `runInTransaction`, which snapshots every registered store

@@ -34,7 +34,7 @@ vi.mock('../lib/prisma.js', async () => {
   const { createInventoryLogFake } = await import('../test/inventoryLogFake.js')
   const stock = createStockFake()
   const log = createInventoryLogFake()
-  const items: { id: string }[] = []
+  const items: { id: string; userId: string }[] = []
   return {
     prisma: {
       ...stock.client,
@@ -46,14 +46,39 @@ vi.mock('../lib/prisma.js', async () => {
       },
       inventoryLog: {
         findUnique: vi.fn(log.client.findUnique),
+        // Needed by `requireOwnRowOrUnclaimed` (lib/authz.ts), the ownership
+        // guard task 7 added to both log import mutations. The guard reads
+        // `findUnique` first and `findFirst` only when that id is already
+        // taken, which the "does not move an existing log" test below reaches.
+        // Without this key that test died with
+        // `delegateFor(...).findFirst is not a function`.
+        findFirst: vi.fn(log.client.findFirst),
         findMany: vi.fn(log.client.findMany),
         create: vi.fn(log.client.create),
         upsert: vi.fn(log.client.upsert),
       },
       item: {
+        // `findFirst`, scoped by `userId`, is what both log import mutations
+        // ask for since plan task 8 — `prisma.item.findFirst({ where: { id,
+        // userId } })`. `findUnique` is kept for any future caller that asks
+        // only "does this id exist".
+        //
+        // `where` is applied KEY BY KEY, Prisma's own semantics, so a resolver
+        // that dropped `userId` would match MORE rows and a test could see it.
+        // A hardcoded `i.userId === where.userId` would leave such a test
+        // green — root CLAUDE.md, "Write test doubles to model the constraint,
+        // not the happy path".
         findUnique: vi.fn(
           async ({ where }: { where: { id: string } }) =>
             items.find((i) => i.id === where.id) ?? null,
+        ),
+        findFirst: vi.fn(
+          async ({ where = {} }: { where?: { id?: string; userId?: string } } = {}) =>
+            items.find(
+              (i) =>
+                (where.id === undefined || i.id === where.id) &&
+                (where.userId === undefined || i.userId === where.userId),
+            ) ?? null,
         ),
       },
       // Handles onto the fakes, hung off the mocked client because a `vi.mock`
@@ -73,7 +98,7 @@ import type { StockFake } from '../test/stockFake.js'
 const mockPrisma = prisma as unknown as {
   $stockFake: StockFake
   $logFake: InventoryLogFake
-  $items: { id: string }[]
+  $items: { id: string; userId: string }[]
 }
 
 // ─── Server ──────────────────────────────────────────────────────────────────
@@ -114,7 +139,10 @@ beforeEach(() => {
   ])
   mockPrisma.$logFake.reset([])
   mockPrisma.$items.length = 0
-  mockPrisma.$items.push({ id: ITEM })
+  // `userId` is required since plan task 8 scoped both log mutations' item
+  // lookup by it. Without it the row would not match `{ id, userId }` and
+  // every log would be skipped.
+  mockPrisma.$items.push({ id: ITEM, userId: USER })
 })
 
 // ─── Helpers ───────────────────────────────────────────────────────────────── 

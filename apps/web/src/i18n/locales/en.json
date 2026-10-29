@@ -666,7 +666,10 @@
       "description": "You have local data on this device. Would you like to import it to your cloud account?",
       "import": "Import",
       "skip": "Skip",
-      "autoImporting": "Copying local data to cloud…"
+      "autoImporting": "Copying local data to cloud…",
+      "errorTitle": "Copy failed",
+      "errorForbidden": "Some rows in your local data belong to another cloud account, so the copy was refused. Nothing was copied. Your local data is unchanged.",
+      "errorOther": "The copy failed: {{message}}"
     },
     "export": {
       "label": "Download my data",
@@ -680,6 +683,8 @@
       "importing": "Importing {{entity}}…",
       "batchProgress": "{{completed}} / {{total}} batches",
       "importError": "Import failed during {{entity}}.",
+      "importErrorForbidden": "Some rows in this file belong to another account, so the import was refused. Nothing was imported.",
+      "importErrorForbiddenAfterClear": "Some rows in this file belong to another account, so the import was refused. Your cloud data was already cleared before that happened. Your backup file is unchanged.",
       "retry": "Retry",
       "importDone": "Import complete.",
       "success": "Data imported successfully",

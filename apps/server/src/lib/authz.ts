@@ -40,3 +40,131 @@ export async function requireLocationRole(
 
   return location
 }
+
+/**
+ * The nine models that carry a `userId` column and have `id` as their only
+ * unique key. `ItemStock` is NOT here on purpose: it carries no `userId` at
+ * all and is scoped through its location by `requireLocationRole`. `Location`
+ * is not here either, for the same reason — it IS the location.
+ *
+ * This is a hand-maintained list, and a wrong literal at a call site compiles.
+ * Every call site therefore needs its own test, and deleting a guard must turn
+ * a named test red.
+ */
+export type OwnedModel =
+  | 'item'
+  | 'tag'
+  | 'tagType'
+  | 'vendor'
+  | 'recipe'
+  | 'inventoryLog'
+  | 'cart'
+  | 'cartItem'
+  | 'shelf'
+
+/** The two reads the guard needs on a model with an `id` and a `userId`. */
+interface OwnedRowDelegate {
+  findUnique(args: {
+    where: { id: string }
+    select: { id: true }
+  }): Promise<{ id: string } | null>
+  findFirst(args: {
+    where: { id: string; userId: string }
+    select: { id: true }
+  }): Promise<{ id: string } | null>
+}
+
+function delegateFor(model: OwnedModel): OwnedRowDelegate {
+  // Built PER CALL, not captured at module load, so a test that swaps a method
+  // on the mocked `prisma` after import still sees its own swap.
+  //
+  // `satisfies` type-checks the nine entries, so the `as unknown as
+  // Record<OwnedModel, OwnedRowDelegate>` cast the design doc allowed as a
+  // fallback is not needed. Prisma's `findUnique` is generic, and assignability
+  // to this non-generic target instantiates its type parameter from the target.
+  //
+  // What `satisfies` catches here, measured on Prisma 6.19.3 on 2026-10-28:
+  // `prisma.itemTag` (a composite-key model with no `id`) fails TS2322, and so
+  // does any value that is not a delegate at all. What it does NOT catch:
+  // `prisma.itemStock`, whose model has an `id` but no `userId` column, is
+  // accepted — a `where` with an extra key is assignable to
+  // `ItemStockWhereInput` because excess-property checking does not apply to a
+  // type-level assignability check. Nor can it catch a swap between two models
+  // that are both in this table. So a wrong model literal at a call site still
+  // compiles, and per-call-site tests are what catch it.
+  const delegates = {
+    item: prisma.item,
+    tag: prisma.tag,
+    tagType: prisma.tagType,
+    vendor: prisma.vendor,
+    recipe: prisma.recipe,
+    inventoryLog: prisma.inventoryLog,
+    cart: prisma.cart,
+    cartItem: prisma.cartItem,
+    shelf: prisma.shelf,
+  } satisfies Record<OwnedModel, OwnedRowDelegate>
+  return delegates[model]
+}
+
+/**
+ * The single authorization seam for account-scoped data — the nine models in
+ * `OwnedModel`, which belong to no location and so are outside
+ * `requireLocationRole`'s reach.
+ *
+ * Three cases for one row id:
+ *
+ * | The id is | Result |
+ * |---|---|
+ * | held by a row the caller may write | returns `'own'` |
+ * | held by somebody else's row | **throws** `FORBIDDEN` |
+ * | held by no row | returns `'unclaimed'` |
+ *
+ * The "somebody else's" case throws rather than returning, so a call site
+ * cannot ignore it.
+ *
+ * Call sites never inspect `userId` themselves — root CLAUDE.md forbids
+ * `row.userId === ctx.userId` as an authorization check. They say "this id
+ * must be one I may write", and this body is what decides. When account scope
+ * changes — a household scope is the likely answer and is being explored on
+ * another branch — the `where` below changes and no call site moves. That is
+ * the same contract `requireLocationRole` above already carries.
+ *
+ * See docs/features/settings/2026-10-28-design-import-ownership-guard.md.
+ */
+export async function requireOwnRowOrUnclaimed(
+  ctx: Context,
+  model: OwnedModel,
+  id: string,
+): Promise<'own' | 'unclaimed'> {
+  const userId = requireAuth(ctx)
+
+  // UNSCOPED on purpose, and only `id` is selected. "Is this primary key
+  // taken" is not an authorization question and has no user to scope by.
+  const taken = await delegateFor(model).findUnique({
+    where: { id },
+    select: { id: true },
+  })
+  if (!taken) return 'unclaimed'
+
+  // The AUTHORIZATION decision, SCOPED IN SQL. Never a comparison of a fetched
+  // row's `userId` against the caller's.
+  const own = await delegateFor(model).findFirst({
+    where: { id, userId },
+    select: { id: true },
+  })
+
+  // Same wording and code as `requireLocationRole`'s refusal above, so a
+  // refusal reveals neither which model nor who owns the row.
+  //
+  // Note what this does NOT hide, because it cannot: a free id returns
+  // `'unclaimed'` and a stranger's id throws, so the caller can tell those two
+  // apart. An import has to be able to create new rows, so that difference is
+  // unavoidable. What protects the ids is that they are `cuid()` and cannot be
+  // guessed. `requireLocationRole` above is stricter — it refuses a missing id
+  // too — and the reason stated there does not carry over here unchanged.
+  if (!own) {
+    throw new GraphQLError('Forbidden', { extensions: { code: 'FORBIDDEN' } })
+  }
+
+  return 'own'
+}
