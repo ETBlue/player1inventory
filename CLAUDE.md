@@ -362,19 +362,75 @@ in the gate. That is exactly how three failing purge tests sat on `main` unnotic
 
 **Run the root `pnpm build`, not `(cd apps/web && pnpm build)`.** The root build is the *full* build — it runs `pnpm codegen` (regenerating GraphQL types from the current schema + operations, catching codegen drift) and type-checks **both** `apps/web` and `apps/server` via `tsc`. The web-only build skips codegen and the server, and `pnpm test` (vitest/esbuild), `pnpm check` (Biome), and `pnpm build-storybook` all skip a full type-check — so type-flow errors (e.g. `possibly null` from `.filter(Boolean)`) and codegen mismatches slip through every other check and only fail in the Cloudflare production build. The root `pnpm build` mirrors that production build and catches them locally.
 
-**No web test file is ever type-checked.** `apps/web/tsconfig.app.json:37` excludes
-`**/*.test.ts`, `**/*.test.tsx` and `**/*.stories.tsx`. So the root `pnpm build` type-checks
-source files only, and `pnpm test` runs through esbuild, which strips types without checking
-them. No command in the gate type-checks a test file.
+**Web test and story files ARE type-checked — since 2026-10-30 (issue #340). Not all of
+them.** `apps/web/tsconfig.app.json:37` still excludes `**/*.test.ts`, `**/*.test.tsx` and
+`**/*.stories.tsx`, so that config checks source files only. A second config,
+`apps/web/tsconfig.test.json`, checks those files in a pass of its own. `apps/web`'s two
+scripts now read:
 
-What this changes: "the argument is required, so `tsc` catches a call site that forgets it"
-is true for a source file and **false for a test file**. Cloud-parity PR A made `items`
-required on `useCheckout`'s `CheckoutArgs`. Three `useCheckout()` tests kept calling
-`mutate()` with no `items`, and the whole gate stayed green. Reading the test file is what
-found them.
+```
+build:     tsc -b && tsc -p tsconfig.test.json && vite build
+typecheck: tsc -b && tsc -p tsconfig.test.json
+```
 
-**So after adding a required field or argument, grep the test files for the call sites
-yourself.** `tsc` will not list them.
+**243 of the 358 test and story files are checked. 115 are still excluded**, because they
+carried **726** type errors when the config was added (measured 2026-10-30). Fixing them is
+issue #340 step 3. The `exclude` list in `tsconfig.test.json` is that backlog, and its
+comment header records the three `include` entries that are not obvious and the two traps in
+editing the list.
+
+Proved by mutation on 2026-10-30, in both directions. The same line,
+`export const __mutationProbe: number = 'not a number'`, appended to one file at a time:
+
+| File it was appended to | Root `pnpm build` |
+|---|---|
+| `apps/web/src/hooks/useVendors.test.ts` (checked) | **exit 2**, `src/hooks/useVendors.test.ts(250,14): error TS2322: Type 'string' is not assignable to type 'number'.` |
+| `apps/web/src/hooks/useShoppingCart.test.ts` (excluded) | **exit 0**, no error reported |
+
+The second row is what makes the first one mean something: the pass is not inert, and the
+`exclude` list really does hold back the files it names.
+
+**The old rule is now half true.** "The argument is required, so `tsc` catches a call site
+that forgets it" holds for a source file, holds for a checked test file, and still fails for
+any of the 115 excluded ones. Cloud-parity PR A made `items` required on `useCheckout`'s
+`CheckoutArgs`; three `useCheckout()` tests kept calling `mutate()` with no `items` and the
+whole gate stayed green. That file is `apps/web/src/hooks/useShoppingCart.test.ts`, which is
+still excluded — **so that exact hole is still open**, as the table above shows.
+
+**So after adding a required field or argument, check whether the test files that use it are
+on the exclude list.** For those that are, grep the call sites yourself; `tsc` will not list
+them.
+
+**`pnpm --filter web typecheck` used to check NOTHING, and that is now fixed.** It was
+`tsc --noEmit` against `apps/web/tsconfig.json`, which is a solution file: `files: []` plus
+two `references`. Outside build mode `tsc` honours `files: []` and checks zero files.
+Measured 2026-10-30: `tsc --noEmit --listFiles` printed **0** lines and the command took
+**0.06s**. So the root `pnpm typecheck` never type-checked `apps/web` at all, and only
+`pnpm build`'s `tsc -b` did. Both scripts now start with `tsc -b`.
+
+**The two passes OVERLAP, unlike `apps/server`'s.** Test files import from `src`, so
+TypeScript pulls those source files into the second program and checks them twice. Measured
+2026-10-30 with `--listFiles`: **1390** files in the `tsconfig.app.json` pass and **1728** in
+the `tsconfig.test.json` pass, of which 516 are under `apps/web/src` — 243 test and story
+files plus **273 source files checked a second time**.
+
+**That costs about 3.9 seconds, and it is a real cost.** Measured 2026-10-30, three runs of
+each form, interleaved so load drift hits both equally, `rm -rf apps/web/node_modules/.tmp`
+and `rm -rf apps/web/dist` before every run, load average between 3.98 and 5.27 throughout:
+
+| Command | Three runs | Mean |
+|---|---|---|
+| `tsc -b` alone (what `build` used to type-check) | 3.35s, 3.38s, 3.68s | 3.47s |
+| `tsc -p tsconfig.test.json` alone | 3.92s, 4.32s, 4.86s | 4.37s |
+| `pnpm --filter web build` **before** | 7.34s, 6.92s, 6.90s | **7.05s** |
+| `pnpm --filter web build` **after** | 11.00s, 11.09s, 10.74s | **10.94s** |
+| `pnpm --filter web typecheck` before (checked 0 files) | 0.07s, 0.05s, 0.06s | 0.06s |
+| `pnpm --filter web typecheck` after | 7.15s, 9.14s, 8.16s | 8.15s |
+
+So `pnpm --filter web build` is about **56% slower**, and the whole root `pnpm build` grows
+by the same ~3.9s. The second pass writes no build info — it is run with `tsc -p`, not
+`tsc -b`, and sets neither `incremental` nor `tsBuildInfoFile` — so it re-checks everything
+every time and will not get cheaper on a warm tree.
 
 **`e2e/` IS type-checked and linted — since 2026-10-11 (issue #322).** Before that date
 nothing checked it: Playwright transpiles each spec with esbuild, which strips types without
@@ -469,9 +525,10 @@ formatting errors in tabs and double quotes, which is Biome's default style and 
 repo's. The warning count was unchanged at 13, so the lint output alone does not reveal it.
 **Check the file count.**
 
-The repo now has **eight** tsconfigs: `apps/web/tsconfig.json`, `tsconfig.app.json`,
-`tsconfig.node.json`, `apps/server/tsconfig.json`, `tsconfig.scripts.json`,
-`apps/design/tsconfig.json`, `packages/types/tsconfig.json` and `e2e/tsconfig.json`.
+The repo now has **nine** tsconfigs: `apps/web/tsconfig.json`, `tsconfig.app.json`,
+`tsconfig.node.json`, `tsconfig.test.json`, `apps/server/tsconfig.json`,
+`tsconfig.scripts.json`, `apps/design/tsconfig.json`, `packages/types/tsconfig.json` and
+`e2e/tsconfig.json`.
 
 **Take your own baseline before quoting any count above.**
 
@@ -542,7 +599,9 @@ typecheck: tsc --noEmit && tsc -p tsconfig.scripts.json
 **The two passes do not overlap**, which is why this costs little: `tsc` checks and emits the
 **53** files under `src`, the second pass checks the **3** under `scripts`, and nothing is
 checked twice. The first version of this fix reused the whole-project `typecheck` and so
-checked `src` twice — 105 files instead of 53, and 3.4s.
+checked `src` twice — 105 files instead of 53, and 3.4s. **`apps/web`'s own second pass,
+added 2026-10-30, does overlap** — see *Web test and story files ARE type-checked* above for
+what that costs.
 
 **The server build is about 3.5s, and the `scripts` pass is no longer free.** Measured
 2026-10-08 on the same machine and commit, with and without the two files issue #333 added:
@@ -555,8 +614,10 @@ checked `src` twice — 105 files instead of 53, and 3.4s.
 The 46 extra declaration files are **vitest's types**, pulled in by the test file's
 `import … from 'vitest'`. That is the whole cost: about **0.5s** on every server build, in
 exchange for the destructive-database guard being type-checked and unit-tested. Stated as a
-cost on purpose — a test file under `scripts/` is not free the way a test file under `src/`
-is, because nothing type-checks `src` test files at all.
+cost on purpose. (This paragraph used to end "a test file under `scripts/` is not free the
+way a test file under `src/` is, because nothing type-checks `src` test files at all". That
+was true until 2026-10-30. `apps/server/src` test files are still checked by nothing, but
+`apps/web`'s now are.)
 
 Why two tsconfigs rather than one: `tsconfig.json` **emits**, with `rootDir: "src"` and
 `outDir: "dist"`. Adding `scripts` to its `include` moves `rootDir` to `.` and emits
