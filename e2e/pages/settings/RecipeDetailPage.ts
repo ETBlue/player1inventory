@@ -1,4 +1,4 @@
-import type { Page, Locator } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import { withSteps } from '../step'
 
 export class RecipeDetailPage {
@@ -51,17 +51,22 @@ export class RecipeDetailPage {
 
   async clickIncreaseAmount(name: string) {
     // aria-label="Increase quantity of {name}" (src/components/item/ItemCard/index.tsx:173)
-    await this.page.getByRole('button', { name: `Increase quantity of ${name}` }).click()
+    await this.page
+      .getByRole('button', { name: `Increase quantity of ${name}` })
+      .click()
   }
 
   async clickDecreaseAmount(name: string) {
     // aria-label="Decrease quantity of {name}" (src/components/item/ItemCard/index.tsx:157)
-    await this.page.getByRole('button', { name: `Decrease quantity of ${name}` }).click()
+    await this.page
+      .getByRole('button', { name: `Decrease quantity of ${name}` })
+      .click()
   }
 
   getAmountDisplay(name: string): Locator {
     // The <span> showing controlAmount between ±buttons, scoped to the item row
-    return this.page.getByRole('button', { name: `Decrease quantity of ${name}` })
+    return this.page
+      .getByRole('button', { name: `Decrease quantity of ${name}` })
       .locator('xpath=following-sibling::span[1]')
   }
 }

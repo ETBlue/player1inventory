@@ -1,11 +1,11 @@
-import { expect, test } from '@playwright/test'
 import type { APIRequestContext, Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import {
   DESTINATION_DEFAULT_LOCATION_NAME,
+  expectFixtureStockPerLocation,
   FIXTURE_DEFAULT_LOCATION_NAME,
   FIXTURE_NON_DEFAULT_LOCATION_NAMES,
   FIXTURE_STOCK_BY_LOCATION,
-  expectFixtureStockPerLocation,
 } from '../../helpers/backupAssertions'
 import { seedCloudFixture } from '../../helpers/cloudSeed'
 import { cleanupCloudData } from '../../helpers/cloudTeardown'
@@ -262,7 +262,10 @@ test('user can switch from offline to cloud mode and clear & import their local 
       .map((row) => row.name)
       .sort(),
   ).toEqual(
-    [FIXTURE_DEFAULT_LOCATION_NAME, ...FIXTURE_NON_DEFAULT_LOCATION_NAMES].sort(),
+    [
+      FIXTURE_DEFAULT_LOCATION_NAME,
+      ...FIXTURE_NON_DEFAULT_LOCATION_NAMES,
+    ].sort(),
   )
 
   // ── When the user walks the switch flow and picks "Clear & import" ───────────
@@ -291,9 +294,7 @@ test('user can switch from offline to cloud mode and clear & import their local 
   // hook's effect can set. Data that arrived by any other route would leave this
   // dialog unrendered.
   // t('settings.postLoginMigration.autoImporting') = "Copying local data to cloud…"
-  await expect(
-    page.getByText('Copying local data to cloud…'),
-  ).toBeVisible()
+  await expect(page.getByText('Copying local data to cloud…')).toBeVisible()
 
   // And the keys the flow is steered by end up consumed.
   //

@@ -79,7 +79,9 @@ test.afterEach(async ({ page, request, baseURL }) => {
           req.onsuccess = () => resolve()
           req.onerror = () => reject(req.error)
           req.onblocked = () => {
-            console.warn(`[afterEach] IndexedDB delete blocked for "${name}"...`)
+            console.warn(
+              `[afterEach] IndexedDB delete blocked for "${name}"...`,
+            )
             resolve()
           }
         })
@@ -279,9 +281,10 @@ test('an item already stocked in the active location is shown disabled in the Ad
 
   // Then the item stocked HERE is marked disabled
   // aria-disabled={stocked} on role="option" (NewItemDialog.tsx)
-  await expect(
-    dialog.getByRole('option', { name: /oats/i }),
-  ).toHaveAttribute('aria-disabled', 'true')
+  await expect(dialog.getByRole('option', { name: /oats/i })).toHaveAttribute(
+    'aria-disabled',
+    'true',
+  )
 
   // And the item stocked only in Office stays selectable
   await expect(

@@ -60,7 +60,10 @@ export class CookingPage {
     // async onClick handler (handleConfirmDone) completes. To ensure mutations finish,
     // we wait for the toolbar count to reset to "0 serving cooked" — which only happens
     // after handleConfirmDone calls setCheckedItemIds(new Map()) at the end of all awaits.
-    await this.page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click()
+    await this.page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: 'Confirm' })
+      .click()
     await this.page.getByText('0 serving').waitFor({ state: 'visible' })
   }
 }

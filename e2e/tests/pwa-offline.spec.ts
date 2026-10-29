@@ -16,7 +16,10 @@ test.describe('PWA offline', () => {
     expect(manifest.icons.length).toBeGreaterThanOrEqual(3)
   })
 
-  test('user can open the app with no network in local mode', async ({ page, context }) => {
+  test('user can open the app with no network in local mode', async ({
+    page,
+    context,
+  }) => {
     // Given the user visited once while online, so the app files are cached.
     // Skip the empty-data redirect to onboarding, which has no <nav> — this
     // test is about the offline shell rendering, not onboarding.
@@ -40,7 +43,10 @@ test.describe('PWA offline', () => {
     // Given a list of every request the page makes
     const externalFontRequests: string[] = []
     page.on('request', (request) => {
-      if (request.url().includes('fonts.googleapis.com') || request.url().includes('fonts.gstatic.com')) {
+      if (
+        request.url().includes('fonts.googleapis.com') ||
+        request.url().includes('fonts.gstatic.com')
+      ) {
         externalFontRequests.push(request.url())
       }
     })

@@ -146,7 +146,10 @@ const BASE: Fixture = {
 const WITH_MILK_POWDER: Fixture = {
   ...BASE,
   items: [...BASE.items, { id: MILK_POWDER, name: 'Milk Powder' }],
-  stocks: [...BASE.stocks, { itemId: MILK_POWDER, location: 'OFFICE', ...STOCK }],
+  stocks: [
+    ...BASE.stocks,
+    { itemId: MILK_POWDER, location: 'OFFICE', ...STOCK },
+  ],
 }
 
 /**
@@ -193,7 +196,12 @@ type ShelfRow = {
   itemIds?: string[] | null
   filterConfig?: { tagIds?: string[] | null } | null
 }
-type ItemRow = { id: string; name: string; tagIds: string[]; vendorIds?: string[] | null }
+type ItemRow = {
+  id: string
+  name: string
+  tagIds: string[]
+  vendorIds?: string[] | null
+}
 type RecipeRow = { id: string; name: string; items: { itemId: string }[] }
 
 const SHELF_QUERY = `query ($id: ID!) {
@@ -478,7 +486,12 @@ test('user must press twice to stock an item at a location and add it to a selec
   // A NEGATIVE CONTROL. It holds from the seed onward, so it passes against an
   // `updateShelf` that writes nothing at all. Kept because it names what the
   // two-press gate means; not counted as coverage.
-  const beforeSecondPress = await readShelf(page, request, baseURL, fridgeShelfId)
+  const beforeSecondPress = await readShelf(
+    page,
+    request,
+    baseURL,
+    fridgeShelfId,
+  )
   expect(beforeSecondPress?.itemIds ?? []).not.toContain(MILK)
 
   // When the user presses "Add to shelf" — the second, separate press
@@ -649,7 +662,12 @@ test('user picks per axis in the dialog when a filter shelf spans two tag types 
   // the previous test, over a four-id `filterConfig`.
   const seeded = await readShelf(page, request, baseURL, treatsShelfId)
   expect(seeded?.filterConfig?.tagIds ?? []).toEqual(
-    expect.arrayContaining([snackTagId, drinksTagId, fridgeTagId, freezerTagId]),
+    expect.arrayContaining([
+      snackTagId,
+      drinksTagId,
+      fridgeTagId,
+      freezerTagId,
+    ]),
   )
 
   // When the user searches for Bread inside the Treats Shelf
@@ -812,7 +830,12 @@ test('user must press twice to stock an item at a location and add it to a recip
 
   // And the recipe is still empty, which is the half the screen cannot show.
   // A negative control; it holds from the seed onward.
-  const beforeSecondPress = await readRecipe(page, request, baseURL, milkshakeId)
+  const beforeSecondPress = await readRecipe(
+    page,
+    request,
+    baseURL,
+    milkshakeId,
+  )
   expect(beforeSecondPress?.items.map((i) => i.itemId) ?? []).not.toContain(
     MILK_POWDER,
   )

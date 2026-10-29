@@ -1,4 +1,4 @@
-import type { Page, Locator } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import { withSteps } from './step'
 
 export class PantryPage {
@@ -25,7 +25,9 @@ export class PantryPage {
   async clickQuickUpdate(itemName: string) {
     // Quick update button: aria-label="Update quantity of {name}", mode='pantry' in ItemCard
     // (src/.worktrees/.../ItemCard/ItemCard.tsx — onQuickUpdate prop renders Pencil icon button)
-    await this.page.getByRole('button', { name: `Update quantity of ${itemName}` }).click()
+    await this.page
+      .getByRole('button', { name: `Update quantity of ${itemName}` })
+      .click()
   }
 
   getItemCard(name: string): Locator {

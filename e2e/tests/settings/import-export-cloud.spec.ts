@@ -1,30 +1,42 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-import { test, expect } from '@playwright/test'
+
+import { expect, test } from '@playwright/test'
 import {
   DESTINATION_DEFAULT_LOCATION_NAME,
   expectFixtureStockPerLocation,
   expectStockNotCollapsedOntoDefault,
 } from '../../helpers/backupAssertions'
-import { cleanupCloudData } from '../../helpers/cloudTeardown'
 import { ensureCloudDefaultLocation } from '../../helpers/cloudSeed'
+import { cleanupCloudData } from '../../helpers/cloudTeardown'
 import { readLocations } from '../../helpers/stockReadback'
-import { makeGql } from '../../utils/cloud'
 import { ItemPage } from '../../pages/ItemPage'
 import { PantryPage } from '../../pages/PantryPage'
 import { SettingsPage } from '../../pages/SettingsPage'
 import { ShoppingPage } from '../../pages/ShoppingPage'
-import { RecipesPage } from '../../pages/settings/RecipesPage'
 import { RecipeDetailPage } from '../../pages/settings/RecipeDetailPage'
+import { RecipesPage } from '../../pages/settings/RecipesPage'
+import { makeGql } from '../../utils/cloud'
 
-const CLOUD_FIXTURE_PATH = path.resolve(__dirname, '../../fixtures/cloud-backup.json')
-const LOCAL_FIXTURE_PATH = path.resolve(__dirname, '../../fixtures/local-backup.json')
+const CLOUD_FIXTURE_PATH = path.resolve(
+  __dirname,
+  '../../fixtures/cloud-backup.json',
+)
+const LOCAL_FIXTURE_PATH = path.resolve(
+  __dirname,
+  '../../fixtures/local-backup.json',
+)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const cloudFixture = JSON.parse(fs.readFileSync(CLOUD_FIXTURE_PATH, 'utf-8')) as any
+const cloudFixture = JSON.parse(
+  fs.readFileSync(CLOUD_FIXTURE_PATH, 'utf-8'),
+) as any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const localFixture = JSON.parse(fs.readFileSync(LOCAL_FIXTURE_PATH, 'utf-8')) as any
+const localFixture = JSON.parse(
+  fs.readFileSync(LOCAL_FIXTURE_PATH, 'utf-8'),
+) as any
 const CLOUD_ITEM_ID: string = cloudFixture.items[0].id
 const LOCAL_ITEM_ID: string = localFixture.items[0].id
 const CLOUD_VENDOR_ID: string = cloudFixture.vendors[0].id
@@ -81,9 +93,12 @@ async function seedCloudFixture(
   // `bulkCreateLocations` (`LocationInput.id` is required, PR 4a). That is what
   // lets a test assert a cart id or a log's location verbatim after a round
   // trip: the remap rewrites only the default.
-  const fixtureLocations = cloudFixture.locations as Array<Record<string, unknown>>
+  const fixtureLocations = cloudFixture.locations as Array<
+    Record<string, unknown>
+  >
   const fixtureDefault = fixtureLocations.find((loc) => loc.isDefault === true)
-  if (!fixtureDefault) throw new Error('cloud-backup.json marks no default location')
+  if (!fixtureDefault)
+    throw new Error('cloud-backup.json marks no default location')
 
   const serverDefault = await ensureCloudDefaultLocation(request)
   const locationIds: Record<string, string> = {
@@ -116,7 +131,10 @@ async function seedCloudFixture(
 
   const resolveLocation = (id: unknown): string => {
     const real = locationIds[id as string]
-    if (!real) throw new Error(`seedCloudFixture: unknown fixture location id "${String(id)}"`)
+    if (!real)
+      throw new Error(
+        `seedCloudFixture: unknown fixture location id "${String(id)}"`,
+      )
     return real
   }
 
@@ -178,9 +196,12 @@ async function seedCloudFixture(
   await gql(
     `mutation BulkCreateItemStocks($itemStocks: [ItemStockImportInput!]!) { bulkCreateItemStocks(itemStocks: $itemStocks) { id } }`,
     {
-      itemStocks: (cloudFixture.itemStocks as Array<Record<string, unknown>>).map(
-        (stock) => ({ ...stock, locationId: resolveLocation(stock.locationId) }),
-      ),
+      itemStocks: (
+        cloudFixture.itemStocks as Array<Record<string, unknown>>
+      ).map((stock) => ({
+        ...stock,
+        locationId: resolveLocation(stock.locationId),
+      })),
     },
   )
   await gql(
@@ -269,7 +290,9 @@ async function verifyRelations(
   const recipeId = page.url().match(/\/settings\/recipes\/([^/]+)/)?.[1]
   if (!recipeId) throw new Error('Could not extract recipe ID from URL')
   await recipeDetail.navigateToItems(recipeId)
-  await expect(recipeDetail.getAssignedItemCheckbox('Fixture Item')).toBeVisible()
+  await expect(
+    recipeDetail.getAssignedItemCheckbox('Fixture Item'),
+  ).toBeVisible()
 
   // 6. Item appears inside its vendor's cart.
   // /shopping is now a vendor-grouped overview (one VendorCartCard per vendor) —
@@ -337,7 +360,11 @@ async function readLogs(
   return inventoryLogs
 }
 
-test('user can export and re-import cloud data (cloud → cloud)', async ({ page, request, baseURL }) => {
+test('user can export and re-import cloud data (cloud → cloud)', async ({
+  page,
+  request,
+  baseURL,
+}) => {
   // This one test needs more than the default 30s. Measured 2026-10-04: it
   // takes 36.5s. It is the only test here that does a FULL cloud round trip —
   // seed, export, clearAllData, re-import — and then walks `verifyRelations`'
@@ -381,7 +408,11 @@ test('user can export and re-import cloud data (cloud → cloud)', async ({ page
   await verifyRelations(page, request, baseURL, CLOUD_ITEM_ID)
 })
 
-test('user can import a local backup into cloud mode (local → cloud)', async ({ page, request, baseURL }) => {
+test('user can import a local backup into cloud mode (local → cloud)', async ({
+  page,
+  request,
+  baseURL,
+}) => {
   const settings = new SettingsPage(page)
 
   // Given: no existing cloud data (beforeEach cleanup ran)
@@ -394,7 +425,11 @@ test('user can import a local backup into cloud mode (local → cloud)', async (
   await verifyRelations(page, request, baseURL, LOCAL_ITEM_ID)
 })
 
-test('user re-importing a cloud backup keeps every location and gains no stray default', async ({ page, request, baseURL }) => {
+test('user re-importing a cloud backup keeps every location and gains no stray default', async ({
+  page,
+  request,
+  baseURL,
+}) => {
   const settings = new SettingsPage(page)
 
   // Given: three locations with three different stock quantities
@@ -431,11 +466,17 @@ test('user re-importing a cloud backup keeps every location and gains no stray d
   expect(locations.filter((l) => l.isDefault)).toHaveLength(1)
 })
 
-test('user re-importing a cloud backup keeps each cart at its own location', async ({ page, request, baseURL }) => {
+test('user re-importing a cloud backup keeps each cart at its own location', async ({
+  page,
+  request,
+  baseURL,
+}) => {
   const settings = new SettingsPage(page)
 
   // Given: the fixture's one cart sits at Fixture Office, NOT at the default
-  expect(cloudFixture.shoppingCarts[0].id).toBe(`${CLOUD_OFFICE_ID}:${CLOUD_VENDOR_ID}`)
+  expect(cloudFixture.shoppingCarts[0].id).toBe(
+    `${CLOUD_OFFICE_ID}:${CLOUD_VENDOR_ID}`,
+  )
   await seedCloudFixture(request)
   await page.goto('/')
   await page.waitForLoadState('networkidle')
@@ -467,7 +508,11 @@ test('user re-importing a cloud backup keeps each cart at its own location', asy
   expect(await cartCountAt(request, CLOUD_ITEM_ID, defaultLocation.id)).toBe(0)
 })
 
-test('user re-importing a cloud backup keeps each log’s location and message', async ({ page, request, baseURL }) => {
+test('user re-importing a cloud backup keeps each log’s location and message', async ({
+  page,
+  request,
+  baseURL,
+}) => {
   const settings = new SettingsPage(page)
 
   // Given: two logs — one at the default location, one at Fixture Office —
@@ -518,14 +563,20 @@ test('user re-importing a cloud backup keeps each log’s location and message',
   ])
 })
 
-test('user copying a local pantry to cloud keeps every location’s stock', async ({ page, request, baseURL }) => {
+test('user copying a local pantry to cloud keeps every location’s stock', async ({
+  page,
+  request,
+  baseURL,
+}) => {
   const settings = new SettingsPage(page)
 
   // Given: a LOCAL backup whose default location is the `'local'` sentinel and
   // whose other two locations carry UUID ids. The remap must rewrite the first
   // and keep the other two.
   expect(localFixture.locations[0].id).toBe('local')
-  expect(localFixture.shoppingCarts[0].id).toBe(`${LOCAL_OFFICE_ID}:${LOCAL_VENDOR_ID}`)
+  expect(localFixture.shoppingCarts[0].id).toBe(
+    `${LOCAL_OFFICE_ID}:${LOCAL_VENDOR_ID}`,
+  )
 
   // When: it is imported into cloud mode (beforeEach left the account empty)
   await settings.navigateTo()
@@ -542,7 +593,12 @@ test('user copying a local pantry to cloud keeps every location’s stock', asyn
     LOCAL_ITEM_ID,
     DESTINATION_DEFAULT_LOCATION_NAME,
   )
-  await expectStockNotCollapsedOntoDefault(page, request, baseURL, LOCAL_ITEM_ID)
+  await expectStockNotCollapsedOntoDefault(
+    page,
+    request,
+    baseURL,
+    LOCAL_ITEM_ID,
+  )
 
   // And the cart the local pantry kept at its Office is at the Office here
   expect(await cartCountAt(request, LOCAL_ITEM_ID, LOCAL_OFFICE_ID)).toBe(1)

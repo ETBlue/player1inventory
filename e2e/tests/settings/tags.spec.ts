@@ -1,10 +1,10 @@
-import { test, expect, type Page } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
 import { CLOUD_WEB_URL } from '../../constants'
 import { cleanupCloudData } from '../../helpers/cloudTeardown'
 import { ItemPage } from '../../pages/ItemPage'
 import { PantryPage } from '../../pages/PantryPage'
-import { TagsPage } from '../../pages/settings/TagsPage'
 import { TagDetailPage } from '../../pages/settings/TagDetailPage'
+import { TagsPage } from '../../pages/settings/TagsPage'
 
 // Seed tag types and tags directly into IndexedDB.
 // Navigate to '/' first so Dexie initialises the DB schema.
@@ -62,7 +62,11 @@ async function seedTags(
 }
 
 // Seed an item directly into IndexedDB (used for Items tab test in local mode)
-async function seedItem(page: Page, name: string, tagIds: string[] = []): Promise<string> {
+async function seedItem(
+  page: Page,
+  name: string,
+  tagIds: string[] = [],
+): Promise<string> {
   const itemId = crypto.randomUUID()
   const now = new Date().toISOString()
 
@@ -133,12 +137,17 @@ test.afterEach(async ({ page, request, baseURL }) => {
       await Promise.all(
         dbs.map(({ name }) => {
           return new Promise<void>((resolve, reject) => {
-            if (!name) { resolve(); return }
+            if (!name) {
+              resolve()
+              return
+            }
             const req = indexedDB.deleteDatabase(name)
             req.onsuccess = () => resolve()
             req.onerror = () => reject(req.error)
             req.onblocked = () => {
-              console.warn(`[afterEach] IndexedDB delete blocked for "${name}"...`)
+              console.warn(
+                `[afterEach] IndexedDB delete blocked for "${name}"...`,
+              )
               resolve()
             }
           })
@@ -150,7 +159,9 @@ test.afterEach(async ({ page, request, baseURL }) => {
   }
 })
 
-test.skip('user can move a tag to a different type via drag-and-drop', async ({ page }) => {
+test.skip('user can move a tag to a different type via drag-and-drop', async ({
+  page,
+}) => {
   // SKIPPED: dnd-kit uses a PointerSensor that doesn't activate reliably via
   // Playwright's synthetic mouse events in headless Chromium. The drag wrapper
   // has role="button" (from dnd-kit) but the 8px activation threshold is not
@@ -160,7 +171,10 @@ test.skip('user can move a tag to a different type via drag-and-drop', async ({ 
   // Given: two tag types "Protein" and "Grain", with tag "Rice" under "Grain"
   await seedTags(
     page,
-    [{ name: 'Grain', color: 'amber' }, { name: 'Protein', color: 'green' }],
+    [
+      { name: 'Grain', color: 'amber' },
+      { name: 'Protein', color: 'green' },
+    ],
     [{ name: 'Rice', typeIndex: 0 }],
   )
 
@@ -185,7 +199,10 @@ test.skip('user can move a tag to a different type via drag-and-drop', async ({ 
   await expect(tagsPage.getTagBadge('Rice')).toBeVisible()
 })
 
-test('user can edit tag name and type on Info tab', async ({ page, baseURL }) => {
+test('user can edit tag name and type on Info tab', async ({
+  page,
+  baseURL,
+}) => {
   const detail = new TagDetailPage(page)
   const tagsPage = new TagsPage(page)
 
@@ -217,7 +234,10 @@ test('user can edit tag name and type on Info tab', async ({ page, baseURL }) =>
     // Local: seed directly into IndexedDB and navigate by ID
     const { tagIds } = await seedTags(
       page,
-      [{ name: 'Protein', color: 'green' }, { name: 'Dairy', color: 'blue' }],
+      [
+        { name: 'Protein', color: 'green' },
+        { name: 'Dairy', color: 'blue' },
+      ],
       [{ name: 'Chicken', typeIndex: 0 }],
     )
     tagId = tagIds[0]
@@ -242,7 +262,10 @@ test('user can edit tag name and type on Info tab', async ({ page, baseURL }) =>
   await expect(page.getByLabel('Name')).toHaveValue('Turkey')
 })
 
-test('user can assign and unassign an item on Items tab', async ({ page, baseURL }) => {
+test('user can assign and unassign an item on Items tab', async ({
+  page,
+  baseURL,
+}) => {
   const detail = new TagDetailPage(page)
 
   let tagId: string
@@ -402,7 +425,9 @@ test('user can create a tag type', async ({ page }) => {
 })
 
 test.describe('tag type creation via Enter key', () => {
-  test('tag type dialog submits on Enter key press in Name input', async ({ page }) => {
+  test('tag type dialog submits on Enter key press in Name input', async ({
+    page,
+  }) => {
     const tags = new TagsPage(page)
 
     // Given: the tags settings page is open and the New Tag Type dialog is open
@@ -425,7 +450,9 @@ test.describe('tag type creation via Enter key', () => {
 })
 
 test.describe('tag type dialog closes after button submit', () => {
-  test('tag type dialog closes after successful creation via Save button', async ({ page }) => {
+  test('tag type dialog closes after successful creation via Save button', async ({
+    page,
+  }) => {
     const tags = new TagsPage(page)
 
     // Given: the tags settings page is open and the New Tag Type dialog is open
@@ -447,7 +474,10 @@ test.describe('tag type dialog closes after button submit', () => {
 })
 
 test.describe('new tag from item tags tab', () => {
-  test('user can create a new tag from item tags tab and it is automatically assigned to the item', async ({ page, baseURL }) => {
+  test('user can create a new tag from item tags tab and it is automatically assigned to the item', async ({
+    page,
+    baseURL,
+  }) => {
     const pantry = new PantryPage(page)
     const item = new ItemPage(page)
     const tagsPage = new TagsPage(page)
@@ -491,16 +521,22 @@ test.describe('new tag from item tags tab', () => {
     // And: click "New Tag" under the "Fruit" section, type "Fresh", submit.
     // Use exact: true so "New Tag" does not also match the "New Tag Type" button
     // (both live on /items/$id/relation/tags — src/routes/items/$id/relation/tags.tsx).
-    await page.getByRole('button', { name: 'New Tag', exact: true }).first().click()
+    await page
+      .getByRole('button', { name: 'New Tag', exact: true })
+      .first()
+      .click()
     // AddNameDialog input: label "Name" (src/components/AddNameDialog/index.tsx:41)
     await page.getByRole('dialog').getByLabel('Name').fill('Fresh')
-    await page.getByRole('dialog').getByRole('button', { name: /add tag/i }).click()
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /add tag/i })
+      .click()
 
     // Then: the "Fresh" badge is visible and in a selected/pressed state (aria-pressed=true)
     // Tag badges on item tags tab: role="button" aria-pressed={isSelected}
     // (src/routes/items/$id/relation/tags.tsx)
     await expect(
-      page.getByRole('button', { name: /fresh/i, pressed: true })
+      page.getByRole('button', { name: /fresh/i, pressed: true }),
     ).toBeVisible()
 
     // And: persists after navigating away and back to the tags tab
@@ -509,13 +545,16 @@ test.describe('new tag from item tags tab', () => {
 
     // The "Fresh" badge should still be selected (assigned to the item)
     await expect(
-      page.getByRole('button', { name: /fresh/i, pressed: true })
+      page.getByRole('button', { name: /fresh/i, pressed: true }),
     ).toBeVisible()
   })
 })
 
 test.describe('tag item count after tag assignment', () => {
-  test('tag item count updates after tag is assigned to an item', async ({ page, baseURL }) => {
+  test('tag item count updates after tag is assigned to an item', async ({
+    page,
+    baseURL,
+  }) => {
     const tagsPage = new TagsPage(page)
     const detail = new TagDetailPage(page)
     const pantry = new PantryPage(page)
@@ -561,7 +600,9 @@ test.describe('tag item count after tag assignment', () => {
     await tagsPage.navigateTo()
     // Confirm count is 0 — delete dialog says "no item is using it"
     await tagsPage.clickDeleteTag('Fresh')
-    await expect(tagsPage.getDeleteDialog()).toContainText('no item is using it')
+    await expect(tagsPage.getDeleteDialog()).toContainText(
+      'no item is using it',
+    )
     await tagsPage.cancelDeleteDialog()
 
     // When: SPA-navigate to tag detail page (keeps TanStack Query cache alive)
@@ -594,7 +635,9 @@ test.describe('tag item count after tag assignment', () => {
     await tagsPage.clickDeleteTag('Fresh')
     // Dialog description: "We are about to delete "Fresh", removing it from 1 item."
     // (src/i18n/locales/en.json: settings.tags.tag.deleteWithItems_one)
-    await expect(tagsPage.getDeleteDialog()).toContainText('removing it from 1 item')
+    await expect(tagsPage.getDeleteDialog()).toContainText(
+      'removing it from 1 item',
+    )
 
     // Cancel — do not delete
     await tagsPage.cancelDeleteDialog()
@@ -602,7 +645,10 @@ test.describe('tag item count after tag assignment', () => {
 })
 
 test.describe('tag item count after item deletion', () => {
-  test('tag item count updates after item is deleted', async ({ page, baseURL }) => {
+  test('tag item count updates after item is deleted', async ({
+    page,
+    baseURL,
+  }) => {
     const tagsPage = new TagsPage(page)
     const pantry = new PantryPage(page)
     const item = new ItemPage(page)
@@ -627,9 +673,11 @@ test.describe('tag item count after item deletion', () => {
       await item.save()
       await item.navigateToTab('tags')
       // Toggle the "Perishable" badge to assign it (initially unselected)
-      await page.getByRole('button', { name: /perishable/i, pressed: false }).click()
+      await page
+        .getByRole('button', { name: /perishable/i, pressed: false })
+        .click()
       await expect(
-        page.getByRole('button', { name: /perishable/i, pressed: true })
+        page.getByRole('button', { name: /perishable/i, pressed: true }),
       ).toBeVisible()
     } else {
       // Local: seed tag type + tag, then seed item with the tag already assigned
@@ -653,7 +701,9 @@ test.describe('tag item count after item deletion', () => {
     await tagsPage.clickDeleteTag('Perishable')
     // Dialog description says: "We are about to delete "Perishable", removing it from 1 item."
     // (src/i18n/locales/en.json: settings.tags.tag.deleteWithItems_one)
-    await expect(tagsPage.getDeleteDialog()).toContainText('removing it from 1 item')
+    await expect(tagsPage.getDeleteDialog()).toContainText(
+      'removing it from 1 item',
+    )
 
     // Cancel so we don't delete the tag
     await tagsPage.cancelDeleteDialog()
@@ -670,7 +720,9 @@ test.describe('tag item count after item deletion', () => {
     await tagsPage.clickDeleteTag('Perishable')
     // Dialog now says: "It's safe to delete "Perishable" since no item is using it."
     // (src/i18n/locales/en.json: settings.tags.tag.deleteNoItems)
-    await expect(tagsPage.getDeleteDialog()).toContainText("no item is using it")
+    await expect(tagsPage.getDeleteDialog()).toContainText(
+      'no item is using it',
+    )
 
     // Cancel — do not actually delete
     await tagsPage.cancelDeleteDialog()
@@ -747,7 +799,10 @@ test('user can create a tag with a parent tag', async ({ page, baseURL }) => {
     await tagsPage.navigateTo()
     await tagsPage.clickNewTagType()
     await page.getByRole('dialog').getByLabel('Name').fill('Protein')
-    await page.getByRole('dialog').getByRole('button', { name: /save/i }).click()
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /save/i })
+      .click()
     await expect(tagsPage.getTagTypeCard('Protein')).toBeVisible()
 
     await tagsPage.clickNewTag('Protein')
@@ -781,12 +836,13 @@ test('user can create a tag with a parent tag', async ({ page, baseURL }) => {
   // Child tags (depth >= 1) are drag-disabled, so no role="button" from dnd-kit.
   // Match by text content rendered inside the Badge div: "{name} (0)"
   // (src/routes/settings/tags/index.tsx — DraggableTagBadge renders TagBadge inside a div)
-  await expect(
-    page.getByText(/^Grilled Chicken \(\d+\)$/)
-  ).toBeVisible()
+  await expect(page.getByText(/^Grilled Chicken \(\d+\)$/)).toBeVisible()
 })
 
-test('user can delete a parent tag with cascade (deletes child tags too)', async ({ page, baseURL }) => {
+test('user can delete a parent tag with cascade (deletes child tags too)', async ({
+  page,
+  baseURL,
+}) => {
   const tagsPage = new TagsPage(page)
 
   if (baseURL === CLOUD_WEB_URL) {
@@ -794,7 +850,10 @@ test('user can delete a parent tag with cascade (deletes child tags too)', async
     await tagsPage.navigateTo()
     await tagsPage.clickNewTagType()
     await page.getByRole('dialog').getByLabel('Name').fill('Protein')
-    await page.getByRole('dialog').getByRole('button', { name: /save/i }).click()
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /save/i })
+      .click()
     await expect(tagsPage.getTagTypeCard('Protein')).toBeVisible()
 
     // Create parent tag "Chicken"
@@ -852,7 +911,9 @@ test('user can delete a parent tag with cascade (deletes child tags too)', async
   // Wait for the tag detail layout to render — the tag name appears in the header h1
   // (src/routes/settings/tags/$id.tsx:106)
   await page.waitForSelector('h1')
-  await expect(page.locator('h1')).toContainText('Chicken', { ignoreCase: true })
+  await expect(page.locator('h1')).toContainText('Chicken', {
+    ignoreCase: true,
+  })
 
   // And: clicks the "Delete" button — which opens the cascade/orphan dialog
   // (only visible when the tag has children; rendered as Button variant="destructive-ghost")
@@ -862,7 +923,9 @@ test('user can delete a parent tag with cascade (deletes child tags too)', async
   // Then: the "This tag has child tags" dialog appears
   // (src/i18n/locales/en.json: settings.tags.tag.deleteParentTitle)
   await expect(page.getByRole('alertdialog')).toBeVisible()
-  await expect(page.getByRole('alertdialog')).toContainText('This tag has child tags')
+  await expect(page.getByRole('alertdialog')).toContainText(
+    'This tag has child tags',
+  )
 
   // When: user clicks "Delete all child tags" (cascade option)
   // (src/i18n/locales/en.json: settings.tags.tag.deleteParentCascade = "Delete all child tags")

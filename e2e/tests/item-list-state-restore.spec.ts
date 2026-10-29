@@ -1,11 +1,11 @@
-import { test, expect } from '@playwright/test'
 import type { APIRequestContext } from '@playwright/test'
-import { PantryPage } from '../pages/PantryPage'
+import { expect, test } from '@playwright/test'
 import { CLOUD_WEB_URL } from '../constants'
-import { cleanupCloudData } from '../helpers/cloudTeardown'
-import { makeGql } from '../utils/cloud'
 import { ensureCloudDefaultLocation } from '../helpers/cloudSeed'
+import { cleanupCloudData } from '../helpers/cloudTeardown'
 import { splitInlineStock } from '../helpers/locationSeed'
+import { PantryPage } from '../pages/PantryPage'
+import { makeGql } from '../utils/cloud'
 
 // Seed tag types directly into IndexedDB.
 // Clears existing tagTypes and tags first to avoid conflicts with Dexie's default
@@ -78,14 +78,20 @@ async function seedTagTypes(
 async function seedTagsForAllItems(
   page: import('@playwright/test').Page,
   tags: { typeIndex: number; name: string }[],
-  options?: { request?: APIRequestContext; baseURL?: string; tagTypeIds?: string[] },
+  options?: {
+    request?: APIRequestContext
+    baseURL?: string
+    tagTypeIds?: string[]
+  },
 ) {
   if (options?.baseURL === CLOUD_WEB_URL && options.request) {
     const gql = makeGql(options.request)
     const tagTypeIds = options.tagTypeIds ?? []
 
     // Get all item IDs
-    const { items } = await gql<{ items: { id: string }[] }>('query { items { id } }')
+    const { items } = await gql<{ items: { id: string }[] }>(
+      'query { items { id } }',
+    )
 
     // Create tags
     const tagIds: string[] = []
@@ -176,18 +182,25 @@ test.afterEach(async ({ page, request, baseURL }) => {
   await page.goto('/')
   await page.evaluate(async () => {
     const dbs = await indexedDB.databases()
-    await Promise.all(dbs.map(({ name }) => {
-      return new Promise<void>((resolve, reject) => {
-        if (!name) { resolve(); return }
-        const req = indexedDB.deleteDatabase(name)
-        req.onsuccess = () => resolve()
-        req.onerror = () => reject(req.error)
-        req.onblocked = () => {
-          console.warn(`[afterEach] IndexedDB delete blocked for "${name}" — data may persist`)
-          resolve()
-        }
-      })
-    }))
+    await Promise.all(
+      dbs.map(({ name }) => {
+        return new Promise<void>((resolve, reject) => {
+          if (!name) {
+            resolve()
+            return
+          }
+          const req = indexedDB.deleteDatabase(name)
+          req.onsuccess = () => resolve()
+          req.onerror = () => reject(req.error)
+          req.onblocked = () => {
+            console.warn(
+              `[afterEach] IndexedDB delete blocked for "${name}" — data may persist`,
+            )
+            resolve()
+          }
+        })
+      }),
+    )
     localStorage.clear()
     sessionStorage.clear()
   })
@@ -286,11 +299,18 @@ async function seedItems(
   await splitInlineStock(page)
 }
 
-test('user can navigate to item detail and back with search state preserved', async ({ page, request, baseURL }) => {
+test('user can navigate to item detail and back with search state preserved', async ({
+  page,
+  request,
+  baseURL,
+}) => {
   const pantry = new PantryPage(page)
 
   // Given items exist including "Milk"
-  await seedItems(page, ['Apple', 'Banana', 'Milk', 'Cheese', 'Bread'], { request, baseURL })
+  await seedItems(page, ['Apple', 'Banana', 'Milk', 'Cheese', 'Bread'], {
+    request,
+    baseURL,
+  })
   await pantry.navigateTo()
   await expect(pantry.getItemCard('Milk')).toBeVisible()
 
@@ -316,7 +336,11 @@ test('user can navigate to item detail and back with search state preserved', as
   await expect(page.getByPlaceholder('Search items...')).toHaveValue('milk')
 })
 
-test('user can navigate to item detail and back with sort state preserved', async ({ page, request, baseURL }) => {
+test('user can navigate to item detail and back with sort state preserved', async ({
+  page,
+  request,
+  baseURL,
+}) => {
   const pantry = new PantryPage(page)
 
   // Given a few items exist
@@ -341,25 +365,41 @@ test('user can navigate to item detail and back with sort state preserved', asyn
 
   // Then sort preference is still "name" in localStorage (persisted by useSortFilter)
   // pantry uses storageKey='pantry', so key is 'pantry-sort-prefs'
-  const sortPrefs = await page.evaluate(() => localStorage.getItem('pantry-sort-prefs'))
+  const sortPrefs = await page.evaluate(() =>
+    localStorage.getItem('pantry-sort-prefs'),
+  )
   expect(sortPrefs).not.toBeNull()
   expect(JSON.parse(sortPrefs!).sortBy).toBe('name')
 })
 
-test('user can navigate to item detail and back with scroll position restored', async ({ page, request, baseURL }) => {
+test('user can navigate to item detail and back with scroll position restored', async ({
+  page,
+  request,
+  baseURL,
+}) => {
   // Seeds 40 items + tags (via GraphQL in cloud mode) then exercises scroll
   // restoration — give it extra time so cloud seeding doesn't race the timeout.
   test.slow()
   const pantry = new PantryPage(page)
 
   // Given many items exist (enough to make the page scrollable), each with tags
-  const itemNames = Array.from({ length: 40 }, (_, i) => `Item ${String(i + 1).padStart(2, '0')}`)
+  const itemNames = Array.from(
+    { length: 40 },
+    (_, i) => `Item ${String(i + 1).padStart(2, '0')}`,
+  )
   await seedItems(page, itemNames, { request, baseURL })
-  const tagTypeIds = await seedTagTypes(page, ['Category', 'Location'], { request, baseURL })
-  await seedTagsForAllItems(page, [
-    { typeIndex: 0, name: 'Pantry' },
-    { typeIndex: 1, name: 'Fridge' },
-  ], { request, baseURL, tagTypeIds })
+  const tagTypeIds = await seedTagTypes(page, ['Category', 'Location'], {
+    request,
+    baseURL,
+  })
+  await seedTagsForAllItems(
+    page,
+    [
+      { typeIndex: 0, name: 'Pantry' },
+      { typeIndex: 1, name: 'Fridge' },
+    ],
+    { request, baseURL, tagTypeIds },
+  )
   await pantry.navigateTo()
   await expect(pantry.getItemCard('Item 01')).toBeVisible()
 
@@ -385,7 +425,9 @@ test('user can navigate to item detail and back with scroll position restored', 
   })
 
   // When user scrolls the container to the bottom so the last item is in the viewport
-  await scroller.evaluate((el) => el.scrollTo({ top: el.scrollHeight, behavior: 'instant' }))
+  await scroller.evaluate((el) =>
+    el.scrollTo({ top: el.scrollHeight, behavior: 'instant' }),
+  )
   await scroller.evaluate((el) => {
     return new Promise<void>((resolve) => {
       const check = () => {
@@ -426,23 +468,38 @@ test('user can navigate to item detail and back with scroll position restored', 
   expect(scrollTopAfter).toBeLessThanOrEqual(scrollTopBefore + 30)
 })
 
-test('user can navigate to item detail and back with scroll position restored when filter panel is open', async ({ page, request, baseURL }) => {
+test('user can navigate to item detail and back with scroll position restored when filter panel is open', async ({
+  page,
+  request,
+  baseURL,
+}) => {
   // Seeds 40 items + tags (via GraphQL in cloud mode) then exercises scroll
   // restoration — give it extra time so cloud seeding doesn't race the timeout.
   test.slow()
   const pantry = new PantryPage(page)
 
   // Given many items exist, each with tags, and several tag types (for the filter panel)
-  const itemNames = Array.from({ length: 40 }, (_, i) => `Item ${String(i + 1).padStart(2, '0')}`)
+  const itemNames = Array.from(
+    { length: 40 },
+    (_, i) => `Item ${String(i + 1).padStart(2, '0')}`,
+  )
   await seedItems(page, itemNames, { request, baseURL })
   // Tag types populate the filter panel — seeded after items to maximise chance
   // of tagTypes query resolving after items query on back navigation
-  const tagTypeIds = await seedTagTypes(page, ['Category', 'Location', 'Diet', 'Store', 'Season'], { request, baseURL })
-  await seedTagsForAllItems(page, [
-    { typeIndex: 0, name: 'Pantry' },
-    { typeIndex: 1, name: 'Fridge' },
-    { typeIndex: 2, name: 'Vegan' },
-  ], { request, baseURL, tagTypeIds })
+  const tagTypeIds = await seedTagTypes(
+    page,
+    ['Category', 'Location', 'Diet', 'Store', 'Season'],
+    { request, baseURL },
+  )
+  await seedTagsForAllItems(
+    page,
+    [
+      { typeIndex: 0, name: 'Pantry' },
+      { typeIndex: 1, name: 'Fridge' },
+      { typeIndex: 2, name: 'Vegan' },
+    ],
+    { request, baseURL, tagTypeIds },
+  )
   await pantry.navigateTo()
   await expect(pantry.getItemCard('Item 01')).toBeVisible()
 
@@ -478,7 +535,9 @@ test('user can navigate to item detail and back with scroll position restored wh
   })
 
   // When user scrolls the container to the bottom so the last item is in the viewport
-  await scroller.evaluate((el) => el.scrollTo({ top: el.scrollHeight, behavior: 'instant' }))
+  await scroller.evaluate((el) =>
+    el.scrollTo({ top: el.scrollHeight, behavior: 'instant' }),
+  )
   await scroller.evaluate((el) => {
     return new Promise<void>((resolve) => {
       const check = () => {
@@ -512,7 +571,9 @@ test('user can navigate to item detail and back with scroll position restored wh
   await expect(page).toHaveURL(/tags=1/)
   // Use first() because with both ?filters=1 and ?tags=1 active, "Category" appears
   // in both the filter panel dropdown and the tags-visible row
-  await expect(page.getByRole('button', { name: 'Category' }).first()).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Category' }).first(),
+  ).toBeVisible()
 
   // Wait for items and scroll restoration to complete
   await expect(pantry.getItemCard('Item 01')).toBeVisible()

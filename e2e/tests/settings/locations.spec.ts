@@ -54,7 +54,9 @@ test.afterEach(async ({ page, request, baseURL }) => {
           req.onsuccess = () => resolve()
           req.onerror = () => reject(req.error)
           req.onblocked = () => {
-            console.warn(`[afterEach] IndexedDB delete blocked for "${name}"...`)
+            console.warn(
+              `[afterEach] IndexedDB delete blocked for "${name}"...`,
+            )
             resolve()
           }
         })
@@ -167,7 +169,9 @@ test('user can reorder locations', async ({ page }) => {
   // dnd-kit's PointerSensor has an 8px activation distance, so we move the
   // mouse in steps (down → small move to activate → move up → up).
   // Drag handle aria-label: settings.locations.dragToReorder = "Drag to reorder {{name}}"
-  const cabinHandle = page.getByRole('button', { name: 'Drag to reorder Cabin' })
+  const cabinHandle = page.getByRole('button', {
+    name: 'Drag to reorder Cabin',
+  })
   const officeHandle = page.getByRole('button', {
     name: 'Drag to reorder Office',
   })
@@ -187,24 +191,18 @@ test('user can reorder locations', async ({ page }) => {
     { steps: 5 },
   )
   // Then move above Office's row so Cabin sorts before it.
-  await page.mouse.move(
-    officeBox.x + officeBox.width / 2,
-    officeBox.y - 4,
-    { steps: 10 },
-  )
+  await page.mouse.move(officeBox.x + officeBox.width / 2, officeBox.y - 4, {
+    steps: 10,
+  })
   await page.mouse.up()
 
   // Then the order is Cabin before Office, and it persists across reload.
   await expect
-    .poll(async () =>
-      page.locator('text=/^(Office|Cabin)$/').allTextContents(),
-    )
+    .poll(async () => page.locator('text=/^(Office|Cabin)$/').allTextContents())
     .toEqual(['Cabin', 'Office'])
 
   await page.reload()
   await expect(page.getByText('Cabin')).toBeVisible()
-  const names = await page
-    .locator('text=/^(Office|Cabin)$/')
-    .allTextContents()
+  const names = await page.locator('text=/^(Office|Cabin)$/').allTextContents()
   expect(names.indexOf('Cabin')).toBeLessThan(names.indexOf('Office'))
 })

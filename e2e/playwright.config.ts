@@ -64,7 +64,8 @@ function selectedProjects(): ProjectName[] {
     }
 
     for (const value of values) {
-      if (!(PROJECT_NAMES as readonly string[]).includes(value)) return [...PROJECT_NAMES]
+      if (!(PROJECT_NAMES as readonly string[]).includes(value))
+        return [...PROJECT_NAMES]
       selected.add(value as ProjectName)
     }
   }
@@ -145,7 +146,9 @@ const SERVERS_BY_PROJECT: Record<ProjectName, (typeof LOCAL_WEB_SERVER)[]> = {
   pwa: [PWA_WEB_SERVER],
 }
 
-const webServer = [...new Set(selectedProjects().flatMap((name) => SERVERS_BY_PROJECT[name]))]
+const webServer = [
+  ...new Set(selectedProjects().flatMap((name) => SERVERS_BY_PROJECT[name])),
+]
 
 export default defineConfig({
   testDir: './tests',
@@ -176,7 +179,14 @@ export default defineConfig({
       // backend and never open a page — none has a local-mode counterpart. The
       // last one also acts as a SECOND synthetic user, which the web build
       // cannot be (VITE_E2E_TEST_USER_ID below is one value).
-      testIgnore: ['**/settings/import-export-cloud.spec.ts', '**/pwa-offline.spec.ts', '**/location-scoped-writes.spec.ts', '**/cleanup-endpoint.spec.ts', '**/cart-id-cross-user-leak.spec.ts', '**/settings/data-mode-migration.spec.ts'],
+      testIgnore: [
+        '**/settings/import-export-cloud.spec.ts',
+        '**/pwa-offline.spec.ts',
+        '**/location-scoped-writes.spec.ts',
+        '**/cleanup-endpoint.spec.ts',
+        '**/cart-id-cross-user-leak.spec.ts',
+        '**/settings/data-mode-migration.spec.ts',
+      ],
       use: { ...devices['Desktop Chrome'], baseURL: LOCAL_WEB_URL },
     },
     {
@@ -198,7 +208,33 @@ export default defineConfig({
           ],
         },
       },
-      testMatch: ['**/item-management.spec.ts', '**/settings/tags.spec.ts', '**/settings/vendors.spec.ts', '**/settings/recipes.spec.ts', '**/cooking.spec.ts', '**/item-list-state-restore.spec.ts', '**/tests/shopping.spec.ts', '**/tests/item-logs.spec.ts', '**/settings/import-export-cloud.spec.ts', '**/settings/import-strategies.spec.ts', '**/settings/data-mode-migration.spec.ts', '**/settings/locations.spec.ts', '**/location-switcher.spec.ts', '**/location-not-stocked-here.spec.ts', '**/location-scoped-writes.spec.ts', '**/recipes-group.spec.ts', '**/vendors-group.spec.ts', '**/tests/shelves.spec.ts', '**/settings/shelves.spec.ts', '**/settings-global-pages.spec.ts', '**/item-stock-input.spec.ts', '**/item-stock-pager.spec.ts', '**/cleanup-endpoint.spec.ts', '**/cart-id-cross-user-leak.spec.ts', '**/unified-item-search.spec.ts'],
+      testMatch: [
+        '**/item-management.spec.ts',
+        '**/settings/tags.spec.ts',
+        '**/settings/vendors.spec.ts',
+        '**/settings/recipes.spec.ts',
+        '**/cooking.spec.ts',
+        '**/item-list-state-restore.spec.ts',
+        '**/tests/shopping.spec.ts',
+        '**/tests/item-logs.spec.ts',
+        '**/settings/import-export-cloud.spec.ts',
+        '**/settings/import-strategies.spec.ts',
+        '**/settings/data-mode-migration.spec.ts',
+        '**/settings/locations.spec.ts',
+        '**/location-switcher.spec.ts',
+        '**/location-not-stocked-here.spec.ts',
+        '**/location-scoped-writes.spec.ts',
+        '**/recipes-group.spec.ts',
+        '**/vendors-group.spec.ts',
+        '**/tests/shelves.spec.ts',
+        '**/settings/shelves.spec.ts',
+        '**/settings-global-pages.spec.ts',
+        '**/item-stock-input.spec.ts',
+        '**/item-stock-pager.spec.ts',
+        '**/cleanup-endpoint.spec.ts',
+        '**/cart-id-cross-user-leak.spec.ts',
+        '**/unified-item-search.spec.ts',
+      ],
     },
     {
       // The dev server has no service worker. It only exists in a real build,

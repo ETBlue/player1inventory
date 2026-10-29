@@ -1,4 +1,4 @@
-import type { Page, Locator } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import { withSteps } from './step'
 
 export class ShoppingPage {
@@ -71,7 +71,10 @@ export class ShoppingPage {
   async confirmCheckout() {
     // Checkout dialog title: "Complete shopping trip?"
     // Confirm button text: "Confirm" scoped inside alertdialog
-    await this.page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click()
+    await this.page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: 'Confirm' })
+      .click()
   }
 
   async searchInCart(vendorId: string, query: string) {

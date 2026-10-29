@@ -17,7 +17,10 @@ export class SettingsPage {
     // (src/components/tag/TagTypeInfoForm/TagTypeInfoForm.tsx)
     await this.page.getByLabel('Name').fill(name)
     // Save button submits the form
-    await this.page.getByRole('dialog').getByRole('button', { name: /save/i }).click()
+    await this.page
+      .getByRole('dialog')
+      .getByRole('button', { name: /save/i })
+      .click()
     // Wait for the tag type card heading to appear.
     // Use .first() to avoid strict-mode violations when a same-named default tag type is already seeded.
     await this.page.getByRole('heading', { name, level: 2 }).first().waitFor()
@@ -39,7 +42,9 @@ export class SettingsPage {
 
   async triggerImport(filePath: string): Promise<void> {
     // Hidden file input in ImportCard (apps/web/src/components/settings/ImportCard/index.tsx)
-    await this.page.locator('input[type="file"][accept=".json"]').setInputFiles(filePath)
+    await this.page
+      .locator('input[type="file"][accept=".json"]')
+      .setInputFiles(filePath)
   }
 
   /**
@@ -82,11 +87,15 @@ export class SettingsPage {
     if (mode === 'local') {
       // Local import fires toast.success then resets to idle — no inline text shown
       // t('settings.import.success') = "Data imported successfully"
-      await this.page.getByText('Data imported successfully').waitFor({ state: 'visible', timeout: 15000 })
+      await this.page
+        .getByText('Data imported successfully')
+        .waitFor({ state: 'visible', timeout: 15000 })
     } else {
       // Cloud import sets phase:'done' which renders inline text for 2 seconds
       // t('settings.import.importDone') = "Import complete."
-      await this.page.getByText('Import complete.').waitFor({ state: 'visible', timeout: 30000 })
+      await this.page
+        .getByText('Import complete.')
+        .waitFor({ state: 'visible', timeout: 30000 })
     }
   }
 }

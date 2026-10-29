@@ -17,7 +17,9 @@ export class OnboardingPage {
   async waitForWelcomeScreen() {
     // OnboardingWelcome heading: t('appName') = "Player 1 Inventory"
     // (src/components/onboarding/OnboardingWelcome/index.tsx)
-    await this.page.getByRole('heading', { name: 'Player 1 Inventory' }).waitFor()
+    await this.page
+      .getByRole('heading', { name: 'Player 1 Inventory' })
+      .waitFor()
   }
 
   async waitForPantryPage() {
@@ -35,7 +37,9 @@ export class OnboardingPage {
   async clickChooseTemplate() {
     // t('onboarding.welcome.chooseTemplate') = "Choose from template"
     // (src/components/onboarding/OnboardingWelcome/index.tsx)
-    await this.page.getByRole('button', { name: 'Choose from a template...' }).click()
+    await this.page
+      .getByRole('button', { name: 'Choose from a template...' })
+      .click()
   }
 
   async clickConfirm() {

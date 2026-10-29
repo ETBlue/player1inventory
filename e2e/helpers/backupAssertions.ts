@@ -1,5 +1,5 @@
-import { expect } from '@playwright/test'
 import type { APIRequestContext, Page } from '@playwright/test'
+import { expect } from '@playwright/test'
 import { readLocations, readStocksForItem } from './stockReadback'
 
 // The location half of the import/export round-trip checks, shared by
@@ -127,7 +127,11 @@ export const FIXTURE_STOCK_BY_LOCATION: Record<
   { packedQuantity: number; targetQuantity: number; refillThreshold: number }
 > = {
   DEFAULT: { packedQuantity: 2, targetQuantity: 4, refillThreshold: 1 },
-  'Fixture Office': { packedQuantity: 7, targetQuantity: 9, refillThreshold: 2 },
+  'Fixture Office': {
+    packedQuantity: 7,
+    targetQuantity: 9,
+    refillThreshold: 2,
+  },
   'Fixture Cabin': { packedQuantity: 3, targetQuantity: 5, refillThreshold: 0 },
 }
 

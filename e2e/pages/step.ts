@@ -43,7 +43,8 @@ export function withSteps<T extends object>(obj: T): T {
   for (const key of Object.getOwnPropertyNames(proto)) {
     if (key === 'constructor') continue
     const fn = Object.getOwnPropertyDescriptor(proto, key)?.value
-    if (typeof fn !== 'function' || fn.constructor.name !== 'AsyncFunction') continue
+    if (typeof fn !== 'function' || fn.constructor.name !== 'AsyncFunction')
+      continue
     Object.defineProperty(obj, key, {
       configurable: true,
       writable: true,

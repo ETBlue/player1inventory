@@ -1,11 +1,16 @@
-import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
+import {
+  type APIRequestContext,
+  expect,
+  type Page,
+  test,
+} from '@playwright/test'
 import { CLOUD_WEB_URL } from '../../constants'
 import { cleanupCloudData } from '../../helpers/cloudTeardown'
-import { makeGql } from '../../utils/cloud'
 import { ItemPage } from '../../pages/ItemPage'
 import { PantryPage } from '../../pages/PantryPage'
 import { RecipeDetailPage } from '../../pages/settings/RecipeDetailPage'
 import { RecipesPage } from '../../pages/settings/RecipesPage'
+import { makeGql } from '../../utils/cloud'
 
 // Seed a recipe (and optionally items) directly into IndexedDB.
 // Navigate to '/' first so Dexie initialises the DB schema.
@@ -136,7 +141,10 @@ async function seedRecipeViaApi(
     }`,
     {
       name: recipeName,
-      items: items.map((item, i) => ({ itemId: itemIds[i], defaultAmount: item.defaultAmount })),
+      items: items.map((item, i) => ({
+        itemId: itemIds[i],
+        defaultAmount: item.defaultAmount,
+      })),
     },
   )
 
@@ -173,7 +181,9 @@ test.afterEach(async ({ page, request, baseURL }) => {
             req.onsuccess = () => resolve()
             req.onerror = () => reject(req.error)
             req.onblocked = () => {
-              console.warn(`[afterEach] IndexedDB delete blocked for "${name}"...`)
+              console.warn(
+                `[afterEach] IndexedDB delete blocked for "${name}"...`,
+              )
               resolve()
             }
           })
@@ -197,7 +207,11 @@ test('user can create a recipe', async ({ page }) => {
   await recipes.clickSave()
 
   // Wait for navigation to the detail page after dialog submit
-  await page.waitForURL((url) => url.pathname.startsWith('/settings/recipes/') && url.pathname !== '/settings/recipes/new')
+  await page.waitForURL(
+    (url) =>
+      url.pathname.startsWith('/settings/recipes/') &&
+      url.pathname !== '/settings/recipes/new',
+  )
 
   // Then: navigate back to list to verify the recipe appears
   await recipes.navigateTo()
@@ -213,7 +227,11 @@ test('user can delete a recipe', async ({ page, baseURL }) => {
     await recipes.clickNewRecipe()
     await recipes.fillRecipeName('Pancakes')
     await recipes.clickSave()
-    await page.waitForURL((url) => url.pathname.startsWith('/settings/recipes/') && url.pathname !== '/settings/recipes/new')
+    await page.waitForURL(
+      (url) =>
+        url.pathname.startsWith('/settings/recipes/') &&
+        url.pathname !== '/settings/recipes/new',
+    )
     await recipes.navigateTo()
   } else {
     // Local: seed via IndexedDB and navigate
@@ -246,7 +264,10 @@ test('user can navigate to recipe detail after creating', async ({ page }) => {
   await expect(page).toHaveURL(/\/settings\/recipes\/[^/]+$/)
 })
 
-test('user can assign and unassign an item on Items tab', async ({ page, baseURL }) => {
+test('user can assign and unassign an item on Items tab', async ({
+  page,
+  baseURL,
+}) => {
   const detail = new RecipeDetailPage(page)
 
   let recipeId: string
@@ -261,7 +282,11 @@ test('user can assign and unassign an item on Items tab', async ({ page, baseURL
     await recipes.clickNewRecipe()
     await recipes.fillRecipeName('Pancakes')
     await recipes.clickSave()
-    await page.waitForURL((url) => url.pathname.startsWith('/settings/recipes/') && url.pathname !== '/settings/recipes/new')
+    await page.waitForURL(
+      (url) =>
+        url.pathname.startsWith('/settings/recipes/') &&
+        url.pathname !== '/settings/recipes/new',
+    )
     recipeId = new URL(page.url()).pathname.split('/').filter(Boolean).pop()!
 
     await pantry.navigateTo()
@@ -294,18 +319,26 @@ test('user can assign and unassign an item on Items tab', async ({ page, baseURL
   await expect(detail.getItemCheckbox('Eggs')).toBeVisible()
 })
 
-test('user can adjust default amount for an assigned item', async ({ page, request, baseURL }) => {
+test('user can adjust default amount for an assigned item', async ({
+  page,
+  request,
+  baseURL,
+}) => {
   const detail = new RecipeDetailPage(page)
 
   let recipeId: string
 
   if (baseURL === CLOUD_WEB_URL) {
     // Cloud: seed via GraphQL API to set defaultAmount=2 precisely
-    const result = await seedRecipeViaApi(request, 'Pancakes', [{ name: 'Flour', defaultAmount: 2 }])
+    const result = await seedRecipeViaApi(request, 'Pancakes', [
+      { name: 'Flour', defaultAmount: 2 },
+    ])
     recipeId = result.recipeId
   } else {
     // Local: seed via IndexedDB
-    const result = await seedRecipe(page, 'Pancakes', [{ name: 'Flour', defaultAmount: 2 }])
+    const result = await seedRecipe(page, 'Pancakes', [
+      { name: 'Flour', defaultAmount: 2 },
+    ])
     recipeId = result.recipeId
   }
 
@@ -331,7 +364,10 @@ test('user can adjust default amount for an assigned item', async ({ page, reque
 })
 
 test.describe('recipe creation dialog from item recipes tab', () => {
-  test('recipe creation dialog closes after creating a new recipe from item recipes tab', async ({ page, baseURL }) => {
+  test('recipe creation dialog closes after creating a new recipe from item recipes tab', async ({
+    page,
+    baseURL,
+  }) => {
     const pantry = new PantryPage(page)
     const item = new ItemPage(page)
 
@@ -382,7 +418,11 @@ test('user can edit recipe name on Info tab', async ({ page, baseURL }) => {
     await recipes.clickNewRecipe()
     await recipes.fillRecipeName('Pancakes')
     await recipes.clickSave()
-    await page.waitForURL((url) => url.pathname.startsWith('/settings/recipes/') && url.pathname !== '/settings/recipes/new')
+    await page.waitForURL(
+      (url) =>
+        url.pathname.startsWith('/settings/recipes/') &&
+        url.pathname !== '/settings/recipes/new',
+    )
     recipeId = new URL(page.url()).pathname.split('/').filter(Boolean).pop()!
   } else {
     // Local: seed via IndexedDB and navigate by ID
@@ -408,7 +448,10 @@ test('user can edit recipe name on Info tab', async ({ page, baseURL }) => {
 })
 
 test.describe('recipe item count after item assignment', () => {
-  test('recipe item count updates after item is assigned to a recipe', async ({ page, baseURL }) => {
+  test('recipe item count updates after item is assigned to a recipe', async ({
+    page,
+    baseURL,
+  }) => {
     const recipes = new RecipesPage(page)
     const detail = new RecipeDetailPage(page)
 
@@ -424,7 +467,11 @@ test.describe('recipe item count after item assignment', () => {
       await recipes.clickNewRecipe()
       await recipes.fillRecipeName('Pancakes')
       await recipes.clickSave()
-      await page.waitForURL((url) => url.pathname.startsWith('/settings/recipes/') && url.pathname !== '/settings/recipes/new')
+      await page.waitForURL(
+        (url) =>
+          url.pathname.startsWith('/settings/recipes/') &&
+          url.pathname !== '/settings/recipes/new',
+      )
       recipeId = new URL(page.url()).pathname.split('/').filter(Boolean).pop()!
 
       await pantry.navigateTo()
@@ -459,7 +506,9 @@ test.describe('recipe item count after item assignment', () => {
     // Dialog description: '"Pancakes" will be deleted. It contains 1 item. Your inventory will not be affected.'
     // (src/i18n/locales/en.json: settings.recipes.deleteWithItems_one)
     await recipes.clickDeleteRecipe('Pancakes')
-    await expect(page.getByRole('alertdialog')).toContainText('It contains 1 item')
+    await expect(page.getByRole('alertdialog')).toContainText(
+      'It contains 1 item',
+    )
 
     // Cancel — do not delete
     await page.getByRole('button', { name: 'Cancel' }).click()

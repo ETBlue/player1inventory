@@ -27,7 +27,9 @@ export class StockPagerPage {
     // (items.detail.locationPager.pageCurrent — LocationPager.tsx:149-159).
     // The regex matches both forms so callers need not know which is active.
     return this.getTablist().getByRole('tab', {
-      name: new RegExp(`^${escapeRegExp(locationName)}( \\(current location\\))?$`),
+      name: new RegExp(
+        `^${escapeRegExp(locationName)}( \\(current location\\))?$`,
+      ),
     })
   }
 

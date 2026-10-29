@@ -1,4 +1,4 @@
-import type { Page, Locator } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import { withSteps } from '../step'
 
 export class RecipesPage {
@@ -44,6 +44,9 @@ export class RecipesPage {
   async confirmDelete() {
     // AlertDialog confirm — DeleteButton confirmLabel defaults to 'Delete'
     // Scope to alertdialog to avoid strict-mode conflict with the trigger button
-    await this.page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click()
+    await this.page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: 'Delete' })
+      .click()
   }
 }

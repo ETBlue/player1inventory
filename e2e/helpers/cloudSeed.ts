@@ -125,7 +125,9 @@ export async function seedCloudFixture(
   const resolveLocation = (key: string): string => {
     const id = locationIds[key]
     if (!id) {
-      throw new Error(`seedCloudFixture: fixture references unknown location key "${key}"`)
+      throw new Error(
+        `seedCloudFixture: fixture references unknown location key "${key}"`,
+      )
     }
     return id
   }

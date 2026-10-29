@@ -63,7 +63,9 @@ export class ItemPage {
     const currentUrl = this.page.url()
     await this.page.getByRole('button', { name: /save/i }).click()
     // Wait for navigation away from the current URL
-    await this.page.waitForURL((url) => url.toString() !== currentUrl, { timeout: 10000 })
+    await this.page.waitForURL((url) => url.toString() !== currentUrl, {
+      timeout: 10000,
+    })
   }
 
   async navigateToTab(tab: 'tags' | 'vendors' | 'recipes' | 'log' | 'stock') {
@@ -77,8 +79,11 @@ export class ItemPage {
     const match = url.match(/\/items\/([^/?]+)/)
     if (!match) throw new Error(`Not on an item page. Current URL: ${url}`)
     const id = match[1]
-    const isRelationTab = tab === 'tags' || tab === 'vendors' || tab === 'recipes'
-    const path = isRelationTab ? `/items/${id}/relation/${tab}` : `/items/${id}/${tab}`
+    const isRelationTab =
+      tab === 'tags' || tab === 'vendors' || tab === 'recipes'
+    const path = isRelationTab
+      ? `/items/${id}/relation/${tab}`
+      : `/items/${id}/${tab}`
     await this.page.goto(path)
   }
 
@@ -105,8 +110,13 @@ export class ItemPage {
     // Wait for navigation away from /items/... — this confirms onSuccess fired and the
     // TanStack Query cache was invalidated before the caller checks the pantry list.
     await Promise.all([
-      this.page.waitForURL((url) => !url.pathname.startsWith('/items/'), { timeout: 10000 }),
-      this.page.getByRole('alertdialog').getByRole('button', { name: /delete/i }).click(),
+      this.page.waitForURL((url) => !url.pathname.startsWith('/items/'), {
+        timeout: 10000,
+      }),
+      this.page
+        .getByRole('alertdialog')
+        .getByRole('button', { name: /delete/i })
+        .click(),
     ])
   }
 
@@ -118,10 +128,16 @@ export class ItemPage {
     // "New Tag" button lives inside the tag type section.
     // exact: true so it doesn't also match the page's "New Tag Type" button
     // (both render on /items/$id/relation/tags — src/routes/items/$id/relation/tags.tsx).
-    await this.page.getByRole('button', { name: 'New Tag', exact: true }).first().click()
+    await this.page
+      .getByRole('button', { name: 'New Tag', exact: true })
+      .first()
+      .click()
     // AddNameDialog label is "Name" (src/components/AddNameDialog/index.tsx:41)
     await this.page.getByRole('dialog').getByLabel('Name').fill(name)
-    await this.page.getByRole('dialog').getByRole('button', { name: /add tag/i }).click()
+    await this.page
+      .getByRole('dialog')
+      .getByRole('button', { name: /add tag/i })
+      .click()
     // Tag is created and immediately assigned (pressed: true) — no extra click needed.
   }
 
@@ -166,13 +182,18 @@ export class ItemPage {
     await this.navigateToTab('vendors')
     await this.page.getByRole('button', { name: /new vendor/i }).click()
     await this.page.getByRole('dialog').getByLabel('Name').fill(name)
-    await this.page.getByRole('dialog').getByRole('button', { name: /add/i }).click()
+    await this.page
+      .getByRole('dialog')
+      .getByRole('button', { name: /add/i })
+      .click()
   }
 
   async assignVendor(name: string) {
     // Click the vendor badge (role="button" aria-pressed=false) to assign it to the item
     // Badge: role="button" aria-pressed={isAssigned} (src/routes/items/$id/relation/vendors.tsx)
-    await this.page.getByRole('button', { name, exact: false, pressed: false }).click()
+    await this.page
+      .getByRole('button', { name, exact: false, pressed: false })
+      .click()
   }
 
   // ── Recipes tab ───────────────────────────────────────────────────────────────
@@ -190,7 +211,10 @@ export class ItemPage {
 
   async submitRecipeDialog() {
     // "Add Recipe" submit button in AddNameDialog (src/routes/items/$id/relation/recipes.tsx)
-    await this.page.getByRole('dialog').getByRole('button', { name: /add recipe/i }).click()
+    await this.page
+      .getByRole('dialog')
+      .getByRole('button', { name: /add recipe/i })
+      .click()
   }
 
   getRecipeBadge(name: string) {

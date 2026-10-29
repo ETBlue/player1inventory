@@ -17,7 +17,8 @@ export async function expectInDocumentOrder(earlier: Locator, later: Locator) {
   await expect(later).toBeVisible()
 
   const laterHandle = await later.elementHandle()
-  if (!laterHandle) throw new Error('expectInDocumentOrder: "later" resolved to no element')
+  if (!laterHandle)
+    throw new Error('expectInDocumentOrder: "later" resolved to no element')
 
   try {
     const precedes = await earlier.evaluate(

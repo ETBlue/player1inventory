@@ -76,11 +76,31 @@ const FIXTURE: Fixture = {
   // Stocked at BOTH locations with DIFFERENT numbers. Different numbers matter:
   // identical rows cannot tell "wrote the right row" from "wrote both rows".
   stocks: [
-    { itemId: MILK, location: 'HOME', targetQuantity: 4, refillThreshold: 1, packedQuantity: 3, unpackedQuantity: 0 },
-    { itemId: MILK, location: 'OFFICE', targetQuantity: 2, refillThreshold: 1, packedQuantity: 5, unpackedQuantity: 0 },
+    {
+      itemId: MILK,
+      location: 'HOME',
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+    },
+    {
+      itemId: MILK,
+      location: 'OFFICE',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 5,
+      unpackedQuantity: 0,
+    },
   ],
   shelves: [],
-  recipes: [{ id: PANCAKES, name: 'Pancakes', items: [{ itemId: MILK, defaultAmount: 1 }] }],
+  recipes: [
+    {
+      id: PANCAKES,
+      name: 'Pancakes',
+      items: [{ itemId: MILK, defaultAmount: 1 }],
+    },
+  ],
 }
 
 // A SECOND fixture, used by exactly one test: the one that proves the purchase
@@ -123,8 +143,22 @@ const PACKED_FIXTURE: Fixture = {
   vendors: [],
   items: [{ id: MILK, name: 'Milk', amountPerPackage: 6 }],
   stocks: [
-    { itemId: MILK, location: 'HOME', targetQuantity: 10, refillThreshold: 1, packedQuantity: 9, unpackedQuantity: 1 },
-    { itemId: MILK, location: 'OFFICE', targetQuantity: 4, refillThreshold: 1, packedQuantity: 2, unpackedQuantity: 3 },
+    {
+      itemId: MILK,
+      location: 'HOME',
+      targetQuantity: 10,
+      refillThreshold: 1,
+      packedQuantity: 9,
+      unpackedQuantity: 1,
+    },
+    {
+      itemId: MILK,
+      location: 'OFFICE',
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity: 2,
+      unpackedQuantity: 3,
+    },
   ],
   shelves: [],
   recipes: [],
@@ -220,9 +254,12 @@ test.describe('cloud location-scoped writes — checkout and cooking', () => {
     const { home, office } = await seed(request)
 
     // When the user buys 2 Milk from the OFFICE cart
-    const { vendorCart } = await gql<{ vendorCart: { id: string } }>(VENDOR_CART, {
-      locationId: office,
-    })
+    const { vendorCart } = await gql<{ vendorCart: { id: string } }>(
+      VENDOR_CART,
+      {
+        locationId: office,
+      },
+    )
     // The cart id is `${locationId}:no-vendor` (apps/server/src/lib/cartId.ts).
     // Asserting it here pins the one value `checkout` reads its location from —
     // an id that lost its location prefix would make every assertion below
@@ -242,10 +279,9 @@ test.describe('cloud location-scoped writes — checkout and cooking', () => {
     })
 
     // Then the inventory log is at the OFFICE
-    const officeLogs = await gql<{ itemLogs: { delta: number; quantity: number; note: string | null }[] }>(
-      ITEM_LOGS,
-      { itemId: MILK, locationId: office },
-    )
+    const officeLogs = await gql<{
+      itemLogs: { delta: number; quantity: number; note: string | null }[]
+    }>(ITEM_LOGS, { itemId: MILK, locationId: office })
     expect(officeLogs.itemLogs).toHaveLength(1)
     expect(officeLogs.itemLogs[0].delta).toBe(2)
     expect(officeLogs.itemLogs[0].note).toBe('bought at the office')
@@ -275,9 +311,12 @@ test.describe('cloud location-scoped writes — checkout and cooking', () => {
     // Office (and a different 9 packed / 1 unpacked at My Home, the default)
     const gql = makeGql(request)
     const { home, office } = await seedFixture(request, PACKED_FIXTURE)
-    const { item } = await gql<{ item: { amountPerPackage: number | null } }>(ITEM, {
-      id: MILK,
-    })
+    const { item } = await gql<{ item: { amountPerPackage: number | null } }>(
+      ITEM,
+      {
+        id: MILK,
+      },
+    )
     // The fixture really did write the pack size. Without it this whole test is
     // vacuous — `getPackedTotal` falls back to the plain sum, so the correct
     // code and the old buggy code would both log 6 and the assertion below
@@ -290,9 +329,12 @@ test.describe('cloud location-scoped writes — checkout and cooking', () => {
     // amountPerPackage: 6 }) + 1` = 2.5 + 1 = 3.5
     // (apps/web/src/lib/checkoutQuantities.ts). The cart quantity is added
     // AFTER the conversion, because it is already counted in packs.
-    const { vendorCart } = await gql<{ vendorCart: { id: string } }>(VENDOR_CART, {
-      locationId: office,
-    })
+    const { vendorCart } = await gql<{ vendorCart: { id: string } }>(
+      VENDOR_CART,
+      {
+        locationId: office,
+      },
+    )
     await gql(ADD_TO_CART, { cartId: vendorCart.id, itemId: MILK, quantity: 1 })
     await gql(CHECKOUT, {
       cartId: vendorCart.id,
@@ -352,7 +394,10 @@ test.describe('cloud location-scoped writes — checkout and cooking', () => {
 
     // When the user cooks Pancakes at the OFFICE, consuming 1 Milk (5 → 4)
     const { consumeRecipes } = await gql<{
-      consumeRecipes: { allSucceeded: boolean; itemResults: { error: string | null }[] }
+      consumeRecipes: {
+        allSucceeded: boolean
+        itemResults: { error: string | null }[]
+      }
     }>(CONSUME_RECIPES, {
       input: {
         occurredAt: new Date().toISOString(),
@@ -376,10 +421,9 @@ test.describe('cloud location-scoped writes — checkout and cooking', () => {
     expect(consumeRecipes.allSucceeded).toBe(true)
 
     // Then the inventory log is at the OFFICE
-    const officeLogs = await gql<{ itemLogs: { delta: number; note: string | null }[] }>(
-      ITEM_LOGS,
-      { itemId: MILK, locationId: office },
-    )
+    const officeLogs = await gql<{
+      itemLogs: { delta: number; note: string | null }[]
+    }>(ITEM_LOGS, { itemId: MILK, locationId: office })
     expect(officeLogs.itemLogs).toHaveLength(1)
     expect(officeLogs.itemLogs[0].delta).toBe(-1)
     expect(officeLogs.itemLogs[0].note).toBe('cooked at the office')
@@ -426,31 +470,46 @@ test.describe('cloud location-scoped writes — removing an item from one locati
         locationId,
         note,
       })
-      const { vendorCart } = await gql<{ vendorCart: { id: string } }>(VENDOR_CART, {
-        locationId,
+      const { vendorCart } = await gql<{ vendorCart: { id: string } }>(
+        VENDOR_CART,
+        {
+          locationId,
+        },
+      )
+      await gql(ADD_TO_CART, {
+        cartId: vendorCart.id,
+        itemId: MILK,
+        quantity: 1,
       })
-      await gql(ADD_TO_CART, { cartId: vendorCart.id, itemId: MILK, quantity: 1 })
     }
 
     // Both locations really are set up — asserted before the removal, so a
     // seed that quietly wrote nothing cannot masquerade as a clean delete.
-    const before = await gql<{ itemStocksForItem: StockRow[] }>(STOCKS_FOR_ITEM, { itemId: MILK })
+    const before = await gql<{ itemStocksForItem: StockRow[] }>(
+      STOCKS_FOR_ITEM,
+      { itemId: MILK },
+    )
     expect(before.itemStocksForItem).toHaveLength(2)
-    const beforeHomeCart = await gql<{ cartItemCountByItem: number }>(CART_ITEM_COUNT, {
-      itemId: MILK,
-      locationId: home,
-    })
+    const beforeHomeCart = await gql<{ cartItemCountByItem: number }>(
+      CART_ITEM_COUNT,
+      {
+        itemId: MILK,
+        locationId: home,
+      },
+    )
     expect(beforeHomeCart.cartItemCountByItem).toBe(1)
 
     // When the user removes Milk from the OFFICE
-    const { removeItemFromLocation } = await gql<{ removeItemFromLocation: boolean }>(
-      REMOVE_FROM_LOCATION,
-      { itemId: MILK, locationId: office },
-    )
+    const { removeItemFromLocation } = await gql<{
+      removeItemFromLocation: boolean
+    }>(REMOVE_FROM_LOCATION, { itemId: MILK, locationId: office })
     expect(removeItemFromLocation).toBe(true)
 
     // Then the OFFICE stock row is gone and MY HOME's survives
-    const after = await gql<{ itemStocksForItem: StockRow[] }>(STOCKS_FOR_ITEM, { itemId: MILK })
+    const after = await gql<{ itemStocksForItem: StockRow[] }>(
+      STOCKS_FOR_ITEM,
+      { itemId: MILK },
+    )
     expect(after.itemStocksForItem).toHaveLength(1)
     expect(stockAt(after.itemStocksForItem, office)).toBeUndefined()
     expect(stockAt(after.itemStocksForItem, home)?.packedQuantity).toBe(3)
@@ -461,10 +520,13 @@ test.describe('cloud location-scoped writes — removing an item from one locati
       locationId: office,
     })
     expect(officeLogs.itemLogs).toHaveLength(0)
-    const homeLogs = await gql<{ itemLogs: { note: string | null }[] }>(ITEM_LOGS, {
-      itemId: MILK,
-      locationId: home,
-    })
+    const homeLogs = await gql<{ itemLogs: { note: string | null }[] }>(
+      ITEM_LOGS,
+      {
+        itemId: MILK,
+        locationId: home,
+      },
+    )
     expect(homeLogs.itemLogs).toHaveLength(1)
     expect(homeLogs.itemLogs[0].note).toBe('home log')
 
@@ -472,20 +534,28 @@ test.describe('cloud location-scoped writes — removing an item from one locati
     // assertion that fails when the `cart: { locationId }` relation filter is
     // dropped from the `cartItem.deleteMany` call — without it the delete
     // spans every location's carts.
-    const officeCart = await gql<{ cartItemCountByItem: number }>(CART_ITEM_COUNT, {
-      itemId: MILK,
-      locationId: office,
-    })
+    const officeCart = await gql<{ cartItemCountByItem: number }>(
+      CART_ITEM_COUNT,
+      {
+        itemId: MILK,
+        locationId: office,
+      },
+    )
     expect(officeCart.cartItemCountByItem).toBe(0)
-    const homeCart = await gql<{ cartItemCountByItem: number }>(CART_ITEM_COUNT, {
-      itemId: MILK,
-      locationId: home,
-    })
+    const homeCart = await gql<{ cartItemCountByItem: number }>(
+      CART_ITEM_COUNT,
+      {
+        itemId: MILK,
+        locationId: home,
+      },
+    )
     expect(homeCart.cartItemCountByItem).toBe(1)
 
     // And the global Item survives — removal is a membership change, not a
     // delete (resolvers/itemStock.resolver.ts).
-    const { item } = await gql<{ item: { id: string } | null }>(ITEM, { id: MILK })
+    const { item } = await gql<{ item: { id: string } | null }>(ITEM, {
+      id: MILK,
+    })
     expect(item?.id).toBe(MILK)
   })
 })
@@ -535,10 +605,9 @@ test.describe('cloud location-scoped writes — unit switch', () => {
     })
 
     // Then the Item carries the new unit configuration
-    const { item } = await gql<{ item: { targetUnit: string; amountPerPackage: number } }>(
-      ITEM,
-      { id: MILK },
-    )
+    const { item } = await gql<{
+      item: { targetUnit: string; amountPerPackage: number }
+    }>(ITEM, { id: MILK })
     expect(item.targetUnit).toBe('measurement')
     expect(item.amountPerPackage).toBe(100)
 
@@ -565,7 +634,10 @@ test.describe('cloud location-scoped writes — unit switch', () => {
     // And the recipe amount moved with them — the assertion that fails when
     // the `recipeUpdates` loop is skipped.
     const { recipes } = await gql<{
-      recipes: { id: string; items: { itemId: string; defaultAmount: number }[] }[]
+      recipes: {
+        id: string
+        items: { itemId: string; defaultAmount: number }[]
+      }[]
     }>(RECIPES)
     const pancakes = recipes.find((r) => r.id === PANCAKES)
     expect(pancakes?.items).toEqual([{ itemId: MILK, defaultAmount: 100 }])

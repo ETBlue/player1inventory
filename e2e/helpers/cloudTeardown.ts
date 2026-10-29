@@ -102,5 +102,8 @@ export async function cleanupCloudData(
     )
   }
 
-  return { ok: body.ok === true, deleted: deleted as Record<CleanupModelKey, number> }
+  return {
+    ok: body.ok === true,
+    deleted: deleted as Record<CleanupModelKey, number>,
+  }
 }
