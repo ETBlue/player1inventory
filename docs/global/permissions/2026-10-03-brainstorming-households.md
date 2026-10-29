@@ -533,6 +533,24 @@ a new household's first location is "Home" (Decision 18).
 | c | Two checkouts at once | One transaction that removes the rows it buys. The second fails with "This cart was just checked out. Refresh to see it." |
 | d | The log's on-hand total | Computed on the server from the saved stock row, inside the transaction. The client computed it since PR A (issue #336) only because the conversion needs `Item.amountPerPackage`; the server can read that too. `consumeRecipes` gets the same fix |
 
+### Decision 25 — The import ownership guard landed on `main` first (2026-10-29)
+
+**What changed.** #354 (merged 2026-10-28) fixed issue #327 outside this branch. It added
+`requireOwnRowOrUnclaimed` in `apps/server/src/lib/authz.ts` and called it from all 22 bulk
+import mutations. A file that holds another account's row id is now refused as a whole.
+
+**What follows for this design**, with no new user decision needed:
+
+| Point | Reason |
+|---|---|
+| H4 no longer fixes #327 | It is fixed. H4 changes the helper's body instead, and its call sites do not move. That is what the helper was written for. |
+| The body splits into two scopes: the six catalog models check the household; `Cart`, `InventoryLog` and `CartItem` check the location | Our data model puts those three under a location (Decisions on carts and logs). |
+| The check is "in the **target** household", not "in any of my households" | A user in two households would otherwise move rows from one to the other on import. |
+| The helper keeps telling "free" from "taken" | An import must create rows. #354 states this exception on purpose. |
+
+**Still open:** rule 2 of the new id rule (Decision 23) says "copy with a new id", but `main`
+now refuses. The user is asked which one H4 keeps.
+
 ## Data model so far (cloud only)
 
 | Model | Fields | Notes |

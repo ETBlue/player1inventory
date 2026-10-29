@@ -4,12 +4,13 @@
 **Status:** 🔲 Designed, not built
 **Branch:** `feature/households`
 **Brainstorming log:** [2026-10-03-brainstorming-households.md](2026-10-03-brainstorming-households.md)
-(23 decisions, with the reason for each — read it for the *why*; this doc gives the *what*)
+(25 decisions, with the reason for each — read it for the *why*; this doc gives the *what*)
 **Changes:** [Location RBAC](2026-08-29-design-location-rbac.md). Its binding rule stays. Its
 role table is replaced, and its six open questions are answered (see the last section).
 **Blocked by:** nothing since 2026-10-08. Cloud-locations PR 5 merged as #332 (see *Sequencing*).
-**Fixes when built:** issue #273 (unchecked tag / vendor ids), issue #327 (import takes over
-another user's rows).
+**Fixes when built:** issue #273 (unchecked tag / vendor ids). Issue #327 (import takes over
+another user's rows) was fixed separately on 2026-10-28 (#354); H4 moves that guard to the
+household scope.
 
 ## Summary
 
@@ -37,7 +38,7 @@ User stories:
 |---|---|
 | Cloud-locations PR 5 (drop `Item`'s stock columns and the dual-write bridge) | ✅ Merged 2026-10-08 (#332). It deleted `lib/stockDualWrite.ts` and two of the `isDefault` reads. |
 | Issue #273 | Fixed here. Catalog ids are checked with `requireHouseholdRole`. |
-| Issue #327, cart-id leak (`e2e/tests/cart-id-cross-user-leak.spec.ts`) | Fixed here, in the import work (*Import and export*). |
+| Issue #327, cart-id leak (`e2e/tests/cart-id-cross-user-leak.spec.ts`) | ✅ Fixed 2026-10-28 (#354), before this work. It added a second guard, `requireOwnRowOrUnclaimed`. H4 changes that guard's body to the new scopes (see *Authorization*). |
 | Issue #330 (`replace` skips rows) | ✅ Fixed 2026-10-12 (#350), before this work. The import rewrite here must keep the fix (see *Known gaps*). |
 | Local mode | Not changed, except for the Settings layout and route moves. |
 
@@ -61,7 +62,6 @@ User stories:
 | Fewer ways to get it wrong | `requireLocationRole` and the new `requireHouseholdRole` finally check roles. A resolver that forgets to call them is the one remaining mistake, and the tests below are written to catch it. |
 | Less to remember | `Location.isDefault` and its partial unique index go away in cloud, with every fallback that read them (`ensureDefaultLocation` in import, carts and logs). |
 | Honest documentation | The RBAC doc's six open questions get answers. |
-| A failure that now has a name | Import of a row owned by another household no longer silently takes it over or drops it (#327). |
 
 **DX cost, accepted.** Every route under `/settings/*` moves, so every E2E page object and test
 that uses one changes. The data migration touches seven models. Two Clerk-related pieces are
@@ -198,6 +198,25 @@ The RBAC doc's rule stays: **never write `row.userId === ctx.userId` as an autho
 |---|---|
 | `requireLocationRole(ctx, locationId, role)` | Already exists, signature unchanged. The body reads `LocationMember`. `role` is `viewer`, `participant` or `organizer`, and a higher role passes a lower check |
 | `requireHouseholdRole(ctx, householdId, role)` | New. Reads `HouseholdMember`. Used for the catalog, members, invites, purges and activity |
+| `requireOwnRowOrUnclaimed(ctx, model, id)` | Already exists (added by #354 for the 22 bulk import mutations). Its call sites do not move. H4 changes its body, see below |
+
+**`requireOwnRowOrUnclaimed` after households.** Today its body checks `where: { id, userId }`
+for nine models. Under this design those nine split into two scopes:
+
+| Models | New check in the body |
+|---|---|
+| `Item`, `Tag`, `TagType`, `Vendor`, `Recipe`, `Shelf` (the catalog) | the row is in the **target** household, and the caller holds the household role import needs (owner or manager) |
+| `Cart`, `InventoryLog` (through their `locationId`), `CartItem` (through its cart) | the row's location is in the target household, and the caller is its organizer or participant |
+
+Two points matter for H4:
+
+- **"In the target household", not "in any household I belong to".** A user can belong to two
+  households. If the check were "any household I belong to", an import into household B of a
+  backup from household A would find A's rows as `'own'`, and the upsert would **move** them
+  from A to B. So the helper must also take the target household id.
+- **It cannot follow the "same error for missing and not-yours" rule below.** An import must
+  create new rows, so a free id has to return `'unclaimed'`. #354 says this on purpose, and the
+  helper's comment explains why. The rule below applies to every other helper.
 
 Every refusal throws the same `Forbidden` error, whether the row is missing or owned by someone
 else, so a caller cannot probe for ids (as `requireLocationRole` does today).
@@ -474,10 +493,11 @@ The new rule:
    "Import into which location?" The household's "Home" is selected first, and **New location**
    is an option. This is one dialog for both cases.
 
-Rule 2 is enforced by the **server**, not trusted from the client. The bulk import resolvers
-check ownership of every id they are given. This fixes issue #327 and the cart-id leak: today the
-nine `bulkUpsert*` mutations take over another user's row, and the `bulkCreate*` ones silently
-drop it.
+Rule 2 is enforced by the **server**, not trusted from the client. Since #354 (2026-10-28) the
+bulk import resolvers already check ownership of every id through `requireOwnRowOrUnclaimed`,
+and an import that holds another account's id is **refused as a whole** with `FORBIDDEN`
+(nothing is written). **Rule 2 asks for more than that: a copy with a new id, not a refusal.**
+Which of the two H4 keeps is an open question, see *Known gaps*.
 
 ### Server code this replaces
 
@@ -547,7 +567,7 @@ A suggested split. The plan will fix the final one.
 | H1 | Settings layout and route moves (both modes). No backend change. Can start before PR 5 | Yes: new Settings layout |
 | H2 | `User` model, Clerk webhook, `lastSeenAt`, E2E user creation | No |
 | H3 | `Household`, `HouseholdMember`, `LocationMember`, the data migration, real role checks in both helpers, read scoping, `isDefault` removed. Fixes #273 | No (one household each) |
-| H4 | Import and export: the new id rule, server ownership checks. Fixes #327 | The "Import into which location?" dialog |
+| H4 | Import and export: the new id rule, and `requireOwnRowOrUnclaimed` moved to the household scope (#327 itself is already fixed by #354) | The "Import into which location?" dialog |
 | H5 | Invites, join, members page, location people page, switcher filtering, read-only views | **Yes: sharing works** |
 | H6 | Transfer, hand-over, offers banner, purges, activity log | Yes: story 2 |
 | H7 | Personal location order and sort, household switch and create | Yes |
@@ -569,6 +589,15 @@ The root `CLAUDE.md` rules apply. Points special to this design:
 
 ## Known gaps and risks
 
+- **Open: refuse or copy when a file holds another household's id.** Rule 2 of *The new id
+  rule* says "copy with a new id". `main` since #354 refuses the whole import. To copy, the
+  client must learn which ids are taken elsewhere, because it cannot see other households'
+  rows. That needs a new server query, and the remap must cover every reference listed in
+  rule 2. The user decides this before the plan is written. The refusal message today says
+  "another account"; under households it should say "another household".
+- **Node is pinned to 22.17.1** (`.node-version`, `engines` in `package.json`, #353). Node 25
+  breaks the web suite with `localStorage.setItem is not a function` in every file. Every
+  implementation brief must say so.
 - **The migration is large.** Seven models change their scope column in one go. It needs the
   same care as PR 3b's cart re-key: a deploy runbook, and a check against a branch of production
   data.
