@@ -670,6 +670,33 @@ Separate invocations used to cost about **14 minutes** against roughly 11 for th
 run, and they tell the truth. A gate that reports failures nobody caused gets ignored, which
 is worse than having no gate.
 
+**Copy `test-results/` aside BEFORE you re-run anything.** The third of those three proofs
+— what the error actually said — is the one you lose first, and losing it costs you the
+ability to tell a real failure from a phantom at all.
+
+The error text does **not** live in `playwright-report/`. That directory's `index.html`
+carries no readable error (no embedded base64 zip in this setup), so copying it is not
+enough. The failure artefacts — `error-context.md`, the trace, the screenshot — live in
+`test-results/`, and **the next Playwright run deletes that directory.**
+
+So the order is: see a failure, copy `test-results/` somewhere outside the repo, and only
+then re-run.
+
+This was got wrong twice, two branches apart, by the same session. On PR #351 a
+`settings/vendors.spec.ts` failure was re-run before being captured. On
+`chore/pre-households` a `cart-id-cross-user-leak.spec.ts` failure was captured — but only
+`playwright-report/` was copied, not `test-results/`, which is the one that mattered. Both
+times the conclusion rested on two proofs instead of three:
+
+| Proof | Survives a re-run? |
+|---|---|
+| the spec passes when run alone | yes — re-runnable any time |
+| the failing set moves between runs on the same commit | yes — that IS a re-run |
+| the error was a connection error or a timeout, not an assertion | **no — gone the moment you re-run** |
+
+Two of three is usually enough to merge, and both times it was. Say which one is missing
+and why, rather than implying all three were checked.
+
 **A filtered run used to start all four servers. Since 2026-09-24 it does not.** Playwright
 starts every `webServer` entry whatever `--project` says — there is no per-project
 `webServer` — so `--project=local` also started the cloud web app, the API server, and a
