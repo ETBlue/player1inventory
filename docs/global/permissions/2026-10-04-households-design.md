@@ -560,7 +560,7 @@ has data when it is built.
 | Proactive claims, with a veto period (default 30 days, allowed 7–365) | The veto must reach an owner who no longer opens the app, which needs email |
 | An email service (e.g. Resend or Postmark) | Not worth the cost for fewer than 5 users, all family |
 | Copying rows from one household into another | It needs a new server query to find taken ids, and a remap of every reference. A future global pool would likely change how rows are matched, so building it now would probably be redone |
-| A global pool of shared items, tags and vendors, kept by the site owner, with names in several languages. Households reuse them as prototypes: each household keeps its own copy, which it can change and reset to the prototype's values | A large feature of its own. Two constraints for whoever designs it are listed below |
+| A global pool of shared items, tags and vendors, kept by the site owner, with names in several languages. Households reuse them as prototypes: each household keeps its own copy, which it can change and reset to the prototype's values | A large feature of its own. The constraints for whoever designs it are listed below |
 
 **Constraints for the global pool**, decided now so that this design does not block it
 (Decision 26):
