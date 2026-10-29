@@ -22,8 +22,10 @@ pnpm test:e2e:ui   # Run E2E tests with Playwright UI (interactive)
 pnpm test:e2e:debug # Debug E2E tests step-by-step
 pnpm lint         # Lint with Biome — apps/web/src AND e2e/
 pnpm lint:e2e     # Lint e2e/ only (biome lint ./e2e, root biome.jsonc)
-pnpm format       # Format with Biome — apps/web/src only; e2e/ formatting is deferred
-pnpm check        # Run all Biome checks — apps/web/src only
+pnpm format       # Format with Biome — apps/web/src AND e2e/
+pnpm format:e2e   # Format e2e/ only (biome format ./e2e --write, root biome.jsonc)
+pnpm check        # Run all Biome checks — apps/web/src AND e2e/
+pnpm check:e2e    # Biome check on e2e/ only (biome check ./e2e, root biome.jsonc)
 pnpm typecheck    # tsc for apps/web, apps/server and e2e/
 pnpm typecheck:e2e      # tsc -p e2e/tsconfig.json (also the last step of pnpm build)
 pnpm storybook         # Start Storybook dev server
@@ -295,7 +297,7 @@ After each implementation phase (each numbered step in an implementation plan), 
 pnpm lint                                  # ROOT, not apps/web: web src + e2e/ (see below)
 pnpm build 2>&1 | tee /tmp/p1i-build.log   # FULL build from repo root: codegen + web (tsc -b && vite) + server (tsc) + e2e/ type-check
 (cd apps/web && pnpm build-storybook)
-(cd apps/web && pnpm check)
+pnpm check                                 # ROOT, not apps/web: web src + e2e/ (see below)
 grep 'TS6385' /tmp/p1i-build.log && echo "FAIL: deprecated imports found" || echo "OK: no deprecated imports"
 pnpm test                                        # BOTH suites — web + server, run from the repo root
 ```
@@ -303,6 +305,13 @@ pnpm test                                        # BOTH suites — web + server,
 **The first line is the ROOT `pnpm lint`, not `(cd apps/web && pnpm lint)`.** Since
 2026-10-11 the root script is `pnpm --filter web lint && pnpm lint:e2e`, so it lints
 `apps/web/src` and `e2e/`. The web-only form skips `e2e/` entirely.
+
+**`pnpm check` is the ROOT one too, since 2026-10-30 (issue #346).** The root script is
+`pnpm --filter web check && pnpm check:e2e`, so it checks lint, formatting and import order
+in both `apps/web/src` and `e2e/`. This line was `(cd apps/web && pnpm check)` until that
+date, which was correct while `e2e/` had no formatter — it does now, so the web-only form
+skips half the work. Nothing else in the gate checks `e2e/` formatting: `pnpm lint` runs
+`biome lint`, not `biome check`, and `pnpm build` only type-checks.
 
 **`pnpm build` now type-checks `e2e/` as well.** Its last step is `pnpm typecheck:e2e`
 (`tsc -p e2e/tsconfig.json`). There is no extra command to remember — the same way
@@ -377,6 +386,8 @@ gate command passed.
 |---|---|---|
 | `pnpm typecheck:e2e` | `tsc -p e2e/tsconfig.json` — every `.ts` under `e2e/`, no exclusions | the last step of root `pnpm build` |
 | `pnpm lint:e2e` | `biome lint ./e2e`, using the root `biome.jsonc` | the second half of root `pnpm lint` |
+| `pnpm check:e2e` | `biome check ./e2e` — lint **and** format **and** import order | the second half of root `pnpm check` |
+| `pnpm format:e2e` | `biome format ./e2e --write` | the second half of root `pnpm format` |
 
 For a few hours on 2026-10-11, `e2e/tests/a11y.spec.ts` was excluded from that tsconfig,
 with a second config `e2e/tsconfig.a11y.json` and a `typecheck:e2e:a11y` script as the
@@ -400,13 +411,55 @@ was wired up, and the first two look like success:
   `Cannot find name 'indexedDB'`, 23 × `TS7031`, and more). With `DOM` and `DOM.Iterable`
   the count is **63**. The old figures of 74 and 78 came from probes with no node types.
 
-**Formatting `e2e/` is deferred, and the root Biome config says so.** `formatter` and
-`assist` are off in `biome.jsonc`. `e2e/` was written with no formatter, so turning Biome's
-on rewrites it: measured 2026-10-11, `biome format ./e2e --write` gives **1632 insertions
-and 646 deletions across 44 of 54 files**, and `biome check ./e2e` reported 64 errors (44
-formatting, 20 `assist/source/organizeImports`). `pnpm lint:e2e` still reports **13**
-warnings — 6 `noExplicitAny`, 7 `noNonNullAssertion` — which do not fail the command, the
-same way `apps/web`'s 4 warnings do not fail `pnpm check`.
+**`e2e/` IS formatted, and its imports ARE sorted — since 2026-10-30 (issue #346).**
+`formatter` and `assist` are both on in `biome.jsonc`, with the same settings as
+`apps/web/biome.json` (`indentStyle: space`, `indentWidth: 2`, single quotes, semicolons
+`asNeeded`, the default 80-column width). So one style now covers the whole repo, and
+`pnpm format` and `pnpm check` cover `e2e/` as well as `apps/web/src`.
+
+They were off for 19 days, from the day the root config was created (issue #322) to the day
+`e2e/` was swept, because the sweep is large and would have buried that PR. Measured
+2026-10-30 on the unmodified tree, immediately before the sweep:
+
+| Quantity | Before the sweep |
+|---|---|
+| `biome check ./e2e` errors | **65** — 45 `format`, 20 `assist/source/organizeImports` |
+| `biome check ./e2e --write` diff | **1699 insertions, 684 deletions, 46 of 54 files** |
+| `pnpm lint:e2e` warnings | 13 — 6 `noExplicitAny`, 7 `noNonNullAssertion` |
+
+**Re-measure; do not quote.** This paragraph said 64 errors (44 `format`, 20
+`organizeImports`) and a 1632/646 diff across 44 files, measured on 2026-10-11. Both were
+right then. One spec file was added in the 19 days between, which moved every number.
+
+After the sweep `biome check ./e2e` reports **0 errors** and the same **13** warnings — 6
+`noExplicitAny`, 7 `noNonNullAssertion`. Those do not fail the command, the same way
+`apps/web`'s 4 warnings do not fail `pnpm check`. Fixing them is still open; see issue #346.
+
+**The sweep changed no behaviour, and that was checked rather than assumed.** A reordered
+import really can change behaviour, and no type check would see it. Three checks, all on the
+46 changed files:
+
+| Check | Result |
+|---|---|
+| AST compared before/after, ignoring positions, quote style and trailing commas | all 46 identical outside the import block |
+| import **bindings** compared — module specifier plus every local and imported name | **0** changed anywhere |
+| import **statement order** | changed in 11 files |
+
+The reorder in those 11 is safe because no `e2e/` module runs code when it is imported. The
+only top-level statements in `e2e/` that are not declarations are the `test(...)` and
+`test.describe(...)` registrations inside spec files, and no spec file is imported by
+anything — there is no bare `import 'x'` and no `require()` under `e2e/` at all. The 11
+reordered lists hold only `@playwright/test`, `node:*` builtins, and `e2e/helpers`,
+`e2e/pages`, `e2e/utils` and `e2e/constants` modules, which only declare.
+
+`pnpm test:e2e --project=local` was run after the sweep to confirm it: **174 passed, 5
+skipped** in 3.9m, exit 0, no flakes — unchanged from the baseline. Load average was 4.94
+when it started and between 3.2 and 4.3 during the run, so the result is trustworthy.
+
+**`lint-staged` still does not cover `e2e/`.** It is scoped to `apps/web/src/**`, so nothing
+reformats an `e2e/` file at commit time and the drift can return. Whether to add an entry is
+the open half of issue #346 — note the hazard recorded under *`lint-staged` Can Silently
+Revert Your Fix Inside Its Own Commit* before doing it.
 
 **The root config MUST stay `biome.jsonc`.** Biome reads comments in a `.jsonc` file and
 **silently ignores** a `biome.json` that contains any — no error, no warning — falling back
