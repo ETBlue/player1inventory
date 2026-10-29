@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Item, Recipe, Tag } from '@/types'
+import type { PantryItem, Recipe, Tag } from '@/types'
 import {
   calculateTagCount,
   filterItems,
@@ -7,44 +7,63 @@ import {
   filterItemsByVendors,
 } from './filterUtils'
 
+// The three functions here are generic over `T extends Item` and the app calls
+// all of them with `PantryItem[]`, so that is what these fixtures are. They
+// used to be typed `Item[]` while carrying `targetQuantity` and
+// `refillThreshold`, which predates the v15/v16 split — those two live on
+// `ItemStock` now and a joined `PantryItem` is the shape that has both halves.
+//
+// NONE of the four defaults below is read by anything in `filterUtils.ts`:
+// `filterItems` and `calculateTagCount` read `tagIds` only,
+// `filterItemsByVendors` reads `vendorIds`, and `filterItemsByRecipes` reads
+// the recipes argument. `targetQuantity` and `refillThreshold` stay REQUIRED so
+// each fixture keeps the value it was written with.
+const makePantryItem = (
+  overrides: Pick<
+    PantryItem,
+    'id' | 'name' | 'tagIds' | 'targetQuantity' | 'refillThreshold'
+  > &
+    Partial<PantryItem>,
+): PantryItem => ({
+  targetUnit: 'package',
+  consumeAmount: 1,
+  packedQuantity: 0,
+  unpackedQuantity: 0,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  ...overrides,
+})
+
 describe('filterItems', () => {
-  const items: Item[] = [
-    {
+  const items: PantryItem[] = [
+    makePantryItem({
       id: '1',
       name: 'Tomatoes',
       tagIds: ['tag-veg', 'tag-fridge'],
       targetQuantity: 5,
       refillThreshold: 2,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-    {
+    }),
+    makePantryItem({
       id: '2',
       name: 'Apples',
       tagIds: ['tag-fruit', 'tag-fridge'],
       targetQuantity: 10,
       refillThreshold: 3,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-    {
+    }),
+    makePantryItem({
       id: '3',
       name: 'Pasta',
       tagIds: ['tag-grain', 'tag-pantry'],
       targetQuantity: 3,
       refillThreshold: 1,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-    {
+    }),
+    makePantryItem({
       id: '4',
       name: 'Bread',
       tagIds: [],
       targetQuantity: 2,
       refillThreshold: 1,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
+    }),
   ]
 
   it('returns all items when no filters active', () => {
@@ -57,7 +76,7 @@ describe('filterItems', () => {
       'type-category': ['tag-veg'],
     })
     expect(result).toHaveLength(1)
-    expect(result[0].name).toBe('Tomatoes')
+    expect(result[0]?.name).toBe('Tomatoes')
   })
 
   it('filters with OR logic within same tag type', () => {
@@ -133,56 +152,46 @@ describe('filterItems with descendant expansion', () => {
     { id: 'tag-other', typeId: 'type-1', name: 'Other' },
   ]
 
-  const items: Item[] = [
-    {
+  const items: PantryItem[] = [
+    makePantryItem({
       id: '1',
       name: 'Tomatoes',
       tagIds: ['tag-veg'],
       targetQuantity: 5,
       refillThreshold: 2,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-    {
+    }),
+    makePantryItem({
       id: '2',
       name: 'Apples',
       tagIds: ['tag-fruit'],
       targetQuantity: 10,
       refillThreshold: 3,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-    {
+    }),
+    makePantryItem({
       id: '3',
       name: 'Milk',
       tagIds: ['tag-dairy'],
       targetQuantity: 2,
       refillThreshold: 1,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-    {
+    }),
+    makePantryItem({
       id: '4',
       name: 'Widget',
       tagIds: ['tag-other'],
       targetQuantity: 1,
       refillThreshold: 0,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
+    }),
   ]
 
   it('filterItems returns items tagged with a parent tag when parent is directly on item', () => {
     // Given an item directly tagged with the parent tag
-    const itemWithParentTag: Item = {
+    const itemWithParentTag = makePantryItem({
       id: '5',
       name: 'Mystery Food',
       tagIds: ['tag-food'],
       targetQuantity: 1,
       refillThreshold: 0,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    }
+    })
     const result = filterItems(
       [...items, itemWithParentTag],
       { 'type-1': ['tag-food'] },
@@ -242,34 +251,28 @@ describe('filterItems with descendant expansion', () => {
 })
 
 describe('calculateTagCount', () => {
-  const items: Item[] = [
-    {
+  const items: PantryItem[] = [
+    makePantryItem({
       id: '1',
       name: 'Tomatoes',
       tagIds: ['tag-veg', 'tag-fridge'],
       targetQuantity: 5,
       refillThreshold: 2,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-    {
+    }),
+    makePantryItem({
       id: '2',
       name: 'Apples',
       tagIds: ['tag-fruit', 'tag-fridge'],
       targetQuantity: 10,
       refillThreshold: 3,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-    {
+    }),
+    makePantryItem({
       id: '3',
       name: 'Pasta',
       tagIds: ['tag-grain', 'tag-pantry'],
       targetQuantity: 3,
       refillThreshold: 1,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
+    }),
   ]
 
   it('calculates count with no other filters', () => {
@@ -324,25 +327,25 @@ describe('calculateTagCount with nested tags', () => {
   ]
 
   // 5 items tagged Vegetables, 4 tagged Fruits (all items carry only their leaf tag)
-  const items: Item[] = [
-    ...Array.from({ length: 5 }, (_, i) => ({
-      id: `veg-${i}`,
-      name: `Vegetable ${i}`,
-      tagIds: ['tag-veg'],
-      targetQuantity: 1,
-      refillThreshold: 0,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    })),
-    ...Array.from({ length: 4 }, (_, i) => ({
-      id: `fruit-${i}`,
-      name: `Fruit ${i}`,
-      tagIds: ['tag-fruit'],
-      targetQuantity: 1,
-      refillThreshold: 0,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    })),
+  const items: PantryItem[] = [
+    ...Array.from({ length: 5 }, (_, i) =>
+      makePantryItem({
+        id: `veg-${i}`,
+        name: `Vegetable ${i}`,
+        tagIds: ['tag-veg'],
+        targetQuantity: 1,
+        refillThreshold: 0,
+      }),
+    ),
+    ...Array.from({ length: 4 }, (_, i) =>
+      makePantryItem({
+        id: `fruit-${i}`,
+        name: `Fruit ${i}`,
+        tagIds: ['tag-fruit'],
+        targetQuantity: 1,
+        refillThreshold: 0,
+      }),
+    ),
   ]
 
   it('returns correct count for subtag when parent tag is selected', () => {
@@ -381,7 +384,7 @@ describe('calculateTagCount with nested tags', () => {
 })
 
 describe('filterItemsByVendors', () => {
-  const items: Item[] = [
+  const items: PantryItem[] = [
     {
       id: '1',
       name: 'Milk',
@@ -446,7 +449,7 @@ describe('filterItemsByVendors', () => {
   it('filters by single vendor', () => {
     const result = filterItemsByVendors(items, ['v-safeway'])
     expect(result).toHaveLength(1)
-    expect(result[0].name).toBe('Milk')
+    expect(result[0]?.name).toBe('Milk')
   })
 
   it('filters by multiple vendors with OR logic', () => {
@@ -463,7 +466,7 @@ describe('filterItemsByVendors', () => {
 })
 
 describe('filterItemsByRecipes', () => {
-  const items: Item[] = [
+  const items: PantryItem[] = [
     {
       id: '1',
       name: 'Eggs',
