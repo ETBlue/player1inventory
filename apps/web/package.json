@@ -13,7 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -b",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "generate-icons": "pwa-assets-generator --preset minimal-2023 public/icon-source.svg"
