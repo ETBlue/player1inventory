@@ -373,11 +373,19 @@ build:     tsc -b && tsc -p tsconfig.test.json && vite build
 typecheck: tsc -b && tsc -p tsconfig.test.json
 ```
 
-**243 of the 358 test and story files are checked. 115 are still excluded**, because they
-carried **726** type errors when the config was added (measured 2026-10-30). Fixing them is
-issue #340 step 3. The `exclude` list in `tsconfig.test.json` is that backlog, and its
-comment header records the three `include` entries that are not obvious and the two traps in
-editing the list.
+**249 of the 358 test and story files are checked. 109 are still excluded**, because they
+carry **321** type errors. Fixing them is issue #340 step 3. The `exclude` list in
+`tsconfig.test.json` is that backlog, and its comment header records the three `include`
+entries that are not obvious and the two traps in editing the list.
+
+It said 243 checked / 115 excluded / **726** errors when the config was added on 2026-10-30.
+Wave 1 of step 3 took the six biggest files off the list the same week — `lib/quantityUtils`
+(148 errors), `components/item/ItemCard/ItemCard` (95), `lib/importData` (64),
+`lib/sortUtils` (46), `db/operations` (30) and `lib/filterUtils` (22) — which is **405** of
+the 726. **Re-measure rather than quote any of these.** Build a probe config by replacing
+the `exclude` array with `[]`; do NOT strip the comments with a regex on `//`, because that
+eats the `/**/` inside `src/**/*.test.ts` and leaves an `include` of `src*.test.ts`, which
+checks **0** files and reports **1** error.
 
 Proved by mutation on 2026-10-30, in both directions. The same line,
 `export const __mutationProbe: number = 'not a number'`, appended to one file at a time:
@@ -392,7 +400,7 @@ The second row is what makes the first one mean something: the pass is not inert
 
 **The old rule is now half true.** "The argument is required, so `tsc` catches a call site
 that forgets it" holds for a source file, holds for a checked test file, and still fails for
-any of the 115 excluded ones. Cloud-parity PR A made `items` required on `useCheckout`'s
+any of the 109 excluded ones. Cloud-parity PR A made `items` required on `useCheckout`'s
 `CheckoutArgs`; three `useCheckout()` tests kept calling `mutate()` with no `items` and the
 whole gate stayed green. That file is `apps/web/src/hooks/useShoppingCart.test.ts`, which is
 still excluded — **so that exact hole is still open**, as the table above shows.
@@ -410,9 +418,9 @@ Measured 2026-10-30: `tsc --noEmit --listFiles` printed **0** lines and the comm
 
 **The two passes OVERLAP, unlike `apps/server`'s.** Test files import from `src`, so
 TypeScript pulls those source files into the second program and checks them twice. Measured
-2026-10-30 with `--listFiles`: **1390** files in the `tsconfig.app.json` pass and **1728** in
-the `tsconfig.test.json` pass, of which 516 are under `apps/web/src` — 243 test and story
-files plus **273 source files checked a second time**.
+2026-10-30 with `--listFiles`: **1390** files in the `tsconfig.app.json` pass and **1734** in
+the `tsconfig.test.json` pass (1728 before wave 1 of step 3 added six files back), of which
+**249** are test and story files, the rest source files checked a second time.
 
 **That costs about 3.9 seconds, and it is a real cost.** Measured 2026-10-30, three runs of
 each form, interleaved so load drift hits both equally, `rm -rf apps/web/node_modules/.tmp`

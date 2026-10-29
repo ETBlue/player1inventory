@@ -39,12 +39,23 @@
   // 3. `vitest/globals` in `types`, because `vitest.config.ts` sets
   //    `globals: true`, so `describe` / `it` / `expect` / `vi` are ambient.
   //
-  // THE `exclude` LIST BELOW IS A BACKLOG, NOT A POLICY. These 115 files
-  // carried 726 pre-existing type errors when this config was added
-  // (measured 2026-10-30, 92 files of their own plus the knock-on files
-  // described next). Fixing them is issue #340 step 3, file by file. 243 test
-  // and story files ARE checked. Removing a file from this list is the unit of
-  // that work.
+  // THE `exclude` LIST BELOW IS A BACKLOG, NOT A POLICY. These 109 files
+  // carry 321 pre-existing type errors across 86 of them (measured 2026-10-30,
+  // plus the knock-on files described next). Fixing them is issue #340 step 3,
+  // file by file. 249 test and story files ARE checked. Removing a file from
+  // this list is the unit of that work.
+  //
+  // It was 115 files and 726 errors when this config was added. Wave 1 of
+  // step 3 removed the six biggest — lib/quantityUtils.test.ts (148 errors),
+  // components/item/ItemCard/ItemCard.test.tsx (95), lib/importData.test.ts
+  // (64), lib/sortUtils.test.ts (46), db/operations.test.ts (30) and
+  // lib/filterUtils.test.ts (22), which is 405 of the 726.
+  //
+  // TO MEASURE THE BACKLOG YOURSELF: copy this file and replace the `exclude`
+  // array with `[]`, then run `tsc -p` on the copy. Do NOT strip the comments
+  // with a regex on `//` — it eats the `/**/` inside `src/**/*.test.ts` and
+  // turns the include into `src*.test.ts`, which checks ZERO files and reports
+  // ONE error. A suspiciously small number is a broken probe, not good news.
   //
   // TWO TRAPS WHEN EDITING THIS LIST:
   //
@@ -85,7 +96,6 @@
     "src/components/global/Sidebar/Sidebar.test.tsx",
     "src/components/item/ItemCard/ItemCard.pantry.stories.test.tsx",
     "src/components/item/ItemCard/ItemCard.pantry.stories.tsx",
-    "src/components/item/ItemCard/ItemCard.test.tsx",
     "src/components/item/ItemFilters/ItemFilters.stories.test.tsx",
     "src/components/item/ItemFilters/ItemFilters.stories.tsx",
     "src/components/item/ItemFilters/ItemFilters.test.tsx",
@@ -127,7 +137,6 @@
     "src/components/vendor/VendorFilterDropdown/VendorFilterDropdown.stories.test.tsx",
     "src/components/vendor/VendorFilterDropdown/VendorFilterDropdown.stories.tsx",
     "src/db/migrations.test.ts",
-    "src/db/operations.test.ts",
     "src/db/upgradeV15.test.ts",
     "src/hooks/cloudFetchPolicy.cloud.test.tsx",
     "src/hooks/useActiveLocation.test.tsx",
@@ -152,11 +161,7 @@
     "src/lib/checkoutQuantities.test.ts",
     "src/lib/expiration.test.ts",
     "src/lib/exportData.test.ts",
-    "src/lib/filterUtils.test.ts",
-    "src/lib/importData.test.ts",
-    "src/lib/quantityUtils.test.ts",
     "src/lib/shelfUtils.test.ts",
-    "src/lib/sortUtils.test.ts",
     "src/lib/tagSortUtils.test.ts",
     "src/lib/tagUtils.test.ts",
     "src/routes/__root.e2eMigration.test.tsx",
