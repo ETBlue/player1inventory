@@ -174,7 +174,9 @@ test.afterEach(async ({ page, request, baseURL }) => {
           req.onsuccess = () => resolve()
           req.onerror = () => reject(req.error)
           req.onblocked = () => {
-            console.warn(`[afterEach] IndexedDB delete blocked for "${name}"...`)
+            console.warn(
+              `[afterEach] IndexedDB delete blocked for "${name}"...`,
+            )
             resolve()
           }
         })

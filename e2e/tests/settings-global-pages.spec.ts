@@ -143,7 +143,9 @@ test.afterEach(async ({ page, request, baseURL }) => {
           req.onsuccess = () => resolve()
           req.onerror = () => reject(req.error)
           req.onblocked = () => {
-            console.warn(`[afterEach] IndexedDB delete blocked for "${name}"...`)
+            console.warn(
+              `[afterEach] IndexedDB delete blocked for "${name}"...`,
+            )
             resolve()
           }
         })
@@ -195,7 +197,9 @@ test('user sees no location stock on a settings items tab, while the pantry show
   // look like a missing element, which is the weaker signal of the two.
   // Checkbox: aria-label={isChecked ? `Remove ${name}` : `Add ${name}`}
   // (src/components/item/ItemCard/ItemCard.tsx:172)
-  const milkCheckbox = page.getByRole('checkbox', { name: /^(Add|Remove) Milk$/ })
+  const milkCheckbox = page.getByRole('checkbox', {
+    name: /^(Add|Remove) Milk$/,
+  })
   await expect(milkCheckbox).toBeVisible()
   await expect(milkCheckbox).toBeChecked()
 
@@ -243,8 +247,12 @@ test('user sees Settings pinned below the location-aware links in the sidebar', 
   // them, and it is exactly what jsdom cannot give the unit test: measure the
   // gap the `mt-auto` block opens up.
   const nav = await sidebar.boundingBox()
-  const cooking = await sidebar.getByRole('link', { name: 'Cooking' }).boundingBox()
-  const settings = await sidebar.getByRole('link', { name: 'Settings' }).boundingBox()
+  const cooking = await sidebar
+    .getByRole('link', { name: 'Cooking' })
+    .boundingBox()
+  const settings = await sidebar
+    .getByRole('link', { name: 'Settings' })
+    .boundingBox()
   if (!nav || !cooking || !settings) {
     throw new Error('sidebar, Cooking link or Settings link has no layout box')
   }

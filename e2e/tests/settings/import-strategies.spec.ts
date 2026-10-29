@@ -1,15 +1,17 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-import { expect, test } from '@playwright/test'
+
 import type { APIRequestContext, Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import { CLOUD_WEB_URL } from '../../constants'
 import {
   DESTINATION_DEFAULT_LOCATION_NAME,
+  expectFixtureStockPerLocation,
   FIXTURE_DEFAULT_LOCATION_NAME,
   FIXTURE_STOCK_BY_LOCATION,
-  expectFixtureStockPerLocation,
 } from '../../helpers/backupAssertions'
 import { seedCloudFixture } from '../../helpers/cloudSeed'
 import { cleanupCloudData } from '../../helpers/cloudTeardown'
@@ -170,8 +172,11 @@ async function readItemNamesById(
   baseURL: string | undefined,
 ): Promise<Record<string, string>> {
   const rows: ItemRow[] = isCloud(baseURL)
-    ? (await makeGql(request)<{ items: ItemRow[] }>(`query { items { id name } }`))
-        .items
+    ? (
+        await makeGql(request)<{ items: ItemRow[] }>(
+          `query { items { id name } }`,
+        )
+      ).items
     : ((await readRows(page, 'items')) as unknown as ItemRow[])
 
   const byId: Record<string, string> = {}

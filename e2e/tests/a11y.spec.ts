@@ -141,9 +141,10 @@ async function checkA11yExcludingContrastOn(
     { exclude },
     { runOnly: { type: 'rule', values: ['color-contrast'] } },
   )
-  expect(contrast.flatMap((v) => v.nodes.map((n) => n.target.join(' '))), label).toEqual(
-    [],
-  )
+  expect(
+    contrast.flatMap((v) => v.nodes.map((n) => n.target.join(' '))),
+    label,
+  ).toEqual([])
 }
 
 async function checkA11yAllowingKnownConfirmContrast(
@@ -204,7 +205,9 @@ test.afterEach(async ({ page, request, baseURL }) => {
 })
 
 // Pantry page (/)
-test('user can view pantry page without accessibility violations', async ({ page }) => {
+test('user can view pantry page without accessibility violations', async ({
+  page,
+}) => {
   // Given the user navigates to the pantry (home) page
   await page.goto('/')
   await page.waitForLoadState('networkidle')
@@ -248,7 +251,9 @@ test('user can view the desktop sidebar location switcher without accessibility 
 })
 
 // Shopping page (/shopping)
-test('user can view shopping page without accessibility violations', async ({ page }) => {
+test('user can view shopping page without accessibility violations', async ({
+  page,
+}) => {
   // Given the user navigates to the shopping page
   await page.goto('/shopping')
   await page.waitForLoadState('networkidle')
@@ -261,7 +266,9 @@ test('user can view shopping page without accessibility violations', async ({ pa
 })
 
 // Shopping > Vendor cart page (/shopping/:vendorId)
-test('user can view vendor cart page without accessibility violations', async ({ page }) => {
+test('user can view vendor cart page without accessibility violations', async ({
+  page,
+}) => {
   // Given a seeded vendor
   const vendorId = await seedVendor(page)
 
@@ -275,7 +282,9 @@ test('user can view vendor cart page without accessibility violations', async ({
 })
 
 // Cooking page (/cooking)
-test('user can view cooking page without accessibility violations', async ({ page }) => {
+test('user can view cooking page without accessibility violations', async ({
+  page,
+}) => {
   // Given seeded recipe cards covering both stock-status states
   await seedCookingFixture(page)
 
@@ -294,7 +303,9 @@ test('user can view cooking page without accessibility violations', async ({ pag
 })
 
 // Settings main page (/settings)
-test('user can view settings page without accessibility violations', async ({ page }) => {
+test('user can view settings page without accessibility violations', async ({
+  page,
+}) => {
   // Given the user navigates to the settings page
   await page.goto('/settings')
   await page.waitForLoadState('networkidle')
@@ -307,7 +318,9 @@ test('user can view settings page without accessibility violations', async ({ pa
 })
 
 // Settings > Tags list (/settings/tags)
-test('user can view settings tags list without accessibility violations', async ({ page }) => {
+test('user can view settings tags list without accessibility violations', async ({
+  page,
+}) => {
   // Given the user navigates to the tags settings page
   await page.goto('/settings/tags')
   await page.waitForLoadState('networkidle')
@@ -320,7 +333,9 @@ test('user can view settings tags list without accessibility violations', async 
 })
 
 // Settings > Vendors list (/settings/vendors)
-test('user can view settings vendors list without accessibility violations', async ({ page }) => {
+test('user can view settings vendors list without accessibility violations', async ({
+  page,
+}) => {
   // Given the user navigates to the vendors settings page
   await page.goto('/settings/vendors')
   await page.waitForLoadState('networkidle')
@@ -333,7 +348,9 @@ test('user can view settings vendors list without accessibility violations', asy
 })
 
 // Settings > Recipes list (/settings/recipes)
-test('user can view settings recipes list without accessibility violations', async ({ page }) => {
+test('user can view settings recipes list without accessibility violations', async ({
+  page,
+}) => {
   // Given the user navigates to the recipes settings page
   await page.goto('/settings/recipes')
   await page.waitForLoadState('networkidle')
@@ -346,7 +363,9 @@ test('user can view settings recipes list without accessibility violations', asy
 })
 
 // Shelves group-by view (/?groupBy=shelf)
-test('user can view shelves page without accessibility violations', async ({ page }) => {
+test('user can view shelves page without accessibility violations', async ({
+  page,
+}) => {
   // Given the user navigates to the pantry page in shelf group-by mode
   await page.goto('/?groupBy=shelf')
   await page.waitForLoadState('networkidle')
@@ -359,7 +378,9 @@ test('user can view shelves page without accessibility violations', async ({ pag
 })
 
 // Vendor group-by view (/?groupBy=vendor)
-test('user can view vendor group-by page without accessibility violations', async ({ page }) => {
+test('user can view vendor group-by page without accessibility violations', async ({
+  page,
+}) => {
   // Given a seeded vendor with an item linked to it
   const vendorId = await seedVendor(page)
   await page.evaluate(async (vId) => {
@@ -398,7 +419,9 @@ test('user can view vendor group-by page without accessibility violations', asyn
 })
 
 // Recipe group-by view (/?groupBy=recipe)
-test('user can view recipe group-by page without accessibility violations', async ({ page }) => {
+test('user can view recipe group-by page without accessibility violations', async ({
+  page,
+}) => {
   // Given a seeded recipe with an item linked to it
   const recipeId = await seedRecipe(page)
   await page.evaluate(async (rId) => {
@@ -444,7 +467,9 @@ test('user can view recipe group-by page without accessibility violations', asyn
 })
 
 // Settings > Shelves list (/settings/shelves)
-test('user can view settings shelves list without accessibility violations', async ({ page }) => {
+test('user can view settings shelves list without accessibility violations', async ({
+  page,
+}) => {
   // Given the user navigates to the shelves settings page
   await page.goto('/settings/shelves')
   await page.waitForLoadState('networkidle')
@@ -457,7 +482,9 @@ test('user can view settings shelves list without accessibility violations', asy
 })
 
 // Settings > Locations list (/settings/locations)
-test('user can view settings locations list without accessibility violations', async ({ page }) => {
+test('user can view settings locations list without accessibility violations', async ({
+  page,
+}) => {
   // Given the user navigates to the locations settings page
   await page.goto('/settings/locations')
   await page.waitForLoadState('networkidle')
@@ -470,7 +497,9 @@ test('user can view settings locations list without accessibility violations', a
 })
 
 // Onboarding page (/onboarding)
-test('user can view onboarding page without accessibility violations', async ({ page }) => {
+test('user can view onboarding page without accessibility violations', async ({
+  page,
+}) => {
   // Given the user navigates directly to the onboarding page
   // Use a seeded item to prevent the empty-data redirect intercepting /onboarding
   // and sending us back to pantry. The skip flag prevents the redirect but we also
@@ -478,7 +507,9 @@ test('user can view onboarding page without accessibility violations', async ({ 
   await page.goto('/onboarding')
   // Wait for the URL and a unique onboarding element to confirm the page rendered
   await page.waitForURL('**/onboarding', { timeout: 10000 })
-  await page.getByRole('button', { name: 'Choose from a template...' }).waitFor({ timeout: 10000 })
+  await page
+    .getByRole('button', { name: 'Choose from a template...' })
+    .waitFor({ timeout: 10000 })
 
   // When axe scans the page for accessibility violations
   await injectAxe(page)
@@ -488,7 +519,9 @@ test('user can view onboarding page without accessibility violations', async ({ 
 })
 
 // Helper: seed an item into IndexedDB and return its ID
-async function seedItem(page: import('@playwright/test').Page): Promise<string> {
+async function seedItem(
+  page: import('@playwright/test').Page,
+): Promise<string> {
   await page.goto('/')
   await page.waitForLoadState('networkidle')
   return page.evaluate(async () => {
@@ -533,8 +566,18 @@ async function seedTag(page: import('@playwright/test').Page): Promise<string> {
     const tagId = crypto.randomUUID()
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(['tagTypes', 'tags'], 'readwrite')
-      tx.objectStore('tagTypes').add({ id: typeId, name: 'test type', color: 'blue', createdAt: new Date() })
-      tx.objectStore('tags').add({ id: tagId, name: 'test tag', tagTypeId: typeId, createdAt: new Date() })
+      tx.objectStore('tagTypes').add({
+        id: typeId,
+        name: 'test type',
+        color: 'blue',
+        createdAt: new Date(),
+      })
+      tx.objectStore('tags').add({
+        id: tagId,
+        name: 'test tag',
+        tagTypeId: typeId,
+        createdAt: new Date(),
+      })
       tx.oncomplete = () => resolve()
       tx.onerror = () => reject(tx.error)
     })
@@ -543,7 +586,9 @@ async function seedTag(page: import('@playwright/test').Page): Promise<string> {
 }
 
 // Helper: seed a vendor into IndexedDB and return its ID
-async function seedVendor(page: import('@playwright/test').Page): Promise<string> {
+async function seedVendor(
+  page: import('@playwright/test').Page,
+): Promise<string> {
   await page.goto('/')
   await page.waitForLoadState('networkidle')
   return page.evaluate(async () => {
@@ -555,7 +600,11 @@ async function seedVendor(page: import('@playwright/test').Page): Promise<string
     const id = crypto.randomUUID()
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction('vendors', 'readwrite')
-      tx.objectStore('vendors').add({ id, name: 'test vendor', createdAt: new Date() })
+      tx.objectStore('vendors').add({
+        id,
+        name: 'test vendor',
+        createdAt: new Date(),
+      })
       tx.oncomplete = () => resolve()
       tx.onerror = () => reject(tx.error)
     })
@@ -564,7 +613,9 @@ async function seedVendor(page: import('@playwright/test').Page): Promise<string
 }
 
 // Helper: seed a shelf into IndexedDB and return its ID
-async function seedShelf(page: import('@playwright/test').Page): Promise<string> {
+async function seedShelf(
+  page: import('@playwright/test').Page,
+): Promise<string> {
   await page.goto('/')
   await page.waitForLoadState('networkidle')
   return page.evaluate(async () => {
@@ -610,7 +661,13 @@ async function seedStockPagerFixture(
   const now = new Date()
 
   await seedRows(page, 'locations', [
-    { id: A11Y_OTHER_LOCATION, name: 'Office', order: 1, createdAt: now, updatedAt: now },
+    {
+      id: A11Y_OTHER_LOCATION,
+      name: 'Office',
+      order: 1,
+      createdAt: now,
+      updatedAt: now,
+    },
   ])
   await seedRows(page, 'items', [
     {
@@ -640,7 +697,9 @@ async function seedStockPagerFixture(
 }
 
 // Helper: seed a recipe into IndexedDB and return its ID
-async function seedRecipe(page: import('@playwright/test').Page): Promise<string> {
+async function seedRecipe(
+  page: import('@playwright/test').Page,
+): Promise<string> {
   await page.goto('/')
   await page.waitForLoadState('networkidle')
   return page.evaluate(async () => {
@@ -652,7 +711,12 @@ async function seedRecipe(page: import('@playwright/test').Page): Promise<string
     const id = crypto.randomUUID()
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction('recipes', 'readwrite')
-      tx.objectStore('recipes').add({ id, name: 'test recipe', items: [], createdAt: new Date() })
+      tx.objectStore('recipes').add({
+        id,
+        name: 'test recipe',
+        items: [],
+        createdAt: new Date(),
+      })
       tx.oncomplete = () => resolve()
       tx.onerror = () => reject(tx.error)
     })
@@ -681,7 +745,13 @@ async function seedCookingFixture(
 
   // A second location, so "stocked elsewhere" refers to somewhere real.
   await seedRows(page, 'locations', [
-    { id: A11Y_OTHER_LOCATION, name: 'Office', order: 1, createdAt: now, updatedAt: now },
+    {
+      id: A11Y_OTHER_LOCATION,
+      name: 'Office',
+      order: 1,
+      createdAt: now,
+      updatedAt: now,
+    },
   ])
 
   const item = (id: string, name: string) => ({
@@ -754,7 +824,10 @@ async function seedCookingFixture(
 
 test.describe('detail page a11y', () => {
   // Item detail page (/items/:id)
-  test('user can view item detail page without accessibility violations', async ({ page, baseURL }) => {
+  test('user can view item detail page without accessibility violations', async ({
+    page,
+    baseURL,
+  }) => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
@@ -769,7 +842,9 @@ test.describe('detail page a11y', () => {
   })
 
   // Item detail stock tab (/items/:id/stock)
-  test('user can view item detail stock tab without accessibility violations', async ({ page }) => {
+  test('user can view item detail stock tab without accessibility violations', async ({
+    page,
+  }) => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
@@ -783,7 +858,9 @@ test.describe('detail page a11y', () => {
   })
 
   // Item detail stock tab, stocked page WITH the all-locations pager
-  test('user can view the stock pager on a stocked location without accessibility violations', async ({ page }) => {
+  test('user can view the stock pager on a stocked location without accessibility violations', async ({
+    page,
+  }) => {
     // Given an item stocked in the active location, with a second location so
     // the pager chrome renders
     const itemId = await seedStockPagerFixture(page)
@@ -804,7 +881,9 @@ test.describe('detail page a11y', () => {
   })
 
   // Item detail stock tab, NOT-stocked page (empty state + "Add to location")
-  test('user can view the stock pager on a not-stocked location without accessibility violations', async ({ page }) => {
+  test('user can view the stock pager on a not-stocked location without accessibility violations', async ({
+    page,
+  }) => {
     // Given the same fixture, paged to the location the item is not stocked in
     const itemId = await seedStockPagerFixture(page)
     const stockTab = new StockPagerPage(page)
@@ -819,7 +898,9 @@ test.describe('detail page a11y', () => {
   })
 
   // Item detail stock tab, remove-from-location confirmation dialog
-  test('user can view the remove-from-location dialog without accessibility violations', async ({ page }) => {
+  test('user can view the remove-from-location dialog without accessibility violations', async ({
+    page,
+  }) => {
     // Given the stocked page with its remove confirmation open
     const itemId = await seedStockPagerFixture(page)
     const stockTab = new StockPagerPage(page)
@@ -839,7 +920,9 @@ test.describe('detail page a11y', () => {
   })
 
   // Item detail relation > tags subtab (/items/:id/relation/tags)
-  test('user can view item detail relation tags subtab without accessibility violations', async ({ page }) => {
+  test('user can view item detail relation tags subtab without accessibility violations', async ({
+    page,
+  }) => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
@@ -853,7 +936,9 @@ test.describe('detail page a11y', () => {
   })
 
   // Item detail relation > vendors subtab (/items/:id/relation/vendors)
-  test('user can view item detail relation vendors subtab without accessibility violations', async ({ page }) => {
+  test('user can view item detail relation vendors subtab without accessibility violations', async ({
+    page,
+  }) => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
@@ -867,7 +952,9 @@ test.describe('detail page a11y', () => {
   })
 
   // Item detail relation > recipes subtab (/items/:id/relation/recipes)
-  test('user can view item detail relation recipes subtab without accessibility violations', async ({ page }) => {
+  test('user can view item detail relation recipes subtab without accessibility violations', async ({
+    page,
+  }) => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
@@ -881,7 +968,9 @@ test.describe('detail page a11y', () => {
   })
 
   // Settings > Tag detail (/settings/tags/:id)
-  test('user can view settings tag detail page without accessibility violations', async ({ page }) => {
+  test('user can view settings tag detail page without accessibility violations', async ({
+    page,
+  }) => {
     // Given a seeded tag
     const tagId = await seedTag(page)
 
@@ -895,7 +984,9 @@ test.describe('detail page a11y', () => {
   })
 
   // Settings > Vendor detail (/settings/vendors/:id)
-  test('user can view settings vendor detail page without accessibility violations', async ({ page }) => {
+  test('user can view settings vendor detail page without accessibility violations', async ({
+    page,
+  }) => {
     // Given a seeded vendor
     const vendorId = await seedVendor(page)
 
@@ -909,7 +1000,9 @@ test.describe('detail page a11y', () => {
   })
 
   // Settings > Recipe detail (/settings/recipes/:id)
-  test('user can view settings recipe detail page without accessibility violations', async ({ page }) => {
+  test('user can view settings recipe detail page without accessibility violations', async ({
+    page,
+  }) => {
     // Given a seeded recipe
     const recipeId = await seedRecipe(page)
 
@@ -923,7 +1016,9 @@ test.describe('detail page a11y', () => {
   })
 
   // Shelf detail view (/?groupBy=shelf&id=:shelfId)
-  test('user can view shelf detail page without accessibility violations', async ({ page }) => {
+  test('user can view shelf detail page without accessibility violations', async ({
+    page,
+  }) => {
     // Given a seeded shelf
     const shelfId = await seedShelf(page)
 
@@ -937,7 +1032,9 @@ test.describe('detail page a11y', () => {
   })
 
   // Settings > Shelf detail (/settings/shelves/:id)
-  test('user can view settings shelf detail page without accessibility violations', async ({ page }) => {
+  test('user can view settings shelf detail page without accessibility violations', async ({
+    page,
+  }) => {
     // Given a seeded shelf
     const shelfId = await seedShelf(page)
 
@@ -961,7 +1058,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Pantry page (/) in dark mode
-  test('user can view pantry page without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view pantry page without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given the user navigates to the pantry (home) page with dark mode enabled
     await page.goto('/')
     await page.waitForLoadState('networkidle')
@@ -974,7 +1073,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Shopping page (/shopping) in dark mode
-  test('user can view shopping page without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view shopping page without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given the user navigates to the shopping page with dark mode enabled
     await page.goto('/shopping')
     await page.waitForLoadState('networkidle')
@@ -987,7 +1088,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Shopping > Vendor cart page (/shopping/:vendorId) in dark mode
-  test('user can view vendor cart page without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view vendor cart page without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given a seeded vendor (dark mode enabled)
     const vendorId = await seedVendor(page)
 
@@ -1001,7 +1104,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Cooking page (/cooking) in dark mode
-  test('user can view cooking page without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view cooking page without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given seeded recipe cards covering both stock-status states
     await seedCookingFixture(page)
 
@@ -1019,7 +1124,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Settings main page (/settings) in dark mode
-  test('user can view settings page without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view settings page without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given the user navigates to the settings page with dark mode enabled
     await page.goto('/settings')
     await page.waitForLoadState('networkidle')
@@ -1032,7 +1139,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Settings > Tags list (/settings/tags) in dark mode
-  test('user can view settings tags list without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view settings tags list without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given the user navigates to the tags settings page with dark mode enabled
     await page.goto('/settings/tags')
     await page.waitForLoadState('networkidle')
@@ -1045,7 +1154,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Settings > Vendors list (/settings/vendors) in dark mode
-  test('user can view settings vendors list without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view settings vendors list without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given the user navigates to the vendors settings page with dark mode enabled
     await page.goto('/settings/vendors')
     await page.waitForLoadState('networkidle')
@@ -1058,7 +1169,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Settings > Recipes list (/settings/recipes) in dark mode
-  test('user can view settings recipes list without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view settings recipes list without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given the user navigates to the recipes settings page with dark mode enabled
     await page.goto('/settings/recipes')
     await page.waitForLoadState('networkidle')
@@ -1071,7 +1184,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Shelves group-by view (/?groupBy=shelf) in dark mode
-  test('user can view shelves page without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view shelves page without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given the user navigates to the pantry page in shelf group-by mode with dark mode enabled
     await page.goto('/?groupBy=shelf')
     await page.waitForLoadState('networkidle')
@@ -1084,7 +1199,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Vendor group-by view (/?groupBy=vendor) in dark mode
-  test('user can view vendor group-by page without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view vendor group-by page without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given a seeded vendor with an item linked to it (dark mode enabled)
     const vendorId = await seedVendor(page)
     await page.evaluate(async (vId) => {
@@ -1123,7 +1240,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Recipe group-by view (/?groupBy=recipe) in dark mode
-  test('user can view recipe group-by page without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view recipe group-by page without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given a seeded recipe with an item linked to it (dark mode enabled)
     const recipeId = await seedRecipe(page)
     await page.evaluate(async (rId) => {
@@ -1169,7 +1288,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Settings > Shelves list (/settings/shelves) in dark mode
-  test('user can view settings shelves list without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view settings shelves list without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given the user navigates to the shelves settings page with dark mode enabled
     await page.goto('/settings/shelves')
     await page.waitForLoadState('networkidle')
@@ -1182,7 +1303,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Settings > Locations list (/settings/locations) in dark mode
-  test('user can view settings locations list without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view settings locations list without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given the user navigates to the locations settings page with dark mode enabled
     await page.goto('/settings/locations')
     await page.waitForLoadState('networkidle')
@@ -1195,7 +1318,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Onboarding page (/onboarding) in dark mode
-  test('user can view onboarding page without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view onboarding page without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given the user navigates directly to the onboarding page with dark mode enabled
     await page.goto('/onboarding')
     await page.waitForLoadState('networkidle')
@@ -1208,7 +1333,10 @@ test.describe('dark mode a11y', () => {
   })
 
   // Item detail page (/items/:id) in dark mode
-  test('user can view item detail page without accessibility violations in dark mode', async ({ page, baseURL }) => {
+  test('user can view item detail page without accessibility violations in dark mode', async ({
+    page,
+    baseURL,
+  }) => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
@@ -1223,7 +1351,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Item detail stock tab (/items/:id/stock) in dark mode
-  test('user can view item detail stock tab without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view item detail stock tab without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
@@ -1237,7 +1367,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Item detail stock tab, stocked page WITH the all-locations pager, in dark mode
-  test('user can view the stock pager on a stocked location without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view the stock pager on a stocked location without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given an item stocked in the active location, with a second location so
     // the pager chrome renders (dark mode enabled)
     const itemId = await seedStockPagerFixture(page)
@@ -1254,7 +1386,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Item detail stock tab, NOT-stocked page, in dark mode
-  test('user can view the stock pager on a not-stocked location without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view the stock pager on a not-stocked location without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given the same fixture, paged to the location the item is not stocked in
     const itemId = await seedStockPagerFixture(page)
     const stockTab = new StockPagerPage(page)
@@ -1269,7 +1403,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Item detail stock tab, remove-from-location confirmation dialog, in dark mode
-  test('user can view the remove-from-location dialog without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view the remove-from-location dialog without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given the stocked page with its remove confirmation open
     const itemId = await seedStockPagerFixture(page)
     const stockTab = new StockPagerPage(page)
@@ -1283,7 +1419,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Item detail relation > tags subtab (/items/:id/relation/tags) in dark mode
-  test('user can view item detail relation tags subtab without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view item detail relation tags subtab without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
@@ -1297,7 +1435,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Item detail relation > vendors subtab (/items/:id/relation/vendors) in dark mode
-  test('user can view item detail relation vendors subtab without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view item detail relation vendors subtab without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
@@ -1311,7 +1451,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Item detail relation > recipes subtab (/items/:id/relation/recipes) in dark mode
-  test('user can view item detail relation recipes subtab without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view item detail relation recipes subtab without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
@@ -1325,7 +1467,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Settings > Tag detail (/settings/tags/:id) in dark mode
-  test('user can view settings tag detail page without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view settings tag detail page without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given a seeded tag
     const tagId = await seedTag(page)
 
@@ -1339,7 +1483,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Settings > Vendor detail (/settings/vendors/:id) in dark mode
-  test('user can view settings vendor detail page without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view settings vendor detail page without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given a seeded vendor
     const vendorId = await seedVendor(page)
 
@@ -1353,7 +1499,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Settings > Recipe detail (/settings/recipes/:id) in dark mode
-  test('user can view settings recipe detail page without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view settings recipe detail page without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given a seeded recipe
     const recipeId = await seedRecipe(page)
 
@@ -1367,7 +1515,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Shelf detail view (/?groupBy=shelf&id=:shelfId) in dark mode
-  test('user can view shelf detail page without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view shelf detail page without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given a seeded shelf with dark mode enabled
     const shelfId = await seedShelf(page)
 
@@ -1381,7 +1531,9 @@ test.describe('dark mode a11y', () => {
   })
 
   // Settings > Shelf detail (/settings/shelves/:id) in dark mode
-  test('user can view settings shelf detail page without accessibility violations in dark mode', async ({ page }) => {
+  test('user can view settings shelf detail page without accessibility violations in dark mode', async ({
+    page,
+  }) => {
     // Given a seeded shelf with dark mode enabled
     const shelfId = await seedShelf(page)
 
@@ -1399,7 +1551,9 @@ test.describe('dark mode a11y', () => {
 test.describe('mobile viewport a11y', () => {
   test.use({ viewport: { width: 390, height: 844 } }) // iPhone 14 Pro
 
-  test('user can view pantry page without accessibility violations on mobile', async ({ page }) => {
+  test('user can view pantry page without accessibility violations on mobile', async ({
+    page,
+  }) => {
     // Given the user navigates to the pantry (home) page on a mobile viewport
     await page.goto('/')
     await page.waitForLoadState('networkidle')
@@ -1411,7 +1565,9 @@ test.describe('mobile viewport a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  test('user can view shopping page without accessibility violations on mobile', async ({ page }) => {
+  test('user can view shopping page without accessibility violations on mobile', async ({
+    page,
+  }) => {
     // Given the user navigates to the shopping page on a mobile viewport
     await page.goto('/shopping')
     await page.waitForLoadState('networkidle')
@@ -1423,7 +1579,9 @@ test.describe('mobile viewport a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  test('user can view cooking page without accessibility violations on mobile', async ({ page }) => {
+  test('user can view cooking page without accessibility violations on mobile', async ({
+    page,
+  }) => {
     // Given seeded recipe cards covering both stock-status states
     await seedCookingFixture(page)
 
@@ -1441,7 +1599,9 @@ test.describe('mobile viewport a11y', () => {
   })
 
   // Shopping > Vendor cart page (/shopping/:vendorId) on mobile
-  test('user can view vendor cart page without accessibility violations on mobile', async ({ page }) => {
+  test('user can view vendor cart page without accessibility violations on mobile', async ({
+    page,
+  }) => {
     // Given a seeded vendor on a mobile viewport
     const vendorId = await seedVendor(page)
 
@@ -1455,7 +1615,9 @@ test.describe('mobile viewport a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  test('user can view settings page without accessibility violations on mobile', async ({ page }) => {
+  test('user can view settings page without accessibility violations on mobile', async ({
+    page,
+  }) => {
     // Given the user navigates to the settings page on a mobile viewport
     await page.goto('/settings')
     await page.waitForLoadState('networkidle')
@@ -1467,7 +1629,9 @@ test.describe('mobile viewport a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  test('user can view shelves page without accessibility violations on mobile', async ({ page }) => {
+  test('user can view shelves page without accessibility violations on mobile', async ({
+    page,
+  }) => {
     // Given the user navigates to the pantry page in shelf group-by mode on a mobile viewport
     await page.goto('/?groupBy=shelf')
     await page.waitForLoadState('networkidle')
@@ -1479,7 +1643,9 @@ test.describe('mobile viewport a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  test('user can view settings shelves list without accessibility violations on mobile', async ({ page }) => {
+  test('user can view settings shelves list without accessibility violations on mobile', async ({
+    page,
+  }) => {
     // Given the user navigates to the shelves settings page on a mobile viewport
     await page.goto('/settings/shelves')
     await page.waitForLoadState('networkidle')
@@ -1491,7 +1657,9 @@ test.describe('mobile viewport a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  test('user can view shelf detail page without accessibility violations on mobile', async ({ page }) => {
+  test('user can view shelf detail page without accessibility violations on mobile', async ({
+    page,
+  }) => {
     // Given a seeded shelf on a mobile viewport
     const shelfId = await seedShelf(page)
 
@@ -1504,7 +1672,9 @@ test.describe('mobile viewport a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  test('user can view settings shelf detail page without accessibility violations on mobile', async ({ page }) => {
+  test('user can view settings shelf detail page without accessibility violations on mobile', async ({
+    page,
+  }) => {
     // Given a seeded shelf on a mobile viewport
     const shelfId = await seedShelf(page)
 
@@ -1534,10 +1704,16 @@ test.describe('offline banner a11y', () => {
   // The skip must sit at describe level, not inside the test body: this file's
   // top-level beforeEach also calls page.goto('/'), so a body-level skip runs
   // too late and the hook still hits port 5176.
-  test.skip(() => test.info().project.name !== 'pwa', 'the pwa project runs this against the PWA preview server')
+  test.skip(
+    () => test.info().project.name !== 'pwa',
+    'the pwa project runs this against the PWA preview server',
+  )
 
   for (const theme of ['light', 'dark'] as const) {
-    test(`offline banner passes axe in ${theme} mode`, async ({ page, context }) => {
+    test(`offline banner passes axe in ${theme} mode`, async ({
+      page,
+      context,
+    }) => {
       // Given the app is in cloud mode with the chosen theme
       await page.addInitScript((value) => {
         localStorage.setItem('theme-preference', value)

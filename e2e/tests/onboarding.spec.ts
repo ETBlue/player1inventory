@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import { CLOUD_WEB_URL } from '../constants'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
 import { OnboardingPage } from '../pages/OnboardingPage'
@@ -43,8 +43,14 @@ test.afterEach(async ({ page, request, baseURL }) => {
             // Store may not exist in this schema version — skip
           }
         }
-        tx.oncomplete = () => { db.close(); resolve() }
-        tx.onerror = () => { db.close(); reject(tx.error) }
+        tx.oncomplete = () => {
+          db.close()
+          resolve()
+        }
+        tx.onerror = () => {
+          db.close()
+          reject(tx.error)
+        }
       }
       req.onerror = () => reject(req.error)
     })
@@ -69,7 +75,9 @@ test('user sees onboarding when app data is empty', async ({ page }) => {
   ).toBeVisible()
 })
 
-test('user can start from scratch and land on pantry page', async ({ page }) => {
+test('user can start from scratch and land on pantry page', async ({
+  page,
+}) => {
   const onboarding = new OnboardingPage(page)
 
   // Given the user is on the onboarding page
@@ -84,7 +92,9 @@ test('user can start from scratch and land on pantry page', async ({ page }) => 
   await expect(page).toHaveURL('/')
 })
 
-test('user can select template items and complete onboarding', async ({ page }) => {
+test('user can select template items and complete onboarding', async ({
+  page,
+}) => {
   const onboarding = new OnboardingPage(page)
 
   // Given the user is on the onboarding page

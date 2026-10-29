@@ -2,14 +2,16 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-import { test, expect } from '@playwright/test'
+
+import { expect, test } from '@playwright/test'
 import {
   DESTINATION_DEFAULT_LOCATION_NAME,
-  FIXTURE_DEFAULT_LOCATION_NAME,
   expectFixtureLocations,
   expectFixtureStockPerLocation,
   expectStockNotCollapsedOntoDefault,
+  FIXTURE_DEFAULT_LOCATION_NAME,
 } from '../../helpers/backupAssertions'
 import { readRows } from '../../helpers/locationSeed'
 import { ItemPage } from '../../pages/ItemPage'
@@ -23,15 +25,26 @@ test.beforeEach(async ({ page }) => {
     localStorage.setItem('e2e-skip-onboarding', 'true')
   })
 })
-import { RecipesPage } from '../../pages/settings/RecipesPage'
-import { RecipeDetailPage } from '../../pages/settings/RecipeDetailPage'
 
-const LOCAL_FIXTURE_PATH = path.resolve(__dirname, '../../fixtures/local-backup.json')
-const CLOUD_FIXTURE_PATH = path.resolve(__dirname, '../../fixtures/cloud-backup.json')
+import { RecipeDetailPage } from '../../pages/settings/RecipeDetailPage'
+import { RecipesPage } from '../../pages/settings/RecipesPage'
+
+const LOCAL_FIXTURE_PATH = path.resolve(
+  __dirname,
+  '../../fixtures/local-backup.json',
+)
+const CLOUD_FIXTURE_PATH = path.resolve(
+  __dirname,
+  '../../fixtures/cloud-backup.json',
+)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const localFixture = JSON.parse(fs.readFileSync(LOCAL_FIXTURE_PATH, 'utf-8')) as any
+const localFixture = JSON.parse(
+  fs.readFileSync(LOCAL_FIXTURE_PATH, 'utf-8'),
+) as any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const cloudFixture = JSON.parse(fs.readFileSync(CLOUD_FIXTURE_PATH, 'utf-8')) as any
+const cloudFixture = JSON.parse(
+  fs.readFileSync(CLOUD_FIXTURE_PATH, 'utf-8'),
+) as any
 const LOCAL_ITEM_ID: string = localFixture.items[0].id
 const CLOUD_ITEM_ID: string = cloudFixture.items[0].id
 
@@ -41,18 +54,25 @@ test.afterEach(async ({ page }) => {
   await page.goto('/')
   await page.evaluate(async () => {
     const dbs = await indexedDB.databases()
-    await Promise.all(dbs.map(({ name }) => {
-      return new Promise<void>((resolve, reject) => {
-        if (!name) { resolve(); return }
-        const req = indexedDB.deleteDatabase(name)
-        req.onsuccess = () => resolve()
-        req.onerror = () => reject(req.error)
-        req.onblocked = () => {
-          console.warn(`[afterEach] IndexedDB delete blocked for "${name}" — data may persist`)
-          resolve()
-        }
-      })
-    }))
+    await Promise.all(
+      dbs.map(({ name }) => {
+        return new Promise<void>((resolve, reject) => {
+          if (!name) {
+            resolve()
+            return
+          }
+          const req = indexedDB.deleteDatabase(name)
+          req.onsuccess = () => resolve()
+          req.onerror = () => reject(req.error)
+          req.onblocked = () => {
+            console.warn(
+              `[afterEach] IndexedDB delete blocked for "${name}" — data may persist`,
+            )
+            resolve()
+          }
+        })
+      }),
+    )
     localStorage.clear()
     sessionStorage.clear()
   })
@@ -60,7 +80,10 @@ test.afterEach(async ({ page }) => {
 
 // Helper: seed all fixture entities into IndexedDB via page.evaluate
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function seedLocalFixture(page: import('@playwright/test').Page, fixture: any) {
+async function seedLocalFixture(
+  page: import('@playwright/test').Page,
+  fixture: any,
+) {
   await page.goto('/')
   await page.evaluate(async (fixture) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -72,7 +95,19 @@ async function seedLocalFixture(page: import('@playwright/test').Page, fixture: 
     // them the fixture seeded a single location (Dexie's own `on('populate')`
     // default) and no stock rows at all, so no assertion about WHICH location
     // an imported row lands in could fail.
-    const storeNames = ['tagTypes', 'tags', 'vendors', 'items', 'recipes', 'inventoryLogs', 'shoppingCarts', 'cartItems', 'shelves', 'locations', 'itemStocks']
+    const storeNames = [
+      'tagTypes',
+      'tags',
+      'vendors',
+      'items',
+      'recipes',
+      'inventoryLogs',
+      'shoppingCarts',
+      'cartItems',
+      'shelves',
+      'locations',
+      'itemStocks',
+    ]
     // Clear all stores first (removes default-populated data from Dexie's populate hook)
     for (const storeName of storeNames) {
       const tx = db.transaction([storeName], 'readwrite')
@@ -85,16 +120,22 @@ async function seedLocalFixture(page: import('@playwright/test').Page, fixture: 
     // Seed fixture records. `locations` goes FIRST, so the default location
     // exists before any row names it.
     const entries: [string, unknown[]][] = [
-      ['locations', (fixture.locations ?? []).map((loc: Record<string, unknown>) => ({
-        ...loc,
-        createdAt: new Date(loc.createdAt as string),
-        updatedAt: new Date(loc.updatedAt as string),
-      }))],
-      ['itemStocks', (fixture.itemStocks ?? []).map((stock: Record<string, unknown>) => ({
-        ...stock,
-        createdAt: new Date(stock.createdAt as string),
-        updatedAt: new Date(stock.updatedAt as string),
-      }))],
+      [
+        'locations',
+        (fixture.locations ?? []).map((loc: Record<string, unknown>) => ({
+          ...loc,
+          createdAt: new Date(loc.createdAt as string),
+          updatedAt: new Date(loc.updatedAt as string),
+        })),
+      ],
+      [
+        'itemStocks',
+        (fixture.itemStocks ?? []).map((stock: Record<string, unknown>) => ({
+          ...stock,
+          createdAt: new Date(stock.createdAt as string),
+          updatedAt: new Date(stock.updatedAt as string),
+        })),
+      ],
       ['tagTypes', fixture.tagTypes],
       ['tags', fixture.tags],
       ['vendors', fixture.vendors],
@@ -163,7 +204,9 @@ async function verifyRelations(
   const recipeId = page.url().match(/\/settings\/recipes\/([^/]+)/)?.[1]
   if (!recipeId) throw new Error('Could not extract recipe ID from URL')
   await recipeDetail.navigateToItems(recipeId)
-  await expect(recipeDetail.getAssignedItemCheckbox('Fixture Item')).toBeVisible()
+  await expect(
+    recipeDetail.getAssignedItemCheckbox('Fixture Item'),
+  ).toBeVisible()
 
   // 6. Item appears inside its vendor's cart.
   // /shopping is now a vendor-grouped overview (one VendorCartCard per vendor) —
@@ -199,7 +242,11 @@ async function verifyRelations(
   await expectStockNotCollapsedOntoDefault(page, request, baseURL, itemId)
 }
 
-test('user can export and re-import local data (local → local)', async ({ page, request, baseURL }) => {
+test('user can export and re-import local data (local → local)', async ({
+  page,
+  request,
+  baseURL,
+}) => {
   const settings = new SettingsPage(page)
 
   // Given: all fixture entities seeded into IndexedDB
@@ -219,18 +266,25 @@ test('user can export and re-import local data (local → local)', async ({ page
   await page.goto('/')
   await page.evaluate(async () => {
     const dbs = await indexedDB.databases()
-    await Promise.all(dbs.map(({ name }) => {
-      return new Promise<void>((resolve, reject) => {
-        if (!name) { resolve(); return }
-        const req = indexedDB.deleteDatabase(name)
-        req.onsuccess = () => resolve()
-        req.onerror = () => reject(req.error)
-        req.onblocked = () => {
-          console.warn(`[test] IndexedDB delete blocked for "${name}" — data may persist`)
-          resolve()
-        }
-      })
-    }))
+    await Promise.all(
+      dbs.map(({ name }) => {
+        return new Promise<void>((resolve, reject) => {
+          if (!name) {
+            resolve()
+            return
+          }
+          const req = indexedDB.deleteDatabase(name)
+          req.onsuccess = () => resolve()
+          req.onerror = () => reject(req.error)
+          req.onblocked = () => {
+            console.warn(
+              `[test] IndexedDB delete blocked for "${name}" — data may persist`,
+            )
+            resolve()
+          }
+        })
+      }),
+    )
   })
 
   // When: import the downloaded file
@@ -242,7 +296,11 @@ test('user can export and re-import local data (local → local)', async ({ page
   await verifyRelations(page, request, baseURL, LOCAL_ITEM_ID)
 })
 
-test('user can import a cloud backup into local mode (cloud → local)', async ({ page, request, baseURL }) => {
+test('user can import a cloud backup into local mode (cloud → local)', async ({
+  page,
+  request,
+  baseURL,
+}) => {
   const settings = new SettingsPage(page)
 
   // Given: no existing local data (fresh context from afterEach teardown)
@@ -259,7 +317,9 @@ test('user can import a cloud backup into local mode (cloud → local)', async (
   await verifyRelations(page, request, baseURL, CLOUD_ITEM_ID)
 })
 
-test('user does not see epoch date (1970-01-01) after importing item with null dueDate', async ({ page }) => {
+test('user does not see epoch date (1970-01-01) after importing item with null dueDate', async ({
+  page,
+}) => {
   const settings = new SettingsPage(page)
   const pantry = new PantryPage(page)
 
@@ -310,14 +370,20 @@ test('user does not see epoch date (1970-01-01) after importing item with null d
   await expect(page.getByText('1970', { exact: false })).toHaveCount(0)
 })
 
-test('user importing a cloud backup into local mode gets exactly one default location', async ({ page, request, baseURL }) => {
+test('user importing a cloud backup into local mode gets exactly one default location', async ({
+  page,
+  request,
+  baseURL,
+}) => {
   const settings = new SettingsPage(page)
 
   // Given: a cloud backup whose three locations all carry cloud-shaped ids,
   // whose default is NOT the local `'local'` sentinel, and whose default is
   // NOT already called "My Home" — otherwise "the backup's name was applied"
   // and "the live row's name was kept" would give the same answer below
-  expect(cloudFixture.locations.map((l: { id: string }) => l.id)).not.toContain('local')
+  expect(cloudFixture.locations.map((l: { id: string }) => l.id)).not.toContain(
+    'local',
+  )
   expect(cloudFixture.locations[0].name).toBe(FIXTURE_DEFAULT_LOCATION_NAME)
 
   // When: it is imported into local mode

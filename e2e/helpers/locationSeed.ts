@@ -41,9 +41,15 @@ export async function seedRows(
         for (const row of rows) objectStore.put(row)
         tx.oncomplete = () => resolve()
         tx.onerror = () =>
-          reject(tx.error ?? new Error(`IndexedDB transaction failed for "${store}"`))
+          reject(
+            tx.error ??
+              new Error(`IndexedDB transaction failed for "${store}"`),
+          )
         tx.onabort = () =>
-          reject(tx.error ?? new Error(`IndexedDB transaction aborted for "${store}"`))
+          reject(
+            tx.error ??
+              new Error(`IndexedDB transaction aborted for "${store}"`),
+          )
       })
     },
     { store, rows },
@@ -90,9 +96,15 @@ export async function splitInlineStock(page: Page): Promise<void> {
         tx.objectStore(store).put(record)
         tx.oncomplete = () => resolve()
         tx.onerror = () =>
-          reject(tx.error ?? new Error(`IndexedDB transaction failed for "${store}"`))
+          reject(
+            tx.error ??
+              new Error(`IndexedDB transaction failed for "${store}"`),
+          )
         tx.onabort = () =>
-          reject(tx.error ?? new Error(`IndexedDB transaction aborted for "${store}"`))
+          reject(
+            tx.error ??
+              new Error(`IndexedDB transaction aborted for "${store}"`),
+          )
       })
 
     // Only the per-location STATE moves onto the stock row. The eight
@@ -166,9 +178,15 @@ export async function relocateCarts(page: Page): Promise<void> {
         }
         tx.oncomplete = () => resolve(result)
         tx.onerror = () =>
-          reject(tx.error ?? new Error(`IndexedDB transaction failed for "${store}"`))
+          reject(
+            tx.error ??
+              new Error(`IndexedDB transaction failed for "${store}"`),
+          )
         tx.onabort = () =>
-          reject(tx.error ?? new Error(`IndexedDB transaction aborted for "${store}"`))
+          reject(
+            tx.error ??
+              new Error(`IndexedDB transaction aborted for "${store}"`),
+          )
       })
 
     const carts = await getAll('shoppingCarts')

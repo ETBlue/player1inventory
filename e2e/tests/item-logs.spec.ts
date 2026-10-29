@@ -1,11 +1,16 @@
-import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
+import {
+  type APIRequestContext,
+  expect,
+  type Page,
+  test,
+} from '@playwright/test'
 import { CLOUD_WEB_URL } from '../constants'
+import { ensureCloudDefaultLocation } from '../helpers/cloudSeed'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
 import { CookingPage } from '../pages/CookingPage'
 import { ItemPage } from '../pages/ItemPage'
 import { PantryPage } from '../pages/PantryPage'
 import { ShoppingPage } from '../pages/ShoppingPage'
-import { ensureCloudDefaultLocation } from '../helpers/cloudSeed'
 import { makeGql } from '../utils/cloud'
 
 // Seed one item with initial stock and a recipe that uses it.
@@ -85,9 +90,15 @@ async function seedCookingData(
           tx.objectStore(storeName).put(record)
           tx.oncomplete = () => resolve()
           tx.onerror = () =>
-            reject(tx.error ?? new Error(`IndexedDB transaction failed for "${storeName}"`))
+            reject(
+              tx.error ??
+                new Error(`IndexedDB transaction failed for "${storeName}"`),
+            )
           tx.onabort = () =>
-            reject(tx.error ?? new Error(`IndexedDB transaction aborted for "${storeName}"`))
+            reject(
+              tx.error ??
+                new Error(`IndexedDB transaction aborted for "${storeName}"`),
+            )
         })
       await put('items', {
         id: milkId,
@@ -150,20 +161,27 @@ test.afterEach(async ({ page, request, baseURL }) => {
   await page.goto('/')
   await page.evaluate(async () => {
     const dbs = await indexedDB.databases()
-    await Promise.all(dbs.map(({ name }) => {
-      return new Promise<void>((resolve, reject) => {
-        if (!name) { resolve(); return }
-        const req = indexedDB.deleteDatabase(name)
-        req.onsuccess = () => resolve()
-        req.onerror = () => reject(req.error)
-        // If existing connections block deletion, the blocked event fires.
-        // We resolve anyway since the app will be reset on next navigation.
-        req.onblocked = () => {
-          console.warn(`[afterEach] IndexedDB delete blocked for "${name}" — data may persist`)
-          resolve()
-        }
-      })
-    }))
+    await Promise.all(
+      dbs.map(({ name }) => {
+        return new Promise<void>((resolve, reject) => {
+          if (!name) {
+            resolve()
+            return
+          }
+          const req = indexedDB.deleteDatabase(name)
+          req.onsuccess = () => resolve()
+          req.onerror = () => reject(req.error)
+          // If existing connections block deletion, the blocked event fires.
+          // We resolve anyway since the app will be reset on next navigation.
+          req.onblocked = () => {
+            console.warn(
+              `[afterEach] IndexedDB delete blocked for "${name}" — data may persist`,
+            )
+            resolve()
+          }
+        })
+      }),
+    )
     localStorage.clear()
     sessionStorage.clear()
   })
@@ -187,7 +205,11 @@ test('user can see empty log state for a new item', async ({ page }) => {
   await expect(item.getEmptyLogMessage()).toBeVisible()
 })
 
-test('user can see inventory log after cooking', async ({ page, request, baseURL }) => {
+test('user can see inventory log after cooking', async ({
+  page,
+  request,
+  baseURL,
+}) => {
   const cooking = new CookingPage(page)
   const item = new ItemPage(page)
 

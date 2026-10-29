@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
 import { CLOUD_WEB_URL } from '../../constants'
 import { cleanupCloudData } from '../../helpers/cloudTeardown'
 import { splitInlineStock } from '../../helpers/locationSeed'
@@ -66,7 +66,9 @@ test.afterEach(async ({ page, request, baseURL }) => {
             req.onsuccess = () => resolve()
             req.onerror = () => reject(req.error)
             req.onblocked = () => {
-              console.warn(`[afterEach] IndexedDB delete blocked for "${name}"...`)
+              console.warn(
+                `[afterEach] IndexedDB delete blocked for "${name}"...`,
+              )
               resolve()
             }
           })
@@ -97,7 +99,6 @@ test('user can create a vendor', async ({ page }) => {
   await expect(vendorsPage.getVendorCard('Costco')).toBeVisible()
 })
 
-
 test('user can delete a vendor', async ({ page, baseURL }) => {
   const vendorsPage = new VendorsPage(page)
 
@@ -126,7 +127,10 @@ test('user can delete a vendor', async ({ page, baseURL }) => {
 })
 
 test.describe('vendor item count after vendor assignment', () => {
-  test('vendor item count updates after vendor is assigned to an item', async ({ page, baseURL }) => {
+  test('vendor item count updates after vendor is assigned to an item', async ({
+    page,
+    baseURL,
+  }) => {
     const vendorsPage = new VendorsPage(page)
     const pantry = new PantryPage(page)
     const item = new ItemPage(page)
@@ -150,32 +154,35 @@ test.describe('vendor item count after vendor assignment', () => {
       await seedVendor(page, 'Test Shop')
       // Item seeded without any vendorIds
       await page.goto('/')
-      await page.evaluate(async ({ name, now }) => {
-        const db = await new Promise<IDBDatabase>((resolve, reject) => {
-          const req = indexedDB.open('Player1Inventory')
-          req.onsuccess = () => resolve(req.result)
-          req.onerror = () => reject(req.error)
-        })
-        await new Promise<void>((resolve, reject) => {
-          const tx = db.transaction('items', 'readwrite')
-          const req = tx.objectStore('items').put({
-            id: crypto.randomUUID(),
-            name,
-            tagIds: [],
-            vendorIds: [],
-            targetUnit: 'package',
-            targetQuantity: 0,
-            refillThreshold: 0,
-            packedQuantity: 0,
-            unpackedQuantity: 0,
-            consumeAmount: 0,
-            createdAt: new Date(now),
-            updatedAt: new Date(now),
+      await page.evaluate(
+        async ({ name, now }) => {
+          const db = await new Promise<IDBDatabase>((resolve, reject) => {
+            const req = indexedDB.open('Player1Inventory')
+            req.onsuccess = () => resolve(req.result)
+            req.onerror = () => reject(req.error)
           })
-          req.onsuccess = () => resolve()
-          req.onerror = () => reject(req.error)
-        })
-      }, { name: 'Test Mango', now: new Date().toISOString() })
+          await new Promise<void>((resolve, reject) => {
+            const tx = db.transaction('items', 'readwrite')
+            const req = tx.objectStore('items').put({
+              id: crypto.randomUUID(),
+              name,
+              tagIds: [],
+              vendorIds: [],
+              targetUnit: 'package',
+              targetQuantity: 0,
+              refillThreshold: 0,
+              packedQuantity: 0,
+              unpackedQuantity: 0,
+              consumeAmount: 0,
+              createdAt: new Date(now),
+              updatedAt: new Date(now),
+            })
+            req.onsuccess = () => resolve()
+            req.onerror = () => reject(req.error)
+          })
+        },
+        { name: 'Test Mango', now: new Date().toISOString() },
+      )
       // Stock the inline-seeded item in the default location so it shows in the
       // location-scoped pantry (PR D).
       await splitInlineStock(page)
@@ -185,7 +192,9 @@ test.describe('vendor item count after vendor assignment', () => {
     await vendorsPage.navigateTo()
     // Confirm count is 0 (dialog says "No items are assigned to…")
     await vendorsPage.clickDeleteVendor('Test Shop')
-    await expect(vendorsPage.getDeleteDialog()).toContainText('No items are assigned to')
+    await expect(vendorsPage.getDeleteDialog()).toContainText(
+      'No items are assigned to',
+    )
     await vendorsPage.cancelDeleteDialog()
 
     // When: navigate to the item's vendors tab and assign the vendor
@@ -194,9 +203,11 @@ test.describe('vendor item count after vendor assignment', () => {
     await item.navigateToTab('vendors')
 
     // Toggle the "Test Shop" badge to assign it (initially unselected)
-    await page.getByRole('button', { name: /test shop/i, pressed: false }).click()
+    await page
+      .getByRole('button', { name: /test shop/i, pressed: false })
+      .click()
     await expect(
-      page.getByRole('button', { name: /test shop/i, pressed: true })
+      page.getByRole('button', { name: /test shop/i, pressed: true }),
     ).toBeVisible()
 
     // Then: navigate to settings vendors page — the cached count must have been invalidated
@@ -207,7 +218,9 @@ test.describe('vendor item count after vendor assignment', () => {
     // Dialog description: '"Test Shop" will be removed from 1 item.'
     // (src/i18n/locales/en.json: settings.vendors.deleteWithItems_one)
     await vendorsPage.clickDeleteVendor('Test Shop')
-    await expect(vendorsPage.getDeleteDialog()).toContainText('will be removed from 1 item')
+    await expect(vendorsPage.getDeleteDialog()).toContainText(
+      'will be removed from 1 item',
+    )
 
     // Cancel — do not delete
     await vendorsPage.cancelDeleteDialog()
@@ -215,7 +228,10 @@ test.describe('vendor item count after vendor assignment', () => {
 })
 
 test.describe('vendor item count after item deletion', () => {
-  test('vendor item count updates after item is deleted', async ({ page, baseURL }) => {
+  test('vendor item count updates after item is deleted', async ({
+    page,
+    baseURL,
+  }) => {
     const vendorsPage = new VendorsPage(page)
     const pantry = new PantryPage(page)
     const item = new ItemPage(page)
@@ -238,9 +254,11 @@ test.describe('vendor item count after item deletion', () => {
       // Assign vendor from item vendors tab
       await item.navigateToTab('vendors')
       // Toggle the "Test Market" badge to assign it (initially unselected)
-      await page.getByRole('button', { name: /test market/i, pressed: false }).click()
+      await page
+        .getByRole('button', { name: /test market/i, pressed: false })
+        .click()
       await expect(
-        page.getByRole('button', { name: /test market/i, pressed: true })
+        page.getByRole('button', { name: /test market/i, pressed: true }),
       ).toBeVisible()
     } else {
       // Local: seed vendor, then seed item with vendor already assigned
@@ -261,7 +279,9 @@ test.describe('vendor item count after item deletion', () => {
     // Dialog description says: '"Test Market" will be removed from 1 item.'
     // (src/i18n/locales/en.json: settings.vendors.deleteWithItems_one)
     await vendorsPage.clickDeleteVendor('Test Market')
-    await expect(vendorsPage.getDeleteDialog()).toContainText('will be removed from 1 item')
+    await expect(vendorsPage.getDeleteDialog()).toContainText(
+      'will be removed from 1 item',
+    )
 
     // Cancel so we don't delete the vendor
     await vendorsPage.cancelDeleteDialog()
@@ -278,7 +298,9 @@ test.describe('vendor item count after item deletion', () => {
     await vendorsPage.clickDeleteVendor('Test Market')
     // Dialog now says: 'No items are assigned to "Test Market".'
     // (src/i18n/locales/en.json: settings.vendors.deleteNoItems)
-    await expect(vendorsPage.getDeleteDialog()).toContainText('No items are assigned to')
+    await expect(vendorsPage.getDeleteDialog()).toContainText(
+      'No items are assigned to',
+    )
 
     // Cancel — do not actually delete
     await vendorsPage.cancelDeleteDialog()
@@ -286,7 +308,11 @@ test.describe('vendor item count after item deletion', () => {
 })
 
 // Seed an item with a vendor directly into IndexedDB (local mode only)
-async function seedItemWithVendor(page: Page, name: string, vendorId: string): Promise<string> {
+async function seedItemWithVendor(
+  page: Page,
+  name: string,
+  vendorId: string,
+): Promise<string> {
   const itemId = crypto.randomUUID()
   const now = new Date().toISOString()
 

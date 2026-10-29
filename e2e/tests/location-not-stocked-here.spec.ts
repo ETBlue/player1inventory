@@ -184,7 +184,9 @@ test.afterEach(async ({ page, request, baseURL }) => {
           req.onsuccess = () => resolve()
           req.onerror = () => reject(req.error)
           req.onblocked = () => {
-            console.warn(`[afterEach] IndexedDB delete blocked for "${name}"...`)
+            console.warn(
+              `[afterEach] IndexedDB delete blocked for "${name}"...`,
+            )
             resolve()
           }
         })
@@ -292,7 +294,10 @@ test.describe('location-scoped group lists — items not stocked here', () => {
     )
 
     // As does the "No vendor" bucket
-    await expectInDocumentOrder(shopping.getVendorCartCard('No vendor'), divider)
+    await expectInDocumentOrder(
+      shopping.getVendorCartCard('No vendor'),
+      divider,
+    )
   })
 
   test('user sees a recipe stocked only at another location below the divider, still disabled', async ({

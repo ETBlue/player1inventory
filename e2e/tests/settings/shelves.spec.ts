@@ -159,7 +159,9 @@ test.afterEach(async ({ page, request, baseURL }) => {
           req.onsuccess = () => resolve()
           req.onerror = () => reject(req.error)
           req.onblocked = () => {
-            console.warn(`[afterEach] IndexedDB delete blocked for "${name}"...`)
+            console.warn(
+              `[afterEach] IndexedDB delete blocked for "${name}"...`,
+            )
             resolve()
           }
         })
@@ -218,7 +220,10 @@ test('user lands on /shelves after deleting a shelf from its settings page', asy
   // Pattern from e2e/pages/ItemPage.ts:delete()
   await Promise.all([
     page.waitForURL(/\/settings\/shelves\/?$/),
-    page.getByRole('alertdialog').getByRole('button', { name: /delete/i }).click(),
+    page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: /delete/i })
+      .click(),
   ])
 
   // Then: URL becomes /settings/shelves (post-delete navigation — src/routes/settings/shelves/$shelfId/index.tsx)

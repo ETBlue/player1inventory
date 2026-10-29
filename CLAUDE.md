@@ -22,8 +22,10 @@ pnpm test:e2e:ui   # Run E2E tests with Playwright UI (interactive)
 pnpm test:e2e:debug # Debug E2E tests step-by-step
 pnpm lint         # Lint with Biome — apps/web/src AND e2e/
 pnpm lint:e2e     # Lint e2e/ only (biome lint ./e2e, root biome.jsonc)
-pnpm format       # Format with Biome — apps/web/src only; e2e/ formatting is deferred
-pnpm check        # Run all Biome checks — apps/web/src only
+pnpm format       # Format with Biome — apps/web/src AND e2e/
+pnpm format:e2e   # Format e2e/ only (biome format ./e2e --write, root biome.jsonc)
+pnpm check        # Run all Biome checks — apps/web/src AND e2e/
+pnpm check:e2e    # Biome check on e2e/ only (biome check ./e2e, root biome.jsonc)
 pnpm typecheck    # tsc for apps/web, apps/server and e2e/
 pnpm typecheck:e2e      # tsc -p e2e/tsconfig.json (also the last step of pnpm build)
 pnpm storybook         # Start Storybook dev server
@@ -295,7 +297,7 @@ After each implementation phase (each numbered step in an implementation plan), 
 pnpm lint                                  # ROOT, not apps/web: web src + e2e/ (see below)
 pnpm build 2>&1 | tee /tmp/p1i-build.log   # FULL build from repo root: codegen + web (tsc -b && vite) + server (tsc) + e2e/ type-check
 (cd apps/web && pnpm build-storybook)
-(cd apps/web && pnpm check)
+pnpm check                                 # ROOT, not apps/web: web src + e2e/ (see below)
 grep 'TS6385' /tmp/p1i-build.log && echo "FAIL: deprecated imports found" || echo "OK: no deprecated imports"
 pnpm test                                        # BOTH suites — web + server, run from the repo root
 ```
@@ -303,6 +305,13 @@ pnpm test                                        # BOTH suites — web + server,
 **The first line is the ROOT `pnpm lint`, not `(cd apps/web && pnpm lint)`.** Since
 2026-10-11 the root script is `pnpm --filter web lint && pnpm lint:e2e`, so it lints
 `apps/web/src` and `e2e/`. The web-only form skips `e2e/` entirely.
+
+**`pnpm check` is the ROOT one too, since 2026-10-30 (issue #346).** The root script is
+`pnpm --filter web check && pnpm check:e2e`, so it checks lint, formatting and import order
+in both `apps/web/src` and `e2e/`. This line was `(cd apps/web && pnpm check)` until that
+date, which was correct while `e2e/` had no formatter — it does now, so the web-only form
+skips half the work. Nothing else in the gate checks `e2e/` formatting: `pnpm lint` runs
+`biome lint`, not `biome check`, and `pnpm build` only type-checks.
 
 **`pnpm build` now type-checks `e2e/` as well.** Its last step is `pnpm typecheck:e2e`
 (`tsc -p e2e/tsconfig.json`). There is no extra command to remember — the same way
@@ -353,19 +362,75 @@ in the gate. That is exactly how three failing purge tests sat on `main` unnotic
 
 **Run the root `pnpm build`, not `(cd apps/web && pnpm build)`.** The root build is the *full* build — it runs `pnpm codegen` (regenerating GraphQL types from the current schema + operations, catching codegen drift) and type-checks **both** `apps/web` and `apps/server` via `tsc`. The web-only build skips codegen and the server, and `pnpm test` (vitest/esbuild), `pnpm check` (Biome), and `pnpm build-storybook` all skip a full type-check — so type-flow errors (e.g. `possibly null` from `.filter(Boolean)`) and codegen mismatches slip through every other check and only fail in the Cloudflare production build. The root `pnpm build` mirrors that production build and catches them locally.
 
-**No web test file is ever type-checked.** `apps/web/tsconfig.app.json:37` excludes
-`**/*.test.ts`, `**/*.test.tsx` and `**/*.stories.tsx`. So the root `pnpm build` type-checks
-source files only, and `pnpm test` runs through esbuild, which strips types without checking
-them. No command in the gate type-checks a test file.
+**Web test and story files ARE type-checked — since 2026-10-30 (issue #340). Not all of
+them.** `apps/web/tsconfig.app.json:37` still excludes `**/*.test.ts`, `**/*.test.tsx` and
+`**/*.stories.tsx`, so that config checks source files only. A second config,
+`apps/web/tsconfig.test.json`, checks those files in a pass of its own. `apps/web`'s two
+scripts now read:
 
-What this changes: "the argument is required, so `tsc` catches a call site that forgets it"
-is true for a source file and **false for a test file**. Cloud-parity PR A made `items`
-required on `useCheckout`'s `CheckoutArgs`. Three `useCheckout()` tests kept calling
-`mutate()` with no `items`, and the whole gate stayed green. Reading the test file is what
-found them.
+```
+build:     tsc -b && tsc -p tsconfig.test.json && vite build
+typecheck: tsc -b && tsc -p tsconfig.test.json
+```
 
-**So after adding a required field or argument, grep the test files for the call sites
-yourself.** `tsc` will not list them.
+**243 of the 358 test and story files are checked. 115 are still excluded**, because they
+carried **726** type errors when the config was added (measured 2026-10-30). Fixing them is
+issue #340 step 3. The `exclude` list in `tsconfig.test.json` is that backlog, and its
+comment header records the three `include` entries that are not obvious and the two traps in
+editing the list.
+
+Proved by mutation on 2026-10-30, in both directions. The same line,
+`export const __mutationProbe: number = 'not a number'`, appended to one file at a time:
+
+| File it was appended to | Root `pnpm build` |
+|---|---|
+| `apps/web/src/hooks/useVendors.test.ts` (checked) | **exit 2**, `src/hooks/useVendors.test.ts(250,14): error TS2322: Type 'string' is not assignable to type 'number'.` |
+| `apps/web/src/hooks/useShoppingCart.test.ts` (excluded) | **exit 0**, no error reported |
+
+The second row is what makes the first one mean something: the pass is not inert, and the
+`exclude` list really does hold back the files it names.
+
+**The old rule is now half true.** "The argument is required, so `tsc` catches a call site
+that forgets it" holds for a source file, holds for a checked test file, and still fails for
+any of the 115 excluded ones. Cloud-parity PR A made `items` required on `useCheckout`'s
+`CheckoutArgs`; three `useCheckout()` tests kept calling `mutate()` with no `items` and the
+whole gate stayed green. That file is `apps/web/src/hooks/useShoppingCart.test.ts`, which is
+still excluded — **so that exact hole is still open**, as the table above shows.
+
+**So after adding a required field or argument, check whether the test files that use it are
+on the exclude list.** For those that are, grep the call sites yourself; `tsc` will not list
+them.
+
+**`pnpm --filter web typecheck` used to check NOTHING, and that is now fixed.** It was
+`tsc --noEmit` against `apps/web/tsconfig.json`, which is a solution file: `files: []` plus
+two `references`. Outside build mode `tsc` honours `files: []` and checks zero files.
+Measured 2026-10-30: `tsc --noEmit --listFiles` printed **0** lines and the command took
+**0.06s**. So the root `pnpm typecheck` never type-checked `apps/web` at all, and only
+`pnpm build`'s `tsc -b` did. Both scripts now start with `tsc -b`.
+
+**The two passes OVERLAP, unlike `apps/server`'s.** Test files import from `src`, so
+TypeScript pulls those source files into the second program and checks them twice. Measured
+2026-10-30 with `--listFiles`: **1390** files in the `tsconfig.app.json` pass and **1728** in
+the `tsconfig.test.json` pass, of which 516 are under `apps/web/src` — 243 test and story
+files plus **273 source files checked a second time**.
+
+**That costs about 3.9 seconds, and it is a real cost.** Measured 2026-10-30, three runs of
+each form, interleaved so load drift hits both equally, `rm -rf apps/web/node_modules/.tmp`
+and `rm -rf apps/web/dist` before every run, load average between 3.98 and 5.27 throughout:
+
+| Command | Three runs | Mean |
+|---|---|---|
+| `tsc -b` alone (what `build` used to type-check) | 3.35s, 3.38s, 3.68s | 3.47s |
+| `tsc -p tsconfig.test.json` alone | 3.92s, 4.32s, 4.86s | 4.37s |
+| `pnpm --filter web build` **before** | 7.34s, 6.92s, 6.90s | **7.05s** |
+| `pnpm --filter web build` **after** | 11.00s, 11.09s, 10.74s | **10.94s** |
+| `pnpm --filter web typecheck` before (checked 0 files) | 0.07s, 0.05s, 0.06s | 0.06s |
+| `pnpm --filter web typecheck` after | 7.15s, 9.14s, 8.16s | 8.15s |
+
+So `pnpm --filter web build` is about **56% slower**, and the whole root `pnpm build` grows
+by the same ~3.9s. The second pass writes no build info — it is run with `tsc -p`, not
+`tsc -b`, and sets neither `incremental` nor `tsBuildInfoFile` — so it re-checks everything
+every time and will not get cheaper on a warm tree.
 
 **`e2e/` IS type-checked and linted — since 2026-10-11 (issue #322).** Before that date
 nothing checked it: Playwright transpiles each spec with esbuild, which strips types without
@@ -377,6 +442,8 @@ gate command passed.
 |---|---|---|
 | `pnpm typecheck:e2e` | `tsc -p e2e/tsconfig.json` — every `.ts` under `e2e/`, no exclusions | the last step of root `pnpm build` |
 | `pnpm lint:e2e` | `biome lint ./e2e`, using the root `biome.jsonc` | the second half of root `pnpm lint` |
+| `pnpm check:e2e` | `biome check ./e2e` — lint **and** format **and** import order | the second half of root `pnpm check` |
+| `pnpm format:e2e` | `biome format ./e2e --write` | the second half of root `pnpm format` |
 
 For a few hours on 2026-10-11, `e2e/tests/a11y.spec.ts` was excluded from that tsconfig,
 with a second config `e2e/tsconfig.a11y.json` and a `typecheck:e2e:a11y` script as the
@@ -400,13 +467,55 @@ was wired up, and the first two look like success:
   `Cannot find name 'indexedDB'`, 23 × `TS7031`, and more). With `DOM` and `DOM.Iterable`
   the count is **63**. The old figures of 74 and 78 came from probes with no node types.
 
-**Formatting `e2e/` is deferred, and the root Biome config says so.** `formatter` and
-`assist` are off in `biome.jsonc`. `e2e/` was written with no formatter, so turning Biome's
-on rewrites it: measured 2026-10-11, `biome format ./e2e --write` gives **1632 insertions
-and 646 deletions across 44 of 54 files**, and `biome check ./e2e` reported 64 errors (44
-formatting, 20 `assist/source/organizeImports`). `pnpm lint:e2e` still reports **13**
-warnings — 6 `noExplicitAny`, 7 `noNonNullAssertion` — which do not fail the command, the
-same way `apps/web`'s 4 warnings do not fail `pnpm check`.
+**`e2e/` IS formatted, and its imports ARE sorted — since 2026-10-30 (issue #346).**
+`formatter` and `assist` are both on in `biome.jsonc`, with the same settings as
+`apps/web/biome.json` (`indentStyle: space`, `indentWidth: 2`, single quotes, semicolons
+`asNeeded`, the default 80-column width). So one style now covers the whole repo, and
+`pnpm format` and `pnpm check` cover `e2e/` as well as `apps/web/src`.
+
+They were off for 19 days, from the day the root config was created (issue #322) to the day
+`e2e/` was swept, because the sweep is large and would have buried that PR. Measured
+2026-10-30 on the unmodified tree, immediately before the sweep:
+
+| Quantity | Before the sweep |
+|---|---|
+| `biome check ./e2e` errors | **65** — 45 `format`, 20 `assist/source/organizeImports` |
+| `biome check ./e2e --write` diff | **1699 insertions, 684 deletions, 46 of 54 files** |
+| `pnpm lint:e2e` warnings | 13 — 6 `noExplicitAny`, 7 `noNonNullAssertion` |
+
+**Re-measure; do not quote.** This paragraph said 64 errors (44 `format`, 20
+`organizeImports`) and a 1632/646 diff across 44 files, measured on 2026-10-11. Both were
+right then. One spec file was added in the 19 days between, which moved every number.
+
+After the sweep `biome check ./e2e` reports **0 errors** and the same **13** warnings — 6
+`noExplicitAny`, 7 `noNonNullAssertion`. Those do not fail the command, the same way
+`apps/web`'s 4 warnings do not fail `pnpm check`. Fixing them is still open; see issue #346.
+
+**The sweep changed no behaviour, and that was checked rather than assumed.** A reordered
+import really can change behaviour, and no type check would see it. Three checks, all on the
+46 changed files:
+
+| Check | Result |
+|---|---|
+| AST compared before/after, ignoring positions, quote style and trailing commas | all 46 identical outside the import block |
+| import **bindings** compared — module specifier plus every local and imported name | **0** changed anywhere |
+| import **statement order** | changed in 11 files |
+
+The reorder in those 11 is safe because no `e2e/` module runs code when it is imported. The
+only top-level statements in `e2e/` that are not declarations are the `test(...)` and
+`test.describe(...)` registrations inside spec files, and no spec file is imported by
+anything — there is no bare `import 'x'` and no `require()` under `e2e/` at all. The 11
+reordered lists hold only `@playwright/test`, `node:*` builtins, and `e2e/helpers`,
+`e2e/pages`, `e2e/utils` and `e2e/constants` modules, which only declare.
+
+`pnpm test:e2e --project=local` was run after the sweep to confirm it: **174 passed, 5
+skipped** in 3.9m, exit 0, no flakes — unchanged from the baseline. Load average was 4.94
+when it started and between 3.2 and 4.3 during the run, so the result is trustworthy.
+
+**`lint-staged` still does not cover `e2e/`.** It is scoped to `apps/web/src/**`, so nothing
+reformats an `e2e/` file at commit time and the drift can return. Whether to add an entry is
+the open half of issue #346 — note the hazard recorded under *`lint-staged` Can Silently
+Revert Your Fix Inside Its Own Commit* before doing it.
 
 **The root config MUST stay `biome.jsonc`.** Biome reads comments in a `.jsonc` file and
 **silently ignores** a `biome.json` that contains any — no error, no warning — falling back
@@ -416,9 +525,10 @@ formatting errors in tabs and double quotes, which is Biome's default style and 
 repo's. The warning count was unchanged at 13, so the lint output alone does not reveal it.
 **Check the file count.**
 
-The repo now has **eight** tsconfigs: `apps/web/tsconfig.json`, `tsconfig.app.json`,
-`tsconfig.node.json`, `apps/server/tsconfig.json`, `tsconfig.scripts.json`,
-`apps/design/tsconfig.json`, `packages/types/tsconfig.json` and `e2e/tsconfig.json`.
+The repo now has **nine** tsconfigs: `apps/web/tsconfig.json`, `tsconfig.app.json`,
+`tsconfig.node.json`, `tsconfig.test.json`, `apps/server/tsconfig.json`,
+`tsconfig.scripts.json`, `apps/design/tsconfig.json`, `packages/types/tsconfig.json` and
+`e2e/tsconfig.json`.
 
 **Take your own baseline before quoting any count above.**
 
@@ -489,7 +599,9 @@ typecheck: tsc --noEmit && tsc -p tsconfig.scripts.json
 **The two passes do not overlap**, which is why this costs little: `tsc` checks and emits the
 **53** files under `src`, the second pass checks the **3** under `scripts`, and nothing is
 checked twice. The first version of this fix reused the whole-project `typecheck` and so
-checked `src` twice — 105 files instead of 53, and 3.4s.
+checked `src` twice — 105 files instead of 53, and 3.4s. **`apps/web`'s own second pass,
+added 2026-10-30, does overlap** — see *Web test and story files ARE type-checked* above for
+what that costs.
 
 **The server build is about 3.5s, and the `scripts` pass is no longer free.** Measured
 2026-10-08 on the same machine and commit, with and without the two files issue #333 added:
@@ -502,8 +614,10 @@ checked `src` twice — 105 files instead of 53, and 3.4s.
 The 46 extra declaration files are **vitest's types**, pulled in by the test file's
 `import … from 'vitest'`. That is the whole cost: about **0.5s** on every server build, in
 exchange for the destructive-database guard being type-checked and unit-tested. Stated as a
-cost on purpose — a test file under `scripts/` is not free the way a test file under `src/`
-is, because nothing type-checks `src` test files at all.
+cost on purpose. (This paragraph used to end "a test file under `scripts/` is not free the
+way a test file under `src/` is, because nothing type-checks `src` test files at all". That
+was true until 2026-10-30. `apps/server/src` test files are still checked by nothing, but
+`apps/web`'s now are.)
 
 Why two tsconfigs rather than one: `tsconfig.json` **emits**, with `rootDir: "src"` and
 `outDir: "dist"`. Adding `scripts` to its `include` moves `rootDir` to `.` and emits
@@ -555,6 +669,33 @@ detached from the DOM, retrying` — not assertion failures. The 8 real ones wer
 Separate invocations used to cost about **14 minutes** against roughly 11 for the combined
 run, and they tell the truth. A gate that reports failures nobody caused gets ignored, which
 is worse than having no gate.
+
+**Copy `test-results/` aside BEFORE you re-run anything.** The third of those three proofs
+— what the error actually said — is the one you lose first, and losing it costs you the
+ability to tell a real failure from a phantom at all.
+
+The error text does **not** live in `playwright-report/`. That directory's `index.html`
+carries no readable error (no embedded base64 zip in this setup), so copying it is not
+enough. The failure artefacts — `error-context.md`, the trace, the screenshot — live in
+`test-results/`, and **the next Playwright run deletes that directory.**
+
+So the order is: see a failure, copy `test-results/` somewhere outside the repo, and only
+then re-run.
+
+This was got wrong twice, two branches apart, by the same session. On PR #351 a
+`settings/vendors.spec.ts` failure was re-run before being captured. On
+`chore/pre-households` a `cart-id-cross-user-leak.spec.ts` failure was captured — but only
+`playwright-report/` was copied, not `test-results/`, which is the one that mattered. Both
+times the conclusion rested on two proofs instead of three:
+
+| Proof | Survives a re-run? |
+|---|---|
+| the spec passes when run alone | yes — re-runnable any time |
+| the failing set moves between runs on the same commit | yes — that IS a re-run |
+| the error was a connection error or a timeout, not an assertion | **no — gone the moment you re-run** |
+
+Two of three is usually enough to merge, and both times it was. Say which one is missing
+and why, rather than implying all three were checked.
 
 **A filtered run used to start all four servers. Since 2026-09-24 it does not.** Playwright
 starts every `webServer` entry whatever `--project` says — there is no per-project

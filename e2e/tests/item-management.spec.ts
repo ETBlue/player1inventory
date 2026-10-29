@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import { CLOUD_WEB_URL } from '../constants'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
 import { ItemPage } from '../pages/ItemPage'
@@ -24,20 +24,27 @@ test.afterEach(async ({ page, request, baseURL }) => {
     await page.goto('/')
     await page.evaluate(async () => {
       const dbs = await indexedDB.databases()
-      await Promise.all(dbs.map(({ name }) => {
-        return new Promise<void>((resolve, reject) => {
-          if (!name) { resolve(); return }
-          const req = indexedDB.deleteDatabase(name)
-          req.onsuccess = () => resolve()
-          req.onerror = () => reject(req.error)
-          // If existing connections block deletion, the blocked event fires.
-          // We resolve anyway since the app will be reset on next navigation.
-          req.onblocked = () => {
-            console.warn(`[afterEach] IndexedDB delete blocked for "${name}" — data may persist`)
-            resolve()
-          }
-        })
-      }))
+      await Promise.all(
+        dbs.map(({ name }) => {
+          return new Promise<void>((resolve, reject) => {
+            if (!name) {
+              resolve()
+              return
+            }
+            const req = indexedDB.deleteDatabase(name)
+            req.onsuccess = () => resolve()
+            req.onerror = () => reject(req.error)
+            // If existing connections block deletion, the blocked event fires.
+            // We resolve anyway since the app will be reset on next navigation.
+            req.onblocked = () => {
+              console.warn(
+                `[afterEach] IndexedDB delete blocked for "${name}" — data may persist`,
+              )
+              resolve()
+            }
+          })
+        }),
+      )
       localStorage.clear()
       sessionStorage.clear()
     })
@@ -78,7 +85,9 @@ test('user can create an item', async ({ page }) => {
   await expect(pantry.getItemCard('Test Milk')).toBeVisible()
 })
 
-test('user can view item details after navigating from pantry', async ({ page }) => {
+test('user can view item details after navigating from pantry', async ({
+  page,
+}) => {
   const pantry = new PantryPage(page)
   const item = new ItemPage(page)
 
@@ -123,7 +132,9 @@ test('user can edit an item name', async ({ page }) => {
 // used to carry `test.skip(baseURL === CLOUD_WEB_URL)` because the cloud GraphQL `Item`
 // type declared neither field, so a cloud save of either one failed outright. Both now
 // exist on the Prisma model, in the GraphQL schema, and in the web selection sets.
-test('user can persist note and wikidata URL on the Info tab', async ({ page }) => {
+test('user can persist note and wikidata URL on the Info tab', async ({
+  page,
+}) => {
   const pantry = new PantryPage(page)
   const item = new ItemPage(page)
 
@@ -170,7 +181,9 @@ test('user can clear a saved note and wikidata URL', async ({ page }) => {
 
   // Confirm the starting state, so an empty readback below cannot pass on a failed save
   await page.goto(`/items/${itemId}`)
-  await expect(item.getNoteInput()).toHaveValue('A note that should not survive.')
+  await expect(item.getNoteInput()).toHaveValue(
+    'A note that should not survive.',
+  )
   await expect(item.getWikidataUrlInput()).toHaveValue(
     'https://www.wikidata.org/wiki/Q8495',
   )
@@ -202,7 +215,9 @@ test('user can assign a tag to an item', async ({ page }) => {
   await item.createAndAssignTag('Dairy')
 
   // Then the assigned tag badge is visible (aria-pressed="true" = assigned state)
-  await expect(page.getByRole('button', { name: 'Dairy', pressed: true })).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Dairy', pressed: true }),
+  ).toBeVisible()
 })
 
 test('user can assign a vendor to an item', async ({ page }) => {
@@ -254,7 +269,9 @@ test('user can set specific-date expiration on an item', async ({ page }) => {
   await expect(page.getByText(/Expires on 2020-01-01/)).toBeVisible()
 })
 
-test('user can set days-from-purchase expiration on an item', async ({ page }) => {
+test('user can set days-from-purchase expiration on an item', async ({
+  page,
+}) => {
   const pantry = new PantryPage(page)
   const item = new ItemPage(page)
 
@@ -275,7 +292,9 @@ test('user can set days-from-purchase expiration on an item', async ({ page }) =
 
   // Then revisiting the item's Info tab shows "Days from Purchase" mode persisted
   await page.goto(`/items/${itemId}`)
-  await expect(item.getExpirationModeSelector()).toContainText('Days from Purchase')
+  await expect(item.getExpirationModeSelector()).toContainText(
+    'Days from Purchase',
+  )
 })
 
 test('user can delete an item', async ({ page }) => {

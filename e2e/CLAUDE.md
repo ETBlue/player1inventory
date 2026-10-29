@@ -904,9 +904,11 @@ Wired up 2026-10-11 (issue #322). Before that date nothing checked this director
 |---|---|---|
 | `pnpm typecheck:e2e` | `tsc -p e2e/tsconfig.json` — every `.ts` here, no exclusions | the last step of root `pnpm build` |
 | `pnpm lint:e2e` | `biome lint ./e2e`, using the root `biome.jsonc` | the second half of root `pnpm lint` |
+| `pnpm check:e2e` | `biome check ./e2e` — lint plus format plus import order (since 2026-10-30, issue #346) | the second half of root `pnpm check` |
 
-Run them from the repo root. Both are clean today except for 13 Biome **warnings**, which do
-not fail the command: 6 `lint/suspicious/noExplicitAny` and 7 `lint/style/noNonNullAssertion`.
+Run them from the repo root. All three are clean today except for 13 Biome **warnings**,
+which do not fail the command: 6 `lint/suspicious/noExplicitAny` and 7
+`lint/style/noNonNullAssertion`.
 
 **Do not hand-roll a probe tsconfig any more.** `e2e/tsconfig.json` is the one to use, and
 `pnpm typecheck:e2e` is how to run it. Every probe written before this existed got the
@@ -948,15 +950,59 @@ that done, three things were deleted: the `exclude` entry, `e2e/tsconfig.a11y.js
 2026-10-11: flattening `AXE_OPTIONS` back to a bare `RunOptions` makes it exit 2 with 63 ×
 `TS2559` in that file.
 
-### Formatting is deferred
+### Formatting is ON — since 2026-10-30 (issue #346)
 
-`formatter` and `assist` are **off** in the root `biome.jsonc`. `e2e/` was written with no
-formatter, so turning Biome's on rewrites nearly all of it: measured 2026-10-11,
-`biome format ./e2e --write` gives **1632 insertions and 646 deletions across 44 of 54
-files**, almost all line rewrapping at 80 columns, and `biome check ./e2e` reported 64
-errors (44 formatting, 20 `assist/source/organizeImports`). That diff would have buried the
-wiring, so it is a follow-up. Turning it on is two flags in `biome.jsonc` plus one
-`--write` run.
+`formatter` and `assist` are **both on** in the root `biome.jsonc`, with the same settings
+as `apps/web/biome.json`: `indentStyle: space`, `indentWidth: 2`, single quotes, semicolons
+`asNeeded`, and the default 80-column width. One style covers the whole repo.
+
+Two more root scripts came with it, mirroring `lint:e2e`:
+
+| Command | What it does | Run in the gate by |
+|---|---|---|
+| `pnpm check:e2e` | `biome check ./e2e` — lint **and** format **and** import order | the second half of root `pnpm check` |
+| `pnpm format:e2e` | `biome format ./e2e --write` | the second half of root `pnpm format` |
+
+They were off for 19 days, from the day the root config was created (issue #322) to the day
+`e2e/` was swept, because the sweep is large and would have buried that PR. Measured
+2026-10-30 on the unmodified tree, right before the sweep:
+
+| Quantity | Before the sweep |
+|---|---|
+| `biome check ./e2e` errors | **65** — 45 `format`, 20 `assist/source/organizeImports` |
+| `biome check ./e2e --write` diff | **1699 insertions, 684 deletions, 46 of 54 files** |
+
+**Re-measure; do not quote.** This section said 64 errors (44 `format`, 20
+`organizeImports`) and a 1632/646 diff across 44 files, measured on 2026-10-11. Both were
+right then. One spec file was added in the 19 days between, which moved every number.
+
+`biome check ./e2e` now reports **0 errors** and the same **13** warnings as before — 6
+`noExplicitAny`, 7 `noNonNullAssertion`. The sweep did not touch them.
+
+**The sweep changed no behaviour, and that was checked rather than assumed.** A reordered
+import really can change behaviour, and no type check would see it. All three checks ran
+over the 46 changed files:
+
+| Check | Result |
+|---|---|
+| AST compared before/after, ignoring positions, quote style and trailing commas | all 46 identical outside the import block |
+| import **bindings** compared — module specifier plus every local and imported name | **0** changed anywhere |
+| import **statement order** | changed in 11 files |
+
+The reorder in those 11 is safe because **no `e2e/` module runs code when it is imported**.
+The only top-level statements under `e2e/` that are not declarations are the `test(...)` and
+`test.describe(...)` registrations inside spec files, and no spec file is imported by
+anything. There is no bare `import 'x'` and no `require()` under `e2e/` at all. The 11
+reordered lists hold only `@playwright/test`, `node:*` builtins, and `e2e/helpers`,
+`e2e/pages`, `e2e/utils` and `e2e/constants` modules, which only declare.
+
+`pnpm test:e2e --project=local` was run after the sweep to confirm it: **174 passed, 5
+skipped** in 3.9m, exit 0, no flakes. Unchanged from the baseline.
+
+**`lint-staged` still does not cover `e2e/`.** It is scoped to `apps/web/src/**`, so nothing
+reformats a file here at commit time and the drift can come back. Whether to add an entry is
+the open half of issue #346. Read *`lint-staged` Can Silently Revert Your Fix Inside Its Own
+Commit* in the root `CLAUDE.md` first — it has reverted a real fix in this repo before.
 
 **The root config must stay `biome.jsonc`, not `biome.json`.** Biome reads comments in a
 `.jsonc` file and **silently ignores** a `biome.json` that contains any — no error, no

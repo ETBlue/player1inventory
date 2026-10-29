@@ -1,11 +1,16 @@
-import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
+import {
+  type APIRequestContext,
+  expect,
+  type Page,
+  test,
+} from '@playwright/test'
 import { CLOUD_WEB_URL } from '../constants'
+import { ensureCloudDefaultLocation } from '../helpers/cloudSeed'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
+import { splitInlineStock } from '../helpers/locationSeed'
 import { CookingPage } from '../pages/CookingPage'
 import { ItemPage } from '../pages/ItemPage'
 import { PantryPage } from '../pages/PantryPage'
-import { splitInlineStock } from '../helpers/locationSeed'
-import { ensureCloudDefaultLocation } from '../helpers/cloudSeed'
 import { makeGql } from '../utils/cloud'
 
 // Seed items and a recipe for the cooking test.
@@ -64,7 +69,9 @@ async function seedDatabase(
     )
     await stockAt(eggs.id, 12)
 
-    const { createRecipe: recipe } = await gql<{ createRecipe: { id: string } }>(
+    const { createRecipe: recipe } = await gql<{
+      createRecipe: { id: string }
+    }>(
       `mutation CreateRecipe($name: String!, $items: [RecipeItemInput!]) {
         createRecipe(name: $name, items: $items) { id }
       }`,
@@ -106,9 +113,15 @@ async function seedDatabase(
           tx.objectStore(storeName).put(record)
           tx.oncomplete = () => resolve()
           tx.onerror = () =>
-            reject(tx.error ?? new Error(`IndexedDB transaction failed for "${storeName}"`))
+            reject(
+              tx.error ??
+                new Error(`IndexedDB transaction failed for "${storeName}"`),
+            )
           tx.onabort = () =>
-            reject(tx.error ?? new Error(`IndexedDB transaction aborted for "${storeName}"`))
+            reject(
+              tx.error ??
+                new Error(`IndexedDB transaction aborted for "${storeName}"`),
+            )
         })
 
       await put('items', {
@@ -192,7 +205,9 @@ test.afterEach(async ({ page, request, baseURL }) => {
             req.onsuccess = () => resolve()
             req.onerror = () => reject(req.error)
             req.onblocked = () => {
-              console.warn(`[afterEach] IndexedDB delete blocked for "${name}"...`)
+              console.warn(
+                `[afterEach] IndexedDB delete blocked for "${name}"...`,
+              )
               resolve()
             }
           })
@@ -204,7 +219,11 @@ test.afterEach(async ({ page, request, baseURL }) => {
   }
 })
 
-test('user can cook a recipe with partial items and multiple servings', async ({ page, request, baseURL }) => {
+test('user can cook a recipe with partial items and multiple servings', async ({
+  page,
+  request,
+  baseURL,
+}) => {
   const cooking = new CookingPage(page)
   const pantry = new PantryPage(page)
   const item = new ItemPage(page)

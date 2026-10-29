@@ -91,9 +91,7 @@ const ITEM = 'item-milk'
 const FIXTURE: Fixture = {
   locations: [{ key: HOME, name: 'My Home', isDefault: true }],
   vendors: [],
-  items: [
-    { id: ITEM, name: 'Milk', targetUnit: 'package', consumeAmount: 1 },
-  ],
+  items: [{ id: ITEM, name: 'Milk', targetUnit: 'package', consumeAmount: 1 }],
   stocks: [
     {
       itemId: ITEM,
@@ -154,7 +152,9 @@ test.afterEach(async ({ page, request, baseURL }) => {
           req.onsuccess = () => resolve()
           req.onerror = () => reject(req.error)
           req.onblocked = () => {
-            console.warn(`[afterEach] IndexedDB delete blocked for "${name}"...`)
+            console.warn(
+              `[afterEach] IndexedDB delete blocked for "${name}"...`,
+            )
             resolve()
           }
         })

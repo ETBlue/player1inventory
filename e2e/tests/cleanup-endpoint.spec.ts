@@ -1,8 +1,5 @@
 import { expect, test } from '@playwright/test'
-import {
-  CLEANUP_MODEL_KEYS,
-  cleanupCloudData,
-} from '../helpers/cloudTeardown'
+import { CLEANUP_MODEL_KEYS, cleanupCloudData } from '../helpers/cloudTeardown'
 import { makeGql } from '../utils/cloud'
 
 // ── WHAT THIS FILE COVERS ────────────────────────────────────────────────────
@@ -141,17 +138,26 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
       locations: { id: string; isDefault: boolean }[]
     }>(LOCATIONS)
     const home = locations.find((loc) => loc.isDefault)
-    if (!home) throw new Error(`no default location after the locations query — got ${JSON.stringify(locations)}`)
-    const { createLocation } = await gql<{ createLocation: Row }>(CREATE_LOCATION, {
-      name: 'Office',
-    })
+    if (!home)
+      throw new Error(
+        `no default location after the locations query — got ${JSON.stringify(locations)}`,
+      )
+    const { createLocation } = await gql<{ createLocation: Row }>(
+      CREATE_LOCATION,
+      {
+        name: 'Office',
+      },
+    )
     const seededLocationIds = [home.id, createLocation.id]
 
     // TagType and Tag
-    const { createTagType } = await gql<{ createTagType: Row }>(CREATE_TAG_TYPE, {
-      name: 'Category',
-      color: 'orange',
-    })
+    const { createTagType } = await gql<{ createTagType: Row }>(
+      CREATE_TAG_TYPE,
+      {
+        name: 'Category',
+        color: 'orange',
+      },
+    )
     const { createTag } = await gql<{ createTag: Row }>(CREATE_TAG, {
       name: 'Dairy',
       typeId: createTagType.id,
@@ -187,7 +193,12 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     await gql(UPSERT_STOCK, {
       itemId,
       locationId: home.id,
-      input: { targetQuantity: 4, refillThreshold: 1, packedQuantity: 3, unpackedQuantity: 0 },
+      input: {
+        targetQuantity: 4,
+        refillThreshold: 1,
+        packedQuantity: 3,
+        unpackedQuantity: 0,
+      },
     })
 
     // Recipe — and, through its `items`, one RecipeItem.
@@ -261,7 +272,10 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     // matches nothing still answers 200 and still satisfies the source-text
     // guard in `purge-coverage.test.ts`; it reports 0 here.
     const zero = CLEANUP_MODEL_KEYS.filter((key) => deleted[key] < 1)
-    expect(zero, `models that deleted nothing: ${JSON.stringify(deleted)}`).toEqual([])
+    expect(
+      zero,
+      `models that deleted nothing: ${JSON.stringify(deleted)}`,
+    ).toEqual([])
 
     // ── And nothing of the user's is left ────────────────────────────────────
     const after = await gql<ReadBack>(READ_BACK, { itemId })

@@ -156,7 +156,9 @@ test.afterEach(async ({ page, request, baseURL }) => {
           req.onsuccess = () => resolve()
           req.onerror = () => reject(req.error)
           req.onblocked = () => {
-            console.warn(`[afterEach] IndexedDB delete blocked for "${name}"...`)
+            console.warn(
+              `[afterEach] IndexedDB delete blocked for "${name}"...`,
+            )
             resolve()
           }
         })
@@ -409,7 +411,9 @@ test.describe('items stock tab — location pager', () => {
 
     // And the active location is still marked while viewing another page,
     // named in words as well as on the dot
-    await expect(stockTab.getActiveHint()).toHaveText('Current location: My Home')
+    await expect(stockTab.getActiveHint()).toHaveText(
+      'Current location: My Home',
+    )
     await expect(stockTab.getActiveDot()).toHaveAccessibleName(
       'My Home (current location)',
     )

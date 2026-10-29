@@ -1,10 +1,10 @@
-import { test, expect } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import { CLOUD_WEB_URL } from '../constants'
+import { ensureCloudDefaultLocation } from '../helpers/cloudSeed'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
+import { relocateCarts, splitInlineStock } from '../helpers/locationSeed'
 import { PantryPage } from '../pages/PantryPage'
 import { ShoppingPage } from '../pages/ShoppingPage'
-import { ensureCloudDefaultLocation } from '../helpers/cloudSeed'
-import { splitInlineStock, relocateCarts } from '../helpers/locationSeed'
 import { makeGql } from '../utils/cloud'
 
 test.beforeEach(async ({ page, request, baseURL }) => {
@@ -30,26 +30,37 @@ test.afterEach(async ({ page, request, baseURL }) => {
   await page.goto('/')
   await page.evaluate(async () => {
     const dbs = await indexedDB.databases()
-    await Promise.all(dbs.map(({ name }) => {
-      return new Promise<void>((resolve, reject) => {
-        if (!name) { resolve(); return }
-        const req = indexedDB.deleteDatabase(name)
-        req.onsuccess = () => resolve()
-        req.onerror = () => reject(req.error)
-        // If existing connections block deletion, the blocked event fires.
-        // We resolve anyway since the app will be reset on next navigation.
-        req.onblocked = () => {
-          console.warn(`[afterEach] IndexedDB delete blocked for "${name}" — data may persist`)
-          resolve()
-        }
-      })
-    }))
+    await Promise.all(
+      dbs.map(({ name }) => {
+        return new Promise<void>((resolve, reject) => {
+          if (!name) {
+            resolve()
+            return
+          }
+          const req = indexedDB.deleteDatabase(name)
+          req.onsuccess = () => resolve()
+          req.onerror = () => reject(req.error)
+          // If existing connections block deletion, the blocked event fires.
+          // We resolve anyway since the app will be reset on next navigation.
+          req.onblocked = () => {
+            console.warn(
+              `[afterEach] IndexedDB delete blocked for "${name}" — data may persist`,
+            )
+            resolve()
+          }
+        })
+      }),
+    )
     localStorage.clear()
     sessionStorage.clear()
   })
 })
 
-test('user can see expiration badge updated after checkout without manual refresh', async ({ page, request, baseURL }) => {
+test('user can see expiration badge updated after checkout without manual refresh', async ({
+  page,
+  request,
+  baseURL,
+}) => {
   const pantry = new PantryPage(page)
   const shopping = new ShoppingPage(page)
 
@@ -84,7 +95,9 @@ test('user can see expiration badge updated after checkout without manual refres
     const { locations } = await gql<{
       locations: { id: string; isDefault: boolean }[]
     }>(`query { locations { id isDefault } }`, {})
-    const defaultLocationId = (locations.find((l) => l.isDefault) ?? locations[0]).id
+    const defaultLocationId = (
+      locations.find((l) => l.isDefault) ?? locations[0]
+    ).id
     await gql(
       `mutation Upsert($itemId: ID!, $locationId: ID!, $input: ItemStockInput!) {
         upsertItemStock(itemId: $itemId, locationId: $locationId, input: $input) { id }
@@ -103,7 +116,7 @@ test('user can see expiration badge updated after checkout without manual refres
 
     // Shopping: add to cart and checkout
     await shopping.navigateTo()
-    await shopping.navigateToVendorCart('no-vendor')  // items with no vendor are in no-vendor cart
+    await shopping.navigateToVendorCart('no-vendor') // items with no vendor are in no-vendor cart
     await shopping.addItemToCart('Test Yogurt')
     await shopping.clickDone()
     await shopping.confirmCheckout()
@@ -136,9 +149,15 @@ test('user can see expiration badge updated after checkout without manual refres
             tx.objectStore(storeName).put(record)
             tx.oncomplete = () => resolve()
             tx.onerror = () =>
-              reject(tx.error ?? new Error(`IndexedDB transaction failed for "${storeName}"`))
+              reject(
+                tx.error ??
+                  new Error(`IndexedDB transaction failed for "${storeName}"`),
+              )
             tx.onabort = () =>
-              reject(tx.error ?? new Error(`IndexedDB transaction aborted for "${storeName}"`))
+              reject(
+                tx.error ??
+                  new Error(`IndexedDB transaction aborted for "${storeName}"`),
+              )
           })
 
         const now = new Date()
@@ -187,7 +206,7 @@ test('user can see expiration badge updated after checkout without manual refres
 
     // Shopping: the item is pre-seeded into the active no-vendor cart
     await shopping.navigateTo()
-    await shopping.navigateToVendorCart('no-vendor')  // items with no vendor are in no-vendor cart
+    await shopping.navigateToVendorCart('no-vendor') // items with no vendor are in no-vendor cart
     const removeCheckbox = page.getByLabel('Remove Test Yogurt')
     await expect(removeCheckbox).toBeVisible()
     await shopping.clickDone()
@@ -207,8 +226,14 @@ test('user can see expiration badge updated after checkout without manual refres
   await expect(page.getByText(/Expires in \d+ days/)).toBeVisible()
 })
 
-test('user can checkout items from shopping cart', async ({ page, baseURL }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'IndexedDB seeding not applicable in cloud mode')
+test('user can checkout items from shopping cart', async ({
+  page,
+  baseURL,
+}) => {
+  test.skip(
+    baseURL === CLOUD_WEB_URL,
+    'IndexedDB seeding not applicable in cloud mode',
+  )
   const pantry = new PantryPage(page)
   const shopping = new ShoppingPage(page)
 
@@ -217,41 +242,50 @@ test('user can checkout items from shopping cart', async ({ page, baseURL }) => 
 
   const itemId = 'checkout-milk-item-1'
 
-  await page.evaluate(async ({ itemId }) => {
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const req = indexedDB.open('Player1Inventory')
-      req.onsuccess = () => resolve(req.result)
-      req.onerror = () => reject(req.error)
-    })
-    // Resolve on transaction COMMIT, not on request success — request
-    // success fires while the transaction is still open, and the navigation
-    // that follows a seed can abort an open transaction and silently discard
-    // its rows.
-    const put = (storeName: string, record: object) =>
-      new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(storeName, 'readwrite')
-        tx.objectStore(storeName).put(record)
-        tx.oncomplete = () => resolve()
-        tx.onerror = () =>
-          reject(tx.error ?? new Error(`IndexedDB transaction failed for "${storeName}"`))
-        tx.onabort = () =>
-          reject(tx.error ?? new Error(`IndexedDB transaction aborted for "${storeName}"`))
+  await page.evaluate(
+    async ({ itemId }) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open('Player1Inventory')
+        req.onsuccess = () => resolve(req.result)
+        req.onerror = () => reject(req.error)
       })
-    const now = new Date()
-    await put('items', {
-      id: itemId,
-      name: 'Test Milk',
-      tagIds: [],
-      targetUnit: 'package',
-      targetQuantity: 4,
-      refillThreshold: 2,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      createdAt: now,
-      updatedAt: now,
-    })
-  }, { itemId })
+      // Resolve on transaction COMMIT, not on request success — request
+      // success fires while the transaction is still open, and the navigation
+      // that follows a seed can abort an open transaction and silently discard
+      // its rows.
+      const put = (storeName: string, record: object) =>
+        new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(storeName, 'readwrite')
+          tx.objectStore(storeName).put(record)
+          tx.oncomplete = () => resolve()
+          tx.onerror = () =>
+            reject(
+              tx.error ??
+                new Error(`IndexedDB transaction failed for "${storeName}"`),
+            )
+          tx.onabort = () =>
+            reject(
+              tx.error ??
+                new Error(`IndexedDB transaction aborted for "${storeName}"`),
+            )
+        })
+      const now = new Date()
+      await put('items', {
+        id: itemId,
+        name: 'Test Milk',
+        tagIds: [],
+        targetUnit: 'package',
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        createdAt: now,
+        updatedAt: now,
+      })
+    },
+    { itemId },
+  )
 
   await splitInlineStock(page)
   await relocateCarts(page)
@@ -271,8 +305,14 @@ test('user can checkout items from shopping cart', async ({ page, baseURL }) => 
   await expect(itemCard).toBeVisible()
 })
 
-test('user can see vendor cart cards on the shopping page', async ({ page, baseURL }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'IndexedDB seeding not applicable in cloud mode')
+test('user can see vendor cart cards on the shopping page', async ({
+  page,
+  baseURL,
+}) => {
+  test.skip(
+    baseURL === CLOUD_WEB_URL,
+    'IndexedDB seeding not applicable in cloud mode',
+  )
   const pantry = new PantryPage(page)
   const shopping = new ShoppingPage(page)
 
@@ -283,42 +323,77 @@ test('user can see vendor cart cards on the shopping page', async ({ page, baseU
   const vendorAId = 'vendor-a-e2e'
   const vendorBId = 'vendor-b-e2e'
 
-  await page.evaluate(async ({ vendorAId, vendorBId }) => {
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const req = indexedDB.open('Player1Inventory')
-      req.onsuccess = () => resolve(req.result)
-      req.onerror = () => reject(req.error)
-    })
-    // Resolve on transaction COMMIT, not on request success — request
-    // success fires while the transaction is still open, and the navigation
-    // that follows a seed can abort an open transaction and silently discard
-    // its rows.
-    const put = (store: string, record: object) =>
-      new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(store, 'readwrite')
-        tx.objectStore(store).put(record)
-        tx.oncomplete = () => resolve()
-        tx.onerror = () =>
-          reject(tx.error ?? new Error(`IndexedDB transaction failed for "${store}"`))
-        tx.onabort = () =>
-          reject(tx.error ?? new Error(`IndexedDB transaction aborted for "${store}"`))
+  await page.evaluate(
+    async ({ vendorAId, vendorBId }) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open('Player1Inventory')
+        req.onsuccess = () => resolve(req.result)
+        req.onerror = () => reject(req.error)
       })
-    const now = new Date()
-    await put('vendors', { id: vendorAId, name: 'Costco E2E', createdAt: now, updatedAt: now })
-    await put('vendors', { id: vendorBId, name: 'iHerb E2E', createdAt: now, updatedAt: now })
-    await put('items', {
-      id: 'item-a-e2e', name: 'Milk E2E', tagIds: [], vendorIds: [vendorAId],
-      targetUnit: 'package', targetQuantity: 1, refillThreshold: 1,
-      packedQuantity: 0, unpackedQuantity: 0, consumeAmount: 1,
-      createdAt: now, updatedAt: now,
-    })
-    await put('items', {
-      id: 'item-b-e2e', name: 'Vitamin C E2E', tagIds: [], vendorIds: [vendorBId],
-      targetUnit: 'package', targetQuantity: 1, refillThreshold: 1,
-      packedQuantity: 0, unpackedQuantity: 0, consumeAmount: 1,
-      createdAt: now, updatedAt: now,
-    })
-  }, { vendorAId, vendorBId })
+      // Resolve on transaction COMMIT, not on request success — request
+      // success fires while the transaction is still open, and the navigation
+      // that follows a seed can abort an open transaction and silently discard
+      // its rows.
+      const put = (store: string, record: object) =>
+        new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(store, 'readwrite')
+          tx.objectStore(store).put(record)
+          tx.oncomplete = () => resolve()
+          tx.onerror = () =>
+            reject(
+              tx.error ??
+                new Error(`IndexedDB transaction failed for "${store}"`),
+            )
+          tx.onabort = () =>
+            reject(
+              tx.error ??
+                new Error(`IndexedDB transaction aborted for "${store}"`),
+            )
+        })
+      const now = new Date()
+      await put('vendors', {
+        id: vendorAId,
+        name: 'Costco E2E',
+        createdAt: now,
+        updatedAt: now,
+      })
+      await put('vendors', {
+        id: vendorBId,
+        name: 'iHerb E2E',
+        createdAt: now,
+        updatedAt: now,
+      })
+      await put('items', {
+        id: 'item-a-e2e',
+        name: 'Milk E2E',
+        tagIds: [],
+        vendorIds: [vendorAId],
+        targetUnit: 'package',
+        targetQuantity: 1,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await put('items', {
+        id: 'item-b-e2e',
+        name: 'Vitamin C E2E',
+        tagIds: [],
+        vendorIds: [vendorBId],
+        targetUnit: 'package',
+        targetQuantity: 1,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        createdAt: now,
+        updatedAt: now,
+      })
+    },
+    { vendorAId, vendorBId },
+  )
 
   await splitInlineStock(page)
   await relocateCarts(page)
@@ -331,43 +406,71 @@ test('user can see vendor cart cards on the shopping page', async ({ page, baseU
   await expect(shopping.getVendorCartCard('iHerb E2E')).toBeVisible()
 })
 
-test('user can navigate into a vendor cart and back to the list', async ({ page, baseURL }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'IndexedDB seeding not applicable in cloud mode')
+test('user can navigate into a vendor cart and back to the list', async ({
+  page,
+  baseURL,
+}) => {
+  test.skip(
+    baseURL === CLOUD_WEB_URL,
+    'IndexedDB seeding not applicable in cloud mode',
+  )
   const pantry = new PantryPage(page)
   const shopping = new ShoppingPage(page)
 
   await pantry.navigateTo()
 
   const vendorId = 'vendor-nav-e2e'
-  await page.evaluate(async ({ vendorId }) => {
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const req = indexedDB.open('Player1Inventory')
-      req.onsuccess = () => resolve(req.result)
-      req.onerror = () => reject(req.error)
-    })
-    // Resolve on transaction COMMIT, not on request success — request
-    // success fires while the transaction is still open, and the navigation
-    // that follows a seed can abort an open transaction and silently discard
-    // its rows.
-    const put = (store: string, record: object) =>
-      new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(store, 'readwrite')
-        tx.objectStore(store).put(record)
-        tx.oncomplete = () => resolve()
-        tx.onerror = () =>
-          reject(tx.error ?? new Error(`IndexedDB transaction failed for "${store}"`))
-        tx.onabort = () =>
-          reject(tx.error ?? new Error(`IndexedDB transaction aborted for "${store}"`))
+  await page.evaluate(
+    async ({ vendorId }) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open('Player1Inventory')
+        req.onsuccess = () => resolve(req.result)
+        req.onerror = () => reject(req.error)
       })
-    const now = new Date()
-    await put('vendors', { id: vendorId, name: 'Nav Vendor E2E', createdAt: now, updatedAt: now })
-    await put('items', {
-      id: 'item-nav-e2e', name: 'Nav Item E2E', tagIds: [], vendorIds: [vendorId],
-      targetUnit: 'package', targetQuantity: 1, refillThreshold: 1,
-      packedQuantity: 0, unpackedQuantity: 0, consumeAmount: 1,
-      createdAt: now, updatedAt: now,
-    })
-  }, { vendorId })
+      // Resolve on transaction COMMIT, not on request success — request
+      // success fires while the transaction is still open, and the navigation
+      // that follows a seed can abort an open transaction and silently discard
+      // its rows.
+      const put = (store: string, record: object) =>
+        new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(store, 'readwrite')
+          tx.objectStore(store).put(record)
+          tx.oncomplete = () => resolve()
+          tx.onerror = () =>
+            reject(
+              tx.error ??
+                new Error(`IndexedDB transaction failed for "${store}"`),
+            )
+          tx.onabort = () =>
+            reject(
+              tx.error ??
+                new Error(`IndexedDB transaction aborted for "${store}"`),
+            )
+        })
+      const now = new Date()
+      await put('vendors', {
+        id: vendorId,
+        name: 'Nav Vendor E2E',
+        createdAt: now,
+        updatedAt: now,
+      })
+      await put('items', {
+        id: 'item-nav-e2e',
+        name: 'Nav Item E2E',
+        tagIds: [],
+        vendorIds: [vendorId],
+        targetUnit: 'package',
+        targetQuantity: 1,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        createdAt: now,
+        updatedAt: now,
+      })
+    },
+    { vendorId },
+  )
 
   await splitInlineStock(page)
   await relocateCarts(page)
@@ -389,8 +492,14 @@ test('user can navigate into a vendor cart and back to the list', async ({ page,
   await expect(shopping.getVendorCartCard('Nav Vendor E2E')).toBeVisible()
 })
 
-test('user can checkout from a vendor cart without affecting another vendor cart', async ({ page, baseURL }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'IndexedDB seeding not applicable in cloud mode')
+test('user can checkout from a vendor cart without affecting another vendor cart', async ({
+  page,
+  baseURL,
+}) => {
+  test.skip(
+    baseURL === CLOUD_WEB_URL,
+    'IndexedDB seeding not applicable in cloud mode',
+  )
   const pantry = new PantryPage(page)
   const shopping = new ShoppingPage(page)
 
@@ -399,47 +508,92 @@ test('user can checkout from a vendor cart without affecting another vendor cart
   const vendorAId = 'vendor-checkout-a'
   const vendorBId = 'vendor-checkout-b'
 
-  await page.evaluate(async ({ vendorAId, vendorBId }) => {
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const req = indexedDB.open('Player1Inventory')
-      req.onsuccess = () => resolve(req.result)
-      req.onerror = () => reject(req.error)
-    })
-    // Resolve on transaction COMMIT, not on request success — request
-    // success fires while the transaction is still open, and the navigation
-    // that follows a seed can abort an open transaction and silently discard
-    // its rows.
-    const put = (store: string, record: object) =>
-      new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(store, 'readwrite')
-        tx.objectStore(store).put(record)
-        tx.oncomplete = () => resolve()
-        tx.onerror = () =>
-          reject(tx.error ?? new Error(`IndexedDB transaction failed for "${store}"`))
-        tx.onabort = () =>
-          reject(tx.error ?? new Error(`IndexedDB transaction aborted for "${store}"`))
+  await page.evaluate(
+    async ({ vendorAId, vendorBId }) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open('Player1Inventory')
+        req.onsuccess = () => resolve(req.result)
+        req.onerror = () => reject(req.error)
       })
-    const now = new Date()
-    await put('vendors', { id: vendorAId, name: 'Checkout Vendor A', createdAt: now, updatedAt: now })
-    await put('vendors', { id: vendorBId, name: 'Checkout Vendor B', createdAt: now, updatedAt: now })
-    await put('items', {
-      id: 'checkout-item-a', name: 'Item A E2E', tagIds: [], vendorIds: [vendorAId],
-      targetUnit: 'package', targetQuantity: 1, refillThreshold: 1,
-      packedQuantity: 0, unpackedQuantity: 0, consumeAmount: 1,
-      createdAt: now, updatedAt: now,
-    })
-    await put('items', {
-      id: 'checkout-item-b', name: 'Item B E2E', tagIds: [], vendorIds: [vendorBId],
-      targetUnit: 'package', targetQuantity: 1, refillThreshold: 1,
-      packedQuantity: 0, unpackedQuantity: 0, consumeAmount: 1,
-      createdAt: now, updatedAt: now,
-    })
-    // Pre-seed permanent vendor carts (cart ID = vendor ID) with items
-    await put('shoppingCarts', { id: vendorAId })
-    await put('shoppingCarts', { id: vendorBId })
-    await put('cartItems', { id: 'ci-a-e2e', cartId: vendorAId, itemId: 'checkout-item-a', quantity: 1 })
-    await put('cartItems', { id: 'ci-b-e2e', cartId: vendorBId, itemId: 'checkout-item-b', quantity: 1 })
-  }, { vendorAId, vendorBId })
+      // Resolve on transaction COMMIT, not on request success — request
+      // success fires while the transaction is still open, and the navigation
+      // that follows a seed can abort an open transaction and silently discard
+      // its rows.
+      const put = (store: string, record: object) =>
+        new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(store, 'readwrite')
+          tx.objectStore(store).put(record)
+          tx.oncomplete = () => resolve()
+          tx.onerror = () =>
+            reject(
+              tx.error ??
+                new Error(`IndexedDB transaction failed for "${store}"`),
+            )
+          tx.onabort = () =>
+            reject(
+              tx.error ??
+                new Error(`IndexedDB transaction aborted for "${store}"`),
+            )
+        })
+      const now = new Date()
+      await put('vendors', {
+        id: vendorAId,
+        name: 'Checkout Vendor A',
+        createdAt: now,
+        updatedAt: now,
+      })
+      await put('vendors', {
+        id: vendorBId,
+        name: 'Checkout Vendor B',
+        createdAt: now,
+        updatedAt: now,
+      })
+      await put('items', {
+        id: 'checkout-item-a',
+        name: 'Item A E2E',
+        tagIds: [],
+        vendorIds: [vendorAId],
+        targetUnit: 'package',
+        targetQuantity: 1,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await put('items', {
+        id: 'checkout-item-b',
+        name: 'Item B E2E',
+        tagIds: [],
+        vendorIds: [vendorBId],
+        targetUnit: 'package',
+        targetQuantity: 1,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        createdAt: now,
+        updatedAt: now,
+      })
+      // Pre-seed permanent vendor carts (cart ID = vendor ID) with items
+      await put('shoppingCarts', { id: vendorAId })
+      await put('shoppingCarts', { id: vendorBId })
+      await put('cartItems', {
+        id: 'ci-a-e2e',
+        cartId: vendorAId,
+        itemId: 'checkout-item-a',
+        quantity: 1,
+      })
+      await put('cartItems', {
+        id: 'ci-b-e2e',
+        cartId: vendorBId,
+        itemId: 'checkout-item-b',
+        quantity: 1,
+      })
+    },
+    { vendorAId, vendorBId },
+  )
 
   await splitInlineStock(page)
   await relocateCarts(page)
@@ -492,7 +646,11 @@ async function createStockedItem(
 }
 
 test.describe('cloud mode vendor carts', () => {
-  test('user can see vendor cart cards (cloud mode)', async ({ page, request, baseURL }) => {
+  test('user can see vendor cart cards (cloud mode)', async ({
+    page,
+    request,
+    baseURL,
+  }) => {
     test.skip(baseURL !== CLOUD_WEB_URL, 'cloud mode only')
     const shopping = new ShoppingPage(page)
     const gql = makeGql(request)
@@ -504,14 +662,12 @@ test.describe('cloud mode vendor carts', () => {
     const CREATE_VENDOR = `mutation CreateVendor($name: String!, $locationId: ID!) {
       createVendor(name: $name, locationId: $locationId) { id }
     }`
-    const { createVendor: vendorA } = await gql<{ createVendor: { id: string } }>(
-      CREATE_VENDOR,
-      { name: 'Cloud Vendor A', locationId: home.id },
-    )
-    const { createVendor: vendorB } = await gql<{ createVendor: { id: string } }>(
-      CREATE_VENDOR,
-      { name: 'Cloud Vendor B', locationId: home.id },
-    )
+    const { createVendor: vendorA } = await gql<{
+      createVendor: { id: string }
+    }>(CREATE_VENDOR, { name: 'Cloud Vendor A', locationId: home.id })
+    const { createVendor: vendorB } = await gql<{
+      createVendor: { id: string }
+    }>(CREATE_VENDOR, { name: 'Cloud Vendor B', locationId: home.id })
     // Two steps per item, exactly as `useCreateItem`'s cloud branch does: the
     // raw `createItem` mutation writes the Item's legacy inline columns and NO
     // stock row, and since cloud-locations PR 3b this page is scoped to items
@@ -532,14 +688,20 @@ test.describe('cloud mode vendor carts', () => {
     await expect(shopping.getVendorCartCard('Cloud Vendor B')).toBeVisible()
   })
 
-  test('user can checkout from vendor cart in cloud mode', async ({ page, request, baseURL }) => {
+  test('user can checkout from vendor cart in cloud mode', async ({
+    page,
+    request,
+    baseURL,
+  }) => {
     test.skip(baseURL !== CLOUD_WEB_URL, 'cloud mode only')
     const shopping = new ShoppingPage(page)
     const gql = makeGql(request)
 
     // See the note on the sibling test: `locationId` is required since PR 3b.
     const home = await ensureCloudDefaultLocation(request)
-    const { createVendor: vendor } = await gql<{ createVendor: { id: string } }>(
+    const { createVendor: vendor } = await gql<{
+      createVendor: { id: string }
+    }>(
       `mutation CreateVendor($name: String!, $locationId: ID!) {
         createVendor(name: $name, locationId: $locationId) { id }
       }`,

@@ -1,4 +1,4 @@
-import type { Page, Locator } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import { withSteps } from '../step'
 
 export class TagsPage {
@@ -29,7 +29,10 @@ export class TagsPage {
   async submitTagTypeDialog() {
     // Save button inside the New/Edit Tag Type dialog (TagTypeInfoForm renders t('common.save') = "Save")
     // (src/routes/settings/tags/index.tsx — TagTypeInfoForm inside Dialog)
-    await this.page.getByRole('dialog').getByRole('button', { name: 'Save' }).click()
+    await this.page
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Save' })
+      .click()
   }
 
   getTagTypeCard(name: string): Locator {
@@ -39,8 +42,12 @@ export class TagsPage {
 
   async clickNewTag(tagTypeName: string) {
     // "New Tag" button inside a specific tag type card
-    const heading = this.page.getByRole('heading', { name: tagTypeName, level: 2 })
-    await heading.locator('xpath=ancestor::*[contains(@class,"relative")][1]')
+    const heading = this.page.getByRole('heading', {
+      name: tagTypeName,
+      level: 2,
+    })
+    await heading
+      .locator('xpath=ancestor::*[contains(@class,"relative")][1]')
       .getByRole('button', { name: /new tag/i })
       .click()
   }
@@ -63,7 +70,10 @@ export class TagsPage {
   async submitTagDialog() {
     // Save button inside the Add Tag dialog (TagInfoForm renders t('common.save') = "Save")
     // (src/components/tag/TagInfoForm/index.tsx:152-158)
-    await this.page.getByRole('dialog').getByRole('button', { name: 'Save' }).click()
+    await this.page
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Save' })
+      .click()
   }
 
   getTagBadge(name: string): Locator {
@@ -103,12 +113,18 @@ export class TagsPage {
     // The dnd-kit drag wrapper has role="button" and text "{tagName} (N)"
     // Listeners are on the drag wrapper div. Target is the tag type heading area.
     // (src/routes/settings/tags/index.tsx:123, @dnd-kit/core PointerSensor activation=8px)
-    const source = this.page.getByRole('button', { name: new RegExp(`^${tagName} \\(`) })
-    const target = this.page.getByRole('heading', { name: targetTypeName, level: 2 })
+    const source = this.page.getByRole('button', {
+      name: new RegExp(`^${tagName} \\(`),
+    })
+    const target = this.page.getByRole('heading', {
+      name: targetTypeName,
+      level: 2,
+    })
 
     const sourceBox = await source.boundingBox()
     const targetBox = await target.boundingBox()
-    if (!sourceBox || !targetBox) throw new Error('Could not get bounding boxes')
+    if (!sourceBox || !targetBox)
+      throw new Error('Could not get bounding boxes')
 
     const sx = sourceBox.x + sourceBox.width / 2
     const sy = sourceBox.y + sourceBox.height / 2

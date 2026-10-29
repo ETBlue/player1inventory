@@ -15,10 +15,14 @@
   // check them again here.** That is correct but no longer free, so check what
   // it costs before adding such an import.
   //
-  // This pass covers test files too, which `apps/web`'s does not. That is why
+  // This pass covers test files too. That is why
   // `scripts/databaseIsolation.test.ts` is type-checked. It costs about 0.5s of
   // server build time, because importing `vitest` adds 46 declaration files —
   // see the root CLAUDE.md for the measured before/after.
+  //
+  // `apps/web` gained its own test pass on 2026-10-30 (issue #340,
+  // `apps/web/tsconfig.test.json`). This comment used to say `apps/web`'s pass
+  // did not cover test files, which was true until that day and is now wrong.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "rootDir": ".",
