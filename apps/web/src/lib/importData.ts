@@ -104,13 +104,38 @@ function toDate(value: unknown): Date {
   return value instanceof Date ? value : new Date(value as string)
 }
 
-// Convert item date fields from ISO strings (as stored in JSON) to Date objects.
+// The OPTIONAL half of the item's global stock configuration.
+//
+// `JSON.stringify` writes an absent optional field as `null` on a cloud
+// payload, and `Item` declares each of these as `number | string | undefined` —
+// never `null`. So a `null` in the file has to become an ABSENT KEY, not a
+// stored `null`, or the row in Dexie contradicts its own type.
+//
+// `targetUnit` and `consumeAmount` are deliberately NOT here even though they
+// are part of `GLOBAL_STOCK_FIELD_KEYS`: both are REQUIRED on `Item`, so
+// deleting them would replace one invalid row with another.
+const NULLABLE_ITEM_CONFIG_KEYS = [
+  'packageUnit',
+  'measurementUnit',
+  'amountPerPackage',
+  'estimatedDueDays',
+  'expirationThreshold',
+  'expirationMode',
+] as const
+
+// Convert item date fields from ISO strings (as stored in JSON) to Date objects,
+// and drop a `null` on any optional configuration field — see above. The stock
+// rows get the same treatment for their date fields in `deserializeItemStock`.
 function deserializeItem(rawItem: Item): Item {
-  return {
+  const item: Item & Record<string, unknown> = {
     ...rawItem,
     createdAt: toDate(rawItem.createdAt),
     updatedAt: toDate(rawItem.updatedAt),
   }
+  for (const key of NULLABLE_ITEM_CONFIG_KEYS) {
+    if (item[key] === null) delete item[key]
+  }
+  return item
 }
 
 // Convert stock date fields from ISO strings to Date objects; drop nulls
