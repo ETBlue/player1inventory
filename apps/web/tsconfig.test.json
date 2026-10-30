@@ -39,17 +39,35 @@
   // 3. `vitest/globals` in `types`, because `vitest.config.ts` sets
   //    `globals: true`, so `describe` / `it` / `expect` / `vi` are ambient.
   //
-  // THE `exclude` LIST BELOW IS A BACKLOG, NOT A POLICY. These 109 files
-  // carry 321 pre-existing type errors across 86 of them (measured 2026-10-30,
+  // THE `exclude` LIST BELOW IS A BACKLOG, NOT A POLICY. These 95 files
+  // carry 172 pre-existing type errors across 72 of them (measured 2026-10-30,
   // plus the knock-on files described next). Fixing them is issue #340 step 3,
-  // file by file. 249 test and story files ARE checked. Removing a file from
-  // this list is the unit of that work.
+  // file by file. 263 of the 358 test and story files ARE checked. Removing a
+  // file from this list is the unit of that work.
   //
-  // It was 115 files and 726 errors when this config was added. Wave 1 of
-  // step 3 removed the six biggest — lib/quantityUtils.test.ts (148 errors),
-  // components/item/ItemCard/ItemCard.test.tsx (95), lib/importData.test.ts
-  // (64), lib/sortUtils.test.ts (46), db/operations.test.ts (30) and
-  // lib/filterUtils.test.ts (22), which is 405 of the 726.
+  // It was 115 files and 726 errors when this config was added.
+  //
+  // Wave 1 of step 3 removed the six biggest — lib/quantityUtils.test.ts (148
+  // errors), components/item/ItemCard/ItemCard.test.tsx (95),
+  // lib/importData.test.ts (64), lib/sortUtils.test.ts (46),
+  // db/operations.test.ts (30) and lib/filterUtils.test.ts (22) — 405 of the
+  // 726, leaving 109 files and 321 errors.
+  //
+  // Wave 2 removed the next 14, which held 149 of those 321 (46%):
+  // routes/index.test.tsx (21), lib/tagSortUtils.test.ts (17),
+  // lib/expiration.test.ts (16), routes/cooking.test.tsx (14),
+  // hooks/useItems.cloud.test.tsx (13), routes/items/$id/stock.test.tsx (9),
+  // components/item/ItemForm/ItemForm.test.tsx (9), lib/tagUtils.test.ts (8),
+  // hooks/useLocations.test.tsx (8),
+  // components/item/QuickUpdateDialog/QuickUpdateDialog.test.tsx (8),
+  // hooks/useShoppingCart.test.ts (7),
+  // components/item/ItemFilters/ItemFilters.test.tsx (7),
+  // routes/items/$id/relation/tags.test.tsx (6) and
+  // hooks/usePostLoginMigration.test.ts (6).
+  //
+  // `hooks/useShoppingCart.test.ts` is the file issue #340 was FILED for: three
+  // of its `useCheckout` calls omitted the required `items` argument and the
+  // whole gate stayed green. It is now checked.
   //
   // TO MEASURE THE BACKLOG YOURSELF: copy this file and replace the `exclude`
   // array with `[]`, then run `tsc -p` on the copy. Do NOT strip the comments
@@ -61,7 +79,7 @@
   //
   // a. `exclude` only removes a file from the program's ROOT set. A file that
   //    an INCLUDED file imports is still pulled in and still checked. That is
-  //    why 22 clean `*.stories.test.tsx` smoke tests are on this list: each
+  //    why 23 clean `*.stories.test.tsx` smoke tests are on this list: each
   //    one calls `composeStories` on a `*.stories.tsx` that is excluded, so
   //    excluding the story alone left 45 errors reported. The pair has to move
   //    together, in both directions.
@@ -98,10 +116,8 @@
     "src/components/item/ItemCard/ItemCard.pantry.stories.tsx",
     "src/components/item/ItemFilters/ItemFilters.stories.test.tsx",
     "src/components/item/ItemFilters/ItemFilters.stories.tsx",
-    "src/components/item/ItemFilters/ItemFilters.test.tsx",
     "src/components/item/ItemForm/ItemForm.stories.test.tsx",
     "src/components/item/ItemForm/ItemForm.stories.tsx",
-    "src/components/item/ItemForm/ItemForm.test.tsx",
     "src/components/item/ItemListToolbar/ItemListToolbar.stories.test.tsx",
     "src/components/item/ItemListToolbar/ItemListToolbar.stories.tsx",
     "src/components/item/ItemProgressBar/ItemProgressBar.stories.test.tsx",
@@ -112,7 +128,6 @@
     "src/components/item/NewItemDialog/NewItemDialog.cloud.test.tsx",
     "src/components/item/NewItemDialog/NewItemDialog.stories.test.tsx",
     "src/components/item/NewItemDialog/NewItemDialog.stories.tsx",
-    "src/components/item/QuickUpdateDialog/QuickUpdateDialog.test.tsx",
     "src/components/location/LocationList/LocationList.stories.test.tsx",
     "src/components/pantry/ShelfDetailView.test.tsx",
     "src/components/settings/ConflictDialog/index.stories.test.tsx",
@@ -145,40 +160,29 @@
     "src/hooks/useInventoryLogs.test.ts",
     "src/hooks/useItemSearchTail.test.ts",
     "src/hooks/useItemSearchTailWiring.test.tsx",
-    "src/hooks/useItems.cloud.test.tsx",
     "src/hooks/useItems.test.ts",
     "src/hooks/useItems.test.tsx",
-    "src/hooks/useLocations.test.tsx",
     "src/hooks/useNavigationTracker.test.ts",
-    "src/hooks/usePostLoginMigration.test.ts",
     "src/hooks/useRecipeItemCounts.test.ts",
-    "src/hooks/useShoppingCart.test.ts",
     "src/hooks/useTagItemCounts.test.ts",
     "src/hooks/useTags.test.ts",
     "src/hooks/useUrlSearchAndFilters.test.ts",
     "src/hooks/useVendorCartCounts.test.ts",
     "src/hooks/useVendorItemCounts.test.ts",
     "src/lib/checkoutQuantities.test.ts",
-    "src/lib/expiration.test.ts",
     "src/lib/exportData.test.ts",
     "src/lib/shelfUtils.test.ts",
-    "src/lib/tagSortUtils.test.ts",
-    "src/lib/tagUtils.test.ts",
     "src/routes/__root.e2eMigration.test.tsx",
     "src/routes/cooking.cloud.test.tsx",
     "src/routes/cooking.stories.test.tsx",
     "src/routes/cooking.stories.tsx",
-    "src/routes/cooking.test.tsx",
-    "src/routes/index.test.tsx",
     "src/routes/items/$id.test.tsx",
     "src/routes/items/$id/relation/recipes.test.tsx",
     "src/routes/items/$id/relation/tags.stories.test.tsx",
     "src/routes/items/$id/relation/tags.stories.tsx",
-    "src/routes/items/$id/relation/tags.test.tsx",
     "src/routes/items/$id/relation/vendors.test.tsx",
     "src/routes/items/$id/stock.stories.test.tsx",
     "src/routes/items/$id/stock.stories.tsx",
-    "src/routes/items/$id/stock.test.tsx",
     "src/routes/settings/index.test.tsx",
     "src/routes/settings/recipes/$id/items.test.tsx",
     "src/routes/settings/shelves/$shelfId/index.test.tsx",

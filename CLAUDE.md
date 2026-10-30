@@ -373,16 +373,19 @@ build:     tsc -b && tsc -p tsconfig.test.json && vite build
 typecheck: tsc -b && tsc -p tsconfig.test.json
 ```
 
-**249 of the 358 test and story files are checked. 109 are still excluded**, because they
-carry **321** type errors. Fixing them is issue #340 step 3. The `exclude` list in
-`tsconfig.test.json` is that backlog, and its comment header records the three `include`
-entries that are not obvious and the two traps in editing the list.
+**263 of the 358 test and story files are checked. 95 are still excluded**, because they
+carry **172** type errors across **72** of them. Fixing them is issue #340 step 3. The
+`exclude` list in `tsconfig.test.json` is that backlog, and its comment header records the
+three `include` entries that are not obvious and the two traps in editing the list.
 
 It said 243 checked / 115 excluded / **726** errors when the config was added on 2026-10-30.
 Wave 1 of step 3 took the six biggest files off the list the same week — `lib/quantityUtils`
 (148 errors), `components/item/ItemCard/ItemCard` (95), `lib/importData` (64),
 `lib/sortUtils` (46), `db/operations` (30) and `lib/filterUtils` (22) — which is **405** of
-the 726. **Re-measure rather than quote any of these.** Build a probe config by replacing
+the 726, leaving 109 files and 321 errors. Wave 2 took the next **14**, holding **149** of
+those 321, and `src/hooks/useShoppingCart.test.ts` — the file this issue was filed for — is
+one of them, so the original hole is closed.
+**Re-measure rather than quote any of these.** Build a probe config by replacing
 the `exclude` array with `[]`; do NOT strip the comments with a regex on `//`, because that
 eats the `/**/` inside `src/**/*.test.ts` and leaves an `include` of `src*.test.ts`, which
 checks **0** files and reports **1** error.
@@ -396,7 +399,17 @@ Proved by mutation on 2026-10-30, in both directions. The same line,
 | `apps/web/src/hooks/useShoppingCart.test.ts` (excluded) | **exit 0**, no error reported |
 
 The second row is what makes the first one mean something: the pass is not inert, and the
-`exclude` list really does hold back the files it names.
+`exclude` list really does hold back the files it names. **Pick a file that is still on the
+list if you repeat this** — `useShoppingCart.test.ts` came off it in wave 2, so it now
+behaves like the first row.
+
+**A shared helper for the biggest cause.** `noUncheckedIndexedAccess` turns every
+`rows[0]`, `mock.calls[0]` and `.find()` result into a possibly-undefined value, and that
+was 51 of wave 2's 149 errors. `apps/web/src/test/narrow.ts` holds `elementAt`, `defined`
+and `callArgs`, which narrow AND fail with a message naming the array and the index. Use
+them instead of `!`. `?.` is fine for a POSITIVE assertion but wrong for a negative one: on
+an empty array `expect(row?.name).toBeUndefined()` passes. (`lib/importData.test.ts` and
+`db/operations.test.ts` still carry wave 1's private copies of `defined`.)
 
 **The old rule is now half true.** "The argument is required, so `tsc` catches a call site
 that forgets it" holds for a source file, holds for a checked test file, and still fails for
