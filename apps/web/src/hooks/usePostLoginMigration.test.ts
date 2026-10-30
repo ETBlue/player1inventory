@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { bootstrapCarts, getAllItems, getLocations } from '@/db/operations'
 import { fetchLocalPayload } from '@/lib/exportData'
 import { importCloudData } from '@/lib/importData'
+import { elementAt } from '@/test/narrow'
 import {
   ActiveLocationProvider,
   activeLocationStorageKey,
@@ -387,7 +388,7 @@ describe('usePostLoginMigration — the copy names no location', () => {
 
     // Then no location is named: neither the local slot nor the cloud cuid is
     // passed, so `importCloudData` carries every location through the remap
-    const call = mockImportCloudData.mock.calls[0]
+    const call = elementAt(mockImportCloudData.mock.calls)
     expect(call[0]).toBe(emptyPayload)
     expect(call[1]).toBe('skip')
     expect(call[3]).toBeUndefined()
@@ -410,7 +411,7 @@ describe('usePostLoginMigration — the copy names no location', () => {
     await result.current.importData('append')
 
     // Then the copy ran, with no location named
-    const call = mockImportCloudData.mock.calls[0]
+    const call = elementAt(mockImportCloudData.mock.calls)
     expect(call[0]).toBe(emptyPayload)
     expect(call[1]).toBe('skip')
     expect(call[3]).toBeUndefined()

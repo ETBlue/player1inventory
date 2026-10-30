@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { elementAt } from '@/test/narrow'
 import type { Tag } from '@/types'
 import {
   buildDepthFirstTagList,
@@ -143,12 +144,12 @@ describe('buildDepthFirstTagList', () => {
     const result = buildDepthFirstTagList(tags)
 
     // Then parent is first, children follow in alphabetical order
-    expect(result[0].id).toBe('parent')
-    expect(result[0].depth).toBe(0)
-    expect(result[1].id).toBe('child1')
-    expect(result[1].depth).toBe(1)
-    expect(result[2].id).toBe('child2')
-    expect(result[2].depth).toBe(1)
+    expect(elementAt(result, 0).id).toBe('parent')
+    expect(elementAt(result, 0).depth).toBe(0)
+    expect(elementAt(result, 1).id).toBe('child1')
+    expect(elementAt(result, 1).depth).toBe(1)
+    expect(elementAt(result, 2).id).toBe('child2')
+    expect(elementAt(result, 2).depth).toBe(1)
   })
 
   it('recurses into grandchildren before the next top-level sibling', () => {
@@ -209,8 +210,8 @@ describe('buildDepthFirstTagList', () => {
 
     // Then the child is treated as top-level (depth 0) since parent is excluded
     expect(result).toHaveLength(1)
-    expect(result[0].id).toBe('child')
-    expect(result[0].depth).toBe(0)
+    expect(elementAt(result, 0).id).toBe('child')
+    expect(elementAt(result, 0).depth).toBe(0)
   })
 
   it('does not mutate the original tags array', () => {
