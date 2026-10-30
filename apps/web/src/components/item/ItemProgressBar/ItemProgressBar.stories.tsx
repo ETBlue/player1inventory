@@ -22,10 +22,14 @@ export default meta
 type Story = StoryObj<typeof ItemProgressBar>
 
 export const Interactive: Story = {
+  // `status` is omitted, not set to `undefined`: there is no meta arg to
+  // override, and `exactOptionalPropertyTypes` rejects an explicit
+  // `undefined` for the optional prop (ItemProgressBar.tsx:11). The
+  // `argTypes.status.options` list above still offers `undefined` in the
+  // Storybook control.
   args: {
     current: 5,
     target: 12,
-    status: undefined,
   },
 }
 
