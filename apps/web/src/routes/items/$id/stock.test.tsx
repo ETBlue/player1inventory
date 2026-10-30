@@ -56,8 +56,8 @@ const GLOBAL_STOCK_KEYS = [
 // 2. `data: undefined as GetItemQuery | undefined` — the real query result,
 //    not the bare `undefined` the initial value infers. That is what pins the
 //    four `{ item: cloudItem }` fixtures below to the GetItem selection set:
-//    both `tagIds` and `userId` are non-null in it and all four were missing
-//    them.
+//    `tagIds` is non-null in it and all four were missing it. `userId` sat
+//    beside it until issue #359 dropped that field from every web document.
 const mockUseGetItemQuery = vi.fn((..._args: unknown[]) => ({
   data: undefined as GetItemQuery | undefined,
   loading: false,
@@ -1260,12 +1260,11 @@ describe('Item stock tab', () => {
     const cloudItem = {
       id: 'item-cloud-cascade',
       name: 'Cloud Milk',
-      // Both non-null in the GetItem selection set
-      // (generated/graphql.ts, `GetItemQuery`), and both were missing from this
-      // fixture. No assertion here reads either: the item carries no tags, and
-      // `userId` is a server-side column the page never renders.
+      // Non-null in the GetItem selection set (generated/graphql.ts,
+      // `GetItemQuery`), and it was missing from this fixture. No assertion
+      // here reads it: the item carries no tags. `userId` sat beside it until
+      // issue #359 dropped that field from every web document.
       tagIds: [],
-      userId: 'user-1',
       targetUnit: 'package',
       consumeAmount: 1,
       createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
@@ -1322,12 +1321,11 @@ describe('Item stock tab', () => {
     const cloudItem = {
       id: 'item-cloud-2',
       name: 'Cloud Milk',
-      // Both non-null in the GetItem selection set
-      // (generated/graphql.ts, `GetItemQuery`), and both were missing from this
-      // fixture. No assertion here reads either: the item carries no tags, and
-      // `userId` is a server-side column the page never renders.
+      // Non-null in the GetItem selection set (generated/graphql.ts,
+      // `GetItemQuery`), and it was missing from this fixture. No assertion
+      // here reads it: the item carries no tags. `userId` sat beside it until
+      // issue #359 dropped that field from every web document.
       tagIds: [],
-      userId: 'user-1',
       targetUnit: 'package',
       consumeAmount: 1,
       createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
@@ -1375,12 +1373,11 @@ describe('Item stock tab', () => {
     const cloudItem = {
       id: 'item-cloud-1',
       name: 'Cloud Milk',
-      // Both non-null in the GetItem selection set
-      // (generated/graphql.ts, `GetItemQuery`), and both were missing from this
-      // fixture. No assertion here reads either: the item carries no tags, and
-      // `userId` is a server-side column the page never renders.
+      // Non-null in the GetItem selection set (generated/graphql.ts,
+      // `GetItemQuery`), and it was missing from this fixture. No assertion
+      // here reads it: the item carries no tags. `userId` sat beside it until
+      // issue #359 dropped that field from every web document.
       tagIds: [],
-      userId: 'user-1',
       packageUnit: 'bottle',
       targetUnit: 'package',
       consumeAmount: 1,
@@ -1571,12 +1568,11 @@ describe('Item stock tab', () => {
       const cloudItem = {
         id: 'item-cloud-3',
         name: 'Cloud Milk',
-        // Both non-null in the GetItem selection set
-        // (generated/graphql.ts, `GetItemQuery`), and both were missing from this
-        // fixture. No assertion here reads either: the item carries no tags, and
-        // `userId` is a server-side column the page never renders.
+        // Non-null in the GetItem selection set (generated/graphql.ts,
+        // `GetItemQuery`), and it was missing from this fixture. No assertion
+        // here reads it: the item carries no tags. `userId` sat beside it until
+        // issue #359 dropped that field from every web document.
         tagIds: [],
-        userId: 'user-1',
         packageUnit: 'bottle',
         targetUnit: 'package',
         consumeAmount: 1,

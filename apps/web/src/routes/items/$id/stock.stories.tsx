@@ -280,7 +280,6 @@ const CLOUD_ITEM = {
   expirationThreshold: null,
   wikidataUrl: null,
   note: null,
-  userId: 'user-1',
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
 }

@@ -106,13 +106,13 @@ const setupMocks = (
   })
   vi.mocked(useCreateVendor).mockReturnValue({
     mutate: vi.fn(async (_name: string) => {}),
-    // `userId` is required by the `CreateVendorMutation` payload type. No
-    // assertion in this file reads it; `NewVendorDialog.tsx:45` only reads
-    // `id`. The value is arbitrary.
+    // `CreateVendorMutation`'s payload is `{ id, name }`. It carried a
+    // required `userId` until issue #359 dropped that field from every web
+    // document. No assertion in this file reads either field;
+    // `NewVendorDialog.tsx:45` only reads `id`.
     mutateAsync: vi.fn(async (_name: string) => ({
       id: 'new-id',
       name: 'Test',
-      userId: 'test-user',
     })),
     isPending: false,
   })

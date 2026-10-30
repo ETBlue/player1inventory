@@ -56,7 +56,7 @@ describe('useVendors (cloud mode)', () => {
     localStorage.setItem('data-mode', 'cloud')
     mockUseGetVendorsQuery.mockReturnValue({
       data: {
-        vendors: [{ id: 'v-1', name: 'Costco', userId: 'u1' }],
+        vendors: [{ id: 'v-1', name: 'Costco' }],
       },
       loading: false,
       error: undefined,
@@ -81,7 +81,6 @@ describe('useVendors (cloud mode)', () => {
           {
             id: 'v-1',
             name: 'Costco',
-            userId: 'u1',
             createdAt: '2026-01-15T10:00:00.000Z',
           },
         ],
@@ -114,7 +113,7 @@ describe('useCreateVendor (cloud mode)', () => {
     // Given cloud mode and Apollo mutation resolves
     localStorage.setItem('data-mode', 'cloud')
     mockCloudCreateVendor.mockResolvedValue({
-      data: { createVendor: { id: 'v-new', name: 'Costco', userId: 'u1' } },
+      data: { createVendor: { id: 'v-new', name: 'Costco' } },
     })
     mockUseGetVendorsQuery.mockReturnValue({
       data: undefined,

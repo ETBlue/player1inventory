@@ -158,10 +158,12 @@ const upsertMock = (locationId: string) => ({
   },
 })
 
-// `UpdateItem`'s selection set omits `userId` and `createdAt`; `CreateItem`'s
-// omits `userId`, `vendorIds`, `packageUnit`, `measurementUnit` and
-// `amountPerPackage` (but DOES ask for `createdAt`). Returning the full item
-// shape either way would be a mock the server could never produce.
+// `UpdateItem`'s selection set omits `createdAt`; `CreateItem`'s omits
+// `vendorIds`, `packageUnit`, `measurementUnit` and `amountPerPackage` (but
+// DOES ask for `createdAt`). Returning the full item shape either way would be
+// a mock the server could never produce. Both lists also held `userId` until
+// issue #359 dropped that field from every web document; `cloudItem` no longer
+// carries it, so there is nothing left to drop.
 function pick<T extends Record<string, unknown>>(source: T, drop: string[]) {
   const out = { ...source } as Record<string, unknown>
   for (const key of drop) delete out[key]
@@ -177,7 +179,7 @@ const updateItemMock = {
     const input = vars.input as Record<string, unknown>
     const next = { ...catalog.find((i) => i.id === id), ...input }
     catalog = catalog.map((i) => (i.id === id ? (next as typeof i) : i))
-    return { data: { updateItem: pick(next, ['userId', 'createdAt']) } }
+    return { data: { updateItem: pick(next, ['createdAt']) } }
   },
 }
 
@@ -194,7 +196,6 @@ const createItemMock = {
     return {
       data: {
         createItem: pick(created, [
-          'userId',
           'vendorIds',
           'packageUnit',
           'measurementUnit',

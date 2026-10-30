@@ -170,7 +170,6 @@ const createVendorMock = (locationId: string) => ({
           __typename: 'Vendor',
           id,
           name: vars.name as string,
-          userId: 'user-1',
         },
       },
     }
