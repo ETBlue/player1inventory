@@ -14,7 +14,6 @@ query GetItem($id: ID!) {
     expirationMode
     estimatedDueDays
     expirationThreshold
-    userId
     createdAt
     updatedAt
   }
@@ -36,7 +35,6 @@ query GetItems {
     expirationMode
     estimatedDueDays
     expirationThreshold
-    userId
     createdAt
     updatedAt
   }

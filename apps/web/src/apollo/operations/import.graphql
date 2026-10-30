@@ -19,7 +19,6 @@ mutation BulkCreateItems($items: [ItemInput!]!) {
     consumeAmount
     estimatedDueDays
     expirationThreshold
-    userId
     createdAt
     updatedAt
   }
@@ -30,7 +29,6 @@ mutation BulkCreateTags($tags: [TagInput!]!) {
     id
     name
     typeId
-    userId
   }
 }
 
@@ -39,7 +37,6 @@ mutation BulkCreateTagTypes($tagTypes: [TagTypeInput!]!) {
     id
     name
     color
-    userId
   }
 }
 
@@ -47,7 +44,6 @@ mutation BulkCreateVendors($vendors: [VendorInput!]!) {
   bulkCreateVendors(vendors: $vendors) {
     id
     name
-    userId
   }
 }
 
@@ -60,7 +56,6 @@ mutation BulkCreateRecipes($recipes: [RecipeInput!]!) {
       defaultAmount
     }
     lastCookedAt
-    userId
   }
 }
 
@@ -106,7 +101,6 @@ mutation BulkUpsertItems($items: [ItemInput!]!) {
     consumeAmount
     estimatedDueDays
     expirationThreshold
-    userId
     createdAt
     updatedAt
   }
@@ -117,7 +111,6 @@ mutation BulkUpsertTags($tags: [TagInput!]!) {
     id
     name
     typeId
-    userId
   }
 }
 
@@ -126,7 +119,6 @@ mutation BulkUpsertTagTypes($tagTypes: [TagTypeInput!]!) {
     id
     name
     color
-    userId
   }
 }
 
@@ -134,7 +126,6 @@ mutation BulkUpsertVendors($vendors: [VendorInput!]!) {
   bulkUpsertVendors(vendors: $vendors) {
     id
     name
-    userId
   }
 }
 
@@ -147,7 +138,6 @@ mutation BulkUpsertRecipes($recipes: [RecipeInput!]!) {
       defaultAmount
     }
     lastCookedAt
-    userId
   }
 }
 
