@@ -15,6 +15,7 @@ import {
   createVendor,
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+import { defined } from '@/test/narrow'
 import { cartIdFor, DEFAULT_LOCATION_ID } from '@/types'
 
 describe('Vendor cart page', () => {
@@ -284,12 +285,22 @@ describe('Vendor cart page', () => {
     // Wait for the page to load
     await screen.findByText('Costco')
 
-    // Then the cart's lastVisitedAt is NOT set after visiting
+    // Then the cart carries no `lastVisitedAt` stamp.
+    //
+    // THIS GUARD CANNOT FAIL, AND IT IS KEPT AS IT WAS. `ShoppingCart` is
+    // `{ id, lastPurchasedAt? }` (packages/types/src/index.ts:149). Neither a
+    // `lastVisitedAt` field nor an `updateCartLastVisited` mutation exists
+    // anywhere in `apps/web/src`, `apps/server/src` or `packages/types`
+    // (src/routes/CLAUDE.md:257 records the removal), so no code can write the
+    // key. The only thing changed here is HOW the key is read: the stored keys
+    // of the row, instead of a cast to `Record<string, unknown>`.
     const cart = await db.shoppingCarts.get(
       cartIdFor(DEFAULT_LOCATION_ID, vendor.id),
     )
     expect(cart).toBeDefined()
-    expect((cart as Record<string, unknown>).lastVisitedAt).toBeUndefined()
+    expect(Object.keys(defined(cart, 'the vendor cart'))).not.toContain(
+      'lastVisitedAt',
+    )
   })
 
   it('item checkbox is enabled once cart has loaded (guards against cloud-mode loading race)', async () => {

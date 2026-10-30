@@ -2,6 +2,7 @@ import { composeStories } from '@storybook/react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
+import { elementAt } from '@/test/narrow'
 import * as stories from './LocationList.stories'
 
 const { DefaultOnly, MixedCaseNames, MultipleLocations } =
@@ -56,9 +57,14 @@ describe('LocationList name casing', () => {
     await user.keyboard(' ')
 
     // Then the drag overlay shows the name as stored, with no capitalize class
-    const overlayLabel = screen.getAllByText('my Garage').at(-1)
+    // `lib` is ES2020 in tsconfig.test.json, so `Array.prototype.at` does not
+    // exist. `elementAt` also keeps the className check honest: on a missing
+    // element `undefined?.className` would not match /capitalize/ and the
+    // assertion would pass for the wrong reason.
+    const labels = screen.getAllByText('my Garage')
+    const overlayLabel = elementAt(labels, labels.length - 1)
     expect(overlayLabel).toBeDefined()
-    expect(screen.getAllByText('my Garage')).toHaveLength(2)
-    expect(overlayLabel?.className).not.toMatch(/capitalize/)
+    expect(labels).toHaveLength(2)
+    expect(overlayLabel.className).not.toMatch(/capitalize/)
   })
 })

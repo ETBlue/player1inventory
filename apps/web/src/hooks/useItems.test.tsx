@@ -15,6 +15,7 @@ import {
   upsertItemStock,
 } from '@/db/operations'
 import { GetRecipesDocument } from '@/generated/graphql'
+import { callArgs } from '@/test/narrow'
 import { asPantryDataResult } from '@/test/pantryData'
 import type { PantryItem } from '@/types'
 import { cartIdFor, DEFAULT_LOCATION_ID } from '@/types'
@@ -332,6 +333,16 @@ describe('useCreateItem (cloud mode)', () => {
     // an object literal WRITES; a `...input` spread is exempt, so reinstating
     // the spread would type-check cleanly and send all four quantities again.
     // Here it turns this loop red.
+    //
+    // WHY `Object.keys` AND NOT `Object.hasOwn`: `Object.hasOwn` is ES2022 and
+    // this project's `lib` is ES2020, so `tsc` reports TS2550 for it. Biome's
+    // `noPrototypeBuiltins` rejects `Object.prototype.hasOwnProperty.call` and
+    // offers `Object.hasOwn` as a SAFE fix, which `lint-staged`'s
+    // `biome check --write --unsafe` applies — reintroducing the type error
+    // inside the commit that was meant to remove it. `Object.keys` is the one
+    // form both tools accept, and it still lists a key whose value is
+    // `undefined`, which is what this loop has to see.
+    const sentKeys = Object.keys(sent)
     for (const key of [
       'targetQuantity',
       'refillThreshold',
@@ -339,7 +350,7 @@ describe('useCreateItem (cloud mode)', () => {
       'unpackedQuantity',
       'dueDate',
     ]) {
-      expect(Object.hasOwn(sent, key)).toBe(false)
+      expect(sentKeys).not.toContain(key)
     }
     expect((created as { name: string } | undefined)?.name).toBe('Cheese')
   })
@@ -398,7 +409,7 @@ describe('useUpdateItem (cloud mode)', () => {
 
     // Then the GraphQL input does NOT include optional clearable fields
     // (absent fields are omitted so the server leaves them untouched)
-    const callArg = mockCloudUpdate.mock.calls[0][0]
+    const callArg = callArgs(mockCloudUpdate.mock, 0)[0]
     const input = callArg?.variables?.input ?? {}
     expect(input).not.toHaveProperty('packageUnit')
     expect(input).not.toHaveProperty('measurementUnit')

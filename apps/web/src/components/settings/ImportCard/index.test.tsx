@@ -10,6 +10,7 @@ import {
 } from '@/hooks/useActiveLocation'
 import type { ExportPayload } from '@/lib/exportData'
 import { type ImportSession, importCloudData } from '@/lib/importData'
+import { callArgs, elementAt } from '@/test/narrow'
 import { ImportCard } from '.'
 
 // Only the cloud write path is stubbed; conflict detection and the local path
@@ -132,7 +133,7 @@ describe('ImportCard — cloud import carries every location', () => {
 
     // Then the import runs with NO location named — every location travels
     await waitFor(() => expect(importCloudData).toHaveBeenCalled())
-    expect(vi.mocked(importCloudData).mock.calls[0][3]).not.toHaveProperty(
+    expect(callArgs(vi.mocked(importCloudData).mock, 0)[3]).not.toHaveProperty(
       'locationId',
     )
     expect(toast.error).not.toHaveBeenCalled()
@@ -278,7 +279,7 @@ describe('ImportCard — local import lands in the active location', () => {
       expect(await db.itemStocks.count()).toBe(1)
     })
     const stocks = await db.itemStocks.toArray()
-    expect(stocks[0].locationId).toBe('office')
+    expect(elementAt(stocks, 0).locationId).toBe('office')
   })
 })
 

@@ -14,6 +14,7 @@ import {
   activeLocationStorageKey,
 } from '@/hooks/useActiveLocation'
 import { noopApolloClient } from '@/test/apolloStub'
+import { elementAt } from '@/test/narrow'
 import { DEFAULT_LOCATION_ID } from '@/types'
 import { Sidebar } from './Sidebar'
 
@@ -121,8 +122,8 @@ describe('Sidebar', () => {
 
     // And Settings lives in its own block, separated from the three
     // location-aware links and pushed to the bottom of the flex column.
-    const settingsLink = links[links.length - 1]
-    const pantryLink = links[0]
+    const settingsLink = elementAt(links, links.length - 1)
+    const pantryLink = elementAt(links, 0)
     const settingsBlock = settingsLink.parentElement
     expect(settingsBlock).not.toBe(pantryLink.parentElement)
     // jsdom applies no layout, so "pinned to the bottom" is only observable as
