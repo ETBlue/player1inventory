@@ -362,8 +362,8 @@ in the gate. That is exactly how three failing purge tests sat on `main` unnotic
 
 **Run the root `pnpm build`, not `(cd apps/web && pnpm build)`.** The root build is the *full* build — it runs `pnpm codegen` (regenerating GraphQL types from the current schema + operations, catching codegen drift) and type-checks **both** `apps/web` and `apps/server` via `tsc`. The web-only build skips codegen and the server, and `pnpm test` (vitest/esbuild), `pnpm check` (Biome), and `pnpm build-storybook` all skip a full type-check — so type-flow errors (e.g. `possibly null` from `.filter(Boolean)`) and codegen mismatches slip through every other check and only fail in the Cloudflare production build. The root `pnpm build` mirrors that production build and catches them locally.
 
-**Web test and story files ARE type-checked — since 2026-10-30 (issue #340). Not all of
-them.** `apps/web/tsconfig.app.json:37` still excludes `**/*.test.ts`, `**/*.test.tsx` and
+**EVERY web test and story file IS type-checked — since 2026-10-30 (issue #340).**
+`apps/web/tsconfig.app.json:37` still excludes `**/*.test.ts`, `**/*.test.tsx` and
 `**/*.stories.tsx`, so that config checks source files only. A second config,
 `apps/web/tsconfig.test.json`, checks those files in a pass of its own. `apps/web`'s two
 scripts now read:
@@ -373,54 +373,111 @@ build:     tsc -b && tsc -p tsconfig.test.json && vite build
 typecheck: tsc -b && tsc -p tsconfig.test.json
 ```
 
-**263 of the 358 test and story files are checked. 95 are still excluded**, because they
-carry **172** type errors across **72** of them. Fixing them is issue #340 step 3. The
-`exclude` list in `tsconfig.test.json` is that backlog, and its comment header records the
-three `include` entries that are not obvious and the two traps in editing the list.
+**All 358 of them, with no exclusions.** The config's `exclude` list was a backlog and it
+is now empty. Issue #340 step 3 emptied it in three waves:
 
-It said 243 checked / 115 excluded / **726** errors when the config was added on 2026-10-30.
-Wave 1 of step 3 took the six biggest files off the list the same week — `lib/quantityUtils`
-(148 errors), `components/item/ItemCard/ItemCard` (95), `lib/importData` (64),
-`lib/sortUtils` (46), `db/operations` (30) and `lib/filterUtils` (22) — which is **405** of
-the 726, leaving 109 files and 321 errors. Wave 2 took the next **14**, holding **149** of
-those 321, and `src/hooks/useShoppingCart.test.ts` — the file this issue was filed for — is
-one of them, so the original hole is closed.
-**Re-measure rather than quote any of these.** Build a probe config by replacing
-the `exclude` array with `[]`; do NOT strip the comments with a regex on `//`, because that
-eats the `/**/` inside `src/**/*.test.ts` and leaves an `include` of `src*.test.ts`, which
-checks **0** files and reports **1** error.
+| Wave | Files taken off | Errors they held |
+|---|---|---|
+| start (steps 1 and 2) | — | 115 files on the list, **726** errors |
+| 1 | 6 | **405** — `lib/quantityUtils` 148, `ItemCard` 95, `lib/importData` 64, `lib/sortUtils` 46, `db/operations` 30, `lib/filterUtils` 22 |
+| 2 | 14 | **149**, incl. `hooks/useShoppingCart.test.ts` — the file the issue was filed for |
+| 3 | **95** | **174** in 73 files, plus 22 clean smoke tests that were on the list only because their story was |
 
-Proved by mutation on 2026-10-30, in both directions. The same line,
-`export const __mutationProbe: number = 'not a number'`, appended to one file at a time:
+**Re-measure rather than quote any of these**, and measure the FILE COUNT, not the error
+count — see the four traps in that file's header comment. Two of them are what makes the
+error count untrustworthy:
+
+- **`"exclude": []` must stay, and deleting the key is NOT the same thing.** `exclude` is
+  inherited through `extends`, and `tsconfig.app.json:38` excludes exactly the three
+  patterns this config exists to check. Measured 2026-10-30: with the key deleted,
+  `tsc --listFiles` finds **1** test or story file instead of 358 and reports **1** error
+  instead of 0. A near-zero error count here means a broken config, not a clean tree.
+- **Do not strip the comments with a regex on `//`** to build a probe. It eats the `/**/`
+  inside `src/**/*.test.ts` and leaves an `include` of `src*.test.ts`, which checks **0**
+  files and reports **1** error. Same shape of lie, different cause.
+- A probe config written to `/tmp` resolves `typeRoots` from `/tmp/node_modules/@types`
+  and reports a single misleading `TS2688` before checking any file. Put it in the repo.
+- **`exclude` removes a file only from the ROOT set.** A file an included file imports is
+  still pulled in and still checked. That is why 22 clean `*.stories.test.tsx` smoke
+  tests sat on the old list: each calls `composeStories` on an excluded story, so
+  excluding the story alone left its errors reported against the smoke test. A pair moves
+  together, in both directions.
+
+**One file needs a `files` entry, and would be silently unchecked without it.**
+`src/hooks/useItems.test.ts` and `src/hooks/useItems.test.tsx` share a path minus
+extension. TypeScript's include GLOB EXPANSION keeps one file per such path and `.ts`
+wins, so the `.tsx` was in no program at all — it reported 0 errors because nothing
+checked it. **Emptying `exclude` does not fix that**; the dedup is in the expansion. A
+`files` entry is not glob-expanded, so `"files": ["src/hooks/useItems.test.tsx"]` puts it
+in the root set. Measured: `tsc --listFiles` goes from 0 matches to 1, and the file then
+reported its own 2 errors (`TS2550 Object.hasOwn`, `TS2532`). It is the only collision
+today. List them with:
+
+```bash
+git ls-files apps/web/src | grep -E '\.(test|stories)\.tsx?$' \
+  | sed -E 's/\.(ts|tsx)$//' | sort | uniq -d
+```
+
+Proved by mutation on 2026-10-30, in both directions while the list still had entries.
+The same line, `export const __mutationProbe: number = 'not a number'`, appended to one
+file at a time:
 
 | File it was appended to | Root `pnpm build` |
 |---|---|
 | `apps/web/src/hooks/useVendors.test.ts` (checked) | **exit 2**, `src/hooks/useVendors.test.ts(250,14): error TS2322: Type 'string' is not assignable to type 'number'.` |
-| `apps/web/src/hooks/useShoppingCart.test.ts` (excluded) | **exit 0**, no error reported |
+| `apps/web/src/hooks/useShoppingCart.test.ts` (excluded at the time) | **exit 0**, no error reported |
 
-The second row is what makes the first one mean something: the pass is not inert, and the
-`exclude` list really does hold back the files it names. **Pick a file that is still on the
-list if you repeat this** — `useShoppingCart.test.ts` came off it in wave 2, so it now
-behaves like the first row.
+The second row is what made the first one mean something. **Both files behave like the
+first row now**, so to repeat this you need a new probe: there is no excluded file left.
 
 **A shared helper for the biggest cause.** `noUncheckedIndexedAccess` turns every
 `rows[0]`, `mock.calls[0]` and `.find()` result into a possibly-undefined value, and that
-was 51 of wave 2's 149 errors. `apps/web/src/test/narrow.ts` holds `elementAt`, `defined`
-and `callArgs`, which narrow AND fail with a message naming the array and the index. Use
-them instead of `!`. `?.` is fine for a POSITIVE assertion but wrong for a negative one: on
-an empty array `expect(row?.name).toBeUndefined()` passes. (`lib/importData.test.ts` and
-`db/operations.test.ts` still carry wave 1's private copies of `defined`.)
+was 51 of wave 2's 149 errors and about 40 of wave 3's 174. `apps/web/src/test/narrow.ts`
+holds `elementAt`, `defined` and `callArgs`, which narrow AND fail with a message naming
+the array and the index. Use them instead of `!`. `?.` is fine for a POSITIVE assertion
+but wrong for a negative one: on an empty array `expect(row?.name).toBeUndefined()`
+passes. (`lib/importData.test.ts` and `db/operations.test.ts` still carry wave 1's
+private copies of `defined`. `src/stories/Colors.stories.tsx` deliberately does NOT
+import this module — that file ships in the Storybook build.)
 
-**The old rule is now half true.** "The argument is required, so `tsc` catches a call site
-that forgets it" holds for a source file, holds for a checked test file, and still fails for
-any of the 109 excluded ones. Cloud-parity PR A made `items` required on `useCheckout`'s
-`CheckoutArgs`; three `useCheckout()` tests kept calling `mutate()` with no `items` and the
-whole gate stayed green. That file is `apps/web/src/hooks/useShoppingCart.test.ts`, which is
-still excluded — **so that exact hole is still open**, as the table above shows.
+**Two ES2022 methods are off limits, and Biome pushes you onto one of them.** `lib` is
+`ES2020`, so `Array.prototype.at` and `Object.hasOwn` are both `TS2550`. Use
+`elementAt(arr, arr.length - 1)` for the first. For the second, use
+`Object.keys(obj)` with `not.toContain` — **not**
+`Object.prototype.hasOwnProperty.call`: Biome's `noPrototypeBuiltins` rejects that form
+and offers `Object.hasOwn` as a **safe** fix, which `lint-staged`'s
+`biome check --write --unsafe` applies, putting the type error back inside the commit
+meant to remove it. `Object.keys` is the one form both tools accept, and it still lists a
+key whose value is `undefined`. Hit on 2026-10-30 in `hooks/useItems.test.tsx`.
 
-**So after adding a required field or argument, check whether the test files that use it are
-on the exclude list.** For those that are, grep the call sites yourself; `tsc` will not list
-them.
+**The old rule is now true everywhere.** "The argument is required, so `tsc` catches a
+call site that forgets it" holds for source files AND for test and story files. The hole
+this issue was filed for — three `useCheckout()` calls in
+`apps/web/src/hooks/useShoppingCart.test.ts` omitting a required `items` while the whole
+gate stayed green — is closed, and so is every other instance of it.
+
+**What `tsc` on test files actually caught, as evidence it earns its 3.9 seconds.** None
+of these could be seen by `pnpm test`, `pnpm check` or `pnpm build-storybook`:
+
+- **a real Storybook defect.** `src/stories/Colors.stories.tsx` read
+  `colors[name].tint`; the token has only `inverse` and `default`, so ten swatches on the
+  "Colors by Hue" page rendered with NO background. Its smoke test has one assertion, on
+  static text, and stayed green when the swatch was pointed at the wrong token on purpose.
+- **three dead props passed for months.** `addTypename` on `MockedProvider` (removed in
+  `@apollo/client` 4; the repo is on 4.1.6), `onReorder` on `ShelfList` (never existed —
+  the component's first commit, `4c36bf85` on 2026-04-19, already had four props), and
+  `createdAt` on `TagType`. React drops an unknown prop silently, so nothing failed.
+- **stale Dexie seed keys**: `status` and `createdAt` written to `shoppingCarts`, which
+  is `{ id, lastPurchasedAt? }`.
+- **23 casts deleted**, net, across the three waves' files — most of them
+  `as ReturnType<typeof someHook>` on a mutation-result stub that was missing a field.
+  The cast was the reason the missing field was invisible.
+
+**It does not catch everything, and two gaps are worth naming.** Writing a mutation check
+for every reshaped fixture in wave 3 found **nine pre-existing vacuous tests** — tests
+that stay green when the behaviour they name is deleted — and `tsc` had nothing to say
+about any of them. See issue #364 for the list and the measured mutation for each. A
+type-correct fixture is not an asserted fixture.
 
 **`pnpm --filter web typecheck` used to check NOTHING, and that is now fixed.** It was
 `tsc --noEmit` against `apps/web/tsconfig.json`, which is a solution file: `files: []` plus
@@ -431,9 +488,10 @@ Measured 2026-10-30: `tsc --noEmit --listFiles` printed **0** lines and the comm
 
 **The two passes OVERLAP, unlike `apps/server`'s.** Test files import from `src`, so
 TypeScript pulls those source files into the second program and checks them twice. Measured
-2026-10-30 with `--listFiles`: **1390** files in the `tsconfig.app.json` pass and **1734** in
-the `tsconfig.test.json` pass (1728 before wave 1 of step 3 added six files back), of which
-**249** are test and story files, the rest source files checked a second time.
+2026-10-30 with `--listFiles`, after the exclude list was emptied: **1391** files in the
+`tsconfig.app.json` pass and **1845** in the `tsconfig.test.json` pass, of which **358** are
+test and story files, the rest source files checked a second time. The second number grew
+from 1728 as the three waves of step 3 added files back: 1728 → 1734 → … → **1845**.
 
 **That costs about 3.9 seconds, and it is a real cost.** Measured 2026-10-30, three runs of
 each form, interleaved so load drift hits both equally, `rm -rf apps/web/node_modules/.tmp`
@@ -449,7 +507,11 @@ and `rm -rf apps/web/dist` before every run, load average between 3.98 and 5.27 
 | `pnpm --filter web typecheck` after | 7.15s, 9.14s, 8.16s | 8.15s |
 
 So `pnpm --filter web build` is about **56% slower**, and the whole root `pnpm build` grows
-by the same ~3.9s. The second pass writes no build info — it is run with `tsc -p`, not
+by the same ~3.9s. Re-measured on 2026-10-30 with all 358 files in the second program and
+nothing excluded, three runs, load average 2.90–4.27: **11.82s, 11.28s, 11.29s**. So
+emptying the exclude list cost about **0.5s** on top of the 10.94s that adding the config
+already cost — the 95 files were being pulled in as imports and checked anyway (see trap
+(c) in `tsconfig.test.json`); what changed is that their errors are now REPORTED. The second pass writes no build info — it is run with `tsc -p`, not
 `tsc -b`, and sets neither `incremental` nor `tsBuildInfoFile` — so it re-checks everything
 every time and will not get cheaper on a warm tree.
 
