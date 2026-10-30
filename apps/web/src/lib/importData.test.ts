@@ -628,8 +628,10 @@ describe('importLocalData', () => {
 
   it('user can import a cloud-exported recipe that carries no timestamps', async () => {
     // Given a backup exported from cloud: `Recipe { id, name, items,
-    // lastCookedAt, userId }` — the cloud schema has no createdAt/updatedAt, so
-    // the export simply has no such keys
+    // lastCookedAt }` — the cloud schema has no createdAt/updatedAt, so the
+    // export simply has no such keys. GetRecipes also selected `userId` until
+    // issue #359. The fixture below still carries one, on purpose: a backup
+    // file may hold any stray key, and the importer must ignore it.
     const payload = legacyPayload({
       items: [makeItem('item-1', 'Milk')],
       recipes: [

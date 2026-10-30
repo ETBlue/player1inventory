@@ -681,9 +681,14 @@ export interface ImportSession {
 }
 
 // ---------------------------------------------------------------------------
-// GraphQL Input mappers — strip server-only fields (__typename, userId,
-// familyId) and any other fields not accepted by the corresponding Input type.
-// These are used before passing payload objects as GraphQL mutation variables.
+// GraphQL Input mappers — strip server-only fields (__typename, familyId) and
+// any other fields not accepted by the corresponding Input type. These are
+// used before passing payload objects as GraphQL mutation variables.
+//
+// They are ALLOW-LISTS: each names the keys it forwards, so anything else is
+// dropped by omission. `userId` was the headline example until issue #359
+// stopped every web document selecting it; the unit tests still feed it in,
+// where it now stands for any unexpected key rather than for that one field.
 // ---------------------------------------------------------------------------
 
 // `ItemInput` is CONFIGURATION only since cloud locations PR 5 dropped the five
