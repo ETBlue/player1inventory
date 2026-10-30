@@ -26,6 +26,7 @@ import {
   upsertItemStock,
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+import { elementAt } from '@/test/narrow'
 import { DEFAULT_LOCATION_ID } from '@/types'
 
 describe('Item detail page - manual quantity input', () => {
@@ -211,8 +212,6 @@ describe('Item detail page - manual quantity input', () => {
   })
 
   it('measurement fields are disabled when track in measurement is off', async () => {
-    const _user = userEvent.setup()
-
     // Given an item with measurement tracking OFF
     const item = await createItem({
       name: 'Sugar',
@@ -479,7 +478,8 @@ describe('Item detail page - manual quantity input', () => {
       name: 'Test Item',
       targetUnit: 'measurement',
       measurementUnit: 'g',
-      amountPerPackage: undefined,
+      // `amountPerPackage` is deliberately ABSENT: the Pack button is
+      // disabled because the item has no packing ratio.
       targetQuantity: 1000,
       refillThreshold: 200,
       packedQuantity: 0,
@@ -905,7 +905,8 @@ describe('Item detail page - manual quantity input', () => {
 
     // When user deletes the item
     const allButtons = screen.getAllByRole('button')
-    const deleteButton = allButtons[allButtons.length - 1] // Last button in header is delete button
+    // Last button in header is delete button
+    const deleteButton = elementAt(allButtons, allButtons.length - 1)
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     await user.click(deleteButton)
 
@@ -1145,11 +1146,9 @@ describe('Item detail page - delete dialog', () => {
       occurredAt: new Date(),
       createdAt: new Date(),
     })
-    const cartId = await db.shoppingCarts.add({
-      id: crypto.randomUUID(),
-      status: 'active',
-      createdAt: new Date(),
-    })
+    // `ShoppingCart` is `{ id, lastPurchasedAt? }` (packages/types/src/index.ts:149).
+    // The cascade finds cart items by `itemId`, so the cart needs its id only.
+    const cartId = await db.shoppingCarts.add({ id: crypto.randomUUID() })
     await db.cartItems.add({
       id: crypto.randomUUID(),
       cartId: cartId,
@@ -1190,11 +1189,9 @@ describe('Item detail page - delete dialog', () => {
       occurredAt: new Date(),
       createdAt: new Date(),
     })
-    const cartId = await db.shoppingCarts.add({
-      id: crypto.randomUUID(),
-      status: 'active',
-      createdAt: new Date(),
-    })
+    // `ShoppingCart` is `{ id, lastPurchasedAt? }` (packages/types/src/index.ts:149).
+    // The cascade finds cart items by `itemId`, so the cart needs its id only.
+    const cartId = await db.shoppingCarts.add({ id: crypto.randomUUID() })
     const cartItemId = crypto.randomUUID()
     await db.cartItems.add({
       id: cartItemId,

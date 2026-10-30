@@ -37,11 +37,16 @@ function DialogHarness({ initialName }: { initialName?: string }) {
       await db.delete()
       await db.open()
       const now = new Date()
+      // `targetUnit` and `consumeAmount` are global stock CONFIGURATION and
+      // live on `Item` since the v16 migration. Only the quantities are
+      // per-location, so they are the only stock fields on `ItemStock`.
       const ensureItem = async (id: string, name: string) => {
         await db.items.put({
           id,
           name,
           tagIds: [],
+          targetUnit: 'package',
+          consumeAmount: 1,
           createdAt: now,
           updatedAt: now,
         })
@@ -51,12 +56,10 @@ function DialogHarness({ initialName }: { initialName?: string }) {
           id: `stock-${itemId}`,
           itemId,
           locationId: DEFAULT_LOCATION_ID,
-          targetUnit: 'package',
           targetQuantity: 0,
           refillThreshold: 0,
           packedQuantity: 2,
           unpackedQuantity: 0,
-          consumeAmount: 1,
           createdAt: now,
           updatedAt: now,
         })
@@ -232,7 +235,10 @@ function CloudDialogHarness({ initialName }: { initialName?: string }) {
   ]
 
   return (
-    <MockedProvider mocks={mocks} addTypename={false}>
+    // No `addTypename`: `MockedProviderProps` in @apollo/client 4.1.6 has no
+    // such prop (node_modules/@apollo/client/testing/react/MockedProvider.d.ts),
+    // so passing it did nothing.
+    <MockedProvider mocks={mocks}>
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
       </QueryClientProvider>

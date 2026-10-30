@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import type { JSX } from 'react'
 import { beforeEach, describe, it, vi } from 'vitest'
 
 // Mock all child cards so the page test stays focused on composition only

@@ -21,7 +21,7 @@ const meta: Meta<typeof ImportCard> = {
   decorators: [
     (Story) => (
       <QueryClientProvider client={queryClient}>
-        <MockedProvider mocks={[]} addTypename={false}>
+        <MockedProvider mocks={[]}>
           <Story />
         </MockedProvider>
       </QueryClientProvider>

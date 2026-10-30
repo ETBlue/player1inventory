@@ -43,14 +43,15 @@ function TagDetailStory() {
         name: 'Category',
         color: TagColor.blue,
       })
-      const _location = await createTagType({
-        name: 'Location',
-        color: TagColor.green,
-      })
-      const _diet = await createTagType({
-        name: 'Diet',
-        color: TagColor.purple,
-      })
+      // Only the rows matter here, not the returned objects, which nothing
+      // read. `tags/$id/index.tsx:39` reads every tag type and `:96` passes
+      // the list to `TagInfoForm`, which renders one option per type
+      // (`TagInfoForm.tsx:109`). So these two give the story's type dropdown
+      // more than one option for a human to look at in Storybook. The
+      // matching smoke test asserts only the heading, so it stays green
+      // without them — measured 2026-10-30.
+      await createTagType({ name: 'Location', color: TagColor.green })
+      await createTagType({ name: 'Diet', color: TagColor.purple })
 
       const tag = await createTag({ name: 'Organic', typeId: category.id })
       setTagId(tag.id)

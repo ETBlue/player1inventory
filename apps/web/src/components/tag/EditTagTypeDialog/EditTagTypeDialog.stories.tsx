@@ -17,8 +17,6 @@ export const Default: Story = {
         id: '1',
         name: 'Category',
         color: TagColor.blue,
-        createdAt: new Date(),
-        updatedAt: new Date(),
       }}
       onSave={(data) => console.log('Save:', data)}
       onClose={() => {}}
@@ -33,8 +31,6 @@ export const WithValidationError: Story = {
         id: '2',
         name: '',
         color: TagColor.green,
-        createdAt: new Date(),
-        updatedAt: new Date(),
       }}
       onSave={(data) => console.log('Save:', data)}
       onClose={() => {}}

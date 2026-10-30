@@ -13,7 +13,7 @@ const { exportAllData, exportCloudData } = await import('@/lib/exportData')
 
 function renderExportCard() {
   return render(
-    <MockedProvider mocks={[]} addTypename={false}>
+    <MockedProvider mocks={[]}>
       <ExportCard />
     </MockedProvider>,
   )
