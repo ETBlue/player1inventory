@@ -20,9 +20,11 @@ import {
   getRecipes,
   upsertItemStock,
 } from '@/db/operations'
+import type { GetItemQuery } from '@/generated/graphql'
 import { activeLocationStorageKey } from '@/hooks/useActiveLocation'
 import { routeTree } from '@/routeTree.gen'
 import { cloudLocation, cloudStock, LOC_A } from '@/test/cloudFixtures'
+import { elementAt } from '@/test/narrow'
 import { cartIdFor, DEFAULT_LOCATION_ID } from '@/types'
 
 // The eight configuration fields that live on the global Item since v16 — no
@@ -44,12 +46,24 @@ const GLOBAL_STOCK_KEYS = [
 // mock in src/test/setup.ts (which this file-level vi.mock replaces for this
 // file only) — this avoids letting the real, un-stubbed Apollo hooks run
 // when ancestor routes (__root.tsx, $id.tsx) render alongside the stock tab.
-const mockUseGetItemQuery = vi.fn(() => ({
-  data: undefined,
+//
+// THREE THINGS ARE DECLARED HERE ON PURPOSE:
+//
+// 1. `(..._args: unknown[])`. The `vi.mock` factory below forwards the real
+//    hook's arguments (`useGetItemQuery(...args)`), and an implementation with
+//    no parameters makes that spread a `TS2556`. The arguments stay recorded
+//    on `mock.calls` either way.
+// 2. `data: undefined as GetItemQuery | undefined` — the real query result,
+//    not the bare `undefined` the initial value infers. That is what pins the
+//    four `{ item: cloudItem }` fixtures below to the GetItem selection set:
+//    both `tagIds` and `userId` are non-null in it and all four were missing
+//    them.
+const mockUseGetItemQuery = vi.fn((..._args: unknown[]) => ({
+  data: undefined as GetItemQuery | undefined,
   loading: false,
   error: undefined,
 }))
-const mockUseUpdateItemMutation = vi.fn(() => [
+const mockUseUpdateItemMutation = vi.fn((..._args: unknown[]) => [
   vi.fn().mockResolvedValue({ data: undefined }),
   {},
 ])
@@ -57,7 +71,7 @@ const mockUseUpdateItemMutation = vi.fn(() => [
 // per-location state fields go here, not to `updateItem`. This page saves
 // NOTHING BUT those fields, so in cloud mode a save now sends this mutation and
 // no `updateItem` at all — the cloud assertions below moved onto it.
-const mockUseUpsertItemStockMutation = vi.fn(() => [
+const mockUseUpsertItemStockMutation = vi.fn((..._args: unknown[]) => [
   vi.fn().mockResolvedValue({ data: undefined }),
   {},
 ])
@@ -1246,6 +1260,12 @@ describe('Item stock tab', () => {
     const cloudItem = {
       id: 'item-cloud-cascade',
       name: 'Cloud Milk',
+      // Both non-null in the GetItem selection set
+      // (generated/graphql.ts, `GetItemQuery`), and both were missing from this
+      // fixture. No assertion here reads either: the item carries no tags, and
+      // `userId` is a server-side column the page never renders.
+      tagIds: [],
+      userId: 'user-1',
       targetUnit: 'package',
       consumeAmount: 1,
       createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
@@ -1302,6 +1322,12 @@ describe('Item stock tab', () => {
     const cloudItem = {
       id: 'item-cloud-2',
       name: 'Cloud Milk',
+      // Both non-null in the GetItem selection set
+      // (generated/graphql.ts, `GetItemQuery`), and both were missing from this
+      // fixture. No assertion here reads either: the item carries no tags, and
+      // `userId` is a server-side column the page never renders.
+      tagIds: [],
+      userId: 'user-1',
       targetUnit: 'package',
       consumeAmount: 1,
       createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
@@ -1349,6 +1375,12 @@ describe('Item stock tab', () => {
     const cloudItem = {
       id: 'item-cloud-1',
       name: 'Cloud Milk',
+      // Both non-null in the GetItem selection set
+      // (generated/graphql.ts, `GetItemQuery`), and both were missing from this
+      // fixture. No assertion here reads either: the item carries no tags, and
+      // `userId` is a server-side column the page never renders.
+      tagIds: [],
+      userId: 'user-1',
       packageUnit: 'bottle',
       targetUnit: 'package',
       consumeAmount: 1,
@@ -1403,7 +1435,7 @@ describe('Item stock tab', () => {
       expect(mockCloudUpsertStock).toHaveBeenCalled()
     })
     expect(mockCloudUpdate).not.toHaveBeenCalled()
-    expect(mockCloudUpsertStock.mock.calls[0][0].variables.itemId).toBe(
+    expect(elementAt(mockCloudUpsertStock.mock.calls)[0].variables.itemId).toBe(
       cloudItem.id,
     )
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
@@ -1539,6 +1571,12 @@ describe('Item stock tab', () => {
       const cloudItem = {
         id: 'item-cloud-3',
         name: 'Cloud Milk',
+        // Both non-null in the GetItem selection set
+        // (generated/graphql.ts, `GetItemQuery`), and both were missing from this
+        // fixture. No assertion here reads either: the item carries no tags, and
+        // `userId` is a server-side column the page never renders.
+        tagIds: [],
+        userId: 'user-1',
         packageUnit: 'bottle',
         targetUnit: 'package',
         consumeAmount: 1,
@@ -1586,7 +1624,8 @@ describe('Item stock tab', () => {
       await waitFor(() => {
         expect(mockCloudUpsertStock).toHaveBeenCalled()
       })
-      const input = mockCloudUpsertStock.mock.calls[0][0].variables.input
+      const input = elementAt(mockCloudUpsertStock.mock.calls)[0].variables
+        .input
       expect(input.packedQuantity).toBe(5)
       expect('dueDate' in input).toBe(false)
     })

@@ -1,7 +1,8 @@
 import { screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithRouter } from '@/test/utils'
-import type { Item, Recipe, Vendor } from '@/types'
+import type { Item, Recipe, Tag, TagType, Vendor } from '@/types'
+import { TagColor } from '@/types'
 import { ItemFilters } from '.'
 
 // Mock the URL/filter state hook so tests can control selected filter IDs
@@ -32,6 +33,17 @@ const { useTagTypes, useTags, useTagsWithDepth } = await import(
   '@/hooks/useTags'
 )
 
+// `useTagTypes`, `useTags` and `useTagsWithDepth` all return
+// `{ data, isLoading, isError }` (useTags.ts:55-70, :96-108, :261). The mocks
+// here returned `{ data }` alone, so the two flags came back `undefined` where
+// the hook declares `boolean`. Both are `false` for a settled, successful read,
+// which is the state every test in this file describes.
+const QUERY_RESULT = <T,>(data: T) => ({
+  data,
+  isLoading: false,
+  isError: false,
+})
+
 const mockVendors: Vendor[] = [
   { id: 'v1', name: 'Costco', createdAt: new Date() },
   { id: 'v2', name: 'Safeway', createdAt: new Date() },
@@ -55,6 +67,12 @@ const mockRecipes: Recipe[] = [
   },
 ]
 
+// `ItemFilters`' `items` prop is `Item[]` (ItemFilters.tsx:21) — the global
+// catalog row, used only to work out which tag options are available. The four
+// quantity fields this fixture used to carry (`targetQuantity`,
+// `refillThreshold`, `packedQuantity`, `unpackedQuantity`) are per-location
+// `ItemStock` state and have not been on `Item` since v15. `ItemFilters.tsx`
+// reads none of them, so they are dropped rather than moved.
 const mockItems: Item[] = [
   {
     id: 'item-1',
@@ -62,10 +80,6 @@ const mockItems: Item[] = [
     tagIds: ['tag-1'],
     vendorIds: [],
     targetUnit: 'package',
-    targetQuantity: 2,
-    refillThreshold: 1,
-    packedQuantity: 1,
-    unpackedQuantity: 0,
     consumeAmount: 1,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -93,9 +107,9 @@ describe('ItemFilters count badges', () => {
       setIsTagsVisible: vi.fn(),
       clearAllFilters: vi.fn(),
     })
-    vi.mocked(useTagTypes).mockReturnValue({ data: [] })
-    vi.mocked(useTags).mockReturnValue({ data: [] })
-    vi.mocked(useTagsWithDepth).mockReturnValue({ data: [] })
+    vi.mocked(useTagTypes).mockReturnValue(QUERY_RESULT([]))
+    vi.mocked(useTags).mockReturnValue(QUERY_RESULT([]))
+    vi.mocked(useTagsWithDepth).mockReturnValue(QUERY_RESULT([]))
   })
 
   it('user can see vendor count badge when vendors are selected', async () => {
@@ -158,32 +172,26 @@ describe('ItemFilters count badges', () => {
 
   it('user can see tag count badge when tags are selected', async () => {
     // Given a tag type with two tags exists and two tags are selected
-    const mockTagType = {
+    // `TagColor` has no `neutral` member and `TagType` has no `createdAt`
+    // field, so both were drift. The badge count this test asserts does not
+    // depend on the colour at all — `teal` is picked only because it is not
+    // `createTagType`'s fallback of `TagColor.blue`, so the value stays
+    // distinguishable from a default. Same for `Tag`, which has no `createdAt`.
+    const mockTagType: TagType = {
       id: 'tt-1',
       name: 'Category',
-      color: 'neutral' as const,
-      createdAt: new Date(),
+      color: TagColor.teal,
     }
-    const mockTag1 = {
-      id: 'tag-1',
-      name: 'Dairy',
-      typeId: 'tt-1',
-      createdAt: new Date(),
-    }
-    const mockTag2 = {
-      id: 'tag-2',
-      name: 'Produce',
-      typeId: 'tt-1',
-      createdAt: new Date(),
-    }
-    vi.mocked(useTagTypes).mockReturnValue({ data: [mockTagType] })
-    vi.mocked(useTags).mockReturnValue({ data: [mockTag1, mockTag2] })
-    vi.mocked(useTagsWithDepth).mockReturnValue({
-      data: [
+    const mockTag1: Tag = { id: 'tag-1', name: 'Dairy', typeId: 'tt-1' }
+    const mockTag2: Tag = { id: 'tag-2', name: 'Produce', typeId: 'tt-1' }
+    vi.mocked(useTagTypes).mockReturnValue(QUERY_RESULT([mockTagType]))
+    vi.mocked(useTags).mockReturnValue(QUERY_RESULT([mockTag1, mockTag2]))
+    vi.mocked(useTagsWithDepth).mockReturnValue(
+      QUERY_RESULT([
         { ...mockTag1, depth: 0 },
         { ...mockTag2, depth: 0 },
-      ],
-    })
+      ]),
+    )
     vi.mocked(useUrlSearchAndFilters).mockReturnValue({
       filterState: { 'tt-1': ['tag-1', 'tag-2'] },
       setFilterState: vi.fn(),
