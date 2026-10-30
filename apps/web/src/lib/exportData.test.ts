@@ -1,6 +1,7 @@
 import {
   ApolloClient,
   ApolloLink,
+  type FetchResult,
   InMemoryCache,
   Observable,
 } from '@apollo/client'
@@ -170,6 +171,12 @@ describe('fetchLocalPayload — item stock and locations (v15 split)', () => {
       id: 'item-1',
       name: 'Milk',
       tagIds: [],
+      // The stock CONFIGURATION half. v16 moved these back onto the Item
+      // (src/db/index.ts:457), so they are exported from `items`, not from
+      // `itemStocks`.
+      targetUnit: 'package',
+      consumeAmount: 1,
+      packageUnit: 'bottle',
       createdAt: now,
       updatedAt: now,
     })
@@ -178,13 +185,10 @@ describe('fetchLocalPayload — item stock and locations (v15 split)', () => {
         id: 'stock-home',
         itemId: 'item-1',
         locationId: 'local',
-        targetUnit: 'package',
         targetQuantity: 4,
         refillThreshold: 1,
         packedQuantity: 3,
         unpackedQuantity: 0,
-        consumeAmount: 1,
-        packageUnit: 'bottle',
         dueDate: new Date('2026-03-01T00:00:00.000Z'),
         createdAt: now,
         updatedAt: now,
@@ -193,12 +197,10 @@ describe('fetchLocalPayload — item stock and locations (v15 split)', () => {
         id: 'stock-office',
         itemId: 'item-1',
         locationId: 'office',
-        targetUnit: 'package',
         targetQuantity: 1,
         refillThreshold: 0,
         packedQuantity: 2,
         unpackedQuantity: 0,
-        consumeAmount: 1,
         createdAt: now,
         updatedAt: now,
       },
@@ -221,9 +223,23 @@ describe('fetchLocalPayload — item stock and locations (v15 split)', () => {
       locationId: 'local',
       packedQuantity: 3,
       targetQuantity: 4,
-      packageUnit: 'bottle',
     })
     expect(home?.dueDate).toBeInstanceOf(Date)
+
+    // And the CONFIGURATION half survives the export on the Item, which is
+    // where v16 put it. `packageUnit` was asserted on the stock row until this
+    // file was type-checked; a stock row has carried no `packageUnit` since
+    // v16, so that assertion only proved Dexie stores unknown extra keys.
+    expect(payload.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'item-1',
+          targetUnit: 'package',
+          consumeAmount: 1,
+          packageUnit: 'bottle',
+        }),
+      ]),
+    )
   })
 })
 
@@ -481,10 +497,12 @@ function makeCloudClient(
 // `network-only`, which writes the network result into the cache and reads it
 // back through the document. A field the document does not select is therefore
 // dropped before `fetchCloudPayload` ever sees it. Issue #335.
-function makeRealCloudClient(answers: Record<string, unknown>): ApolloClient {
+function makeRealCloudClient(
+  answers: Record<string, Record<string, unknown>>,
+): ApolloClient {
   const link = new ApolloLink(
     (operation) =>
-      new Observable<{ data: unknown }>((observer) => {
+      new Observable<FetchResult>((observer) => {
         observer.next({ data: answers[operation.operationName ?? ''] ?? {} })
         observer.complete()
       }),

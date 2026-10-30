@@ -15,7 +15,7 @@ const meta: Meta<typeof ExportCard> = {
   component: ExportCard,
   decorators: [
     (Story) => (
-      <MockedProvider mocks={[]} addTypename={false}>
+      <MockedProvider mocks={[]}>
         <Story />
       </MockedProvider>
     ),

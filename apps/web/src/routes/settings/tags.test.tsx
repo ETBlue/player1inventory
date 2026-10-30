@@ -12,6 +12,7 @@ import { db } from '@/db'
 import { createTag, createTagType } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
+import { elementAt } from '@/test/narrow'
 import { TagColor } from '@/types/index'
 
 describe('Tag settings page - context-aware back navigation', () => {
@@ -54,7 +55,8 @@ describe('Tag settings page - context-aware back navigation', () => {
 
     // When user clicks back button (ArrowLeft icon button)
     const allButtons = screen.getAllByRole('button')
-    const backButton = allButtons[0] // First button is the back button
+    // First button is the back button
+    const backButton = elementAt(allButtons, 0)
     await user.click(backButton)
 
     // Then navigates to settings page
@@ -79,7 +81,8 @@ describe('Tag settings page - context-aware back navigation', () => {
 
     // When user clicks back button
     const allButtons = screen.getAllByRole('button')
-    const backButton = allButtons[0] // First button is the back button
+    // First button is the back button
+    const backButton = elementAt(allButtons, 0)
     await user.click(backButton)
 
     // Then navigates back to shopping page
@@ -104,7 +107,8 @@ describe('Tag settings page - context-aware back navigation', () => {
 
     // When user clicks back button
     const allButtons = screen.getAllByRole('button')
-    const backButton = allButtons[0] // First button is the back button
+    // First button is the back button
+    const backButton = elementAt(allButtons, 0)
     await user.click(backButton)
 
     // Then navigates back to pantry page

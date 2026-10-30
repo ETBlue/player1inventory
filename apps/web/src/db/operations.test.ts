@@ -1,7 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { TagColor } from '../types'
-import { cartIdFor, DEFAULT_LOCATION_ID } from '../types'
+import { cartIdFor, DEFAULT_LOCATION_ID, TagColor } from '../types'
 import { db } from './index'
+
+// `noUncheckedIndexedAccess` is on, so a `.get()` result and an array index are
+// both `T | undefined`. `defined` narrows AND fails the test with a readable
+// message when the value is missing — a `!` would narrow without failing.
+// `importData.test.ts` carries the same helper for the same reason.
+function defined<T>(value: T | undefined, what: string): T {
+  if (value === undefined) throw new Error(`expected ${what} to be defined`)
+  return value
+}
+
 import {
   abandonCart,
   addInventoryLog,
@@ -352,8 +361,12 @@ describe('ItemStock operations (Location PR D)', () => {
     )
 
     // Then the global item carries no stock fields, but an ItemStock exists in loc
-    const rawItem = (await db.items.get(item.id)) as Record<string, unknown>
-    expect(rawItem.packedQuantity).toBeUndefined()
+    // `Item` no longer declares the inline stock columns, so their absence can
+    // only be asked at runtime. `in` is the typed way to ask, and it is
+    // STRICTER than the old `expect(rawItem.packedQuantity).toBeUndefined()`:
+    // a key present but set to `undefined` now fails too.
+    const rawItem = defined(await db.items.get(item.id), 'the stored item')
+    expect('packedQuantity' in rawItem).toBe(false)
     const stock = await getItemStock(item.id, loc.id)
     expect(stock?.packedQuantity).toBe(2)
     expect(stock?.targetQuantity).toBe(3)
@@ -719,12 +732,12 @@ describe('removeItemFromLocation (Location PR E)', () => {
     expect(await getItemLogs(item.id, DEFAULT_LOCATION_ID)).toHaveLength(0)
     const cabinLogs = await getItemLogs(item.id, cabin.id)
     expect(cabinLogs).toHaveLength(1)
-    expect(cabinLogs[0].delta).toBe(5)
+    expect(cabinLogs[0]?.delta).toBe(5)
     // And the OTHER item's log in that same location is untouched — the
     // cascade is scoped to this item, not to everything in the location
     const otherLogs = await getItemLogs(other.id, DEFAULT_LOCATION_ID)
     expect(otherLogs).toHaveLength(1)
-    expect(otherLogs[0].delta).toBe(9)
+    expect(otherLogs[0]?.delta).toBe(9)
   })
 
   it('removing from a location clears its cart entries but keeps the carts', async () => {
@@ -745,8 +758,8 @@ describe('removeItemFromLocation (Location PR E)', () => {
     expect(await getCartItems(noVendorCartId)).toHaveLength(0)
     // And the OTHER item's entry in the same cart is untouched
     expect(vendorCartItems).toHaveLength(1)
-    expect(vendorCartItems[0].itemId).toBe(other.id)
-    expect(vendorCartItems[0].quantity).toBe(2)
+    expect(vendorCartItems[0]?.itemId).toBe(other.id)
+    expect(vendorCartItems[0]?.quantity).toBe(2)
     // And the cart rows themselves survive (they are shared by all items)
     expect(await db.shoppingCarts.get(vendorCartId)).toBeDefined()
     expect(await db.shoppingCarts.get(noVendorCartId)).toBeDefined()
@@ -763,7 +776,7 @@ describe('removeItemFromLocation (Location PR E)', () => {
     // Then the cabin cart entry is untouched
     const cabinCartItems = await getCartItems(cabinCartId)
     expect(cabinCartItems).toHaveLength(1)
-    expect(cabinCartItems[0].quantity).toBe(4)
+    expect(cabinCartItems[0]?.quantity).toBe(4)
   })
 
   it('the global Item survives being removed from a location', async () => {
@@ -981,14 +994,19 @@ describe('Tag operations', () => {
   })
 
   it('creates a tag type with color', async () => {
+    // `createTagType` takes a `TagColor`, not a hex string — the `'#3b82f6'`
+    // this fixture used predates the enum. `teal` is chosen because the
+    // fallback in `createTagType` is `TagColor.blue`, so the assertion below
+    // still distinguishes "keeps the colour it was given" from "always uses
+    // the default".
     const tagType = await createTagType({
       name: 'Ingredient type',
-      color: '#3b82f6',
+      color: TagColor.teal,
     })
 
     expect(tagType.id).toBeDefined()
     expect(tagType.name).toBe('Ingredient type')
-    expect(tagType.color).toBe('#3b82f6')
+    expect(tagType.color).toBe(TagColor.teal)
   })
 
   it('gets tags by type', async () => {
@@ -1371,8 +1389,8 @@ describe('ShoppingCart operations', () => {
     // Then only the active item is removed (the pinned stays)
     const remainingItems = await getCartItems(localCartId(vendor.id))
     expect(remainingItems).toHaveLength(1)
-    expect(remainingItems[0].itemId).toBe(pinnedItem.id)
-    expect(remainingItems[0].quantity).toBe(0)
+    expect(remainingItems[0]?.itemId).toBe(pinnedItem.id)
+    expect(remainingItems[0]?.quantity).toBe(0)
   })
 
   it('checkout keeps pinned items (quantity === 0) in same cart', async () => {
@@ -1390,7 +1408,7 @@ describe('ShoppingCart operations', () => {
     })
     await addToCart(localCartId(vendor.id), item.id, 1)
     const cartItems = await getCartItems(localCartId(vendor.id))
-    await updateCartItem(cartItems[0].id, 0)
+    await updateCartItem(defined(cartItems[0], 'the cart item').id, 0)
 
     // When checking out
     await checkout(localCartId(vendor.id))
@@ -1398,8 +1416,8 @@ describe('ShoppingCart operations', () => {
     // Then the pinned item remains in the same permanent cart
     const remainingItems = await getCartItems(localCartId(vendor.id))
     expect(remainingItems).toHaveLength(1)
-    expect(remainingItems[0].itemId).toBe(item.id)
-    expect(remainingItems[0].quantity).toBe(0)
+    expect(remainingItems[0]?.itemId).toBe(item.id)
+    expect(remainingItems[0]?.quantity).toBe(0)
 
     // And the item's packedQuantity is unchanged
     const updatedItem = await getItem(item.id)
@@ -1429,9 +1447,9 @@ describe('ShoppingCart operations', () => {
 
     // Then log has the logKey and logParams but no note
     const logs = await getItemLogs(item.id)
-    expect(logs[0].logKey).toBe('shopping.log.purchasedAt')
-    expect(logs[0].logParams?.vendor).toBe('Costco')
-    expect(logs[0].note).toBeUndefined()
+    expect(logs[0]?.logKey).toBe('shopping.log.purchasedAt')
+    expect(logs[0]?.logParams?.vendor).toBe('Costco')
+    expect(logs[0]?.note).toBeUndefined()
   })
 
   it('abandonCart clears all items including pinned', async () => {
@@ -1540,8 +1558,8 @@ describe('ShoppingCart operations', () => {
     // Then the log quantity reflects total after purchase (existing + bought)
     const logs = await getItemLogs(item.id)
     expect(logs).toHaveLength(1)
-    expect(logs[0].delta).toBe(3)
-    expect(logs[0].quantity).toBe(8) // 5 existing + 3 bought = 8
+    expect(logs[0]?.delta).toBe(3)
+    expect(logs[0]?.quantity).toBe(8) // 5 existing + 3 bought = 8
   })
 
   it('checkout increments packedQuantity of each item', async () => {
@@ -1797,6 +1815,11 @@ describe('Item cascade operations', () => {
       id: crypto.randomUUID(),
       itemId: item.id,
       delta: 5,
+      // `quantity` is REQUIRED on `InventoryLog` — the stock level AFTER the
+      // log. These fixtures omitted it. The tests here only COUNT logs, so no
+      // assertion pins the value; it is set to the running total the deltas
+      // describe, starting from the item's packedQuantity of 0.
+      quantity: 5,
       occurredAt: new Date(),
       createdAt: new Date(),
     })
@@ -1804,6 +1827,11 @@ describe('Item cascade operations', () => {
       id: crypto.randomUUID(),
       itemId: item.id,
       delta: -2,
+      // `quantity` is REQUIRED on `InventoryLog` — the stock level AFTER the
+      // log. These fixtures omitted it. The tests here only COUNT logs, so no
+      // assertion pins the value; it is set to the running total the deltas
+      // describe, starting from the item's packedQuantity of 0.
+      quantity: 3,
       occurredAt: new Date(),
       createdAt: new Date(),
     })
@@ -1879,6 +1907,11 @@ describe('Count helpers for item relations', () => {
       id: crypto.randomUUID(),
       itemId: item.id,
       delta: 5,
+      // `quantity` is REQUIRED on `InventoryLog` — the stock level AFTER the
+      // log. These fixtures omitted it. The tests here only COUNT logs, so no
+      // assertion pins the value; it is set to the running total the deltas
+      // describe, starting from the item's packedQuantity of 0.
+      quantity: 5,
       occurredAt: new Date(),
       createdAt: new Date(),
     })
@@ -1886,6 +1919,11 @@ describe('Count helpers for item relations', () => {
       id: crypto.randomUUID(),
       itemId: item.id,
       delta: -2,
+      // `quantity` is REQUIRED on `InventoryLog` — the stock level AFTER the
+      // log. These fixtures omitted it. The tests here only COUNT logs, so no
+      // assertion pins the value; it is set to the running total the deltas
+      // describe, starting from the item's packedQuantity of 0.
+      quantity: 3,
       occurredAt: new Date(),
       createdAt: new Date(),
     })
@@ -1893,6 +1931,11 @@ describe('Count helpers for item relations', () => {
       id: crypto.randomUUID(),
       itemId: item.id,
       delta: 1,
+      // `quantity` is REQUIRED on `InventoryLog` — the stock level AFTER the
+      // log. These fixtures omitted it. The tests here only COUNT logs, so no
+      // assertion pins the value; it is set to the running total the deltas
+      // describe, starting from the item's packedQuantity of 0.
+      quantity: 4,
       occurredAt: new Date(),
       createdAt: new Date(),
     })
@@ -2025,8 +2068,8 @@ describe('Recipe operations', () => {
       items: [{ itemId: 'item-1', defaultAmount: 2 }],
     })
     expect(recipe.items).toHaveLength(1)
-    expect(recipe.items[0].itemId).toBe('item-1')
-    expect(recipe.items[0].defaultAmount).toBe(2)
+    expect(recipe.items[0]?.itemId).toBe('item-1')
+    expect(recipe.items[0]?.defaultAmount).toBe(2)
   })
 
   it('user can retrieve a recipe by id', async () => {
@@ -2284,9 +2327,9 @@ describe('shelves', () => {
 
     // Then shelves are returned in ascending order
     expect(shelves).toHaveLength(3)
-    expect(shelves[0].name).toBe('First')
-    expect(shelves[1].name).toBe('Second')
-    expect(shelves[2].name).toBe('Third')
+    expect(shelves[0]?.name).toBe('First')
+    expect(shelves[1]?.name).toBe('Second')
+    expect(shelves[2]?.name).toBe('Third')
   })
 
   it('user can update a shelf', async () => {
@@ -2335,9 +2378,9 @@ describe('shelves', () => {
 
     // Then shelves are listed in the new order
     const shelves = await listShelves()
-    expect(shelves[0].name).toBe('C')
-    expect(shelves[1].name).toBe('A')
-    expect(shelves[2].name).toBe('B')
+    expect(shelves[0]?.name).toBe('C')
+    expect(shelves[1]?.name).toBe('A')
+    expect(shelves[2]?.name).toBe('B')
   })
 
   it('user can reorder items in a selection shelf', async () => {

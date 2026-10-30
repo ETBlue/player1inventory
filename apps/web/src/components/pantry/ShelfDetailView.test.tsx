@@ -25,7 +25,7 @@ import {
 } from '@/db/operations'
 import { activeLocationStorageKey } from '@/hooks/useActiveLocation'
 import { renderWithRouter } from '@/test/utils'
-import { DEFAULT_LOCATION_ID } from '@/types'
+import { DEFAULT_LOCATION_ID, TagColor } from '@/types'
 import { ShelfDetailView } from './ShelfDetailView'
 
 // `useUpdateItem` is replaced by a spy so the assertion can read the exact
@@ -360,7 +360,7 @@ describe('ShelfDetailView filter shelf picker', () => {
     // tag (so it is in bucket 2 — stocked here, absent from this shelf's list)
     const categoryType = await createTagType({
       name: 'Category',
-      color: 'blue',
+      color: TagColor.blue,
     })
     const snackTag = await createTag({
       typeId: categoryType.id,
@@ -455,9 +455,12 @@ describe('ShelfDetailView filter shelf picker', () => {
     // Given a filter shelf with Category(Dairy|Frozen) AND Storage(Fridge|Pantry)
     const categoryType = await createTagType({
       name: 'Category',
-      color: 'blue',
+      color: TagColor.blue,
     })
-    const storageType = await createTagType({ name: 'Storage', color: 'green' })
+    const storageType = await createTagType({
+      name: 'Storage',
+      color: TagColor.green,
+    })
     const dairyTag = await createTag({ typeId: categoryType.id, name: 'Dairy' })
     const frozenTag = await createTag({
       typeId: categoryType.id,
@@ -520,9 +523,12 @@ describe('ShelfDetailView filter shelf picker', () => {
     // neither axis
     const categoryType = await createTagType({
       name: 'Category',
-      color: 'blue',
+      color: TagColor.blue,
     })
-    const storageType = await createTagType({ name: 'Storage', color: 'green' })
+    const storageType = await createTagType({
+      name: 'Storage',
+      color: TagColor.green,
+    })
     const dairyTag = await createTag({ typeId: categoryType.id, name: 'Dairy' })
     const frozenTag = await createTag({
       typeId: categoryType.id,
@@ -593,7 +599,7 @@ describe('ShelfDetailView filter shelf picker', () => {
     // behaviour
     const categoryType = await createTagType({
       name: 'Category',
-      color: 'blue',
+      color: TagColor.blue,
     })
     const frozenTag = await createTag({
       typeId: categoryType.id,

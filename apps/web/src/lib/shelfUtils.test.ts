@@ -15,10 +15,6 @@ function makeItem(overrides: Partial<Item> = {}): Item {
     name: 'Test Item',
     tagIds: [],
     targetUnit: 'package' as const,
-    targetQuantity: 1,
-    refillThreshold: 0,
-    packedQuantity: 0,
-    unpackedQuantity: 0,
     consumeAmount: 1,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -52,7 +48,7 @@ describe('matchesFilterConfig', () => {
   it('does not throw and returns false when item.vendorIds is null', () => {
     // Given an item whose vendorIds is null (imported from a backup JSON with null)
     const item = makeItem({
-      vendorIds: null as unknown as string[] | undefined,
+      vendorIds: null as unknown as string[],
     })
 
     // When matching against a vendor filter
@@ -67,7 +63,7 @@ describe('matchesFilterConfig', () => {
 
   it('does not throw and returns false when item.vendorIds is undefined', () => {
     // Given an item with no vendorIds at all
-    const item = makeItem({ vendorIds: undefined })
+    const item = makeItem()
 
     // When matching against a vendor filter
     // Then it should not throw and return false
@@ -86,7 +82,7 @@ describe('matchesFilterConfig', () => {
     // vendorIds.length throws at runtime.
     const item = makeItem({ vendorIds: ['vendor-1'] })
     const filterConfigWithNull = {
-      vendorIds: null as unknown as string[] | undefined,
+      vendorIds: null as unknown as string[],
     }
 
     // When matching against the filterConfig

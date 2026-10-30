@@ -716,7 +716,7 @@ describe('Recipe Detail - Items Tab', () => {
     const recipe = await createRecipe({ name: 'Salad', items: [] })
     const categoryType = await createTagType({
       name: 'Category',
-      color: 'blue',
+      color: TagColor.blue,
     })
     const vegTag = await createTag({
       typeId: categoryType.id,

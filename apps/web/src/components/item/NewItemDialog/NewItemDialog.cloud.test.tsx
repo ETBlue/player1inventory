@@ -7,6 +7,7 @@ import {
   ActiveLocationProvider,
   activeLocationStorageKey,
 } from '@/hooks/useActiveLocation'
+import { callArgs } from '@/test/narrow'
 import { NewItemDialog } from './NewItemDialog'
 
 // The dialog is MODE-AGNOSTIC since PR 2 Task 9b. It used to be create-only in
@@ -227,7 +228,7 @@ describe('NewItemDialog — cloud mode', () => {
     // And the caller gets the freshly copied stock row merged over the item,
     // carrying the NEW row's id and location rather than the pre-add join's
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1))
-    expect(onSuccess.mock.calls[0][0]).toMatchObject({
+    expect(callArgs(onSuccess.mock, 0)[0]).toMatchObject({
       id: 'item-flour',
       stockId: 'stock-flour-kitchen',
       locationId: KITCHEN,

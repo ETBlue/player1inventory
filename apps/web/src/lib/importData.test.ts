@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db, ensureDefaultLocationRow } from '@/db'
 import { addItemToLocation, getStockedItems } from '@/db/operations'
 import { ClearAllDataDocument } from '@/generated/graphql'
-import { DEFAULT_LOCATION_ID } from '@/types'
+import { DEFAULT_LOCATION_ID, TagColor } from '@/types'
 import type { ExportPayload } from './exportData'
 import {
   applyLocationRemap,
@@ -31,6 +31,30 @@ import {
 } from './importData'
 
 // --- Minimal fixture helpers ---
+
+// `noUncheckedIndexedAccess` is on, so every `rows[0]` is `T | undefined`.
+//
+// `rowAt` narrows it AND fails the test with a readable message when the row is
+// missing. A `!` would narrow without failing, and `?.` cannot be used where the
+// value feeds an `in` check or a negative assertion — there, `undefined` would
+// satisfy the assertion and the test would pass on an empty array.
+function rowAt<T>(rows: readonly T[], index = 0): T {
+  const row = rows[index]
+  if (row === undefined) {
+    throw new Error(
+      `expected a row at index ${index}, but the array holds ${rows.length}`,
+    )
+  }
+  return row
+}
+
+// Same idea for a single value that the type says may be absent — a `.find()`
+// result, or a key read off a `Record`. Fails loudly instead of narrowing
+// silently.
+function defined<T>(value: T | undefined, what: string): T {
+  if (value === undefined) throw new Error(`expected ${what} to be defined`)
+  return value
+}
 
 // The GraphQL operation name of a document, so a test can say WHICH mutation
 // was sent and not only how many were. Module level because two describe blocks
@@ -63,7 +87,8 @@ function makeTag(id: string, name: string, typeId = 'type-1') {
 }
 
 function makeTagType(id: string, name: string) {
-  return { id, name, color: 'blue' as const }
+  // `TagType.color` is the `TagColor` enum, not a bare string.
+  return { id, name, color: TagColor.blue }
 }
 
 function makeVendor(id: string, name: string) {
@@ -141,7 +166,12 @@ function emptyPayload(overrides: Partial<ExportPayload> = {}): ExportPayload {
 function legacyPayload(overrides: Partial<ExportPayload> = {}): ExportPayload {
   const { itemStocks, locations, ...rest } = emptyPayload(overrides)
   void itemStocks
-  return 'locations' in overrides ? { ...rest, locations } : rest
+  // `emptyPayload` always sets `locations`, so the second half of this
+  // condition is only narrowing for the type checker — `locations?: Location[]`
+  // cannot take an explicit `undefined` under `exactOptionalPropertyTypes`.
+  return 'locations' in overrides && locations !== undefined
+    ? { ...rest, locations }
+    : rest
 }
 
 function emptyExisting(overrides: Partial<ExistingData> = {}): ExistingData {
@@ -187,22 +217,22 @@ describe('detectConflicts', () => {
 
     // Then each entity type reports one ID conflict
     expect(summary.items).toHaveLength(1)
-    expect(summary.items[0].matchReasons).toContain('id')
+    expect(rowAt(summary.items).matchReasons).toContain('id')
 
     expect(summary.tags).toHaveLength(1)
-    expect(summary.tags[0].matchReasons).toContain('id')
+    expect(rowAt(summary.tags).matchReasons).toContain('id')
 
     expect(summary.tagTypes).toHaveLength(1)
-    expect(summary.tagTypes[0].matchReasons).toContain('id')
+    expect(rowAt(summary.tagTypes).matchReasons).toContain('id')
 
     expect(summary.vendors).toHaveLength(1)
-    expect(summary.vendors[0].matchReasons).toContain('id')
+    expect(rowAt(summary.vendors).matchReasons).toContain('id')
 
     expect(summary.recipes).toHaveLength(1)
-    expect(summary.recipes[0].matchReasons).toContain('id')
+    expect(rowAt(summary.recipes).matchReasons).toContain('id')
 
     expect(summary.inventoryLogs).toHaveLength(1)
-    expect(summary.inventoryLogs[0].matchReasons).toEqual(['id'])
+    expect(rowAt(summary.inventoryLogs).matchReasons).toEqual(['id'])
   })
 
   it('user can detect name conflicts for named entities', async () => {
@@ -222,12 +252,12 @@ describe('detectConflicts', () => {
 
     // Then name conflicts are detected
     expect(summary.items).toHaveLength(1)
-    expect(summary.items[0].matchReasons).toContain('name')
-    expect(summary.items[0].matchReasons).not.toContain('id')
+    expect(rowAt(summary.items).matchReasons).toContain('name')
+    expect(rowAt(summary.items).matchReasons).not.toContain('id')
 
     expect(summary.vendors).toHaveLength(1)
-    expect(summary.vendors[0].matchReasons).toContain('name')
-    expect(summary.vendors[0].matchReasons).not.toContain('id')
+    expect(rowAt(summary.vendors).matchReasons).toContain('name')
+    expect(rowAt(summary.vendors).matchReasons).not.toContain('id')
   })
 
   it('user can detect both ID and name conflict on same entity', async () => {
@@ -245,8 +275,8 @@ describe('detectConflicts', () => {
 
     // Then both id and name reasons are reported
     expect(summary.items).toHaveLength(1)
-    expect(summary.items[0].matchReasons).toContain('id')
-    expect(summary.items[0].matchReasons).toContain('name')
+    expect(rowAt(summary.items).matchReasons).toContain('id')
+    expect(rowAt(summary.items).matchReasons).toContain('name')
   })
 
   it('user can detect a conflict when a tag parentId changes', async () => {
@@ -266,7 +296,7 @@ describe('detectConflicts', () => {
 
     // Then the reparented tag is reported as a conflict
     expect(summary.tags).toHaveLength(1)
-    expect(summary.tags[0].matchReasons).toContain('id')
+    expect(rowAt(summary.tags).matchReasons).toContain('id')
   })
 
   it('user can detect no conflicts when tag parentId is unchanged', async () => {
@@ -534,7 +564,7 @@ describe('importLocalData', () => {
 
     const vendors = await db.vendors.toArray()
     expect(vendors).toHaveLength(1)
-    expect(vendors[0].id).toBe('vendor-1')
+    expect(rowAt(vendors).id).toBe('vendor-1')
 
     const tagTypes = await db.tagTypes.toArray()
     expect(tagTypes).toHaveLength(1)
@@ -563,9 +593,9 @@ describe('importLocalData', () => {
     // re-keyed onto the default location so it merges with the bootstrapped cart
     const carts = await db.shoppingCarts.toArray()
     expect(carts).toHaveLength(1)
-    expect(carts[0].id).toBe('local:no-vendor')
-    expect('status' in carts[0]).toBe(false)
-    expect('createdAt' in carts[0]).toBe(false)
+    expect(rowAt(carts).id).toBe('local:no-vendor')
+    expect('status' in rowAt(carts)).toBe(false)
+    expect('createdAt' in rowAt(carts)).toBe(false)
 
     // And the cart item is imported
     const cartItems = await db.cartItems.toArray()
@@ -589,11 +619,11 @@ describe('importLocalData', () => {
     // Then lastPurchasedAt lands as a valid Date, not an Invalid Date
     const carts = await db.shoppingCarts.toArray()
     expect(carts).toHaveLength(1)
-    expect(carts[0].lastPurchasedAt).toBeInstanceOf(Date)
-    expect(Number.isNaN((carts[0].lastPurchasedAt as Date).getTime())).toBe(
+    expect(rowAt(carts).lastPurchasedAt).toBeInstanceOf(Date)
+    expect(Number.isNaN((rowAt(carts).lastPurchasedAt as Date).getTime())).toBe(
       false,
     )
-    expect((carts[0].lastPurchasedAt as Date).getTime()).toBe(1787827334343)
+    expect((rowAt(carts).lastPurchasedAt as Date).getTime()).toBe(1787827334343)
   })
 
   it('user can import a cloud-exported recipe that carries no timestamps', async () => {
@@ -621,10 +651,10 @@ describe('importLocalData', () => {
     // would have accepted NaN timestamps silently
     const recipes = await db.recipes.toArray()
     expect(recipes).toHaveLength(1)
-    expect(recipes[0].createdAt).toBeInstanceOf(Date)
-    expect(Number.isNaN(recipes[0].createdAt.getTime())).toBe(false)
-    expect(recipes[0].updatedAt).toBeInstanceOf(Date)
-    expect(Number.isNaN(recipes[0].updatedAt.getTime())).toBe(false)
+    expect(rowAt(recipes).createdAt).toBeInstanceOf(Date)
+    expect(Number.isNaN(rowAt(recipes).createdAt.getTime())).toBe(false)
+    expect(rowAt(recipes).updatedAt).toBeInstanceOf(Date)
+    expect(Number.isNaN(rowAt(recipes).updatedAt.getTime())).toBe(false)
   })
 
   it('user can import and skip conflicting entities', async () => {
@@ -692,12 +722,12 @@ describe('importLocalData', () => {
     // Then old data is gone and only new data exists
     const items = await db.items.toArray()
     expect(items).toHaveLength(1)
-    expect(items[0].id).toBe('item-new')
-    expect(items[0].name).toBe('NewItem')
+    expect(rowAt(items).id).toBe('item-new')
+    expect(rowAt(items).name).toBe('NewItem')
 
     const vendors = await db.vendors.toArray()
     expect(vendors).toHaveLength(1)
-    expect(vendors[0].id).toBe('vendor-new')
+    expect(rowAt(vendors).id).toBe('vendor-new')
 
     // Old data is removed
     const oldItem = await db.items.get('item-old')
@@ -727,8 +757,8 @@ describe('importLocalData', () => {
 
     const cartItems = await db.cartItems.toArray()
     expect(cartItems).toHaveLength(1)
-    expect(cartItems[0].id).toBe('ci-1')
-    expect(cartItems[0].cartId).toBe('local:cart-1')
+    expect(rowAt(cartItems).id).toBe('ci-1')
+    expect(rowAt(cartItems).cartId).toBe('local:cart-1')
   })
 
   // Expiration fields moved onto ItemStock in v15, so a legacy payload's inline
@@ -786,7 +816,7 @@ describe('importLocalData', () => {
     await importLocalData(payload, 'skip')
 
     // Then estimatedDueDays is undefined
-    const stored = await localStockOf('item-null-days')
+    const stored = await db.items.get('item-null-days')
     expect(stored).toBeDefined()
     expect(stored?.estimatedDueDays).toBeUndefined()
   })
@@ -803,7 +833,7 @@ describe('importLocalData', () => {
     await importLocalData(payload, 'skip')
 
     // Then expirationThreshold is undefined
-    const stored = await localStockOf('item-null-threshold')
+    const stored = await db.items.get('item-null-threshold')
     expect(stored).toBeDefined()
     expect(stored?.expirationThreshold).toBeUndefined()
   })
@@ -1022,7 +1052,7 @@ describe('importLocalData — item stock and locations (v15 split)', () => {
     // And the pantry (stocked items in the active location) is populated
     const stocked = await getStockedItems('local')
     expect(stocked).toHaveLength(1)
-    expect(stocked[0].packedQuantity).toBe(3)
+    expect(rowAt(stocked).packedQuantity).toBe(3)
   })
 
   // A v15 export carries the eight configuration fields on the STOCK rows.
@@ -1184,9 +1214,13 @@ describe('importLocalData — item stock and locations (v15 split)', () => {
     // And the pantry is populated, while the item row no longer carries stock
     const stocked = await getStockedItems('local')
     expect(stocked).toHaveLength(1)
-    expect(stocked[0].packedQuantity).toBe(7)
-    const itemRow = (await db.items.get('item-1')) as Record<string, unknown>
-    expect(itemRow.packedQuantity).toBeUndefined()
+    expect(rowAt(stocked).packedQuantity).toBe(7)
+    // `Item` no longer declares the inline stock columns, so their absence can
+    // only be asked at runtime. `in` is the typed way to ask, and it is
+    // STRICTER than the old `expect(itemRow.packedQuantity).toBeUndefined()`:
+    // a key that is present but set to `undefined` now fails too.
+    const itemRow = defined(await db.items.get('item-1'), 'the stored item-1')
+    expect('packedQuantity' in itemRow).toBe(false)
   })
 
   it('user can restore a legacy backup — cart ids gain the location prefix', async () => {
@@ -1213,7 +1247,7 @@ describe('importLocalData — item stock and locations (v15 split)', () => {
 
     // And its cart items follow the cart
     const cartItems = await db.cartItems.toArray()
-    expect(cartItems[0].cartId).toBe('local:no-vendor')
+    expect(rowAt(cartItems).cartId).toBe('local:no-vendor')
   })
 
   it('clearing on import removes stale item stock rows', async () => {
@@ -1233,7 +1267,7 @@ describe('importLocalData — item stock and locations (v15 split)', () => {
     // Then the stale row is gone — the item is not re-attached to old stock
     const stocks = await db.itemStocks.toArray()
     expect(stocks).toHaveLength(1)
-    expect(stocks[0].packedQuantity).toBe(3)
+    expect(rowAt(stocks).packedQuantity).toBe(3)
   })
 
   it('restoring a backup without locations keeps the default location', async () => {
@@ -1273,7 +1307,7 @@ describe('importLocalData — item stock and locations (v15 split)', () => {
       .equals(['item-1', 'local'])
       .toArray()
     expect(stocks).toHaveLength(1)
-    expect(stocks[0].packedQuantity).toBe(1)
+    expect(rowAt(stocks).packedQuantity).toBe(1)
   })
 
   it('skipping a conflicting item leaves its existing stock untouched', async () => {
@@ -1301,7 +1335,7 @@ describe('importLocalData — item stock and locations (v15 split)', () => {
       .equals(['item-1', 'local'])
       .toArray()
     expect(stocks).toHaveLength(1)
-    expect(stocks[0].packedQuantity).toBe(9)
+    expect(rowAt(stocks).packedQuantity).toBe(9)
   })
 
   // Copying cloud data down (and importing any pre-v15 backup) must place the
@@ -1329,7 +1363,7 @@ describe('importLocalData — item stock and locations (v15 split)', () => {
     // Then the synthesised stock lands in 'office', not 'local'
     const stocks = await db.itemStocks.toArray()
     expect(stocks).toHaveLength(1)
-    expect(stocks[0].locationId).toBe('office')
+    expect(rowAt(stocks).locationId).toBe('office')
     expect(await getStockedItems('office')).toHaveLength(1)
     expect(await getStockedItems('local')).toHaveLength(0)
 
@@ -1350,7 +1384,7 @@ describe('importLocalData — item stock and locations (v15 split)', () => {
 
     // Then it defaults to the default location, as before
     const stocks = await db.itemStocks.toArray()
-    expect(stocks[0].locationId).toBe('local')
+    expect(rowAt(stocks).locationId).toBe('local')
   })
 
   // An old backup can carry items with no createdAt/updatedAt at all. The
@@ -1368,8 +1402,8 @@ describe('importLocalData — item stock and locations (v15 split)', () => {
 
     // Then the synthesised stock still has usable timestamps
     const stocks = await db.itemStocks.toArray()
-    expect(stocks[0].updatedAt).toBeInstanceOf(Date)
-    expect(stocks[0].createdAt).toBeInstanceOf(Date)
+    expect(rowAt(stocks).updatedAt).toBeInstanceOf(Date)
+    expect(rowAt(stocks).createdAt).toBeInstanceOf(Date)
 
     // When the user stocks it in a new location, copying from one it is not in
     // (so the source has to be picked by the most-recently-updated sort)
@@ -1462,13 +1496,17 @@ describe('importLocalData — item stock and locations (v15 split)', () => {
     // Then the inline stock became a 'local' ItemStock and the pantry shows it
     const stocked = await getStockedItems('local')
     expect(stocked).toHaveLength(1)
-    expect(stocked[0].packedQuantity).toBe(4)
-    expect(stocked[0].targetQuantity).toBe(6)
-    expect(stocked[0].packageUnit).toBe('bottle')
+    expect(rowAt(stocked).packedQuantity).toBe(4)
+    expect(rowAt(stocked).targetQuantity).toBe(6)
+    expect(rowAt(stocked).packageUnit).toBe('bottle')
 
     // And the item row no longer carries the inline stock
-    const itemRow = (await db.items.get('item-1')) as Record<string, unknown>
-    expect(itemRow.packedQuantity).toBeUndefined()
+    // `Item` no longer declares the inline stock columns, so their absence can
+    // only be asked at runtime. `in` is the typed way to ask, and it is
+    // STRICTER than the old `expect(itemRow.packedQuantity).toBeUndefined()`:
+    // a key that is present but set to `undefined` now fails too.
+    const itemRow = defined(await db.items.get('item-1'), 'the stored item-1')
+    expect('packedQuantity' in itemRow).toBe(false)
   })
 
   // A partly split database exports a MIXED payload: stock rows for the items
@@ -2131,7 +2169,9 @@ describe('importCloudData — locations and stock upload in dependency order', (
   }
 
   function mutationOrder(client: { mutate: ReturnType<typeof vi.fn> }) {
-    return client.mutate.mock.calls.map((call) => opNameOf(call[0].mutation))
+    return client.mutate.mock.calls.map((call) =>
+      opNameOf(rowAt(call).mutation),
+    )
   }
 
   function variablesOf(
@@ -2139,7 +2179,7 @@ describe('importCloudData — locations and stock upload in dependency order', (
     operation: string,
   ) {
     const call = client.mutate.mock.calls.find(
-      (c) => opNameOf(c[0].mutation) === operation,
+      (c) => opNameOf(rowAt(c).mutation) === operation,
     )
     return call?.[0].variables as Record<string, unknown> | undefined
   }
@@ -2408,9 +2448,9 @@ describe('importCloudData — locations and stock upload in dependency order', (
       (name) => name !== 'ClearAllData',
     ).length
     expect(sentBatches).toBe(11)
-    expect(progress[0].totalBatches).toBe(sentBatches)
+    expect(rowAt(progress).totalBatches).toBe(sentBatches)
     // And the bar reaches the end rather than stopping short or overrunning
-    const last = progress[progress.length - 1]
+    const last = rowAt(progress, progress.length - 1)
     expect(last.completedBatches).toBe(last.totalBatches)
   })
 
@@ -2500,9 +2540,8 @@ describe('importCloudData — batched cloud import', () => {
       .slice(1)
       .map((p) => p.completedBatches)
     expect(completedValues).toEqual([1, 2])
-    expect(progressCalls[progressCalls.length - 1].completedBatches).toBe(
-      progressCalls[progressCalls.length - 1].totalBatches,
-    )
+    const lastCall = rowAt(progressCalls, progressCalls.length - 1)
+    expect(lastCall.completedBatches).toBe(lastCall.totalBatches)
   })
 
   it('skips already-completed batches on retry', async () => {
@@ -2527,7 +2566,9 @@ describe('importCloudData — batched cloud import', () => {
     expect(mutateCalls).toHaveLength(1)
 
     // Verify the single call contains the second batch (10 items)
-    const variables = mutateCalls[0][0].variables as { items: unknown[] }
+    const variables = rowAt(rowAt(mutateCalls)).variables as {
+      items: unknown[]
+    }
     expect(variables.items).toHaveLength(10)
   })
 
@@ -2614,9 +2655,11 @@ describe('importCloudData — batched cloud import', () => {
     // reports `[] vs ['item-collides']`.
     const idsSentBy = (operation: string) =>
       mutate.mock.calls
-        .filter((call) => opNameOf(call[0].mutation) === operation)
+        .filter((call) => opNameOf(rowAt(call).mutation) === operation)
         .flatMap((call) =>
-          (call[0].variables.items as Array<{ id: string }>).map((i) => i.id),
+          (rowAt(call).variables.items as Array<{ id: string }>).map(
+            (i) => i.id,
+          ),
         )
 
     expect(idsSentBy('BulkUpsertItems')).toEqual([CONFLICTING_ID])
@@ -2695,7 +2738,8 @@ describe('importCloudData — batched cloud import', () => {
         call[0]?.variables?.id === 'shelf-1',
     )
     expect(updateCall).toBeDefined()
-    const vars = updateCall[0].variables as { itemIds: string[] }
+    const vars = rowAt(defined(updateCall, 'the UpdateShelf call'))
+      .variables as { itemIds: string[] }
     expect(vars.itemIds).toContain('item-old')
     expect(vars.itemIds).toContain('item-new')
   })
@@ -2769,9 +2813,8 @@ describe('importCloudData — batched cloud import', () => {
         call[0]?.variables?.id === 'recipe-1',
     )
     expect(updateCall).toBeDefined()
-    const vars = updateCall[0].variables as {
-      items: Array<{ itemId: string; defaultAmount: number }>
-    }
+    const vars = rowAt(defined(updateCall, 'the UpdateRecipe call'))
+      .variables as { items: Array<{ itemId: string; defaultAmount: number }> }
     expect(vars.items.map((i) => i.itemId)).toContain('item-old')
     expect(vars.items.map((i) => i.itemId)).toContain('item-new')
   })
@@ -2935,7 +2978,7 @@ describe('importLocalData — recipe items merge on skip conflict', () => {
     // Then recipe-1 items is still just item-old (no changes)
     const recipe = await db.recipes.get('recipe-1')
     expect(recipe?.items).toHaveLength(1)
-    expect(recipe?.items[0].itemId).toBe('item-old')
+    expect(recipe?.items[0]?.itemId).toBe('item-old')
   })
 })
 
@@ -3127,10 +3170,10 @@ describe('buildLocationRemap / applyLocationRemap — the remap rule', () => {
     // Then it is not turned into `cloud_default:no-vendor` — no location
     // matches the whole id, so the remap has nothing to say about it
     const result = remapped(payload, 'cloud_default')
-    expect((result.shoppingCarts as Array<{ id: string }>)[0].id).toBe(
+    expect(rowAt(result.shoppingCarts as Array<{ id: string }>).id).toBe(
       'no-vendor',
     )
-    expect((result.cartItems as Array<{ cartId: string }>)[0].cartId).toBe(
+    expect(rowAt(result.cartItems as Array<{ cartId: string }>).cartId).toBe(
       'no-vendor',
     )
   })
@@ -3194,7 +3237,11 @@ describe('importCloudData — every location travels to cloud (PR 4b task 3)', (
       (c) => (c[0]?.variables as Record<string, unknown>)?.[key] !== undefined,
     )
     if (!call) return []
-    return (call[0].variables as Record<string, Record<string, unknown>[]>)[key]
+    const variables = rowAt(call).variables as Record<
+      string,
+      Record<string, unknown>[]
+    >
+    return defined(variables[key], `the \`${key}\` batch`)
   }
 
   const DESTINATION = [
@@ -3449,7 +3496,11 @@ describe('importCloudData — a cart id keeps its location prefix (PR 4b task 3)
       (c) => (c[0]?.variables as Record<string, unknown>)?.[key] !== undefined,
     )
     if (!call) return []
-    return (call[0].variables as Record<string, Record<string, unknown>[]>)[key]
+    const variables = rowAt(call).variables as Record<
+      string,
+      Record<string, unknown>[]
+    >
+    return defined(variables[key], `the \`${key}\` batch`)
   }
 
   // Three locations: the payload's default plus two others. The carts below
@@ -3815,7 +3866,7 @@ describe('importLocalData — a cloud backup keeps every location (PR 4b task 5)
     // And the pantry at the local default shows that location's quantity
     const stocked = await getStockedItems(DEFAULT_LOCATION_ID)
     expect(stocked).toHaveLength(1)
-    expect(stocked[0].packedQuantity).toBe(1)
+    expect(rowAt(stocked).packedQuantity).toBe(1)
   })
 
   it('user restoring a cloud backup keeps a bare cart id unprefixed', async () => {
@@ -4037,7 +4088,11 @@ describe('importCloudData — a pre-v15 backup keeps its stock (PR 4b task 8)', 
       (c) => (c[0]?.variables as Record<string, unknown>)?.[key] !== undefined,
     )
     if (!call) return []
-    return (call[0].variables as Record<string, Record<string, unknown>[]>)[key]
+    const variables = rowAt(call).variables as Record<
+      string,
+      Record<string, unknown>[]
+    >
+    return defined(variables[key], `the \`${key}\` batch`)
   }
 
   /** A pre-v15 item: stock inline, nothing split out. */
@@ -4162,7 +4217,8 @@ describe('importCloudData — a pre-v15 backup keeps its stock (PR 4b task 8)', 
     const sentEntities = client.mutate.mock.calls.filter(
       (c) => c[0]?.variables !== undefined,
     ).length
-    expect(totals.at(-1)).toBe(sentEntities)
+    // `Array.prototype.at` is ES2022 and this project's `lib` is ES2020.
+    expect(rowAt(totals, totals.length - 1)).toBe(sentEntities)
   })
 })
 

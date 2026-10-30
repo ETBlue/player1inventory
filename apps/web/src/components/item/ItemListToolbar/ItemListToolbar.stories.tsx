@@ -60,35 +60,35 @@ const meta: Meta<typeof ItemListToolbar> = {
 export default meta
 type Story = StoryObj<typeof ItemListToolbar>
 
+// `ItemListToolbar` reads only `id`, `name`, `tagIds` and `vendorIds` off an
+// item: `filterItems` reads `tagIds` (ItemListToolbar.tsx:129 ->
+// src/lib/filterUtils.ts:42), `items.length` is the total count (line 136), and
+// the `ItemFilters` it renders (line 287) reads `vendorIds` and `id`. The
+// per-location stock state (targetQuantity, refillThreshold, packedQuantity,
+// unpackedQuantity) moved off `Item` onto `ItemStock` in v15/v16.
+const makeItem = (
+  overrides: Pick<Item, 'id' | 'name' | 'tagIds' | 'vendorIds'> & Partial<Item>,
+): Item => ({
+  targetUnit: 'package',
+  consumeAmount: 1,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  ...overrides,
+})
+
 const mockItems: Item[] = [
-  {
+  makeItem({
     id: 'item-1',
     name: 'Milk',
     tagIds: ['tag-1'],
     vendorIds: ['v1'],
-    targetUnit: 'package',
-    targetQuantity: 2,
-    refillThreshold: 1,
-    packedQuantity: 1,
-    unpackedQuantity: 0,
-    consumeAmount: 1,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
+  }),
+  makeItem({
     id: 'item-2',
     name: 'Eggs',
     tagIds: [],
     vendorIds: ['v1', 'v2'],
-    targetUnit: 'package',
-    targetQuantity: 1,
-    refillThreshold: 0,
-    packedQuantity: 0,
-    unpackedQuantity: 0,
-    consumeAmount: 1,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
+  }),
 ]
 
 const mockVendors: Vendor[] = [

@@ -2,17 +2,21 @@ import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { Tag, TagType } from '@/types'
+import { TagColor } from '@/types'
 import { TagInfoForm } from '.'
 
+// `parentId` is omitted, not set to `undefined`. `Tag.parentId` is optional
+// and `exactOptionalPropertyTypes` rejects an explicit `undefined`.
+// TagInfoForm.tsx:44 reads `tag.parentId ?? NO_PARENT`, so absent and
+// `undefined` behave the same.
 const baseTag: Tag = {
   id: 'tag-1',
   name: 'Dairy',
   typeId: 'type-1',
-  parentId: undefined,
 }
 
 const tagTypes: TagType[] = [
-  { id: 'type-1', name: 'Category', color: 'blue' as never },
+  { id: 'type-1', name: 'Category', color: TagColor.blue },
 ]
 
 describe('TagInfoForm', () => {

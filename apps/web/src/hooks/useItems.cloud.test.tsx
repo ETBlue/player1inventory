@@ -263,9 +263,16 @@ function usePantry() {
   return { items, stocked, activeLocationId, setActiveLocationId }
 }
 
-const names = (list: { name: string }[] | undefined) => list?.map((i) => i.name)
-const byName = (list: { name: string }[] | undefined, name: string) =>
-  list?.find((i) => i.name === name)
+// Generic over the row type, so `byName` hands back the caller's own row and
+// not a `{ name: string }` stripped of every other field. Both helpers used to
+// be typed `{ name: string }[]`, which made each `?.stockId` / `?.note` /
+// `?.targetUnit` read below a `TS2339` the moment this file was type-checked.
+const names = <T extends { name: string }>(list: T[] | undefined) =>
+  list?.map((i) => i.name)
+const byName = <T extends { name: string }>(
+  list: T[] | undefined,
+  name: string,
+) => list?.find((i) => i.name === name)
 
 describe('cloud pantry data (PantryData join)', () => {
   beforeEach(() => {

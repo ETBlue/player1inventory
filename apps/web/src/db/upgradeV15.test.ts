@@ -1,6 +1,21 @@
 import Dexie from 'dexie'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { defined } from '@/test/narrow'
+import type { Item } from '@/types'
 import { db } from './index'
+
+// The shape an `items` row has BEFORE the v15 split: the per-location quantity
+// state and `dueDate` sat inline on the item. The v15 upgrade fn strips those
+// keys (src/db/index.ts:406-408), and this file asserts they are gone — so the
+// read-back needs a type that still names them. They are optional here because
+// after the upgrade they are absent.
+interface PreSplitItemRow extends Item {
+  targetQuantity?: number
+  refillThreshold?: number
+  packedQuantity?: number
+  unpackedQuantity?: number
+  dueDate?: Date
+}
 
 // Exercises the real v14 → v15 upgrade (the Item/ItemStock split): a database
 // is created at version 14 with the pre-split schema, seeded, closed, then
@@ -99,7 +114,10 @@ describe('v14 → v15 upgrade (Item/ItemStock split)', () => {
     expect(stocks[0]?.dueDate?.toISOString()).toBe('2026-03-01T00:00:00.000Z')
 
     // And the item row keeps its identity plus the global configuration
-    const item = (await db.items.get('item-1')) as Record<string, unknown>
+    const item: PreSplitItemRow = defined(
+      await db.items.get('item-1'),
+      'the migrated item-1 row',
+    )
     expect(item.name).toBe('Milk')
     expect(item).toMatchObject({
       packageUnit: 'bottle',

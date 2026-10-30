@@ -151,7 +151,10 @@ function EmptyTagTypesStory() {
       const item = await createItem({
         name: 'Yogurt',
         tagIds: [],
-        targetUnit: 'container',
+        // `targetUnit` is the discriminator 'package' | 'measurement'.
+        // The package's NAME belongs in `packageUnit`.
+        targetUnit: 'package',
+        packageUnit: 'container',
         targetQuantity: 4,
         refillThreshold: 1,
         packedQuantity: 2,
@@ -225,7 +228,10 @@ function WithNestedTagsStory() {
       const item = await createItem({
         name: 'Almond Milk',
         tagIds: [vegan.id, rawVegan.id],
-        targetUnit: 'carton',
+        // `targetUnit` is the discriminator 'package' | 'measurement'.
+        // The package's NAME belongs in `packageUnit`.
+        targetUnit: 'package',
+        packageUnit: 'carton',
         targetQuantity: 4,
         refillThreshold: 1,
         packedQuantity: 2,

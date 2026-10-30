@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import { elementAt } from '@/test/narrow'
 import { expectDocumentOrder, sizeClasses } from '@/test/utils'
 import type { PantryItem } from '@/types'
 import { QuickUpdateDialog } from '.'
@@ -48,6 +49,16 @@ interface QuickUpdatePayload {
   refillThreshold: number
   dueDate?: Date | undefined
 }
+
+// The spy the tests hand `renderDialog`, typed with the prop signature
+// (`QuickUpdateDialogProps.onSubmit`, QuickUpdateDialog.tsx:40) instead of a
+// bare `vi.fn(async () => {})`. An implementation with no parameters gives
+// `mock.calls` the element type `[]`, so `calls[0][0]` was `TS2493` and the
+// four reads below each carried an `as QuickUpdatePayload` cast of a value the
+// compiler believed was `undefined`. With the real signature the payload type
+// comes out of the call itself and the casts are gone.
+const submitSpy = () =>
+  vi.fn<(updates: QuickUpdatePayload) => Promise<void>>(async () => {})
 
 const renderDialog = (
   item: PantryItem,
@@ -172,7 +183,7 @@ describe('QuickUpdateDialog — stock settings row', () => {
   it('user can submit new target and refill values alongside the quantities', async () => {
     // Given an item with targetQuantity 4 and refillThreshold 1
     const user = userEvent.setup()
-    const onSubmit = vi.fn(async () => {})
+    const onSubmit = submitSpy()
     renderDialog(makeItem(), onSubmit)
 
     // When the user types new stock settings and presses Update
@@ -662,7 +673,7 @@ describe('QuickUpdateDialog — Expires on field', () => {
   it('user can edit the due date and have it submitted', async () => {
     // Given a date-mode item with a stored due date
     const user = userEvent.setup()
-    const onSubmit = vi.fn(async () => {})
+    const onSubmit = submitSpy()
     renderDialog(
       makeItem({ expirationMode: 'date', dueDate: new Date('2026-09-01') }),
       onSubmit,
@@ -674,7 +685,7 @@ describe('QuickUpdateDialog — Expires on field', () => {
 
     // Then the new date reaches the submit payload
     expect(onSubmit).toHaveBeenCalledTimes(1)
-    const payload = onSubmit.mock.calls[0]?.[0] as QuickUpdatePayload
+    const payload = elementAt(onSubmit.mock.calls)[0]
     expect('dueDate' in payload).toBe(true)
     expect(payload.dueDate).toEqual(new Date('2026-10-15'))
   })
@@ -682,7 +693,7 @@ describe('QuickUpdateDialog — Expires on field', () => {
   it('user can clear the due date and have the cleared value submitted', async () => {
     // Given a date-mode item with a stored due date
     const user = userEvent.setup()
-    const onSubmit = vi.fn(async () => {})
+    const onSubmit = submitSpy()
     renderDialog(
       makeItem({ expirationMode: 'date', dueDate: new Date('2026-09-01') }),
       onSubmit,
@@ -699,7 +710,7 @@ describe('QuickUpdateDialog — Expires on field', () => {
     // treat `{ dueDate: undefined }` and an object missing the key as equal,
     // so this must check `in` directly rather than deep-equality alone.
     expect(onSubmit).toHaveBeenCalledTimes(1)
-    const payload = onSubmit.mock.calls[0]?.[0] as QuickUpdatePayload
+    const payload = elementAt(onSubmit.mock.calls)[0]
     expect('dueDate' in payload).toBe(true)
     expect(payload.dueDate).toBeUndefined()
   })
@@ -727,7 +738,7 @@ describe('QuickUpdateDialog — Expires on field', () => {
     // fixture: if the key were included only when the date field itself was
     // edited (rather than whenever the mode gates it), this would fail.
     const user = userEvent.setup()
-    const onSubmit = vi.fn(async () => {})
+    const onSubmit = submitSpy()
     renderDialog(
       makeItem({ expirationMode: 'date', dueDate: new Date('2026-09-01') }),
       onSubmit,
@@ -741,7 +752,7 @@ describe('QuickUpdateDialog — Expires on field', () => {
 
     // Then the payload still carries the (unchanged) dueDate
     expect(onSubmit).toHaveBeenCalledTimes(1)
-    const payload = onSubmit.mock.calls[0]?.[0] as QuickUpdatePayload
+    const payload = elementAt(onSubmit.mock.calls)[0]
     expect('dueDate' in payload).toBe(true)
     expect(payload.dueDate).toEqual(new Date('2026-09-01'))
   })
@@ -753,7 +764,7 @@ describe('QuickUpdateDialog — Expires on field', () => {
     // unconditional payload would echo or clear, either of which is wrong:
     // the key must be absent entirely so neither happens.
     const user = userEvent.setup()
-    const onSubmit = vi.fn(async () => {})
+    const onSubmit = submitSpy()
     renderDialog(
       makeItem({
         expirationMode: 'disabled',
@@ -770,7 +781,7 @@ describe('QuickUpdateDialog — Expires on field', () => {
 
     // Then the payload has no dueDate key at all
     expect(onSubmit).toHaveBeenCalledTimes(1)
-    const payload = onSubmit.mock.calls[0]?.[0] as QuickUpdatePayload
+    const payload = elementAt(onSubmit.mock.calls)[0]
     expect('dueDate' in payload).toBe(false)
   })
 })

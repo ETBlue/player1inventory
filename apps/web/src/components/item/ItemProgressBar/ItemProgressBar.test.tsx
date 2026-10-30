@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
+import { defined } from '@/test/narrow'
 import { getRefillMarkerLeft, ItemProgressBar } from '.'
 
 describe('ItemProgressBar with partial segments', () => {
@@ -226,7 +227,7 @@ describe('ItemProgressBar with partial segments', () => {
     expect(segments).toHaveLength(5)
 
     // First two segments should be filled — check a filled segment's child div
-    const firstSegment = segments[0]
+    const firstSegment = defined(segments[0], 'the first segment')
     const fillDiv = firstSegment.querySelector('div')
     expect(fillDiv).toHaveClass('bg-status-inactive-background-muted')
   })

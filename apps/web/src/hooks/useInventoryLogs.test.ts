@@ -9,6 +9,7 @@ import {
   activeLocationStorageKey,
   useActiveLocation,
 } from '@/hooks/useActiveLocation'
+import { defined, elementAt } from '@/test/narrow'
 import { useAddInventoryLog, useItemLogs } from './useInventoryLogs'
 
 const mockItemLogsQuery = vi.fn()
@@ -131,7 +132,7 @@ describe('useItemLogs (cloud mode)', () => {
     await waitFor(() => {
       expect(result.current.data).toHaveLength(1)
     })
-    const log = result.current.data?.[0]
+    const log = elementAt(defined(result.current.data, "the hook's logs"), 0)
     expect(log.occurredAt).toBeInstanceOf(Date)
     expect(log.occurredAt.toISOString()).toBe(occurredAtStr)
     expect(log.createdAt).toBeInstanceOf(Date)
@@ -205,7 +206,7 @@ describe('useItemLogs (local mode)', () => {
     await waitFor(() => {
       expect(result.current.data).toHaveLength(1)
     })
-    const log = result.current.data?.[0]
+    const log = elementAt(defined(result.current.data, "the hook's logs"), 0)
     expect(log.occurredAt).toBeInstanceOf(Date)
     expect(log.itemId).toBe('item-1')
   })

@@ -9,7 +9,6 @@ const meta: Meta<typeof ShelfList> = {
   },
   args: {
     onShelfClick: () => {},
-    onReorder: () => {},
     getItemCount: () => 3,
   },
 }

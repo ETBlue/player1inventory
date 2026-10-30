@@ -7,9 +7,11 @@ import {
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ConsumeRecipesMutationVariables } from '@/generated/graphql'
 import { activeLocationStorageKey } from '@/hooks/useActiveLocation'
 import { routeTree } from '@/routeTree.gen'
 import { CLOUD_LOCATIONS, LOC_A } from '@/test/cloudFixtures'
+import { callArgs, elementAt } from '@/test/narrow'
 import { asPantryDataResult } from '@/test/pantryData'
 
 // The cooking page in CLOUD mode, after PR 3b gave the cook its own location.
@@ -30,7 +32,15 @@ const emptyQuery = { data: undefined, loading: false, error: undefined }
 
 const mockUseGetItemsQuery = vi.fn()
 const mockUseGetRecipesQuery = vi.fn()
-const mockConsumeRecipes = vi.fn()
+// Typed with the Apollo mutate signature, not a bare `vi.fn()`. A bare one
+// gives `mock.calls` the element type `any[]`, so the three assertions on
+// `variables.input` below would pass against any shape at all.
+const mockConsumeRecipes =
+  vi.fn<
+    (options: {
+      variables: ConsumeRecipesMutationVariables
+    }) => Promise<{ data: undefined }>
+  >()
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
@@ -256,11 +266,11 @@ describe('Use (Cooking) Page — cloud mode', () => {
     // caller's default resolved server-side. `ConsumeRecipesInput.locationId`
     // is `ID!` since PR 3b Task 4.
     await waitFor(() => expect(mockConsumeRecipes).toHaveBeenCalled())
-    const variables = mockConsumeRecipes.mock.calls[0][0].variables
+    const { variables } = callArgs(mockConsumeRecipes.mock, 0)[0]
     expect(variables.input.locationId).toBe(LOC_A)
     expect(variables.input.recipeIds).toEqual([CLOUD_RECIPE.id])
     expect(variables.input.items).toHaveLength(1)
-    expect(variables.input.items[0]).toMatchObject({
+    expect(elementAt(variables.input.items, 0)).toMatchObject({
       itemId: CLOUD_ITEM.id,
       delta: -2,
       packedQuantity: 3,

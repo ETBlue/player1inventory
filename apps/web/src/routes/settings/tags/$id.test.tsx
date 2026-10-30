@@ -567,7 +567,10 @@ describe('Tag Detail Page - Delete Dialog', () => {
 
   it('user can open delete dialog', async () => {
     // Given a tag
-    const tagType = await createTagType({ name: 'Category', color: 'blue' })
+    const tagType = await createTagType({
+      name: 'Category',
+      color: TagColor.blue,
+    })
     const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
 
     // When user navigates to tag detail page
@@ -592,7 +595,10 @@ describe('Tag Detail Page - Delete Dialog', () => {
 
   it('user can see affected item count in delete dialog', async () => {
     // Given a tag assigned to 2 items
-    const tagType = await createTagType({ name: 'Category', color: 'blue' })
+    const tagType = await createTagType({
+      name: 'Category',
+      color: TagColor.blue,
+    })
     const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
     await createItem({
       name: 'Milk',
@@ -623,7 +629,10 @@ describe('Tag Detail Page - Delete Dialog', () => {
 
   it('user can confirm deletion and navigate back', async () => {
     // Given a tag
-    const tagType = await createTagType({ name: 'Category', color: 'blue' })
+    const tagType = await createTagType({
+      name: 'Category',
+      color: TagColor.blue,
+    })
     const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
 
     // When user confirms deletion
@@ -653,7 +662,10 @@ describe('Tag Detail Page - Delete Dialog', () => {
 
   it('user can cancel deletion', async () => {
     // Given a tag
-    const tagType = await createTagType({ name: 'Category', color: 'blue' })
+    const tagType = await createTagType({
+      name: 'Category',
+      color: TagColor.blue,
+    })
     const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
 
     // When user opens and cancels delete dialog

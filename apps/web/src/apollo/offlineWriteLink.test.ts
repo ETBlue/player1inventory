@@ -1,5 +1,6 @@
 import { ApolloLink, execute, gql, Observable } from '@apollo/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { noopApolloClient } from '@/test/apolloStub'
 
 const toastErrorMock = vi.fn()
 vi.mock('sonner', () => ({
@@ -34,6 +35,15 @@ const fakeNetwork = new ApolloLink(() => {
   })
 })
 
+// `execute`'s third argument is `ApolloLink.ExecuteContext`, whose only field is
+// the client that issued the request
+// (node_modules/@apollo/client/link/core/ApolloLink.d.ts:12-17). Apollo hangs it
+// off `operation.client` in `createOperation` and reads nothing else from it,
+// and `offlineWriteLink` reads only `operation.query`
+// (src/apollo/offlineWriteLink.ts:27). So a real, empty client is the whole
+// fixture.
+const EXECUTE_CONTEXT: ApolloLink.ExecuteContext = { client: noopApolloClient }
+
 function setOnLine(value: boolean) {
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(value)
 }
@@ -52,7 +62,7 @@ describe('offlineWriteLink', () => {
 
     // When a mutation runs
     const error = await new Promise<Error>((resolve) => {
-      execute(link, { query: MUTATION }, {}).subscribe({
+      execute(link, { query: MUTATION }, EXECUTE_CONTEXT).subscribe({
         error: resolve,
         next: () => resolve(new Error('should not succeed')),
       })
@@ -71,7 +81,7 @@ describe('offlineWriteLink', () => {
 
     // When a query runs
     await new Promise<void>((resolve) => {
-      execute(link, { query: QUERY }, {}).subscribe({
+      execute(link, { query: QUERY }, EXECUTE_CONTEXT).subscribe({
         complete: resolve,
         error: resolve,
       })
@@ -88,7 +98,7 @@ describe('offlineWriteLink', () => {
 
     // When a mutation runs
     await new Promise<void>((resolve) => {
-      execute(link, { query: MUTATION }, {}).subscribe({
+      execute(link, { query: MUTATION }, EXECUTE_CONTEXT).subscribe({
         complete: resolve,
         error: resolve,
       })

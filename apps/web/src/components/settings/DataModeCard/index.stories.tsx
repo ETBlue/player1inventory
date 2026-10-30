@@ -35,7 +35,7 @@ const meta: Meta<typeof DataModeCard> = {
   decorators: [
     (Story) => (
       <QueryClientProvider client={queryClient}>
-        <MockedProvider mocks={apolloMocks} addTypename={false}>
+        <MockedProvider mocks={apolloMocks}>
           <Story />
         </MockedProvider>
       </QueryClientProvider>
@@ -62,7 +62,7 @@ export const CloudMode: Story = {
   decorators: [
     (Story) => (
       <QueryClientProvider client={queryClient}>
-        <MockedProvider mocks={apolloMocks} addTypename={false}>
+        <MockedProvider mocks={apolloMocks}>
           <Story />
         </MockedProvider>
       </QueryClientProvider>
@@ -95,7 +95,7 @@ export const SignOutDialog: Story = {
   decorators: [
     (Story) => (
       <QueryClientProvider client={queryClient}>
-        <MockedProvider mocks={apolloMocks} addTypename={false}>
+        <MockedProvider mocks={apolloMocks}>
           <Story />
         </MockedProvider>
       </QueryClientProvider>

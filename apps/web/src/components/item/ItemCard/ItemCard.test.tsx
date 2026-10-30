@@ -2,9 +2,18 @@ import { act, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
+import { deserializeItem } from '@/lib/deserialization'
 import { joinItemStock } from '@/lib/itemStock'
 import { renderWithRouter } from '@/test/utils'
-import type { Item, Recipe, Tag, TagType, Vendor } from '@/types'
+import type {
+  Item,
+  PantryItem,
+  Recipe,
+  StockFields,
+  Tag,
+  TagType,
+  Vendor,
+} from '@/types'
 import { DEFAULT_PACKAGE_UNIT, TagColor } from '@/types'
 import { ItemCard } from '.'
 
@@ -17,6 +26,30 @@ import { ItemCard } from '.'
 // below still count forward from now. A function, not a module-level constant,
 // so every render gets a fresh value exactly as the old mock did.
 const lastPurchaseToday = () => new Date()
+
+// `ItemCard`'s `item` prop is a `PantryItem` — a global `Item` joined with its
+// active-location `ItemStock`. The fixtures below were typed `Item` (or
+// `Partial<Item>` plus an `as Item` cast), which predates the v15/v16 split and
+// let a fixture leave out any stock field it liked.
+//
+// WHAT THIS FACTORY DOES AND DOES NOT DEFAULT. The four stock quantities and
+// `targetUnit` are REQUIRED in the overrides, because every one of them changes
+// what the card draws: the progress bar, the refill tick, the quantity text and
+// the inactive styling all read them. A default would let a fixture quietly
+// render a different card from the one its test describes. Only identity and
+// metadata are defaulted, plus `consumeAmount: 1`, which is the value both
+// `createItem` paths give a new item.
+const makeItem = (
+  overrides: Partial<PantryItem> & StockFields & Pick<Item, 'targetUnit'>,
+): PantryItem => ({
+  id: 'item-1',
+  name: 'Test Item',
+  tagIds: [],
+  consumeAmount: 1,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  ...overrides,
+})
 
 describe('ItemCard - Unit Display Logic', () => {
   it('returns package unit when tracking in packages', () => {
@@ -112,7 +145,11 @@ describe('ItemCard - Expiration Warning Logic', () => {
 
   it('never shows warning when threshold is null (not configured)', () => {
     const estimatedDueDate = new Date(Date.now() + 2 * 86400000) // 2 days from now
-    const item: Partial<Item> = {
+    // `Item.expirationThreshold` is `number | undefined`, so `null` cannot be
+    // put on a `Partial<Item>`. It still reaches the field at runtime — see the
+    // note on the null-threshold fixture further down. This test reads only
+    // this one property, so the shape it needs is spelled out exactly.
+    const item: { expirationThreshold: number | null } = {
       expirationThreshold: null,
     }
 
@@ -128,7 +165,10 @@ describe('ItemCard - Expiration Warning Logic', () => {
 
   it('never shows warning when threshold is undefined (not configured)', () => {
     const estimatedDueDate = new Date(Date.now() + 2 * 86400000) // 2 days from now
-    const item: Partial<Item> = {
+    // `exactOptionalPropertyTypes` is on, so an explicit `undefined` cannot be
+    // written into `expirationThreshold?: number`. The property type is spelled
+    // out so the fixture keeps the explicit value its title names.
+    const item: { expirationThreshold: number | undefined } = {
       expirationThreshold: undefined,
     }
 
@@ -160,7 +200,7 @@ describe('ItemCard - Expiration Warning Logic', () => {
 })
 
 describe('ItemCard - Tag Sorting', () => {
-  const mockItem: Item = {
+  const mockItem = makeItem({
     id: 'item-1',
     name: 'Test Item',
     tagIds: ['1', '2', '3', '4'],
@@ -171,7 +211,12 @@ describe('ItemCard - Tag Sorting', () => {
     createdAt: new Date(),
     updatedAt: new Date(),
     packedQuantity: 0,
-  }
+    // This fixture omitted `unpackedQuantity` entirely before it was typed.
+    // Its tests assert tag badge order only, so the value is not pinned by any
+    // assertion here; 0 is what the rest of the fixture describes (packed 0 of
+    // a target of 10).
+    unpackedQuantity: 0,
+  })
 
   it('displays tags sorted by tag type name then tag name', async () => {
     const tagTypes: TagType[] = [
@@ -214,7 +259,7 @@ describe('ItemCard - Tag Sorting', () => {
 
   it('shows expiration message even when not within threshold', async () => {
     const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
-    const item: Partial<Item> = {
+    const item = makeItem({
       id: '1',
       name: 'Test Item',
       targetQuantity: 10,
@@ -230,12 +275,12 @@ describe('ItemCard - Tag Sorting', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
       tagIds: [],
-    }
+    })
 
     await renderWithRouter(
       <ItemCard
         lastPurchaseDate={lastPurchaseToday()}
-        item={item as Item}
+        item={item}
         tags={[]}
         tagTypes={[]}
       />,
@@ -252,7 +297,7 @@ describe('ItemCard - Tag Sorting', () => {
 
   it('shows warning style when within expiration threshold', async () => {
     const soonDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000) // 3 days
-    const item: Partial<Item> = {
+    const item = makeItem({
       id: '1',
       name: 'Test Item',
       targetQuantity: 10,
@@ -268,12 +313,12 @@ describe('ItemCard - Tag Sorting', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
       tagIds: [],
-    }
+    })
 
     await renderWithRouter(
       <ItemCard
         lastPurchaseDate={lastPurchaseToday()}
-        item={item as Item}
+        item={item}
         tags={[]}
         tagTypes={[]}
       />,
@@ -293,29 +338,46 @@ describe('ItemCard - Tag Sorting', () => {
   it('shows plain muted badge (no error style) when expirationThreshold is null', async () => {
     // Given an item expiring soon but with no threshold configured (null)
     const soonDate = new Date(Date.now() + 6 * 24 * 60 * 60 * 1000) // 6 days
-    const item: Partial<Item> = {
-      id: '1',
-      name: 'Test Item',
-      targetQuantity: 10,
-      refillThreshold: 2,
-      packedQuantity: 5,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      targetUnit: 'package',
-      expirationThreshold: null, // no threshold configured
-      expirationMode: 'days from purchase' as const,
-      estimatedDueDays: 6,
-      dueDate: soonDate,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      tagIds: [],
+    // WHERE THE `null` COMES FROM, AND WHY IT IS NOT A CAST.
+    //
+    // `Item.expirationThreshold` is typed `number | undefined`, but `null`
+    // reaches it for real in cloud mode: the GraphQL field is a nullable `Int`
+    // (`generated/graphql.ts`), and `deserializeItem`
+    // (`lib/deserialization.ts:19`) spreads the wire row and casts it to
+    // `Item` without turning null into undefined. That is exactly why
+    // `ItemCard.tsx:308` guards with `!= null` and not `!== undefined`.
+    //
+    // So the fixture goes through `deserializeItem` — the same function the
+    // cloud pantry uses — instead of asserting a type the test invented. It
+    // takes a `Record<string, unknown>`, so the null goes in honestly.
+    const nullThreshold = deserializeItem({
+      expirationThreshold: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+    const item: PantryItem = {
+      ...makeItem({
+        id: '1',
+        name: 'Test Item',
+        targetQuantity: 10,
+        refillThreshold: 2,
+        packedQuantity: 5,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        targetUnit: 'package',
+        expirationMode: 'days from purchase' as const,
+        estimatedDueDays: 6,
+        dueDate: soonDate,
+        tagIds: [],
+      }),
+      ...nullThreshold,
     }
 
     // When the card renders
     await renderWithRouter(
       <ItemCard
         lastPurchaseDate={lastPurchaseToday()}
-        item={item as Item}
+        item={item}
         tags={[]}
         tagTypes={[]}
       />,
@@ -335,7 +397,7 @@ describe('ItemCard - Tag Sorting', () => {
   it('shows error style badge when threshold is set and item is within it', async () => {
     // Given an item expiring in 2 days with threshold 3
     const soonDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) // 2 days
-    const item: Partial<Item> = {
+    const item = makeItem({
       id: '1',
       name: 'Test Item',
       targetQuantity: 10,
@@ -351,13 +413,13 @@ describe('ItemCard - Tag Sorting', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
       tagIds: [],
-    }
+    })
 
     // When the card renders
     await renderWithRouter(
       <ItemCard
         lastPurchaseDate={lastPurchaseToday()}
-        item={item as Item}
+        item={item}
         tags={[]}
         tagTypes={[]}
       />,
@@ -374,7 +436,7 @@ describe('ItemCard - Tag Sorting', () => {
   })
 
   it('converts packed quantity to measurement units for display when tracking in measurement', async () => {
-    const item: Partial<Item> = {
+    const item = makeItem({
       id: '1',
       name: 'Olive Oil',
       targetQuantity: 2000, // 2000g target
@@ -389,12 +451,12 @@ describe('ItemCard - Tag Sorting', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
       tagIds: [],
-    }
+    })
 
     await renderWithRouter(
       <ItemCard
         lastPurchaseDate={lastPurchaseToday()}
-        item={item as Item}
+        item={item}
         tags={[]}
         tagTypes={[]}
       />,
@@ -406,7 +468,7 @@ describe('ItemCard - Tag Sorting', () => {
   })
 
   it('shows packed quantity as-is when tracking in packages', async () => {
-    const item: Partial<Item> = {
+    const item = makeItem({
       id: '1',
       name: 'Cookies',
       targetQuantity: 10, // 10 packs target
@@ -419,12 +481,12 @@ describe('ItemCard - Tag Sorting', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
       tagIds: [],
-    }
+    })
 
     await renderWithRouter(
       <ItemCard
         lastPurchaseDate={lastPurchaseToday()}
-        item={item as Item}
+        item={item}
         tags={[]}
         tagTypes={[]}
       />,
@@ -436,7 +498,7 @@ describe('ItemCard - Tag Sorting', () => {
   })
 
   it('shows simple count when unpacked is 0 with measurement tracking', async () => {
-    const item: Partial<Item> = {
+    const item = makeItem({
       id: '1',
       name: 'Milk',
       targetQuantity: 2000, // 2000mL target
@@ -451,12 +513,12 @@ describe('ItemCard - Tag Sorting', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
       tagIds: [],
-    }
+    })
 
     await renderWithRouter(
       <ItemCard
         lastPurchaseDate={lastPurchaseToday()}
-        item={item as Item}
+        item={item}
         tags={[]}
         tagTypes={[]}
       />,
@@ -468,7 +530,7 @@ describe('ItemCard - Tag Sorting', () => {
 })
 
 describe('ItemCard - Shopping mode', () => {
-  const mockItem: Item = {
+  const mockItem = makeItem({
     id: 'item-1',
     name: 'Milk',
     packageUnit: 'gallon',
@@ -481,7 +543,7 @@ describe('ItemCard - Shopping mode', () => {
     consumeAmount: 1,
     createdAt: new Date(),
     updatedAt: new Date(),
-  }
+  })
 
   it('shows unchecked checkbox when not in cart (shopping mode)', async () => {
     await renderWithRouter(
@@ -628,7 +690,7 @@ describe('ItemCard - Shopping mode', () => {
 })
 
 describe('ItemCard - vendor and recipe display', () => {
-  const mockItem: Item = {
+  const mockItem = makeItem({
     id: 'item-1',
     name: 'Milk',
     tagIds: ['t1'],
@@ -642,7 +704,7 @@ describe('ItemCard - vendor and recipe display', () => {
     consumeAmount: 1,
     createdAt: new Date(),
     updatedAt: new Date(),
-  }
+  })
 
   const mockTags: Tag[] = [{ id: 't1', name: 'Dairy', typeId: 'type1' }]
   const mockTagTypes: TagType[] = [
@@ -835,7 +897,7 @@ describe('ItemCard - vendor and recipe display', () => {
 })
 
 describe('ItemCard - keyboard interaction on badges', () => {
-  const mockItem: Item = {
+  const mockItem = makeItem({
     id: 'item-1',
     name: 'Milk',
     tagIds: ['t1'],
@@ -849,7 +911,7 @@ describe('ItemCard - keyboard interaction on badges', () => {
     consumeAmount: 1,
     createdAt: new Date(),
     updatedAt: new Date(),
-  }
+  })
 
   const mockTags: Tag[] = [{ id: 't1', name: 'Dairy', typeId: 'type1' }]
   const mockTagTypes: TagType[] = [
@@ -1062,7 +1124,7 @@ describe('ItemCard - keyboard interaction on badges', () => {
 })
 
 describe('ItemCard - Cooking mode', () => {
-  const mockItem: Item = {
+  const mockItem = makeItem({
     id: 'item-1',
     name: 'Flour',
     packageUnit: 'kg',
@@ -1075,7 +1137,7 @@ describe('ItemCard - Cooking mode', () => {
     consumeAmount: 1,
     createdAt: new Date(),
     updatedAt: new Date(),
-  }
+  })
 
   const mockTags: Tag[] = [{ id: 't1', name: 'Baking', typeId: 'type1' }]
   const mockTagTypes: TagType[] = [
@@ -1181,7 +1243,7 @@ describe('ItemCard - Cooking mode', () => {
 })
 
 describe('ItemCard - showTags and showExpiration props', () => {
-  const mockItem: Item = {
+  const mockItem = makeItem({
     id: 'item-1',
     name: 'Milk',
     tagIds: ['tag-1'],
@@ -1193,7 +1255,7 @@ describe('ItemCard - showTags and showExpiration props', () => {
     consumeAmount: 1,
     createdAt: new Date(),
     updatedAt: new Date(),
-  }
+  })
   const mockTag: Tag = { id: 'tag-1', name: 'Dairy', typeId: 'tt-1' }
   const mockTagType: TagType = {
     id: 'tt-1',
@@ -1228,10 +1290,10 @@ describe('ItemCard - showTags and showExpiration props', () => {
   })
 
   it('hides expiration when showExpiration={false}', async () => {
-    const itemWithExpiry: Item = {
+    const itemWithExpiry = makeItem({
       ...mockItem,
       dueDate: new Date(Date.now() + 10 * 86400000),
-    }
+    })
     await renderWithRouter(
       <ItemCard
         lastPurchaseDate={lastPurchaseToday()}
@@ -1245,11 +1307,11 @@ describe('ItemCard - showTags and showExpiration props', () => {
   })
 
   it('shows expiration by default (showExpiration defaults to true)', async () => {
-    const itemWithExpiry: Item = {
+    const itemWithExpiry = makeItem({
       ...mockItem,
       expirationMode: 'date',
       dueDate: new Date(Date.now() + 10 * 86400000),
-    }
+    })
     await renderWithRouter(
       <ItemCard
         lastPurchaseDate={lastPurchaseToday()}
@@ -1277,7 +1339,7 @@ describe('ItemCard - showTags and showExpiration props', () => {
 describe('ItemCard - lastPurchaseDate prop', () => {
   const DAY = 86400000
 
-  const perishable: Item = {
+  const perishable = makeItem({
     id: 'item-yogurt',
     name: 'Yogurt',
     tagIds: [],
@@ -1292,7 +1354,7 @@ describe('ItemCard - lastPurchaseDate prop', () => {
     estimatedDueDays: 30,
     createdAt: new Date(),
     updatedAt: new Date(),
-  }
+  })
 
   it('user sees an expiry estimate counted from the date the container passed', async () => {
     // Given an item that expires 30 days after purchase, bought 20 days ago
@@ -1363,7 +1425,7 @@ describe('ItemCard - lastPurchaseDate prop', () => {
 })
 
 describe('ItemCard tag badge variants', () => {
-  const mockItem: Item = {
+  const mockItem = makeItem({
     id: 'item-1',
     name: 'Milk',
     tagIds: ['tag-1'],
@@ -1375,7 +1437,7 @@ describe('ItemCard tag badge variants', () => {
     consumeAmount: 1,
     createdAt: new Date(),
     updatedAt: new Date(),
-  }
+  })
 
   const mockTag: Tag = { id: 'tag-1', name: 'Dairy', typeId: 'tt-1' }
   const mockTagType: TagType = {
@@ -1438,7 +1500,7 @@ describe('ItemCard tag badge variants', () => {
 })
 
 describe('ItemCard - inactive item progress bar', () => {
-  const inactiveItem: Item = {
+  const inactiveItem = makeItem({
     id: 'item-inactive',
     name: 'Archived Item',
     tagIds: [],
@@ -1450,7 +1512,7 @@ describe('ItemCard - inactive item progress bar', () => {
     consumeAmount: 1,
     createdAt: new Date(),
     updatedAt: new Date(),
-  }
+  })
 
   it('renders progress bar fill with inactive color for inactive item', async () => {
     const { container } = await renderWithRouter(
@@ -1469,12 +1531,12 @@ describe('ItemCard - inactive item progress bar', () => {
   })
 
   it('renders with default (not error/warning) card styling when inactive with refillThreshold > 0', async () => {
-    const itemWithThreshold: Item = {
+    const itemWithThreshold = makeItem({
       ...inactiveItem,
       id: 'item-inactive-threshold',
       refillThreshold: 5, // would normally trigger low-stock warning
       packedQuantity: 0, // below threshold
-    }
+    })
 
     const { container } = await renderWithRouter(
       <ItemCard
@@ -1493,7 +1555,7 @@ describe('ItemCard - inactive item progress bar', () => {
 })
 
 describe('ItemCard - loading states', () => {
-  const mockItem: Item = {
+  const mockItem = makeItem({
     id: 'item-apples',
     name: 'Apples',
     packageUnit: 'piece',
@@ -1506,7 +1568,7 @@ describe('ItemCard - loading states', () => {
     consumeAmount: 1,
     createdAt: new Date(),
     updatedAt: new Date(),
-  }
+  })
 
   it('shows spinner on pantry calculator button (Update quantity) while isPending is true', async () => {
     const user = userEvent.setup()
@@ -1735,7 +1797,7 @@ describe('ItemCard - loading states', () => {
 describe('ItemCard - showStock', () => {
   // current = 1, refillThreshold = 2 → status 'error' → the Card gets the
   // severity tint. This is the fixture that makes the variant gate observable.
-  const lowStockItem: Item = {
+  const lowStockItem = makeItem({
     id: 'item-low-stock',
     name: 'Bananas',
     packageUnit: 'bunch',
@@ -1748,18 +1810,18 @@ describe('ItemCard - showStock', () => {
     consumeAmount: 1,
     createdAt: new Date(),
     updatedAt: new Date(),
-  }
+  })
 
   // targetQuantity 0 → isInactive → the dimming and the sr-only "Inactive"
   // label. This is the fixture that makes the dimming gates observable.
-  const inactiveItem: Item = {
+  const inactiveItem = makeItem({
     ...lowStockItem,
     id: 'item-inactive-showstock',
     name: 'Chestnuts',
     targetQuantity: 0,
     refillThreshold: 0,
     packedQuantity: 0,
-  }
+  })
 
   describe('by default (showStock omitted)', () => {
     it('user can see the quantity text with its unit and the progress bar', async () => {
@@ -1932,7 +1994,7 @@ describe('ItemCard - refill threshold marker', () => {
   it('user can see the refill tick on a package-tracked card', async () => {
     // Given an item whose threshold (4) differs from current (7), target (9)
     // and unpacked (0), so the test cannot pass by reading the wrong number
-    const item: Item = {
+    const item = makeItem({
       id: 'item-refill-pkg',
       name: 'Eggs',
       packageUnit: 'carton',
@@ -1945,7 +2007,7 @@ describe('ItemCard - refill threshold marker', () => {
       consumeAmount: 1,
       createdAt: new Date(),
       updatedAt: new Date(),
-    }
+    })
 
     // When the card renders
     await renderWithRouter(
@@ -1974,7 +2036,7 @@ describe('ItemCard - refill threshold marker', () => {
   it('user can see the refill tick in packages on a measurement-tracked card', async () => {
     // Given 750 g threshold, 500 g per bottle, 2000 g target (4 segments).
     // Current is 1200 g. None of 750, 1.5, 1200, 2000 or 4 coincide.
-    const item: Item = {
+    const item = makeItem({
       id: 'item-refill-measure',
       name: 'Olive Oil',
       packageUnit: 'bottle',
@@ -1989,7 +2051,7 @@ describe('ItemCard - refill threshold marker', () => {
       consumeAmount: 50,
       createdAt: new Date(),
       updatedAt: new Date(),
-    }
+    })
 
     // When the card renders
     await renderWithRouter(
@@ -2012,7 +2074,7 @@ describe('ItemCard - refill threshold marker', () => {
 
   it('user can see the refill tick at the left end when the threshold is 0', async () => {
     // Given an item stocked here with target 6 and refill threshold 0
-    const item: Item = {
+    const item = makeItem({
       id: 'item-refill-zero',
       name: 'Rice',
       packageUnit: 'bag',
@@ -2025,7 +2087,7 @@ describe('ItemCard - refill threshold marker', () => {
       consumeAmount: 1,
       createdAt: new Date(),
       updatedAt: new Date(),
-    }
+    })
 
     // When the card renders
     await renderWithRouter(
@@ -2048,7 +2110,7 @@ describe('ItemCard - refill threshold marker', () => {
     // Given an item with a real threshold (3), joined to a location where it
     // has no stock row. joinItemStock gives it ZERO_STOCK: target 0 and
     // threshold 0.
-    const item: Item = {
+    const item = makeItem({
       id: 'item-refill-elsewhere',
       name: 'Flour',
       packageUnit: 'bag',
@@ -2061,7 +2123,7 @@ describe('ItemCard - refill threshold marker', () => {
       consumeAmount: 1,
       createdAt: new Date(),
       updatedAt: new Date(),
-    }
+    })
     const joined = joinItemStock(item, undefined, 'loc-other')
     expect(joined.targetQuantity).toBe(0)
     expect(joined.refillThreshold).toBe(0)

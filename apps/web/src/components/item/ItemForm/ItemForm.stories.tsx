@@ -2,12 +2,18 @@ import type { Meta, StoryObj } from '@storybook/react'
 import type { ItemFormValues } from '.'
 import { ItemForm } from '.'
 
+// `onDirtyChange` is NOT a meta arg. Its ABSENCE is what puts the form in
+// create mode: ItemForm.tsx:433 disables submit only when the prop is present
+// and the form is not dirty. `exactOptionalPropertyTypes` rejects
+// `onDirtyChange: undefined` as a story override, so the two create-mode
+// stories omit the key and the seven edit-mode stories pass it themselves.
+const onDirtyChange = () => {}
+
 const meta: Meta<typeof ItemForm> = {
   title: 'Components/Item/ItemForm',
   component: ItemForm,
   args: {
     onSubmit: () => {},
-    onDirtyChange: () => {},
   },
 }
 
@@ -48,9 +54,7 @@ const measurementValues: ItemFormValues = {
 
 export const CreateMode: Story = {
   name: 'Create Mode',
-  args: {
-    onDirtyChange: undefined,
-  },
+  args: {},
 }
 
 export const InfoSection: Story = {
@@ -58,6 +62,7 @@ export const InfoSection: Story = {
   args: {
     initialValues: editValues,
     sections: ['info'],
+    onDirtyChange,
   },
 }
 
@@ -66,6 +71,7 @@ export const StockSection: Story = {
   args: {
     initialValues: editValues,
     sections: ['stock'],
+    onDirtyChange,
   },
 }
 
@@ -85,6 +91,7 @@ export const StockSectionDateMode: Story = {
       dueDate: '2026-10-15',
     },
     sections: ['stock'],
+    onDirtyChange,
   },
 }
 
@@ -93,6 +100,7 @@ export const EditMode: Story = {
   args: {
     initialValues: editValues,
     sections: ['stock', 'info'],
+    onDirtyChange,
   },
 }
 
@@ -101,6 +109,7 @@ export const EditMeasurementMode: Story = {
   args: {
     initialValues: measurementValues,
     sections: ['stock', 'info'],
+    onDirtyChange,
   },
 }
 
@@ -115,13 +124,13 @@ export const EditValidationError: Story = {
       name: 'Soy Milk',
     },
     sections: ['stock', 'info'],
+    onDirtyChange,
   },
 }
 
 export const CreateModeEmptyError: Story = {
   name: 'Create Mode (multiple errors visible)',
   args: {
-    onDirtyChange: undefined,
     initialValues: {
       name: '',
     },
@@ -133,5 +142,6 @@ export const Saving: Story = {
   args: {
     initialValues: editValues,
     isPending: true,
+    onDirtyChange,
   },
 }

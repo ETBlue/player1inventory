@@ -1,5 +1,8 @@
 import { ApolloProvider } from '@apollo/client/react'
-import { MockedProvider } from '@apollo/client/testing/react'
+import {
+  MockedProvider,
+  type MockedProviderProps,
+} from '@apollo/client/testing/react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
@@ -332,7 +335,12 @@ function CloudStockHarness() {
     context: { queryClient },
   })
 
-  const mocks = [
+  // Annotated, not inferred. Inferring across the three entries gives each
+  // `variables` the other entries' keys as `?: never` (`itemId?: never`), and
+  // with `exactOptionalPropertyTypes` that is not assignable to
+  // `MockedProvider`'s `mocks`. `NonNullable` because the prop is optional, so
+  // its own type includes `undefined`, which an explicit value may not be.
+  const mocks: NonNullable<MockedProviderProps['mocks']> = [
     {
       request: { query: GetItemDocument, variables: { id: CLOUD_ITEM.id } },
       result: { data: { item: CLOUD_ITEM } },
@@ -354,7 +362,10 @@ function CloudStockHarness() {
   ]
 
   return (
-    <MockedProvider mocks={mocks} addTypename={false}>
+    // No `addTypename`: `MockedProviderProps` in @apollo/client 4.1.6 has no
+    // such prop (node_modules/@apollo/client/testing/react/MockedProvider.d.ts),
+    // so passing it did nothing.
+    <MockedProvider mocks={mocks}>
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
       </QueryClientProvider>

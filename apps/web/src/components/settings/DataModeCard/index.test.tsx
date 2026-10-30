@@ -9,6 +9,7 @@ import {
   activeLocationStorageKey,
 } from '@/hooks/useActiveLocation'
 import { importLocalData } from '@/lib/importData'
+import { callArgs } from '@/test/narrow'
 import { DataModeCard } from '.'
 
 // A cloud payload: stock inline on the item, no itemStocks table.
@@ -475,7 +476,7 @@ describe('DataModeCard — cloud to local copy lands in the local active locatio
     // cloud cuid would write ItemStock rows under a location the local
     // database does not have, i.e. an empty pantry after the reload
     await waitFor(() => expect(importLocalData).toHaveBeenCalled())
-    expect(vi.mocked(importLocalData).mock.calls[0][2]).toBe('office')
+    expect(callArgs(vi.mocked(importLocalData).mock, 0)[2]).toBe('office')
   })
 
   it('user signing out with a copy also keeps their local active location', async () => {
@@ -495,7 +496,7 @@ describe('DataModeCard — cloud to local copy lands in the local active locatio
 
     // Then the copy lands in the local 'office' too
     await waitFor(() => expect(importLocalData).toHaveBeenCalled())
-    expect(vi.mocked(importLocalData).mock.calls[0][2]).toBe('office')
+    expect(callArgs(vi.mocked(importLocalData).mock, 0)[2]).toBe('office')
   })
 
   it('user whose stored local location was deleted gets the copy in their default one', async () => {
@@ -515,6 +516,6 @@ describe('DataModeCard — cloud to local copy lands in the local active locatio
 
     // Then it lands in the local `isDefault` location, not the dangling id
     await waitFor(() => expect(importLocalData).toHaveBeenCalled())
-    expect(vi.mocked(importLocalData).mock.calls[0][2]).toBe('local')
+    expect(callArgs(vi.mocked(importLocalData).mock, 0)[2]).toBe('local')
   })
 })

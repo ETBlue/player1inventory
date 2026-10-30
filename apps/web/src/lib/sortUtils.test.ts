@@ -1,36 +1,61 @@
 import { describe, expect, it } from 'vitest'
-import type { Item } from '@/types'
+import type { PantryItem } from '@/types'
 import { sortItems } from './sortUtils'
 
+// `sortItems` takes `PantryItem[]` — a global `Item` joined with its
+// active-location `ItemStock`. Every fixture below was typed `Item`, which
+// predates the v15/v16 split and let each one leave out whichever stock field
+// it liked.
+//
+// `sortItems` reads exactly FOUR fields off an item: `id`, `name`,
+// `targetQuantity` and `refillThreshold` (`sortUtils.ts` lines 20, 32-33 and
+// 38-50). The quantities, expiry dates and purchase dates all arrive in the
+// three `Map`s, not on the item. So those four are REQUIRED here, and the rest
+// are defaulted — the function cannot read them, and a default that it could
+// read would decide an ordering the test meant to set itself.
+const makePantryItem = (
+  overrides: Pick<
+    PantryItem,
+    'id' | 'name' | 'targetQuantity' | 'refillThreshold'
+  > &
+    Partial<PantryItem>,
+): PantryItem => ({
+  tagIds: [],
+  targetUnit: 'package',
+  consumeAmount: 1,
+  packedQuantity: 0,
+  unpackedQuantity: 0,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  ...overrides,
+})
+
 describe('sortItems', () => {
-  const items: Item[] = [
-    {
+  const items: PantryItem[] = [
+    makePantryItem({
       id: '1',
       name: 'Tomatoes',
-      tagIds: [],
       targetQuantity: 5,
       refillThreshold: 2,
       createdAt: new Date('2026-01-01'),
       updatedAt: new Date('2026-02-10'),
-    },
-    {
+    }),
+    makePantryItem({
       id: '2',
       name: 'Apples',
-      tagIds: [],
       targetQuantity: 10,
       refillThreshold: 3,
       createdAt: new Date('2026-01-02'),
       updatedAt: new Date('2026-02-12'),
-    },
-    {
+    }),
+    makePantryItem({
       id: '3',
       name: 'Pasta',
-      tagIds: [],
       targetQuantity: 3,
       refillThreshold: 1,
       createdAt: new Date('2026-01-03'),
       updatedAt: new Date('2026-02-11'),
-    },
+    }),
   ]
 
   const quantities = new Map([
@@ -108,7 +133,7 @@ describe('sortItems', () => {
       'purchased',
       'asc',
     )
-    expect(sorted[0].id).toBe('3')
+    expect(sorted[0]?.id).toBe('3')
   })
 
   it('sorts null purchase dates last when descending', () => {
@@ -120,7 +145,7 @@ describe('sortItems', () => {
       'purchased',
       'desc',
     )
-    expect(sorted[sorted.length - 1].id).toBe('3')
+    expect(sorted[sorted.length - 1]?.id).toBe('3')
   })
 
   it('sorts by expiring ascending (soonest first)', () => {
@@ -178,20 +203,18 @@ describe('sortItems - stock by progress', () => {
   const createMockItem = (
     id: string,
     name: string,
-    overrides: Partial<Item> = {},
-  ): Item => ({
-    id,
-    name,
-    tagIds: [],
-    targetQuantity: 10,
-    refillThreshold: 2,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    ...overrides,
-  })
+    overrides: Partial<PantryItem> = {},
+  ): PantryItem =>
+    makePantryItem({
+      id,
+      name,
+      targetQuantity: 10,
+      refillThreshold: 2,
+      ...overrides,
+    })
 
   it('sorts by progress percentage ascending', () => {
-    const items: Item[] = [
+    const items: PantryItem[] = [
       createMockItem('1', 'Item A', { targetQuantity: 10 }), // 5/10 = 50%
       createMockItem('2', 'Item B', { targetQuantity: 5 }), // 2/5 = 40%
       createMockItem('3', 'Item C', { targetQuantity: 10 }), // 8/10 = 80%
@@ -212,13 +235,13 @@ describe('sortItems - stock by progress', () => {
     )
 
     // Should sort by percentage: 40%, 50%, 80%
-    expect(sorted[0].id).toBe('2') // 40%
-    expect(sorted[1].id).toBe('1') // 50%
-    expect(sorted[2].id).toBe('3') // 80%
+    expect(sorted[0]?.id).toBe('2') // 40%
+    expect(sorted[1]?.id).toBe('1') // 50%
+    expect(sorted[2]?.id).toBe('3') // 80%
   })
 
   it('sorts by progress percentage descending', () => {
-    const items: Item[] = [
+    const items: PantryItem[] = [
       createMockItem('1', 'Item A', { targetQuantity: 10 }), // 5/10 = 50%
       createMockItem('2', 'Item B', { targetQuantity: 5 }), // 2/5 = 40%
       createMockItem('3', 'Item C', { targetQuantity: 10 }), // 8/10 = 80%
@@ -239,13 +262,13 @@ describe('sortItems - stock by progress', () => {
     )
 
     // Should sort by percentage: 80%, 50%, 40%
-    expect(sorted[0].id).toBe('3') // 80%
-    expect(sorted[1].id).toBe('1') // 50%
-    expect(sorted[2].id).toBe('2') // 40%
+    expect(sorted[0]?.id).toBe('3') // 80%
+    expect(sorted[1]?.id).toBe('1') // 50%
+    expect(sorted[2]?.id).toBe('2') // 40%
   })
 
   it('handles zero targetQuantity gracefully', () => {
-    const items: Item[] = [
+    const items: PantryItem[] = [
       createMockItem('1', 'Item A', { targetQuantity: 0 }), // 5/0 = Infinity
       createMockItem('2', 'Item B', { targetQuantity: 10 }), // 5/10 = 50%
     ]
@@ -264,25 +287,19 @@ describe('sortItems - stock by progress', () => {
     )
 
     // Items with 0 target should sort as if 100% full
-    expect(sorted[0].id).toBe('2') // 50%
-    expect(sorted[1].id).toBe('1') // Treated as 1 (100%)
+    expect(sorted[0]?.id).toBe('2') // 50%
+    expect(sorted[1]?.id).toBe('1') // Treated as 1 (100%)
   })
 })
 
 describe('sortItems - stock by status group', () => {
-  const makeItem = (id: string, refillThreshold: number): Item => ({
-    id,
-    name: `Item ${id}`,
-    tagIds: [],
-    targetQuantity: 10,
-    refillThreshold,
-    packedQuantity: 0,
-    unpackedQuantity: 0,
-    targetUnit: 'package',
-    consumeAmount: 1,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  })
+  const makeItem = (id: string, refillThreshold: number): PantryItem =>
+    makePantryItem({
+      id,
+      name: `Item ${id}`,
+      targetQuantity: 10,
+      refillThreshold,
+    })
 
   // Item A: qty=4, threshold=5, target=10 → error at 40%
   // Item B: qty=3, threshold=3, target=10 → warning at 30%  (lower % than A, but warning comes after error)
@@ -342,19 +359,13 @@ describe('sortItems - stock by status group', () => {
 })
 
 describe('sortItems - stock sort for inactive items', () => {
-  const makeInactive = (id: string): Item => ({
-    id,
-    name: `Item ${id}`,
-    tagIds: [],
-    targetQuantity: 0, // targetQuantity: 0 → isInactive()
-    refillThreshold: 0,
-    packedQuantity: 0,
-    unpackedQuantity: 0,
-    targetUnit: 'package',
-    consumeAmount: 1,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  })
+  const makeInactive = (id: string): PantryItem =>
+    makePantryItem({
+      id,
+      name: `Item ${id}`,
+      targetQuantity: 0, // targetQuantity: 0 → isInactive()
+      refillThreshold: 0,
+    })
 
   it('inactive item with qty > 0 sorts after inactive item with qty = 0 in stock asc', () => {
     // Given: two inactive items, one with stock and one without
@@ -375,8 +386,8 @@ describe('sortItems - stock sort for inactive items', () => {
     )
 
     // Then: empty (0%) sorts before stocked (100%)
-    expect(sorted[0].id).toBe('B') // 0% worst → first in asc
-    expect(sorted[1].id).toBe('A') // 100% best → last in asc
+    expect(sorted[0]?.id).toBe('B') // 0% worst → first in asc
+    expect(sorted[1]?.id).toBe('A') // 100% best → last in asc
   })
 
   it('inactive item with qty > 0 sorts before inactive item with qty = 0 in stock desc', () => {
@@ -397,7 +408,7 @@ describe('sortItems - stock sort for inactive items', () => {
     )
 
     // Then: stocked (100%) sorts before empty (0%)
-    expect(sorted[0].id).toBe('A') // 100% best → first in desc
-    expect(sorted[1].id).toBe('B') // 0% worst → last in desc
+    expect(sorted[0]?.id).toBe('A') // 100% best → first in desc
+    expect(sorted[1]?.id).toBe('B') // 0% worst → last in desc
   })
 })

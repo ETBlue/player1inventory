@@ -100,8 +100,14 @@ describe('DeleteButton', () => {
 
     render(
       <DeleteButton
+        // 'ghost' is not a Button variant (src/components/ui/button.tsx:17-54).
+        // It must stay a NON-destructive variant: the default
+        // 'destructive-ghost' already adds
+        // `text-importance-destructive-foreground`, so with that variant the
+        // className assertion below would pass even if `buttonClassName` were
+        // dropped.
+        buttonVariant="neutral-ghost"
         trigger="Delete"
-        buttonVariant="ghost"
         buttonClassName="text-importance-destructive-foreground"
         dialogTitle="Delete?"
         dialogDescription="Sure?"
@@ -112,6 +118,12 @@ describe('DeleteButton', () => {
     // Given button has custom classes
     const button = screen.getByRole('button', { name: /delete/i })
     expect(button.className).toContain('text-importance-destructive-foreground')
+    // NOTE: nothing here pins `buttonVariant`. `cn` runs tailwind-merge, which
+    // drops the variant's own `text-…-foreground` because `buttonClassName`
+    // sets a conflicting text color. Measured: with
+    // buttonVariant="neutral-ghost" the rendered className holds
+    // `text-importance-destructive-foreground` and NOT
+    // `text-importance-neutral-foreground`.
   })
 
   it('button has aria-label when buttonAriaLabel is provided', () => {

@@ -50,49 +50,27 @@ const meta: Meta<typeof ItemFilters> = {
 export default meta
 type Story = StoryObj<typeof ItemFilters>
 
+// `ItemFilters` reads only `id`, `name`, `tagIds` and `vendorIds` off an item:
+// `calculateTagCount` -> `filterItems` reads `tagIds` (src/lib/filterUtils.ts:42),
+// `filterItemsByVendors` reads `vendorIds` (same file, line 74), and
+// `filterItemsByRecipes` matches on `item.id` (line 85). The per-location stock
+// state (targetQuantity, refillThreshold, packedQuantity, unpackedQuantity)
+// moved off `Item` onto `ItemStock` in v15/v16 and is read nowhere here.
+const makeItem = (
+  overrides: Pick<Item, 'id' | 'name' | 'tagIds'> & Partial<Item>,
+): Item => ({
+  vendorIds: [],
+  targetUnit: 'package',
+  consumeAmount: 1,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  ...overrides,
+})
+
 const mockItems: Item[] = [
-  {
-    id: 'item-1',
-    name: 'Milk',
-    tagIds: ['tag-1', 'tag-4', 'tag-6'],
-    vendorIds: [],
-    targetUnit: 'package',
-    targetQuantity: 2,
-    refillThreshold: 1,
-    packedQuantity: 1,
-    unpackedQuantity: 0,
-    consumeAmount: 1,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'item-2',
-    name: 'Cheese',
-    tagIds: ['tag-1', 'tag-5'],
-    vendorIds: [],
-    targetUnit: 'package',
-    targetQuantity: 1,
-    refillThreshold: 0,
-    packedQuantity: 0,
-    unpackedQuantity: 0,
-    consumeAmount: 1,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'item-3',
-    name: 'Apples',
-    tagIds: ['tag-2', 'tag-4'],
-    vendorIds: [],
-    targetUnit: 'package',
-    targetQuantity: 5,
-    refillThreshold: 2,
-    packedQuantity: 3,
-    unpackedQuantity: 0,
-    consumeAmount: 1,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
+  makeItem({ id: 'item-1', name: 'Milk', tagIds: ['tag-1', 'tag-4', 'tag-6'] }),
+  makeItem({ id: 'item-2', name: 'Cheese', tagIds: ['tag-1', 'tag-5'] }),
+  makeItem({ id: 'item-3', name: 'Apples', tagIds: ['tag-2', 'tag-4'] }),
 ]
 
 const mockVendors: Vendor[] = [
@@ -230,32 +208,12 @@ const controlledTagsWithDepth = [
 ]
 
 const controlledItems: Item[] = [
-  {
+  makeItem({
     id: 'rice',
     name: 'Rice',
     tagIds: ['room-temperature', 'food-and-dining'],
-    targetUnit: 'package',
-    targetQuantity: 0,
-    refillThreshold: 0,
-    packedQuantity: 0,
-    unpackedQuantity: 0,
-    consumeAmount: 1,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'eggs',
-    name: 'Eggs',
-    tagIds: ['refrigerated', 'produce'],
-    targetUnit: 'package',
-    targetQuantity: 0,
-    refillThreshold: 0,
-    packedQuantity: 0,
-    unpackedQuantity: 0,
-    consumeAmount: 1,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
+  }),
+  makeItem({ id: 'eggs', name: 'Eggs', tagIds: ['refrigerated', 'produce'] }),
 ]
 
 /**

@@ -9,8 +9,36 @@ import {
   ItemCountByTagDocument,
   ItemCountByVendorDocument,
 } from '@/generated/graphql'
-import type { Item } from '@/types'
+import { callArgs } from '@/test/narrow'
+import type { Item, StockFields } from '@/types'
 import { toUpdateItemInput, useDeleteItem } from './useItems'
+
+// `toUpdateItemInput` accepts `Partial<Item> & Partial<StockFields>` — the
+// joined shape a `PantryItem` edit produces (src/hooks/useItems.ts:165-167).
+type ItemUpdate = Partial<Item> & Partial<StockFields>
+
+// Add clearable keys with the value `undefined`, as own enumerable properties.
+//
+// `buildInfoUpdates` (src/routes/items/$id/index.tsx:112-134) sets a clearable
+// key to `undefined` rather than deleting it, because `toUpdateItemInput` tests
+// `'packageUnit' in rest` (src/hooks/useItems.ts:184-201) and sends `null` only
+// when the key is PRESENT. Omitting the key would test the opposite branch.
+//
+// `exactOptionalPropertyTypes: true` makes the literal `{ packageUnit:
+// undefined }` unassignable to `Partial<Item>`, which is why the production
+// call site casts (`buildInfoUpdates(values) as Partial<Item>`,
+// src/routes/items/$id/index.tsx:227). `Object.assign` produces the same
+// runtime shape with no cast: it sets each key through [[Set]], so the key
+// exists and its value is `undefined`.
+function withClearedKeys<T extends ItemUpdate>(
+  base: T,
+  keys: readonly (keyof Item)[],
+): T {
+  return Object.assign(
+    base,
+    Object.fromEntries(keys.map((key) => [key, undefined])),
+  )
+}
 
 const mockCloudDeleteItem = vi.fn()
 
@@ -153,7 +181,7 @@ describe('useDeleteItem (cloud mode)', () => {
     await result.current.mutate({ id: 'item-2', vendorIds: [] })
 
     // Then cloudDelete refetchQueries only includes GetItemsDocument and GetRecipesDocument
-    const callArg = mockCloudDeleteItem.mock.calls[0][0]
+    const callArg = callArgs(mockCloudDeleteItem.mock, 0)[0]
     const refetchQueries = callArg?.refetchQueries ?? []
     expect(
       refetchQueries.some(
@@ -198,7 +226,9 @@ describe('toUpdateItemInput', () => {
   it('sends null for an optional field explicitly set to undefined', () => {
     // Given an update that deliberately includes packageUnit as undefined
     // (meaning: clear this field in the DB)
-    const input: Partial<Item> = { packedQuantity: 3, packageUnit: undefined }
+    const input = withClearedKeys<ItemUpdate>({ packedQuantity: 3 }, [
+      'packageUnit',
+    ])
 
     // When converted to GraphQL input
     const result = toUpdateItemInput(input)
@@ -215,11 +245,10 @@ describe('toUpdateItemInput', () => {
   // declared neither and every such save failed outright.
   it('user can clear a saved note and wikidata URL in cloud mode', () => {
     // Given an Info-tab save where the user emptied both fields
-    const input: Partial<Item> = {
-      name: 'Oat Milk',
-      wikidataUrl: undefined,
-      note: undefined,
-    }
+    const input = withClearedKeys<ItemUpdate>({ name: 'Oat Milk' }, [
+      'wikidataUrl',
+      'note',
+    ])
 
     // When converted to GraphQL input
     const result = toUpdateItemInput(input)
@@ -232,7 +261,7 @@ describe('toUpdateItemInput', () => {
 
   it('passes a filled note and wikidata URL straight through', () => {
     // Given an Info-tab save with both fields filled
-    const input: Partial<Item> = {
+    const input: ItemUpdate = {
       wikidataUrl: 'https://www.wikidata.org/wiki/Q8495',
       note: 'Buy the 1L carton.',
     }
@@ -248,7 +277,7 @@ describe('toUpdateItemInput', () => {
   it('serializes a full payload including all optional fields', () => {
     // Given a complete update payload from the full ItemForm
     const dueDate = new Date('2026-12-01')
-    const input: Partial<Item> = {
+    const input: ItemUpdate = {
       packedQuantity: 2,
       unpackedQuantity: 0,
       packageUnit: 'pack',
@@ -270,6 +299,11 @@ describe('toUpdateItemInput', () => {
     expect(result.estimatedDueDays).toBe(7)
     expect(result.expirationThreshold).toBe(3)
     expect(result.expirationMode).toBe('date')
-    expect(result.dueDate).toBe(dueDate.toISOString())
+    // `UpdateItemInput` declares no `dueDate` (src/generated/graphql.ts:1078)
+    // even though `toUpdateItemInput` writes one — `toConfigInput` strips it
+    // again before the mutation (src/hooks/useItems.ts:308-312). So the read
+    // goes through `toHaveProperty`, which checks the same exact value and
+    // matches the sibling test at line 195.
+    expect(result).toHaveProperty('dueDate', dueDate.toISOString())
   })
 })

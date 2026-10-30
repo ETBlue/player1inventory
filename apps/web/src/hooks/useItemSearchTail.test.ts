@@ -36,10 +36,17 @@ const baseStock = {
   consumeAmount: 1,
 }
 
-// THE FIXTURE IS THE TEST. `stockId: undefined` is the ONLY thing that
-// distinguishes "exists globally, stocked at another location" from "stocked
-// here". A fixture where every item carries a stockId passes against an
-// implementation that ignores location entirely.
+// THE FIXTURE IS THE TEST. The PRESENCE or ABSENCE of `stockId` is the ONLY
+// thing that distinguishes "exists globally, stocked at another location" from
+// "stocked here" — `isStockedHere` reads `item.stockId !== undefined`
+// (`src/lib/quantityUtils.ts:490`). A fixture where every item carries a
+// stockId passes against an implementation that ignores location entirely.
+//
+// The "elsewhere" fixtures OMIT the key rather than setting it to `undefined`.
+// That is what `joinItemStock` really produces for an item with no row in the
+// active location (`src/lib/quantityUtils.ts` — `{ ...item, ...ZERO_STOCK,
+// locationId }`, no `stockId` key at all), and `exactOptionalPropertyTypes`
+// rejects the explicit `undefined` anyway.
 const milkHere = {
   id: 'milk',
   name: 'Milk',
@@ -49,7 +56,6 @@ const milkHere = {
 const milkPowderElsewhere = {
   id: 'milk-powder',
   name: 'Milk Powder',
-  stockId: undefined,
   ...baseStock,
 }
 const breadHere = {
@@ -170,9 +176,9 @@ describe('useItemSearchTail (local mode)', () => {
     // Given three unstocked matches in scrambled order
     mockMode('local')
     mockItems([
-      { id: 'c', name: 'coconut milk', stockId: undefined, ...baseStock },
-      { id: 'a', name: 'Almond Milk', stockId: undefined, ...baseStock },
-      { id: 'b', name: 'buttermilk', stockId: undefined, ...baseStock },
+      { id: 'c', name: 'coconut milk', ...baseStock },
+      { id: 'a', name: 'Almond Milk', ...baseStock },
+      { id: 'b', name: 'buttermilk', ...baseStock },
     ])
 
     // When the user searches

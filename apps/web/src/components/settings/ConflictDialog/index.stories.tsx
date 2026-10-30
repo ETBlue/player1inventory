@@ -20,6 +20,12 @@ const meta: Meta<typeof ConflictDialog> = {
 export default meta
 type Story = StoryObj<typeof ConflictDialog>
 
+// `shelves` is required on `ConflictSummary` (src/lib/importData.ts:998) but is
+// NOT in the dialog's `ENTITY_KEYS` list (ConflictDialog.tsx:25-34), so a shelf
+// conflict renders no group and there is no
+// `settings.import.conflictDialog.entityTypes.shelves` label in either locale.
+// Every story therefore keeps it empty: a non-empty value would change nothing
+// on screen and would read as if the dialog handled shelves.
 const emptyConflicts: ConflictSummary = {
   items: [],
   tags: [],
@@ -29,6 +35,7 @@ const emptyConflicts: ConflictSummary = {
   inventoryLogs: [],
   shoppingCarts: [],
   cartItems: [],
+  shelves: [],
 }
 
 export const FewConflicts: Story = {
@@ -74,6 +81,7 @@ export const ManyConflicts: Story = {
       ],
       shoppingCarts: [{ id: 'cart-1', name: 'cart-1', matchReasons: ['id'] }],
       cartItems: [{ id: 'ci-1', name: 'ci-1', matchReasons: ['id'] }],
+      shelves: [],
     },
   },
 }

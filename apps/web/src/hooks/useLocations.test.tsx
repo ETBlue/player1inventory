@@ -73,10 +73,19 @@ const cloudLocation = (
   updatedAt: '2026-08-02T11:00:00.000Z',
 })
 
-const CLOUD_LOCATIONS = [
-  cloudLocation(CLOUD_DEFAULT_ID, 'Cloud Warehouse', 0, true),
-  cloudLocation(CLOUD_OTHER_ID, 'Cloud Office', 1, false),
-]
+// Named rather than read back out of the array. `noUncheckedIndexedAccess` is
+// on, so `CLOUD_OFFICE` is `… | undefined` and spreading it was four
+// `TS2769`s; naming the two rows removes the index access instead of narrowing
+// it, and the call sites below say which location they mean.
+const CLOUD_WAREHOUSE = cloudLocation(
+  CLOUD_DEFAULT_ID,
+  'Cloud Warehouse',
+  0,
+  true,
+)
+const CLOUD_OFFICE = cloudLocation(CLOUD_OTHER_ID, 'Cloud Office', 1, false)
+
+const CLOUD_LOCATIONS = [CLOUD_WAREHOUSE, CLOUD_OFFICE]
 
 const getLocationsMock = {
   request: { query: GetLocationsDocument },
@@ -110,7 +119,25 @@ async function seedLocalLocations() {
   ])
 }
 
-function makeWrapper(mocks: MockedProviderProps['mocks']) {
+// WHY THE FOUR CLOUD MUTATION CALLS BELOW AWAIT INSIDE `act`.
+//
+// Each of these hooks returns a UNION of its two branches — the local branch's
+// `UseMutationResult<Location, …>` and the cloud branch's own hand-built object
+// — and the two disagree on the row shape: `Location.createdAt` is a `Date`,
+// the GraphQL row's is an ISO string. `await act(() => mutateAsync(…))` makes
+// `act`'s generic infer its type parameter from the FIRST member of that union
+// and then reject the second, which was four `TS2769`s.
+//
+// Awaiting inside the callback makes the callback `Promise<void>`, so nothing
+// about the union reaches `act`'s signature. Where the result is asserted it is
+// captured in a local typed `Awaited<ReturnType<typeof …>>` — the whole union,
+// with no cast and no `!`.
+
+// `NonNullable`, not `MockedProviderProps['mocks']`. That type includes
+// `undefined`, and with `exactOptionalPropertyTypes` an explicit `undefined`
+// cannot be handed to `MockedProvider`'s optional `mocks` prop. Every call site
+// here passes a real array, so requiring one is the accurate signature.
+function makeWrapper(mocks: NonNullable<MockedProviderProps['mocks']>) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -216,7 +243,12 @@ describe('cloud location mutations', () => {
     })
 
     // When the user creates a location
-    const returned = await act(() => result.current.mutateAsync('Cloud Shed'))
+    let returned:
+      | Awaited<ReturnType<typeof result.current.mutateAsync>>
+      | undefined
+    await act(async () => {
+      returned = await result.current.mutateAsync('Cloud Shed')
+    })
 
     // Then the cloud mutation ran and returned the new location
     expect(returned).toMatchObject({ id: created.id, name: 'Cloud Shed' })
@@ -226,7 +258,7 @@ describe('cloud location mutations', () => {
 
   it('user can rename a location in cloud mode', async () => {
     // Given a cloud UpdateLocation mock expecting a name-only input
-    const renamed = { ...CLOUD_LOCATIONS[1], name: 'Cloud Studio' }
+    const renamed = { ...CLOUD_OFFICE, name: 'Cloud Studio' }
     const { result } = renderHook(() => useUpdateLocation(), {
       wrapper: makeWrapper([
         getLocationsMock,
@@ -241,12 +273,15 @@ describe('cloud location mutations', () => {
     })
 
     // When the user renames a location
-    const returned = await act(() =>
-      result.current.mutateAsync({
+    let returned:
+      | Awaited<ReturnType<typeof result.current.mutateAsync>>
+      | undefined
+    await act(async () => {
+      returned = await result.current.mutateAsync({
         id: CLOUD_OTHER_ID,
         updates: { name: 'Cloud Studio' },
-      }),
-    )
+      })
+    })
 
     // Then the cloud mutation ran with the new name
     expect(returned).toMatchObject({ name: 'Cloud Studio' })
@@ -283,7 +318,12 @@ describe('cloud location mutations', () => {
     })
 
     // When the user deletes a location
-    const returned = await act(() => result.current.mutateAsync(CLOUD_OTHER_ID))
+    let returned:
+      | Awaited<ReturnType<typeof result.current.mutateAsync>>
+      | undefined
+    await act(async () => {
+      returned = await result.current.mutateAsync(CLOUD_OTHER_ID)
+    })
 
     // Then the cloud mutation ran
     expect(returned).toBe(true)
@@ -295,8 +335,8 @@ describe('cloud location mutations', () => {
     // Given a cloud ReorderLocations mock returning the reordered list
     // (`reorderLocations` returns [Location!]!, unlike reorderShelves' Boolean)
     const reordered = [
-      { ...CLOUD_LOCATIONS[1], order: 0 },
-      { ...CLOUD_LOCATIONS[0], order: 1 },
+      { ...CLOUD_OFFICE, order: 0 },
+      { ...CLOUD_WAREHOUSE, order: 1 },
     ]
     const wrapper = makeWrapper([
       getLocationsMock,
@@ -320,9 +360,12 @@ describe('cloud location mutations', () => {
     )
 
     // When the user drags the second location above the first
-    await act(() =>
-      result.current.reorder.mutateAsync([CLOUD_OTHER_ID, CLOUD_DEFAULT_ID]),
-    )
+    await act(async () => {
+      await result.current.reorder.mutateAsync([
+        CLOUD_OTHER_ID,
+        CLOUD_DEFAULT_ID,
+      ])
+    })
 
     // Then the mutation's own result is written into the GetLocations cache
     // entry, so the list re-renders in the new order with no second read
@@ -394,7 +437,7 @@ describe('cloud default-location delete guard', () => {
 // stops; only a policy that also hits the network can reach the second.
 describe('useLocations (cloud) — a stale persisted cache', () => {
   function makeCloudWrapper(
-    mocks: MockedProviderProps['mocks'],
+    mocks: NonNullable<MockedProviderProps['mocks']>,
     cache: ReturnType<typeof createCache>,
   ) {
     const queryClient = new QueryClient({
@@ -427,7 +470,7 @@ describe('useLocations (cloud) — a stale persisted cache', () => {
   it('user sees a location added on another device after reopening the app', async () => {
     // Given a restored cache holding only the location this device knew about,
     // while the account now has two
-    const cache = warmCache([CLOUD_LOCATIONS[0]])
+    const cache = warmCache([CLOUD_WAREHOUSE])
     const { result } = renderHook(() => useLocations(), {
       wrapper: makeCloudWrapper([getLocationsMock], cache),
     })
@@ -477,7 +520,7 @@ describe('useLocations (cloud) — a stale persisted cache', () => {
     // Given a stale cache that knows only the first location, and a gate asked
     // about the second — mounted BEFORE `useLocations()`, the order in which a
     // `cache-first` observer could get stuck on the stale entry
-    const cache = warmCache([CLOUD_LOCATIONS[0]])
+    const cache = warmCache([CLOUD_WAREHOUSE])
     const { result } = renderHook(
       () => {
         const known = useCloudLocationKnown(CLOUD_OTHER_ID, true)

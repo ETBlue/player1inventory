@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
+import type { JSX } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { elementAt } from '@/test/narrow'
 import type { Vendor } from '@/types'
 
 // Mock TanStack Router
@@ -70,27 +72,50 @@ const mockVendors: Vendor[] = [
   { id: '2', name: "Trader Joe's", createdAt: new Date() },
 ]
 
+// `useVendors`, `useItemCountByVendor`, `useDeleteVendor` and
+// `useCreateVendor` each return a union of two shapes: the cloud branch's
+// hand-rolled object, or TanStack's own result in local mode (see
+// `hooks/useVendors.ts` lines 42, 234, 196 and 96). The cloud branch is the
+// simpler half of each union and can be built in full, so these mocks return
+// that shape and need no cast.
+//
+// What the page reads: `vendors/index.tsx:22` reads `useVendors().data` and
+// `.isLoading`; `:24` and `:77` read `useDeleteVendor().mutate(id)`;
+// `NewVendorDialog` reads `useCreateVendor().mutateAsync` and `.isPending`.
 const setupMocks = (
   vendors: Vendor[] = mockVendors,
   vendorCounts: Map<string, number> = new Map(),
 ) => {
-  const mutate = vi.fn()
+  const mutate = vi.fn(async (_id: string) => {})
   const goBack = vi.fn()
   vi.mocked(useVendors).mockReturnValue({
     data: vendors,
     isLoading: false,
-  } as ReturnType<typeof useVendors>)
-  vi.mocked(useDeleteVendor).mockReturnValue({ mutate } as ReturnType<
-    typeof useDeleteVendor
-  >)
+    isError: false,
+  })
+  vi.mocked(useDeleteVendor).mockReturnValue({
+    mutate,
+    mutateAsync: vi.fn(async (_id: string) => true),
+    isPending: false,
+  })
   vi.mocked(useVendorItemCounts).mockReturnValue(vendorCounts)
   vi.mocked(useItemCountByVendor).mockReturnValue({
     data: 0,
-  } as ReturnType<typeof useItemCountByVendor>)
+    isLoading: false,
+    isError: false,
+  })
   vi.mocked(useCreateVendor).mockReturnValue({
-    mutateAsync: vi.fn().mockResolvedValue({ id: 'new-id', name: 'Test' }),
+    mutate: vi.fn(async (_name: string) => {}),
+    // `userId` is required by the `CreateVendorMutation` payload type. No
+    // assertion in this file reads it; `NewVendorDialog.tsx:45` only reads
+    // `id`. The value is arbitrary.
+    mutateAsync: vi.fn(async (_name: string) => ({
+      id: 'new-id',
+      name: 'Test',
+      userId: 'test-user',
+    })),
     isPending: false,
-  } as unknown as ReturnType<typeof useCreateVendor>)
+  })
   vi.mocked(useAppNavigation).mockReturnValue({ goBack })
   return { mutate, goBack }
 }
@@ -188,7 +213,8 @@ describe('Vendor Settings Page', () => {
     const user = userEvent.setup()
 
     // When user clicks back button (ArrowLeft icon button)
-    const backButton = screen.getAllByRole('button')[0] // First button is the back button
+    // First button is the back button
+    const backButton = elementAt(screen.getAllByRole('button'), 0)
     await user.click(backButton)
 
     // Then goBack is called (with /settings fallback configured in useAppNavigation)

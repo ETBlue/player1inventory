@@ -13,6 +13,7 @@ import { createShelf } from '@/db/operations'
 import * as useShelvesModule from '@/hooks/useShelves'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
+import { callArgs, defined } from '@/test/narrow'
 
 describe('Shelf Settings - Info Tab', () => {
   let queryClient: QueryClient
@@ -168,13 +169,23 @@ describe('Shelf Settings - Info Tab', () => {
 
     it('user can delete a shelf and navigate to the shelf list', async () => {
       // Given: deleteShelf.mutate that never calls onSuccess (mutation pending)
-      const mutateFn = vi.fn()
+      // The signature is the cloud branch's own (hooks/useShelves.ts:284), so
+      // `mutateFn.mock.calls[0]` is a typed 2-tuple and the options argument
+      // read below needs no cast.
+      const mutateFn = vi.fn(
+        async (
+          _id: string,
+          _options?: {
+            onSuccess?: () => void
+            onError?: (err: unknown) => void
+          },
+        ) => {},
+      )
       vi.spyOn(useShelvesModule, 'useDeleteShelfMutation').mockReturnValue({
         mutate: mutateFn,
+        mutateAsync: vi.fn(async (_id: string) => true),
         isPending: false,
-      } as unknown as ReturnType<
-        typeof useShelvesModule.useDeleteShelfMutation
-      >)
+      })
 
       const shelf = await createShelf({
         name: 'Fridge',
@@ -214,10 +225,11 @@ describe('Shelf Settings - Info Tab', () => {
       expect(screen.getByLabelText('Shelf name')).toBeInTheDocument()
 
       // When onSuccess fires
-      const capturedOptions = mutateFn.mock.calls[0][1] as {
-        onSuccess: () => void
-      }
-      capturedOptions.onSuccess()
+      const capturedOptions = defined(
+        callArgs(mutateFn.mock, 0)[1],
+        'the options argument of the first mutate call',
+      )
+      defined(capturedOptions.onSuccess, 'the onSuccess callback')()
 
       // Then navigation happens (form is gone)
       await waitFor(() => {

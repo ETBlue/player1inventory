@@ -18,6 +18,8 @@ import {
   updateRecipeLastCookedAt,
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+import { elementAt } from '@/test/narrow'
+import { TagColor } from '@/types'
 
 const divider = () => screen.getByText(/not stocked here/i)
 
@@ -357,8 +359,8 @@ describe('Use (Cooking) Page', () => {
         .filter((l) => l.itemId === item.id)
         .toArray()
       expect(logs.length).toBeGreaterThan(0)
-      expect(logs[0].note).toBe('consumed via Pasta')
-      expect(logs[0].delta).toBeLessThan(0)
+      expect(elementAt(logs, 0).note).toBe('consumed via Pasta')
+      expect(elementAt(logs, 0).delta).toBeLessThan(0)
     })
 
     // And the recipes are deselected (Done/Cancel disabled again)
@@ -643,7 +645,10 @@ describe('Use (Cooking) Page', () => {
 
   it('user sees expiration but not tag badges when cooking a recipe', async () => {
     // Given an item with a tag and a future due date
-    const tagType = await createTagType({ name: 'Category', color: 'blue' })
+    const tagType = await createTagType({
+      name: 'Category',
+      color: TagColor.blue,
+    })
     const tag = await createTag({ typeId: tagType.id, name: 'Dairy' })
 
     const futureDate = new Date()
@@ -1543,7 +1548,7 @@ describe('Use (Cooking) Page', () => {
     })
 
     // And the single call includes both items
-    const callArg = spy.mock.calls[0][0]
+    const callArg = elementAt(spy.mock.calls)[0]
     expect(callArg.items).toHaveLength(2)
     expect(callArg.recipeIds).toHaveLength(2)
 
@@ -1572,7 +1577,7 @@ describe('Use (Cooking) Page', () => {
     // When user navigates to sort by count descending
     await router.navigate({
       to: '/cooking',
-      search: { sort: 'count', dir: 'desc', q: '' },
+      search: { sort: 'count', dir: 'desc', q: '', expanded: '' },
     })
 
     // Then Omelette (2 items) appears before Toast (0 items)
@@ -1584,14 +1589,14 @@ describe('Use (Cooking) Page', () => {
             el.textContent?.trim() === 'Omelette' ||
             el.textContent?.trim() === 'Toast',
         )
-      expect(buttons[0].textContent?.trim()).toBe('Omelette')
-      expect(buttons[1].textContent?.trim()).toBe('Toast')
+      expect(elementAt(buttons, 0).textContent?.trim()).toBe('Omelette')
+      expect(elementAt(buttons, 1).textContent?.trim()).toBe('Toast')
     })
   })
 
   it('user can sort recipes by most recently cooked, uncooked last', async () => {
     // Given two recipes: one recently cooked, one never cooked
-    const _recipe1 = await createRecipe({ name: 'Alpha' })
+    await createRecipe({ name: 'Alpha' })
     const recipe2 = await createRecipe({ name: 'Beta' })
 
     // Mark recipe2 as recently cooked
@@ -1606,7 +1611,7 @@ describe('Use (Cooking) Page', () => {
     // When user sorts by last cooked ascending (most recently cooked first, like Expiring)
     await router.navigate({
       to: '/cooking',
-      search: { sort: 'recent', dir: 'asc', q: '' },
+      search: { sort: 'recent', dir: 'asc', q: '', expanded: '' },
     })
 
     // Then Beta (recently cooked) appears before Alpha (never cooked)
@@ -1618,8 +1623,8 @@ describe('Use (Cooking) Page', () => {
             el.textContent?.trim() === 'Alpha' ||
             el.textContent?.trim() === 'Beta',
         )
-      expect(buttons[0].textContent?.trim()).toBe('Beta')
-      expect(buttons[1].textContent?.trim()).toBe('Alpha')
+      expect(elementAt(buttons, 0).textContent?.trim()).toBe('Beta')
+      expect(elementAt(buttons, 1).textContent?.trim()).toBe('Alpha')
     })
   })
 
@@ -1712,7 +1717,7 @@ describe('Use (Cooking) Page', () => {
         .filter((l) => l.itemId === item.id)
         .toArray()
       expect(logs.length).toBeGreaterThan(0)
-      expect(logs[0].note).toBe('consumed via Pasta Bolognese')
+      expect(elementAt(logs, 0).note).toBe('consumed via Pasta Bolognese')
     })
   })
 
@@ -1774,17 +1779,27 @@ describe('Use (Cooking) Page', () => {
   const makeUnstockedItem = async (name: string) => {
     const now = new Date()
     const id = crypto.randomUUID()
-    await db.items.put({ id, name, tagIds: [], createdAt: now, updatedAt: now })
+    // `targetUnit` and `consumeAmount` are GLOBAL configuration and have lived
+    // on `Item` since v16, not on `ItemStock`. This fixture still wrote both
+    // onto the stock row, which left the item row with no `targetUnit` and no
+    // `consumeAmount` at all — fields `Item` declares as required.
+    await db.items.put({
+      id,
+      name,
+      tagIds: [],
+      targetUnit: 'package',
+      consumeAmount: 1,
+      createdAt: now,
+      updatedAt: now,
+    })
     await db.itemStocks.put({
       id: `stock-${id}`,
       itemId: id,
       locationId: 'loc-elsewhere',
-      targetUnit: 'package',
       targetQuantity: 0,
       refillThreshold: 0,
       packedQuantity: 3,
       unpackedQuantity: 0,
-      consumeAmount: 1,
       createdAt: now,
       updatedAt: now,
     })

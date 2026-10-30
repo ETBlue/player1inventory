@@ -3,6 +3,8 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { CheckoutMutationVariables } from '@/generated/graphql'
+import { elementAt } from '@/test/narrow'
 import {
   useAbandonCart,
   useAddToCart,
@@ -34,9 +36,28 @@ vi.mock('@/db/operations', async (importOriginal) => {
 // produces — amountPerPackage 6, 2 packed, 3 unpacked, 1 bought.
 const CHECKOUT_ITEMS = [{ itemId: 'item-1', quantity: 3.5 }]
 
-const mockCloudCheckout = vi.fn().mockResolvedValue({
-  data: { checkout: { id: 'cart-1', status: 'completed' } },
-})
+// The option object Apollo hands a generated mutate function, with the real
+// generated variables type. This is the file issue #340 was filed for: three
+// `useCheckout` calls here omitted the required `items` argument and the whole
+// gate stayed green, because nothing type-checked the file AND this mock
+// ignored its arguments. Both halves are now closed — `tsconfig.test.json`
+// checks the file, and `variables` below is the schema's own shape, so an
+// assertion naming a field `CheckoutMutationVariables` does not declare fails
+// to compile.
+type MutateCall<V> = {
+  variables: V
+  // Apollo's own type is `InternalRefetchQueriesInclude`: a mixed list of
+  // operation-name strings and `{ query, variables }` objects. The assertions
+  // below narrow each entry with their own type predicate, so the list is left
+  // as `unknown[]` rather than restating Apollo's union.
+  refetchQueries?: unknown[]
+}
+
+const mockCloudCheckout = vi
+  .fn<(options: MutateCall<CheckoutMutationVariables>) => Promise<unknown>>()
+  .mockResolvedValue({
+    data: { checkout: { id: 'cart-1', status: 'completed' } },
+  })
 const mockAbandonCartFn = vi
   .fn()
   .mockResolvedValue({ data: { abandonCart: { id: 'cart-1' } } })
@@ -261,15 +282,16 @@ describe('useCheckout (cloud mode)', () => {
     )
 
     // More specifically: GetItemsDocument must be included (not just Cart-related docs)
-    const callArgs = mockCloudCheckout.mock.calls[0][0]
-    const queriedDocs = callArgs.refetchQueries
+    const callArgs = elementAt(mockCloudCheckout.mock.calls)[0]
+    const queriedDocs = (callArgs.refetchQueries ?? [])
       .filter(
-        (rq: unknown) => typeof rq === 'object' && rq !== null && 'query' in rq,
+        (
+          rq,
+        ): rq is {
+          query: { definitions: Array<{ name?: { value: string } }> }
+        } => typeof rq === 'object' && rq !== null && 'query' in rq,
       )
-      .map(
-        (rq: { query: { definitions: Array<{ name?: { value: string } }> } }) =>
-          rq.query.definitions[0]?.name?.value,
-      )
+      .map((rq) => rq.query.definitions[0]?.name?.value)
     expect(queriedDocs).toContain('GetItems')
   })
 })
@@ -367,7 +389,7 @@ describe('useAddToCart (cloud mode)', () => {
     // (not strings). String-based refetchQueries are silently skipped when the
     // shopping index is unmounted — DocumentNode-based refetches always fire.
     expect(mockAddToCartFn).toHaveBeenCalled()
-    const callArgs = mockAddToCartFn.mock.calls[0][0]
+    const callArgs = elementAt(mockAddToCartFn.mock.calls)[0]
     const refetchQueries: unknown[] = callArgs?.refetchQueries ?? []
     const docNames = refetchQueries
       .filter(
@@ -399,7 +421,7 @@ describe('useRemoveFromCart (cloud mode)', () => {
 
     // Then the mutation call must include AllCartItems and AllCarts as DocumentNodes
     expect(mockRemoveFromCartFn).toHaveBeenCalled()
-    const callArgs = mockRemoveFromCartFn.mock.calls[0][0]
+    const callArgs = elementAt(mockRemoveFromCartFn.mock.calls)[0]
     const refetchQueries: unknown[] = callArgs?.refetchQueries ?? []
     const docNames = refetchQueries
       .filter(
@@ -431,7 +453,7 @@ describe('useUpdateCartItem (cloud mode)', () => {
 
     // Then the mutation call must include AllCartItems and AllCarts as DocumentNodes
     expect(mockUpdateCartItemFn).toHaveBeenCalled()
-    const callArgs = mockUpdateCartItemFn.mock.calls[0][0]
+    const callArgs = elementAt(mockUpdateCartItemFn.mock.calls)[0]
     const refetchQueries: unknown[] = callArgs?.refetchQueries ?? []
     const docNames = refetchQueries
       .filter(
@@ -465,13 +487,13 @@ describe('useCheckout (cloud mode) — AllCartItems and AllCarts refetch strateg
     })
 
     // Then the computed per-item totals reach the server
-    expect(mockCloudCheckout.mock.calls[0][0].variables.items).toEqual(
+    expect(elementAt(mockCloudCheckout.mock.calls)[0].variables.items).toEqual(
       CHECKOUT_ITEMS,
     )
 
     // And the mutation call must include AllCartItems and AllCarts as DocumentNodes
     expect(mockCloudCheckout).toHaveBeenCalled()
-    const callArgs = mockCloudCheckout.mock.calls[0][0]
+    const callArgs = elementAt(mockCloudCheckout.mock.calls)[0]
     const refetchQueries: unknown[] = callArgs?.refetchQueries ?? []
     const docNames = refetchQueries
       .filter(
@@ -503,7 +525,7 @@ describe('useAbandonCart (cloud mode)', () => {
 
     // Then the mutation call must include AllCartItems and AllCarts as DocumentNodes
     expect(mockAbandonCartFn).toHaveBeenCalled()
-    const callArgs = mockAbandonCartFn.mock.calls[0][0]
+    const callArgs = elementAt(mockAbandonCartFn.mock.calls)[0]
     const refetchQueries: unknown[] = callArgs?.refetchQueries ?? []
     const docNames = refetchQueries
       .filter(

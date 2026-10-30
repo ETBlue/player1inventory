@@ -11,6 +11,11 @@ import { db } from '@/db'
 import { createVendor } from '@/db/operations'
 import * as useVendorsModule from '@/hooks/useVendors'
 import { routeTree } from '@/routeTree.gen'
+import type { Vendor } from '@/types'
+
+// The argument `useUpdateVendor`'s `mutate`/`mutateAsync` take in both
+// branches (hooks/useVendors.ts:147 and :162).
+type UpdateVendorArgs = { id: string; updates: Partial<Omit<Vendor, 'id'>> }
 
 describe('Vendor Detail - Info Tab', () => {
   let queryClient: QueryClient
@@ -168,8 +173,16 @@ describe('Vendor Detail - Info Tab', () => {
 
     it('user is not navigated back when mutateAsync never resolves (broken cloud mode regression guard)', async () => {
       // Given: mutateAsync fires but never resolves (broken cloud mode)
+      // The cloud branch of `useUpdateVendor` (hooks/useVendors.ts:145)
+      // returns `mutate`, `mutateAsync` and `isPending`. Returning that whole
+      // shape needs no cast. `vendors/$id/index.tsx:47` reads `mutateAsync`
+      // and `:50` reads `isPending`; `mutate` is never called here.
       vi.spyOn(useVendorsModule, 'useUpdateVendor').mockReturnValue({
-        mutateAsync: vi.fn(() => new Promise(() => {})), // never resolves
+        mutate: vi.fn(async (_args: UpdateVendorArgs) => {}),
+        // never resolves
+        mutateAsync: vi.fn(
+          (_args: UpdateVendorArgs) => new Promise<undefined>(() => {}),
+        ),
         isPending: false,
       })
 
@@ -199,7 +212,8 @@ describe('Vendor Detail - Info Tab', () => {
     it('user is navigated back after saving when mutateAsync resolves (fixed cloud mode)', async () => {
       // Given: mutateAsync resolves (fixed cloud mode behaviour)
       vi.spyOn(useVendorsModule, 'useUpdateVendor').mockReturnValue({
-        mutateAsync: vi.fn(() => Promise.resolve()),
+        mutate: vi.fn(async (_args: UpdateVendorArgs) => {}),
+        mutateAsync: vi.fn(async (_args: UpdateVendorArgs) => undefined),
         isPending: false,
       })
 

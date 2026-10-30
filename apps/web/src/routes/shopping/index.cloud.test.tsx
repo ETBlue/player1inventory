@@ -6,9 +6,11 @@ import {
 } from '@tanstack/react-router'
 import { render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as Generated from '@/generated/graphql'
 import { activeLocationStorageKey } from '@/hooks/useActiveLocation'
 import { routeTree } from '@/routeTree.gen'
 import { CLOUD_LOCATIONS, LOC_A, LOC_B } from '@/test/cloudFixtures'
+import { defined, elementAt } from '@/test/narrow'
 import { cartIdFor } from '@/types'
 
 // The shopping index in CLOUD mode, after PR 3b re-keyed `Cart.id`.
@@ -31,7 +33,12 @@ const emptyQuery = { data: undefined, loading: false, error: undefined }
 const mockUsePantryDataQuery = vi.fn()
 const mockUseGetVendorsQuery = vi.fn()
 const mockUseAllCartsQuery = vi.fn()
-const mockUseAllCartItemsQuery = vi.fn()
+// Typed from the generated hook, so the fetch-policy test at the bottom reads
+// a real `QueryHookOptions` rather than an `any`. A type-only namespace import
+// is erased, so it is unaffected by the `vi.mock` below.
+type AllCartItemsOptions = Parameters<typeof Generated.useAllCartItemsQuery>[0]
+const mockUseAllCartItemsQuery =
+  vi.fn<(options?: AllCartItemsOptions) => unknown>()
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
@@ -66,7 +73,7 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     useAllCartsQuery: () => mockUseAllCartsQuery(),
     // The OPTIONS are forwarded, not dropped, so the fetch-policy test at the
     // bottom of this file can read what the route actually passed.
-    useAllCartItemsQuery: (options?: unknown) =>
+    useAllCartItemsQuery: (options?: AllCartItemsOptions) =>
       mockUseAllCartItemsQuery(options),
     useGetTagsQuery: () => emptyQuery,
     useGetTagTypesQuery: () => emptyQuery,
@@ -383,10 +390,14 @@ describe('Shopping index page — cloud mode', () => {
     // `errorPolicy` — `errorPolicy: 'all'` would move the cached list into
     // `previousData` and leave `data` undefined for an offline user (measured
     // on Apollo Client 4.1.6, pinned in `useLocations.test.tsx`).
-    const options = mockUseAllCartItemsQuery.mock.calls.at(-1)?.[0] as
-      | Record<string, unknown>
-      | undefined
-    expect(options?.fetchPolicy).toBe('cache-and-network')
-    expect(options?.errorPolicy).toBeUndefined()
+    // `defined`, not `?.`: `expect(options?.errorPolicy).toBeUndefined()`
+    // also passes when the hook was never called with options at all.
+    const calls = mockUseAllCartItemsQuery.mock.calls
+    const options = defined(
+      elementAt(calls, calls.length - 1)[0],
+      'the options AllCartItems was issued with',
+    )
+    expect(options.fetchPolicy).toBe('cache-and-network')
+    expect(options.errorPolicy).toBeUndefined()
   })
 })

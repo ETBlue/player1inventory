@@ -1,7 +1,6 @@
-import type { UseQueryResult } from '@tanstack/react-query'
 import { renderHook } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { Item, Tag } from '@/types'
+import type { PantryItem, Tag } from '@/types'
 import * as hooks from './index'
 import { useTagItemCounts } from './useTagItemCounts'
 
@@ -10,7 +9,10 @@ vi.mock('./index', () => ({
   useTags: vi.fn(),
 }))
 
-function makeItem(id: string, name: string, tagIds: string[]): Item {
+// `useTagItemCounts` reads `item.tagIds` off each row and nothing else
+// (`useTagItemCounts.ts`). `useItems()` hands back joined `PantryItem` rows, so
+// the stock fields below are required by the type rather than by the hook.
+function makeItem(id: string, name: string, tagIds: string[]): PantryItem {
   return {
     id,
     name,
@@ -21,25 +23,40 @@ function makeItem(id: string, name: string, tagIds: string[]): Item {
     packedQuantity: 0,
     unpackedQuantity: 0,
     consumeAmount: 1,
-    targetUnit: 'package' as const,
+    targetUnit: 'package',
     createdAt: new Date(),
     updatedAt: new Date(),
-  } as Item
+  }
 }
 
+// `parentId` is OMITTED when no parent is given, never set to `undefined`:
+// `Tag.parentId` is optional and `exactOptionalPropertyTypes` rejects the
+// explicit `undefined`. A top-level tag really has no key.
 function makeTag(id: string, name: string, parentId?: string): Tag {
-  return { id, name, typeId: 'type1', parentId } as Tag
+  return {
+    id,
+    name,
+    typeId: 'type1',
+    ...(parentId === undefined ? {} : { parentId }),
+  }
 }
 
-function mockData(items: Item[], tags: Tag[]) {
+// Both mocked hooks are built field by field, not cast — `useItems()`'s local
+// branch (`useItems.ts:431`) and `useTags()`'s local branch
+// (`useTags.ts:242`).
+function mockData(items: PantryItem[], tags: Tag[]) {
   vi.mocked(hooks.useItems).mockReturnValue({
     data: items,
-  } as Partial<UseQueryResult<Item[]>> as UseQueryResult<Item[]>)
+    isLoading: false,
+    isFetching: false,
+    isError: false,
+    refetch: vi.fn(),
+  })
   vi.mocked(hooks.useTags).mockReturnValue({
     data: tags,
     isLoading: false,
     isError: false,
-  } as ReturnType<typeof hooks.useTags>)
+  })
 }
 
 describe('useTagItemCounts', () => {

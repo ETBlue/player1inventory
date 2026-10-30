@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { elementAt } from '@/test/narrow'
 import { buildCheckoutLogQuantities } from './checkoutQuantities'
 
 // Every fixture here sets BOTH `amountPerPackage` AND a non-zero
@@ -31,9 +32,9 @@ describe('buildCheckoutLogQuantities', () => {
     // quantity is added: (2 + 3/6) + 1
     expect(result).toEqual([{ itemId: 'item-1', quantity: 3.5 }])
     // And not the raw sum the cloud resolver used to write
-    expect(result[0].quantity).not.toBe(6)
+    expect(elementAt(result, 0).quantity).not.toBe(6)
     // And not the delta folded into the unpacked amount before converting
-    expect(result[0].quantity).not.toBeCloseTo(2 + 4 / 6, 5)
+    expect(elementAt(result, 0).quantity).not.toBeCloseTo(2 + 4 / 6, 5)
   })
 
   it('user buying a fractional pack quantity gets the delta added in packs', () => {

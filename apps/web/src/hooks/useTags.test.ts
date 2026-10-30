@@ -3,6 +3,8 @@ import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { defined, elementAt } from '@/test/narrow'
+import { TagColor } from '@/types'
 import {
   useCreateTag,
   useCreateTagType,
@@ -121,12 +123,12 @@ describe('useCreateTagType (cloud mode)', () => {
     })
     const created = await result.current.mutateAsync({
       name: 'Category',
-      color: 'teal',
+      color: TagColor.teal,
     })
 
     // Then it delegates to cloudCreate
     expect(mockCloudCreateTagType).toHaveBeenCalledWith({
-      variables: { name: 'Category', color: 'teal' },
+      variables: { name: 'Category', color: TagColor.teal },
     })
     expect((created as { name: string } | undefined)?.name).toBe('Category')
   })
@@ -139,7 +141,9 @@ describe('useUpdateTagType (cloud mode)', () => {
     // Given cloud mode and Apollo mutation resolves
     localStorage.setItem('data-mode', 'cloud')
     mockCloudUpdateTagType.mockResolvedValue({
-      data: { updateTagType: { id: 'tt-1', name: 'New Name', color: 'red' } },
+      data: {
+        updateTagType: { id: 'tt-1', name: 'New Name', color: TagColor.rose },
+      },
     })
     mockUseGetTagTypesQuery.mockReturnValue({
       data: undefined,
@@ -153,12 +157,12 @@ describe('useUpdateTagType (cloud mode)', () => {
     })
     const updated = await result.current.mutateAsync({
       id: 'tt-1',
-      updates: { name: 'New Name', color: 'red' },
+      updates: { name: 'New Name', color: TagColor.rose },
     })
 
     // Then it delegates to cloudUpdate
     expect(mockCloudUpdateTagType).toHaveBeenCalledWith({
-      variables: { id: 'tt-1', name: 'New Name', color: 'red' },
+      variables: { id: 'tt-1', name: 'New Name', color: TagColor.rose },
     })
     expect((updated as { name: string } | undefined)?.name).toBe('New Name')
   })
@@ -275,7 +279,6 @@ describe('useCreateTag (cloud mode)', () => {
     const created = await result.current.mutateAsync({
       name: 'Dairy',
       typeId: 'tt-1',
-      userId: 'u1',
     })
 
     // Then it delegates to cloudCreate
@@ -456,8 +459,9 @@ describe('useTagsWithDepth (cloud mode)', () => {
     // Then only tags of the specified type are returned
     await waitFor(() => expect(result.current.data).toBeDefined())
     expect(result.current.data).toHaveLength(1)
-    expect(result.current.data?.[0].id).toBe('a')
-    expect(result.current.data?.[0].depth).toBe(0)
+    const firstTag = elementAt(defined(result.current.data, 'the tag list'), 0)
+    expect(firstTag.id).toBe('a')
+    expect(firstTag.depth).toBe(0)
   })
 })
 

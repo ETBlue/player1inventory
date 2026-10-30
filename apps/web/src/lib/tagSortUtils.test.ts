@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { elementAt } from '@/test/narrow'
 import type { Tag, TagType } from '@/types'
 import { TagColor } from '@/types'
 import { sortTagsByName, sortTagsByTypeAndName } from './tagSortUtils'
@@ -13,9 +14,9 @@ describe('sortTagsByName', () => {
 
     const result = sortTagsByName(tags)
 
-    expect(result[0].name).toBe('Apple')
-    expect(result[1].name).toBe('Mango')
-    expect(result[2].name).toBe('Zebra')
+    expect(elementAt(result, 0).name).toBe('Apple')
+    expect(elementAt(result, 1).name).toBe('Mango')
+    expect(elementAt(result, 2).name).toBe('Zebra')
   })
 
   it('sorts case-insensitively', () => {
@@ -27,9 +28,9 @@ describe('sortTagsByName', () => {
 
     const result = sortTagsByName(tags)
 
-    expect(result[0].name).toBe('Apple')
-    expect(result[1].name).toBe('banana')
-    expect(result[2].name).toBe('Cherry')
+    expect(elementAt(result, 0).name).toBe('Apple')
+    expect(elementAt(result, 1).name).toBe('banana')
+    expect(elementAt(result, 2).name).toBe('Cherry')
   })
 
   it('handles empty array', () => {
@@ -46,7 +47,7 @@ describe('sortTagsByName', () => {
     const result = sortTagsByName(tags)
 
     expect(result).not.toBe(tags)
-    expect(tags[0].name).toBe('Zebra') // Original unchanged
+    expect(elementAt(tags, 0).name).toBe('Zebra') // Original unchanged
   })
 })
 
@@ -67,10 +68,10 @@ describe('sortTagsByTypeAndName', () => {
     const result = sortTagsByTypeAndName(tags, tagTypes)
 
     // Category comes before Storage alphabetically
-    expect(result[0].name).toBe('Fruit') // Category type
-    expect(result[1].name).toBe('Vegetable') // Category type
-    expect(result[2].name).toBe('Fridge') // Storage type
-    expect(result[3].name).toBe('Pantry') // Storage type
+    expect(elementAt(result, 0).name).toBe('Fruit') // Category type
+    expect(elementAt(result, 1).name).toBe('Vegetable') // Category type
+    expect(elementAt(result, 2).name).toBe('Fridge') // Storage type
+    expect(elementAt(result, 3).name).toBe('Pantry') // Storage type
   })
 
   it('sorts both tag type and tag name case-insensitively', () => {
@@ -88,9 +89,9 @@ describe('sortTagsByTypeAndName', () => {
     const result = sortTagsByTypeAndName(tags, tagTypes)
 
     // Category before storage (case-insensitive)
-    expect(result[0].name).toBe('Vegetable')
-    expect(result[1].name).toBe('Fridge') // F before p
-    expect(result[2].name).toBe('pantry')
+    expect(elementAt(result, 0).name).toBe('Vegetable')
+    expect(elementAt(result, 1).name).toBe('Fridge') // F before p
+    expect(elementAt(result, 2).name).toBe('pantry')
   })
 
   it('handles tags with missing typeId', () => {
@@ -106,8 +107,8 @@ describe('sortTagsByTypeAndName', () => {
     const result = sortTagsByTypeAndName(tags, tagTypes)
 
     // Valid type should come first
-    expect(result[0].name).toBe('Valid')
-    expect(result[1].name).toBe('Invalid')
+    expect(elementAt(result, 0).name).toBe('Valid')
+    expect(elementAt(result, 1).name).toBe('Invalid')
   })
 
   it('handles empty arrays', () => {
@@ -128,6 +129,6 @@ describe('sortTagsByTypeAndName', () => {
     const result = sortTagsByTypeAndName(tags, tagTypes)
 
     expect(result).not.toBe(tags)
-    expect(tags[0].name).toBe('Zebra') // Original unchanged
+    expect(elementAt(tags, 0).name).toBe('Zebra') // Original unchanged
   })
 })

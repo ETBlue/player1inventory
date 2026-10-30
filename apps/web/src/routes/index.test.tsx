@@ -20,7 +20,7 @@ import {
 } from '@/db/operations'
 import * as useShelvesModule from '@/hooks/useShelves'
 import { routeTree } from '@/routeTree.gen'
-import { DEFAULT_LOCATION_ID } from '@/types'
+import { DEFAULT_LOCATION_ID, TagColor } from '@/types'
 
 describe('Home page filtering integration', () => {
   let queryClient: QueryClient
@@ -122,11 +122,11 @@ describe('Home page filtering integration', () => {
     // Given items with tags
     const categoryType = await createTagType({
       name: 'Category',
-      color: 'blue',
+      color: TagColor.blue,
     })
     const locationtype = await createTagType({
       name: 'Location',
-      color: 'green',
+      color: TagColor.green,
     })
 
     const vegTag = await createTag({
@@ -239,7 +239,7 @@ describe('Home page filtering integration', () => {
     // Given items with tags
     const categoryType = await createTagType({
       name: 'Category',
-      color: 'blue',
+      color: TagColor.blue,
     })
     const vegTag = await createTag({
       typeId: categoryType.id,
@@ -295,7 +295,7 @@ describe('Home page filtering integration', () => {
 
     const categoryType = await createTagType({
       name: 'Category',
-      color: 'blue',
+      color: TagColor.blue,
     })
     const vegTag = await createTag({
       typeId: categoryType.id,
@@ -330,7 +330,7 @@ describe('Home page filtering integration', () => {
 
     const categoryType = await createTagType({
       name: 'Category',
-      color: 'blue',
+      color: TagColor.blue,
     })
     const vegTag = await createTag({
       typeId: categoryType.id,
@@ -368,11 +368,22 @@ describe('Home page filtering integration', () => {
 
     await createItem({
       name: 'Tomatoes',
+      tagIds: [],
       targetQuantity: 5,
       refillThreshold: 2,
     })
-    await createItem({ name: 'Apples', targetQuantity: 10, refillThreshold: 3 })
-    await createItem({ name: 'Pasta', targetQuantity: 3, refillThreshold: 1 })
+    await createItem({
+      name: 'Apples',
+      tagIds: [],
+      targetQuantity: 10,
+      refillThreshold: 3,
+    })
+    await createItem({
+      name: 'Pasta',
+      tagIds: [],
+      targetQuantity: 3,
+      refillThreshold: 1,
+    })
 
     renderApp()
 
@@ -398,9 +409,15 @@ describe('Home page filtering integration', () => {
   it('user can toggle sort direction', async () => {
     const user = userEvent.setup()
 
-    await createItem({ name: 'Apples', targetQuantity: 10, refillThreshold: 3 })
+    await createItem({
+      name: 'Apples',
+      tagIds: [],
+      targetQuantity: 10,
+      refillThreshold: 3,
+    })
     await createItem({
       name: 'Zucchini',
+      tagIds: [],
       targetQuantity: 5,
       refillThreshold: 2,
     })
@@ -476,7 +493,7 @@ describe('Home page filtering integration', () => {
 
     const categoryType = await createTagType({
       name: 'Category',
-      color: 'blue',
+      color: TagColor.blue,
     })
     const vegTag = await createTag({
       typeId: categoryType.id,
@@ -509,7 +526,7 @@ describe('Home page filtering integration', () => {
 
     const categoryType = await createTagType({
       name: 'Category',
-      color: 'blue',
+      color: TagColor.blue,
     })
     const vegTag = await createTag({
       typeId: categoryType.id,
@@ -558,11 +575,11 @@ describe('Home page filtering integration', () => {
   })
 
   it('hides FilterStatus when no filters active and toggle off', async () => {
-    const _user = userEvent.setup()
+    userEvent.setup()
 
     const categoryType = await createTagType({
       name: 'Category',
-      color: 'blue',
+      color: TagColor.blue,
     })
     const vegTag = await createTag({
       typeId: categoryType.id,
@@ -589,7 +606,7 @@ describe('Home page filtering integration', () => {
 
     const categoryType = await createTagType({
       name: 'Category',
-      color: 'blue',
+      color: TagColor.blue,
     })
     const vegTag = await createTag({
       typeId: categoryType.id,
@@ -796,7 +813,7 @@ describe('Home page filtering integration', () => {
     // Given an item assigned to a tag
     const categoryType = await createTagType({
       name: 'Category',
-      color: 'blue',
+      color: TagColor.blue,
     })
     const vegTag = await createTag({
       typeId: categoryType.id,
@@ -836,7 +853,7 @@ describe('Home page filtering integration', () => {
     // Given an item assigned to a tag
     const categoryType = await createTagType({
       name: 'Category',
-      color: 'blue',
+      color: TagColor.blue,
     })
     const vegTag = await createTag({
       typeId: categoryType.id,
@@ -875,7 +892,7 @@ describe('Home page filtering integration', () => {
     // and not the "Your pantry is empty" CTA above it.
     const categoryType = await createTagType({
       name: 'Category',
-      color: 'blue',
+      color: TagColor.blue,
     })
     await createTag({ typeId: categoryType.id, name: 'Vegetables' })
     await createItem({ name: 'Milk', tagIds: [], ...itemDefaults })
@@ -1116,7 +1133,7 @@ describe('Home page filtering integration', () => {
       // proving the tail still works correctly alongside an active filter
       const categoryType = await createTagType({
         name: 'Category',
-        color: 'blue',
+        color: TagColor.blue,
       })
       const vegTag = await createTag({
         typeId: categoryType.id,
@@ -1381,7 +1398,7 @@ describe('Home page filtering integration', () => {
       // `trimmedSearch`.
       const categoryType = await createTagType({
         name: 'Category',
-        color: 'blue',
+        color: TagColor.blue,
       })
       // The tag only has to EXIST, so the filter dropdown offers it — the
       // test picks it through the UI below rather than by id.
@@ -1607,7 +1624,7 @@ describe('Home page filtering integration', () => {
       // option count.
       const categoryType = await createTagType({
         name: 'Category',
-        color: 'blue',
+        color: TagColor.blue,
       })
       const snackTag = await createTag({
         typeId: categoryType.id,

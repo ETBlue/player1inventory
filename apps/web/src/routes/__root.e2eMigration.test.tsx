@@ -3,6 +3,7 @@ import { render, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { importCloudData } from '@/lib/importData'
+import { callArgs } from '@/test/narrow'
 
 // WHY THIS FILE EXISTS
 //
@@ -131,7 +132,7 @@ describe('root route in E2E test mode', () => {
 
     // Then PostLoginMigrationDialog is mounted and runs the copy
     await waitFor(() => expect(importCloudData).toHaveBeenCalledTimes(1))
-    expect(vi.mocked(importCloudData).mock.calls[0][1]).toBe('clear')
+    expect(callArgs(vi.mocked(importCloudData).mock, 0)[1]).toBe('clear')
   })
 
   it('CloudAuthGuard stays unmounted in E2E test mode', async () => {

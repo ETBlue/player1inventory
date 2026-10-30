@@ -49,7 +49,10 @@ describe('useVendorCartCounts (local mode)', () => {
     mockMode('local')
     // Two items carry vendor v1: one stocked in the active location, one NOT
     // stocked here at all (ZERO_STOCK join — no stockId). Only the stocked one
-    // should count toward "in vendor".
+    // should count toward "in vendor". The second fixture OMITS `stockId`,
+    // which is exactly what `joinItemStock` produces for an item with no row
+    // in the active location — it spreads `{ ...item, ...ZERO_STOCK,
+    // locationId }` and never writes a `stockId` key.
     mockItems([
       {
         id: '1',
@@ -61,7 +64,6 @@ describe('useVendorCartCounts (local mode)', () => {
       {
         id: '2',
         vendorIds: ['v1'],
-        stockId: undefined,
         targetQuantity: 0,
         ...baseStock,
       },
@@ -153,10 +155,11 @@ describe('useVendorCartCounts (cloud mode)', () => {
         targetQuantity: 3,
         ...baseStock,
       },
+      // Not stocked here — the `stockId` key is OMITTED, matching
+      // `joinItemStock`'s output for an item with no active-location row.
       {
         id: '3',
         vendorIds: ['v1'],
-        stockId: undefined,
         targetQuantity: 3,
         ...baseStock,
       },

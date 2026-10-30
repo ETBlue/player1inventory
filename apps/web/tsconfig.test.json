@@ -1,5 +1,5 @@
 {
-  // Type-checks the test and story files under `src/`, and emits nothing.
+  // Type-checks EVERY test and story file under `src/`, and emits nothing.
   //
   // `tsconfig.app.json` excludes `**/*.test.ts`, `**/*.test.tsx` and
   // `**/*.stories.tsx`, so before this file existed NO web test or story file
@@ -15,9 +15,22 @@
   //
   // THE TWO PASSES OVERLAP HERE, unlike `apps/server`'s. Test files import
   // from `src`, so TypeScript pulls those source files into this program and
-  // checks them a second time. Measured 2026-10-30: 1390 files in the
-  // `tsconfig.app.json` pass, 1728 in this one. The cost is recorded in the
-  // root CLAUDE.md.
+  // checks them a second time. The cost is recorded in the root CLAUDE.md.
+  //
+  // **`exclude` IS EMPTY. All 358 test and story files are checked.** Issue
+  // #340 step 3 emptied the backlog in three waves: 405 errors in 6 files,
+  // then 149 in 14, then 172 in 72 plus 22 collateral smoke tests and 2 in
+  // the invisible file described in trap (d). Putting a file back on that
+  // list re-opens the backlog — fix the test instead.
+  //
+  // **`"exclude": []` MUST STAY. DELETING THE KEY IS NOT THE SAME THING.**
+  // `exclude` is inherited through `extends`, and `tsconfig.app.json:38` is
+  // `"exclude": ["**/*.test.ts", "**/*.test.tsx", "**/*.stories.tsx"]` — the
+  // very files this config exists to check. Measured 2026-10-30: with the key
+  // deleted, `tsc --listFiles` finds **1** test or story file instead of 358
+  // (the one named in `files`, which `exclude` cannot remove) and reports
+  // **1** error instead of 0. A near-zero error count here is a broken
+  // config, not a clean tree.
   //
   // THREE THINGS IN `include` THAT ARE NOT OBVIOUS, each measured:
   //
@@ -39,28 +52,43 @@
   // 3. `vitest/globals` in `types`, because `vitest.config.ts` sets
   //    `globals: true`, so `describe` / `it` / `expect` / `vi` are ambient.
   //
-  // THE `exclude` LIST BELOW IS A BACKLOG, NOT A POLICY. These 115 files
-  // carried 726 pre-existing type errors when this config was added
-  // (measured 2026-10-30, 92 files of their own plus the knock-on files
-  // described next). Fixing them is issue #340 step 3, file by file. 243 test
-  // and story files ARE checked. Removing a file from this list is the unit of
-  // that work.
+  // WHY THERE IS A `files` ENTRY FOR ONE TEST FILE — trap (d) below.
   //
-  // TWO TRAPS WHEN EDITING THIS LIST:
+  // FOUR MEASUREMENT TRAPS, kept because each one cost time when it was hit:
   //
-  // a. `exclude` only removes a file from the program's ROOT set. A file that
-  //    an INCLUDED file imports is still pulled in and still checked. That is
-  //    why 22 clean `*.stories.test.tsx` smoke tests are on this list: each
-  //    one calls `composeStories` on a `*.stories.tsx` that is excluded, so
-  //    excluding the story alone left 45 errors reported. The pair has to move
-  //    together, in both directions.
+  // a. To measure a backlog here, copy this file and put the files you want
+  //    held back into its `exclude`. Do NOT strip the comments with a regex
+  //    on `//` — it eats the `/**/` inside `src/**/*.test.ts` and turns the
+  //    include into `src*.test.ts`, which checks ZERO files and reports ONE
+  //    error. A suspiciously small number is a broken probe, not good news.
+  //    The same number also means the inherited-`exclude` mistake above, so
+  //    check the FILE COUNT with `--listFiles`, not the error count.
   //
-  // b. `src/hooks/useItems.test.ts` and `src/hooks/useItems.test.tsx` both
-  //    exist. TypeScript's `include` expansion keeps only ONE file per path
-  //    minus extension, and `.ts` wins, so `useItems.test.tsx` is INVISIBLE to
-  //    this config while `useItems.test.ts` is in the root set. Both are
-  //    excluded here. When the `.ts` one is fixed and removed, the `.tsx` one
-  //    disappears from the program again — check it by hand.
+  // b. Put a probe config INSIDE the repo. One written to `/tmp` resolves
+  //    `typeRoots` from `/tmp/node_modules/@types` and reports a single
+  //    misleading `TS2688` before checking any file.
+  //
+  // c. `exclude` only removes a file from the program's ROOT set. A file that
+  //    an INCLUDED file imports is still pulled in and still checked. 22 clean
+  //    `*.stories.test.tsx` smoke tests sat on the old list for that reason
+  //    alone: each calls `composeStories` on a `*.stories.tsx` that was
+  //    excluded, so excluding the story by itself left its errors reported
+  //    against the smoke test. A pair has to move together, in both
+  //    directions.
+  //
+  // d. `src/hooks/useItems.test.ts` and `src/hooks/useItems.test.tsx` both
+  //    exist. TypeScript's `include` GLOB EXPANSION keeps only ONE file per
+  //    path minus extension, and `.ts` wins, so `useItems.test.tsx` was
+  //    INVISIBLE to this config — it reported 0 errors because it was in no
+  //    program, not because it was clean. Emptying `exclude` does NOT fix
+  //    that; the dedup is in the glob expansion, not in `exclude`. A `files`
+  //    entry is not glob-expanded, so naming the `.tsx` there puts it in the
+  //    root set alongside the `.ts`. Measured 2026-10-30: `tsc --listFiles`
+  //    goes from 0 matches for the file to 1, and it then reported its own 2
+  //    errors (`TS2550 Object.hasOwn`, `TS2532`), both now fixed.
+  //    `git ls-files apps/web/src | grep -E '\.(test|stories)\.tsx?$' |
+  //    sed -E 's/\.(ts|tsx)$//' | sort | uniq -d` lists every such collision.
+  //    Today there is exactly one. Add a `files` entry for any new one.
   "extends": "./tsconfig.app.json",
   "compilerOptions": {
     // No `tsBuildInfoFile` and no `incremental`: this config is run with
@@ -69,6 +97,8 @@
     "noEmit": true,
     "types": ["vite/client", "vite-plugin-pwa/client", "vitest/globals"]
   },
+  // See trap (d). Glob expansion drops this file; a `files` entry does not.
+  "files": ["src/hooks/useItems.test.tsx"],
   "include": [
     "src/main.tsx",
     "src/test",
@@ -76,121 +106,7 @@
     "src/**/*.test.tsx",
     "src/**/*.stories.tsx"
   ],
-  "exclude": [
-    "src/apollo/offlineWriteLink.test.ts",
-    "src/components/global/PostLoginMigrationDialog/index.e2eMode.test.tsx",
-    "src/components/global/PostLoginMigrationDialog/index.stories.test.tsx",
-    "src/components/global/PostLoginMigrationDialog/index.stories.tsx",
-    "src/components/global/PostLoginMigrationDialog/index.test.tsx",
-    "src/components/global/Sidebar/Sidebar.test.tsx",
-    "src/components/item/ItemCard/ItemCard.pantry.stories.test.tsx",
-    "src/components/item/ItemCard/ItemCard.pantry.stories.tsx",
-    "src/components/item/ItemCard/ItemCard.test.tsx",
-    "src/components/item/ItemFilters/ItemFilters.stories.test.tsx",
-    "src/components/item/ItemFilters/ItemFilters.stories.tsx",
-    "src/components/item/ItemFilters/ItemFilters.test.tsx",
-    "src/components/item/ItemForm/ItemForm.stories.test.tsx",
-    "src/components/item/ItemForm/ItemForm.stories.tsx",
-    "src/components/item/ItemForm/ItemForm.test.tsx",
-    "src/components/item/ItemListToolbar/ItemListToolbar.stories.test.tsx",
-    "src/components/item/ItemListToolbar/ItemListToolbar.stories.tsx",
-    "src/components/item/ItemProgressBar/ItemProgressBar.stories.test.tsx",
-    "src/components/item/ItemProgressBar/ItemProgressBar.stories.tsx",
-    "src/components/item/ItemProgressBar/ItemProgressBar.test.tsx",
-    "src/components/item/ItemSearchTail/ItemSearchTail.stories.test.tsx",
-    "src/components/item/ItemSearchTail/ItemSearchTail.stories.tsx",
-    "src/components/item/NewItemDialog/NewItemDialog.cloud.test.tsx",
-    "src/components/item/NewItemDialog/NewItemDialog.stories.test.tsx",
-    "src/components/item/NewItemDialog/NewItemDialog.stories.tsx",
-    "src/components/item/QuickUpdateDialog/QuickUpdateDialog.test.tsx",
-    "src/components/location/LocationList/LocationList.stories.test.tsx",
-    "src/components/pantry/ShelfDetailView.test.tsx",
-    "src/components/settings/ConflictDialog/index.stories.test.tsx",
-    "src/components/settings/ConflictDialog/index.stories.tsx",
-    "src/components/settings/DataModeCard/index.stories.test.tsx",
-    "src/components/settings/DataModeCard/index.stories.tsx",
-    "src/components/settings/DataModeCard/index.test.tsx",
-    "src/components/settings/ExportCard/index.stories.test.tsx",
-    "src/components/settings/ExportCard/index.stories.tsx",
-    "src/components/settings/ExportCard/index.test.tsx",
-    "src/components/settings/ImportCard/index.stories.test.tsx",
-    "src/components/settings/ImportCard/index.stories.tsx",
-    "src/components/settings/ImportCard/index.test.tsx",
-    "src/components/shared/DeleteButton/DeleteButton.test.tsx",
-    "src/components/shelf/ShelfList/ShelfList.stories.test.tsx",
-    "src/components/shelf/ShelfList/ShelfList.stories.tsx",
-    "src/components/tag/EditTagTypeDialog/EditTagTypeDialog.stories.test.tsx",
-    "src/components/tag/EditTagTypeDialog/EditTagTypeDialog.stories.tsx",
-    "src/components/tag/TagInfoForm/TagInfoForm.test.tsx",
-    "src/components/tag/TagInfoForm/index.stories.test.tsx",
-    "src/components/tag/TagInfoForm/index.stories.tsx",
-    "src/components/vendor/VendorFilterDropdown/VendorFilterDropdown.stories.test.tsx",
-    "src/components/vendor/VendorFilterDropdown/VendorFilterDropdown.stories.tsx",
-    "src/db/migrations.test.ts",
-    "src/db/operations.test.ts",
-    "src/db/upgradeV15.test.ts",
-    "src/hooks/cloudFetchPolicy.cloud.test.tsx",
-    "src/hooks/useActiveLocation.test.tsx",
-    "src/hooks/useAppNavigation.test.ts",
-    "src/hooks/useInventoryLogs.cloud.test.tsx",
-    "src/hooks/useInventoryLogs.test.ts",
-    "src/hooks/useItemSearchTail.test.ts",
-    "src/hooks/useItemSearchTailWiring.test.tsx",
-    "src/hooks/useItems.cloud.test.tsx",
-    "src/hooks/useItems.test.ts",
-    "src/hooks/useItems.test.tsx",
-    "src/hooks/useLocations.test.tsx",
-    "src/hooks/useNavigationTracker.test.ts",
-    "src/hooks/usePostLoginMigration.test.ts",
-    "src/hooks/useRecipeItemCounts.test.ts",
-    "src/hooks/useShoppingCart.test.ts",
-    "src/hooks/useTagItemCounts.test.ts",
-    "src/hooks/useTags.test.ts",
-    "src/hooks/useUrlSearchAndFilters.test.ts",
-    "src/hooks/useVendorCartCounts.test.ts",
-    "src/hooks/useVendorItemCounts.test.ts",
-    "src/lib/checkoutQuantities.test.ts",
-    "src/lib/expiration.test.ts",
-    "src/lib/exportData.test.ts",
-    "src/lib/filterUtils.test.ts",
-    "src/lib/importData.test.ts",
-    "src/lib/quantityUtils.test.ts",
-    "src/lib/shelfUtils.test.ts",
-    "src/lib/sortUtils.test.ts",
-    "src/lib/tagSortUtils.test.ts",
-    "src/lib/tagUtils.test.ts",
-    "src/routes/__root.e2eMigration.test.tsx",
-    "src/routes/cooking.cloud.test.tsx",
-    "src/routes/cooking.stories.test.tsx",
-    "src/routes/cooking.stories.tsx",
-    "src/routes/cooking.test.tsx",
-    "src/routes/index.test.tsx",
-    "src/routes/items/$id.test.tsx",
-    "src/routes/items/$id/relation/recipes.test.tsx",
-    "src/routes/items/$id/relation/tags.stories.test.tsx",
-    "src/routes/items/$id/relation/tags.stories.tsx",
-    "src/routes/items/$id/relation/tags.test.tsx",
-    "src/routes/items/$id/relation/vendors.test.tsx",
-    "src/routes/items/$id/stock.stories.test.tsx",
-    "src/routes/items/$id/stock.stories.tsx",
-    "src/routes/items/$id/stock.test.tsx",
-    "src/routes/settings/index.test.tsx",
-    "src/routes/settings/recipes/$id/items.test.tsx",
-    "src/routes/settings/shelves/$shelfId/index.test.tsx",
-    "src/routes/settings/shelves/$shelfId/items.stories.test.tsx",
-    "src/routes/settings/shelves/$shelfId/items.stories.tsx",
-    "src/routes/settings/tags.test.tsx",
-    "src/routes/settings/tags/$id.test.tsx",
-    "src/routes/settings/tags/$id/index.stories.test.tsx",
-    "src/routes/settings/tags/$id/index.stories.tsx",
-    "src/routes/settings/tags/$id/items.test.tsx",
-    "src/routes/settings/tags/index.test.tsx",
-    "src/routes/settings/vendors.test.tsx",
-    "src/routes/settings/vendors/$id.test.tsx",
-    "src/routes/settings/vendors/$id/items.test.tsx",
-    "src/routes/shopping/$vendorId.test.tsx",
-    "src/routes/shopping/index.cloud.test.tsx",
-    "src/stories/Colors.stories.test.tsx",
-    "src/stories/Colors.stories.tsx"
-  ]
+  // Empty ON PURPOSE, and not removable — see the note above. Without this
+  // key the config inherits `tsconfig.app.json`'s exclude and checks 1 file.
+  "exclude": []
 }

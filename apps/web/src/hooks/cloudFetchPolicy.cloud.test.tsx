@@ -708,8 +708,13 @@ function warmCache(c: Case, data: Record<string, unknown>) {
   return cache
 }
 
+// `MockedProviderProps['mocks']` includes `undefined`, and
+// `exactOptionalPropertyTypes: true` refuses an explicit `undefined` for an
+// optional prop. Every one of the seven call sites passes an array literal, so
+// the parameter drops `undefined` instead of the prop being spread
+// conditionally.
 function makeWrapper(
-  mocks: MockedProviderProps['mocks'],
+  mocks: NonNullable<MockedProviderProps['mocks']>,
   cache: ReturnType<typeof createCache>,
   withProvider: boolean,
 ) {

@@ -2,15 +2,37 @@ import { renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { isSamePage, useAppNavigation } from './useAppNavigation'
 
-// Mock dependencies
+// The subset of the router `useAppNavigation` actually reads:
+// `router.state.location.pathname` (`useAppNavigation.ts:63`) and
+// `router.history.push` (`:93`). The real `useRouter()` returns the whole
+// `AnyRouter` instance, so a two-field fake is not assignable to it. Declaring
+// the subset lets the fake be TYPED instead of cast — and nothing below calls
+// `vi.mocked(useRouter)`, which is what would pull the full type back in.
+interface RouterStub {
+  history: { push: (url: string) => void }
+  state: { location: { pathname: string } }
+}
+
+// `vi.mock` factories are hoisted above every import, so the mocks they hand
+// out have to be created in a `vi.hoisted` block. Each one carries its REAL
+// implementation signature, which is what makes the assertions below type-check
+// (a bare `vi.fn()` is `Mock<Procedure | Constructable>` and matches nothing).
+const mocks = vi.hoisted(() => ({
+  navigate: vi.fn<(opts: { to: string }) => void>(),
+  historyPush: vi.fn<(url: string) => void>(),
+  useRouter: vi.fn<() => RouterStub>(),
+  loadNavigationHistory: vi.fn<() => string[]>(),
+  saveNavigationHistory: vi.fn<(history: string[]) => void>(),
+}))
+
 vi.mock('@/lib/sessionStorage', () => ({
-  loadNavigationHistory: vi.fn(),
-  saveNavigationHistory: vi.fn(),
+  loadNavigationHistory: mocks.loadNavigationHistory,
+  saveNavigationHistory: mocks.saveNavigationHistory,
 }))
 
 vi.mock('@tanstack/react-router', () => ({
-  useNavigate: vi.fn(),
-  useRouter: vi.fn(),
+  useNavigate: () => mocks.navigate,
+  useRouter: mocks.useRouter,
 }))
 
 describe('isSamePage', () => {
@@ -116,44 +138,22 @@ describe('isSamePage', () => {
 })
 
 describe('useAppNavigation', () => {
-  let mockNavigate: ReturnType<typeof vi.fn>
-  let mockHistoryPush: ReturnType<typeof vi.fn>
-  let mockUseRouter: ReturnType<typeof vi.fn>
-  let mockLoadNavigationHistory: ReturnType<typeof vi.fn>
-  let mockSaveNavigationHistory: ReturnType<typeof vi.fn>
+  const mockNavigate = mocks.navigate
+  const mockHistoryPush = mocks.historyPush
+  const mockUseRouter = mocks.useRouter
+  const mockLoadNavigationHistory = mocks.loadNavigationHistory
 
-  beforeEach(async () => {
+  beforeEach(() => {
+    // `clearAllMocks` drops call records but KEEPS a `mockReturnValue` set by a
+    // previous test, so both defaults are re-armed here. Every test below
+    // overrides both anyway.
     vi.clearAllMocks()
 
-    // Setup mocks
-    mockNavigate = vi.fn()
-    mockHistoryPush = vi.fn()
-    mockLoadNavigationHistory = vi.fn()
-    mockSaveNavigationHistory = vi.fn()
-
-    mockUseRouter = vi.fn(() => ({
+    mockUseRouter.mockReturnValue({
       history: { push: mockHistoryPush },
-      state: {
-        location: {
-          pathname: '/current-page',
-        },
-      },
-    }))
-
-    // Apply mocks
-    const { useNavigate, useRouter } = await import('@tanstack/react-router')
-    vi.mocked(useNavigate).mockReturnValue(mockNavigate)
-    vi.mocked(useRouter).mockImplementation(mockUseRouter)
-
-    const { loadNavigationHistory, saveNavigationHistory } = await import(
-      '@/lib/sessionStorage'
-    )
-    vi.mocked(loadNavigationHistory).mockImplementation(
-      mockLoadNavigationHistory,
-    )
-    vi.mocked(saveNavigationHistory).mockImplementation(
-      mockSaveNavigationHistory,
-    )
+      state: { location: { pathname: '/current-page' } },
+    })
+    mockLoadNavigationHistory.mockReturnValue([])
   })
 
   it('user can navigate back skipping /new pages in history', () => {

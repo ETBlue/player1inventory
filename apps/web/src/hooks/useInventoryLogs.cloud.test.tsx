@@ -18,6 +18,7 @@ import {
   LOC_A,
   LOC_B,
 } from '@/test/cloudFixtures'
+import { elementAt } from '@/test/narrow'
 import { DEFAULT_LOCATION_ID, type PantryItem } from '@/types'
 import {
   ActiveLocationProvider,
@@ -100,6 +101,14 @@ const logsAt = (itemId: string, locationId: string) =>
     .filter((l) => l.itemId === itemId && l.locationId === locationId)
     .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt))
 
+// The newest log row of a pair. `Array.prototype.at` is ES2022 and `lib` is
+// ES2020, so the index is spelled out; `elementAt` fails naming the real
+// length rather than reading a property off `undefined`.
+const lastLogAt = (itemId: string, locationId: string): ServerLog => {
+  const rows = logsAt(itemId, locationId)
+  return elementAt(rows, rows.length - 1)
+}
+
 // The `ItemLogs` selection set does not ask for `locationId`; returning it
 // would be a response the server could never produce.
 const wire = ({ locationId: _drop, ...rest }: ServerLog) => rest
@@ -133,10 +142,14 @@ const lastPurchaseMock = (locationId: string) => ({
     data: {
       lastPurchaseDates: (vars.itemIds as string[]).map((itemId) => {
         const purchases = logsAt(itemId, locationId).filter((l) => l.delta > 0)
+        // An item with no purchase at this location legitimately has no last
+        // row, so this read stays optional — `?? null` is the wire value the
+        // server sends for it.
+        const newest = purchases[purchases.length - 1]
         return {
           __typename: 'LastPurchaseDateResult',
           itemId,
-          date: purchases.at(-1)?.occurredAt ?? null,
+          date: newest?.occurredAt ?? null,
         }
       }),
     },
@@ -356,7 +369,7 @@ describe('cloud inventory-log writes name the location', () => {
     // Then the row landed in Cloud Garage, and Cloud Kitchen is untouched
     expect(logsAt('item-milk', LOC_B)).toHaveLength(2)
     expect(logsAt('item-milk', LOC_A)).toHaveLength(2)
-    expect(logsAt('item-milk', LOC_B).at(-1)?.delta).toBe(4)
+    expect(lastLogAt('item-milk', LOC_B).delta).toBe(4)
   })
 
   describe('a fresh cloud session, before GetLocations has resolved', () => {
@@ -388,7 +401,7 @@ describe('cloud inventory-log writes name the location', () => {
       // sentinel, which names no cloud Location and whose write the server
       // refuses with FORBIDDEN
       expect(logsAt('item-milk', LOC_A)).toHaveLength(3)
-      expect(logsAt('item-milk', LOC_A).at(-1)?.delta).toBe(6)
+      expect(lastLogAt('item-milk', LOC_A).delta).toBe(6)
       expect(logsAt('item-milk', DEFAULT_LOCATION_ID)).toHaveLength(0)
     })
   })

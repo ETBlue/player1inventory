@@ -1,8 +1,17 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import { elementAt } from '@/test/narrow'
 import { expectDocumentOrder, sizeClasses } from '@/test/utils'
-import { ItemForm } from '.'
+import { ItemForm, type ItemFormValues } from '.'
+
+// Typed with the real prop signature (`ItemFormProps.onSubmit`,
+// ItemForm.tsx:96) rather than a bare `vi.fn()`. Two things follow: the
+// `mock.calls` element becomes the one-element tuple `[ItemFormValues]`, which
+// is what `elementAt` narrows below, and every field name the assertions read
+// off the payload now has to exist on `ItemFormValues` — a renamed field fails
+// to compile instead of silently reading `undefined`.
+const submitSpy = () => vi.fn<(values: ItemFormValues) => void>()
 
 describe('ItemForm — create mode (no onDirtyChange)', () => {
   it('renders only the info fields by default', () => {
@@ -94,7 +103,7 @@ describe('ItemForm — create mode (no onDirtyChange)', () => {
   it('calls onSubmit with form values when submitted', async () => {
     // Given an ItemForm in create mode with a submit handler
     const user = userEvent.setup()
-    const handleSubmit = vi.fn()
+    const handleSubmit = submitSpy()
     render(<ItemForm onSubmit={handleSubmit} />)
 
     // When user fills the name and submits
@@ -103,7 +112,7 @@ describe('ItemForm — create mode (no onDirtyChange)', () => {
 
     // Then onSubmit is called once with correct values
     expect(handleSubmit).toHaveBeenCalledOnce()
-    const values = handleSubmit.mock.calls[0][0]
+    const values = elementAt(handleSubmit.mock.calls)[0]
     expect(values.name).toBe('Milk')
     expect(values.packedQuantity).toBe(0)
     expect(values.unpackedQuantity).toBe(0)
@@ -200,7 +209,7 @@ describe('ItemForm — info fields (wikidataUrl, note)', () => {
     // Given an edit-mode info form with a dirty handler
     const user = userEvent.setup()
     const handleDirtyChange = vi.fn()
-    const handleSubmit = vi.fn()
+    const handleSubmit = submitSpy()
     render(
       <ItemForm
         initialValues={{ name: 'Milk' }}
@@ -222,13 +231,13 @@ describe('ItemForm — info fields (wikidataUrl, note)', () => {
     // And submitting includes the note in the payload
     await user.click(screen.getByRole('button', { name: /save/i }))
     expect(handleSubmit).toHaveBeenCalledOnce()
-    expect(handleSubmit.mock.calls[0][0].note).toBe('Buy organic')
+    expect(elementAt(handleSubmit.mock.calls)[0].note).toBe('Buy organic')
   })
 
   it('includes a valid wikidataUrl in the submit payload', async () => {
     // Given a create-mode info form
     const user = userEvent.setup()
-    const handleSubmit = vi.fn()
+    const handleSubmit = submitSpy()
     render(<ItemForm onSubmit={handleSubmit} sections={['info']} />)
 
     // When user fills name and a valid wikidataUrl
@@ -241,7 +250,7 @@ describe('ItemForm — info fields (wikidataUrl, note)', () => {
     // Then the submit payload carries the wikidataUrl
     await user.click(screen.getByRole('button', { name: /save/i }))
     expect(handleSubmit).toHaveBeenCalledOnce()
-    expect(handleSubmit.mock.calls[0][0].wikidataUrl).toBe(
+    expect(elementAt(handleSubmit.mock.calls)[0].wikidataUrl).toBe(
       'https://www.wikidata.org/wiki/Q8495',
     )
   })
@@ -503,7 +512,7 @@ describe('ItemForm — stock-only sections ignore info-only validation', () => {
   it('user can save a stock-only form while the info-only consume amount is 0', async () => {
     // Given a stock-only form for an item whose consumeAmount is still 0
     const user = userEvent.setup()
-    const handleSubmit = vi.fn()
+    const handleSubmit = submitSpy()
     render(
       <ItemForm
         initialValues={stockOnlyInitialValues}
@@ -531,7 +540,7 @@ describe('ItemForm — stock-only sections ignore info-only validation', () => {
     expect(saveButton).not.toBeDisabled()
     await user.click(saveButton)
     expect(handleSubmit).toHaveBeenCalledOnce()
-    expect(handleSubmit.mock.calls[0][0].packedQuantity).toBe(5)
+    expect(elementAt(handleSubmit.mock.calls)[0].packedQuantity).toBe(5)
   })
 })
 
@@ -585,7 +594,7 @@ describe('ItemForm — number inputs keep the raw text while being edited', () =
   it('user can type a decimal finer than the consume step without it being rounded away mid-typing', async () => {
     // Given a stock form tracking in half units (consume amount 0.5)
     const user = userEvent.setup()
-    const handleSubmit = vi.fn()
+    const handleSubmit = submitSpy()
     render(
       <ItemForm
         initialValues={{ ...stockValues, consumeAmount: 0.5 }}
@@ -610,13 +619,13 @@ describe('ItemForm — number inputs keep the raw text while being edited', () =
     await user.tab()
     expect(unpackedInput.value).toBe('0.3')
     await user.click(screen.getByRole('button', { name: /save/i }))
-    expect(handleSubmit.mock.calls[0][0].unpackedQuantity).toBe(0.3)
+    expect(elementAt(handleSubmit.mock.calls)[0].unpackedQuantity).toBe(0.3)
   })
 
   it('user typing a decimal into Unpacked still gets it snapped to the consume step on blur', async () => {
     // Given a stock form whose consume amount is a whole unit
     const user = userEvent.setup()
-    const handleSubmit = vi.fn()
+    const handleSubmit = submitSpy()
     render(
       <ItemForm
         initialValues={{ ...stockValues, consumeAmount: 1 }}
@@ -640,13 +649,13 @@ describe('ItemForm — number inputs keep the raw text while being edited', () =
     await user.tab()
     expect(unpackedInput.value).toBe('3')
     await user.click(screen.getByRole('button', { name: /save/i }))
-    expect(handleSubmit.mock.calls[0][0].unpackedQuantity).toBe(3)
+    expect(elementAt(handleSubmit.mock.calls)[0].unpackedQuantity).toBe(3)
   })
 
   it('user leaving a number field empty gets 0, and the payload stays numeric', async () => {
     // Given a stock form with a target quantity of 4
     const user = userEvent.setup()
-    const handleSubmit = vi.fn()
+    const handleSubmit = submitSpy()
     render(
       <ItemForm
         initialValues={{ ...stockValues, targetQuantity: 4 }}
@@ -676,7 +685,7 @@ describe('ItemForm — number inputs keep the raw text while being edited', () =
 
     // And the submitted payload carries the NUMBER 0, not '' or NaN
     await user.click(screen.getByRole('button', { name: /save/i }))
-    const submitted = handleSubmit.mock.calls[0][0]
+    const submitted = elementAt(handleSubmit.mock.calls)[0]
     expect(submitted.targetQuantity).toBe(0)
     expect(typeof submitted.targetQuantity).toBe('number')
   })
@@ -799,7 +808,7 @@ describe('ItemForm — a consume amount of 0 is no step, not a step of 1', () =>
   it('user typing a decimal into Unpacked keeps it on blur while the consume amount is unset', async () => {
     // Given a stock form for an item whose consume amount is still 0
     const user = userEvent.setup()
-    const handleSubmit = vi.fn()
+    const handleSubmit = submitSpy()
     render(
       <ItemForm
         initialValues={unsetValues}
@@ -820,14 +829,14 @@ describe('ItemForm — a consume amount of 0 is no step, not a step of 1', () =>
     // Then it is NOT rounded to 3 — there is no step to round to
     expect(unpackedInput.value).toBe('2.5')
     await user.click(screen.getByRole('button', { name: /save/i }))
-    expect(handleSubmit.mock.calls[0][0].unpackedQuantity).toBe(2.5)
+    expect(elementAt(handleSubmit.mock.calls)[0].unpackedQuantity).toBe(2.5)
   })
 
   it('user with a real consume amount still gets the step and the blur rounding', async () => {
     // Control for the case above: a configured item must be unaffected.
     // Given a stock form whose consume amount is 2
     const user = userEvent.setup()
-    const handleSubmit = vi.fn()
+    const handleSubmit = submitSpy()
     render(
       <ItemForm
         initialValues={{ ...unsetValues, consumeAmount: 2 }}
@@ -855,7 +864,7 @@ describe('ItemForm — a consume amount of 0 is no step, not a step of 1', () =>
     // Then it still snaps exactly as it did before
     expect(unpackedInput.value).toBe('3')
     await user.click(screen.getByRole('button', { name: /save/i }))
-    expect(handleSubmit.mock.calls[0][0].unpackedQuantity).toBe(3)
+    expect(elementAt(handleSubmit.mock.calls)[0].unpackedQuantity).toBe(3)
   })
 })
 
