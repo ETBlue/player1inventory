@@ -631,7 +631,7 @@ describe('Vendor Detail - Items Tab', () => {
     const vendor = await createVendor('Costco')
     const categoryType = await createTagType({
       name: 'Category',
-      color: 'blue',
+      color: TagColor.blue,
     })
     const vegTag = await createTag({
       typeId: categoryType.id,

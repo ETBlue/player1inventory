@@ -667,11 +667,11 @@ describe('Tag Detail - Items Tab', () => {
     // Given a tag type for the page tag and another tag type for filtering
     const pageTagType = await createTagType({
       name: 'Location',
-      color: 'green',
+      color: TagColor.green,
     })
     const filterTagType = await createTagType({
       name: 'Category',
-      color: 'blue',
+      color: TagColor.blue,
     })
     const pageTag = await createTag({ typeId: pageTagType.id, name: 'Fridge' })
     const filterTag = await createTag({
