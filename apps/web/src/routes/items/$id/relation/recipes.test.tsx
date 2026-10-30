@@ -11,6 +11,41 @@ import { db } from '@/db'
 import { createItem, createRecipe } from '@/db/operations'
 import * as useRecipesModule from '@/hooks/useRecipes'
 import { routeTree } from '@/routeTree.gen'
+import type { Recipe, RecipeItem } from '@/types'
+
+// `useCreateRecipe` and `useUpdateRecipe` each return a UNION of their two
+// data-mode branches: local mode's TanStack `UseMutationResult`, and the cloud
+// branch's hand-built `{ mutate, mutateAsync, isPending }`
+// (src/hooks/useRecipes.ts:141 and :205). The stubs below stand in for CLOUD
+// mode, so they build that member, and `mutate` keeps its real parameters.
+// These tests check whether `mutate` calls the `onSuccess` it is handed, so
+// `options` must stay typed rather than become `any`.
+type CreateRecipeInput = { name: string; items?: RecipeItem[] }
+type UpdateRecipeInput = {
+  id: string
+  updates: Partial<Omit<Recipe, 'id' | 'createdAt'>>
+}
+type MutateOptions = {
+  onSuccess?: () => void
+  onError?: (err: unknown) => void
+}
+
+const cloudCreateRecipe = (
+  mutate: (input: CreateRecipeInput, options?: MutateOptions) => Promise<void>,
+): ReturnType<typeof useRecipesModule.useCreateRecipe> => ({
+  mutate,
+  mutateAsync: () => Promise.resolve(undefined),
+  isPending: false,
+})
+
+const pendingCloudUpdateRecipe = (): ReturnType<
+  typeof useRecipesModule.useUpdateRecipe
+> => ({
+  mutate: (_input: UpdateRecipeInput, _options?: MutateOptions) =>
+    Promise.resolve(),
+  mutateAsync: () => Promise.resolve(undefined),
+  isPending: true,
+})
 
 describe('Recipes Tab', () => {
   let queryClient: QueryClient
@@ -197,10 +232,14 @@ describe('Recipes Tab', () => {
 
     it('dialog stays open when mutate ignores onSuccess (regression guard)', async () => {
       // Given: mutate fires but never calls the onSuccess callback (broken cloud mode)
-      vi.spyOn(useRecipesModule, 'useCreateRecipe').mockReturnValue({
-        mutate: vi.fn(), // ignores options — no onSuccess call
-        isPending: false,
-      })
+      vi.spyOn(useRecipesModule, 'useCreateRecipe').mockReturnValue(
+        // ignores options — no onSuccess call
+        cloudCreateRecipe(
+          vi.fn((_input: CreateRecipeInput, _options?: MutateOptions) =>
+            Promise.resolve(),
+          ),
+        ),
+      )
 
       const item = await createItem({
         name: 'Test Item',
@@ -235,12 +274,13 @@ describe('Recipes Tab', () => {
 
     it('dialog closes when mutate properly calls onSuccess (fixed cloud mode)', async () => {
       // Given: mutate invokes the onSuccess callback (fixed cloud mode behaviour)
-      vi.spyOn(useRecipesModule, 'useCreateRecipe').mockReturnValue({
-        mutate: vi.fn((_input, options?: { onSuccess?: () => void }) => {
-          Promise.resolve().then(() => options?.onSuccess?.())
-        }),
-        isPending: false,
-      })
+      vi.spyOn(useRecipesModule, 'useCreateRecipe').mockReturnValue(
+        cloudCreateRecipe(
+          vi.fn((_input: CreateRecipeInput, options?: MutateOptions) =>
+            Promise.resolve().then(() => options?.onSuccess?.()),
+          ),
+        ),
+      )
 
       const item = await createItem({
         name: 'Test Item',
@@ -323,10 +363,9 @@ describe('Recipes Tab', () => {
 
     it('shows spinner on recipe badge while mutation is in flight', async () => {
       // Given: useUpdateRecipe is mocked to stay pending indefinitely
-      vi.spyOn(useRecipesModule, 'useUpdateRecipe').mockReturnValue({
-        mutate: vi.fn(),
-        isPending: true,
-      })
+      vi.spyOn(useRecipesModule, 'useUpdateRecipe').mockReturnValue(
+        pendingCloudUpdateRecipe(),
+      )
 
       const item = await createItem({
         name: 'Test Item',

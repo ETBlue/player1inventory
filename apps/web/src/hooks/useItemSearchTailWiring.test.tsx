@@ -95,11 +95,20 @@ describe('useItemSearchTailWiring', () => {
     expect(result.current.tailProps.groupAction?.pendingItemId).toBeNull()
 
     // When the user presses the row action
+    //
+    // `ItemSearchTailAction.onAction` is declared `(item) => void`
+    // (`components/item/ItemSearchTail/ItemSearchTail.tsx:10`) because the
+    // component only fires it from an `onClick` and never awaits it. The
+    // wrapper the hook builds IS async (`useItemSearchTailWiring.tsx:88`), so
+    // the call returns a real promise at runtime. Awaiting it inside a thin
+    // async wrapper gives this test a `Promise<void>` handle without casting
+    // the declared `void` away — `await` on a `void`-typed thenable still waits
+    // for it.
     let actionPromise!: Promise<void>
     act(() => {
-      actionPromise = result.current.tailProps.groupAction?.onAction(
-        milk,
-      ) as Promise<void>
+      actionPromise = (async () => {
+        await result.current.tailProps.groupAction?.onAction(milk)
+      })()
     })
 
     // Then the pending id is set for that row while the mutation is in flight

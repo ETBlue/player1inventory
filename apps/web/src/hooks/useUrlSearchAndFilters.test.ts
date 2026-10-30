@@ -1,26 +1,55 @@
 // src/hooks/useUrlSearchAndFilters.test.ts
 
 import { act, renderHook } from '@testing-library/react'
+import type { Mock } from 'vitest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { callArgs } from '@/test/narrow'
 import { useUrlSearchAndFilters } from './useUrlSearchAndFilters'
 
-// Mock TanStack Router
+// The only two slices of TanStack Router this hook touches:
+// `useRouterState({ select })` over `state.location.searchStr`
+// (src/hooks/useUrlSearchAndFilters.ts:16-18) and
+// `router.history.replace(router.state.location.pathname + …)` (lines 57-58).
+type RouterStateStub = {
+  location: { search: string; searchStr: string; pathname: string }
+}
+type RouterStub = {
+  state: RouterStateStub
+  history: { replace: (to: string) => void }
+}
+type RouterStateOptionsStub = { select: (state: RouterStateStub) => string }
+
+// Mock TanStack Router.
+//
+// The mocks are these two local `vi.fn`s rather than `vi.mocked(useRouterState)`.
+// `vi.mocked` keeps the REAL signature, and `useRouterState`'s real signature
+// collapses to `(opts?: UseRouterStateOptions<AnyRouter, unknown, boolean>) =>
+// RouterState<any, MakeRouteMatchUnion>` once its generics are erased. An
+// implementation that selects off a small stub is not assignable to that, so the
+// test would have to build a whole `RouterState` or cast. Local `vi.fn`s with the
+// stub signatures need neither, and they also removed the pre-existing
+// `as ReturnType<typeof useRouter>` cast.
+//
+// The factory's arrow bodies reference them, not the factory itself, so they are
+// initialised by the time the hook calls them — the same pattern as
+// `src/hooks/useTags.test.ts`.
+const mockUseRouter = vi.fn<() => RouterStub>()
+const mockUseRouterState = vi.fn<(opts: RouterStateOptionsStub) => string>()
+
 vi.mock('@tanstack/react-router', () => ({
-  useRouter: vi.fn(),
-  useRouterState: vi.fn(),
+  useRouter: () => mockUseRouter(),
+  useRouterState: (opts: RouterStateOptionsStub) => mockUseRouterState(opts),
 }))
 
 describe('useUrlSearchAndFilters', () => {
-  let mockHistoryReplace: ReturnType<typeof vi.fn>
-  let mockRouterState: {
-    location: { search: string; searchStr: string; pathname: string }
-  }
+  let mockHistoryReplace: Mock<(to: string) => void>
+  let mockRouterState: RouterStateStub
 
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.clearAllMocks()
     sessionStorage.clear()
 
-    mockHistoryReplace = vi.fn()
+    mockHistoryReplace = vi.fn<(to: string) => void>()
     mockRouterState = {
       location: {
         search: '',
@@ -31,16 +60,13 @@ describe('useUrlSearchAndFilters', () => {
       },
     }
 
-    const { useRouter, useRouterState } = await import('@tanstack/react-router')
-
-    vi.mocked(useRouter).mockReturnValue({
+    mockUseRouter.mockReturnValue({
       state: mockRouterState,
       history: { replace: mockHistoryReplace },
-    } as ReturnType<typeof useRouter>)
+    })
 
-    vi.mocked(useRouterState).mockImplementation(
-      ({ select }: { select: (s: typeof mockRouterState) => string }) =>
-        select(mockRouterState),
+    mockUseRouterState.mockImplementation(({ select }) =>
+      select(mockRouterState),
     )
   })
 
@@ -161,7 +187,7 @@ describe('useUrlSearchAndFilters', () => {
       result.current.setFilterState({ 'type-2': ['tag-c'] })
     })
 
-    const callArg: string = mockHistoryReplace.mock.calls[0][0]
+    const callArg = callArgs(mockHistoryReplace.mock, 0)[0]
     // Old param is removed, new param is added
     expect(callArg).not.toContain('f_type-1')
     expect(callArg).toContain('f_type-2')
@@ -236,7 +262,7 @@ describe('useUrlSearchAndFilters', () => {
       result.current.setIsTagsVisible(true)
     })
 
-    const callArg: string = mockHistoryReplace.mock.calls[0][0]
+    const callArg = callArgs(mockHistoryReplace.mock, 0)[0]
     // Both existing params and new param are present
     expect(callArg).toContain('q=apple')
     expect(callArg).toContain('filters=1')
@@ -290,7 +316,7 @@ describe('useUrlSearchAndFilters', () => {
     act(() => {
       result.current.toggleVendorId('v1')
     })
-    const callArg: string = mockHistoryReplace.mock.calls[0][0]
+    const callArg = callArgs(mockHistoryReplace.mock, 0)[0]
     expect(callArg).not.toContain('v1')
     expect(callArg).toContain('v2')
   })
@@ -367,7 +393,7 @@ describe('useUrlSearchAndFilters', () => {
     })
 
     expect(mockHistoryReplace).toHaveBeenCalledTimes(1)
-    const callArg: string = mockHistoryReplace.mock.calls[0][0]
+    const callArg = callArgs(mockHistoryReplace.mock, 0)[0]
     expect(callArg).not.toContain('f_vendor')
     expect(callArg).not.toContain('f_recipe')
     expect(callArg).not.toContain('f_type-1')

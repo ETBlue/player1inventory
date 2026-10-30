@@ -12,6 +12,21 @@ import { createItem, createVendor } from '@/db/operations'
 import * as hooksModule from '@/hooks'
 import { routeTree } from '@/routeTree.gen'
 
+// `useUpdateItem` returns a UNION of its two data-mode branches: local mode's
+// TanStack `UseMutationResult`, and the cloud branch's hand-built
+// `{ mutate, mutateAsync, isPending }` (src/hooks/useItems.ts:1041). The stub
+// below builds the cloud member, which is the smaller of the two. The test
+// asserts on `isPending`. `mutate` is called by the badge click
+// (src/routes/items/$id/relation/vendors.tsx:40) and its return value is
+// ignored there, so a resolved promise is enough.
+const pendingCloudUpdateItem = (): ReturnType<
+  typeof hooksModule.useUpdateItem
+> => ({
+  mutate: () => Promise.resolve(),
+  mutateAsync: () => Promise.resolve(undefined),
+  isPending: true,
+})
+
 describe('Vendors Tab', () => {
   let queryClient: QueryClient
 
@@ -263,10 +278,9 @@ describe('Vendors Tab', () => {
 
     it('shows spinner on vendor badge while mutation is in flight', async () => {
       // Given: useUpdateItem is mocked to stay pending indefinitely
-      vi.spyOn(hooksModule, 'useUpdateItem').mockReturnValue({
-        mutate: vi.fn(),
-        isPending: true,
-      })
+      vi.spyOn(hooksModule, 'useUpdateItem').mockReturnValue(
+        pendingCloudUpdateItem(),
+      )
 
       await createVendor('Costco')
       const item = await createItem({

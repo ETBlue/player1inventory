@@ -167,9 +167,18 @@ describe('TagSettings — tag type creation (cloud mode bug)', () => {
     setupDefaultMocks()
     let capturedOnSuccess: (() => void) | undefined
     vi.spyOn(useTagsModule, 'useCreateTagType').mockReturnValue({
-      mutate: vi.fn((_input, options?: { onSuccess?: () => void }) => {
-        capturedOnSuccess = options?.onSuccess
-      }),
+      // The cloud branch of `useCreateTagType` (hooks/useTags.ts:93) types
+      // `mutate` as `(input, options?) => Promise<void>`, so the mock needs
+      // the same parameter list and an async body. `tags/index.tsx:511`
+      // ignores the returned promise.
+      mutate: vi.fn(
+        async (
+          _input: { name: string; color?: TagColor },
+          options?: { onSuccess?: () => void },
+        ) => {
+          capturedOnSuccess = options?.onSuccess
+        },
+      ),
       mutateAsync: vi.fn(),
       isPending: false,
     })

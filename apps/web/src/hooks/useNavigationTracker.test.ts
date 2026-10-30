@@ -3,39 +3,45 @@ import { renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useNavigationTracker } from './useNavigationTracker'
 
+// `vi.mock` factories are hoisted above every import, so the mocks they hand
+// out have to be created in a `vi.hoisted` block. Each one carries its REAL
+// implementation signature; a bare `vi.fn()` is `Mock<Procedure |
+// Constructable>` and matches nothing.
+//
+// `useRouterState` is stubbed as `() => string`, NOT with its real signature.
+// The hook calls it with a `select` callback and reads a string back
+// (`useNavigationTracker.ts:16-22`), so the string is what each test supplies.
+// `vi.mocked(useRouterState)` is deliberately not used — that would demand the
+// real `RouterState` return type and no string could be given.
+//
+// The cost of that, said plainly: the `select` callback is never invoked by any
+// test in this file, so the `searchStr` vs `search` rule its comment describes
+// is unproven here. That was already true before the stub was typed.
+const mocks = vi.hoisted(() => ({
+  loadNavigationHistory: vi.fn<() => string[]>(),
+  saveNavigationHistory: vi.fn<(history: string[]) => void>(),
+  useRouterState: vi.fn<() => string>(),
+}))
+
 vi.mock('@/lib/sessionStorage', () => ({
-  loadNavigationHistory: vi.fn(),
-  saveNavigationHistory: vi.fn(),
+  loadNavigationHistory: mocks.loadNavigationHistory,
+  saveNavigationHistory: mocks.saveNavigationHistory,
 }))
 
 vi.mock('@tanstack/react-router', () => ({
-  useRouterState: vi.fn(),
+  useRouterState: mocks.useRouterState,
 }))
 
 describe('useNavigationTracker', () => {
-  let mockLoadNavigationHistory: ReturnType<typeof vi.fn>
-  let mockSaveNavigationHistory: ReturnType<typeof vi.fn>
-  let mockUseRouterState: ReturnType<typeof vi.fn>
+  const mockLoadNavigationHistory = mocks.loadNavigationHistory
+  const mockSaveNavigationHistory = mocks.saveNavigationHistory
+  const mockUseRouterState = mocks.useRouterState
 
-  beforeEach(async () => {
+  beforeEach(() => {
+    // `clearAllMocks` drops call records but KEEPS a `mockReturnValue` set by a
+    // previous test, so the empty-history default is re-armed here.
     vi.clearAllMocks()
-
-    mockLoadNavigationHistory = vi.fn(() => [])
-    mockSaveNavigationHistory = vi.fn()
-    mockUseRouterState = vi.fn()
-
-    const { loadNavigationHistory, saveNavigationHistory } = await import(
-      '@/lib/sessionStorage'
-    )
-    vi.mocked(loadNavigationHistory).mockImplementation(
-      mockLoadNavigationHistory,
-    )
-    vi.mocked(saveNavigationHistory).mockImplementation(
-      mockSaveNavigationHistory,
-    )
-
-    const { useRouterState } = await import('@tanstack/react-router')
-    vi.mocked(useRouterState).mockImplementation(mockUseRouterState)
+    mockLoadNavigationHistory.mockReturnValue([])
   })
 
   it('records full URL including search params', () => {
