@@ -45,29 +45,22 @@ const rgbToHSL = (r: number, g: number, b: number): string => {
   return `hsl(${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%)`
 }
 
-// Utility to convert hex to HSL
-const _hexToHSL = (hex: string): string => {
-  // Remove # if present
-  hex = hex.replace(/^#/, '')
-
-  // Parse RGB values
-  const r = Number.parseInt(hex.slice(0, 2), 16)
-  const g = Number.parseInt(hex.slice(2, 4), 16)
-  const b = Number.parseInt(hex.slice(4, 6), 16)
-
-  return rgbToHSL(r, g, b)
-}
-
 // Utility to parse rgb()/rgba() string and convert to HSL
 const parseRgbToHSL = (rgbString: string): string => {
   const match = rgbString.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
   if (!match) return rgbString
 
-  const r = Number.parseInt(match[1], 10)
-  const g = Number.parseInt(match[2], 10)
-  const b = Number.parseInt(match[3], 10)
+  // The three capture groups are all required by the pattern, so a match
+  // always fills them. `noUncheckedIndexedAccess` cannot see that, so fall
+  // back to the raw string the same way a non-match does.
+  const [, r, g, b] = match
+  if (r === undefined || g === undefined || b === undefined) return rgbString
 
-  return rgbToHSL(r, g, b)
+  return rgbToHSL(
+    Number.parseInt(r, 10),
+    Number.parseInt(g, 10),
+    Number.parseInt(b, 10),
+  )
 }
 
 // Hook to read computed color value from element ref
@@ -107,33 +100,33 @@ const ColorSection = ({ title, description, children }: ColorSectionProps) => (
 
 interface ColorCardProps {
   name: string
-  tintColor: string
+  inverseColor: string
   defaultColor: string
   usage: string
 }
 
 const ColorCard = ({
   name,
-  tintColor,
+  inverseColor,
   defaultColor,
   usage,
 }: ColorCardProps) => {
-  const tint = useComputedColor(tintColor)
+  const inverse = useComputedColor(inverseColor)
   const defaultVariant = useComputedColor(defaultColor)
 
   return (
     <div className="space-y-2">
       <h3 className="font-semibold capitalize">{name}</h3>
       <div className="flex gap-2">
-        {/* Tint variant */}
+        {/* Inverse (light tint) variant */}
         <div className="flex-1 space-y-1">
           <div
-            ref={tint.ref}
+            ref={inverse.ref}
             className="h-20 rounded border flex items-end justify-center p-2"
-            style={{ backgroundColor: tintColor }}
+            style={{ backgroundColor: inverseColor }}
           >
             <span className="text-xs font-mono bg-background-elevated/90 border px-1 rounded">
-              {tint.colorValue}
+              {inverse.colorValue}
             </span>
           </div>
           <div className="text-xs space-y-1">
@@ -235,7 +228,7 @@ export const AllColors: Story = {
             <ColorCard
               key={colorName}
               name={colorName}
-              tintColor={colors[colorName].tint}
+              inverseColor={colors[colorName].inverse}
               defaultColor={colors[colorName].default}
               usage="Use tint for subtle backgrounds. Use default for emphasis and high contrast."
             />
