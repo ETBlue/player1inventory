@@ -43,6 +43,49 @@ async function requireCartLocation(
  * This note used to cite `mirrorItemStockToItem` in lib/stockDualWrite.ts as
  * the other place the distinction was written down. Cloud locations PR 5
  * deleted that module; the rule did not change.
+ *
+ * ── EVERY `CartItem.userId` FILTER BELOW MUST BE RE-DERIVED FOR HOUSEHOLDS ──
+ *
+ * Issue #358. Two `userId` columns are read in this file, and the households
+ * design (docs/global/permissions/2026-10-04-households-design.md, section
+ * "Changed models", on the `feature/households` branch) decides OPPOSITE
+ * things about them:
+ *
+ *   `Cart.userId`     — DROPPED. A cart belongs to its location and is shared
+ *                       by everyone there. So every line below that names it
+ *                       STOPS COMPILING, and the compiler lists them for you:
+ *                       the `vendorCart` create, `allCarts`, the two
+ *                       `bootstrapCarts` calls, and the `abandonCart` lookup.
+ *   `CartItem.userId` — KEPT, with a CHANGED MEANING: "added by", not "owns".
+ *                       It stops being a scope; scope comes from the cart's
+ *                       location. So every filter below that names it KEEPS
+ *                       COMPILING and silently answers the wrong question.
+ *
+ * Do not carry a `CartItem.userId` filter across unchanged just because it
+ * still type-checks. Re-derive what each query should scope by. The six places
+ * that filter on it, and what each would get wrong in a SHARED cart:
+ *
+ *   `cartItems`            a member sees only the rows they added themselves,
+ *                          not what co-members put in the cart
+ *   `cartItemCountByItem`  both branches undercount, so the item list's
+ *                          "in a cart" marker and the Stock tab's remove
+ *                          confirmation both report too few rows
+ *   `allCartItems`         export and import lose every co-member's rows
+ *   `checkout`'s read      only the caller's rows are bought
+ *   `checkout`'s delete    only the caller's bought rows are removed
+ *   `abandonCart`'s delete clearing a cart clears only the caller's part
+ *
+ * Nothing in the suite can fail on any of this. The server tests run against
+ * hand-written Prisma fakes seeded with one user, and the cloud E2E specs sign
+ * in as `E2E_USER_ID` alone, so "rows this caller added" and "rows in this
+ * cart" give the same answer. A real fix needs a two-member fixture;
+ * `e2e/tests/cart-id-cross-user-leak.spec.ts` is the two-user pattern, and
+ * `makeGql(request, userId)` in `e2e/utils/cloud.ts` supports a second account.
+ *
+ * Issue #358 asks for this warning only. What each query should scope by is a
+ * households decision and is NOT made here. `InventoryLog.userId` has the
+ * identical shape — kept, meaning "the author" — and is flagged the same way
+ * in resolvers/inventoryLog.resolver.ts.
  */
 export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
   Query: {
@@ -59,6 +102,11 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       const cartId = cartIdFor(locationId, vendorId ?? null)
       let cart = await prisma.cart.findUnique({ where: { id: cartId } })
       if (!cart) {
+        // Issue #358: this write is what decides what every `Cart.userId`
+        // filter in this file MEANS today — the first person to open a
+        // vendor's cart at a location owns the row. Households drops
+        // `Cart.userId`, so this line stops compiling and the column simply
+        // goes. See the block comment above this object.
         cart = await prisma.cart.create({
           data: { id: cartId, userId, locationId },
         })
@@ -81,6 +129,11 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
     cartItems: async (_, { cartId }, ctx) => {
       const userId = requireAuth(ctx)
       await requireCartLocation(ctx, cartId, 'viewer')
+      // Issue #358: `CartItem.userId` becomes "added by" under households and
+      // this filter KEEPS COMPILING. Left as it is, a member of a shared
+      // location sees only the rows they added themselves and not what their
+      // co-members put in the cart. Re-derive the scope from the cart's
+      // location — see the block comment above this object.
       return prisma.cartItem.findMany({ where: { cartId, userId } }) as unknown as Promise<CartItem[]>
     },
 
@@ -164,6 +217,14 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       // shipped; Task 1's re-key of `Cart.id` is what made the real location
       // reachable here.
       const cartLocationId = await requireCartLocation(ctx, cartId, 'member')
+      // Issue #358: this read decides WHICH rows get bought, and
+      // `CartItem.userId` becomes "added by" under households while this
+      // filter KEEPS COMPILING. Left as it is, a shared checkout moves stock
+      // and writes inventory logs for the caller's rows ONLY. A co-member's
+      // rows are not bought and — with the matching `deleteMany` further down
+      // — stay sitting in the cart, so this is the pair that LOSES DATA rather
+      // than hiding it. Re-derive the scope — see the block comment above this
+      // object.
       const cartItems = await prisma.cartItem.findMany({ where: { cartId, userId } })
       // `isBeingBought` is `quantity > 0` (lib/checkout.js). Pinned items
       // (quantity === 0) stay in the permanent cart — no migration needed.
@@ -304,6 +365,12 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
         where: { id: cartId },
         data: { lastPurchasedAt: now },
       })
+      // Issue #358: the other half of the checkout hazard. `CartItem.userId`
+      // becomes "added by" under households and this filter KEEPS COMPILING,
+      // so only the caller's bought rows are removed. A co-member's rows stay
+      // in the cart after a checkout that did not buy them, which is data
+      // loss and not merely a hidden row. Re-derive the scope — see the block
+      // comment above this object.
       await prisma.cartItem.deleteMany({
         where: { cartId, userId, quantity: { gt: 0 } },
       })
@@ -370,6 +437,17 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
     abandonCart: async (_, { cartId }, ctx) => {
       const userId = requireAuth(ctx)
       await requireCartLocation(ctx, cartId, 'member')
+      // Issue #358, and the two lines below need DIFFERENT fixes because they
+      // read different columns.
+      //
+      // The lookup reads `Cart.userId`, which households DROPS, so that line
+      // stops compiling and has to be rewritten in any case — look the cart up
+      // by its id alone, authorized by `requireCartLocation` above.
+      //
+      // The delete reads `CartItem.userId`, which households KEEPS with the
+      // meaning "added by", so that line KEEPS COMPILING and would clear only
+      // the caller's part of a shared cart while every co-member's row stays.
+      // Re-derive its scope — see the block comment above this object.
       const existing = await prisma.cart.findFirst({ where: { id: cartId, userId } })
       if (!existing) throw new GraphQLError('Cart not found', { extensions: { code: 'NOT_FOUND' } })
       // Delete ALL items (including pinned)
