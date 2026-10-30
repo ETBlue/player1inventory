@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
 import { createItem, createTag, createTagType } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+import { TagColor } from '@/types'
 
 describe('Tags Tab - Add Tag Functionality', () => {
   beforeEach(async () => {
@@ -21,7 +22,10 @@ describe('Tags Tab - Add Tag Functionality', () => {
 
   it('user can create a new tag and it is automatically assigned to the item', async () => {
     // Given an item and a tag type with no tags
-    const tagType = await createTagType({ name: 'categories', color: 'blue' })
+    const tagType = await createTagType({
+      name: 'categories',
+      color: TagColor.blue,
+    })
     const item = await createItem({
       name: 'Test Item',
       tagIds: [],
@@ -76,7 +80,7 @@ describe('Tags Tab - Add Tag Functionality', () => {
 
   it('user can add a new tag from item tags page', async () => {
     // Given an item and a tag type with no tags
-    const _tagType = await createTagType({ name: 'categories', color: 'blue' })
+    await createTagType({ name: 'categories', color: TagColor.blue })
     const item = await createItem({
       name: 'Test Item',
       tagIds: [],
@@ -175,7 +179,7 @@ describe('Tags Tab - Add Tag Functionality', () => {
 
   it('tag badge shows spinner and blocks interaction while toggling', async () => {
     // Given a tag type with a tag assigned to the item
-    const tagType = await createTagType({ name: 'Label', color: 'teal' })
+    const tagType = await createTagType({ name: 'Label', color: TagColor.teal })
     const tag = await createTag({ name: 'frozen', typeId: tagType.id })
     const item = await createItem({
       name: 'Fish Fillet',
@@ -213,8 +217,11 @@ describe('Tags Tab - Add Tag Functionality', () => {
 
   it('tag badge has aria-pressed reflecting assigned state', async () => {
     // Given a tag type with a tag not yet assigned to the item
-    const tagType = await createTagType({ name: 'Category', color: 'blue' })
-    const _tag = await createTag({ name: 'dairy', typeId: tagType.id })
+    const tagType = await createTagType({
+      name: 'Category',
+      color: TagColor.blue,
+    })
+    await createTag({ name: 'dairy', typeId: tagType.id })
     const item = await createItem({
       name: 'Test Item',
       tagIds: [],
