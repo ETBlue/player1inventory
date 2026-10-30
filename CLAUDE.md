@@ -390,6 +390,28 @@ build:     tsc -b && tsc -p tsconfig.test.json && vite build
 typecheck: tsc -b && tsc -p tsconfig.test.json
 ```
 
+**What this pass does NOT catch: an extra key in an untyped mock payload.** Measured
+2026-10-31, and it matters because it is easy to assume otherwise.
+
+| Mock shape | A key the result type does not have is |
+|---|---|
+| `vi.mocked(typedThing).mockReturnValue({ … })` | **caught** — the generated type is applied |
+| bare `const m = vi.fn()`, then `m.mockReturnValue({ … })` | **not caught** — `vi.fn()` with no type parameter accepts anything |
+| a plain object literal passed to `MockedProvider` | **not caught** — not excess-property-checked |
+
+Proved both ways in `src/routes/cooking.cloud.test.tsx`: `zzzBogus: 1` inside
+`mockUseGetItemsQuery.mockReturnValue({ … })` gives **0** errors, while the same key
+inside a `vi.mocked(...)` return gives **1**. A genuinely wrong type in the same file
+(`const zzzProbe: number = "x"`) is caught either way, so the pass itself is working.
+
+**The consequence, measured on issue #359 step one:** removing the `userId` selection from
+every GraphQL document regenerated the types and **17 files still referenced the field**,
+yet `pnpm build` was clean on the first run. Nothing failed. The cleanup of those 17 was
+tidying, not forced repair — do not read it as "the type-check caught these".
+
+So when a selection set or a required field changes, **grep the test files yourself.** The
+type-check narrows what you have to check; it does not remove the need to check.
+
 **All 358 of them, with no exclusions.** The config's `exclude` list was a backlog and it
 is now empty. Issue #340 step 3 emptied it in three waves:
 
