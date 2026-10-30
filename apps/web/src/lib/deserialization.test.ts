@@ -57,10 +57,10 @@ describe('deserializeVendor', () => {
   })
 
   it('falls back to epoch for the cloud wire shape, which has no createdAt', () => {
-    // Given a vendor exactly as GetVendors returns it — `Vendor { id, name,
-    // userId }` in vendor.graphql, with no createdAt in the SDL, in Prisma, or
-    // in the selection set
-    const raw = { id: '1', name: 'Costco', userId: 'user-1' }
+    // Given a vendor exactly as GetVendors returns it — `Vendor { id, name }`
+    // in vendor.graphql, with no createdAt in the SDL, in Prisma, or in the
+    // selection set. It also selected `userId` until issue #359.
+    const raw = { id: '1', name: 'Costco' }
 
     // When deserializing
     const result = deserializeVendor(raw)
@@ -100,13 +100,13 @@ describe('deserializeRecipe', () => {
 
   it('falls back to epoch for the cloud wire shape, which has no timestamps', () => {
     // Given a recipe exactly as GetRecipes returns it — `Recipe { id, name,
-    // items, lastCookedAt, userId }` in recipe.graphql, with no
-    // createdAt/updatedAt in the SDL, in Prisma, or in the selection set
+    // items, lastCookedAt }` in recipe.graphql, with no createdAt/updatedAt in
+    // the SDL, in Prisma, or in the selection set. It also selected `userId`
+    // until issue #359.
     const raw = {
       id: '1',
       name: 'Pasta',
       items: [],
-      userId: 'user-1',
       lastCookedAt: null,
     }
 

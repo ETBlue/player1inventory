@@ -64,7 +64,7 @@ describe('useRecipes (cloud mode)', () => {
     localStorage.setItem('data-mode', 'cloud')
     mockUseGetRecipesQuery.mockReturnValue({
       data: {
-        recipes: [{ id: 'r-1', name: 'Pancakes', items: [], userId: 'u1' }],
+        recipes: [{ id: 'r-1', name: 'Pancakes', items: [] }],
       },
       loading: false,
       error: undefined,
@@ -90,7 +90,6 @@ describe('useRecipes (cloud mode)', () => {
             id: 'r-1',
             name: 'Pancakes',
             items: [],
-            userId: 'u1',
             createdAt: '2026-01-15T10:00:00.000Z',
             updatedAt: '2026-01-16T10:00:00.000Z',
             lastCookedAt: '2026-01-17T10:00:00.000Z',
@@ -132,7 +131,7 @@ describe('useRecipe (cloud mode)', () => {
     localStorage.setItem('data-mode', 'cloud')
     mockUseGetRecipeQuery.mockReturnValue({
       data: {
-        recipe: { id: 'r-1', name: 'Pancakes', items: [], userId: 'u1' },
+        recipe: { id: 'r-1', name: 'Pancakes', items: [] },
       },
       loading: false,
       error: undefined,
@@ -159,7 +158,6 @@ describe('useRecipe (cloud mode)', () => {
           id: 'r-1',
           name: 'Pancakes',
           items: [],
-          userId: 'u1',
           createdAt: '2026-01-15T10:00:00.000Z',
           updatedAt: '2026-01-16T10:00:00.000Z',
         },

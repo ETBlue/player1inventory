@@ -2,7 +2,6 @@ query GetVendors {
   vendors {
     id
     name
-    userId
   }
 }
 
@@ -10,7 +9,6 @@ mutation CreateVendor($name: String!, $locationId: ID!) {
   createVendor(name: $name, locationId: $locationId) {
     id
     name
-    userId
   }
 }
 

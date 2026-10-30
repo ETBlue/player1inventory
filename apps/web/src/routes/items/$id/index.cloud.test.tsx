@@ -108,7 +108,6 @@ const BREAD = {
     },
   ],
   lastCookedAt: null,
-  userId: 'user-1',
 }
 
 // The server's state. The mutation mock writes into it and the query mocks

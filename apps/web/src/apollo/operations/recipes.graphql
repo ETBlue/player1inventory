@@ -7,7 +7,6 @@ query GetRecipes {
       defaultAmount
     }
     lastCookedAt
-    userId
   }
 }
 
@@ -20,7 +19,6 @@ query GetRecipe($id: ID!) {
       defaultAmount
     }
     lastCookedAt
-    userId
   }
 }
 

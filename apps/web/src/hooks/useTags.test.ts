@@ -76,9 +76,7 @@ describe('useTagTypes (cloud mode)', () => {
     localStorage.setItem('data-mode', 'cloud')
     mockUseGetTagTypesQuery.mockReturnValue({
       data: {
-        tagTypes: [
-          { id: 'tt-1', name: 'Category', color: 'teal', userId: 'u1' },
-        ],
+        tagTypes: [{ id: 'tt-1', name: 'Category', color: 'teal' }],
       },
       loading: false,
       error: undefined,
@@ -107,7 +105,6 @@ describe('useCreateTagType (cloud mode)', () => {
           id: 'tt-new',
           name: 'Category',
           color: 'teal',
-          userId: 'u1',
         },
       },
     })
@@ -208,7 +205,7 @@ describe('useTags (cloud mode)', () => {
     localStorage.setItem('data-mode', 'cloud')
     mockUseGetTagsQuery.mockReturnValue({
       data: {
-        tags: [{ id: 'tag-1', name: 'Dairy', typeId: 'tt-1', userId: 'u1' }],
+        tags: [{ id: 'tag-1', name: 'Dairy', typeId: 'tt-1' }],
       },
       loading: false,
       error: undefined,
@@ -231,9 +228,7 @@ describe('useTagsByType (cloud mode)', () => {
     localStorage.setItem('data-mode', 'cloud')
     mockUseGetTagsByTypeQuery.mockReturnValue({
       data: {
-        tagsByType: [
-          { id: 'tag-1', name: 'Dairy', typeId: 'tt-1', userId: 'u1' },
-        ],
+        tagsByType: [{ id: 'tag-1', name: 'Dairy', typeId: 'tt-1' }],
       },
       loading: false,
       error: undefined,
@@ -262,7 +257,6 @@ describe('useCreateTag (cloud mode)', () => {
           id: 'tag-new',
           name: 'Dairy',
           typeId: 'tt-1',
-          userId: 'u1',
         },
       },
     })
@@ -402,15 +396,14 @@ describe('useTagsWithDepth (cloud mode)', () => {
     mockUseGetTagsQuery.mockReturnValue({
       data: {
         tags: [
-          { id: 'parent', name: 'Produce', typeId: 'tt-1', userId: 'u1' },
+          { id: 'parent', name: 'Produce', typeId: 'tt-1' },
           {
             id: 'child',
             name: 'Fruit',
             typeId: 'tt-1',
             parentId: 'parent',
-            userId: 'u1',
           },
-          { id: 'sibling', name: 'Dairy', typeId: 'tt-1', userId: 'u1' },
+          { id: 'sibling', name: 'Dairy', typeId: 'tt-1' },
         ],
       },
       loading: false,
@@ -443,8 +436,8 @@ describe('useTagsWithDepth (cloud mode)', () => {
     mockUseGetTagsQuery.mockReturnValue({
       data: {
         tags: [
-          { id: 'a', name: 'Fruit', typeId: 'tt-1', userId: 'u1' },
-          { id: 'b', name: 'Pantry', typeId: 'tt-2', userId: 'u1' },
+          { id: 'a', name: 'Fruit', typeId: 'tt-1' },
+          { id: 'b', name: 'Pantry', typeId: 'tt-2' },
         ],
       },
       loading: false,

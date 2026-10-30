@@ -118,7 +118,6 @@ const tagType = (id: string, name: string) => ({
   id,
   name,
   color: 'blue',
-  userId: 'user-1',
 })
 
 const tag = (id: string, name: string) => ({
@@ -126,7 +125,6 @@ const tag = (id: string, name: string) => ({
   id,
   name,
   typeId: 'tt-1',
-  userId: 'user-1',
   parentId: null,
 })
 
@@ -134,7 +132,6 @@ const vendor = (id: string, name: string) => ({
   __typename: 'Vendor' as const,
   id,
   name,
-  userId: 'user-1',
 })
 
 const shelf = (id: string, name: string) => ({
@@ -145,7 +142,6 @@ const shelf = (id: string, name: string) => ({
   order: 0,
   filterConfig: null,
   itemIds: [],
-  userId: 'user-1',
 })
 
 const recipe = (id: string, name: string) => ({
@@ -154,7 +150,6 @@ const recipe = (id: string, name: string) => ({
   name,
   items: [],
   lastCookedAt: null,
-  userId: 'user-1',
 })
 
 const cart = (id: string, lastPurchasedAt: string | null) => ({

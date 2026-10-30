@@ -80,9 +80,18 @@ export function buildExportPayload(
 }
 
 /**
- * Strip Apollo/server-only fields (__typename, userId, familyId) from a cloud
- * export payload. Reuses the same mapper functions used on the import side so
- * the allowed field sets stay in sync.
+ * Strip Apollo/server-only fields (__typename, familyId) from a cloud export
+ * payload. Reuses the same mapper functions used on the import side so the
+ * allowed field sets stay in sync.
+ *
+ * These mappers are ALLOW-LISTS: each one names the keys it forwards, so any
+ * other key is dropped by omission. No key array names a field to remove, and
+ * the strip therefore needs no edit when a selection set changes.
+ *
+ * `userId` is still named in the unit tests on purpose, even though issue #359
+ * stopped every web document selecting it, so no live Apollo result carries it
+ * any more. Those tests now prove the general rule — an unexpected key never
+ * reaches the backup file — rather than one field.
  */
 export function sanitiseCloudPayload(payload: ExportPayload): ExportPayload {
   return {

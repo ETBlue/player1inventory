@@ -18,7 +18,6 @@ query PantryData($locationId: ID!) {
     expirationMode
     estimatedDueDays
     expirationThreshold
-    userId
     createdAt
     updatedAt
   }
