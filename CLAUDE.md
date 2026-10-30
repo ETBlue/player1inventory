@@ -126,6 +126,23 @@ that really set up that role.
 > grep -c 'requireOwnItemStockRefs(ctx' apps/server/src/resolvers/import.resolver.ts          # 2
 > ```
 >
+> **Six GraphQL types still declare `userId: String!`, and no web document selects it any more.** This is **step one of two** for issue #359, done 2026-10-31. The fields are `Item` (`item.graphql:18`), `TagType` (`tag.graphql:5`), `Tag` (`tag.graphql:12`), `Vendor` (`vendor.graphql:4`), `Recipe` (`recipe.graphql:59`) and `Shelf` (`shelf.graphql:20`).
+>
+> **The schema still has all six. Issue #359 is NOT closed.** Step two removes them, and that is a households change in its own release. Do not read "the selections are gone" as "the field is gone".
+>
+> Why the two steps are split: dropping a field a deployed bundle still selects fails GraphQL **validation**, so the whole query errors rather than one field going null. The Cloudflare deploy and the server deploy are separate steps, so there is always a window where the two disagree. Removing the selections first closes that window — once no deployed bundle names the field, step two breaks nothing.
+>
+> Check the state with these two commands, not from memory:
+>
+> ```bash
+> grep -rn userId apps/web/src/apollo/operations/          # must return nothing
+> grep -rn "userId: String!" apps/server/src/schema/ | wc -l  # 6 until step two
+> ```
+>
+> **Nothing in `apps/web` ever read the field** — that is what made step one safe. Measured 2026-10-31: the only `.userId` accesses in `apps/web/src` are `snapshot.userId` in `apollo/persistence.ts` (the Apollo cache's own Dexie column, unrelated) and two comments. Both test counts were unchanged by the removal: web **2321 / 251**, server **522 / 32**.
+>
+> **The `userId` still named in `exportData.ts` and `importData.ts` tests is deliberate.** Those mappers are allow-lists — each names the keys it forwards, so anything else is dropped by omission. The tests feed `userId` in by hand, so they now prove the general rule that an unexpected key never reaches a backup file, not that one real field is stripped. No live Apollo result carries it any more.
+
 > Nine of those 22 also scope the **other** id in a reference — the `tagId`, `vendorId`, `itemId`, `cartId` or `typeId` a payload attaches its own row to. That is **13** lookups, and a reference that does not resolve is still SKIPPED, not refused: a partial backup legitimately names a parent the user has since deleted. See `docs/features/settings/2026-10-28-design-import-ownership-guard.md`.
 
 ## Project Structure
