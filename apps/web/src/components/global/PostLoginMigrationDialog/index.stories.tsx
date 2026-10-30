@@ -71,15 +71,17 @@ function PromptingStory() {
     async function init() {
       await db.delete()
       await db.open()
+      // The four quantity fields (targetQuantity, refillThreshold,
+      // packedQuantity, unpackedQuantity) used to sit here. Since v15 they
+      // belong to `ItemStock`, not `Item`. No `ItemStock` row is added either:
+      // `usePostLoginMigration` reads only `items.length`
+      // (src/hooks/usePostLoginMigration.ts:149-154), so the dialog never
+      // reads a quantity and the story renders the same thing without one.
       await db.items.add({
         id: 'story-item-1',
         name: 'Milk',
         tagIds: [],
         targetUnit: 'package',
-        targetQuantity: 1,
-        refillThreshold: 0,
-        packedQuantity: 0,
-        unpackedQuantity: 0,
         consumeAmount: 1,
         createdAt: new Date(),
         updatedAt: new Date(),

@@ -498,18 +498,27 @@ const stockedHere = (
 const stockedElsewhere = async (name: string): Promise<Item> => {
   const now = new Date()
   const id = crypto.randomUUID()
-  const item: Item = { id, name, tagIds: [], createdAt: now, updatedAt: now }
+  // The v15/v16 split: `targetUnit` and `consumeAmount` are global
+  // CONFIGURATION and live on `Item`; the four quantity fields are
+  // PER-LOCATION state and live on `ItemStock`.
+  const item: Item = {
+    id,
+    name,
+    tagIds: [],
+    targetUnit: 'package',
+    consumeAmount: 1,
+    createdAt: now,
+    updatedAt: now,
+  }
   await db.items.put(item)
   await db.itemStocks.put({
     id: `stock-${id}`,
     itemId: id,
     locationId: 'loc-elsewhere',
-    targetUnit: 'package',
     targetQuantity: 4,
     refillThreshold: 1,
     packedQuantity: 3,
     unpackedQuantity: 0,
-    consumeAmount: 1,
     createdAt: now,
     updatedAt: now,
   })

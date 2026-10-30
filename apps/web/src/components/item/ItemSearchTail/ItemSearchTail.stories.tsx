@@ -3,8 +3,16 @@ import { ArrowUpFromLine, Plus } from 'lucide-react'
 import type { PantryItem } from '@/types'
 import { ItemSearchTail } from './ItemSearchTail'
 
-const baseStock = {
-  targetUnit: 'package' as const,
+// `ItemSearchTail` reads `item.id` and hands the whole row to `renderItem`
+// (ItemSearchTail.tsx), and `stockId` is what separates the two sections. The
+// rest is the real `PantryItem` shape — `Item` configuration plus the joined
+// per-location `StockFields`. `stockId` is OPTIONAL, so a row that is not
+// stocked here OMITS the key; `exactOptionalPropertyTypes` rejects
+// `stockId: undefined`.
+const makePantryItem = (
+  overrides: Pick<PantryItem, 'id' | 'name'> & Partial<PantryItem>,
+): PantryItem => ({
+  targetUnit: 'package',
   targetQuantity: 2,
   refillThreshold: 1,
   packedQuantity: 1,
@@ -15,29 +23,19 @@ const baseStock = {
   locationId: 'local',
   createdAt: new Date('2026-08-01'),
   updatedAt: new Date('2026-08-01'),
-}
+  ...overrides,
+})
 
 // Stocked here (has a stockId) but not in the page's list.
-const bread = {
+const bread = makePantryItem({
   id: 'bread',
   name: 'Bread',
   stockId: 'stock-bread',
-  ...baseStock,
-} as PantryItem
+})
 
 // Exist globally, stocked only at another location — no stockId.
-const milkPowder = {
-  id: 'milk-powder',
-  name: 'Milk Powder',
-  stockId: undefined,
-  ...baseStock,
-} as PantryItem
-const oatMilk = {
-  id: 'oat-milk',
-  name: 'Oat Milk',
-  stockId: undefined,
-  ...baseStock,
-} as PantryItem
+const milkPowder = makePantryItem({ id: 'milk-powder', name: 'Milk Powder' })
+const oatMilk = makePantryItem({ id: 'oat-milk', name: 'Oat Milk' })
 
 const renderItem = (item: PantryItem) => (
   <div className="px-3 py-2 text-sm capitalize">{item.name}</div>

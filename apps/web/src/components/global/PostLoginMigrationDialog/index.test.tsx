@@ -10,7 +10,26 @@ import {
   activeLocationStorageKey,
 } from '@/hooks/useActiveLocation'
 import { importCloudData } from '@/lib/importData'
+import { callArgs } from '@/test/narrow'
+import type { Item } from '@/types'
 import { PostLoginMigrationDialog } from '.'
+
+// `usePostLoginMigration` reads only `items.length` from `getAllItems()`
+// (src/hooks/usePostLoginMigration.ts:149-154), so NO field of the row is read
+// by anything under test here. The factory requires `id` and `name` — what the
+// test states about its row — and supplies the rest of `Item`'s required
+// columns. The quantity fields are deliberately absent: since v15 they live on
+// `ItemStock`, and the dialog never reads a quantity.
+const makeItem = (
+  overrides: Pick<Item, 'id' | 'name'> & Partial<Item>,
+): Item => ({
+  tagIds: [],
+  targetUnit: 'package',
+  consumeAmount: 1,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  ...overrides,
+})
 
 // Partial mock so a test can hold the location query unresolved.
 vi.mock('@/db/operations', async (importOriginal) => {
@@ -142,13 +161,7 @@ describe('PostLoginMigrationDialog — signing in copies the local pantry', () =
   beforeEach(async () => {
     localStorage.removeItem('migration-prompted')
     // A local pantry is what puts the hook into the 'prompting' state.
-    await db.items.put({
-      id: 'item-1',
-      name: 'Milk',
-      tagIds: [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    })
+    await db.items.put(makeItem({ id: 'item-1', name: 'Milk' }))
   })
 
   afterEach(async () => {
@@ -178,7 +191,7 @@ describe('PostLoginMigrationDialog — signing in copies the local pantry', () =
     // Then the copy runs on that one press — no second confirmation, and the
     // call names no location, so every location travels
     await waitFor(() => expect(importCloudData).toHaveBeenCalled())
-    const call = vi.mocked(importCloudData).mock.calls[0]
+    const call = callArgs(vi.mocked(importCloudData).mock, 0)
     expect(call[1]).toBe('skip')
     expect(call[3]).toBeUndefined()
   })

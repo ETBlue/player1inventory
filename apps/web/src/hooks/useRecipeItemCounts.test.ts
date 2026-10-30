@@ -1,7 +1,6 @@
-import type { UseQueryResult } from '@tanstack/react-query'
 import { renderHook } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { Item, Recipe } from '@/types'
+import type { PantryItem, Recipe } from '@/types'
 import * as hooks from './index'
 import { useRecipeItemCounts } from './useRecipeItemCounts'
 import * as recipeHooks from './useRecipes'
@@ -14,7 +13,11 @@ vi.mock('./useRecipes', () => ({
   useRecipes: vi.fn(),
 }))
 
-function makeItem(id: string, name: string): Item {
+// `useRecipeItemCounts` only needs each row's `id` — it counts recipe entries
+// whose `itemId` is in the item list (`useRecipeItemCounts.ts`). `useItems()`
+// hands back joined `PantryItem` rows, so the stock fields below are required
+// by the type rather than by the hook.
+function makeItem(id: string, name: string): PantryItem {
   return {
     id,
     name,
@@ -25,10 +28,10 @@ function makeItem(id: string, name: string): Item {
     packedQuantity: 0,
     unpackedQuantity: 0,
     consumeAmount: 1,
-    targetUnit: 'package' as const,
+    targetUnit: 'package',
     createdAt: new Date(),
     updatedAt: new Date(),
-  } as Item
+  }
 }
 
 function makeRecipe(id: string, name: string, itemIds: string[]): Recipe {
@@ -41,15 +44,22 @@ function makeRecipe(id: string, name: string, itemIds: string[]): Recipe {
   }
 }
 
-function mockData(items: Item[], recipes: Recipe[]) {
+// Both mocked hooks are built field by field, not cast — `useItems()`'s local
+// branch (`useItems.ts:431`) and `useRecipes()`'s local branch
+// (`useRecipes.ts:64`).
+function mockData(items: PantryItem[], recipes: Recipe[]) {
   vi.mocked(hooks.useItems).mockReturnValue({
     data: items,
-  } as Partial<UseQueryResult<Item[]>> as UseQueryResult<Item[]>)
+    isLoading: false,
+    isFetching: false,
+    isError: false,
+    refetch: vi.fn(),
+  })
   vi.mocked(recipeHooks.useRecipes).mockReturnValue({
     data: recipes,
     isLoading: false,
     isError: false,
-  } as ReturnType<typeof recipeHooks.useRecipes>)
+  })
 }
 
 describe('useRecipeItemCounts', () => {

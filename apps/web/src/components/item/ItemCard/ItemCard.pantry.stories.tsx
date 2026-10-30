@@ -1,5 +1,6 @@
 // src/components/ItemCard.pantry.stories.tsx
 import type { Meta, StoryObj } from '@storybook/react'
+import type { PantryItem } from '@/types'
 import { ItemCard } from '.'
 import {
   mockDualUnitItem,
@@ -22,16 +23,21 @@ const meta: Meta<typeof ItemCard> = {
 export default meta
 type Story = StoryObj<typeof ItemCard>
 
+// Named as a const rather than read back off `StatusInactive.args?.item`:
+// `args` is optional, so spreading it makes every field of `PantryItem`
+// optional and the result stops being assignable to `PantryItem`.
+const inactiveItem: PantryItem = {
+  ...mockItem,
+  targetQuantity: 0,
+  refillThreshold: 0,
+  packedQuantity: 0,
+  unpackedQuantity: 0,
+}
+
 export const StatusInactive: Story = {
   name: 'Status — Inactive',
   args: {
-    item: {
-      ...mockItem,
-      targetQuantity: 0,
-      refillThreshold: 0,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-    },
+    item: inactiveItem,
     tags: [],
     tagTypes: [],
   },
@@ -39,13 +45,14 @@ export const StatusInactive: Story = {
 
 export const StatusInactiveWithThreshold: Story = {
   args: {
-    ...StatusInactive.args,
     item: {
-      ...StatusInactive.args?.item,
+      ...inactiveItem,
       id: 'inactive-with-threshold',
       refillThreshold: 5, // has a threshold but targetQuantity=0 → inactive
       packedQuantity: 0, // below threshold (would be error if active)
     },
+    tags: [],
+    tagTypes: [],
   },
 }
 

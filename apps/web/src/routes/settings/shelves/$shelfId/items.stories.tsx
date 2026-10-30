@@ -109,7 +109,10 @@ function SelectionShelfWithItemsStory() {
           name: 'Milk',
           tagIds: [],
           vendorIds: [],
-          targetUnit: 'bottle',
+          // `targetUnit` is the discriminator `'package' | 'measurement'`.
+          // 'bottle' is the PACKAGE UNIT NAME, which belongs in `packageUnit`.
+          targetUnit: 'package',
+          packageUnit: 'bottle',
           targetQuantity: 2,
           refillThreshold: 1,
           packedQuantity: 1,
@@ -120,7 +123,8 @@ function SelectionShelfWithItemsStory() {
           name: 'Eggs',
           tagIds: [],
           vendorIds: [],
-          targetUnit: 'box',
+          targetUnit: 'package',
+          packageUnit: 'box',
           targetQuantity: 1,
           refillThreshold: 0,
           packedQuantity: 1,

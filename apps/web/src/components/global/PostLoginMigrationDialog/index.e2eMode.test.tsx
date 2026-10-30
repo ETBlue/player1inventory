@@ -9,6 +9,8 @@ import {
 } from '@/hooks/usePostLoginMigration'
 import { fetchLocalPayload } from '@/lib/exportData'
 import { importCloudData } from '@/lib/importData'
+import { callArgs } from '@/test/narrow'
+import type { Item } from '@/types'
 
 // WHY THIS FILE EXISTS
 //
@@ -46,6 +48,23 @@ vi.mock('@/lib/importData', async (importOriginal) => {
 })
 
 const PAYLOAD = { version: 1, exportedAt: '2026-10-08T00:00:00.000Z' }
+
+// `usePostLoginMigration` reads only `items.length` from `getAllItems()`
+// (src/hooks/usePostLoginMigration.ts:149-154), so NO field of the row is read
+// by anything under test here. The factory requires `id` and `name` — what each
+// test states about its row — and supplies the rest of `Item`'s required
+// columns. The quantity fields are deliberately absent: since v15 they live on
+// `ItemStock`, and the dialog never reads a quantity.
+const makeItem = (
+  overrides: Pick<Item, 'id' | 'name'> & Partial<Item>,
+): Item => ({
+  tagIds: [],
+  targetUnit: 'package',
+  consumeAmount: 1,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  ...overrides,
+})
 
 // The dialog reads `VITE_E2E_TEST_USER_ID` ONCE, at module evaluation. So the
 // flag has to be stubbed before the module is first imported, which means the
@@ -97,7 +116,7 @@ describe('PostLoginMigrationDialog — the E2E branch needs no ClerkProvider', (
 
     // Then the copy runs with that strategy
     await waitFor(() => expect(importCloudData).toHaveBeenCalledTimes(1))
-    expect(vi.mocked(importCloudData).mock.calls[0][1]).toBe('clear')
+    expect(callArgs(vi.mocked(importCloudData).mock, 0)[1]).toBe('clear')
 
     // And the strategy is consumed so a reload cannot repeat it
     await waitFor(() =>
@@ -108,13 +127,7 @@ describe('PostLoginMigrationDialog — the E2E branch needs no ClerkProvider', (
 
   it('user with no stored strategy is asked instead of migrated', async () => {
     // Given local data but no strategy key — nobody asked for an auto-copy
-    await db.items.put({
-      id: 'item-1',
-      name: 'Milk',
-      tagIds: [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    })
+    await db.items.put(makeItem({ id: 'item-1', name: 'Milk' }))
 
     // When the dialog mounts in E2E test mode
     await renderE2EDialog()
@@ -131,13 +144,7 @@ describe('PostLoginMigrationDialog — the E2E branch needs no ClerkProvider', (
     // finished migration leaves behind
     localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
-    await db.items.put({
-      id: 'item-1',
-      name: 'Milk',
-      tagIds: [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    })
+    await db.items.put(makeItem({ id: 'item-1', name: 'Milk' }))
 
     // When the dialog mounts in E2E test mode
     await renderE2EDialog()

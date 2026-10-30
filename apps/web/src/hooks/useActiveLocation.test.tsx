@@ -168,6 +168,9 @@ describe('ActiveLocationProvider — cart bootstrap effect', () => {
       order: 0,
       isDefault: true,
       createdAt: new Date(),
+      // `Location.updatedAt` is required, and `db/index.ts:69` stamps it on the
+      // row the `populate` hook really seeds.
+      updatedAt: new Date(),
     })
   })
 
@@ -210,6 +213,7 @@ describe('ActiveLocationProvider — cart bootstrap effect', () => {
       order: 1,
       isDefault: false,
       createdAt: new Date(),
+      updatedAt: new Date(),
     })
     const user = userEvent.setup()
     renderProvider()
