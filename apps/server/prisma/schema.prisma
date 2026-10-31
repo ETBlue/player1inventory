@@ -282,3 +282,24 @@ model ItemStock {
   @@unique([itemId, locationId])
   @@index([locationId])
 }
+
+// A person who has signed in with Clerk. The server keeps the name and email
+// here so it does not have to ask Clerk on every request. The Clerk webhook
+// fills it (households H2); see
+// docs/global/permissions/2026-10-04-households-design.md.
+//
+// No relation to any other model yet. Every other model still names its owner
+// with a plain `userId` string. Households H3 adds the relations.
+model User {
+  // The Clerk user id. Also the race guard for first sign-in in H3: two
+  // concurrent first requests cannot both create this row.
+  id          String    @id
+  displayName String
+  // Optional: a Clerk account may sign in by phone or username, and the
+  // user.deleted event carries no email.
+  email       String?
+  lastSeenAt  DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
