@@ -467,6 +467,16 @@
   },
   "settings": {
     "title": "設定",
+    "household": {
+      "title": "我的資料",
+      "general": {
+        "label": "一般",
+        "description": "匯出與匯入資料"
+      }
+    },
+    "user": {
+      "title": "偏好設定"
+    },
     "theme": {
       "label": "佈景",
       "description": "選擇淺色、深色佈景，或依系統設定",

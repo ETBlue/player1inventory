@@ -58,6 +58,19 @@ function SettingsStory() {
 
 // Language variants (EN/TW) are exercised via the Storybook toolbar (withI18n decorator in preview.tsx).
 // No per-story localStorage setup needed — use the Language toolbar button to switch languages.
-export const Default: Story = {
+//
+// /settings depends on the screen width (useIsDesktop): mobile shows the
+// accordion, desktop goes to /settings/household. Each story fixes the
+// Storybook viewport, so the canvas width matches the story name.
+
+// Mobile: the two-item accordion. "My data" is open, "Preferences" is closed.
+export const Mobile: Story = {
+  globals: { viewport: { value: 'mobile2', isRotated: false } },
+  render: () => <SettingsStory />,
+}
+
+// Desktop: /settings lands on the household config page.
+export const Desktop: Story = {
+  globals: { viewport: { value: 'desktop', isRotated: false } },
   render: () => <SettingsStory />,
 }

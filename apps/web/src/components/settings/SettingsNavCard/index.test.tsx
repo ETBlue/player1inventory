@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { Tags } from 'lucide-react'
+import type { ComponentProps } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { SettingsNavCard } from '.'
 
@@ -24,7 +25,7 @@ vi.mock('@tanstack/react-router', async () => {
 })
 
 describe('SettingsNavCard', () => {
-  const defaultProps = {
+  const defaultProps: ComponentProps<typeof SettingsNavCard> = {
     icon: Tags,
     label: 'Tags',
     description: 'Manage your tags',

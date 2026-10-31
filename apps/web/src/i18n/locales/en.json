@@ -467,6 +467,16 @@
   },
   "settings": {
     "title": "Settings",
+    "household": {
+      "title": "My data",
+      "general": {
+        "label": "General",
+        "description": "Export and import your data"
+      }
+    },
+    "user": {
+      "title": "Preferences"
+    },
     "theme": {
       "label": "Theme",
       "description": "Choose light, dark, or system theme",

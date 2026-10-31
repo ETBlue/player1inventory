@@ -18,6 +18,7 @@ import { Route as ShoppingIndexRouteImport } from './routes/shopping/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as ShoppingVendorIdRouteImport } from './routes/shopping/$vendorId'
 import { Route as ItemsIdRouteImport } from './routes/items/$id'
+import { Route as SettingsHouseholdIndexRouteImport } from './routes/settings/household/index'
 import { Route as ItemsIdIndexRouteImport } from './routes/items/$id/index'
 import { Route as SettingsHouseholdVendorsRouteImport } from './routes/settings/household/vendors'
 import { Route as SettingsHouseholdTagsRouteImport } from './routes/settings/household/tags'
@@ -93,6 +94,11 @@ const ShoppingVendorIdRoute = ShoppingVendorIdRouteImport.update({
 const ItemsIdRoute = ItemsIdRouteImport.update({
   id: '/items/$id',
   path: '/items/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsHouseholdIndexRoute = SettingsHouseholdIndexRouteImport.update({
+  id: '/settings/household/',
+  path: '/settings/household/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ItemsIdIndexRoute = ItemsIdIndexRouteImport.update({
@@ -291,6 +297,7 @@ export interface FileRoutesByFullPath {
   '/settings/household/tags': typeof SettingsHouseholdTagsRouteWithChildren
   '/settings/household/vendors': typeof SettingsHouseholdVendorsRouteWithChildren
   '/items/$id/': typeof ItemsIdIndexRoute
+  '/settings/household/': typeof SettingsHouseholdIndexRoute
   '/items/$id/relation/recipes': typeof ItemsIdRelationRecipesRoute
   '/items/$id/relation/tags': typeof ItemsIdRelationTagsRoute
   '/items/$id/relation/vendors': typeof ItemsIdRelationVendorsRoute
@@ -325,6 +332,7 @@ export interface FileRoutesByTo {
   '/items/$id/log': typeof ItemsIdLogRoute
   '/items/$id/stock': typeof ItemsIdStockRoute
   '/items/$id': typeof ItemsIdIndexRoute
+  '/settings/household': typeof SettingsHouseholdIndexRoute
   '/items/$id/relation/recipes': typeof ItemsIdRelationRecipesRoute
   '/items/$id/relation/tags': typeof ItemsIdRelationTagsRoute
   '/items/$id/relation/vendors': typeof ItemsIdRelationVendorsRoute
@@ -364,6 +372,7 @@ export interface FileRoutesById {
   '/settings/household/tags': typeof SettingsHouseholdTagsRouteWithChildren
   '/settings/household/vendors': typeof SettingsHouseholdVendorsRouteWithChildren
   '/items/$id/': typeof ItemsIdIndexRoute
+  '/settings/household/': typeof SettingsHouseholdIndexRoute
   '/items/$id/relation/recipes': typeof ItemsIdRelationRecipesRoute
   '/items/$id/relation/tags': typeof ItemsIdRelationTagsRoute
   '/items/$id/relation/vendors': typeof ItemsIdRelationVendorsRoute
@@ -408,6 +417,7 @@ export interface FileRouteTypes {
     | '/settings/household/tags'
     | '/settings/household/vendors'
     | '/items/$id/'
+    | '/settings/household/'
     | '/items/$id/relation/recipes'
     | '/items/$id/relation/tags'
     | '/items/$id/relation/vendors'
@@ -442,6 +452,7 @@ export interface FileRouteTypes {
     | '/items/$id/log'
     | '/items/$id/stock'
     | '/items/$id'
+    | '/settings/household'
     | '/items/$id/relation/recipes'
     | '/items/$id/relation/tags'
     | '/items/$id/relation/vendors'
@@ -480,6 +491,7 @@ export interface FileRouteTypes {
     | '/settings/household/tags'
     | '/settings/household/vendors'
     | '/items/$id/'
+    | '/settings/household/'
     | '/items/$id/relation/recipes'
     | '/items/$id/relation/tags'
     | '/items/$id/relation/vendors'
@@ -517,6 +529,7 @@ export interface RootRouteChildren {
   SettingsHouseholdShelvesRoute: typeof SettingsHouseholdShelvesRouteWithChildren
   SettingsHouseholdTagsRoute: typeof SettingsHouseholdTagsRouteWithChildren
   SettingsHouseholdVendorsRoute: typeof SettingsHouseholdVendorsRouteWithChildren
+  SettingsHouseholdIndexRoute: typeof SettingsHouseholdIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -582,6 +595,13 @@ declare module '@tanstack/react-router' {
       path: '/items/$id'
       fullPath: '/items/$id'
       preLoaderRoute: typeof ItemsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/household/': {
+      id: '/settings/household/'
+      path: '/settings/household'
+      fullPath: '/settings/household/'
+      preLoaderRoute: typeof SettingsHouseholdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/items/$id/': {
@@ -1015,6 +1035,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsHouseholdShelvesRoute: SettingsHouseholdShelvesRouteWithChildren,
   SettingsHouseholdTagsRoute: SettingsHouseholdTagsRouteWithChildren,
   SettingsHouseholdVendorsRoute: SettingsHouseholdVendorsRouteWithChildren,
+  SettingsHouseholdIndexRoute: SettingsHouseholdIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

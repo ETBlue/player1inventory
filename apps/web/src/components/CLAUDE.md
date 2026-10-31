@@ -232,7 +232,7 @@ Self-contained card components for the settings page. Each lives in `src/compone
 
 **`ConflictDialog`** (`src/components/settings/ConflictDialog/index.tsx`) — import conflict resolution dialog. Props: `open`, `conflicts: ConflictSummary`, `onSkip`, `onReplace`, `onClear`, `onClose`. Groups conflicts by entity type, shows names and match reasons (ID/name/both). Three action buttons: Skip conflicts · Replace matches · Clear & import (destructive).
 
-**`SettingsNavCard`** (`src/components/settings/SettingsNavCard/index.tsx`) — navigation link card for settings list items. Props: `icon: LucideIcon`, `label: string`, `description: string`, `to: string`. Renders a TanStack Router Link wrapping a Card with icon, label, description, and ChevronRight.
+**`SettingsNavCard`** (`src/components/settings/SettingsNavCard/index.tsx`) — navigation link card for settings list items. Props: `icon: LucideIcon`, `label: string`, `description: string`, `to: NonNullable<LinkProps['to']>`. Renders a TanStack Router Link wrapping a Card with icon, label, description, and ChevronRight. `to` is the `to` type of `<Link>`, so `tsc` rejects a path with no route. It does not reject a route with params (such as `/items/$id`), because the card passes no `params`. Used by the mobile `/settings` accordion (six household links).
 
 ## Shopping Components
 
