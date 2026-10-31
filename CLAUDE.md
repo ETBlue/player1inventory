@@ -738,8 +738,12 @@ The 46 extra declaration files are **vitest's types**, pulled in by the test fil
 exchange for the destructive-database guard being type-checked and unit-tested. Stated as a
 cost on purpose. (This paragraph used to end "a test file under `scripts/` is not free the
 way a test file under `src/` is, because nothing type-checks `src` test files at all". That
-was true until 2026-10-30. `apps/server/src` test files are still checked by nothing, but
-`apps/web`'s now are.)
+was never true for `apps/server`. Its `tsconfig.json` includes all of `src` and excludes no
+test file, so `tsc` checks every `apps/server/src/**/*.test.ts`: measured 2026-10-31,
+`tsc --noEmit --listFiles` lists **32** of them. Proved by mutation the same day: a
+`const __probe: number = 'x'` in `src/test/userFake.test.ts` made
+`pnpm --filter server exec tsc --noEmit` exit 2 with `TS2322`. `apps/web`'s test files have
+been checked since 2026-10-30.)
 
 Why two tsconfigs rather than one: `tsconfig.json` **emits**, with `rootDir: "src"` and
 `outDir: "dist"`. Adding `scripts` to its `include` moves `rootDir` to `.` and emits
