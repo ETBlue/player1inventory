@@ -169,6 +169,87 @@ describe('createStaleReadRetryLink', () => {
     })
   })
 
+  it('a refetch sent after the mutation answers is sent once', async () => {
+    // Given a server that answers every request a little later, and no query
+    // in flight
+    const sent: string[] = []
+    const delayedLink = new ApolloLink(
+      (operation) =>
+        new Observable((observer) => {
+          const name = operation.operationName ?? '?'
+          sent.push(name)
+          const timer = setTimeout(() => {
+            observer.next({
+              data: name === 'Save' ? { save: true } : { list: ['saved'] },
+            })
+            observer.complete()
+          }, 5)
+          return () => clearTimeout(timer)
+        }),
+    )
+    const client = clientWith(delayedLink)
+
+    // When a mutation answers and Apollo sends its refetch
+    await client.mutate({
+      mutation: SAVE,
+      refetchQueries: [{ query: LIST }],
+      awaitRefetchQueries: true,
+    })
+
+    // Then the refetch joined nothing, and was sent exactly once
+    expect(sent).toEqual(['Save', 'List'])
+  })
+
+  it('leaves no request open after unsubscribe when the server answers at once', async () => {
+    // Given a mutation the server holds
+    let heldSave:
+      | { next: (r: { data: unknown }) => void; complete: () => void }
+      | undefined
+    let listSends = 0
+    const open = new Set<number>()
+    const syncLink = new ApolloLink(
+      (operation) =>
+        new Observable((observer) => {
+          if (operation.operationName === 'Save') {
+            heldSave = observer
+            return
+          }
+          listSends += 1
+          if (listSends === 1) {
+            // The held save answers while this query is being sent, and then
+            // the query answers at once, before `subscribe` returns. So the
+            // link starts its resend inside that same `subscribe` call.
+            heldSave?.next({ data: { save: true } })
+            heldSave?.complete()
+            observer.next({ data: { list: [] } })
+            observer.complete()
+            return
+          }
+          // Later sends are held, and record whether they are still open
+          const id = listSends
+          open.add(id)
+          return () => open.delete(id)
+        }),
+    )
+    const client = clientWith(syncLink)
+    const mutation = client.mutate({ mutation: SAVE })
+    await tick()
+
+    // When a query is watched, sent again, and then unsubscribed
+    const watching = client
+      .watchQuery({ query: LIST, fetchPolicy: 'network-only' })
+      .subscribe(() => {})
+    await mutation
+    await tick()
+    expect(listSends).toBe(2)
+    expect(open.size).toBe(1)
+    watching.unsubscribe()
+    await tick()
+
+    // Then the resend was cancelled too
+    expect(open.size).toBe(0)
+  })
+
   it('passes a query error on without sending the query again', async () => {
     // Given a query that is waiting, and a mutation that answers first
     const server = heldServer()

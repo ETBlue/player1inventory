@@ -114,7 +114,8 @@ export function createApolloClient(getToken: () => Promise<string | null>) {
 
   return new ApolloClient({
     // `createStaleReadRetryLink` sits after `offlineWriteLink`, so a mutation
-    // refused offline never reaches the server and is not counted.
+    // refused offline never reaches the server and is not counted. Pinned by
+    // "does not make a waiting query send again" in `client.test.ts`.
     link: offlineWriteLink.concat(createStaleReadRetryLink()).concat(splitLink),
     cache: cloudCache,
   })

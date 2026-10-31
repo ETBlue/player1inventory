@@ -339,6 +339,65 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+describe('createApolloClient — a mutation refused offline', () => {
+  const WAITING_QUERY = gql`
+    query OfflineProbeList {
+      offlineProbeList
+    }
+  `
+  const REFUSED_MUTATION = gql`
+    mutation OfflineProbeSave {
+      offlineProbeSave
+    }
+  `
+
+  it('does not make a waiting query send again', async () => {
+    // Given a query that waits on the network, through the production client
+    // The first request waits until the test releases it. Any later request
+    // answers at once, so a wrong resend fails on the count below instead of
+    // hanging until the test times out.
+    let releaseFirst: (() => void) | undefined
+    const answer = () =>
+      new Response(JSON.stringify({ data: { offlineProbeList: ['a'] } }), {
+        headers: { 'content-type': 'application/json' },
+      })
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          if (releaseFirst) resolve(answer())
+          else releaseFirst = () => resolve(answer())
+        }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    setOnLine(true)
+    const client = createApolloClient(async () => null)
+    try {
+      const query = client.query({
+        query: WAITING_QUERY,
+        fetchPolicy: 'network-only',
+      })
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+      // When the device goes offline and a mutation is refused
+      setOnLine(false)
+      await expect(
+        client.mutate({ mutation: REFUSED_MUTATION }),
+      ).rejects.toThrow('Offline')
+      setOnLine(true)
+
+      // Then the waiting query's answer is passed on, and it was sent once.
+      // `offlineWriteLink` refuses the mutation before it reaches
+      // `createStaleReadRetryLink`, so the refusal is not counted.
+      releaseFirst?.()
+      expect((await query).data).toEqual({ offlineProbeList: ['a'] })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.unstubAllGlobals()
+      await client.clearStore()
+    }
+  })
+})
+
 describe('resolveToken', () => {
   it('returns the token when online', async () => {
     // Given the device is online and Clerk answers
