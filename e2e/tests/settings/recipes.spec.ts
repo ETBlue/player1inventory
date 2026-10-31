@@ -209,8 +209,8 @@ test('user can create a recipe', async ({ page }) => {
   // Wait for navigation to the detail page after dialog submit
   await page.waitForURL(
     (url) =>
-      url.pathname.startsWith('/settings/recipes/') &&
-      url.pathname !== '/settings/recipes/new',
+      url.pathname.startsWith('/settings/household/recipes/') &&
+      url.pathname !== '/settings/household/recipes/new',
   )
 
   // Then: navigate back to list to verify the recipe appears
@@ -229,8 +229,8 @@ test('user can delete a recipe', async ({ page, baseURL }) => {
     await recipes.clickSave()
     await page.waitForURL(
       (url) =>
-        url.pathname.startsWith('/settings/recipes/') &&
-        url.pathname !== '/settings/recipes/new',
+        url.pathname.startsWith('/settings/household/recipes/') &&
+        url.pathname !== '/settings/household/recipes/new',
     )
     await recipes.navigateTo()
   } else {
@@ -260,8 +260,8 @@ test('user can navigate to recipe detail after creating', async ({ page }) => {
   await recipes.fillRecipeName('Pancakes')
   await recipes.clickSave()
 
-  // Then: URL is /settings/recipes/<id> (detail page, not the new page)
-  await expect(page).toHaveURL(/\/settings\/recipes\/[^/]+$/)
+  // Then: URL is /settings/household/recipes/<id> (detail page, not the new page)
+  await expect(page).toHaveURL(/\/settings\/household\/recipes\/[^/]+$/)
 })
 
 test('user can assign and unassign an item on Items tab', async ({
@@ -284,8 +284,8 @@ test('user can assign and unassign an item on Items tab', async ({
     await recipes.clickSave()
     await page.waitForURL(
       (url) =>
-        url.pathname.startsWith('/settings/recipes/') &&
-        url.pathname !== '/settings/recipes/new',
+        url.pathname.startsWith('/settings/household/recipes/') &&
+        url.pathname !== '/settings/household/recipes/new',
     )
     recipeId = new URL(page.url()).pathname.split('/').filter(Boolean).pop()!
 
@@ -420,8 +420,8 @@ test('user can edit recipe name on Info tab', async ({ page, baseURL }) => {
     await recipes.clickSave()
     await page.waitForURL(
       (url) =>
-        url.pathname.startsWith('/settings/recipes/') &&
-        url.pathname !== '/settings/recipes/new',
+        url.pathname.startsWith('/settings/household/recipes/') &&
+        url.pathname !== '/settings/household/recipes/new',
     )
     recipeId = new URL(page.url()).pathname.split('/').filter(Boolean).pop()!
   } else {
@@ -469,8 +469,8 @@ test.describe('recipe item count after item assignment', () => {
       await recipes.clickSave()
       await page.waitForURL(
         (url) =>
-          url.pathname.startsWith('/settings/recipes/') &&
-          url.pathname !== '/settings/recipes/new',
+          url.pathname.startsWith('/settings/household/recipes/') &&
+          url.pathname !== '/settings/household/recipes/new',
       )
       recipeId = new URL(page.url()).pathname.split('/').filter(Boolean).pop()!
 

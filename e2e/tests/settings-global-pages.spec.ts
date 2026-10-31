@@ -15,7 +15,10 @@ import { seedLocalFixture } from '../helpers/localSeed'
 // Two of its user-visible outcomes had unit coverage but nothing end to end:
 //   * the four `…/items` assignment tabs render no active-location stock, and
 //   * Settings is pinned to the bottom of the desktop sidebar, split from the
-//     three location-aware destinations.
+//     three location-aware destinations. Since households H1 the bottom block
+//     holds 🏠 "My data" and the 👤 "Preferences" button instead of a single
+//     Settings link, and test 2 checks that layout plus the household view
+//     🏠 opens.
 //
 // TEST 1 RUNS IN BOTH PROJECTS as of issue #323 task 2. TEST 2 RUNS IN `local`
 // ONLY — see its own `test.skip`.
@@ -55,7 +58,7 @@ const ITEM_ID = 'ffffffff-0000-0000-0000-0000000000a3'
 
 // One tag on one tagged item, stocked 5 of a target 10 in the default
 // location. The ids are fixed strings because the spec navigates to
-// `/settings/tags/${TAG_ID}/items` by literal id; `TagTypeInput`, `TagInput`
+// `/settings/household/tags/${TAG_ID}/items` by literal id; `TagTypeInput`, `TagInput`
 // and `ItemInput` all declare `id: ID!`, so cloud keeps these values.
 const FIXTURE: Fixture = {
   // The default location must be listed first — `seedLocalFixture` writes
@@ -182,7 +185,7 @@ test('user sees no location stock on a settings items tab, while the pantry show
 
   // When the same item is viewed on the tag's Items tab — a GLOBAL item↔tag
   // assignment surface, which passes showStock={false}
-  await page.goto(`/settings/tags/${TAG_ID}/items`)
+  await page.goto(`/settings/household/tags/${TAG_ID}/items`)
   await expect(page.getByText('Milk').first()).toBeVisible()
 
   // Then the row is there AND the item is assigned to this tag. Both halves
@@ -208,17 +211,19 @@ test('user sees no location stock on a settings items tab, while the pantry show
   await expect(page.locator('[data-segment]')).toHaveCount(0)
 })
 
-test('user sees Settings pinned below the location-aware links in the sidebar', async ({
+test('user sees My data and Preferences pinned to the bottom of the sidebar, and My data opens the household sidebar', async ({
   page,
   baseURL,
 }) => {
-  // LOCAL ONLY, on purpose. `Sidebar.tsx` has no data-mode branch of any kind:
-  // it renders the `navRoutes` array plus one `mt-auto` block holding
-  // `settingsRoute`, and reads no query and no mode. So a cloud run would
-  // measure the same four links and the same two bounding boxes a second time.
+  // LOCAL ONLY, on purpose. The only mode-aware part of the main sidebar is
+  // the 👤 label (`UserLabel` in
+  // src/components/settings/UserSettingsPanel/UserSettingsPanel.tsx). It says
+  // "Preferences" in local mode AND in E2E cloud mode, because E2E cloud has
+  // no Clerk user name. So a cloud run would measure the same links, the same
+  // button and the same bounding boxes a second time.
   test.skip(
     baseURL === CLOUD_WEB_URL,
-    'Sidebar.tsx renders the same markup in both modes — it has no data-mode branch, so a cloud run measures identical bounding boxes',
+    'the sidebar renders the same markup in local and E2E cloud mode (the 👤 label is "Preferences" in both), so a cloud run measures identical bounding boxes',
   )
 
   // Given the pantry at a desktop viewport, where the sidebar is rendered
@@ -226,40 +231,93 @@ test('user sees Settings pinned below the location-aware links in the sidebar', 
   await page.setViewportSize({ width: 1280, height: 900 })
   await page.goto('/')
 
-  // When the sidebar's nav links are read
+  // When the sidebar's links are read
   // (<nav aria-label="Sidebar navigation"> — src/components/global/Sidebar/Sidebar.tsx)
   const sidebar = page.getByRole('navigation', { name: 'Sidebar navigation' })
   await expect(sidebar).toBeVisible()
   const labels = await sidebar.getByRole('link').allInnerTexts()
 
-  // Then Settings comes last, after the three location-aware destinations
+  // Then 🏠 "My data" comes after the three location-aware destinations, and
+  // there is no "Settings" link any more
   expect(labels.map((label) => label.trim())).toEqual([
     'Pantry',
     'Shopping',
     'Cooking',
-    'Settings',
+    'My data',
   ])
 
-  // And it is genuinely PINNED TO THE BOTTOM, not merely listed fourth.
-  // Order alone cannot tell the two apart — Settings was already last in the
-  // flat four-entry array this replaced, so an order-only assertion stays green
-  // against the old code. Real layout is the only thing that distinguishes
-  // them, and it is exactly what jsdom cannot give the unit test: measure the
+  // And 🏠 "My data" and the 👤 "Preferences" button are PINNED TO THE BOTTOM,
+  // not merely listed last. Order alone cannot tell the two layouts apart.
+  // Real layout can, and jsdom cannot give it to the unit test: measure the
   // gap the `mt-auto` block opens up.
   const nav = await sidebar.boundingBox()
   const cooking = await sidebar
     .getByRole('link', { name: 'Cooking' })
     .boundingBox()
-  const settings = await sidebar
-    .getByRole('link', { name: 'Settings' })
+  const myData = await sidebar
+    .getByRole('link', { name: 'My data' })
     .boundingBox()
-  if (!nav || !cooking || !settings) {
-    throw new Error('sidebar, Cooking link or Settings link has no layout box')
+  const preferences = await sidebar
+    .getByRole('button', { name: 'Preferences' })
+    .boundingBox()
+  if (!nav || !cooking || !myData || !preferences) {
+    throw new Error(
+      'sidebar, Cooking, My data or Preferences has no layout box',
+    )
   }
 
-  // A large vertical gap separates Settings from the three above it — in the
-  // flat-list layout the links are a 4px `gap-1` apart.
-  expect(settings.y - (cooking.y + cooking.height)).toBeGreaterThan(200)
-  // …and Settings sits at the foot of the sidebar, not floating mid-column.
-  expect(nav.y + nav.height - (settings.y + settings.height)).toBeLessThan(60)
+  // A large vertical gap separates the bottom block from the three links
+  // above it. In a flat list the links are a 4px `gap-1` apart.
+  expect(myData.y - (cooking.y + cooking.height)).toBeGreaterThan(200)
+  // 👤 sits directly below 🏠, in the same block…
+  expect(preferences.y).toBeGreaterThan(myData.y)
+  expect(preferences.y - (myData.y + myData.height)).toBeLessThan(20)
+  // …and the block sits at the foot of the sidebar, not mid-column.
+  expect(
+    nav.y + nav.height - (preferences.y + preferences.height),
+  ).toBeLessThan(60)
+
+  // When the user goes to Cooking, then presses 🏠 "My data"
+  await sidebar.getByRole('link', { name: 'Cooking' }).click()
+  // The cooking page writes its default search string into the URL
+  // (`?sort=recent&dir=asc&q=&expanded=`), so wait for it before reading it
+  await expect(page).toHaveURL(/\/cooking\?/)
+  const cookingUrl = page.url()
+  await sidebar.getByRole('link', { name: 'My data' }).click()
+
+  // Then the household config page opens, and the sidebar shows the
+  // household view: Back, the heading, and six links
+  // (src/components/global/Sidebar/HouseholdSidebar.tsx)
+  await expect(page).toHaveURL(/\/settings\/household$/)
+  await expect(sidebar.getByRole('button', { name: 'Back' })).toBeVisible()
+  await expect(
+    sidebar.getByRole('heading', { name: 'My data', level: 2 }),
+  ).toBeVisible()
+  await expect(sidebar.getByRole('link')).toHaveText([
+    'General',
+    'Locations',
+    'Shelves',
+    'Vendors',
+    'Recipes',
+    'Tags',
+  ])
+  // General is the active item on `/settings/household` itself
+  await expect(sidebar.getByRole('link', { name: 'General' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+  // The main view is gone. Asserted after the six links are present, so a
+  // sidebar that has not rendered yet cannot satisfy it.
+  await expect(sidebar.getByRole('link', { name: 'Pantry' })).toHaveCount(0)
+  await expect(
+    sidebar.getByRole('button', { name: 'Preferences' }),
+  ).toHaveCount(0)
+
+  // When the user presses Back
+  await sidebar.getByRole('button', { name: 'Back' }).click()
+
+  // Then they return to the last app page they saw, Cooking. Not the `/`
+  // fallback: that is why the test visits Cooking first.
+  await expect(page).toHaveURL(cookingUrl)
+  await expect(sidebar.getByRole('link', { name: 'My data' })).toBeVisible()
 })

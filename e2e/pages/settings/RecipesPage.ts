@@ -10,12 +10,12 @@ export class RecipesPage {
   }
 
   async navigateTo() {
-    // /settings/recipes uses parent layout route src/routes/settings/recipes.tsx
-    await this.page.goto('/settings/recipes')
+    // /settings/household/recipes uses parent layout route src/routes/settings/household/recipes.tsx
+    await this.page.goto('/settings/household/recipes')
   }
 
   async clickNewRecipe() {
-    // "New Recipe" button in toolbar (src/routes/settings/recipes/index.tsx:33)
+    // "New Recipe" button in toolbar (src/routes/settings/household/recipes/index.tsx:33)
     await this.page.getByRole('button', { name: /new recipe/i }).click()
   }
 

@@ -4,7 +4,7 @@ import { cleanupCloudData } from '../../helpers/cloudTeardown'
 
 // Runs in BOTH projects, local and cloud.
 //
-// Every test here is UI-driven: it opens /settings/locations and clicks "Add
+// Every test here is UI-driven: it opens /settings/household/locations and clicks "Add
 // location". Nothing in this file seeds a database. The only `page.evaluate()`
 // call is the local-mode teardown below.
 //
@@ -18,7 +18,7 @@ import { cleanupCloudData } from '../../helpers/cloudTeardown'
 // (lib/defaultLocation.ts) returns early whenever the user already has a
 // default, so run 2 would see run 1's "Office" and fail.
 //
-// Name lookups are scoped to <main>: /settings/locations is not a fullscreen
+// Name lookups are scoped to <main>: /settings/household/locations is not a fullscreen
 // page, so at Playwright's default (desktop) viewport the sidebar's
 // LocationSwitcher also renders the active location's name.
 
@@ -69,12 +69,12 @@ test.afterEach(async ({ page, request, baseURL }) => {
 
 test('user can create a location', async ({ page }) => {
   // Given the locations settings page is open (default "My Home" seeded on first open)
-  await page.goto('/settings/locations')
+  await page.goto('/settings/household/locations')
   // Default location is undeletable and visible
   await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
 
   // When the user adds a location named "Office"
-  // Add button aria-label: settings.locations.addLabel = "Add location" (src/routes/settings/locations/index.tsx)
+  // Add button aria-label: settings.locations.addLabel = "Add location" (src/routes/settings/household/locations/index.tsx)
   await page.getByRole('button', { name: 'Add location' }).click()
   // AddNameDialog input: label "Name" (src/components/shared/AddNameDialog/AddNameDialog.tsx)
   await page.getByRole('dialog').getByLabel('Name').fill('Office')
@@ -86,7 +86,7 @@ test('user can create a location', async ({ page }) => {
 })
 
 test('user can rename a location', async ({ page }) => {
-  await page.goto('/settings/locations')
+  await page.goto('/settings/household/locations')
   await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
 
   // Given a location "Office" exists
@@ -109,7 +109,7 @@ test('user can rename a location', async ({ page }) => {
 })
 
 test('user can delete a non-default location', async ({ page }) => {
-  await page.goto('/settings/locations')
+  await page.goto('/settings/household/locations')
   await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
 
   // Given a location "Office" exists
@@ -133,7 +133,7 @@ test('user can delete a non-default location', async ({ page }) => {
 
 test('the default location cannot be deleted', async ({ page }) => {
   // Given the locations page with only the default location
-  await page.goto('/settings/locations')
+  await page.goto('/settings/household/locations')
   await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
 
   // Then there is no delete control for the default location
@@ -143,7 +143,7 @@ test('the default location cannot be deleted', async ({ page }) => {
 })
 
 test('user can reorder locations', async ({ page }) => {
-  await page.goto('/settings/locations')
+  await page.goto('/settings/household/locations')
   await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
 
   // Given two extra locations exist: "Office" then "Cabin"

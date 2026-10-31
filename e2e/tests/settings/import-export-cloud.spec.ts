@@ -286,8 +286,10 @@ async function verifyRelations(
   // 5. Recipe has item as ingredient
   await recipes.navigateTo()
   await recipes.getRecipeCard('Fixture Recipe').click()
-  await page.waitForURL(/\/settings\/recipes\//)
-  const recipeId = page.url().match(/\/settings\/recipes\/([^/]+)/)?.[1]
+  await page.waitForURL(/\/settings\/household\/recipes\//)
+  const recipeId = page
+    .url()
+    .match(/\/settings\/household\/recipes\/([^/]+)/)?.[1]
   if (!recipeId) throw new Error('Could not extract recipe ID from URL')
   await recipeDetail.navigateToItems(recipeId)
   await expect(

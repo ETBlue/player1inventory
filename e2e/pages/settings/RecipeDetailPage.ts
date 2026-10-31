@@ -10,11 +10,11 @@ export class RecipeDetailPage {
   }
 
   async navigateTo(id: string) {
-    await this.page.goto(`/settings/recipes/${id}`)
+    await this.page.goto(`/settings/household/recipes/${id}`)
   }
 
   async navigateToItems(id: string) {
-    await this.page.goto(`/settings/recipes/${id}/items`)
+    await this.page.goto(`/settings/household/recipes/${id}/items`)
   }
 
   async fillName(name: string) {

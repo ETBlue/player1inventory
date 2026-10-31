@@ -12,6 +12,7 @@ import { cleanupCloudData } from '../../helpers/cloudTeardown'
 import type { Fixture } from '../../helpers/fixture'
 import { seedLocalFixture } from '../../helpers/localSeed'
 import { readRows } from '../../helpers/locationSeed'
+import { SettingsPage } from '../../pages/SettingsPage'
 import { makeGql } from '../../utils/cloud'
 
 // THE SECOND PATH TO THE `clear` IMPORT STRATEGY, AND THE ONLY ONE A REAL USER
@@ -275,7 +276,23 @@ test('user can switch from offline to cloud mode and clear & import their local 
   // role="dialog". The role is what keeps "Clear & import" — the same visible
   // string in both — from matching the wrong one. Only one of the three
   // alertdialogs is open at a time.
-  await page.goto('/settings')
+  //
+  // `DataModeCard` lives in the 👤 view of the desktop sidebar since H1. The
+  // old `/settings` page now redirects to `/settings/household`, which has no
+  // data mode card. `openUserSidebar` opens the view on the pantry (`/`), so
+  // the reload `doEnableSwitch` triggers lands on the pantry, and the
+  // auto-import runs there.
+  //
+  // KNOWN RED SINCE H1 (2026-10-31): on the pantry the auto-import fails with
+  // "The copy failed: The operation was aborted." and `migration-prompted`
+  // stays unset. The same flow started from the mobile `/settings` page
+  // (reload lands on `/settings`, where no pantry query is active) passes in
+  // 21.8s. Before H1 the switch could only start on `/settings`, so this path
+  // was not reachable. The likely cause is `client.resetStore()` at the end of
+  // `importCloudData` (apps/web/src/lib/importData.ts) while the pantry's
+  // queries are active. Not fixed here: it is app code, reported for a
+  // decision.
+  await new SettingsPage(page).openUserSidebar()
   const dialog = page.getByRole('alertdialog')
 
   // t('settings.dataMode.local.enableButton') = "Switch..."
