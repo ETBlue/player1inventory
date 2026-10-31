@@ -587,6 +587,26 @@ Postpone copying between households, and the global pool with the constraints ab
 And option B's work would likely be redone when the pool lands.
 
 
+### Decision 27 — Five "households prep" issues from `main` (2026-10-31)
+
+**What changed.** #362, #366 and #367 merged on `main`. #367 is named `chore/household-prep`. It
+filed or worked on five issues that ask this design for an answer. Most answers follow from
+earlier decisions, so they are recorded without a new question:
+
+| Issue | Answer | Follows from |
+|---|---|---|
+| #358: nine `CartItem.userId` filters keep compiling and become wrong | Every filter scopes by the cart's location. A table in the design lists all of them | Decision 24 ("added by", shared cart) |
+| #359: six `userId: String!` GraphQL fields | H3 drops them, only after the web build from `8465406b` or later is live | #367 removed the selections |
+| #360: `ensureDefaultLocation` loses its race guard | First sign-in creates `User`, household, "Home" and roles in one transaction. The `User` primary key is the guard. `ensureDefaultLocation` is deleted | The decisions to drop the default location and create "Home" per household |
+| #361: `Cart.id` is not a cuid | `Cart` is checked through its location, and its id must start with `${locationId}:`. The location check runs first | Decision 25 (carts are location data) |
+| #320: purge and `clearAllData` filters | No path deletes rows by who created them. `purgeUserData` goes. Tests: 11 missing `where` assertions, a filter-form coverage check, and a real-SQL two-household test | The purge decisions and the leave and delete flows |
+
+**Two points need the user**, because no earlier decision covers them:
+
+1. Two people add the same item to one cart: one row (proposed) or two rows.
+2. The `clear` import strategy is the same as *Clear household*: owner-only (proposed), or also
+   managers.
+
 ## Data model so far (cloud only)
 
 | Model | Fields | Notes |

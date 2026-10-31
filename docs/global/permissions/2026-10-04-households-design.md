@@ -4,7 +4,7 @@
 **Status:** 🔲 Designed, not built
 **Branch:** `feature/households`
 **Brainstorming log:** [2026-10-03-brainstorming-households.md](2026-10-03-brainstorming-households.md)
-(26 decisions, with the reason for each — read it for the *why*; this doc gives the *what*)
+(27 decisions, with the reason for each — read it for the *why*; this doc gives the *what*)
 **Changes:** [Location RBAC](2026-08-29-design-location-rbac.md). Its binding rule stays. Its
 role table is replaced, and its six open questions are answered (see the last section).
 **Blocked by:** nothing since 2026-10-08. Cloud-locations PR 5 merged as #332 (see *Sequencing*).
@@ -40,6 +40,11 @@ User stories:
 | Issue #273 | Fixed here. Catalog ids are checked with `requireHouseholdRole`. |
 | Issue #327, cart-id leak (`e2e/tests/cart-id-cross-user-leak.spec.ts`) | ✅ Fixed 2026-10-28 (#354), before this work. It added a second guard, `requireOwnRowOrUnclaimed`. H4 changes that guard's body to the new scopes (see *Authorization*). |
 | Issue #330 (`replace` skips rows) | ✅ Fixed 2026-10-12 (#350), before this work. The import rewrite here must keep the fix (see *Known gaps*). |
+| Issue #358 (nine `CartItem.userId` filters keep compiling and become wrong) | Answered here, in *Checkout with a shared cart*. Fixed in H3. |
+| Issue #359 (six `userId: String!` GraphQL fields) | Step one ✅ merged 2026-10-31 (#367): no web document selects them any more. Step two, removing the fields, is H3. See *Sequencing*. |
+| Issue #360 (`ensureDefaultLocation` loses its race guard) | Answered here, in *First sign-in*. Fixed in H3. |
+| Issue #361 (`Cart.id` is not a cuid) | Answered here, in *Authorization*. Fixed in H4. |
+| Issue #320 (purge and `clearAllData` filters) | Answered here, in *Purge*. Fixed in H3 (filters) and H6 (new purges). |
 | Local mode | Not changed, except for the Settings layout and route moves. |
 
 ### What the user gets (once merged AND deployed)
@@ -208,7 +213,18 @@ for nine models. Under this design those nine split into two scopes:
 | `Item`, `Tag`, `TagType`, `Vendor`, `Recipe`, `Shelf` (the catalog) | the row is in the **target** household, and the caller holds the household role import needs (owner or manager) |
 | `Cart`, `InventoryLog` (through their `locationId`), `CartItem` (through its cart) | the row's location is in the target household, and the caller is its organizer or participant |
 
-Two points matter for H4:
+Three points matter for H4:
+
+- **`Cart` is checked through its location, and its id must match its location** (issue #361).
+  `Cart.id` is not a cuid. It is built as `${locationId}:${vendorId}` (`apps/server/src/lib/cartId.ts`),
+  so anyone who knows a location id can build its cart ids. After households, co-members and
+  former members know location ids. With an account-scoped check, a former member could ask
+  "is this cart id free?" and learn which vendors a household shops with. So H4 does two things:
+  the server refuses a cart whose id does not start with `${locationId}:`, and the location
+  check runs first. A caller with no role on that location is refused before any cart id is
+  looked at, so the "free or taken" answer is never given for a cart. The comment in
+  `apps/server/src/lib/authz.ts` and the paragraph in root `CLAUDE.md` that say "the ids are
+  cuid" must say "eight of the nine models" until then.
 
 - **"In the target household", not "in any household I belong to".** A user can belong to two
   households. If the check were "any household I belong to", an import into household B of a
@@ -234,6 +250,27 @@ Local mode has no role checks. Nothing in `apps/web/src/db/` changes for this.
 1. The server creates the `User` row.
 2. It creates `<name>'s Household` and a location "Home". The user becomes owner, and organizer
    of "Home".
+
+**Steps 1 and 2 run in one transaction, and the `User` primary key is the race guard** (issue
+#360). Today `ensureDefaultLocation` (`apps/server/src/lib/defaultLocation.ts`) has no lock. Two
+concurrent first requests are kept from making two default locations only by the partial
+unique index `Location_one_default_per_user_key`. H3 drops that index with `isDefault`, so the
+guard must move:
+
+- The transaction starts with `user.create`. `User.id` is the Clerk id and the primary key, so a
+  second concurrent first request fails with `P2002`, rolls back its whole transaction, re-reads
+  and uses the winner's household. Only the transaction that created the `User` row creates a
+  household. This also covers the webhook `user.created` arriving at the same time as the first
+  request.
+- `ensureDefaultLocation` is deleted. The `locations` query no longer creates anything, and the
+  two import resolvers no longer fall back to a default (rule 3 of *The new id rule* asks the
+  user instead).
+- The other places that argue from the old index go in the same commit:
+  `src/schema/import.graphql`, `DefaultLocationConstraintError` in `src/test/stockFake.ts`, the
+  second-default assertion in `scripts/verify-migration.ts` (replaced by a check that two
+  concurrent `user.create` calls give one `P2002`), and the two migration comments.
+- The proof must run against real Postgres, in `verify-migration.ts`. A fake cannot prove a
+  database constraint.
 
 A person who signs up through an invite link gets their own household too, then joins the
 inviting one.
@@ -335,6 +372,28 @@ tests passing against the server version.
 `consumeRecipes` sends a client-computed total for the same reason, so it has the same stale
 total problem and gets the same fix.
 
+**Every `CartItem.userId` filter is re-derived** (issue #358). The column stays and means "added
+by", so `tsc` reports none of them. Scope comes from the cart's location, checked by
+`requireCartLocation`.
+
+| Today (`cart.resolver.ts`) | After H3 |
+|---|---|
+| `cartItems`: `{ cartId, userId }` | `{ cartId }`. Everyone at the location sees every row |
+| `cartItemCountByItem`, both branches | count rows in carts at locations where the caller has a role |
+| `allCartItems`: `{ userId }` | rows in carts at locations the exporter can read (as *Export*) |
+| add to cart: find the row `{ cartId, itemId, userId }` | `{ cartId, itemId }`. **Proposed, waiting for the user:** one row per item per cart. A second person adding the same item changes that row. "Added by" stays the first person |
+| update and remove a row: `{ id, userId }` | `{ id }`, then the row's cart location needs participant or higher |
+| `checkout` read: `{ cartId, userId }` | the rows the client sent, inside the transaction (see above) |
+| `checkout` delete: `{ cartId, userId, quantity > 0 }` | the rows it bought |
+| `abandonCart` lookup: `Cart` by `{ id, userId }` | by `{ id }`. `Cart.userId` is dropped, so this line stops compiling |
+| `abandonCart` delete: `{ cartId, userId }` | `{ cartId }`. The whole cart is cleared |
+| `vendorCart` create: `data: { id, userId, locationId }` | no `userId`. This line stops compiling |
+
+The same check applies to `InventoryLog.userId` ("the author"), flagged in
+`resolvers/inventoryLog.resolver.ts`. The test for each row needs **two members** adding rows to
+one cart. With one member, "rows I added" and "rows in this cart" are the same, so the test
+cannot fail.
+
 ### Purge
 
 These replace today's `purgeUserData`.
@@ -346,6 +405,31 @@ These replace today's `purgeUserData`.
 | Organizer | Remove all items from this location | the location's stock rows and its cart | the location, its roles, its logs, the catalog |
 
 Each asks the person to type the household or location name. Each is written to the activity log.
+
+**No path deletes rows because of who created them** (issue #320). `userId` today means both
+"owns" and "created". After H3 it means only "created", so it never selects what to delete:
+
+| Event | What happens to the rows they created |
+|---|---|
+| A member leaves or is removed | They stay with the household (see *Household roles, removal and leaving*) |
+| A non-owner's account is deleted | They stay. Logs show "Deleted user" |
+| The owner's account is deleted | They stay, and the hand-over starts. Only when the owner was the only person is the household deleted |
+| A `clear` import | **Proposed, waiting for the user:** the same as *Clear household*, so owner only. See *Import* |
+
+So `purgeUserData` is removed. `clearAllData` (`resolvers/import.resolver.ts`) becomes the
+*Clear household* filter. All 14 `deleteMany` filters in each become `householdId` or
+location filters.
+
+**Tests owed before the filters change.** Today only 3 of the 14 filters in each path have a
+`where` assertion, and `purge-coverage.test.ts` checks only that each `deleteMany(` appears in
+the source. The plan must:
+
+1. Add the 11 missing `toHaveBeenCalledWith({ where: … })` assertions to both paths, before H3,
+   so the change shows up as failing tests.
+2. Make `purge-coverage.test.ts` check the filter form, not only the call.
+3. Add a real-SQL E2E test with **two households**, or two locations with different people:
+   purge one and assert the other's rows survive. Mutation check: drop one filter's scope, and
+   the test must go red saying the other's rows are gone.
 
 ### Activity log
 
@@ -476,6 +560,10 @@ A banner at the top of the app shows each open `OwnershipOffer`:
 | exists in this household, importer is viewer or has no role | Skipped. The importer is told which ones |
 | exists in **another** household | The whole import is refused (see rule 2 below) |
 
+**The `clear` strategy — proposed, waiting for the user.** `clear` deletes everything before it
+imports, which is the same as *Clear household*. That purge is owner-only, so `clear` is
+owner-only too. A manager sees only `skip` and `replace`.
+
 ### The new id rule
 
 This **replaces** PR 4b's remap rule (`apps/web/src/lib/importData.ts:371-384`, "keep every
@@ -590,11 +678,17 @@ A suggested split. The plan will fix the final one.
 |---|---|---|
 | H1 | Settings layout and route moves (both modes). No backend change. Can start before PR 5 | Yes: new Settings layout |
 | H2 | `User` model, Clerk webhook, `lastSeenAt`, E2E user creation | No |
-| H3 | `Household`, `HouseholdMember`, `LocationMember`, the data migration, real role checks in both helpers, read scoping, `isDefault` removed. Fixes #273 | No (one household each) |
+| H3 | `Household`, `HouseholdMember`, `LocationMember`, the data migration, real role checks in both helpers, read scoping, `isDefault` removed, the six `userId: String!` GraphQL fields removed. Fixes #273, #358, #360 | No (one household each) |
 | H4 | Import and export: the new id rule, and `requireOwnRowOrUnclaimed` moved to the household scope (#327 itself is already fixed by #354) | The "Import into which location?" dialog |
 | H5 | Invites, join, members page, location people page, switcher filtering, read-only views | **Yes: sharing works** |
 | H6 | Transfer, hand-over, offers banner, purges, activity log | Yes: story 2 |
 | H7 | Personal location order and sort, household switch and create | Yes |
+
+**H3's GraphQL change is breaking, so deploy order matters** (issue #359). Six types declare
+`userId: String!`: `Item`, `TagType`, `Tag`, `Vendor`, `Recipe`, `Shelf`. Removing a field that a
+deployed web bundle still selects makes the whole query fail. #367 removed every selection on
+2026-10-31, so H3 may drop the fields only when the web build live on Cloudflare is from that
+commit (`8465406b`) or later. The H3 deploy runbook checks this first.
 
 ## Testing notes
 
