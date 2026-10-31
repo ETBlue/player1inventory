@@ -70,17 +70,15 @@ export function LocationSettingsPage() {
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <Toolbar className="justify-between">
         <div className="flex items-center gap-2">
+          {/* Mobile only: on desktop the household sidebar has Back (P1). */}
           <Button
             variant="neutral-ghost"
             size="icon"
-            className="lg:w-auto lg:mr-3"
+            className="lg:hidden"
             aria-label={t('common.goBack')}
             onClick={goBack}
           >
             <ArrowLeft className="h-4 w-4" />
-            <span className="hidden lg:inline" aria-hidden="true">
-              {t('common.goBack')}
-            </span>
           </Button>
           <h1>{t('settings.locations.title')}</h1>
         </div>

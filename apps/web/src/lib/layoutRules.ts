@@ -43,3 +43,23 @@ export function isFullscreenPage(
   if (options.desktop) return false
   return MOBILE_FULLSCREEN_LIST_PAGE.test(pathname)
 }
+
+// The pages "Back" in the household sidebar may return to: Pantry (`/`),
+// Shopping (`/shopping` and the vendor carts below it) and Cooking.
+const APP_PAGE = /^(?:\/|\/shopping(?:\/.*)?|\/cooking\/?)$/
+
+/**
+ * The URL that "Back" in the household sidebar goes to: the newest Pantry,
+ * Shopping or Cooking URL in the navigation history, with its search string.
+ * `/` when the history holds none (it keeps only the last 50 URLs).
+ *
+ * `history` is the `app-navigation-history` list, oldest first.
+ */
+export function lastAppPage(history: string[]): string {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const url = history[i] ?? ''
+    const pathname = url.split('?')[0] ?? ''
+    if (APP_PAGE.test(pathname)) return url
+  }
+  return '/'
+}

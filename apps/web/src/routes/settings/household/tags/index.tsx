@@ -443,14 +443,15 @@ export function TagSettings() {
     >
       <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
         <Toolbar>
+          {/* Mobile only: on desktop the household sidebar has Back (P1). */}
           <Button
             variant="neutral-ghost"
             size="icon"
-            className="lg:w-auto lg:mr-3"
+            className="lg:hidden"
+            aria-label={t('common.goBack')}
             onClick={goBack}
           >
             <ArrowLeft className="h-4 w-4" />
-            <span className="hidden lg:inline">{t('common.goBack')}</span>
           </Button>
           <h1 className="">{t('settings.tags.label')}</h1>
           <div className="flex-1" />

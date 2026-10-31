@@ -39,7 +39,15 @@ One-time structural components that appear once in the app shell.
 
 **`Sidebar`** (`src/components/global/Sidebar/index.tsx`) — desktop-only left sidebar (`hidden lg:flex flex-col w-56`). Same fullscreen-page suppression as Navigation (returns `null`, so fullscreen pages have no switcher either). Top to bottom: "Player 1 Inventory" `<h1>`, the `LocationSwitcher` with `variant="full"` (desktop home of the active-location selector — the page toolbars carry the `lg:hidden` compact copy), then the 3 **location-aware** nav links (Pantry, Shopping, Cooking) with icon + label side-by-side. Active: `text-foreground-emphasized bg-background-elevated`.
 
-**Settings is pinned to the bottom**, in its own block (`mt-auto`) below the three — it is global, not location-aware, so it is deliberately kept away from the switcher and the routes the switcher scopes. Both blocks share one link renderer, so the pinned Settings link keeps identical styling, icon and active-state logic (`startsWith('/settings')`, so it stays active on subpages). The mobile `Navigation` bar intentionally does **not** mirror this — the rationale is desktop-sidebar spatial separation and the bottom bar has no switcher adjacency to fix.
+**🏠 "My data" is pinned to the bottom**, in its own block (`mt-auto`) below the three. It links to `/settings/household`. It is global, not location-aware, so it is kept away from the switcher and the routes the switcher scopes. Both blocks share one link renderer, so it has the same styling, icon size and active-state logic. Task 1.7 of the households plan adds the 👤 user entry below it. The mobile `Navigation` bar does **not** mirror this: it still has a Settings tab to `/settings`.
+
+**Two views, chosen by the URL.** When `isHouseholdSettingsPage(pathname)` is true (`/settings/household` and its five list pages), `Sidebar` renders **`HouseholdSidebar`** (`Sidebar/HouseholdSidebar.tsx`) inside the same `<nav>` instead of the main view. It has no app title and no `LocationSwitcher`. Top to bottom:
+
+- **Back** (`navigation.back`). It goes to `lastAppPage(loadNavigationHistory())` from `src/lib/layoutRules.ts`: the newest `/`, `/shopping…` or `/cooking` URL in `app-navigation-history`, with its search string, or `/` when there is none. It pushes the full URL string with `router.history.push`, like `useAppNavigation`.
+- the heading "My data" (`settings.household.title`)
+- six links: General, Locations, Shelves, Vendors, Recipes, Tags. Active state comes from TanStack's own match (`activeOptions` + `activeProps`), so `aria-current="page"` and the active styling cannot disagree. General uses `exact: true`, so it is active only on `/settings/household` itself.
+
+The five list pages keep their own Back button on mobile only (`lg:hidden`), because on desktop the sidebar has Back.
 
 ## Shared Components
 

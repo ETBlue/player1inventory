@@ -225,7 +225,8 @@
     "pantry": "Pantry",
     "shopping": "Shopping",
     "cooking": "Cooking",
-    "settings": "Settings"
+    "settings": "Settings",
+    "back": "Back"
   },
   "items": {
     "newButton": "New Item",

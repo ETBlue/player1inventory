@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { isFullscreenPage, isHouseholdSettingsPage } from './layoutRules'
+import {
+  isFullscreenPage,
+  isHouseholdSettingsPage,
+  lastAppPage,
+} from './layoutRules'
 
 const BOTH = [true, false] as const
 
@@ -84,5 +88,50 @@ describe('isHouseholdSettingsPage', () => {
     '/items/abc',
   ])('%s is not a household list page', (path) => {
     expect(isHouseholdSettingsPage(path)).toBe(false)
+  })
+})
+
+describe('lastAppPage', () => {
+  it('returns the newest Pantry, Shopping or Cooking URL, with its search string', () => {
+    // Given a history that ends on settings pages
+    const history = [
+      '/cooking',
+      '/?groupBy=vendor',
+      '/settings/household',
+      '/settings/household/tags',
+    ]
+
+    // Then the newest app page wins, and its search string is kept
+    expect(lastAppPage(history)).toBe('/?groupBy=vendor')
+  })
+
+  it.each([
+    ['/', '/'],
+    ['/?q=milk', '/?q=milk'],
+    ['/shopping', '/shopping'],
+    ['/shopping/v1?x=1', '/shopping/v1?x=1'],
+    ['/cooking', '/cooking'],
+    ['/cooking/', '/cooking/'],
+    ['/cooking?r=1', '/cooking?r=1'],
+  ])('accepts %s', (entry, expected) => {
+    expect(lastAppPage(['/settings/household', entry, '/items/i1'])).toBe(
+      expected,
+    )
+  })
+
+  it.each([
+    '/items/i1',
+    '/settings',
+    '/settings/household/tags',
+    '/cooking/extra',
+    '/onboarding',
+    '/shoppingx',
+  ])('skips %s', (entry) => {
+    expect(lastAppPage(['/cooking?r=1', entry])).toBe('/cooking?r=1')
+  })
+
+  it('falls back to / when the history holds no app page', () => {
+    expect(lastAppPage(['/settings/household', '/items/i1'])).toBe('/')
+    expect(lastAppPage([])).toBe('/')
   })
 })
