@@ -1,13 +1,15 @@
 import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
-import { clerkMiddleware, getAuth } from '@clerk/express'
+import { clerkClient, clerkMiddleware, getAuth } from '@clerk/express'
 import { ApolloServer } from '@apollo/server'
 import { expressMiddleware } from '@as-integrations/express5'
 import { DEFAULT_CLIENT_ORIGIN, DEFAULT_PORT, GRAPHQL_PATH } from './constants.js'
 import { clerkWebhookHandler } from './lib/clerkWebhook.js'
 import { isAllowedOrigin } from './lib/cors.js'
 import { prisma } from './lib/prisma.js'
+import type { UserSource } from './lib/userRow.js'
+import { ensureUserOrLog } from './lib/userRow.js'
 import { typeDefs } from './schema/index.js'
 import { resolvers } from './resolvers/index.js'
 import type { Context } from './context.js'
@@ -133,6 +135,12 @@ if (E2E_TEST_MODE) {
   })
 }
 
+// Where ensureUser takes a new User row's name and email. E2E mode never
+// calls Clerk: the display name is the user id.
+const USER_SOURCE: UserSource = E2E_TEST_MODE
+  ? { kind: 'e2e' }
+  : { kind: 'clerk', lookup: async (id) => (await clerkClient.users.getUser(id)).raw }
+
 const server = new ApolloServer<Context>({ typeDefs, resolvers })
 await server.start()
 
@@ -142,12 +150,23 @@ app.use(
     context: async ({ req }) => {
       // E2E test bypass: accept a static user ID header instead of a Clerk JWT.
       // Only active when the server is started with E2E_TEST_MODE=true.
+      //
+      // Both branches call ensureUserOrLog (lib/userRow.ts): it creates a
+      // missing User row and records lastSeenAt once per UTC day. It never
+      // throws, so a failure there never fails the request (plan P11). The
+      // E2E branch returns early, so it needs its own call.
+      // contextEnsureUser.test.ts guards both calls.
       if (E2E_TEST_MODE) {
         const testUserId = req.headers['x-e2e-user-id'] as string | undefined
-        if (testUserId) return { userId: testUserId }
+        if (testUserId) {
+          await ensureUserOrLog(testUserId, USER_SOURCE)
+          return { userId: testUserId }
+        }
       }
       const auth = getAuth(req)
-      return { userId: auth.userId ?? null }
+      const userId = auth.userId ?? null
+      if (userId) await ensureUserOrLog(userId, USER_SOURCE)
+      return { userId }
     },
   }),
 )
