@@ -134,7 +134,7 @@ describe('Sidebar', () => {
 
   it('renders no switcher on a fullscreen page, where there is no sidebar', async () => {
     // Given a fullscreen page (the Sidebar returns null there)
-    renderSidebar('/settings/vendors')
+    renderSidebar('/settings/household/vendors')
 
     // Then neither the sidebar nor a switcher is rendered
     await waitFor(() => {

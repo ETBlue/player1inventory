@@ -33,31 +33,31 @@ function Settings() {
           icon={MapPin}
           label={t('settings.locations.label')}
           description={t('settings.locations.description')}
-          to="/settings/locations"
+          to="/settings/household/locations"
         />
         <SettingsNavCard
           icon={ShelvingUnit}
           label={t('settings.shelves.label')}
           description={t('settings.shelves.description')}
-          to="/settings/shelves"
+          to="/settings/household/shelves"
         />
         <SettingsNavCard
           icon={Store}
           label={t('settings.vendors.label')}
           description={t('settings.vendors.description')}
-          to="/settings/vendors"
+          to="/settings/household/vendors"
         />
         <SettingsNavCard
           icon={ChefHat}
           label={t('settings.recipes.label')}
           description={t('settings.recipes.description')}
-          to="/settings/recipes"
+          to="/settings/household/recipes"
         />
         <SettingsNavCard
           icon={Tags}
           label={t('settings.tags.label')}
           description={t('settings.tags.description')}
-          to="/settings/tags"
+          to="/settings/household/tags"
         />
       </div>
     </div>

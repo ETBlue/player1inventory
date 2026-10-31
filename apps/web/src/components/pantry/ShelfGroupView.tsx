@@ -260,7 +260,7 @@ export function ShelfGroupView() {
             asChild
           >
             <Link
-              to="/settings/shelves"
+              to="/settings/household/shelves"
               aria-label={t('settings.shelves.manage')}
             >
               <Settings />

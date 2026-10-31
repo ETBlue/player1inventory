@@ -1,0 +1,306 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import {
+  createMemoryHistory,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { db } from '@/db'
+import { createVendor } from '@/db/operations'
+import * as useVendorsModule from '@/hooks/useVendors'
+import { routeTree } from '@/routeTree.gen'
+import type { Vendor } from '@/types'
+
+// The argument `useUpdateVendor`'s `mutate`/`mutateAsync` take in both
+// branches (hooks/useVendors.ts:147 and :162).
+type UpdateVendorArgs = { id: string; updates: Partial<Omit<Vendor, 'id'>> }
+
+describe('Vendor Detail - Info Tab', () => {
+  let queryClient: QueryClient
+
+  beforeEach(async () => {
+    await db.vendors.clear()
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    // Clear sessionStorage (used by useAppNavigation)
+    sessionStorage.clear()
+  })
+
+  const renderInfoTab = (vendorId: string) => {
+    const history = createMemoryHistory({
+      initialEntries: [`/settings/household/vendors/${vendorId}`],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('user can see the vendor name in the heading', async () => {
+    // Given a vendor exists
+    const vendor = await createVendor('Costco')
+
+    renderInfoTab(vendor.id)
+
+    // Then the vendor name is shown as the page heading
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: 'Costco' }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('user can edit the vendor name and save', async () => {
+    // Given a vendor exists
+    const vendor = await createVendor('Costco')
+
+    renderInfoTab(vendor.id)
+    const user = userEvent.setup()
+
+    // When user clears the name field and types a new name
+    await waitFor(() => {
+      expect(screen.getByLabelText('Name')).toBeInTheDocument()
+    })
+    const nameInput = screen.getByLabelText('Name')
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Costco Wholesale')
+
+    // When user clicks Save
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then the vendor name is updated in the database
+    await waitFor(async () => {
+      const updated = await db.vendors.get(vendor.id)
+      expect(updated?.name).toBe('Costco Wholesale')
+    })
+  })
+
+  it('save button is disabled when name has not changed', async () => {
+    // Given a vendor exists
+    const vendor = await createVendor('Costco')
+
+    renderInfoTab(vendor.id)
+
+    // Then the Save button is disabled when form is clean
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
+    })
+  })
+
+  it('user can navigate back with back button when navigation history exists', async () => {
+    const user = userEvent.setup()
+
+    // Given a vendor
+    const vendor = await createVendor('Test Vendor')
+
+    // And navigation history exists (user came from vendors list page)
+    // Note: Include only the previous page, the current page will be added by useAppNavigation
+    sessionStorage.setItem(
+      'app-navigation-history',
+      JSON.stringify(['/settings/household/vendors']),
+    )
+
+    renderInfoTab(vendor.id)
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Vendor')).toBeInTheDocument()
+    })
+
+    // When user clicks back button (now a button, not a link)
+    const backButton = screen.getByRole('button', { name: /back/i })
+    await user.click(backButton)
+
+    // Then navigates back to previous page (vendors list)
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: /vendors/i }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /new vendor/i }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('user can navigate back after saving vendor name', async () => {
+    const user = userEvent.setup()
+
+    // Given a vendor
+    const vendor = await createVendor('Test Vendor')
+
+    // And navigation history exists (user came from vendors list page)
+    // Note: Include only the previous page, the current page will be added by useAppNavigation
+    sessionStorage.setItem(
+      'app-navigation-history',
+      JSON.stringify(['/settings/household/vendors']),
+    )
+
+    renderInfoTab(vendor.id)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/name/i)).toBeInTheDocument()
+    })
+
+    // When user changes vendor name
+    const nameInput = screen.getByLabelText(/name/i)
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Updated Vendor')
+
+    // And saves the form
+    const saveButton = screen.getByRole('button', { name: /save/i })
+    await user.click(saveButton)
+
+    // Then navigates back to previous page (vendors list)
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: /vendors/i }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /new vendor/i }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  describe('cloud mode — mutate must call onSuccess for navigation to occur', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('user is not navigated back when mutateAsync never resolves (broken cloud mode regression guard)', async () => {
+      // Given: mutateAsync fires but never resolves (broken cloud mode)
+      // The cloud branch of `useUpdateVendor` (hooks/useVendors.ts:145)
+      // returns `mutate`, `mutateAsync` and `isPending`. Returning that whole
+      // shape needs no cast. `vendors/$id/index.tsx:47` reads `mutateAsync`
+      // and `:50` reads `isPending`; `mutate` is never called here.
+      vi.spyOn(useVendorsModule, 'useUpdateVendor').mockReturnValue({
+        mutate: vi.fn(async (_args: UpdateVendorArgs) => {}),
+        // never resolves
+        mutateAsync: vi.fn(
+          (_args: UpdateVendorArgs) => new Promise<undefined>(() => {}),
+        ),
+        isPending: false,
+      })
+
+      const vendor = await createVendor('Test Vendor')
+      sessionStorage.setItem(
+        'app-navigation-history',
+        JSON.stringify(['/settings/household/vendors']),
+      )
+
+      renderInfoTab(vendor.id)
+      const user = userEvent.setup()
+
+      await waitFor(() =>
+        expect(screen.getByLabelText(/name/i)).toBeInTheDocument(),
+      )
+      await user.clear(screen.getByLabelText(/name/i))
+      await user.type(screen.getByLabelText(/name/i), 'New Name')
+      await user.click(screen.getByRole('button', { name: /save/i }))
+
+      // Then navigation does NOT happen (goBack() inside onSuccess was never called)
+      expect(
+        screen.queryByRole('heading', { name: /vendors/i }),
+      ).not.toBeInTheDocument()
+      expect(screen.getByLabelText(/name/i)).toBeInTheDocument()
+    })
+
+    it('user is navigated back after saving when mutateAsync resolves (fixed cloud mode)', async () => {
+      // Given: mutateAsync resolves (fixed cloud mode behaviour)
+      vi.spyOn(useVendorsModule, 'useUpdateVendor').mockReturnValue({
+        mutate: vi.fn(async (_args: UpdateVendorArgs) => {}),
+        mutateAsync: vi.fn(async (_args: UpdateVendorArgs) => undefined),
+        isPending: false,
+      })
+
+      const vendor = await createVendor('Test Vendor')
+      sessionStorage.setItem(
+        'app-navigation-history',
+        JSON.stringify(['/settings/household/vendors']),
+      )
+
+      renderInfoTab(vendor.id)
+      const user = userEvent.setup()
+
+      await waitFor(() =>
+        expect(screen.getByLabelText(/name/i)).toBeInTheDocument(),
+      )
+      await user.clear(screen.getByLabelText(/name/i))
+      await user.type(screen.getByLabelText(/name/i), 'New Name')
+      await user.click(screen.getByRole('button', { name: /save/i }))
+
+      // Then navigates back to the vendors list once onSuccess fires
+      await waitFor(() => {
+        expect(
+          screen.getByRole('heading', { name: /vendors/i }),
+        ).toBeInTheDocument()
+      })
+    })
+  })
+
+  it('user does not see discard dialog after discarding and returning to Info tab', async () => {
+    const user = userEvent.setup()
+
+    // Given a vendor
+    const vendor = await createVendor('Test Vendor')
+
+    renderInfoTab(vendor.id)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/name/i)).toBeInTheDocument()
+    })
+
+    // When user edits name
+    const nameInput = screen.getByLabelText(/name/i)
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Changed Name')
+
+    // And navigates to Items tab and discards
+    const itemsTab = screen
+      .getAllByRole('link')
+      .find((link) => link.getAttribute('href')?.includes('/items'))
+    if (!itemsTab) throw new Error('Items tab not found')
+    await user.click(itemsTab)
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: /unsaved changes/i }),
+      ).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /discard/i }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /toggle filters/i }),
+      ).toBeInTheDocument()
+    })
+
+    // And navigates back to Info tab
+    const infoTab = screen
+      .getAllByRole('link')
+      .find(
+        (link) =>
+          link.getAttribute('href') ===
+            `/settings/household/vendors/${vendor.id}` &&
+          link.querySelector('svg')?.classList.contains('lucide-info'),
+      )
+    if (!infoTab) throw new Error('Info tab not found')
+    await user.click(infoTab)
+
+    // Then no discard dialog appears
+    await waitFor(() => {
+      expect(screen.getByLabelText(/name/i)).toBeInTheDocument()
+    })
+    expect(
+      screen.queryByRole('heading', { name: /unsaved changes/i }),
+    ).not.toBeInTheDocument()
+
+    // And name input shows original value
+    expect(screen.getByLabelText(/name/i)).toHaveValue('Test Vendor')
+  })
+})

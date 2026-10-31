@@ -5,9 +5,9 @@ export function isFullscreenPage(pathname: string): boolean {
   return (
     pathname === '/onboarding' ||
     pathname.startsWith('/items/') ||
-    pathname.startsWith('/settings/tags') ||
-    pathname.startsWith('/settings/vendors') ||
-    pathname.startsWith('/settings/recipes') ||
-    pathname.startsWith('/settings/shelves')
+    pathname.startsWith('/settings/household/tags') ||
+    pathname.startsWith('/settings/household/vendors') ||
+    pathname.startsWith('/settings/household/recipes') ||
+    pathname.startsWith('/settings/household/shelves')
   )
 }

@@ -5,11 +5,11 @@ describe('isFullscreenPage', () => {
   it.each([
     '/onboarding',
     '/items/abc',
-    '/settings/tags',
-    '/settings/tags/t1/items',
-    '/settings/vendors/',
-    '/settings/recipes/r1',
-    '/settings/shelves/s1/filters',
+    '/settings/household/tags',
+    '/settings/household/tags/t1/items',
+    '/settings/household/vendors/',
+    '/settings/household/recipes/r1',
+    '/settings/household/shelves/s1/filters',
   ])('%s is full-screen', (path) => {
     expect(isFullscreenPage(path)).toBe(true)
   })
@@ -19,7 +19,7 @@ describe('isFullscreenPage', () => {
     '/shopping',
     '/cooking',
     '/settings',
-    '/settings/locations',
+    '/settings/household/locations',
   ])('%s is not full-screen', (path) => {
     expect(isFullscreenPage(path)).toBe(false)
   })

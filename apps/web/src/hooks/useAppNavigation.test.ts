@@ -45,24 +45,44 @@ describe('isSamePage', () => {
 
   it('treats vendor detail tabs as same page', () => {
     expect(
-      isSamePage('/settings/vendors/abc', '/settings/vendors/abc/items'),
+      isSamePage(
+        '/settings/household/vendors/abc',
+        '/settings/household/vendors/abc/items',
+      ),
     ).toBe(true)
     expect(
-      isSamePage('/settings/vendors/abc/items', '/settings/vendors/abc'),
+      isSamePage(
+        '/settings/household/vendors/abc/items',
+        '/settings/household/vendors/abc',
+      ),
     ).toBe(true)
-    expect(isSamePage('/settings/vendors/abc', '/settings/vendors/abc')).toBe(
-      true,
-    )
+    expect(
+      isSamePage(
+        '/settings/household/vendors/abc',
+        '/settings/household/vendors/abc',
+      ),
+    ).toBe(true)
   })
 
   it('treats tag detail tabs as same page', () => {
-    expect(isSamePage('/settings/tags/xyz', '/settings/tags/xyz/items')).toBe(
-      true,
-    )
-    expect(isSamePage('/settings/tags/xyz/items', '/settings/tags/xyz')).toBe(
-      true,
-    )
-    expect(isSamePage('/settings/tags/xyz', '/settings/tags/xyz')).toBe(true)
+    expect(
+      isSamePage(
+        '/settings/household/tags/xyz',
+        '/settings/household/tags/xyz/items',
+      ),
+    ).toBe(true)
+    expect(
+      isSamePage(
+        '/settings/household/tags/xyz/items',
+        '/settings/household/tags/xyz',
+      ),
+    ).toBe(true)
+    expect(
+      isSamePage(
+        '/settings/household/tags/xyz',
+        '/settings/household/tags/xyz',
+      ),
+    ).toBe(true)
   })
 
   it('treats different item IDs as different pages', () => {
@@ -71,55 +91,92 @@ describe('isSamePage', () => {
   })
 
   it('treats different vendor IDs as different pages', () => {
-    expect(isSamePage('/settings/vendors/abc', '/settings/vendors/xyz')).toBe(
-      false,
-    )
     expect(
-      isSamePage('/settings/vendors/abc/items', '/settings/vendors/xyz/items'),
+      isSamePage(
+        '/settings/household/vendors/abc',
+        '/settings/household/vendors/xyz',
+      ),
+    ).toBe(false)
+    expect(
+      isSamePage(
+        '/settings/household/vendors/abc/items',
+        '/settings/household/vendors/xyz/items',
+      ),
     ).toBe(false)
   })
 
   it('treats different tag IDs as different pages', () => {
-    expect(isSamePage('/settings/tags/abc', '/settings/tags/xyz')).toBe(false)
     expect(
-      isSamePage('/settings/tags/abc/items', '/settings/tags/xyz/items'),
+      isSamePage(
+        '/settings/household/tags/abc',
+        '/settings/household/tags/xyz',
+      ),
+    ).toBe(false)
+    expect(
+      isSamePage(
+        '/settings/household/tags/abc/items',
+        '/settings/household/tags/xyz/items',
+      ),
     ).toBe(false)
   })
 
   it('treats recipe detail tabs as same page', () => {
     expect(
-      isSamePage('/settings/recipes/abc', '/settings/recipes/abc/items'),
+      isSamePage(
+        '/settings/household/recipes/abc',
+        '/settings/household/recipes/abc/items',
+      ),
     ).toBe(true)
     expect(
-      isSamePage('/settings/recipes/abc/items', '/settings/recipes/abc'),
+      isSamePage(
+        '/settings/household/recipes/abc/items',
+        '/settings/household/recipes/abc',
+      ),
     ).toBe(true)
-    expect(isSamePage('/settings/recipes/abc', '/settings/recipes/abc')).toBe(
-      true,
-    )
+    expect(
+      isSamePage(
+        '/settings/household/recipes/abc',
+        '/settings/household/recipes/abc',
+      ),
+    ).toBe(true)
   })
 
   it('treats different recipe IDs as different pages', () => {
-    expect(isSamePage('/settings/recipes/abc', '/settings/recipes/xyz')).toBe(
-      false,
-    )
     expect(
-      isSamePage('/settings/recipes/abc/items', '/settings/recipes/xyz/items'),
+      isSamePage(
+        '/settings/household/recipes/abc',
+        '/settings/household/recipes/xyz',
+      ),
+    ).toBe(false)
+    expect(
+      isSamePage(
+        '/settings/household/recipes/abc/items',
+        '/settings/household/recipes/xyz/items',
+      ),
     ).toBe(false)
   })
 
   it('treats completely different routes as different pages', () => {
     expect(isSamePage('/', '/shopping')).toBe(false)
     expect(isSamePage('/items/123', '/shopping')).toBe(false)
-    expect(isSamePage('/settings/vendors', '/settings/tags')).toBe(false)
+    expect(
+      isSamePage('/settings/household/vendors', '/settings/household/tags'),
+    ).toBe(false)
   })
 
   it('does not treat /new pages as same page as detail pages', () => {
-    expect(isSamePage('/settings/recipes/new', '/settings/recipes/abc')).toBe(
-      false,
-    )
-    expect(isSamePage('/settings/vendors/new', '/settings/vendors/abc')).toBe(
-      false,
-    )
+    expect(
+      isSamePage(
+        '/settings/household/recipes/new',
+        '/settings/household/recipes/abc',
+      ),
+    ).toBe(false)
+    expect(
+      isSamePage(
+        '/settings/household/vendors/new',
+        '/settings/household/vendors/abc',
+      ),
+    ).toBe(false)
   })
 
   it('treats full URLs with matching pathnames as same page regardless of search params', () => {
@@ -127,7 +184,10 @@ describe('isSamePage', () => {
       true,
     )
     expect(
-      isSamePage('/settings/vendors/abc?q=foo', '/settings/vendors/abc/items'),
+      isSamePage(
+        '/settings/household/vendors/abc?q=foo',
+        '/settings/household/vendors/abc/items',
+      ),
     ).toBe(true)
   })
 
@@ -159,36 +219,44 @@ describe('useAppNavigation', () => {
   it('user can navigate back skipping /new pages in history', () => {
     // Given history has a /new page before the list page
     mockLoadNavigationHistory.mockReturnValue([
-      '/settings/recipes',
-      '/settings/recipes/new',
+      '/settings/household/recipes',
+      '/settings/household/recipes/new',
     ])
     mockUseRouter.mockReturnValue({
       history: { push: mockHistoryPush },
-      state: { location: { pathname: '/settings/recipes/abc' } },
+      state: { location: { pathname: '/settings/household/recipes/abc' } },
     })
 
     // When user calls goBack
-    const { result } = renderHook(() => useAppNavigation('/settings/recipes'))
+    const { result } = renderHook(() =>
+      useAppNavigation('/settings/household/recipes'),
+    )
     result.current.goBack()
 
     // Then navigates to the list page using history.push to preserve full URL
-    expect(mockHistoryPush).toHaveBeenCalledWith('/settings/recipes')
+    expect(mockHistoryPush).toHaveBeenCalledWith('/settings/household/recipes')
   })
 
   it('user can navigate back when only /new pages are in history', () => {
     // Given history only has a /new page
-    mockLoadNavigationHistory.mockReturnValue(['/settings/recipes/new'])
+    mockLoadNavigationHistory.mockReturnValue([
+      '/settings/household/recipes/new',
+    ])
     mockUseRouter.mockReturnValue({
       history: { push: mockHistoryPush },
-      state: { location: { pathname: '/settings/recipes/abc' } },
+      state: { location: { pathname: '/settings/household/recipes/abc' } },
     })
 
     // When user calls goBack with fallback
-    const { result } = renderHook(() => useAppNavigation('/settings/recipes'))
+    const { result } = renderHook(() =>
+      useAppNavigation('/settings/household/recipes'),
+    )
     result.current.goBack()
 
     // Then falls back to the fallback path via navigate (not history.push)
-    expect(mockNavigate).toHaveBeenCalledWith({ to: '/settings/recipes' })
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: '/settings/household/recipes',
+    })
     expect(mockHistoryPush).not.toHaveBeenCalled()
   })
 
@@ -197,7 +265,7 @@ describe('useAppNavigation', () => {
     mockLoadNavigationHistory.mockReturnValue([])
     mockUseRouter.mockReturnValue({
       history: { push: mockHistoryPush },
-      state: { location: { pathname: '/settings/recipes/abc' } },
+      state: { location: { pathname: '/settings/household/recipes/abc' } },
     })
 
     // When user calls goBack with fallback
@@ -214,7 +282,7 @@ describe('useAppNavigation', () => {
     mockLoadNavigationHistory.mockReturnValue([])
     mockUseRouter.mockReturnValue({
       history: { push: mockHistoryPush },
-      state: { location: { pathname: '/settings/recipes/abc' } },
+      state: { location: { pathname: '/settings/household/recipes/abc' } },
     })
 
     // When user calls goBack without fallback

@@ -108,7 +108,7 @@ export function LocationSwitcher({
         ))}
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onClick={() => navigate({ to: '/settings/locations' })}
+          onClick={() => navigate({ to: '/settings/household/locations' })}
         >
           <Pencil />
           <span>{t('locationSwitcher.manage')}</span>

@@ -78,5 +78,5 @@ export const SettingsActive: Story = {
 
 // Story 5: Hidden on fullscreen pages (items, tags, vendors, recipes)
 export const HiddenOnFullscreen: Story = {
-  render: () => <NavigationStory path="/settings/vendors" />,
+  render: () => <NavigationStory path="/settings/household/vendors" />,
 }

@@ -49,7 +49,7 @@ export function NewVendorDialog({
       onSuccess(vendor as Vendor)
     } else {
       navigate({
-        to: '/settings/vendors/$id',
+        to: '/settings/household/vendors/$id',
         params: { id: (vendor as Vendor).id },
       })
     }

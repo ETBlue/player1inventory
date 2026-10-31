@@ -19,7 +19,7 @@ export function VendorCard({ vendor, itemCount, onDelete }: VendorCardProps) {
       <Store className="h-4 w-4 text-foreground-muted" />
       <CardTitle>
         <Link
-          to="/settings/vendors/$id"
+          to="/settings/household/vendors/$id"
           params={{ id: vendor.id }}
           className="font-medium hover:underline"
         >

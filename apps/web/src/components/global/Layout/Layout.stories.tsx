@@ -62,7 +62,7 @@ export const Default: Story = {
 }
 
 // Story 2: Fullscreen page — nav hidden, no bottom padding
-// (/settings/vendors triggers fullscreen mode)
+// (/settings/household/vendors triggers fullscreen mode)
 export const FullscreenPage: Story = {
-  render: () => <LayoutStory path="/settings/vendors" />,
+  render: () => <LayoutStory path="/settings/household/vendors" />,
 }

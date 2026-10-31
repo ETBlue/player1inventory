@@ -18,7 +18,7 @@ export function RecipeCard({ recipe, itemCount, onDelete }: RecipeCardProps) {
       <ChefHat className="h-4 w-4 text-foreground-muted" />
       <CardTitle className="truncate">
         <Link
-          to="/settings/recipes/$id"
+          to="/settings/household/recipes/$id"
           params={{ id: recipe.id }}
           className="font-medium hover:underline capitalize"
         >

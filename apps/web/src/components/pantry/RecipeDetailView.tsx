@@ -156,7 +156,7 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
   // Bucket 2's action on a real recipe page. Membership lives on the RECIPE
   // (`Recipe.items: RecipeItem[]`), not on the item, so this appends a
   // `RecipeItem` and writes the whole array back — the shape
-  // `settings/recipes/$id/items.tsx` already uses. The dedup check is
+  // `settings/household/recipes/$id/items.tsx` already uses. The dedup check is
   // LOAD-BEARING, not decorative: any time an item already in this recipe
   // renders in bucket 2 with a live button, a second press appends a SECOND
   // `RecipeItem` with the same `itemId`, which cooking then double-counts as
@@ -184,7 +184,7 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
           // (explicitly set, imported, or created while 0 was the default),
           // and `defaultAmount: 0` means "optional, unchecked" in cooking — so
           // `?? 1` would add an ingredient that silently does nothing. Same
-          // reasoning, same operator, as `settings/recipes/$id/items.tsx`.
+          // reasoning, same operator, as `settings/household/recipes/$id/items.tsx`.
           { itemId: item.id, defaultAmount: item.consumeAmount || 1 },
         ],
       },
@@ -320,7 +320,7 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
         >
           {!isUnsorted && (
             <Link
-              to="/settings/recipes/$id"
+              to="/settings/household/recipes/$id"
               params={{ id: recipeId }}
               aria-label="Recipe settings"
             >
