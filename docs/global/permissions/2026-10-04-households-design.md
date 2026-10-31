@@ -130,7 +130,7 @@ The member rules (read-only catalog) are a first version. They may change after 
 
 | Model | Fields | Notes |
 |---|---|---|
-| `User` | `id` (Clerk id), `displayName`, `email`, `lastSeenAt`, `deletedAt?` | See *Clerk integration* |
+| `User` | `id` (Clerk id), `displayName`, `email?`, `lastSeenAt?`, `deletedAt?` | See *Clerk integration*. `email` is optional: a Clerk account may have none, and `user.deleted` carries none (plan P10) |
 | `Household` | `id`, `name`, `ownerId?`, `ownerGoneAt?`, `createdAt`, `updatedAt` | `ownerId` is null after the owner's account is deleted, until someone accepts |
 | `HouseholdMember` | `householdId`, `userId`, `role` (`owner` / `manager` / `member`), `joinedAt` | Primary key `(householdId, userId)`. Exactly one `owner` row while `ownerId` is set |
 | `LocationMember` | `locationId`, `userId`, `role` (`organizer` / `participant` / `viewer`), `createdAt` | Primary key `(locationId, userId)`. The person must be a `HouseholdMember` of the location's household |
@@ -444,6 +444,16 @@ The Settings area is rebuilt in **both** modes.
 
 ### Desktop
 
+**Notes added by the plan (2026-10-31, P1–P6):**
+
+- Today the tag, vendor, recipe and shelf **list** pages are full-screen too. On desktop they now
+  show the household sidebar. On mobile they stay full-screen with their own Back button.
+- `/settings` decides by screen width (`useIsDesktop`, the Tailwind `lg` value): desktop goes to
+  `/settings/household`, mobile shows the accordion.
+- Until H3 the 🏠 item says "My data" in both modes. Members, Activity, Switch to…, the danger
+  zone and `/settings/household/locations/$id` are not shown until the phase that builds them
+  (H5, H6, H7, H6 and H5).
+
 **Main sidebar.** The top half does not change: app name, location switcher, Pantry, Shopping,
 Cooking. At the bottom, **Settings** is replaced by:
 
@@ -637,6 +647,18 @@ needs.
   rows and to send a fake `user.deleted` event. That route must exist only in E2E test mode,
   like `DELETE /e2e/cleanup`.
 
+**Notes added by the plan (2026-10-31):**
+
+- **P11.** In E2E mode, and when the Clerk API fails, the safety net creates the row with
+  fallback values. It never fails the GraphQL request.
+- **P13.** `user.deleted` for an unknown id creates the row with `deletedAt` set. The safety net
+  never clears `deletedAt` and never overwrites a name the webhook wrote.
+- **P14.** `/e2e/cleanup` also deletes the caller's `User` row, so it covers 15 models.
+- **P15.** Nothing migrates the E2E test database. It is migrated by hand after H2's migration.
+- **P16.** No `svix` package. `verifyWebhook` from `@clerk/express/webhooks` checks the
+  Svix-format signature, using `CLERK_WEBHOOK_SIGNING_SECRET`. The route is mounted before
+  `express.json()`, because the check needs the raw body.
+
 `lastSeenAt` is not used in this phase. It is stored now so the postponed inactivity trigger
 has data when it is built.
 
@@ -751,7 +773,7 @@ The root `CLAUDE.md` rules apply. Points special to this design:
 - **H3's migration joins `verify:migration`.** It must be added to the `MIGRATIONS` list in
   `apps/server/scripts/verify-migration.ts`. That script now refuses to run if a test database
   URL equals any other database URL in the environment.
-- **H1 touches about 48 route lines in 13 E2E files**, 23 of them in `a11y.spec.ts`. `e2e/` is
+- **H1 touches 76 code lines (109 with comments) in 17 E2E files**, 26 of them in `a11y.spec.ts` (re-counted 2026-10-31). `e2e/` is
   now type-checked and linted inside the root `pnpm build`.
 - **H3 breaks a stale browser bundle.** PR 5 was the first PR in the cloud-locations series that
   was not safe for an old bundle, and accepted it. H3 changes the GraphQL scoping and removes
