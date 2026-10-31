@@ -156,11 +156,11 @@ that really set up that role.
 >
 > **`ensureUser` is built so it cannot hurt a request:**
 >
-> - **0 queries** for a user this process already saw today. A per-process memory (`seenToday`) holds them for one UTC day. A user not yet seen costs one `updateMany`.
+> - **0 queries** for a user this process already saw today. A per-process memory (`seenToday`) holds them for one UTC day. A user not yet seen today costs one `updateMany`, or up to three queries and one Clerk call when the row is missing.
 > - **It never fails a request.** `ensureUserOrLog` catches every error and logs only its name and code, never its message, because a Prisma message prints the email.
 > - **It never un-deletes and never renames.** On an existing row the only column it writes is `lastSeenAt`, so a `deletedAt` set by `user.deleted` stays set.
 >
-> **Deploying it needs two steps outside the code:** set `CLERK_WEBHOOK_SIGNING_SECRET` on the server, and add the endpoint in the Clerk dashboard with the events `user.created`, `user.updated` and `user.deleted`. Until then the webhook answers 500, and the safety net still creates every row on the user's next request.
+> **Deploying it needs two steps outside the code:** set `CLERK_WEBHOOK_SIGNING_SECRET` on the server, and add the endpoint in the Clerk dashboard with the events `user.created`, `user.updated` and `user.deleted`. Until the secret is set, the webhook answers 500. Until the endpoint is added, Clerk sends nothing. In both cases the safety net still creates every row on the user's next request.
 
 ## Project Structure
 
