@@ -203,7 +203,10 @@ describe('createStaleReadRetryLink', () => {
   it('leaves no request open after unsubscribe when the server answers at once', async () => {
     // Given a mutation the server holds
     let heldSave:
-      | { next: (r: { data: unknown }) => void; complete: () => void }
+      | {
+          next: (r: { data: Record<string, unknown> }) => void
+          complete: () => void
+        }
       | undefined
     let listSends = 0
     const open = new Set<number>()
