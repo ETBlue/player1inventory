@@ -208,11 +208,21 @@ describe('clerkWebhookHandler', () => {
   let server: Server
   let url: string
   const secret = randomSecret()
-  const body = JSON.stringify({
-    type: 'user.created',
-    object: 'event',
-    data: clerkUser('user_1'),
-  })
+  // Indented on purpose. If a JSON parser runs before the route, the body
+  // reaches the handler as an object, and `verifyWebhook` checks
+  // `JSON.stringify(body)`, which is compact. Compact output differs from
+  // these indented bytes, so the signature fails and the 200 test goes red.
+  // With a compact body here, re-serializing gave the same bytes, and a JSON
+  // parser in front of the route left every test green.
+  const body = JSON.stringify(
+    {
+      type: 'user.created',
+      object: 'event',
+      data: clerkUser('user_1'),
+    },
+    null,
+    2,
+  )
 
   beforeAll(async () => {
     const app = express()
