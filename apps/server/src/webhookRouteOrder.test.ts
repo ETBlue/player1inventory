@@ -164,16 +164,26 @@ describe('index.ts mounts the E2E-only routes', () => {
   it('has no string starting with /e2e outside the block, in any letter case', () => {
     // A second net under the route check above. That check knows the shapes
     // `app.<method>('<path>', …)` and `app.<method>(['<path>', …], …)`. This
-    // one knows no shapes: any string whose lowercase text starts with
-    // `/e2e`, anywhere outside the block, fails. Imports are skipped, because
-    // a module path is not a route.
+    // one does not look at the call. It looks at the text: any string whose
+    // lowercase text starts with `/e2e`, anywhere outside the block, fails.
+    // It reads three kinds of string: '…' and "…", a template with no
+    // substitution (`/e2e/x`), and the first part of a template WITH a
+    // substitution (the `/e2e/` in `/e2e/${name}`). Imports are skipped,
+    // because a module path is not a route.
+    //
+    // It still misses a path that does not start inside one string:
+    //   - a path held in a variable, or imported from another file
+    //     (`app.post(E2E_PATH, …)`)
+    //   - a path joined from parts (`'/e' + '2e/x'`, `${prefix}/x`)
+    //   - a path built at run time (from an env var, a config file, …)
+    // The route check above sees none of these either.
     const [block] = e2eBlocks()
     const body = block?.thenStatement
     const outside: string[] = []
     const visit = (node: ts.Node) => {
       if (ts.isImportDeclaration(node)) return
       if (
-        ts.isStringLiteralLike(node) &&
+        (ts.isStringLiteralLike(node) || ts.isTemplateHead(node)) &&
         node.text.toLowerCase().startsWith('/e2e') &&
         !(body && node.getStart(SOURCE) >= body.getStart(SOURCE) && node.end <= body.end)
       ) {

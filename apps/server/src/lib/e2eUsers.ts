@@ -27,8 +27,9 @@ import { prisma } from './prisma.js'
 // (`lib/userRow.ts`). That memory is only wrong when a row it saw is
 // removed: then the next request skips the check and the row is not created
 // again. None of these routes removes a row. The read route writes nothing.
-// The other two upsert, so a row that existed still exists afterwards. `/e2e/cleanup` (lib/e2eCleanup.ts) deletes the row,
-// and it calls `forgetSeenToday` after the delete commits.
+// The other two upsert, so a row that existed still exists afterwards.
+// `/e2e/cleanup` (lib/e2eCleanup.ts) deletes the row, and it calls
+// `forgetSeenToday` after the delete commits.
 //
 // No route here ever logs the request body or the row. A database error is
 // logged by name and code only, because a Prisma error's message prints the

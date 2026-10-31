@@ -121,17 +121,24 @@ describe('purge coverage against prisma/schema.prisma', () => {
 
   // `purgeUserData` and `clearAllData` delete a user's DATA. The account
   // stays, so its `User` row must stay too. Only `/e2e/cleanup` deletes it.
+  //
+  // The pattern matches `.user.delete(` and `.user.deleteMany(` on any
+  // client name, so `prisma.user.…` and a transaction's `tx.user.…` both
+  // count. It does not match a client held under another name for the
+  // model, such as `const users = prisma.user` and then `users.delete(`.
+  const DELETES_USER_ROW = /\.user\.delete(Many)?\(/
   for (const { label, source } of PURGE_PATHS.filter((p) => p.label !== 'e2eCleanup')) {
     it(`${label} does not delete the User row`, () => {
-      expect(source).not.toContain('prisma.user.deleteMany(')
+      expect(source).not.toMatch(DELETES_USER_ROW)
     })
   }
 
   it('e2eCleanup does delete the User row', () => {
-    // The positive control for the two tests above: the needle they look
-    // for is the one the cleanup really uses. If it were spelled another
-    // way, the two `not.toContain` checks would pass for any source.
+    // The positive control for the two tests above: the pattern they look
+    // for matches the call the cleanup really uses. If it did not, the two
+    // `not.toMatch` checks would pass for any source.
     const cleanup = PURGE_PATHS.find((p) => p.label === 'e2eCleanup')
+    expect(cleanup?.source).toMatch(DELETES_USER_ROW)
     expect(cleanup?.source).toContain('prisma.user.deleteMany(')
   })
 })
