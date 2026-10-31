@@ -91,6 +91,11 @@ type RouteMount = {
  *   (`r.post('/e2e/x')`) is found too.
  * - The path may be a plain string or a template with no `${…}` in it
  *   (`` app.post(`/e2e/x`) ``).
+ * - The first argument may also be an array of paths
+ *   (`app.post(['/e2e/a', '/e2e/b'], …)`). Express mounts the route on each
+ *   one, so each string in the array gives one entry.
+ * - `path` is LOWERCASED. Express matches paths without regard to case by
+ *   default, so `app.post('/E2E/wipe')` answers `POST /e2e/wipe`.
  *
  * Calls that are not routes are collected too (`process.on('beforeExit')`).
  * That is harmless: every check below filters by path first.
@@ -102,11 +107,17 @@ function routeMounts(): RouteMount[] {
   const visit = (node: ts.Node) => {
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const [first, ...rest] = node.arguments
-      if (first && ts.isStringLiteralLike(first)) {
+      const paths =
+        first && ts.isStringLiteralLike(first)
+          ? [first.text]
+          : first && ts.isArrayLiteralExpression(first)
+            ? first.elements.filter(ts.isStringLiteralLike).map((el) => el.text)
+            : []
+      for (const path of paths) {
         mounts.push({
           receiver: node.expression.expression.getText(SOURCE),
           method: node.expression.name.text,
-          path: first.text,
+          path: path.toLowerCase(),
           handler: rest.map((arg) => arg.getText(SOURCE)).join(', '),
           insideE2eBlock:
             body !== undefined && node.getStart(SOURCE) >= body.getStart(SOURCE) && node.end <= body.end,
@@ -146,6 +157,30 @@ describe('index.ts mounts the E2E-only routes', () => {
     // checked too.
     expect(e2eRoutes.length).toBeGreaterThanOrEqual(3)
     expect(e2eRoutes.filter((m) => !m.insideE2eBlock)).toEqual([])
+  })
+
+  it('has no string starting with /e2e outside the block, in any letter case', () => {
+    // A second net under the route check above. That check knows the shapes
+    // `app.<method>('<path>', …)` and `app.<method>(['<path>', …], …)`. This
+    // one knows no shapes: any string whose lowercase text starts with
+    // `/e2e`, anywhere outside the block, fails. Imports are skipped, because
+    // a module path is not a route.
+    const [block] = e2eBlocks()
+    const body = block?.thenStatement
+    const outside: string[] = []
+    const visit = (node: ts.Node) => {
+      if (ts.isImportDeclaration(node)) return
+      if (
+        ts.isStringLiteralLike(node) &&
+        node.text.toLowerCase().startsWith('/e2e') &&
+        !(body && node.getStart(SOURCE) >= body.getStart(SOURCE) && node.end <= body.end)
+      ) {
+        outside.push(node.text)
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(SOURCE)
+    expect(outside).toEqual([])
   })
 
   it('uses no express Router', () => {
