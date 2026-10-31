@@ -82,7 +82,7 @@ is also written back into the design doc in task 1.0.
 | P9 | "Back" from the household sidebar: the last Pantry, Shopping or Cooking page | Scan `app-navigation-history` (sessionStorage, 50 entries) backwards for the first path that is `/`, `/shopping…` or `/cooking`. Fall back to `/` | The history already exists and is capped, so a fallback is needed |
 | P10 | `User.email` is required in the design, but a Clerk account may have no email, and `user.deleted` carries none | `email String?`. `displayName String` falls back to the part of the email before `@`, then to `"User"` | Matches *Default names* in the design |
 | P11 | The request-path safety net cannot call Clerk in E2E mode, and the Clerk API can fail | In E2E mode, and when the Clerk API fails, create the row with fallback values. **Never fail the GraphQL request because of the safety net** | A failure there would fail all 87 `requireAuth` call sites |
-| P12 | `lastSeenAt` on every request would add 1–2 queries to every GraphQL call | One `updateMany` with a "not today" condition, plus a per-process memory of the day already written. A miss on the memory costs one query; a hit costs none | Keeps the common case at zero queries |
+| P12 | `lastSeenAt` on every request would add 1–2 queries to every GraphQL call | One `updateMany` with a "not today" condition, plus a per-process memory of the day already written. A hit on the memory costs none. A miss costs one query for a user not yet seen today, and two (`updateMany`, then `findUnique`) for one seen today by another process or before a restart | Keeps the common case at zero queries |
 | P13 | `user.deleted` may arrive for a user with no row | Create the row with `deletedAt` set. The safety net never clears `deletedAt` and never overwrites a name the webhook wrote | Otherwise the next request would bring the user back as alive |
 | P14 | `/e2e/cleanup` deletes by `userId`; `User` has `id` | Cleanup also deletes the caller's `User` row, last. Four places change together (task 2.6) | A fake `user.deleted` would otherwise leak `deletedAt` into every later spec |
 | P15 | Nothing migrates the E2E test database | The main session runs `prisma migrate deploy` against `TEST_DIRECT_URL` after task 2.1, with the user's consent | A cloud E2E run fails with "table does not exist" until it is done |
@@ -528,12 +528,16 @@ model User {
   - The Clerk lookup throws: the row is created with fallback values, and `ensureUser` does
     **not** throw (P11).
   - E2E mode: no Clerk call; `displayName` is the user id.
-  - Ten parallel calls for a new user give one row and no error (`P2002` is caught and
-    re-read).
+  - Ten parallel calls for a new user give one row and no error (`P2002` is caught. Built without a re-read: `id` is the only unique column, so `P2002`
+    already proves the row exists, and no caller needs the row back. If H3 needs the row back,
+    or a second unique column is added, this changes).
+  - Each `lastSeenAt` state (never seen, yesterday, earlier today by another process) takes a
+    different path. The P13 test runs over all three.
   - A row with `deletedAt` set is never changed back, and its name is not overwritten (P13).
 - [ ] **Step 2:** Run. Expect failures.
 - [ ] **Step 3: Implement.** Pass the Clerk lookup in as an argument
-  (`(id) => clerkClient.users.getUser(id)`), so tests do not mock the module. Call `ensureUser`
+  (`async (id) => (await clerkClient.users.getUser(id)).raw`; `getUser` returns a class with
+  camelCase fields, and `.raw` is the `UserJSON`, which can be `null`), so tests do not mock the module. Call `ensureUser`
   in the context function after the user id is known, **in both branches**: the E2E branch
   returns early at line 140, so code placed after line 141 would never run in E2E. Wrap the call
   so any error is logged and the request continues.
@@ -563,6 +567,9 @@ Four places change together (`e2e/CLAUDE.md` lines 194-285):
 
 - [ ] **Step 1:** `index.ts`: add `prisma.user.deleteMany({ where: { id: userId } })` **last** in
   the cleanup transaction; update the `deleted` object and the "14" comment at line 102.
+  **Then call `forgetSeenToday(userId)`** (`lib/userRow.ts`, task 2.4). Without it the
+  per-process memory still says "seen today", so the next request skips `ensureUser` and the
+  row is never created again that day.
 - [ ] **Step 2:** `e2e/helpers/cloudTeardown.ts`: add `user` to `CLEANUP_MODEL_KEYS`.
 - [ ] **Step 3:** `e2e/tests/cleanup-endpoint.spec.ts`: seed a `User` row with
   `createCloudUser`, so the at-least-1 check at line 274 covers it.
