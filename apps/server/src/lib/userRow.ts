@@ -128,6 +128,26 @@ const seenToday = new Set<string>()
  */
 const inFlight = new Map<string, Promise<void>>()
 
+/**
+ * Goes up by one each time `forgetSeenToday` (or `resetSeenTodayMemory`)
+ * runs. A run reads it when it starts, and adds the user to the memory only
+ * if it has not changed since.
+ *
+ * Without it, a run that found the row could finish AFTER `/e2e/cleanup`
+ * deleted that row and called `forgetSeenToday`. The run would then add the
+ * user back to the memory, for a row that no longer exists. The next request
+ * would skip the check, and the row would not be created again that day.
+ *
+ * It is one number for all users, not one per user. A per-user counter needs
+ * a map with one entry per user ever forgotten, and that map only grows. With
+ * one number, a forget for one user also stops the runs in progress for
+ * OTHER users from being remembered. That costs each of them one
+ * `updateMany` on their next request, nothing else. Only `/e2e/cleanup`
+ * calls `forgetSeenToday`, and it is mounted only in E2E test mode, so
+ * production never pays it.
+ */
+let forgetGeneration = 0
+
 /** The UTC day of `now`, as `YYYY-MM-DD`. */
 function utcDayKey(now: Date): string {
   return now.toISOString().slice(0, 10)
@@ -144,6 +164,12 @@ function wasSeenToday(userId: string, now: Date): boolean {
 
 function rememberSeenToday(userId: string, now: Date): void {
   const day = utcDayKey(now)
+  // A run that started before midnight UTC can finish after a newer run has
+  // already moved the memory to the new day. Its `now` is on the old day.
+  // Without this line it would clear the new day's memory and move
+  // `memoryDay` back. `YYYY-MM-DD` strings sort in date order, so `<`
+  // compares days.
+  if (day < memoryDay) return
   if (memoryDay !== day || seenToday.size >= memoryLimit) {
     seenToday.clear()
     memoryDay = day
@@ -153,11 +179,20 @@ function rememberSeenToday(userId: string, now: Date): void {
 
 /**
  * Forget that this process saw `userId` today, so the next request checks the
- * database again. Call it after deleting a `User` row (task 2.6's
- * `/e2e/cleanup`). Without it, a later request the same day would skip the
- * check, and the row would not be created again.
+ * database again. Call it AFTER the delete of a `User` row has committed
+ * (task 2.6's `/e2e/cleanup`). Without it, a later request the same day would
+ * skip the check, and the row would not be created again.
+ *
+ * It also cancels the runs in progress:
+ * - It removes `userId`'s run from `inFlight`. A request that arrives after
+ *   this call then starts a new run, instead of joining an old one that may
+ *   have found the row before it was deleted.
+ * - It bumps `forgetGeneration`, so no run that started before this call
+ *   adds any user to the memory.
  */
 export function forgetSeenToday(userId: string): void {
+  forgetGeneration += 1
+  inFlight.delete(userId)
   seenToday.delete(userId)
 }
 
@@ -168,6 +203,7 @@ export function forgetSeenToday(userId: string): void {
  * shared with the next test.
  */
 export function resetSeenTodayMemory(limit: number = MEMORY_LIMIT): void {
+  forgetGeneration += 1
   inFlight.clear()
   seenToday.clear()
   memoryDay = ''
@@ -284,15 +320,23 @@ export async function ensureUser(
 }
 
 async function checkAndCreate(userId: string, source: UserSource, now: Date): Promise<void> {
+  // If `forgetSeenToday` runs while this run waits on the database, the row
+  // this run found may be gone. Then this run must not add the user to the
+  // memory. See `forgetGeneration`.
+  const generation = forgetGeneration
+  const remember = () => {
+    if (generation === forgetGeneration) rememberSeenToday(userId, now)
+  }
+
   if ((await touchLastSeen(userId, now)) > 0) {
-    rememberSeenToday(userId, now)
+    remember()
     return
   }
 
   // Nothing changed: either the row was already seen today, or there is no
   // row. A deleted row is found here too, and is left as it is.
   if (await prisma.user.findUnique({ where: { id: userId } })) {
-    rememberSeenToday(userId, now)
+    remember()
     return
   }
 
@@ -302,13 +346,15 @@ async function checkAndCreate(userId: string, source: UserSource, now: Date): Pr
   } catch (err) {
     // P2002: someone else created the row first. In this process the
     // `inFlight` map stops parallel requests from racing, so this comes from
-    // another server process, or from the webhook. `id` is the only unique
+    // another server process, or from the webhook. (One exception: after
+    // `forgetSeenToday`, a new run and the old run it cancelled can both
+    // reach `create` in this process.) `id` is the only unique
     // column, so P2002 itself proves the row exists, and no re-read is
     // needed. That request set `lastSeenAt`, and a `user.deleted` webhook
     // may have set `deletedAt` since, so the row is left as it is.
     if (!isUniqueViolation(err)) throw err
   }
-  rememberSeenToday(userId, now)
+  remember()
 }
 
 /**

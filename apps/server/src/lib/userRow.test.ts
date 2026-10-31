@@ -369,6 +369,40 @@ describe('ensureUser', () => {
       vi.mocked(console.error).mockRestore()
     })
 
+    it('a lookup that fails after the timeout leaves no unhandled rejection', async () => {
+      // Given a Clerk lookup that answers only after the timeout, with an error
+      let failLookup: (err: Error) => void = () => {}
+      const lookup = vi.fn<ClerkUserLookup>(
+        () =>
+          new Promise((_resolve, reject) => {
+            failLookup = reject
+          }),
+      )
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      const unhandled: unknown[] = []
+      const onUnhandled = (reason: unknown) => unhandled.push(reason)
+      process.on('unhandledRejection', onUnhandled)
+      try {
+        const run = ensureUser('user_new', { kind: 'clerk', lookup, timeoutMs: 50 }, TODAY_NOON)
+        await vi.advanceTimersByTimeAsync(50)
+        await run
+
+        // When the lookup fails later
+        failLookup(new Error('Clerk answered late with an error'))
+        // Node reports an unhandled rejection after the microtask queue is
+        // empty. setImmediate is not faked here, so two turns are real.
+        await new Promise((resolve) => setImmediate(resolve))
+        await new Promise((resolve) => setImmediate(resolve))
+
+        // Then nothing is reported as unhandled, and the fallback row exists
+        expect(unhandled).toEqual([])
+        expect(rowOf('user_new')?.displayName).toBe(FALLBACK_DISPLAY_NAME)
+      } finally {
+        process.off('unhandledRejection', onUnhandled)
+        vi.mocked(console.error).mockRestore()
+      }
+    })
+
     it('a lookup that answers in time leaves no timer running', async () => {
       // Given a Clerk lookup that answers at once
       const lookup = clerkLookup(clerkUser({ id: 'user_new' }))
@@ -581,6 +615,99 @@ describe('ensureUser', () => {
 
     // Then the row is created again
     expect(userFake.state.rows.map((r) => r.id)).toEqual(['e2e-user-1'])
+  })
+
+  // ── forgetSeenToday while a run is in progress (/e2e/cleanup, task 2.6) ──
+
+  /**
+   * Make the next `findUnique` read the store at once, then wait until the
+   * test calls `release()` before it answers. So a run can find the row, and
+   * the test can delete the row before the run goes on.
+   */
+  function pauseNextFindUniqueAfterRead() {
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const pausedFindUnique = async (args: Parameters<typeof userFake.client.findUnique>[0]) => {
+      const row = await userFake.client.findUnique(args)
+      await gate
+      return row
+    }
+    // The cast: Prisma types `findUnique` as returning its own promise-like
+    // client class, not a plain Promise. The fake returns a plain Promise.
+    user.findUnique.mockImplementationOnce(pausedFindUnique as never)
+    return { release: () => release() }
+  }
+
+  it('a run that found the row before a cleanup does not remember the user afterwards', async () => {
+    // Given a row already seen today, so the run reaches findUnique, and a
+    // findUnique that reads the row and then waits
+    userFake.reset([storedRow('e2e-user-1', { lastSeenAt: TODAY_NOON })])
+    const find = pauseNextFindUniqueAfterRead()
+    const oldRun = ensureUser('e2e-user-1', { kind: 'e2e' }, TODAY_NOON)
+    await vi.waitFor(() => expect(user.findUnique).toHaveBeenCalledTimes(1))
+
+    // When /e2e/cleanup deletes the row and forgets the user, and only then
+    // the old run finishes (it found the row before the delete)
+    userFake.reset()
+    forgetSeenToday('e2e-user-1')
+    find.release()
+    await oldRun
+
+    // Then the next request still checks the database, and creates the row again
+    await ensureUser('e2e-user-1', { kind: 'e2e' }, TODAY_NOON)
+    expect(userFake.state.rows.map((r) => r.id)).toEqual(['e2e-user-1'])
+  })
+
+  it('a request after a cleanup does not join a run that started before it', async () => {
+    // Given a run that found the row and is now waiting
+    userFake.reset([storedRow('e2e-user-1', { lastSeenAt: TODAY_NOON })])
+    const find = pauseNextFindUniqueAfterRead()
+    const oldRun = ensureUser('e2e-user-1', { kind: 'e2e' }, TODAY_NOON)
+    await vi.waitFor(() => expect(user.findUnique).toHaveBeenCalledTimes(1))
+
+    // When /e2e/cleanup deletes the row and forgets the user, and a new
+    // request arrives while the old run is still waiting
+    userFake.reset()
+    forgetSeenToday('e2e-user-1')
+    let newRunSettled = false
+    const newRun = ensureUser('e2e-user-1', { kind: 'e2e' }, TODAY_NOON).then(() => {
+      newRunSettled = true
+    })
+
+    // Then the new request runs on its own and creates the row. If it had
+    // joined the old run, it would still be waiting on the old findUnique.
+    await vi.waitFor(() => expect(newRunSettled).toBe(true))
+    expect(userFake.state.rows.map((r) => r.id)).toEqual(['e2e-user-1'])
+
+    find.release()
+    await Promise.all([oldRun, newRun])
+  })
+
+  it('a run that crosses midnight UTC does not move the memory back to the old day', async () => {
+    // Given a run for user_a that starts one second before midnight UTC and
+    // then waits in findUnique
+    userFake.reset([
+      storedRow('user_a', { lastSeenAt: new Date('2026-10-30T23:00:00.000Z') }),
+      storedRow('user_b', { lastSeenAt: null }),
+    ])
+    const find = pauseNextFindUniqueAfterRead()
+    const lateRun = ensureUser('user_a', { kind: 'e2e' }, new Date('2026-10-30T23:59:59.000Z'))
+    await vi.waitFor(() => expect(user.findUnique).toHaveBeenCalledTimes(1))
+
+    // And user_b is remembered on the new day while user_a's run still waits
+    const newDay = new Date('2026-10-31T00:00:01.000Z')
+    await ensureUser('user_b', { kind: 'e2e' }, newDay)
+
+    // When the old run finishes, with its old-day time
+    find.release()
+    await lateRun
+    vi.clearAllMocks()
+
+    // Then the new day's memory is still there: user_b costs 0 queries
+    await ensureUser('user_b', { kind: 'e2e' }, new Date('2026-10-31T00:00:02.000Z'))
+    expect(queryCount()).toBe(0)
   })
 })
 
