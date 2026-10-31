@@ -601,6 +601,16 @@ Four places change together (`e2e/CLAUDE.md` lines 194-285):
   `location-scoped-writes.spec.ts`): a GraphQL request as a new user creates exactly one `User`
   row; `sendFakeUserDeleted` sets `deletedAt`; a later request does not clear it. Add it to the
   `cloud` project's `testMatch` **and** the `local` project's `testIgnore`.
+
+  > **As built:** GraphQL has no `User` type, so the spec reads the row through a new
+  > E2E-only route, `GET /e2e/users/:id` (`e2eReadUserHandler` in `lib/e2eUsers.ts`, helper
+  > `readCloudUser`), inside the `if (E2E_TEST_MODE)` block and covered by
+  > `webhookRouteOrder.test.ts`. Each test uses its own user id. **The "later request" case
+  > marks the user deleted BEFORE the first request.** In the order this step names
+  > (request, delete, request), the second request hits the per-process "seen today" memory
+  > and makes 0 queries, so it could not clear `deletedAt` even if the code tried. The test
+  > instead checks that `lastSeenAt` went from `null` to set, which proves the request
+  > reached the row.
 - [ ] **Step 2:** Docs: root `CLAUDE.md` *Authorization (cloud)* gets one paragraph on the
   `User` row and the webhook. `docs/INDEX.md` → "H2 built". A deploy note in the PR: set
   `CLERK_WEBHOOK_SIGNING_SECRET` in Railway and add the endpoint in the Clerk dashboard

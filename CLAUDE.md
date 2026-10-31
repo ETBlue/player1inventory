@@ -145,6 +145,23 @@ that really set up that role.
 
 > Nine of those 22 also scope the **other** id in a reference — the `tagId`, `vendorId`, `itemId`, `cartId` or `typeId` a payload attaches its own row to. That is **13** lookups, and a reference that does not resolve is still SKIPPED, not refused: a partial backup legitimately names a parent the user has since deleted. See `docs/features/settings/2026-10-28-design-import-ownership-guard.md`.
 
+> **The `User` row — households H2, built 2026-10-31.** `model User` (`apps/server/prisma/schema.prisma`) is one row per Clerk account: `id` is the Clerk user id, plus `displayName`, an optional `email`, `lastSeenAt` and `deletedAt`. Nothing relates to it yet; H3 adds the relations. Nothing reads it for authorization either. Two paths write it:
+>
+> | Path | Where | What it does |
+> |---|---|---|
+> | Clerk webhook | `POST /webhooks/clerk` → `clerkWebhookHandler` in `apps/server/src/lib/clerkWebhook.ts` | checks the Svix signature with `verifyWebhook` and `CLERK_WEBHOOK_SIGNING_SECRET` (unset → 500, bad signature → 400, nothing written). `user.created` / `user.updated` upsert the name and email; `user.deleted` sets `deletedAt` and keeps the name |
+> | request-path safety net | `ensureUserOrLog` in `apps/server/src/lib/userRow.ts`, called from the GraphQL context in `index.ts`, in both the Clerk branch and the E2E branch | creates a missing row (name from Clerk, with fallback values if Clerk fails or takes over 3 s) and sets `lastSeenAt` once per UTC day |
+>
+> **The webhook route is mounted ABOVE `app.use(express.json(…))`, with `express.raw`.** The signature covers the raw bytes Clerk sent. Below the JSON parser the body is already an object, and the check runs on re-serialized JSON. `apps/server/src/webhookRouteOrder.test.ts` reads `index.ts` as text and fails if the order changes.
+>
+> **`ensureUser` is built so it cannot hurt a request:**
+>
+> - **0 queries** for a user this process already saw today. A per-process memory (`seenToday`) holds them for one UTC day. A user not yet seen costs one `updateMany`.
+> - **It never fails a request.** `ensureUserOrLog` catches every error and logs only its name and code, never its message, because a Prisma message prints the email.
+> - **It never un-deletes and never renames.** On an existing row the only column it writes is `lastSeenAt`, so a `deletedAt` set by `user.deleted` stays set.
+>
+> **Deploying it needs two steps outside the code:** set `CLERK_WEBHOOK_SIGNING_SECRET` on the server, and add the endpoint in the Clerk dashboard with the events `user.created`, `user.updated` and `user.deleted`. Until then the webhook answers 500, and the safety net still creates every row on the user's next request.
+
 ## Project Structure
 
 ```
@@ -1469,16 +1486,25 @@ Note also that **no *unit* test executes the resolvers against real SQL** — ev
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
 Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
 branch), but only for the spec files listed in the `cloud` project's `testMatch` in
-`e2e/playwright.config.ts` — that list is opt-in and covers **25 of the 29 spec files in
-`e2e/tests/`** (measured 2026-10-12). **Count it rather than quote it.** This line said
-"20 files today (of 27 spec files)" until 2026-10-12, by which point both numbers were wrong
-by 3:
+`e2e/playwright.config.ts` — that list is opt-in and covers **26 of the 30 spec files in
+`e2e/tests/`** (measured 2026-10-31, after households H2 added `cloud-user-row.spec.ts`).
+**Count it rather than quote it.** This line said "20 files today (of 27 spec files)" until
+2026-10-12, by which point both numbers were wrong by 3:
 
 ```bash
-awk "/name: 'cloud'/,0" e2e/playwright.config.ts \
-  | grep -m1 testMatch | grep -o "'\*\*/[^']*\.spec\.ts'" | wc -l   # cloud's testMatch
-find e2e/tests -name '*.spec.ts' | wc -l                            # every spec file
+awk "/name: 'cloud'/,/name: 'pwa'/" e2e/playwright.config.ts \
+  | grep -c "spec\.ts'"                                 # cloud's testMatch
+find e2e/tests -name '*.spec.ts' | wc -l              # every spec file
 ```
+
+**The command this block used to give printed 0, and had done so since 2026-10-30.** It
+was `awk "/name: 'cloud'/,0" … | grep -m1 testMatch | grep -o "'\*\*/[^']*\.spec\.ts'" | wc -l`.
+It only worked while the whole `testMatch` array sat on one line. The Biome sweep of `e2e/`
+(issue #346, commit `e015378d`) put one entry per line, so the line holding `testMatch`
+holds no spec name. Measured: the old command gives 25 on the commit before the sweep and 0
+on the sweep itself.
+The new command counts every spec name between the `cloud` and `pwa` project headers. Today
+that range holds only `cloud`'s `testMatch`, because `cloud` has no `testIgnore`.
 
 The 4 files outside the `cloud` project today are `a11y.spec.ts`, `pwa-offline.spec.ts`,
 `settings/import-export-local.spec.ts` and `onboarding.spec.ts`. The first three cannot run
@@ -1489,7 +1515,7 @@ would reach zero resolvers and still pass its URL assertion.
 **A resolver exercised by no cloud spec has never touched SQL at all**, and a manual smoke
 test is owed for anything transactional.
 
-Nine of those 25 cover location or stock surfaces. Three were added 2026-09-14 (issue #284):
+Nine of those 26 cover location or stock surfaces. Three were added 2026-09-14 (issue #284):
 `settings/locations.spec.ts`, `location-switcher.spec.ts` and
 `location-not-stocked-here.spec.ts` — 22 cloud test cases. They give the first real-SQL
 coverage of `createLocation`, `updateLocation`, `deleteLocation`, `reorderLocations`, the
@@ -1523,8 +1549,9 @@ same answer. `item-stock-pager.spec.ts` seeds several and is.
 
 `cleanup-endpoint.spec.ts` joined on 2026-09-25 (issue #319) — 1 cloud test case, no
 browser, like `location-scoped-writes.spec.ts`. It is not resolver coverage: its subject is
-the `DELETE /e2e/cleanup` route in `apps/server/src/index.ts`. It seeds one row of all 14
-models that route deletes, calls it, and asserts every returned deleted count is at least
+the `DELETE /e2e/cleanup` route, whose handler is in `apps/server/src/lib/e2eCleanup.ts`
+(`index.ts` only mounts it). It seeds one row of all 15 models that route deletes (14
+before households task 2.6 added the `User` row), calls it, and asserts every returned deleted count is at least
 1. `purge-coverage.test.ts` guards the same route but only as SOURCE TEXT — it checks that
 the string `prisma.<model>.deleteMany(` appears, never what `where` clause the call
 carries, so a filter matching nothing passes it. See `e2e/CLAUDE.md` for the measured
@@ -1581,6 +1608,19 @@ or the resolver.
 the stock takes: in local the quantities come out of Dexie on the item's own row, in cloud
 they arrive in a separate `itemStocks(locationId:)` field and are joined in the browser, and
 `showStock={false}` has to suppress both. A narrow gain, said plainly.
+
+`cloud-user-row.spec.ts` joined on 2026-10-31 (households H2, task 2.7) — 3 cloud test
+cases, no browser. The `cloud` project went 121 → **124** collected and 25 → **26** files;
+`local` stayed at 183 in 23 files. It is the first real-SQL coverage of the `User` row: a
+first GraphQL request creates it (`ensureUser`), the `user.deleted` event sets `deletedAt`
+(`handleClerkEvent`), and a later request does not clear it. GraphQL has no `User` type yet,
+so it reads the row back through `GET /e2e/users/:id`, an E2E-only route
+(`apps/server/src/lib/e2eUsers.ts`). Each test uses its own user id, so the server's
+"seen today" memory cannot turn a request into a no-op. **Its "later request" test marks
+the user deleted BEFORE the first request, on purpose:** in the order request, delete,
+request, the second request makes 0 queries and could not clear `deletedAt` even if the
+code tried. The test checks `lastSeenAt` went from `null` to set, which proves the request
+reached the row.
 
 The warning above still holds for everything else — most resolvers are named by no cloud
 spec.

@@ -280,8 +280,10 @@ What guards it instead:
 | the same file, last test | the server's `CLEANUP_MODEL_KEYS` and this directory's `CLEANUP_MODEL_KEYS` differ. It reads `cloudTeardown.ts` as text |
 | `cleanup-endpoint.spec.ts` | a `where` that matches nothing reports `"users":0`. This is the only real-SQL check |
 
-**The `User` row is not read back.** GraphQL has no query that returns a `User` row, so
-the spec's `users` count is the only real-SQL check on it.
+**`cleanup-endpoint.spec.ts` does not read the `User` row back.** Its `users` count is
+its only check on that row. GraphQL has no query that returns a `User` row. Since households
+task 2.7, the E2E-only route `GET /e2e/users/:id` (`readCloudUser` in
+`e2e/helpers/cloudUsers.ts`) can read one, and `cloud-user-row.spec.ts` uses it.
 
 **Why `forgetSeenToday` is needed, and why after the commit.** `ensureUser`
 (`apps/server/src/lib/userRow.ts`) remembers, per server process, the users it saw today,
@@ -455,18 +457,22 @@ reconcile finds nothing to remove and creates every row the fixture lists. No ed
 loop was needed in 4b or in PR 5 — which is the whole argument for reading state back
 instead of predicting it.
 
-**The `cloud` project's `testMatch` is 25 files today** (`e2e/playwright.config.ts`),
-up from 13 on 2026-09-23. **Count the array rather than reusing that 25** — it is one line in
-the config and it grows most weeks:
+**The `cloud` project's `testMatch` is 26 files today** (`e2e/playwright.config.ts`,
+measured 2026-10-31), up from 13 on 2026-09-23. **Count the array rather than reusing that
+26** — it grows most weeks:
 
 ```bash
-awk "/name: 'cloud'/,0" e2e/playwright.config.ts \
-  | grep -m1 testMatch | grep -o "'\*\*/[^']*\.spec\.ts'" | wc -l
+awk "/name: 'cloud'/,/name: 'pwa'/" e2e/playwright.config.ts | grep -c "spec\.ts'"
 ```
 
 The `awk` range matters: the file holds **three** such lists — `local`'s `testIgnore`,
-`cloud`'s `testMatch` and `pwa`'s `testMatch` — and a grep over the whole file counts all 33
-entries instead of the 25 that belong to `cloud`.
+`cloud`'s `testMatch` and `pwa`'s `testMatch` — and a grep over the whole file counts all 35
+entries instead of the 26 that belong to `cloud`.
+
+**The command this section used to give printed 0 from 2026-10-30.** It ended
+`| grep -m1 testMatch | grep -o "'\*\*/[^']*\.spec\.ts'" | wc -l`, so it only counted the
+spec names on the same line as `testMatch`. The Biome sweep (commit `e015378d`, issue #346)
+put one entry per line. Measured: 25 on the commit before the sweep, 0 on the sweep.
 
 The five added on 2026-09-24 are `recipes-group.spec.ts`,
 `vendors-group.spec.ts`, `shelves.spec.ts`, `item-stock-input.spec.ts` and
@@ -520,8 +526,13 @@ only". So in cloud its template test would write to IndexedDB, reach **zero** re
 still pass `await expect(page).toHaveURL('/')`. That is a test reporting as covered while
 covering nothing. The product gap is issue **#347**.
 
-The `local` project is 23 spec files: 29 files under `e2e/tests/` minus the 6 in its
-`testIgnore`.
+The `local` project is 23 spec files: 30 files under `e2e/tests/` minus the 7 in its
+`testIgnore` (measured 2026-10-31).
+
+File 26 is `cloud-user-row.spec.ts`, added 2026-10-31 by households H2 task 2.7. It is
+cloud-only and has no browser, so it is also in `local`'s `testIgnore`. Its 3 tests act as
+three new user ids, one per test, built from `E2E_SECOND_USER_ID`. Each id is cleaned up
+with `cleanupCloudData(request, id)` in both hooks.
 
 **Cloud test counts, measured, not quoted. Measure your own — do not subtract any number
 below.** The one-line command:
@@ -539,7 +550,8 @@ What the number has been, so you can see how fast it moves rather than reuse a f
 | 2026-10-08 | `feature/cloud-item-note-wikidata`, before its E2E commit | 104 |
 | 2026-10-08 | `feature/cloud-item-note-wikidata`, after it | 105 |
 | 2026-10-08 | `feature/import-strategy-coverage` (cloud-parity PR C) | 108 |
-| 2026-10-12 | `feature/cloud-spec-coverage` (issue #323) | **121** |
+| 2026-10-12 | `feature/cloud-spec-coverage` (issue #323) | 121 |
+| 2026-10-31 | `feature/households-h2`, after `cloud-user-row.spec.ts` | **124** |
 
 Attribution for the steps that are known: 4b added 5 (1 for the leak spec, 4 because
 `import-export-cloud.spec.ts` went 2 → 6). Cloud-parity PR A added 1 to
