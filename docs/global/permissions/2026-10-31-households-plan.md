@@ -528,7 +528,9 @@ model User {
   - The Clerk lookup throws: the row is created with fallback values, and `ensureUser` does
     **not** throw (P11).
   - E2E mode: no Clerk call; `displayName` is the user id.
-  - Ten parallel calls for a new user give one row and no error (`P2002` is caught. Built without a re-read: `id` is the only unique column, so `P2002`
+  - Ten parallel calls for a new user give one row, one Clerk call and no error: parallel calls
+    for one user share one run (an `inFlight` map, added after review). A separate test covers
+    `P2002` from another process (`P2002` is caught. Built without a re-read: `id` is the only unique column, so `P2002`
     already proves the row exists, and no caller needs the row back. If H3 needs the row back,
     or a second unique column is added, this changes).
   - Each `lastSeenAt` state (never seen, yesterday, earlier today by another process) takes a
@@ -552,12 +554,13 @@ model User {
 
 - [ ] **Step 1:** Add `POST /e2e/users` (body `{ id, displayName, email? }`, upsert) and
   `POST /e2e/users/:id/deleted`, which calls `handleClerkEvent` with a `user.deleted` event
-  **after** the verify step. Never add a test secret, so no test signing key can reach
+  at the point the real webhook reaches after its verify step, with no verify of its own. Never add a test secret, so no test signing key can reach
   production.
 - [ ] **Step 2:** Extend the source-text test from task 2.3: both routes appear only inside the
   `if (E2E_TEST_MODE)` block.
-- [ ] **Step 3:** `e2e/helpers/cloudUsers.ts`: `createCloudUser(request, id, name)` and
-  `sendFakeUserDeleted(request, id)`. Use `E2E_SECOND_USER_ID` (`e2e/constants.ts:38`).
+- [ ] **Step 3:** `e2e/helpers/cloudUsers.ts`: `createCloudUser(request, id, name, email?)` and
+  `sendFakeUserDeleted(request, id)`. The id is required: task 2.6 seeds `E2E_USER_ID` with it,
+  and later phases use `E2E_SECOND_USER_ID` (`e2e/constants.ts:38`).
 - [ ] **Step 4: Mutation check.** Move one route outside the block. The source-text test must go red.
 - [ ] **Step 5:** Commit: `test(e2e): add test-mode routes to create users and fake a deletion`.
 
@@ -570,6 +573,10 @@ Four places change together (`e2e/CLAUDE.md` lines 194-285):
   **Then call `forgetSeenToday(userId)`** (`lib/userRow.ts`, task 2.4). Without it the
   per-process memory still says "seen today", so the next request skips `ensureUser` and the
   row is never created again that day.
+  **`forgetSeenToday` alone is not enough** (found in review). A run already in progress can
+  find the row, lose it to the cleanup, and then write "seen today" back. `forgetSeenToday`
+  must also drop the run from `inFlight` and bump a generation counter, and a run may only
+  remember a user if the generation has not changed since it started.
 - [ ] **Step 2:** `e2e/helpers/cloudTeardown.ts`: add `user` to `CLEANUP_MODEL_KEYS`.
 - [ ] **Step 3:** `e2e/tests/cleanup-endpoint.spec.ts`: seed a `User` row with
   `createCloudUser`, so the at-least-1 check at line 274 covers it.
