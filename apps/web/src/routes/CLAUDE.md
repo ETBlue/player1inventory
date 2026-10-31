@@ -72,7 +72,7 @@ groupBy=recipe, id present → RecipeDetailView  (items in one recipe)
 - `LocationSwitcher` — leading; global active-location selector. Mounted on every pantry view (group + detail + flat list) with `className="lg:hidden"` — at `lg+` the sidebar copy takes over
 - `ViewToggle` — switches between list and group views
 - `GroupByToggle` — switches between shelf / vendor / recipe groupings (three icon buttons)
-- "Manage X" button — entity-specific label ("Manage shelves" / "Manage vendors" / "Manage recipes" via `settings.{shelves,vendors,recipes}.manage`) links to `/settings/shelves`, `/settings/vendors`, or `/settings/recipes` depending on current group-by. Icon-only on mobile (`hidden lg:inline` for the text)
+- "Manage X" button — entity-specific label ("Manage shelves" / "Manage vendors" / "Manage recipes" via `settings.{shelves,vendors,recipes}.manage`) links to `/settings/household/shelves`, `/settings/household/vendors`, or `/settings/household/recipes` depending on current group-by. Icon-only on mobile (`hidden lg:inline` for the text)
 
 **Components** (`src/components/pantry/`):
 - `PantryListView` — flat item list with full toolbar (sort, filter, search, add)
@@ -113,7 +113,7 @@ Both take `inGroupIds` from `inScopeItems` — the page's **pre-search**, locati
   | `?id=` resolves to a vendor | `groupAction` — `t('items.searchTail.applyVendor', { vendor })`, appending the id to `item.vendorIds` via `useUpdateItem` | the additive membership this page is about |
   | `?id=unsorted` (the "No vendor" page) | `groupNote` — `t('items.searchTail.inVendors')`, naming the vendors that already hold the item (`normal-case`, per the vendor-name display rule) | its group is "items with **no** vendor", so a press would have to **strip every vendor** — destructive, the inverse of every other bucket-2 action |
   | `?id=` set but no vendor carries it (deleted, or a hand-typed id — `validateSearch` in `routes/index.tsx` passes `id` through unchecked) | neither | the vendor's name is *in* the button label, and pressing it would append a nonexistent id. A still-loading `useVendors()` is **not** this case: the `<LoadingSpinner />` returns before any tail renders |
-- **`RecipeDetailView` is the only surface whose bucket-2 action mutates the GROUP, not the item.** Recipe membership lives on `Recipe.items: RecipeItem[]` (`packages/types`), so `t('items.searchTail.addToRecipe')` appends `{ itemId, defaultAmount: item.consumeAmount || 1 }` and writes the whole array back through `useUpdateRecipe` — the same shape `settings/recipes/$id/items.tsx` uses. **`|| 1`, never `?? 1`:** an item may legitimately carry `consumeAmount: 0`, and `defaultAmount: 0` means "optional, unchecked" in cooking, so `?? 1` would add an ingredient that silently does nothing. The test that pins this uses a `consumeAmount: 0` fixture — with `consumeAmount: 1` the two operators are indistinguishable and the assertion would be vacuous. The unsorted ("Not added to recipe") and unresolved-`?id=` cases mirror the vendor table above, with `t('items.searchTail.inRecipes')` (`capitalize` — recipe names *are* subject to the title-case convention, unlike vendor names) as the note.
+- **`RecipeDetailView` is the only surface whose bucket-2 action mutates the GROUP, not the item.** Recipe membership lives on `Recipe.items: RecipeItem[]` (`packages/types`), so `t('items.searchTail.addToRecipe')` appends `{ itemId, defaultAmount: item.consumeAmount || 1 }` and writes the whole array back through `useUpdateRecipe` — the same shape `settings/household/recipes/$id/items.tsx` uses. **`|| 1`, never `?? 1`:** an item may legitimately carry `consumeAmount: 0`, and `defaultAmount: 0` means "optional, unchecked" in cooking, so `?? 1` would add an ingredient that silently does nothing. The test that pins this uses a `consumeAmount: 0` fixture — with `consumeAmount: 1` the two operators are indistinguishable and the assertion would be vacuous. The unsorted ("Not added to recipe") and unresolved-`?id=` cases mirror the vendor table above, with `t('items.searchTail.inRecipes')` (`capitalize` — recipe names *are* subject to the title-case convention, unlike vendor names) as the note.
 - **The `isUnsorted` ruling: a `groupNote`, not silence.** The design's action table never covered these pseudo-groups. Passing *neither* was the other option — and it is what PR B chose for `system` shelves and the `unsorted` pseudo-shelf, where its own review flagged it as contradicting the feature's rationale: `ItemSearchTail` hides bucket 2 entirely when given neither, so those rows **silently vanish** and the page explains nothing. PR C therefore reuses the note shape the no-vendor cart already settled on rather than replicating that wart. Closing the same gap on `ShelfDetailView`'s `system` / `unsorted` branches is explicitly **not** PR C's — it is PR B's leftover, and PR D already touches that file.
 - **Neither view passes `sortTail`,** so the tail stays name-ordered while the page's own list obeys the user's sort — the identical, deliberate gap `ShelfDetailView` documents: `useItemSortData` is keyed over `allItems` (stocked-here only), so a bucket-3 row would sort against an absent map entry. Widening that sort-data source is now a three-surface debt and should be its own change.
 - **Neither view has create-from-search,** so neither destructures `hasExactGlobalMatch` — the #245 fix has no purchase on a toolbar that offers no create button. Both destructure `{ tailProps }` alone.
@@ -171,7 +171,7 @@ const sortedItems = sortItems(search.trim() ? searchedItems : filteredItems, ...
 **`ItemFilters` dropdown behavior:**
 - Render order: vendor dropdown → recipe dropdown → tag type dropdowns → Edit link
 - Tag badges inside tag type dropdowns: unselected tags render with `${color}-tint` variant (light), selected tags render with `${color}` variant (solid)
-- Vendor and recipe dropdowns include a "Manage X" link at the bottom (always visible, with Pencil icon): "Manage vendors" (`settings.vendors.manage`) → `/settings/vendors` and "Manage recipes" (`settings.recipes.manage`) → `/settings/recipes`
+- Vendor and recipe dropdowns include a "Manage X" link at the bottom (always visible, with Pencil icon): "Manage vendors" (`settings.vendors.manage`) → `/settings/household/vendors` and "Manage recipes" (`settings.recipes.manage`) → `/settings/household/recipes`
 
 ### Shopping Page
 
@@ -203,7 +203,7 @@ The partition runs **after** the sort, as two `.filter` passes, so the chosen so
 
 **Data:** `useAllActiveCarts()` + `useQueries` fan-out for per-cart item stats + `useVendorCartCounts()` (see `apps/web/src/hooks/CLAUDE.md`) + `useVendors()` + `useItems()`.
 
-**Location-scoped vs global counts (deliberate divergence):** the `VendorCartCard`'s item count and `inactiveCount` badge come from `useVendorCartCounts()`, which scopes to items stocked in the **active location** in both modes. This is intentionally different from `/settings/vendors`, whose vendor item counts still use `useVendorItemCounts()` and stay **global** (location-unaware), because vendor management is location-independent. If the two pages appear to show different counts for the same vendor, that is expected, not a bug.
+**Location-scoped vs global counts (deliberate divergence):** the `VendorCartCard`'s item count and `inactiveCount` badge come from `useVendorCartCounts()`, which scopes to items stocked in the **active location** in both modes. This is intentionally different from `/settings/household/vendors`, whose vendor item counts still use `useVendorItemCounts()` and stay **global** (location-unaware), because vendor management is location-independent. If the two pages appear to show different counts for the same vendor, that is expected, not a bug.
 
 **Files:**
 - `src/routes/shopping.tsx` — layout (4 lines)
@@ -299,9 +299,9 @@ Row 3 (search input, inside `CookingControlBar`, conditional):
 ```
 [search input ..................] [+ Create | × clear]
 ```
-- `+ Create` button (primary): shown when query is non-empty AND no exact recipe title match; navigates to `/settings/recipes/new?name=<query>`
+- `+ Create` button (primary): shown when query is non-empty AND no exact recipe title match; opens `NewRecipeDialog` with the query as its initial name. After save the dialog navigates to `/settings/household/recipes/$id`
 - `× clear` button (neutral-ghost, icon): shown whenever query is non-empty (always alongside Create when both conditions apply)
-- Pressing Escape clears query (keeps row open); pressing Enter with no exact match navigates to create
+- Pressing Escape clears query (keeps row open); pressing Enter with no exact match opens the same dialog
 
 **Search filtering:**
 - Recipe visible if title or any item name partially matches the query
@@ -374,7 +374,7 @@ Full-screen onboarding flow at `/onboarding` shown automatically to new users (e
 
 **Empty-data redirect (in `__root.tsx`):** After all three data queries resolve (`useItems`, `useTags`, `useVendors`), if all are empty and the current path is not `/onboarding`, `__root.tsx` navigates to `/onboarding`. Guard: only fires after all queries have loaded (`data !== undefined`). E2E tests that pre-populate data set `localStorage.setItem('e2e-skip-onboarding', 'true')` via `addInitScript` to bypass this redirect.
 
-**Fullscreen page:** `/onboarding` is added to the `isFullscreenPage` check in `Layout`, `Navigation`, and `Sidebar` — bottom nav and sidebar are hidden on this route.
+**Fullscreen page:** `isFullscreenPage` in `src/lib/layoutRules.ts` returns true for `/onboarding` on every screen size. `Layout`, `Navigation` and `Sidebar` all call it, so the bottom nav and the sidebar are hidden on this route.
 
 **4-step state machine** (local `useState` — no URL params):
 ```ts

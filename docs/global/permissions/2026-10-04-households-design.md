@@ -446,7 +446,7 @@ The Settings area is rebuilt in **both** modes.
 
 **Notes added by the plan (2026-10-31, P1–P6):**
 
-- Today the tag, vendor, recipe and shelf **list** pages are full-screen too. On desktop they now
+- Before H1 the tag, vendor, recipe and shelf **list** pages were full-screen too. On desktop they now
   show the household sidebar. On mobile they stay full-screen with their own Back button.
 - `/settings` decides by screen width (`useIsDesktop`, the Tailwind `lg` value): desktop goes to
   `/settings/household`, mobile shows the accordion.
@@ -480,7 +480,8 @@ render in the main area.
 - The item-9 dropdown looks as much as possible like the location switcher's dropdown.
 - Detail pages (one tag, vendor, recipe, shelf, or an item) stay full-screen with no sidebar, as
   today.
-- `/settings` redirects to `/settings/household`.
+- On desktop, `/settings` redirects to `/settings/household`. On mobile it shows the accordion
+  (see *Mobile* below).
 - The old `/settings/tags`-style routes are **removed with no redirect**. The only production
   user is the developer.
 
@@ -773,8 +774,9 @@ The root `CLAUDE.md` rules apply. Points special to this design:
 - **H3's migration joins `verify:migration`.** It must be added to the `MIGRATIONS` list in
   `apps/server/scripts/verify-migration.ts`. That script now refuses to run if a test database
   URL equals any other database URL in the environment.
-- **H1 touches 76 code lines (109 with comments) in 17 E2E files**, 26 of them in `a11y.spec.ts` (re-counted 2026-10-31). `e2e/` is
-  now type-checked and linted inside the root `pnpm build`.
+- **Done in H1: the E2E route moves.** The forecast was 76 code lines (109 with comments) in 17
+  E2E files. Commit `3b02a62a` moved 132 URL lines in 16 files and touched 17 files in all.
+  `e2e/` is type-checked and linted inside the root `pnpm build`.
 - **H3 breaks a stale browser bundle.** PR 5 was the first PR in the cloud-locations series that
   was not safe for an old bundle, and accepted it. H3 changes the GraphQL scoping and removes
   `isDefault` from the `Location` type, so it is the same kind of change. The plan must say so

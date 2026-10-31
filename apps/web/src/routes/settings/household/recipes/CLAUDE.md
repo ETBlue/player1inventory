@@ -1,6 +1,6 @@
 ### Recipe Management
 
-Recipe CRUD at `/settings/recipes`. Recipes group items with per-item default amounts and track `lastCookedAt` for sorting in the cooking page.
+Recipe CRUD at `/settings/household/recipes`. Recipes group items with per-item default amounts and track `lastCookedAt` for sorting in the cooking page.
 
 **Recipe type** (`src/types/index.ts`): `id`, `name`, `items: RecipeItem[]`, `lastCookedAt?: Date`, `createdAt`
 
@@ -15,11 +15,10 @@ Recipe CRUD at `/settings/recipes`. Recipes group items with per-item default am
 - `toVars` strips `__typename` from `RecipeItem` objects before passing as `RecipeItemInput` — Apollo attaches `__typename: 'RecipeItem'` to query results but the input type doesn't accept it
 
 **Routes**:
-- `src/routes/settings/recipes/index.tsx` — recipe list with item counts
-- `src/routes/settings/recipes/new.tsx` — create new recipe, redirects to detail page after save
-- `src/routes/settings/recipes/$id.tsx` — tabbed layout (Info + Items)
-- `src/routes/settings/recipes/$id/index.tsx` — Info tab: edit recipe name + delete recipe
-- `src/routes/settings/recipes/$id/items.tsx` — Items tab: assign/unassign items with default amount control
+- `src/routes/settings/household/recipes/index.tsx` — recipe list with item counts. Its New button opens `NewRecipeDialog`, which goes to the detail page after save
+- `src/routes/settings/household/recipes/$id.tsx` — tabbed layout (Info + Items)
+- `src/routes/settings/household/recipes/$id/index.tsx` — Info tab: edit recipe name + delete recipe
+- `src/routes/settings/household/recipes/$id/items.tsx` — Items tab: assign/unassign items with default amount control
 
 **Components**:
 - `src/components/recipe/RecipeCard/index.tsx` — displays one recipe with item count; recipe name links to detail page
@@ -31,7 +30,7 @@ This tab is a **global** assignment surface: rows carry `showStock={false}`, ord
 
 **Map-shaped item counts**: `useRecipeItemCounts()` (`src/hooks/useRecipeItemCounts.ts`) returns `Map<recipeId, number>` for badge lists — used by the shelf filters tab. It counts from the **item** side rather than reading `recipe.items.length`, so `RecipeItem` entries pointing at deleted items do not inflate the count. The per-id `useItemCountByRecipe` remains for single-entity call sites (confirmation dialogs, the recipe list).
 
-**Settings link**: `src/routes/settings/index.tsx` (UtensilsCrossed icon)
+**Settings link**: the household sidebar (`src/components/global/Sidebar/HouseholdSidebar.tsx`) and the mobile `/settings` accordion (`src/routes/settings/index.tsx`), both with the `ChefHat` icon
 
 **Dirty state**: `src/hooks/useRecipeLayout.tsx` — navigation guard on parent layout applies only to the Info tab (recipe name editing); Items tab has no unsaved state.
 

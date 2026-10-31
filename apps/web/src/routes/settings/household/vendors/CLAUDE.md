@@ -1,6 +1,6 @@
 ### Vendor Management
 
-Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) used for filtering items in shopping mode.
+Vendor CRUD at `/settings/household/vendors`. Vendors are separate entities (not tags) used for filtering items in shopping mode.
 
 **Vendor type** (`src/types/index.ts`): `id`, `name`, `createdAt` (minimal, name-only)
 
@@ -10,7 +10,7 @@ Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) use
 
 **Hooks** (`src/hooks/useVendors.ts`): `useVendors`, `useCreateVendor`, `useUpdateVendor` (takes `{ id, updates }`), `useDeleteVendor`, `useItemCountByVendor` — all dual-mode (local: TanStack Query + Dexie; cloud: Apollo GraphQL)
 
-**Routes**: `src/routes/settings/vendors/index.tsx` — vendor list; `src/routes/settings/vendors/new.tsx` — create new vendor, redirects to detail page after save
+**Routes**: `src/routes/settings/household/vendors/index.tsx` — vendor list. Its New button opens `NewVendorDialog`, which goes to the detail page after save
 
 **Components**:
 - `src/components/vendor/VendorCard/index.tsx` — displays one vendor with a delete button; vendor name links to the detail page. Accepts `itemCount` and `onDelete` (the actual delete operation); wraps `DeleteButton` internally with an `itemCount`-based dialog description
@@ -18,11 +18,11 @@ Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) use
 
 **Item counts**: Vendor list displays item count for each vendor (e.g. "Costco · 12 items") using `useVendorItemCounts()` hook.
 
-**Settings link**: `src/routes/settings/index.tsx` (Store icon)
+**Settings link**: the household sidebar (`src/components/global/Sidebar/HouseholdSidebar.tsx`) and the mobile `/settings` accordion (`src/routes/settings/index.tsx`), both with the `Store` icon
 
 **Assignment UI**: `src/routes/items/$id/relation/vendors.tsx` — Vendors subtab in item detail (under the Relation tab). Click-to-toggle badges, immediate save via `useUpdateItem`. "New Vendor" button inline with badges opens `AddNameDialog` to create and immediately assign a vendor. No Save button (same as tags tab).
 
-**Vendor detail page**: `src/routes/settings/vendors/$id.tsx` — Tabbed layout (Info + Items). Info tab: edit vendor name with Save button. Items tab: combined search+create input with a searchable checklist of all items showing their current vendor assignments; saves immediately when a checkbox is clicked (no staged state, no Save button), same pattern as the Tags tab. Typing a name that matches no items reveals a `+ Create "<name>"` row — clicking it or pressing Enter creates the item inline (no dialog) and immediately assigns it to this vendor; pressing Escape clears the input.
+**Vendor detail page**: `src/routes/settings/household/vendors/$id.tsx` — Tabbed layout (Info + Items). Info tab: edit vendor name with Save button. Items tab: combined search+create input with a searchable checklist of all items showing their current vendor assignments; saves immediately when a checkbox is clicked (no staged state, no Save button), same pattern as the Tags tab. Typing a name that matches no items reveals a `+ Create "<name>"` row — clicking it or pressing Enter creates the item inline (no dialog) and immediately assigns it to this vendor; pressing Escape clears the input.
 
 The Items tab is a **global** assignment surface: rows carry `showStock={false}`, order is assigned-then-unassigned with no active/inactive split, and create-from-search calls `useCreateItem({ catalogOnly: true })` directly so the new item is stocked in no location. See `settings/CLAUDE.md` for the three rules.
 

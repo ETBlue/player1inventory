@@ -1,6 +1,6 @@
 ### Location Management
 
-Location CRUD at `/settings/locations`. A **Location** is a place the user stocks things — a home, a second home, a storage unit. It is the scoping unit for all stock-bearing data: every `ItemStock`, `InventoryLog`, and `ShoppingCart` belongs to exactly one location.
+Location CRUD at `/settings/household/locations`. A **Location** is a place the user stocks things — a home, a second home, a storage unit. It is the scoping unit for all stock-bearing data: every `ItemStock`, `InventoryLog`, and `ShoppingCart` belongs to exactly one location.
 
 **`Location` type** (`packages/types/src/index.ts`): `id`, `name`, `order`, `isDefault`, `createdAt`, `updatedAt`. **Both modes** — local is the Dexie `locations` store (`isDefault` added in v18, see `src/db/CLAUDE.md`); cloud is the Prisma `Location` model behind `apps/server/src/schema/location.graphql`, added in cloud-locations PR 1.
 
@@ -26,7 +26,7 @@ Global `Item`s are **not** touched — an item stocked only in the deleted locat
 
 **Active location** (`src/hooks/useActiveLocation.tsx`): a React Context exposing `{ activeLocationId, setActiveLocationId, activeLocation }`, persisted in localStorage under the per-mode key `active-location-id:<mode>`, falling back to the `isDefault` location when the stored id names none of the loaded ones. `ActiveLocationProvider` is mounted in `__root.tsx`. It also bootstraps the location's shopping carts (`bootstrapCarts`) whenever the active id changes. See `src/hooks/CLAUDE.md` for the full list of hooks that thread it.
 
-**Route**: `src/routes/settings/locations.tsx` (layout) + `src/routes/settings/locations/index.tsx` (list). Toolbar: back button + title + an **Add** button opening `AddNameDialog`. Rename reuses the same `AddNameDialog` with a Save label. Registered in the settings nav from `src/routes/settings/index.tsx` (`MapPin` icon, `settings.locations.label`/`.description`).
+**Route**: `src/routes/settings/household/locations.tsx` (layout) + `src/routes/settings/household/locations/index.tsx` (list). Toolbar: back button (mobile only, `lg:hidden`, because on desktop the household sidebar has Back) + title + an **Add** button opening `AddNameDialog`. Rename reuses the same `AddNameDialog` with a Save label. Linked from the household sidebar (`src/components/global/Sidebar/HouseholdSidebar.tsx`) and the mobile `/settings` accordion (`src/routes/settings/index.tsx`), both with the `MapPin` icon and `settings.locations.label`/`.description`.
 
 **Components**:
 - `src/components/location/LocationList/LocationList.tsx` — the reorderable list. One `Card` per location: drag handle (or `Lock` for the default) · `MapPin` + name + a "Default" hint · rename (pencil) · delete (trash, absent for the default). Drag-reorder via `@dnd-kit` with `PointerSensor`/`TouchSensor`/`KeyboardSensor`, mirroring `ShelfList`; keyboard instructions live in an `sr-only` paragraph (`settings.locations.dragInstructions`). Names render **as stored** — no `capitalize`, in the row label or the drag overlay. Location names are user-specified and may carry intentional casing ("iHerb pantry", "my Garage"), so they follow the vendor-name exception in the root `CLAUDE.md` "Name Display Convention" rather than the item/tag/recipe title-case rule. This matches `LocationSwitcher`, so the same location reads identically in the sidebar and here.
@@ -36,4 +36,4 @@ Global `Item`s are **not** touched — an item stocked only in the deleted locat
 
 **i18n**: `settings.locations.*` in `src/i18n/locales/{en,tw}.json`.
 
-**Tests**: `src/routes/settings/locations/index.test.tsx` (route), `index.stories.tsx` + `index.stories.test.tsx` (stories + smoke), location operations/cascade in `src/db/operations.test.ts`, E2E in `e2e/tests/location-switcher.spec.ts` and `e2e/tests/settings/locations.spec.ts`.
+**Tests**: `src/routes/settings/household/locations/index.test.tsx` (route), `index.stories.tsx` + `index.stories.test.tsx` (stories + smoke), location operations/cascade in `src/db/operations.test.ts`, E2E in `e2e/tests/location-switcher.spec.ts` and `e2e/tests/settings/locations.spec.ts`.
