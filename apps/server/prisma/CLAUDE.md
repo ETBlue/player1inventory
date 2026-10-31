@@ -170,6 +170,19 @@ see ships unnoticed.
    that reads just `Item` fails),
 4. restores the migration, `migrate deploy`, asserts.
 
+**How to run it, measured 2026-11-01 (households H2):**
+
+- **`tsx` does not read `.env`, and a relative `--env-file` fails.** `pnpm --filter server exec tsx
+  --env-file=.env …` printed `node: .env: not found`. Pass the **absolute** path:
+  `pnpm --filter server exec tsx --env-file=<absolute path>/apps/server/.env scripts/verify-migration.ts`.
+- **Prisma 6 refuses `migrate reset` when an AI agent runs it.** It prints "Prisma Migrate detected
+  that it was invoked by Claude Code" and exits 1. The script then restores every parked
+  migration, so nothing changes. To run it, the agent must show the user the warning, get an
+  explicit "yes" **after** it, and pass that reply's exact text in
+  `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`. A "yes" given before the warning does not count.
+- **The script also runs `migrate deploy`**, so afterwards the test database is fully migrated.
+  `migrate status` then says "Database schema is up to date!".
+
 **It is not reachable from any gate** — it needs a live database — so it will bit-rot between
 manual runs. Run it whenever you touch a migration, and treat a stale failure as a real signal
 rather than assuming the script rotted.
