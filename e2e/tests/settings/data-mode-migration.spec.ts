@@ -283,15 +283,14 @@ test('user can switch from offline to cloud mode and clear & import their local 
   // the reload `doEnableSwitch` triggers lands on the pantry, and the
   // auto-import runs there.
   //
-  // KNOWN RED SINCE H1 (2026-10-31): on the pantry the auto-import fails with
-  // "The copy failed: The operation was aborted." and `migration-prompted`
-  // stays unset. The same flow started from the mobile `/settings` page
-  // (reload lands on `/settings`, where no pantry query is active) passes in
-  // 21.8s. Before H1 the switch could only start on `/settings`, so this path
-  // was not reachable. The likely cause is `client.resetStore()` at the end of
-  // `importCloudData` (apps/web/src/lib/importData.ts) while the pantry's
-  // queries are active. Not fixed here: it is app code, reported for a
-  // decision.
+  // Running the copy ON THE PANTRY is what this test needs to keep doing. Until
+  // 2026-10-31 a copy there failed with "The copy failed: The operation was
+  // aborted." after every row was written: the cache refresh at the end of
+  // `importCloudData` unmounted the pantry's views, and Apollo aborted their
+  // refetches. The bug is older than H1 — a production sign-in also lands on
+  // `/` — but before H1 this spec reloaded onto `/settings`, where no pantry
+  // query is active, so it could not see it. See
+  // docs/global/bugs/2026-10-31-bug-cloud-copy-aborted-on-pantry.md.
   await new SettingsPage(page).openUserSidebar()
   const dialog = page.getByRole('alertdialog')
 
@@ -323,6 +322,16 @@ test('user can switch from offline to cloud mode and clear & import their local 
   await expect
     .poll(() => readMigrationKeys(page), { timeout: 60000, intervals: [500] })
     .toEqual({ mode: 'cloud', strategy: null, prompted: '1' })
+
+  // And the user is not told the copy failed, nor asked to copy again.
+  // These two are WEAK on their own: before the 2026-10-31 fix the error dialog
+  // showed for about 100 ms and was then replaced by the prompt, so an absence
+  // check can pass on timing alone. The key pair above is what proves success.
+  // They follow it so the page has settled first.
+  // t('settings.postLoginMigration.errorTitle') = "Copy failed"
+  await expect(page.getByText('Copy failed')).not.toBeVisible()
+  // t('settings.postLoginMigration.title') = "Import local data to cloud?"
+  await expect(page.getByText('Import local data to cloud?')).not.toBeVisible()
 
   // ── And the local pantry REPLACED the cloud account's contents ──────────────
   // EXACTLY the payload's one item. The absence of `Cloud Only Item` is what

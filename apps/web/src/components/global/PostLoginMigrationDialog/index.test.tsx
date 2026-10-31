@@ -254,6 +254,10 @@ describe('PostLoginMigrationDialog — signing in copies the local pantry', () =
   // cannot race it, because it only starts once the list is known, so no
   // further flip is left to overwrite the error. The Import-button path's own
   // state is pinned in `hooks/usePostLoginMigration.test.ts` instead.
+  //
+  // Since 2026-10-31 the hook no longer does this: once a copy has started,
+  // the effect returns early (`importStarted` in `usePostLoginMigration.ts`).
+  // So the race above is gone. This test was not changed.
   it('user sees why the copy was refused', async () => {
     // Given a stored copy strategy and a server that refuses the copy, because
     // the local data names a row id another cloud account holds.

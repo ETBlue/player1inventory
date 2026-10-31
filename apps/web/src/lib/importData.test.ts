@@ -2481,6 +2481,43 @@ describe('importCloudData — locations and stock upload in dependency order', (
     expect(order).toContain('BulkCreateItems')
     expect(order).toContain('BulkCreateShoppingCarts')
   })
+
+  // Bug 2026-10-31 (`docs/global/bugs/2026-10-31-bug-cloud-copy-aborted-on-pantry.md`):
+  // on the pantry, the final `resetStore()` rejects with Apollo's own
+  // AbortError, because the refetch of a query that was unmounted during the
+  // reset is torn down. Every row was already written at that point.
+  for (const strategy of ['clear', 'skip', 'replace'] as const) {
+    it(`user copying to cloud with ${strategy} is not told it failed when the cache refresh is aborted`, async () => {
+      // Given a client whose cache refresh rejects with an AbortError
+      const client = makeRecordingClient()
+      client.resetStore = vi
+        .fn()
+        .mockRejectedValue(
+          new DOMException('The operation was aborted.', 'AbortError'),
+        )
+
+      // When the whole payload is uploaded
+      const result = importCloudData(fullPayload(), strategy, client as never)
+
+      // Then the copy resolves
+      await expect(result).resolves.toBeUndefined()
+      // And the refresh was really attempted, and the rows really sent
+      expect(client.resetStore).toHaveBeenCalledTimes(1)
+      expect(mutationOrder(client)).toContain('BulkCreateItems')
+    })
+  }
+
+  it('user copying to cloud is still told it failed when the cache refresh fails for another reason', async () => {
+    // Given a client whose cache refresh rejects with a network error
+    const client = makeRecordingClient()
+    client.resetStore = vi.fn().mockRejectedValue(new Error('Failed to fetch'))
+
+    // When the whole payload is uploaded
+    const result = importCloudData(fullPayload(), 'clear', client as never)
+
+    // Then the copy reports the failure
+    await expect(result).rejects.toThrow('Failed to fetch')
+  })
 })
 
 // ---------------------------------------------------------------------------
