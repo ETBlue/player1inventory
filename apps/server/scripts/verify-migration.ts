@@ -1,4 +1,4 @@
-// Verifies the location migrations against a REAL Postgres, because the
+// Verifies the migrations listed in MIGRATIONS below against a REAL Postgres, because the
 // resolver test suite runs entirely against a hand-written Prisma fake and
 // cannot exercise SQL at all.
 //
@@ -18,8 +18,8 @@
 // for a while after entry 5 was added, so check the array rather than trusting
 // this line.
 // Migration 6 is not a location migration and depends on none of the others.
-// It is parked with them anyway, so that `migrate deploy` applies it to the
-// seeded database. Left unparked, the reset would apply it to an empty one.
+// It is parked with them anyway. Left unparked, `migrate reset` would apply it
+// BEFORE migrations 1-5, which is not the order production applies them in.
 // All of them must be parked together. Each one references what the previous one
 // creates, so resetting with only some of them parked would fail at reset time.
 // Migration 4 depends on 1 in the other direction too: it destroys the data
@@ -258,7 +258,7 @@ async function seedFixture(): Promise<void> {
 
 const SERVER_DIR = fileURLToPath(new URL('..', import.meta.url))
 
-// In apply order. Adding a later location migration means adding it here.
+// In apply order. Adding a later migration under test means adding it here.
 const MIGRATIONS = [
   '20260830000000_add_location_and_item_stock',
   '20260916000000_add_location_to_log_and_cart',
@@ -775,7 +775,8 @@ async function main(): Promise<void> {
   //      Postgres, so an unquoted name in the migration would fail or create
   //      something else.
   //   2. "email", "lastSeenAt" and "deletedAt" are nullable. A Clerk account
-  //      may have no email, and user.deleted carries none (plan P10).
+  //      may have no email, and user.deleted carries none (decision P10 in
+  //      docs/global/permissions/2026-10-31-households-plan.md).
   //   3. "id" and "displayName" are NOT nullable. This is the other half of 2:
   //      a migration that made every column nullable would pass 2 alone.
   //   4. a second insert with the same "id" fails with P2002. H3 relies on

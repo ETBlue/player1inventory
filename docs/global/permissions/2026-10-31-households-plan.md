@@ -376,7 +376,7 @@ closes it. Its content renders inside the sidebar.
 ### Task 1.9 — Docs, then the final gate
 
 - [ ] **Step 1:** Update the CLAUDE.md files that name old routes:
-  `apps/web/src/routes/settings/CLAUDE.md`, the five moved folder `CLAUDE.md` files,
+  `apps/web/src/routes/settings/CLAUDE.md`, the four moved folder `CLAUDE.md` files (shelves has none),
   `apps/web/src/routes/CLAUDE.md` (lines 75, 174, 302, 377), `apps/web/src/components/CLAUDE.md`
   (29, 31-33, 210), `apps/web/src/i18n/CLAUDE.md` (36), `apps/web/src/hooks/CLAUDE.md` (167),
   and root `CLAUDE.md` (the settings index, about 183-187). Two folder docs list `new.tsx` files
@@ -437,19 +437,25 @@ model User {
   No relation to other models yet. H3 adds them.
 - [ ] **Step 2:** Write the migration by hand, `YYYYMMDD000000_add_user`, following
   `apps/server/prisma/CLAUDE.md`: a `--` comment saying why, then `CREATE TABLE "User"`. Quote
-  `"User"`; `user` is a reserved word in Postgres. Check with
-  `pnpm --filter server exec prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url "$TEST_DIRECT_URL" --script`,
-  which must print an empty script.
-- [ ] **Step 3:** `verify-migration.ts`: add the folder to `MIGRATIONS` (lines 257-263) and the
-  header comment (5-17). Assert: the table exists; `email`, `lastSeenAt`, `deletedAt` are
+  `"User"`; `user` is a reserved word in Postgres. Check it with a diff that needs no database: save the old schema from
+  `HEAD:apps/server/prisma/schema.prisma` to a file, then run
+  `prisma migrate diff --from-schema-datamodel <old> --to-schema-datamodel prisma/schema.prisma --script`
+  and compare its SQL with the migration. **Never pass `TEST_DIRECT_URL` as
+  `--shadow-database-url`:** Prisma resets a shadow database, so that wipes the test database.
+  This plan said to, until task 2.1 found it.
+- [ ] **Step 3:** `verify-migration.ts`: add the folder to `MIGRATIONS` (about lines 259-265)
+  and the header comment (about 5-24). Assert: the table exists; `email`, `lastSeenAt`, `deletedAt` are
   nullable; `displayName` is not; a second insert with the same `id` fails with `P2002`, as the
-  block at 412-423 does. Do **not** touch the `isDefault` assertions; H3 owns them.
+  block at about 418-429 does. Do **not** touch the `isDefault` assertions; H3 owns them.
 - [ ] **Step 4:** Root `pnpm build` (it runs `prisma generate`). Server tests unchanged.
 - [ ] **Step 5:** Commit: `feat(server): add the User model`.
 - [ ] **Step 6 (main session, not a subagent):** ask the user for consent, then run
   `verify:migration` against the test database, then `prisma migrate deploy` against
   `TEST_DIRECT_URL` (P15). `verify:migration` runs `migrate reset`; it must only ever point at
-  `TEST_*`. Record the output in the task report.
+  `TEST_*`. Run the root `pnpm build` first, so the Prisma client knows `prisma.user`. After the
+  deploy, compare the real database with the schema, read-only:
+  `prisma migrate diff --from-url "$TEST_DIRECT_URL" --to-schema-datamodel prisma/schema.prisma --script`
+  must print an empty script. Record the output in the task report.
 
 ### Task 2.2 — `userFake`
 
