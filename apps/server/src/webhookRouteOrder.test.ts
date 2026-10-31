@@ -18,7 +18,9 @@
  * `POST /e2e/users` and `POST /e2e/users/:id/deleted` write `User` rows with
  * no signature check. They are safe only while they are mounted inside the
  * top-level `if (E2E_TEST_MODE) { … }` block. Mounted outside it, anyone could
- * create users or mark them deleted on the production server.
+ * create users or mark them deleted on the production server. Since task 2.6
+ * the same holds for `DELETE /e2e/cleanup`, which deletes a user's data and
+ * their `User` row.
  *
  * "Inside" is checked on the parsed syntax tree, with the TypeScript parser,
  * not by comparing text positions. A route placed after the block's closing
@@ -126,6 +128,7 @@ describe('index.ts mounts the E2E-only routes', () => {
   })
 
   it.each([
+    ['delete', '/e2e/cleanup', 'e2eCleanupHandler'],
     ['post', '/e2e/users', 'e2eCreateUserHandler'],
     ['post', '/e2e/users/:id/deleted', 'e2eUserDeletedHandler'],
   ])('mounts %s %s once, inside the block', (method, path, handler) => {
@@ -161,7 +164,8 @@ describe('index.ts mounts the E2E-only routes', () => {
     expect(routers).toEqual([])
   })
 
-  it('names the two user handlers nowhere outside the block, except in the import', () => {
+  it('names the three E2E handlers nowhere outside the block, except in the import', () => {
+    const handlers = ['e2eCleanupHandler', 'e2eCreateUserHandler', 'e2eUserDeletedHandler']
     const [block] = e2eBlocks()
     const body = block?.thenStatement
     const outside: string[] = []
@@ -169,7 +173,7 @@ describe('index.ts mounts the E2E-only routes', () => {
       if (ts.isImportDeclaration(node)) return
       if (
         ts.isIdentifier(node) &&
-        (node.text === 'e2eCreateUserHandler' || node.text === 'e2eUserDeletedHandler') &&
+        handlers.includes(node.text) &&
         !(body && node.getStart(SOURCE) >= body.getStart(SOURCE) && node.end <= body.end)
       ) {
         outside.push(node.text)

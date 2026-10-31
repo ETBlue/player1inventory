@@ -16,9 +16,10 @@ import { CLOUD_SERVER_URL } from '../constants'
  *   named by its id. Call `createCloudUser` for it only when a spec needs the
  *   row before any request, or with a different name.
  *
- * A spec that writes a `User` row must clean it up. Until task 2.6 of the
- * plan, `/e2e/cleanup` does not delete `User` rows, so a row and its
- * `deletedAt` stay in the shared test database.
+ * A spec that writes a `User` row must clean it up. Since task 2.6 of the
+ * plan, `cleanupCloudData(request, id)` deletes the `User` row with that id,
+ * along with the rest of that user's data. So a spec that writes a row for
+ * `E2E_SECOND_USER_ID` must call it for that id too, in both hooks.
  */
 
 /**

@@ -22,7 +22,8 @@ export const E2E_USER_ID = 'e2e-test-user'
  * A SECOND synthetic account, for API-only specs that need two users.
  *
  * The server accepts any `x-e2e-user-id` verbatim when `E2E_TEST_MODE=true`
- * (apps/server/src/index.ts:139 for GraphQL, :39 for `/e2e/cleanup`), so this
+ * (the GraphQL context in apps/server/src/index.ts, and `/e2e/cleanup` in
+ * apps/server/src/lib/e2eCleanup.ts), so this
  * value needs no registration anywhere — it only has to differ from
  * `E2E_USER_ID`.
  *

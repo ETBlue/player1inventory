@@ -22,8 +22,8 @@ import { prisma } from './prisma.js'
 // (`lib/userRow.ts`). That memory is only wrong when a row it saw is
 // removed: then the next request skips the check and the row is not created
 // again. Neither route removes a row. Both upsert, so a row that existed
-// still exists afterwards. Task 2.6's `/e2e/cleanup` deletes the row, and it
-// is the one that must call `forgetSeenToday`.
+// still exists afterwards. `/e2e/cleanup` (lib/e2eCleanup.ts) deletes the row,
+// and it calls `forgetSeenToday` after the delete commits.
 //
 // Neither route ever logs the request body. A write error is logged by name
 // and code only, because a Prisma error's message prints the whole call, and

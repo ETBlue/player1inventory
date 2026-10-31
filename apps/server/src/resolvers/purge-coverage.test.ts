@@ -26,6 +26,12 @@
  * is scoped through its parent Location, not a row a user owns directly. All four
  * are deleted through a parent relation filter and are deliberately out of scope
  * here.
+ *
+ * `User` (households H2) is out of scope too, for a different reason: it has
+ * no `userId` field. Its key is `id`, because the row IS the user. Only
+ * `/e2e/cleanup` deletes it, with `where: { id: userId }`, and
+ * `lib/e2eCleanup.test.ts` pins that line. `purgeUserData` and `clearAllData`
+ * delete a user's DATA and leave the account, so they must not delete it.
  */
 
 import { readFileSync } from 'node:fs'
@@ -65,9 +71,10 @@ const PURGE_PATHS = [
   { label: 'purgeUserData', source: read('./purge.resolver.ts') },
   { label: 'clearAllData', source: read('./import.resolver.ts') },
   // The E2E-only DELETE /e2e/cleanup endpoint is a THIRD hand-maintained copy of
-  // the same delete list. It is not a resolver, so nothing else in this suite
-  // reads it. This guard is what keeps the three lists from drifting apart.
-  { label: 'e2eCleanup', source: read('../index.ts') },
+  // the same delete list. It is not a resolver, so no resolver test reads it.
+  // This guard is what keeps the three lists from drifting apart. Its handler
+  // moved from index.ts to lib/e2eCleanup.ts in households task 2.6.
+  { label: 'e2eCleanup', source: read('../lib/e2eCleanup.ts') },
 ]
 
 describe('purge coverage against prisma/schema.prisma', () => {

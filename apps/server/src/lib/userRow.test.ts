@@ -605,7 +605,7 @@ describe('ensureUser', () => {
 
   it('forgetSeenToday makes the next call check the database again', async () => {
     // Given a user remembered as seen today, whose row is then removed
-    // (what /e2e/cleanup will do to the User row from task 2.6 on)
+    // (what /e2e/cleanup does to the User row, lib/e2eCleanup.ts)
     await ensureUser('e2e-user-1', { kind: 'e2e' }, TODAY_NOON)
     userFake.reset()
 
