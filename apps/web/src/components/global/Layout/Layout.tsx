@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigation } from '@/components/global/Navigation'
 import { Sidebar } from '@/components/global/Sidebar'
+import { isFullscreenPage } from '@/lib/layoutRules'
 
 interface LayoutProps {
   children: ReactNode
@@ -11,13 +12,7 @@ interface LayoutProps {
 export function Layout({ children }: LayoutProps) {
   const { t } = useTranslation()
   const location = useLocation()
-  const isFullscreenPage =
-    location.pathname === '/onboarding' ||
-    location.pathname.startsWith('/items/') ||
-    location.pathname.startsWith('/settings/tags') ||
-    location.pathname.startsWith('/settings/vendors') ||
-    location.pathname.startsWith('/settings/recipes') ||
-    location.pathname.startsWith('/settings/shelves')
+  const isFullscreen = isFullscreenPage(location.pathname)
 
   return (
     <div className="h-dvh bg-background-base grid grid-cols-[auto_1fr]">
@@ -43,7 +38,7 @@ export function Layout({ children }: LayoutProps) {
           {/* sr-only heading for mobile screen readers: the Sidebar's h1 is lg:flex (desktop only),
             so mobile viewports have no h1 in the DOM. This hidden heading fills that gap without
             affecting the visual layout. Hidden at lg+ where the Sidebar h1 is already visible. */}
-          {!isFullscreenPage && (
+          {!isFullscreen && (
             <h1 className="sr-only lg:hidden">{t('appName')}</h1>
           )}
           {children}

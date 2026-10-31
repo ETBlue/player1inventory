@@ -1,6 +1,7 @@
 import { Link, useLocation } from '@tanstack/react-router'
 import { CookingPot, Settings, ShoppingCart, Warehouse } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { isFullscreenPage } from '@/lib/layoutRules'
 import { cn } from '@/lib/utils'
 
 export function Navigation() {
@@ -14,15 +15,7 @@ export function Navigation() {
     { to: '/settings', label: t('navigation.settings'), icon: Settings },
   ] as const
 
-  // Hide navigation on fullscreen pages (onboarding, items, tags, vendors, recipes)
-  const isFullscreenPage =
-    location.pathname === '/onboarding' ||
-    location.pathname.startsWith('/items/') ||
-    location.pathname.startsWith('/settings/tags') ||
-    location.pathname.startsWith('/settings/vendors') ||
-    location.pathname.startsWith('/settings/recipes') ||
-    location.pathname.startsWith('/settings/shelves')
-  if (isFullscreenPage) {
+  if (isFullscreenPage(location.pathname)) {
     return null
   }
 
