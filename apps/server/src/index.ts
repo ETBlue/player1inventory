@@ -5,6 +5,7 @@ import { clerkMiddleware, getAuth } from '@clerk/express'
 import { ApolloServer } from '@apollo/server'
 import { expressMiddleware } from '@as-integrations/express5'
 import { DEFAULT_CLIENT_ORIGIN, DEFAULT_PORT, GRAPHQL_PATH } from './constants.js'
+import { clerkWebhookHandler } from './lib/clerkWebhook.js'
 import { isAllowedOrigin } from './lib/cors.js'
 import { prisma } from './lib/prisma.js'
 import { typeDefs } from './schema/index.js'
@@ -29,6 +30,12 @@ app.use(
     },
   }),
 )
+// Clerk user webhooks (lib/clerkWebhook.ts). This route MUST stay above the
+// app-wide JSON parser below. The signature covers the raw bytes Clerk sent,
+// so the route reads the body with express.raw. Below the JSON parser, the
+// body would already be an object, and the check would run on re-serialized
+// JSON. webhookRouteOrder.test.ts guards the order.
+app.post('/webhooks/clerk', express.raw({ type: 'application/json' }), clerkWebhookHandler)
 app.use(express.json({ limit: '1mb' }))
 if (!E2E_TEST_MODE) app.use(clerkMiddleware())
 
