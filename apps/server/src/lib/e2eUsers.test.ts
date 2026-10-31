@@ -155,6 +155,9 @@ describe('the E2E user routes', () => {
     // Then it is refused, nothing is written, and the body is not logged
     expect(res.status).toBe(400)
     expect(userFake.state.rows).toEqual([])
+    // NEGATIVE CONTROL, not evidence. The 400 path logs nothing at all, so
+    // this check cannot fail today. It is kept so that a log line added to
+    // the 400 path later cannot print the body.
     const logged = vi
       .mocked(console.error)
       .mock.calls.flat()

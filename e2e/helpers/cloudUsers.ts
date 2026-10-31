@@ -22,8 +22,10 @@ import { CLOUD_SERVER_URL } from '../constants'
  */
 
 /**
- * Create a `User` row, or update its name. `POST /e2e/users`.
- * It never clears `deletedAt`, the same as Clerk's `user.updated` webhook.
+ * Create a `User` row, or overwrite its name and email. `POST /e2e/users`.
+ * When `email` is left out, a stored email is set to `null`, the same as a
+ * `user.updated` webhook for an account with no email. It never clears
+ * `deletedAt` and never writes `lastSeenAt`.
  */
 export async function createCloudUser(
   request: APIRequestContext,

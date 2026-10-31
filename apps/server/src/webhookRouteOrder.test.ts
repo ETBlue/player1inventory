@@ -72,26 +72,37 @@ function e2eBlocks(): ts.IfStatement[] {
     .filter((stmt) => stmt.expression.getText(SOURCE) === 'E2E_TEST_MODE')
 }
 
-type RouteMount = { method: string; path: string; handler: string; insideE2eBlock: boolean }
+type RouteMount = {
+  receiver: string
+  method: string
+  path: string
+  handler: string
+  insideE2eBlock: boolean
+}
 
 /**
- * Every `app.<method>('<path>', …)` call in `index.ts`, at any depth, with
- * whether it sits inside the `then` branch of the one `if (E2E_TEST_MODE)`
- * block.
+ * Every `<receiver>.<method>('<path>', …)` call in `index.ts`, at any depth,
+ * with whether it sits inside the `then` branch of the one
+ * `if (E2E_TEST_MODE)` block.
+ *
+ * - Any receiver counts, not only `app`. A route mounted on a router
+ *   (`r.post('/e2e/x')`) is found too.
+ * - The path may be a plain string or a template with no `${…}` in it
+ *   (`` app.post(`/e2e/x`) ``).
+ *
+ * Calls that are not routes are collected too (`process.on('beforeExit')`).
+ * That is harmless: every check below filters by path first.
  */
 function routeMounts(): RouteMount[] {
   const [block] = e2eBlocks()
   const body = block?.thenStatement
   const mounts: RouteMount[] = []
   const visit = (node: ts.Node) => {
-    if (
-      ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      node.expression.expression.getText(SOURCE) === 'app'
-    ) {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const [first, ...rest] = node.arguments
-      if (first && ts.isStringLiteral(first)) {
+      if (first && ts.isStringLiteralLike(first)) {
         mounts.push({
+          receiver: node.expression.expression.getText(SOURCE),
           method: node.expression.name.text,
           path: first.text,
           handler: rest.map((arg) => arg.getText(SOURCE)).join(', '),
@@ -119,15 +130,35 @@ describe('index.ts mounts the E2E-only routes', () => {
     ['post', '/e2e/users/:id/deleted', 'e2eUserDeletedHandler'],
   ])('mounts %s %s once, inside the block', (method, path, handler) => {
     const found = routeMounts().filter((m) => m.path === path)
-    expect(found).toEqual([{ method, path, handler, insideE2eBlock: true }])
+    expect(found).toEqual([{ receiver: 'app', method, path, handler, insideE2eBlock: true }])
   })
 
-  it('mounts every /e2e/ route inside the block', () => {
-    const e2eRoutes = routeMounts().filter((m) => m.path.startsWith('/e2e/'))
+  it('mounts every /e2e route inside the block', () => {
+    // `/e2e` itself counts too: `app.use('/e2e', router)` mounts every route
+    // of that router under it.
+    const e2eRoutes = routeMounts().filter(
+      (m) => m.path === '/e2e' || m.path.startsWith('/e2e/'),
+    )
     // The cleanup route and the two user routes. A route added later is
     // checked too.
     expect(e2eRoutes.length).toBeGreaterThanOrEqual(3)
     expect(e2eRoutes.filter((m) => !m.insideE2eBlock)).toEqual([])
+  })
+
+  it('uses no express Router', () => {
+    // A router's routes can be mounted under any path, for example
+    // `app.use('/', r)` with `r.post('/e2e/x')`, or with a path built at run
+    // time. The checks above cannot follow that. So `index.ts` must mount
+    // every route on `app` directly, and the name `Router` must not appear.
+    const routers: string[] = []
+    const visit = (node: ts.Node) => {
+      if (ts.isIdentifier(node) && node.text === 'Router') {
+        routers.push(node.parent.getText(SOURCE))
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(SOURCE)
+    expect(routers).toEqual([])
   })
 
   it('names the two user handlers nowhere outside the block, except in the import', () => {
