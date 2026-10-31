@@ -476,7 +476,15 @@
       }
     },
     "user": {
-      "title": "偏好設定"
+      "title": "偏好設定",
+      "account": {
+        "title": "帳號",
+        "name": "名稱",
+        "email": "電子郵件",
+        "lastSignIn": "上次登入",
+        "createdAt": "帳號建立日期",
+        "testUserId": "測試使用者 ID"
+      }
     },
     "theme": {
       "label": "佈景",

@@ -1,5 +1,5 @@
 import { composeStories } from '@storybook/react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mockScreen } from '@/test/viewport'
 import * as stories from './index.stories'
@@ -19,10 +19,13 @@ describe('Settings index stories smoke tests', () => {
     expect(
       await screen.findByRole('button', { name: /My data/ }),
     ).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByRole('button', { name: /Preferences/ })).toHaveAttribute(
-      'aria-expanded',
-      'false',
-    )
+    // Scoped to <main>: the story mounts the full route tree, so the desktop
+    // sidebar's 👤 button (same name) is in the DOM too. jsdom loads no CSS.
+    expect(
+      within(screen.getByRole('main')).getByRole('button', {
+        name: /Preferences/,
+      }),
+    ).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('Desktop renders the household config page', async () => {

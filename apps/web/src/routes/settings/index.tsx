@@ -10,10 +10,11 @@ import {
   User,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { DataModeCard } from '@/components/settings/DataModeCard'
-import { LanguageCard } from '@/components/settings/LanguageCard'
 import { SettingsNavCard } from '@/components/settings/SettingsNavCard'
-import { ThemeCard } from '@/components/settings/ThemeCard'
+import {
+  UserLabel,
+  UserSettingsPanel,
+} from '@/components/settings/UserSettingsPanel'
 import { Toolbar } from '@/components/shared/Toolbar'
 import {
   Accordion,
@@ -99,17 +100,15 @@ function SettingsAccordion() {
             <AccordionTrigger className="px-4">
               <span className="flex items-center gap-4">
                 <User className="h-5 w-5 text-foreground-muted shrink-0" />
-                {/* "Preferences" in both modes for now. Task 1.7 shows the
-                    user's name here in cloud mode. */}
-                {t('settings.user.title')}
+                {/* The user's name in cloud mode, "Preferences" in local
+                    mode. The desktop 👤 button uses the same component. */}
+                <UserLabel />
               </span>
             </AccordionTrigger>
-            {/* Task 1.7 replaces these three cards with the panel the user
-                sidebar shares. */}
-            <AccordionContent className="p-0 space-y-px">
-              <ThemeCard />
-              <LanguageCard />
-              <DataModeCard />
+            {/* The same panel as the desktop user sidebar, so the two cannot
+                drift apart. Full width here, so not compact. */}
+            <AccordionContent className="p-0">
+              <UserSettingsPanel />
             </AccordionContent>
           </AccordionItem>
         </Accordion>

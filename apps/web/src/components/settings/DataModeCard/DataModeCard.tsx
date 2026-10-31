@@ -31,6 +31,7 @@ import {
 import { DATA_MODE_STORAGE_KEY } from '@/lib/dataMode'
 import { fetchCloudPayload } from '@/lib/exportData'
 import { type ImportStrategy, importLocalData } from '@/lib/importData'
+import { cn } from '@/lib/utils'
 
 // ─── Switch flow (cloud → local) ─────────────────────────────────────────────
 
@@ -254,7 +255,18 @@ function CloudModeSection() {
 
 // ─── DataModeCard (exported) ──────────────────────────────────────────────────
 
-export function DataModeCard() {
+interface DataModeCardProps {
+  /**
+   * Fit the 224px desktop sidebar. Without it the two cloud buttons
+   * ("Switch..." and "Sign Out") sit side by side in 72px cells. Measured in
+   * Chromium on 2026-10-31: they do not overflow, but the English labels keep
+   * only about 7px of side padding instead of 16px. Compact drops the `ml-9`
+   * indent and stacks them, so each button gets the full width.
+   */
+  compact?: boolean
+}
+
+export function DataModeCard({ compact = false }: DataModeCardProps) {
   const { mode } = useDataMode()
   const [enableFlow, setEnableFlow] = useState<EnableFlow>({ kind: 'idle' })
   const { t } = useTranslation()
@@ -309,7 +321,11 @@ export function DataModeCard() {
           )}
         </CardHeader>
         <CardContent
-          className={`ml-9 grid ${mode === 'cloud' ? 'grid-cols-2' : 'grid-cols-1'} items-center gap-3`}
+          className={cn(
+            'grid items-center gap-3',
+            !compact && 'ml-9',
+            mode === 'cloud' && !compact ? 'grid-cols-2' : 'grid-cols-1',
+          )}
         >
           {mode === 'local' && (
             <Button

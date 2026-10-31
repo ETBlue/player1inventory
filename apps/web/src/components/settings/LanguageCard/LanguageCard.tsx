@@ -16,8 +16,17 @@ import {
 } from '@/components/ui/select'
 import { useLanguage } from '@/hooks/useLanguage'
 import type { LanguagePreference } from '@/lib/language'
+import { cn } from '@/lib/utils'
 
-export function LanguageCard() {
+interface LanguageCardProps {
+  /**
+   * Drop the `ml-9` indent, so the select lines up with the other compact
+   * cards in the 224px desktop sidebar. The select fits at either width.
+   */
+  compact?: boolean
+}
+
+export function LanguageCard({ compact = false }: LanguageCardProps) {
   const { preference, language, setPreference } = useLanguage()
   const { t } = useTranslation()
 
@@ -36,7 +45,7 @@ export function LanguageCard() {
           </CardDescription>
         </div>
       </CardHeader>
-      <CardContent className="ml-9">
+      <CardContent className={cn(!compact && 'ml-9')}>
         <Select
           value={preference}
           onValueChange={(val) => setPreference(val as LanguagePreference)}

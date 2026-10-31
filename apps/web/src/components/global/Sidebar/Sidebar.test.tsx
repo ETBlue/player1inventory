@@ -1,4 +1,5 @@
 import { ApolloProvider } from '@apollo/client/react'
+import { useUser } from '@clerk/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   createMemoryHistory,
@@ -93,10 +94,24 @@ describe('Sidebar', () => {
     })
     localStorage.removeItem(activeLocationStorageKey('local'))
     sessionStorage.clear()
+    // `setup.ts` makes useUser a vi.fn. A test below replaces its
+    // implementation, and restoreAllMocks does not undo that for a vi.fn, so
+    // reset it here: no calls recorded, and a signed-in user with no name.
+    vi.mocked(useUser).mockReset()
+    vi.mocked(useUser).mockReturnValue({
+      user: {
+        id: 'test-user-id',
+        primaryEmailAddress: { emailAddress: 'test@example.com' },
+      },
+      isLoaded: true,
+      isSignedIn: true,
+    } as unknown as ReturnType<typeof useUser>)
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllEnvs()
+    localStorage.removeItem('data-mode')
   })
 
   it('user sees the location switcher in the sidebar on a normal page', async () => {
@@ -142,8 +157,8 @@ describe('Sidebar', () => {
     ).toBeTruthy()
   })
 
-  it('user sees My data pinned to the bottom, below the location-aware links', async () => {
-    // Given a desktop screen on the pantry
+  it('user sees My data and Preferences pinned to the bottom, below the location-aware links', async () => {
+    // Given a desktop screen on the pantry, in local mode
     mockScreen({ desktop: true })
     renderSidebar('/')
     const nav = await findSidebar()
@@ -171,6 +186,139 @@ describe('Sidebar', () => {
     // the auto top margin on the block — checked together with the DOM-order
     // assertion above, never on its own.
     expect(bottomBlock).toHaveClass('mt-auto')
+
+    // And the 👤 Preferences button is the last thing in that block, below
+    // My data. It is a button, not a link: the user view has no route.
+    const userButton = within(nav).getByRole('button', { name: 'Preferences' })
+    expect(userButton.parentElement).toBe(bottomBlock)
+    expect(bottomBlock?.lastElementChild).toBe(userButton)
+    expect(userButton).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('user can open Preferences in the sidebar and go Back to the main view', async () => {
+    // Given a desktop screen on the pantry grouped by vendor, in local mode
+    mockScreen({ desktop: true })
+    const router = renderSidebar('/?groupBy=vendor')
+    const nav = await findSidebar()
+    const user = userEvent.setup()
+
+    // When the user presses 👤 Preferences
+    await user.click(within(nav).getByRole('button', { name: 'Preferences' }))
+
+    // Then the user view replaces the main view: Back, the heading, then the
+    // theme, language and data mode cards
+    const back = within(nav).getByRole('button', { name: 'Back' })
+    const heading = within(nav).getByRole('heading', { name: 'Preferences' })
+    expect(
+      back.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(within(nav).getByText('Theme')).toBeInTheDocument()
+    expect(within(nav).getByText('Language')).toBeInTheDocument()
+    expect(within(nav).getByText('Offline Mode')).toBeInTheDocument()
+    expect(back).toHaveFocus()
+
+    // And no account details, which are cloud only
+    expect(within(nav).queryByText('Account')).not.toBeInTheDocument()
+
+    // And the main view's links are gone
+    expect(within(nav).queryByRole('link')).not.toBeInTheDocument()
+
+    // And opening it did not navigate
+    expect(router.state.location.href).toBe('/?groupBy=vendor')
+
+    // When the user presses Back
+    await user.click(back)
+
+    // Then the main view is back, with focus on the 👤 button
+    expect(within(nav).getByRole('link', { name: 'Pantry' })).toBeVisible()
+    expect(
+      within(nav).getByRole('button', { name: 'Preferences' }),
+    ).toHaveFocus()
+    expect(within(nav).queryByText('Theme')).not.toBeInTheDocument()
+
+    // And Back did not navigate either
+    expect(router.state.location.href).toBe('/?groupBy=vendor')
+  })
+
+  it('closes the user view when the page changes', async () => {
+    // Given the user view is open on the pantry
+    mockScreen({ desktop: true })
+    const router = renderSidebar('/')
+    const nav = await findSidebar()
+    const user = userEvent.setup()
+    await user.click(within(nav).getByRole('button', { name: 'Preferences' }))
+    expect(within(nav).getByText('Theme')).toBeInTheDocument()
+
+    // When the URL becomes a household settings page
+    await router.navigate({ to: '/settings/household/tags' })
+
+    // Then the household view shows
+    expect(
+      await within(nav).findByRole('heading', { name: 'My data' }),
+    ).toBeInTheDocument()
+    expect(within(nav).queryByText('Theme')).not.toBeInTheDocument()
+
+    // When the user comes back to the pantry
+    await router.navigate({ to: '/' })
+
+    // Then the main view shows, not the user view left open before
+    expect(
+      await within(nav).findByRole('link', { name: 'Pantry' }),
+    ).toBeVisible()
+    expect(within(nav).queryByText('Theme')).not.toBeInTheDocument()
+  })
+
+  it('user in cloud mode sees their name on the 👤 button and their account in the user view', async () => {
+    // Given a desktop screen in cloud mode, signed in as Ada
+    mockScreen({ desktop: true })
+    localStorage.setItem('data-mode', 'cloud')
+    vi.stubEnv('VITE_E2E_TEST_USER_ID', '')
+    vi.mocked(useUser).mockReturnValue({
+      user: {
+        id: 'user_ada',
+        fullName: 'Ada Lovelace',
+        primaryEmailAddress: { emailAddress: 'ada@example.com' },
+        lastSignInAt: new Date(2026, 9, 30),
+        createdAt: new Date(2025, 0, 15),
+      },
+      isLoaded: true,
+      isSignedIn: true,
+    } as unknown as ReturnType<typeof useUser>)
+    renderSidebar('/')
+    const nav = await findSidebar()
+    const user = userEvent.setup()
+
+    // When the user presses the 👤 button, which carries their name
+    await user.click(within(nav).getByRole('button', { name: 'Ada Lovelace' }))
+
+    // Then the heading is their name, and the account card lists the details
+    expect(
+      within(nav).getByRole('heading', { name: 'Ada Lovelace' }),
+    ).toBeInTheDocument()
+    expect(within(nav).getByText('ada@example.com')).toBeInTheDocument()
+    expect(within(nav).getByText('Oct 30, 2026')).toBeInTheDocument()
+    expect(within(nav).getByText('Jan 15, 2025')).toBeInTheDocument()
+  })
+
+  it('user in E2E cloud mode sees Preferences and the test user id, and Clerk is never asked', async () => {
+    // Given a desktop screen in E2E cloud mode, where there is no
+    // ClerkProvider. useUser throws, as the real one does then.
+    mockScreen({ desktop: true })
+    localStorage.setItem('data-mode', 'cloud')
+    vi.stubEnv('VITE_E2E_TEST_USER_ID', 'e2e-user-1')
+    vi.mocked(useUser).mockImplementation(() => {
+      throw new Error('useUser called with no ClerkProvider')
+    })
+    renderSidebar('/')
+    const nav = await findSidebar()
+    const user = userEvent.setup()
+
+    // When the user presses 👤 Preferences
+    await user.click(within(nav).getByRole('button', { name: 'Preferences' }))
+
+    // Then the stand-in shows the test user id
+    expect(within(nav).getByText('e2e-user-1')).toBeInTheDocument()
+    expect(useUser).not.toHaveBeenCalled()
   })
 
   it('user sees Back, My data and the six household links on a household list page', async () => {

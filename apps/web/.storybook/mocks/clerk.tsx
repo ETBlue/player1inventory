@@ -7,7 +7,11 @@ export function useUser() {
   return {
     user: {
       id: 'storybook-user-id',
+      // Read by the user settings panel (name, email and the two dates).
+      fullName: 'Storybook User',
       primaryEmailAddress: { emailAddress: 'storybook@example.com' },
+      lastSignInAt: new Date(2026, 9, 30),
+      createdAt: new Date(2025, 0, 15),
     },
     isSignedIn: true as const,
     isLoaded: true as const,
