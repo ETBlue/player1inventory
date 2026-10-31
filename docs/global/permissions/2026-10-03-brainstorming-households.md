@@ -607,6 +607,13 @@ earlier decisions, so they are recorded without a new question:
 2. The `clear` import strategy is the same as *Clear household*: owner-only (proposed), or also
    managers.
 
+**The user's answers (2026-10-31):** A and A.
+
+| Point | Decision | Reason |
+|---|---|---|
+| Same item added twice | **One row per item per cart.** The second add changes that row. "Added by" stays the first person | It works the way a one-person cart works today. Two rows for one item would show the item twice, and checkout would have to merge them |
+| `clear` import | **Owner only.** Managers see `skip` and `replace` | `clear` deletes the whole household, like the owner-only *Clear household* purge. Two paths to the same result should have the same rule |
+
 ## Data model so far (cloud only)
 
 | Model | Fields | Notes |

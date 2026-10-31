@@ -381,7 +381,7 @@ by", so `tsc` reports none of them. Scope comes from the cart's location, checke
 | `cartItems`: `{ cartId, userId }` | `{ cartId }`. Everyone at the location sees every row |
 | `cartItemCountByItem`, both branches | count rows in carts at locations where the caller has a role |
 | `allCartItems`: `{ userId }` | rows in carts at locations the exporter can read (as *Export*) |
-| add to cart: find the row `{ cartId, itemId, userId }` | `{ cartId, itemId }`. **Proposed, waiting for the user:** one row per item per cart. A second person adding the same item changes that row. "Added by" stays the first person |
+| add to cart: find the row `{ cartId, itemId, userId }` | `{ cartId, itemId }`. One row per item per cart. A second person adding the same item changes that row. "Added by" stays the first person (Decision 27) |
 | update and remove a row: `{ id, userId }` | `{ id }`, then the row's cart location needs participant or higher |
 | `checkout` read: `{ cartId, userId }` | the rows the client sent, inside the transaction (see above) |
 | `checkout` delete: `{ cartId, userId, quantity > 0 }` | the rows it bought |
@@ -414,7 +414,7 @@ Each asks the person to type the household or location name. Each is written to 
 | A member leaves or is removed | They stay with the household (see *Household roles, removal and leaving*) |
 | A non-owner's account is deleted | They stay. Logs show "Deleted user" |
 | The owner's account is deleted | They stay, and the hand-over starts. Only when the owner was the only person is the household deleted |
-| A `clear` import | **Proposed, waiting for the user:** the same as *Clear household*, so owner only. See *Import* |
+| A `clear` import | The same as *Clear household*, so owner only (Decision 27). See *Import* |
 
 So `purgeUserData` is removed. `clearAllData` (`resolvers/import.resolver.ts`) becomes the
 *Clear household* filter. All 14 `deleteMany` filters in each become `householdId` or
@@ -560,7 +560,7 @@ A banner at the top of the app shows each open `OwnershipOffer`:
 | exists in this household, importer is viewer or has no role | Skipped. The importer is told which ones |
 | exists in **another** household | The whole import is refused (see rule 2 below) |
 
-**The `clear` strategy — proposed, waiting for the user.** `clear` deletes everything before it
+**The `clear` strategy is owner-only** (Decision 27). `clear` deletes everything before it
 imports, which is the same as *Clear household*. That purge is owner-only, so `clear` is
 owner-only too. A manager sees only `skip` and `replace`.
 
