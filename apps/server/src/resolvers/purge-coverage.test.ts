@@ -32,6 +32,7 @@
  * `/e2e/cleanup` deletes it, with `where: { id: userId }`, and
  * `lib/e2eCleanup.test.ts` pins that line. `purgeUserData` and `clearAllData`
  * delete a user's DATA and leave the account, so they must not delete it.
+ * The last three tests in this file check both halves of that.
  */
 
 import { readFileSync } from 'node:fs'
@@ -117,4 +118,20 @@ describe('purge coverage against prisma/schema.prisma', () => {
       expect(missing).toEqual([])
     })
   }
+
+  // `purgeUserData` and `clearAllData` delete a user's DATA. The account
+  // stays, so its `User` row must stay too. Only `/e2e/cleanup` deletes it.
+  for (const { label, source } of PURGE_PATHS.filter((p) => p.label !== 'e2eCleanup')) {
+    it(`${label} does not delete the User row`, () => {
+      expect(source).not.toContain('prisma.user.deleteMany(')
+    })
+  }
+
+  it('e2eCleanup does delete the User row', () => {
+    // The positive control for the two tests above: the needle they look
+    // for is the one the cleanup really uses. If it were spelled another
+    // way, the two `not.toContain` checks would pass for any source.
+    const cleanup = PURGE_PATHS.find((p) => p.label === 'e2eCleanup')
+    expect(cleanup?.source).toContain('prisma.user.deleteMany(')
+  })
 })
