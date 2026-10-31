@@ -4,7 +4,7 @@
  * WHY THIS FILE EXISTS
  *
  * `purgeUserData` (purge.resolver.ts), `clearAllData` (import.resolver.ts) and the
- * E2E-only `DELETE /e2e/cleanup` endpoint (index.ts) each hand-maintain a list of
+ * E2E-only `DELETE /e2e/cleanup` endpoint (lib/e2eCleanup.ts) each hand-maintain a list of
  * `prisma.<model>.deleteMany(...)` calls. Nothing links those
  * lists to `prisma/schema.prisma`, so adding a user-owned model is a three-place
  * edit that no compiler checks — and the two resolvers' unit tests hand-maintain

@@ -35,7 +35,7 @@ was the **array form** — `prisma.$transaction([...])`, a list of independent
 queries Prisma batches into one transaction with no logic between them:
 `apps/server/src/resolvers/import.resolver.ts:499`,
 `apps/server/src/resolvers/purge.resolver.ts:22`, and
-`apps/server/src/index.ts:29` (the E2E-only cleanup endpoint).
+`apps/server/src/lib/e2eCleanup.ts` (the E2E-only cleanup endpoint).
 
 `apps/server/src/resolvers/shelf.resolver.ts:89`'s `applyShelfFilterPicks`
 resolver introduces the first **interactive (callback) form** —
