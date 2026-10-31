@@ -7,7 +7,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { render, screen, waitFor, within } from '@testing-library/react'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import {
   ActiveLocationProvider,
@@ -15,6 +15,7 @@ import {
 } from '@/hooks/useActiveLocation'
 import { noopApolloClient } from '@/test/apolloStub'
 import { elementAt } from '@/test/narrow'
+import { mockScreen } from '@/test/viewport'
 import { DEFAULT_LOCATION_ID } from '@/types'
 import { Sidebar } from './Sidebar'
 
@@ -30,6 +31,9 @@ function renderSidebar(path: string) {
     component: () => (
       <ActiveLocationProvider>
         <Sidebar />
+        {/* Proves the route has rendered, so a test can check that the
+            sidebar is absent rather than not rendered yet. */}
+        <p>route rendered</p>
       </ActiveLocationProvider>
     ),
   })
@@ -59,6 +63,10 @@ describe('Sidebar', () => {
       updatedAt: now,
     })
     localStorage.removeItem(activeLocationStorageKey('local'))
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   it('user sees the location switcher in the sidebar on a normal page', async () => {
@@ -133,8 +141,11 @@ describe('Sidebar', () => {
   })
 
   it('renders no switcher on a fullscreen page, where there is no sidebar', async () => {
-    // Given a fullscreen page (the Sidebar returns null there)
-    renderSidebar('/settings/household/vendors')
+    // Given a desktop screen on a detail page, which is full-screen on every
+    // screen (the Sidebar returns null there)
+    mockScreen({ desktop: true })
+    renderSidebar('/settings/household/vendors/v1')
+    await screen.findByText('route rendered')
 
     // Then neither the sidebar nor a switcher is rendered
     await waitFor(() => {
@@ -144,6 +155,32 @@ describe('Sidebar', () => {
     })
     expect(
       screen.queryByRole('button', { name: /switch location/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('user sees the sidebar on a household list page on desktop', async () => {
+    // Given a desktop screen
+    mockScreen({ desktop: true })
+
+    // When the user opens the vendors list
+    renderSidebar('/settings/household/vendors')
+
+    // Then the sidebar is there, with its links
+    const nav = await screen.findByRole('navigation', {
+      name: 'Sidebar navigation',
+    })
+    expect(within(nav).getByRole('link', { name: /settings/i })).toBeVisible()
+  })
+
+  it('keeps a household list page full-screen on mobile', async () => {
+    // Given a mobile screen on the vendors list
+    mockScreen({ desktop: false })
+    renderSidebar('/settings/household/vendors')
+
+    // Then, once the route has rendered, no sidebar is there
+    await screen.findByText('route rendered')
+    expect(
+      screen.queryByRole('navigation', { name: 'Sidebar navigation' }),
     ).not.toBeInTheDocument()
   })
 })

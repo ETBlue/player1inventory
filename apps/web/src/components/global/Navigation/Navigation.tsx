@@ -1,12 +1,14 @@
 import { Link, useLocation } from '@tanstack/react-router'
 import { CookingPot, Settings, ShoppingCart, Warehouse } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useIsDesktop } from '@/hooks/useIsDesktop'
 import { isFullscreenPage } from '@/lib/layoutRules'
 import { cn } from '@/lib/utils'
 
 export function Navigation() {
   const { t } = useTranslation()
   const location = useLocation()
+  const desktop = useIsDesktop()
 
   const navItems = [
     { to: '/', label: t('navigation.pantry'), icon: Warehouse },
@@ -15,7 +17,7 @@ export function Navigation() {
     { to: '/settings', label: t('navigation.settings'), icon: Settings },
   ] as const
 
-  if (isFullscreenPage(location.pathname)) {
+  if (isFullscreenPage(location.pathname, { desktop })) {
     return null
   }
 

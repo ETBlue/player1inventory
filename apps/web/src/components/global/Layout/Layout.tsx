@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigation } from '@/components/global/Navigation'
 import { Sidebar } from '@/components/global/Sidebar'
+import { useIsDesktop } from '@/hooks/useIsDesktop'
 import { isFullscreenPage } from '@/lib/layoutRules'
 
 interface LayoutProps {
@@ -12,7 +13,8 @@ interface LayoutProps {
 export function Layout({ children }: LayoutProps) {
   const { t } = useTranslation()
   const location = useLocation()
-  const isFullscreen = isFullscreenPage(location.pathname)
+  const desktop = useIsDesktop()
+  const isFullscreen = isFullscreenPage(location.pathname, { desktop })
 
   return (
     <div className="h-dvh bg-background-base grid grid-cols-[auto_1fr]">

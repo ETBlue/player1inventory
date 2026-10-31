@@ -2,6 +2,7 @@ import { Link, useLocation } from '@tanstack/react-router'
 import { CookingPot, Settings, ShoppingCart, Warehouse } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
+import { useIsDesktop } from '@/hooks/useIsDesktop'
 import { isFullscreenPage } from '@/lib/layoutRules'
 import { cn } from '@/lib/utils'
 
@@ -22,9 +23,10 @@ const settingsRoute = {
 
 export function Sidebar() {
   const location = useLocation()
+  const desktop = useIsDesktop()
   const { t } = useTranslation()
 
-  if (isFullscreenPage(location.pathname)) {
+  if (isFullscreenPage(location.pathname, { desktop })) {
     return null
   }
 

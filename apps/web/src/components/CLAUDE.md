@@ -26,7 +26,16 @@ One-time structural components that appear once in the app shell.
 - Main element uses `[container-type:size]` enabling `cqh`-based container queries in children
 - A skip-to-main-content link is rendered inside a `<header>` landmark before the sidebar
 
-**`Navigation`** (`src/components/global/Navigation/index.tsx`) — mobile-only bottom navigation bar (`lg:hidden`). Renders 4 nav links (Pantry, Shopping, Cooking, Settings) in a `grid-cols-4` row. Hidden on fullscreen pages (`/onboarding`, `/items/*`, `/settings/{tags,vendors,recipes,shelves}*`). One function decides which pages those are: `isFullscreenPage(pathname)` in `src/lib/layoutRules.ts`, called by `Layout`, `Sidebar` and `Navigation`. Change the list there, not in a component. On fullscreen pages the component renders `null` — no padding is added to the page.
+**`Navigation`** (`src/components/global/Navigation/index.tsx`) — mobile-only bottom navigation bar (`lg:hidden`). Renders 4 nav links (Pantry, Shopping, Cooking, Settings) in a `grid-cols-4` row. Hidden on fullscreen pages: there the component renders `null`, and no padding is added to the page. One function decides which pages those are: `isFullscreenPage(pathname, { desktop })` in `src/lib/layoutRules.ts`, called by `Layout`, `Sidebar` and `Navigation`. Change the rule there, not in a component. `desktop` is required and comes from `useIsDesktop()` (`src/hooks/useIsDesktop.ts`, the Tailwind `lg` width):
+
+| Page | Desktop | Mobile |
+| --- | --- | --- |
+| `/onboarding`, `/items/*` | full-screen | full-screen |
+| household detail pages (`/settings/household/<section>/<id>…`) | full-screen | full-screen |
+| `/settings/household/{tags,vendors,recipes,shelves}` lists | **sidebar shown** | full-screen |
+| `/settings/household`, `/settings/household/locations` | sidebar shown | bars shown |
+
+`isHouseholdSettingsPage(pathname)` in the same file is true for `/settings/household` and `/settings/household/<section>` only. **Tests:** `src/test/setup.ts` mocks `matchMedia` as always `false`, so every test renders the mobile layout. Call `mockScreen({ desktop: true })` from `src/test/viewport.ts` to test the desktop one.
 
 **`Sidebar`** (`src/components/global/Sidebar/index.tsx`) — desktop-only left sidebar (`hidden lg:flex flex-col w-56`). Same fullscreen-page suppression as Navigation (returns `null`, so fullscreen pages have no switcher either). Top to bottom: "Player 1 Inventory" `<h1>`, the `LocationSwitcher` with `variant="full"` (desktop home of the active-location selector — the page toolbars carry the `lg:hidden` compact copy), then the 3 **location-aware** nav links (Pantry, Shopping, Cooking) with icon + label side-by-side. Active: `text-foreground-emphasized bg-background-elevated`.
 
@@ -60,7 +69,7 @@ Reusable across multiple features and pages.
 | `< lg` | not rendered | `compact`, visible |
 | `>= lg` | `full`, visible | `compact` + `lg:hidden` → `display:none` |
 
-The desktop copy lives in `Sidebar`, between the `<h1>` app title and the nav links. The mobile copy sits at the **left** (leading position) of every pantry view (`PantryListView`, all three group views, all three detail views), both shopping pages (`/shopping` index and `/shopping/$vendorId` cart page `Toolbar`s), and cooking (`/cooking` `Toolbar`) — each passing `className="lg:hidden"` **directly on the component** (not a wrapper `<div>`, which would change the flex layout and shift the adjacent back-button spacing). In the group views it leads the `Toolbar` before `ViewToggle`/`GroupByToggle`; in the detail views and the flat list it occupies the first slot of the `ItemListToolbar` `leading` group; on the cart page it is the first child of `Toolbar`, left of the back button. Fullscreen pages (`/items/*`, `/onboarding`, `/settings/{tags,vendors,recipes,shelves}*`) have no sidebar and no toolbar switcher — unchanged.
+The desktop copy lives in `Sidebar`, between the `<h1>` app title and the nav links. The mobile copy sits at the **left** (leading position) of every pantry view (`PantryListView`, all three group views, all three detail views), both shopping pages (`/shopping` index and `/shopping/$vendorId` cart page `Toolbar`s), and cooking (`/cooking` `Toolbar`) — each passing `className="lg:hidden"` **directly on the component** (not a wrapper `<div>`, which would change the flex layout and shift the adjacent back-button spacing). In the group views it leads the `Toolbar` before `ViewToggle`/`GroupByToggle`; in the detail views and the flat list it occupies the first slot of the `ItemListToolbar` `leading` group; on the cart page it is the first child of `Toolbar`, left of the back button. Fullscreen pages (see the table under `Navigation` above) have no sidebar and no toolbar switcher — unchanged.
 
 **LIVE (PR D):** selecting a location updates + persists the active-location state and trigger label, and re-scopes every stock-bearing page — pantry item lists, shopping carts, and cooking availability all read off the active location and refetch when it changes. Location names render as-stored (vendor-name display rule) in the menu and in the `full` trigger — no `capitalize`; only the single-letter `compact` trigger uppercases.
 

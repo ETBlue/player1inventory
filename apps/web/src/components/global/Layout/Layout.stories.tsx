@@ -61,8 +61,15 @@ export const Default: Story = {
   render: () => <LayoutStory path="/" />,
 }
 
-// Story 2: Fullscreen page — nav hidden, no bottom padding
-// (/settings/household/vendors triggers fullscreen mode)
+// Story 2: Fullscreen page — nav hidden, no bottom padding.
+// /onboarding is full-screen on every screen width.
 export const FullscreenPage: Story = {
+  render: () => <LayoutStory path="/onboarding" />,
+}
+
+// Story 3: Household list page. On a desktop-width canvas it keeps the
+// sidebar; on a mobile-width canvas it is full-screen with its own Back
+// button. Resize the canvas across 1024px to see both.
+export const HouseholdListPage: Story = {
   render: () => <LayoutStory path="/settings/household/vendors" />,
 }
