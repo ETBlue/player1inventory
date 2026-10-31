@@ -36,8 +36,12 @@ describe('sign-out cleanup', () => {
     // When the user signs out
     await clearCache()
 
-    // Then no cached data and no user id are left behind
+    // Then no cached data is left behind
     expect(await cacheDb.snapshots.count()).toBe(0)
-    expect(getLastSignedInUserId()).toBeNull()
+    // But the user id stays (plan decision P7). Sign-out can happen on any
+    // page, so a watch query may refill the in-memory cache before the next
+    // sign-in. The kept id is what makes ApolloWrapper purge that cache when a
+    // DIFFERENT account signs in next.
+    expect(getLastSignedInUserId()).toBe('user-a')
   })
 })

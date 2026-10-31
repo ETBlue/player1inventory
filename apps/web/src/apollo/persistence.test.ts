@@ -2,7 +2,13 @@ import { gql, InMemoryCache } from '@apollo/client'
 import { afterEach, describe, expect, it } from 'vitest'
 import { cacheDb } from './cacheDb'
 import { cloudCache } from './cloudCache'
-import { clearCache, restoreCache, saveCache } from './persistence'
+import {
+  clearCache,
+  getLastSignedInUserId,
+  restoreCache,
+  saveCache,
+  setLastSignedInUserId,
+} from './persistence'
 
 const QUERY = gql`
   query GetItems {
@@ -25,6 +31,7 @@ function cacheWithOneItem() {
 afterEach(async () => {
   await cacheDb.snapshots.clear()
   await cloudCache.reset()
+  localStorage.clear()
 })
 
 describe('cache persistence', () => {
@@ -113,5 +120,19 @@ describe('cache persistence', () => {
     // the next account read these rows through the default cache-first policy.
     expect(cloudCache.extract()).not.toHaveProperty('Item:item-1')
     expect(cloudCache.readQuery({ query: QUERY })).toBeNull()
+  })
+
+  it('sign-out keeps the last signed-in user id', async () => {
+    // Given user A was signed in on this device
+    setLastSignedInUserId('user-a')
+
+    // When the user signs out
+    await clearCache()
+
+    // Then the id is still there (plan decision P7). Sign-out can happen on
+    // any page, where a watch query may refill `cloudCache` before the next
+    // sign-in. ApolloWrapper purges only when the stored id differs from the
+    // new one, so a removed id would let user B read user A's refilled rows.
+    expect(getLastSignedInUserId()).toBe('user-a')
   })
 })
