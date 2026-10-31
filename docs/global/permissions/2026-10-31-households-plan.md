@@ -568,6 +568,12 @@ model User {
 
 Four places change together (`e2e/CLAUDE.md` lines 194-285):
 
+> **As built:** the cleanup handler moved out of `index.ts` into
+> `apps/server/src/lib/e2eCleanup.ts` (`e2eCleanupHandler`), so a unit test can call it.
+> `index.ts` starts a server when it loads, so no test can import it.
+> `lib/e2eCleanup.test.ts` pins the order of the deletes and that `forgetSeenToday` runs
+> after they commit. `index.ts` only mounts the route, inside the `if (E2E_TEST_MODE)` block.
+
 - [ ] **Step 1:** `index.ts`: add `prisma.user.deleteMany({ where: { id: userId } })` **last** in
   the cleanup transaction; update the `deleted` object and the "14" comment at line 102.
   **Then call `forgetSeenToday(userId)`** (`lib/userRow.ts`, task 2.4). Without it the
@@ -577,13 +583,16 @@ Four places change together (`e2e/CLAUDE.md` lines 194-285):
   find the row, lose it to the cleanup, and then write "seen today" back. `forgetSeenToday`
   must also drop the run from `inFlight` and bump a generation counter, and a run may only
   remember a user if the generation has not changed since it started.
-- [ ] **Step 2:** `e2e/helpers/cloudTeardown.ts`: add `user` to `CLEANUP_MODEL_KEYS`.
+- [ ] **Step 2:** `e2e/helpers/cloudTeardown.ts`: add `users` (plural, like every other key) to `CLEANUP_MODEL_KEYS`.
 - [ ] **Step 3:** `e2e/tests/cleanup-endpoint.spec.ts`: seed a `User` row with
   `createCloudUser`, so the at-least-1 check at line 274 covers it.
 - [ ] **Step 4:** `e2e/CLAUDE.md`: 14 → 15, and say why `purge-coverage.test.ts` does not list
   `User` (it has `id`, not `userId`).
-- [ ] **Step 5: Mutation check.** Remove the new `deleteMany`. `cleanup-endpoint.spec.ts` must
-  go red in `cloud`.
+- [ ] **Step 5: Mutation check.** Change the new `deleteMany`'s `where` to `{ id: 'nobody' }`.
+  `cleanup-endpoint.spec.ts` must go red in `cloud`, on the `users` count. **Do not remove the
+  line instead:** the transaction then returns 14 results, the handler throws reading
+  `users.count`, and the route answers 500. `cleanupCloudData` fails in `beforeEach`, before
+  the count check runs. That is red, but for the wrong reason.
 - [ ] **Step 6:** Commit: `test(e2e): clean up the User row between specs`.
 
 ### Task 2.7 — One real-SQL spec, docs, final gate
