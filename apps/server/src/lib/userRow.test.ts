@@ -156,7 +156,14 @@ function rowOf(id: string): UserRow | undefined {
 
 describe('ensureUser', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    // resetAllMocks, not clearAllMocks: some tests queue a
+    // `mockImplementationOnce` / `mockRejectedValueOnce`. clearAllMocks keeps
+    // a queued stub that a test did not use, and it would then run in a later
+    // test. resetAllMocks drops the queue, and keeps the fake that each
+    // `vi.fn(impl)` in the `vi.mock` above wraps. Nothing in this file arms a
+    // mock at module scope, so nothing is lost. The `clearAllMocks` calls
+    // INSIDE tests stay: they only zero the call counts between two steps.
+    vi.resetAllMocks()
     userFake.reset()
     resetSeenTodayMemory()
     // A time zone far from UTC, so the UTC day tests fail if the code uses
@@ -713,7 +720,7 @@ describe('ensureUser', () => {
 
 describe('ensureUserOrLog', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.resetAllMocks() // see the beforeEach of 'ensureUser' above
     userFake.reset()
     resetSeenTodayMemory()
     vi.spyOn(console, 'error').mockImplementation(() => {})
