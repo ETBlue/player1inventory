@@ -758,7 +758,10 @@ in cloud — and `DataModeCard`'s `enableStrategyDialog` reaches `clear` with no
 file at all. The old note also gave the button as "clear and import"; it reads
 **"Clear & import"** (`settings.import.conflictDialog.clear`).
 
-**"Clear & import" is the same visible string in two different dialogs on the settings page.**
+**"Clear & import" is the same visible string in two different dialogs.** Since households H1
+they open from different places — `ConflictDialog` from `ImportCard` on `/settings/household`,
+`DataModeCard` from `UserSettingsPanel` (the desktop user sidebar, or the mobile `/settings`
+accordion) — but on desktop both can be on screen at once.
 Scope by role, not by text alone: `ConflictDialog` is a Radix `Dialog` (`role="dialog"`),
 `DataModeCard`'s three dialogs are Radix `AlertDialog`s (`role="alertdialog"`, string
 `settings.dataMode.enableStrategyDialog.clearAndImport`).

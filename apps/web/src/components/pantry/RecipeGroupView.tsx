@@ -197,7 +197,7 @@ export function RecipeGroupView() {
             asChild
           >
             <Link
-              to="/settings/recipes"
+              to="/settings/household/recipes"
               aria-label={t('settings.recipes.manage')}
             >
               <Settings />

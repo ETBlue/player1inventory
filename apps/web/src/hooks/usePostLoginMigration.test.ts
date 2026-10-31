@@ -569,3 +569,91 @@ describe('usePostLoginMigration — the auto-import runs once', () => {
     expect(mockImportCloudData).toHaveBeenCalledTimes(1)
   })
 })
+
+// Bug 2026-10-31 (`docs/global/bugs/2026-10-31-bug-cloud-copy-aborted-on-pantry.md`).
+// `importCloudData` ends with `client.resetStore()`, which makes GetLocations
+// data undefined and then defined again, so `locationsLoaded` goes
+// true → false → true and the effect re-runs. A failed copy has already
+// removed MIGRATION_STRATEGY_KEY, and MIGRATION_PROMPTED_KEY is unset, so the
+// re-run used to take the prompting branch and replace 'error' with
+// 'prompting'. The user never saw the error and was asked again.
+describe('usePostLoginMigration — a failed copy stays failed', () => {
+  function seedPromptableCloudSession() {
+    // A non-empty local pantry, so the prompting branch WOULD prompt if it ran
+    vi.mocked(getAllItems).mockResolvedValue([
+      { id: 'item-1', name: 'Milk' },
+    ] as unknown as Awaited<ReturnType<typeof getAllItems>>)
+    mockCloudLocations([
+      { id: CLOUD_HOME_ID, name: 'My Home', order: 0, isDefault: true },
+    ])
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem(activeLocationStorageKey('cloud'), CLOUD_HOME_ID)
+    mockFetchLocalPayload.mockResolvedValue(emptyPayload)
+  }
+
+  async function reloadLocationList(rerender: () => void) {
+    // GetLocations has no data, then has it again — what resetStore does
+    mockGetLocationsQuery.mockReturnValue({
+      data: undefined,
+      loading: true,
+      error: undefined,
+    })
+    rerender()
+    mockCloudLocations([
+      { id: CLOUD_HOME_ID, name: 'My Home', order: 0, isDefault: true },
+    ])
+    rerender()
+    // The prompting branch sets its state after `getAllItems()` resolves, so
+    // let the queue drain before asserting.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+  }
+
+  it('user sees the error of a failed automatic copy, not the prompt again', async () => {
+    // Given a stored strategy and a copy that fails
+    seedPromptableCloudSession()
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
+    mockImportCloudData.mockImplementation(() =>
+      Promise.reject(new Error('The operation was aborted.')),
+    )
+    const { result, rerender } = renderHook(
+      () => usePostLoginMigration(SIGNED_IN),
+      { wrapper },
+    )
+    await waitFor(() => expect(result.current.state).toBe('error'))
+
+    // When the location list reloads after the failure
+    await reloadLocationList(rerender)
+
+    // Then the state is still 'error', with its message
+    expect(result.current.state).toBe('error')
+    expect(result.current.error?.message).toBe('The operation was aborted.')
+  })
+
+  it('user sees the error of a failed Import press, not the prompt again', async () => {
+    // Given no stored strategy, so the user is prompted, and a copy that fails
+    seedPromptableCloudSession()
+    mockImportCloudData.mockImplementation(() =>
+      Promise.reject(new Error('The operation was aborted.')),
+    )
+    const { result, rerender } = renderHook(
+      () => usePostLoginMigration(SIGNED_IN),
+      { wrapper },
+    )
+    await waitFor(() => expect(result.current.state).toBe('prompting'))
+
+    // When the user presses Import and the copy fails
+    await act(async () => {
+      await result.current.importData('append')
+    })
+    expect(result.current.state).toBe('error')
+
+    // And the location list reloads after the failure
+    await reloadLocationList(rerender)
+
+    // Then the state is still 'error', with its message
+    expect(result.current.state).toBe('error')
+    expect(result.current.error?.message).toBe('The operation was aborted.')
+  })
+})

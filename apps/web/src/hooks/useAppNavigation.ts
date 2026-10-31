@@ -22,30 +22,30 @@ export function isSamePage(url1: string, url2: string): boolean {
     return true
   }
 
-  // Vendor detail pages: /settings/vendors/:id/*
-  const vendorMatch1 = path1.match(/^\/settings\/vendors\/([^/]+)/)
-  const vendorMatch2 = path2.match(/^\/settings\/vendors\/([^/]+)/)
+  // Vendor detail pages: /settings/household/vendors/:id/*
+  const vendorMatch1 = path1.match(/^\/settings\/household\/vendors\/([^/]+)/)
+  const vendorMatch2 = path2.match(/^\/settings\/household\/vendors\/([^/]+)/)
   if (vendorMatch1 && vendorMatch2 && vendorMatch1[1] === vendorMatch2[1]) {
     return true
   }
 
-  // Tag detail pages: /settings/tags/:id/*
-  const tagMatch1 = path1.match(/^\/settings\/tags\/([^/]+)/)
-  const tagMatch2 = path2.match(/^\/settings\/tags\/([^/]+)/)
+  // Tag detail pages: /settings/household/tags/:id/*
+  const tagMatch1 = path1.match(/^\/settings\/household\/tags\/([^/]+)/)
+  const tagMatch2 = path2.match(/^\/settings\/household\/tags\/([^/]+)/)
   if (tagMatch1 && tagMatch2 && tagMatch1[1] === tagMatch2[1]) {
     return true
   }
 
-  // Recipe detail pages: /settings/recipes/:id/*
-  const recipeMatch1 = path1.match(/^\/settings\/recipes\/([^/]+)/)
-  const recipeMatch2 = path2.match(/^\/settings\/recipes\/([^/]+)/)
+  // Recipe detail pages: /settings/household/recipes/:id/*
+  const recipeMatch1 = path1.match(/^\/settings\/household\/recipes\/([^/]+)/)
+  const recipeMatch2 = path2.match(/^\/settings\/household\/recipes\/([^/]+)/)
   if (recipeMatch1 && recipeMatch2 && recipeMatch1[1] === recipeMatch2[1]) {
     return true
   }
 
-  // Shelf detail pages: /settings/shelves/:shelfId/*
-  const shelfMatch1 = path1.match(/^\/settings\/shelves\/([^/]+)/)
-  const shelfMatch2 = path2.match(/^\/settings\/shelves\/([^/]+)/)
+  // Shelf detail pages: /settings/household/shelves/:shelfId/*
+  const shelfMatch1 = path1.match(/^\/settings\/household\/shelves\/([^/]+)/)
+  const shelfMatch2 = path2.match(/^\/settings\/household\/shelves\/([^/]+)/)
   if (shelfMatch1 && shelfMatch2 && shelfMatch1[1] === shelfMatch2[1]) {
     return true
   }

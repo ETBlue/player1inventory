@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { Tags } from 'lucide-react'
+import type { ComponentProps } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { SettingsNavCard } from '.'
 
@@ -24,11 +25,11 @@ vi.mock('@tanstack/react-router', async () => {
 })
 
 describe('SettingsNavCard', () => {
-  const defaultProps = {
+  const defaultProps: ComponentProps<typeof SettingsNavCard> = {
     icon: Tags,
     label: 'Tags',
     description: 'Manage your tags',
-    to: '/settings/tags',
+    to: '/settings/household/tags',
   }
 
   it('user can see the label and description', () => {
@@ -46,7 +47,7 @@ describe('SettingsNavCard', () => {
 
     // Then it links to the correct route
     const link = screen.getByRole('link')
-    expect(link).toHaveAttribute('href', '/settings/tags')
+    expect(link).toHaveAttribute('href', '/settings/household/tags')
   })
 
   it('user can see a navigation indicator chevron', () => {

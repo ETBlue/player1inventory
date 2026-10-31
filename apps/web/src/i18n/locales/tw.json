@@ -225,7 +225,8 @@
     "pantry": "庫存",
     "shopping": "補貨",
     "cooking": "消耗",
-    "settings": "設定"
+    "settings": "設定",
+    "back": "返回"
   },
   "items": {
     "newButton": "新增品項",
@@ -467,6 +468,24 @@
   },
   "settings": {
     "title": "設定",
+    "household": {
+      "title": "我的資料",
+      "general": {
+        "label": "一般",
+        "description": "匯出與匯入資料"
+      }
+    },
+    "user": {
+      "title": "偏好設定",
+      "account": {
+        "title": "帳號",
+        "name": "名稱",
+        "email": "電子郵件",
+        "lastSignIn": "上次登入",
+        "createdAt": "帳號建立日期",
+        "testUserId": "測試使用者 ID"
+      }
+    },
     "theme": {
       "label": "佈景",
       "description": "選擇淺色、深色佈景，或依系統設定",

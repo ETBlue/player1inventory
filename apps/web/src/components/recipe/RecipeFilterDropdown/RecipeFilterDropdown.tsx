@@ -86,7 +86,7 @@ export function RecipeFilterDropdown({
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link
-                to="/settings/recipes"
+                to="/settings/household/recipes"
                 className="flex items-center gap-1.5"
               >
                 <Pencil className="h-4 w-4" />

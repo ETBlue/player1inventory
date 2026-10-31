@@ -12,6 +12,7 @@ import { cleanupCloudData } from '../../helpers/cloudTeardown'
 import type { Fixture } from '../../helpers/fixture'
 import { seedLocalFixture } from '../../helpers/localSeed'
 import { readRows } from '../../helpers/locationSeed'
+import { SettingsPage } from '../../pages/SettingsPage'
 import { makeGql } from '../../utils/cloud'
 
 // THE SECOND PATH TO THE `clear` IMPORT STRATEGY, AND THE ONLY ONE A REAL USER
@@ -275,7 +276,22 @@ test('user can switch from offline to cloud mode and clear & import their local 
   // role="dialog". The role is what keeps "Clear & import" — the same visible
   // string in both — from matching the wrong one. Only one of the three
   // alertdialogs is open at a time.
-  await page.goto('/settings')
+  //
+  // `DataModeCard` lives in the 👤 view of the desktop sidebar since H1. The
+  // old `/settings` page now redirects to `/settings/household`, which has no
+  // data mode card. `openUserSidebar` opens the view on the pantry (`/`), so
+  // the reload `doEnableSwitch` triggers lands on the pantry, and the
+  // auto-import runs there.
+  //
+  // Running the copy ON THE PANTRY is what this test needs to keep doing. Until
+  // 2026-10-31 a copy there failed with "The copy failed: The operation was
+  // aborted." after every row was written: the cache refresh at the end of
+  // `importCloudData` unmounted the pantry's views, and Apollo aborted their
+  // refetches. The bug is older than H1 — a production sign-in also lands on
+  // `/` — but before H1 this spec reloaded onto `/settings`, where no pantry
+  // query is active, so it could not see it. See
+  // docs/global/bugs/2026-10-31-bug-cloud-copy-aborted-on-pantry.md.
+  await new SettingsPage(page).openUserSidebar()
   const dialog = page.getByRole('alertdialog')
 
   // t('settings.dataMode.local.enableButton') = "Switch..."
@@ -306,6 +322,16 @@ test('user can switch from offline to cloud mode and clear & import their local 
   await expect
     .poll(() => readMigrationKeys(page), { timeout: 60000, intervals: [500] })
     .toEqual({ mode: 'cloud', strategy: null, prompted: '1' })
+
+  // And the user is not told the copy failed, nor asked to copy again.
+  // These two are WEAK on their own: before the 2026-10-31 fix the error dialog
+  // showed for about 100 ms and was then replaced by the prompt, so an absence
+  // check can pass on timing alone. The key pair above is what proves success.
+  // They follow it so the page has settled first.
+  // t('settings.postLoginMigration.errorTitle') = "Copy failed"
+  await expect(page.getByText('Copy failed')).not.toBeVisible()
+  // t('settings.postLoginMigration.title') = "Import local data to cloud?"
+  await expect(page.getByText('Import local data to cloud?')).not.toBeVisible()
 
   // ── And the local pantry REPLACED the cloud account's contents ──────────────
   // EXACTLY the payload's one item. The absence of `Cloud Only Item` is what

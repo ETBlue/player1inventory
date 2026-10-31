@@ -43,13 +43,13 @@ import { makeGql } from '../../utils/cloud'
 // ran only in `local` ended on `expect(page.getByText('My Test Shelf'))
 // .not.toBeVisible()`, and that assertion cannot fail. Measured 2026-10-12 in
 // `cloud` with `deleteShelf` turned into a no-op that returns true: the run
-// passed in 11.1s. `/settings/shelves` renders an EMPTY list while its
+// passed in 11.1s. `/settings/household/shelves` renders an EMPTY list while its
 // `GetShelves` refetch is still in flight, so `not.toBeVisible()` is satisfied
 // by that first paint and the test is over before the real data arrives. The
 // same probe with a 3s wait inserted failed, naming the row that was still
 // there:
 //
-//   9 x locator resolved to <a ... href="/settings/shelves/bbbbbbbb-...">
+//   9 x locator resolved to <a ... href="/settings/household/shelves/bbbbbbbb-...">
 //   My Test Shelf</a> - unexpected value "visible"
 //
 // So `readShelves` below reads the row back out of the backend. A fixed sleep
@@ -191,13 +191,13 @@ test('user lands on /shelves after deleting a shelf from its settings page', asy
 
   // When: navigate directly to the shelf settings info tab
   // (avoids using the link from the detail page which triggers navigation history issues)
-  // The info tab is at /settings/shelves/$shelfId/ (with trailing slash)
-  await page.goto(`/settings/shelves/${SHELF_ID}/`)
-  await page.waitForURL(`/settings/shelves/${SHELF_ID}/`)
+  // The info tab is at /settings/household/shelves/$shelfId/ (with trailing slash)
+  await page.goto(`/settings/household/shelves/${SHELF_ID}/`)
+  await page.waitForURL(`/settings/household/shelves/${SHELF_ID}/`)
 
   // When: wait for the ShelfInfoTab form to render and the form state to initialize
   // (useEffect in ShelfInfoTab sets name from shelf data; isDirty becomes false once initialized)
-  // ShelfInfoTab wraps content in a <form> with a "Save" button (src/routes/settings/shelves/$shelfId/index.tsx:185)
+  // ShelfInfoTab wraps content in a <form> with a "Save" button (src/routes/settings/household/shelves/$shelfId/index.tsx:185)
   await expect(page.getByRole('button', { name: 'Save' })).toBeVisible()
 
   // Then: the name input carries the shelf's own name. This is the one
@@ -205,13 +205,13 @@ test('user lands on /shelves after deleting a shelf from its settings page', asy
   // anything. Without it, a resolver that answered with a blank name would
   // still render a Save button and the test would pass.
   // Input: aria-label="Shelf name", value={name} set from shelf.name
-  // (src/routes/settings/shelves/$shelfId/index.tsx:106-109)
+  // (src/routes/settings/household/shelves/$shelfId/index.tsx:106-109)
   await expect(page.getByRole('textbox', { name: 'Shelf name' })).toHaveValue(
     'My Test Shelf',
   )
 
   // When: click the "Delete shelf" trigger button to open the delete dialog
-  // DeleteButton trigger prop: "Delete shelf" (src/routes/settings/shelves/$shelfId/index.tsx:196)
+  // DeleteButton trigger prop: "Delete shelf" (src/routes/settings/household/shelves/$shelfId/index.tsx:196)
   await page.getByRole('button', { name: 'Delete shelf' }).click()
 
   // When: confirm in the dialog by clicking the destructive confirm button
@@ -219,14 +219,14 @@ test('user lands on /shelves after deleting a shelf from its settings page', asy
   // Use Promise.all to handle navigation that occurs when deletion succeeds (unmounts the dialog)
   // Pattern from e2e/pages/ItemPage.ts:delete()
   await Promise.all([
-    page.waitForURL(/\/settings\/shelves\/?$/),
+    page.waitForURL(/\/settings\/household\/shelves\/?$/),
     page
       .getByRole('alertdialog')
       .getByRole('button', { name: /delete/i })
       .click(),
   ])
 
-  // Then: URL becomes /settings/shelves (post-delete navigation — src/routes/settings/shelves/$shelfId/index.tsx)
+  // Then: URL becomes /settings/household/shelves (post-delete navigation — src/routes/settings/household/shelves/$shelfId/index.tsx)
   // (already asserted by waitForURL in Promise.all above)
 
   // Then: the shelf row is gone from the backend. THIS is the assertion that

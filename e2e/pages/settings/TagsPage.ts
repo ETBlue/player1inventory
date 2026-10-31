@@ -10,25 +10,25 @@ export class TagsPage {
   }
 
   async navigateTo() {
-    await this.page.goto('/settings/tags')
+    await this.page.goto('/settings/household/tags')
   }
 
   async fillTagTypeName(name: string) {
     // Name input inside the New/Edit Tag Type dialog (TagTypeInfoForm, label "Name")
     // The dialog must be open before calling this method.
-    // (src/routes/settings/tags/index.tsx — TagTypeInfoForm inside Dialog)
+    // (src/routes/settings/household/tags/index.tsx — TagTypeInfoForm inside Dialog)
     await this.page.getByRole('dialog').getByLabel('Name').fill(name)
   }
 
   async clickNewTagType() {
     // Button label "New Tag Type" — opens the tag type creation dialog
-    // (src/routes/settings/tags/index.tsx)
+    // (src/routes/settings/household/tags/index.tsx)
     await this.page.getByRole('button', { name: /new tag type/i }).click()
   }
 
   async submitTagTypeDialog() {
     // Save button inside the New/Edit Tag Type dialog (TagTypeInfoForm renders t('common.save') = "Save")
-    // (src/routes/settings/tags/index.tsx — TagTypeInfoForm inside Dialog)
+    // (src/routes/settings/household/tags/index.tsx — TagTypeInfoForm inside Dialog)
     await this.page
       .getByRole('dialog')
       .getByRole('button', { name: 'Save' })
@@ -36,7 +36,7 @@ export class TagsPage {
   }
 
   getTagTypeCard(name: string): Locator {
-    // Card heading h2 inside DroppableTagTypeCard (src/routes/settings/tags/index.tsx:194)
+    // Card heading h2 inside DroppableTagTypeCard (src/routes/settings/household/tags/index.tsx:194)
     return this.page.getByRole('heading', { name, level: 2 })
   }
 
@@ -79,7 +79,7 @@ export class TagsPage {
   getTagBadge(name: string): Locator {
     // dnd-kit sets role="button" on the drag wrapper div, whose text content includes
     // the tag name and item count: "{name} (N)". Match by tag name prefix.
-    // (src/routes/settings/tags/index.tsx:123, @dnd-kit/core defaultRole='button')
+    // (src/routes/settings/household/tags/index.tsx:123, @dnd-kit/core defaultRole='button')
     return this.page.getByRole('button', { name: new RegExp(`^${name} \\(`) })
   }
 
@@ -87,19 +87,19 @@ export class TagsPage {
     // Click the tag badge to navigate to its detail page. The TagBadge inside the dnd-kit
     // drag wrapper has an onClick that calls navigate(). A plain click (< 8px movement)
     // passes through the PointerSensor without activating drag mode.
-    // (src/routes/settings/tags/index.tsx:131-136)
+    // (src/routes/settings/household/tags/index.tsx:131-136)
     await this.getTagBadge(name).click()
   }
 
   async clickDeleteTag(name: string) {
     // DeleteButton is a sibling of the drag wrapper (not nested inside it), per a11y refactor
-    // to avoid nested interactive elements (src/routes/settings/tags/index.tsx:147).
+    // to avoid nested interactive elements (src/routes/settings/household/tags/index.tsx:147).
     // Use aria-label: t('settings.tags.tag.deleteAriaLabel') = 'Delete "{{name}}"'
     await this.page.getByRole('button', { name: `Delete "${name}"` }).click()
   }
 
   async clickDeleteTagType(name: string) {
-    // aria-label="Delete {tagType.name}" on the trash DeleteButton (src/routes/settings/tags/index.tsx:204)
+    // aria-label="Delete {tagType.name}" on the trash DeleteButton (src/routes/settings/household/tags/index.tsx:204)
     await this.page.getByRole('button', { name: `Delete ${name}` }).click()
   }
 
@@ -112,7 +112,7 @@ export class TagsPage {
   async dragTagToType(tagName: string, targetTypeName: string) {
     // The dnd-kit drag wrapper has role="button" and text "{tagName} (N)"
     // Listeners are on the drag wrapper div. Target is the tag type heading area.
-    // (src/routes/settings/tags/index.tsx:123, @dnd-kit/core PointerSensor activation=8px)
+    // (src/routes/settings/household/tags/index.tsx:123, @dnd-kit/core PointerSensor activation=8px)
     const source = this.page.getByRole('button', {
       name: new RegExp(`^${tagName} \\(`),
     })
@@ -142,7 +142,7 @@ export class TagsPage {
   }
 
   getUndoToast(): Locator {
-    // Sonner toast with "Undo" action button (src/routes/settings/tags/index.tsx:371)
+    // Sonner toast with "Undo" action button (src/routes/settings/household/tags/index.tsx:371)
     return this.page.getByRole('button', { name: 'Undo' })
   }
 

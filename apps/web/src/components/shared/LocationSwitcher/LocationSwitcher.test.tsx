@@ -70,7 +70,7 @@ function renderSwitcher(props?: {
   })
   const settingsLocationsRoute = createRoute({
     getParentRoute: () => rootRoute,
-    path: '/settings/locations',
+    path: '/settings/household/locations',
     component: () => <div>Locations Settings Page</div>,
   })
   const router = createRouter({
@@ -174,7 +174,7 @@ describe('LocationSwitcher', () => {
     expect(trigger).toHaveClass('flex-shrink-0')
   })
 
-  it('"Manage" navigates to /settings/locations', async () => {
+  it('"Manage" navigates to /settings/household/locations', async () => {
     // Given the switcher is open
     const user = userEvent.setup()
     const router = renderSwitcher()
@@ -190,7 +190,9 @@ describe('LocationSwitcher', () => {
 
     // Then the router navigates to the locations settings page
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe('/settings/locations')
+      expect(router.state.location.pathname).toBe(
+        '/settings/household/locations',
+      )
     })
   })
 })

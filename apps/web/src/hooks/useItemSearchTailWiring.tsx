@@ -94,7 +94,7 @@ export function useItemSearchTailWiring({
         // There is no MutationCache-level onError (the QueryClient in
         // main.tsx sets only a staleTime default) and no global React error
         // boundary in __root.tsx. The app DOES use sonner's `toast`
-        // elsewhere (ImportCard, settings/tags/index.tsx) — just not wired
+        // elsewhere (ImportCard, settings/household/tags/index.tsx) — just not wired
         // to this catch. Behaviour matches pre-refactor (`onError:
         // clearTailPending` also only cleared pending). Pending must still
         // clear on every path so the row doesn't spin forever.

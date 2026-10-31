@@ -31,7 +31,8 @@ export async function saveCache(
  * the same code, in the same effect, from the same variable, so at startup they
  * always match. The check only defends against a stored id that does not match
  * the id passed in — for example a snapshot left by an older build, or a
- * `null` id after sign-out.
+ * `null` id on a device where nobody has signed in yet. (Sign-out does not
+ * remove the stored id: see `clearCache`.)
  *
  * The real cross-account protection is the purge in `ApolloWrapper`: when Clerk
  * reports a user id that differs from the stored one, it calls `clearCache()`
@@ -70,18 +71,18 @@ export async function clearCache(): Promise<void> {
   await cloudCache.reset()
   await cacheDb.snapshots.clear()
   localStorage.removeItem(LAST_SYNCED_AT_KEY)
-  // Removing LAST_USER_ID_KEY disarms the ApolloWrapper purge guard: after
-  // this, getLastSignedInUserId() reads null, so the next sign-in on this
-  // device sees `previous === null` and does not purge again. That is safe
-  // ONLY because `cloudCache` is already empty at this point (the reset
-  // above). It would stop being safe if something refilled `cloudCache`
-  // before the next sign-in. Today nothing does: the Sign Out button lives
-  // on /settings (DataModeCard.tsx), and no Apollo watch query is mounted
-  // there — the item-stock, purchase-date and cart-item queries only mount
-  // on the pantry, item and shopping pages. If a watch query is ever added
-  // to /settings, this key needs to stay, or the purge in ApolloWrapper
-  // needs to drop its `previous !== null` guard.
-  localStorage.removeItem(LAST_USER_ID_KEY)
+  // LAST_USER_ID_KEY is NOT removed here, on purpose (plan decision P7).
+  // It keeps the ApolloWrapper purge guard armed. Sign-out lives in the user
+  // sidebar, so it can happen on any page, including the pantry, item and
+  // shopping pages where Apollo watch queries are mounted. Such a query may
+  // refill `cloudCache` after the reset above and before the next sign-in.
+  // Because the key stays, the next sign-in compares its id with the previous
+  // account's: a DIFFERENT account sees `previous !== userId` and clears the
+  // cache again before this account saves anything. The same account signing
+  // back in keeps the refilled rows, which are its own.
+  //
+  // Removing the key would make the next sign-in see `previous === null`,
+  // skip the purge, and serve the refilled rows to the next account.
 }
 
 export async function setLastSyncedAt(date: Date): Promise<void> {

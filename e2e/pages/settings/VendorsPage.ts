@@ -10,11 +10,11 @@ export class VendorsPage {
   }
 
   async navigateTo() {
-    await this.page.goto('/settings/vendors')
+    await this.page.goto('/settings/household/vendors')
   }
 
   async clickNewVendor() {
-    // "New Vendor" button in toolbar (src/routes/settings/vendors/index.tsx:51)
+    // "New Vendor" button in toolbar (src/routes/settings/household/vendors/index.tsx:51)
     await this.page.getByRole('button', { name: /new vendor/i }).click()
   }
 

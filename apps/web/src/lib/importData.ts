@@ -2326,6 +2326,30 @@ export function isForbiddenImportError(err: unknown): boolean {
   )
 }
 
+/**
+ * Refresh the Apollo cache after a cloud import, and ignore an `AbortError`.
+ *
+ * `resetStore()` clears the cache, then refetches every active query and
+ * returns `Promise.all` of those refetches. On the pantry the cleared cache
+ * makes `PantryListView` show its loading spinner, which unmounts the views
+ * below it. Apollo then tears down their queries, and the refetch of each one
+ * rejects with `DOMException("The operation was aborted.", "AbortError")`
+ * (`@apollo/client` 4.1.6). By then every row has been written, so that
+ * rejection must not fail the import. The views that mount again make their
+ * own queries.
+ *
+ * Only `AbortError` is ignored. Any other rejection is rethrown.
+ * Bug doc: `docs/global/bugs/2026-10-31-bug-cloud-copy-aborted-on-pantry.md`.
+ */
+async function resetStoreAfterImport(client: ApolloClient): Promise<void> {
+  try {
+    await client.resetStore()
+  } catch (err) {
+    if ((err as { name?: unknown } | null)?.name === 'AbortError') return
+    throw err
+  }
+}
+
 export async function importCloudData(
   rawPayload: ExportPayload,
   strategy: ImportStrategy,
@@ -2384,7 +2408,7 @@ export async function importCloudData(
         startCompleted: 0,
         totalBatches: computeTotalBatches(payload),
       })
-      await client.resetStore()
+      await resetStoreAfterImport(client)
       return
     }
 
@@ -2480,7 +2504,7 @@ export async function importCloudData(
         })
       }
 
-      await client.resetStore()
+      await resetStoreAfterImport(client)
       return
     }
 
@@ -2509,7 +2533,7 @@ export async function importCloudData(
       startCompleted: afterCreate,
       totalBatches,
     })
-    await client.resetStore()
+    await resetStoreAfterImport(client)
   } catch (err) {
     const error = err instanceof Error ? err : new Error(String(err))
     ;(error as Error & { session: ImportSession }).session = session

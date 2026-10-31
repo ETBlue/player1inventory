@@ -92,7 +92,7 @@ test('user can create a vendor', async ({ page }) => {
   await vendorsPage.clickSave()
 
   // Wait for navigation to vendor detail page (post-save redirect — not /new)
-  await page.waitForURL(/\/settings\/vendors\/(?!new)[^/]/)
+  await page.waitForURL(/\/settings\/household\/vendors\/(?!new)[^/]/)
 
   // Then: navigating back to vendor list shows "Costco"
   await vendorsPage.navigateTo()
@@ -108,7 +108,7 @@ test('user can delete a vendor', async ({ page, baseURL }) => {
     await vendorsPage.clickNewVendor()
     await vendorsPage.fillVendorName('Walmart')
     await vendorsPage.clickSave()
-    await page.waitForURL(/\/settings\/vendors\/(?!new)[^/]/)
+    await page.waitForURL(/\/settings\/household\/vendors\/(?!new)[^/]/)
     await vendorsPage.navigateTo()
   } else {
     // Local: seed via IndexedDB and navigate
@@ -142,7 +142,7 @@ test.describe('vendor item count after vendor assignment', () => {
       await vendorsPage.clickNewVendor()
       await vendorsPage.fillVendorName('Test Shop')
       await vendorsPage.clickSave()
-      await page.waitForURL(/\/settings\/vendors\/(?!new)[^/]/)
+      await page.waitForURL(/\/settings\/household\/vendors\/(?!new)[^/]/)
 
       // Create item via pantry UI (vendor not assigned)
       await pantry.navigateTo()
@@ -243,7 +243,7 @@ test.describe('vendor item count after item deletion', () => {
       await vendorsPage.clickNewVendor()
       await vendorsPage.fillVendorName('Test Market')
       await vendorsPage.clickSave()
-      await page.waitForURL(/\/settings\/vendors\/(?!new)[^/]/)
+      await page.waitForURL(/\/settings\/household\/vendors\/(?!new)[^/]/)
 
       // Create item via pantry UI
       await pantry.navigateTo()

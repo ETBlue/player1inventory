@@ -10,20 +10,20 @@ export class TagDetailPage {
   }
 
   async navigateTo(id: string) {
-    await this.page.goto(`/settings/tags/${id}`)
+    await this.page.goto(`/settings/household/tags/${id}`)
   }
 
   async navigateToItems(id: string) {
-    await this.page.goto(`/settings/tags/${id}/items`)
+    await this.page.goto(`/settings/household/tags/${id}/items`)
   }
 
   async fillName(name: string) {
-    // Label htmlFor="tag-name" (src/routes/settings/tags/$id/index.tsx:119)
+    // Label htmlFor="tag-name" (src/routes/settings/household/tags/$id/index.tsx:119)
     await this.page.getByLabel('Name').fill(name)
   }
 
   async selectType(typeName: string) {
-    // Label htmlFor="tag-type" (src/routes/settings/tags/$id/index.tsx:93)
+    // Label htmlFor="tag-type" (src/routes/settings/household/tags/$id/index.tsx:93)
     await this.page.getByLabel('Tag Type').click()
     await this.page.getByRole('option', { name: typeName }).click()
   }

@@ -1,4 +1,4 @@
-import { Link } from '@tanstack/react-router'
+import { Link, type LinkProps } from '@tanstack/react-router'
 import type { LucideIcon } from 'lucide-react'
 import { ChevronRight } from 'lucide-react'
 import {
@@ -12,7 +12,9 @@ interface SettingsNavCardProps {
   icon: LucideIcon
   label: string
   description: string
-  to: string
+  // The `to` type of `<Link>`: only paths the router knows. `tsc` rejects a
+  // path with no route, such as `'/settings/nope'`.
+  to: NonNullable<LinkProps['to']>
 }
 
 export function SettingsNavCard({

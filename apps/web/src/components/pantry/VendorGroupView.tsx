@@ -187,7 +187,7 @@ export function VendorGroupView() {
             asChild
           >
             <Link
-              to="/settings/vendors"
+              to="/settings/household/vendors"
               aria-label={t('settings.vendors.manage')}
             >
               <Settings />

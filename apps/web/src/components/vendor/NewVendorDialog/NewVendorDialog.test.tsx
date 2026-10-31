@@ -88,7 +88,7 @@ describe('NewVendorDialog', () => {
     // Then navigate is called to the vendor detail page
     await vi.waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith(
-        expect.objectContaining({ to: '/settings/vendors/$id' }),
+        expect.objectContaining({ to: '/settings/household/vendors/$id' }),
       )
     })
   })

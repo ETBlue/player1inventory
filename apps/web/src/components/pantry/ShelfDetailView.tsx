@@ -462,7 +462,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
         >
           {!isUnsorted && (
             <Link
-              to="/settings/shelves/$shelfId"
+              to="/settings/household/shelves/$shelfId"
               params={{ shelfId }}
               aria-label="Shelf settings"
             >

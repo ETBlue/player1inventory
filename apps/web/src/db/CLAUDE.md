@@ -14,7 +14,7 @@ Rules:
 
 ### v14 — `locations`
 
-Adds `locations` (`id, order, name`) and seeds the default `Location {id: 'local', name: 'My Home', order: 0}` via `ensureDefaultLocation` (which also writes `isDefault: true` since v18). See `src/routes/settings/locations/CLAUDE.md` for the entity itself.
+Adds `locations` (`id, order, name`) and seeds the default `Location {id: 'local', name: 'My Home', order: 0}` via `ensureDefaultLocation` (which also writes `isDefault: true` since v18). See `src/routes/settings/household/locations/CLAUDE.md` for the entity itself.
 
 ### v15 — the `Item` → `Item` + `ItemStock` split
 
@@ -113,4 +113,4 @@ Three operations wrap their writes in a single `db.transaction('rw', …)`. All 
 - **`applyUnitSwitchBatch`** — the Info tab's unit switch over `items`, `itemStocks`, `recipes`: the `Item`'s configuration, one `ItemStock` per location whose tracked quantities the switch moves, and one recipe per `defaultAmount` expressed in the old unit. As separate writes a failure partway left the item on the **new** unit while some locations and recipes still held **old**-unit numbers — mixed units, silently. It shares `updateItem`'s field routing via the internal `writeItemUpdate` rather than re-deriving the rule. Callers compute the finished rows first and hand them over.
 - **`applyShelfFilterPicksBatch`** (PR D, unified item search) — a filter shelf's per-axis picks over `items`, `recipes`: unions the picked tag/vendor ids onto the item and, when a recipe axis was picked, appends `{ itemId, defaultAmount: consumeAmount || 1 }` to that recipe's `items`. Unlike the two above, it deliberately does **NOT** take finished rows from the caller — it re-reads `db.items.get(itemId)` and (when a recipe pick is present) `db.recipes.get(recipeId)` *inside* the transaction and unions against those fresh rows, so a stale React render closure that captured the item/recipe before some other write landed cannot double-append an id. Both reads are ordinary Dexie promises, so this does not violate the zone-detachment hazard above — it is a deliberate departure from the other two operations' *habit*, not their *rule*.
 
-> Details of the location-scoped behaviour live with their features: `src/routes/settings/locations/CLAUDE.md` (locations, delete cascade, orphans), `src/routes/items/CLAUDE.md` (the Stock pager and what removal destroys), `src/routes/CLAUDE.md` (active-location scoping).
+> Details of the location-scoped behaviour live with their features: `src/routes/settings/household/locations/CLAUDE.md` (locations, delete cascade, orphans), `src/routes/items/CLAUDE.md` (the Stock pager and what removal destroys), `src/routes/CLAUDE.md` (active-location scoping).

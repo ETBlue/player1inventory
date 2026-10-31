@@ -149,6 +149,49 @@ describe('ApolloWrapper cache ownership', () => {
     await waitFor(() => expect(getLastSignedInUserId()).toBe('user-b'))
   })
 
+  it('user B signing in after user A signed out never reads rows refilled in between', async () => {
+    // Given user A is signed in, through the wrapper, with no id stored before
+    signedInAs('user-a')
+    const { rerender } = render(
+      <ApolloWrapper>
+        <div>app</div>
+      </ApolloWrapper>,
+    )
+    await waitFor(() => expect(getLastSignedInUserId()).toBe('user-a'))
+
+    // When user A signs out the way DataModeCard does it: clearCache(), then
+    // Clerk reports nobody is signed in. No page reload follows.
+    const persistence = await import('./persistence')
+    await persistence.clearCache()
+    signedInAs(null)
+    rerender(
+      <ApolloWrapper>
+        <div>app</div>
+      </ApolloWrapper>,
+    )
+
+    // And a watch query still mounted on the page refills the in-memory cache
+    // with user A's rows. Sign-out lives in the user sidebar now, so it can
+    // happen on the pantry, where such queries are mounted (plan P7).
+    fillCloudCache()
+    expect(cloudCache.extract()).toHaveProperty('Item:item-1')
+
+    // And user B signs in, still without a reload
+    const clearCacheSpy = vi.spyOn(persistence, 'clearCache')
+    signedInAs('user-b')
+    rerender(
+      <ApolloWrapper>
+        <div>app</div>
+      </ApolloWrapper>,
+    )
+
+    // Then the wrapper purged again before user B could read anything:
+    // user A's refilled rows are gone from memory
+    await waitFor(() => expect(getLastSignedInUserId()).toBe('user-b'))
+    expect(clearCacheSpy).toHaveBeenCalledTimes(1)
+    expect(cloudCache.extract()).not.toHaveProperty('Item:item-1')
+  })
+
   it('a normal cold start for the same user keeps the cached cloud data', async () => {
     // Given user A's cache is already on the device and in memory. This is a
     // normal cold start: the app was closed and reopened by the SAME user,

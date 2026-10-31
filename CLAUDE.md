@@ -108,7 +108,7 @@ that really set up that role.
 
 ## Authorization (cloud)
 
-> See `docs/global/permissions/2026-08-29-design-location-rbac.md` — permissions bind to **location RBAC**: rights come from the role held on a `Location` (owner/member edit, viewer reads), not from having created the row. Decided, **not yet built** — cloud models are still scoped by a flat `userId`, with one deliberate exception: **`ItemStock` carries no `userId` column at all**. It is scoped *through* its location (`where: { location: { userId } }`), the shape RBAC needs, and the same pattern `RecipeItem` already uses (`{ recipe: { userId } }`). A `userId` column there would put the forbidden `stock.userId === ctx.userId` guard within easy reach at every call site — do not add one. Every `ItemStock` resolver goes through `requireLocationRole(locationId, role)` instead, which is the one function body RBAC will fill in.
+> See `docs/global/permissions/2026-10-04-households-design.md` (which replaces the role table of `docs/global/permissions/2026-08-29-design-location-rbac.md`) — rights come from roles, not from having created the row: a **household** role (owner / manager / member) governs the catalog and membership, and a **location** role (organizer / participant / viewer) governs a location's stock, carts and logs. Designed, **not yet built** — cloud models are still scoped by a flat `userId`, with one deliberate exception: **`ItemStock` carries no `userId` column at all**. It is scoped *through* its location (`where: { location: { userId } }`), the shape RBAC needs, and the same pattern `RecipeItem` already uses (`{ recipe: { userId } }`). A `userId` column there would put the forbidden `stock.userId === ctx.userId` guard within easy reach at every call site — do not add one. Every `ItemStock` resolver goes through `requireLocationRole(locationId, role)` instead, which is the one function body RBAC will fill in.
 >
 > **Never write `row.userId === ctx.userId` as an authorization check.** It is not merely premature: it denies a legitimate `member` editing a shared location's data, which is the point of the feature, and it would have to be torn out of every call site when RBAC lands. If a guard is needed now, put it behind a helper whose signature already takes the location and the required role, so RBAC becomes one function body rather than N call sites. Local mode is single-user IndexedDB and is out of scope — no role check belongs in `apps/web/src/db/`.
 >
@@ -180,11 +180,11 @@ src/
 > Feature documentation lives in sub-directory CLAUDE.md files co-located with the routes:
 > - `apps/web/src/routes/CLAUDE.md` — active-location scoping, filter pipeline, shopping, cooking
 > - `apps/web/src/routes/items/CLAUDE.md` — item form, Stock-tab location pager, manual quantity input
-> - `apps/web/src/routes/settings/CLAUDE.md` — cascade deletion
-> - `apps/web/src/routes/settings/locations/CLAUDE.md` — location management
-> - `apps/web/src/routes/settings/tags/CLAUDE.md` — tag management
-> - `apps/web/src/routes/settings/vendors/CLAUDE.md` — vendor management
-> - `apps/web/src/routes/settings/recipes/CLAUDE.md` — recipe management
+> - `apps/web/src/routes/settings/CLAUDE.md` — settings layout (`/settings`, `/settings/household`), the global Items tabs, cascade deletion
+> - `apps/web/src/routes/settings/household/locations/CLAUDE.md` — location management
+> - `apps/web/src/routes/settings/household/tags/CLAUDE.md` — tag management
+> - `apps/web/src/routes/settings/household/vendors/CLAUDE.md` — vendor management
+> - `apps/web/src/routes/settings/household/recipes/CLAUDE.md` — recipe management
 
 ## Design Tokens & Theme System
 
@@ -1666,7 +1666,7 @@ you read one, do not trust it as evidence.
 
 **Biome lint (`pnpm lint`):** 37 a11y rules enabled in `apps/web/biome.json` — catches static violations (missing alt text, invalid ARIA, bad roles) at write time.
 
-**axe-playwright (`e2e/tests/a11y.spec.ts`):** Runtime a11y checks via `axe-core` targeting WCAG AA (`wcag2a`, `wcag2aa`, `wcag21aa`, `wcag22aa`), set through `AXE_OPTIONS` in the spec file. **That filter only started working on 2026-10-11** — see *The WCAG filter had never applied* below. Covers **66 tests in `pwa`, and the same file collects 66 under `local` but runs 64** (counts measured 2026-09-20): 15 top-level page scans, 13 in `test.describe('detail page a11y')`, 27 in `test.describe('dark mode a11y')`, 9 mobile-viewport scans at 390×844 in `test.describe('mobile viewport a11y')`, and 2 in `test.describe('offline banner a11y')`. **Those last 2 run only in `pwa`** (since 2026-09-24, issue #302). They set `baseURL: PWA_WEB_URL`, so under `local` they ran against the same server with the same code — an exact duplicate — and they were the only reason a `--project=local` run needed the PWA preview server at all. A describe-level `test.skip` now skips them outside `pwa`. It has to be at describe level: the file's top-level `beforeEach` also calls `page.goto('/')`, so a body-level skip runs too late and the hook still hits port 5176. Run with `pnpm test:e2e a11y.spec.ts` — select it by path, not `--grep`. Dark mode is triggered by `page.addInitScript(() => localStorage.setItem('theme-preference', 'dark'))` in a `test.describe('dark mode a11y')` block.
+**axe-playwright (`e2e/tests/a11y.spec.ts`):** Runtime a11y checks via `axe-core` targeting WCAG AA (`wcag2a`, `wcag2aa`, `wcag21aa`, `wcag22aa`), set through `AXE_OPTIONS` in the spec file. **That filter only started working on 2026-10-11** — see *The WCAG filter had never applied* below. Covers **70 tests in `pwa`, and the same file collects 70 under `local` but runs 68** (counts measured 2026-10-31 with `--list`, after households H1 added the household and user settings scans; 66 / 64 before): 16 top-level page scans, 13 in `test.describe('detail page a11y')`, 28 in `test.describe('dark mode a11y')`, 11 mobile-viewport scans at 390×844 in `test.describe('mobile viewport a11y')`, and 2 in `test.describe('offline banner a11y')`. **Those last 2 run only in `pwa`** (since 2026-09-24, issue #302). They set `baseURL: PWA_WEB_URL`, so under `local` they ran against the same server with the same code — an exact duplicate — and they were the only reason a `--project=local` run needed the PWA preview server at all. A describe-level `test.skip` now skips them outside `pwa`. It has to be at describe level: the file's top-level `beforeEach` also calls `page.goto('/')`, so a body-level skip runs too late and the hook still hits port 5176. Run with `pnpm test:e2e a11y.spec.ts` — select it by path, not `--grep`. Dark mode is triggered by `page.addInitScript(() => localStorage.setItem('theme-preference', 'dark'))` in a `test.describe('dark mode a11y')` block.
 
 When adding a new page/route, add a corresponding test to `e2e/tests/a11y.spec.ts` for both light and dark mode.
 

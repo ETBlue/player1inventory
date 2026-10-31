@@ -225,10 +225,10 @@ test('user can edit tag name and type on Info tab', async ({
     await expect(tagsPage.getTagBadge('Chicken')).toBeVisible()
 
     // Navigate to tag detail via badge click; extract ID from URL.
-    // TanStack Router's index child renders at /settings/tags/{id}/ (trailing slash),
+    // TanStack Router's index child renders at /settings/household/tags/{id}/ (trailing slash),
     // so use a path-contains check and strip the trailing slash when extracting the ID.
     await tagsPage.clickTagBadgeToNavigate('Chicken')
-    await page.waitForURL(/\/settings\/tags\/[^/]/)
+    await page.waitForURL(/\/settings\/household\/tags\/[^/]/)
     tagId = new URL(page.url()).pathname.split('/').filter(Boolean).pop()!
   } else {
     // Local: seed directly into IndexedDB and navigate by ID
@@ -286,9 +286,9 @@ test('user can assign and unassign an item on Items tab', async ({
     await expect(tagsPage.getTagBadge('Chicken')).toBeVisible()
 
     // Get tag ID from URL before navigating away to create item.
-    // TanStack Router renders the index child at /settings/tags/{id}/ (trailing slash).
+    // TanStack Router renders the index child at /settings/household/tags/{id}/ (trailing slash).
     await tagsPage.clickTagBadgeToNavigate('Chicken')
-    await page.waitForURL(/\/settings\/tags\/[^/]/)
+    await page.waitForURL(/\/settings\/household\/tags\/[^/]/)
     tagId = new URL(page.url()).pathname.split('/').filter(Boolean).pop()!
 
     // Create item via pantry UI
@@ -577,7 +577,7 @@ test.describe('tag item count after tag assignment', () => {
 
       // Get tag ID from URL
       await tagsPage.clickTagBadgeToNavigate('Fresh')
-      await page.waitForURL(/\/settings\/tags\/[^/]/)
+      await page.waitForURL(/\/settings\/household\/tags\/[^/]/)
       tagId = new URL(page.url()).pathname.split('/').filter(Boolean).pop()!
 
       // Create item (untagged)
@@ -608,12 +608,14 @@ test.describe('tag item count after tag assignment', () => {
     // When: SPA-navigate to tag detail page (keeps TanStack Query cache alive)
     // Click the "Fresh" badge to navigate to the tag detail page
     await tagsPage.clickTagBadgeToNavigate('Fresh')
-    await page.waitForURL(/\/settings\/tags\/[^/]/)
+    await page.waitForURL(/\/settings\/household\/tags\/[^/]/)
 
     // SPA-navigate to Items tab by clicking the tab link
-    // Tab link: to="/settings/tags/$id/items" (src/routes/settings/tags/$id.tsx:122-130)
-    await page.locator(`a[href$="/settings/tags/${tagId}/items"]`).click()
-    await page.waitForURL(`**/settings/tags/${tagId}/items`)
+    // Tab link: to="/settings/household/tags/$id/items" (src/routes/settings/household/tags/$id.tsx:122-130)
+    await page
+      .locator(`a[href$="/settings/household/tags/${tagId}/items"]`)
+      .click()
+    await page.waitForURL(`**/settings/household/tags/${tagId}/items`)
     await expect(detail.getItemCheckbox('Test Apple')).toBeVisible()
 
     // Assign the item
@@ -623,10 +625,10 @@ test.describe('tag item count after tag assignment', () => {
     // Navigate back via the "Go back" button (SPA navigation — preserves TanStack Query cache)
     // "Go back" from items tab: isSamePage()/navigation history logic means it skips the
     // tag detail info page (same tag ID) and goes directly to the tags list.
-    // (src/hooks/useAppNavigation.ts — isSamePage filters /settings/tags/:id/* as same page)
-    // aria-label="Go back" (src/routes/settings/tags/$id.tsx:101, common.goBack = "Go back")
+    // (src/hooks/useAppNavigation.ts — isSamePage filters /settings/household/tags/:id/* as same page)
+    // aria-label="Go back" (src/routes/settings/household/tags/$id.tsx:101, common.goBack = "Go back")
     await page.getByRole('button', { name: 'Go back' }).click()
-    await page.waitForURL(/\/settings\/tags$/)
+    await page.waitForURL(/\/settings\/household\/tags$/)
 
     // Then: the tags list page must show the updated count for "Fresh"
     // The cached count query must have been invalidated by useUpdateItem's onSuccess
@@ -696,7 +698,7 @@ test.describe('tag item count after item deletion', () => {
     // When: navigate to settings tags page and check the item count for "Perishable"
     await tagsPage.navigateTo()
 
-    // The badge text includes the count: "Perishable (1)" (src/routes/settings/tags/index.tsx:123)
+    // The badge text includes the count: "Perishable (1)" (src/routes/settings/household/tags/index.tsx:123)
     // Click the delete button to open the dialog and read the count from the description
     await tagsPage.clickDeleteTag('Perishable')
     // Dialog description says: "We are about to delete "Perishable", removing it from 1 item."
@@ -795,7 +797,7 @@ test('user can create a tag with a parent tag', async ({ page, baseURL }) => {
   if (baseURL === CLOUD_WEB_URL) {
     // Cloud: UI-driven setup — create tag type and parent tag via UI.
     // New UI: "New Tag Type" button opens a dialog; fill Name + click Save inside dialog.
-    // (src/routes/settings/tags/index.tsx — Dialog with TagTypeInfoForm)
+    // (src/routes/settings/household/tags/index.tsx — Dialog with TagTypeInfoForm)
     await tagsPage.navigateTo()
     await tagsPage.clickNewTagType()
     await page.getByRole('dialog').getByLabel('Name').fill('Protein')
@@ -835,7 +837,7 @@ test('user can create a tag with a parent tag', async ({ page, baseURL }) => {
   // Then: "Grilled Chicken" badge appears in the tags list
   // Child tags (depth >= 1) are drag-disabled, so no role="button" from dnd-kit.
   // Match by text content rendered inside the Badge div: "{name} (0)"
-  // (src/routes/settings/tags/index.tsx — DraggableTagBadge renders TagBadge inside a div)
+  // (src/routes/settings/household/tags/index.tsx — DraggableTagBadge renders TagBadge inside a div)
   await expect(page.getByText(/^Grilled Chicken \(\d+\)$/)).toBeVisible()
 })
 
@@ -869,7 +871,7 @@ test('user can delete a parent tag with cascade (deletes child tags too)', async
     // spec's click flow would need a cloud E2E run to prove safe and this
     // change does not.
     await tagsPage.clickTagBadgeToNavigate('Chicken')
-    await page.waitForURL(/\/settings\/tags\/[^/]/)
+    await page.waitForURL(/\/settings\/household\/tags\/[^/]/)
     await page.goBack()
 
     // Create child tag "Grilled Chicken" with parent "Chicken"
@@ -898,18 +900,18 @@ test('user can delete a parent tag with cascade (deletes child tags too)', async
   // When: user navigates to the "Chicken" tag detail page
   // The cascade/orphan dialog appears on the tag detail page (not the list page)
   // because the list page DeleteButton only supports no-children tags.
-  // (src/routes/settings/tags/$id/index.tsx:63-68)
+  // (src/routes/settings/household/tags/$id/index.tsx:63-68)
   //
   // Cloud: use SPA navigation (click the badge) instead of page.goto() to preserve
   // the Apollo InMemoryCache. page.goto() reloads the app and clears the cache, which
   // forces a fresh GetTags fetch that may race against React re-rendering childTags.
   // Clicking the badge is a soft navigation — the Apollo cache (already updated by the
   // createTag mutation's refetchQueries) is in memory and hasChildren===true immediately.
-  // (src/routes/settings/tags/$id/index.tsx:58-61, src/hooks/useTags.ts:205)
+  // (src/routes/settings/household/tags/$id/index.tsx:58-61, src/hooks/useTags.ts:205)
   await tagsPage.clickTagBadgeToNavigate('Chicken')
-  await page.waitForURL(/\/settings\/tags\/[^/]/)
+  await page.waitForURL(/\/settings\/household\/tags\/[^/]/)
   // Wait for the tag detail layout to render — the tag name appears in the header h1
-  // (src/routes/settings/tags/$id.tsx:106)
+  // (src/routes/settings/household/tags/$id.tsx:106)
   await page.waitForSelector('h1')
   await expect(page.locator('h1')).toContainText('Chicken', {
     ignoreCase: true,
@@ -917,7 +919,7 @@ test('user can delete a parent tag with cascade (deletes child tags too)', async
 
   // And: clicks the "Delete" button — which opens the cascade/orphan dialog
   // (only visible when the tag has children; rendered as Button variant="destructive-ghost")
-  // (src/routes/settings/tags/$id/index.tsx:118-127)
+  // (src/routes/settings/household/tags/$id/index.tsx:118-127)
   await page.getByRole('button', { name: /^delete$/i }).click()
 
   // Then: the "This tag has child tags" dialog appears
@@ -929,11 +931,11 @@ test('user can delete a parent tag with cascade (deletes child tags too)', async
 
   // When: user clicks "Delete all child tags" (cascade option)
   // (src/i18n/locales/en.json: settings.tags.tag.deleteParentCascade = "Delete all child tags")
-  // (src/routes/settings/tags/$id/index.tsx:154-160 — AlertDialogAction variant="destructive")
+  // (src/routes/settings/household/tags/$id/index.tsx:154-160 — AlertDialogAction variant="destructive")
   await page.getByRole('button', { name: 'Delete all child tags' }).click()
 
   // Then: navigates back to tags list (goBack() is called after cascade delete)
-  await page.waitForURL(/\/settings\/tags$/)
+  await page.waitForURL(/\/settings\/household\/tags$/)
 
   // And: both "Chicken" and "Grilled Chicken" are gone
   await expect(tagsPage.getTagBadge('Chicken')).not.toBeVisible()

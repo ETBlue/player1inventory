@@ -100,11 +100,21 @@ export function usePostLoginMigration({ isLoaded, isSignedIn }: MigrationAuth) {
   // `importCloudData` RESOLVES, so the window is open while the copy is still
   // running: without this ref the effect re-enters and starts a second `clear`
   // import over the rows the first one just wrote.
-  const autoImportStarted = useRef(false)
+  //
+  // The same re-run also reaches the prompting branch once a copy has FAILED:
+  // the `catch` has removed MIGRATION_STRATEGY_KEY and MIGRATION_PROMPTED_KEY
+  // is still unset, so the effect called `setState('prompting')` and replaced
+  // 'error'. The user never saw the error and was asked again (bug
+  // 2026-10-31, `docs/global/bugs/2026-10-31-bug-cloud-copy-aborted-on-pantry.md`).
+  // So the ref covers BOTH copy paths: it is set when the auto-import starts
+  // and when `importData` starts, and once it is set the effect does nothing.
+  // A refresh mounts the hook again with a fresh ref, so the user can retry.
+  const importStarted = useRef(false)
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return
     if (localStorage.getItem(MIGRATION_PROMPTED_KEY)) return
+    if (importStarted.current) return
 
     const storedStrategy = localStorage.getItem(
       MIGRATION_STRATEGY_KEY,
@@ -115,8 +125,7 @@ export function usePostLoginMigration({ isLoaded, isSignedIn }: MigrationAuth) {
       // cloud side. The prompting path below merely decides whether to show the
       // dialog.
       if (!locationsLoaded) return
-      if (autoImportStarted.current) return
-      autoImportStarted.current = true
+      importStarted.current = true
       setState('auto-importing')
       fetchLocalPayload()
         .then((payload) =>
@@ -147,6 +156,8 @@ export function usePostLoginMigration({ isLoaded, isSignedIn }: MigrationAuth) {
     }
 
     getAllItems().then((items) => {
+      // An import may have started while `getAllItems()` was in flight.
+      if (importStarted.current) return
       if (items.length > 0) {
         setState('prompting')
       } else {
@@ -166,6 +177,7 @@ export function usePostLoginMigration({ isLoaded, isSignedIn }: MigrationAuth) {
   // state, so the dialog stayed on 'importing' — the Import button disabled and
   // reading '...' — for the rest of the session.
   async function importData(conflictResolution: 'append' | 'replace') {
+    importStarted.current = true
     setState('importing')
     try {
       const payload = await fetchLocalPayload()

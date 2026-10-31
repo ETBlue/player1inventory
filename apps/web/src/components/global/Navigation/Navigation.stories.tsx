@@ -76,7 +76,9 @@ export const SettingsActive: Story = {
   render: () => <NavigationStory path="/settings" />,
 }
 
-// Story 5: Hidden on fullscreen pages (items, tags, vendors, recipes)
+// Story 5: Hidden on fullscreen pages (items, and the tags, vendors, recipes
+// and shelves lists on mobile). The bar is lg:hidden, so on a desktop-width
+// canvas it is hidden on every page.
 export const HiddenOnFullscreen: Story = {
-  render: () => <NavigationStory path="/settings/vendors" />,
+  render: () => <NavigationStory path="/settings/household/vendors" />,
 }

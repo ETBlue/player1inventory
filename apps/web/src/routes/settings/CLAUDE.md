@@ -1,3 +1,21 @@
+### Settings layout
+
+Since households phase H1, every settings page except `/settings` itself lives under `/settings/household`
+(plan: `docs/global/permissions/2026-10-31-households-plan.md`).
+
+| Route | File | What it shows |
+|---|---|---|
+| `/settings` | `settings/index.tsx` | Desktop: `<Navigate to="/settings/household">`. Mobile: an accordion with two items. "My data" (open) holds six `SettingsNavCard` links. "Preferences" (closed) holds `UserSettingsPanel`. |
+| `/settings/household` | `settings/household/index.tsx` | Title "My data", then `ExportCard` and `ImportCard` |
+| `/settings/household/{locations,shelves,vendors,recipes,tags}` | `settings/household/<section>/index.tsx` | The five list pages. Each has its own Back button on mobile only (`lg:hidden`). |
+| `/settings/household/<section>/<id>…` | detail pages | Full-screen on every screen size |
+
+On desktop the sidebar switches to `HouseholdSidebar` on `/settings/household` and the five
+list pages. Theme, language, data mode and the account card are in `UserSettingsPanel`,
+which desktop shows in the user sidebar (the 👤 button). Which pages are full-screen is
+decided by `isFullscreenPage(pathname, { desktop })` in `src/lib/layoutRules.ts`. See
+`components/CLAUDE.md` (`Navigation`, `Sidebar`) for the full table.
+
 ### The Items tabs are global assignment pages
 
 Settings entities (tags, vendors, recipes, shelves) are **global**, and so are the
@@ -5,7 +23,7 @@ four `…/$id/items` assignment tabs that attach items to them. Since issue #247
 part 2 those tabs neither read nor write the active location's stock.
 
 Three rules, all four tabs alike
-(`settings/{tags,vendors,recipes}/$id/items.tsx`, `settings/shelves/$shelfId/items.tsx`):
+(`settings/household/{tags,vendors,recipes}/$id/items.tsx`, `settings/household/shelves/$shelfId/items.tsx`):
 
 1. **No stock is rendered.** Each passes `showStock={false}` to `ItemCard`,
    which suppresses all four stock-derived renderings — the quantity text
@@ -91,7 +109,7 @@ branch.
 
 ### The shelf list row shows a filter count
 
-`settings/shelves/index.tsx`'s `SortableShelfRow` renders its `CardMetadata` as
+`settings/household/shelves/index.tsx`'s `SortableShelfRow` renders its `CardMetadata` as
 `<type icon> N filters · M items` — the item count stays last, separated by the
 muted `·` span idiom `components/shared/GroupCard/GroupCard.tsx` uses between its
 own metadata segments. Strings on this page are hardcoded English, not i18n.
@@ -117,7 +135,7 @@ filter count lives only on the settings page row.
 
 ### Shelf filters tab shows global counts
 
-`settings/shelves/$shelfId/filters.tsx` renders ` (N)` after every tag, vendor
+`settings/household/shelves/$shelfId/filters.tsx` renders ` (N)` after every tag, vendor
 and recipe badge, so the user can see how many items each filter option selects.
 The counts come from the map-shaped hooks `useTagItemCounts()`,
 `useVendorItemCounts()` and `useRecipeItemCounts()` (`src/hooks/CLAUDE.md`) —
@@ -141,7 +159,7 @@ Deleting a tag, tag type, or vendor automatically cleans up all item references:
 - **Delete tag** → removes tag from all item `tagIds` arrays (+ bumps `updatedAt`)
 - **Delete tag type** → deletes all child tags (which cascade to items), then deletes the type
 - **Delete vendor** → removes vendor from all item `vendorIds` arrays (+ bumps `updatedAt`)
-- **Delete location** → deletes that location's `ItemStock` rows, its `inventoryLogs`, and its carts + cart items; the location flagged `isDefault` cannot be deleted (an id comparison against `'local'` would be wrong in cloud, where the default's id is a cuid). Global `Item`s survive — see `settings/locations/CLAUDE.md`
+- **Delete location** → deletes that location's `ItemStock` rows, its `inventoryLogs`, and its carts + cart items; the location flagged `isDefault` cannot be deleted (an id comparison against `'local'` would be wrong in cloud, where the default's id is a cuid). Global `Item`s survive — see `settings/household/locations/CLAUDE.md`
 
 **Local mode:** Cascade logic lives in `src/db/operations.ts` (`deleteTag`, `deleteTagType`, `deleteVendor`). The hooks (`useDeleteTag`, `useDeleteTagType`, `useDeleteVendor`) also invalidate the `['items']` query cache after deletion.
 

@@ -51,7 +51,7 @@ export function NewRecipeDialog({
       onSuccess(recipe as Recipe)
     } else {
       navigate({
-        to: '/settings/recipes/$id',
+        to: '/settings/household/recipes/$id',
         params: { id: (recipe as Recipe).id },
       })
     }

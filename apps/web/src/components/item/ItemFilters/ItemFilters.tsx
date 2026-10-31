@@ -187,7 +187,7 @@ function ItemFiltersRenderer({
       })}
 
       {!hideEditTagsLink && (
-        <Link to="/settings/tags">
+        <Link to="/settings/household/tags">
           <Button size="xs" variant="neutral-ghost">
             <Pencil />
             {t('itemFilters.editTags')}

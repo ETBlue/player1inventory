@@ -10,8 +10,8 @@ export class SettingsPage {
   }
 
   async createTagType(name: string) {
-    await this.page.goto('/settings/tags')
-    // "New Tag Type" button opens a dialog (src/routes/settings/tags/index.tsx)
+    await this.page.goto('/settings/household/tags')
+    // "New Tag Type" button opens a dialog (src/routes/settings/household/tags/index.tsx)
     await this.page.getByRole('button', { name: /new tag type/i }).click()
     // Name field inside the dialog — label from t('settings.tags.tagType.nameLabel') = "Name"
     // (src/components/tag/TagTypeInfoForm/TagTypeInfoForm.tsx)
@@ -26,9 +26,36 @@ export class SettingsPage {
     await this.page.getByRole('heading', { name, level: 2 }).first().waitFor()
   }
 
+  /**
+   * The household config page, `/settings/household`. It holds the Export and
+   * Import cards (src/routes/settings/household/index.tsx).
+   *
+   * Not `/settings`: on desktop that page only redirects here, and on mobile
+   * it is an accordion with no Export or Import card.
+   */
   async navigateTo() {
-    // Navigate to the settings page
-    await this.page.goto('/settings')
+    await this.page.goto('/settings/household')
+  }
+
+  /**
+   * Open the 👤 user view of the desktop sidebar: Theme, Language and Data
+   * mode (src/components/global/Sidebar/UserSidebar.tsx). These cards are on
+   * no page of their own any more. Desktop viewport only: the sidebar is
+   * `hidden lg:flex`.
+   *
+   * The button label is t('settings.user.title') = "Preferences" in local
+   * mode and in E2E cloud mode, where there is no Clerk user name
+   * (src/components/settings/UserSettingsPanel/UserSettingsPanel.tsx).
+   */
+  async openUserSidebar(): Promise<Locator> {
+    await this.page.goto('/')
+    const sidebar = this.page.getByRole('navigation', {
+      name: 'Sidebar navigation',
+    })
+    await sidebar.getByRole('button', { name: 'Preferences' }).click()
+    // The user view replaces the main view, and its Back button takes focus.
+    await sidebar.getByRole('button', { name: 'Back' }).waitFor()
+    return sidebar
   }
 
   async triggerExport(): Promise<Download> {
@@ -60,8 +87,11 @@ export class SettingsPage {
    *     src/components/ui/alert-dialog.tsx, which wraps
    *     `AlertDialogPrimitive.Content` -> role="alertdialog".
    *
-   * `/settings` renders both cards, and `ConflictDialog` is the only
-   * role="dialog" on the page, so this locator cannot match the wrong one.
+   * Before H1, `/settings` rendered both cards on one page. Now `ImportCard`
+   * lives on `/settings/household` and `DataModeCard` in the 👤 sidebar view,
+   * which that page never shows (it shows the household view). The role is
+   * kept anyway, so the locator stays safe if the two cards meet again:
+   * `ConflictDialog` is the only role="dialog" on the page.
    */
   getConflictDialog(): Locator {
     return this.page.getByRole('dialog')

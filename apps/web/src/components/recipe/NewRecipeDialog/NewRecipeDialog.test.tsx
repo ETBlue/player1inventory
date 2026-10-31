@@ -102,7 +102,7 @@ describe('NewRecipeDialog', () => {
     // Then navigate is called to the recipe detail page
     await vi.waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith(
-        expect.objectContaining({ to: '/settings/recipes/$id' }),
+        expect.objectContaining({ to: '/settings/household/recipes/$id' }),
       )
     })
   })

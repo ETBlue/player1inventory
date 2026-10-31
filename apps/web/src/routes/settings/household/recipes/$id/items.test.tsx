@@ -1,0 +1,878 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import {
+  createMemoryHistory,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
+import { act, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { db } from '@/db'
+import {
+  createItem,
+  createRecipe,
+  createTag,
+  createTagType,
+  createVendor,
+} from '@/db/operations'
+import { routeTree } from '@/routeTree.gen'
+import { TagColor } from '@/types'
+
+describe('Recipe Detail - Items Tab', () => {
+  let queryClient: QueryClient
+
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.recipes.clear()
+    await db.tags.clear()
+    await db.tagTypes.clear()
+    await db.inventoryLogs.clear()
+    await db.vendors.clear()
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+  })
+
+  const renderItemsTab = (recipeId: string) => {
+    const history = createMemoryHistory({
+      initialEntries: [`/settings/household/recipes/${recipeId}/items`],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+  }
+
+  const makeItem = (name: string, consumeAmount = 1) =>
+    createItem({
+      name,
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount,
+      tagIds: [],
+      vendorIds: [],
+    })
+
+  const makeRecipe = (
+    name: string,
+    items: { itemId: string; defaultAmount: number }[] = [],
+  ) => createRecipe({ name, items })
+
+  it('user can see all items in the recipe items checklist', async () => {
+    // Given a recipe and two items
+    const recipe = await makeRecipe('Pasta')
+    await makeItem('Noodles')
+    await makeItem('Tomato Sauce')
+
+    renderItemsTab(recipe.id)
+
+    // Then both items appear in the list
+    await waitFor(() => {
+      expect(screen.getByLabelText('Add Noodles')).toBeInTheDocument()
+      expect(screen.getByLabelText('Add Tomato Sauce')).toBeInTheDocument()
+    })
+  })
+
+  it('user can see already-assigned items as checked', async () => {
+    // Given an item and a recipe that includes it
+    const item = await makeItem('Noodles')
+    const recipe = await makeRecipe('Pasta', [
+      { itemId: item.id, defaultAmount: 2 },
+    ])
+    await makeItem('Tomato Sauce')
+
+    renderItemsTab(recipe.id)
+
+    // Then Noodles is checked and Tomato Sauce is not
+    await waitFor(() => {
+      expect(screen.getByLabelText('Remove Noodles')).toBeChecked()
+      expect(screen.getByLabelText('Add Tomato Sauce')).not.toBeChecked()
+    })
+  })
+
+  it('user can filter items by name', async () => {
+    // Given a recipe and two items
+    const recipe = await makeRecipe('Pasta')
+    await makeItem('Noodles')
+    await makeItem('Tomato Sauce')
+
+    renderItemsTab(recipe.id)
+    const user = userEvent.setup()
+
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+
+    // When user types "nood"
+    await user.type(screen.getByPlaceholderText(/search items/i), 'nood')
+
+    // Then only Noodles is visible
+    await waitFor(() => {
+      expect(screen.getByLabelText('Add Noodles')).toBeInTheDocument()
+      expect(
+        screen.queryByLabelText('Add Tomato Sauce'),
+      ).not.toBeInTheDocument()
+    })
+  })
+
+  it('user can add an item to a recipe by checking it', async () => {
+    // Given a recipe and an unassigned item
+    const recipe = await makeRecipe('Pasta')
+    const item = await makeItem('Noodles', 2)
+
+    renderItemsTab(recipe.id)
+    const user = userEvent.setup()
+
+    // When user clicks the checkbox
+    await waitFor(() => {
+      expect(screen.getByLabelText('Add Noodles')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Add Noodles'))
+
+    // Then the item is added to the recipe in the DB with defaultAmount from consumeAmount
+    await waitFor(async () => {
+      const updated = await db.recipes.get(recipe.id)
+      const recipeItem = updated?.items.find((ri) => ri.itemId === item.id)
+      expect(recipeItem).toBeDefined()
+      expect(recipeItem?.defaultAmount).toBe(2)
+    })
+  })
+
+  it('user can remove an item from a recipe by unchecking it', async () => {
+    // Given a recipe that already includes an item
+    const item = await makeItem('Noodles')
+    const recipe = await makeRecipe('Pasta', [
+      { itemId: item.id, defaultAmount: 1 },
+    ])
+
+    renderItemsTab(recipe.id)
+    const user = userEvent.setup()
+
+    // When user unchecks the item
+    await waitFor(() => {
+      expect(screen.getByLabelText('Remove Noodles')).toBeChecked()
+    })
+    await user.click(screen.getByLabelText('Remove Noodles'))
+
+    // Then the item is removed from the recipe in the DB
+    await waitFor(async () => {
+      const updated = await db.recipes.get(recipe.id)
+      const recipeItem = updated?.items.find((ri) => ri.itemId === item.id)
+      expect(recipeItem).toBeUndefined()
+    })
+  })
+
+  it('user can change the default amount for a recipe item', async () => {
+    // Given a recipe with an item
+    const item = await makeItem('Noodles')
+    const recipe = await makeRecipe('Pasta', [
+      { itemId: item.id, defaultAmount: 1 },
+    ])
+
+    renderItemsTab(recipe.id)
+    const user = userEvent.setup()
+
+    // When user clicks + twice to increase the amount (step = consumeAmount = 1, so 1 → 2 → 3)
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText('Increase quantity of Noodles'),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Increase quantity of Noodles'))
+    // Wait for first mutation to commit before second click (avoids stale closure race)
+    await waitFor(async () => {
+      const updated = await db.recipes.get(recipe.id)
+      const recipeItem = updated?.items.find((ri) => ri.itemId === item.id)
+      expect(recipeItem?.defaultAmount).toBe(2)
+    })
+    await user.click(screen.getByLabelText('Increase quantity of Noodles'))
+
+    // Then the default amount is saved to the DB
+    await waitFor(async () => {
+      const updated = await db.recipes.get(recipe.id)
+      const recipeItem = updated?.items.find((ri) => ri.itemId === item.id)
+      expect(recipeItem?.defaultAmount).toBe(3)
+    })
+  })
+
+  it('user can create a new item from the recipe items tab and it is added to the recipe', async () => {
+    // Given a recipe with no items matching "Butter"
+    const recipe = await makeRecipe('Baking')
+    renderItemsTab(recipe.id)
+    const user = userEvent.setup()
+
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+
+    // When user types "Butter" into the search input (zero matches) and presses Enter
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
+    await user.keyboard('{Enter}')
+
+    // Then the item is created and added to the recipe with its consumeAmount
+    // as the default amount, and no intermediate dialog — this tab creates
+    // inline, like the shelves tab
+    await waitFor(async () => {
+      const items = await db.items.toArray()
+      const butter = items.find((i) => i.name === 'Butter')
+      expect(butter).toBeDefined()
+      const updatedRecipe = await db.recipes.get(recipe.id)
+      const recipeItem = updatedRecipe?.items.find(
+        (ri) => ri.itemId === butter?.id,
+      )
+      expect(recipeItem).toBeDefined()
+      expect(recipeItem?.defaultAmount).toBe(1)
+    })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('user can create an item globally without stocking it in any location', async () => {
+    // Given a recipe with no items. This tab edits a global item↔recipe
+    // relation, so creating from search must not touch location-scoped
+    // stock (D3).
+    const recipe = await makeRecipe('Baking')
+    renderItemsTab(recipe.id)
+    const user = userEvent.setup()
+
+    // When user creates "Butter" from the search box
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
+    await user.keyboard('{Enter}')
+
+    // Then the global Item exists and is attached to the recipe
+    await waitFor(async () => {
+      const items = await db.items.toArray()
+      const butter = items.find((i) => i.name === 'Butter')
+      expect(butter).toBeDefined()
+      const updatedRecipe = await db.recipes.get(recipe.id)
+      expect(updatedRecipe?.items.some((ri) => ri.itemId === butter?.id)).toBe(
+        true,
+      )
+    })
+
+    // And no ItemStock row was written, in the active location or any other
+    expect(await db.itemStocks.count()).toBe(0)
+  })
+
+  it('user sees create button when search has text and no exact item match', async () => {
+    // Given a recipe with one item named "Milk"
+    const recipe = await makeRecipe('Pasta')
+    await makeItem('Milk')
+    renderItemsTab(recipe.id)
+    const user = userEvent.setup()
+
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+
+    // When user types text that partially matches "Milk" but is not an exact match
+    await user.type(screen.getByPlaceholderText(/search items/i), 'mil')
+
+    // Then the create button is visible (partial match ≠ exact match)
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /create item/i }),
+      ).toBeInTheDocument()
+      expect(screen.getByLabelText('Add Milk')).toBeInTheDocument()
+    })
+
+    // When user types an exact match (case-insensitive)
+    await user.clear(screen.getByPlaceholderText(/search items/i))
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Milk')
+
+    // Then the create button is gone (exact match exists)
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('button', { name: /create item/i }),
+      ).not.toBeInTheDocument()
+      expect(screen.getByLabelText('Add Milk')).toBeInTheDocument()
+    })
+  })
+
+  it('user can create an item by clicking the Create item button', async () => {
+    // Given a recipe with no items matching "Butter"
+    const recipe = await makeRecipe('Baking')
+    renderItemsTab(recipe.id)
+    const user = userEvent.setup()
+
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+
+    // When user types "Butter" and clicks the Create item button
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /create item/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /create item/i }))
+
+    // Then Butter is created and added to the recipe, with no dialog
+    await waitFor(async () => {
+      const items = await db.items.toArray()
+      const butter = items.find((i) => i.name === 'Butter')
+      expect(butter).toBeDefined()
+      // And it is created valid: consumeAmount 1, the single default
+      // shared by every interactive create path (local and cloud).
+      expect(butter?.consumeAmount).toBe(1)
+      const updatedRecipe = await db.recipes.get(recipe.id)
+      expect(updatedRecipe?.items.some((ri) => ri.itemId === butter?.id)).toBe(
+        true,
+      )
+      // And the recipe link still gets a usable amount: defaultAmount 0 would
+      // mean "optional, unchecked" in cooking, so the create path falls back
+      // to 1 exactly like the toggle path does.
+      const recipeItem = updatedRecipe?.items.find(
+        (ri) => ri.itemId === butter?.id,
+      )
+      expect(recipeItem?.defaultAmount).toBe(1)
+    })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('user cannot create a duplicate of an assigned item that is stocked elsewhere', async () => {
+    // Given a recipe and an item already assigned to it but stocked ONLY at
+    // another location. useItems() surfaces it anyway (zeroed, no stockId),
+    // so the exact-name check must see it — otherwise create-from-search
+    // would mint a second "Butter". Replaces the old select-existing
+    // duplication guard, which lost its subject when the dialog was removed.
+    const recipe = await makeRecipe('Baking')
+    const item = await createItem(
+      {
+        name: 'Butter',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+        vendorIds: [],
+      },
+      'loc-other',
+    )
+    await db.recipes.update(recipe.id, {
+      items: [{ itemId: item.id, defaultAmount: 1 }],
+    })
+    await db.itemStocks.where('locationId').equals('local').delete()
+
+    renderItemsTab(recipe.id)
+    const user = userEvent.setup()
+
+    // When user types the existing name and presses Enter
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
+    await waitFor(() => {
+      expect(screen.getByLabelText('Remove Butter')).toBeInTheDocument()
+    })
+    await user.keyboard('{Enter}')
+
+    // Then no create affordance is offered and nothing is written
+    expect(
+      screen.queryByRole('button', { name: /create item/i }),
+    ).not.toBeInTheDocument()
+    expect(await db.items.count()).toBe(1)
+    const updatedRecipe = await db.recipes.get(recipe.id)
+    expect(
+      updatedRecipe?.items.filter((ri) => ri.itemId === item.id),
+    ).toHaveLength(1)
+  })
+
+  it('user search is not cleared after creating an item', async () => {
+    // Given a recipe with no items matching "Olive Oil"
+    const recipe = await makeRecipe('Baking')
+    renderItemsTab(recipe.id)
+    const user = userEvent.setup()
+
+    // When user opens the search panel and types a new item name
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Olive Oil')
+
+    // When user presses Enter to create the item
+    await user.keyboard('{Enter}')
+
+    // Then the search input retains the typed value (not cleared)
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toHaveValue(
+        'Olive Oil',
+      )
+    })
+  })
+
+  it('user can clear the search by pressing Escape', async () => {
+    // Given a recipe and the search input has text
+    const recipe = await makeRecipe('Pasta')
+    renderItemsTab(recipe.id)
+    const user = userEvent.setup()
+
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+    await user.type(screen.getByPlaceholderText(/search items/i), 'xyz')
+
+    // When user presses Escape
+    await user.keyboard('{Escape}')
+
+    // Then the search input is still visible but its value is cleared
+    await waitFor(() => {
+      const input = screen.getByPlaceholderText(/search items/i)
+      expect(input).toBeInTheDocument()
+      expect(input).toHaveValue('')
+    })
+  })
+
+  it('user does not see the New button', async () => {
+    // Given a recipe
+    const recipe = await makeRecipe('Pasta')
+    renderItemsTab(recipe.id)
+
+    // Then no New button is present
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('button', { name: /new/i }),
+      ).not.toBeInTheDocument()
+    })
+  })
+
+  it('user can see assigned items before unassigned items', async () => {
+    // Given a recipe with one assigned item and one unassigned item
+    const assignedItem = await makeItem('Noodles')
+    const recipe = await makeRecipe('Pasta', [
+      { itemId: assignedItem.id, defaultAmount: 1 },
+    ])
+    await makeItem('Tomato Sauce')
+
+    renderItemsTab(recipe.id)
+
+    // Then Noodles (assigned) appears before Tomato Sauce (unassigned)
+    await waitFor(() => {
+      expect(screen.getByLabelText('Remove Noodles')).toBeInTheDocument()
+      expect(screen.getByLabelText('Add Tomato Sauce')).toBeInTheDocument()
+    })
+
+    const items = screen.getAllByRole('link', { name: /noodles|tomato sauce/i })
+    const names = items.map((el) => el.textContent?.trim() ?? '')
+    const noodlesIdx = names.findIndex((n) => /noodles/i.test(n))
+    const tomatoIdx = names.findIndex((n) => /tomato sauce/i.test(n))
+    expect(noodlesIdx).toBeLessThan(tomatoIdx)
+  })
+
+  it('user sees assigned items name-sorted regardless of the active location stock', async () => {
+    // Given a recipe with two assigned items — Zucchini stocked here, and
+    // Apple stocked ONLY at another location. useItems() joins the active
+    // location, so Apple arrives as ZERO_STOCK with no stockId: the documented
+    // stockId trap (lib/quantityUtils.ts). Under the old four-bucket sort a
+    // bare isInactive() therefore sank Apple below Zucchini.
+    const stockedHere = await makeItem('Zucchini')
+    const stockedElsewhere = await createItem(
+      {
+        name: 'Apple',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+        vendorIds: [],
+      },
+      'loc-other',
+    )
+    // And an unassigned item that sorts first alphabetically
+    await makeItem('Almond')
+    const recipe = await makeRecipe('Salad', [
+      { itemId: stockedHere.id, defaultAmount: 1 },
+      { itemId: stockedElsewhere.id, defaultAmount: 1 },
+    ])
+
+    renderItemsTab(recipe.id)
+
+    // Then both assigned items come first, name-sorted — Apple is a normal
+    // row despite not being stocked here — and the unassigned item follows
+    await waitFor(() => {
+      expect(screen.getByLabelText('Remove Apple')).toBeInTheDocument()
+    })
+
+    const links = screen.getAllByRole('link', {
+      name: /zucchini|apple|almond/i,
+    })
+    const names = links.map((el) => el.textContent?.trim() ?? '')
+    expect(names[0]).toMatch(/apple/i)
+    expect(names[1]).toMatch(/zucchini/i)
+    expect(names[2]).toMatch(/almond/i)
+  })
+
+  it('user can see sort and filter toolbar controls', async () => {
+    // Given a recipe exists
+    const recipe = await makeRecipe('Pasta')
+
+    // When user navigates to the items tab
+    renderItemsTab(recipe.id)
+
+    // Then sort and filter toolbar controls are visible
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /toggle filters/i }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /sort by criteria/i }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('user can filter items by name using the search input', async () => {
+    // Given a recipe and two items
+    const recipe = await makeRecipe('Pasta')
+    await makeItem('Noodles')
+    await makeItem('Tomato Sauce')
+
+    renderItemsTab(recipe.id)
+    const user = userEvent.setup()
+
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+
+    // When user types "nood"
+    await user.type(screen.getByPlaceholderText(/search items/i), 'nood')
+
+    // Then only Noodles is visible
+    await waitFor(() => {
+      expect(screen.getByLabelText('Add Noodles')).toBeInTheDocument()
+      expect(
+        screen.queryByLabelText('Add Tomato Sauce'),
+      ).not.toBeInTheDocument()
+    })
+  })
+
+  it('user can see Create item button when search input has no matches', async () => {
+    // Given a recipe with items
+    const recipe = await makeRecipe('Pasta')
+    await makeItem('Noodles')
+    await makeItem('Tomato Sauce')
+
+    renderItemsTab(recipe.id)
+    const user = userEvent.setup()
+
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+
+    // When user searches for non-existent item
+    await user.type(screen.getByPlaceholderText(/search items/i), 'xyz')
+
+    // Then the Create item button appears in the toolbar (zero-match state)
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /create item/i }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('user can filter items using the tag filter', async () => {
+    // Given a recipe and a tag type used as a filter
+    const recipe = await makeRecipe('Pasta')
+    const filterTagType = await createTagType({
+      name: 'Location',
+      color: TagColor.green,
+    })
+    await createTag({ name: 'Fridge', typeId: filterTagType.id })
+    await makeItem('Noodles')
+
+    const user = userEvent.setup()
+
+    // When user navigates to the items tab
+    renderItemsTab(recipe.id)
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /toggle filters/i }),
+      ).toBeInTheDocument()
+    })
+
+    // When user clicks the Filter button to show filters
+    await user.click(screen.getByRole('button', { name: /toggle filters/i }))
+
+    // Then the ItemFilters component renders with filter dropdowns for tag types that have tags
+    await waitFor(() => {
+      expect(screen.getByText(/location/i)).toBeInTheDocument()
+    })
+  })
+
+  it('user can search all items even when vendor filter is active', async () => {
+    // Given a recipe, a vendor, and two items
+    const recipe = await makeRecipe('Pasta')
+    const vendor = await createVendor('Costco')
+    await createItem({
+      name: 'Noodles',
+      tagIds: [],
+      vendorIds: [vendor.id],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    await createItem({
+      name: 'Butter',
+      tagIds: [],
+      vendorIds: [],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+
+    // When user loads recipe items tab with vendor filter active
+    const history = createMemoryHistory({
+      initialEntries: [
+        `/settings/household/recipes/${recipe.id}/items?f_vendor=${vendor.id}`,
+      ],
+    })
+    const router = createRouter({ routeTree, history })
+    const user = userEvent.setup()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // And searches for "Butter" (Butter not assigned to vendor)
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
+
+    // Then Butter appears (vendor filter bypassed during search)
+    await waitFor(() => {
+      expect(screen.getByLabelText('Add Butter')).toBeInTheDocument()
+    })
+  })
+
+  it('user cannot see tag badges even when tags=1 param is set', async () => {
+    // Given a recipe and an item with a tag
+    const recipe = await createRecipe({ name: 'Salad', items: [] })
+    const categoryType = await createTagType({
+      name: 'Category',
+      color: TagColor.blue,
+    })
+    const vegTag = await createTag({
+      typeId: categoryType.id,
+      name: 'Vegetables',
+    })
+    await createItem({
+      name: 'Tomatoes',
+      tagIds: [vegTag.id],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 0,
+    })
+
+    // When the recipe items page is loaded with that tag filter active and tags=1 in the URL
+    const history = createMemoryHistory({
+      initialEntries: [
+        `/settings/household/recipes/${recipe.id}/items?f_${categoryType.id}=${vegTag.id}&tags=1`,
+      ],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // Then the item appears but tag badges are not shown (tags always hidden on this page)
+    await waitFor(() => {
+      expect(screen.getByLabelText('Add Tomatoes')).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('tag-badge-Vegetables')).not.toBeInTheDocument()
+  })
+
+  it('user can adjust default amount without float drift when consumeAmount is 0.1', async () => {
+    const user = userEvent.setup()
+
+    // Given an item with consumeAmount 0.1 linked to a recipe with defaultAmount 0.1
+    const item = await makeItem('Oil', 0.1)
+    const recipe = await makeRecipe('Salad', [
+      { itemId: item.id, defaultAmount: 0.1 },
+    ])
+
+    renderItemsTab(recipe.id)
+
+    // When clicking + twice (0.1 → 0.2 → 0.3)
+    await waitFor(() => {
+      expect(screen.getByLabelText('Remove Oil')).toBeInTheDocument()
+    })
+
+    // First click: 0.1 → 0.2
+    await user.click(screen.getByLabelText('Increase quantity of Oil'))
+    // Wait for first mutation to commit before second click (avoids stale closure race)
+    await waitFor(async () => {
+      const updated = await db.recipes.get(recipe.id)
+      const recipeItem = updated?.items.find((ri) => ri.itemId === item.id)
+      expect(recipeItem?.defaultAmount).toBeCloseTo(0.2, 10)
+    })
+
+    // Second click: 0.2 → 0.3
+    await user.click(screen.getByLabelText('Increase quantity of Oil'))
+
+    // Then the displayed amount is 0.3 (no float drift)
+    await waitFor(async () => {
+      const updated = await db.recipes.get(recipe.id)
+      const recipeItem = updated?.items.find((ri) => ri.itemId === item.id)
+      expect(recipeItem?.defaultAmount).toBe(0.3)
+      expect(recipeItem?.defaultAmount).not.toBe(0.30000000000000004)
+    })
+  })
+
+  it('user sees spinner on minus button while mutation is pending (recipe-assignment mode)', async () => {
+    // Given an item assigned to a recipe
+    const item = await makeItem('Noodles')
+    const recipe = await makeRecipe('Pasta', [
+      { itemId: item.id, defaultAmount: 2 },
+    ])
+
+    // Spy on the db write to introduce a delay, keeping savingItemIds populated
+    let resolveUpdate!: () => void
+    const originalUpdate = db.recipes.update.bind(db.recipes)
+    const updateSpy = vi.spyOn(db.recipes, 'update').mockImplementationOnce(
+      (key, changes) =>
+        new Promise((resolve) => {
+          resolveUpdate = () =>
+            resolve(originalUpdate(key, changes) as unknown as number)
+        }) as ReturnType<typeof db.recipes.update>,
+    )
+
+    renderItemsTab(recipe.id)
+    const user = userEvent.setup()
+
+    // When user waits for the minus button then clicks it
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText('Decrease quantity of Noodles'),
+      ).toBeInTheDocument()
+    })
+    const minusBtn = screen.getByLabelText('Decrease quantity of Noodles')
+    await user.click(minusBtn)
+
+    // Then a spinner appears inside the minus button (savingItemIds still has item.id)
+    await waitFor(() => {
+      expect(minusBtn.querySelector('.animate-spin')).toBeInTheDocument()
+    })
+
+    // Cleanup: let the mutation complete and restore the spy
+    resolveUpdate()
+    updateSpy.mockRestore()
+    await act(async () => {
+      await Promise.resolve()
+    })
+  })
+
+  it('user sees spinner on plus button while mutation is pending (recipe-assignment mode)', async () => {
+    // Given an item assigned to a recipe
+    const item = await makeItem('Noodles')
+    const recipe = await makeRecipe('Pasta', [
+      { itemId: item.id, defaultAmount: 1 },
+    ])
+
+    // Spy on the db write to introduce a delay, keeping savingItemIds populated
+    let resolveUpdate!: () => void
+    const originalUpdate = db.recipes.update.bind(db.recipes)
+    const updateSpy = vi.spyOn(db.recipes, 'update').mockImplementationOnce(
+      (key, changes) =>
+        new Promise((resolve) => {
+          resolveUpdate = () =>
+            resolve(originalUpdate(key, changes) as unknown as number)
+        }) as ReturnType<typeof db.recipes.update>,
+    )
+
+    renderItemsTab(recipe.id)
+    const user = userEvent.setup()
+
+    // When user waits for the plus button then clicks it
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText('Increase quantity of Noodles'),
+      ).toBeInTheDocument()
+    })
+    const plusBtn = screen.getByLabelText('Increase quantity of Noodles')
+    await user.click(plusBtn)
+
+    // Then a spinner appears inside the plus button (savingItemIds still has item.id)
+    await waitFor(() => {
+      expect(plusBtn.querySelector('.animate-spin')).toBeInTheDocument()
+    })
+
+    // Cleanup: let the mutation complete and restore the spy
+    resolveUpdate()
+    updateSpy.mockRestore()
+    await act(async () => {
+      await Promise.resolve()
+    })
+  })
+})

@@ -9,7 +9,7 @@ import { cleanupCloudData } from '../helpers/cloudTeardown'
 // Runs in BOTH projects, local and cloud.
 //
 // Every fixture here is UI-driven. `seedOfficeLocation()` below clicks through
-// /settings/locations, and items are created through the pantry's Add combobox.
+// /settings/household/locations, and items are created through the pantry's Add combobox.
 // The only `page.evaluate()` call in this file is the local-mode teardown in
 // `afterEach`.
 //
@@ -95,8 +95,8 @@ test.afterEach(async ({ page, request, baseURL }) => {
 // Seed a second location ("Office") via the settings page so the switcher has
 // more than one option to choose from.
 async function seedOfficeLocation(page: Page) {
-  await page.goto('/settings/locations')
-  // Scoped to <main>: /settings/locations is not a fullscreen page, so at a
+  await page.goto('/settings/household/locations')
+  // Scoped to <main>: /settings/household/locations is not a fullscreen page, so at a
   // desktop viewport the sidebar switcher shows the active location's name too.
   const list = page.getByRole('main')
   await expect(list.getByText('My Home')).toBeVisible()
@@ -159,7 +159,7 @@ test('"Manage" navigates to the locations settings page', async ({ page }) => {
 
   // Then the locations settings page is shown (scoped to <main> — the sidebar
   // switcher shows the same name)
-  await expect(page).toHaveURL(/\/settings\/locations$/)
+  await expect(page).toHaveURL(/\/settings\/household\/locations$/)
   await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
 })
 

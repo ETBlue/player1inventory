@@ -302,13 +302,26 @@ test('user can view cooking page without accessibility violations', async ({
   await checkA11y(page, undefined, AXE_OPTIONS)
 })
 
-// Settings main page (/settings)
-test('user can view settings page without accessibility violations', async ({
+// Household config page (/settings/household) with the household sidebar.
+// It replaced the desktop `/settings` page in households H1: on desktop
+// `/settings` only redirects here, so a scan of `/settings` would scan this
+// page anyway, without saying so.
+test('user can view household config page without accessibility violations', async ({
   page,
 }) => {
-  // Given the user navigates to the settings page
-  await page.goto('/settings')
+  // Given the user opens the household config page
+  await page.goto('/settings/household')
   await page.waitForLoadState('networkidle')
+  // The page title and the household sidebar's Back are both on screen, so
+  // the scan covers the page AND the household view of the sidebar
+  await expect(
+    page.getByRole('heading', { name: 'My data', level: 1 }),
+  ).toBeVisible()
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Sidebar navigation' })
+      .getByRole('button', { name: 'Back' }),
+  ).toBeVisible()
 
   // When axe scans the page for accessibility violations
   await injectAxe(page)
@@ -317,12 +330,33 @@ test('user can view settings page without accessibility violations', async ({
   await checkA11y(page, undefined, AXE_OPTIONS)
 })
 
-// Settings > Tags list (/settings/tags)
+// The 👤 user view of the desktop sidebar (UserSidebar.tsx). It has no route,
+// so it is opened by pressing the button.
+test('user can view the open user sidebar without accessibility violations', async ({
+  page,
+}) => {
+  // Given the pantry page with the 👤 "Preferences" view of the sidebar open
+  await page.goto('/')
+  await page.waitForLoadState('networkidle')
+  const sidebar = page.getByRole('navigation', { name: 'Sidebar navigation' })
+  await sidebar.getByRole('button', { name: 'Preferences' }).click()
+  // The user view shows Back and the shared panel's cards
+  await expect(sidebar.getByRole('button', { name: 'Back' })).toBeVisible()
+  await expect(sidebar.getByText('Theme', { exact: true })).toBeVisible()
+
+  // When axe scans the page for accessibility violations
+  await injectAxe(page)
+
+  // Then there should be no violations
+  await checkA11y(page, undefined, AXE_OPTIONS)
+})
+
+// Settings > Tags list (/settings/household/tags)
 test('user can view settings tags list without accessibility violations', async ({
   page,
 }) => {
   // Given the user navigates to the tags settings page
-  await page.goto('/settings/tags')
+  await page.goto('/settings/household/tags')
   await page.waitForLoadState('networkidle')
 
   // When axe scans the page for accessibility violations
@@ -332,12 +366,12 @@ test('user can view settings tags list without accessibility violations', async 
   await checkA11y(page, undefined, AXE_OPTIONS)
 })
 
-// Settings > Vendors list (/settings/vendors)
+// Settings > Vendors list (/settings/household/vendors)
 test('user can view settings vendors list without accessibility violations', async ({
   page,
 }) => {
   // Given the user navigates to the vendors settings page
-  await page.goto('/settings/vendors')
+  await page.goto('/settings/household/vendors')
   await page.waitForLoadState('networkidle')
 
   // When axe scans the page for accessibility violations
@@ -347,12 +381,12 @@ test('user can view settings vendors list without accessibility violations', asy
   await checkA11y(page, undefined, AXE_OPTIONS)
 })
 
-// Settings > Recipes list (/settings/recipes)
+// Settings > Recipes list (/settings/household/recipes)
 test('user can view settings recipes list without accessibility violations', async ({
   page,
 }) => {
   // Given the user navigates to the recipes settings page
-  await page.goto('/settings/recipes')
+  await page.goto('/settings/household/recipes')
   await page.waitForLoadState('networkidle')
 
   // When axe scans the page for accessibility violations
@@ -466,12 +500,12 @@ test('user can view recipe group-by page without accessibility violations', asyn
   await checkA11y(page, undefined, AXE_OPTIONS)
 })
 
-// Settings > Shelves list (/settings/shelves)
+// Settings > Shelves list (/settings/household/shelves)
 test('user can view settings shelves list without accessibility violations', async ({
   page,
 }) => {
   // Given the user navigates to the shelves settings page
-  await page.goto('/settings/shelves')
+  await page.goto('/settings/household/shelves')
   await page.waitForLoadState('networkidle')
 
   // When axe scans the page for accessibility violations
@@ -481,12 +515,12 @@ test('user can view settings shelves list without accessibility violations', asy
   await checkA11y(page, undefined, AXE_OPTIONS)
 })
 
-// Settings > Locations list (/settings/locations)
+// Settings > Locations list (/settings/household/locations)
 test('user can view settings locations list without accessibility violations', async ({
   page,
 }) => {
   // Given the user navigates to the locations settings page
-  await page.goto('/settings/locations')
+  await page.goto('/settings/household/locations')
   await page.waitForLoadState('networkidle')
 
   // When axe scans the page for accessibility violations
@@ -967,7 +1001,7 @@ test.describe('detail page a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Settings > Tag detail (/settings/tags/:id)
+  // Settings > Tag detail (/settings/household/tags/:id)
   test('user can view settings tag detail page without accessibility violations', async ({
     page,
   }) => {
@@ -975,7 +1009,7 @@ test.describe('detail page a11y', () => {
     const tagId = await seedTag(page)
 
     // When the user navigates to the tag detail page (trailing slash required for TanStack Router index child)
-    await page.goto(`/settings/tags/${tagId}/`)
+    await page.goto(`/settings/household/tags/${tagId}/`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -983,7 +1017,7 @@ test.describe('detail page a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Settings > Vendor detail (/settings/vendors/:id)
+  // Settings > Vendor detail (/settings/household/vendors/:id)
   test('user can view settings vendor detail page without accessibility violations', async ({
     page,
   }) => {
@@ -991,7 +1025,7 @@ test.describe('detail page a11y', () => {
     const vendorId = await seedVendor(page)
 
     // When the user navigates to the vendor detail page (trailing slash required for TanStack Router index child)
-    await page.goto(`/settings/vendors/${vendorId}/`)
+    await page.goto(`/settings/household/vendors/${vendorId}/`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -999,7 +1033,7 @@ test.describe('detail page a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Settings > Recipe detail (/settings/recipes/:id)
+  // Settings > Recipe detail (/settings/household/recipes/:id)
   test('user can view settings recipe detail page without accessibility violations', async ({
     page,
   }) => {
@@ -1007,7 +1041,7 @@ test.describe('detail page a11y', () => {
     const recipeId = await seedRecipe(page)
 
     // When the user navigates to the recipe detail page (trailing slash required for TanStack Router index child)
-    await page.goto(`/settings/recipes/${recipeId}/`)
+    await page.goto(`/settings/household/recipes/${recipeId}/`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -1031,7 +1065,7 @@ test.describe('detail page a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Settings > Shelf detail (/settings/shelves/:id)
+  // Settings > Shelf detail (/settings/household/shelves/:id)
   test('user can view settings shelf detail page without accessibility violations', async ({
     page,
   }) => {
@@ -1039,8 +1073,8 @@ test.describe('detail page a11y', () => {
     const shelfId = await seedShelf(page)
 
     // When the user navigates to the shelf settings detail page
-    await page.goto(`/settings/shelves/${shelfId}/`)
-    await page.waitForURL(`**/settings/shelves/${shelfId}/**`)
+    await page.goto(`/settings/household/shelves/${shelfId}/`)
+    await page.waitForURL(`**/settings/household/shelves/${shelfId}/**`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -1123,13 +1157,21 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Settings main page (/settings) in dark mode
-  test('user can view settings page without accessibility violations in dark mode', async ({
+  // Household config page (/settings/household) in dark mode
+  test('user can view household config page without accessibility violations in dark mode', async ({
     page,
   }) => {
-    // Given the user navigates to the settings page with dark mode enabled
-    await page.goto('/settings')
+    // Given the user opens the household config page with dark mode enabled
+    await page.goto('/settings/household')
     await page.waitForLoadState('networkidle')
+    await expect(
+      page.getByRole('heading', { name: 'My data', level: 1 }),
+    ).toBeVisible()
+    await expect(
+      page
+        .getByRole('navigation', { name: 'Sidebar navigation' })
+        .getByRole('button', { name: 'Back' }),
+    ).toBeVisible()
 
     // When axe scans the page for accessibility violations
     await injectAxe(page)
@@ -1138,12 +1180,33 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Settings > Tags list (/settings/tags) in dark mode
+  // The 👤 user view of the desktop sidebar in dark mode
+  test('user can view the open user sidebar without accessibility violations in dark mode', async ({
+    page,
+  }) => {
+    // Given the pantry page with the 👤 view open and dark mode enabled
+    await page.goto('/')
+    await page.waitForLoadState('networkidle')
+    const sidebar = page.getByRole('navigation', {
+      name: 'Sidebar navigation',
+    })
+    await sidebar.getByRole('button', { name: 'Preferences' }).click()
+    await expect(sidebar.getByRole('button', { name: 'Back' })).toBeVisible()
+    await expect(sidebar.getByText('Theme', { exact: true })).toBeVisible()
+
+    // When axe scans the page for accessibility violations
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  // Settings > Tags list (/settings/household/tags) in dark mode
   test('user can view settings tags list without accessibility violations in dark mode', async ({
     page,
   }) => {
     // Given the user navigates to the tags settings page with dark mode enabled
-    await page.goto('/settings/tags')
+    await page.goto('/settings/household/tags')
     await page.waitForLoadState('networkidle')
 
     // When axe scans the page for accessibility violations
@@ -1153,12 +1216,12 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Settings > Vendors list (/settings/vendors) in dark mode
+  // Settings > Vendors list (/settings/household/vendors) in dark mode
   test('user can view settings vendors list without accessibility violations in dark mode', async ({
     page,
   }) => {
     // Given the user navigates to the vendors settings page with dark mode enabled
-    await page.goto('/settings/vendors')
+    await page.goto('/settings/household/vendors')
     await page.waitForLoadState('networkidle')
 
     // When axe scans the page for accessibility violations
@@ -1168,12 +1231,12 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Settings > Recipes list (/settings/recipes) in dark mode
+  // Settings > Recipes list (/settings/household/recipes) in dark mode
   test('user can view settings recipes list without accessibility violations in dark mode', async ({
     page,
   }) => {
     // Given the user navigates to the recipes settings page with dark mode enabled
-    await page.goto('/settings/recipes')
+    await page.goto('/settings/household/recipes')
     await page.waitForLoadState('networkidle')
 
     // When axe scans the page for accessibility violations
@@ -1287,12 +1350,12 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Settings > Shelves list (/settings/shelves) in dark mode
+  // Settings > Shelves list (/settings/household/shelves) in dark mode
   test('user can view settings shelves list without accessibility violations in dark mode', async ({
     page,
   }) => {
     // Given the user navigates to the shelves settings page with dark mode enabled
-    await page.goto('/settings/shelves')
+    await page.goto('/settings/household/shelves')
     await page.waitForLoadState('networkidle')
 
     // When axe scans the page for accessibility violations
@@ -1302,12 +1365,12 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Settings > Locations list (/settings/locations) in dark mode
+  // Settings > Locations list (/settings/household/locations) in dark mode
   test('user can view settings locations list without accessibility violations in dark mode', async ({
     page,
   }) => {
     // Given the user navigates to the locations settings page with dark mode enabled
-    await page.goto('/settings/locations')
+    await page.goto('/settings/household/locations')
     await page.waitForLoadState('networkidle')
 
     // When axe scans the page for accessibility violations
@@ -1466,7 +1529,7 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Settings > Tag detail (/settings/tags/:id) in dark mode
+  // Settings > Tag detail (/settings/household/tags/:id) in dark mode
   test('user can view settings tag detail page without accessibility violations in dark mode', async ({
     page,
   }) => {
@@ -1474,7 +1537,7 @@ test.describe('dark mode a11y', () => {
     const tagId = await seedTag(page)
 
     // When the user navigates to the tag detail page (trailing slash required for TanStack Router index child)
-    await page.goto(`/settings/tags/${tagId}/`)
+    await page.goto(`/settings/household/tags/${tagId}/`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -1482,7 +1545,7 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Settings > Vendor detail (/settings/vendors/:id) in dark mode
+  // Settings > Vendor detail (/settings/household/vendors/:id) in dark mode
   test('user can view settings vendor detail page without accessibility violations in dark mode', async ({
     page,
   }) => {
@@ -1490,7 +1553,7 @@ test.describe('dark mode a11y', () => {
     const vendorId = await seedVendor(page)
 
     // When the user navigates to the vendor detail page (trailing slash required for TanStack Router index child)
-    await page.goto(`/settings/vendors/${vendorId}/`)
+    await page.goto(`/settings/household/vendors/${vendorId}/`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -1498,7 +1561,7 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Settings > Recipe detail (/settings/recipes/:id) in dark mode
+  // Settings > Recipe detail (/settings/household/recipes/:id) in dark mode
   test('user can view settings recipe detail page without accessibility violations in dark mode', async ({
     page,
   }) => {
@@ -1506,7 +1569,7 @@ test.describe('dark mode a11y', () => {
     const recipeId = await seedRecipe(page)
 
     // When the user navigates to the recipe detail page (trailing slash required for TanStack Router index child)
-    await page.goto(`/settings/recipes/${recipeId}/`)
+    await page.goto(`/settings/household/recipes/${recipeId}/`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -1530,7 +1593,7 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Settings > Shelf detail (/settings/shelves/:id) in dark mode
+  // Settings > Shelf detail (/settings/household/shelves/:id) in dark mode
   test('user can view settings shelf detail page without accessibility violations in dark mode', async ({
     page,
   }) => {
@@ -1538,8 +1601,8 @@ test.describe('dark mode a11y', () => {
     const shelfId = await seedShelf(page)
 
     // When the user navigates to the shelf settings detail page
-    await page.goto(`/settings/shelves/${shelfId}/`)
-    await page.waitForURL(`**/settings/shelves/${shelfId}/**`)
+    await page.goto(`/settings/household/shelves/${shelfId}/`)
+    await page.waitForURL(`**/settings/household/shelves/${shelfId}/**`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -1621,11 +1684,59 @@ test.describe('mobile viewport a11y', () => {
     // Given the user navigates to the settings page on a mobile viewport
     await page.goto('/settings')
     await page.waitForLoadState('networkidle')
+    // On mobile `/settings` is the accordion (it redirects only on desktop):
+    // 🏠 "My data" is open and lists its links, 👤 "Preferences" is closed
+    await expect(page).toHaveURL(/\/settings$/)
+    await expect(page.getByRole('button', { name: 'My data' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+    await expect(page.getByRole('link', { name: /Locations/ })).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: 'Preferences' }),
+    ).toHaveAttribute('aria-expanded', 'false')
 
     // When axe scans the page for accessibility violations
     await injectAxe(page)
 
     // Then there should be no violations (including the bottom Navigation component)
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  test('user can view the open preferences section of settings without accessibility violations on mobile', async ({
+    page,
+  }) => {
+    // Given the settings accordion on a mobile viewport, with 👤
+    // "Preferences" opened (the same panel as the desktop user sidebar)
+    await page.goto('/settings')
+    await page.waitForLoadState('networkidle')
+    const preferences = page.getByRole('button', { name: 'Preferences' })
+    await preferences.click()
+    await expect(preferences).toHaveAttribute('aria-expanded', 'true')
+    await expect(page.getByText('Theme', { exact: true })).toBeVisible()
+
+    // When axe scans the page for accessibility violations
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  test('user can view household config page without accessibility violations on mobile', async ({
+    page,
+  }) => {
+    // Given the household config page on a mobile viewport. It keeps the
+    // bottom bar on mobile (layoutRules.ts), so the scan covers it too.
+    await page.goto('/settings/household')
+    await page.waitForLoadState('networkidle')
+    await expect(
+      page.getByRole('heading', { name: 'My data', level: 1 }),
+    ).toBeVisible()
+
+    // When axe scans the page for accessibility violations
+    await injectAxe(page)
+
+    // Then there should be no violations
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
@@ -1647,7 +1758,7 @@ test.describe('mobile viewport a11y', () => {
     page,
   }) => {
     // Given the user navigates to the shelves settings page on a mobile viewport
-    await page.goto('/settings/shelves')
+    await page.goto('/settings/household/shelves')
     await page.waitForLoadState('networkidle')
 
     // When axe scans the page for accessibility violations
@@ -1679,8 +1790,8 @@ test.describe('mobile viewport a11y', () => {
     const shelfId = await seedShelf(page)
 
     // When the user navigates to the shelf settings detail page
-    await page.goto(`/settings/shelves/${shelfId}/`)
-    await page.waitForURL(`**/settings/shelves/${shelfId}/**`)
+    await page.goto(`/settings/household/shelves/${shelfId}/`)
+    await page.waitForURL(`**/settings/household/shelves/${shelfId}/**`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 

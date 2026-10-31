@@ -5,6 +5,11 @@
 **Supersedes:** the global family group (already removed — see below)
 **Immediate consumer:** [#273](https://github.com/ETBlue/player1inventory/issues/273)
 
+> **Updated 2026-10-04.** The [households design](2026-10-04-households-design.md) replaces the
+> role table below with two levels (household roles and location roles) and answers the six
+> open questions. The binding rule — never write `row.userId === ctx.userId` as an
+> authorization check — still stands.
+
 ## The decision
 
 **Authorization binds to the `Location`.** A user's rights over a piece of data come from the

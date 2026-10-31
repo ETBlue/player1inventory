@@ -62,7 +62,7 @@ export const TagsLink: Story = {
     icon: Tags,
     label: 'Tags',
     description: 'Manage your tags',
-    to: '/settings/tags',
+    to: '/settings/household/tags',
   },
 }
 
@@ -71,7 +71,7 @@ export const VendorsLink: Story = {
     icon: Store,
     label: 'Vendors',
     description: 'Manage vendors',
-    to: '/settings/vendors',
+    to: '/settings/household/vendors',
   },
 }
 
@@ -80,7 +80,7 @@ export const RecipesLink: Story = {
     icon: ChefHat,
     label: 'Recipes',
     description: 'Manage your recipes',
-    to: '/settings/recipes',
+    to: '/settings/household/recipes',
   },
 }
 
@@ -91,19 +91,19 @@ export const AllLinks: Story = {
         icon={Tags}
         label="Tags"
         description="Manage your tags"
-        to="/settings/tags"
+        to="/settings/household/tags"
       />
       <SettingsNavCard
         icon={Store}
         label="Vendors"
         description="Manage vendors"
-        to="/settings/vendors"
+        to="/settings/household/vendors"
       />
       <SettingsNavCard
         icon={ChefHat}
         label="Recipes"
         description="Manage your recipes"
-        to="/settings/recipes"
+        to="/settings/household/recipes"
       />
     </div>
   ),

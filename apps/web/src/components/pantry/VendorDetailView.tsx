@@ -314,7 +314,7 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
         >
           {!isUnsorted && (
             <Link
-              to="/settings/vendors/$id"
+              to="/settings/household/vendors/$id"
               params={{ id: vendorId }}
               aria-label="Vendor settings"
             >

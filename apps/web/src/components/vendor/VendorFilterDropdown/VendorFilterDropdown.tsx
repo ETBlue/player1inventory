@@ -84,7 +84,7 @@ export function VendorFilterDropdown({
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link
-                to="/settings/vendors"
+                to="/settings/household/vendors"
                 className="flex items-center gap-1.5"
               >
                 <Pencil className="h-4 w-4" />

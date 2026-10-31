@@ -537,7 +537,7 @@ function CookingPage() {
                 {/* Name: navigates to recipe detail */}
                 <CardTitle className="truncate flex-1">
                   <Link
-                    to="/settings/recipes/$id"
+                    to="/settings/household/recipes/$id"
                     params={{ id: recipe.id }}
                     className="font-medium hover:underline capitalize"
                   >
