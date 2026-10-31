@@ -86,6 +86,10 @@ refetch does not put a spinner over the pantry`.
 halves. Apollo's `queryDeduplication` (on by default, never disabled in
 `apollo/client.ts`) collapses the identical in-flight operation. Measured in
 `cloudFetchPolicy.cloud.test.tsx` → `two hooks on one document still cost one request`.
+One exception since 2026-11-01: if a mutation answers while that shared request waits, the
+request is sent again, up to `MAX_QUERY_ATTEMPTS` sends in total (see
+`apollo/staleReadRetryLink.ts`). So "one request" holds only while no save lands during the
+wait.
 Giving the network leg to only one of a pair would work too, but then the pair breaks the
 moment the other half mounts alone.
 
