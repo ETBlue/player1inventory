@@ -71,6 +71,10 @@ export function userRowFromClerk(user: ClerkUserJSON): ClerkUserValues {
 // | the row was seen today by another process | 2 (`updateMany`, `findUnique`), then 0 |
 // | no row yet | 3 (`updateMany`, `findUnique`, `create`), plus one Clerk call |
 //
+// Parallel calls for the same user in one process share one run, so a burst
+// of first requests costs the same as one request. The Clerk call gives up
+// after CLERK_LOOKUP_TIMEOUT_MS and uses the fallback values.
+//
 // "Today" is the UTC day. A day starts at 00:00:00.000 UTC. UTC is used so
 // the answer does not depend on the server's time zone.
 //
@@ -92,7 +96,17 @@ export type ClerkUserLookup = (id: string) => Promise<ClerkUserJSON | null>
  * - `clerk`: ask Clerk. If Clerk fails, use the fallback values.
  * - `e2e`: E2E test mode has no Clerk. The display name is the user id.
  */
-export type UserSource = { kind: 'clerk'; lookup: ClerkUserLookup } | { kind: 'e2e' }
+export type UserSource =
+  | { kind: 'clerk'; lookup: ClerkUserLookup; timeoutMs?: number }
+  | { kind: 'e2e' }
+
+/**
+ * How long a new user's first request waits for Clerk before it uses the
+ * fallback values. `@clerk/backend` 2.33.0 passes no `signal` and no timeout
+ * to `fetch`, so without this a slow Clerk would hold the request open. A
+ * test passes a shorter `timeoutMs` in the source instead.
+ */
+export const CLERK_LOOKUP_TIMEOUT_MS = 3_000
 
 // ── The per-process memory ──
 //
@@ -106,6 +120,13 @@ export const MEMORY_LIMIT = 10_000
 let memoryLimit = MEMORY_LIMIT
 let memoryDay = ''
 const seenToday = new Set<string>()
+
+/**
+ * The `ensureUser` calls that are running now, by user id. An entry lives
+ * only while its call runs, so the map holds at most the users with a
+ * request in progress in this process.
+ */
+const inFlight = new Map<string, Promise<void>>()
 
 /** The UTC day of `now`, as `YYYY-MM-DD`. */
 function utcDayKey(now: Date): string {
@@ -141,10 +162,13 @@ export function forgetSeenToday(userId: string): void {
 }
 
 /**
- * Drop the whole memory. For tests. `limit` lets a test reach the size limit
- * with a few users instead of 10,000.
+ * Drop the whole memory, and forget the runs in progress. For tests. `limit`
+ * lets a test reach the size limit with a few users instead of 10,000.
+ * Forgetting the runs keeps a run that never finished in one test from being
+ * shared with the next test.
  */
 export function resetSeenTodayMemory(limit: number = MEMORY_LIMIT): void {
+  inFlight.clear()
   seenToday.clear()
   memoryDay = ''
   memoryLimit = limit
@@ -169,6 +193,33 @@ export async function touchLastSeen(userId: string, now: Date): Promise<number> 
   return count
 }
 
+/**
+ * Call `lookup`, but give up after `timeoutMs`. On timeout it throws an
+ * error named `ClerkLookupTimeout`, which the caller treats like any other
+ * Clerk failure. The timer is always cleared, so a lookup that finishes in
+ * time leaves no timer running. A lookup that is given up on keeps running
+ * in the background; its result, or its error, is ignored.
+ */
+async function lookupWithTimeout(
+  lookup: ClerkUserLookup,
+  userId: string,
+  timeoutMs: number,
+): Promise<ClerkUserJSON | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(`Clerk lookup took longer than ${timeoutMs} ms`)
+      err.name = 'ClerkLookupTimeout'
+      reject(err)
+    }, timeoutMs)
+  })
+  try {
+    return await Promise.race([lookup(userId), timeout])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /** The values for a new row. Never throws: a Clerk error gives the fallback. */
 async function newRowValues(userId: string, source: UserSource): Promise<ClerkUserValues> {
   if (source.kind === 'e2e') {
@@ -177,7 +228,11 @@ async function newRowValues(userId: string, source: UserSource): Promise<ClerkUs
   const fallback = { id: userId, displayName: FALLBACK_DISPLAY_NAME, email: null }
   let json: ClerkUserJSON | null
   try {
-    json = await source.lookup(userId)
+    json = await lookupWithTimeout(
+      source.lookup,
+      userId,
+      source.timeoutMs ?? CLERK_LOOKUP_TIMEOUT_MS,
+    )
   } catch (err) {
     // The error's name only. Its message may name the user.
     console.error(
@@ -213,6 +268,22 @@ export async function ensureUser(
 ): Promise<void> {
   if (wasSeenToday(userId, now)) return
 
+  // The web app sends several queries at once when a page loads. Without
+  // this, a new user's first page would ask Clerk once per query and try one
+  // `create` per query. Parallel calls for the same user share one run.
+  const running = inFlight.get(userId)
+  if (running) return running
+
+  const run = checkAndCreate(userId, source, now).finally(() => {
+    // Removed when the run settles, success or failure, so a failed run is
+    // tried again on the next request instead of being shared forever.
+    if (inFlight.get(userId) === run) inFlight.delete(userId)
+  })
+  inFlight.set(userId, run)
+  return run
+}
+
+async function checkAndCreate(userId: string, source: UserSource, now: Date): Promise<void> {
   if ((await touchLastSeen(userId, now)) > 0) {
     rememberSeenToday(userId, now)
     return
@@ -229,7 +300,9 @@ export async function ensureUser(
   try {
     await prisma.user.create({ data: { ...values, lastSeenAt: now } })
   } catch (err) {
-    // P2002: another request created the row first. `id` is the only unique
+    // P2002: someone else created the row first. In this process the
+    // `inFlight` map stops parallel requests from racing, so this comes from
+    // another server process, or from the webhook. `id` is the only unique
     // column, so P2002 itself proves the row exists, and no re-read is
     // needed. That request set `lastSeenAt`, and a `user.deleted` webhook
     // may have set `deletedAt` since, so the row is left as it is.

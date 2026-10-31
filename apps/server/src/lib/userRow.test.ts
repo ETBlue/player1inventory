@@ -22,6 +22,7 @@ import { prisma } from './prisma.js'
 import type { UserFake, UserRow } from '../test/userFake.js'
 import type { ClerkUserJSON, ClerkUserLookup } from './userRow.js'
 import {
+  CLERK_LOOKUP_TIMEOUT_MS,
   FALLBACK_DISPLAY_NAME,
   MEMORY_LIMIT,
   ensureUser,
@@ -317,6 +318,70 @@ describe('ensureUser', () => {
     expect(rowOf('user_new')).toMatchObject({ displayName: FALLBACK_DISPLAY_NAME, email: null })
   })
 
+  describe('the Clerk lookup timeout', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it(`gives up after CLERK_LOOKUP_TIMEOUT_MS (${CLERK_LOOKUP_TIMEOUT_MS} ms) and uses the fallback values`, async () => {
+      // Given a Clerk lookup that never answers
+      const lookup = vi.fn<ClerkUserLookup>(() => new Promise(() => {}))
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+      let settled = false
+      const run = ensureUser('user_new', { kind: 'clerk', lookup }, TODAY_NOON).then(() => {
+        settled = true
+      })
+
+      // When almost the whole timeout has passed, the request is still waiting
+      await vi.advanceTimersByTimeAsync(CLERK_LOOKUP_TIMEOUT_MS - 1)
+      expect(settled).toBe(false)
+
+      // And when the timeout is reached
+      await vi.advanceTimersByTimeAsync(1)
+      await run
+
+      // Then the row is created with the fallback values (P11)
+      expect(rowOf('user_new')).toMatchObject({
+        displayName: FALLBACK_DISPLAY_NAME,
+        email: null,
+        lastSeenAt: TODAY_NOON,
+      })
+      expect(log.mock.calls.flat().map(String)).toContain('ClerkLookupTimeout')
+      log.mockRestore()
+    })
+
+    it('uses the timeoutMs given in the source', async () => {
+      // Given a lookup that never answers, and a 50 ms timeout
+      const lookup = vi.fn<ClerkUserLookup>(() => new Promise(() => {}))
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      const run = ensureUser('user_new', { kind: 'clerk', lookup, timeoutMs: 50 }, TODAY_NOON)
+
+      // When 50 ms pass
+      await vi.advanceTimersByTimeAsync(50)
+      await run
+
+      // Then the fallback row exists
+      expect(rowOf('user_new')?.displayName).toBe(FALLBACK_DISPLAY_NAME)
+      vi.mocked(console.error).mockRestore()
+    })
+
+    it('a lookup that answers in time leaves no timer running', async () => {
+      // Given a Clerk lookup that answers at once
+      const lookup = clerkLookup(clerkUser({ id: 'user_new' }))
+
+      // When the row is created
+      await ensureUser('user_new', { kind: 'clerk', lookup }, TODAY_NOON)
+
+      // Then Clerk's values were used, and the timeout timer was cleared
+      expect(rowOf('user_new')?.displayName).toBe('ET Blue')
+      expect(vi.getTimerCount()).toBe(0)
+    })
+  })
+
   it('in E2E mode creates the row named by the user id, without Clerk', async () => {
     // Given E2E mode and no row
     // When the first request arrives
@@ -344,9 +409,75 @@ describe('ensureUser', () => {
     // Then none failed, and there is exactly one row
     expect(results.filter((r) => r.status === 'rejected')).toEqual([])
     expect(userFake.state.rows.map((r) => r.id)).toEqual(['user_new'])
-    // And the race really happened: more than one create was tried, so the
-    // P2002 path ran (otherwise this test would prove nothing)
-    expect(user.create.mock.calls.length).toBeGreaterThan(1)
+  })
+
+  it('ten parallel first requests ask Clerk once and try one create', async () => {
+    // Given no row, and ten requests for the same new user at once, the way
+    // the web app sends several queries when a page loads
+    const lookup = clerkLookup(clerkUser({ id: 'user_new' }))
+
+    // When they all run together
+    await Promise.all(
+      Array.from({ length: 10 }, () =>
+        ensureUser('user_new', { kind: 'clerk', lookup }, TODAY_NOON),
+      ),
+    )
+
+    // Then they shared one run: one Clerk call and one create
+    expect(lookup).toHaveBeenCalledTimes(1)
+    expect(user.create).toHaveBeenCalledTimes(1)
+    expect(user.updateMany).toHaveBeenCalledTimes(1)
+  })
+
+  it('a parallel call for ANOTHER user does not share the run', async () => {
+    // Given two new users whose first requests arrive at the same time
+    const lookup = vi.fn<ClerkUserLookup>(async (id) => clerkUser({ id }))
+
+    // When both run together
+    await Promise.all([
+      ensureUser('user_a', { kind: 'clerk', lookup }, TODAY_NOON),
+      ensureUser('user_b', { kind: 'clerk', lookup }, TODAY_NOON),
+    ])
+
+    // Then each user got their own row and their own Clerk call
+    expect(lookup.mock.calls.map(([id]) => id).sort()).toEqual(['user_a', 'user_b'])
+    expect(userFake.state.rows.map((r) => r.id).sort()).toEqual(['user_a', 'user_b'])
+  })
+
+  it('a failed run is not shared with the next request, which tries again', async () => {
+    // Given a database that fails once, then works
+    user.updateMany.mockRejectedValueOnce(Object.assign(new Error('down'), { code: 'P1001' }))
+    const lookup = clerkLookup(clerkUser({ id: 'user_new' }))
+
+    // When the first request fails
+    await expect(
+      ensureUser('user_new', { kind: 'clerk', lookup }, TODAY_NOON),
+    ).rejects.toThrow('down')
+
+    // Then the next request runs again and creates the row
+    await ensureUser('user_new', { kind: 'clerk', lookup }, TODAY_NOON)
+    expect(userFake.state.rows.map((r) => r.id)).toEqual(['user_new'])
+    expect(user.updateMany).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not throw when another process creates the row first (P2002)', async () => {
+    // Given no row when this process looks, but another server process (or
+    // the webhook) creates it while this one is asking Clerk
+    const lookup = vi.fn<ClerkUserLookup>(async (id) => {
+      userFake.state.rows.push(storedRow(id, { displayName: 'From Webhook' }))
+      return clerkUser({ id })
+    })
+
+    // When this process then tries to create the row
+    await expect(
+      ensureUser('user_new', { kind: 'clerk', lookup }, TODAY_NOON),
+    ).resolves.toBeUndefined()
+
+    // Then the create really failed with P2002, and the other row is kept
+    expect(user.create).toHaveBeenCalledTimes(1)
+    await expect(user.create.mock.results[0]?.value).rejects.toMatchObject({ code: 'P2002' })
+    expect(userFake.state.rows).toHaveLength(1)
+    expect(rowOf('user_new')?.displayName).toBe('From Webhook')
   })
 
   // The P13 tests run once for each `lastSeenAt` state, because each state
