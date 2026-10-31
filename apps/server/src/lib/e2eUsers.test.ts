@@ -3,7 +3,7 @@ import type { Server } from 'node:http'
 import express from 'express'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Both routes write through `prisma.user`. Here that is the stateful `User`
+// All three routes use `prisma.user`. Here that is the stateful `User`
 // double from src/test/userFake.ts, so a test can read back exactly which
 // rows exist after a request.
 vi.mock('./prisma.js', async () => {
@@ -15,7 +15,12 @@ vi.mock('./prisma.js', async () => {
 import { prisma } from './prisma.js'
 import type { UserFake, UserRow } from '../test/userFake.js'
 import { DELETED_USER_DISPLAY_NAME } from './clerkWebhook.js'
-import { e2eCreateUserHandler, e2eUserDeletedHandler, parseE2eUserBody } from './e2eUsers.js'
+import {
+  e2eCreateUserHandler,
+  e2eReadUserHandler,
+  e2eUserDeletedHandler,
+  parseE2eUserBody,
+} from './e2eUsers.js'
 
 const userFake = (prisma as unknown as { $userFake: UserFake }).$userFake
 
@@ -80,6 +85,7 @@ describe('the E2E user routes', () => {
     app.use(express.json())
     app.post('/e2e/users', e2eCreateUserHandler)
     app.post('/e2e/users/:id/deleted', e2eUserDeletedHandler)
+    app.get('/e2e/users/:id', e2eReadUserHandler)
     server = await new Promise<Server>((resolve) => {
       const s = app.listen(0, () => resolve(s))
     })
@@ -208,5 +214,78 @@ describe('the E2E user routes', () => {
     expect(res.status).toBe(200)
     expect(rowOf('e2e-u9')).toMatchObject({ displayName: DELETED_USER_DISPLAY_NAME })
     expect(rowOf('e2e-u9')?.deletedAt).toBeInstanceOf(Date)
+  })
+
+  it('GET /e2e/users/:id answers the stored row, with dates as ISO strings', async () => {
+    // Given a deleted row that was seen once, and a second row
+    userFake.reset([
+      storedRow('e2e-u2', {
+        lastSeenAt: new Date('2026-10-31T08:00:00.000Z'),
+        deletedAt: new Date('2026-10-31T09:00:00.000Z'),
+      }),
+      storedRow('e2e-other', { displayName: 'Other' }),
+    ])
+
+    // When the first row is read
+    const res = await fetch(`${base}/e2e/users/e2e-u2`)
+
+    // Then the answer is that row, and only that row
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({
+      user: {
+        id: 'e2e-u2',
+        displayName: 'Stored Name',
+        email: 'stored@example.com',
+        lastSeenAt: '2026-10-31T08:00:00.000Z',
+        deletedAt: '2026-10-31T09:00:00.000Z',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    })
+  })
+
+  it('GET /e2e/users/:id answers { user: null } for an id with no row', async () => {
+    // Given a row for another id only
+    userFake.reset([storedRow('e2e-other')])
+
+    // When an unknown id is read
+    const res = await fetch(`${base}/e2e/users/e2e-u9`)
+
+    // Then the answer is 200 with no user, so a spec can check a row is absent
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ user: null })
+  })
+
+  it('GET /e2e/users/:id writes nothing', async () => {
+    // Given a row never seen
+    userFake.reset([storedRow('e2e-u2')])
+
+    // When it is read
+    await fetch(`${base}/e2e/users/e2e-u2`)
+
+    // Then it is unchanged: reading does not count as a visit
+    expect(userFake.state.rows).toEqual([storedRow('e2e-u2')])
+  })
+
+  it('GET /e2e/users/:id logs a read error by name and code only, not the email', async () => {
+    // Given a read that fails with an error whose message holds the email
+    vi.spyOn(userFake.client, 'findUnique').mockRejectedValueOnce(
+      Object.assign(new Error('findUnique({ email: "secret@example.com" }) failed'), {
+        code: 'P1001',
+      }),
+    )
+
+    // When the row is read
+    const res = await fetch(`${base}/e2e/users/e2e-u2`)
+
+    // Then the answer is 500, and the log has the code but not the email
+    expect(res.status).toBe(500)
+    const logged = vi
+      .mocked(console.error)
+      .mock.calls.flat()
+      .map((part) => String(part))
+      .join('\n')
+    expect(logged).toContain('P1001')
+    expect(logged).not.toContain('secret@example.com')
   })
 })

@@ -7,7 +7,11 @@ import { expressMiddleware } from '@as-integrations/express5'
 import { DEFAULT_CLIENT_ORIGIN, DEFAULT_PORT, GRAPHQL_PATH } from './constants.js'
 import { clerkWebhookHandler } from './lib/clerkWebhook.js'
 import { e2eCleanupHandler } from './lib/e2eCleanup.js'
-import { e2eCreateUserHandler, e2eUserDeletedHandler } from './lib/e2eUsers.js'
+import {
+  e2eCreateUserHandler,
+  e2eReadUserHandler,
+  e2eUserDeletedHandler,
+} from './lib/e2eUsers.js'
 import { isAllowedOrigin } from './lib/cors.js'
 import { prisma } from './lib/prisma.js'
 import type { UserSource } from './lib/userRow.js'
@@ -49,12 +53,13 @@ if (E2E_TEST_MODE) {
   // test starts clean (lib/e2eCleanup.ts).
   app.delete('/e2e/cleanup', e2eCleanupHandler)
 
-  // Create a User row, and fake Clerk's user.deleted event (lib/e2eUsers.ts).
-  // No signature is checked, and no test signing secret exists. That is safe
-  // only because these lines are inside this block: webhookRouteOrder.test.ts
-  // fails if any of the three routes in this block moves out of it.
+  // Create a User row, fake Clerk's user.deleted event, and read a row back
+  // (lib/e2eUsers.ts). No signature is checked, and no test signing secret
+  // exists. That is safe only because these lines are inside this block:
+  // webhookRouteOrder.test.ts fails if any route in this block moves out of it.
   app.post('/e2e/users', e2eCreateUserHandler)
   app.post('/e2e/users/:id/deleted', e2eUserDeletedHandler)
+  app.get('/e2e/users/:id', e2eReadUserHandler)
 }
 
 // Where ensureUser takes a new User row's name and email. E2E mode never

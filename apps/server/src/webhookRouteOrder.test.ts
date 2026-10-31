@@ -16,7 +16,8 @@
  * ── Task 2.5: the E2E-only routes ──
  *
  * `POST /e2e/users` and `POST /e2e/users/:id/deleted` write `User` rows with
- * no signature check. They are safe only while they are mounted inside the
+ * no signature check. `GET /e2e/users/:id` (task 2.7) reads one back, email
+ * included. They are safe only while they are mounted inside the
  * top-level `if (E2E_TEST_MODE) { … }` block. Mounted outside it, anyone could
  * create users or mark them deleted on the production server. Since task 2.6
  * the same holds for `DELETE /e2e/cleanup`, which deletes a user's data and
@@ -142,6 +143,7 @@ describe('index.ts mounts the E2E-only routes', () => {
     ['delete', '/e2e/cleanup', 'e2eCleanupHandler'],
     ['post', '/e2e/users', 'e2eCreateUserHandler'],
     ['post', '/e2e/users/:id/deleted', 'e2eUserDeletedHandler'],
+    ['get', '/e2e/users/:id', 'e2eReadUserHandler'],
   ])('mounts %s %s once, inside the block', (method, path, handler) => {
     const found = routeMounts().filter((m) => m.path === path)
     expect(found).toEqual([{ receiver: 'app', method, path, handler, insideE2eBlock: true }])
@@ -153,9 +155,9 @@ describe('index.ts mounts the E2E-only routes', () => {
     const e2eRoutes = routeMounts().filter(
       (m) => m.path === '/e2e' || m.path.startsWith('/e2e/'),
     )
-    // The cleanup route and the two user routes. A route added later is
+    // The cleanup route and the three user routes. A route added later is
     // checked too.
-    expect(e2eRoutes.length).toBeGreaterThanOrEqual(3)
+    expect(e2eRoutes.length).toBeGreaterThanOrEqual(4)
     expect(e2eRoutes.filter((m) => !m.insideE2eBlock)).toEqual([])
   })
 
@@ -199,8 +201,13 @@ describe('index.ts mounts the E2E-only routes', () => {
     expect(routers).toEqual([])
   })
 
-  it('names the three E2E handlers nowhere outside the block, except in the import', () => {
-    const handlers = ['e2eCleanupHandler', 'e2eCreateUserHandler', 'e2eUserDeletedHandler']
+  it('names the four E2E handlers nowhere outside the block, except in the import', () => {
+    const handlers = [
+      'e2eCleanupHandler',
+      'e2eCreateUserHandler',
+      'e2eUserDeletedHandler',
+      'e2eReadUserHandler',
+    ]
     const [block] = e2eBlocks()
     const body = block?.thenStatement
     const outside: string[] = []
