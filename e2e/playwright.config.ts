@@ -174,11 +174,12 @@ export default defineConfig({
       // pwa-offline.spec.ts needs a real service worker, which the dev
       // server this project runs against does not have — it only runs
       // under the 'pwa' project, against the built preview output.
-      // location-scoped-writes.spec.ts, cleanup-endpoint.spec.ts and
-      // cart-id-cross-user-leak.spec.ts drive GraphQL directly against the cloud
-      // backend and never open a page — none has a local-mode counterpart. The
-      // last one also acts as a SECOND synthetic user, which the web build
-      // cannot be (VITE_E2E_TEST_USER_ID below is one value).
+      // location-scoped-writes.spec.ts, cleanup-endpoint.spec.ts,
+      // cart-id-cross-user-leak.spec.ts and cloud-user-row.spec.ts drive the
+      // cloud backend directly and never open a page — none has a local-mode
+      // counterpart. The last two also act as users other than E2E_USER_ID,
+      // which the web build cannot be (VITE_E2E_TEST_USER_ID below is one
+      // value).
       testIgnore: [
         '**/settings/import-export-cloud.spec.ts',
         '**/pwa-offline.spec.ts',
@@ -186,6 +187,7 @@ export default defineConfig({
         '**/cleanup-endpoint.spec.ts',
         '**/cart-id-cross-user-leak.spec.ts',
         '**/settings/data-mode-migration.spec.ts',
+        '**/cloud-user-row.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'], baseURL: LOCAL_WEB_URL },
     },
@@ -234,6 +236,7 @@ export default defineConfig({
         '**/cleanup-endpoint.spec.ts',
         '**/cart-id-cross-user-leak.spec.ts',
         '**/unified-item-search.spec.ts',
+        '**/cloud-user-row.spec.ts',
       ],
     },
     {

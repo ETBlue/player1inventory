@@ -661,7 +661,11 @@ needs.
   `express.json()`, because the check needs the raw body.
 
 `lastSeenAt` is not used in this phase. It is stored now so the postponed inactivity trigger
-has data when it is built.
+has data when it is built. The day is the UTC day (H2 task 2.4).
+
+**`User.updatedAt` does not mean "the name or email changed".** `@updatedAt` moves on every
+write, and `lastSeenAt` is written about once a day for every active user. Code that needs
+"when did the profile change" must not read `updatedAt` for it.
 
 ## Postponed to a later cloud-improvement phase
 

@@ -385,7 +385,9 @@ export function useItems() {
   // deduplicates in-flight identical operations (`queryDeduplication`, on by
   // default). Measured — `useItems.cloud.test.tsx` counts the requests the mock
   // link served in "the catalog and the pantry list together cost ONE request"
-  // and in the warm-cache test beside it.
+  // and in the warm-cache test beside it. One exception: if a mutation answers
+  // while that shared request waits, the request is sent again, up to
+  // `MAX_QUERY_ATTEMPTS` sends in total (`apollo/staleReadRetryLink.ts`).
   //
   // NO `errorPolicy` here, on purpose. Measured on Apollo Client 4.1.6: under
   // the default `'none'` a failed network leg leaves the cached result in

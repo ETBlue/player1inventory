@@ -4,7 +4,7 @@
  * WHY THIS FILE EXISTS
  *
  * `purgeUserData` (purge.resolver.ts), `clearAllData` (import.resolver.ts) and the
- * E2E-only `DELETE /e2e/cleanup` endpoint (index.ts) each hand-maintain a list of
+ * E2E-only `DELETE /e2e/cleanup` endpoint (lib/e2eCleanup.ts) each hand-maintain a list of
  * `prisma.<model>.deleteMany(...)` calls. Nothing links those
  * lists to `prisma/schema.prisma`, so adding a user-owned model is a three-place
  * edit that no compiler checks — and the two resolvers' unit tests hand-maintain
@@ -26,6 +26,13 @@
  * is scoped through its parent Location, not a row a user owns directly. All four
  * are deleted through a parent relation filter and are deliberately out of scope
  * here.
+ *
+ * `User` (households H2) is out of scope too, for a different reason: it has
+ * no `userId` field. Its key is `id`, because the row IS the user. Only
+ * `/e2e/cleanup` deletes it, with `where: { id: userId }`, and
+ * `lib/e2eCleanup.test.ts` pins that line. `purgeUserData` and `clearAllData`
+ * delete a user's DATA and leave the account, so they must not delete it.
+ * The last three tests in this file check both halves of that.
  */
 
 import { readFileSync } from 'node:fs'
@@ -65,9 +72,10 @@ const PURGE_PATHS = [
   { label: 'purgeUserData', source: read('./purge.resolver.ts') },
   { label: 'clearAllData', source: read('./import.resolver.ts') },
   // The E2E-only DELETE /e2e/cleanup endpoint is a THIRD hand-maintained copy of
-  // the same delete list. It is not a resolver, so nothing else in this suite
-  // reads it. This guard is what keeps the three lists from drifting apart.
-  { label: 'e2eCleanup', source: read('../index.ts') },
+  // the same delete list. It is not a resolver, so no resolver test reads it.
+  // This guard is what keeps the three lists from drifting apart. Its handler
+  // moved from index.ts to lib/e2eCleanup.ts in households task 2.6.
+  { label: 'e2eCleanup', source: read('../lib/e2eCleanup.ts') },
 ]
 
 describe('purge coverage against prisma/schema.prisma', () => {
@@ -110,4 +118,27 @@ describe('purge coverage against prisma/schema.prisma', () => {
       expect(missing).toEqual([])
     })
   }
+
+  // `purgeUserData` and `clearAllData` delete a user's DATA. The account
+  // stays, so its `User` row must stay too. Only `/e2e/cleanup` deletes it.
+  //
+  // The pattern matches `.user.delete(` and `.user.deleteMany(` on any
+  // client name, so `prisma.user.…` and a transaction's `tx.user.…` both
+  // count. It does not match a client held under another name for the
+  // model, such as `const users = prisma.user` and then `users.delete(`.
+  const DELETES_USER_ROW = /\.user\.delete(Many)?\(/
+  for (const { label, source } of PURGE_PATHS.filter((p) => p.label !== 'e2eCleanup')) {
+    it(`${label} does not delete the User row`, () => {
+      expect(source).not.toMatch(DELETES_USER_ROW)
+    })
+  }
+
+  it('e2eCleanup does delete the User row', () => {
+    // The positive control for the two tests above: the pattern they look
+    // for matches the call the cleanup really uses. If it did not, the two
+    // `not.toMatch` checks would pass for any source.
+    const cleanup = PURGE_PATHS.find((p) => p.label === 'e2eCleanup')
+    expect(cleanup?.source).toMatch(DELETES_USER_ROW)
+    expect(cleanup?.source).toContain('prisma.user.deleteMany(')
+  })
 })

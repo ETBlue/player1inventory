@@ -128,7 +128,8 @@ normally the **dev database**. There is no dedicated test database.
 
 Isolation is by **row ownership, not by database**: every write is scoped to
 `E2E_USER_ID` (`e2e/constants.ts`, `'e2e-test-user'`), and the `/e2e/cleanup` endpoint
-(`apps/server/src/index.ts`) runs `deleteMany({ where: { userId } })` per model — it
+(`apps/server/src/lib/e2eCleanup.ts`) runs `deleteMany({ where: { userId } })` per model,
+and `{ where: { id: userId } }` for the `User` row — it
 deletes only that user's rows, never all data. **Do not describe the cleanup endpoint as
 wiping the database.**
 
@@ -203,13 +204,15 @@ visible in a single run, so it went unnoticed:
 - `ItemStock` rows went away by accident, through the `ON DELETE CASCADE` on their
   `itemId`, not because the endpoint asked for them.
 
-Both models are now in the `$transaction` list in `apps/server/src/index.ts`.
+Both models are now in the `$transaction` list in `apps/server/src/lib/e2eCleanup.ts`.
+(The route's handler lived inline in `apps/server/src/index.ts` until households task 2.6
+moved it, so measurements below that name `index.ts` are about the same code.)
 
 **The guard that keeps the three delete lists in step** is
 `apps/server/src/resolvers/purge-coverage.test.ts`. Three paths hand-maintain the same
 list — `purgeUserData` (`purge.resolver.ts`), `clearAllData` (`import.resolver.ts`) and
-`/e2e/cleanup` (`index.ts`). The guard reads resolver source from disk, so a mock cannot
-satisfy it.
+`/e2e/cleanup` (`lib/e2eCleanup.ts`). The guard reads resolver source from disk, so a mock
+cannot satisfy it.
 
 **It only checks models that declare a `userId`.** `ItemStock` has none, on purpose — it
 is scoped through its `Location` (see root `CLAUDE.md` → Authorization). So the
@@ -241,16 +244,59 @@ That pair is the reason the spec below exists (issue #319).
 ## `cleanup-endpoint.spec.ts` — the behavioural guard on `/e2e/cleanup`
 
 `e2e/tests/cleanup-endpoint.spec.ts` (added 2026-09-25, one cloud test) seeds **one row of
-every model `/e2e/cleanup` deletes** — all 14 — calls the route, and asserts every returned
-count is at least 1, then reads the data back and asserts empty. It is cloud-only and has
-no browser: it is in the `cloud` project's `testMatch` and the `local` project's
-`testIgnore`, like `location-scoped-writes.spec.ts`.
+every model `/e2e/cleanup` deletes** — all 15 since households task 2.6, 14 before it —
+calls the route, and asserts every returned count is at least 1, then reads the data back
+and asserts empty. It is cloud-only and has no browser: it is in the `cloud` project's
+`testMatch` and the `local` project's `testIgnore`, like `location-scoped-writes.spec.ts`.
 
 **The route now returns per-model deleted counts.** `prisma.deleteMany` already returns
 `{ count }`; `index.ts` used to throw those away and answer `{ ok: true }`. It now answers
 `{ ok: true, deleted: { inventoryLogs, cartItems, carts, itemTags, itemVendors,
-recipeItems, itemStocks, items, tags, tagTypes, vendors, recipes, shelves, locations } }`.
-The route is mounted only under `E2E_TEST_MODE`, so production is unaffected.
+recipeItems, itemStocks, items, tags, tagTypes, vendors, recipes, shelves, locations,
+users } }`. The route is mounted only under `E2E_TEST_MODE`, so production is unaffected.
+
+### The `User` row — the 15th model, since 2026-10-31 (households H2, task 2.6)
+
+`/e2e/cleanup` also deletes the user's own `User` row, **last**, with
+`prisma.user.deleteMany({ where: { id: userId } })`. Four places changed together:
+
+| Place | Change |
+|---|---|
+| `apps/server/src/lib/e2eCleanup.ts` | the `deleteMany`, the `users` key, and `forgetSeenToday(userId)` after the transaction |
+| `e2e/helpers/cloudTeardown.ts` | `'users'` in `CLEANUP_MODEL_KEYS` |
+| `e2e/tests/cleanup-endpoint.spec.ts` | seeds the row with `createCloudUser(request, E2E_USER_ID, …)` |
+| this file | 14 → 15 |
+
+**`purge-coverage.test.ts` does not list `User`, and that is correct.** Its parser picks
+models that declare a `userId` field. `User` has none: its key is `id`, because the row IS
+the user. And only `/e2e/cleanup` deletes it — `purgeUserData` and `clearAllData` delete a
+user's data and leave the account. So the source-text guard has nothing to say about it.
+
+What guards it instead:
+
+| Check | What it catches |
+|---|---|
+| `apps/server/src/lib/e2eCleanup.test.ts` | the delete order (User last), `where: { id }`, the `users` key, and `forgetSeenToday` running once, AFTER the transaction. Runs against a fake, not SQL |
+| the same file, last test | the server's `CLEANUP_MODEL_KEYS` and this directory's `CLEANUP_MODEL_KEYS` differ. It reads `cloudTeardown.ts` as text |
+| `cleanup-endpoint.spec.ts` | a `where` that matches nothing reports `"users":0`. This is the only real-SQL check |
+
+**`cleanup-endpoint.spec.ts` does not read the `User` row back.** Its `users` count is
+its only check on that row. GraphQL has no query that returns a `User` row. Since households
+task 2.7, the E2E-only route `GET /e2e/users/:id` (`readCloudUser` in
+`e2e/helpers/cloudUsers.ts`) can read one, and `cloud-user-row.spec.ts` uses it.
+
+**Why `forgetSeenToday` is needed, and why after the commit.** `ensureUser`
+(`apps/server/src/lib/userRow.ts`) remembers, per server process, the users it saw today,
+and makes no query for them. Without the call, the next GraphQL request the same day
+would skip the check and the `User` row would never be created again. Called BEFORE the
+commit, a request arriving in between could find the row that is about to go, and
+remember it again. `forgetSeenToday` also removes the user's run in progress from
+`ensureUser`'s `inFlight` map and bumps a counter, so a run that found the row before the
+delete cannot write "seen today" back afterwards.
+
+**Every cloud test now starts with no `User` row.** The first GraphQL request of the test
+creates it again through `ensureUser`, named by its id. A spec that needs the row before
+any request, or with another name, calls `createCloudUser` (`e2e/helpers/cloudUsers.ts`).
 
 **Order matters for the counts, not only for the deletes.** Every child is deleted before
 its parent, so each count is the number of rows that statement removed. Move
@@ -411,18 +457,22 @@ reconcile finds nothing to remove and creates every row the fixture lists. No ed
 loop was needed in 4b or in PR 5 — which is the whole argument for reading state back
 instead of predicting it.
 
-**The `cloud` project's `testMatch` is 25 files today** (`e2e/playwright.config.ts`),
-up from 13 on 2026-09-23. **Count the array rather than reusing that 25** — it is one line in
-the config and it grows most weeks:
+**The `cloud` project's `testMatch` is 26 files today** (`e2e/playwright.config.ts`,
+measured 2026-10-31), up from 13 on 2026-09-23. **Count the array rather than reusing that
+26** — it grows most weeks:
 
 ```bash
-awk "/name: 'cloud'/,0" e2e/playwright.config.ts \
-  | grep -m1 testMatch | grep -o "'\*\*/[^']*\.spec\.ts'" | wc -l
+awk "/name: 'cloud'/,/name: 'pwa'/" e2e/playwright.config.ts | grep -c "spec\.ts'"
 ```
 
 The `awk` range matters: the file holds **three** such lists — `local`'s `testIgnore`,
-`cloud`'s `testMatch` and `pwa`'s `testMatch` — and a grep over the whole file counts all 33
-entries instead of the 25 that belong to `cloud`.
+`cloud`'s `testMatch` and `pwa`'s `testMatch` — and a grep over the whole file counts all 35
+entries instead of the 26 that belong to `cloud`.
+
+**The command this section used to give printed 0 from 2026-10-30.** It ended
+`| grep -m1 testMatch | grep -o "'\*\*/[^']*\.spec\.ts'" | wc -l`, so it only counted the
+spec names on the same line as `testMatch`. The Biome sweep (commit `e015378d`, issue #346)
+put one entry per line. Measured: 25 on the commit before the sweep, 0 on the sweep.
 
 The five added on 2026-09-24 are `recipes-group.spec.ts`,
 `vendors-group.spec.ts`, `shelves.spec.ts`, `item-stock-input.spec.ts` and
@@ -476,8 +526,13 @@ only". So in cloud its template test would write to IndexedDB, reach **zero** re
 still pass `await expect(page).toHaveURL('/')`. That is a test reporting as covered while
 covering nothing. The product gap is issue **#347**.
 
-The `local` project is 23 spec files: 29 files under `e2e/tests/` minus the 6 in its
-`testIgnore`.
+The `local` project is 23 spec files: 30 files under `e2e/tests/` minus the 7 in its
+`testIgnore` (measured 2026-10-31).
+
+File 26 is `cloud-user-row.spec.ts`, added 2026-10-31 by households H2 task 2.7. It is
+cloud-only and has no browser, so it is also in `local`'s `testIgnore`. Its 3 tests act as
+three new user ids, one per test, built from `E2E_SECOND_USER_ID`. Each id is cleaned up
+with `cleanupCloudData(request, id)` in both hooks.
 
 **Cloud test counts, measured, not quoted. Measure your own — do not subtract any number
 below.** The one-line command:
@@ -495,7 +550,8 @@ What the number has been, so you can see how fast it moves rather than reuse a f
 | 2026-10-08 | `feature/cloud-item-note-wikidata`, before its E2E commit | 104 |
 | 2026-10-08 | `feature/cloud-item-note-wikidata`, after it | 105 |
 | 2026-10-08 | `feature/import-strategy-coverage` (cloud-parity PR C) | 108 |
-| 2026-10-12 | `feature/cloud-spec-coverage` (issue #323) | **121** |
+| 2026-10-12 | `feature/cloud-spec-coverage` (issue #323) | 121 |
+| 2026-10-31 | `feature/households-h2`, after `cloud-user-row.spec.ts` | **124** |
 
 Attribution for the steps that are known: 4b added 5 (1 for the leak spec, 4 because
 `import-export-cloud.spec.ts` went 2 → 6). Cloud-parity PR A added 1 to

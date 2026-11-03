@@ -8,6 +8,7 @@ import { isOffline } from '@/hooks/useIsOffline'
 import { cloudCache, createCache } from './cloudCache'
 import { DEFAULT_GRAPHQL_HTTP_URL, DEFAULT_GRAPHQL_WS_URL } from './constants'
 import { offlineWriteLink } from './offlineWriteLink'
+import { createStaleReadRetryLink } from './staleReadRetryLink'
 
 // `createCache` moved to `./cloudCache` so `persistence.ts` can reset the cache
 // without importing this file. There is no import cycle between the two —
@@ -72,7 +73,9 @@ export function createApolloClientForE2E(userId: string) {
     headers: { ...headers, 'x-e2e-user-id': userId },
   }))
   return new ApolloClient({
-    link: e2eLink.concat(httpLink),
+    // The same stale-read guard as the production client, so cloud E2E runs
+    // the code users run.
+    link: createStaleReadRetryLink().concat(e2eLink).concat(httpLink),
     cache: createCache(),
   })
 }
@@ -110,7 +113,10 @@ export function createApolloClient(getToken: () => Promise<string | null>) {
   )
 
   return new ApolloClient({
-    link: offlineWriteLink.concat(splitLink),
+    // `createStaleReadRetryLink` sits after `offlineWriteLink`, so a mutation
+    // refused offline never reaches the server and is not counted. Pinned by
+    // "does not make a waiting query send again" in `client.test.ts`.
+    link: offlineWriteLink.concat(createStaleReadRetryLink()).concat(splitLink),
     cache: cloudCache,
   })
 }

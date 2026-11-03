@@ -1,17 +1,20 @@
 import { expect, test } from '@playwright/test'
+import { E2E_USER_ID } from '../constants'
 import { CLEANUP_MODEL_KEYS, cleanupCloudData } from '../helpers/cloudTeardown'
+import { createCloudUser } from '../helpers/cloudUsers'
 import { makeGql } from '../utils/cloud'
 
 // ── WHAT THIS FILE COVERS ────────────────────────────────────────────────────
 //
-// `DELETE /e2e/cleanup` (apps/server/src/index.ts) — that it really deletes the
-// test user's rows, against real Postgres.
+// `DELETE /e2e/cleanup` (apps/server/src/lib/e2eCleanup.ts, mounted in
+// apps/server/src/index.ts) — that it really deletes the test user's rows,
+// its `User` row included, against real Postgres.
 //
 // ── WHY IT EXISTS (issue #319) ───────────────────────────────────────────────
 //
 // `apps/server/src/resolvers/purge-coverage.test.ts` guards the route's delete
 // list, but it is a SOURCE-TEXT check. It asserts the string
-// `prisma.location.deleteMany(` appears in `index.ts`. It never starts the
+// `prisma.location.deleteMany(` appears in `lib/e2eCleanup.ts`. It never starts the
 // server, never calls the route, and never reads the `where` clause. So this
 // passes that guard, answers 200, and deletes nothing:
 //
@@ -33,6 +36,11 @@ import { makeGql } from '../utils/cloud'
 // still go; only the reported `itemStocks` count changes, and this spec's
 // "at least 1" assertion is what notices. So the LINE is covered here, but the
 // DATA it protects is not at risk either way.
+//
+// The `User` row (households task 2.6) is checked by its `users` count only.
+// GraphQL has no query that reads a `User` row, so it cannot be read back.
+// The server's `lib/e2eCleanup.test.ts` pins its `where: { id }` and that it
+// is deleted last, but only against a fake.
 //
 // ── WHY THERE IS NO BROWSER ──────────────────────────────────────────────────
 //
@@ -129,6 +137,12 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     const gql = makeGql(request)
 
     // ── Given one row of every model the route deletes ───────────────────────
+
+    // User — written on purpose, with a name the server would never pick. The
+    // server's request-path safety net (`ensureUser`) would also create this
+    // row on the first GraphQL call below, named by the id. Seeding it here
+    // means the `users` count does not depend on that.
+    await createCloudUser(request, E2E_USER_ID, 'Cleanup Spec User')
 
     // Location — the `locations` query creates the caller's default
     // (`ensureDefaultLocation`, apps/server/src/lib/defaultLocation.ts), and a
@@ -242,7 +256,7 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     // 0, which the count assertion below catches. What this block adds is WHERE
     // the failure lands. It fails before the route is even called, naming the
     // model whose seed is broken, instead of reporting "the route deleted
-    // nothing" and sending the reader to `index.ts`. Measured 2026-09-25 with
+    // nothing" and sending the reader to `lib/e2eCleanup.ts`. Measured 2026-09-25 with
     // `createShelf` removed: the run failed at `expect(before.shelves)`, not at
     // the count assertion.
     const before = await gql<ReadBack>(READ_BACK, { itemId })

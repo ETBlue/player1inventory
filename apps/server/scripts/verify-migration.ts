@@ -1,8 +1,8 @@
-// Verifies the location migrations against a REAL Postgres, because the
+// Verifies the migrations listed in MIGRATIONS below against a REAL Postgres, because the
 // resolver test suite runs entirely against a hand-written Prisma fake and
 // cannot exercise SQL at all.
 //
-// Five migrations are under test, applied in order:
+// Six migrations are under test, applied in order:
 //   1. 20260830000000_add_location_and_item_stock      (PR 1)  — Location, ItemStock
 //   2. 20260916000000_add_location_to_log_and_cart     (PR 3a) — InventoryLog.locationId,
 //      Cart.locationId
@@ -12,10 +12,15 @@
 //      stock state columns, whose home is now ItemStock
 //   5. 20261008000000_add_item_note_and_wikidata_url   (#335)  — adds Item.note and
 //      Item.wikidataUrl, both nullable
+//   6. 20261031000000_add_user                         (households H2) — a new,
+//      empty "User" table keyed by the Clerk user id
 // This count and the MIGRATIONS array below must agree. The comment said "Four"
 // for a while after entry 5 was added, so check the array rather than trusting
 // this line.
-// All five must be parked together. Each one references what the previous one
+// Migration 6 is not a location migration and depends on none of the others.
+// It is parked with them anyway. Left unparked, `migrate reset` would apply it
+// BEFORE migrations 1-5, which is not the order production applies them in.
+// All of them must be parked together. Each one references what the previous one
 // creates, so resetting with only some of them parked would fail at reset time.
 // Migration 4 depends on 1 in the other direction too: it destroys the data
 // that 1's backfill reads, so parking 4 alone would reset to a database where
@@ -253,13 +258,14 @@ async function seedFixture(): Promise<void> {
 
 const SERVER_DIR = fileURLToPath(new URL('..', import.meta.url))
 
-// In apply order. Adding a later location migration means adding it here.
+// In apply order. Adding a later migration under test means adding it here.
 const MIGRATIONS = [
   '20260830000000_add_location_and_item_stock',
   '20260916000000_add_location_to_log_and_cart',
   '20260917000000_rekey_cart_to_location_vendor',
   '20261004000000_drop_item_stock_state_columns',
   '20261008000000_add_item_note_and_wikidata_url',
+  '20261031000000_add_user',
 ] as const
 
 const PARKED_ROOT = join(SERVER_DIR, '.migration-under-test')
@@ -757,6 +763,73 @@ async function main(): Promise<void> {
     written?.note === 'buy the 500g pack' &&
       written?.wikidataUrl === 'https://www.wikidata.org/wiki/Q8495',
     'both columns store and return the exact strings they were given',
+  )
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 20261031000000 — the "User" table (households H2)
+  // ══════════════════════════════════════════════════════════════════════
+  //
+  // A new table with no backfill, so the checks are about its shape:
+  //
+  //   1. the table exists with all seven columns. "User" is a reserved word in
+  //      Postgres, so an unquoted name in the migration would fail or create
+  //      something else.
+  //   2. "email", "lastSeenAt" and "deletedAt" are nullable. A Clerk account
+  //      may have no email, and user.deleted carries none (decision P10 in
+  //      docs/global/permissions/2026-10-31-households-plan.md).
+  //   3. "id" and "displayName" are NOT nullable. This is the other half of 2:
+  //      a migration that made every column nullable would pass 2 alone.
+  //   4. a second insert with the same "id" fails with P2002. H3 relies on
+  //      this primary key as the race guard for a person's first sign-in.
+  const userColumns = await columnNamesOf('User')
+  const expectedUserColumns = [
+    'id',
+    'displayName',
+    'email',
+    'lastSeenAt',
+    'deletedAt',
+    'createdAt',
+    'updatedAt',
+  ] as const
+  const missingOnUser = expectedUserColumns.filter((c) => !userColumns.has(c))
+  assert(
+    userColumns.size > 0 && missingOnUser.length === 0,
+    `the "User" table exists with all seven columns${missingOnUser.length ? ` (missing: ${missingOnUser.join(', ')})` : ''}`,
+  )
+
+  for (const column of ['email', 'lastSeenAt', 'deletedAt'] as const) {
+    const meta = await columnMetaOf('User', column)
+    assert(
+      meta?.isNullable === 'YES',
+      `"User"."${column}" is nullable (read: ${meta ? `nullable=${meta.isNullable}` : 'column missing'})`,
+    )
+  }
+  for (const column of ['id', 'displayName'] as const) {
+    const meta = await columnMetaOf('User', column)
+    assert(
+      meta?.isNullable === 'NO',
+      `"User"."${column}" is NOT nullable (read: ${meta ? `nullable=${meta.isNullable}` : 'column missing'})`,
+    )
+  }
+
+  // The first insert must succeed, or the P2002 check below could pass for
+  // the wrong reason. It sets no email, which the column must accept.
+  await prisma.user.create({ data: { id: 'user_clerk_1', displayName: 'Ada' } })
+  const ada = await prisma.user.findUnique({ where: { id: 'user_clerk_1' } })
+  assert(
+    ada?.displayName === 'Ada' && ada?.email === null && ada?.deletedAt === null,
+    'a User inserted without an email reads back with email NULL and deletedAt NULL',
+  )
+
+  let duplicateUserCode: string | undefined
+  try {
+    await prisma.user.create({ data: { id: 'user_clerk_1', displayName: 'Someone Else' } })
+  } catch (err) {
+    duplicateUserCode = err instanceof Prisma.PrismaClientKnownRequestError ? err.code : undefined
+  }
+  assert(
+    duplicateUserCode === 'P2002',
+    'a second User with the same Clerk id is rejected with P2002 (User_pkey) — the race guard for first sign-in',
   )
 
   console.log('\nMigration verified.')

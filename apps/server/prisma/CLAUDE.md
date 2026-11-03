@@ -35,7 +35,7 @@ was the **array form** — `prisma.$transaction([...])`, a list of independent
 queries Prisma batches into one transaction with no logic between them:
 `apps/server/src/resolvers/import.resolver.ts:499`,
 `apps/server/src/resolvers/purge.resolver.ts:22`, and
-`apps/server/src/index.ts:29` (the E2E-only cleanup endpoint).
+`apps/server/src/lib/e2eCleanup.ts` (the E2E-only cleanup endpoint).
 
 `apps/server/src/resolvers/shelf.resolver.ts:89`'s `applyShelfFilterPicks`
 resolver introduces the first **interactive (callback) form** —
@@ -170,6 +170,19 @@ see ships unnoticed.
    that reads just `Item` fails),
 4. restores the migration, `migrate deploy`, asserts.
 
+**How to run it, measured 2026-11-01 (households H2):**
+
+- **`tsx` does not read `.env`, and a relative `--env-file` fails.** `pnpm --filter server exec tsx
+  --env-file=.env …` printed `node: .env: not found`. Pass the **absolute** path:
+  `pnpm --filter server exec tsx --env-file=<absolute path>/apps/server/.env scripts/verify-migration.ts`.
+- **Prisma 6 refuses `migrate reset` when an AI agent runs it.** It prints "Prisma Migrate detected
+  that it was invoked by Claude Code" and exits 1. The script then restores every parked
+  migration, so nothing changes. To run it, the agent must show the user the warning, get an
+  explicit "yes" **after** it, and pass that reply's exact text in
+  `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`. A "yes" given before the warning does not count.
+- **The script also runs `migrate deploy`**, so afterwards the test database is fully migrated.
+  `migrate status` then says "Database schema is up to date!".
+
 **It is not reachable from any gate** — it needs a live database — so it will bit-rot between
 manual runs. Run it whenever you touch a migration, and treat a stale failure as a real signal
 rather than assuming the script rotted.
@@ -178,13 +191,14 @@ These things about it are easy to get wrong. The list grows; count the bullets r
 than trusting a number here — it said **four** when there were seven.
 
 - **It parks migrations by NAME.** `scripts/verify-migration.ts` holds a `MIGRATIONS` list —
-  **five** entries today:
+  **six** entries today:
   `20260830000000_add_location_and_item_stock`,
   `20260916000000_add_location_to_log_and_cart`,
   `20260917000000_rekey_cart_to_location_vendor`,
-  `20261004000000_drop_item_stock_state_columns` (cloud locations PR 5, three assertions) and
+  `20261004000000_drop_item_stock_state_columns` (cloud locations PR 5, three assertions),
   `20261008000000_add_item_note_and_wikidata_url` (cloud-parity PR B, issue #335, four
-  assertions — see the additive section below).
+  assertions — see the additive section below) and
+  `20261031000000_add_user` (households H2, a new empty `"User"` table, five checks).
   **Count the array rather than trusting this line.** It said **four** until 2026-10-08:
   ```bash
   grep -c "^  '2026" apps/server/scripts/verify-migration.ts

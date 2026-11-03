@@ -980,6 +980,9 @@ describe('a resume refetch does not put a spinner over the pantry', () => {
 // decided it: Apollo's `queryDeduplication` (on by default, never turned off in
 // `apollo/client.ts`) collapses the identical in-flight operation, so the pair
 // costs ONE request — and neither hook then depends on the other being mounted.
+// One exception: if a mutation answers while that shared request waits, the
+// request is sent again, up to `MAX_QUERY_ATTEMPTS` sends in total (see
+// `apollo/staleReadRetryLink.ts`). No mutation runs in these tests.
 //
 // The cache is WARM in all three, because that is the production shape: the
 // snapshot is restored before React mounts, and a cold-cache count would not

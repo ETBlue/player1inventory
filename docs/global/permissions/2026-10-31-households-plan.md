@@ -82,7 +82,7 @@ is also written back into the design doc in task 1.0.
 | P9 | "Back" from the household sidebar: the last Pantry, Shopping or Cooking page | Scan `app-navigation-history` (sessionStorage, 50 entries) backwards for the first path that is `/`, `/shopping…` or `/cooking`. Fall back to `/` | The history already exists and is capped, so a fallback is needed |
 | P10 | `User.email` is required in the design, but a Clerk account may have no email, and `user.deleted` carries none | `email String?`. `displayName String` falls back to the part of the email before `@`, then to `"User"` | Matches *Default names* in the design |
 | P11 | The request-path safety net cannot call Clerk in E2E mode, and the Clerk API can fail | In E2E mode, and when the Clerk API fails, create the row with fallback values. **Never fail the GraphQL request because of the safety net** | A failure there would fail all 87 `requireAuth` call sites |
-| P12 | `lastSeenAt` on every request would add 1–2 queries to every GraphQL call | One `updateMany` with a "not today" condition, plus a per-process memory of the day already written. A miss on the memory costs one query; a hit costs none | Keeps the common case at zero queries |
+| P12 | `lastSeenAt` on every request would add 1–2 queries to every GraphQL call | One `updateMany` with a "not today" condition, plus a per-process memory of the day already written. A hit on the memory costs none. A miss costs one query for a user not yet seen today, and two (`updateMany`, then `findUnique`) for one seen today by another process or before a restart | Keeps the common case at zero queries |
 | P13 | `user.deleted` may arrive for a user with no row | Create the row with `deletedAt` set. The safety net never clears `deletedAt` and never overwrites a name the webhook wrote | Otherwise the next request would bring the user back as alive |
 | P14 | `/e2e/cleanup` deletes by `userId`; `User` has `id` | Cleanup also deletes the caller's `User` row, last. Four places change together (task 2.6) | A fake `user.deleted` would otherwise leak `deletedAt` into every later spec |
 | P15 | Nothing migrates the E2E test database | The main session runs `prisma migrate deploy` against `TEST_DIRECT_URL` after task 2.1, with the user's consent | A cloud E2E run fails with "table does not exist" until it is done |
@@ -376,7 +376,7 @@ closes it. Its content renders inside the sidebar.
 ### Task 1.9 — Docs, then the final gate
 
 - [ ] **Step 1:** Update the CLAUDE.md files that name old routes:
-  `apps/web/src/routes/settings/CLAUDE.md`, the five moved folder `CLAUDE.md` files,
+  `apps/web/src/routes/settings/CLAUDE.md`, the four moved folder `CLAUDE.md` files (shelves has none),
   `apps/web/src/routes/CLAUDE.md` (lines 75, 174, 302, 377), `apps/web/src/components/CLAUDE.md`
   (29, 31-33, 210), `apps/web/src/i18n/CLAUDE.md` (36), `apps/web/src/hooks/CLAUDE.md` (167),
   and root `CLAUDE.md` (the settings index, about 183-187). Two folder docs list `new.tsx` files
@@ -437,19 +437,25 @@ model User {
   No relation to other models yet. H3 adds them.
 - [ ] **Step 2:** Write the migration by hand, `YYYYMMDD000000_add_user`, following
   `apps/server/prisma/CLAUDE.md`: a `--` comment saying why, then `CREATE TABLE "User"`. Quote
-  `"User"`; `user` is a reserved word in Postgres. Check with
-  `pnpm --filter server exec prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url "$TEST_DIRECT_URL" --script`,
-  which must print an empty script.
-- [ ] **Step 3:** `verify-migration.ts`: add the folder to `MIGRATIONS` (lines 257-263) and the
-  header comment (5-17). Assert: the table exists; `email`, `lastSeenAt`, `deletedAt` are
+  `"User"`; `user` is a reserved word in Postgres. Check it with a diff that needs no database: save the old schema from
+  `HEAD:apps/server/prisma/schema.prisma` to a file, then run
+  `prisma migrate diff --from-schema-datamodel <old> --to-schema-datamodel prisma/schema.prisma --script`
+  and compare its SQL with the migration. **Never pass `TEST_DIRECT_URL` as
+  `--shadow-database-url`:** Prisma resets a shadow database, so that wipes the test database.
+  This plan said to, until task 2.1 found it.
+- [ ] **Step 3:** `verify-migration.ts`: add the folder to `MIGRATIONS` (about lines 259-265)
+  and the header comment (about 5-24). Assert: the table exists; `email`, `lastSeenAt`, `deletedAt` are
   nullable; `displayName` is not; a second insert with the same `id` fails with `P2002`, as the
-  block at 412-423 does. Do **not** touch the `isDefault` assertions; H3 owns them.
+  block at about 418-429 does. Do **not** touch the `isDefault` assertions; H3 owns them.
 - [ ] **Step 4:** Root `pnpm build` (it runs `prisma generate`). Server tests unchanged.
 - [ ] **Step 5:** Commit: `feat(server): add the User model`.
 - [ ] **Step 6 (main session, not a subagent):** ask the user for consent, then run
   `verify:migration` against the test database, then `prisma migrate deploy` against
   `TEST_DIRECT_URL` (P15). `verify:migration` runs `migrate reset`; it must only ever point at
-  `TEST_*`. Record the output in the task report.
+  `TEST_*`. Run the root `pnpm build` first, so the Prisma client knows `prisma.user`. After the
+  deploy, compare the real database with the schema, read-only:
+  `prisma migrate diff --from-url "$TEST_DIRECT_URL" --to-schema-datamodel prisma/schema.prisma --script`
+  must print an empty script. Record the output in the task report.
 
 ### Task 2.2 — `userFake`
 
@@ -522,12 +528,18 @@ model User {
   - The Clerk lookup throws: the row is created with fallback values, and `ensureUser` does
     **not** throw (P11).
   - E2E mode: no Clerk call; `displayName` is the user id.
-  - Ten parallel calls for a new user give one row and no error (`P2002` is caught and
-    re-read).
+  - Ten parallel calls for a new user give one row, one Clerk call and no error: parallel calls
+    for one user share one run (an `inFlight` map, added after review). A separate test covers
+    `P2002` from another process (`P2002` is caught. Built without a re-read: `id` is the only unique column, so `P2002`
+    already proves the row exists, and no caller needs the row back. If H3 needs the row back,
+    or a second unique column is added, this changes).
+  - Each `lastSeenAt` state (never seen, yesterday, earlier today by another process) takes a
+    different path. The P13 test runs over all three.
   - A row with `deletedAt` set is never changed back, and its name is not overwritten (P13).
 - [ ] **Step 2:** Run. Expect failures.
 - [ ] **Step 3: Implement.** Pass the Clerk lookup in as an argument
-  (`(id) => clerkClient.users.getUser(id)`), so tests do not mock the module. Call `ensureUser`
+  (`async (id) => (await clerkClient.users.getUser(id)).raw`; `getUser` returns a class with
+  camelCase fields, and `.raw` is the `UserJSON`, which can be `null`), so tests do not mock the module. Call `ensureUser`
   in the context function after the user id is known, **in both branches**: the E2E branch
   returns early at line 140, so code placed after line 141 would never run in E2E. Wrap the call
   so any error is logged and the request continues.
@@ -542,12 +554,13 @@ model User {
 
 - [ ] **Step 1:** Add `POST /e2e/users` (body `{ id, displayName, email? }`, upsert) and
   `POST /e2e/users/:id/deleted`, which calls `handleClerkEvent` with a `user.deleted` event
-  **after** the verify step. Never add a test secret, so no test signing key can reach
+  at the point the real webhook reaches after its verify step, with no verify of its own. Never add a test secret, so no test signing key can reach
   production.
 - [ ] **Step 2:** Extend the source-text test from task 2.3: both routes appear only inside the
   `if (E2E_TEST_MODE)` block.
-- [ ] **Step 3:** `e2e/helpers/cloudUsers.ts`: `createCloudUser(request, id, name)` and
-  `sendFakeUserDeleted(request, id)`. Use `E2E_SECOND_USER_ID` (`e2e/constants.ts:38`).
+- [ ] **Step 3:** `e2e/helpers/cloudUsers.ts`: `createCloudUser(request, id, name, email?)` and
+  `sendFakeUserDeleted(request, id)`. The id is required: task 2.6 seeds `E2E_USER_ID` with it,
+  and later phases use `E2E_SECOND_USER_ID` (`e2e/constants.ts:38`).
 - [ ] **Step 4: Mutation check.** Move one route outside the block. The source-text test must go red.
 - [ ] **Step 5:** Commit: `test(e2e): add test-mode routes to create users and fake a deletion`.
 
@@ -555,15 +568,31 @@ model User {
 
 Four places change together (`e2e/CLAUDE.md` lines 194-285):
 
+> **As built:** the cleanup handler moved out of `index.ts` into
+> `apps/server/src/lib/e2eCleanup.ts` (`e2eCleanupHandler`), so a unit test can call it.
+> `index.ts` starts a server when it loads, so no test can import it.
+> `lib/e2eCleanup.test.ts` pins the order of the deletes and that `forgetSeenToday` runs
+> after they commit. `index.ts` only mounts the route, inside the `if (E2E_TEST_MODE)` block.
+
 - [ ] **Step 1:** `index.ts`: add `prisma.user.deleteMany({ where: { id: userId } })` **last** in
   the cleanup transaction; update the `deleted` object and the "14" comment at line 102.
-- [ ] **Step 2:** `e2e/helpers/cloudTeardown.ts`: add `user` to `CLEANUP_MODEL_KEYS`.
+  **Then call `forgetSeenToday(userId)`** (`lib/userRow.ts`, task 2.4). Without it the
+  per-process memory still says "seen today", so the next request skips `ensureUser` and the
+  row is never created again that day.
+  **`forgetSeenToday` alone is not enough** (found in review). A run already in progress can
+  find the row, lose it to the cleanup, and then write "seen today" back. `forgetSeenToday`
+  must also drop the run from `inFlight` and bump a generation counter, and a run may only
+  remember a user if the generation has not changed since it started.
+- [ ] **Step 2:** `e2e/helpers/cloudTeardown.ts`: add `users` (plural, like every other key) to `CLEANUP_MODEL_KEYS`.
 - [ ] **Step 3:** `e2e/tests/cleanup-endpoint.spec.ts`: seed a `User` row with
   `createCloudUser`, so the at-least-1 check at line 274 covers it.
 - [ ] **Step 4:** `e2e/CLAUDE.md`: 14 → 15, and say why `purge-coverage.test.ts` does not list
   `User` (it has `id`, not `userId`).
-- [ ] **Step 5: Mutation check.** Remove the new `deleteMany`. `cleanup-endpoint.spec.ts` must
-  go red in `cloud`.
+- [ ] **Step 5: Mutation check.** Change the new `deleteMany`'s `where` to `{ id: 'nobody' }`.
+  `cleanup-endpoint.spec.ts` must go red in `cloud`, on the `users` count. **Do not remove the
+  line instead:** the transaction then returns 14 results, the handler throws reading
+  `users.count`, and the route answers 500. `cleanupCloudData` fails in `beforeEach`, before
+  the count check runs. That is red, but for the wrong reason.
 - [ ] **Step 6:** Commit: `test(e2e): clean up the User row between specs`.
 
 ### Task 2.7 — One real-SQL spec, docs, final gate
@@ -572,6 +601,16 @@ Four places change together (`e2e/CLAUDE.md` lines 194-285):
   `location-scoped-writes.spec.ts`): a GraphQL request as a new user creates exactly one `User`
   row; `sendFakeUserDeleted` sets `deletedAt`; a later request does not clear it. Add it to the
   `cloud` project's `testMatch` **and** the `local` project's `testIgnore`.
+
+  > **As built:** GraphQL has no `User` type, so the spec reads the row through a new
+  > E2E-only route, `GET /e2e/users/:id` (`e2eReadUserHandler` in `lib/e2eUsers.ts`, helper
+  > `readCloudUser`), inside the `if (E2E_TEST_MODE)` block and covered by
+  > `webhookRouteOrder.test.ts`. Each test uses its own user id. **The "later request" case
+  > marks the user deleted BEFORE the first request.** In the order this step names
+  > (request, delete, request), the second request hits the per-process "seen today" memory
+  > and makes 0 queries, so it could not clear `deletedAt` even if the code tried. The test
+  > instead checks that `lastSeenAt` went from `null` to set, which proves the request
+  > reached the row.
 - [ ] **Step 2:** Docs: root `CLAUDE.md` *Authorization (cloud)* gets one paragraph on the
   `User` row and the webhook. `docs/INDEX.md` → "H2 built". A deploy note in the PR: set
   `CLERK_WEBHOOK_SIGNING_SECRET` in Railway and add the endpoint in the Clerk dashboard

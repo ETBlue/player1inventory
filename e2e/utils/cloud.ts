@@ -6,7 +6,7 @@ import { CLOUD_GRAPHQL_URL, E2E_USER_ID } from '../constants'
  *
  * Requests are sent as `E2E_USER_ID` unless `userId` says otherwise. The
  * server accepts whatever `x-e2e-user-id` carries when `E2E_TEST_MODE=true`
- * (apps/server/src/index.ts:139), so passing `E2E_SECOND_USER_ID` is all it
+ * (the GraphQL context function in apps/server/src/index.ts), so passing `E2E_SECOND_USER_ID` is all it
  * takes to act as a second account — see
  * `e2e/tests/cart-id-cross-user-leak.spec.ts`.
  *
