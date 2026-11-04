@@ -339,6 +339,9 @@ model LocationMember {
 - [ ] **Step 2:** `ownedRowFake`: let a store use `householdId` as its scope column for the six
   catalog models, keeping `userId` for `InventoryLog`, `Cart` and `CartItem`. `insert` requires
   whichever scope column the store uses.
+- [ ] **Step 2b:** `userFake` still checks `where` keys per row, with its own
+  `UserFakeUnsupportedError`. Move it to `checkWhere` (`apps/server/src/test/whereKeys.ts`),
+  so its check runs once per call. Write `householdFake` on `checkWhere` from the start.
 - [ ] **Step 3:** One test per rule. **Mutation check:** make the fake ignore `role`. A test
   must go red.
 - [ ] **Step 4:** Commit: `test(server): add Prisma doubles for households and members`.
@@ -467,6 +470,9 @@ Every create writes `householdId` (and `userId` until task 3.14).
 - **Carts change only their role names in H3a.** Every `Cart.userId` and `CartItem.userId`
   filter stays until H3b (see *Where H3a sits*).
 
+- [ ] **Step 0:** `itemStock.resolver.test.ts` has local matchers (`logMatches`,
+  `stockMatches`, the inline `location.findFirst`) that ignore unknown keys. A `householdId`
+  filter would pass there silently. Move them onto `checkWhere` or a shared fake first.
 - [ ] **Step 1:** Failing tests: a `viewer` cannot write stock, a log or a cart. A stranger's
   item id is refused at each site above. A read never returns a location the caller has no
   role on.
@@ -489,6 +495,8 @@ Every create writes `householdId` (and `userId` until task 3.14).
 - The log and cart location fallbacks use `fallbackImportLocation` (task 3.5).
 - Import role gating (owner or manager only) is H4. Do not add it here.
 
+- [ ] **Step 0:** `junctionFake` inside `import-ownership-item.resolver.test.ts` still checks
+  `where` keys per row. Move it onto `checkWhere` first.
 - [ ] **Step 1:** Failing tests. The ownership tests in the four `import-ownership*.test.ts`
   files must still pass, with the second user now in another household.
 - [ ] **Step 2:** Implement.
