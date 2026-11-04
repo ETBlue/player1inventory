@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql'
+import type { Prisma } from '@prisma/client'
 import type { AppLanguage } from '../context.js'
 import { prisma } from './prisma.js'
 
@@ -153,4 +154,43 @@ export async function ensureHousehold(
 
     return household.id
   })
+}
+
+/**
+ * Take the `Household` row's lock for the rest of this transaction. Call it
+ * FIRST in the transaction, before any other read or write.
+ *
+ * `deleteLocation` counts the household's locations and then deletes one. Two
+ * deletes at once, of the last two locations, could both count 2 and both
+ * delete, leaving no location at all (decision H13 exists to stop that).
+ *
+ * How the lock closes that race:
+ *
+ * - The `UPDATE` takes a row lock on the household row (`FOR NO KEY UPDATE`).
+ * - A second transaction that runs the same `UPDATE` waits at that statement
+ *   until the first one commits or rolls back.
+ * - The second transaction's `findFirst` and `count` come AFTER its `UPDATE`,
+ *   so they are new statements. Under READ COMMITTED each statement sees what
+ *   is committed when it starts. So they see the first transaction's
+ *   committed delete: the count is 1, and the delete is refused.
+ *
+ * It is the same idea as the first sign-in claim on `User` (`ensureHousehold`
+ * above, decision H1).
+ *
+ * Every transaction that removes locations of a household must take this
+ * lock, and take it first: `deleteLocation` now, and `clearAllData` from task
+ * 3.10. If one of them took it later, after it had locked a location row, the
+ * two could wait on each other (a deadlock).
+ *
+ * The cost: `Household.updatedAt` moves on every call.
+ *
+ * NOT proved on real Postgres yet (plan H3a, task 3.16). The Prisma fake has
+ * no row lock, so the unit tests prove only that the `UPDATE` is sent first,
+ * and the count and the refusal. No E2E spec runs two deletes at once.
+ */
+export async function lockHousehold(
+  tx: Prisma.TransactionClient,
+  householdId: string,
+): Promise<void> {
+  await tx.household.update({ where: { id: householdId }, data: { updatedAt: new Date() } })
 }

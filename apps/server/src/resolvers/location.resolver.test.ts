@@ -163,6 +163,31 @@ describe('locations', () => {
     ])
   })
 
+  it('user sees two locations with the same order sorted by id', async () => {
+    // Given loc-pantry and loc-kitchen both have order 0, and loc-pantry comes
+    // FIRST in the store. The fake's sort is stable, so without the id
+    // tie-break the store order would win and loc-pantry would come first.
+    const kitchen = location('loc-kitchen')
+    const pantry = location('loc-pantry')
+    if (!kitchen || !pantry) throw new Error('fixture: loc-kitchen and loc-pantry must exist')
+    kitchen.order = 0
+    pantry.order = 0
+    world.stock.state.locations = [
+      pantry,
+      ...world.stock.state.locations.filter((l) => l.id !== 'loc-pantry'),
+    ]
+
+    // When the caller lists locations
+    const res = await run(`query { locations { id order } }`)
+
+    // Then the tie is broken by id: 'loc-kitchen' < 'loc-pantry'
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.locations).toEqual([
+      { id: 'loc-kitchen', order: 0 },
+      { id: 'loc-pantry', order: 0 },
+    ])
+  })
+
   it('a location role counts only while the person is in that household (decision H18)', async () => {
     // Given the caller moved to hh-2 (a member there, organizer of loc-theirs), but
     // their old LocationMember rows on loc-kitchen and loc-pantry in hh-1 were left behind
@@ -427,6 +452,32 @@ describe('deleteLocation', () => {
     expect(location('loc-kitchen')).toBeDefined()
   })
 
+  it('locks the household row first, before it reads or counts the locations', async () => {
+    // Given spies on the three statements. `vi.spyOn` calls through, so the
+    // delete still runs. `world.client.location` is its own object (a spread
+    // of stockFake's, plus the cascading delete), so the spies go on it, not
+    // on `world.stock.client.location`.
+    const lock = vi.spyOn(world.client.household, 'update')
+    const read = vi.spyOn(world.client.location, 'findFirst')
+    const count = vi.spyOn(world.client.location, 'count')
+
+    // When the caller deletes a location
+    const res = await run(DELETE, { id: 'loc-pantry' })
+    expect(res.errors).toBeUndefined()
+
+    // Then the lock is an update of THIS household's row
+    expect(lock).toHaveBeenCalledTimes(1)
+    expect(lock).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'hh-1' } }))
+    // And it runs before the read and the count. In Postgres, a count that
+    // ran before the lock could see a location that a second delete is about
+    // to remove (lib/household.ts, `lockHousehold`).
+    const lockedAt = lock.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(count).toHaveBeenCalledTimes(1)
+    expect(lockedAt).toBeLessThan(read.mock.invocationCallOrder[0] ?? 0)
+    expect(lockedAt).toBeLessThan(count.mock.invocationCallOrder[0] ?? 0)
+  })
+
   it('the old default location can be deleted while another location is left', async () => {
     // Given loc-kitchen still carries isDefault: true (the column stays until task
     // 3.14), and hh-1 has two more locations
@@ -478,6 +529,18 @@ describe('reorderLocations', () => {
     expect(errorCode(res)).toBe('FORBIDDEN')
     expect(location('loc-kitchen')?.order).toBe(1)
     expect(location('loc-theirs')?.order).toBe(9)
+  })
+
+  it('a batch with a repeated id is refused, and nothing is written', async () => {
+    // Given the caller owns hh-1, and every id is a location of hh-1
+    // When they send loc-kitchen twice
+    const res = await run(REORDER, { ids: ['loc-kitchen', 'loc-kitchen', 'loc-pantry'] })
+
+    // Then the batch is refused as bad input, and no order moved
+    expect(errorCode(res)).toBe('BAD_USER_INPUT')
+    expect(location('loc-kitchen')?.order).toBe(1)
+    expect(location('loc-pantry')?.order).toBe(0)
+    expect(location('loc-garage')?.order).toBe(3)
   })
 
   it('a batch with an id that does not exist changes nothing', async () => {

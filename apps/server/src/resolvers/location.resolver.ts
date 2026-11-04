@@ -7,6 +7,7 @@ import {
   requireHouseholdRole,
   requireLocationRole,
 } from '../lib/authz.js'
+import { lockHousehold } from '../lib/household.js'
 import { prisma } from '../lib/prisma.js'
 import type { Location, Resolvers } from '../generated/graphql.js'
 import type { Prisma, Location as PrismaLocation } from '@prisma/client'
@@ -47,28 +48,6 @@ async function visibleLocations(ctx: Context): Promise<Location[]> {
     orderBy: [{ order: 'asc' }, { id: 'asc' }],
   })
   return (rows as unknown as PrismaLocation[]).map(toGraphQL)
-}
-
-/**
- * Take the `Household` row's lock for the rest of this transaction.
- *
- * `deleteLocation` counts the household's locations and then deletes one. Two
- * deletes at once, of the last two locations, could both count 2 and both
- * delete, leaving no location at all (decision H13 exists to stop that). An
- * `UPDATE` on the household row makes the second transaction wait until the
- * first commits. Postgres then runs the second one's count again on the new
- * data (READ COMMITTED: each statement sees what is committed when it starts),
- * so it counts 1 and refuses. The same idea as the first sign-in claim on
- * `User` (lib/household.ts, decision H1).
- *
- * The cost: `Household.updatedAt` moves on every location delete.
- *
- * NOT proved on real Postgres. The Prisma fake has no row lock, so the unit
- * tests prove only the count and the refusal. No E2E spec runs two deletes at
- * once.
- */
-async function lockHousehold(tx: Prisma.TransactionClient, householdId: string) {
-  await tx.household.update({ where: { id: householdId }, data: { updatedAt: new Date() } })
 }
 
 export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
@@ -135,6 +114,8 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       await requireHouseholdRole(ctx, householdId, 'manager')
 
       await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        // FIRST, before the read and the count below, so two deletes at once
+        // cannot both count 2 (lib/household.ts explains how).
         await lockHousehold(tx, householdId)
 
         // The location must be in the caller's household. A `where` filter,
@@ -173,15 +154,26 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       await requireHouseholdRole(ctx, householdId, 'manager')
 
       await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        // A repeated id is refused. With ['A', 'A', 'B'], A would get order 0
+        // and then 1, and B 2: no order 0 left, and the list the caller sent
+        // is not an order of the locations. The web app never sends one:
+        // `LocationList` sends `arrayMove(locations, …).map((l) => l.id)`, a
+        // new order of the list it shows, and `useReorderLocations` passes it
+        // on unchanged. So a repeated id is a malformed request.
+        if (new Set(orderedIds).size !== orderedIds.length) {
+          throw new GraphQLError('Each location may appear only once.', {
+            extensions: { code: 'BAD_USER_INPUT' },
+          })
+        }
+
         // Every id must be a location of the caller's household. Checked
         // before ANY write, so a batch with one foreign or unknown id changes
         // nothing at all.
-        const ids = [...new Set(orderedIds)]
         const found = await tx.location.findMany({
-          where: { id: { in: ids }, householdId },
+          where: { id: { in: orderedIds }, householdId },
           select: { id: true },
         })
-        if (found.length !== ids.length) throw forbidden()
+        if (found.length !== orderedIds.length) throw forbidden()
 
         for (const [index, id] of orderedIds.entries()) {
           await tx.location.update({ where: { id }, data: { order: index } })

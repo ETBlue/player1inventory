@@ -62,6 +62,7 @@ import type { HouseholdRole, LocationRole } from './authz.js'
 
 const {
   fallbackImportLocation,
+  locationIdsWithRole,
   requireHousehold,
   requireHouseholdRole,
   requireLocationRole,
@@ -342,6 +343,38 @@ describe('requireHousehold', () => {
     expect(world.households.state.households).toEqual([
       expect.objectContaining({ id: householdId, name: '小明的家' }),
     ])
+  })
+})
+
+describe('locationIdsWithRole', () => {
+  it("returns the caller's own location roles only, not another person's", async () => {
+    // Given the caller is a viewer on loc-1. `other` organizes loc-1 and
+    // loc-2 in the same household, and `stranger` organizes loc-s in hh-2.
+    seed({ callerLocationRole: 'viewer' })
+
+    // Then only loc-1 comes back, whatever the role
+    await expect(locationIdsWithRole(caller)).resolves.toEqual(['loc-1'])
+  })
+
+  it('a location role does not count once the caller has left that household (decision H18)', async () => {
+    // Given the caller kept the organizer row on loc-1 but has no
+    // HouseholdMember row in hh-1. `other` is still in hh-1, so a check that
+    // asked only "does hh-1 have any member" would still pass.
+    seed({ callerHouseholdRole: null, callerLocationRole: 'organizer' })
+
+    await expect(locationIdsWithRole(caller)).resolves.toEqual([])
+  })
+
+  it("a role row on a location in a household the caller is not in does not count", async () => {
+    // Given the caller also has an organizer row on loc-s, in hh-2, where
+    // the caller is not a member
+    seed({ callerLocationRole: 'organizer' })
+    await world.households.client.locationMember.create({
+      data: { locationId: 'loc-s', userId: 'caller', role: 'organizer' },
+    })
+
+    // Then loc-s is left out
+    await expect(locationIdsWithRole(caller)).resolves.toEqual(['loc-1'])
   })
 })
 
