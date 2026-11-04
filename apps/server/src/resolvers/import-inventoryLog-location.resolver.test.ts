@@ -38,7 +38,9 @@ vi.mock('../lib/prisma.js', async () => {
   // `requireLocationRole` reads these since households H3a task 3.5.
   const roles = (await import('../test/derivedRoles.js')).createDerivedRoles(stock)
   const log = createInventoryLogFake()
-  const items: { id: string; userId: string }[] = []
+  const { checkWhere } = await import('../test/whereKeys.js')
+  const ITEM_WHERE = { id: 'equals', householdId: 'equals' } as const
+  const items: { id: string; householdId: string; userId: string }[] = []
   return {
     prisma: {
       ...stock.client,
@@ -62,27 +64,31 @@ vi.mock('../lib/prisma.js', async () => {
         upsert: vi.fn(log.client.upsert),
       },
       item: {
-        // `findFirst`, scoped by `userId`, is what both log import mutations
-        // ask for since plan task 8 — `prisma.item.findFirst({ where: { id,
-        // userId } })`. `findUnique` is kept for any future caller that asks
-        // only "does this id exist".
+        // `findFirst`, scoped by `householdId`, is what both log import
+        // mutations ask for (`{ id, householdId }`, since households H3a task
+        // 3.7; `userId` before). The whole `where` is checked ONCE by
+        // `checkWhere` (src/test/whereKeys.ts) before a row is read, so any
+        // other key, or an operator object, THROWS (households H3a task 3.9,
+        // step 0). Until then this fake compared `where.userId` and IGNORED
+        // `householdId`, so a resolver that dropped its household filter
+        // passed here.
         //
-        // `where` is applied KEY BY KEY, Prisma's own semantics, so a resolver
-        // that dropped `userId` would match MORE rows and a test could see it.
-        // A hardcoded `i.userId === where.userId` would leave such a test
-        // green — root CLAUDE.md, "Write test doubles to model the constraint,
-        // not the happy path".
-        findUnique: vi.fn(
-          async ({ where }: { where: { id: string } }) =>
-            items.find((i) => i.id === where.id) ?? null,
-        ),
+        // `where` is then applied KEY BY KEY, Prisma's own semantics, so a
+        // resolver that dropped `householdId` would match MORE rows. A
+        // hardcoded `i.householdId === where.householdId` would leave such a
+        // test green — root CLAUDE.md, "Write test doubles to model the
+        // constraint, not the happy path".
         findFirst: vi.fn(
-          async ({ where = {} }: { where?: { id?: string; userId?: string } } = {}) =>
-            items.find(
-              (i) =>
-                (where.id === undefined || i.id === where.id) &&
-                (where.userId === undefined || i.userId === where.userId),
-            ) ?? null,
+          async ({ where = {} }: { where?: Record<string, unknown> } = {}) => {
+            checkWhere('item fake (import-inventoryLog-location)', where, ITEM_WHERE)
+            return (
+              items.find(
+                (i) =>
+                  (where.id === undefined || i.id === where.id) &&
+                  (where.householdId === undefined || i.householdId === where.householdId),
+              ) ?? null
+            )
+          },
         ),
       },
       // Handles onto the fakes, hung off the mocked client because a `vi.mock`
@@ -107,11 +113,12 @@ vi.mock('../lib/prisma.js', async () => {
 import { prisma } from '../lib/prisma.js'
 import type { InventoryLogFake } from '../test/inventoryLogFake.js'
 import type { StockFake } from '../test/stockFake.js'
+import { derivedHouseholdId } from '../test/derivedRoles.js'
 
 const mockPrisma = prisma as unknown as {
   $stockFake: StockFake
   $logFake: InventoryLogFake
-  $items: { id: string; userId: string }[]
+  $items: { id: string; householdId: string; userId: string }[]
 }
 
 // ─── Server ──────────────────────────────────────────────────────────────────
@@ -152,10 +159,10 @@ beforeEach(() => {
   ])
   mockPrisma.$logFake.reset([])
   mockPrisma.$items.length = 0
-  // `userId` is required since plan task 8 scoped both log mutations' item
-  // lookup by it. Without it the row would not match `{ id, userId }` and
-  // every log would be skipped.
-  mockPrisma.$items.push({ id: ITEM, userId: USER })
+  // `householdId` is required since households H3a task 3.7 scoped both log
+  // mutations' item lookup by it. Without it the row would not match
+  // `{ id, householdId }` and every log would be skipped.
+  mockPrisma.$items.push({ id: ITEM, householdId: derivedHouseholdId(USER), userId: USER })
 })
 
 // ─── Helpers ───────────────────────────────────────────────────────────────── 

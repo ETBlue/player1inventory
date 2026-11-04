@@ -74,6 +74,8 @@ import { typeDefs } from '../schema/index.js'
 vi.mock('../lib/prisma.js', async () => {
   const { createOwnedRowFake } = await import('../test/ownedRowFake.js')
   const { createHouseholdFake } = await import('../test/householdFake.js')
+  const { checkWhere } = await import('../test/whereKeys.js')
+  type WhereSpec = import('../test/whereKeys.js').WhereSpec
   const T = new Date('2026-11-01T00:00:00.000Z')
   const households = createHouseholdFake({
     householdMembers: [
@@ -91,6 +93,12 @@ vi.mock('../lib/prisma.js', async () => {
    * a fake that ignores an unknown key returns the same rows with the filter
    * and without it, so every test passes against a resolver that dropped it.
    *
+   * The check is `checkWhere` (src/test/whereKeys.ts), run ONCE per call,
+   * before the rows are searched (households H3a task 3.9, step 0). Until
+   * then it ran inside the per-row matcher, so on an empty table it never ran
+   * at all, and a filter shape such as `{ in: [...] }` on a known key was
+   * compared to a string and matched nothing, with no error.
+   *
    * The composite primary key is enforced, so `createMany` without
    * `skipDuplicates` raises P2002 the way Postgres does. `bulkUpsertItems`
    * calls `itemVendor.createMany` with NO `skipDuplicates`, which is a real
@@ -99,21 +107,14 @@ vi.mock('../lib/prisma.js', async () => {
    */
   function createJunctionFake(model: string, keys: string[]) {
     const state: { rows: Record<string, unknown>[] } = { rows: [] }
+    // Every column is a plain-equality key. Any other key, or any operator
+    // object on a known key, throws in `checkWhere`.
+    const spec: WhereSpec = Object.fromEntries(keys.map((k) => [k, 'equals' as const]))
 
-    const matches = (row: Record<string, unknown>, where: Record<string, unknown>) => {
-      for (const [key, value] of Object.entries(where)) {
-        if (value === undefined) continue
-        if (!keys.includes(key)) {
-          throw new Error(
-            `junctionFake(${model}) was given a where key it does not model: '${key}'. ` +
-              'It throws instead of ignoring the key, because ignoring one makes ' +
-              'every test pass against a resolver that dropped the filter.',
-          )
-        }
-        if (row[key] !== value) return false
-      }
-      return true
-    }
+    // Runs AFTER `checkWhere`, so every key here is known and every value is
+    // a plain value.
+    const matches = (row: Record<string, unknown>, where: Record<string, unknown>) =>
+      Object.entries(where).every(([key, value]) => value === undefined || row[key] === value)
 
     const primaryKey = (row: Record<string, unknown>) =>
       keys
@@ -151,6 +152,7 @@ vi.mock('../lib/prisma.js', async () => {
         },
         deleteMany: async (args: { where?: Record<string, unknown> } = {}) => {
           const where = args.where ?? {}
+          checkWhere(`junctionFake(${model})`, where, spec)
           const before = state.rows.length
           state.rows = state.rows.filter((r) => !matches(r, where))
           return { count: before - state.rows.length }
