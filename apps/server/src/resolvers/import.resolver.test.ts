@@ -640,14 +640,39 @@ describe('clearAllData', () => {
       expect(response.body.singleResult.errors).toBeUndefined()
       expect(response.body.singleResult.data?.clearAllData).toBe(true)
     }
-    // And every user-owned table was asked to delete this user's rows —
-    // shelves and locations included (see purge-coverage.test.ts and issue #250).
-    // itemStock has no userId — scoped through its location, like recipeItem.
-    expect(p.shelf.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user_import_test' } })
-    expect(p.location.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user_import_test' } })
-    expect(p.itemStock.deleteMany).toHaveBeenCalledWith({
-      where: { location: { userId: 'user_import_test' } },
-    })
+    // And every one of the 14 tables was asked to delete this user's rows,
+    // each with today's exact filter (issue #320). Until 2026-11-04 only
+    // shelf, location and itemStock were checked here, so the other 11
+    // filters could change to anything, `{}` included, and this test stayed
+    // green. Households task 3.10 changes these filters, and this table with
+    // them. Models with no userId of their own (the three junction tables and
+    // itemStock) are scoped through a parent.
+    // See also purge-coverage.test.ts, which checks the filter FORM in the
+    // source, and issue #250.
+    const expectedFilters: Record<string, unknown> = {
+      inventoryLog: { where: { userId: 'user_import_test' } },
+      cartItem: { where: { userId: 'user_import_test' } },
+      cart: { where: { userId: 'user_import_test' } },
+      recipeItem: { where: { recipe: { userId: 'user_import_test' } } },
+      recipe: { where: { userId: 'user_import_test' } },
+      itemTag: { where: { item: { userId: 'user_import_test' } } },
+      itemVendor: { where: { item: { userId: 'user_import_test' } } },
+      itemStock: { where: { location: { userId: 'user_import_test' } } },
+      item: { where: { userId: 'user_import_test' } },
+      tag: { where: { userId: 'user_import_test' } },
+      tagType: { where: { userId: 'user_import_test' } },
+      vendor: { where: { userId: 'user_import_test' } },
+      shelf: { where: { userId: 'user_import_test' } },
+      location: { where: { userId: 'user_import_test' } },
+    }
+    expect(Object.keys(expectedFilters)).toHaveLength(14)
+    for (const [model, filter] of Object.entries(expectedFilters)) {
+      const deleteMany = (p as unknown as Record<string, { deleteMany: ReturnType<typeof vi.fn> }>)[
+        model
+      ]?.deleteMany
+      expect(deleteMany, model).toBeDefined()
+      expect(deleteMany?.mock.calls, model).toStrictEqual([[filter]])
+    }
     // And itemStock is deleted before item and before location — real
     // ItemStock_itemId_fkey is ON DELETE CASCADE, so deleting items first would
     // destroy ItemStock rows before this deleteMany runs. Each deleteMany(...)
