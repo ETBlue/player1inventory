@@ -214,17 +214,19 @@ afterAll(async () => {
   await server.stop()
 })
 
-// A default location for `ensureDefaultLocation` (lib/defaultLocation.ts) to
-// find, so `resolveLogLocations` and `resolveCartLocations` have a fallback.
+// A location row for `p.location.findFirst` to answer with, for ANY id.
 //
 // The mock is ARMED on purpose even though no test in this file expects it to
 // be called any more: the two "no stock row from the item import" tests assert
 // `p.location.findFirst` was NOT called, and an armed mock makes that fail with
 // "expected not to be called" instead of crashing on an undefined result.
 //
-// It answers "yes, that location is yours" for ANY id (ground rule 3 of the
-// PR 4b plan), so NO ownership or which-location assertion can fail in this
-// file. Those live in `import-itemStock.resolver.test.ts`,
+// No location ROLE is checked in this file. Since households H3a task 3.5,
+// `requireLocationRole` and `fallbackImportLocation` (lib/authz.ts) read
+// `locationMember`, which this mock does not have, so a test that reached
+// either would fail with "Cannot read properties of undefined". So NO
+// ownership or which-location assertion can fail in this file. Those live in
+// `import-itemStock.resolver.test.ts`,
 // `import-inventoryLog-location.resolver.test.ts` and the resolver tests that
 // use `src/test/stockFake.ts`.
 //
@@ -516,8 +518,8 @@ describe('bulkCreateItems', () => {
     expect(p.itemStock.upsert).not.toHaveBeenCalled()
     // And the caller's default location is not even looked up. A second,
     // independent guard: `mirrorStockToDefaultLocation` resolved it through
-    // `ensureDefaultLocation`, which is this `findFirst`. No other code path
-    // in `bulkCreateItems` reads a location.
+    // `ensureDefaultLocation` (deleted in households H3a), which was this
+    // `findFirst`. No other code path in `bulkCreateItems` reads a location.
     expect(p.location.findFirst).not.toHaveBeenCalled()
   })
 

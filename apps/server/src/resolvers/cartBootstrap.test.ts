@@ -21,6 +21,10 @@ vi.mock('../lib/prisma.js', async () => {
   const { createStockFake } = await import('../test/stockFake.js')
   const { createShoppingFake } = await import('../test/shoppingFake.js')
   const stockFake = createStockFake()
+  // Roles derived from the location rows: each location's `userId` owns a
+  // one-person household and organizes the location (src/test/derivedRoles.ts).
+  // `requireLocationRole` reads these since households H3a task 3.5.
+  const roles = (await import('../test/derivedRoles.js')).createDerivedRoles(stockFake)
   const shoppingFake = createShoppingFake()
   return {
     prisma: {
@@ -29,6 +33,8 @@ vi.mock('../lib/prisma.js', async () => {
       // Handles onto the fakes' state, hung off the mocked client because a
       // `vi.mock` factory is hoisted above every import and cannot close over
       // a module-scope binding.
+      ...roles.client,
+      $roles: roles,
       $stockFake: stockFake,
       $shoppingFake: shoppingFake,
     },

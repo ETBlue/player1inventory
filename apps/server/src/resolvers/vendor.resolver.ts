@@ -22,7 +22,7 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // `member`, not `viewer`: this mutation writes a Cart row at that
       // location. The id arrives from the client, so it goes through the one
       // authorization seam (lib/authz.ts) before it reaches any query.
-      await requireLocationRole(ctx, locationId, 'member')
+      await requireLocationRole(ctx, locationId, 'participant')
 
       const vendor = await prisma.vendor.create({ data: { name, userId } })
 

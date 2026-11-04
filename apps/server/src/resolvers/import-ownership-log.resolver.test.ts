@@ -61,7 +61,8 @@ import { typeDefs } from '../schema/index.js'
 // ─── The fakes, and why `ownedRowFake` rather than `inventoryLogFake` ────────
 //
 //   - `src/test/stockFake.ts` for `location`, so `resolveLogLocations`,
-//     `requireLocationRole` and `ensureDefaultLocation` run against real rows.
+//     `requireLocationRole` and `fallbackImportLocation` run against real rows,
+//     with roles derived from those rows (`src/test/derivedRoles.ts`).
 //   - `src/test/ownedRowFake.ts` for `inventoryLog` and `item`.
 //
 // `inventoryLogFake` already carries a `findFirst` with the same key-by-key
@@ -93,6 +94,10 @@ vi.mock('../lib/prisma.js', async () => {
   const { createOwnedRowFake } = await import('../test/ownedRowFake.js')
 
   const stock = createStockFake()
+  // Roles derived from the location rows: each location's `userId` owns a
+  // one-person household and organizes the location (src/test/derivedRoles.ts).
+  // `requireLocationRole` reads these since households H3a task 3.5.
+  const roles = (await import('../test/derivedRoles.js')).createDerivedRoles(stock)
 
   const inventoryLog = createOwnedRowFake<{
     id: string
@@ -130,6 +135,8 @@ vi.mock('../lib/prisma.js', async () => {
       // Handles onto the fakes, hung off the mocked client because a `vi.mock`
       // factory is hoisted above every import and cannot close over a
       // module-scope binding.
+      ...roles.client,
+      $roles: roles,
       $stockFake: stock,
       $log: inventoryLog,
       $item: item,

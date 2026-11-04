@@ -3,6 +3,7 @@ import { ApolloServer } from '@apollo/server'
 import { typeDefs } from '../schema/index.js'
 import { resolvers } from '../resolvers/index.js'
 import type { Context } from '../context.js'
+import type { DerivedRoles } from '../test/derivedRoles.js'
 
 interface FakeLocation {
   id: string
@@ -18,11 +19,6 @@ const { state, client } = vi.hoisted(() => {
   const state = {
     locations: [] as FakeLocation[],
     itemStocks: [] as { id: string; locationId: string }[],
-    // One-shot control for the ensureDefaultLocation race test below: makes the
-    // next findFirst({ where: { userId } }) for this userId return null even
-    // though a default row already exists in the store — exactly what the
-    // loser of a concurrent ensureDefaultLocation race sees.
-    simulateDefaultRaceOnce: null as string | null,
   }
   let seq = 0
 
@@ -38,17 +34,14 @@ const { state, client } = vi.hoisted(() => {
   const client = {
     location: {
       findFirst: async ({ where = {}, orderBy }: { where?: Record<string, unknown>; orderBy?: { order: 'asc' | 'desc' } }) => {
-        // Only the ensureDefaultLocation lookup queries by userId alone (no id) —
-        // trip the one-shot race flag only for that shape, so requireLocationRole's
-        // findFirst({ where: { id, userId } }) calls are unaffected.
-        if (where.id === undefined && where.userId !== undefined && where.userId === state.simulateDefaultRaceOnce) {
-          state.simulateDefaultRaceOnce = null
-          return null
-        }
         const rows = state.locations.filter((l) => matches(l, where))
         if (orderBy?.order === 'asc') rows.sort((a, b) => a.order - b.order)
         return rows[0] ?? null
       },
+      // `deleteLocation` reads `isDefault` itself since households H3a task
+      // 3.5, because `requireLocationRole` no longer returns it.
+      findUnique: async ({ where }: { where: { id: string } }) =>
+        state.locations.find((l) => matches(l, where)) ?? null,
       findMany: async ({ where = {}, orderBy }: { where?: Record<string, unknown>; orderBy?: { order: 'asc' | 'desc' } }) => {
         const rows = state.locations.filter((l) => matches(l, where))
         if (orderBy?.order === 'asc') rows.sort((a, b) => a.order - b.order)
@@ -99,7 +92,17 @@ const { state, client } = vi.hoisted(() => {
   return { state, client }
 })
 
-vi.mock('../lib/prisma.js', () => ({ prisma: client }))
+vi.mock('../lib/prisma.js', async () => {
+  // Roles derived from the location rows: each location's `userId` owns a
+  // one-person household and organizes the location (src/test/derivedRoles.ts).
+  // `requireLocationRole` reads these since households H3a task 3.5. Task 3.6
+  // rewrites this file around households and real role rows.
+  const roles = (await import('../test/derivedRoles.js')).createDerivedRoles({ state })
+  Object.assign(client, roles.client, { $roles: roles })
+  return { prisma: client }
+})
+
+const roles = (client as unknown as { $roles: DerivedRoles }).$roles
 
 const server = new ApolloServer<Context>({ typeDefs, resolvers })
 
@@ -160,15 +163,28 @@ describe('location resolvers', () => {
     expect(loc?.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
   })
 
-  it('user with no locations gets a default created lazily', async () => {
-    // Given a user who owns nothing
+  it('user signing in for the first time gets a Home location', async () => {
+    // Given a new person: a User row that was never set up, and no location
     state.locations = []
+    roles.users.reset([
+      {
+        id: 'user-new',
+        displayName: 'New',
+        email: null,
+        lastSeenAt: null,
+        deletedAt: null,
+        householdSetupAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ])
 
     // When they list locations
     const res = await run(`query { locations { name isDefault order } }`, {}, 'user-new')
 
-    // Then exactly one default location was created for them
-    expect(res.data?.locations).toEqual([{ name: 'My Home', isDefault: true, order: 0 }])
+    // Then first sign-in made one location for them (lib/household.ts).
+    // `isDefault` stays true until task 3.12 stops the web app reading it.
+    expect(res.data?.locations).toEqual([{ name: 'Home', isDefault: true, order: 0 }])
   })
 
   it('user can create a location, appended after the highest order', async () => {
@@ -238,25 +254,5 @@ describe('location resolvers', () => {
     // Then nothing is written — user-a's own order is unchanged too
     expect(res.errors?.[0]?.message).toMatch(/Forbidden/)
     expect(state.locations.find((l) => l.id === 'loc-a2')?.order).toBe(1)
-  })
-
-  it('ensureDefaultLocation swallows a lost create race and returns the winning row', async () => {
-    // Given user-a already has a default location (loc-a, seeded above), and
-    // the guard lookup loses the race — it sees null even though the row
-    // exists, exactly like the loser of a concurrent ensureDefaultLocation
-    // call. Its own create then collides with the fake's partial-unique-index
-    // check and must be swallowed, not thrown.
-    state.simulateDefaultRaceOnce = 'user-a'
-
-    // When user-a lists locations
-    const res = await run(`query { locations { id isDefault order } }`)
-
-    // Then the query does not throw, and no duplicate default was created —
-    // still exactly loc-a (default) and loc-a2, not a third row
-    expect(res.errors).toBeUndefined()
-    expect(res.data?.locations).toEqual([
-      expect.objectContaining({ id: 'loc-a', isDefault: true }),
-      expect.objectContaining({ id: 'loc-a2', isDefault: false }),
-    ])
   })
 })

@@ -64,7 +64,7 @@ import type { ItemStock, Prisma } from '@prisma/client'
  *
  * Nothing here authorizes anything. A caller must hold `member` on
  * `locationId` before it gets this far, through
- * `requireLocationRole(ctx, locationId, 'member')` (lib/authz.ts) — never a
+ * `requireLocationRole(ctx, locationId, 'participant')` (lib/authz.ts) — never a
  * `row.userId === ctx.userId` comparison (root CLAUDE.md, Authorization).
  *
  * Current callers and where their authorization happens:

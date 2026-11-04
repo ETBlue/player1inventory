@@ -63,10 +63,11 @@ input InventoryLogInput {
   # OPTIONAL, not `ID!`, on purpose. A client built before cloud locations
   # sends no such field, and making it required would reject every import
   # that client issues. When it is absent the resolver falls back to the
-  # caller's default location, which is what the field replaced.
+  # caller's first location they may write to (`fallbackImportLocation`,
+  # lib/authz.ts, households decision H12).
   #
   # Attacker-controlled. The resolvers verify it through
-  # `requireLocationRole(ctx, locationId, 'member')` before any row is
+  # `requireLocationRole(ctx, locationId, 'participant')` before any row is
   # written — a log in someone else's location would be a cross-user write.
   locationId: ID
 }
@@ -100,9 +101,11 @@ input LocationInput {
   #     (design §6, brainstorming decision 7), so only NON-default locations
   #     ever reach these mutations. A field only the remap could fill is a
   #     field nothing fills.
-  #  2. `ensureDefaultLocation(userId)` (lib/defaultLocation.ts) already
-  #     guarantees the account has exactly one default, so the server does not
-  #     need the payload's opinion about which row that is.
+  #  2. The server already gives the account its one default: the first
+  #     location made at first sign-in (`ensureHousehold`, lib/household.ts),
+  #     or by the add_households migration. So the server does not need the
+  #     payload's opinion about which row that is. (Until households H3a this
+  #     was `ensureDefaultLocation`, now deleted; task 3.14 drops `isDefault`.)
   #  3. The database would REJECT a second default, not accept it. PR 1's
   #     migration adds `CREATE UNIQUE INDEX "Location_one_default_per_user_key"
   #     ON "Location" ("userId") WHERE "isDefault"`

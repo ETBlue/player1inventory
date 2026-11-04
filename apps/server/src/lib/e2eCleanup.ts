@@ -102,10 +102,11 @@ export async function e2eCleanupHandler(req: Request, res: Response): Promise<vo
     // surfacing a spurious "Conflicts detected" dialog on import tests.
     prisma.shelf.deleteMany({ where: { userId } }),
     // Locations are user-scoped too. Without this they accumulate across runs
-    // in the shared test DB, and ensureDefaultLocation
-    // (lib/defaultLocation.ts) returns early whenever the user already has a
-    // default — so the next run starts with the previous run's locations
-    // instead of a fresh default.
+    // in the shared test DB, and the next run starts with the previous run's
+    // locations instead of a fresh first location. (Until households H3a
+    // task 3.5 the fresh one came from ensureDefaultLocation; it now comes
+    // from first sign-in, lib/household.ts. Task 3.10 adds the household rows
+    // to this list.)
     prisma.location.deleteMany({ where: { userId } }),
     // The User row itself (households task 2.6). Its key is `id`, not
     // `userId`: the row IS the user. It goes LAST. No model has a relation

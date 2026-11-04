@@ -18,6 +18,10 @@ import type { Context } from '../context.js'
 vi.mock('../lib/prisma.js', async () => {
   const { createStockFake } = await import('../test/stockFake.js')
   const stockFake = createStockFake()
+  // Roles derived from the location rows: each location's `userId` owns a
+  // one-person household and organizes the location (src/test/derivedRoles.ts).
+  // `requireLocationRole` reads these since households H3a task 3.5.
+  const roles = (await import('../test/derivedRoles.js')).createDerivedRoles(stockFake)
   return {
     prisma: {
       recipe: {
@@ -41,12 +45,15 @@ vi.mock('../lib/prisma.js', async () => {
       ...stockFake.client,
       // Hung off the client because a `vi.mock` factory is hoisted above every
       // import and cannot close over a module-scope binding.
+      ...roles.client,
+      $roles: roles,
       $stockFake: stockFake,
     },
   }
 })
 
 import { prisma } from '../lib/prisma.js'
+import type { DerivedRoles } from '../test/derivedRoles.js'
 import { makeStock, type StockFake } from '../test/stockFake.js'
 
 const mockPrisma = prisma as unknown as {
@@ -107,6 +114,11 @@ const LOC_OTHER = 'loc_garage'
 const LOC_STRANGER = 'loc_theirs'
 
 const stockFake = mockPrisma.$stockFake
+const roles = (prisma as unknown as { $roles: DerivedRoles }).$roles
+// First sign-in (lib/household.ts) runs in a transaction that writes `User`,
+// `Household`, `HouseholdMember` and `LocationMember` as well as `Location`.
+// So the transaction gets the whole mocked client and the role stores too.
+stockFake.configureTransaction({ txClient: prisma, stores: roles.stores })
 
 beforeEach(async () => {
   vi.clearAllMocks()
@@ -532,17 +544,32 @@ describe('consumeRecipes writes the cook location\'s ItemStock', () => {
     // never run the `locations` query. Until issue #287 the stock write returned
     // early here and the cooked quantities were dropped with no error.
     stockFake.reset([], [])
+    // And a User row that was never set up. In the server, `ensureUserOrLog`
+    // makes this row before any resolver runs; here the test makes it.
+    roles.users.reset([
+      {
+        id: 'user_test123',
+        displayName: 'Test',
+        email: null,
+        lastSeenAt: null,
+        deletedAt: null,
+        householdSetupAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ])
 
     // The account reads its location list first. Since PR 3b Task 4
     // `ConsumeRecipesInput.locationId` is `ID!`, so this is the only way such
     // an account can reach a cook at all: the `locations` query calls
-    // `ensureDefaultLocation`, which creates the row, and the client then names
+    // `requireHousehold`, which creates the household and its first location,
+    // "Home" (lib/household.ts), and the client then names
     // the id it got back. That is the real client's order too —
     // `useCloudLocationId` reads `GetLocations` before the mutation is sent.
     const listed = await execOp(`query Locations { locations { id isDefault name } }`)
     expect(listed?.errors).toBeUndefined()
     const created = stockFake.state.locations.find((l) => l.userId === 'user_test123')
-    expect(created).toMatchObject({ isDefault: true, name: 'My Home' })
+    expect(created).toMatchObject({ isDefault: true, name: 'Home' })
 
     // When they cook there
     const result = await execOp(CONSUME, {

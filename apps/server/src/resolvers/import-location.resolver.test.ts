@@ -36,6 +36,10 @@ import { typeDefs } from '../schema/index.js'
 vi.mock('../lib/prisma.js', async () => {
   const { createStockFake } = await import('../test/stockFake.js')
   const stock = createStockFake()
+  // Roles derived from the location rows: each location's `userId` owns a
+  // one-person household and organizes the location (src/test/derivedRoles.ts).
+  // `requireLocationRole` reads these since households H3a task 3.5.
+  const roles = (await import('../test/derivedRoles.js')).createDerivedRoles(stock)
   return {
     prisma: {
       ...stock.client,
@@ -49,6 +53,8 @@ vi.mock('../lib/prisma.js', async () => {
       // A handle onto the fake, hung off the mocked client because a `vi.mock`
       // factory is hoisted above every import and cannot close over a
       // module-scope binding.
+      ...roles.client,
+      $roles: roles,
       $stockFake: stock,
     },
   }
@@ -386,8 +392,8 @@ describe('bulkUpsertLocations', () => {
 
     // Then the name and order change — but the row is STILL the default.
     // `isDefault` is absent from the update payload on purpose: writing
-    // `false` there would clear the account's only default, and
-    // `ensureDefaultLocation` would then build a spare "My Home" beside it.
+    // `false` there would clear the account's only default, and the web app
+    // still reads the flag until households H3a task 3.12.
     expect(result.errors).toBeUndefined()
     expect(storedRow(LOC_DEFAULT)).toMatchObject({
       name: 'Kitchen Renamed',

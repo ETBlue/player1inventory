@@ -28,6 +28,10 @@ import type { Context } from '../context.js'
 vi.mock('../lib/prisma.js', async () => {
   const { createStockFake } = await import('../test/stockFake.js')
   const stockFake = createStockFake()
+  // Roles derived from the location rows: each location's `userId` owns a
+  // one-person household and organizes the location (src/test/derivedRoles.ts).
+  // `requireLocationRole` reads these since households H3a task 3.5.
+  const roles = (await import('../test/derivedRoles.js')).createDerivedRoles(stockFake)
   return {
     prisma: {
       cart: {
@@ -59,12 +63,15 @@ vi.mock('../lib/prisma.js', async () => {
       // Handle onto the fake's state, hung off the mocked client because a
       // `vi.mock` factory is hoisted above every import and cannot close over
       // a module-scope binding.
+      ...roles.client,
+      $roles: roles,
       $stockFake: stockFake,
     },
   }
 })
 
 import { prisma } from '../lib/prisma.js'
+import type { DerivedRoles } from '../test/derivedRoles.js'
 import { makeStock, type StockFake } from '../test/stockFake.js'
 import { type FakeCart, type FakeCartItem, filterCartItems } from '../test/cartItemFake.js'
 
@@ -93,6 +100,11 @@ const mockPrisma = prisma as unknown as {
 }
 
 const stockFake = mockPrisma.$stockFake
+const roles = (prisma as unknown as { $roles: DerivedRoles }).$roles
+// First sign-in (lib/household.ts) runs in a transaction that writes `User`,
+// `Household`, `HouseholdMember` and `LocationMember` as well as `Location`.
+// So the transaction gets the whole mocked client and the role stores too.
+stockFake.configureTransaction({ txClient: prisma, stores: roles.stores })
 
 // TWO locations for the checking-out user, plus one belonging to somebody
 // else — which is ALSO flagged isDefault. Two different assertions need this:
@@ -1015,11 +1027,26 @@ describe('checkout writes the cart location\'s ItemStock', () => {
     // has never run the `locations` query. Until issue #287 the stock write
     // returned early here and the purchased quantity was dropped with no error.
     stockFake.reset([], [])
+    // And a User row that was never set up. In the server, `ensureUserOrLog`
+    // makes this row before any resolver runs; here the test makes it.
+    roles.users.reset([
+      {
+        id: 'user_test123',
+        displayName: 'Test',
+        email: null,
+        lastSeenAt: null,
+        deletedAt: null,
+        householdSetupAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ])
 
     // The account reads its location list first. Since PR 3b Task 4 a cart id
     // names a location AND `vendorCart` demands one, so this is the only way
     // such an account can reach checkout at all: the `locations` query calls
-    // `ensureDefaultLocation`, which creates the row, and every location-scoped
+    // `requireHousehold`, which creates the household and its first location,
+    // "Home" (lib/household.ts), and every location-scoped
     // call the client makes afterwards names the id it got back. That is the
     // real client's order too — `useCloudLocationId` and `useCloudLocationKnown`
     // both read `GetLocations` before anything location-scoped is sent.
@@ -1030,7 +1057,7 @@ describe('checkout writes the cart location\'s ItemStock', () => {
     const listed = await execOp(`query Locations { locations { id isDefault name } }`)
     expect(listed?.errors).toBeUndefined()
     const created = stockFake.state.locations.find((l) => l.userId === 'user_test123')
-    expect(created).toMatchObject({ isDefault: true, name: 'My Home' })
+    expect(created).toMatchObject({ isDefault: true, name: 'Home' })
 
     // And opening the no-vendor cart at that location creates it under the
     // composite id

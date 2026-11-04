@@ -1531,8 +1531,9 @@ Nine of those 26 cover location or stock surfaces. Three were added 2026-09-14 (
 `settings/locations.spec.ts`, `location-switcher.spec.ts` and
 `location-not-stocked-here.spec.ts` — 22 cloud test cases. They give the first real-SQL
 coverage of `createLocation`, `updateLocation`, `deleteLocation`, `reorderLocations`, the
-`locations` query with `ensureDefaultLocation`, `upsertItemStock`, `addItemToLocation` and
-the `itemStocks` / `PantryData` read.
+`locations` query with `ensureDefaultLocation` (replaced by `requireHousehold` and first
+sign-in, `apps/server/src/lib/household.ts`, in households H3a task 3.5), `upsertItemStock`,
+`addItemToLocation` and the `itemStocks` / `PantryData` read.
 
 The fourth is `location-scoped-writes.spec.ts`, added 2026-09-23 — 4 cloud test cases, and
 the first real-SQL coverage of the four location-scoped WRITE resolvers PRs 3b and 3c

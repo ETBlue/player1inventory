@@ -1,7 +1,6 @@
 import { GraphQLError } from 'graphql'
 import { requireAuth } from '../context.js'
-import { requireLocationRole } from '../lib/authz.js'
-import { ensureDefaultLocation } from '../lib/defaultLocation.js'
+import { requireHousehold, requireLocationRole } from '../lib/authz.js'
 import { prisma } from '../lib/prisma.js'
 import type { Location, Resolvers } from '../generated/graphql.js'
 import type { Location as PrismaLocation } from '@prisma/client'
@@ -29,7 +28,10 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
   Query: {
     locations: async (_, __, ctx) => {
       const userId = requireAuth(ctx)
-      await ensureDefaultLocation(userId)
+      // First sign-in happens here for most people: a new person gets their
+      // household and its first location, "Home" (lib/household.ts). Task 3.6
+      // moves the read below onto location roles.
+      await requireHousehold(ctx)
       const rows = await prisma.location.findMany({
         where: { userId },
         orderBy: { order: 'asc' },
@@ -50,7 +52,7 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     },
 
     updateLocation: async (_, { id, input }, ctx) => {
-      await requireLocationRole(ctx, id, 'member')
+      await requireLocationRole(ctx, id, 'participant')
       const data: { name?: string } = {}
       if (typeof input.name === 'string') data.name = input.name.trim()
       const row = await prisma.location.update({ where: { id }, data })
@@ -58,10 +60,16 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     },
 
     deleteLocation: async (_, { id }, ctx) => {
-      // Owner, not member: deleting a location is destructive and is the kind
-      // of action location RBAC reserves for owners.
-      const location = await requireLocationRole(ctx, id, 'owner')
-      if (location.isDefault) {
+      // Organizer, not participant: deleting a location is destructive.
+      // Task 3.6 replaces this check with the household role `manager`, and
+      // the `isDefault` refusal below with "not the last location" (decision
+      // H13).
+      await requireLocationRole(ctx, id, 'organizer')
+      const location = await prisma.location.findUnique({
+        where: { id },
+        select: { isDefault: true },
+      })
+      if (location?.isDefault) {
         throw new GraphQLError('The default location cannot be deleted.', {
           extensions: { code: 'BAD_USER_INPUT' },
         })
@@ -81,7 +89,7 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // Authorize EVERY id before writing ANY of them, so a batch containing
       // someone else's location changes nothing at all.
       for (const id of orderedIds) {
-        await requireLocationRole(ctx, id, 'member')
+        await requireLocationRole(ctx, id, 'participant')
       }
       await prisma.$transaction(
         orderedIds.map((id, index) =>

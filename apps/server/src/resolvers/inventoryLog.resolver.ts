@@ -109,7 +109,7 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
       const userId = requireAuth(ctx)
       // A write needs `member`, not `viewer`: a viewer may read a location's
       // logs but must not add one.
-      const scopedLocationId = await requireLocation(ctx, locationId, 'member')
+      const scopedLocationId = await requireLocation(ctx, locationId, 'participant')
       return prisma.inventoryLog.create({
         data: {
           itemId,

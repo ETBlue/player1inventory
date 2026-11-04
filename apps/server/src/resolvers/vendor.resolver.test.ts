@@ -7,12 +7,17 @@ import type { Context } from '../context.js'
 // ─── Mock Prisma ─────────────────────────────────────────────────────────────
 
 // `location` is the STATEFUL fake (src/test/stockFake.ts): createVendor's
-// permanent cart now needs a locationId, resolved through
-// ensureDefaultLocation, and a call recorder cannot answer "did it pick the
-// caller's default one".
+// permanent cart now needs a locationId, checked through
+// `requireLocationRole` with roles derived from the location rows
+// (`src/test/derivedRoles.ts`), and a call recorder cannot answer "did it
+// pick the right one".
 vi.mock('../lib/prisma.js', async () => {
   const { createStockFake } = await import('../test/stockFake.js')
   const stockFake = createStockFake()
+  // Roles derived from the location rows: each location's `userId` owns a
+  // one-person household and organizes the location (src/test/derivedRoles.ts).
+  // `requireLocationRole` reads these since households H3a task 3.5.
+  const roles = (await import('../test/derivedRoles.js')).createDerivedRoles(stockFake)
   return {
     prisma: {
       vendor: {
@@ -40,6 +45,8 @@ vi.mock('../lib/prisma.js', async () => {
       // Handle onto the fake's state, hung off the mocked client because a
       // `vi.mock` factory is hoisted above every import and cannot close over
       // a module-scope binding.
+      ...roles.client,
+      $roles: roles,
       $stockFake: stockFake,
     },
   }

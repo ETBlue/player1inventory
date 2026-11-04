@@ -97,7 +97,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       const userId = requireAuth(ctx)
 
       // `member`, not `viewer`: this query CREATES the cart when it is missing.
-      await requireLocationRole(ctx, locationId, 'member')
+      await requireLocationRole(ctx, locationId, 'participant')
 
       const cartId = cartIdFor(locationId, vendorId ?? null)
       let cart = await prisma.cart.findUnique({ where: { id: cartId } })
@@ -170,7 +170,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
   Mutation: {
     addToCart: async (_, { cartId, itemId, quantity }, ctx) => {
       const userId = requireAuth(ctx)
-      await requireCartLocation(ctx, cartId, 'member')
+      await requireCartLocation(ctx, cartId, 'participant')
       const existing = await prisma.cartItem.findFirst({ where: { cartId, itemId, userId } })
       if (existing) {
         return prisma.cartItem.update({
@@ -189,7 +189,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       const userId = requireAuth(ctx)
       const existing = await prisma.cartItem.findFirst({ where: { id, userId } })
       if (!existing) throw new GraphQLError('CartItem not found', { extensions: { code: 'NOT_FOUND' } })
-      await requireCartLocation(ctx, existing.cartId, 'member')
+      await requireCartLocation(ctx, existing.cartId, 'participant')
       return prisma.cartItem.update({
         where: { id },
         data: { quantity },
@@ -200,7 +200,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       const userId = requireAuth(ctx)
       const existing = await prisma.cartItem.findFirst({ where: { id, userId } })
       if (!existing) return false
-      await requireCartLocation(ctx, existing.cartId, 'member')
+      await requireCartLocation(ctx, existing.cartId, 'participant')
       await prisma.cartItem.delete({ where: { id } })
       return true
     },
@@ -216,7 +216,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       // inventory log against the Kitchen. That was the limitation PR 3a
       // shipped; Task 1's re-key of `Cart.id` is what made the real location
       // reachable here.
-      const cartLocationId = await requireCartLocation(ctx, cartId, 'member')
+      const cartLocationId = await requireCartLocation(ctx, cartId, 'participant')
       // Issue #358: this read decides WHICH rows get bought, and
       // `CartItem.userId` becomes "added by" under households while this
       // filter KEEPS COMPILING. Left as it is, a shared checkout moves stock
@@ -392,7 +392,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
     bootstrapCarts: async (_, { locationId }, ctx) => {
       const userId = requireAuth(ctx)
       // `member`, not `viewer`: this creates rows.
-      await requireLocationRole(ctx, locationId, 'member')
+      await requireLocationRole(ctx, locationId, 'participant')
 
       const vendors = await prisma.vendor.findMany({
         where: { userId },
@@ -436,7 +436,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
 
     abandonCart: async (_, { cartId }, ctx) => {
       const userId = requireAuth(ctx)
-      await requireCartLocation(ctx, cartId, 'member')
+      await requireCartLocation(ctx, cartId, 'participant')
       // Issue #358, and the two lines below need DIFFERENT fixes because they
       // read different columns.
       //

@@ -19,11 +19,11 @@ import { typeDefs } from '../schema/index.js'
 // without rewriting its seven existing tests. This file carries its own mock
 // built from the two stateful fakes instead:
 //
-//   - `src/test/stockFake.ts` for `location`, so `ensureDefaultLocation` and
-//     `requireLocationRole` run against real rows. Its `location.findFirst`
-//     applies `where` key by key (`where.x === undefined || row.x === where.x`),
-//     so dropping `userId` from the ownership query returns MORE rows and the
-//     fixture sees it.
+//   - `src/test/stockFake.ts` for `location`, with the roles that
+//     `src/test/derivedRoles.ts` derives from its rows (each location's
+//     `userId` organizes it). So `fallbackImportLocation` and
+//     `requireLocationRole` run against real rows, and a stranger's location
+//     is refused because the caller has no role on it.
 //   - `src/test/inventoryLogFake.ts` for `inventoryLog`, so a written row can
 //     be read back and its `locationId` column inspected.
 //
@@ -33,6 +33,10 @@ vi.mock('../lib/prisma.js', async () => {
   const { createStockFake } = await import('../test/stockFake.js')
   const { createInventoryLogFake } = await import('../test/inventoryLogFake.js')
   const stock = createStockFake()
+  // Roles derived from the location rows: each location's `userId` owns a
+  // one-person household and organizes the location (src/test/derivedRoles.ts).
+  // `requireLocationRole` reads these since households H3a task 3.5.
+  const roles = (await import('../test/derivedRoles.js')).createDerivedRoles(stock)
   const log = createInventoryLogFake()
   const items: { id: string; userId: string }[] = []
   return {
@@ -84,6 +88,15 @@ vi.mock('../lib/prisma.js', async () => {
       // Handles onto the fakes, hung off the mocked client because a `vi.mock`
       // factory is hoisted above every import and cannot close over a
       // module-scope binding.
+      ...roles.client,
+      // Wrapped so a test can count HOW MANY location role checks ran.
+      // Since households H3a task 3.5, `requireLocationRole` reads
+      // `locationMember`, not `location`.
+      locationMember: {
+        ...roles.client.locationMember,
+        findFirst: vi.fn(roles.client.locationMember.findFirst),
+      },
+      $roles: roles,
       $stockFake: stock,
       $logFake: log,
       $items: items,
@@ -269,9 +282,9 @@ describe('bulkCreateInventoryLogs — the location comes from the payload', () =
     expect(storedLocationOf('log_a')).toBe(LOC_OTHER)
     expect(storedLocationOf('log_c')).toBe(LOC_DEFAULT)
     // And the ownership check ran twice — once per DISTINCT location, not five
-    // times. `ensureDefaultLocation` is not called at all, because no row
+    // times. `fallbackImportLocation` is not called at all, because no row
     // omitted a location.
-    const locationFindFirst = (prisma as unknown as { location: { findFirst: ReturnType<typeof vi.fn> } }).location.findFirst
+    const locationFindFirst = (prisma as unknown as { locationMember: { findFirst: ReturnType<typeof vi.fn> } }).locationMember.findFirst
     expect(locationFindFirst).toHaveBeenCalledTimes(2)
   })
 })

@@ -13,6 +13,7 @@ import {
   e2eUserDeletedHandler,
 } from './lib/e2eUsers.js'
 import { isAllowedOrigin } from './lib/cors.js'
+import { createGraphQLContext } from './lib/graphqlContext.js'
 import { prisma } from './lib/prisma.js'
 import type { UserSource } from './lib/userRow.js'
 import { ensureUserOrLog } from './lib/userRow.js'
@@ -74,27 +75,20 @@ await server.start()
 app.use(
   GRAPHQL_PATH,
   expressMiddleware(server, {
-    context: async ({ req }) => {
-      // E2E test bypass: accept a static user ID header instead of a Clerk JWT.
-      // Only active when the server is started with E2E_TEST_MODE=true.
-      //
-      // Both branches call ensureUserOrLog (lib/userRow.ts): it creates a
-      // missing User row and records lastSeenAt once per UTC day. It never
-      // throws, so a failure there never fails the request (plan P11). The
-      // E2E branch returns early, so it needs its own call.
-      // contextEnsureUser.test.ts guards both calls.
-      if (E2E_TEST_MODE) {
-        const testUserId = req.headers['x-e2e-user-id'] as string | undefined
-        if (testUserId) {
-          await ensureUserOrLog(testUserId, USER_SOURCE)
-          return { userId: testUserId }
-        }
-      }
-      const auth = getAuth(req)
-      const userId = auth.userId ?? null
-      if (userId) await ensureUserOrLog(userId, USER_SOURCE)
-      return { userId }
-    },
+    // The two branches (E2E test header, Clerk session) live in
+    // lib/graphqlContext.ts, where graphqlContext.test.ts tests them.
+    //
+    // ensureUserOrLog (lib/userRow.ts) creates a missing User row and records
+    // lastSeenAt once per UTC day. It never throws, so a failure there never
+    // fails the request (plan P11). contextEnsureUser.test.ts checks that this
+    // file passes it, and not ensureUser, which can throw.
+    context: createGraphQLContext({
+      e2eTestMode: E2E_TEST_MODE,
+      // getAuth needs Express's full Request; the context function is only
+      // ever called with one.
+      clerkUserId: (req) => getAuth(req as express.Request).userId ?? null,
+      ensureUser: (userId) => ensureUserOrLog(userId, USER_SOURCE),
+    }),
   }),
 )
 

@@ -104,7 +104,7 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     upsertItemStock: async (_, { itemId, locationId, input }, ctx) => {
       // No `requireAuth` of its own: `requireLocationRole` runs it first, so
       // an unauthenticated caller still fails before any read.
-      await requireLocationRole(ctx, locationId, 'member')
+      await requireLocationRole(ctx, locationId, 'participant')
       const data = toData(input as StockInput)
       // `writeStock` (lib/itemStockWrite.ts) is the one place per-location
       // stock is written. This resolver used to hold its own
@@ -139,14 +139,14 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     // since cloud locations PR 5, so nothing here has to mirror anything.
     addItemToLocation: async (_, { itemId, locationId, sourceLocationId }, ctx) => {
       const userId = requireAuth(ctx)
-      await requireLocationRole(ctx, locationId, 'member')
+      await requireLocationRole(ctx, locationId, 'participant')
       const row = await ensureStockAtLocation(itemId, locationId, userId, sourceLocationId)
       return toGraphQL(row as unknown as PrismaItemStock)
     },
 
     removeItemFromLocation: async (_, { itemId, locationId }, ctx) => {
       const userId = requireAuth(ctx)
-      await requireLocationRole(ctx, locationId, 'member')
+      await requireLocationRole(ctx, locationId, 'participant')
       // Three deletes, matching local's `removeItemFromLocation`
       // (apps/web/src/db/operations.ts): the stock row, this item's inventory
       // logs at this location, and this item's entries in this location's
@@ -238,7 +238,7 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // below. PR 5 drops those columns, so `isDefault` is nothing this
       // resolver needs to know.
       for (const conversion of stockConversions) {
-        await requireLocationRole(ctx, conversion.locationId, 'member')
+        await requireLocationRole(ctx, conversion.locationId, 'participant')
       }
 
       // Ownership of the Item and of every recipe, also before the

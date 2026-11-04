@@ -19,10 +19,12 @@
 //   - `location.create` enforces the partial unique index PR 1's migration
 //     adds — CREATE UNIQUE INDEX ON "Location" ("userId") WHERE "isDefault".
 //     A second default for the same user throws P2002, the way Postgres does.
-//     `ensureDefaultLocation` (lib/defaultLocation.ts) depends on that: it
-//     catches P2002 and re-reads the winner. A fake that accepted the duplicate
-//     would leave that path untested, and a fake with no `create` at all would
-//     make "creates the default when the user has none" impossible to write.
+//     `ensureDefaultLocation` depended on that: it caught P2002 and re-read
+//     the winner. Households H3a task 3.5 deleted it (first sign-in now uses
+//     a claim column on `User`, lib/household.ts), and task 3.14 drops the
+//     index with `isDefault`. Until then the index is real, so the fake keeps
+//     it. A fake with no `create` at all would make "first sign-in creates
+//     Home" impossible to write.
 //     `location.upsert`'s update path enforces it too, since promoting a
 //     SECOND row to default is the write that would corrupt an account.
 //   - `itemStock.create` HONOURS `data.id`, `data.createdAt` and
@@ -415,7 +417,7 @@ export function createStockFake() {
   //   - the partial unique index on ("userId") WHERE "isDefault"
   //
   // `data.id` is HONOURED when present and generated only when absent.
-  // `ensureDefaultLocation` and `createLocation` send no id and still get one;
+  // First sign-in (lib/household.ts) and `createLocation` send no id and still get one;
   // `bulkCreateLocations` sends the payload's id and must get that exact id
   // back, which is the single thing its "ids are preserved verbatim" test
   // asserts. `inventoryLogFake` threw `data.id` away before PR 4a task 3 and

@@ -82,7 +82,7 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
       // out of the WHOLE mutation rather than landing in one item's
       // `itemResults` entry — a caller who may not write this location has not
       // partly succeeded.
-      await requireLocationRole(ctx, consumeLocationId, 'member')
+      await requireLocationRole(ctx, consumeLocationId, 'participant')
 
       for (const item of items) {
         try {

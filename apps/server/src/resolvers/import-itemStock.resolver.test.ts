@@ -44,6 +44,10 @@ import { typeDefs } from '../schema/index.js'
 vi.mock('../lib/prisma.js', async () => {
   const { createStockFake } = await import('../test/stockFake.js')
   const stock = createStockFake()
+  // Roles derived from the location rows: each location's `userId` owns a
+  // one-person household and organizes the location (src/test/derivedRoles.ts).
+  // `requireLocationRole` reads these since households H3a task 3.5.
+  const roles = (await import('../test/derivedRoles.js')).createDerivedRoles(stock)
 
   // A minimal stateful `item` store. Only `findFirst` is needed —
   // `requireOwnItemStockRefs` asks "does the caller own this item id" and
@@ -80,6 +84,15 @@ vi.mock('../lib/prisma.js', async () => {
       // Handles onto the fakes, hung off the mocked client because a `vi.mock`
       // factory is hoisted above every import and cannot close over a
       // module-scope binding.
+      ...roles.client,
+      // Wrapped so a test can count HOW MANY location role checks ran.
+      // Since households H3a task 3.5, `requireLocationRole` reads
+      // `locationMember`, not `location`.
+      locationMember: {
+        ...roles.client.locationMember,
+        findFirst: vi.fn(roles.client.locationMember.findFirst),
+      },
+      $roles: roles,
       $stockFake: stock,
       $items: items,
     },
@@ -532,8 +545,8 @@ describe('bulkCreateItemStocks', () => {
     // Then 2 location checks and 2 item checks ran, not 6 of each. A 500-row
     // backup spanning 3 locations costs 3 authorization lookups.
     const locationFindFirst = (
-      prisma as unknown as { location: { findFirst: ReturnType<typeof vi.fn> } }
-    ).location.findFirst
+      prisma as unknown as { locationMember: { findFirst: ReturnType<typeof vi.fn> } }
+    ).locationMember.findFirst
     const itemFindFirst = (
       prisma as unknown as { item: { findFirst: ReturnType<typeof vi.fn> } }
     ).item.findFirst
@@ -546,8 +559,8 @@ describe('bulkCreateItemStocks', () => {
     expect(result.errors).toBeUndefined()
     expect(result.data?.bulkCreateItemStocks).toEqual([])
     const locationFindFirst = (
-      prisma as unknown as { location: { findFirst: ReturnType<typeof vi.fn> } }
-    ).location.findFirst
+      prisma as unknown as { locationMember: { findFirst: ReturnType<typeof vi.fn> } }
+    ).locationMember.findFirst
     expect(locationFindFirst).not.toHaveBeenCalled()
   })
 })
@@ -733,8 +746,8 @@ describe('bulkUpsertItemStocks', () => {
     expect(result.errors).toBeUndefined()
     expect(result.data?.bulkUpsertItemStocks).toEqual([])
     const locationFindFirst = (
-      prisma as unknown as { location: { findFirst: ReturnType<typeof vi.fn> } }
-    ).location.findFirst
+      prisma as unknown as { locationMember: { findFirst: ReturnType<typeof vi.fn> } }
+    ).locationMember.findFirst
     expect(locationFindFirst).not.toHaveBeenCalled()
   })
 })

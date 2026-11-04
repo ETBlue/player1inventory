@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // `ensureUser` writes through `prisma.user`. Here that is the stateful `User`
 // double from src/test/userFake.ts, with every method wrapped in a `vi.fn()`
-// so a test can COUNT queries (the same way as lib/defaultLocation.test.ts).
+// so a test can COUNT queries.
 // `userRowFromClerk` does not touch prisma, so this mock does not change its
 // tests.
 vi.mock('./prisma.js', async () => {

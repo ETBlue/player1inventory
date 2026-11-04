@@ -103,9 +103,10 @@ describe('stockFake models the constraints resolvers rely on', () => {
     })
 
     // Then it is rejected with Prisma's unique-violation code and no row is
-    // left behind. `ensureDefaultLocation` (lib/defaultLocation.ts) catches
-    // exactly this and re-reads the winner, so a fake that accepted the
-    // duplicate would leave that path unexercised.
+    // left behind. The index exists until households H3a task 3.14 drops
+    // `isDefault`. (`ensureDefaultLocation` relied on this P2002 for its race
+    // safety; task 3.5 deleted it. First sign-in uses a claim column on
+    // `User` instead, lib/household.ts.)
     await expect(create).rejects.toMatchObject({ code: 'P2002' })
     expect(fake.state.locations).toHaveLength(1)
   })
@@ -159,7 +160,7 @@ describe('stockFake models the constraints resolvers rely on', () => {
     const fake = createStockFake()
     fake.reset([], [])
 
-    // When `ensureDefaultLocation` / `createLocation` create without an id
+    // When first sign-in (lib/household.ts) or `createLocation` creates without an id
     const row = await fake.client.location.create({
       data: { name: 'My Home', order: 0, isDefault: true, userId: 'user_1' },
     })

@@ -154,8 +154,8 @@ extend type Mutation {
      would have to create `locations x vendors` carts on every call. This
      mutation creates one location's worth, when that location becomes active.
   3. Authorization fits. One caller-supplied `locationId` goes through
-     `requireLocationRole(locationId, 'member')`, the same seam every other
-     location write uses. A read path would have to demand `member` on every
+     `requireLocationRole(locationId, 'participant')`, the same seam every other
+     location write uses. A read path would have to demand `participant` on every
      location just to list them.
 
   `locationId` was required from the start, and there is no default-location

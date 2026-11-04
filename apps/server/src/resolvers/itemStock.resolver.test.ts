@@ -223,7 +223,14 @@ const { state, client } = vi.hoisted(() => {
   return { state, client }
 })
 
-vi.mock('../lib/prisma.js', () => ({ prisma: client }))
+vi.mock('../lib/prisma.js', async () => {
+  // Roles derived from the location rows: each location's `userId` owns a
+  // one-person household and organizes the location (src/test/derivedRoles.ts).
+  // `requireLocationRole` reads these since households H3a task 3.5.
+  const roles = (await import('../test/derivedRoles.js')).createDerivedRoles({ state })
+  Object.assign(client, roles.client)
+  return { prisma: client }
+})
 
 const server = new ApolloServer<Context>({ typeDefs, resolvers })
 

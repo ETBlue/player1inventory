@@ -1,7 +1,11 @@
 import { GraphQLError } from 'graphql'
-import { type OwnedModel, requireLocationRole, requireOwnRowOrUnclaimed } from '../lib/authz.js'
+import {
+  fallbackImportLocation,
+  type OwnedModel,
+  requireLocationRole,
+  requireOwnRowOrUnclaimed,
+} from '../lib/authz.js'
 import { parseCartId } from '../lib/cartId.js'
-import { ensureDefaultLocation } from '../lib/defaultLocation.js'
 import { prisma } from '../lib/prisma.js'
 import { type Context, requireAuth } from '../context.js'
 import { toGraphQL as locationToGraphQL } from './location.resolver.js'
@@ -58,8 +62,8 @@ function itemToGraphQL(item: {
  * payload is verified through `requireLocationRole` — the one authorization
  * seam for location-scoped data (lib/authz.ts). A row naming a location the
  * caller does not hold makes the whole mutation fail with FORBIDDEN. It must
- * NOT fall back to the default: a silent fallback would write the log into a
- * location the user never asked for and report success.
+ * NOT fall back to the fallback location: a silent fallback would write the
+ * log into a location the user never asked for and report success.
  *
  * Three things about the shape are deliberate:
  *
@@ -69,44 +73,44 @@ function itemToGraphQL(item: {
  *    transactional, so throwing from inside the loop would leave the rows
  *    already written behind. Checking first means a payload naming a forbidden
  *    location writes nothing at all.
- *  - The caller's default is resolved only when some row omits `locationId`,
- *    so an import whose every row names a location does not create one.
+ *  - The fallback location (`fallbackImportLocation`, lib/authz.ts, decision
+ *    H12) is resolved only when some row omits `locationId`, so an import
+ *    whose every row names a location does not look for one.
  *
- * `'member'` is the role asked for because writing a log is a write, and
- * member is the LOWEST role that may write under location RBAC (owner/member
- * edit, viewer reads — docs/global/permissions/2026-08-29-design-location-rbac.md).
- * Asking for `'owner'` would deny a legitimate member of a shared location
- * once RBAC lands.
+ * `'participant'` is the role asked for because writing a log is a write, and
+ * participant is the LOWEST location role that may write (organizer and
+ * participant write, viewer reads — households design, *Location roles*).
+ * Asking for `'organizer'` would deny a legitimate participant of a shared
+ * location.
  */
 async function resolveLogLocations(
   ctx: Context,
-  userId: string,
   logs: readonly { locationId?: string | null }[],
 ): Promise<(inputLocationId: string | null | undefined) => string> {
   const verified = new Set<string>()
-  let defaultLocationId: string | null = null
+  let fallbackLocationId: string | null = null
 
   for (const log of logs) {
     if (log.locationId) {
       if (verified.has(log.locationId)) continue
-      await requireLocationRole(ctx, log.locationId, 'member')
+      await requireLocationRole(ctx, log.locationId, 'participant')
       verified.add(log.locationId)
-    } else if (defaultLocationId === null) {
-      defaultLocationId = await ensureDefaultLocation(userId)
+    } else if (fallbackLocationId === null) {
+      fallbackLocationId = await fallbackImportLocation(ctx)
     }
   }
 
   return (inputLocationId) => {
     if (inputLocationId) return inputLocationId
-    if (defaultLocationId === null) {
-      // Unreachable: the loop above resolved the default for the first row
+    if (fallbackLocationId === null) {
+      // Unreachable: the loop above resolved the fallback for the first row
       // that omitted a location, and this function is only called with rows
       // from that same list. It is here to keep the return type `string`
       // rather than `string | null`, because an empty-string fallback would
       // write a broken foreign key instead of failing.
-      throw new Error('resolveLogLocations: no default location resolved')
+      throw new Error('resolveLogLocations: no fallback location resolved')
     }
-    return defaultLocationId
+    return fallbackLocationId
   }
 }
 
@@ -144,13 +148,15 @@ function locationIdInCartId(cartId: string): string | null {
  * written. The cart twin of `resolveLogLocations` above, and the same three
  * shape decisions apply for the same reasons: each DISTINCT location checked
  * once, every check before the write loop (these resolvers are not
- * transactional), and the caller's default resolved only if some id needs it.
+ * transactional), and the caller's fallback location resolved only if some
+ * id needs it.
  *
  * ── THE RULE (task 8) ──
  *
  * Three cases per distinct id named by a cart id:
  *
- *  - no `Location` row holds it → write the cart to the caller's DEFAULT
+ *  - no `Location` row holds it → write the cart to the caller's fallback
+ *    location (`fallbackImportLocation`, decision H12)
  *  - a row holds it and the caller holds a role on it → write the cart there
  *  - a row holds it and the caller does NOT → `requireLocationRole` throws
  *    FORBIDDEN, and nothing is written at all
@@ -197,39 +203,38 @@ function locationIdInCartId(cartId: string): string | null {
  * returns `void`, because for `LocationInput` an unclaimed id simply means
  * "free to create" and the caller needs no further answer. Here the resolver
  * must KNOW which ids came back unclaimed, so it can send those carts to the
- * default instead. Same two-step pattern — unscoped existence check, then
+ * fallback location instead. Same two-step pattern — unscoped existence check, then
  * `requireLocationRole` — with a result rather than a bare assertion.
  *
- * `'member'` for the same reason as every other helper here: it is the LOWEST
- * role that may write under location RBAC, so a legitimate member of a shared
- * location is not denied the day RBAC lands.
+ * `'participant'` for the same reason as every other helper here: it is the
+ * LOWEST location role that may write, so a legitimate participant of a
+ * shared location is not denied.
  */
 async function resolveCartLocations(
   ctx: Context,
-  userId: string,
   carts: readonly { id: string }[],
 ): Promise<(cartId: string) => string> {
   // Named location id → the location the cart is actually written to. Either
-  // the named id itself (it exists and is the caller's) or the caller's
-  // default (no row holds it). One entry per DISTINCT named id, so 500 carts
+  // the named id itself (it exists and the caller holds a role on it) or the
+  // caller's fallback location (no row holds it). One entry per DISTINCT named id, so 500 carts
   // across 3 locations cost 3 existence checks, not 500.
   const resolved = new Map<string, string>()
-  let defaultLocationId: string | null = null
+  let fallbackLocationId: string | null = null
 
   // Resolved at most once per mutation, and only when some id needs it, so an
-  // import whose every cart names a live location of the caller's never creates
-  // a default.
-  async function ensureDefault(): Promise<string> {
-    if (defaultLocationId === null) {
-      defaultLocationId = await ensureDefaultLocation(userId)
+  // import whose every cart names a live location of the caller's never looks
+  // for a fallback.
+  async function ensureFallback(): Promise<string> {
+    if (fallbackLocationId === null) {
+      fallbackLocationId = await fallbackImportLocation(ctx)
     }
-    return defaultLocationId
+    return fallbackLocationId
   }
 
   for (const cart of carts) {
     const named = locationIdInCartId(cart.id)
     if (named === null) {
-      await ensureDefault()
+      await ensureFallback()
       continue
     }
     if (resolved.has(named)) continue
@@ -241,16 +246,16 @@ async function resolveCartLocations(
       select: { id: true },
     })
     if (taken) {
-      await requireLocationRole(ctx, named, 'member')
+      await requireLocationRole(ctx, named, 'participant')
       resolved.set(named, named)
     } else {
-      resolved.set(named, await ensureDefault())
+      resolved.set(named, await ensureFallback())
     }
   }
 
   return (cartId) => {
     const named = locationIdInCartId(cartId)
-    const target = named === null ? defaultLocationId : resolved.get(named)
+    const target = named === null ? fallbackLocationId : resolved.get(named)
     if (target == null) {
       // Unreachable: the loop above resolved every id in this list, and this
       // function is only called with ids from that same list. It is here to
@@ -283,9 +288,9 @@ async function resolveCartLocations(
  * series routes location checks through — never by comparing a row's `userId`
  * to the caller's, which root CLAUDE.md forbids.
  *
- * `'member'` for the same reason as the log and cart helpers above: it is the
- * LOWEST role that may write under location RBAC, so a legitimate member of a
- * shared location is not denied the day RBAC lands.
+ * `'participant'` for the same reason as the log and cart helpers above: it is
+ * the LOWEST location role that may write, so a legitimate participant of a
+ * shared location is not denied.
  *
  * WITHOUT this pre-check, copying the house style verbatim would have shipped
  * two cross-user holes, the same class task 4 found in the unscoped cart
@@ -332,7 +337,7 @@ async function requireOwnLocationIdsOrUnclaimed(
       where: { id },
       select: { id: true },
     })
-    if (taken) await requireLocationRole(ctx, id, 'member')
+    if (taken) await requireLocationRole(ctx, id, 'participant')
   }
 }
 
@@ -436,11 +441,9 @@ async function requireOwnRowIdsOrUnclaimed(
  * transactional and a throw from inside leaves earlier rows on disk; and it
  * reads nothing it does not need.
  *
- * `'member'` for the same reason as every other helper here: it is the LOWEST
- * role that may write under location RBAC, so a legitimate member of a shared
- * location is not denied the day RBAC lands. Asking for `'owner'` would pass
- * today, because `requireLocationRole` ignores `role` pre-RBAC, and deny them
- * silently later.
+ * `'participant'` for the same reason as every other helper here: it is the
+ * LOWEST location role that may write, so a legitimate participant of a
+ * shared location is not denied. Asking for `'organizer'` would deny them.
  */
 async function requireOwnItemStockRefs(
   ctx: Context,
@@ -451,7 +454,7 @@ async function requireOwnItemStockRefs(
   for (const { locationId } of stocks) {
     if (checkedLocations.has(locationId)) continue
     checkedLocations.add(locationId)
-    await requireLocationRole(ctx, locationId, 'member')
+    await requireLocationRole(ctx, locationId, 'participant')
   }
 
   const checkedItems = new Set<string>()
@@ -482,7 +485,7 @@ async function requireOwnItemStockRefs(
       where: { id },
       select: { locationId: true },
     })
-    if (taken) await requireLocationRole(ctx, taken.locationId, 'member')
+    if (taken) await requireLocationRole(ctx, taken.locationId, 'participant')
   }
 }
 
@@ -759,7 +762,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       if (logs.length === 0) return []
       // Verifies every location the payload names before the first write, so a
       // forbidden location fails the whole mutation with nothing written.
-      const locationIdFor = await resolveLogLocations(ctx, userId, logs)
+      const locationIdFor = await resolveLogLocations(ctx, logs)
       // Authorizes every LOG id the payload names. It runs AFTER
       // `resolveLogLocations` on purpose, so a forbidden location is still
       // refused first and the existing location tests keep their error.
@@ -802,7 +805,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             note: note ?? undefined,
             userId,
             // The payload's own location when it names one, the caller's
-            // default when it does not. Both already verified.
+            // fallback location when it does not. Both already verified.
             locationId: locationIdFor(locationId),
             ...(logParams ? { logParams: logParams as Prisma.InputJsonValue } : {}),
           },
@@ -822,9 +825,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       if (carts.length === 0) return []
       // Resolves every location the payload's cart ids name before the first
       // write: a live location of the caller's is used, an unclaimed id falls
-      // back to the caller's default, and a stranger's live location fails the
+      // back to the caller's fallback location, and a stranger's live location fails the
       // whole mutation with nothing written.
-      const locationIdFor = await resolveCartLocations(ctx, userId, carts)
+      const locationIdFor = await resolveCartLocations(ctx, carts)
       // Authorizes every CART id the payload names. It runs AFTER
       // `resolveCartLocations` on purpose, so a stranger's live location is
       // still refused first and the existing location tests keep their error.
@@ -849,7 +852,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             lastPurchasedAt: lastPurchasedAt ? new Date(lastPurchasedAt as string) : undefined,
             userId,
             // The location named by the cart's OWN id since PR 3b
-            // (`${locationId}:${vendorId}`), and the caller's default when no
+            // (`${locationId}:${vendorId}`), and the caller's fallback location when no
             // `Location` row holds that id — a pre-3b bare id, or a cloud
             // backup whose source locations `clearAllData` just deleted. All
             // resolved and verified above.
@@ -1125,7 +1128,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       if (logs.length === 0) return []
       // Same pre-check as bulkCreateInventoryLogs: every location the payload
       // names is verified before the first write.
-      const locationIdFor = await resolveLogLocations(ctx, userId, logs)
+      const locationIdFor = await resolveLogLocations(ctx, logs)
       // The same log-id guard as `bulkCreateInventoryLogs`, in the same place:
       // after the location check, so a forbidden location is still refused
       // first. Without it an `upsert` on a bare `{ id }` with `userId` inside
@@ -1165,7 +1168,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           //
           // `locationId`: an upsert that carried it into `update` would MOVE an
           // existing log on every re-import. The value is the payload's own
-          // when it names one, the caller's default when it does not — both
+          // when it names one, the caller's fallback location when it does not — both
           // verified above.
           create: { id, ...data, userId, locationId: locationIdFor(locationId) },
           update: data,
@@ -1183,7 +1186,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       if (carts.length === 0) return []
       // Same pre-check as bulkCreateShoppingCarts: every location the payload's
       // cart ids name is resolved and verified before the first write.
-      const locationIdFor = await resolveCartLocations(ctx, userId, carts)
+      const locationIdFor = await resolveCartLocations(ctx, carts)
       // The same cart-id guard as `bulkCreateShoppingCarts`, in the same
       // place: after the location check, so a stranger's live location is
       // still refused first. Without it an `upsert` on a bare `{ id }` with
@@ -1212,7 +1215,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           // `locationId`: the same reason as the log upsert above — a
           // re-import must not MOVE an existing cart. The value comes from the
           // cart's own id when a `Location` row holds that id, and the
-          // caller's default when none does. Both resolved above.
+          // caller's fallback location when none does. Both resolved above.
           create: { id, ...data, userId, locationId: locationIdFor(id) },
           update: data,
         })
@@ -1476,9 +1479,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         //
         //  - `isDefault: false` in `update` would DEMOTE the caller's own
         //    default if the payload ever named its id, leaving the account with
-        //    no default at all; `ensureDefaultLocation` would then build a
-        //    spare "My Home" beside the real one. Omitting the column leaves
-        //    whatever flag the row already has.
+        //    no default at all, and the web app still reads the flag until
+        //    task 3.12. Omitting the column leaves whatever flag the row
+        //    already has.
         //  - `userId` in `update` is the row-steal half of the hole the
         //    pre-check closes. Leaving it out means a future edit that drops
         //    the pre-check cannot reassign a row by accident.

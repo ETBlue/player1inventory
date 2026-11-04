@@ -55,6 +55,10 @@ interface ExtraState {
 vi.mock('../lib/prisma.js', async () => {
   const { createStockFake } = await import('../test/stockFake.js')
   const stockFake = createStockFake()
+  // Roles derived from the location rows: each location's `userId` owns a
+  // one-person household and organizes the location (src/test/derivedRoles.ts).
+  // `requireLocationRole` reads these since households H3a task 3.5.
+  const roles = (await import('../test/derivedRoles.js')).createDerivedRoles(stockFake)
 
   const extra: ExtraState = {
     items: [],
@@ -126,8 +130,8 @@ vi.mock('../lib/prisma.js', async () => {
   // $transaction callback receives, so the only thing separating
   // "transactional" from "four sequential prisma calls" is whether
   // $transaction's snapshot/restore wrapped them.
-  const client = { ...stockFake.client, item, recipe, recipeItem }
-  stockFake.configureTransaction({ txClient: client, stores: [extra] })
+  const client = { ...stockFake.client, ...roles.client, item, recipe, recipeItem }
+  stockFake.configureTransaction({ txClient: client, stores: [extra, ...roles.stores] })
 
   return { prisma: { ...client, $stockFake: stockFake, $extra: extra } }
 })
