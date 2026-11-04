@@ -53,6 +53,32 @@ person in a household before H3b. Any spec that uses it on carts meets the probl
 | b | `removeItemFromLocation` (`itemStock.resolver.ts`) | Its cart delete still filters `CartItem.userId`, so a co-member's cart entries of the item at that location stay behind. Its log delete has no such filter (pinned by a test since the task 3.8 review) |
 | c | `vendorCart(vendorId:)` (`cart.resolver.ts`) | It never checks that the vendor belongs to the location's household. A caller can create a cart `${locationId}:${foreignVendorId}` with another household's vendor id in it |
 
+**Owed to H4, found by the review of task 3.9:** H4 changes the household that import writes
+into from the caller's to the import's TARGET household. In `import.resolver.ts` that is
+every `requireHousehold(ctx)` call, not only the two that carry a comment saying so
+(`bulkCreateLocations` and `bulkUpsertLocations`). Counted 2026-11-04: **17** calls, 16 in
+the mutations and one in `requireOwnItemStockRefs`. The review brief said "four places";
+that was wrong. Count them rather than quote this:
+
+```bash
+git grep -c "requireHousehold(ctx)" -- apps/server/src/resolvers/import.resolver.ts   # 18: 17 calls + 1 comment
+```
+
+Also `fallbackImportLocation` (two calls) and the `requireOwnRowOrUnclaimed` body in
+`lib/authz.ts`. `createImportedLocation` already takes `householdId` as an argument, so it
+needs no change.
+
+**Owed to H5, found by the review of task 3.9:**
+
+- **`bulkUpsertLocations` must keep `householdId` (and `userId`) out of its `update`.** No
+  test can see it today: when the location is in the caller's own household, writing the
+  same `householdId` again changes nothing. H5 must add a two-household test (a caller who
+  organizes a location of household B, importing into household A) and mutation-check it.
+- **One cart at a location where the user lost their role refuses the whole cart-item
+  batch.** `resolveCartItemParents` calls `requireLocationRole` on each cart's location, and
+  that throws `FORBIDDEN` for the batch. Nobody can lose a role before H5. H5 must decide
+  whether to skip those rows instead, like every other reference that does not resolve.
+
 ## What the user gets (once merged AND deployed)
 
 - **The 🏠 item in Settings shows the household's name** in cloud, for example "ET's
@@ -913,9 +939,11 @@ key, composite key `P2002`, and `skipDuplicates` only if a resolver passes it), 
     and Postgres checks `Tag.parentId`'s foreign key.
   - Both shelf mutations: each id in `itemIds` and in `filterConfig.tagIds` / `vendorIds` /
     `recipeIds` that is not a row of the household is DROPPED; the shelf still lands
-    (`householdShelfRefs`). An id no row holds is dropped too, unlike `createShelf`'s
+    (`householdShelfRefs`). ~~An id no row holds is dropped too, unlike `createShelf`'s
     `missing: 'allow'`, so a foreign id and a gone id give the same answer. Shelves are
-    the last entity the client imports, so the ids exist by then.
+    the last entity the client imports, so the ids exist by then.~~ **Wrong, fixed in
+    `03e32094`:** only another household's id is dropped. An id no row holds is kept, as
+    `createShelf` keeps it. See *Bug 1* below.
   - Both cart item mutations: the item is checked against the household of the CART's
     location (`resolveCartItemParents`): the cart by `userId`, then `requireLocationRole`
     on the cart's location (rule 12: role first), then `householdOfLocation`. A cart or item
@@ -943,6 +971,21 @@ key, composite key `P2002`, and `skipDuplicates` only if a resolver passes it), 
   imported locations missing from `locations`) should now pass. Not run here (no database
   in this task).
 - Server tests 1062 → 1094.
+
+**Review fix** in `03e32094` (server tests 1094 → 1098):
+
+- **Bug 1: shelf imports dropped ids that did not exist YET.** On `replace`, the web client
+  runs `bulkCreate*` for every entity (shelves last), THEN `bulkUpsert*`. An item, tag,
+  vendor or recipe that conflicts with a cloud row by name only keeps its payload id and is
+  written in the second pass, so a new shelf naming it lost that id. Before task 3.9 the id
+  was kept. Now `householdShelfRefs` drops only ids that are rows of ANOTHER household. A
+  test runs the two passes (`bulkCreateShelves`, then `bulkUpsertItems` and
+  `bulkUpsertTags`) and goes red if missing ids are dropped again.
+- A test pins that a parent tag skipped for its type also skips its child in
+  `bulkUpsertTags`. Before it, counting every payload id as written turned no test red.
+- A comment on `bulkUpsertLocations`: not atomic per row since task 3.9 (`P2002` on two
+  concurrent imports of one new id, `P2025` on a row deleted between check and update), and
+  the web app never sends it today.
 
 ## Task 3.10 — Purges and E2E cleanup
 
@@ -1009,9 +1052,13 @@ cascade, or delete the rows on purpose in the test setup and say why.
   log or a cart with no usable location fails with `NO_LOCATION` from
   `fallbackImportLocation`. Step 2 (decision H17) fixes this. Add a test that runs
   `clearAllData` and then `locations`, and expects one "Home" with an `organizer` row.
-- **Delete `apps/server/src/test/derivedRoles.ts`** once no file imports it. Check with
+- ~~**Delete `apps/server/src/test/derivedRoles.ts`** once no file imports it. Check with
   `git grep -l derivedRoles -- apps/server/src`, which must print nothing. If a file
-  still imports it here, remove it from that file first (see the note under task 3.6).
+  still imports it here, remove it from that file first (see the note under task 3.6).~~
+  **Done in task 3.9** (`264d2c16` deleted the file). The check above was wrong: comments
+  that say the file was removed still name it, so the grep prints files. The right check
+  is that no file imports it: `git grep -n "from '.*derivedRoles" -- apps/server/src`
+  prints nothing.
 
 **Found by the review of task 3.6, and owed here:**
 
@@ -1277,6 +1324,12 @@ already corrected in `3ba61aeb`.
      - every `User` row the migration created with the placeholder name `'User'`. Those
        people get "User's Household" until Clerk sends `user.updated` or they rename it, and
        their `deletedAt` stays null even if the Clerk account is gone
+     - **a `replace` migration with name-only conflicts** (review of task 3.9). Import a
+       local backup with the `replace` strategy where some items, tags, vendors and recipes
+       share a NAME (not an id) with cloud rows, and a new shelf names them. Check that the
+       shelf keeps every one of those ids afterwards. Those rows are written in the second
+       pass, after the shelf; `03e32094` fixed the shelf losing them. Also note whether cart
+       items naming such an item survive (see *Known gaps*)
   4. Merge, watch the Railway release log, wait for Cloudflare, hard reload.
   5. The stale-bundle window: any open tab gets failed queries until it reloads.
   6. A manual smoke test in production: the pantry looks the same; the 🏠 label shows the
@@ -1384,6 +1437,32 @@ drops `userId`, `main`'s cloud E2E cannot run on this database at all until H3a 
   all at once. The two rules point different ways. Local mode deletes the logs too, so the
   two modes agree today. Behaviour is not changed in H3a. The owner decides whether a
   removal should keep the logs, or whether it needs a higher role.
+- **On `replace`, a create-pass row loses a reference to a row that comes in the second
+  pass** (review of task 3.9). The web client sends rows with no conflict first
+  (`bulkCreate*`), then conflicting rows (`bulkUpsert*`). A row that conflicts with a cloud
+  row by NAME only keeps its payload id and is written in the second pass. So when a NEW
+  row names it, the reference is skipped, because the row is not there yet. `03e32094`
+  fixed this for shelves only. Found by reading the code, not tested, and all of them
+  existed before task 3.9:
+  - a cart item naming such an item is skipped (`resolveCartItemParents`)
+  - a recipe item naming such an item is skipped (`bulkCreateRecipes`)
+  - an item's `tagIds` and `vendorIds` naming such a tag or vendor are skipped
+    (`bulkCreateItems`)
+  - a child tag naming such a tag as its parent is skipped (`bulkCreateTags`)
+
+  The fix is probably on the web side (send the name-only conflicts in the first pass, or
+  re-send the references after the second pass). The task 3.16 rehearsal should show how
+  often it happens.
+- **A child tag in an earlier import batch than its new parent is skipped without a word**
+  (review of task 3.9). The web client sends tags in batches of 50 (`BATCH_SIZE` in
+  `apps/web/src/lib/importData.ts`). A batch only knows the parents in the database and in
+  the same batch. `bulkCreateTags` has skipped such a child since `9bdb465c` (2026-04-12).
+  `bulkUpsertTags` skips it since task 3.9; before that, Postgres refused it with a
+  foreign-key error. Not checked: whether an export lists parents before children.
+- **An import can write a tag cycle** (review of task 3.9, existed before). An existing tag
+  of the caller's counts as "written" at the start of `bulkUpsertTags`. So a payload that
+  reparents that tag under a new tag, which names the existing tag as its own parent, writes
+  both, and the two tags are each other's parent.
 - **A manager's reorder in H5 may leave some locations with old orders.** `reorderLocations`
   writes only the ids it is sent, and the web sends only the locations the caller sees. If
   H5 lets a manager see only some of the household's locations, the others keep their old

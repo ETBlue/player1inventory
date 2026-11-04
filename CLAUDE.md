@@ -157,7 +157,22 @@ that really set up that role.
 >
 > **The `userId` still named in `exportData.ts` and `importData.ts` tests is deliberate.** Those mappers are allow-lists — each names the keys it forwards, so anything else is dropped by omission. The tests feed `userId` in by hand, so they now prove the general rule that an unexpected key never reaches a backup file, not that one real field is stripped. No live Apollo result carries it any more.
 
-> Twelve of those 22 also check the **other** ids a payload attaches its own row to, against the household. Nine did since plan task 8 (13 references: `tagIds` and `vendorIds` on both item mutations, `typeId` on `bulkCreateTags`, the recipe item ids on both recipe mutations, `itemId` on both log mutations, `cartId` and `itemId` on both cart item mutations). Households H3a task 3.9 added three: `bulkUpsertTags` (`typeId`, `parentId`) and both shelf mutations (`itemIds` and the tag, vendor and recipe ids in `filterConfig`). An id that does not resolve is still SKIPPED, not refused: a partial backup legitimately names a parent the user has since deleted, and "not yours" must look the same as "not there". A tag is skipped as a row; a shelf keeps its row and loses only that id. See `docs/features/settings/2026-10-28-design-import-ownership-guard.md`.
+> Twelve of those 22 also check the **other** ids a payload attaches its own row to. Nine did since plan task 8 (13 references), and households H3a task 3.9 added three. Not every id is checked against the same thing:
+>
+> | Id | Mutations | Checked against | An id that does not pass |
+> |---|---|---|---|
+> | `tagIds`, `vendorIds` | both item mutations | the caller's household | that edge is skipped |
+> | `typeId` | `bulkCreateTags`; `bulkUpsertTags` since 3.9 | the caller's household | the tag is skipped |
+> | `parentId` | `bulkUpsertTags` since 3.9 | the caller's household, or a tag of the same payload written first | the tag is skipped |
+> | recipe item ids | both recipe mutations | the caller's household | that ingredient is skipped |
+> | `itemId` | both log mutations | the caller's household (not the household of the log's location) | the log is skipped |
+> | `cartId` | both cart item mutations | **`userId`**: the cart must be the caller's own row. Then `requireLocationRole(participant)` on its location, which THROWS `FORBIDDEN` for the whole batch | the row is skipped (cart not the caller's) |
+> | `itemId` | both cart item mutations | the household of the CART's location, since 3.9 | the row is skipped |
+> | `itemIds` and the tag, vendor and recipe ids in `filterConfig` | both shelf mutations, since 3.9 | see below | that id is dropped; the shelf lands |
+>
+> **The shelf rule is different from the others.** Only an id that is a row of ANOTHER household is dropped. An id no row holds is KEPT, the same as `createShelf`'s `missing: 'allow'`. The reason: on `replace` the web client writes new shelves in its first pass, and rows that conflict with a cloud row by name only in its second pass, so a shelf names rows that do not exist yet. Task 3.9 first dropped those ids too; `03e32094` fixed it. So for shelves a stranger's id and a free id give different answers, which `requireOwnRowOrUnclaimed` also does; the ids are `cuid()`.
+>
+> For every other row above, an id that does not resolve is SKIPPED, not refused: a partial backup legitimately names a parent the user has since deleted, and "not yours" looks the same as "not there". See `docs/features/settings/2026-10-28-design-import-ownership-guard.md`.
 >
 > **Three things in the import helpers changed in households H3a task 3.9.**
 >

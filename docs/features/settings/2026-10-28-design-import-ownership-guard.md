@@ -715,7 +715,10 @@ Two-user cloud testing works through `e2e/utils/cloud.ts:17-36`,
   the set `requireOwnLocationIdsOrUnclaimed` returns.
 - Three more mutations check the ids they attach, with the same skip:
   `bulkUpsertTags` (`typeId`, `parentId`; the tag is skipped) and both shelf
-  mutations (`itemIds` and the `filterConfig` ids; only the id is dropped).
+  mutations (`itemIds` and the `filterConfig` ids; only the id is dropped, and
+  only when it is a row of another household. An id no row holds is kept,
+  since the review fix `03e32094`, because on `replace` it may be written
+  later in the same import).
   So decision 8's "13 lookups across 9 mutations" is now 12 mutations.
 - The cart item imports check the item against the household of the cart's
   location, not the caller's household.
