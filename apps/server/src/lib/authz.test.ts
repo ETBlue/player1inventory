@@ -100,11 +100,13 @@ import type { HouseholdRole, LocationRole } from './authz.js'
 
 const {
   fallbackImportLocation,
+  householdOfLocation,
   locationIdsWithRole,
   requireCatalogIds,
   requireCatalogRole,
   requireHousehold,
   requireHouseholdRole,
+  requireLocationItems,
   requireLocationRole,
   requireOwnRowOrUnclaimed,
 } = await import('./authz.js')
@@ -692,5 +694,61 @@ describe('requireCatalogRole', () => {
     // check that read `other`'s row, or no row, would pass here.
     seed({ callerHouseholdRole: 'member' })
     await expect(requireCatalogRole(caller, 'manager')).rejects.toThrow(/Forbidden/)
+  })
+})
+
+describe('householdOfLocation', () => {
+  beforeEach(() => {
+    seed({})
+  })
+
+  it("returns the location's own household", async () => {
+    await expect(householdOfLocation('loc-1')).resolves.toBe('hh-1')
+    await expect(householdOfLocation('loc-s')).resolves.toBe('hh-2')
+  })
+
+  it('refuses an id no location holds, and a location with no household, with FORBIDDEN', async () => {
+    world.stock.state.locations.push({ id: 'loc-orphan', userId: 'caller', isDefault: false })
+    for (const id of ['loc-none', 'loc-orphan']) {
+      const error = await householdOfLocation(id).catch((e: GraphQLError) => e)
+      expect((error as GraphQLError).extensions.code).toBe('FORBIDDEN')
+    }
+  })
+})
+
+describe('requireLocationItems', () => {
+  beforeEach(() => {
+    seed({})
+    seedCatalog()
+  })
+
+  it("passes an item of the location's household", async () => {
+    await expect(requireLocationItems(caller, 'loc-1', ['item-mine'])).resolves.toBeUndefined()
+  })
+
+  it("refuses another household's item with FORBIDDEN, and a missing one with BAD_USER_INPUT", async () => {
+    const theirs = await requireLocationItems(caller, 'loc-1', ['item-theirs']).catch(
+      (e: GraphQLError) => e,
+    )
+    expect((theirs as GraphQLError).extensions.code).toBe('FORBIDDEN')
+    const gone = await requireLocationItems(caller, 'loc-1', ['item-gone']).catch(
+      (e: GraphQLError) => e,
+    )
+    expect((gone as GraphQLError).extensions.code).toBe('BAD_USER_INPUT')
+  })
+
+  it("checks the LOCATION's household, not the caller's", async () => {
+    // loc-s is hh-2's. The caller is in hh-1, so `requireHousehold` would say
+    // hh-1 and pass `item-mine`. This helper checks no role (the caller has
+    // none on loc-s); the role is `requireLocationRole`'s job.
+    await expect(requireLocationItems(caller, 'loc-s', ['item-theirs'])).resolves.toBeUndefined()
+    await expect(requireLocationItems(caller, 'loc-s', ['item-mine'])).rejects.toThrow(/Forbidden/)
+  })
+
+  it('reads nothing for an empty list', async () => {
+    const spy = vi.spyOn(prisma.location, 'findUnique')
+    await expect(requireLocationItems(caller, 'loc-1', [])).resolves.toBeUndefined()
+    expect(spy).not.toHaveBeenCalled()
+    expect(state.lookups).toBe(0)
   })
 })

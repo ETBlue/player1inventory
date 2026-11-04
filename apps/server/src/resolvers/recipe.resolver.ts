@@ -4,6 +4,7 @@ import {
   requireCatalogIds,
   requireCatalogRole,
   requireHousehold,
+  requireLocationItems,
   requireLocationRole,
 } from '../lib/authz.js'
 import { prisma } from '../lib/prisma.js'
@@ -107,6 +108,16 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
       // `itemResults` entry — a caller who may not write this location has not
       // partly succeeded.
       await requireLocationRole(ctx, consumeLocationId, 'participant')
+      // Every item cooked must be an item of the cook location's household
+      // (households H3a, task 3.8). Like the role check above, a refusal
+      // throws out of the WHOLE mutation before the first write, rather than
+      // landing in one item's `itemResults` entry: a request that names
+      // another household's item is not a partial success.
+      await requireLocationItems(
+        ctx,
+        consumeLocationId,
+        items.map((item) => item.itemId),
+      )
       // Only the household's recipes are marked as cooked, below. Read here,
       // before any write. `requireHousehold` is the `member` check: see the
       // comment at the top of this file.

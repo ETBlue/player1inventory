@@ -6,53 +6,73 @@ import type { Context } from '../context.js'
 
 // ─── Mock Prisma ─────────────────────────────────────────────────────────────
 
-// BOTH models are STATEFUL fakes.
+// Every model is a STATEFUL fake.
 //
 // `inventoryLog` used to be four plain `vi.fn()` call recorders. A recorder
 // returns whatever the test told it to return, so it cannot tell a
 // location-scoped query apart from an unscoped one — drop `locationId` from
 // the resolver's `where` and every assertion still passes. PR 3a Task 2
 // replaced it with src/test/inventoryLogFake.ts, which applies the `where`
-// itself. Each method is still wrapped in `vi.fn` so the `toHaveBeenCalledWith`
-// assertions keep working on top of real state.
+// itself. Each method is still wrapped in `vi.fn` so a test can assert on the
+// call when it needs to.
 //
-// `location` is src/test/stockFake.ts, because the resolvers resolve a
-// location through `requireLocationRole`, with roles derived from the
-// location rows (`src/test/derivedRoles.ts`), and a call recorder cannot
-// answer "did it pick the right one".
+// `user`, `household`, `householdMember`, `locationMember`, `location` and
+// `itemStock` are `householdWorld` (src/test/householdWorld.ts). Every role is
+// a row `seedLocations` writes. Nothing is derived from a location's `userId`:
+// households H3a task 3.8 removed `derivedRoles` from this file.
+//
+// `item` has `findMany` only. It answers `requireCatalogIds` (lib/authz.ts),
+// which `addInventoryLog` uses to check that the item is an item of the
+// location's household (task 3.8). It reads a household-scoped
+// `ownedRowFake` store, so a stranger's item is really another household's
+// row here.
 vi.mock('../lib/prisma.js', async () => {
-  const { createStockFake } = await import('../test/stockFake.js')
+  const { createHouseholdWorld } = await import('../test/householdWorld.js')
   const { createInventoryLogFake } = await import('../test/inventoryLogFake.js')
-  const stockFake = createStockFake()
-  // Roles derived from the location rows: each location's `userId` owns a
-  // one-person household and organizes the location (src/test/derivedRoles.ts).
-  // `requireLocationRole` reads these since households H3a task 3.5.
-  const roles = (await import('../test/derivedRoles.js')).createDerivedRoles(stockFake)
+  const { createOwnedRowFake } = await import('../test/ownedRowFake.js')
+  const world = createHouseholdWorld()
   const logFake = createInventoryLogFake()
-  return {
-    prisma: {
+  const items = createOwnedRowFake({
+    model: 'Item',
+    scope: 'householdId',
+    requiredColumns: ['userId'],
+    rows: [
+      { id: 'item_1', householdId: 'hh_test', userId: 'user_test123' },
+      { id: 'item_2', householdId: 'hh_test', userId: 'user_test123' },
+      { id: 'item_new', householdId: 'hh_test', userId: 'user_member' },
+      { id: 'item_theirs', householdId: 'hh_other', userId: 'user_other' },
+    ],
+  })
+  world.extend(
+    {
       inventoryLog: {
         findMany: vi.fn(logFake.client.findMany),
         findFirst: vi.fn(logFake.client.findFirst),
         count: vi.fn(logFake.client.count),
         create: vi.fn(logFake.client.create),
       },
-      ...stockFake.client,
+      item: { findMany: items.client.findMany },
+    },
+    [logFake.state as unknown as Record<string, unknown>],
+  )
+  return {
+    prisma: {
+      ...world.client,
       // Handles onto the fakes' state, hung off the mocked client because a
       // `vi.mock` factory is hoisted above every import and cannot close over
       // a module-scope binding.
-      ...roles.client,
-      $roles: roles,
-      $stockFake: stockFake,
+      $world: world,
       $logFake: logFake,
     },
   }
 })
 
 import { prisma } from '../lib/prisma.js'
+import type { LocationRole } from '../lib/authz.js'
+import { householdMemberRow, householdRow, locationMemberRow } from '../test/householdRows.js'
+import type { HouseholdWorld } from '../test/householdWorld.js'
 import { makeInventoryLog } from '../test/inventoryLogFake.js'
 import type { InventoryLogFake } from '../test/inventoryLogFake.js'
-import type { StockFake } from '../test/stockFake.js'
 
 const mockPrisma = prisma as unknown as {
   inventoryLog: {
@@ -61,35 +81,86 @@ const mockPrisma = prisma as unknown as {
     count: ReturnType<typeof vi.fn>
     create: ReturnType<typeof vi.fn>
   }
-  $stockFake: StockFake
+  $world: HouseholdWorld
   $logFake: InventoryLogFake
 }
 
-// FOUR locations: the caller's default, the caller's other one, a stranger's,
-// and one belonging to the second user the cross-user tests sign in as. A
-// one-location fixture cannot tell "reads the location I asked for" apart from
-// "reads every location", nor "writes the caller's DEFAULT" apart from "writes
-// whatever location it finds first" — root CLAUDE.md, "Proving a Test Works".
+// The caller's two locations, a stranger's, one belonging to the second user
+// the cross-household tests sign in as, and two more in the caller's
+// household (see the table below). A one-location fixture cannot tell "reads
+// the location I asked for" apart from "reads every location", nor "writes
+// the caller's DEFAULT" apart from "writes whatever location it finds first"
+// — root CLAUDE.md, "Proving a Test Works".
 const USER = 'user_test123'
+const MEMBER = 'user_member'
 const STRANGER = 'user_other'
 const USER_B = 'user_B'
 const LOC_DEFAULT = 'loc_kitchen'
 const LOC_OTHER = 'loc_garage'
+const LOC_SHARED = 'loc_shared'
+const LOC_HIDDEN = 'loc_hidden'
 const LOC_STRANGER = 'loc_theirs'
 const LOC_USER_B = 'loc_user_b'
 
-function seedLocations() {
-  mockPrisma.$stockFake.reset(
+// ── The three-person fixture (plan H3a, rule 10) ──
+//
+// | Person   | Household | Household role | Location roles                                             |
+// |----------|-----------|----------------|------------------------------------------------------------|
+// | USER     | hh_test   | owner          | LOC_DEFAULT: organizer; LOC_OTHER: set by the test         |
+// |          |           |                | (organizer by default); LOC_SHARED: viewer                 |
+// | MEMBER   | hh_test   | member         | LOC_DEFAULT, LOC_SHARED, LOC_HIDDEN: organizer;            |
+// |          |           |                | LOC_OTHER: a role DIFFERENT from USER's                    |
+// | STRANGER | hh_other  | owner          | LOC_STRANGER: organizer                                    |
+// | USER_B   | hh_b      | owner          | LOC_USER_B: organizer                                      |
+//
+// LOC_SHARED was made by MEMBER and USER holds a role on it; LOC_HIDDEN was
+// made by USER and USER holds NO role on it. So "the locations I hold a role
+// on" and "the locations whose `userId` is mine" give opposite answers.
+function seedLocations(options: { callerRoleOnOther?: LocationRole } = {}) {
+  const callerRoleOnOther = options.callerRoleOnOther ?? 'organizer'
+  const world = mockPrisma.$world
+  world.reset()
+  world.stock.reset(
     [
       // Not first on purpose: a resolver taking `locations[0]` would still
       // pass if the default came first.
-      { id: LOC_OTHER, userId: USER, isDefault: false },
-      { id: LOC_DEFAULT, userId: USER, isDefault: true },
-      { id: LOC_STRANGER, userId: STRANGER, isDefault: true },
-      { id: LOC_USER_B, userId: USER_B, isDefault: true },
+      { id: LOC_OTHER, userId: USER, householdId: 'hh_test', isDefault: false },
+      { id: LOC_DEFAULT, userId: USER, householdId: 'hh_test', isDefault: true },
+      { id: LOC_SHARED, userId: MEMBER, householdId: 'hh_test', isDefault: false },
+      { id: LOC_HIDDEN, userId: USER, householdId: 'hh_test', isDefault: false },
+      { id: LOC_STRANGER, userId: STRANGER, householdId: 'hh_other', isDefault: true },
+      { id: LOC_USER_B, userId: USER_B, householdId: 'hh_b', isDefault: true },
     ],
     [],
   )
+  world.seedHouseholds({
+    households: [
+      householdRow('hh_test', USER),
+      householdRow('hh_other', STRANGER),
+      householdRow('hh_b', USER_B),
+    ],
+    householdMembers: [
+      householdMemberRow('hh_test', USER, 'owner'),
+      householdMemberRow('hh_test', MEMBER, 'member'),
+      householdMemberRow('hh_other', STRANGER, 'owner'),
+      householdMemberRow('hh_b', USER_B, 'owner'),
+    ],
+    locationMembers: [
+      locationMemberRow(LOC_DEFAULT, USER, 'organizer'),
+      locationMemberRow(LOC_DEFAULT, MEMBER, 'organizer'),
+      locationMemberRow(LOC_OTHER, USER, callerRoleOnOther),
+      locationMemberRow(
+        LOC_OTHER,
+        MEMBER,
+        callerRoleOnOther === 'participant' ? 'organizer' : 'participant',
+      ),
+      locationMemberRow(LOC_SHARED, MEMBER, 'organizer'),
+      locationMemberRow(LOC_SHARED, USER, 'viewer'),
+      locationMemberRow(LOC_HIDDEN, MEMBER, 'organizer'),
+      locationMemberRow(LOC_STRANGER, STRANGER, 'organizer'),
+      locationMemberRow(LOC_USER_B, USER_B, 'organizer'),
+    ],
+  })
 }
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -474,9 +545,9 @@ describe('authorization — a caller-supplied locationId goes through requireLoc
     const result = await execOp(ITEM_LOGS, { itemId: 'item_1', locationId: LOC_STRANGER })
 
     // Then the request is refused with FORBIDDEN. Asserting on the ERROR, not
-    // on an empty row list: the `userId` scope in the where clause would also
-    // return zero rows, so a row-count assertion could not tell the guard
-    // apart from the scope.
+    // on an empty row list: the stranger's location holds one item_1 log, but
+    // an empty list would also be what a resolver that read the wrong
+    // location returns, so a row-count assertion is weaker than the error.
     expect(errorCode(result)).toBe('FORBIDDEN')
     expect(result?.data?.itemLogs).toBeFalsy()
   })
@@ -584,35 +655,139 @@ describe('legacy null fields', () => {
   })
 })
 
-// ─── Cross-user isolation ─────────────────────────────────────────────────────
+// ─── Logs belong to their location, not to their author ──────────────────────
+//
+// Households H3a task 3.8. `InventoryLog.userId` means the AUTHOR. A log a
+// co-member wrote at a location the caller holds a role on is the caller's to
+// read too. Until task 3.8 every read also filtered by `userId`, so these
+// tests went red: the co-member's log was hidden.
 
-describe('cross-user isolation', () => {
-  it('itemLogs is scoped to the requesting user — other users\' logs excluded', async () => {
-    // Given user_B owns LOC_USER_B and no logs anywhere, while item_1 has logs
-    // at three OTHER locations owned by two other users
-
-    // When user_B queries itemLogs for that item, naming their own location
-    const result = await execOp(ITEM_LOGS, { itemId: 'item_1', locationId: LOC_USER_B }, { userId: USER_B })
-
-    // Then no logs are returned for user_B
-    expect(result?.errors).toBeUndefined()
-    expect(result?.data?.itemLogs).toHaveLength(0)
-    expect(mockPrisma.inventoryLog.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ userId: USER_B }) }),
+describe('logs a co-member wrote', () => {
+  beforeEach(() => {
+    // MEMBER bought item_1 at LOC_DEFAULT on 2026-01-04, after every one of
+    // USER's LOC_DEFAULT logs (the latest is 2026-01-03)
+    mockPrisma.$logFake.state.logs.push(
+      makeInventoryLog({ id: 'log_m1', itemId: 'item_1', userId: MEMBER, locationId: LOC_DEFAULT, delta: 2, quantity: 8, occurredAt: new Date('2026-01-04T00:00:00.000Z') }),
     )
   })
 
-  it('lastPurchaseDates is scoped to the requesting user — other users\' logs excluded', async () => {
-    // When user_B queries lastPurchaseDates for that item, naming their own
-    // location
-    const result = await execOp(LAST_PURCHASE, { itemIds: ['item_1'], locationId: LOC_USER_B }, { userId: USER_B })
-
-    // Then date is null for user_B (no logs belonging to them)
+  it('user sees a log a co-member wrote at a location they share', async () => {
+    const result = await execOp(ITEM_LOGS, { itemId: 'item_1', locationId: LOC_DEFAULT })
     expect(result?.errors).toBeUndefined()
+    const logs = result?.data?.itemLogs as LogRow[]
+    expect(logs.map((l) => l.id)).toEqual(['log_k1', 'log_k2', 'log_k3', 'log_m1'])
+  })
+
+  it('user\'s log count includes a co-member\'s log', async () => {
+    const result = await execOp(LOG_COUNT, { itemId: 'item_1', locationId: LOC_DEFAULT })
+    expect(result?.data?.inventoryLogCountByItem).toBe(4)
+  })
+
+  it('user\'s last purchase date is a co-member\'s purchase when it is the latest', async () => {
+    const result = await execOp(LAST_PURCHASE, { itemIds: ['item_1'], locationId: LOC_DEFAULT })
     const rows = result?.data?.lastPurchaseDates as DateRow[]
-    expect(rows[0].date).toBeNull()
-    expect(mockPrisma.inventoryLog.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ userId: USER_B }) }),
+    expect(rows[0].date).toContain('2026-01-04')
+  })
+
+  it('user exporting every log gets a co-member\'s log at a location they share', async () => {
+    const result = await execOp(`query InventoryLogs { inventoryLogs { id } }`)
+    const ids = (result?.data?.inventoryLogs as { id: string }[]).map((l) => l.id)
+    expect(ids).toContain('log_m1')
+  })
+})
+
+describe('inventoryLogs reads the locations the caller holds a role on', () => {
+  it('user gets the logs of a shared location, and not of one they hold no role on', async () => {
+    // Given one log at LOC_SHARED (made by MEMBER; USER is a viewer there) and
+    // one at LOC_HIDDEN (made by USER; USER holds no role there). Both were
+    // written by USER, so an author filter cannot tell them apart.
+    mockPrisma.$logFake.state.logs.push(
+      makeInventoryLog({ id: 'log_shared', itemId: 'item_1', userId: USER, locationId: LOC_SHARED }),
+      makeInventoryLog({ id: 'log_hidden', itemId: 'item_1', userId: USER, locationId: LOC_HIDDEN }),
     )
+
+    // When USER exports
+    const result = await execOp(`query InventoryLogs { inventoryLogs { id } }`)
+
+    // Then the LOC_SHARED log is there and the LOC_HIDDEN one is not
+    expect(result?.errors).toBeUndefined()
+    const ids = (result?.data?.inventoryLogs as { id: string }[]).map((l) => l.id)
+    expect(ids).toContain('log_shared')
+    expect(ids).not.toContain('log_hidden')
+  })
+
+  it('a user in another household reads none of these logs', async () => {
+    // Given USER_B, whose only location holds no log
+    const result = await execOp(`query InventoryLogs { inventoryLogs { id } }`, undefined, { userId: USER_B })
+    expect(result?.errors).toBeUndefined()
+    expect(result?.data?.inventoryLogs).toEqual([])
+  })
+
+  it('a user in another household reads no log of this item at their own location', async () => {
+    // Given item_1 has logs at three locations of two other households
+    const logs = await execOp(ITEM_LOGS, { itemId: 'item_1', locationId: LOC_USER_B }, { userId: USER_B })
+    expect(logs?.errors).toBeUndefined()
+    expect(logs?.data?.itemLogs).toHaveLength(0)
+    const dates = await execOp(LAST_PURCHASE, { itemIds: ['item_1'], locationId: LOC_USER_B }, { userId: USER_B })
+    expect((dates?.data?.lastPurchaseDates as DateRow[])[0].date).toBeNull()
+  })
+})
+
+// ─── Roles and the household's items ─────────────────────────────────────────
+
+describe('addInventoryLog needs location role participant, and an item of the location\'s household', () => {
+  const add = (itemId: string, locationId: string) =>
+    execOp(ADD_LOG, { itemId, delta: 1, quantity: 1, occurredAt: '2026-03-01T10:00:00.000Z', locationId })
+
+  it('a location viewer can read the location\'s logs', async () => {
+    // Given USER is only a viewer at LOC_SHARED
+    mockPrisma.$logFake.state.logs.push(
+      makeInventoryLog({ id: 'log_shared', itemId: 'item_1', userId: MEMBER, locationId: LOC_SHARED }),
+    )
+    const result = await execOp(ITEM_LOGS, { itemId: 'item_1', locationId: LOC_SHARED })
+    expect(result?.errors).toBeUndefined()
+    expect((result?.data?.itemLogs as LogRow[]).map((l) => l.id)).toEqual(['log_shared'])
+  })
+
+  it('a location viewer cannot add a log, and nothing is written', async () => {
+    seedLocations({ callerRoleOnOther: 'viewer' })
+    const before = mockPrisma.$logFake.state.logs.length
+    const result = await add('item_1', LOC_OTHER)
+    expect(errorCode(result)).toBe('FORBIDDEN')
+    expect(mockPrisma.$logFake.state.logs).toHaveLength(before)
+  })
+
+  it('a location participant can add a log', async () => {
+    seedLocations({ callerRoleOnOther: 'participant' })
+    const result = await add('item_1', LOC_OTHER)
+    expect(result?.errors).toBeUndefined()
+    expect((result?.data?.addInventoryLog as { locationId: string }).locationId).toBe(LOC_OTHER)
+  })
+
+  it('user can add a log for an item a co-member made', async () => {
+    // item_new was made by MEMBER, and it is hh_test's
+    const result = await add('item_new', LOC_DEFAULT)
+    expect(result?.errors).toBeUndefined()
+  })
+
+  it('user cannot add a log for another household\'s item, and nothing is written', async () => {
+    const before = mockPrisma.$logFake.state.logs.length
+    const result = await add('item_theirs', LOC_DEFAULT)
+    expect(errorCode(result)).toBe('FORBIDDEN')
+    expect(mockPrisma.$logFake.state.logs).toHaveLength(before)
+  })
+
+  it('an item id no row holds is refused with BAD_USER_INPUT, and nothing is written', async () => {
+    const before = mockPrisma.$logFake.state.logs.length
+    const result = await add('item_ghost', LOC_DEFAULT)
+    expect(errorCode(result)).toBe('BAD_USER_INPUT')
+    expect(mockPrisma.$logFake.state.logs).toHaveLength(before)
+  })
+
+  it('the new log records its author', async () => {
+    seedLocations({ callerRoleOnOther: 'participant' })
+    const result = await add('item_1', LOC_OTHER)
+    const id = (result?.data?.addInventoryLog as { id: string }).id
+    expect(mockPrisma.$logFake.state.logs.find((l) => l.id === id)?.userId).toBe(USER)
   })
 })

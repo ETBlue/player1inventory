@@ -13,11 +13,14 @@ import type { Context } from '../context.js'
 // that dropped the scope cannot stay green.
 //
 // The `item` store has `findMany` and nothing else. `findMany` answers
-// `requireCatalogIds` (lib/authz.ts) for a recipe's item ids, and echoes every
-// id back: each item here is the household's. Since PR 5 `consumeRecipes`
-// writes no `Item` row at all — the five stock columns are gone and
-// `writeStock` is the whole write. A reinstated `Item` write throws here
-// rather than passing quietly.
+// `requireCatalogIds` (lib/authz.ts) for a recipe's item ids and for the items
+// `consumeRecipes` cooks (households H3a, task 3.8). It reads a
+// household-scoped `ownedRowFake` store: every item the tests name is
+// `hh_test`'s, except `item_theirs`, which is the stranger's (`hh_other`).
+// Until task 3.8 it echoed every id back, so no test here could see a
+// stranger's item. Since PR 5 `consumeRecipes` writes no `Item` row at all —
+// the five stock columns are gone and `writeStock` is the whole write. A
+// reinstated `Item` write throws here rather than passing quietly.
 //
 // `user`, `household`, `householdMember`, `locationMember`, `location` and
 // `itemStock` are the stateful fakes joined in `src/test/householdWorld.ts`.
@@ -27,14 +30,17 @@ import type { Context } from '../context.js'
 // tested in `catalog-household.resolver.test.ts`.
 vi.mock('../lib/prisma.js', async () => {
   const { createHouseholdWorld } = await import('../test/householdWorld.js')
+  const { createOwnedRowFake } = await import('../test/ownedRowFake.js')
   const world = createHouseholdWorld()
+  const items = createOwnedRowFake({
+    model: 'Item',
+    scope: 'householdId',
+    requiredColumns: ['userId'],
+  })
   return {
     prisma: {
-      item: {
-        findMany: vi.fn(async ({ where }: { where: { id: { in: string[] } } }) =>
-          where.id.in.map((id) => ({ id })),
-        ),
-      },
+      item: { findMany: items.client.findMany },
+      $items: items,
       recipe: {
         findMany: vi.fn(),
         findFirst: vi.fn(),
@@ -86,6 +92,7 @@ const mockPrisma = prisma as unknown as {
     create: ReturnType<typeof vi.fn>
   }
   $world: HouseholdWorld
+  $items: { reset: (rows: { id: string; householdId: string; userId: string }[]) => void }
 }
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -188,9 +195,22 @@ function seedWorld(
   })
 }
 
+// The catalog: `hh_test`'s items, and one of the stranger's.
+function seedItems(householdId = 'hh_test') {
+  mockPrisma.$items.reset([
+    ...['item_milk', 'item_eggs', 'item_butter', 'item_cheese'].map((id) => ({
+      id,
+      householdId,
+      userId: 'user_test123',
+    })),
+    { id: 'item_theirs', householdId: 'hh_other', userId: 'user_other' },
+  ])
+}
+
 beforeEach(async () => {
   vi.clearAllMocks()
   seedWorld()
+  seedItems()
   server = new ApolloServer<Context>({ typeDefs, resolvers })
   await server.start()
 })
@@ -666,6 +686,8 @@ describe('consumeRecipes writes the cook location\'s ItemStock', () => {
     expect(listed?.errors).toBeUndefined()
     const created = stockFake.state.locations.find((l) => l.userId === 'user_test123')
     expect(created).toMatchObject({ isDefault: true, name: 'Home' })
+    // And the item cooked is an item of the household first sign-in made
+    seedItems(created?.householdId ?? 'none')
 
     // When they cook there
     const result = await execOp(CONSUME, {
@@ -807,5 +829,58 @@ describe("consumeRecipes writes the COOK's location, not the caller's default", 
     expect(mockPrisma.inventoryLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ locationId: LOC_DEFAULT }),
     })
+  })
+})
+
+// ─── consumeRecipes: households H3a task 3.8 ─────────────────────────────────
+
+describe('consumeRecipes takes only items of the cook location\'s household', () => {
+  beforeEach(() => {
+    mockPrisma.inventoryLog.create.mockResolvedValue({})
+    mockPrisma.recipe.updateMany.mockResolvedValue({ count: 1 })
+  })
+
+  it("cooking another household's item is FORBIDDEN, and nothing is written", async () => {
+    // Given a cook that names hh_other's item next to one of the caller's own
+    const result = await execOp(CONSUME, {
+      input: consumeInput(
+        [COOKED_MILK, { ...COOKED_MILK, itemId: 'item_theirs' }],
+        ['recipe_1'],
+      ),
+    })
+
+    // Then the WHOLE mutation is refused, not one entry in itemResults
+    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+
+    // And nothing was written: no stock row, no log, no recipe marked as
+    // cooked. The check runs before the first write.
+    expect(stockFake.state.itemStocks).toHaveLength(0)
+    expect(mockPrisma.inventoryLog.create).not.toHaveBeenCalled()
+    expect(mockPrisma.recipe.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('cooking an item id no row holds is BAD_USER_INPUT, and nothing is written', async () => {
+    const result = await execOp(CONSUME, {
+      input: consumeInput([{ ...COOKED_MILK, itemId: 'item_ghost' }]),
+    })
+    expect(result?.errors?.[0]?.extensions?.code).toBe('BAD_USER_INPUT')
+    expect(stockFake.state.itemStocks).toHaveLength(0)
+    expect(mockPrisma.inventoryLog.create).not.toHaveBeenCalled()
+  })
+})
+
+describe('consumeRecipes needs location role participant', () => {
+  it('a household member who is only a location viewer cannot cook, and nothing is written', async () => {
+    // Given the caller is a household `member` and only a `viewer` at both
+    // of their locations
+    seedWorld({ household: 'member', location: 'viewer' })
+    mockPrisma.inventoryLog.create.mockResolvedValue({})
+
+    const result = await execOp(CONSUME, { input: consumeInput([COOKED_MILK], ['recipe_1']) })
+
+    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(stockFake.state.itemStocks).toHaveLength(0)
+    expect(mockPrisma.inventoryLog.create).not.toHaveBeenCalled()
+    expect(mockPrisma.recipe.updateMany).not.toHaveBeenCalled()
   })
 })

@@ -12,9 +12,22 @@ import type { HouseholdWorld } from '../test/householdWorld.js'
 // a real row the test seeded or the resolver wrote. Nothing is derived from a
 // location's `userId` (households H3a task 3.6 removed `derivedRoles` from
 // this file), so a resolver that forgets to write a role row fails here.
+//
+// The `item` model has `findMany` only, over one row: `item-1`, an item of
+// hh-1. `upsertItemStock` checks that the item it is given is an item of the
+// location's household (households H3a, task 3.8), and the "create a location
+// and then stock it" test below writes `item-1`.
 vi.mock('../lib/prisma.js', async () => {
   const { createHouseholdWorld } = await import('../test/householdWorld.js')
+  const { createOwnedRowFake } = await import('../test/ownedRowFake.js')
   const world = createHouseholdWorld()
+  const items = createOwnedRowFake({
+    model: 'Item',
+    scope: 'householdId',
+    requiredColumns: ['userId'],
+    rows: [{ id: 'item-1', householdId: 'hh-1', userId: 'caller' }],
+  })
+  world.extend({ item: { findMany: items.client.findMany } })
   return { prisma: { ...world.client, $world: world } }
 })
 

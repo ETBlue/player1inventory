@@ -1,6 +1,12 @@
 import { GraphQLError } from 'graphql'
 import type { Prisma } from '@prisma/client'
-import { type LocationRole, requireLocationRole } from '../lib/authz.js'
+import {
+  householdOfLocation,
+  type LocationRole,
+  locationIdsWithRole,
+  requireLocationItems,
+  requireLocationRole,
+} from '../lib/authz.js'
 import { cartIdFor, parseCartId } from '../lib/cartId.js'
 import { isBeingBought } from '../lib/checkout.js'
 import { prisma } from '../lib/prisma.js'
@@ -84,8 +90,9 @@ async function requireCartLocation(
  *
  * Issue #358 asks for this warning only. What each query should scope by is a
  * households decision and is NOT made here. `InventoryLog.userId` has the
- * identical shape — kept, meaning "the author" — and is flagged the same way
- * in resolvers/inventoryLog.resolver.ts.
+ * identical shape — kept, meaning "the author". Households H3a task 3.8
+ * dropped it from every log READ (resolvers/inventoryLog.resolver.ts); the
+ * cart filters here wait for H3b.
  */
 export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
   Query: {
@@ -170,7 +177,10 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
   Mutation: {
     addToCart: async (_, { cartId, itemId, quantity }, ctx) => {
       const userId = requireAuth(ctx)
-      await requireCartLocation(ctx, cartId, 'participant')
+      const locationId = await requireCartLocation(ctx, cartId, 'participant')
+      // The item must be an item of the cart's location's household
+      // (households H3a, task 3.8). Before, any item id was taken on trust.
+      await requireLocationItems(ctx, locationId, [itemId])
       const existing = await prisma.cartItem.findFirst({ where: { cartId, itemId, userId } })
       if (existing) {
         return prisma.cartItem.update({
@@ -301,6 +311,9 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       })
 
       const now = new Date()
+      // The locations a copy-on-add below may copy from: the ones the caller
+      // holds a role on (households H3a, task 3.8). Read once, not per item.
+      const sourceLocationIds = await locationIdsWithRole(ctx)
 
       for (const { ci, quantity: finalQuantity } of purchases) {
         // Stock the item at the cart's location if it is not stocked there yet,
@@ -321,7 +334,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
         // third bucket offers "add to location", not "add to cart". This is the
         // defensive path, and the two modes disagreeing on it is the thing
         // being removed before households.
-        await ensureStockAtLocation(ci.itemId, cartLocationId, userId)
+        await ensureStockAtLocation(ci.itemId, cartLocationId, sourceLocationIds)
 
         // The cart location's own stock row, and since PR 5 the ONLY place the
         // purchase is recorded — `Item`'s five stock columns are gone, and with
@@ -394,8 +407,12 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       // `participant`, not `viewer`: this creates rows.
       await requireLocationRole(ctx, locationId, 'participant')
 
+      // Every vendor of the LOCATION's household, whoever made it (households
+      // H3a, task 3.8). Until then this read `where: { userId }`, so a
+      // location got carts only for the vendors the caller had made, not for
+      // a vendor another member added to the shared catalog.
       const vendors = await prisma.vendor.findMany({
-        where: { userId },
+        where: { householdId: await householdOfLocation(locationId) },
         select: { id: true },
       })
       // The no-vendor cart first, then one per vendor — the same set local

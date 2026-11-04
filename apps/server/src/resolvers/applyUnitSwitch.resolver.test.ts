@@ -5,11 +5,18 @@ import { resolvers } from '../resolvers/index.js'
 import type { Context } from '../context.js'
 
 // `applyUnitSwitch` writes three kinds of row in ONE `prisma.$transaction`, so
-// the double has to be able to roll back. `src/test/stockFake.ts` models
-// `location` + `itemStock` and now models `$transaction` too (PR 3c Task 1);
-// this file adds the `item`, `recipe` and `recipeItem` models the resolver also
-// touches, and registers its own store with the fake so one rollback covers
-// all five models.
+// the double has to be able to roll back.
+//
+// - `user`, `household`, `householdMember`, `locationMember`, `location` and
+//   `itemStock` are `householdWorld` (src/test/householdWorld.ts), whose
+//   `$transaction` models rollback (stockFake's `runInTransaction`). Every
+//   role is a row `seed` writes. Nothing is derived from a location's
+//   `userId`: households H3a task 3.8 removed `derivedRoles` from this file.
+// - `item` and `recipe` are household-scoped `ownedRowFake` stores. They
+//   check every `where` and throw on a key they do not model. Until task 3.8
+//   this file had its own matchers, which ignored an unknown key.
+// - `recipeItem` is a small store here, registered with the world, so one
+//   rollback covers all five models.
 //
 // A plain `vi.fn()` mock could not prove any of this: "wrapped in
 // $transaction" and "four sequential prisma calls" record the same calls
@@ -17,6 +24,7 @@ import type { Context } from '../context.js'
 
 interface FakeItem {
   id: string
+  householdId: string
   userId: string
   name: string
   targetUnit: string
@@ -28,6 +36,7 @@ interface FakeItem {
 
 interface FakeRecipe {
   id: string
+  householdId: string
   userId: string
   name: string
   lastCookedAt: Date | null
@@ -40,29 +49,30 @@ interface FakeRecipeItem {
 }
 
 interface ExtraState {
-  items: FakeItem[]
-  recipes: FakeRecipe[]
   recipeItems: FakeRecipeItem[]
   recipeWriteFails: boolean
-  // An index signature so this satisfies `RollbackStore` — `configureTransaction`
+  // An index signature so this satisfies `RollbackStore` — the rollback
   // deep-copies every own enumerable property.
   [key: string]: unknown
 }
 
 // Everything is built INSIDE the `vi.mock` factory and hung off the mocked
 // prisma: a factory is hoisted above every import and cannot close over a
-// module-scope binding. Same shape `item.resolver.test.ts` uses.
+// module-scope binding.
 vi.mock('../lib/prisma.js', async () => {
-  const { createStockFake } = await import('../test/stockFake.js')
-  const stockFake = createStockFake()
-  // Roles derived from the location rows: each location's `userId` owns a
-  // one-person household and organizes the location (src/test/derivedRoles.ts).
-  // `requireLocationRole` reads these since households H3a task 3.5.
-  const roles = (await import('../test/derivedRoles.js')).createDerivedRoles(stockFake)
+  const { createHouseholdWorld } = await import('../test/householdWorld.js')
+  const { createOwnedRowFake } = await import('../test/ownedRowFake.js')
+  const { checkWhere } = await import('../test/whereKeys.js')
+  const world = createHouseholdWorld()
+  const catalog = { scope: 'householdId' as const, requiredColumns: ['userId'] }
+  const items = createOwnedRowFake<FakeItem>({
+    model: 'Item',
+    ...catalog,
+    relations: () => ({ tags: [], vendors: [] }),
+  })
+  const recipes = createOwnedRowFake<FakeRecipe>({ model: 'Recipe', ...catalog })
 
   const extra: ExtraState = {
-    items: [],
-    recipes: [],
     recipeItems: [],
     // Test control: when true, `recipeItem.createMany` rejects. That is the
     // LAST write the resolver issues, so it is the one that proves the earlier
@@ -70,51 +80,9 @@ vi.mock('../lib/prisma.js', async () => {
     recipeWriteFails: false,
   }
 
-  type Where = Record<string, unknown>
-
-  const matchesItem = (row: FakeItem, where: Where) =>
-    // Prisma's own `where` semantics — an absent key filters nothing. A fake
-    // that hardcoded `row.userId === where.userId` would keep the scope test
-    // green after the resolver dropped the scope.
-    (where.id === undefined || row.id === where.id) &&
-    (where.userId === undefined || row.userId === where.userId)
-
-  const withRelations = (row: FakeItem) => ({ ...row, tags: [], vendors: [] })
-
-  const item = {
-    findFirst: async ({ where = {} }: { where?: Where } = {}) =>
-      extra.items.find((i) => matchesItem(i, where)) ?? null,
-    findUniqueOrThrow: async ({ where = {} }: { where?: Where } = {}) => {
-      const row = extra.items.find((i) => matchesItem(i, where))
-      if (!row) throw new Error(`Item not found: ${String(where.id)}`)
-      return withRelations(row)
-    },
-    update: async ({ where, data }: { where: Where; data: Record<string, unknown> }) => {
-      const row = extra.items.find((i) => matchesItem(i, where))
-      if (!row) throw new Error('Item not found')
-      Object.assign(row, data, { updatedAt: new Date() })
-      return withRelations(row)
-    },
-    // NO `updateMany`, on purpose. Until cloud locations PR 5 the resolver ran
-    // `tx.item.updateMany` inside the transaction, to copy the DEFAULT
-    // location's converted quantities onto `Item`'s five legacy state columns.
-    // PR 5 task 3 deleted that block. Keeping the method here would let a
-    // reinstated copy pass quietly; without it the transaction throws
-    // `tx.item.updateMany is not a function`, which is what makes the deletion
-    // observable.
-  }
-
-  const recipe = {
-    findFirst: async ({ where = {} }: { where?: Where } = {}) =>
-      extra.recipes.find(
-        (r) =>
-          (where.id === undefined || r.id === where.id) &&
-          (where.userId === undefined || r.userId === where.userId),
-      ) ?? null,
-  }
-
   const recipeItem = {
-    deleteMany: async ({ where = {} }: { where?: Where } = {}) => {
+    deleteMany: async ({ where = {} }: { where?: Record<string, unknown> } = {}) => {
+      checkWhere('applyUnitSwitch.test(recipeItem)', where, { recipeId: 'equals' })
       const before = extra.recipeItems.length
       extra.recipeItems = extra.recipeItems.filter((ri) => ri.recipeId !== where.recipeId)
       return { count: before - extra.recipeItems.length }
@@ -126,24 +94,46 @@ vi.mock('../lib/prisma.js', async () => {
     },
   }
 
-  // ONE merged client. It is both the module-level `prisma` and the `tx` the
-  // $transaction callback receives, so the only thing separating
-  // "transactional" from "four sequential prisma calls" is whether
-  // $transaction's snapshot/restore wrapped them.
-  const client = { ...stockFake.client, ...roles.client, item, recipe, recipeItem }
-  stockFake.configureTransaction({ txClient: client, stores: [extra, ...roles.stores] })
+  world.extend(
+    {
+      item: {
+        findMany: items.client.findMany,
+        findUniqueOrThrow: items.client.findUniqueOrThrow,
+        update: items.client.update,
+        // NO `updateMany`, on purpose. Until cloud locations PR 5 the resolver
+        // ran `tx.item.updateMany` inside the transaction, to copy the DEFAULT
+        // location's converted quantities onto `Item`'s five legacy state
+        // columns. PR 5 task 3 deleted that block. Without the method a
+        // reinstated copy throws `tx.item.updateMany is not a function`.
+      },
+      recipe: { findFirst: recipes.client.findFirst },
+      recipeItem,
+    },
+    [
+      items.state as unknown as Record<string, unknown>,
+      recipes.state as unknown as Record<string, unknown>,
+      extra,
+    ],
+  )
 
-  return { prisma: { ...client, $stockFake: stockFake, $extra: extra } }
+  return { prisma: { ...world.client, $world: world, $items: items, $recipes: recipes, $extra: extra } }
 })
 
 import { prisma } from '../lib/prisma.js'
-import type { StockFake } from '../test/stockFake.js'
+import { householdMemberRow, householdRow, locationMemberRow } from '../test/householdRows.js'
+import type { HouseholdWorld } from '../test/householdWorld.js'
+import type { OwnedRowFake } from '../test/ownedRowFake.js'
 
 const mockPrisma = prisma as unknown as {
-  $stockFake: StockFake
+  $world: HouseholdWorld
+  $items: OwnedRowFake<FakeItem>
+  $recipes: OwnedRowFake<FakeRecipe>
   $extra: ExtraState
 }
-const stockFake = mockPrisma.$stockFake
+const world = mockPrisma.$world
+const stockFake = world.stock
+const items = mockPrisma.$items
+const recipes = mockPrisma.$recipes
 const extra = mockPrisma.$extra
 
 const server = new ApolloServer<Context>({ typeDefs, resolvers })
@@ -180,12 +170,27 @@ const LOC_THEIRS = 'loc_theirs'
 //
 // `loc_theirs` belongs to user_b, so "the caller's locations" is also
 // distinguishable from "every location in the table".
+//
+// ── The people (plan H3a, rule 10) ──
+//
+// | Person | Household | Household role | Location roles                                  |
+// |--------|-----------|----------------|-------------------------------------------------|
+// | user_a | hh_a      | owner          | loc_kitchen, loc_garage: organizer              |
+// | user_m | hh_a      | member         | loc_kitchen, loc_garage: participant            |
+// | user_v | hh_a      | manager        | loc_kitchen: participant; loc_garage: viewer    |
+// | user_b | hh_b      | owner          | loc_theirs: organizer                           |
+//
+// A unit switch is a catalog edit AND a stock write, so it needs household
+// `manager` AND location `participant` on every location it names. user_m
+// has the location role but not the household role; user_v has the household
+// role but only `viewer` on the garage.
 function seed() {
+  world.reset()
   stockFake.reset(
     [
-      { id: LOC_KITCHEN, userId: 'user_a', isDefault: true },
-      { id: LOC_GARAGE, userId: 'user_a', isDefault: false },
-      { id: LOC_THEIRS, userId: 'user_b', isDefault: true },
+      { id: LOC_KITCHEN, userId: 'user_a', householdId: 'hh_a', isDefault: true },
+      { id: LOC_GARAGE, userId: 'user_a', householdId: 'hh_a', isDefault: false },
+      { id: LOC_THEIRS, userId: 'user_b', householdId: 'hh_b', isDefault: true },
     ],
     [
       {
@@ -214,22 +219,45 @@ function seed() {
       },
     ],
   )
-  extra.items = [
-    {
-      id: 'item_flour',
-      userId: 'user_a',
-      name: 'Flour',
-      targetUnit: 'measurement',
-      amountPerPackage: 500,
-      consumeAmount: 100,
-      createdAt: new Date('2026-01-01T00:00:00.000Z'),
-      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
-    },
-  ]
-  extra.recipes = [
-    { id: 'r_bread', userId: 'user_a', name: 'Bread', lastCookedAt: null },
-    { id: 'r_theirs', userId: 'user_b', name: 'Not mine', lastCookedAt: null },
-  ]
+  world.seedHouseholds({
+    households: [householdRow('hh_a', 'user_a'), householdRow('hh_b', 'user_b')],
+    householdMembers: [
+      householdMemberRow('hh_a', 'user_a', 'owner'),
+      householdMemberRow('hh_a', 'user_m', 'member'),
+      householdMemberRow('hh_a', 'user_v', 'manager'),
+      householdMemberRow('hh_b', 'user_b', 'owner'),
+    ],
+    locationMembers: [
+      locationMemberRow(LOC_KITCHEN, 'user_a', 'organizer'),
+      locationMemberRow(LOC_GARAGE, 'user_a', 'organizer'),
+      locationMemberRow(LOC_KITCHEN, 'user_m', 'participant'),
+      locationMemberRow(LOC_GARAGE, 'user_m', 'participant'),
+      locationMemberRow(LOC_KITCHEN, 'user_v', 'participant'),
+      locationMemberRow(LOC_GARAGE, 'user_v', 'viewer'),
+      locationMemberRow(LOC_THEIRS, 'user_b', 'organizer'),
+    ],
+  })
+  const created = new Date('2026-01-01T00:00:00.000Z')
+  const item = (id: string, householdId: string, name: string): FakeItem => ({
+    id,
+    householdId,
+    userId: householdId === 'hh_a' ? 'user_a' : 'user_b',
+    name,
+    targetUnit: 'measurement',
+    amountPerPackage: 500,
+    consumeAmount: 100,
+    createdAt: created,
+    updatedAt: created,
+  })
+  items.reset([
+    item('item_flour', 'hh_a', 'Flour'),
+    item('item_salt', 'hh_a', 'Salt'),
+    item('item_theirs', 'hh_b', 'Not mine'),
+  ])
+  recipes.reset([
+    { id: 'r_bread', householdId: 'hh_a', userId: 'user_a', name: 'Bread', lastCookedAt: null },
+    { id: 'r_theirs', householdId: 'hh_b', userId: 'user_b', name: 'Not mine', lastCookedAt: null },
+  ])
   extra.recipeItems = [
     { recipeId: 'r_bread', itemId: 'item_flour', defaultAmount: 200 },
     { recipeId: 'r_bread', itemId: 'item_salt', defaultAmount: 5 },
@@ -266,7 +294,7 @@ const stockAt = (locationId: string) =>
     (s) => s.itemId === 'item_flour' && s.locationId === locationId,
   )
 
-const flour = () => extra.items.find((i) => i.id === 'item_flour')
+const flour = () => items.state.rows.find((i) => i.id === 'item_flour')
 
 describe('applyUnitSwitch', () => {
   beforeEach(() => {
@@ -416,5 +444,140 @@ describe('applyUnitSwitch', () => {
       refillThreshold: 1,
       unpackedQuantity: 1.5,
     })
+  })
+})
+
+// ─── Households H3a task 3.8: roles and the household's items ────────────────
+
+describe('applyUnitSwitch needs household manager AND location participant', () => {
+  beforeEach(() => {
+    seed()
+  })
+
+  it('a household member who is a location participant cannot switch the unit, and nothing changes', async () => {
+    // Given user_m may write both locations' stock, but is only a household
+    // `member`, and a unit switch edits the catalog
+    const res = await run(MUTATION, { input: fullSwitch }, 'user_m')
+
+    // Then it is refused, and nothing was written
+    expect(res.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(flour()).toMatchObject({ targetUnit: 'measurement' })
+    expect(stockAt(LOC_KITCHEN)?.targetQuantity).toBe(1000)
+    expect(stockAt(LOC_GARAGE)?.targetQuantity).toBe(3000)
+  })
+
+  it('a household manager who is only a viewer at one location cannot switch, and nothing changes', async () => {
+    // Given user_v is a household `manager`, a participant at the kitchen and
+    // only a viewer at the garage
+    const res = await run(MUTATION, { input: fullSwitch }, 'user_v')
+
+    // Then it is refused, and not even the kitchen converted
+    expect(res.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(flour()).toMatchObject({ targetUnit: 'measurement' })
+    expect(stockAt(LOC_KITCHEN)?.targetQuantity).toBe(1000)
+  })
+
+  it('a household manager who is a location participant can switch the unit', async () => {
+    // Given the switch names only the kitchen, where user_v is a participant
+    const input = {
+      ...fullSwitch,
+      stockConversions: [{ locationId: LOC_KITCHEN, quantities: KITCHEN_AFTER }],
+    }
+
+    // When user_v switches
+    const res = await run(MUTATION, { input }, 'user_v')
+
+    // Then it works
+    expect(res.errors).toBeUndefined()
+    expect(flour()).toMatchObject({ targetUnit: 'package' })
+    expect(stockAt(LOC_KITCHEN)?.targetQuantity).toBe(2)
+  })
+})
+
+describe('applyUnitSwitch takes only the household\'s items', () => {
+  beforeEach(() => {
+    seed()
+  })
+
+  it("user cannot switch another household's item, even at their own locations", async () => {
+    // Given item_theirs is hh_b's, and both locations are hh_a's
+    const res = await run(MUTATION, { input: { ...fullSwitch, itemId: 'item_theirs' } })
+
+    // Then it is refused, and nothing changed
+    expect(res.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(items.state.rows.find((i) => i.id === 'item_theirs')).toMatchObject({
+      targetUnit: 'measurement',
+    })
+    expect(stockFake.state.itemStocks.some((s) => s.itemId === 'item_theirs')).toBe(false)
+  })
+
+  it("user cannot switch an item that names no location, when it is another household's", async () => {
+    // With no location to check, only the catalog check can refuse it
+    const res = await run(MUTATION, {
+      input: { ...fullSwitch, itemId: 'item_theirs', stockConversions: [], recipeUpdates: [] },
+    })
+    expect(res.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(items.state.rows.find((i) => i.id === 'item_theirs')).toMatchObject({
+      targetUnit: 'measurement',
+    })
+  })
+
+  it("a recipe update that names another household's item is refused, and nothing changes", async () => {
+    // Given the bread recipe update names hh_b's item
+    const input = {
+      ...fullSwitch,
+      recipeUpdates: [
+        {
+          recipeId: 'r_bread',
+          items: [
+            { itemId: 'item_flour', defaultAmount: 0.4 },
+            { itemId: 'item_theirs', defaultAmount: 1 },
+          ],
+        },
+      ],
+    }
+
+    // When the switch runs
+    const res = await run(MUTATION, { input })
+
+    // Then it is refused before any write
+    expect(res.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(flour()).toMatchObject({ targetUnit: 'measurement' })
+    expect(extra.recipeItems).toEqual([
+      { recipeId: 'r_bread', itemId: 'item_flour', defaultAmount: 200 },
+      { recipeId: 'r_bread', itemId: 'item_salt', defaultAmount: 5 },
+    ])
+  })
+
+  it('an item id no row holds is refused with BAD_USER_INPUT', async () => {
+    const res = await run(MUTATION, {
+      input: { ...fullSwitch, itemId: 'item_ghost', stockConversions: [], recipeUpdates: [] },
+    })
+    expect(res.errors?.[0]?.extensions?.code).toBe('BAD_USER_INPUT')
+  })
+
+  it("a location of another household cannot hold the item's converted stock", async () => {
+    // Given user_a is ALSO a participant at hh_b's location. Nobody can be in
+    // two households before H5, but nothing in the schema stops it. user_a is
+    // hh_a's owner, so the catalog check alone passes hh_a's item_flour.
+    world.households.state.householdMembers.push(householdMemberRow('hh_b', 'user_a', 'member'))
+    world.households.state.locationMembers.push(
+      locationMemberRow(LOC_THEIRS, 'user_a', 'participant'),
+    )
+    const input = {
+      ...fullSwitch,
+      stockConversions: [{ locationId: LOC_THEIRS, quantities: GARAGE_AFTER }],
+      recipeUpdates: [],
+    }
+
+    // When user_a switches hh_a's flour and names hh_b's location
+    const res = await run(MUTATION, { input })
+
+    // Then it is refused: the item and the location are in different
+    // households. No flour row appears at hh_b's location, and the item is
+    // still on the old unit.
+    expect(res.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(stockAt(LOC_THEIRS)).toBeUndefined()
+    expect(flour()).toMatchObject({ targetUnit: 'measurement' })
   })
 })

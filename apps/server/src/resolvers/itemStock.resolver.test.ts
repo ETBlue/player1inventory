@@ -6,6 +6,7 @@ import type { Context } from '../context.js'
 import type { FakeCart, FakeCartItem } from '../test/cartItemFake.js'
 import type { HouseholdWorld } from '../test/householdWorld.js'
 import type { InventoryLogFake } from '../test/inventoryLogFake.js'
+import type { LocationRole } from '../lib/authz.js'
 
 // ─── Mock Prisma ─────────────────────────────────────────────────────────────
 //
@@ -28,10 +29,17 @@ import type { InventoryLogFake } from '../test/inventoryLogFake.js'
 // the fake could not read would have passed here silently (plan H3a task 3.8,
 // step 0).
 //
-// NO `item` model, and that is on purpose. Until cloud locations PR 5 there
-// was one, because `upsertItemStock` mirrored the saved row back onto `Item`'s
-// five legacy state columns. PR 5 task 3 deleted that mirror. A fake that
-// still carried an `item` store would let a reinstated mirror pass quietly.
+// The `item` model has `findMany` and NOTHING else. `findMany` answers
+// `requireCatalogIds` (lib/authz.ts), which checks that an item id sent with a
+// location is an item of that location's household (households H3a, task
+// 3.8). It reads a household-scoped `ownedRowFake` store, so a stranger's item
+// is really a row of another household here, not a stub that says yes.
+//
+// No other `item` method, on purpose. Until cloud locations PR 5
+// `upsertItemStock` mirrored the saved row back onto `Item`'s five legacy
+// state columns. PR 5 task 3 deleted that mirror. A fake that offered
+// `item.update` or `item.updateMany` would let a reinstated mirror pass
+// quietly; without them it throws "not a function".
 //
 // Everything is built INSIDE the factory and hung off the mocked client,
 // because a `vi.mock` factory is hoisted above every import and cannot close
@@ -40,7 +48,13 @@ vi.mock('../lib/prisma.js', async () => {
   const { createHouseholdWorld } = await import('../test/householdWorld.js')
   const { createInventoryLogFake } = await import('../test/inventoryLogFake.js')
   const { filterCartItems } = await import('../test/cartItemFake.js')
+  const { createOwnedRowFake } = await import('../test/ownedRowFake.js')
   const world = createHouseholdWorld()
+  const items = createOwnedRowFake<{ id: string; householdId: string; userId: string }>({
+    model: 'Item',
+    scope: 'householdId',
+    requiredColumns: ['userId'],
+  })
   const logs = createInventoryLogFake()
   const carts = {
     // `Cart` rows, because `CartItem` has NO locationId column of its own. The
@@ -67,11 +81,11 @@ vi.mock('../lib/prisma.js', async () => {
   }
   // The log and cart stores roll back with the world's own, so one
   // `$transaction` covers all three deletes of `removeItemFromLocation`.
-  world.extend({ inventoryLog: logs.client, cartItem }, [
+  world.extend({ inventoryLog: logs.client, cartItem, item: { findMany: items.client.findMany } }, [
     logs.state as unknown as Record<string, unknown>,
     carts as unknown as Record<string, unknown>,
   ])
-  return { prisma: { ...world.client, $world: world, $logs: logs, $carts: carts } }
+  return { prisma: { ...world.client, $world: world, $logs: logs, $carts: carts, $items: items } }
 })
 
 import { prisma } from '../lib/prisma.js'
@@ -87,10 +101,12 @@ const handles = prisma as unknown as {
     cartItems: FakeCartItem[]
     failCartItemDeleteMany: boolean
   }
+  $items: { reset: (rows: { id: string; householdId: string; userId: string }[]) => void }
 }
 const world = handles.$world
 const logs = handles.$logs
 const carts = handles.$carts
+const items = handles.$items
 const stockState = world.stock.state
 
 const server = new ApolloServer<Context>({ typeDefs, resolvers })
@@ -103,22 +119,38 @@ async function run(query: string, variables: Record<string, unknown> = {}, userI
 
 const stock = makeStock
 
-// ── The fixture ──
+// ── The fixture: three people (plan H3a, rule 10) ──
 //
-// | Person | Household | Household role | Location roles                    |
-// |--------|-----------|----------------|-----------------------------------|
-// | user-a | hh-a      | owner          | loc-a, loc-a2, loc-a3: organizer  |
-// | user-b | hh-b      | owner          | loc-b: organizer                  |
+// | Person | Household | Household role | Location roles                                        |
+// |--------|-----------|----------------|-------------------------------------------------------|
+// | user-a | hh-a      | owner          | loc-a: set by the test (organizer by default);        |
+// |        |           |                | loc-a2, loc-a3: organizer; loc-shared: viewer         |
+// | user-m | hh-a      | member         | loc-a: a role DIFFERENT from user-a's;                |
+// |        |           |                | loc-shared, loc-hidden: organizer                     |
+// | user-b | hh-b      | owner          | loc-b: organizer                                      |
 //
-// `loc-a3` is in the fixture so the "most recently updated source" test has
-// a third location to add to.
-function seed() {
+// Two locations make "the caller's location memberships" different from "the
+// locations whose `userId` is the caller's":
+//
+// - `loc-shared` was made by user-m (`userId: 'user-m'`), and user-a holds a
+//   role on it. A read scoped by `location: { userId }` misses it.
+// - `loc-hidden` was made by user-a (`userId: 'user-a'`), and user-a holds NO
+//   role on it. A read scoped by `location: { userId }` returns it.
+//
+// `loc-a3` is there so the "most recently updated source" test has a third
+// location to add to. user-m always holds a different role from user-a on
+// loc-a, so a check that reads the wrong person's row gives a different
+// answer.
+function seed(options: { callerRole?: LocationRole } = {}) {
+  const callerRole = options.callerRole ?? 'organizer'
   world.reset()
   world.stock.reset(
     [
       { id: 'loc-a', userId: 'user-a', householdId: 'hh-a', isDefault: true },
       { id: 'loc-a2', userId: 'user-a', householdId: 'hh-a', isDefault: false },
       { id: 'loc-a3', userId: 'user-a', householdId: 'hh-a', isDefault: false },
+      { id: 'loc-shared', userId: 'user-m', householdId: 'hh-a', isDefault: false },
+      { id: 'loc-hidden', userId: 'user-a', householdId: 'hh-a', isDefault: false },
       { id: 'loc-b', userId: 'user-b', householdId: 'hh-b', isDefault: true },
     ],
     [],
@@ -127,15 +159,30 @@ function seed() {
     households: [householdRow('hh-a', 'user-a'), householdRow('hh-b', 'user-b')],
     householdMembers: [
       householdMemberRow('hh-a', 'user-a', 'owner'),
+      householdMemberRow('hh-a', 'user-m', 'member'),
       householdMemberRow('hh-b', 'user-b', 'owner'),
     ],
     locationMembers: [
-      locationMemberRow('loc-a', 'user-a', 'organizer'),
+      locationMemberRow('loc-a', 'user-a', callerRole),
+      locationMemberRow('loc-a', 'user-m', callerRole === 'participant' ? 'organizer' : 'participant'),
       locationMemberRow('loc-a2', 'user-a', 'organizer'),
       locationMemberRow('loc-a3', 'user-a', 'organizer'),
+      locationMemberRow('loc-shared', 'user-m', 'organizer'),
+      locationMemberRow('loc-shared', 'user-a', 'viewer'),
+      locationMemberRow('loc-hidden', 'user-m', 'organizer'),
       locationMemberRow('loc-b', 'user-b', 'organizer'),
     ],
   })
+  // The catalog. Every item the tests name is hh-a's, except `item-rice`,
+  // which is the stranger's (hh-b).
+  const ours = [
+    'item-milk', 'item-far', 'item-bread', 'item-new', 'item-orphan',
+    'item-tiebreak', 'item-ordered', 'item-zucchini', 'item-shared',
+  ]
+  items.reset([
+    ...ours.map((id) => ({ id, householdId: 'hh-a', userId: 'user-a' })),
+    { id: 'item-rice', householdId: 'hh-b', userId: 'user-b' },
+  ])
 }
 
 describe('itemStock resolvers', () => {
@@ -592,5 +639,200 @@ describe('itemStock resolvers', () => {
     expect(res.errors?.[0]?.message).toMatch(/Forbidden/)
     expect(logs.state.logs).toHaveLength(5)
     expect(carts.cartItems).toHaveLength(6)
+  })
+})
+
+// ─── Households H3a task 3.8: memberships, roles, the household's items ─────
+//
+// Every test here uses the three-person fixture in `seed`. Before task 3.8 the
+// whole-account reads were scoped by `location: { userId }`, the stock writes
+// checked no item, and every caller was an `organizer` (the old
+// `derivedRoles` adapter). So a call site that asked for the wrong role, or a
+// read that used the wrong scope, passed every test in this file.
+
+const FOR_ITEM = `query Q($i: ID!) { itemStocksForItem(itemId: $i) { locationId } }`
+const ALL_STOCKS = `query Q { allItemStocks { id } }`
+const ADD = `mutation M($i: ID!, $l: ID!) { addItemToLocation(itemId: $i, locationId: $l) { id targetQuantity } }`
+const UPSERT_ONE = `mutation M($i: ID!, $l: ID!, $in: ItemStockInput!) { upsertItemStock(itemId: $i, locationId: $l, input: $in) { packedQuantity } }`
+const REMOVE_ONE = `mutation M($i: ID!, $l: ID!) { removeItemFromLocation(itemId: $i, locationId: $l) }`
+const STOCKS_AT = `query Q($l: ID!) { itemStocks(locationId: $l) { id } }`
+
+function code(res: Awaited<ReturnType<typeof run>>): unknown {
+  return res.errors?.[0]?.extensions?.code
+}
+
+// The three stock rows every write test below reads back.
+function seedStocks() {
+  stockState.itemStocks = [
+    stock({ id: 'st-home', itemId: 'item-milk', locationId: 'loc-a', targetQuantity: 3, packedQuantity: 2 }),
+    stock({ id: 'st-theirs', itemId: 'item-rice', locationId: 'loc-b', targetQuantity: 1 }),
+  ]
+}
+
+describe('itemStock reads use the location memberships', () => {
+  beforeEach(() => {
+    seed()
+    // `item-shared` is stocked at loc-shared (made by user-m; user-a is a
+    // viewer there) and at loc-hidden (made by user-a; user-a holds no role
+    // there). A read scoped by `location: { userId }` gives exactly the
+    // opposite answer to a read scoped by memberships.
+    stockState.itemStocks = [
+      stock({ id: 'st-shared', itemId: 'item-shared', locationId: 'loc-shared', targetQuantity: 7, updatedAt: new Date('2026-01-01T00:00:00.000Z') }),
+      stock({ id: 'st-hidden', itemId: 'item-shared', locationId: 'loc-hidden', targetQuantity: 50, updatedAt: new Date('2026-06-01T00:00:00.000Z') }),
+      stock({ id: 'st-theirs', itemId: 'item-rice', locationId: 'loc-b', targetQuantity: 1 }),
+    ]
+  })
+
+  it('user sees an item\'s stock at a location they hold a role on, and not at one they do not', async () => {
+    // When user-a reads every location's stock for item-shared
+    const res = await run(FOR_ITEM, { i: 'item-shared' })
+
+    // Then loc-shared's row comes back, though another person made that
+    // location, and loc-hidden's does not, though user-a made it
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.itemStocksForItem).toEqual([{ locationId: 'loc-shared' }])
+  })
+
+  it('user exporting every stock gets the locations they hold a role on, and no other', async () => {
+    // When user-a reads allItemStocks
+    const res = await run(ALL_STOCKS)
+
+    // Then only loc-shared's row is there: not loc-hidden's (no role) and not
+    // the stranger's
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.allItemStocks).toEqual([{ id: 'st-shared' }])
+  })
+
+  it('user adding an item to a location copies from a location they hold a role on, never from one they do not', async () => {
+    // Given the NEWER source row is at loc-hidden (target 50), where user-a
+    // holds no role, and the older one at loc-shared (target 7)
+    // When user-a adds item-shared to loc-a2 and names no source
+    const res = await run(ADD, { i: 'item-shared', l: 'loc-a2' })
+
+    // Then the row copies loc-shared's 7. A source search scoped by
+    // `location: { userId }` would see only loc-hidden and copy 50.
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.addItemToLocation).toMatchObject({ targetQuantity: 7 })
+  })
+
+  it('a location viewer can read that location\'s stock', async () => {
+    // Given user-a is only a viewer at loc-shared
+    const res = await run(STOCKS_AT, { l: 'loc-shared' })
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.itemStocks).toEqual([{ id: 'st-shared' }])
+  })
+
+  it('a location in the caller\'s household, with no role on it, is refused for reading', async () => {
+    // Given user-a made loc-hidden but holds no role on it
+    const res = await run(STOCKS_AT, { l: 'loc-hidden' })
+    expect(code(res)).toBe('FORBIDDEN')
+  })
+})
+
+describe('itemStock writes need location role participant', () => {
+  it('a location viewer cannot set stock, and nothing changes', async () => {
+    // Given user-a is only a viewer at loc-a, and user-m is a participant there
+    seed({ callerRole: 'viewer' })
+    seedStocks()
+
+    // When user-a sets the packed quantity
+    const res = await run(UPSERT_ONE, { i: 'item-milk', l: 'loc-a', in: { packedQuantity: 9 } })
+
+    // Then it is refused, and the row still holds 2
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(stockState.itemStocks.find((s) => s.id === 'st-home')?.packedQuantity).toBe(2)
+  })
+
+  it('a location participant can set stock', async () => {
+    seed({ callerRole: 'participant' })
+    seedStocks()
+    const res = await run(UPSERT_ONE, { i: 'item-milk', l: 'loc-a', in: { packedQuantity: 9 } })
+    expect(res.errors).toBeUndefined()
+    expect(stockState.itemStocks.find((s) => s.id === 'st-home')?.packedQuantity).toBe(9)
+  })
+
+  it('a location viewer cannot add an item to the location', async () => {
+    seed({ callerRole: 'viewer' })
+    seedStocks()
+    const res = await run(ADD, { i: 'item-new', l: 'loc-a' })
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(stockState.itemStocks.some((s) => s.itemId === 'item-new')).toBe(false)
+  })
+
+  it('a location participant can add an item to the location', async () => {
+    seed({ callerRole: 'participant' })
+    seedStocks()
+    const res = await run(ADD, { i: 'item-new', l: 'loc-a' })
+    expect(res.errors).toBeUndefined()
+    expect(stockState.itemStocks.some((s) => s.itemId === 'item-new' && s.locationId === 'loc-a')).toBe(true)
+  })
+
+  it('a location viewer cannot remove an item from the location', async () => {
+    seed({ callerRole: 'viewer' })
+    seedStocks()
+    const res = await run(REMOVE_ONE, { i: 'item-milk', l: 'loc-a' })
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(stockState.itemStocks.some((s) => s.id === 'st-home')).toBe(true)
+  })
+
+  it('a location participant can remove an item from the location', async () => {
+    seed({ callerRole: 'participant' })
+    seedStocks()
+    const res = await run(REMOVE_ONE, { i: 'item-milk', l: 'loc-a' })
+    expect(res.errors).toBeUndefined()
+    expect(stockState.itemStocks.some((s) => s.id === 'st-home')).toBe(false)
+  })
+})
+
+describe('itemStock writes take only an item of the location\'s household', () => {
+  beforeEach(() => {
+    seed()
+    seedStocks()
+  })
+
+  it('user cannot set stock for another household\'s item, and no row is written', async () => {
+    // Given item-rice is hh-b's item, and loc-a is hh-a's location
+    // When user-a sets stock for it at loc-a
+    const res = await run(UPSERT_ONE, { i: 'item-rice', l: 'loc-a', in: { packedQuantity: 4 } })
+
+    // Then it is refused, and no item-rice row appears at loc-a
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(stockState.itemStocks.some((s) => s.itemId === 'item-rice' && s.locationId === 'loc-a')).toBe(false)
+  })
+
+  it('user cannot add another household\'s item to a location, and no row is written', async () => {
+    const res = await run(ADD, { i: 'item-rice', l: 'loc-a' })
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(stockState.itemStocks.some((s) => s.itemId === 'item-rice' && s.locationId === 'loc-a')).toBe(false)
+  })
+
+  it('an item id that no row holds is refused with BAD_USER_INPUT', async () => {
+    // Before task 3.8 this reached Postgres and failed on the foreign key,
+    // which the client saw as INTERNAL_SERVER_ERROR
+    const res = await run(UPSERT_ONE, { i: 'item-ghost', l: 'loc-a', in: { packedQuantity: 4 } })
+    expect(code(res)).toBe('BAD_USER_INPUT')
+    expect(stockState.itemStocks.some((s) => s.itemId === 'item-ghost')).toBe(false)
+  })
+
+  it('the item is checked against the LOCATION\'s household, not the caller\'s', async () => {
+    // Given user-a is ALSO a member of hh-b and a participant at loc-b. Nobody
+    // can be in two households before H5, but nothing in the schema stops it,
+    // and the check must not depend on that. `requireHousehold` would answer
+    // hh-a here.
+    world.households.state.householdMembers.push(householdMemberRow('hh-b', 'user-a', 'member'))
+    world.households.state.locationMembers.push(locationMemberRow('loc-b', 'user-a', 'participant'))
+
+    // When user-a writes hh-a's item-milk into hh-b's loc-b
+    const res = await run(UPSERT_ONE, { i: 'item-milk', l: 'loc-b', in: { packedQuantity: 4 } })
+
+    // Then it is refused: the item and the location are in different
+    // households
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(stockState.itemStocks.some((s) => s.itemId === 'item-milk' && s.locationId === 'loc-b')).toBe(false)
+
+    // And hh-b's own item-rice is accepted there, so the refusal above is
+    // about the item, not about the role
+    const ok = await run(UPSERT_ONE, { i: 'item-rice', l: 'loc-b', in: { packedQuantity: 4 } })
+    expect(ok.errors).toBeUndefined()
   })
 })

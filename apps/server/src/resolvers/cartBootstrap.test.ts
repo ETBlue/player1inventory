@@ -17,40 +17,42 @@ import type { Context } from '../context.js'
 // I create a vendor in the Kitchen and switch to the Garage, does the vendor
 // have a cart in the Garage" — and only an end state can answer it. A recorder
 // would stay green if the two halves built ids that did not match each other.
+//
+// `user`, `household`, `householdMember`, `locationMember`, `location` and
+// `itemStock` are `householdWorld` (src/test/householdWorld.ts). Every role is
+// a row `seed` writes. Nothing is derived from a location's `userId`:
+// households H3a task 3.8 removed `derivedRoles` from this file.
 vi.mock('../lib/prisma.js', async () => {
-  const { createStockFake } = await import('../test/stockFake.js')
+  const { createHouseholdWorld } = await import('../test/householdWorld.js')
   const { createShoppingFake } = await import('../test/shoppingFake.js')
-  const stockFake = createStockFake()
-  // Roles derived from the location rows: each location's `userId` owns a
-  // one-person household and organizes the location (src/test/derivedRoles.ts).
-  // `requireLocationRole` reads these since households H3a task 3.5.
-  const roles = (await import('../test/derivedRoles.js')).createDerivedRoles(stockFake)
+  const world = createHouseholdWorld()
   const shoppingFake = createShoppingFake()
+  world.extend(shoppingFake.client, [shoppingFake.state as unknown as Record<string, unknown>])
   return {
     prisma: {
-      ...stockFake.client,
-      ...shoppingFake.client,
+      ...world.client,
       // Handles onto the fakes' state, hung off the mocked client because a
       // `vi.mock` factory is hoisted above every import and cannot close over
       // a module-scope binding.
-      ...roles.client,
-      $roles: roles,
-      $stockFake: stockFake,
+      $world: world,
       $shoppingFake: shoppingFake,
     },
   }
 })
 
 import { prisma } from '../lib/prisma.js'
-import type { StockFake } from '../test/stockFake.js'
+import type { LocationRole } from '../lib/authz.js'
+import { householdMemberRow, householdRow, locationMemberRow } from '../test/householdRows.js'
+import type { HouseholdWorld } from '../test/householdWorld.js'
 import type { ShoppingFake } from '../test/shoppingFake.js'
 
 const mockPrisma = prisma as unknown as {
-  $stockFake: StockFake
+  $world: HouseholdWorld
   $shoppingFake: ShoppingFake
 }
 
-const stockFake = mockPrisma.$stockFake
+const world = mockPrisma.$world
+const stockFake = world.stock
 const shoppingFake = mockPrisma.$shoppingFake
 
 // THREE locations. The caller's default (Kitchen), the caller's non-default one
@@ -69,19 +71,50 @@ const LOC_STRANGER = 'loc_theirs'
 const ctx: Context = { userId: 'user_test123' }
 let server: ApolloServer<Context>
 
-beforeEach(async () => {
-  vi.clearAllMocks()
+// ── The three-person fixture (plan H3a, rule 10) ──
+//
+// | Person        | Household | Household role | Location roles                                  |
+// |---------------|-----------|----------------|-------------------------------------------------|
+// | user_test123  | hh_test   | owner          | LOC_DEFAULT: organizer; LOC_OTHER: set by test  |
+// | user_member   | hh_test   | manager        | LOC_DEFAULT, LOC_OTHER: organizer               |
+// | user_other    | hh_other  | owner          | LOC_STRANGER: organizer                         |
+//
+// user_member is a `manager` so they can make a vendor too: a vendor made by
+// another member of the household is one `bootstrapCarts` must not miss.
+function seed(options: { callerRoleOnOther?: LocationRole } = {}) {
+  const callerRoleOnOther = options.callerRoleOnOther ?? 'organizer'
+  world.reset()
   stockFake.reset(
     [
       // The default is deliberately NOT first: a resolver that took
       // `locations[0]` would otherwise pass by coincidence.
-      { id: LOC_OTHER, userId: 'user_test123', isDefault: false },
-      { id: LOC_DEFAULT, userId: 'user_test123', isDefault: true },
-      { id: LOC_STRANGER, userId: 'user_other', isDefault: true },
+      { id: LOC_OTHER, userId: 'user_test123', householdId: 'hh_test', isDefault: false },
+      { id: LOC_DEFAULT, userId: 'user_test123', householdId: 'hh_test', isDefault: true },
+      { id: LOC_STRANGER, userId: 'user_other', householdId: 'hh_other', isDefault: true },
     ],
     [],
   )
+  world.seedHouseholds({
+    households: [householdRow('hh_test', 'user_test123'), householdRow('hh_other', 'user_other')],
+    householdMembers: [
+      householdMemberRow('hh_test', 'user_test123', 'owner'),
+      householdMemberRow('hh_test', 'user_member', 'manager'),
+      householdMemberRow('hh_other', 'user_other', 'owner'),
+    ],
+    locationMembers: [
+      locationMemberRow(LOC_DEFAULT, 'user_test123', 'organizer'),
+      locationMemberRow(LOC_OTHER, 'user_test123', callerRoleOnOther),
+      locationMemberRow(LOC_DEFAULT, 'user_member', 'organizer'),
+      locationMemberRow(LOC_OTHER, 'user_member', 'organizer'),
+      locationMemberRow(LOC_STRANGER, 'user_other', 'organizer'),
+    ],
+  })
   shoppingFake.reset([], [])
+}
+
+beforeEach(async () => {
+  vi.clearAllMocks()
+  seed()
   server = new ApolloServer<Context>({ typeDefs, resolvers })
   await server.start()
 })
@@ -230,22 +263,24 @@ describe('bootstrapCarts fills in the locations createVendor skipped', () => {
     expect(cartIds()).toEqual(after)
   })
 
-  it("bootstrapCarts ignores another user's vendors", async () => {
-    // Given the caller has one vendor and a stranger has another
+  it("bootstrapCarts ignores another household's vendors", async () => {
+    // Given the caller has one vendor and a stranger in another household has
+    // another
     const created = await execOp(CREATE_VENDOR, { name: 'Costco', locationId: LOC_DEFAULT })
     const vendorId = (created?.data?.createVendor as { id: string }).id
     shoppingFake.state.vendors.push({
       id: 'vendor_stranger',
       name: 'Their Shop',
       userId: 'user_other',
+      householdId: 'hh_other',
     })
 
     // When the caller bootstraps their Garage
     await execOp(BOOTSTRAP, { locationId: LOC_OTHER })
 
-    // Then only their own vendor got a cart. The fake models Prisma's `where`
-    // semantics, so dropping `where: { userId }` from the vendor read would
-    // create `${LOC_OTHER}:vendor_stranger` here.
+    // Then only their household's vendor got a cart. The fake models Prisma's
+    // `where` semantics, so dropping the `householdId` filter from the vendor
+    // read would create `${LOC_OTHER}:vendor_stranger` here.
     expect(cartIds()).toEqual(
       [
         `${LOC_DEFAULT}:${vendorId}`,
@@ -272,6 +307,47 @@ describe('bootstrapCarts fills in the locations createVendor skipped', () => {
 
     // Then the Garage gets the no-vendor cart on its own. Local mode's
     // bootstrapCarts writes that one unconditionally too.
+    expect(result?.errors).toBeUndefined()
+    expect(cartIds()).toEqual([`${LOC_OTHER}:no-vendor`])
+  })
+})
+
+// ─── Households H3a task 3.8 ─────────────────────────────────────────────────
+
+describe('bootstrapCarts reads the vendors of the location\'s household', () => {
+  it('user gets a cart for a vendor another member of the household made', async () => {
+    // Given user_member, a manager of the same household, made a vendor while
+    // looking at the Kitchen
+    const created = await execOp(
+      CREATE_VENDOR,
+      { name: 'Farmers Market', locationId: LOC_DEFAULT },
+      { userId: 'user_member' },
+    )
+    expect(created?.errors).toBeUndefined()
+    const vendorId = (created?.data?.createVendor as { id: string }).id
+
+    // When the caller bootstraps the Garage
+    const result = await execOp(BOOTSTRAP, { locationId: LOC_OTHER })
+
+    // Then the Garage has a cart for that vendor too. Until task 3.8 the
+    // vendor read was `where: { userId }`, so only the caller's own vendors
+    // got a cart.
+    expect(result?.errors).toBeUndefined()
+    expect(cartIds()).toContain(`${LOC_OTHER}:${vendorId}`)
+  })
+})
+
+describe('bootstrapCarts needs location role participant', () => {
+  it('a location viewer cannot bootstrap carts, and no cart is written', async () => {
+    seed({ callerRoleOnOther: 'viewer' })
+    const result = await execOp(BOOTSTRAP, { locationId: LOC_OTHER })
+    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(shoppingFake.state.carts).toHaveLength(0)
+  })
+
+  it('a location participant can bootstrap carts', async () => {
+    seed({ callerRoleOnOther: 'participant' })
+    const result = await execOp(BOOTSTRAP, { locationId: LOC_OTHER })
     expect(result?.errors).toBeUndefined()
     expect(cartIds()).toEqual([`${LOC_OTHER}:no-vendor`])
   })

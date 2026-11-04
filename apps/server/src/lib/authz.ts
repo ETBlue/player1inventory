@@ -387,6 +387,70 @@ export async function requireOwnRowOrUnclaimed(
   return 'own'
 }
 
+/**
+ * The household a location belongs to. Refuses with the usual `FORBIDDEN`
+ * when no location has that id, or the location belongs to no household.
+ *
+ * It does NOT check a role. Call it AFTER `requireLocationRole`, which is the
+ * check. A location that passed `requireLocationRole` always has a household:
+ * a role counts only through `location.household.members` (decision H18).
+ * Until task 3.14 `Location.householdId` is nullable, so the `null` case is
+ * still handled here rather than assumed away.
+ *
+ * Read from the LOCATION row on purpose, not from `requireHousehold(ctx)`.
+ * `requireHousehold` answers "the caller's household", and nothing in the
+ * schema stops a person being a member of two (H5 makes that real). The
+ * location's own household is the one its stock, carts and vendors belong
+ * to.
+ */
+export async function householdOfLocation(locationId: string): Promise<string> {
+  const location = await prisma.location.findUnique({
+    where: { id: locationId },
+    select: { householdId: true },
+  })
+  if (!location?.householdId) throw forbidden()
+  return location.householdId
+}
+
+/**
+ * Refuse unless every id in `itemIds` is an item of the household that
+ * `locationId` belongs to (households H3a, task 3.8).
+ *
+ * For the writes that take an item id together with a location id:
+ * `upsertItemStock`, `addItemToLocation`, `applyUnitSwitch`,
+ * `addInventoryLog`, `addToCart` and `consumeRecipes`. Before task 3.8 none of
+ * them checked the item, so a client could write a stock row, a log or a cart
+ * entry for another household's item into its own location.
+ *
+ * The answers are `requireCatalogIds`': another household's item is
+ * `FORBIDDEN`, an id no row holds is `BAD_USER_INPUT`.
+ *
+ * Call it AFTER `requireLocationRole(ctx, locationId, …)`. It checks no role.
+ *
+ * Why a location of another household cannot be used to slip an item in:
+ *
+ * 1. `requireLocationRole` refuses a location of a household the caller is
+ *    not a member of. A location role counts only while the caller is also a
+ *    `HouseholdMember` of that location's household (decision H18).
+ * 2. The household checked here is the LOCATION's (`householdOfLocation`),
+ *    not the caller's. So even a caller in two households cannot put one
+ *    household's item into the other household's location: the item and the
+ *    location must be in the same household.
+ *
+ * Costs one location read plus `requireCatalogIds`' one query (two when an id
+ * is refused). No call site compares a `householdId`.
+ */
+export async function requireLocationItems(
+  ctx: Context,
+  locationId: string,
+  itemIds: readonly string[],
+): Promise<void> {
+  requireAuth(ctx)
+  if (itemIds.length === 0) return
+  const householdId = await householdOfLocation(locationId)
+  await requireCatalogIds(ctx, householdId, 'item', itemIds)
+}
+
 const CATALOG_LABEL: Record<CatalogModel, string> = {
   item: 'item',
   tag: 'tag',

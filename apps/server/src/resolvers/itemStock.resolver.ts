@@ -1,6 +1,12 @@
 import { GraphQLError } from 'graphql'
 import { requireAuth } from '../context.js'
-import { requireLocationRole } from '../lib/authz.js'
+import {
+  locationIdsWithRole,
+  requireCatalogIds,
+  requireCatalogRole,
+  requireLocationItems,
+  requireLocationRole,
+} from '../lib/authz.js'
 import { ensureStockAtLocation, writeStock } from '../lib/itemStockWrite.js'
 import { prisma } from '../lib/prisma.js'
 import { buildItemUpdateData, toGraphQL as itemToGraphQL } from './item.resolver.js'
@@ -62,29 +68,35 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       return (rows as unknown as PrismaItemStock[]).map(toGraphQL)
     },
 
+    // Every location the caller holds a role on, any role (households H3a,
+    // task 3.8). Until then it was `location: { userId }`, "the locations I
+    // made", which misses a location another member made and shares, and keeps
+    // one the caller made but no longer holds a role on.
     itemStocksForItem: async (_, { itemId }, ctx) => {
-      const userId = requireAuth(ctx)
       // Scoped THROUGH the location — ItemStock has no userId of its own.
       // Postgres gives no ordering guarantee for findMany without orderBy; a
       // stable order is genuinely better for the client, not just testable.
+      const locationIds = await locationIdsWithRole(ctx)
       const rows = await prisma.itemStock.findMany({
-        where: { itemId, location: { userId } },
+        where: { itemId, locationId: { in: locationIds } },
         orderBy: { locationId: 'asc' },
       })
       return (rows as unknown as PrismaItemStock[]).map(toGraphQL)
     },
 
-    // Whole-account, across every location the caller owns. Cloud export needs
+    // Every location the caller holds a role on, at once. Cloud export needs
     // all of it in one request; `itemStocks(locationId:)` would cost one
     // request per location.
     //
-    // `requireAuth`, NOT `requireLocationRole`: that helper takes a single
-    // `locationId` and this query names none. The scope is the relation filter
-    // `location: { userId }` — ItemStock has no userId of its own, by design
-    // (root CLAUDE.md, Authorization), and this is the same shape
-    // `itemStocksForItem` above and `purgeUserData` already use.
+    // `locationIdsWithRole`, NOT `requireLocationRole`: that helper takes a
+    // single `locationId` and this query names none. `locationIdsWithRole`
+    // (lib/authz.ts) is the list of locations the caller may read, with the
+    // decision H18 filter, so a stale role row of a person who left the
+    // household does not count. ItemStock has no userId of its own, by
+    // design (root CLAUDE.md, Authorization). Until households H3a task 3.8
+    // the scope was `location: { userId }`.
     allItemStocks: async (_, __, ctx) => {
-      const userId = requireAuth(ctx)
+      const locationIds = await locationIdsWithRole(ctx)
       // Postgres gives no ordering guarantee for findMany without orderBy, and
       // an export that reorders its rows on every run produces a different
       // file each time. `locationId` alone is not enough here: unlike
@@ -93,7 +105,7 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // @@unique([itemId, locationId]) (prisma/schema.prisma:282) makes the
       // pair unique — no two rows can tie.
       const rows = await prisma.itemStock.findMany({
-        where: { location: { userId } },
+        where: { locationId: { in: locationIds } },
         orderBy: [{ locationId: 'asc' }, { itemId: 'asc' }],
       })
       return (rows as unknown as PrismaItemStock[]).map(toGraphQL)
@@ -105,6 +117,9 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // No `requireAuth` of its own: `requireLocationRole` runs it first, so
       // an unauthenticated caller still fails before any read.
       await requireLocationRole(ctx, locationId, 'participant')
+      // The item must be an item of the location's household (households
+      // H3a, task 3.8). Checked before the write, so a refusal writes nothing.
+      await requireLocationItems(ctx, locationId, [itemId])
       const data = toData(input as StockInput)
       // `writeStock` (lib/itemStockWrite.ts) is the one place per-location
       // stock is written. This resolver used to hold its own
@@ -128,19 +143,25 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     // The body moved to `ensureStockAtLocation` (lib/itemStockWrite.ts) on
     // 2026-10-07 so `checkout` could call the SAME copy-on-add instead of
     // opening a row at `targetQuantity: 0`. Everything the old inline version
-    // did — the no-op on an already-stocked location, the source-row search
-    // scoped by `location: { userId }`, inheriting targetQuantity /
-    // refillThreshold / dueDate, zeroing the on-hand quantities — is unchanged
-    // and documented there.
+    // did — the no-op on an already-stocked location, the source-row search,
+    // inheriting targetQuantity / refillThreshold / dueDate, zeroing the
+    // on-hand quantities — is documented there. Since households H3a task 3.8
+    // the source search reads the locations the caller holds a role on
+    // (`locationIdsWithRole`), not `location: { userId }`.
     //
     // Neither this mutation nor `removeItemFromLocation` ever mirrored onto
     // `Item`'s legacy state columns, and that was deliberate rather than an
     // oversight — see `removeItemFromLocation` below. The columns are gone
     // since cloud locations PR 5, so nothing here has to mirror anything.
     addItemToLocation: async (_, { itemId, locationId, sourceLocationId }, ctx) => {
-      const userId = requireAuth(ctx)
       await requireLocationRole(ctx, locationId, 'participant')
-      const row = await ensureStockAtLocation(itemId, locationId, userId, sourceLocationId)
+      await requireLocationItems(ctx, locationId, [itemId])
+      const row = await ensureStockAtLocation(
+        itemId,
+        locationId,
+        await locationIdsWithRole(ctx),
+        sourceLocationId,
+      )
       return toGraphQL(row as unknown as PrismaItemStock)
     },
 
@@ -196,6 +217,10 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         // way. The Stock tab shows that count in the confirmation dialog, so
         // the two must agree on what "in this location" means — a number the
         // removal then does not match would be a lie to the user.
+        //
+        // The `userId` stays until H3b, which re-derives every `CartItem.userId`
+        // filter for shared carts (plan H3a, *Where H3a sits*). The log delete
+        // above has none: logs are scoped by their location.
         await tx.cartItem.deleteMany({ where: { itemId, userId, cart: { locationId } } })
       })
       return true
@@ -212,8 +237,17 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     // and recipes still hold old-unit numbers — mixed units, silently, with
     // no error for the user to act on. So it is one `prisma.$transaction`.
     applyUnitSwitch: async (_, { input }, ctx) => {
-      const userId = requireAuth(ctx)
       const { itemId, updates, stockConversions, recipeUpdates } = input
+
+      // ── AUTHORIZATION: the catalog first ─────────────────────────────────
+      //
+      // A unit switch is a CATALOG edit as well as a stock write: it writes
+      // the Item's configuration and recipe amounts. So it needs household
+      // role `manager`, the role every catalog write needs (households H3a,
+      // task 3.7), as well as location `participant` below. A household
+      // `member` who is a location participant may change quantities but not
+      // the item's unit.
+      const householdId = await requireCatalogRole(ctx, 'manager')
 
       // ── AUTHORIZATION: every location, before anything is written ────────
       //
@@ -228,9 +262,12 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // The checks run BEFORE the transaction opens, so a refusal has written
       // nothing even if rollback were broken.
       //
-      // This cannot fire today: every Location belongs to one user under the
-      // current flat `userId` scoping. It is written this way so location RBAC
-      // is one function body later (lib/authz.ts) rather than N call sites.
+      // Since households H3a task 3.5 this can fire: a household member may
+      // hold `viewer` on one of the named locations.
+      //
+      // Each location must also be a location of the ITEM's household
+      // (`requireLocationItems`, lib/authz.ts). With the catalog check below,
+      // that keeps the item, its stock rows and its recipes in one household.
       //
       // The return value is dropped. Until cloud locations PR 5 this loop also
       // collected which of the named locations was the caller's DEFAULT, for a
@@ -239,20 +276,26 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // resolver needs to know.
       for (const conversion of stockConversions) {
         await requireLocationRole(ctx, conversion.locationId, 'participant')
+        await requireLocationItems(ctx, conversion.locationId, [itemId])
       }
 
-      // Ownership of the Item and of every recipe, also before the
-      // transaction. These are query SCOPES (`where: { id, userId }`), the
-      // same shape `updateItem` and `updateRecipe` already use — not a
-      // `row.userId === ctx.userId` comparison, which root CLAUDE.md forbids
-      // as an authorization check.
-      const item = await prisma.item.findFirst({ where: { id: itemId, userId } })
-      if (!item) {
-        throw new GraphQLError('Item not found', { extensions: { code: 'NOT_FOUND' } })
-      }
+      // The Item, and every item a recipe update names, must be the
+      // household's (issue #273). Another household's id is FORBIDDEN, an id
+      // no row holds is BAD_USER_INPUT. Until task 3.8 the Item was read with
+      // `where: { id, userId }` (a missing item was NOT_FOUND), and the
+      // recipes' item ids were not checked at all.
+      await requireCatalogIds(ctx, householdId, 'item', [
+        itemId,
+        ...recipeUpdates.flatMap((update) => update.items.map((i) => i.itemId)),
+      ])
+
+      // Every recipe, also before the transaction. A query SCOPE
+      // (`where: { id, householdId }`), the same shape `updateRecipe` uses —
+      // not a `row.householdId === …` comparison, which plan H3a rule 9
+      // forbids as an authorization check.
       for (const update of recipeUpdates) {
         const recipe = await prisma.recipe.findFirst({
-          where: { id: update.recipeId, userId },
+          where: { id: update.recipeId, householdId },
         })
         if (!recipe) {
           throw new GraphQLError('Recipe not found', { extensions: { code: 'NOT_FOUND' } })

@@ -65,7 +65,10 @@ export function derivedHouseholdId(userId: string): string {
 
 /**
  * `stock` is a `stockFake`, or any test store with the same `state.locations`
- * shape (`itemStock.resolver.test.ts` has its own).
+ * shape.
+ *
+ * Since households H3a task 3.8 only the six import test files of task 3.9
+ * use this module. Task 3.9 removes it from them; this file can go then.
  */
 export function createDerivedRoles(stock: { state: { locations: FakeLocation[] } }) {
   const users = createUserFake()
