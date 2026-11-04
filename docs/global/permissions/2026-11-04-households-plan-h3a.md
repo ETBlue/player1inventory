@@ -1359,6 +1359,67 @@ sign-in (`ensureHousehold`) and `clearAllData` call it. This task does not chang
 but it is where the web stops reading `isDefault`; task 3.14 then removes both columns from
 that one function.
 
+**Done** in `c2a660c9`. What a later task needs to know:
+
+- **Cloud has no default location in the web app.** The six cloud operations no longer
+  select `isDefault`. `Location.isDefault` is optional in `packages/types` and local only.
+  Code tests `isDefault === true`. The flag is `undefined` on every cloud row. The server
+  still declares the field until 3.14,
+  and `apps/web/src/generated/graphql.ts` still names it once (the schema type).
+- **The cloud fallback is the FIRST location** (the server returns the list by `order`), in
+  three places: `useActiveLocation` (by mode; local keeps `find(isDefault === true)`),
+  `useCloudLocationId` (`list[0]`), and `fetchCloudDefaultLocationId` in `importData.ts`.
+  After a `clear` import "Home" is the only location, so it is the first one.
+- **`LocationList`** locks a row (lock icon, no Delete, no drag) only when
+  `isDefault === true`. Every cloud row can be dragged and deleted.
+- **Delete errors are shown.** `handleDelete` in `routes/settings/household/locations/index.tsx`
+  shows a toast (`sonner`, the app's pattern for mutation errors). The code is read with a
+  new helper, `hasGraphQLErrorCode(err, code)` (`apps/web/src/lib/graphqlErrorCode.ts`),
+  which reads `extensions.code` and never the message. `LAST_LOCATION` gets
+  `settings.locations.deleteLastError`; any other failure gets
+  `settings.locations.deleteError`.
+- **Not in the plan: cloud BACKUP FILES lost their default marker.** `sanitiseCloudPayload`
+  kept `isDefault` in the file, and `findPayloadDefaultLocationId` read it to know which
+  payload location to fold onto the destination's default. With the field gone, a new
+  cloud backup restored into local mode (or copied down by the cloud → local switch) would
+  have kept its "Home" as an extra location next to "My Home". So
+  `findPayloadDefaultLocationId` gained a third answer: the location with the lowest
+  `order`, **only when no row carries an `isDefault` key at all**. Local (v18+) backups flag
+  every row, pre-v18 ones have the `'local'` id, and older cloud backups still carry the
+  flag, so none of them changes. A file whose rows carry the key but none is `true` (only
+  a hand-edited file) gets no default. `sanitiseCloudPayload` no longer copies the flag.
+- **Tests:** web 2474 / 265 → **2485 / 267**. New: `index.cloud.test.tsx` (the
+  `LAST_LOCATION` toast and the general one, through the real `useDeleteLocation` cloud
+  branch and the real toast in `__root.tsx`), `graphqlErrorCode.test.ts`, a local fallback
+  test in `useActiveLocation.test.tsx` with the default NOT first, three import tests, and
+  the `CloudLocations` / `CloudLastLocation` stories with smoke tests. Cloud fixtures in
+  16 test and story files dropped `isDefault` (`test/cloudFixtures.ts`'s `cloudLocation`
+  lost its fourth argument). The local route test "user cannot delete or drag the default
+  location in local mode" now has a second location, so it checks the lock against a row
+  that is not locked.
+- **Mutation checks, all red, all restored from copies:** cloud fallback `locations[last]`
+  (4 tests); local fallback without `find(isDefault)` (1); `useCloudLocationId` `list[last]`
+  (3); `fetchCloudDefaultLocationId` last (1); payload "lowest order" replaced by "first in
+  the array" (1); payload key guard removed (4); payload order fallback removed (1);
+  `LocationList` locking a row with no flag (5); `LocationList` never locking (2); route
+  without `onError` (2); route always general (1); route always last-location (1). One
+  equivalent mutant, not counted: `find(isDefault)` in the cloud branch too gives the same
+  answer, because cloud rows have no flag.
+- **E2E not run (task 3.15 owns it).** What changes in cloud: (1) the locations page shows
+  Delete and a drag handle on the first location, so `settings/locations.spec.ts`'s
+  "Default location is undeletable" fails in cloud (the plan's step 2 already splits it);
+  (2) no row says "Default" in cloud; (3) deleting the last location now shows a toast;
+  (4) a cloud backup file made by the app has no `isDefault` on its locations. The
+  import side then folds the location with the lowest `order` onto the destination's
+  first location (cloud) or onto "My Home" (local). That is the same row as before
+  whenever the default sat at `order` 0, which is true for "Home" after first sign-in
+  and after a clear. A spec that moves another location above "Home" first would now
+  see a different fold. The E2E helpers (`cloudSeed.ts`, `stockReadback.ts`,
+  `cleanup-endpoint.spec.ts`, `cart-id-cross-user-leak.spec.ts`) query `isDefault`
+  from the server directly, so they keep working until task 3.14 drops the field.
+  The static fixture `cloud-backup.json` still marks a default, and the import side
+  still honours that flag.
+
 ## Task 3.13 — The household name and rename
 
 **Files:** `apps/server/src/schema/household.graphql` and

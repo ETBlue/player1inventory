@@ -159,7 +159,7 @@ Deleting a tag, tag type, or vendor automatically cleans up all item references:
 - **Delete tag** → removes tag from all item `tagIds` arrays (+ bumps `updatedAt`)
 - **Delete tag type** → deletes all child tags (which cascade to items), then deletes the type
 - **Delete vendor** → removes vendor from all item `vendorIds` arrays (+ bumps `updatedAt`)
-- **Delete location** → deletes that location's `ItemStock` rows, its `inventoryLogs`, and its carts + cart items; the location flagged `isDefault` cannot be deleted (an id comparison against `'local'` would be wrong in cloud, where the default's id is a cuid). Global `Item`s survive — see `settings/household/locations/CLAUDE.md`
+- **Delete location** → deletes that location's `ItemStock` rows, its `inventoryLogs`, and its carts + cart items; in local mode the location flagged `isDefault` cannot be deleted. Cloud has no default location (households task 3.12): any location can be deleted except the household's last one, which the server refuses with `LAST_LOCATION`. Global `Item`s survive — see `settings/household/locations/CLAUDE.md`
 
 **Local mode:** Cascade logic lives in `src/db/operations.ts` (`deleteTag`, `deleteTagType`, `deleteVendor`). The hooks (`useDeleteTag`, `useDeleteTagType`, `useDeleteVendor`) also invalidate the `['items']` query cache after deletion.
 
