@@ -59,8 +59,42 @@ afterAll(async () => {
   await server.stop()
 })
 
+/**
+ * The 14 deletes, in the order `purgeUserData` sends them to `$transaction`.
+ */
+const TRANSACTION_ORDER = [
+  'inventoryLog',
+  'cartItem',
+  'cart',
+  'recipeItem',
+  'recipe',
+  'itemTag',
+  'itemVendor',
+  'itemStock',
+  'item',
+  'tag',
+  'tagType',
+  'vendor',
+  'shelf',
+  'location',
+] as const
+
+/**
+ * Gives each `deleteMany` mock its own return value, `op:<model>`. Then the
+ * array handed to `$transaction` says which deletes it holds, and in what
+ * order. With every mock returning `undefined`, the array would be 14
+ * `undefined`s and could not tell one delete from another, or from none.
+ */
+function armDeleteMarkers() {
+  for (const model of TRANSACTION_ORDER) {
+    const mock = (p as unknown as Record<string, { deleteMany: ReturnType<typeof vi.fn> }>)[model]
+    mock?.deleteMany.mockReturnValue(`op:${model}`)
+  }
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
+  armDeleteMarkers()
 })
 
 const PURGE_MUTATION = `mutation {
@@ -149,18 +183,19 @@ describe('purgeUserData resolver', () => {
       expect(deleteMany, model).toBeDefined()
       expect(deleteMany?.mock.calls, model).toStrictEqual([[filter]])
     }
-    // And itemStock is deleted before item and before location — real
-    // ItemStock_itemId_fkey is ON DELETE CASCADE, so deleting items first would
-    // destroy ItemStock rows before this deleteMany could count them, and
-    // ItemStock_locationId_fkey requires the FK target to still exist. Each
-    // deleteMany(...) call executes synchronously while the $transaction array
-    // literal is built, so mock.invocationCallOrder reflects source order.
-    expect(p.itemStock.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
-      p.item.deleteMany.mock.invocationCallOrder[0],
-    )
-    expect(p.itemStock.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
-      p.location.deleteMany.mock.invocationCallOrder[0],
-    )
+    // And every one of those 14 deletes is IN the one transaction, in this
+    // order. Checking the arguments above is not enough: a real
+    // PrismaPromise is lazy, so a deleteMany that is built but left out of
+    // the `$transaction` array never runs, and its arguments still look
+    // right. Each mock returns its own `op:<model>` marker (armed in
+    // `armDeleteMarkers`), so this list is exactly what was sent.
+    //
+    // The order matters too. itemStock must come before item and before
+    // location: real ItemStock_itemId_fkey is ON DELETE CASCADE, so deleting
+    // items first would destroy ItemStock rows before this deleteMany could
+    // count them, and ItemStock_locationId_fkey needs the location to still
+    // exist.
+    expect(p.$transaction.mock.calls).toStrictEqual([[TRANSACTION_ORDER.map((m) => `op:${m}`)]])
   })
 
   it('returns zero counts when user has no data', async () => {

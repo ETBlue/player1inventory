@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, afterAll, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { ApolloServer } from '@apollo/server'
 import { typeDefs } from '../schema/index.js'
 import { resolvers } from '../resolvers/index.js'
@@ -618,9 +618,43 @@ describe('bulkUpsertItems', () => {
   })
 })
 
+/** The 14 deletes, in the order `clearAllData` sends them to `$transaction`. */
+const CLEAR_ALL_DATA_ORDER = [
+  'inventoryLog',
+  'cartItem',
+  'cart',
+  'recipeItem',
+  'recipe',
+  'itemTag',
+  'itemVendor',
+  'itemStock',
+  'item',
+  'tag',
+  'tagType',
+  'vendor',
+  'shelf',
+  'location',
+] as const
+
 describe('clearAllData', () => {
+  // This file's `beforeEach` runs `vi.clearAllMocks()`, which keeps a
+  // `mockReturnValue`. Reset the 14 deleteMany mocks after each test here,
+  // so the `op:<model>` markers armed below never reach a later test.
+  afterEach(() => {
+    const deletes = p as unknown as Record<string, { deleteMany: ReturnType<typeof vi.fn> }>
+    for (const model of CLEAR_ALL_DATA_ORDER) deletes[model]?.deleteMany.mockReset()
+  })
+
   it('user can clear all their data', async () => {
-    // Given transaction resolves
+    // Given each deleteMany returns its own `op:<model>` marker, so the
+    // array handed to `$transaction` says which deletes it holds. With every
+    // mock returning `undefined`, that array could not tell one delete from
+    // another, or from none.
+    const deletes = p as unknown as Record<string, { deleteMany: ReturnType<typeof vi.fn> }>
+    for (const model of CLEAR_ALL_DATA_ORDER) {
+      deletes[model]?.deleteMany.mockReturnValue(`op:${model}`)
+    }
+    // And the transaction resolves
     p.$transaction.mockResolvedValue([
       { count: 0 }, { count: 0 }, { count: 0 }, { count: 0 },
       { count: 0 }, { count: 0 }, { count: 0 }, { count: 0 },
@@ -673,17 +707,19 @@ describe('clearAllData', () => {
       expect(deleteMany, model).toBeDefined()
       expect(deleteMany?.mock.calls, model).toStrictEqual([[filter]])
     }
-    // And itemStock is deleted before item and before location — real
-    // ItemStock_itemId_fkey is ON DELETE CASCADE, so deleting items first would
-    // destroy ItemStock rows before this deleteMany runs. Each deleteMany(...)
-    // call executes synchronously while the $transaction array literal is built,
-    // so mock.invocationCallOrder reflects source order.
-    expect(p.itemStock.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
-      p.item.deleteMany.mock.invocationCallOrder[0],
-    )
-    expect(p.itemStock.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
-      p.location.deleteMany.mock.invocationCallOrder[0],
-    )
+    // And every one of those 14 deletes is IN the one transaction, in this
+    // order. Checking the arguments above is not enough: a real
+    // PrismaPromise is lazy, so a deleteMany that is built but left out of
+    // the `$transaction` array never runs, and its arguments still look
+    // right.
+    //
+    // The order matters too. itemStock must come before item and before
+    // location: real ItemStock_itemId_fkey is ON DELETE CASCADE, so deleting
+    // items first would destroy ItemStock rows before this deleteMany runs,
+    // and ItemStock_locationId_fkey needs the location to still exist.
+    expect(p.$transaction.mock.calls).toStrictEqual([
+      [CLEAR_ALL_DATA_ORDER.map((model) => `op:${model}`)],
+    ])
   })
 })
 

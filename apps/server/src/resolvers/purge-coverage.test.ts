@@ -76,43 +76,81 @@ const userOwnedModels = parseUserOwnedModels(schemaSource)
 // Finding `prisma.<model>.deleteMany(` in the source says a model IS deleted.
 // It says nothing about WHICH rows. A call changed to `deleteMany({})` deletes
 // every account's rows and still passes that check. So every call is also
-// checked against the list of filter forms below, built from one scope.
+// checked against a list of allowed filter forms.
 //
-// HOUSEHOLDS TASK 3.10 CHANGES THIS BLOCK. Today a purge picks rows by the
-// caller's `userId`. After H3a it picks them by household, or through a
-// location. The edit is: change `SCOPE`, and change `SCOPE_PATHS` to the
-// parent chains the new filters go through (for example `['cart',
-// 'location']` for a cart item). Nothing else in this file names the scope.
+// Each path in `PURGE_PATHS` carries its OWN rules, because the paths do not
+// share one scope after households task 3.10:
+//
+// - `scope`: the filter text every chain ends in, exactly as the source
+//   writes it. Today it is `{ userId }` on all three paths.
+// - `scopePaths`: the parent chains a filter may go through before it
+//   reaches `scope`. `[]` is the scope on the row itself.
+// - `exceptions`: whole filters allowed on one model only, for a row the
+//   scope form cannot describe. Today there is one: the User row in
+//   `/e2e/cleanup`.
+//
+// WHAT HOUSEHOLDS TASK 3.10 CHANGES HERE (plan
+// docs/global/permissions/2026-11-04-households-plan-h3a.md):
+//
+// 1. Step 1 removes `purgeUserData`, so its `PURGE_PATHS` entry goes.
+// 2. Step 2 changes the `clearAllData` entry: `scope` becomes the household
+//    form (for example `{ householdId }`), and `scopePaths` becomes the
+//    chains through the location or the item (for example `['location']`
+//    for an item stock, `['cart', 'location']` for a cart item).
+// 3. Step 4 changes the `e2eCleanup` entry: `scope` becomes the owned
+//    households (for example `{ householdId: { in: ownedHouseholdIds } }`),
+//    and each filter that is not that scope gets its own entry in
+//    `exceptions`. That covers the memberships deleted by `userId`, the
+//    rows of the three new tables, and the User row, which stays.
+// 4. Each entry's `models` list changes to the models that path deletes.
+//
+// The exact filter text is whatever 3.10 writes in the source. The rules
+// here must be changed to match it, entry by entry.
 
-/** The scope every purge filter must end in, exactly as the source writes it. */
-const SCOPE = '{ userId }'
+/** A whole filter allowed on one model only, in one path. */
+interface FilterException {
+  model: string
+  arg: string
+}
 
-/**
- * The parent relations a filter may go through before it reaches `SCOPE`.
- * `[]` is the scope on the row itself: `{ where: { userId } }`.
- * `['item']` is `{ where: { item: { userId } } }`, for a row with no
- * `userId` column of its own (ItemTag, ItemVendor, RecipeItem, ItemStock).
- */
-const SCOPE_PATHS: readonly (readonly string[])[] = [[], ['item'], ['recipe'], ['location']]
+/** The filter rules for one purge path. */
+interface FilterRules {
+  /** The filter every chain ends in, exactly as the source writes it. */
+  scope: string
+  /**
+   * The parent relations a filter may go through before it reaches
+   * `scope`. `[]` is the scope on the row itself: `{ where: { userId } }`.
+   * `['item']` is `{ where: { item: { userId } } }`, for a row with no
+   * `userId` column of its own (ItemTag, ItemVendor, RecipeItem, ItemStock).
+   */
+  scopePaths: readonly (readonly string[])[]
+  exceptions: readonly FilterException[]
+}
 
 /** Builds the filter text for one parent chain, in the source's spacing. */
-function filterFor(path: readonly string[]): string {
-  const inner = [...path].reverse().reduce((acc, parent) => `{ ${parent}: ${acc} }`, SCOPE)
+function filterFor(scope: string, path: readonly string[]): string {
+  const inner = [...path].reverse().reduce((acc, parent) => `{ ${parent}: ${acc} }`, scope)
   return `{ where: ${inner} }`
 }
 
-const ALLOWED_FILTERS: readonly string[] = SCOPE_PATHS.map(filterFor)
+/** Every filter the scope form allows, on any model. */
+function allowedFilters(rules: FilterRules): string[] {
+  return rules.scopePaths.map((path) => filterFor(rules.scope, path))
+}
+
+/** Today's scope, shared by all three paths until task 3.10 splits them. */
+const USER_SCOPE = '{ userId }'
+const USER_SCOPE_PATHS: readonly (readonly string[])[] = [[], ['item'], ['recipe'], ['location']]
 
 /**
- * The one exception: the `User` row, deleted only by `/e2e/cleanup`. Its key
- * is `id`, because the row IS the user, so `{ where: { id: userId } }` is
- * the right filter for it. It stays this way after H3a: cleanup still
- * deletes the test user's own row. The same filter on any OTHER model would
- * compare that model's id with a user id. It would match nothing, so the
- * purge would leave every row behind. So it is allowed for `user` only, and
- * only in the path that may delete the User row at all.
+ * The User row, deleted only by `/e2e/cleanup`. Its key is `id`, because
+ * the row IS the user, so `{ where: { id: userId } }` is the right filter
+ * for it. The same filter on any OTHER model would compare that model's id
+ * with a user id. It would match nothing, so the purge would leave every
+ * row behind. So it is an exception for `user` only, and only in the path
+ * that may delete the User row at all.
  */
-const USER_ROW_FILTER = '{ where: { id: userId } }'
+const USER_ROW_EXCEPTION: FilterException = { model: 'user', arg: '{ where: { id: userId } }' }
 
 interface DeleteManyCall {
   model: string
@@ -128,9 +166,11 @@ interface DeleteManyCall {
  * Finds every `prisma.<model>.deleteMany(…)` and `tx.<model>.deleteMany(…)`
  * call in `source` and returns its argument text. The argument is read up to
  * the matching `)`, counting parentheses, so a multi-line argument is read
- * whole. It does not understand strings or comments: a `)` inside a string
- * argument would end it early. No purge filter holds one today, and the
- * call counts checked below would change if one did.
+ * whole. It does not understand strings or comments. A `(` or `)` inside a
+ * string argument would make the argument text wrong: cut short, or run on
+ * into the next call. That wrong text is not one of the allowed forms, so the
+ * filter check fails. It cannot pass by mistake. No purge filter holds a
+ * string today.
  */
 function deleteManyCalls(source: string): DeleteManyCall[] {
   const calls: DeleteManyCall[] = []
@@ -159,11 +199,12 @@ function deleteManyCalls(source: string): DeleteManyCall[] {
  * Returns the calls whose filter is not one of the allowed forms, as
  * `model: arg` strings, so a failure names the call.
  */
-function badFilters(calls: DeleteManyCall[], options: { userRowAllowed: boolean }): string[] {
+function badFilters(calls: DeleteManyCall[], rules: FilterRules): string[] {
+  const allowed = allowedFilters(rules)
   return calls
     .filter(({ model, arg }) => {
-      if (ALLOWED_FILTERS.includes(arg)) return false
-      if (options.userRowAllowed && model === 'user' && arg === USER_ROW_FILTER) return false
+      if (allowed.includes(arg)) return false
+      if (rules.exceptions.some((e) => e.model === model && e.arg === arg)) return false
       return true
     })
     .map(({ model, arg }) => `${model}: ${arg || '(no argument)'}`)
@@ -192,21 +233,59 @@ function bodyAfter(source: string, marker: string): string {
 
 const importResolverSource = read('./import.resolver.ts')
 
-const PURGE_PATHS = [
+/**
+ * The 14 models both resolvers delete today, sorted. Each appears once. A
+ * count alone cannot see one junction delete swapped for a second copy of
+ * another; this list can.
+ */
+const DATA_MODELS = [
+  'cart',
+  'cartItem',
+  'inventoryLog',
+  'item',
+  'itemStock',
+  'itemTag',
+  'itemVendor',
+  'location',
+  'recipe',
+  'recipeItem',
+  'shelf',
+  'tag',
+  'tagType',
+  'vendor',
+] as const
+
+interface PurgePath extends FilterRules {
+  label: string
+  source: string
+  /** Only this path's own body, so a deleteMany elsewhere in the file does not count. */
+  purgeSource: string
+  deleteCount: number
+  /** The models this path deletes, sorted, one entry per deleteMany call. */
+  models: readonly string[]
+}
+
+const PURGE_PATHS: readonly PurgePath[] = [
   {
     label: 'purgeUserData',
     source: read('./purge.resolver.ts'),
     // The whole file is the one resolver.
     purgeSource: read('./purge.resolver.ts'),
     deleteCount: 14,
-    userRowAllowed: false,
+    models: DATA_MODELS,
+    scope: USER_SCOPE,
+    scopePaths: USER_SCOPE_PATHS,
+    exceptions: [],
   },
   {
     label: 'clearAllData',
     source: importResolverSource,
     purgeSource: bodyAfter(importResolverSource, 'clearAllData: async'),
     deleteCount: 14,
-    userRowAllowed: false,
+    models: DATA_MODELS,
+    scope: USER_SCOPE,
+    scopePaths: USER_SCOPE_PATHS,
+    exceptions: [],
   },
   // The E2E-only DELETE /e2e/cleanup endpoint is a THIRD hand-maintained copy of
   // the same delete list. It is not a resolver, so no resolver test reads it.
@@ -219,9 +298,19 @@ const PURGE_PATHS = [
     purgeSource: read('../lib/e2eCleanup.ts'),
     // The same 14 as the two resolvers, plus the User row.
     deleteCount: 15,
-    userRowAllowed: true,
+    models: [...DATA_MODELS, 'user'].sort(),
+    scope: USER_SCOPE,
+    scopePaths: USER_SCOPE_PATHS,
+    exceptions: [USER_ROW_EXCEPTION],
   },
 ]
+
+/** The rules of one path, by label. Throws if the label is unknown. */
+function rulesOf(label: string): FilterRules {
+  const path = PURGE_PATHS.find((p) => p.label === label)
+  if (!path) throw new Error(`no purge path: ${label}`)
+  return path
+}
 
 describe('purge coverage against prisma/schema.prisma', () => {
   it('parses the user-owned models out of the schema', () => {
@@ -291,28 +380,37 @@ describe('purge coverage against prisma/schema.prisma', () => {
 })
 
 describe('purge filter form (issue #320)', () => {
-  for (const { label, purgeSource, deleteCount, userRowAllowed } of PURGE_PATHS) {
-    it(`${label} scopes every deleteMany to the caller`, () => {
+  for (const path of PURGE_PATHS) {
+    it(`${path.label} scopes every deleteMany to the caller`, () => {
       // Given every deleteMany call in this path's body
-      const calls = deleteManyCalls(purgeSource)
+      const calls = deleteManyCalls(path.purgeSource)
 
       // Then the parser found all of them. A broken parser that finds none
       // would make the next check pass for any source.
-      expect(calls).toHaveLength(deleteCount)
+      expect(calls).toHaveLength(path.deleteCount)
+
+      // And they are the expected models, each once. A count alone would
+      // not see one delete swapped for a second copy of another.
+      expect(calls.map((c) => c.model).sort()).toEqual(path.models)
+      expect(path.models).toHaveLength(path.deleteCount)
 
       // And each filter is one of the allowed scope forms. `{}`, no
       // argument, or a filter by some other key all fail here.
-      expect(badFilters(calls, { userRowAllowed })).toEqual([])
+      expect(badFilters(calls, path)).toEqual([])
     })
   }
 
-  it('lists the allowed filter forms built from the scope', () => {
+  it('lists the allowed filter forms built from each path scope', () => {
     // A check on the builder, so a mistake in it cannot widen the list.
-    expect(ALLOWED_FILTERS).toEqual([
+    const today = [
       '{ where: { userId } }',
       '{ where: { item: { userId } } }',
       '{ where: { recipe: { userId } } }',
       '{ where: { location: { userId } } }',
+    ]
+    for (const path of PURGE_PATHS) expect(allowedFilters(path), path.label).toEqual(today)
+    expect(rulesOf('e2eCleanup').exceptions).toEqual([
+      { model: 'user', arg: '{ where: { id: userId } }' },
     ])
   })
 
@@ -327,7 +425,7 @@ describe('purge filter form (issue #320)', () => {
       'prisma.itemTag.deleteMany({ where: { tag: { userId } } })',
     ].join('\n')
 
-    expect(badFilters(deleteManyCalls(source), { userRowAllowed: true })).toEqual([
+    expect(badFilters(deleteManyCalls(source), rulesOf('e2eCleanup'))).toEqual([
       'tag: {}',
       'tag: (no argument)',
       "tag: { where: { id: 'x' } }",
@@ -336,29 +434,37 @@ describe('purge filter form (issue #320)', () => {
     ])
   })
 
-  it('allows the User-row filter only on user, and only where the User row may go', () => {
+  it('allows an exception only on its model, and only in its path', () => {
     const userRow = 'prisma.user.deleteMany({ where: { id: userId } })'
     const otherModel = 'prisma.tag.deleteMany({ where: { id: userId } })'
 
-    expect(badFilters(deleteManyCalls(userRow), { userRowAllowed: true })).toEqual([])
-    expect(badFilters(deleteManyCalls(userRow), { userRowAllowed: false })).toEqual([
+    expect(badFilters(deleteManyCalls(userRow), rulesOf('e2eCleanup'))).toEqual([])
+    expect(badFilters(deleteManyCalls(userRow), rulesOf('clearAllData'))).toEqual([
       'user: { where: { id: userId } }',
     ])
-    expect(badFilters(deleteManyCalls(otherModel), { userRowAllowed: true })).toEqual([
+    expect(badFilters(deleteManyCalls(otherModel), rulesOf('e2eCleanup'))).toEqual([
       'tag: { where: { id: userId } }',
     ])
   })
 
   it('reads a multi-line argument, with trailing commas, on a transaction client', () => {
-    const source = `tx.item.deleteMany({
-      where: {
-        userId,
-      },
-    })`
-    const calls = deleteManyCalls(source)
+    // Given a filter built from this path's own rules, so the test follows
+    // the scope when task 3.10 changes it. The deepest chain is used, so a
+    // nested filter is split over the most lines.
+    const rules = rulesOf('clearAllData')
+    const deepest = [...rules.scopePaths].sort((a, b) => b.length - a.length)[0] ?? []
+    const filter = filterFor(rules.scope, deepest)
+    // And the same filter as a formatter would write it: one key per line,
+    // each followed by a trailing comma.
+    const multiLine = filter.replace(/\{ /g, '{\n  ').replace(/ \}/g, ',\n}')
+    expect(multiLine).toContain(',\n}')
 
-    expect(calls).toEqual([{ model: 'item', arg: '{ where: { userId } }' }])
-    expect(badFilters(calls, { userRowAllowed: false })).toEqual([])
+    // When it is read from a transaction client's call
+    const calls = deleteManyCalls(`tx.item.deleteMany(${multiLine})`)
+
+    // Then it reads back as the one-line form, and passes the check
+    expect(calls).toEqual([{ model: 'item', arg: filter }])
+    expect(badFilters(calls, rules)).toEqual([])
   })
 
   it('reads only the clearAllData body out of import.resolver.ts', () => {
