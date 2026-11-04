@@ -127,11 +127,12 @@ The `cloud` project runs against whatever `DATABASE_URL` is set in `apps/server/
 normally the **dev database**. There is no dedicated test database.
 
 Isolation is by **row ownership, not by database**: every write is scoped to
-`E2E_USER_ID` (`e2e/constants.ts`, `'e2e-test-user'`), and the `/e2e/cleanup` endpoint
-(`apps/server/src/lib/e2eCleanup.ts`) runs `deleteMany({ where: { userId } })` per model,
-and `{ where: { id: userId } }` for the `User` row — it
-deletes only that user's rows, never all data. **Do not describe the cleanup endpoint as
-wiping the database.**
+`E2E_USER_ID` (`e2e/constants.ts`, `'e2e-test-user'`) and its household, and the
+`/e2e/cleanup` endpoint (`apps/server/src/lib/e2eCleanup.ts`) deletes only the households
+that user OWNS, the user's own role rows, and the `User` row (`{ where: { id: userId } }`).
+It never deletes all data. **Do not describe the cleanup endpoint as wiping the
+database.** (Until households H3a task 3.10 it ran `deleteMany({ where: { userId } })` per
+model.)
 
 This was obscured for a while by a leftover `MONGODB_URI` from the MongoDB → Prisma
 migration, which made the config *look* isolated. The server never read it (Prisma reads
@@ -209,19 +210,23 @@ Both models are now in the `$transaction` list in `apps/server/src/lib/e2eCleanu
 (The route's handler lived inline in `apps/server/src/index.ts` until households task 2.6
 moved it, so measurements below that name `index.ts` are about the same code.)
 
-**The guard that keeps the three delete lists in step** is
-`apps/server/src/resolvers/purge-coverage.test.ts`. Three paths hand-maintain the same
-list — `purgeUserData` (`purge.resolver.ts`), `clearAllData` (`import.resolver.ts`) and
-`/e2e/cleanup` (`lib/e2eCleanup.ts`). The guard reads resolver source from disk, so a mock
-cannot satisfy it.
+**The guard that keeps the delete lists in step** is
+`apps/server/src/resolvers/purge-coverage.test.ts`. Since households H3a task 3.10, **two**
+paths hand-maintain a list — `clearAllData` (`import.resolver.ts`) and `/e2e/cleanup`
+(`lib/e2eCleanup.ts`). The third, `purgeUserData` (`purge.resolver.ts`), was removed in
+that task: it had no web caller, and it deleted by `userId`. The guard reads the source
+from disk, so a mock cannot satisfy it.
 
-**It only checks models that declare a `userId`.** `ItemStock` has none, on purpose — it
-is scoped through its `Location` (see root `CLAUDE.md` → Authorization). So the
-`itemStock` line in those three lists is covered by no test that can fail on the DATA. If
-someone deletes that line, the rows still go: both of `ItemStock`'s foreign keys cascade.
-Measured 2026-09-25 — with `prisma.itemStock.deleteMany` removed from `index.ts`,
-`cleanup-endpoint.spec.ts` still read back an empty `itemStocksForItem`. The line is there
-to keep the three lists identical, not because the route needs it.
+**It checks every model in the schema now**, not only models that declare a `userId`
+(the rule until task 3.10). For each path, every schema model is either deleted or named
+in that path's `kept` list. `clearAllData` keeps `household`, `householdMember`,
+`locationMember` (they go with their location) and `user`; `/e2e/cleanup` keeps none.
+
+**The `itemStock` line still protects no DATA.** If someone deletes it, the rows still go:
+both of `ItemStock`'s foreign keys cascade. Measured 2026-09-25 — with
+`prisma.itemStock.deleteMany` removed from `index.ts`, `cleanup-endpoint.spec.ts` still
+read back an empty `itemStocksForItem`. The guard now fails on the missing line, and the
+spec fails on the missing `itemStocks` count, but the rows are not at risk either way.
 
 ## `purge-coverage.test.ts` is a SOURCE-TEXT check — what it cannot see
 
@@ -242,10 +247,19 @@ Measured 2026-09-25 with exactly that mutation on the `location` line of `/e2e/c
 
 That pair is the reason the spec below exists (issue #319).
 
+**Since 2026-11-04 the guard reads the filter TEXT** (issue #320, households H3a tasks 3.2
+and 3.10). Each model has one allowed parent path (`MODEL_PATHS` in the test), so
+`{ userId: someWrongValue }`, `{}` and the old `{ userId }` scope all fail it now. It still
+cannot see a VALUE: `{ where: { householdId } }` passes the text check even when
+`householdId` is `undefined` at run time, and Prisma reads that as no filter at all. That is
+why `clearAllData` throws before its transaction when the id is missing, and why the two
+specs below run against real Postgres.
+
 ## `cleanup-endpoint.spec.ts` — the behavioural guard on `/e2e/cleanup`
 
 `e2e/tests/cleanup-endpoint.spec.ts` (added 2026-09-25, one cloud test) seeds **one row of
-every model `/e2e/cleanup` deletes** — all 15 since households task 2.6, 14 before it —
+every model `/e2e/cleanup` deletes** — all 18 since households H3a task 3.10, 15 since
+households task 2.6, 14 before it —
 calls the route, and asserts every returned count is at least 1, then reads the data back
 and asserts empty. It is cloud-only and has no browser: it is in the `cloud` project's
 `testMatch` and the `local` project's `testIgnore`, like `location-scoped-writes.spec.ts`.
@@ -253,8 +267,35 @@ and asserts empty. It is cloud-only and has no browser: it is in the `cloud` pro
 **The route now returns per-model deleted counts.** `prisma.deleteMany` already returns
 `{ count }`; `index.ts` used to throw those away and answer `{ ok: true }`. It now answers
 `{ ok: true, deleted: { inventoryLogs, cartItems, carts, itemTags, itemVendors,
-recipeItems, itemStocks, items, tags, tagTypes, vendors, recipes, shelves, locations,
-users } }`. The route is mounted only under `E2E_TEST_MODE`, so production is unaffected.
+recipeItems, itemStocks, items, tags, tagTypes, vendors, recipes, shelves,
+locationMembers, locations, householdMembers, households, users } }` — 18 keys since
+households H3a task 3.10. The route is mounted only under `E2E_TEST_MODE`, so production
+is unaffected.
+
+### Households — the 16th to 18th models, since 2026-11-04 (households H3a, task 3.10)
+
+The route now deletes by the households the user **owns** (a `HouseholdMember` row with
+role `owner`), not by `userId`:
+
+1. everything in each owned household, every member's role rows in it, and the household;
+2. the user's OWN `HouseholdMember` and `LocationMember` rows in households they do not
+   own. Both tables have a RESTRICT foreign key to `User`;
+3. the `User` row, last.
+
+**It never deletes a household the user only belongs to.** Two-user specs run cleanup once
+per user. If the first call emptied a household the user was only a member of, it would
+delete the other user's data before that user's own cleanup ran. Pinned only by
+`apps/server/src/lib/e2eCleanup.test.ts`: no E2E spec can make a second member before task
+3.11 adds `POST /e2e/household-members`.
+
+The same four places changed together as in task 2.6: `lib/e2eCleanup.ts`,
+`cloudTeardown.ts`, `cleanup-endpoint.spec.ts` (comments only: its seed already makes a
+household on the first request) and this file. 15 → 18.
+
+**Rows that belong to no household are never deleted.** A row with a null `householdId` —
+left on the shared test database by `main`'s server, which does not know the column —
+survives every cleanup. See the plan's *Execution* notes for the one case that breaks
+first sign-in.
 
 ### The `User` row — the 15th model, since 2026-10-31 (households H2, task 2.6)
 
@@ -268,10 +309,11 @@ users } }`. The route is mounted only under `E2E_TEST_MODE`, so production is un
 | `e2e/tests/cleanup-endpoint.spec.ts` | seeds the row with `createCloudUser(request, E2E_USER_ID, …)` |
 | this file | 14 → 15 |
 
-**`purge-coverage.test.ts` does not list `User`, and that is correct.** Its parser picks
-models that declare a `userId` field. `User` has none: its key is `id`, because the row IS
-the user. And only `/e2e/cleanup` deletes it — `purgeUserData` and `clearAllData` delete a
-user's data and leave the account. So the source-text guard has nothing to say about it.
+**`purge-coverage.test.ts` allows the `User` row's filter in `/e2e/cleanup` only.** Its key
+is `id`, because the row IS the user, so `{ where: { id: userId } }` is an exception for
+the `user` model alone. `clearAllData` deletes a household's data and leaves the account, so
+it lists `user` as kept. (Until task 3.10 the guard read only models with a `userId` field,
+and so said nothing about `User`.)
 
 What guards it instead:
 
@@ -333,10 +375,11 @@ it makes a household, one location and the user's `HouseholdMember` and `Locatio
 rows. So the readback asserts exactly one location and that its id is neither of the two
 the spec seeded. `afterEach` deletes that fresh row.
 
-**Since households H3a task 3.5 and until task 3.10, `afterEach` cannot delete it.**
-`/e2e/cleanup` does not yet delete `HouseholdMember` rows, and that row's foreign key to
-`User` is `ON DELETE RESTRICT`. So the cleanup's `user.deleteMany` fails with `P2003` and
-the whole transaction rolls back. Task 3.10 adds the household rows to the cleanup list.
+**Between households H3a tasks 3.5 and 3.10, `afterEach` could not delete it.**
+`/e2e/cleanup` did not delete `HouseholdMember` rows then, and that row's foreign key to
+`User` is `ON DELETE RESTRICT`, so the cleanup's `user.deleteMany` failed with `P2003` and
+the whole transaction rolled back. Task 3.10 added the household rows to the list, and the
+first run after it deleted the households those earlier runs had left behind.
 
 ### The consequence: every cloud test now starts with zero locations
 
@@ -373,8 +416,11 @@ deleted `ensureDefaultLocation` and `apps/server/src/lib/defaultLocation.ts`):
 
 `fallbackImportLocation` reads `LocationMember` rows. `createLocation` writes the
 creator's `organizer` row since H3a task 3.6. Until task 3.9, the bulk location imports
-write none, so a location made by them is never picked. And `clearAllData` deletes every location without making a new one (fixed in
-task 3.10). Both can lead to `NO_LOCATION` in cloud E2E until then.
+write none, so a location made by them is never picked. And until task 3.10,
+`clearAllData` deleted every location without making a new one. Both could lead to
+`NO_LOCATION` in cloud E2E. Both are fixed: the imports write the `organizer` row since
+task 3.9, and `clearAllData` makes "Home" again, with an `organizer` row, in the same
+transaction since task 3.10 (decision H17).
 
 **`ensureCloudDefaultLocation(request)` (`e2e/helpers/cloudSeed.ts`) is still there, and
 still worth calling first.** It is no longer a workaround: `seedCloudFixture` needs the
@@ -478,17 +524,17 @@ reconcile finds nothing to remove and creates every row the fixture lists. No ed
 loop was needed in 4b or in PR 5 — which is the whole argument for reading state back
 instead of predicting it.
 
-**The `cloud` project's `testMatch` is 26 files today** (`e2e/playwright.config.ts`,
-measured 2026-10-31), up from 13 on 2026-09-23. **Count the array rather than reusing that
-26** — it grows most weeks:
+**The `cloud` project's `testMatch` is 27 files today** (`e2e/playwright.config.ts`,
+measured 2026-11-04), up from 13 on 2026-09-23. **Count the array rather than reusing that
+27** — it grows most weeks:
 
 ```bash
 awk "/name: 'cloud'/,/name: 'pwa'/" e2e/playwright.config.ts | grep -c "spec\.ts'"
 ```
 
 The `awk` range matters: the file holds **three** such lists — `local`'s `testIgnore`,
-`cloud`'s `testMatch` and `pwa`'s `testMatch` — and a grep over the whole file counts all 35
-entries instead of the 26 that belong to `cloud`.
+`cloud`'s `testMatch` and `pwa`'s `testMatch` — and a grep over the whole file counts all 36
+entries instead of the 27 that belong to `cloud`.
 
 **The command this section used to give printed 0 from 2026-10-30.** It ended
 `| grep -m1 testMatch | grep -o "'\*\*/[^']*\.spec\.ts'" | wc -l`, so it only counted the
@@ -547,13 +593,24 @@ only". So in cloud its template test would write to IndexedDB, reach **zero** re
 still pass `await expect(page).toHaveURL('/')`. That is a test reporting as covered while
 covering nothing. The product gap is issue **#347**.
 
-The `local` project is 23 spec files: 30 files under `e2e/tests/` minus the 7 in its
-`testIgnore` (measured 2026-10-31).
+The `local` project is 23 spec files: 31 files under `e2e/tests/` minus the 8 in its
+`testIgnore` (measured 2026-11-04).
 
 File 26 is `cloud-user-row.spec.ts`, added 2026-10-31 by households H2 task 2.7. It is
 cloud-only and has no browser, so it is also in `local`'s `testIgnore`. Its 3 tests act as
 three new user ids, one per test, built from `E2E_SECOND_USER_ID`. Each id is cleaned up
 with `cleanupCloudData(request, id)` in both hooks.
+
+File 27 is `purge-two-households.spec.ts`, added 2026-11-04 by households H3a task 3.10
+(decision H10). It is cloud-only and has no browser, so it is also in `local`'s
+`testIgnore`. Its 1 test makes two users, A and B, each with their own household and one
+row of every model `clearAllData` deletes, built from `E2E_SECOND_USER_ID`
+(`…-purge-a`, `…-purge-b`). A clears; every one of B's rows must survive, read back through
+B's GraphQL, and A must be left with one new "Home". **It is the only real-SQL check that
+`clearAllData`'s relation filters match the right rows.** Proved by mutation on
+2026-11-04: `tx.shelf.deleteMany({})` in `clearAllData` made it fail with
+`"shelves": Array []` where B's one shelf was expected. It cannot check a SHARED household:
+that needs a second member, which E2E can add only from task 3.11.
 
 **Cloud test counts, measured, not quoted. Measure your own — do not subtract any number
 below.** The one-line command:
@@ -572,7 +629,8 @@ What the number has been, so you can see how fast it moves rather than reuse a f
 | 2026-10-08 | `feature/cloud-item-note-wikidata`, after it | 105 |
 | 2026-10-08 | `feature/import-strategy-coverage` (cloud-parity PR C) | 108 |
 | 2026-10-12 | `feature/cloud-spec-coverage` (issue #323) | 121 |
-| 2026-10-31 | `feature/households-h2`, after `cloud-user-row.spec.ts` | **124** |
+| 2026-10-31 | `feature/households-h2`, after `cloud-user-row.spec.ts` | 124 |
+| 2026-11-04 | `feature/households-h3a`, after `purge-two-households.spec.ts` | **125** |
 
 Attribution for the steps that are known: 4b added 5 (1 for the leak spec, 4 because
 `import-export-cloud.spec.ts` went 2 → 6). Cloud-parity PR A added 1 to

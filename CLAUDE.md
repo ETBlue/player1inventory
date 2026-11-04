@@ -1523,8 +1523,8 @@ Note also that **no *unit* test executes the resolvers against real SQL** — ev
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
 Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
 branch), but only for the spec files listed in the `cloud` project's `testMatch` in
-`e2e/playwright.config.ts` — that list is opt-in and covers **26 of the 30 spec files in
-`e2e/tests/`** (measured 2026-10-31, after households H2 added `cloud-user-row.spec.ts`).
+`e2e/playwright.config.ts` — that list is opt-in and covers **27 of the 31 spec files in
+`e2e/tests/`** (measured 2026-11-04, after households H3a added `purge-two-households.spec.ts`).
 **Count it rather than quote it.** This line said "20 files today (of 27 spec files)" until
 2026-10-12, by which point both numbers were wrong by 3:
 
@@ -1588,12 +1588,13 @@ same answer. `item-stock-pager.spec.ts` seeds several and is.
 `cleanup-endpoint.spec.ts` joined on 2026-09-25 (issue #319) — 1 cloud test case, no
 browser, like `location-scoped-writes.spec.ts`. It is not resolver coverage: its subject is
 the `DELETE /e2e/cleanup` route, whose handler is in `apps/server/src/lib/e2eCleanup.ts`
-(`index.ts` only mounts it). It seeds one row of all 15 models that route deletes (14
-before households task 2.6 added the `User` row), calls it, and asserts every returned deleted count is at least
-1. `purge-coverage.test.ts` guards the same route but only as SOURCE TEXT — it checks that
-the string `prisma.<model>.deleteMany(` appears, never what `where` clause the call
-carries, so a filter matching nothing passes it. See `e2e/CLAUDE.md` for the measured
-before/after.
+(`index.ts` only mounts it). It seeds one row of all 18 models that route deletes (14
+before households task 2.6 added the `User` row, 15 before households H3a task 3.10 added
+the three household tables), calls it, and asserts every returned deleted count is at least
+1. `purge-coverage.test.ts` guards the same route but only as SOURCE TEXT. Since issue #320
+it checks the filter's TEXT against one allowed form per model, but it still cannot see a
+value, so a filter whose variable is wrong or `undefined` passes it. See `e2e/CLAUDE.md`
+for the measured before/after.
 
 `cart-id-cross-user-leak.spec.ts` joined on 2026-10-03 (cloud locations PR 4b task 1) — 1
 cloud test case, no browser, like the two above. **It is a labelled negative control, not
@@ -1659,6 +1660,14 @@ the user deleted BEFORE the first request, on purpose:** in the order request, d
 request, the second request makes 0 queries and could not clear `deletedAt` even if the
 code tried. The test checks `lastSeenAt` went from `null` to set, which proves the request
 reached the row.
+
+`purge-two-households.spec.ts` joined on 2026-11-04 (households H3a, task 3.10, decision
+H10) — 1 cloud test case, no browser. The `cloud` project went 124 → **125** collected and
+26 → **27** files; `local` stayed at 183 in 23 files. It is the first real-SQL coverage of
+`clearAllData` (`import.resolver.ts`): two users each get their own household and one row
+of every model it deletes, one clears, and every row of the other's must survive, read
+back through the other's GraphQL. Proved by mutation: `tx.shelf.deleteMany({})` makes it
+fail. Both users are alone in their household, so it says nothing about a shared one.
 
 The warning above still holds for everything else — most resolvers are named by no cloud
 spec.

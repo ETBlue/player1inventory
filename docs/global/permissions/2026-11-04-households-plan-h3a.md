@@ -1076,6 +1076,81 @@ cascade, or delete the rows on purpose in the test setup and say why.
 `shelf`, and the junction tables through `item: { userId }`). Steps 2 and 4 above already
 change them. Listed here so nobody reads task 3.7 as "the catalog no longer uses `userId`".
 
+**Done** in `49ff3458`. What a later task needs to know:
+
+- **`purgeUserData` is gone**: `purge.resolver.ts`, its test, `schema/purge.graphql` (the
+  whole file, `PurgeResult` with it). No web or E2E caller existed.
+- **`clearAllData`** (`import.resolver.ts`), in this order: `requireHousehold`; a plain
+  `Error('clearAllData: no household id')` if the id is falsy; `requireHouseholdRole(…,
+  'owner')`; then ONE interactive transaction: `lockHousehold`, the 14 deletes, then
+  `createFirstLocation`. The guard is BEFORE the role check on purpose: with an
+  `undefined` id, the role check would build a compound key from `undefined`.
+- **Filters:** catalog models `{ householdId }`; `inventoryLog`, `cart`, `itemStock`
+  `{ location: { householdId } }`; `cartItem` `{ cart: { location: { householdId } } }`
+  (CartItem has no `location` relation; the plan's `['cart', 'location']` is one CHAIN,
+  not two choices); `itemTag`, `itemVendor` `{ item: { householdId } }`; `recipeItem`
+  `{ recipe: { householdId } }`. `LocationMember` has no delete of its own: it goes with
+  its location (ON DELETE CASCADE).
+- **"Home" is made by `createFirstLocation`** (`lib/household.ts`, new), shared with
+  first sign-in, so the two cannot drift. It writes `isDefault: true` and `userId`, the
+  same as `ensureHousehold`. **Task 3.12 / 3.14 must change it in one place.** Its name
+  comes from `firstLocationName(ctx.language)`: "Home", or "住家" for `tw`. The plan said
+  "Home"; the app language was used so it matches first sign-in. The owner may want to
+  review that.
+- **`/e2e/cleanup`** reads the user's `owner` rows (`HouseholdMember`, the source of truth,
+  decision H15, not `Household.ownerId`) BEFORE its array-form transaction, and filters
+  with `owned = { in: [...] }`. `{ in: [] }` matches nothing, so a user who owns nothing
+  deletes only their own role rows and the `User` row. 18 keys, in this order: the 13
+  data keys as before, then `locationMembers`, `locations`, `householdMembers`,
+  `households`, `users`. `recipeItem` now goes through `recipe`, as in `clearAllData`
+  (it went through `item` before).
+- **`purge-coverage.test.ts`** now checks that every schema model is deleted or in the
+  path's `kept` list (not only models with a `userId`), one allowed parent chain per model
+  (`MODEL_PATHS`), and that each call is on the path's client: `tx` inside `clearAllData`
+  (a `prisma.` call there would run outside the transaction), `prisma` in the cleanup. It
+  refuses `{ userId }` on all 14 data models in both paths.
+- **Fakes:** `stockFake` `location.deleteMany` (ItemStock cascade) and `itemStock` `where:
+  { location: { householdId } }`; `householdWorld` `location.deleteMany` (LocationMember
+  cascade). `whereKeys.test.ts` used `{ householdId }` as its "unknown key" inside
+  `itemStock.location`; it now uses `notAColumn`.
+- **Tests moved:** the old `clearAllData` test in `import.resolver.test.ts` used a mock
+  that modelled only the array form, so it moved to a new file,
+  `clearAllData.resolver.test.ts`, on `householdWorld`. The twelve models the world does
+  not hold are recorders there; the exact filters are pinned on them.
+- **Mutation checks, all red:** owner → member (2 tests), guard removed (1), Home removed
+  (4), Home outside the transaction (1), lock after the location delete (1), one filter
+  per group (`tag` `{}`, `inventoryLog` and `cartItem` by `userId`, `itemTag` `{}`,
+  `location` `{}`, `itemStock` `{}`: 2 each, unit + coverage), `prisma.tag` inside the
+  transaction (coverage), cleanup owner read without `role` (3), cleanup `shelf` by
+  `userId` (2), cleanup `household` `{}` (4), cleanup `householdMember` without its
+  `{ userId }` half (3). E2E: `tx.shelf.deleteMany({})` made
+  `purge-two-households.spec.ts` fail with `"shelves": Array []` for B.
+- **E2E:** `purge-two-households.spec.ts` and `cleanup-endpoint.spec.ts`, cloud, 2 passed
+  in 54.5s, and again in 44.8s after the mutation was undone. `cloud` now collects 125
+  tests in 27 files; `local` 183 in 23.
+- Server tests 1098 → 1107 (45 files: one removed, one added).
+
+**Still open after this task:**
+
+- **A household the user only belongs to is pinned by a unit test only.** Task 3.11 can
+  add the real-SQL check once `POST /e2e/household-members` exists: owner and member each
+  run cleanup, in both orders, and the owner's data survives the member's cleanup.
+- **Rows with a null `householdId` are never cleaned up.** `main`'s server writes such
+  rows on the shared test database. The *Execution* note about a stale `isDefault`
+  location still applies; it can also make `clearAllData`'s "Home" fail with `P2002`
+  (the whole clear then rolls back).
+- **Links across households made before the 2026-11-04 catalog fix** can make
+  `clearAllData` fail or reach another household: another household's tag on this
+  household's tag type makes `tagType.deleteMany` fail (`Tag_typeId_fkey` is NO ACTION,
+  so the clear rolls back), and deleting this household's item cascades another
+  household's `ItemStock`, `RecipeItem`, `CartItem`, `InventoryLog` or `ItemTag` rows that
+  name it. The old `userId` filters had the same property.
+- **After a `clear` import, the household has the new "Home" next to the imported
+  locations** (imported locations are `isDefault: false`). Before task 3.5,
+  `ensureDefaultLocation` added a "My Home" at the same point, so this is not new.
+- **`lockHousehold` first is pinned against the fake only.** No real-SQL test runs
+  `clearAllData` and `deleteLocation` at once (task 3.16).
+
 ## Task 3.11 — A second household member in E2E
 
 **Files:** `apps/server/src/lib/e2eHouseholds.ts` and test (new); `index.ts`;

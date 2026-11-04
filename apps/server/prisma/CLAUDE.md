@@ -36,6 +36,9 @@ queries Prisma batches into one transaction with no logic between them:
 `apps/server/src/resolvers/import.resolver.ts:499`,
 `apps/server/src/resolvers/purge.resolver.ts:22`, and
 `apps/server/src/lib/e2eCleanup.ts` (the E2E-only cleanup endpoint).
+(`purge.resolver.ts` was removed in households H3a task 3.10, and the same
+task moved `clearAllData` in `import.resolver.ts` to the interactive form.
+`e2eCleanup.ts` still uses the array form.)
 
 `apps/server/src/resolvers/shelf.resolver.ts:89`'s `applyShelfFilterPicks`
 resolver introduces the first **interactive (callback) form** —
