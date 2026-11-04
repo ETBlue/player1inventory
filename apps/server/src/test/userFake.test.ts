@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { runInTransaction } from './stockFake.js'
 import type { UserRow } from './userFake.js'
-import { createUserFake } from './userFake.js'
+import {
+  createUserFake,
+  UnknownWhereKeyError,
+  UnsupportedWhereFilterError,
+} from './userFake.js'
 
 // The double's OWN contract.
 //
@@ -65,13 +69,46 @@ describe('userFake applies where key by key, and throws on a key it does not kno
     const fake = createUserFake([userRow('user_a', { lastSeenAt: YESTERDAY })])
 
     // When `lastSeenAt` carries `{ gt }`, which is not modelled
-    // Then it throws
+    // Then it throws the shared filter error, which names the key
     await expect(
       fake.client.updateMany({
         where: { lastSeenAt: { gt: START_OF_TODAY } },
         data: { lastSeenAt: TODAY },
       }),
-    ).rejects.toThrow(/does not model/)
+    ).rejects.toThrow(UnsupportedWhereFilterError)
+    await expect(
+      fake.client.updateMany({
+        where: { lastSeenAt: { gt: START_OF_TODAY } },
+        data: { lastSeenAt: TODAY },
+      }),
+    ).rejects.toThrow(/userFake models 'lastSeenAt'/)
+  })
+
+  it('an unknown where key throws even on an EMPTY store', async () => {
+    // Given an empty store. A per-row check never runs here, because
+    // `Array.filter` never calls the matcher on an empty array.
+    const fake = createUserFake()
+
+    // When a where names a column the fake does not model
+    // Then it still throws, because the check runs once per call
+    await expect(fake.client.findMany({ where: { email: 'a@example.com' } })).rejects.toThrow(
+      UnknownWhereKeyError,
+    )
+  })
+
+  it('an unknown key inside OR throws even when no row passes the outer keys', async () => {
+    // Given one user. The outer `id` matches no row, so a per-row matcher
+    // returns early and never reaches the OR.
+    const fake = createUserFake([userRow('user_a')])
+
+    // When an OR branch names a column the fake does not model
+    // Then it throws, and names the path to the key
+    await expect(
+      fake.client.updateMany({
+        where: { id: 'user_none', OR: [{ deletedAt: null }] },
+        data: { lastSeenAt: TODAY },
+      }),
+    ).rejects.toThrow(/'OR\[0\]\.deletedAt'/)
   })
 })
 
@@ -263,6 +300,64 @@ describe('userFake updateMany supports id, lastSeenAt null, lastSeenAt { lt } an
     expect(fake.state.rows.find((r) => r.id === 'user_yesterday')?.lastSeenAt).toEqual(
       YESTERDAY,
     )
+  })
+})
+
+describe('userFake models the first sign-in claim on householdSetupAt (decision H1)', () => {
+  // The statement task 3.5's `ensureHousehold` sends first in its transaction.
+  const claim = (id: string, now: Date) => ({
+    where: { id, householdSetupAt: null },
+    data: { householdSetupAt: now },
+  })
+
+  it('the first claim on a user never set up returns count 1 and sets the column', async () => {
+    // Given a user never set up
+    const fake = createUserFake([userRow('user_a')])
+
+    // When the claim runs
+    const result = await fake.client.updateMany(claim('user_a', TODAY))
+
+    // Then this request won, and the column is set
+    expect(result).toEqual({ count: 1 })
+    expect(fake.state.rows[0]?.householdSetupAt).toEqual(TODAY)
+  })
+
+  it('a second claim returns count 0 and does not move the column', async () => {
+    // Given a user whose claim already ran
+    const fake = createUserFake([userRow('user_a', { householdSetupAt: YESTERDAY })])
+
+    // When a second claim runs
+    const result = await fake.client.updateMany(claim('user_a', TODAY))
+
+    // Then it lost: nothing changed. Without the null check it would return 1,
+    // and two requests would each create a household.
+    expect(result).toEqual({ count: 0 })
+    expect(fake.state.rows[0]?.householdSetupAt).toEqual(YESTERDAY)
+  })
+
+  it('the claim touches only the named user', async () => {
+    // Given two users never set up
+    const fake = createUserFake([userRow('user_a'), userRow('user_b')])
+
+    // When one user's claim runs
+    await fake.client.updateMany(claim('user_a', TODAY))
+
+    // Then the other user is still unset
+    expect(fake.state.rows.find((r) => r.id === 'user_b')?.householdSetupAt).toBeNull()
+  })
+
+  it('householdSetupAt accepts only null as a filter', async () => {
+    // Given a user
+    const fake = createUserFake([userRow('user_a', { householdSetupAt: YESTERDAY })])
+
+    // When the filter is a date or `{ not: null }`, neither of which is modelled
+    // Then it throws rather than matching every row
+    await expect(
+      fake.client.updateMany({
+        where: { id: 'user_a', householdSetupAt: { not: null } },
+        data: { householdSetupAt: TODAY },
+      }),
+    ).rejects.toThrow(UnsupportedWhereFilterError)
   })
 })
 

@@ -66,15 +66,23 @@ export class UnsupportedWhereFilterError extends Error {
  * - `in` — a string, or `{ in: [...] }` and nothing else.
  * - `nullableIn` — `null`, a string, or `{ in: [...] }`.
  * - `number` — a number, or an object of `gt` / `gte` / `lt` / `lte` numbers.
+ * - `null` — only `null`. For a column a caller may only ask "is it unset?",
+ *   such as `User.householdSetupAt` in the first sign-in claim.
+ * - `nullableDateLt` — `null`, or `{ lt: Date }` and nothing else.
  * - `{ nested }` — a relation filter or a compound unique key: an object whose
  *   own keys are checked against `nested`.
+ * - `{ or }` — Prisma's `OR`: an array of `where` objects, each checked
+ *   against `or`.
  */
 export type WhereKeyKind =
   | 'equals'
   | 'in'
   | 'nullableIn'
   | 'number'
+  | 'null'
+  | 'nullableDateLt'
   | { nested: WhereSpec }
+  | { or: WhereSpec }
 
 /** Every `where` key a fake models, and how it matches each one. */
 export type WhereSpec = Readonly<Record<string, WhereKeyKind>>
@@ -101,6 +109,14 @@ function checkValue(label: string, key: string, value: unknown, kind: WhereKeyKi
     throw new UnsupportedWhereFilterError(label, key, value, expected)
   }
   if (typeof kind === 'object') {
+    if ('or' in kind) {
+      if (!Array.isArray(value)) refuse('an array of where objects')
+      for (const [i, branch] of (value as unknown[]).entries()) {
+        if (!isPlainObject(branch)) refuse('an array of where objects')
+        checkWhereAt(label, `${key}[${i}].`, branch as Record<string, unknown>, kind.or)
+      }
+      return
+    }
     if (!isPlainObject(value)) refuse('a nested filter object')
     checkWhereAt(label, `${key}.`, value as Record<string, unknown>, kind.nested)
     return
@@ -117,6 +133,18 @@ function checkValue(label: string, key: string, value: unknown, kind: WhereKeyKi
         refuse('null, a string or { in: [...] }')
       }
       return
+    case 'null':
+      if (value !== null) refuse('null only')
+      return
+    case 'nullableDateLt': {
+      if (value === null) return
+      const ok =
+        isPlainObject(value) &&
+        Object.keys(value).length === 1 &&
+        value.lt instanceof Date
+      if (!ok) refuse('null or { lt: Date }')
+      return
+    }
     case 'number': {
       if (typeof value === 'number') return
       const ok =

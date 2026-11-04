@@ -96,6 +96,24 @@
 //     matched as a plain value, `null`, or `{ in: [...] }`. A key not named
 //     still throws, so the refusal described above is kept: a store accepts
 //     only the keys its test file asked for on purpose.
+//
+// ── ADDED FOR HOUSEHOLDS H3a (task 3.4) ──
+//
+//   - the `scope` option picks the SCOPE COLUMN: `'userId'` (the default, so
+//     every existing store is unchanged) or `'householdId'`. The six catalog
+//     models — `Item`, `Tag`, `TagType`, `Vendor`, `Recipe`, `Shelf` — move to
+//     `householdId` in task 3.7. `InventoryLog`, `Cart` and `CartItem` keep
+//     `userId`.
+//   - the scope column is the one a `where` may name besides `id`. A
+//     household-scoped store REFUSES a `userId` in the `where`, so a resolver
+//     that still reads by `userId` after task 3.7 fails here instead of
+//     passing. Name `userId` in `columns` only if a test needs it on purpose.
+//   - `create` and `createMany` require the scope column. The
+//     `requiredColumns` option names more NOT NULL columns. Until task 3.14
+//     drops it, `userId` is still NOT NULL on the six catalog models, so a
+//     household-scoped catalog store should pass `requiredColumns: ['userId']`
+//     until then. Without it, a resolver that stops writing `userId` too early
+//     passes here and fails in Postgres.
 
 import {
   checkWhere,
@@ -109,6 +127,21 @@ export interface OwnedRow {
   id: string
   userId: string
 }
+
+/**
+ * The two columns every household-scoped row must have (H3a). Use with
+ * `scope: 'householdId'`.
+ */
+export interface HouseholdScopedRow {
+  id: string
+  householdId: string
+}
+
+/** The column a store is scoped by. */
+export type ScopeColumn = 'userId' | 'householdId'
+
+/** Any row a store can hold: an id plus its scope column. */
+type ScopedRow = { id: string }
 
 /**
  * What a read returns. The row's own columns, plus whatever an `include`
@@ -180,6 +213,27 @@ export class MissingUserIdError extends Error {
   }
 }
 
+/**
+ * Raised when a write omits a NOT NULL column other than `userId`: the
+ * `householdId` of a household-scoped store, or a column named in
+ * `requiredColumns`.
+ */
+export class MissingColumnError extends Error {
+  constructor(model: string, id: string, column: string) {
+    super(
+      `ownedRowFake(${model}) was asked to write row '${id}' with no ${column}. ` +
+        'This store treats the column as NOT NULL, so a resolver that forgets ' +
+        'it must fail here rather than write a row Postgres would refuse.',
+    )
+  }
+}
+
+function missingColumn(model: string, id: string, column: string): Error {
+  return column === 'userId'
+    ? new MissingUserIdError(model, id)
+    : new MissingColumnError(model, id, column)
+}
+
 /** Raised when an option this fake does not model is passed. */
 export class UnsupportedOptionError extends Error {
   constructor(model: string, method: string, key: string) {
@@ -220,31 +274,29 @@ function matchesColumn(model: string, key: string, value: string, filter: unknow
  * match to keep a scoping test green after the resolver dropped its `userId`.
  * An explicit `undefined` is "not mentioned", which is also Prisma's rule.
  *
- * Supported keys: `id` and `userId`, each as a string or `{ in: [...] }`,
- * plus any extra column the store was built with (`columns`). Everything else
- * throws — see `UnsupportedWhereKeyError`.
+ * Supported keys: `id` and the scope column (`userId` by default, or
+ * `householdId`), each as a string or `{ in: [...] }`, plus any extra column
+ * the store was built with (`columns`). Everything else throws — see
+ * `UnsupportedWhereKeyError`.
  */
 export function ownedRowMatches(
   model: string,
-  row: OwnedRow,
+  row: ScopedRow,
   where: Where,
   columns: readonly string[] = [],
+  scope: ScopeColumn = 'userId',
 ): boolean {
+  const record = row as unknown as Record<string, string>
   for (const [key, filter] of Object.entries(where)) {
     if (filter === undefined) continue
-    switch (key) {
-      case 'id':
-        if (!matchesColumn(model, 'id', row.id, filter)) return false
-        break
-      case 'userId':
-        if (!matchesColumn(model, 'userId', row.userId, filter)) return false
-        break
-      default:
-        if (!columns.includes(key)) {
-          throw new UnknownWhereKeyError(`ownedRowFake(${model})`, key)
-        }
-        if (!matchesNullableColumn(model, key, row, filter)) return false
+    if (key === 'id' || key === scope) {
+      if (!matchesColumn(model, key, record[key] as string, filter)) return false
+      continue
     }
+    if (!columns.includes(key)) {
+      throw new UnknownWhereKeyError(`ownedRowFake(${model})`, key)
+    }
+    if (!matchesNullableColumn(model, key, row, filter)) return false
   }
   return true
 }
@@ -255,7 +307,12 @@ export function ownedRowMatches(
  * filter matches a `null` column, which is Prisma's rule for `{ parentId: null }`.
  * A column the row does not carry at all counts as `null`.
  */
-function matchesNullableColumn(model: string, key: string, row: OwnedRow, filter: unknown): boolean {
+function matchesNullableColumn(
+  model: string,
+  key: string,
+  row: ScopedRow,
+  filter: unknown,
+): boolean {
   const raw = (row as unknown as Record<string, unknown>)[key]
   const value = raw === undefined ? null : raw
   if (filter === null) return value === null
@@ -272,7 +329,7 @@ function matchesNullableColumn(model: string, key: string, row: OwnedRow, filter
   )
 }
 
-export interface OwnedRowFakeOptions<Row extends OwnedRow> {
+export interface OwnedRowFakeOptions<Row extends ScopedRow> {
   /** Names the model in every error message, and prefixes a generated id. */
   model?: string
   /** Rows the store starts with. Copied, so the caller's array is not shared. */
@@ -285,18 +342,31 @@ export interface OwnedRowFakeOptions<Row extends OwnedRow> {
    */
   relations?: (row: Row) => Record<string, unknown>
   /**
-   * Extra `where` keys this store accepts, beyond `id` and `userId` — for
-   * example `['typeId', 'parentId']` for `Tag`. Any other key still throws.
+   * Extra `where` keys this store accepts, beyond `id` and the scope column —
+   * for example `['typeId', 'parentId']` for `Tag`. Any other key still throws.
    */
   columns?: string[]
+  /**
+   * The column the store is scoped by, and the one `create` requires.
+   * `'userId'` (the default) or `'householdId'` (the six catalog models from
+   * H3a task 3.7 on).
+   */
+  scope?: ScopeColumn
+  /**
+   * More NOT NULL columns `create` and `createMany` must be given. Until task
+   * 3.14 a household-scoped catalog store should pass `['userId']`.
+   */
+  requiredColumns?: string[]
 }
 
-export function createOwnedRowFake<Row extends OwnedRow>(
+export function createOwnedRowFake<Row extends ScopedRow = OwnedRow>(
   options: OwnedRowFakeOptions<Row> = {},
 ) {
   const model = options.model ?? 'row'
   const relations = options.relations
   const columns = options.columns ?? []
+  const scope: ScopeColumn = options.scope ?? 'userId'
+  const required = [scope, ...(options.requiredColumns ?? [])]
   // One plain object holding plain data, so `runInTransaction` (stockFake.ts)
   // can register it as a rollback store and `structuredClone` it.
   const state: { rows: Row[] } = { rows: [...(options.rows ?? [])] }
@@ -309,7 +379,7 @@ export function createOwnedRowFake<Row extends OwnedRow>(
   const whereSpec: WhereSpec = {
     ...Object.fromEntries(columns.map((c) => [c, 'nullableIn' as const])),
     id: 'in',
-    userId: 'in',
+    [scope]: 'in',
   }
 
   function checkOwnedWhere(where: Where | undefined): void {
@@ -317,7 +387,7 @@ export function createOwnedRowFake<Row extends OwnedRow>(
   }
 
   function matches(row: Row, where: Where): boolean {
-    return ownedRowMatches(model, row, where, columns)
+    return ownedRowMatches(model, row, where, columns, scope)
   }
 
   function refuseUnknownOptions(method: string, args: object, allowed: string[]) {
@@ -370,9 +440,10 @@ export function createOwnedRowFake<Row extends OwnedRow>(
     if (state.rows.some((r) => r.id === id)) {
       throw new OwnedRowIdConstraintError(model, id)
     }
-    const userId = data.userId
-    if (typeof userId !== 'string') throw new MissingUserIdError(model, id)
-    const row = { ...data, id, userId } as unknown as Row
+    for (const column of required) {
+      if (typeof data[column] !== 'string') throw missingColumn(model, id, column)
+    }
+    const row = { ...data, id } as unknown as Row
     state.rows.push(row)
     return row
   }
@@ -523,4 +594,6 @@ export function createOwnedRowFake<Row extends OwnedRow>(
   return { state, client, reset }
 }
 
-export type OwnedRowFake<Row extends OwnedRow> = ReturnType<typeof createOwnedRowFake<Row>>
+export type OwnedRowFake<Row extends ScopedRow = OwnedRow> = ReturnType<
+  typeof createOwnedRowFake<Row>
+>
