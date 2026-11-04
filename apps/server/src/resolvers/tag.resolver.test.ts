@@ -10,8 +10,17 @@ import type { Context } from '../context.js'
 // and `requireHousehold` make: every caller here is the `owner` of `hh_test`.
 // The role checks themselves are tested with three people in
 // `catalog-household.resolver.test.ts`.
+//
+// `$transaction` runs the callback with the same mock as `tx`, so a call made
+// on `tx` is recorded on the mocks below. It models no rollback: the rollback
+// of `deleteTagType` is tested against the stateful fake in
+// `catalog-household.resolver.test.ts`.
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
+    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const { prisma } = await import('../lib/prisma.js')
+      return fn(prisma)
+    }),
     householdMember: {
       findFirst: vi.fn(async () => ({ householdId: 'hh_test' })),
       findUnique: vi.fn(async () => ({ role: 'owner' })),

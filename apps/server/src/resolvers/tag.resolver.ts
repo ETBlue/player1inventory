@@ -80,11 +80,21 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // Only the household's tags. Tag_typeId_fkey is ON DELETE NO ACTION (it
       // was RESTRICT before the add_households migration; both refuse here),
       // so if another household holds a tag of this type (`createTag` did not
-      // check `typeId` before 2026-11-04), the delete below fails and this
+      // check `typeId` before 2026-11-04), the type delete fails and this
       // returns false.
-      await prisma.tag.deleteMany({ where: { typeId: id, householdId } })
+      //
+      // ONE interactive transaction, so that failure also undoes the tag
+      // cleanup. Before task 3.7's review the two writes ran on their own:
+      // the household's tags were deleted, then the type delete failed, and
+      // the caller got `false` with their tags gone. The error is caught
+      // OUTSIDE the transaction: caught inside, the callback would return
+      // normally and the cleanup would commit. Any error in either write
+      // returns false, as a failed type delete always did.
       try {
-        await prisma.tagType.delete({ where: { id } })
+        await prisma.$transaction(async (tx) => {
+          await tx.tag.deleteMany({ where: { typeId: id, householdId } })
+          await tx.tagType.delete({ where: { id } })
+        })
         return true
       } catch {
         return false

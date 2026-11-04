@@ -651,13 +651,20 @@ describe('requireCatalogIds', () => {
     ).rejects.toThrow(/Forbidden/)
   })
 
-  it('checks a repeated id once, and passes it', async () => {
+  // A repeated id is not refused. `findMany` returns ONE row for an id listed
+  // twice, so a check that compared the number of rows found with the number
+  // of ids sent would refuse this list. The second case is the negative
+  // control: a repeated stranger's id is still refused.
+  it("passes a repeated id of the household, and still refuses a repeated stranger's id", async () => {
     await expect(
       requireCatalogIds(caller, 'hh-1', 'tag', ['tag-mine', 'tag-mine']),
     ).resolves.toBeUndefined()
     // One query: every id was the household's, so the unscoped second read
     // never ran
     expect(state.lookups).toBe(1)
+    await expect(
+      requireCatalogIds(caller, 'hh-1', 'tag', ['tag-theirs', 'tag-theirs']),
+    ).rejects.toThrow(/Forbidden/)
   })
 
   it('reads nothing for an empty list', async () => {

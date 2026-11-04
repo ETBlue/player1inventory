@@ -424,9 +424,12 @@ const CATALOG_LABEL: Record<CatalogModel, string> = {
  * them when its row is deleted. So a shelf the client saves may still name
  * a deleted item, and refusing that would refuse the user's own edit.
  *
- * A repeated id is checked once. It is not refused here: what a repeat does
- * to the write is the write's business (for `ItemTag` it is a `P2002`, as
- * before).
+ * A repeated id is not refused here: what a repeat does to the write is the
+ * write's business (for `ItemTag` it is a `P2002`, as before). The ids are
+ * not de-duplicated first. `id IN (...)` matches each row once however often
+ * its id is listed, and the check below compares id SETS, not counts, so a
+ * repeat changes neither query's answer. (Task 3.7 had a `new Set(ids)` here
+ * and a test that "proved" it; the test passed without it, so both went.)
  *
  * Costs one query when every id is the household's, and two otherwise. No
  * call site compares a `householdId`.
@@ -439,16 +442,15 @@ export async function requireCatalogIds(
   options: { missing?: 'refuse' | 'allow' } = {},
 ): Promise<void> {
   requireAuth(ctx)
-  const unique = [...new Set(ids)]
-  if (unique.length === 0) return
+  if (ids.length === 0) return
 
   const delegate = catalogDelegate(model)
   const own = await delegate.findMany({
-    where: { id: { in: unique }, householdId },
+    where: { id: { in: [...ids] }, householdId },
     select: { id: true },
   })
   const ownIds = new Set(own.map((row) => row.id))
-  const rest = unique.filter((id) => !ownIds.has(id))
+  const rest = ids.filter((id) => !ownIds.has(id))
   if (rest.length === 0) return
 
   // UNSCOPED on purpose: "is this id held by any row" tells a stranger's id

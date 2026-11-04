@@ -90,15 +90,25 @@ vi.mock('../lib/prisma.js', async () => {
     itemId: string
     quantity: number
   }>({ model: 'CartItem', columns: ['cartId'] })
+  const { runInTransaction } = await import('../test/stockFake.js')
+  const client: Record<string, unknown> = {
+    household: households.client.household,
+    householdMember: households.client.householdMember,
+    tag: tag.client,
+    tagType: tagType.client,
+    vendor: vendor.client,
+    cart: cart.client,
+    cartItem: cartItem.client,
+  }
+  // `deleteTagType` runs its two writes in one interactive transaction.
+  const stores = [tag.state, tagType.state, vendor.state, cart.state, cartItem.state] as unknown as Record<
+    string,
+    unknown
+  >[]
+  client.$transaction = (arg: unknown) => runInTransaction(stores, client, arg)
   return {
     prisma: {
-      household: households.client.household,
-      householdMember: households.client.householdMember,
-      tag: tag.client,
-      tagType: tagType.client,
-      vendor: vendor.client,
-      cart: cart.client,
-      cartItem: cartItem.client,
+      ...client,
       // Handles onto the fakes. A `vi.mock` factory is hoisted above every
       // import and cannot close over a module-scope binding.
       $tag: tag,

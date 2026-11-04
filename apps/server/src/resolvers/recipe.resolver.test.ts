@@ -62,6 +62,7 @@ vi.mock('../lib/prisma.js', async () => {
 })
 
 import { prisma } from '../lib/prisma.js'
+import type { HouseholdRole, LocationRole } from '../lib/authz.js'
 import type { HouseholdWorld } from '../test/householdWorld.js'
 import { makeStock } from '../test/stockFake.js'
 
@@ -129,8 +130,14 @@ const T = new Date('2026-11-01T00:00:00.000Z')
 // Three households: the caller's (`hh_test`, both of the caller's
 // locations), a stranger's (`hh_other`), and `user_B`'s, who has no location.
 // Each person is the `owner` of their own household and the `organizer` of
-// their own locations.
-function seedWorld() {
+// their own locations, unless a test passes other roles for the caller. The
+// roles apply to the caller's household and BOTH of the caller's locations.
+function seedWorld(
+  callerRoles: { household: HouseholdRole; location: LocationRole } = {
+    household: 'owner',
+    location: 'organizer',
+  },
+) {
   world.reset()
   stockFake.reset(
     [
@@ -150,16 +157,16 @@ function seedWorld() {
     createdAt: T,
     updatedAt: T,
   })
-  const owner = (householdId: string, userId: string) => ({
+  const owner = (householdId: string, userId: string, role: HouseholdRole = 'owner') => ({
     householdId,
     userId,
-    role: 'owner' as const,
+    role,
     joinedAt: T,
   })
-  const organizer = (locationId: string, userId: string) => ({
+  const organizer = (locationId: string, userId: string, role: LocationRole = 'organizer') => ({
     locationId,
     userId,
-    role: 'organizer' as const,
+    role,
     createdAt: T,
   })
   world.seedHouseholds({
@@ -169,13 +176,13 @@ function seedWorld() {
       household('hh_b', 'user_B'),
     ],
     householdMembers: [
-      owner('hh_test', 'user_test123'),
+      owner('hh_test', 'user_test123', callerRoles.household),
       owner('hh_other', 'user_other'),
       owner('hh_b', 'user_B'),
     ],
     locationMembers: [
-      organizer(LOC_OTHER, 'user_test123'),
-      organizer(LOC_DEFAULT, 'user_test123'),
+      organizer(LOC_OTHER, 'user_test123', callerRoles.location),
+      organizer(LOC_DEFAULT, 'user_test123', callerRoles.location),
       organizer(LOC_STRANGER, 'user_other'),
     ],
   })
@@ -513,6 +520,37 @@ describe('consumeRecipes writes the cooked quantities', () => {
     expect(mockPrisma.inventoryLog.create).toHaveBeenCalledOnce()
     // And the recipe is marked as cooked only within the caller's household
     // (households H3a task 3.7)
+    expect(mockPrisma.recipe.updateMany).toHaveBeenCalledWith({
+      where: { id: 'recipe_1', householdId: 'hh_test' },
+      data: { lastCookedAt: expect.any(Date) },
+    })
+  })
+})
+
+// Cooking is a COOKING right, not a catalog edit (households H3a task 3.7).
+// So a household `member` who is a location `participant` can cook, and the
+// recipe is still marked as cooked. Every other test in this file runs as the
+// household `owner`, so a `consumeRecipes` that asked for `manager` would pass
+// all of them. This test is the one that goes red then.
+describe('consumeRecipes needs only household member and location participant', () => {
+  it('user who is a household member and a location participant can cook a recipe', async () => {
+    // Given the caller is only a household `member` and a location `participant`
+    seedWorld({ household: 'member', location: 'participant' })
+    mockPrisma.inventoryLog.create.mockResolvedValue({})
+    mockPrisma.recipe.updateMany.mockResolvedValue({ count: 1 })
+
+    // When they cook
+    const result = await execOp(CONSUME, { input: consumeInput([COOKED_MILK], ['recipe_1']) })
+
+    // Then the cook works: stock written, log written, recipe marked as cooked
+    expect(result?.errors).toBeUndefined()
+    expect(result?.data?.consumeRecipes).toMatchObject({ allSucceeded: true })
+    expect(
+      stockFake.state.itemStocks.find(
+        (st) => st.itemId === 'item_milk' && st.locationId === LOC_DEFAULT,
+      ),
+    ).toMatchObject({ packedQuantity: 1, unpackedQuantity: 0.5 })
+    expect(mockPrisma.inventoryLog.create).toHaveBeenCalledOnce()
     expect(mockPrisma.recipe.updateMany).toHaveBeenCalledWith({
       where: { id: 'recipe_1', householdId: 'hh_test' },
       data: { lastCookedAt: expect.any(Date) },

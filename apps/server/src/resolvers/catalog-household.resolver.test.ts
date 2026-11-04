@@ -1,7 +1,7 @@
 import { ApolloServer } from '@apollo/server'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Context } from '../context.js'
-import type { HouseholdRole } from '../lib/authz.js'
+import type { HouseholdRole, LocationRole } from '../lib/authz.js'
 import { resolvers } from '../resolvers/index.js'
 import { typeDefs } from '../schema/index.js'
 
@@ -77,7 +77,11 @@ vi.mock('../lib/prisma.js', async () => {
     const state: { rows: Junction[] } = { rows: [] }
     const spec = {
       ...Object.fromEntries(keys.map((k) => [k, 'in' as const])),
-      item: { nested: { householdId: 'in' as const } },
+      // `equals`, not `in`: the matcher below compares the item's household
+      // to a plain string. With `in`, a `{ in: [...] }` filter would pass the
+      // check, match no row, and raise no error. The three `itemCountBy*`
+      // queries send a plain string.
+      item: { nested: { householdId: 'equals' as const } },
     }
     const pk = (row: Junction) => keys.map((k) => String(row[k])).join('|')
     const matches = (row: Junction, where: Record<string, unknown>) => {
@@ -234,7 +238,23 @@ vi.mock('../lib/prisma.js', async () => {
     },
     recipe: recipeStore.client,
     tag: withCount(tagStore.client),
-    tagType: tagTypeStore.client,
+    tagType: {
+      ...tagTypeStore.client,
+      // `Tag_typeId_fkey` is ON DELETE NO ACTION, so Postgres refuses to
+      // delete a tag type while ANY tag still uses it, in any household.
+      // `ownedRowFake` models no foreign key, so this models that one, with
+      // Prisma's `P2003`. It is a model of the constraint, not a stub told to
+      // throw: it throws only when a tag row really uses the type. Pinned by
+      // "the tagType fake refuses to delete a type a tag still uses" below.
+      delete: async (args: { where: { id: string } }) => {
+        if (tagStore.state.rows.some((t) => t.typeId === args.where.id)) {
+          throw Object.assign(new Error('Foreign key constraint violated: Tag_typeId_fkey'), {
+            code: 'P2003',
+          })
+        }
+        return tagTypeStore.client.delete(args)
+      },
+    },
     vendor: vendorStore.client,
     shelf: {
       ...withCount(shelfStore.client),
@@ -323,7 +343,7 @@ const T = new Date('2026-11-01T00:00:00.000Z')
 
 // ─── Seed ────────────────────────────────────────────────────────────────────
 
-function seed(callerRole: HouseholdRole) {
+function seed(callerRole: HouseholdRole, callerLocationRole: LocationRole = 'organizer') {
   world.reset()
   world.stock.reset(
     [
@@ -351,8 +371,8 @@ function seed(callerRole: HouseholdRole) {
     locationMembers: [
       // The caller organizes loc-1 whatever their household role, so
       // `createVendor`'s location check passes and only the household role
-      // decides.
-      { locationId: 'loc-1', userId: 'caller', role: 'organizer', createdAt: T },
+      // decides. One test lowers it, to pin that location check.
+      { locationId: 'loc-1', userId: 'caller', role: callerLocationRole, createdAt: T },
       { locationId: 'loc-s', userId: 'stranger', role: 'organizer', createdAt: T },
     ],
   })
@@ -694,6 +714,41 @@ describe('a household manager can write the catalog', () => {
   })
 })
 
+describe('createVendor also needs location role participant', () => {
+  // `createVendor` writes a Cart row at the location, so it needs location
+  // role `participant` as well as household role `manager`. Every other
+  // createVendor test runs as the location's `organizer`, so a check lowered
+  // to `viewer` would pass them all. This test is the one that goes red then.
+  it('user who is a household manager but only a location viewer cannot create a vendor', async () => {
+    // Given the caller is a household manager, and only a viewer at loc-1
+    seed('manager', 'viewer')
+    const before = handles.$snapshot()
+
+    // When they create a vendor there
+    const result = await exec('mutation { createVendor(name: "Lidl", locationId: "loc-1") { id } }')
+
+    // Then it is refused, and no vendor and no cart were written
+    expect(codeOf(result)).toBe('FORBIDDEN')
+    expect(S.vendor.state.rows.find((r) => r.name === 'Lidl')).toBeUndefined()
+    expect(S.cart.state.rows).toEqual([])
+    expect(handles.$snapshot()).toEqual(before)
+  })
+
+  it('user who is a household manager and a location participant can create a vendor', async () => {
+    // Given the caller is a household manager and a participant at loc-1
+    seed('manager', 'participant')
+
+    // When they create a vendor there
+    const result = await exec('mutation { createVendor(name: "Lidl", locationId: "loc-1") { id } }')
+
+    // Then the vendor and its cart at loc-1 are written
+    expect(result.errors).toBeUndefined()
+    const vendor = S.vendor.state.rows.find((r) => r.name === 'Lidl')
+    expect(vendor).toMatchObject({ householdId: 'hh-1' })
+    expect(S.cart.state.rows).toEqual([expect.objectContaining({ locationId: 'loc-1' })])
+  })
+})
+
 describe('marking a recipe as cooked is a cooking right, not a catalog edit', () => {
   it('user who is a household member can mark a recipe as cooked', async () => {
     seed('member')
@@ -711,6 +766,55 @@ describe('marking a recipe as cooked is a cooking right, not a catalog edit', ()
 
     expect(codeOf(result)).toBe('NOT_FOUND')
     expect(S.recipe.state.rows.find((r) => r.id === 'rec-s')?.lastCookedAt).toBeNull()
+  })
+})
+
+// ─── deleteTagType: a failed type delete undoes the tag cleanup ──────────────
+//
+// `deleteTagType` deletes the household's tags of the type, then the type. If
+// another household still holds a tag of that type (a cross-household row an
+// unchecked `createTag` could write before #273), Postgres refuses the type
+// delete. Both writes run in one transaction, so the household's tags must
+// come back. Before task 3.7's review they did not: the result was `false`
+// and the tags were gone.
+
+describe('deleteTagType rolls back its tag cleanup when the type delete fails', () => {
+  it('the tagType fake refuses to delete a type a tag still uses', async () => {
+    // Pins the foreign-key model above. tt-1 is used by tag-1 and tag-1b.
+    seed('manager')
+    await expect(prisma.tagType.delete({ where: { id: 'tt-1' } })).rejects.toMatchObject({
+      code: 'P2003',
+    })
+    expect(ids(S.tagType.state.rows)).toContain('tt-1')
+    // tt-2 is used by no tag, so it goes
+    await prisma.tagType.delete({ where: { id: 'tt-2' } })
+    expect(ids(S.tagType.state.rows)).not.toContain('tt-2')
+  })
+
+  it("user who deletes a tag type that another household's tag uses keeps their own tags", async () => {
+    // Given hh-1's type tt-1 has hh-1's tags tag-1 and tag-1b, AND a tag of
+    // the stranger's household that uses tt-1 too
+    seed('manager')
+    S.tag.state.rows.push({
+      id: 'tag-s-of-tt1',
+      householdId: 'hh-2',
+      userId: 'stranger',
+      name: 'Cross',
+      typeId: 'tt-1',
+      parentId: null,
+    })
+    const before = handles.$snapshot()
+
+    // When the manager deletes tt-1
+    const result = await exec('mutation { deleteTagType(id: "tt-1") }')
+
+    // Then the delete reports failure, as before
+    expect(result.errors).toBeUndefined()
+    expect(result.data?.deleteTagType).toBe(false)
+    // And nothing changed: the type and hh-1's two tags are still there
+    expect(ids(S.tag.state.rows)).toEqual(['tag-1', 'tag-1b', 'tag-s', 'tag-s-of-tt1'])
+    expect(ids(S.tagType.state.rows)).toContain('tt-1')
+    expect(handles.$snapshot()).toEqual(before)
   })
 })
 
