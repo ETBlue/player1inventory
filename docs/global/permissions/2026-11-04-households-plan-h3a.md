@@ -1178,7 +1178,11 @@ findings` (docs and comments only, no behaviour change):
 
 - [ ] **Step 1:** `POST /e2e/household-members`, body
   `{ ownerUserId, memberUserId, householdRole, locations: [{ locationId, role }] }`. It adds
-  the member to the owner's household and gives the listed location roles. It refuses a location role for someone who is not a household member (decision H18). Mount it inside
+  the member to the owner's household and gives the listed location roles. (Corrected after
+  the review of task 3.11: this step first said "It refuses a location role for someone who
+  is not a household member (decision H18)". That state cannot be reached here.
+  `householdRole` is required, and the `HouseholdMember` and `LocationMember` rows are
+  written in one transaction, so there is nothing to refuse.) Mount it inside
   `if (E2E_TEST_MODE)`. The parse-tree guard from H2 must cover it: check that it fails if the
   route is moved outside the block.
 - [ ] **Step 2:** A helper `addHouseholdMember(request, …)` in `cloudUsers.ts`.
@@ -1207,10 +1211,17 @@ Two cautions:
 
 - **Do not give the added member an `isDefault` location.** The partial unique index
   `Location_one_default_per_user_key` allows one `isDefault` row per `userId`, across all
-  households. The member already has one (their own first sign-in "Home"), and
-  `clearAllData` writes its new "Home" with `isDefault: true` and the caller's `userId`. So
-  an extra default row for either user can fail with `P2002`: in the route itself, or later
-  in `clearAllData`, which then rolls back the whole clear. Task 3.14 drops that index.
+  households. `clearAllData` writes its new "Home" with `isDefault: true` and the caller's
+  `userId`. So an extra default row for either user can fail with `P2002`: in the route
+  itself, or later in `clearAllData`, which then rolls back the whole clear. Task 3.14 drops
+  that index.
+
+  (Corrected after the review of task 3.11. This caution first said "The member already has
+  one (their own first sign-in "Home")". That is not how the route works. The route
+  requires that the member has NO household yet, so a person is never in two households. It
+  adds no location and no `isDefault` row. So the member must be added BEFORE their first
+  GraphQL request; after that request they have a household of their own, and the route
+  answers 409. See the *Done* note below.)
 - **A spec that runs `clearAllData` with two members leaves the member with no location
   role.** Only the caller gets `organizer` on the new "Home" (see owner question Q1 after
   task 3.14). Any later step of the spec that acts as the member at a location fails with
@@ -1240,8 +1251,20 @@ Two cautions:
   first caution cannot happen. **H5 (invites) must decide what happens to the household a
   person already has when they accept an invite.**
 - **Decision H18:** a location role without a household role cannot be written here.
-  `householdRole` is required, and the household row is written first, in the same
-  transaction. There is no separate "refuse" branch because the state cannot be reached.
+  `householdRole` is required, and the household row and the location rows are written in
+  one transaction. There is no separate "refuse" branch because the state cannot be reached.
+  **The write order does not matter for H18** (review of task 3.11). The route writes
+  `HouseholdMember` before `LocationMember`, but the rows commit together, and there is no
+  foreign key between the two tables. Writing them the other way round would give the same
+  result.
+- **The "already in a household" read MUST come after the claim `updateMany`** (review of
+  task 3.11). The claim takes the member's `User` row lock. A first sign-in that claimed
+  first has committed by the time the claim returns, so the read after it sees that
+  household. Read before the claim, a first sign-in could commit its household between the
+  read and the claim, and the member would end up in two households. **No unit test pins
+  this order.** The Prisma fake has no locks and no concurrency. Measured: moving the read
+  above the claim kept all 31 tests in `e2eHouseholds.test.ts` green. Only the comment in
+  the route guards it.
 - **After the owner's cleanup removes the member's row, the member gets `NO_HOUSEHOLD`**,
   not a new household, because the claim is set. `household-member-cleanup.spec.ts`
   checks it. This is the first real-SQL test that reaches `NO_HOUSEHOLD`.
@@ -1272,6 +1295,11 @@ Two cautions:
   every mutation was undone. Load average 2.7 to 7.0. `cloud` collects 130 tests in 29 files
   (was 125 in 27); `local` 183 in 23 (unchanged).
 - Server tests 1107 → 1139 (45 → 46 files). Web 2474 / 265 and spec 70, unchanged.
+- **Review of task 3.11:** the findings are recorded in the commit
+  `docs(households): add the task 3.11 review findings` — the two corrections in this task
+  (step 1 and the first caution), the two notes above on write order and read order, the
+  route's comment on decision H18, three items under *Known gaps* (owed to H5), and the root
+  `CLAUDE.md` (spec counts, the new route and the two new specs). Docs and comments only.
 
 **Still open after this task:**
 
@@ -1711,6 +1739,22 @@ drops `userId`, `main`'s cloud E2E cannot run on this database at all until H3a 
   H5 lets a manager see only some of the household's locations, the others keep their old
   `order`, and the list can end up with duplicate orders. Unless H5 lets managers see every
   location, H5 must handle this.
+- **Owed to H5: a rule for which household a person is in** (review of task 3.11).
+  `ensureHousehold` (`apps/server/src/lib/household.ts`) finds a person's household with
+  `householdMember.findFirst({ where: { userId } })` and no `orderBy`. `requireHousehold`
+  (`apps/server/src/lib/authz.ts`, about line 42) gets its answer from `ensureHousehold`.
+  With two households per person, Postgres picks one, and the choice can change between
+  requests. Nobody can be in two households before H5: the E2E member route refuses a
+  member who already has a household. H5 must give these reads a rule (an `orderBy`, or
+  "the active household") BEFORE it lets a person into two households.
+- **Owed to H5: what happens to a person's own household when they accept an invite**
+  (review of task 3.11). Every person gets a household at first sign-in. The E2E route
+  avoids the question by refusing such a person. Invites cannot: H5 must decide whether the
+  old household is kept, left or deleted.
+- **Owed to H5: a person removed from a household gets `NO_HOUSEHOLD`** (review of task
+  3.11). Their first sign-in claim (`User.householdSetupAt`) is set, so `ensureHousehold`
+  makes no new household for them. `household-member-cleanup.spec.ts` proves this on real
+  SQL. H5's "no household" screen must handle this case, not only a person who left.
 
 ### Traps (review of task 3.10)
 

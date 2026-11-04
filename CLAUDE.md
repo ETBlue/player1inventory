@@ -1527,8 +1527,9 @@ Note also that **no *unit* test executes the resolvers against real SQL** — ev
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
 Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
 branch), but only for the spec files listed in the `cloud` project's `testMatch` in
-`e2e/playwright.config.ts` — that list is opt-in and covers **27 of the 31 spec files in
-`e2e/tests/`** (measured 2026-11-04, after households H3a added `purge-two-households.spec.ts`).
+`e2e/playwright.config.ts` — that list is opt-in and covers **29 of the 33 spec files in
+`e2e/tests/`** (measured 2026-11-04, after households H3a task 3.11 added
+`cloud-roles.spec.ts` and `household-member-cleanup.spec.ts`).
 **Count it rather than quote it.** This line said "20 files today (of 27 spec files)" until
 2026-10-12, by which point both numbers were wrong by 3:
 
@@ -1556,7 +1557,7 @@ would reach zero resolvers and still pass its URL assertion.
 **A resolver exercised by no cloud spec has never touched SQL at all**, and a manual smoke
 test is owed for anything transactional.
 
-Nine of those 26 cover location or stock surfaces. Three were added 2026-09-14 (issue #284):
+Nine of the 26 counted on 2026-10-31 cover location or stock surfaces. Three were added 2026-09-14 (issue #284):
 `settings/locations.spec.ts`, `location-switcher.spec.ts` and
 `location-not-stocked-here.spec.ts` — 22 cloud test cases. They give the first real-SQL
 coverage of `createLocation`, `updateLocation`, `deleteLocation`, `reorderLocations`, the
@@ -1672,6 +1673,31 @@ H10) — 1 cloud test case, no browser. The `cloud` project went 124 → **125**
 of every model it deletes, one clears, and every row of the other's must survive, read
 back through the other's GraphQL. Proved by mutation: `tx.shelf.deleteMany({})` makes it
 fail. Both users are alone in their household, so it says nothing about a shared one.
+
+**A second E2E-only route puts two people in one household:** `POST /e2e/household-members`
+(`apps/server/src/lib/e2eHouseholds.ts`, households H3a task 3.11, decision H9). Invites
+are H5, so until then it is the only way a cloud spec can share a household. Like
+`GET /e2e/users/:id`, `index.ts` mounts it inside `if (E2E_TEST_MODE)`, and
+`apps/server/src/webhookRouteOrder.test.ts` fails if it is moved outside that block. **It
+checks no signature and no session: it adds anybody to anybody's household, with no check
+of who asks.** That is why it must only exist in E2E mode. It refuses a member who is
+already in a household, so a spec must add the member BEFORE the member sends any GraphQL
+request (otherwise it answers 409). The helper is `addHouseholdMember` in
+`e2e/helpers/cloudUsers.ts`.
+
+Two specs use it, both joined on 2026-11-04 (task 3.11), both cloud only with no browser.
+The `cloud` project went 125 → **130** collected and 27 → **29** files; `local` stayed at
+183 in 23 files.
+
+- `cloud-roles.spec.ts`, 3 tests: the first real-SQL check of roles with two people. A
+  household `member` cannot create a tag and a `manager` can; a location `viewer` can read
+  stock but not change it and a `participant` can; a location with no role is refused for
+  both read and write. Proved by mutation: `requireLocationRole` ignoring `role` turns the
+  viewer test red.
+- `household-member-cleanup.spec.ts`, 2 tests: `/e2e/cleanup` run by the owner and by the
+  member, in both orders. The member's cleanup leaves the owner's household alone; the
+  owner's cleanup removes the member's role rows too. After that the member gets
+  `NO_HOUSEHOLD`, the first real-SQL test that reaches it.
 
 The warning above still holds for everything else — most resolvers are named by no cloud
 spec.

@@ -37,10 +37,11 @@ import { prisma } from './prisma.js'
 // | the member is ALREADY in a household | 409 | see "ONE HOUSEHOLD PER PERSON" below |
 //
 // **A location role without a household role cannot be written here**
-// (decision H18). `householdRole` is required, and the `HouseholdMember` row
-// is written in the same transaction as the `LocationMember` rows, before
-// them. So every location role this route writes has its household role
-// beside it.
+// (decision H18). Two things make sure of it: `householdRole` is required,
+// and the `HouseholdMember` row and the `LocationMember` rows are written in
+// one transaction, so they commit together or not at all. The order of the
+// two writes inside the transaction does not matter for H18: there is no
+// foreign key between the two tables.
 //
 // ── ONE HOUSEHOLD PER PERSON ──
 //
