@@ -874,6 +874,76 @@ key, composite key `P2002`, and `skipDuplicates` only if a resolver passes it), 
   `import-inventoryLog-location` and `import-cart-location`). Removing it from them, as task
   3.5's review asks above, lets the file itself be deleted.
 
+**Done** in `1eb01462` (step 0) and `264d2c16`. What a later task needs to know:
+
+- **Locations.** A created location gets `householdId` (the caller's, `requireHousehold`)
+  and an `organizer` row for the caller, in one transaction (`createImportedLocation` in
+  `import.resolver.ts`, the same two writes as `createLocation`). `bulkUpsertLocations` no
+  longer uses `upsert`: a new id goes through `createImportedLocation`, an existing id gets
+  `location.update`. **An update writes and changes no role row**: the caller already holds
+  one, and an import must not grant or change anybody's role.
+- **`bulkUpsertLocations` now needs `organizer` on an existing id**, not `participant`. It
+  renames the row, and `updateLocation` needs `organizer` for a rename. The plan did not ask
+  for this. `bulkCreateLocations` still asks `participant`: it only skips an existing row.
+  `requireOwnLocationIdsOrUnclaimed(ctx, locations, role)` takes the role and returns the
+  ids that already exist. It already read membership through `requireLocationRole` (and so
+  through the decision H18 filter) since task 3.5; the plan's "reads membership" needed no
+  new read.
+- **`order` is the payload's own value, not counted within the household.** The plan said
+  "count `order` within the household, the same as `createLocation`". But import never
+  counted `order`: it stored the backup's value, which is the user's own order, and an
+  import restores it. Two locations of one household can share an `order`; `locations`
+  breaks the tie by id. A test pins that the payload's order is kept even when it repeats
+  one in the household. So the brief's mutation "order per user" had nothing to mutate; the
+  mutation run instead was "order = count of the user's locations", which turned 4 tests
+  red.
+- **Bug found and fixed (latent until H5):** `bulkCreateLocations` read an existing id with
+  `findUnique({ where: { id, userId } })`. For a location the caller holds a role on but did
+  not create, that missed, and the create then failed with `P2002`. Now it skips from the
+  set the pre-check returns. Test: "user who is only a participant of a location can still
+  name it in a 'skip' import".
+- **Fallbacks:** confirmed. `resolveLogLocations` and `resolveCartLocations` both call
+  `fallbackImportLocation` (task 3.5).
+- **Attached ids, all SKIPPED, not refused** (a partial backup may name a row that is gone,
+  and "not yours" must look the same as "not there"):
+  - `bulkUpsertTags`: a tag whose `typeId` is not a tag type of the household, or whose
+    `parentId` is neither a household tag nor a tag of the same payload, is skipped. The
+    tags are now written in passes, parents first, like `bulkCreateTags`. That also fixes
+    an ordering hazard: the old single `Promise.all` could write a child before its parent,
+    and Postgres checks `Tag.parentId`'s foreign key.
+  - Both shelf mutations: each id in `itemIds` and in `filterConfig.tagIds` / `vendorIds` /
+    `recipeIds` that is not a row of the household is DROPPED; the shelf still lands
+    (`householdShelfRefs`). An id no row holds is dropped too, unlike `createShelf`'s
+    `missing: 'allow'`, so a foreign id and a gone id give the same answer. Shelves are
+    the last entity the client imports, so the ids exist by then.
+  - Both cart item mutations: the item is checked against the household of the CART's
+    location (`resolveCartItemParents`): the cart by `userId`, then `requireLocationRole`
+    on the cart's location (rule 12: role first), then `householdOfLocation`. A cart or item
+    that does not resolve is skipped, as before. A cart of the caller's at a location they
+    hold no role on now makes the whole batch `FORBIDDEN`, before any write. Not
+    `requireLocationItems`, because it throws and these mutations skip.
+  - Rule 12's order test ("a stranger gets FORBIDDEN even for a missing item") does not
+    apply here: the location comes from the caller's own cart row, not from the input, and
+    `householdOfLocation` gives the same `FORBIDDEN` as the role check for any location id.
+    Swapping the two calls changes no answer, so no test can pin the order.
+- **`derivedRoles.ts` is deleted.** The six import test files use `householdWorld` and a new
+  builder, `soloHouseholds` (`test/householdRows.ts`): one household per person, owner and
+  organizer of their own locations. `git grep -l derivedRoles -- apps/server/src` now lists
+  only comments that say it was removed.
+- **Step 0:** `junctionFake` (`import-ownership-item.resolver.test.ts`) and the `item.findFirst`
+  fake (`import-inventoryLog-location.resolver.test.ts`) run `checkWhere` once per call. The
+  second one compared `where.userId` and ignored `householdId` before.
+  `import-itemStock.resolver.test.ts`'s hand-written item store is now an `ownedRowFake`.
+- **The whole-import test** is in `import-itemStock.resolver.test.ts` ("a whole import into a
+  new account"): first sign-in, then `bulkCreateLocations` (or `bulkUpsertLocations`), then
+  `bulkCreateItems`, then `bulkCreateItemStocks` into both imported locations, then
+  `locations`. Every household and role row is one the resolvers wrote. Against the old
+  resolver it is red.
+- **The two cloud E2E rows of *Execution* that "end at 3.9"** (import with locations, and
+  imported locations missing from `locations`) should now pass. Not run here (no database
+  in this task).
+- Server tests 1062 → 1094.
+
 ## Task 3.10 — Purges and E2E cleanup
 
 **Files:** `resolvers/purge.resolver.ts` and test; `schema/purge.graphql`;

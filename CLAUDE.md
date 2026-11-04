@@ -122,7 +122,7 @@ that really set up that role.
 >
 > **One thing it does NOT share with `requireLocationRole`: a free id is distinguishable from a stranger's id.** `requireLocationRole` refuses "not found" and "not yours" with the same error on purpose. `requireOwnRowOrUnclaimed` cannot: an import has to create new rows, so an unclaimed id must return `'unclaimed'` and let the write proceed. What protects the ids is that they are `cuid()` and cannot be guessed, and that the refusal names neither the model nor the owner. Do not copy `requireLocationRole`'s stated reason onto this helper — the first version of its comment and of the design doc both did, and both were wrong.
 >
-> **22 bulk import mutations in `apps/server/src/resolvers/import.resolver.ts` are guarded.** Counted 2026-10-28: **18** through `requireOwnRowOrUnclaimed` (reached by the per-batch `requireOwnRowIdsOrUnclaimed` in that file), **2** through `requireOwnLocationIdsOrUnclaimed`, **2** through `requireOwnItemStockRefs`. Several task briefs said 18, which is only the first group. Count them rather than quoting this:
+> **22 bulk import mutations in `apps/server/src/resolvers/import.resolver.ts` are guarded.** Counted 2026-10-28, and the same on 2026-11-04 after households H3a task 3.9: **18** through `requireOwnRowOrUnclaimed` (reached by the per-batch `requireOwnRowIdsOrUnclaimed` in that file), **2** through `requireOwnLocationIdsOrUnclaimed`, **2** through `requireOwnItemStockRefs`. Several task briefs said 18, which is only the first group. Count them rather than quoting this:
 >
 > ```bash
 > grep -c 'requireOwnRowIdsOrUnclaimed(ctx' apps/server/src/resolvers/import.resolver.ts      # 18
@@ -157,7 +157,13 @@ that really set up that role.
 >
 > **The `userId` still named in `exportData.ts` and `importData.ts` tests is deliberate.** Those mappers are allow-lists — each names the keys it forwards, so anything else is dropped by omission. The tests feed `userId` in by hand, so they now prove the general rule that an unexpected key never reaches a backup file, not that one real field is stripped. No live Apollo result carries it any more.
 
-> Nine of those 22 also scope the **other** id in a reference — the `tagId`, `vendorId`, `itemId`, `cartId` or `typeId` a payload attaches its own row to. That is **13** lookups, and a reference that does not resolve is still SKIPPED, not refused: a partial backup legitimately names a parent the user has since deleted. See `docs/features/settings/2026-10-28-design-import-ownership-guard.md`.
+> Twelve of those 22 also check the **other** ids a payload attaches its own row to, against the household. Nine did since plan task 8 (13 references: `tagIds` and `vendorIds` on both item mutations, `typeId` on `bulkCreateTags`, the recipe item ids on both recipe mutations, `itemId` on both log mutations, `cartId` and `itemId` on both cart item mutations). Households H3a task 3.9 added three: `bulkUpsertTags` (`typeId`, `parentId`) and both shelf mutations (`itemIds` and the tag, vendor and recipe ids in `filterConfig`). An id that does not resolve is still SKIPPED, not refused: a partial backup legitimately names a parent the user has since deleted, and "not yours" must look the same as "not there". A tag is skipped as a row; a shelf keeps its row and loses only that id. See `docs/features/settings/2026-10-28-design-import-ownership-guard.md`.
+>
+> **Three things in the import helpers changed in households H3a task 3.9.**
+>
+> - `requireOwnLocationIdsOrUnclaimed(ctx, locations, role)` now takes the location role to ask for and returns the ids that already exist. `bulkCreateLocations` asks `participant` (it only skips an existing row); `bulkUpsertLocations` asks `organizer` (it renames one, and `updateLocation` asks `organizer` for a rename). Membership is read by `requireLocationRole`, so a location the caller holds no counted role on is refused, never "unclaimed", even in the caller's own household.
+> - A created location gets `householdId` and an `organizer` row for the caller, in one transaction (`createImportedLocation`). An update writes and changes no role row. `order` is the payload's own value, not `max + 1`.
+> - The cart item imports check the item against the household of the **cart's location** (`resolveCartItemParents`: the cart by `userId`, then `requireLocationRole` on its location, then `householdOfLocation`), not the caller's household.
 
 > **The `User` row — households H2, built 2026-10-31.** `model User` (`apps/server/prisma/schema.prisma`) is one row per Clerk account: `id` is the Clerk user id, plus `displayName`, an optional `email`, `lastSeenAt` and `deletedAt`. Nothing relates to it yet; H3 adds the relations. Nothing reads it for authorization either. Two paths write it:
 >
