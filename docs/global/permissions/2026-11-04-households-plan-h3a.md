@@ -1386,8 +1386,19 @@ that one function.
   `findPayloadDefaultLocationId` gained a third answer: the location with the lowest
   `order`, **only when no row carries an `isDefault` key at all**. Local (v18+) backups flag
   every row, pre-v18 ones have the `'local'` id, and older cloud backups still carry the
-  flag, so none of them changes. A file whose rows carry the key but none is `true` (only
-  a hand-edited file) gets no default. `sanitiseCloudPayload` no longer copies the flag.
+  flag, so the READING side does not change for any of them: each still names the same
+  payload default. A file whose rows carry the key but none is `true` (only a hand-edited
+  file) gets no default. `sanitiseCloudPayload` no longer copies the flag.
+
+  **The DESTINATION side did change, and that was a bug** (review of task 3.12, fixed in
+  `79c92fec`). Before this task the cloud destination default was the `isDefault` row,
+  which had the same id as the backup's default, so a restore into the same household was
+  the identity. After it, the destination default is the first location by `order`, which
+  can be a location the backup does not contain. Example: back up Home (order 0) and
+  Garage, later add Attic and drag it to the top, restore with `skip` or `replace`.
+  `buildLocationRemap` returned `Home → Attic`, for a new-format file and for an older file
+  with `isDefault: true` alike. Home's stock, carts and logs landed under Attic, and with
+  `replace` Attic was renamed "Home".
 - **Tests:** web 2474 / 265 → **2485 / 267**. New: `index.cloud.test.tsx` (the
   `LAST_LOCATION` toast and the general one, through the real `useDeleteLocation` cloud
   branch and the real toast in `__root.tsx`), `graphqlErrorCode.test.ts`, a local fallback
@@ -1418,7 +1429,36 @@ that one function.
   `cleanup-endpoint.spec.ts`, `cart-id-cross-user-leak.spec.ts`) query `isDefault`
   from the server directly, so they keep working until task 3.14 drops the field.
   The static fixture `cloud-backup.json` still marks a default, and the import side
-  still honours that flag.
+  still honours that flag. (Since `79c92fec`, a restore into the same household does not
+  fold at all; see below.)
+
+**Review fixes** in `79c92fec`. What a later task needs to know:
+
+- **Plan step 5's assumption held only for `clear`.** "Read the first location" is right
+  after a clear, because "Home" is then the only location. For `skip` and `replace` the
+  destination keeps its own locations, and the first one may be new. So
+  `fetchCloudDefaultLocationId` now returns every destination id as well as the first, and
+  `buildLocationRemap` takes them as a third argument: when the payload's default is
+  already a destination location, nothing is remapped. A first copy between modes or
+  accounts, and a `clear` restore, still remap onto the first location.
+- **Local mode was checked and is not changed.** Its destination default is always
+  `'local'`, and a local backup always flags that id, so a local → local restore is the
+  identity. One edge case remains, and the guard would not fix it: restore a cloud backup
+  into local, then later restore a NEWER cloud backup of the same household after a new
+  location was moved to the top. The newer file's default is the new location, so it
+  lands on "My Home", while the first file's Home rows keep their own id. See
+  *Known gaps*.
+- **An offline delete shows one toast.** `offlineWriteLink` already shows
+  `pwa.writeBlocked` and then rejects with `OfflineWriteError`. `handleDelete` now returns
+  early for that error, so the general `deleteError` toast no longer follows it.
+- **Wording:** two comments (`useLocations.ts`, `useActiveLocation.tsx`) and nine cloud test
+  titles (`useShoppingCart.cloud.test.tsx` 5, `useInventoryLogs.cloud.test.tsx` 4) no
+  longer say "default location" for cloud. The brief named 5 titles; 4 more in
+  `useShoppingCart.cloud.test.tsx` had the same wording. Two comments still named a deleted
+  function, `remapPayloadForCloud`; they now name `prepareCloudPayload`.
+- **Tests:** web 2485 / 267 → **2489 / 267**. Mutation checks, all red, restored from
+  copies: guard removed in `buildLocationRemap` (3 tests); ids not passed from
+  `prepareCloudPayload` (2); `instanceof OfflineWriteError` early return removed (1).
 
 ## Task 3.13 — The household name and rename
 
@@ -1479,6 +1519,10 @@ still writes `userId` on the seven models.
   - `createFirstLocation` (`lib/household.ts`) is the ONE place that writes `isDefault: true`
     and `userId` for a new "Home" (first sign-in and `clearAllData`). Remove both there; no
     other call site writes them for "Home".
+
+  **From the review of task 3.12:** dropping `isDefault` breaks several cloud E2E helpers
+  and specs, because they select it straight from the server. Task 3.15 must land in the
+  same push as this task, or right after it. See task 3.15 for the list.
 - [ ] **Step 2:** Run `pnpm build`. **`tsc` now lists every leftover `userId` use on these
   models.** Fix each one. This is the sweep that proves nothing still scopes by account.
   List the count in the report.
@@ -1624,6 +1668,26 @@ them here. Find them with `git grep -n -w ensureDefaultLocation -- e2e/` and
 `git grep -n defaultLocation.ts -- e2e/`. (`ensureDefaultLocationRow` in
 `import-export-local.spec.ts` is a local-mode name, not this one.) `e2e/CLAUDE.md` was
 already corrected in `3ba61aeb`.
+
+**Found by the review of task 3.12, and owed here:**
+
+- **These E2E files read `isDefault` straight from the server**, in their own GraphQL
+  strings. They work only while `createFirstLocation` writes `isDefault: true` and the
+  `Location` type declares the field. Task 3.14 removes both, so they break then. **This task
+  must land with 3.14 or right after it.** Re-check with `grep -rn isDefault e2e/`:
+  - `e2e/helpers/stockReadback.ts`: `readLocations` (the `LOCATIONS` query, about line 75)
+  - `e2e/helpers/backupAssertions.ts`: `expectFixtureLocations` (about 162, 174) and
+    `expectStockNotCollapsedOntoDefault` (about 251)
+  - `e2e/tests/settings/import-export-cloud.spec.ts`: about lines 468, 507, 540 and 608
+  - `e2e/tests/purge-two-households.spec.ts`: the `LOCATIONS` query, about line 52 (and the
+    type at about 130)
+  - `e2e/helpers/cloudSeed.ts` (about 26-30, 76, 117), already in the list above
+- **Add a cloud E2E case for a same-household restore with a new location at the top.**
+  Back up a household with Home (order 0) and a second location, create a third location
+  and drag it to the top, then restore with `skip` and with `replace`. Home's stock, carts
+  and logs must stay on Home, and the third location must keep its name. The unit tests in
+  `apps/web/src/lib/importData.test.ts` prove the payload the web sends; only E2E proves
+  the server writes it there.
 
 ## Task 3.16 — Runbook, docs and the final gate
 
@@ -1816,6 +1880,19 @@ drops `userId`, `main`'s cloud E2E cannot run on this database at all until H3a 
   3.11). Their first sign-in claim (`User.householdSetupAt`) is set, so `ensureHousehold`
   makes no new household for them. `household-member-cleanup.spec.ts` proves this on real
   SQL. H5's "no household" screen must handle this case, not only a person who left.
+- **Owed to H4/H5: a household `member` sees Delete on every cloud location** (review of
+  task 3.12). `LocationList` hides Delete only for the local default, and the web app does
+  not know roles yet. When the server refuses with `FORBIDDEN`, the page shows the general
+  `settings.locations.deleteError` ("Please try again"), which retrying cannot fix. When the
+  UI learns roles, add a `FORBIDDEN` message, or hide Delete by role.
+- **Not fixed: two cloud backups restored into local in turn can move one location's data**
+  (review of task 3.12). A cloud backup made since task 3.12 names its default as the
+  location with the lowest `order`. Restore one into local: its first location lands on
+  "My Home". Later move a new location to the top in cloud, back up again, and restore that
+  into the same local database: the new location now lands on "My Home", and the first
+  file's location comes in under its own id as a separate row. Rare (two restores, with a
+  reorder between them). A cloud backup has no other way to name a default, so the fix is
+  a design choice, not a guard.
 
 ### Traps (review of task 3.10)
 
