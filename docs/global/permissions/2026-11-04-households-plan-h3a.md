@@ -346,19 +346,71 @@ model LocationMember {
   must go red.
 - [ ] **Step 4:** Commit: `test(server): add Prisma doubles for households and members`.
 
+**Done (`fa2b45ae`), with review fixes in `52b3954c`.** One thing step 2b did not foresee:
+`whereKeys.ts` had to grow three new kinds for `userFake` — `'null'`, `'nullableDateLt'` and
+`{ or }` (Prisma's `OR`). The review notes owed by later tasks are written into tasks 3.5,
+3.6, 3.7, 3.8, 3.9, 3.10 and 3.14 below.
+
 ## Task 3.5 — The helpers and first sign-in
 
 **Files:** `apps/server/src/lib/authz.ts` and test; `lib/household.ts` and test (new);
 `context.ts`; `index.ts`; `apps/web/src/apollo/client.ts` and test; `lib/defaultLocation.ts`
-and test (deleted).
+and test (deleted); `apps/server/src/test/stockFake.ts` and test (step 0).
 
+**Found by the review of task 3.4, and owed here. Read all five before step 1.**
+
+- **(a) `stockFake` drops `householdId`.** `insertLocation` (`apps/server/src/test/stockFake.ts`
+  about 405-427) builds the row field by field, and `householdId` is not one of the fields.
+  The fixture rows in the test files have no `householdId` either. So with
+  `locations: () => stockFake.state.locations`, every location has no household, and every
+  H18 check in `householdFake` fails closed: each role is refused, for the right code and the
+  wrong code alike. Step 0 fixes this first.
+- **(b) `runInTransaction` does not model the row lock that decision H1 relies on.**
+  `runInTransaction` (`stockFake.ts` about 290) does not run transactions one at a time, and
+  it takes its snapshot when each transaction starts. In Postgres, the second `UPDATE` on the
+  same `User` row waits for the first transaction to finish. In the fake, nothing waits. A
+  reviewer ran a correct `ensureHousehold` 10 times in parallel through the plain fake: **1
+  fulfilled, 9 rejected with `NO_HOUSEHOLD`, 0 households left, and `householdSetupAt`
+  set.** One fact in the code makes this possible: a rollback restores the WHOLE store from
+  the snapshot taken when that transaction started, so it also removes rows that another
+  transaction wrote in the meantime. With a promise chain around the
+  transactions (one waits for the one before it, as the row lock does), the same code gave
+  **10 fulfilled, 1 household, 1 member**. So:
+  - the "ten parallel calls" test in step 1 must run through a **test-only lock** around
+    `runInTransaction` — a promise chain in the test file, so each transaction starts after
+    the one before has finished;
+  - **do NOT change correct code to make the unlocked fake pass.** If a test fails only
+    without the lock, the fake is wrong, not the code;
+  - the real-SQL proof of the race is already in `verify-migration.ts` (task 3.3, the race
+    proof). The unit test only proves the code's logic under a lock.
+  - mutation check (c) in step 7 may stay green under the lock: with the transactions run one
+    at a time, code that skips the claim but reads the membership first may still create one
+    household. If it stays green, say so in the report and name what does prove the claim.
+- **(c) How to build the fake.** `createHouseholdFake({ …, locations: () =>
+  stock.state.locations })`, so it sees the current location rows. Create the `Household`
+  row **before** the owner's `HouseholdMember` row: the other order raises `P2003` in the
+  fake, as it does in Postgres. Use the new role names only (`owner | manager | member` and
+  `organizer | participant | viewer`); an old location role string throws `InvalidRoleError`.
+- **(d) `members: { some: {} }` matches when the household has OTHER members**, as in Prisma:
+  `some` is true when at least one related row passes. So the H18 fixture needs another
+  member in that household. With only the caller in it, a resolver that forgets `userId`
+  inside `some` gives the same answer as a correct one, and passes.
+- **(e) `Household.ownerId` mirroring the owner row (decision H15) is not modelled.** The fake
+  stores each row as it is written. A test of the code that writes the owner must assert
+  **both** `Household.ownerId` and the `owner` `HouseholdMember` row.
+
+- [ ] **Step 0: `stockFake` carries `householdId`.** Add `householdId` to `FakeLocation`, to
+  `insertLocation`, and to `LOCATION_WHERE`. Give the fixture rows a `householdId` where a
+  test reads it. Add a `stockFake.test.ts` test that a created location keeps its
+  `householdId`, and mutation-check it.
 - [ ] **Step 1: Failing tests for `ensureHousehold(userId, language)`** in `lib/household.ts`:
   - a new user (`householdSetupAt` null): one transaction claims the user, creates
     `<name>'s Household`, the owner row, a location `Home` with `order` 0, and an `organizer`
     row. It returns the household id
   - a user already set up returns their household id and creates nothing
   - ten parallel calls for one new user create one household. Use `runInTransaction` from
-    `stockFake.ts` for rollback. The real race is proved in task 3.3, not here
+    `stockFake.ts` for rollback, **inside a test-only lock** (note (b) above). The real race
+    is proved in task 3.3, not here
   - a user with `householdSetupAt` set and **no** membership throws a `GraphQLError` with code
     `NO_HOUSEHOLD`, and creates nothing. Nobody can reach this state before H5, but the code
     path must not create a second household (design *Create and delete a household*)
@@ -423,6 +475,19 @@ and test (deleted).
   check in `reorderLocations`; skip the `organizer` row in `createLocation`. Each goes red.
 - [ ] **Step 4:** Commit: `feat(server): scope locations by household and location role`.
 
+**Found by the review of task 3.4, and owed here:**
+
+- **`householdFake` does not model the `LocationMember` cascade.** In Postgres, deleting a
+  location deletes its `LocationMember` rows (`onDelete: Cascade`). In the fake, the
+  `LocationMember` rows stay. So a correct `deleteLocation` that relies on the cascade leaves
+  stale rows in the fake, and a test that counts them fails against correct code. Either
+  model the cascade in the fake (with its own test), or write the test around it on purpose
+  and say so in a comment.
+- **A filter of the shape `location: { members: { some: { userId } } }` filters `Location` or
+  `ItemStock` rows.** Those rows live in `stockFake`, so the filter belongs in `stockFake`, not
+  in `householdFake`. `householdFake` resolves `members.some` only on `Household` and on the
+  H18 path of `LocationMember`.
+
 ## Task 3.7 — The catalog: items, tags, tag types, vendors, recipes, shelves
 
 **Files:** `resolvers/item`, `tag`, `vendor`, `recipe` and `shelf` `.resolver.ts` and tests.
@@ -452,6 +517,16 @@ Every create writes `householdId` (and `userId` until task 3.14).
   one per #273 site (drop `requireCatalogIds`). Each goes red.
 - [ ] **Step 4:** Commit(s): `feat(server): scope the catalog by household (#273)`.
 
+**Found by the review of task 3.4, and owed here:**
+
+- **Build the catalog `ownedRowFake` stores with
+  `scope: 'householdId', requiredColumns: ['userId']`.** `userId` stays NOT NULL on these
+  models until task 3.14, so a create without it must still throw.
+- **A household-scoped store refuses `userId` in a `where`, on purpose.** So
+  `requireOwnRowOrUnclaimed` and the import tests that share the catalog stores must switch to
+  `householdId` in the **same step** as the stores. Switch one without the other and those
+  tests throw `UnknownWhereKeyError`.
+
 ## Task 3.8 — Stock, logs and carts
 
 **Files:** `resolvers/itemStock`, `inventoryLog` and `cart` `.resolver.ts` and tests;
@@ -480,6 +555,11 @@ Every create writes `householdId` (and `userId` until task 3.14).
 - [ ] **Step 3: Mutation checks:** one per site.
 - [ ] **Step 4:** Commit: `feat(server): scope stock and logs by location role`.
 
+**Found by the review of task 3.4, and owed here:** the reads above that use "the caller's
+location memberships" filter `Location` or `ItemStock` rows with a shape like
+`location: { members: { some: { userId } } }`. Model that filter in `stockFake`, where those
+rows live, not in `householdFake`. See the same note under task 3.6.
+
 ## Task 3.9 — Import
 
 **Files:** `resolvers/import.resolver.ts` and its seven test files; `lib/authz.ts`
@@ -503,6 +583,11 @@ Every create writes `householdId` (and `userId` until task 3.14).
 - [ ] **Step 3: Mutation checks:** the body ignores `householdId`; a created location gets no
   `organizer` row. Each goes red.
 - [ ] **Step 4:** Commit: `feat(server): import into the caller's household`.
+
+**Found by the review of task 3.4, and owed here:** `householdFake` has no
+`locationMember.createMany`. If the bulk location mutations write their `organizer` rows with
+`createMany`, add it to the fake first, with the same checks as `create` (role enum, foreign
+key, composite key `P2002`, and `skipDuplicates` only if a resolver passes it), and a test.
 
 ## Task 3.10 — Purges and E2E cleanup
 
@@ -554,6 +639,11 @@ Every create writes `householdId` (and `userId` until task 3.14).
   `{ where: { householdId: undefined } }` as no filter, so it deletes every row. Throw before
   the transaction when the household id is missing, and keep the exact-value unit tests and
   the two-household spec (step 5).
+
+**Found by the review of task 3.4, and owed here:** `householdFake` does not model the
+`LocationMember` cascade (see the note under task 3.6). `clearAllData` deletes locations, so
+in the fake their `LocationMember` rows stay behind, while in Postgres they go. Model the
+cascade, or delete the rows on purpose in the test setup and say why.
 
 ## Task 3.11 — A second household member in E2E
 
@@ -658,6 +748,9 @@ still writes `userId` on the seven models.
   List the count in the report.
 - [ ] **Step 3:** Remove `isDefault` from the `Location` GraphQL type and its comments in
   `import.graphql`. Remove the six `userId: String!` fields (#359 step two; decision H11).
+- [ ] **Step 3b:** Drop `requiredColumns: ['userId']` from the catalog `ownedRowFake` stores
+  (added in task 3.7). The column no longer exists, so a fake that still requires it would
+  refuse every correct create.
 - [ ] **Step 4:** `stockFake.ts`: remove `DefaultLocationConstraintError` and every
   `isDefault` match. Remove the places the design says argue from the old index: the
   migration comments in `20260916…/migration.sql` (about 30) and `20260917…/migration.sql`
