@@ -50,25 +50,17 @@ function mockMode(mode: 'local' | 'cloud') {
   })
 }
 
-// The cloud default's id is a server-generated cuid, NOT the local sentinel
-// `'local'`. That divergence is the whole point of `Location.isDefault`: with a
-// local fixture, `id === DEFAULT_LOCATION_ID` and `isDefault` are the same
-// predicate, so a test cannot tell them apart (Task 1's guard test was a
-// negative control for exactly that reason).
-const CLOUD_DEFAULT_ID = 'clw3k1q2a0000s9f8h7g6d5e4'
+// Cloud ids are server-generated cuids, NOT the local sentinel `'local'`.
+// Cloud rows carry no `isDefault`: a household has no default location
+// (households task 3.12). The first row is the one at `order` 0.
+const CLOUD_FIRST_ID = 'clw3k1q2a0000s9f8h7g6d5e4'
 const CLOUD_OTHER_ID = 'clw3k1q2b0001s9f8h7g6d5e5'
 
-const cloudLocation = (
-  id: string,
-  name: string,
-  order: number,
-  isDefault: boolean,
-) => ({
+const cloudLocation = (id: string, name: string, order: number) => ({
   __typename: 'Location' as const,
   id,
   name,
   order,
-  isDefault,
   createdAt: '2026-08-01T10:00:00.000Z',
   updatedAt: '2026-08-02T11:00:00.000Z',
 })
@@ -77,13 +69,8 @@ const cloudLocation = (
 // on, so `CLOUD_OFFICE` is `… | undefined` and spreading it was four
 // `TS2769`s; naming the two rows removes the index access instead of narrowing
 // it, and the call sites below say which location they mean.
-const CLOUD_WAREHOUSE = cloudLocation(
-  CLOUD_DEFAULT_ID,
-  'Cloud Warehouse',
-  0,
-  true,
-)
-const CLOUD_OFFICE = cloudLocation(CLOUD_OTHER_ID, 'Cloud Office', 1, false)
+const CLOUD_WAREHOUSE = cloudLocation(CLOUD_FIRST_ID, 'Cloud Warehouse', 0)
+const CLOUD_OFFICE = cloudLocation(CLOUD_OTHER_ID, 'Cloud Office', 1)
 
 const CLOUD_LOCATIONS = [CLOUD_WAREHOUSE, CLOUD_OFFICE]
 
@@ -223,12 +210,7 @@ describe('cloud location mutations', () => {
 
   it('user can create a location in cloud mode', async () => {
     // Given a cloud CreateLocation mock expecting the typed name
-    const created = cloudLocation(
-      'clw3k1q2c0002s9f8h7g6d5e6',
-      'Cloud Shed',
-      2,
-      false,
-    )
+    const created = cloudLocation('clw3k1q2c0002s9f8h7g6d5e6', 'Cloud Shed', 2)
     const { result } = renderHook(() => useCreateLocation(), {
       wrapper: makeWrapper([
         getLocationsMock,
@@ -343,7 +325,7 @@ describe('cloud location mutations', () => {
       {
         request: {
           query: ReorderLocationsDocument,
-          variables: { orderedIds: [CLOUD_OTHER_ID, CLOUD_DEFAULT_ID] },
+          variables: { orderedIds: [CLOUD_OTHER_ID, CLOUD_FIRST_ID] },
         },
         result: { data: { reorderLocations: reordered } },
       },
@@ -361,10 +343,7 @@ describe('cloud location mutations', () => {
 
     // When the user drags the second location above the first
     await act(async () => {
-      await result.current.reorder.mutateAsync([
-        CLOUD_OTHER_ID,
-        CLOUD_DEFAULT_ID,
-      ])
+      await result.current.reorder.mutateAsync([CLOUD_OTHER_ID, CLOUD_FIRST_ID])
     })
 
     // Then the mutation's own result is written into the GetLocations cache
@@ -378,12 +357,14 @@ describe('cloud location mutations', () => {
   })
 })
 
-describe('cloud default-location delete guard', () => {
+describe('cloud locations have no default location', () => {
   // The settings page renders `useLocations()`'s list straight into
-  // <LocationList>, which hides the delete control for `location.isDefault`.
-  // Driving that one line from the real hook + real GetLocations document is
-  // what discharges Task 1's negative control: here the default's id is a cuid,
-  // so `isDefault` is the ONLY thing that can hide the button.
+  // <LocationList>, which hides the delete control and the drag handle only
+  // for a row with `isDefault === true`. Since households task 3.12 the cloud
+  // `GetLocations` document no longer selects `isDefault`, so no cloud row can
+  // be locked. The server refuses to delete the LAST location instead
+  // (`LAST_LOCATION`); the settings page shows that refusal, see
+  // `routes/settings/household/locations/index.cloud.test.tsx`.
   function CloudLocationSettings() {
     const { data = [] } = useLocations()
     return (
@@ -401,9 +382,8 @@ describe('cloud default-location delete guard', () => {
     mockMode('cloud')
   })
 
-  it('user cannot delete the cloud default location, whose id is a cuid not `local`', async () => {
-    // Given a cloud default location whose id is NOT DEFAULT_LOCATION_ID
-    expect(CLOUD_DEFAULT_ID).not.toBe(DEFAULT_LOCATION_ID)
+  it('user in cloud mode sees delete and drag controls on every location, the first one too', async () => {
+    // Given two cloud locations, the first at `order` 0
     const Wrapper = makeWrapper([getLocationsMock])
 
     // When the locations list renders in cloud mode
@@ -414,13 +394,17 @@ describe('cloud default-location delete guard', () => {
     )
     expect(await screen.findByText('Cloud Warehouse')).toBeInTheDocument()
 
-    // Then the default has no delete control, while a non-default one does
-    expect(
-      screen.queryByRole('button', { name: /delete cloud warehouse/i }),
-    ).not.toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: /delete cloud office/i }),
-    ).toBeInTheDocument()
+    // Then every row, the first one included, can be deleted and dragged,
+    // and no row is labelled as the default
+    for (const name of ['Cloud Warehouse', 'Cloud Office']) {
+      expect(
+        screen.getByRole('button', { name: `Delete ${name}` }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: `Drag to reorder ${name}` }),
+      ).toBeInTheDocument()
+    }
+    expect(screen.queryByText('Default')).not.toBeInTheDocument()
   })
 })
 

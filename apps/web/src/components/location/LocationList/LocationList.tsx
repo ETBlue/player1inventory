@@ -194,7 +194,10 @@ export function LocationList({
             <LocationRow
               key={location.id}
               location={location}
-              isDefault={location.isDefault}
+              // Only a LOCAL row can be the default. Cloud rows carry no
+              // `isDefault` (task 3.12): every cloud row can be dragged and
+              // deleted, and the server refuses to delete the last one.
+              isDefault={location.isDefault === true}
               onRename={() => onRename(location)}
               onDelete={() => onDelete(location)}
             />

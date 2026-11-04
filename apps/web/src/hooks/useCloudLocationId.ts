@@ -13,7 +13,7 @@ import { useActiveLocation } from './useActiveLocation'
 // cloud session there is no `active-location-id:cloud` slot, so
 // `readStoredLocationId('cloud')` hands back `DEFAULT_LOCATION_ID` — the local
 // `'local'` sentinel, which names no cloud `Location`. `ActiveLocationProvider`
-// corrects it to the `isDefault` location, but only once `GetLocations` has
+// corrects it to the first location, but only once `GetLocations` has
 // resolved. Anything the user does inside that window reads `'local'`, and a
 // location-scoped WRITE sent with it is rejected by `requireLocationRole` with
 // `FORBIDDEN`.
@@ -53,7 +53,10 @@ export function useCloudLocationId(): (explicit?: string) => Promise<string> {
         if (list.some((loc) => loc.id === activeLocationId)) {
           return activeLocationId
         }
-        const fallback = list.find((loc) => loc.isDefault)?.id ?? list[0]?.id
+        // A household has no default location (task 3.12). The fallback is
+        // the FIRST location: the server returns the list by `order`, so this
+        // is the same location `ActiveLocationProvider` falls back to.
+        const fallback = list[0]?.id
         if (fallback) return fallback
       } catch {
         // Fall through — a failed read must not turn into a failed write with

@@ -45,17 +45,11 @@ function mockMode(mode: 'local' | 'cloud') {
 const LOC_A = 'clw3loc0a0000s9f8h7g6d5e4' // Cloud Kitchen — the default, active first
 const LOC_B = 'clw3loc0b0001s9f8h7g6d5e5' // Cloud Garage
 
-const cloudLocation = (
-  id: string,
-  name: string,
-  order: number,
-  isDefault: boolean,
-) => ({
+const cloudLocation = (id: string, name: string, order: number) => ({
   __typename: 'Location' as const,
   id,
   name,
   order,
-  isDefault,
   createdAt: '2026-08-01T10:00:00.000Z',
   updatedAt: '2026-08-02T11:00:00.000Z',
 })
@@ -66,8 +60,8 @@ const getLocationsMock = {
   result: {
     data: {
       locations: [
-        cloudLocation(LOC_A, 'Cloud Kitchen', 0, true),
-        cloudLocation(LOC_B, 'Cloud Garage', 1, false),
+        cloudLocation(LOC_A, 'Cloud Kitchen', 0),
+        cloudLocation(LOC_B, 'Cloud Garage', 1),
       ],
     },
   },

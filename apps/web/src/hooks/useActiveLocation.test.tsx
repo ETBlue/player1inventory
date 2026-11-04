@@ -21,7 +21,7 @@ import * as dataModeHooks from './useDataMode'
 // stubs every one of them (all other tests run in local mode), but the cloud
 // cases below must drive the provider from a real `GetLocations` response:
 // a hand-stubbed `useGetLocationsQuery` would keep returning whatever shape the
-// stub happened to hold, so "the stale id is corrected to the cloud default"
+// stub happened to hold, so "the stale id is corrected to the first cloud location"
 // could pass without the provider ever consulting a real list.
 vi.mock('@/generated/graphql', async (importOriginal) => await importOriginal())
 
@@ -34,35 +34,27 @@ function mockMode(mode: 'local' | 'cloud') {
   })
 }
 
-// The cloud default's id is a server-generated cuid, NOT the local sentinel
-// `'local'`. That divergence is the whole point of these tests: with a local
-// fixture `id === DEFAULT_LOCATION_ID` and `isDefault` are the same predicate,
-// so nothing can tell the sentinel apart from the real default.
-const CLOUD_DEFAULT_ID = 'clw3k1q2a0000s9f8h7g6d5e4'
-const CLOUD_OTHER_ID = 'clw3k1q2b0001s9f8h7g6d5e5'
+// Cloud ids are server-generated cuids, NOT the local sentinel `'local'`.
+//
+// A household has no default location (households task 3.12), and cloud rows
+// carry no `isDefault`. The cloud fallback is the FIRST location, which the
+// server returns by `order`. TWO locations, so "the first" and "the last"
+// differ: with one location a fallback that picked any row would pass.
+const CLOUD_FIRST_ID = 'clw3k1q2a0000s9f8h7g6d5e4'
+const CLOUD_SECOND_ID = 'clw3k1q2b0001s9f8h7g6d5e5'
 
-const cloudLocation = (
-  id: string,
-  name: string,
-  order: number,
-  isDefault: boolean,
-) => ({
+const cloudLocation = (id: string, name: string, order: number) => ({
   __typename: 'Location' as const,
   id,
   name,
   order,
-  isDefault,
   createdAt: '2026-08-01T10:00:00.000Z',
   updatedAt: '2026-08-02T11:00:00.000Z',
 })
 
-// The default is deliberately NOT first in the list: `Location.isDefault` says
-// the default's order is not stable (another row dragged above it displaces
-// it). A default-first fixture cannot tell `find(isDefault)` apart from
-// `locations[0]`, which would make the fallback assertions below vacuous.
 const CLOUD_LOCATIONS = [
-  cloudLocation(CLOUD_OTHER_ID, 'Cloud Office', 0, false),
-  cloudLocation(CLOUD_DEFAULT_ID, 'Cloud Warehouse', 1, true),
+  cloudLocation(CLOUD_FIRST_ID, 'Cloud Warehouse', 0),
+  cloudLocation(CLOUD_SECOND_ID, 'Cloud Office', 1),
 ]
 
 const getLocationsMock = {
@@ -245,7 +237,7 @@ describe('ActiveLocationProvider — the active id is validated against the real
     clearStoredActiveLocationIds()
   })
 
-  it('user signs into cloud carrying the local sentinel — the active location is corrected to the cloud default', async () => {
+  it('user signs into cloud carrying the local sentinel — the active location is corrected to the first cloud location', async () => {
     // Given cloud mode holding the LOCAL sentinel 'local' as its active id (the
     // state every existing user lands in on their first cloud session), and a
     // cloud list in which no location has that id
@@ -256,18 +248,19 @@ describe('ActiveLocationProvider — the active id is validated against the real
     renderProvider([getLocationsMock])
 
     // Then 'local' is treated as the stale id it is and corrected to the
-    // cloud default — NOT left standing as a permanently "valid" sentinel,
-    // which would scope every cloud query to a location that does not exist
-    await waitFor(() => expect(activeId()).toBe(CLOUD_DEFAULT_ID))
+    // first cloud location — NOT left standing as a permanently "valid"
+    // sentinel, which would scope every cloud query to a location that does
+    // not exist
+    await waitFor(() => expect(activeId()).toBe(CLOUD_FIRST_ID))
     expect(screen.getByTestId('active-location-name')).toHaveTextContent(
       'Cloud Warehouse',
     )
     expect(localStorage.getItem(activeLocationStorageKey('cloud'))).toBe(
-      CLOUD_DEFAULT_ID,
+      CLOUD_FIRST_ID,
     )
   })
 
-  it('user with a deleted cloud location falls back to the default location, not to the first one', async () => {
+  it('user with a deleted cloud location falls back to the first location in the list', async () => {
     // Given a stored cloud id naming a location that has since been deleted
     mockMode('cloud')
     localStorage.setItem(activeLocationStorageKey('cloud'), 'deleted-cloud-loc')
@@ -275,12 +268,49 @@ describe('ActiveLocationProvider — the active id is validated against the real
     // When the provider mounts and the cloud list loads
     renderProvider([getLocationsMock])
 
-    // Then it falls back to the `isDefault` location — whose id is a cuid, and
-    // which is second in the list, so neither the 'local' literal nor
-    // `locations[0]` would produce this id
-    await waitFor(() => expect(activeId()).toBe(CLOUD_DEFAULT_ID))
+    // Then it falls back to the FIRST location (the list is by `order`). A
+    // household has no default location, so there is no flag to look for.
+    // The list has two rows, so "the last row" would give a different id.
+    await waitFor(() => expect(activeId()).toBe(CLOUD_FIRST_ID))
     expect(localStorage.getItem(activeLocationStorageKey('cloud'))).toBe(
-      CLOUD_DEFAULT_ID,
+      CLOUD_FIRST_ID,
+    )
+  })
+
+  it('user with a deleted local location falls back to the default location, not to the first one', async () => {
+    // Given local mode, with the default ("My Home") NOT first in the list.
+    // With the default first, `find(isDefault)` and `locations[0]` give the
+    // same id and this test could not tell them apart.
+    mockMode('local')
+    await db.locations.clear()
+    const now = new Date()
+    await db.locations.bulkPut([
+      {
+        id: 'loc-garage',
+        name: 'Garage',
+        order: 0,
+        isDefault: false,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: DEFAULT_LOCATION_ID,
+        name: 'My Home',
+        order: 1,
+        isDefault: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ])
+    localStorage.setItem(activeLocationStorageKey('local'), 'deleted-local-loc')
+
+    // When the provider mounts and the local list loads
+    renderProvider()
+
+    // Then it falls back to the `isDefault` row, which is second in the list
+    await waitFor(() => expect(activeId()).toBe(DEFAULT_LOCATION_ID))
+    expect(localStorage.getItem(activeLocationStorageKey('local'))).toBe(
+      DEFAULT_LOCATION_ID,
     )
   })
 
@@ -319,7 +349,7 @@ describe('ActiveLocationProvider — the stored id is per data mode', () => {
   it('user switching local → cloud → local comes back to each modes own last location', async () => {
     // Given a last location remembered for each mode, from disjoint id spaces
     localStorage.setItem(activeLocationStorageKey('local'), 'loc-garage')
-    localStorage.setItem(activeLocationStorageKey('cloud'), CLOUD_OTHER_ID)
+    localStorage.setItem(activeLocationStorageKey('cloud'), CLOUD_SECOND_ID)
     mockMode('local')
     const { rerenderSameTree } = renderProvider([getLocationsMock])
 
@@ -331,8 +361,8 @@ describe('ActiveLocationProvider — the stored id is per data mode', () => {
     rerenderSameTree()
 
     // Then the cloud location is restored — not carried over from local, and
-    // not reset to the cloud default
-    await waitFor(() => expect(activeId()).toBe(CLOUD_OTHER_ID))
+    // not reset to the first cloud location
+    await waitFor(() => expect(activeId()).toBe(CLOUD_SECOND_ID))
     expect(screen.getByTestId('active-location-name')).toHaveTextContent(
       'Cloud Office',
     )
@@ -344,7 +374,7 @@ describe('ActiveLocationProvider — the stored id is per data mode', () => {
     // Then the local location is restored, untouched by the cloud session
     await waitFor(() => expect(activeId()).toBe('loc-garage'))
     expect(localStorage.getItem(activeLocationStorageKey('cloud'))).toBe(
-      CLOUD_OTHER_ID,
+      CLOUD_SECOND_ID,
     )
   })
 
@@ -353,8 +383,8 @@ describe('ActiveLocationProvider — the stored id is per data mode', () => {
     localStorage.setItem(activeLocationStorageKey('local'), 'loc-garage')
     mockMode('cloud')
     const user = userEvent.setup()
-    renderProvider([getLocationsMock], CLOUD_OTHER_ID)
-    await waitFor(() => expect(activeId()).toBe(CLOUD_DEFAULT_ID))
+    renderProvider([getLocationsMock], CLOUD_SECOND_ID)
+    await waitFor(() => expect(activeId()).toBe(CLOUD_FIRST_ID))
 
     // When the user picks the other cloud location
     await user.click(screen.getByRole('button', { name: 'switch' }))
@@ -362,7 +392,7 @@ describe('ActiveLocationProvider — the stored id is per data mode', () => {
     // Then the write lands in the cloud slot only
     await waitFor(() =>
       expect(localStorage.getItem(activeLocationStorageKey('cloud'))).toBe(
-        CLOUD_OTHER_ID,
+        CLOUD_SECOND_ID,
       ),
     )
     expect(localStorage.getItem(activeLocationStorageKey('local'))).toBe(
@@ -397,9 +427,9 @@ describe('ActiveLocationProvider — the stored id is per data mode', () => {
     // When the app starts
     renderProvider([getLocationsMock])
 
-    // Then cloud opens on its own default, and the legacy id is preserved for
+    // Then cloud opens on its own first location, and the legacy id is preserved for
     // local mode rather than being spent on a cloud session
-    await waitFor(() => expect(activeId()).toBe(CLOUD_DEFAULT_ID))
+    await waitFor(() => expect(activeId()).toBe(CLOUD_FIRST_ID))
     await waitFor(() =>
       expect(localStorage.getItem(activeLocationStorageKey('local'))).toBe(
         'loc-garage',

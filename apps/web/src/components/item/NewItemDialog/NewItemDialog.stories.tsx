@@ -179,11 +179,10 @@ function CloudDialogHarness({ initialName }: { initialName?: string }) {
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   })
-  const cloudLocation = (id: string, name: string, isDefault: boolean) => ({
+  const cloudLocation = (id: string, name: string, order: number) => ({
     id,
     name,
-    isDefault,
-    order: isDefault ? 0 : 1,
+    order,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   })
@@ -195,8 +194,8 @@ function CloudDialogHarness({ initialName }: { initialName?: string }) {
       result: {
         data: {
           locations: [
-            cloudLocation('cloud-kitchen', 'Kitchen', true),
-            cloudLocation('cloud-garage', 'Garage', false),
+            cloudLocation('cloud-kitchen', 'Kitchen', 0),
+            cloudLocation('cloud-garage', 'Garage', 1),
           ],
         },
       },

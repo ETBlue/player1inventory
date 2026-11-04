@@ -74,7 +74,7 @@ const mockGetLocationsQuery = vi.fn(() => ({
 }))
 
 function mockCloudLocations(
-  rows: { id: string; name: string; order: number; isDefault: boolean }[],
+  rows: { id: string; name: string; order: number }[],
 ) {
   mockGetLocationsQuery.mockReturnValue({
     data: {
@@ -364,8 +364,8 @@ describe('usePostLoginMigration — the copy names no location', () => {
     // tests run in cloud mode, so the list comes from GetLocations.
     vi.mocked(getAllItems).mockResolvedValue([])
     mockCloudLocations([
-      { id: CLOUD_HOME_ID, name: 'My Home', order: 0, isDefault: true },
-      { id: CLOUD_OFFICE_ID, name: 'Office', order: 1, isDefault: false },
+      { id: CLOUD_HOME_ID, name: 'My Home', order: 0 },
+      { id: CLOUD_OFFICE_ID, name: 'Office', order: 1 },
     ])
   }
 
@@ -469,9 +469,7 @@ describe('usePostLoginMigration — the auto-import waits for the location list'
     expect(mockImportCloudData).not.toHaveBeenCalled()
 
     // When GetLocations answers
-    mockCloudLocations([
-      { id: CLOUD_HOME_ID, name: 'My Home', order: 0, isDefault: true },
-    ])
+    mockCloudLocations([{ id: CLOUD_HOME_ID, name: 'My Home', order: 0 }])
     rerender()
 
     // Then the copy runs
@@ -498,9 +496,7 @@ describe('usePostLoginMigration — the auto-import runs once', () => {
     // Given cloud mode with a resolved location list, the `clear` strategy
     // stored, and a copy that is still in flight
     vi.mocked(getAllItems).mockResolvedValue([])
-    mockCloudLocations([
-      { id: CLOUD_HOME_ID, name: 'My Home', order: 0, isDefault: true },
-    ])
+    mockCloudLocations([{ id: CLOUD_HOME_ID, name: 'My Home', order: 0 }])
     localStorage.setItem('data-mode', 'cloud')
     localStorage.setItem(activeLocationStorageKey('cloud'), CLOUD_HOME_ID)
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
@@ -519,9 +515,7 @@ describe('usePostLoginMigration — the auto-import runs once', () => {
       error: undefined,
     })
     rerender()
-    mockCloudLocations([
-      { id: CLOUD_HOME_ID, name: 'My Home', order: 0, isDefault: true },
-    ])
+    mockCloudLocations([{ id: CLOUD_HOME_ID, name: 'My Home', order: 0 }])
     rerender()
     // A second copy would be dispatched from a microtask — `fetchLocalPayload`
     // resolves before `importCloudData` is reached — so let the queue drain.
@@ -547,9 +541,7 @@ describe('usePostLoginMigration — the auto-import runs once', () => {
   it('a stale cloud location reset does not start a second copy', async () => {
     // Given a stored CLOUD active location that no longer exists
     vi.mocked(getAllItems).mockResolvedValue([])
-    mockCloudLocations([
-      { id: CLOUD_HOME_ID, name: 'My Home', order: 0, isDefault: true },
-    ])
+    mockCloudLocations([{ id: CLOUD_HOME_ID, name: 'My Home', order: 0 }])
     localStorage.setItem('data-mode', 'cloud')
     localStorage.setItem(activeLocationStorageKey('cloud'), 'ghost')
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
@@ -583,9 +575,7 @@ describe('usePostLoginMigration — a failed copy stays failed', () => {
     vi.mocked(getAllItems).mockResolvedValue([
       { id: 'item-1', name: 'Milk' },
     ] as unknown as Awaited<ReturnType<typeof getAllItems>>)
-    mockCloudLocations([
-      { id: CLOUD_HOME_ID, name: 'My Home', order: 0, isDefault: true },
-    ])
+    mockCloudLocations([{ id: CLOUD_HOME_ID, name: 'My Home', order: 0 }])
     localStorage.setItem('data-mode', 'cloud')
     localStorage.setItem(activeLocationStorageKey('cloud'), CLOUD_HOME_ID)
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
@@ -599,9 +589,7 @@ describe('usePostLoginMigration — a failed copy stays failed', () => {
       error: undefined,
     })
     rerender()
-    mockCloudLocations([
-      { id: CLOUD_HOME_ID, name: 'My Home', order: 0, isDefault: true },
-    ])
+    mockCloudLocations([{ id: CLOUD_HOME_ID, name: 'My Home', order: 0 }])
     rerender()
     // The prompting branch sets its state after `getAllItems()` resolves, so
     // let the queue drain before asserting.

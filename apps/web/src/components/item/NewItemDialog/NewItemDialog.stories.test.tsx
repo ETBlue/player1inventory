@@ -47,7 +47,6 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
           {
             id: CLOUD_KITCHEN,
             name: 'Kitchen',
-            isDefault: true,
             order: 0,
             createdAt: '2026-01-01T00:00:00.000Z',
             updatedAt: '2026-01-01T00:00:00.000Z',
@@ -55,7 +54,6 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
           {
             id: 'cloud-garage',
             name: 'Garage',
-            isDefault: false,
             order: 1,
             createdAt: '2026-01-01T00:00:00.000Z',
             updatedAt: '2026-01-01T00:00:00.000Z',

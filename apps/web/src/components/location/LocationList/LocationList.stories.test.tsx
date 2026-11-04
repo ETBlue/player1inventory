@@ -5,8 +5,13 @@ import { describe, expect, it } from 'vitest'
 import { elementAt } from '@/test/narrow'
 import * as stories from './LocationList.stories'
 
-const { DefaultOnly, MixedCaseNames, MultipleLocations } =
-  composeStories(stories)
+const {
+  CloudLastLocation,
+  CloudLocations,
+  DefaultOnly,
+  MixedCaseNames,
+  MultipleLocations,
+} = composeStories(stories)
 
 describe('LocationList stories smoke tests', () => {
   it('DefaultOnly renders the default location without a delete control', () => {
@@ -27,6 +32,33 @@ describe('LocationList stories smoke tests', () => {
     // Non-default locations expose a delete control
     expect(
       screen.getByRole('button', { name: /delete office/i }),
+    ).toBeInTheDocument()
+  })
+})
+
+describe('LocationList in cloud mode (no default location)', () => {
+  it('user in cloud mode can delete and drag every location, the first one too', () => {
+    // Given cloud rows, which carry no `isDefault`
+    render(<CloudLocations />)
+
+    // Then every row has a delete button and a drag handle, and none is
+    // labelled as the default
+    for (const name of ['Home', 'Office']) {
+      expect(
+        screen.getByRole('button', { name: `Delete ${name}` }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: `Drag to reorder ${name}` }),
+      ).toBeInTheDocument()
+    }
+    expect(screen.queryByText('Default')).not.toBeInTheDocument()
+  })
+
+  it('CloudLastLocation still shows Delete on its only row', () => {
+    // The list does not know which row is the last one; the server decides
+    render(<CloudLastLocation />)
+    expect(
+      screen.getByRole('button', { name: 'Delete Home' }),
     ).toBeInTheDocument()
   })
 })

@@ -14,27 +14,21 @@ import {
   GetLocationsDocument,
 } from '@/generated/graphql'
 
-export const LOC_A = 'clw3loc0a0000s9f8h7g6d5e4' // Cloud Kitchen — the default, active first
+export const LOC_A = 'clw3loc0a0000s9f8h7g6d5e4' // Cloud Kitchen — the first location (order 0), active first
 export const LOC_B = 'clw3loc0b0001s9f8h7g6d5e5' // Cloud Garage
 
-export const cloudLocation = (
-  id: string,
-  name: string,
-  order: number,
-  isDefault: boolean,
-) => ({
+export const cloudLocation = (id: string, name: string, order: number) => ({
   __typename: 'Location' as const,
   id,
   name,
   order,
-  isDefault,
   createdAt: '2026-08-01T10:00:00.000Z',
   updatedAt: '2026-08-02T11:00:00.000Z',
 })
 
 export const CLOUD_LOCATIONS = [
-  cloudLocation(LOC_A, 'Cloud Kitchen', 0, true),
-  cloudLocation(LOC_B, 'Cloud Garage', 1, false),
+  cloudLocation(LOC_A, 'Cloud Kitchen', 0),
+  cloudLocation(LOC_B, 'Cloud Garage', 1),
 ]
 
 export const getLocationsMock = {

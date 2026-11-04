@@ -278,7 +278,7 @@ describe('Item stock tab', () => {
   ) => {
     localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
     mockUseGetLocationsQuery.mockReturnValue({
-      data: { locations: [cloudLocation(LOC_A, 'Cloud Kitchen', 0, true)] },
+      data: { locations: [cloudLocation(LOC_A, 'Cloud Kitchen', 0)] },
       loading: false,
       error: undefined,
     })

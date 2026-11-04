@@ -580,6 +580,8 @@
       "deleteLabel": "Delete {{name}}",
       "deleteTitle": "Delete \"{{name}}\"?",
       "deleteDescription": "This location will be removed.",
+      "deleteLastError": "You cannot delete your last location. Add another location first.",
+      "deleteError": "Could not delete this location. Please try again.",
       "defaultHint": "Default",
       "dragToReorder": "Drag to reorder {{name}}",
       "dragInstructions": "Press Space or Enter to pick up a location, use arrow keys to move it, and press Space or Enter again to drop it.",

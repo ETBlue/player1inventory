@@ -255,7 +255,7 @@ describe('cloud inventory-log reads are scoped to the active location', () => {
   })
 
   it('user viewing an item in a NON-DEFAULT location sees only that location logs', async () => {
-    // Given Cloud Garage — which is not the default — is active
+    // Given Cloud Garage — which is not the first location — is active
     localStorage.setItem(activeLocationStorageKey('cloud'), LOC_B)
 
     // When the item's log list is read
@@ -380,7 +380,7 @@ describe('cloud inventory-log writes name the location', () => {
       localStorage.removeItem(activeLocationStorageKey('cloud'))
     })
 
-    it('user adding a log immediately has it written to the real default location', async () => {
+    it('user adding a log immediately has it written to the first cloud location', async () => {
       // Given a brand-new cloud session with no remembered location, so the
       // active id is still the `'local'` sentinel
       const { result } = renderHook(() => useAddInventoryLog(), {
@@ -397,7 +397,7 @@ describe('cloud inventory-log writes name the location', () => {
         })
       })
 
-      // Then it landed in the isDefault location — NOT under the `'local'`
+      // Then it landed in the first location — NOT under the `'local'`
       // sentinel, which names no cloud Location and whose write the server
       // refuses with FORBIDDEN
       expect(logsAt('item-milk', LOC_A)).toHaveLength(3)

@@ -247,7 +247,6 @@ describe('deserializeLocation', () => {
       id: 'clw3k1q2a0000s9f8h7g6d5e4',
       name: 'Warehouse',
       order: 0,
-      isDefault: true,
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-02-01T00:00:00.000Z',
     }
@@ -259,7 +258,11 @@ describe('deserializeLocation', () => {
     expect(result.createdAt).toBeInstanceOf(Date)
     expect(result.createdAt).toEqual(new Date('2026-01-01T00:00:00.000Z'))
     expect(result.updatedAt).toEqual(new Date('2026-02-01T00:00:00.000Z'))
-    expect(result.isDefault).toBe(true)
+    expect(result.name).toBe('Warehouse')
+    expect(result.order).toBe(0)
+    // Cloud rows carry no `isDefault` (households task 3.12), and none is
+    // invented here
+    expect(result.isDefault).toBeUndefined()
   })
 
   it('falls back to epoch rather than an Invalid Date for missing timestamps', () => {

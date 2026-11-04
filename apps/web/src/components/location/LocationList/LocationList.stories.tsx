@@ -57,6 +57,52 @@ export const MultipleLocations: Story = {
 }
 
 /**
+ * Cloud mode. A household has no default location (households task 3.12), so
+ * cloud rows carry no `isDefault`. Every row, the first one too, has a drag
+ * handle and a delete button, and no row says "Default". The server refuses
+ * to delete the last location; the settings page shows that message.
+ */
+export const CloudLocations: Story = {
+  args: {
+    locations: [
+      {
+        id: 'cloud-home',
+        name: 'Home',
+        order: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'cloud-office',
+        name: 'Office',
+        order: 1,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ],
+  },
+}
+
+/**
+ * Cloud mode with ONE location. The row still shows Delete: the list does not
+ * know it is the last one. The server refuses the delete with `LAST_LOCATION`,
+ * and the settings page shows "You cannot delete your last location."
+ */
+export const CloudLastLocation: Story = {
+  args: {
+    locations: [
+      {
+        id: 'cloud-home',
+        name: 'Home',
+        order: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ],
+  },
+}
+
+/**
  * Location names are user-specified, so they render exactly as stored — the
  * same exception vendor names get. No `capitalize`, so intentional casing like
  * "iHerb pantry" and a lowercase leading word in "my Garage" both survive.

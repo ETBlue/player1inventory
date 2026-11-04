@@ -405,6 +405,9 @@ function upgradeUnsplitItems(
 // `resolveFlattenLocationId`'s fallback (both deleted in PR 4b task 3), and
 // the import resolvers' hardcoded `ensureDefaultLocation` (PR 4a).
 //
+// In cloud, "the destination's default" is the household's FIRST location:
+// a household has no default location since households task 3.12.
+//
 // Why ONLY the default remaps: a cloud -> local -> cloud round trip then
 // preserves every id, and carts keep upserting by their composite
 // `${locationId}:${vendorId}` id. Only a FIRST copy between modes rewrites
@@ -413,25 +416,44 @@ function upgradeUnsplitItems(
 
 // Which location the payload itself calls its default.
 //
-// `isDefault` is the primary answer. Dexie v18 carries it on every local row,
-// and a cloud backup records it too — `sanitiseCloudPayload`
-// (lib/exportData.ts) keeps the flag in the FILE even though `toLocationInput`
-// drops it on the way back up, because this function is the only reader that
-// can tell which row to remap.
+// Three answers, in this order:
 //
-// The `DEFAULT_LOCATION_ID` fallback is for a PRE-v18 local backup, which has
-// no `isDefault` key at all: in local mode the default has always been that
-// one id.
+//   1. The row flagged `isDefault: true`. Dexie v18 carries the flag on every
+//      local row. Cloud backups made BEFORE households task 3.12 carry it too:
+//      `sanitiseCloudPayload` (lib/exportData.ts) kept it in the file.
+//   2. The row whose id is `DEFAULT_LOCATION_ID`. This is for a PRE-v18 local
+//      backup, which has no `isDefault` key at all: in local mode the default
+//      has always been that one id.
+//   3. The location with the lowest `order`, but ONLY when no row carries an
+//      `isDefault` key at all. That is the shape of a cloud backup made since
+//      task 3.12. A household has no default location, so cloud rows carry no
+//      flag, and the cloud side treats the FIRST location as the fallback
+//      everywhere else (`fetchCloudDefaultLocationId`, `useActiveLocation`).
+//      Without this answer, a cloud backup restored into local mode would keep
+//      its "Home" as an extra location next to "My Home", and the
+//      cloud -> local copy would do the same.
 //
-// `null` means the payload names no default — a pre-v15 file with no
-// `locations` array. Nothing is remapped then, which is right: such a payload
-// carries no per-location ids to rewrite either.
+//      A file whose rows carry the key but none is `true` gets NO default.
+//      Every local (v18+) export flags exactly one row, so only a hand-edited
+//      file looks like that, and guessing would rename a location the user
+//      did not choose.
+//
+// `null` means no default was found. Nothing is remapped then. A pre-v15
+// file with no `locations` array always lands here, which is right: such a
+// payload carries no per-location ids to rewrite either.
 function findPayloadDefaultLocationId(payload: ExportPayload): string | null {
   const locations = (payload.locations ?? []) as Array<Record<string, unknown>>
   const flagged = locations.find((row) => row.isDefault === true)
   if (flagged !== undefined) return flagged.id as string
   const legacyDefault = locations.find((row) => row.id === DEFAULT_LOCATION_ID)
-  return legacyDefault !== undefined ? (legacyDefault.id as string) : null
+  if (legacyDefault !== undefined) return legacyDefault.id as string
+  if (locations.some((row) => 'isDefault' in row)) return null
+  let first: Record<string, unknown> | undefined
+  for (const row of locations) {
+    if (first === undefined || (row.order as number) < (first.order as number))
+      first = row
+  }
+  return first !== undefined ? (first.id as string) : null
 }
 
 // Build the payload-id -> destination-id map. It holds AT MOST ONE
@@ -540,7 +562,8 @@ export function applyLocationRemap(
   }
 }
 
-// The destination account's default location id, or `null` when it has none.
+// The destination household's first location id, or `null` when it has none.
+// This is where the payload's default location lands.
 //
 // ── READ THIS AFTER `clearAllData`, NEVER BEFORE ──
 //
@@ -557,8 +580,11 @@ async function fetchCloudDefaultLocationId(
     query: GetLocationsDocument,
     fetchPolicy: 'network-only',
   })
+  // A household has no default location (households task 3.12), so the
+  // "destination default" is the FIRST location. The server returns the list
+  // by `order`. After a clear that is the new "Home", the only location left.
   const locations = result.data?.locations ?? []
-  return locations.find((location) => location.isDefault)?.id ?? null
+  return locations[0]?.id ?? null
 }
 
 // A PRE-v15 backup carries its stock INLINE on each item, has no `itemStocks`
@@ -598,9 +624,10 @@ async function fetchCloudDefaultLocationId(
 // removed those columns from the cloud `Item`, so that particular symptom is
 // gone. The guard is still right, for the reason above.)
 //
-// `null` means the destination account reports no default location, which
-// `ensureDefaultLocation` makes impossible after a `locations` read. There is
-// no location to synthesise stock into then, so the payload is left alone.
+// `null` means the destination household has no location at all. The server
+// makes that rare: first sign-in and `clearAllData` both create "Home", and
+// `deleteLocation` refuses the last location. There is no location to
+// synthesise stock into then, so the payload is left alone.
 function upgradeLegacyPayloadForCloud(
   payload: ExportPayload,
   destinationDefaultLocationId: string | null,
@@ -908,13 +935,11 @@ export function toShelfInput(shelf: Record<string, unknown>) {
   }
 }
 
-// `LocationInput` (schema/import.graphql:81-115) has NO `isDefault` FIELD, so
-// this mapper must drop it. The payload's default location is never uploaded as
-// a row at all — the client rewrites its id onto the destination account's
-// existing `isDefault` row — and the database would REJECT a second default
-// rather than accept one: `Location_one_default_per_user_key` is a unique
-// partial index on `("userId") WHERE "isDefault"`. Sending the flag would make
-// the import die on an unhandled P2002 AFTER `clearAllData` had already run.
+// `LocationInput` (schema/import.graphql) has NO `isDefault` FIELD, so this
+// mapper must drop it: GraphQL validation refuses an unknown input field. A
+// household has no default location (households task 3.12). The payload's
+// default location is never uploaded as a row: the client rewrites its id onto
+// the destination household's FIRST location (`buildLocationRemap`).
 export function toLocationInput(location: Record<string, unknown>) {
   const createdAt =
     location.createdAt instanceof Date
@@ -981,8 +1006,8 @@ export interface ConflictEntry {
 // `itemStocks` are deliberately absent, for two different reasons:
 //
 //   - A LOCATION would conflict on EVERY cloud import. The remap rewrites the
-//     payload's default location id to the destination account's default
-//     (`applyLocationRemap`), and that row always exists, so an id check here
+//     payload's default location id to the destination household's first
+//     location (`applyLocationRemap`), and that row always exists, so an id check here
 //     would always match and `hasConflicts` would always be true — every
 //     import, including a clean one, would stop at the conflict dialog. A
 //     location row also holds no destructible content: only a name and an
@@ -2395,10 +2420,11 @@ export async function importCloudData(
       })
       await client.mutate({ mutation: ClearAllDataDocument })
       // AFTER the clear, never before. `clearAllData` deletes every Location
-      // row and `ensureDefaultLocation` re-creates a default lazily on the
-      // next `locations` read, so an id read first names a row that is gone by
-      // the time the remap uses it. PR 4a shipped that exact bug and it cost a
-      // full E2E gate run to find. See `fetchCloudDefaultLocationId`.
+      // row and creates a new "Home" with a NEW id in the same transaction, so
+      // an id read first names a row that is gone by the time the remap uses
+      // it. After the clear, "Home" is the only location, so it is the first
+      // one `fetchCloudDefaultLocationId` reads. PR 4a shipped the read-first
+      // bug and it cost a full E2E gate run to find.
       const payload = await prepareCloudPayload(rawPayload, client)
       await bulkCreate({
         client,

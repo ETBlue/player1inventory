@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { ArrowLeft, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { LocationList } from '@/components/location/LocationList'
 import { AddNameDialog } from '@/components/shared/AddNameDialog'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -15,6 +16,7 @@ import {
   useReorderLocations,
   useUpdateLocation,
 } from '@/hooks/useLocations'
+import { hasGraphQLErrorCode } from '@/lib/graphqlErrorCode'
 import type { Location } from '@/types'
 
 export const Route = createFileRoute('/settings/household/locations/')({
@@ -44,6 +46,23 @@ export function LocationSettingsPage() {
       onSuccess: () => {
         setAddName('')
         setAddOpen(false)
+      },
+    })
+  }
+
+  // A failed delete must say so. In cloud the server refuses to delete a
+  // household's last location (`LAST_LOCATION`, households decision H13):
+  // there is no default location to keep, so this is the only thing that
+  // stops a household from having none. Any other failure (no role, offline,
+  // a local Dexie error) gets a general message rather than nothing.
+  const handleDelete = (location: Location) => {
+    deleteLocation.mutate(location.id, {
+      onError: (err: unknown) => {
+        toast.error(
+          hasGraphQLErrorCode(err, 'LAST_LOCATION')
+            ? t('settings.locations.deleteLastError')
+            : t('settings.locations.deleteError'),
+        )
       },
     })
   }
@@ -104,7 +123,7 @@ export function LocationSettingsPage() {
             locations={locations}
             onReorder={(orderedIds) => reorderLocations.mutate(orderedIds)}
             onRename={openRename}
-            onDelete={(location) => deleteLocation.mutate(location.id)}
+            onDelete={handleDelete}
           />
         )}
       </div>
