@@ -115,6 +115,8 @@ The rest were made while writing. Task 3.0 writes all of them back into the desi
 | H14 | The design's role and permission names | `HouseholdRole` = `owner \| manager \| member`. `LocationRole` = `organizer \| participant \| viewer`. Both are Prisma enums | The design's names. Enums so a typo fails at `tsc` |
 | H15 | `Household.ownerId` and the owner's `HouseholdMember` row say the same thing | The `HouseholdMember` row is the source of truth for rights. `ownerId` mirrors it and is written in the same transaction as the row. A partial unique index allows one `owner` row per household | H6 needs `ownerId` to go null on hand-over while history stays. The index makes two owners impossible |
 | H16 | A schema change that drops `userId` breaks the compile of every resolver at once, so no task in between could pass the gate | **Two migrations in this PR.** Task 3.3 adds the tables and a **nullable** `householdId` with a backfill. Task 3.14 sets it `NOT NULL` and drops `userId` and `isDefault`. Between them, code writes both columns | Each task can then pass the gate. Both migrations deploy together, so production never sees the middle state |
+| H17 | Decision H13 covers only `deleteLocation`. `clearAllData` would also leave a household with no location, and the design says *Clear household* is owner only | `clearAllData` needs household role `owner`, and re-creates "Home" with an `organizer` row in the same transaction (owner agreed 2026-11-04). **Side effect, accepted:** the `clear` import strategy is owner only from H3a, before H4's import gating. Harmless while each household has one person. Whether H6's "Delete all locations" also keeps one location is for the H6 plan | The same reason as H13: no screen exists for a household with no location until H5 |
+| H18 | The design says a `LocationMember` must be a `HouseholdMember` of the location's household. Nothing enforces it: Postgres cannot check it with a simple constraint | `requireLocationRole` counts a location role only when the matching `HouseholdMember` row also exists. The E2E member route (decision H9) refuses a location role without a household role | A person removed from a household (H5) must lose their location rights at once, even if a stale `LocationMember` row is left behind |
 
 ---
 
@@ -372,7 +374,9 @@ and test (deleted).
     `organizer` > `participant` > `viewer`. Rename the `LocationRole` type. No row, or another
     household's location, gives the same `Forbidden`. It stops selecting `isDefault`. **A
     household owner with no location role is refused** (design *Rules that cross the two
-    levels*)
+    levels*). **A `LocationMember` row counts only while the person is also a
+    `HouseholdMember` of the location's household** (decision H18). Test it with a fixture
+    that has the location row but not the household row
 - [ ] **Step 3:** Implement. Put the language on the context from the `x-app-language` header
   in **both** context branches in `index.ts` (the E2E branch returns early, as H2 found).
   Accept only `en` and `tw`. Update `contextEnsureUser.test.ts` or add a sibling test so the
@@ -507,7 +511,7 @@ Every create writes `householdId` (and `userId` until task 3.14).
   the location or item. `Cart`, `CartItem` and `InventoryLog` go through their location, not
   `userId`, because "no path deletes rows because of who created them" (design *Purge*). Then
   it re-creates a "Home" location with an `organizer` row, in the same transaction, so the
-  household is never left with no location (decision H13). Update the assertions from task
+  household is never left with no location (decision H17). Update the assertions from task
   3.2 to the new filters.
 - [ ] **Step 3:** `purge-coverage.test.ts`: the expected filter form becomes household or
   location. Add `Household`, `HouseholdMember` and `LocationMember` to what it checks for
@@ -533,7 +537,7 @@ Every create writes `householdId` (and `userId` until task 3.14).
 
 - [ ] **Step 1:** `POST /e2e/household-members`, body
   `{ ownerUserId, memberUserId, householdRole, locations: [{ locationId, role }] }`. It adds
-  the member to the owner's household and gives the listed location roles. Mount it inside
+  the member to the owner's household and gives the listed location roles. It refuses a location role for someone who is not a household member (decision H18). Mount it inside
   `if (E2E_TEST_MODE)`. The parse-tree guard from H2 must cover it: check that it fails if the
   route is moved outside the block.
 - [ ] **Step 2:** A helper `addHouseholdMember(request, …)` in `cloudUsers.ts`.
@@ -706,7 +710,11 @@ suite only at task 3.16.
 - **A household member cannot leave, and nobody can be invited**, until H5. `NO_HOUSEHOLD` is
   therefore unreachable in production in H3a, but it is tested.
 - **`requireOwnRowOrUnclaimed` still checks `InventoryLog`, `Cart` and `CartItem` by
-  `userId`.** H3b moves carts, and H4 moves the body to the target household.
+  `userId`.** H3b changes the `cart` and `cartItem` delegates (`authz.ts` about 102-103,
+  the lookup at about 152) to check through the location, because H3b drops `Cart.userId`.
+  H4 then moves the whole body to the **target** household.
+- **No phase owns the "no household" screen yet.** H5 brings leaving, which is the first way
+  to reach `NO_HOUSEHOLD`. The H5 plan must add the screen.
 - **The import fallback location is a stopgap** (decision H12). H4's dialog replaces it.
 - **The `tw` household and location names are a first version.** The owner reviews them in
   the PR.
