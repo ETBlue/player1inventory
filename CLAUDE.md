@@ -1516,8 +1516,12 @@ silently does nothing would leave every atomicity test reporting as covered.
 Only the **interactive callback** form is modelled — `$transaction(async (tx) => …)`. The
 array form, `$transaction([p1, p2])`, throws a clear error on purpose: JavaScript evaluates
 the array before `$transaction` is called, so the fake's writes have already landed, and a
-snapshot taken then would report a rollback that never happened. Four resolvers use the
-array form today (import, purge, location, `index.ts`); none is tested through this fake.
+snapshot taken then would report a rollback that never happened. One place uses the array
+form today: the `/e2e/cleanup` route, in `apps/server/src/lib/e2eCleanup.ts`. It is not
+tested through this fake; `e2eCleanup.test.ts` has its own mock that models only the array
+form. Check with `git grep -n '\$transaction(\[' -- apps/server/src` (measured 2026-11-04,
+households H3a task 3.10; this line said "four resolvers: import, purge, location,
+`index.ts`" before, which had gone stale).
 
 Note also that **no *unit* test executes the resolvers against real SQL** — every server
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real

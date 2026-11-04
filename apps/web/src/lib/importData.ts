@@ -544,8 +544,8 @@ export function applyLocationRemap(
 //
 // ── READ THIS AFTER `clearAllData`, NEVER BEFORE ──
 //
-// `clearAllData` deletes every `Location` row, and `ensureDefaultLocation`
-// re-creates a default LAZILY, on the next `locations` read. So an id read
+// `clearAllData` deletes every `Location` row of the household, then creates
+// a new "Home" location in the same transaction, with a NEW id. So an id read
 // before the clear names a row that no longer exists by the time the remap
 // uses it. PR 4a shipped exactly that bug — a location id that was valid when
 // read and gone when used — and it cost a full E2E gate run to find, because

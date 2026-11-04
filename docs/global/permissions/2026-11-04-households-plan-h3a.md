@@ -79,6 +79,14 @@ needs no change.
   that throws `FORBIDDEN` for the batch. Nobody can lose a role before H5. H5 must decide
   whether to skip those rows instead, like every other reference that does not resolve.
 
+**Owed to H6 (ownership transfer), found by the review of task 3.10:** `clearAllData`
+(`import.resolver.ts`) checks household role `owner` with `requireHouseholdRole` BEFORE its
+transaction starts. Today nobody can stop being the owner, so the check cannot go stale. Once
+H6 lets the owner hand the household to someone else, a transfer can commit between that
+check and the clear, and a former owner would clear the household. H6 must move the `owner`
+check inside the transaction, after `lockHousehold`, and make the transfer take the same
+lock.
+
 ## What the user gets (once merged AND deployed)
 
 - **The 🏠 item in Settings shows the household's name** in cloud, for example "ET's
@@ -1151,6 +1159,17 @@ change them. Listed here so nobody reads task 3.7 as "the catalog no longer uses
 - **`lockHousehold` first is pinned against the fake only.** No real-SQL test runs
   `clearAllData` and `deleteLocation` at once (task 3.16).
 
+**Review findings fixed** in the commit `docs(households): add the task 3.10 review
+findings` (docs and comments only, no behaviour change):
+
+- root `CLAUDE.md`: the `$transaction` array-form paragraph named four users of the array
+  form. Only `lib/e2eCleanup.ts` uses it now.
+- `apps/web/src/lib/importData.ts` (`fetchCloudDefaultLocationId`): the comment said
+  `ensureDefaultLocation` re-creates a default lazily. `clearAllData` now creates "Home"
+  itself, in the same transaction. The rule (read the default AFTER the clear) stays.
+- this plan: the owed work below in tasks 3.11, 3.12, 3.14 and 3.16, the H6 item under
+  *Where H3a sits*, two traps under *Known gaps*, and the owner questions after task 3.14.
+
 ## Task 3.11 — A second household member in E2E
 
 **Files:** `apps/server/src/lib/e2eHouseholds.ts` and test (new); `index.ts`;
@@ -1171,6 +1190,31 @@ change them. Listed here so nobody reads task 3.7 as "the catalog no longer uses
 - [ ] **Step 4:** Add the spec to the `cloud` project's `testMatch`, and to the `local`
   project's `testIgnore`.
 - [ ] **Step 5:** Commit: `test(e2e): add household members and check roles against Postgres`.
+
+**Found by the review of task 3.10, and owed here: the two-member cleanup check on real
+SQL.** Today a unit test is the only thing that pins "never delete a household the user only
+belongs to". Once `POST /e2e/household-members` exists, add a cloud spec (no browser):
+
+- the owner and a second member each run `/e2e/cleanup`, in **both orders**: owner first,
+  then member first;
+- when the member's cleanup runs first, the owner's data must survive it (read it back
+  through the owner's GraphQL);
+- the route deletes every member row of a household the user OWNS, other people's rows
+  included. So when the owner's cleanup runs first, the member's `HouseholdMember` row goes
+  with it. Assert that too, so the spec states the real rule.
+
+Two cautions:
+
+- **Do not give the added member an `isDefault` location.** The partial unique index
+  `Location_one_default_per_user_key` allows one `isDefault` row per `userId`, across all
+  households. The member already has one (their own first sign-in "Home"), and
+  `clearAllData` writes its new "Home" with `isDefault: true` and the caller's `userId`. So
+  an extra default row for either user can fail with `P2002`: in the route itself, or later
+  in `clearAllData`, which then rolls back the whole clear. Task 3.14 drops that index.
+- **A spec that runs `clearAllData` with two members leaves the member with no location
+  role.** Only the caller gets `organizer` on the new "Home" (see owner question Q1 after
+  task 3.14). Any later step of the spec that acts as the member at a location fails with
+  `FORBIDDEN`. That is today's behaviour, not a spec bug.
 
 ## Task 3.12 — The web app stops using `isDefault` in cloud
 
@@ -1208,6 +1252,12 @@ change them. Listed here so nobody reads task 3.7 as "the catalog no longer uses
   "Home" until task 3.10, so the first location created after it is the last one.
 - The reorder cache write in `useReorderLocations` already matches the server's answer (the
   caller's visible locations). No change is needed there.
+
+**Found by the review of task 3.10:** `createFirstLocation` (`apps/server/src/lib/household.ts`)
+is the ONE place that writes `isDefault: true` and `userId` for a new "Home". Both first
+sign-in (`ensureHousehold`) and `clearAllData` call it. This task does not change the server,
+but it is where the web stops reading `isDefault`; task 3.14 then removes both columns from
+that one function.
 
 ## Task 3.13 — The household name and rename
 
@@ -1261,6 +1311,13 @@ still writes `userId` on the seven models.
 
   `verify-migration.ts` must prove step 2: seed one row with a null `householdId` and one
   new `User` between the two deploys, and check both are filled in.
+
+  **From the review of task 3.10:**
+  - The re-run of steps 2–7 also fills the null-`householdId` rows that pile up on the
+    shared test database (see *Known gaps*, *Traps*). Once it has run there, they stop.
+  - `createFirstLocation` (`lib/household.ts`) is the ONE place that writes `isDefault: true`
+    and `userId` for a new "Home" (first sign-in and `clearAllData`). Remove both there; no
+    other call site writes them for "Home".
 - [ ] **Step 2:** Run `pnpm build`. **`tsc` now lists every leftover `userId` use on these
   models.** Fix each one. This is the sweep that proves nothing still scopes by account.
   List the count in the report.
@@ -1318,6 +1375,8 @@ Since task 3.7 these rows cause four problems:
     tag to a copy of the type in the tag's own household (same name and color; one copy per
     household and type), or (A2) delete the tag (its `ItemTag` rows go by cascade). A1 keeps
     the user's data; A2 is simpler.
+  - **if the owner agrees (Q4 below), also** the three stock-side kinds described after
+    this list: cross-household `ItemStock`, `CartItem` and `InventoryLog` rows;
   - report each count with `RAISE NOTICE`, the same way step 8b does;
   - `verify-migration.ts` seeds one row of each kind and checks each is cleaned, and that a
     same-household row next to it is kept.
@@ -1335,6 +1394,34 @@ records the step 8b counts. Step 8b does not count the shelf arrays, so the rehe
 one more query for them. If every count is 0, the owner may choose to do nothing, but note
 that import still writes unchecked `typeId` / `parentId` and shelf ids until task 3.9 fixes
 it (see the note there).
+
+*Three more kinds, found by the review of task 3.10.* `main`'s `upsertItemStock` and
+`addToCart`, and maybe `addInventoryLog`, did not check that the item and the location
+belong to the same account. So production may also hold:
+
+| Row | Crosses households when |
+|---|---|
+| `ItemStock` | its item's household is not its location's household |
+| `CartItem` | its item's household is not its cart's location's household |
+| `InventoryLog` | its item's household is not its location's household |
+
+Migration step 8b does not count them, and task 3.16's rehearsal does not either today.
+There is one more effect. `clearAllData` deletes this household's items, and the foreign
+keys from `ItemStock`, `RecipeItem`, `CartItem`, `InventoryLog`, `ItemTag` and `ItemVendor`
+to `Item` are all `ON DELETE CASCADE`. So a clear also deletes such a row when it sits in
+ANOTHER household but names this household's item. This is not new: the old `userId`
+filters did the same. It is probably 0 rows. It belongs to this open question, not to a
+separate fix.
+
+**Open questions for the owner (from task 3.10).** Each has a recommendation. Nothing is
+built for them in H3a.
+
+| # | Question | Recommendation |
+|---|---|---|
+| Q1 | After *Clear household*, should the other members get a role on the new "Home"? Today only the caller gets `organizer`, so the others see no location until H5 | Nothing is needed before H5: every household has one person. Decide in H5 or H6, for example `organizer` for the owner and managers, `participant` for members |
+| Q2 | Should the new "Home" be "Home" or "住家" by the app language, as first sign-in does? Task 3.10 used the app language; the plan said "Home" | Keep it by the app language |
+| Q3 | Until task 3.14, should `/e2e/cleanup` also delete the user's rows with a null `householdId`? E2E only, and temporary | Yes, if `main`'s cloud E2E still runs on the shared test database. Otherwise it is not needed |
+| Q4 | Should option A's cleanup (task 3.14) also cover cross-household `ItemStock`, `CartItem` and `InventoryLog` rows? | Yes |
 
 ## Task 3.15 — E2E: the default location is gone
 
@@ -1395,7 +1482,10 @@ already corrected in `3ba61aeb`.
        Also count other households' ids inside `Shelf.itemIds` and `Shelf.filterConfig`,
        which step 8b does not count. These counts answer the **open question under task
        3.14** (found by the review of task 3.7): since task 3.7 such rows make the web's
-       full-set edits fail with `FORBIDDEN`
+       full-set edits fail with `FORBIDDEN`. **Also count** (review of task 3.10) the
+       `ItemStock`, `CartItem` and `InventoryLog` rows whose item's household is not the
+       household of their location (for `CartItem`, the cart's location). Step 8b does not
+       count these either
      - every `User` row the migration created with the placeholder name `'User'`. Those
        people get "User's Household" until Clerk sends `user.updated` or they rename it, and
        their `deletedAt` stays null even if the Clerk account is gone
@@ -1431,6 +1521,12 @@ already corrected in `3ba61aeb`.
   checks with `pg_blocking_pids` that the second waits for the first. Then the second
   transaction's count must see the first one's committed delete. Run by the main session,
   with the owner's consent.
+
+  **From the review of task 3.10:** the case above proves the lock with two copies of the
+  same `UPDATE`. It does not run `clearAllData` at the same time as `deleteLocation`. Add a
+  second case for that pair: `clearAllData` must take `lockHousehold` before its location
+  `deleteMany`, so the two never deadlock (see the task 3.6 review note under task 3.10).
+  Today that order is pinned against the fake only.
 - [ ] **Step 4:** Commit: `docs(households): H3a runbook and docs`.
 
 ---
@@ -1543,3 +1639,17 @@ drops `userId`, `main`'s cloud E2E cannot run on this database at all until H3a 
   H5 lets a manager see only some of the household's locations, the others keep their old
   `order`, and the list can end up with duplicate orders. Unless H5 lets managers see every
   location, H5 must handle this.
+
+### Traps (review of task 3.10)
+
+- **Rows with a null `householdId` now pile up on the shared test database.** Since task
+  3.10, `/e2e/cleanup` deletes by household, so it never reaches a row with no household.
+  Such rows come from `main`'s cloud E2E (only if it runs on the shared test database), or
+  from runs of this branch before task 3.7. Several cloud specs seed fixed ids, for example
+  `'item-milk'`. A leftover null row with that id can make such a spec fail with `FORBIDDEN`
+  (the id belongs to no household of the caller) or `P2002` (the id is taken). That is a
+  dirty database, not a code bug. Task 3.14's backfill re-run ends it; owner question Q3
+  (after task 3.14) asks whether to clean them up before that.
+- **`resolvers/purge-coverage.test.ts` refuses `{ householdId: householdId }`**, though it means the
+  same as the shorthand `{ householdId }`. The text check accepts only the shorthand. It
+  fails safe (a correct filter is refused, never a wrong one accepted). Write the shorthand.
