@@ -348,8 +348,11 @@ describe('purge coverage against prisma/schema.prisma', () => {
     ])
     expect(userOwnedModels.length).toBe(10)
     // And the two member models are found too, and set aside on purpose (see
-    // MEMBER_MODELS_PENDING_TASK_3_10).
-    expect(parsedUserIdModels).toEqual([...userOwnedModels, ...MEMBER_MODELS_PENDING_TASK_3_10])
+    // MEMBER_MODELS_PENDING_TASK_3_10). Compared sorted: the parser returns
+    // models in schema order, and nothing keeps the member models last.
+    expect([...parsedUserIdModels].sort()).toEqual(
+      [...userOwnedModels, ...MEMBER_MODELS_PENDING_TASK_3_10].sort(),
+    )
   })
 
   it('knows about all three purge paths', () => {

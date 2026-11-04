@@ -60,8 +60,14 @@ model Tag {
   parentId    String?
 
   household Household? @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  type      TagType    @relation(fields: [typeId], references: [id])
-  parent    Tag?       @relation("TagHierarchy", fields: [parentId], references: [id])
+  // NoAction, not the default Restrict (households H3a). Deleting a household
+  // deletes its tag types and its tags in one statement, by two cascades.
+  // NO ACTION refuses only if a tag still names the deleted type when the
+  // check runs. A type that still has tags still cannot be deleted on its own,
+  // so deleteTagType behaves as before. Not Cascade: that would let one account
+  // delete another account's tags through a shared typeId.
+  type      TagType    @relation(fields: [typeId], references: [id], onDelete: NoAction)
+  parent   Tag?       @relation("TagHierarchy", fields: [parentId], references: [id])
   children  Tag[]      @relation("TagHierarchy")
   items     ItemTag[]
 
@@ -395,6 +401,10 @@ model Household {
   vendors   Vendor[]
   recipes   Recipe[]
   shelves   Shelf[]
+
+  // Finds "the households this person owns", and serves the ON DELETE SET
+  // NULL above, which Postgres runs as a lookup by ownerId.
+  @@index([ownerId])
 }
 
 // A person's role in a household. The source of truth for household rights.

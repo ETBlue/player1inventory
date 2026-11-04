@@ -209,12 +209,29 @@ WHERE EXISTS (SELECT 1 FROM "HouseholdMember" m WHERE m."userId" = u."id");
 
 -- ── Step 8: the guard ──
 --
--- What it protects against. The old server keeps serving while this migration
--- runs. Each statement above reads the rows committed when it starts, so a row
--- written by a new person between step 2 and step 5 has no "User" row and no
--- household. It would keep a null "householdId", and drop_user_scope would then
--- fail on SET NOT NULL with Postgres error 23502, which names no row. This guard
--- fails here instead and names the rows and their "userId".
+-- What it protects against: a mistake in steps 2 to 7, such as a table left out
+-- of step 5 or a join that matches no household. Such a row would keep a null
+-- "householdId", and drop_user_scope would then fail on SET NOT NULL with
+-- Postgres error 23502, which names no row. This guard fails here instead and
+-- names the rows and their "userId".
+--
+-- Writes from the old server DURING this migration are mostly not a risk.
+-- Step 1's ALTER TABLE "User" takes an ACCESS EXCLUSIVE lock, held until this
+-- file commits. So ensureUser, which the old server awaits before any resolver
+-- for a person not yet seen today, waits for the commit, and no new person can
+-- write. A person seen today makes no "User" query, but has a "User" row, so
+-- step 3 gives them a household and step 5 fills in their rows. Each ALTER
+-- TABLE in step 5 takes the same lock on its table, so the UPDATE after it sees
+-- every row. The one gap left: ensureUserOrLog never fails a request, so a
+-- person whose "User" row could not be written may still write data, and a row
+-- of theirs written between step 2 and step 5 has no household. This guard
+-- catches that.
+--
+-- The real window is AFTER this file commits and before the new server takes
+-- traffic. The old server still runs then, and every row it creates in the
+-- seven tables has a null "householdId", and a new person gets no household.
+-- This guard cannot see those rows, because they do not exist yet. Task 3.14
+-- (drop_user_scope) owns that window.
 --
 -- It also checks the two other facts the code from H3a relies on: every user
 -- owns a household, and every location has its owner as organizer.
@@ -239,7 +256,7 @@ BEGIN
             FROM (SELECT * FROM missing ORDER BY tbl, "id" LIMIT 20) first20)
     INTO bad_count, bad_list;
   IF bad_count > 0 THEN
-    RAISE EXCEPTION 'add_households: % row(s) have no household. Most likely a new person wrote data while this migration ran. Re-run the deploy. First 20: %', bad_count, bad_list;
+    RAISE EXCEPTION 'add_households: % row(s) have no household. Either steps 2-7 missed a table, or a person with no "User" row wrote data while this migration ran (re-run the deploy). First 20: %', bad_count, bad_list;
   END IF;
 
   -- 2. A user who owns no household.
@@ -272,9 +289,61 @@ BEGIN
   END IF;
 END $$;
 
+-- ── Step 8b: report references that cross households (a notice, not a failure) ──
+--
+-- Before 2026-11-04 the server did not check that a reference named the
+-- caller's own row (docs/global/bugs/2026-11-04-bug-unscoped-catalog-writes.md,
+-- "Not fixed here"). So production may hold, for example, a tag whose "typeId"
+-- names another account's tag type. After the backfill that tag is in one
+-- household and its type in another. "Tag_typeId_fkey" then stops the type's
+-- household from ever being deleted.
+--
+-- This step only COUNTS such rows and reports them with RAISE NOTICE. It does
+-- not fail: failing would block the deploy over rows the owner may choose to
+-- keep. The deploy runbook (task 3.16) records these counts.
+--
+-- verify-migration.ts runs the query between the two marker lines below, read
+-- from this file, so keep the markers and keep the query a plain SELECT with
+-- no semicolon.
+DO $$
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN
+-- cross-household-references:begin
+SELECT 'Tag.typeId' AS ref, count(*)::int AS n
+  FROM "Tag" t JOIN "TagType" x ON x."id" = t."typeId"
+  WHERE t."householdId" IS DISTINCT FROM x."householdId"
+UNION ALL
+SELECT 'Tag.parentId', count(*)::int
+  FROM "Tag" t JOIN "Tag" p ON p."id" = t."parentId"
+  WHERE t."householdId" IS DISTINCT FROM p."householdId"
+UNION ALL
+SELECT 'ItemTag', count(*)::int
+  FROM "ItemTag" j JOIN "Item" i ON i."id" = j."itemId" JOIN "Tag" t ON t."id" = j."tagId"
+  WHERE i."householdId" IS DISTINCT FROM t."householdId"
+UNION ALL
+SELECT 'ItemVendor', count(*)::int
+  FROM "ItemVendor" j JOIN "Item" i ON i."id" = j."itemId" JOIN "Vendor" v ON v."id" = j."vendorId"
+  WHERE i."householdId" IS DISTINCT FROM v."householdId"
+UNION ALL
+SELECT 'RecipeItem', count(*)::int
+  FROM "RecipeItem" j JOIN "Recipe" rc ON rc."id" = j."recipeId" JOIN "Item" i ON i."id" = j."itemId"
+  WHERE rc."householdId" IS DISTINCT FROM i."householdId"
+-- cross-household-references:end
+  LOOP
+    IF r.n > 0 THEN
+      RAISE NOTICE 'add_households: % row(s) of % name a row in another household', r.n, r.ref;
+    END IF;
+  END LOOP;
+END $$;
+
 -- ── Step 9: indexes and foreign keys, last ──
 --
 -- Built once, over the final data.
+
+-- CreateIndex
+CREATE INDEX "Household_ownerId_idx" ON "Household"("ownerId");
 
 -- CreateIndex
 CREATE INDEX "HouseholdMember_userId_idx" ON "HouseholdMember"("userId");
@@ -309,13 +378,23 @@ CREATE INDEX "Recipe_householdId_name_idx" ON "Recipe"("householdId", "name");
 -- CreateIndex
 CREATE INDEX "Shelf_householdId_order_idx" ON "Shelf"("householdId", "order");
 
--- The "Tag" foreign key is added BEFORE the "TagType" one, on purpose.
--- "Tag_typeId_fkey" (from the init migration) is ON DELETE RESTRICT. When a
--- household is deleted, Postgres runs the cascades of these foreign keys one
--- after another, in the order the constraints were created. If "TagType" went
--- first, its rows would be deleted while "Tag" rows still point at them, and
--- the RESTRICT check would fail the whole delete. verify-migration.ts deletes a
--- household that has a tag type and a tag, to prove this against real SQL.
+-- "Tag_typeId_fkey" changes from ON DELETE RESTRICT (init migration) to
+-- NO ACTION, to match "onDelete: NoAction" in schema.prisma. Deleting a
+-- household deletes its tag types and its tags in one statement, through two
+-- cascades. NO ACTION refuses only if a tag still names a deleted type when
+-- the check runs. A type that still has tags still cannot be deleted on its
+-- own, so deleteTagType behaves as before. Not CASCADE: that would let one
+-- account delete another account's tags through a shared "typeId" (step 8b).
+-- verify-migration.ts deletes a household with a tag type and its tags.
+--
+-- This file does not rely on the order in which the foreign keys below are
+-- created. Two statements, exactly as prisma migrate diff prints them.
+
+-- DropForeignKey
+ALTER TABLE "Tag" DROP CONSTRAINT "Tag_typeId_fkey";
+
+-- AddForeignKey
+ALTER TABLE "Tag" ADD CONSTRAINT "Tag_typeId_fkey" FOREIGN KEY ("typeId") REFERENCES "TagType"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Tag" ADD CONSTRAINT "Tag_householdId_fkey" FOREIGN KEY ("householdId") REFERENCES "Household"("id") ON DELETE CASCADE ON UPDATE CASCADE;

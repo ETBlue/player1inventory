@@ -82,7 +82,8 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // tags either. A missing type returns false, as it did before.
       if ((await requireOwnRowOrUnclaimed(ctx, 'tagType', id)) === 'unclaimed') return false
       // Cascade: delete all tags of this type (and their ItemTag rows via DB cascade), then delete the type.
-      // Only the caller's tags. Tag_typeId_fkey is ON DELETE RESTRICT, so if
+      // Only the caller's tags. Tag_typeId_fkey is ON DELETE NO ACTION (it was
+      // RESTRICT before the add_households migration; both refuse here), so if
       // another account holds a tag of this type (`createTag` did not check
       // `typeId` before 2026-11-04), the delete below fails and this returns false.
       await prisma.tag.deleteMany({ where: { typeId: id, userId } })

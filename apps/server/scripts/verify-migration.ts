@@ -42,7 +42,7 @@
 // check lives in `scripts/databaseIsolation.ts` and is unit-tested in
 // `scripts/databaseIsolation.test.ts`.
 import { execSync } from 'node:child_process'
-import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Prisma, PrismaClient } from '@prisma/client'
@@ -319,6 +319,81 @@ async function seedUsersBeforeHouseholds(): Promise<void> {
   `
 }
 
+// References that will cross households after the backfill, for the count
+// query in add_households' step 8b. Before 2026-11-04 the server did not check
+// that a reference named the caller's own row, so production may hold rows
+// like these (docs/global/bugs/2026-11-04-bug-unscoped-catalog-writes.md).
+//
+// seedFixture already has one: tag-g (user-g) names tt-c (user-c) as its type.
+// This step adds one more crossing row for each of the other four kinds, and a
+// SAME-household row next to each kind as a control. A query that counted
+// every row, not only crossing ones, would then report too many.
+//
+//   kind          crossing (counted)                     same household (not counted)
+//   Tag.typeId    tag-g -> tt-c (seedFixture),           tag-c1, tag-c2 -> tt-c (all user-c)
+//                 tag-a1 (user-a) -> tt-c (user-c)
+//   Tag.parentId  tag-c1 (user-c) -> tag-g (user-g)      tag-c2 -> tag-c1 (both user-c)
+//   ItemTag       item-a1 (user-a) + tag-g (user-g)      item-a1 + tag-a1 (both user-a)
+//   ItemVendor    item-b1 (user-b) + vendor-d (user-d)   item-a1 + vendor-a (both user-a)
+//   RecipeItem    recipe-e (user-e) + item-b1 (user-b)   recipe-a + item-a1 (both user-a)
+//
+// Tag.typeId counts 2 and every other kind 1, so a query that put one kind's
+// count under another kind's label fails too.
+//
+// Only existing users, on purpose. A new user would add a "User" row, a
+// household and a 'Home' location, and the backfill checks count those. And
+// item-a2 gets no reference: the PR 1 block deletes it to test ONE cascade.
+// No check deletes the households of user-a, -b, -c, -d, -e or -g, so these
+// rows block nothing (a crossing Tag.typeId blocks deleting tt-c's household).
+const EXPECTED_CROSS_HOUSEHOLD_COUNTS: Record<string, number> = {
+  'Tag.typeId': 2,
+  'Tag.parentId': 1,
+  ItemTag: 1,
+  ItemVendor: 1,
+  RecipeItem: 1,
+}
+
+async function seedCrossHouseholdReferences(): Promise<void> {
+  console.log('Seeding references that cross households after the backfill, and their controls...')
+  await prisma.$executeRawUnsafe(`
+    INSERT INTO "Tag" ("id","name","typeId","userId","parentId") VALUES
+      ('tag-a1','Fresh','tt-c','user-a',NULL),
+      ('tag-c1','Chilled','tt-c','user-c','tag-g'),
+      ('tag-c2','Frozen','tt-c','user-c','tag-c1')
+  `)
+  await prisma.$executeRawUnsafe(`
+    INSERT INTO "ItemTag" ("itemId","tagId") VALUES ('item-a1','tag-g'), ('item-a1','tag-a1')
+  `)
+  await prisma.$executeRawUnsafe(`
+    INSERT INTO "Vendor" ("id","name","userId") VALUES ('vendor-a','Corner Shop','user-a')
+  `)
+  await prisma.$executeRawUnsafe(`
+    INSERT INTO "ItemVendor" ("itemId","vendorId") VALUES ('item-b1','vendor-d'), ('item-a1','vendor-a')
+  `)
+  await prisma.$executeRawUnsafe(`
+    INSERT INTO "Recipe" ("id","name","userId") VALUES ('recipe-a','Omelette','user-a')
+  `)
+  await prisma.$executeRawUnsafe(`
+    INSERT INTO "RecipeItem" ("recipeId","itemId","defaultAmount") VALUES
+      ('recipe-e','item-b1',1), ('recipe-a','item-a1',2)
+  `)
+}
+
+// The count query of add_households' step 8b, read from the migration file
+// between its two marker lines. Running the file's own text, not a copy, means
+// this check tests the query the migration really runs.
+function crossHouseholdQueryFromMigration(): string {
+  const sql = readFileSync(join(migrationDir(HOUSEHOLDS_MIGRATION), 'migration.sql'), 'utf8')
+  const begin = '-- cross-household-references:begin'
+  const end = '-- cross-household-references:end'
+  const from = sql.indexOf(begin)
+  const to = sql.indexOf(end)
+  if (from < 0 || to < from) {
+    throw new Error(`FAIL: the markers "${begin}" and "${end}" are missing from ${HOUSEHOLDS_MIGRATION}`)
+  }
+  return sql.slice(from + begin.length, to)
+}
+
 // The seven tables that gain a nullable "householdId" in add_households, and
 // the four tables that must NOT gain one. Cart, CartItem and InventoryLog keep
 // "userId" (it means the author now), and ItemStock is scoped through its
@@ -463,6 +538,23 @@ async function assertHouseholdsBackfill(): Promise<void> {
     locations.length === allUserIds.length && badLocations.length === 0,
     `each of the ${allUserIds.length} locations has exactly one LocationMember: its own userId, as organizer${badLocations.length ? ` (wrong: ${badLocations.map((l) => l.id).join(', ')})` : ''}`,
   )
+
+  // ── Step 8b: the count of references that cross households ──
+  //
+  // The migration reports these counts with RAISE NOTICE, which this script
+  // cannot read. So it runs the same query, taken from the migration file, and
+  // checks the counts against the rows seedCrossHouseholdReferences wrote. See
+  // there for the crossing rows and the same-household controls.
+  const crossRows = await prisma.$queryRawUnsafe<{ ref: string; n: number }[]>(
+    crossHouseholdQueryFromMigration(),
+  )
+  const crossCounts = Object.fromEntries(crossRows.map((r) => [r.ref, Number(r.n)]))
+  const expectedKinds = Object.keys(EXPECTED_CROSS_HOUSEHOLD_COUNTS).sort()
+  assert(
+    JSON.stringify(Object.keys(crossCounts).sort()) === JSON.stringify(expectedKinds) &&
+      expectedKinds.every((k) => crossCounts[k] === EXPECTED_CROSS_HOUSEHOLD_COUNTS[k]),
+    `step 8b's query counts only the references that cross households: ${JSON.stringify(EXPECTED_CROSS_HOUSEHOLD_COUNTS)} (read: ${JSON.stringify(crossCounts)})`,
+  )
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -513,14 +605,17 @@ async function assertHouseholdsConstraints(): Promise<void> {
   //
   // Transaction A runs the claim and stays open. Transaction B then runs the
   // same claim. Postgres makes B wait for A's row lock. The script waits until
-  // it can SEE that B is waiting (a lock request not granted, in pg_locks),
-  // and only then lets A commit. When A commits, B re-checks its WHERE against
-  // the committed row and matches 0 rows.
+  // it can SEE that A is blocking B, and only then lets A commit. When A
+  // commits, B re-checks its WHERE against the committed row and matches 0
+  // rows.
   //
-  // pg_locks is read, not pg_stat_activity: on a managed database the
-  // query text of other sessions can be hidden, but a lock that is not granted
-  // is always listed. Nothing else runs on the test database during this
-  // script, so any ungranted lock is B's.
+  // Each transaction reads its own backend pid with pg_backend_pid() as its
+  // first statement. Inside the transaction on purpose: with a pooled
+  // connection, the backend is fixed only for the length of one transaction.
+  // The script then polls pg_blocking_pids(pid of B) until it contains the pid
+  // of A. That names this exact pair. Counting "any lock not granted" in
+  // pg_locks would also count a wait in some other session on the shared test
+  // database.
   const raceUserId = 'user-race'
   await prisma.user.create({ data: { id: raceUserId, displayName: 'Race' } })
   const clientA = new PrismaClient({ datasources: { db: { url: TEST_URL } } })
@@ -531,32 +626,42 @@ async function assertHouseholdsConstraints(): Promise<void> {
     const aMayCommit = new Promise<void>((resolve) => {
       releaseA = resolve
     })
-    let reportClaimA: (count: number) => void = () => {}
+    let reportPidA: (pid: number) => void = () => {}
     const aClaimed = new Promise<number>((resolve) => {
-      reportClaimA = resolve
+      reportPidA = resolve
+    })
+    let reportPidB: (pid: number) => void = () => {}
+    const bStarted = new Promise<number>((resolve) => {
+      reportPidB = resolve
     })
     const txOptions = { maxWait: 10_000, timeout: 30_000 }
+    const backendPid = async (tx: Prisma.TransactionClient): Promise<number> => {
+      const rows = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`
+      const pid = rows[0]?.pid
+      if (typeof pid !== 'number') throw new Error(`FAIL: pg_backend_pid() returned ${String(pid)}`)
+      return pid
+    }
 
     const txA = clientA.$transaction(async (tx) => {
+      const pid = await backendPid(tx)
       const count = await tx.$executeRaw`
         UPDATE "User" SET "householdSetupAt" = now()
         WHERE "id" = ${raceUserId} AND "householdSetupAt" IS NULL`
-      reportClaimA(count)
+      reportPidA(pid)
       await aMayCommit
       return count
     }, txOptions)
     // txA cannot finish before releaseA() is called, so if it wins this race
     // it failed, and the race passes its error on.
-    await Promise.race([aClaimed, txA])
+    const pidA = await Promise.race([aClaimed, txA])
 
     let bSettled = false
-    const txB = clientB.$transaction(
-      async (tx) =>
-        tx.$executeRaw`
-          UPDATE "User" SET "householdSetupAt" = now()
-          WHERE "id" = ${raceUserId} AND "householdSetupAt" IS NULL`,
-      txOptions,
-    )
+    const txB = clientB.$transaction(async (tx) => {
+      reportPidB(await backendPid(tx))
+      return tx.$executeRaw`
+        UPDATE "User" SET "householdSetupAt" = now()
+        WHERE "id" = ${raceUserId} AND "householdSetupAt" IS NULL`
+    }, txOptions)
     txB.then(
       () => {
         bSettled = true
@@ -565,17 +670,23 @@ async function assertHouseholdsConstraints(): Promise<void> {
         bSettled = true
       },
     )
+    // Same shape as above: if txB settles first, it failed before its pid.
+    const pidB = await Promise.race([bStarted, txB])
 
-    let bWaiting = false
-    for (let attempt = 0; attempt < 50 && !bWaiting && !bSettled; attempt++) {
-      const rows = await prisma.$queryRaw<{ n: bigint }[]>`
-        SELECT count(*) AS n FROM pg_locks WHERE NOT granted`
-      bWaiting = (rows[0]?.n ?? 0n) > 0n
-      if (!bWaiting) await new Promise((resolve) => setTimeout(resolve, 200))
+    // At most 50 polls, 200 ms apart: about 10 seconds.
+    let aBlocksB = false
+    let polls = 0
+    for (; polls < 50 && !aBlocksB && !bSettled; polls++) {
+      const rows = await prisma.$queryRaw<{ blocked: boolean }[]>`
+        SELECT ${pidA}::int = ANY(pg_blocking_pids(${pidB}::int)) AS blocked`
+      aBlocksB = rows[0]?.blocked === true
+      if (!aBlocksB) await new Promise((resolve) => setTimeout(resolve, 200))
     }
     assert(
-      bWaiting,
-      `the second claim WAITED for the first transaction's row lock, so the two really overlapped (bSettled before A committed: ${bSettled})`,
+      aBlocksB,
+      aBlocksB
+        ? `the second claim (pid ${pidB}) WAITED for the first transaction (pid ${pidA}), so the two really overlapped`
+        : `the second claim (pid ${pidB}) was never seen blocked by the first transaction (pid ${pidA}) after ${polls} polls, about ${polls * 0.2} s. ${bSettled ? 'B finished before A committed, so the claim did not wait for the row lock.' : 'B is still running: it may be waiting on something else.'}`,
     )
 
     releaseA()
@@ -593,11 +704,21 @@ async function assertHouseholdsConstraints(): Promise<void> {
 
   // ── Deleting a household deletes everything in it ──
   //
-  // Every householdId foreign key is ON DELETE CASCADE. One existing foreign
-  // key is RESTRICT: "Tag_typeId_fkey". The migration adds the "Tag" foreign
-  // key before the "TagType" one so that tags are removed first; this check
-  // proves the order works. Nothing deletes a household until H3a task 3.10
-  // (/e2e/cleanup) and H6, so this is the first place it runs.
+  // Every householdId foreign key is ON DELETE CASCADE, and the tables below
+  // them cascade from those rows. "Tag_typeId_fkey" is NO ACTION (changed from
+  // RESTRICT in this migration): the type and its tags go in the same
+  // statement. Nothing deletes a household until H3a task 3.10 (/e2e/cleanup)
+  // and H6, so this is the first place it runs.
+  //
+  // The fixture has at least one row in each of the 17 tables a household
+  // reaches, including a tag with a parent tag. For each table the check:
+  //   1. collects the ids of this household's rows BEFORE the delete, and
+  //      requires at least one (so no table can pass by being empty);
+  //   2. after the delete, counts rows by those ids, which must be 0. By id,
+  //      not by householdId: a foreign key that set householdId to NULL instead
+  //      of cascading would leave rows that a householdId filter cannot see;
+  //   3. checks the table's total went down by exactly that many, so the
+  //      cascade removed nothing from other households.
   const cascadeUser = 'user-cascade'
   await prisma.user.create({ data: { id: cascadeUser, displayName: 'Cascade' } })
   const doomed = await prisma.household.create({
@@ -609,34 +730,114 @@ async function assertHouseholdsConstraints(): Promise<void> {
   })
   const scope = { userId: cascadeUser, householdId: doomed.id }
   const tagType = await prisma.tagType.create({ data: { name: 'Kind', color: 'red', ...scope } })
-  const tag = await prisma.tag.create({ data: { name: 'Dairy', typeId: tagType.id, ...scope } })
+  const parentTag = await prisma.tag.create({ data: { name: 'Dairy', typeId: tagType.id, ...scope } })
+  const childTag = await prisma.tag.create({
+    data: { name: 'Cheese', typeId: tagType.id, parentId: parentTag.id, ...scope },
+  })
   const item = await prisma.item.create({ data: { name: 'Butter', targetUnit: 'package', ...scope } })
-  await prisma.itemTag.create({ data: { itemId: item.id, tagId: tag.id } })
+  await prisma.itemTag.create({ data: { itemId: item.id, tagId: childTag.id } })
   const vendor = await prisma.vendor.create({ data: { name: 'Shop', ...scope } })
+  await prisma.itemVendor.create({ data: { itemId: item.id, vendorId: vendor.id } })
   const recipe = await prisma.recipe.create({ data: { name: 'Toast', ...scope } })
-  const shelf = await prisma.shelf.create({ data: { name: 'Top', type: 'manual', order: 0, itemIds: [], ...scope } })
+  await prisma.recipeItem.create({ data: { recipeId: recipe.id, itemId: item.id, defaultAmount: 1 } })
+  await prisma.shelf.create({ data: { name: 'Top', type: 'manual', order: 0, itemIds: [], ...scope } })
   const location = await prisma.location.create({
     data: { name: 'Cellar', order: 0, ...scope, members: { create: { userId: cascadeUser, role: 'organizer' } } },
   })
   await prisma.itemStock.create({ data: { itemId: item.id, locationId: location.id } })
+  const cart = await prisma.cart.create({
+    data: { id: `${location.id}:no-vendor`, userId: cascadeUser, locationId: location.id },
+  })
+  await prisma.cartItem.create({ data: { cartId: cart.id, itemId: item.id, quantity: 1, userId: cascadeUser } })
+  await prisma.inventoryLog.create({
+    data: { itemId: item.id, locationId: location.id, delta: 1, quantity: 1, occurredAt: new Date(), userId: cascadeUser },
+  })
 
-  await prisma.household.delete({ where: { id: doomed.id } })
-  const left = {
-    tagType: await prisma.tagType.count({ where: { id: tagType.id } }),
-    tag: await prisma.tag.count({ where: { id: tag.id } }),
-    item: await prisma.item.count({ where: { id: item.id } }),
-    vendor: await prisma.vendor.count({ where: { id: vendor.id } }),
-    recipe: await prisma.recipe.count({ where: { id: recipe.id } }),
-    shelf: await prisma.shelf.count({ where: { id: shelf.id } }),
-    location: await prisma.location.count({ where: { id: location.id } }),
-    itemStock: await prisma.itemStock.count({ where: { locationId: location.id } }),
-    householdMember: await prisma.householdMember.count({ where: { householdId: doomed.id } }),
-    locationMember: await prisma.locationMember.count({ where: { locationId: location.id } }),
+  // One entry per table: how to count all its rows, and how to count this
+  // household's rows by the ids collected before the delete.
+  const h = doomed.id
+  const ids = {
+    tagTypes: (await prisma.tagType.findMany({ where: { householdId: h } })).map((r) => r.id),
+    tags: (await prisma.tag.findMany({ where: { householdId: h } })).map((r) => r.id),
+    items: (await prisma.item.findMany({ where: { householdId: h } })).map((r) => r.id),
+    vendors: (await prisma.vendor.findMany({ where: { householdId: h } })).map((r) => r.id),
+    recipes: (await prisma.recipe.findMany({ where: { householdId: h } })).map((r) => r.id),
+    shelves: (await prisma.shelf.findMany({ where: { householdId: h } })).map((r) => r.id),
+    locations: (await prisma.location.findMany({ where: { householdId: h } })).map((r) => r.id),
   }
-  const survivors = Object.entries(left).filter(([, n]) => n !== 0)
+  const carts = (await prisma.cart.findMany({ where: { locationId: { in: ids.locations } } })).map((r) => r.id)
+  const cartItems = (await prisma.cartItem.findMany({ where: { cartId: { in: carts } } })).map((r) => r.id)
+  const logs = (await prisma.inventoryLog.findMany({ where: { locationId: { in: ids.locations } } })).map(
+    (r) => r.id,
+  )
+  const tables: Record<string, { total: () => Promise<number>; mine: () => Promise<number> }> = {
+    Household: { total: () => prisma.household.count(), mine: () => prisma.household.count({ where: { id: h } }) },
+    HouseholdMember: {
+      total: () => prisma.householdMember.count(),
+      mine: () => prisma.householdMember.count({ where: { householdId: h } }),
+    },
+    TagType: { total: () => prisma.tagType.count(), mine: () => prisma.tagType.count({ where: { id: { in: ids.tagTypes } } }) },
+    Tag: { total: () => prisma.tag.count(), mine: () => prisma.tag.count({ where: { id: { in: ids.tags } } }) },
+    Item: { total: () => prisma.item.count(), mine: () => prisma.item.count({ where: { id: { in: ids.items } } }) },
+    ItemTag: { total: () => prisma.itemTag.count(), mine: () => prisma.itemTag.count({ where: { itemId: { in: ids.items } } }) },
+    Vendor: { total: () => prisma.vendor.count(), mine: () => prisma.vendor.count({ where: { id: { in: ids.vendors } } }) },
+    ItemVendor: {
+      total: () => prisma.itemVendor.count(),
+      mine: () => prisma.itemVendor.count({ where: { itemId: { in: ids.items } } }),
+    },
+    Recipe: { total: () => prisma.recipe.count(), mine: () => prisma.recipe.count({ where: { id: { in: ids.recipes } } }) },
+    RecipeItem: {
+      total: () => prisma.recipeItem.count(),
+      mine: () => prisma.recipeItem.count({ where: { recipeId: { in: ids.recipes } } }),
+    },
+    Shelf: { total: () => prisma.shelf.count(), mine: () => prisma.shelf.count({ where: { id: { in: ids.shelves } } }) },
+    Location: {
+      total: () => prisma.location.count(),
+      mine: () => prisma.location.count({ where: { id: { in: ids.locations } } }),
+    },
+    LocationMember: {
+      total: () => prisma.locationMember.count(),
+      mine: () => prisma.locationMember.count({ where: { locationId: { in: ids.locations } } }),
+    },
+    ItemStock: {
+      total: () => prisma.itemStock.count(),
+      mine: () => prisma.itemStock.count({ where: { locationId: { in: ids.locations } } }),
+    },
+    Cart: { total: () => prisma.cart.count(), mine: () => prisma.cart.count({ where: { id: { in: carts } } }) },
+    CartItem: { total: () => prisma.cartItem.count(), mine: () => prisma.cartItem.count({ where: { id: { in: cartItems } } }) },
+    InventoryLog: {
+      total: () => prisma.inventoryLog.count(),
+      mine: () => prisma.inventoryLog.count({ where: { id: { in: logs } } }),
+    },
+  }
+  const before: Record<string, { total: number; mine: number }> = {}
+  for (const [name, t] of Object.entries(tables)) before[name] = { total: await t.total(), mine: await t.mine() }
+  const emptyBefore = Object.entries(before).filter(([, b]) => b.mine === 0)
   assert(
-    survivors.length === 0,
-    `deleting a household deletes its rows in all seven tables, their stock, and both kinds of member row${survivors.length ? ` (left: ${survivors.map(([k, n]) => `${k}=${n}`).join(', ')})` : ''}`,
+    emptyBefore.length === 0 && before.Tag?.mine === 2,
+    `the household to delete has rows in all ${Object.keys(tables).length} tables, and two tags, one the parent of the other${emptyBefore.length ? ` (empty: ${emptyBefore.map(([k]) => k).join(', ')})` : ''}`,
+  )
+
+  let deleteError: string | undefined
+  try {
+    await prisma.household.delete({ where: { id: h } })
+  } catch (err) {
+    deleteError = err instanceof Error ? err.message : String(err)
+  }
+  assert(deleteError === undefined, `deleting the household succeeds (error: ${deleteError})`)
+
+  const wrong: string[] = []
+  for (const [name, t] of Object.entries(tables)) {
+    const b = before[name]
+    const mine = await t.mine()
+    const total = await t.total()
+    if (b === undefined || mine !== 0 || total !== b.total - b.mine) {
+      wrong.push(`${name}: ${mine} of its ${b?.mine} rows left, total ${b?.total} -> ${total}`)
+    }
+  }
+  assert(
+    wrong.length === 0,
+    `deleting a household deletes every one of its rows in all ${Object.keys(tables).length} tables, and no row of any other household${wrong.length ? ` (wrong: ${wrong.join('; ')})` : ''}`,
   )
   assert(
     (await prisma.user.count({ where: { id: cascadeUser } })) === 1,
@@ -741,6 +942,7 @@ async function main(): Promise<void> {
     }
     execSync('pnpm exec prisma migrate deploy', { cwd: SERVER_DIR, env, stdio: 'inherit' })
     await seedUsersBeforeHouseholds()
+    await seedCrossHouseholdReferences()
   } finally {
     restoreIfParked()
     parked = false
@@ -1183,8 +1385,10 @@ async function main(): Promise<void> {
   //      docs/global/permissions/2026-10-31-households-plan.md).
   //   3. "id" and "displayName" are NOT nullable. This is the other half of 2:
   //      a migration that made every column nullable would pass 2 alone.
-  //   4. a second insert with the same "id" fails with P2002. H3 relies on
-  //      this primary key as the race guard for a person's first sign-in.
+  //   4. a second insert with the same "id" fails with P2002. This proves only
+  //      that the id is unique. It is NOT the first sign-in race guard: since
+  //      H2 the row exists before first sign-in, so H3a uses householdSetupAt
+  //      instead (decision H1).
   const userColumns = await columnNamesOf('User')
   const expectedUserColumns = [
     'id',
@@ -1233,7 +1437,7 @@ async function main(): Promise<void> {
   }
   assert(
     duplicateUserCode === 'P2002',
-    'a second User with the same Clerk id is rejected with P2002 (User_pkey) — the race guard for first sign-in',
+    'a second User with the same Clerk id is rejected with P2002 (User_pkey) — this proves only that the id is unique; the first sign-in race guard is householdSetupAt (decision H1), checked in assertHouseholdsConstraints',
   )
 
   await assertHouseholdsConstraints()
