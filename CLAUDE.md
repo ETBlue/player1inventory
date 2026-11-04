@@ -126,6 +126,16 @@ that really set up that role.
 > grep -c 'requireOwnItemStockRefs(ctx' apps/server/src/resolvers/import.resolver.ts          # 2
 > ```
 >
+> **Seven catalog mutations call it directly too — since 2026-11-04.** `updateVendor` and `deleteVendor` in `vendor.resolver.ts`; `updateTagType`, `deleteTagType`, `createTag`, `updateTag` and `deleteTag` in `tag.resolver.ts`. Before that date they wrote with `where: { id }` alone, so any signed-in user who knew another account's id could rename or delete the row. See `docs/global/bugs/2026-11-04-bug-unscoped-catalog-writes.md`. What each does with the three answers:
+>
+> | Answer | Update mutation | Delete mutation | `typeId` / `parentId` on `createTag` / `updateTag` |
+> |---|---|---|---|
+> | `'own'` | writes | deletes | accepted |
+> | throws `FORBIDDEN` | nothing is written | nothing is deleted — the check runs BEFORE the scoped cart or tag cleanup | nothing is written |
+> | `'unclaimed'` | `NOT_FOUND`, same message as before | the old result: `false`, or `true` for `deleteTag` with `deleteChildren` | `BAD_USER_INPUT` |
+>
+> `deleteTag`'s descendant walk and its orphaning `updateMany` carry a `userId` **filter**, because before the fix `createTag` accepted another account's `parentId`, so another account's tag may sit under the caller's. Tested against `ownedRowFake` in `apps/server/src/resolvers/catalog-ownership.resolver.test.ts`.
+>
 > **Six GraphQL types still declare `userId: String!`, and no web document selects it any more.** This is **step one of two** for issue #359, done 2026-10-31. The fields are `Item` (`item.graphql:18`), `TagType` (`tag.graphql:5`), `Tag` (`tag.graphql:12`), `Vendor` (`vendor.graphql:4`), `Recipe` (`recipe.graphql:59`) and `Shelf` (`shelf.graphql:20`).
 >
 > **The schema still has all six. Issue #359 is NOT closed.** Step two removes them, and that is a households change in its own release. Do not read "the selections are gone" as "the field is gone".
@@ -1457,6 +1467,8 @@ do not write a per-model double beside it. What it models, each for a failure li
 | `create` and `createMany` require a `userId` | it is NOT NULL on all nine models |
 | `upsert` keeps `create` and `update` apart and applies `update` key by key | this is what makes a `userId` left in `update` visible as a row that changed owner |
 | `findUniqueOrThrow` raises `P2025` | four closing reads use it |
+| `update` and `delete` act on one row and raise `P2025` when none matches; `updateMany` returns a count | the catalog writes in `tag.resolver.ts` / `vendor.resolver.ts` (added 2026-11-04) |
+| an optional `columns` list of extra `where` keys (plain value, `null`, or `{ in }`); any other key still throws | `Tag` is filtered by `typeId` and `parentId`, `CartItem` by `cartId` |
 | an optional `relations` hook | `Item`'s `include: { tags, vendors }` and `Recipe`'s `include: { items }` resolve out of junction stores the test file owns |
 
 **It applies an `update` payload with `value !== undefined`, not `'key' in data`** — Prisma's
