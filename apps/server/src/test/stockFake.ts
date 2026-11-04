@@ -139,7 +139,11 @@ const LOCATION_WHERE: WhereSpec = {
 const STOCK_WHERE: WhereSpec = {
   id: 'equals',
   itemId: 'equals',
-  locationId: 'equals',
+  // A string, or `{ in: [...] }`. The whole-account stock reads
+  // (`itemStocksForItem`, `allItemStocks`, `ensureStockAtLocation`'s source
+  // search) read the locations the caller holds a role on (households H3a,
+  // task 3.8).
+  locationId: 'in',
   location: { nested: { userId: 'equals' } },
   itemId_locationId: { nested: { itemId: 'equals', locationId: 'equals' } },
 }
@@ -267,7 +271,14 @@ function matchesLocation(row: FakeLocation, where: Where): boolean {
 function matchesStock(row: FakeStock, where: Where, locations: FakeLocation[]): boolean {
   if (where.id !== undefined && row.id !== where.id) return false
   if (where.itemId !== undefined && row.itemId !== where.itemId) return false
-  if (where.locationId !== undefined && row.locationId !== where.locationId) return false
+  if (where.locationId !== undefined) {
+    // A string, or `{ in: [...] }`. `checkStockWhere` refused every other shape.
+    const ids =
+      typeof where.locationId === 'string'
+        ? [where.locationId]
+        : (where.locationId as { in: string[] }).in
+    if (!ids.includes(row.locationId)) return false
+  }
   // `location: { userId }` — the relation filter every whole-account ItemStock
   // read uses, because ItemStock has no userId column of its own (root
   // CLAUDE.md, Authorization). Resolved by following `ItemStock.locationId` to
@@ -293,6 +304,38 @@ function matchesStock(row: FakeStock, where: Where, locations: FakeLocation[]): 
     return false
   }
   return true
+}
+
+/** One `orderBy` clause on `ItemStock`: the two id columns the resolvers sort by. */
+type StockOrderBy = Partial<Record<'locationId' | 'itemId', 'asc' | 'desc'>>
+
+/**
+ * `itemStock.findMany`'s `orderBy`. One clause or an array of them, applied in
+ * order as a tie-break chain, as Prisma does. With no `orderBy` the rows come
+ * back in store order, and Postgres gives no order guarantee then, so a
+ * resolver that drops its `orderBy` gets an order that only looks right when
+ * the fixture was written sorted. A key other than `locationId` or `itemId`
+ * throws rather than sorting by nothing.
+ */
+function sortStocks(rows: FakeStock[], orderBy?: StockOrderBy | StockOrderBy[]): FakeStock[] {
+  if (orderBy === undefined) return rows
+  const keys = (Array.isArray(orderBy) ? orderBy : [orderBy]).flatMap((clause) =>
+    Object.entries(clause).map(([field, dir]) => {
+      if (field !== 'locationId' && field !== 'itemId') {
+        throw new Error(`stockFake(itemStock) does not model orderBy '${field}'`)
+      }
+      return { field, sign: dir === 'desc' ? -1 : 1 }
+    }),
+  )
+  return [...rows].sort((a, b) => {
+    for (const { field, sign } of keys) {
+      const left = a[field as 'locationId' | 'itemId']
+      const right = b[field as 'locationId' | 'itemId']
+      if (left < right) return -sign
+      if (left > right) return sign
+    }
+    return 0
+  })
 }
 
 type NumberWrite = number | { increment: number }
@@ -612,9 +655,15 @@ export function createStockFake() {
         checkStockWhere(where)
         return state.itemStocks.find((s) => matchesStock(s, where, state.locations)) ?? null
       },
-      findMany: async ({ where = {} }: { where?: Where } = {}) => {
+      findMany: async ({
+        where = {},
+        orderBy,
+      }: { where?: Where; orderBy?: StockOrderBy | StockOrderBy[] } = {}) => {
         checkStockWhere(where)
-        return state.itemStocks.filter((s) => matchesStock(s, where, state.locations))
+        return sortStocks(
+          state.itemStocks.filter((s) => matchesStock(s, where, state.locations)),
+          orderBy,
+        )
       },
       create: async ({ data }: { data: Record<string, unknown> }) => insert(data),
       update: async ({ where, data }: { where: Where; data: Record<string, unknown> }) => {

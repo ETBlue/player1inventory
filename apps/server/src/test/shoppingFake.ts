@@ -36,6 +36,10 @@ export interface FakeVendor {
   id: string
   name: string
   userId: string
+  // Households H3a. A vendor belongs to a household (task 3.7), and
+  // `bootstrapCarts` reads the vendors of the location's household (task
+  // 3.8). A fixture row may leave it out; it is then read as `null`.
+  householdId?: string | null
 }
 
 export interface FakeCart {
@@ -64,7 +68,7 @@ export class CartIdConstraintError extends Error {
 // shape its kind does not allow, THROWS. `checkWhere` runs ONCE per client
 // call, before the store is searched — never inside the per-row matcher, which
 // an empty store never calls. See `whereKeys.ts`.
-const VENDOR_WHERE: WhereSpec = { id: 'equals', userId: 'equals' }
+const VENDOR_WHERE: WhereSpec = { id: 'equals', userId: 'equals', householdId: 'equals' }
 const CART_WHERE: WhereSpec = { id: 'in', userId: 'equals', locationId: 'equals' }
 
 function checkVendorWhere(where: Where | undefined): void {
@@ -80,6 +84,9 @@ function checkCartWhere(where: Where | undefined): void {
 function matchesVendor(row: FakeVendor, where: Where): boolean {
   if (where.id !== undefined && row.id !== where.id) return false
   if (where.userId !== undefined && row.userId !== where.userId) return false
+  if (where.householdId !== undefined && (row.householdId ?? null) !== where.householdId) {
+    return false
+  }
   return true
 }
 
@@ -123,6 +130,7 @@ export function createShoppingFake() {
           id: `vendor-${++seq}`,
           name: data.name as string,
           userId: data.userId as string,
+          householdId: (data.householdId as string | undefined) ?? null,
         }
         state.vendors.push(row)
         return row

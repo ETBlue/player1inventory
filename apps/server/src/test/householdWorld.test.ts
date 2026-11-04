@@ -53,4 +53,40 @@ describe('householdWorld', () => {
     })
     expect(world.households.state.locationMembers).toHaveLength(1)
   })
+
+  it('extend adds models to the client and rolls their stores back with the rest', async () => {
+    // Given a world with one extra model whose store is registered
+    const world = createHouseholdWorld()
+    const extra = { rows: [] as { id: string }[] }
+    const things = {
+      create: async ({ data }: { data: { id: string } }) => {
+        extra.rows.push(data)
+        return data
+      },
+    }
+    world.extend({ things }, [extra])
+    world.stock.reset([{ id: 'loc-1', userId: 'u1', isDefault: true, householdId: 'hh-1' }], [])
+
+    // When a transaction writes the extra model and a stock row, then throws
+    const client = world.client as unknown as {
+      things: typeof things
+      $transaction: (fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>
+    }
+    await expect(
+      client.$transaction(async (tx) => {
+        const t = tx as typeof world.client & { things: typeof things }
+        await t.things.create({ data: { id: 'thing-1' } })
+        await t.itemStock.create({ data: { itemId: 'item-1', locationId: 'loc-1' } })
+        throw new Error('boom')
+      }),
+    ).rejects.toThrow('boom')
+
+    // Then both writes are gone
+    expect(extra.rows).toEqual([])
+    expect(world.stock.state.itemStocks).toEqual([])
+
+    // And outside a transaction the extra model is on the client
+    await client.things.create({ data: { id: 'thing-2' } })
+    expect(extra.rows).toEqual([{ id: 'thing-2' }])
+  })
 })

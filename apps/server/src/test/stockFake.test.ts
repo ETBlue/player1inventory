@@ -724,3 +724,45 @@ describe('stockFake location calls for location.resolver.ts', () => {
     })
   })
 })
+
+describe('stockFake itemStock.findMany orderBy', () => {
+  function fakeWithRows() {
+    const fake = createStockFake()
+    fake.reset(
+      [],
+      [
+        makeStock({ id: 's-3', itemId: 'item-b', locationId: 'loc-2' }),
+        makeStock({ id: 's-1', itemId: 'item-b', locationId: 'loc-1' }),
+        makeStock({ id: 's-2', itemId: 'item-a', locationId: 'loc-1' }),
+      ],
+    )
+    return fake
+  }
+
+  it('returns store order when no orderBy is given', async () => {
+    const rows = await fakeWithRows().client.itemStock.findMany({})
+    expect(rows.map((r) => r.id)).toEqual(['s-3', 's-1', 's-2'])
+  })
+
+  it('applies an array of clauses as a tie-break chain', async () => {
+    const rows = await fakeWithRows().client.itemStock.findMany({
+      orderBy: [{ locationId: 'asc' }, { itemId: 'asc' }],
+    })
+    expect(rows.map((r) => r.id)).toEqual(['s-2', 's-1', 's-3'])
+  })
+
+  it('applies one clause, and desc', async () => {
+    const rows = await fakeWithRows().client.itemStock.findMany({
+      orderBy: { locationId: 'desc' },
+    })
+    expect(rows.map((r) => r.id)).toEqual(['s-3', 's-1', 's-2'])
+  })
+
+  it('throws on a column it does not model', async () => {
+    await expect(
+      fakeWithRows().client.itemStock.findMany({
+        orderBy: { updatedAt: 'asc' } as unknown as { itemId: 'asc' },
+      }),
+    ).rejects.toThrow(/orderBy 'updatedAt'/)
+  })
+})

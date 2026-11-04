@@ -80,7 +80,9 @@ const LOG_WHERE: WhereSpec = {
   id: 'equals',
   itemId: 'equals',
   userId: 'equals',
-  locationId: 'equals',
+  // A string, or `{ in: [...] }`. `inventoryLogs` reads the logs of every
+  // location the caller holds a role on (households H3a, task 3.8).
+  locationId: 'in',
   delta: 'number',
   quantity: 'number',
 }
@@ -95,7 +97,14 @@ function matchesLog(row: FakeInventoryLog, where: Where): boolean {
   if (where.id !== undefined && row.id !== where.id) return false
   if (where.itemId !== undefined && row.itemId !== where.itemId) return false
   if (where.userId !== undefined && row.userId !== where.userId) return false
-  if (where.locationId !== undefined && row.locationId !== where.locationId) return false
+  if (where.locationId !== undefined) {
+    // A string, or `{ in: [...] }`. `checkLogWhere` refused every other shape.
+    const ids =
+      typeof where.locationId === 'string'
+        ? [where.locationId]
+        : (where.locationId as { in: string[] }).in
+    if (!ids.includes(row.locationId)) return false
+  }
   if (!matchesNumber(row.delta, where.delta)) return false
   if (!matchesNumber(row.quantity, where.quantity)) return false
   return true
@@ -200,6 +209,14 @@ export function createInventoryLogFake() {
         ;(existing as unknown as Record<string, unknown>)[key] = value
       }
       return existing
+    },
+    // `removeItemFromLocation` deletes one item's logs at one location
+    // (itemStock.resolver.ts). Returns the count, as Prisma does.
+    deleteMany: async ({ where = {} }: { where?: Where } = {}) => {
+      checkLogWhere(where)
+      const before = state.logs.length
+      state.logs = state.logs.filter((l) => !matchesLog(l, where))
+      return { count: before - state.logs.length }
     },
   }
 

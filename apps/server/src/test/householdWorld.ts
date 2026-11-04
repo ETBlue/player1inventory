@@ -35,6 +35,9 @@ export function createHouseholdWorld() {
 
   let serial = false
   let queue: Promise<unknown> = Promise.resolve()
+  // More stores a test file registered with `extend`, rolled back with the
+  // world's own three.
+  const extraStores: RollbackStore[] = []
 
   const client = {
     user: users.client,
@@ -66,6 +69,7 @@ export function createHouseholdWorld() {
           users.state as unknown as RollbackStore,
           households.state as unknown as RollbackStore,
           stock.state as unknown as RollbackStore,
+          ...extraStores,
         ],
         client,
         arg,
@@ -83,6 +87,25 @@ export function createHouseholdWorld() {
     queue = Promise.resolve()
   }
 
+  /**
+   * Add more models to the client, and their stores to the rollback.
+   *
+   * For a resolver that touches models the world does not own (`item`,
+   * `recipe`, `inventoryLog`, `cartItem`, ...). The models are put on the SAME
+   * client object, so the `tx` a `$transaction` callback receives has them
+   * too, and every store in `stores` is snapshotted and restored with the
+   * world's own. A model left out of `stores` would keep the writes of a
+   * transaction that rolled back, and a test of that rollback would pass
+   * against code with no transaction at all.
+   *
+   * A store must hold plain data only (see `RollbackStore`). Call it once, in
+   * the `vi.mock` factory, before any test runs. `reset` does not undo it.
+   */
+  function extend(models: Record<string, unknown>, stores: RollbackStore[] = []) {
+    Object.assign(client, models)
+    extraStores.push(...stores)
+  }
+
   /** Empty every store, and turn the queue off. */
   function reset() {
     users.reset()
@@ -96,7 +119,7 @@ export function createHouseholdWorld() {
     households.reset(next)
   }
 
-  return { users, stock, households, client, serialTransactions, reset, seedHouseholds }
+  return { users, stock, households, client, serialTransactions, reset, seedHouseholds, extend }
 }
 
 export type HouseholdWorld = ReturnType<typeof createHouseholdWorld>

@@ -2,52 +2,50 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApolloServer } from '@apollo/server'
 import { typeDefs } from '../schema/index.js'
 import { resolvers } from '../resolvers/index.js'
-import { runInTransaction } from '../test/stockFake.js'
-import { type FakeCart, type FakeCartItem, filterCartItems } from '../test/cartItemFake.js'
 import type { Context } from '../context.js'
+import type { FakeCart, FakeCartItem } from '../test/cartItemFake.js'
+import type { HouseholdWorld } from '../test/householdWorld.js'
+import type { InventoryLogFake } from '../test/inventoryLogFake.js'
 
-interface FakeStock {
-  id: string
-  itemId: string
-  locationId: string
-  targetQuantity: number
-  refillThreshold: number
-  packedQuantity: number
-  unpackedQuantity: number
-  dueDate: Date | null
-  createdAt: Date
-  updatedAt: Date
-}
-
-// NO `item` model in this file's fake, and that is on purpose. Until cloud
-// locations PR 5 it had one, because `upsertItemStock` mirrored the saved row
-// back onto `Item`'s five legacy state columns whenever the location was the
-// caller's default. PR 5 task 3 deleted that mirror. A fake that still carried
-// an `item` store would let a reinstated mirror pass quietly; with none, the
-// resolver throws `Cannot read properties of undefined (reading 'updateMany')`
-// — which is what makes the deletion observable.
-
-// The two families `removeItemFromLocation` cascades. Only the columns the
-// resolver filters on.
-interface FakeLog {
-  id: string
-  itemId: string
-  locationId: string
-  userId: string
-}
-
-// One `orderBy` clause. Prisma accepts one of these or an array of them.
-type OrderBy = Record<string, 'asc' | 'desc'>
-
-
-const { state, client } = vi.hoisted(() => {
-  const state = {
-    locations: [] as { id: string; userId: string; isDefault: boolean }[],
-    itemStocks: [] as FakeStock[],
-    inventoryLogs: [] as FakeLog[],
-    // `Cart` rows, because `CartItem` has NO locationId column of its own.
-    // The location lives on the cart, in `Cart.locationId` (PR 3a), which is
-    // what the cascade's relation filter reads.
+// ─── Mock Prisma ─────────────────────────────────────────────────────────────
+//
+// Every model here is a SHARED stateful fake. Each one checks its whole
+// `where` once per call with `checkWhere` (src/test/whereKeys.ts), so a key or
+// a filter shape it does not model THROWS instead of matching every row:
+//
+//   - `user`, `household`, `householdMember`, `locationMember`, `location` and
+//     `itemStock` are `householdWorld` (src/test/householdWorld.ts). Every
+//     role is a row `seed` writes. Nothing is derived from a location's
+//     `userId`: households H3a task 3.8 removed `derivedRoles` from this file.
+//   - `inventoryLog` is `inventoryLogFake`.
+//   - `cartItem.deleteMany` runs the shared matcher `filterCartItems`
+//     (src/test/cartItemFake.ts), so this spec and `cart.resolver.test.ts`
+//     agree on what `cart: { locationId }` means.
+//
+// Until task 3.8 this file carried its own matchers (`stockMatches`,
+// `logMatches`, an inline `location.findFirst`). Each walked `where` key by
+// key and IGNORED a key it did not know, so a resolver that added a filter
+// the fake could not read would have passed here silently (plan H3a task 3.8,
+// step 0).
+//
+// NO `item` model, and that is on purpose. Until cloud locations PR 5 there
+// was one, because `upsertItemStock` mirrored the saved row back onto `Item`'s
+// five legacy state columns. PR 5 task 3 deleted that mirror. A fake that
+// still carried an `item` store would let a reinstated mirror pass quietly.
+//
+// Everything is built INSIDE the factory and hung off the mocked client,
+// because a `vi.mock` factory is hoisted above every import and cannot close
+// over a module-scope binding.
+vi.mock('../lib/prisma.js', async () => {
+  const { createHouseholdWorld } = await import('../test/householdWorld.js')
+  const { createInventoryLogFake } = await import('../test/inventoryLogFake.js')
+  const { filterCartItems } = await import('../test/cartItemFake.js')
+  const world = createHouseholdWorld()
+  const logs = createInventoryLogFake()
+  const carts = {
+    // `Cart` rows, because `CartItem` has NO locationId column of its own. The
+    // location lives on the cart, in `Cart.locationId` (PR 3a), which is what
+    // the cascade's relation filter reads.
     carts: [] as FakeCart[],
     cartItems: [] as FakeCartItem[],
     // Failure injection for the atomicity test. `cartItem.deleteMany` is the
@@ -56,181 +54,44 @@ const { state, client } = vi.hoisted(() => {
     // rollback snapshot uses `structuredClone`, which throws on a function.
     failCartItemDeleteMany: false,
   }
-  let seq = 0
-
-  function stockMatches(s: FakeStock, where: Record<string, unknown>): boolean {
-    if (where.itemId !== undefined && s.itemId !== where.itemId) return false
-    if (where.locationId !== undefined && s.locationId !== where.locationId) return false
-    const loc = where.location as { userId?: string } | undefined
-    if (loc?.userId !== undefined) {
-      const l = state.locations.find((x) => x.id === s.locationId)
-      if (l?.userId !== loc.userId) return false
-    }
-    const compound = where.itemId_locationId as { itemId: string; locationId: string } | undefined
-    if (compound && (s.itemId !== compound.itemId || s.locationId !== compound.locationId)) return false
-    return true
-  }
-
-  // Prisma's own `where` semantics on every key — `undefined ||` — so a
-  // resolver that drops `locationId` from its filter becomes visible instead
-  // of staying green against a hardcoded match.
-  function logMatches(l: FakeLog, where: Record<string, unknown>): boolean {
-    if (where.itemId !== undefined && l.itemId !== where.itemId) return false
-    if (where.locationId !== undefined && l.locationId !== where.locationId) return false
-    if (where.userId !== undefined && l.userId !== where.userId) return false
-    return true
-  }
-
-  // The matcher is `src/test/cartItemFake.ts`'s, imported rather than copied,
-  // so this spec and `cart.resolver.test.ts` agree on what
-  // `cart: { locationId }` means. A local copy could quietly ignore that key,
-  // and then every cascade test below would pass against a resolver with no
-  // location scope at all.
-  // `filterCartItems` checks the whole `where` once, before it reads a row, so
-  // an unknown key throws even when the store is empty.
-  function selectCartItems(where: Record<string, unknown>): FakeCartItem[] {
-    return filterCartItems(state.cartItems, where, state.carts)
-  }
-
-  type StockCreateData = Omit<FakeStock, 'id' | 'createdAt' | 'updatedAt'>
-
-  // The create and merge bodies `itemStock.create`, `.update` and `.upsert`
-  // all go through, so the three cannot answer differently from one another.
-  function insertStock(data: StockCreateData): FakeStock {
-    // Models @@unique([itemId, locationId]). It guards a resolver that
-    // creates unconditionally; it does NOT pin addItemToLocation's
-    // already-stocked branch, which its own assertions cover — making this
-    // dedupe instead of throw leaves all 17 specs here green (verified
-    // 2026-08-31, correcting an earlier comment that claimed otherwise).
-    if (state.itemStocks.some((s) => s.itemId === data.itemId && s.locationId === data.locationId)) {
-      throw new Error('Unique constraint failed on the fields: (`itemId`,`locationId`)')
-    }
-    const row: FakeStock = { ...data, id: `st-${++seq}`, createdAt: new Date(), updatedAt: new Date() }
-    state.itemStocks.push(row)
-    return row
-  }
-
-  function mergeStock(where: Record<string, unknown>, data: Partial<FakeStock>): FakeStock {
-    const row = state.itemStocks.find((s) => stockMatches(s, where))
-    if (!row) throw new Error('ItemStock not found')
-    Object.assign(row, data, { updatedAt: new Date() })
-    return row
-  }
-
-  const client: Record<string, unknown> = {
-    // The rollback implementation is stockFake's, imported rather than copied.
-    // A second copy could silently do nothing, and then every atomicity claim
-    // resting on it would report as covered. `state` is the only store this
-    // file writes into.
-    $transaction: async (arg: unknown): Promise<unknown> =>
-      runInTransaction([state as unknown as Record<string, unknown>], client, arg),
-    location: {
-      findFirst: async ({ where = {} }: { where?: Record<string, unknown> }) =>
-        state.locations.find(
-          (l) =>
-            (where.id === undefined || l.id === where.id) &&
-            (where.userId === undefined || l.userId === where.userId) &&
-            (where.isDefault === undefined || l.isDefault === where.isDefault),
-        ) ?? null,
-    },
-    itemStock: {
-      findMany: async ({
-        where = {},
-        orderBy,
-      }: {
-        where?: Record<string, unknown>
-        orderBy?: OrderBy | OrderBy[]
-      }) => {
-        const rows = state.itemStocks.filter((s) => stockMatches(s, where))
-        // Only sorts when the resolver actually asks for it — mirrors
-        // Postgres giving no ordering guarantee without orderBy, so a
-        // resolver that drops the orderBy call gets insertion order back,
-        // not an accidentally-correct sort.
-        if (!orderBy) return rows
-        // Prisma takes EITHER one object or an array of them, and applies an
-        // array in order as a tie-break chain. `allItemStocks` passes the
-        // array form, so a fake that read only the first key would sort by
-        // locationId and leave rows sharing a location in insertion order —
-        // it would report an ordering the resolver had not asked for.
-        const keys = (Array.isArray(orderBy) ? orderBy : [orderBy]).flatMap((o) =>
-          Object.entries(o),
-        )
-        return [...rows].sort((a, b) => {
-          for (const [field, dir] of keys) {
-            const av = (a as unknown as Record<string, unknown>)[field]
-            const bv = (b as unknown as Record<string, unknown>)[field]
-            if (av === bv) continue
-            const sign = dir === 'desc' ? -1 : 1
-            return (av as string) < (bv as string) ? -sign : sign
-          }
-          return 0
-        })
-      },
-      findUnique: async ({ where }: { where: Record<string, unknown> }) =>
-        state.itemStocks.find((s) => stockMatches(s, where)) ?? null,
-      create: async ({ data }: { data: StockCreateData }) => insertStock(data),
-      update: async ({ where, data }: { where: Record<string, unknown>; data: Partial<FakeStock> }) =>
-        mergeStock(where, data),
-      // `upsert`, added by cloud locations PR 5 task 1. `upsertItemStock` now
-      // writes through `writeStock` (lib/itemStockWrite.ts), which issues ONE
-      // `upsert` where the resolver used to branch on `findUnique` itself. No
-      // resolver this file exercises reached the method before, so the mock
-      // did not have it and all 8 upsertItemStock specs failed with
-      // "upsert is not a function" — a gap in the double, not a change in
-      // behaviour. No assertion in this file moved.
-      //
-      // Built from `insertStock` and `mergeStock`, the SAME two bodies
-      // `create` and `update` use. A fourth hand-written copy of the matching
-      // and merging rules could answer differently from them, and then a test
-      // would be reading the mock's opinion rather than the resolver's.
-      upsert: async ({
-        where,
-        update,
-        create,
-      }: {
-        where: Record<string, unknown>
-        update: Partial<FakeStock>
-        create: StockCreateData
-      }) =>
-        state.itemStocks.some((s) => stockMatches(s, where))
-          ? mergeStock(where, update)
-          : insertStock(create),
-      deleteMany: async ({ where = {} }: { where?: Record<string, unknown> }) => {
-        const before = state.itemStocks.length
-        state.itemStocks = state.itemStocks.filter((s) => !stockMatches(s, where))
-        return { count: before - state.itemStocks.length }
-      },
-    },
-    inventoryLog: {
-      deleteMany: async ({ where = {} }: { where?: Record<string, unknown> }) => {
-        const before = state.inventoryLogs.length
-        state.inventoryLogs = state.inventoryLogs.filter((l) => !logMatches(l, where))
-        return { count: before - state.inventoryLogs.length }
-      },
-    },
-    cartItem: {
-      deleteMany: async ({ where = {} }: { where?: Record<string, unknown> }) => {
-        if (state.failCartItemDeleteMany) {
-          throw new Error('cartItem.deleteMany exploded')
-        }
-        const before = state.cartItems.length
-        const hits = new Set(selectCartItems(where))
-        state.cartItems = state.cartItems.filter((c) => !hits.has(c))
-        return { count: before - state.cartItems.length }
-      },
+  const cartItem = {
+    deleteMany: async ({ where = {} }: { where?: Record<string, unknown> } = {}) => {
+      if (carts.failCartItemDeleteMany) throw new Error('cartItem.deleteMany exploded')
+      // `filterCartItems` checks the whole `where` once, before it reads a
+      // row, so an unknown key throws even when the store is empty.
+      const hits = new Set(filterCartItems(carts.cartItems, where, carts.carts))
+      const before = carts.cartItems.length
+      carts.cartItems = carts.cartItems.filter((c) => !hits.has(c))
+      return { count: before - carts.cartItems.length }
     },
   }
-  return { state, client }
+  // The log and cart stores roll back with the world's own, so one
+  // `$transaction` covers all three deletes of `removeItemFromLocation`.
+  world.extend({ inventoryLog: logs.client, cartItem }, [
+    logs.state as unknown as Record<string, unknown>,
+    carts as unknown as Record<string, unknown>,
+  ])
+  return { prisma: { ...world.client, $world: world, $logs: logs, $carts: carts } }
 })
 
-vi.mock('../lib/prisma.js', async () => {
-  // Roles derived from the location rows: each location's `userId` owns a
-  // one-person household and organizes the location (src/test/derivedRoles.ts).
-  // `requireLocationRole` reads these since households H3a task 3.5.
-  const roles = (await import('../test/derivedRoles.js')).createDerivedRoles({ state })
-  Object.assign(client, roles.client)
-  return { prisma: client }
-})
+import { prisma } from '../lib/prisma.js'
+import { householdMemberRow, householdRow, locationMemberRow } from '../test/householdRows.js'
+import { makeInventoryLog } from '../test/inventoryLogFake.js'
+import { makeStock } from '../test/stockFake.js'
+
+const handles = prisma as unknown as {
+  $world: HouseholdWorld
+  $logs: InventoryLogFake
+  $carts: {
+    carts: FakeCart[]
+    cartItems: FakeCartItem[]
+    failCartItemDeleteMany: boolean
+  }
+}
+const world = handles.$world
+const logs = handles.$logs
+const carts = handles.$carts
+const stockState = world.stock.state
 
 const server = new ApolloServer<Context>({ typeDefs, resolvers })
 
@@ -240,24 +101,51 @@ async function run(query: string, variables: Record<string, unknown> = {}, userI
   return res.body.singleResult
 }
 
-function stock(over: Partial<FakeStock> & Pick<FakeStock, 'id' | 'itemId' | 'locationId'>): FakeStock {
-  return {
-    targetQuantity: 0, refillThreshold: 0, packedQuantity: 0, unpackedQuantity: 0,
-    dueDate: null, createdAt: new Date(), updatedAt: new Date(), ...over,
-  }
+const stock = makeStock
+
+// ── The fixture ──
+//
+// | Person | Household | Household role | Location roles                    |
+// |--------|-----------|----------------|-----------------------------------|
+// | user-a | hh-a      | owner          | loc-a, loc-a2, loc-a3: organizer  |
+// | user-b | hh-b      | owner          | loc-b: organizer                  |
+//
+// `loc-a3` is in the fixture so the "most recently updated source" test has
+// a third location to add to.
+function seed() {
+  world.reset()
+  world.stock.reset(
+    [
+      { id: 'loc-a', userId: 'user-a', householdId: 'hh-a', isDefault: true },
+      { id: 'loc-a2', userId: 'user-a', householdId: 'hh-a', isDefault: false },
+      { id: 'loc-a3', userId: 'user-a', householdId: 'hh-a', isDefault: false },
+      { id: 'loc-b', userId: 'user-b', householdId: 'hh-b', isDefault: true },
+    ],
+    [],
+  )
+  world.seedHouseholds({
+    households: [householdRow('hh-a', 'user-a'), householdRow('hh-b', 'user-b')],
+    householdMembers: [
+      householdMemberRow('hh-a', 'user-a', 'owner'),
+      householdMemberRow('hh-b', 'user-b', 'owner'),
+    ],
+    locationMembers: [
+      locationMemberRow('loc-a', 'user-a', 'organizer'),
+      locationMemberRow('loc-a2', 'user-a', 'organizer'),
+      locationMemberRow('loc-a3', 'user-a', 'organizer'),
+      locationMemberRow('loc-b', 'user-b', 'organizer'),
+    ],
+  })
 }
 
 describe('itemStock resolvers', () => {
   beforeEach(() => {
-    // TWO locations for user-a, plus one for user-b. `item-far` is stocked
-    // ONLY at loc-a2 — without it, "stocks here" and "all stocks" would be the
-    // same set and every scoping assertion below would be vacuous.
-    state.locations = [
-      { id: 'loc-a', userId: 'user-a', isDefault: true },
-      { id: 'loc-a2', userId: 'user-a', isDefault: false },
-      { id: 'loc-b', userId: 'user-b', isDefault: true },
-    ]
-    state.itemStocks = [
+    seed()
+    // TWO stocked locations for user-a, plus one for user-b. `item-far` is
+    // stocked ONLY at loc-a2 — without it, "stocks here" and "all stocks"
+    // would be the same set and every scoping assertion below would be
+    // vacuous.
+    stockState.itemStocks = [
       // dueDate is non-null so the upsert "omitted" and "cleared" cases are
       // distinguishable — with a null starting value both would look
       // identical and prove nothing.
@@ -269,23 +157,23 @@ describe('itemStock resolvers', () => {
     // The two cascade families. `item-milk` is present at BOTH of user-a's
     // locations, so "deleted here" and "deleted everywhere" are different
     // answers — a one-location fixture cannot tell them apart.
-    state.inventoryLogs = [
-      { id: 'log-a1', itemId: 'item-milk', locationId: 'loc-a', userId: 'user-a' },
-      { id: 'log-a2', itemId: 'item-milk', locationId: 'loc-a', userId: 'user-a' },
+    logs.reset([
+      makeInventoryLog({ id: 'log-a1', itemId: 'item-milk', locationId: 'loc-a', userId: 'user-a' }),
+      makeInventoryLog({ id: 'log-a2', itemId: 'item-milk', locationId: 'loc-a', userId: 'user-a' }),
       // Same item, the OTHER location of the SAME user. This is the row that
       // goes red when the resolver drops `locationId` from its filter.
-      { id: 'log-far', itemId: 'item-milk', locationId: 'loc-a2', userId: 'user-a' },
+      makeInventoryLog({ id: 'log-far', itemId: 'item-milk', locationId: 'loc-a2', userId: 'user-a' }),
       // Same location, a different item.
-      { id: 'log-other', itemId: 'item-bread', locationId: 'loc-a', userId: 'user-a' },
+      makeInventoryLog({ id: 'log-other', itemId: 'item-bread', locationId: 'loc-a', userId: 'user-a' }),
       // A stranger's row, so "the caller's location" is distinguishable from
       // "the first location in the table".
-      { id: 'log-theirs', itemId: 'item-milk', locationId: 'loc-b', userId: 'user-b' },
-    ]
+      makeInventoryLog({ id: 'log-theirs', itemId: 'item-milk', locationId: 'loc-b', userId: 'user-b' }),
+    ])
     // Cart ids are `${locationId}:${vendorId | 'no-vendor'}` (lib/cartId.ts),
     // but the cascade filters on `Cart.locationId`, the column those ids are
     // BUILT from. Both are seeded so the two stay distinguishable — see the
     // last cart test in this file.
-    state.carts = [
+    carts.carts = [
       { id: 'loc-a:no-vendor', locationId: 'loc-a' },
       { id: 'loc-a:ven-1', locationId: 'loc-a' },
       // A vendor id that itself contains ':'. Realistic, because `cartIdFor`
@@ -295,7 +183,7 @@ describe('itemStock resolvers', () => {
       { id: 'loc-a2:ven-1', locationId: 'loc-a2' },
       { id: 'loc-b:no-vendor', locationId: 'loc-b' },
     ]
-    state.cartItems = [
+    carts.cartItems = [
       { id: 'ci-a-novendor', cartId: 'loc-a:no-vendor', itemId: 'item-milk', userId: 'user-a' },
       { id: 'ci-a-vendor', cartId: 'loc-a:ven-1', itemId: 'item-milk', userId: 'user-a' },
       { id: 'ci-a-colon', cartId: 'loc-a:ven:dor', itemId: 'item-milk', userId: 'user-a' },
@@ -306,7 +194,7 @@ describe('itemStock resolvers', () => {
       { id: 'ci-a-other', cartId: 'loc-a:no-vendor', itemId: 'item-bread', userId: 'user-a' },
       { id: 'ci-theirs', cartId: 'loc-b:no-vendor', itemId: 'item-milk', userId: 'user-b' },
     ]
-    state.failCartItemDeleteMany = false
+    carts.failCartItemDeleteMany = false
   })
 
   it('user can read the stocks of one location only', async () => {
@@ -325,14 +213,14 @@ describe('itemStock resolvers', () => {
   })
 
   it('user can read every location\'s stock for one item', async () => {
-    state.itemStocks.push(stock({ id: 'st-extra', itemId: 'item-milk', locationId: 'loc-a2', targetQuantity: 5 }))
+    stockState.itemStocks.push(stock({ id: 'st-extra', itemId: 'item-milk', locationId: 'loc-a2', targetQuantity: 5 }))
     const res = await run(`query Q($i: ID!) { itemStocksForItem(itemId: $i) { locationId } }`, { i: 'item-milk' })
     expect(res.data?.itemStocksForItem).toEqual([{ locationId: 'loc-a' }, { locationId: 'loc-a2' }])
   })
 
   it('itemStocksForItem excludes another user\'s rows', async () => {
     // Given user-b also stocks an item id that user-a stocks
-    state.itemStocks.push(stock({ id: 'st-b2', itemId: 'item-milk', locationId: 'loc-b' }))
+    stockState.itemStocks.push(stock({ id: 'st-b2', itemId: 'item-milk', locationId: 'loc-b' }))
     const res = await run(`query Q($i: ID!) { itemStocksForItem(itemId: $i) { locationId } }`, { i: 'item-milk' })
     expect(res.data?.itemStocksForItem).toEqual([{ locationId: 'loc-a' }])
   })
@@ -341,8 +229,8 @@ describe('itemStock resolvers', () => {
     // Given the loc-a2 row is inserted BEFORE the loc-a row — the reverse of
     // sorted order — so a resolver relying on insertion/array order would
     // return them out of order
-    state.itemStocks.push(stock({ id: 'st-rev2', itemId: 'item-ordered', locationId: 'loc-a2', targetQuantity: 1 }))
-    state.itemStocks.push(stock({ id: 'st-rev1', itemId: 'item-ordered', locationId: 'loc-a', targetQuantity: 2 }))
+    stockState.itemStocks.push(stock({ id: 'st-rev2', itemId: 'item-ordered', locationId: 'loc-a2', targetQuantity: 1 }))
+    stockState.itemStocks.push(stock({ id: 'st-rev1', itemId: 'item-ordered', locationId: 'loc-a', targetQuantity: 2 }))
 
     const res = await run(`query Q($i: ID!) { itemStocksForItem(itemId: $i) { locationId } }`, { i: 'item-ordered' })
 
@@ -399,8 +287,8 @@ describe('itemStock resolvers', () => {
     // after the loc-a2 row already in the fixture. Rows sharing a location is
     // the case `locationId` alone cannot order — it is why this query needs a
     // second sort key where `itemStocksForItem` does not.
-    state.itemStocks.push(stock({ id: 'st-z', itemId: 'item-zucchini', locationId: 'loc-a' }))
-    state.itemStocks.push(stock({ id: 'st-b', itemId: 'item-bread', locationId: 'loc-a' }))
+    stockState.itemStocks.push(stock({ id: 'st-z', itemId: 'item-zucchini', locationId: 'loc-a' }))
+    stockState.itemStocks.push(stock({ id: 'st-b', itemId: 'item-bread', locationId: 'loc-a' }))
 
     const res = await run(ALL)
 
@@ -516,8 +404,8 @@ describe('itemStock resolvers', () => {
 
   it('user editing stock at a non-default location writes THAT location, not the default', async () => {
     // Given loc-a2 is NOT user-a's default, and item-far is stocked only there
-    expect(state.locations.find((l) => l.id === 'loc-a2')?.isDefault).toBe(false)
-    expect(state.itemStocks.filter((s) => s.itemId === 'item-far')).toHaveLength(1)
+    expect(stockState.locations.find((l) => l.id === 'loc-a2')?.isDefault).toBe(false)
+    expect(stockState.itemStocks.filter((s) => s.itemId === 'item-far')).toHaveLength(1)
 
     // When the user sets packedQuantity there
     const res = await run(UPSERT, { i: 'item-far', l: 'loc-a2', in: { packedQuantity: 5 } })
@@ -527,7 +415,7 @@ describe('itemStock resolvers', () => {
     // create a second row at loc-a and leave st-garage at its fixture 7, so
     // the length is the assertion that tells the two apart.
     expect(res.data?.upsertItemStock).toEqual({ packedQuantity: 5 })
-    const far = state.itemStocks.filter((s) => s.itemId === 'item-far')
+    const far = stockState.itemStocks.filter((s) => s.itemId === 'item-far')
     expect(far).toHaveLength(1)
     expect(far[0]).toMatchObject({ id: 'st-garage', locationId: 'loc-a2', packedQuantity: 5 })
   })
@@ -538,7 +426,7 @@ describe('itemStock resolvers', () => {
       { i: 'item-milk', l: 'loc-b', in: { packedQuantity: 99 } },
     )
     expect(res.errors?.[0]?.message).toMatch(/Forbidden/)
-    expect(state.itemStocks.find((s) => s.id === 'st-theirs')?.packedQuantity).toBe(0)
+    expect(stockState.itemStocks.find((s) => s.id === 'st-theirs')?.packedQuantity).toBe(0)
   })
 
   it('add to location inherits target and refill but zeroes quantities', async () => {
@@ -561,7 +449,7 @@ describe('itemStock resolvers', () => {
     )
     // Returns the existing row untouched rather than throwing on @@unique
     expect(res.data?.addItemToLocation).toEqual({ id: 'st-home', packedQuantity: 2 })
-    expect(state.itemStocks.filter((s) => s.itemId === 'item-milk')).toHaveLength(1)
+    expect(stockState.itemStocks.filter((s) => s.itemId === 'item-milk')).toHaveLength(1)
   })
 
   it('add to location zeroes everything when there is no source row', async () => {
@@ -576,8 +464,7 @@ describe('itemStock resolvers', () => {
     // Given item-tiebreak is stocked at two OTHER locations with distinct
     // updatedAt — sourceLocationId omitted means the resolver must choose,
     // and targetQuantity distinguishes which one it chose (not coincidence)
-    state.locations.push({ id: 'loc-a3', userId: 'user-a', isDefault: false })
-    state.itemStocks.push(
+    stockState.itemStocks.push(
       stock({
         id: 'st-older', itemId: 'item-tiebreak', locationId: 'loc-a',
         targetQuantity: 10, updatedAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -600,12 +487,12 @@ describe('itemStock resolvers', () => {
   })
 
   it('user can remove an item from one location, leaving the others', async () => {
-    state.itemStocks.push(stock({ id: 'st-extra', itemId: 'item-milk', locationId: 'loc-a2' }))
+    stockState.itemStocks.push(stock({ id: 'st-extra', itemId: 'item-milk', locationId: 'loc-a2' }))
     const res = await run(`mutation M($i: ID!, $l: ID!) { removeItemFromLocation(itemId: $i, locationId: $l) }`, {
       i: 'item-milk', l: 'loc-a',
     })
     expect(res.data?.removeItemFromLocation).toBe(true)
-    expect(state.itemStocks.map((s) => s.id).sort()).toEqual(['st-extra', 'st-garage', 'st-theirs'])
+    expect(stockState.itemStocks.map((s) => s.id).sort()).toEqual(['st-extra', 'st-garage', 'st-theirs'])
   })
 
   it('user cannot remove an item from another user\'s location', async () => {
@@ -613,7 +500,7 @@ describe('itemStock resolvers', () => {
       i: 'item-rice', l: 'loc-b',
     })
     expect(res.errors?.[0]?.message).toMatch(/Forbidden/)
-    expect(state.itemStocks.some((s) => s.id === 'st-theirs')).toBe(true)
+    expect(stockState.itemStocks.some((s) => s.id === 'st-theirs')).toBe(true)
   })
 
   // ─── the remove cascade (PR 3c) ─────────────────────────────────────────
@@ -632,7 +519,7 @@ describe('itemStock resolvers', () => {
     // Then only loc-a's two went. log-far proves the delete was scoped to one
     // location, not to the item.
     expect(res.data?.removeItemFromLocation).toBe(true)
-    expect(state.inventoryLogs.map((l) => l.id).sort()).toEqual([
+    expect(logs.state.logs.map((l) => l.id).sort()).toEqual([
       'log-far', 'log-other', 'log-theirs',
     ])
   })
@@ -646,7 +533,7 @@ describe('itemStock resolvers', () => {
     // `cart: { locationId }` from the resolver's delete and this assertion
     // goes red, because every one of item-milk's entries would go.
     expect(res.data?.removeItemFromLocation).toBe(true)
-    expect(state.cartItems.map((c) => c.id).sort()).toEqual([
+    expect(carts.cartItems.map((c) => c.id).sort()).toEqual([
       'ci-a-other', 'ci-a2', 'ci-theirs',
     ])
   })
@@ -657,13 +544,13 @@ describe('itemStock resolvers', () => {
     // the column — and that is the point: it is the only fixture that can
     // tell the two apart. Reading the column is right, because the column is
     // the source and the id is derived from it.
-    state.carts = [
+    carts.carts = [
       // Id says loc-a2. Column says loc-a.
       { id: 'loc-a2:ven-9', locationId: 'loc-a' },
       // Id says loc-a. Column says loc-a2.
       { id: 'loc-a:ven-9', locationId: 'loc-a2' },
     ]
-    state.cartItems = [
+    carts.cartItems = [
       { id: 'ci-column-here', cartId: 'loc-a2:ven-9', itemId: 'item-milk', userId: 'user-a' },
       { id: 'ci-column-away', cartId: 'loc-a:ven-9', itemId: 'item-milk', userId: 'user-a' },
     ]
@@ -674,12 +561,12 @@ describe('itemStock resolvers', () => {
     // Then the row whose CART is at loc-a went, and the row whose cart id only
     // LOOKS like loc-a stayed. A resolver that parsed the cart id would have
     // deleted exactly the other one.
-    expect(state.cartItems.map((c) => c.id)).toEqual(['ci-column-away'])
+    expect(carts.cartItems.map((c) => c.id)).toEqual(['ci-column-away'])
   })
 
   it('a removal that fails partway leaves every earlier delete undone', async () => {
     // Given the last of the three deletes throws
-    state.failCartItemDeleteMany = true
+    carts.failCartItemDeleteMany = true
 
     // When the user removes item-milk from loc-a
     const res = await run(REMOVE, { i: 'item-milk', l: 'loc-a' })
@@ -689,11 +576,11 @@ describe('itemStock resolvers', () => {
     // And the stock row and the logs that were deleted BEFORE the throw are
     // back. Without a transaction they would be gone and only the cart
     // entries would remain, which is a half-applied removal.
-    expect(state.itemStocks.some((s) => s.id === 'st-home')).toBe(true)
-    expect(state.inventoryLogs.map((l) => l.id).sort()).toEqual([
+    expect(stockState.itemStocks.some((s) => s.id === 'st-home')).toBe(true)
+    expect(logs.state.logs.map((l) => l.id).sort()).toEqual([
       'log-a1', 'log-a2', 'log-far', 'log-other', 'log-theirs',
     ])
-    expect(state.cartItems).toHaveLength(6)
+    expect(carts.cartItems).toHaveLength(6)
   })
 
   it('a refused removal deletes nothing at all', async () => {
@@ -703,7 +590,7 @@ describe('itemStock resolvers', () => {
 
     // Then the role check refused before any delete ran
     expect(res.errors?.[0]?.message).toMatch(/Forbidden/)
-    expect(state.inventoryLogs).toHaveLength(5)
-    expect(state.cartItems).toHaveLength(6)
+    expect(logs.state.logs).toHaveLength(5)
+    expect(carts.cartItems).toHaveLength(6)
   })
 })

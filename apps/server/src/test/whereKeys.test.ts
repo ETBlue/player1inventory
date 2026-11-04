@@ -133,6 +133,23 @@ describe('stockFake refuses an unknown where key', () => {
     expect(byOwner.map((r) => r.id)).toEqual(['stock-1'])
   })
 
+  it('itemStock: accepts locationId as a string or { in }, and refuses another operator', async () => {
+    // The whole-account stock reads use the locations the caller holds a role
+    // on (households H3a, task 3.8)
+    const fake = stockFakeWithOneRow()
+    fake.state.itemStocks.push(makeStock({ id: 'stock-2', itemId: 'item-1', locationId: 'loc-2' }))
+    const both = await fake.client.itemStock.findMany({
+      where: { locationId: { in: ['loc-1', 'loc-2'] } },
+    })
+    expect(both.map((r) => r.id)).toEqual(['stock-1', 'stock-2'])
+    const one = await fake.client.itemStock.findMany({ where: { locationId: { in: ['loc-2'] } } })
+    expect(one.map((r) => r.id)).toEqual(['stock-2'])
+    expect(await fake.client.itemStock.findMany({ where: { locationId: { in: [] } } })).toEqual([])
+    await expect(
+      fake.client.itemStock.findMany({ where: { locationId: { not: 'loc-1' } } }),
+    ).rejects.toThrow(UnsupportedWhereFilterError)
+  })
+
   it('still skips a key whose value is undefined, as Prisma does', async () => {
     const fake = stockFakeWithOneRow()
     const rows = await fake.client.itemStock.findMany({ where: { householdId: undefined } })
@@ -183,11 +200,37 @@ describe('cartItemFake refuses an unknown where key', () => {
 })
 
 describe('shoppingFake refuses an unknown where key', () => {
+  // `Vendor` gained `householdId` in households H3a (task 3.8 models it for
+  // `bootstrapCarts`), so the vendor tests use a key no model has.
   it('vendor: names the key and the fake', async () => {
     const fake = shoppingFakeWithOneRowEach()
-    await expect(fake.client.vendor.findMany({ where: UNKNOWN })).rejects.toThrow(
-      /shoppingFake\(vendor\).*'householdId'/,
+    await expect(fake.client.vendor.findMany({ where: UNKNOWN_FOR_LOCATION })).rejects.toThrow(
+      /shoppingFake\(vendor\).*'notAColumn'/,
     )
+  })
+
+  it('vendor: filters by householdId, and reads a row without one as null', async () => {
+    const fake = createShoppingFake()
+    fake.reset(
+      [
+        { id: 'vendor-1', name: 'Costco', userId: 'user-1', householdId: 'hh-1' },
+        { id: 'vendor-2', name: 'Theirs', userId: 'user-2', householdId: 'hh-2' },
+        { id: 'vendor-3', name: 'Old', userId: 'user-1' },
+      ],
+      [],
+    )
+    const rows = await fake.client.vendor.findMany({ where: { householdId: 'hh-1' } })
+    expect(rows.map((r) => r.id)).toEqual(['vendor-1'])
+    const none = await fake.client.vendor.findMany({ where: { householdId: null } })
+    expect(none.map((r) => r.id)).toEqual(['vendor-3'])
+  })
+
+  it('vendor.create keeps the householdId it was given', async () => {
+    const fake = createShoppingFake()
+    const row = await fake.client.vendor.create({
+      data: { name: 'Costco', userId: 'user-1', householdId: 'hh-1' },
+    })
+    expect(row).toMatchObject({ householdId: 'hh-1' })
   })
 
   it('cart: names the key and the fake', async () => {
@@ -200,8 +243,8 @@ describe('shoppingFake refuses an unknown where key', () => {
   it('every vendor and cart method refuses it on an EMPTY store', async () => {
     const { vendor, cart } = createShoppingFake().client
     const calls = [
-      vendor.findMany({ where: UNKNOWN }),
-      vendor.delete({ where: UNKNOWN }),
+      vendor.findMany({ where: UNKNOWN_FOR_LOCATION }),
+      vendor.delete({ where: UNKNOWN_FOR_LOCATION }),
       cart.findUnique({ where: UNKNOWN }),
       cart.findFirst({ where: UNKNOWN }),
       cart.findMany({ where: UNKNOWN }),
@@ -260,6 +303,7 @@ describe('inventoryLogFake refuses an unknown where key', () => {
       client.count({ where: UNKNOWN }),
       client.findUnique({ where: UNKNOWN }),
       client.upsert({ where: UNKNOWN, create: {}, update: {} }),
+      client.deleteMany({ where: UNKNOWN }),
     ]
     for (const call of calls) await expect(call).rejects.toThrow(UnknownWhereKeyError)
   })
@@ -267,8 +311,39 @@ describe('inventoryLogFake refuses an unknown where key', () => {
   it('refuses an operator object on a plain-equality key', async () => {
     const fake = logFakeWithOneRow()
     await expect(
-      fake.client.findMany({ where: { locationId: { in: ['loc-1'] } } }),
+      fake.client.findMany({ where: { itemId: { in: ['item-1'] } } }),
     ).rejects.toThrow(UnsupportedWhereFilterError)
+  })
+
+  it('accepts locationId as a string or { in }, and refuses another operator', async () => {
+    // `inventoryLogs` reads the logs of every location the caller holds a
+    // role on (households H3a, task 3.8)
+    const fake = logFakeWithOneRow()
+    fake.state.logs.push(
+      makeInventoryLog({ id: 'log-2', itemId: 'item-1', userId: 'user-1', locationId: 'loc-2' }),
+    )
+    const both = await fake.client.findMany({ where: { locationId: { in: ['loc-1', 'loc-2'] } } })
+    expect(both.map((r) => r.id)).toEqual(['log-1', 'log-2'])
+    const one = await fake.client.findMany({ where: { locationId: { in: ['loc-2'] } } })
+    expect(one.map((r) => r.id)).toEqual(['log-2'])
+    const none = await fake.client.findMany({ where: { locationId: { in: [] } } })
+    expect(none).toEqual([])
+    await expect(
+      fake.client.findMany({ where: { locationId: { not: 'loc-1' } } }),
+    ).rejects.toThrow(UnsupportedWhereFilterError)
+  })
+
+  it('deleteMany deletes only the matching rows, and refuses an unknown key on an empty store', async () => {
+    const fake = logFakeWithOneRow()
+    fake.state.logs.push(
+      makeInventoryLog({ id: 'log-2', itemId: 'item-1', userId: 'user-1', locationId: 'loc-2' }),
+    )
+    const res = await fake.client.deleteMany({ where: { itemId: 'item-1', locationId: 'loc-1' } })
+    expect(res).toEqual({ count: 1 })
+    expect(fake.state.logs.map((l) => l.id)).toEqual(['log-2'])
+    await expect(
+      createInventoryLogFake().client.deleteMany({ where: UNKNOWN }),
+    ).rejects.toThrow(UnknownWhereKeyError)
   })
 
   it('refuses a number operator it does not model', async () => {
