@@ -6,8 +6,16 @@ import type { Context } from '../context.js'
 
 // ─── Mock Prisma ─────────────────────────────────────────────────────────────
 
+// `householdMember` answers the two reads `requireCatalogRole` (lib/authz.ts)
+// and `requireHousehold` make: every caller here is the `owner` of `hh_test`.
+// The role checks themselves are tested with three people in
+// `catalog-household.resolver.test.ts`.
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
+    householdMember: {
+      findFirst: vi.fn(async () => ({ householdId: 'hh_test' })),
+      findUnique: vi.fn(async () => ({ role: 'owner' })),
+    },
     tagType: {
       findMany: vi.fn(),
       // `findUnique` / `findFirst` are the two reads `requireOwnRowOrUnclaimed`
@@ -76,6 +84,12 @@ beforeEach(async () => {
   for (const model of [mockPrisma.tag, mockPrisma.tagType]) {
     model.findUnique.mockImplementation(async ({ where }) => ({ id: where.id }))
     model.findFirst.mockImplementation(async ({ where }) => ({ id: where.id }))
+    // `requireCatalogIds` asks `findMany` for the household's rows among a
+    // list of ids: every one is the household's. Any other `findMany` (a
+    // list query) answers `[]` unless the test arms it.
+    model.findMany.mockImplementation(async ({ where }) =>
+      where?.id?.in ? where.id.in.map((id: string) => ({ id })) : [],
+    )
   }
   server = new ApolloServer<Context>({ typeDefs, resolvers })
   await server.start()
@@ -112,7 +126,7 @@ describe('TagType resolvers', () => {
       userId: 'user_test123',
     })
     expect(mockPrisma.tagType.create).toHaveBeenCalledWith({
-      data: { name: 'Category', color: 'teal', userId: 'user_test123' },
+      data: { name: 'Category', color: 'teal', householdId: 'hh_test', userId: 'user_test123' },
     })
   })
 
@@ -130,7 +144,7 @@ describe('TagType resolvers', () => {
     const tagTypes = result?.data?.tagTypes as { id: string }[]
     expect(Array.isArray(tagTypes)).toBe(true)
     expect(tagTypes).toHaveLength(2)
-    expect(mockPrisma.tagType.findMany).toHaveBeenCalledWith({ where: { userId: 'user_test123' } })
+    expect(mockPrisma.tagType.findMany).toHaveBeenCalledWith({ where: { householdId: 'hh_test' } })
   })
 
   it('user can update a tag type', async () => {
@@ -183,7 +197,7 @@ describe('TagType resolvers', () => {
     // Then true is returned
     expect(result?.data?.deleteTagType).toBe(true)
     expect(mockPrisma.tag.deleteMany).toHaveBeenCalledWith({
-      where: { typeId: 'tt_1', userId: 'user_test123' },
+      where: { typeId: 'tt_1', householdId: 'hh_test' },
     })
   })
 
@@ -200,7 +214,7 @@ describe('TagType resolvers', () => {
     // Then the count is returned
     expect(result?.data?.tagCountByType).toBe(2)
     expect(mockPrisma.tag.count).toHaveBeenCalledWith({
-      where: { userId: 'user_test123', typeId: 'tt_1' },
+      where: { householdId: 'hh_test', typeId: 'tt_1' },
     })
   })
 })
@@ -240,7 +254,7 @@ describe('Tag resolvers', () => {
     // Then all tags are returned
     const tags = result?.data?.tags as { id: string }[]
     expect(tags).toHaveLength(1)
-    expect(mockPrisma.tag.findMany).toHaveBeenCalledWith({ where: { userId: 'user_test123' } })
+    expect(mockPrisma.tag.findMany).toHaveBeenCalledWith({ where: { householdId: 'hh_test' } })
   })
 
   it('user can list tags by type', async () => {
@@ -259,7 +273,7 @@ describe('Tag resolvers', () => {
     const tags = result?.data?.tagsByType as { id: string; name: string }[]
     expect(tags).toHaveLength(1)
     expect(tags[0].name).toBe('Dairy')
-    expect(mockPrisma.tag.findMany).toHaveBeenCalledWith({ where: { userId: 'user_test123', typeId: 'tt_1' } })
+    expect(mockPrisma.tag.findMany).toHaveBeenCalledWith({ where: { householdId: 'hh_test', typeId: 'tt_1' } })
   })
 
   it('user can update a tag', async () => {
@@ -310,7 +324,7 @@ describe('Tag resolvers', () => {
     // Then true is returned and children are orphaned
     expect(result?.data?.deleteTag).toBe(true)
     expect(mockPrisma.tag.updateMany).toHaveBeenCalledWith({
-      where: { parentId: 'tag_1', userId: 'user_test123' }, data: { parentId: null },
+      where: { parentId: 'tag_1', householdId: 'hh_test' }, data: { parentId: null },
     })
     expect(mockPrisma.tag.delete).toHaveBeenCalledWith({ where: { id: 'tag_1' } })
   })

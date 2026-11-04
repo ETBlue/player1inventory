@@ -202,28 +202,61 @@ export async function fallbackImportLocation(ctx: Context): Promise<string> {
 }
 
 /**
- * The nine models that carry a `userId` column and have `id` as their only
- * unique key. `ItemStock` is NOT here on purpose: it carries no `userId` at
- * all and is scoped through its location by `requireLocationRole`. `Location`
- * is not here either, for the same reason — it IS the location.
+ * The caller's household id, after checking the caller holds `role` or higher
+ * in it. This is the one entry point of every catalog resolver (households
+ * H3a, task 3.7): reads ask for `member`, writes ask for `manager` (design,
+ * *Household roles*: members read the catalog, managers write it).
+ *
+ * `member` is the lowest household role, so asking for it refuses only a
+ * person in no household at all. Nobody can be in that state before H5, so a
+ * `member` check cannot be told apart from no check in a test today.
+ */
+export async function requireCatalogRole(ctx: Context, role: HouseholdRole): Promise<string> {
+  const householdId = await requireHousehold(ctx)
+  await requireHouseholdRole(ctx, householdId, role)
+  return householdId
+}
+
+/**
+ * The six catalog models. Their rows belong to a household (H3a, task 3.7),
+ * not to an account and not to a location.
+ */
+export type CatalogModel = 'item' | 'tag' | 'tagType' | 'vendor' | 'recipe' | 'shelf'
+
+/**
+ * The nine models that have `id` as their only unique key and belong to no
+ * location. `ItemStock` is NOT here on purpose: it carries no `userId` at all
+ * and is scoped through its location by `requireLocationRole`. `Location` is
+ * not here either, for the same reason — it IS the location.
+ *
+ * Six of them are catalog models, scoped by household since H3a task 3.7.
+ * `InventoryLog`, `Cart` and `CartItem` are still scoped by `userId`, until
+ * H3b and H4.
  *
  * This is a hand-maintained list, and a wrong literal at a call site compiles.
  * Every call site therefore needs its own test, and deleting a guard must turn
  * a named test red.
  */
-export type OwnedModel =
-  | 'item'
-  | 'tag'
-  | 'tagType'
-  | 'vendor'
-  | 'recipe'
-  | 'inventoryLog'
-  | 'cart'
-  | 'cartItem'
-  | 'shelf'
+export type OwnedModel = CatalogModel | 'inventoryLog' | 'cart' | 'cartItem'
 
-/** The two reads the guard needs on a model with an `id` and a `userId`. */
-interface OwnedRowDelegate {
+/** The reads the guards need on a catalog model: by id, by id and household. */
+interface CatalogDelegate {
+  findUnique(args: {
+    where: { id: string }
+    select: { id: true }
+  }): Promise<{ id: string } | null>
+  findFirst(args: {
+    where: { id: string; householdId: string }
+    select: { id: true }
+  }): Promise<{ id: string } | null>
+  findMany(args: {
+    where: { id: { in: string[] }; householdId?: string }
+    select: { id: true }
+  }): Promise<{ id: string }[]>
+}
+
+/** The two reads the guard needs on a model still scoped by `userId`. */
+interface UserScopedDelegate {
   findUnique(args: {
     where: { id: string }
     select: { id: true }
@@ -234,42 +267,52 @@ interface OwnedRowDelegate {
   }): Promise<{ id: string } | null>
 }
 
-function delegateFor(model: OwnedModel): OwnedRowDelegate {
-  // Built PER CALL, not captured at module load, so a test that swaps a method
-  // on the mocked `prisma` after import still sees its own swap.
-  //
-  // `satisfies` type-checks the nine entries, so the `as unknown as
-  // Record<OwnedModel, OwnedRowDelegate>` cast the design doc allowed as a
-  // fallback is not needed. Prisma's `findUnique` is generic, and assignability
-  // to this non-generic target instantiates its type parameter from the target.
-  //
-  // What `satisfies` catches here, measured on Prisma 6.19.3 on 2026-10-28:
-  // `prisma.itemTag` (a composite-key model with no `id`) fails TS2322, and so
-  // does any value that is not a delegate at all. What it does NOT catch:
-  // `prisma.itemStock`, whose model has an `id` but no `userId` column, is
-  // accepted — a `where` with an extra key is assignable to
-  // `ItemStockWhereInput` because excess-property checking does not apply to a
-  // type-level assignability check. Nor can it catch a swap between two models
-  // that are both in this table. So a wrong model literal at a call site still
-  // compiles, and per-call-site tests are what catch it.
+type UserScopedModel = Exclude<OwnedModel, CatalogModel>
+
+function isCatalogModel(model: OwnedModel): model is CatalogModel {
+  return model !== 'inventoryLog' && model !== 'cart' && model !== 'cartItem'
+}
+
+// Both tables are built PER CALL, not captured at module load, so a test that
+// swaps a method on the mocked `prisma` after import still sees its own swap.
+//
+// `satisfies` type-checks each entry, so no `as unknown as Record<…>` cast is
+// needed. Prisma's `findUnique` is generic, and assignability to this
+// non-generic target instantiates its type parameter from the target.
+//
+// What `satisfies` catches here, measured on Prisma 6.19.3 on 2026-10-28:
+// `prisma.itemTag` (a composite-key model with no `id`) fails TS2322, and so
+// does any value that is not a delegate at all. What it does NOT catch: a
+// model with an `id` but without the scope column, such as
+// `prisma.itemStock`, is accepted — a `where` with an extra key is assignable
+// to its `WhereInput` because excess-property checking does not apply to a
+// type-level assignability check. Nor can it catch a swap between two models
+// in the same table. So a wrong model literal at a call site still compiles,
+// and per-call-site tests are what catch it.
+function catalogDelegate(model: CatalogModel): CatalogDelegate {
   const delegates = {
     item: prisma.item,
     tag: prisma.tag,
     tagType: prisma.tagType,
     vendor: prisma.vendor,
     recipe: prisma.recipe,
+    shelf: prisma.shelf,
+  } satisfies Record<CatalogModel, CatalogDelegate>
+  return delegates[model]
+}
+
+function userScopedDelegate(model: UserScopedModel): UserScopedDelegate {
+  const delegates = {
     inventoryLog: prisma.inventoryLog,
     cart: prisma.cart,
     cartItem: prisma.cartItem,
-    shelf: prisma.shelf,
-  } satisfies Record<OwnedModel, OwnedRowDelegate>
+  } satisfies Record<UserScopedModel, UserScopedDelegate>
   return delegates[model]
 }
 
 /**
- * The single authorization seam for account-scoped data — the nine models in
- * `OwnedModel`, which belong to no location and so are outside
- * `requireLocationRole`'s reach.
+ * The single authorization seam for the nine models in `OwnedModel`, which
+ * belong to no location and so are outside `requireLocationRole`'s reach.
  *
  * Three cases for one row id:
  *
@@ -279,15 +322,29 @@ function delegateFor(model: OwnedModel): OwnedRowDelegate {
  * | held by somebody else's row | **throws** `FORBIDDEN` |
  * | held by no row | returns `'unclaimed'` |
  *
+ * "A row the caller may write" means, since H3a task 3.7:
+ *
+ * | Model | The row is "own" when |
+ * |---|---|
+ * | the six catalog models | it is in the caller's household (`requireHousehold`) |
+ * | `InventoryLog`, `Cart`, `CartItem` | its `userId` is the caller's (until H3b and H4) |
+ *
+ * So a tag another member of the caller's household made is `'own'` here, and
+ * a tag of another household throws.
+ *
+ * It does NOT check the caller's household ROLE. The catalog resolvers check
+ * `manager` first, with `requireCatalogRole`. The import mutations do not
+ * check a role yet: import role gating is H4.
+ *
  * The "somebody else's" case throws rather than returning, so a call site
  * cannot ignore it.
  *
- * Call sites never inspect `userId` themselves — root CLAUDE.md forbids
- * `row.userId === ctx.userId` as an authorization check. They say "this id
- * must be one I may write", and this body is what decides. When account scope
- * changes — a household scope is the likely answer and is being explored on
- * another branch — the `where` below changes and no call site moves. That is
- * the same contract `requireLocationRole` above already carries.
+ * Call sites never inspect `userId` or `householdId` themselves — root
+ * CLAUDE.md forbids `row.userId === ctx.userId` as an authorization check.
+ * They say "this id must be one I may write", and this body is what decides.
+ * When the scope changes again (H4 moves it to the import's TARGET
+ * household), the `where` below changes and no call site moves. That is the
+ * same contract `requireLocationRole` above already carries.
  *
  * See docs/features/settings/2026-10-28-design-import-ownership-guard.md.
  */
@@ -299,19 +356,22 @@ export async function requireOwnRowOrUnclaimed(
   const userId = requireAuth(ctx)
 
   // UNSCOPED on purpose, and only `id` is selected. "Is this primary key
-  // taken" is not an authorization question and has no user to scope by.
-  const taken = await delegateFor(model).findUnique({
-    where: { id },
-    select: { id: true },
-  })
+  // taken" is not an authorization question and has no scope.
+  const delegate = isCatalogModel(model) ? catalogDelegate(model) : userScopedDelegate(model)
+  const taken = await delegate.findUnique({ where: { id }, select: { id: true } })
   if (!taken) return 'unclaimed'
 
   // The AUTHORIZATION decision, SCOPED IN SQL. Never a comparison of a fetched
-  // row's `userId` against the caller's.
-  const own = await delegateFor(model).findFirst({
-    where: { id, userId },
-    select: { id: true },
-  })
+  // row's `userId` or `householdId` against the caller's.
+  const own = isCatalogModel(model)
+    ? await catalogDelegate(model).findFirst({
+        where: { id, householdId: await requireHousehold(ctx) },
+        select: { id: true },
+      })
+    : await userScopedDelegate(model).findFirst({
+        where: { id, userId },
+        select: { id: true },
+      })
 
   // Same wording and code as `requireLocationRole`'s refusal above, so a
   // refusal reveals neither which model nor who owns the row.
@@ -322,9 +382,81 @@ export async function requireOwnRowOrUnclaimed(
   // unavoidable. What protects the ids is that they are `cuid()` and cannot be
   // guessed. `requireLocationRole` above is stricter — it refuses a missing id
   // too — and the reason stated there does not carry over here unchanged.
-  if (!own) {
-    throw new GraphQLError('Forbidden', { extensions: { code: 'FORBIDDEN' } })
-  }
+  if (!own) throw forbidden()
 
   return 'own'
+}
+
+const CATALOG_LABEL: Record<CatalogModel, string> = {
+  item: 'item',
+  tag: 'tag',
+  tagType: 'tag type',
+  vendor: 'vendor',
+  recipe: 'recipe',
+  shelf: 'shelf',
+}
+
+/**
+ * Refuse unless every id in `ids` names a `model` row of `householdId`.
+ *
+ * For the ids a write ATTACHES to a row of the caller's household: an item's
+ * tags and vendors, a recipe's items, a shelf's items and filter ids, a tag's
+ * type and parent (households H3a task 3.7, issue #273). Before this, those
+ * ids were taken on trust, so a client could attach another household's tag
+ * to its own item and raise that household's `itemCountByTag`.
+ *
+ * | An id is | Result |
+ * |---|---|
+ * | a row of `householdId` | passes |
+ * | a row of another household | throws `FORBIDDEN`, the same refusal as every role check |
+ * | held by no row | throws `BAD_USER_INPUT`, unless `missing: 'allow'` |
+ *
+ * A stranger's id is checked first, so a list with both kinds gets
+ * `FORBIDDEN`.
+ *
+ * `BAD_USER_INPUT` for a missing id keeps what `createTag` / `updateTag`
+ * have done since `fix/catalog-write-scope` (2026-11-04). For the other
+ * sites it replaces a foreign-key error from Postgres, which reached the
+ * client as `INTERNAL_SERVER_ERROR`.
+ *
+ * `missing: 'allow'` is for the shelf arrays (`itemIds`, `filterConfig`).
+ * They are plain arrays, not foreign keys, and nothing removes an id from
+ * them when its row is deleted. So a shelf the client saves may still name
+ * a deleted item, and refusing that would refuse the user's own edit.
+ *
+ * A repeated id is checked once. It is not refused here: what a repeat does
+ * to the write is the write's business (for `ItemTag` it is a `P2002`, as
+ * before).
+ *
+ * Costs one query when every id is the household's, and two otherwise. No
+ * call site compares a `householdId`.
+ */
+export async function requireCatalogIds(
+  ctx: Context,
+  householdId: string,
+  model: CatalogModel,
+  ids: readonly string[],
+  options: { missing?: 'refuse' | 'allow' } = {},
+): Promise<void> {
+  requireAuth(ctx)
+  const unique = [...new Set(ids)]
+  if (unique.length === 0) return
+
+  const delegate = catalogDelegate(model)
+  const own = await delegate.findMany({
+    where: { id: { in: unique }, householdId },
+    select: { id: true },
+  })
+  const ownIds = new Set(own.map((row) => row.id))
+  const rest = unique.filter((id) => !ownIds.has(id))
+  if (rest.length === 0) return
+
+  // UNSCOPED on purpose: "is this id held by any row" tells a stranger's id
+  // from one no row holds. Only `id` is selected.
+  const taken = await delegate.findMany({ where: { id: { in: rest } }, select: { id: true } })
+  if (taken.length > 0) throw forbidden()
+  if (options.missing === 'allow') return
+  throw new GraphQLError(`No ${CATALOG_LABEL[model]} matches one of the ids given`, {
+    extensions: { code: 'BAD_USER_INPUT' },
+  })
 }

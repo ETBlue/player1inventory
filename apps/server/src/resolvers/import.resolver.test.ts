@@ -6,8 +6,14 @@ import type { Context } from '../context.js'
 
 // ─── Mock Prisma ─────────────────────────────────────────────────────────────
 
+// `householdMember` answers `requireHousehold` (lib/authz.ts): the caller is a
+// member of `hh_test`. The catalog mutations read and write by household
+// since households H3a task 3.7.
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
+    householdMember: {
+      findFirst: vi.fn(async () => ({ householdId: 'hh_test' })),
+    },
     item: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
@@ -461,6 +467,11 @@ describe('bulkCreateItems', () => {
       const items = response.body.singleResult.data?.bulkCreateItems as Array<{ userId: string }>
       expect(items[0].userId).toBe('new_user')
     }
+    // And the row is written into the caller's household, beside the
+    // `userId` that is still written until task 3.14 (households H3a task 3.7)
+    expect(p.item.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ householdId: 'hh_test', userId: 'new_user' }),
+    })
   })
 
   // ── NO STOCK COMES FROM THE ITEM IMPORT (cloud locations PR 4b) ───────────

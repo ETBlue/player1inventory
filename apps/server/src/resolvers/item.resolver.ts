@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql'
+import { requireCatalogIds, requireCatalogRole } from '../lib/authz.js'
 import { prisma } from '../lib/prisma.js'
 import { requireAuth } from '../context.js'
 import type { Item, Resolvers, UpdateItemInput } from '../generated/graphql.js'
@@ -93,45 +94,63 @@ export function buildItemUpdateData(input: UpdateItemInput): Prisma.ItemUpdateIn
 }
 
 export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
+  // ── Household scope (households H3a, task 3.7) ──
+  //
+  // Every read needs household role `member` and every write `manager`
+  // (design, *Household roles*), through `requireCatalogRole`
+  // (lib/authz.ts). Every read is filtered by the caller's household, so an
+  // item another member of the household made is read and written like the
+  // caller's own. No call site compares a `householdId`.
   Query: {
     items: async (_, __, ctx) => {
-      const userId = requireAuth(ctx)
+      const householdId = await requireCatalogRole(ctx, 'member')
       const items = await prisma.item.findMany({
-        where: { userId },
+        where: { householdId },
         include: { tags: true, vendors: true },
       })
       return items.map(toGraphQL)
     },
 
     item: async (_, { id }, ctx) => {
-      const userId = requireAuth(ctx)
+      const householdId = await requireCatalogRole(ctx, 'member')
       const item = await prisma.item.findFirst({
-        where: { id, userId },
+        where: { id, householdId },
         include: { tags: true, vendors: true },
       })
       return item ? toGraphQL(item) : null
     },
 
+    // Issue #273: these three counted the items of every household. A client
+    // could attach another household's tag to its own item, and that
+    // household then saw its count go up. Now each count reads only the
+    // caller's household's items, through the junction row's `item`.
     itemCountByTag: async (_, { tagId }, ctx) => {
-      requireAuth(ctx)
-      return prisma.itemTag.count({ where: { tagId } })
+      const householdId = await requireCatalogRole(ctx, 'member')
+      return prisma.itemTag.count({ where: { tagId, item: { householdId } } })
     },
 
     itemCountByVendor: async (_, { vendorId }, ctx) => {
-      requireAuth(ctx)
-      return prisma.itemVendor.count({ where: { vendorId } })
+      const householdId = await requireCatalogRole(ctx, 'member')
+      return prisma.itemVendor.count({ where: { vendorId, item: { householdId } } })
     },
 
     itemCountByRecipe: async (_, { recipeId }, ctx) => {
-      requireAuth(ctx)
-      return prisma.recipeItem.count({ where: { recipeId } })
+      const householdId = await requireCatalogRole(ctx, 'member')
+      return prisma.recipeItem.count({ where: { recipeId, item: { householdId } } })
     },
   },
 
   Mutation: {
     createItem: async (_, { input }, ctx) => {
       const userId = requireAuth(ctx)
+      const householdId = await requireCatalogRole(ctx, 'manager')
       const { tagIds, vendorIds, expirationMode, targetUnit, ...rest } = input
+
+      // Issue #273: every tag and vendor the new item points at must be the
+      // household's. Checked BEFORE the item is created, so a refused call
+      // writes nothing.
+      await requireCatalogIds(ctx, householdId, 'tag', tagIds ?? [])
+      await requireCatalogIds(ctx, householdId, 'vendor', vendorIds ?? [])
 
       // CONFIGURATION only. Cloud locations PR 5 removed the five per-location
       // state fields from `CreateItemInput`, so nothing is written for them
@@ -167,6 +186,9 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           // stored value from "never set".
           wikidataUrl: strOr(rest.wikidataUrl),
           note: strOr(rest.note),
+          householdId,
+          // Still written until task 3.14 drops the column, which is NOT NULL
+          // until then. It is no longer read to decide who may see the item.
           userId,
         },
       })
@@ -190,15 +212,21 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     },
 
     updateItem: async (_, { id, input }, ctx) => {
-      const userId = requireAuth(ctx)
+      const householdId = await requireCatalogRole(ctx, 'manager')
 
-      // Verify ownership
-      const existing = await prisma.item.findFirst({ where: { id, userId } })
+      // The item must be the household's. Another household's item gives the
+      // same NOT_FOUND as a missing one.
+      const existing = await prisma.item.findFirst({ where: { id, householdId } })
       if (!existing) {
         throw new GraphQLError('Item not found', { extensions: { code: 'NOT_FOUND' } })
       }
 
       const { tagIds, vendorIds } = input
+
+      // Issue #273: checked BEFORE any write, so a refused call changes
+      // nothing — not the item's fields, not its junction rows.
+      await requireCatalogIds(ctx, householdId, 'tag', tagIds ?? [])
+      await requireCatalogIds(ctx, householdId, 'vendor', vendorIds ?? [])
 
       // `Item` only, and `UpdateItemInput` now makes that the only option:
       // cloud locations PR 5 removed the five per-location state fields from
@@ -235,9 +263,9 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     },
 
     deleteItem: async (_, { id }, ctx) => {
-      const userId = requireAuth(ctx)
-      // Verify ownership before deleting
-      const existing = await prisma.item.findFirst({ where: { id, userId } })
+      const householdId = await requireCatalogRole(ctx, 'manager')
+      // The item must be the household's before it is deleted
+      const existing = await prisma.item.findFirst({ where: { id, householdId } })
       if (!existing) return false
       // Cascade handles InventoryLog, RecipeItem, CartItem, ItemTag, ItemVendor via onDelete: Cascade
       await prisma.item.delete({ where: { id } })

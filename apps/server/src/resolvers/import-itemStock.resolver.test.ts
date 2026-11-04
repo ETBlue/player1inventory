@@ -50,20 +50,34 @@ vi.mock('../lib/prisma.js', async () => {
   const roles = (await import('../test/derivedRoles.js')).createDerivedRoles(stock)
 
   // A minimal stateful `item` store. Only `findFirst` is needed —
-  // `requireOwnItemStockRefs` asks "does the caller own this item id" and
-  // reads nothing else. It applies `where` key by key, Prisma's own semantics,
-  // so a resolver that drops `userId` from the filter matches MORE rows and
-  // the two-user fixture sees it. A `vi.fn()` told to resolve to a row would
-  // pass against a resolver with no item scope at all.
-  const items: { id: string; userId: string }[] = []
+  // `requireOwnItemStockRefs` asks "is this item id in the caller's
+  // household" and reads nothing else. It applies `where` key by key,
+  // Prisma's own semantics, so a resolver that drops `householdId` from the
+  // filter matches MORE rows and the two-household fixture sees it. A
+  // `vi.fn()` told to resolve to a row would pass against a resolver with no
+  // item scope at all.
+  //
+  // It THROWS on any key but `id` and `householdId` (households H3a task
+  // 3.7). Before that it ignored an unknown key, so when the resolver moved
+  // from `userId` to `householdId` this fake matched the stranger's item and
+  // two tests went red for the wrong reason. Ignoring a key is the
+  // `cartItemFake` trap in root CLAUDE.md.
+  const items: { id: string; householdId: string; userId: string }[] = []
   const item = {
-    findFirst: vi.fn(async ({ where = {} }: { where?: Record<string, unknown> } = {}) =>
-      items.find(
-        (i) =>
-          (where.id === undefined || i.id === where.id) &&
-          (where.userId === undefined || i.userId === where.userId),
-      ) ?? null,
-    ),
+    findFirst: vi.fn(async ({ where = {} }: { where?: Record<string, unknown> } = {}) => {
+      for (const key of Object.keys(where)) {
+        if (key !== 'id' && key !== 'householdId') {
+          throw new Error(`item fake does not model the where key '${key}'`)
+        }
+      }
+      return (
+        items.find(
+          (i) =>
+            (where.id === undefined || i.id === where.id) &&
+            (where.householdId === undefined || i.householdId === where.householdId),
+        ) ?? null
+      )
+    }),
   }
 
   return {
@@ -101,10 +115,11 @@ vi.mock('../lib/prisma.js', async () => {
 
 import { prisma } from '../lib/prisma.js'
 import type { StockFake } from '../test/stockFake.js'
+import { derivedHouseholdId } from '../test/derivedRoles.js'
 
 const mockPrisma = prisma as unknown as {
   $stockFake: StockFake
-  $items: { id: string; userId: string }[]
+  $items: { id: string; householdId: string; userId: string }[]
 }
 
 // ─── Server ──────────────────────────────────────────────────────────────────
@@ -159,9 +174,10 @@ beforeEach(() => {
   ])
   mockPrisma.$items.length = 0
   mockPrisma.$items.push(
-    { id: ITEM_A, userId: USER },
-    { id: ITEM_B, userId: USER },
-    { id: ITEM_THEIRS, userId: STRANGER },
+    // Each item is in the household `derivedRoles` gives its owner.
+    { id: ITEM_A, householdId: derivedHouseholdId(USER), userId: USER },
+    { id: ITEM_B, householdId: derivedHouseholdId(USER), userId: USER },
+    { id: ITEM_THEIRS, householdId: derivedHouseholdId(STRANGER), userId: STRANGER },
   )
 })
 

@@ -1,25 +1,41 @@
 import { GraphQLError } from 'graphql'
 import type { Prisma } from '@prisma/client'
-import { requireLocationRole } from '../lib/authz.js'
+import {
+  requireCatalogIds,
+  requireCatalogRole,
+  requireHousehold,
+  requireLocationRole,
+} from '../lib/authz.js'
 import { prisma } from '../lib/prisma.js'
 import { writeStock } from '../lib/itemStockWrite.js'
 import { requireAuth } from '../context.js'
 import type { Recipe, Resolvers } from '../generated/graphql.js'
 
+// ── Household scope (households H3a, task 3.7) ──
+//
+// Reading recipes needs household role `member`; creating, editing and
+// deleting one needs `manager` (design, *Household roles*), through
+// `requireCatalogRole` (lib/authz.ts). Reads are filtered by the household.
+//
+// Marking a recipe as cooked is NOT a catalog edit. `updateRecipeLastCookedAt`
+// and the `lastCookedAt` write in `consumeRecipes` record that someone
+// cooked, which is a location right (design, *Location roles*: participants
+// "edit pantry, shopping, cooking"). So they need only `member`. Asking for
+// `manager` there would stop a member who may cook from cooking.
 export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> = {
   Query: {
     recipes: async (_, __, ctx) => {
-      const userId = requireAuth(ctx)
+      const householdId = await requireCatalogRole(ctx, 'member')
       const recipes = await prisma.recipe.findMany({
-        where: { userId },
+        where: { householdId },
         include: { items: true },
       })
       return recipes as unknown as Recipe[]
     },
     recipe: async (_, { id }, ctx) => {
-      const userId = requireAuth(ctx)
+      const householdId = await requireCatalogRole(ctx, 'member')
       const recipe = await prisma.recipe.findFirst({
-        where: { id, userId },
+        where: { id, householdId },
         include: { items: true },
       })
       return recipe as unknown as Recipe | null
@@ -28,7 +44,12 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
   Mutation: {
     createRecipe: async (_, { name, items }, ctx) => {
       const userId = requireAuth(ctx)
-      const recipe = await prisma.recipe.create({ data: { name, userId } })
+      const householdId = await requireCatalogRole(ctx, 'manager')
+      // Issue #273: every item the recipe names must be the household's.
+      // Checked BEFORE the recipe is created, so a refused call writes nothing.
+      await requireCatalogIds(ctx, householdId, 'item', (items ?? []).map((i) => i.itemId))
+      // `userId` is still written until task 3.14 drops the column.
+      const recipe = await prisma.recipe.create({ data: { name, householdId, userId } })
       if (items?.length) {
         await prisma.recipeItem.createMany({
           data: items.map(i => ({ recipeId: recipe.id, itemId: i.itemId, defaultAmount: i.defaultAmount })),
@@ -37,9 +58,11 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
       return prisma.recipe.findUniqueOrThrow({ where: { id: recipe.id }, include: { items: true } }) as unknown as Promise<Recipe>
     },
     updateRecipe: async (_, { id, name, items }, ctx) => {
-      const userId = requireAuth(ctx)
-      const existing = await prisma.recipe.findFirst({ where: { id, userId } })
+      const householdId = await requireCatalogRole(ctx, 'manager')
+      const existing = await prisma.recipe.findFirst({ where: { id, householdId } })
       if (!existing) throw new GraphQLError('Recipe not found', { extensions: { code: 'NOT_FOUND' } })
+      // Issue #273: checked BEFORE any write, so a refused call changes nothing.
+      await requireCatalogIds(ctx, householdId, 'item', (items ?? []).map((i) => i.itemId))
       const data: { name?: string } = {}
       if (name != null) data.name = name
       await prisma.recipe.update({ where: { id }, data })
@@ -54,8 +77,9 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
       return prisma.recipe.findUniqueOrThrow({ where: { id }, include: { items: true } }) as unknown as Promise<Recipe>
     },
     updateRecipeLastCookedAt: async (_, { id }, ctx) => {
-      const userId = requireAuth(ctx)
-      const existing = await prisma.recipe.findFirst({ where: { id, userId } })
+      // `member`, not `manager`: see the comment at the top of this file.
+      const householdId = await requireCatalogRole(ctx, 'member')
+      const existing = await prisma.recipe.findFirst({ where: { id, householdId } })
       if (!existing) throw new GraphQLError('Recipe not found', { extensions: { code: 'NOT_FOUND' } })
       return prisma.recipe.update({
         where: { id },
@@ -83,6 +107,10 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
       // `itemResults` entry — a caller who may not write this location has not
       // partly succeeded.
       await requireLocationRole(ctx, consumeLocationId, 'participant')
+      // Only the household's recipes are marked as cooked, below. Read here,
+      // before any write. `requireHousehold` is the `member` check: see the
+      // comment at the top of this file.
+      const householdId = await requireHousehold(ctx)
 
       for (const item of items) {
         try {
@@ -123,7 +151,7 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
       for (const recipeId of recipeIds) {
         try {
           await prisma.recipe.updateMany({
-            where: { id: recipeId, userId },
+            where: { id: recipeId, householdId },
             data: { lastCookedAt: new Date() },
           })
         } catch {
@@ -137,8 +165,8 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
       }
     },
     deleteRecipe: async (_, { id }, ctx) => {
-      const userId = requireAuth(ctx)
-      const existing = await prisma.recipe.findFirst({ where: { id, userId } })
+      const householdId = await requireCatalogRole(ctx, 'manager')
+      const existing = await prisma.recipe.findFirst({ where: { id, householdId } })
       if (!existing) return false
       // RecipeItem rows cascade-delete via DB constraint
       await prisma.recipe.delete({ where: { id } })

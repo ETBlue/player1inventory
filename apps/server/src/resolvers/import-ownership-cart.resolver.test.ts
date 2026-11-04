@@ -98,8 +98,13 @@ vi.mock('../lib/prisma.js', async () => {
     quantity: number
   }>({ model: 'CartItem' })
 
-  const item = createOwnedRowFake<{ id: string; userId: string; name: string }>({
+  // A catalog model, so scoped by `householdId` since households H3a task
+  // 3.7 (and still requiring `userId` on a create until task 3.14). Each item
+  // row is in the household `derivedRoles` gives its owner.
+  const item = createOwnedRowFake<{ id: string; householdId: string; userId: string; name: string }>({
     model: 'Item',
+    scope: 'householdId',
+    requiredColumns: ['userId'],
   })
 
   // `findUnique` is wrapped in a `vi.fn` on top of the fake's real row
@@ -137,6 +142,7 @@ vi.mock('../lib/prisma.js', async () => {
 
 import { prisma } from '../lib/prisma.js'
 import type { OwnedRowFake } from '../test/ownedRowFake.js'
+import { derivedHouseholdId } from '../test/derivedRoles.js'
 import type { StockFake } from '../test/stockFake.js'
 
 type CartRow = {
@@ -152,7 +158,7 @@ type CartItemRow = {
   itemId: string
   quantity: number
 }
-type ItemRow = { id: string; userId: string; name: string }
+type ItemRow = { id: string; householdId: string; userId: string; name: string }
 
 const mockPrisma = prisma as unknown as {
   cart: { findUnique: ReturnType<typeof vi.fn> }
@@ -273,9 +279,9 @@ beforeEach(() => {
   ])
 
   mockPrisma.$item.reset([
-    { id: ITEM_MINE, userId: USER, name: 'Milk' },
-    { id: ITEM_OTHER, userId: USER, name: 'Rice' },
-    { id: ITEM_THEIRS, userId: STRANGER, name: 'Theirs' },
+    { id: ITEM_MINE, householdId: derivedHouseholdId(USER), userId: USER, name: 'Milk' },
+    { id: ITEM_OTHER, householdId: derivedHouseholdId(USER), userId: USER, name: 'Rice' },
+    { id: ITEM_THEIRS, householdId: derivedHouseholdId(STRANGER), userId: STRANGER, name: 'Theirs' },
   ])
 })
 

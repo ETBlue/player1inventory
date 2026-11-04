@@ -2,9 +2,11 @@ import { GraphQLError } from 'graphql'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Context } from '../context.js'
 
-interface OwnedRow {
+/** A row of the small stores below: a catalog row or a `cart` row. */
+interface ScopedRow {
   id: string
-  userId: string
+  householdId?: string
+  userId?: string
 }
 
 // Two kinds of double in one mocked `prisma`:
@@ -12,40 +14,76 @@ interface OwnedRow {
 // - `user`, `household`, `householdMember`, `location`, `locationMember` and
 //   `$transaction` are the stateful doubles joined in
 //   src/test/householdWorld.ts. The role helpers read them.
-// - `tag` and `item` are small stores for `requireOwnRowOrUnclaimed`, with a
-//   `lookups` counter.
+// - `tag`, `item` and `cart` are small stores for `requireOwnRowOrUnclaimed`
+//   and `requireCatalogIds`, with a `lookups` counter. `tag` and `item` are
+//   catalog models, scoped by `householdId` since households H3a task 3.7.
+//   `cart` is still scoped by `userId` until H3b.
 const { state, client } = vi.hoisted(() => {
   const state = {
-    tags: [] as OwnedRow[],
-    items: [] as OwnedRow[],
-    // Counts every read the tag and item stores serve, so "refused before any
-    // lookup" can be asserted as a fact rather than inferred from the error
-    // message.
+    tags: [] as ScopedRow[],
+    items: [] as ScopedRow[],
+    carts: [] as ScopedRow[],
+    // Counts every read the stores serve, so "refused before any lookup" can
+    // be asserted as a fact rather than inferred from the error message.
     lookups: 0,
   }
 
-  // Filters only on keys actually present in `where`, exactly as real Prisma
-  // does. Hardcoding a userId comparison here would leave the "delete userId
-  // from the where clause" mutation check meaningless: the store would refuse
-  // another user's row even when the resolver stopped asking it to.
-  const matches = (row: OwnedRow, where: { id?: string; userId?: string }) =>
-    (where.id === undefined || row.id === where.id) &&
-    (where.userId === undefined || row.userId === where.userId)
+  type Where = { id?: string | { in: string[] }; householdId?: string; userId?: string }
 
-  const ownedStore = (rows: () => OwnedRow[]) => ({
-    findUnique: async ({ where }: { where: { id?: string; userId?: string } }) => {
-      state.lookups += 1
-      return rows().find((row) => matches(row, where)) ?? null
-    },
-    findFirst: async ({ where }: { where: { id?: string; userId?: string } }) => {
-      state.lookups += 1
-      return rows().find((row) => matches(row, where)) ?? null
-    },
-  })
+  // Filters only on keys actually present in `where`, exactly as real Prisma
+  // does. Hardcoding a scope comparison here would leave the "delete the
+  // scope from the where clause" mutation check meaningless: the store would
+  // refuse another household's row even when the code stopped asking it to.
+  // Any other key THROWS, so a filter on a column a store does not have is
+  // not silently ignored (the `cartItemFake` trap, root CLAUDE.md).
+  const matches = (row: ScopedRow, where: Where) => {
+    for (const key of Object.keys(where)) {
+      if (key !== 'id' && key !== 'householdId' && key !== 'userId') {
+        throw new Error(`authz.test store does not model the where key '${key}'`)
+      }
+    }
+    const id = where.id
+    const idOk =
+      id === undefined || (typeof id === 'string' ? row.id === id : id.in.includes(row.id))
+    return (
+      idOk &&
+      (where.householdId === undefined || row.householdId === where.householdId) &&
+      (where.userId === undefined || row.userId === where.userId)
+    )
+  }
+
+  const store = (rows: () => ScopedRow[], scope: 'householdId' | 'userId') => {
+    const check = (where: Where) => {
+      const other = scope === 'householdId' ? 'userId' : 'householdId'
+      if (where[other] !== undefined) {
+        throw new Error(`this store is scoped by ${scope}, not ${other}`)
+      }
+    }
+    return {
+      findUnique: async ({ where }: { where: Where }) => {
+        state.lookups += 1
+        check(where)
+        return rows().find((row) => matches(row, where)) ?? null
+      },
+      findFirst: async ({ where }: { where: Where }) => {
+        state.lookups += 1
+        check(where)
+        return rows().find((row) => matches(row, where)) ?? null
+      },
+      findMany: async ({ where }: { where: Where }) => {
+        state.lookups += 1
+        check(where)
+        return rows()
+          .filter((row) => matches(row, where))
+          .map((row) => ({ id: row.id }))
+      },
+    }
+  }
 
   const client = {
-    tag: ownedStore(() => state.tags),
-    item: ownedStore(() => state.items),
+    tag: store(() => state.tags, 'householdId'),
+    item: store(() => state.items, 'householdId'),
+    cart: store(() => state.carts, 'userId'),
   }
   return { state, client }
 })
@@ -63,6 +101,8 @@ import type { HouseholdRole, LocationRole } from './authz.js'
 const {
   fallbackImportLocation,
   locationIdsWithRole,
+  requireCatalogIds,
+  requireCatalogRole,
   requireHousehold,
   requireHouseholdRole,
   requireLocationRole,
@@ -449,53 +489,79 @@ describe('fallbackImportLocation', () => {
 })
 
 
+// The catalog rows the next three blocks share. Three people (plan H3a rule
+// 10): `caller` and `other` share hh-1, `stranger` is in hh-2. `tag-others`
+// was made by `other`, so its `userId` is NOT the caller's: a check by
+// `userId` refuses it, and a check by household lets it through. With only
+// the caller's own rows, the two checks give the same answer.
+function seedCatalog() {
+  state.tags = [
+    { id: 'tag-mine', householdId: 'hh-1', userId: 'caller' },
+    { id: 'tag-others', householdId: 'hh-1', userId: 'other' },
+    { id: 'tag-theirs', householdId: 'hh-2', userId: 'stranger' },
+  ]
+  state.items = [
+    { id: 'item-mine', householdId: 'hh-1', userId: 'caller' },
+    { id: 'item-theirs', householdId: 'hh-2', userId: 'stranger' },
+  ]
+  state.carts = [
+    { id: 'cart-mine', userId: 'caller' },
+    { id: 'cart-others', userId: 'other' },
+  ]
+  state.lookups = 0
+}
+
 describe('requireOwnRowOrUnclaimed', () => {
   beforeEach(() => {
-    // Two users, on purpose. A single-user fixture cannot tell a query scoped
-    // by userId from an unscoped one — see plan rule 4.
-    state.tags = [
-      { id: 'tag-mine', userId: 'user-a' },
-      { id: 'tag-theirs', userId: 'user-b' },
-    ]
-    state.items = [
-      { id: 'item-mine', userId: 'user-a' },
-      { id: 'item-theirs', userId: 'user-b' },
-    ]
-    state.lookups = 0
+    seed({ callerHouseholdRole: 'member' })
+    seedCatalog()
   })
 
   it('user can import under an id their own row already holds', async () => {
-    // Given a caller authenticated as user-a and a tag owned by user-a
-    const ctx = { userId: 'user-a' }
-
-    // When the guard is asked about that id
-    const verdict = await requireOwnRowOrUnclaimed(ctx, 'tag', 'tag-mine')
+    // When the guard is asked about the caller's own tag
+    const verdict = await requireOwnRowOrUnclaimed(caller, 'tag', 'tag-mine')
 
     // Then the call site is told the row is the caller's, so it may replace it
     expect(verdict).toBe('own')
   })
 
-  it('user can import under an id no row holds', async () => {
-    // Given an id held by no row in any account
-    const ctx = { userId: 'user-a' }
-
+  it("user can write a catalog row another member of their household made", async () => {
+    // Given a tag `other` made in hh-1, the caller's household
     // When the guard is asked about it
-    const verdict = await requireOwnRowOrUnclaimed(ctx, 'tag', 'tag-free')
+    const verdict = await requireOwnRowOrUnclaimed(caller, 'tag', 'tag-others')
+
+    // Then it is the household's, so it is "own" (households H3a task 3.7).
+    // A body that still scoped by `userId` throws FORBIDDEN here.
+    expect(verdict).toBe('own')
+  })
+
+  it('user can import under an id no row holds', async () => {
+    // Given an id held by no row in any household
+    const verdict = await requireOwnRowOrUnclaimed(caller, 'tag', 'tag-free')
 
     // Then the call site is told it is free, so it may create it
     expect(verdict).toBe('unclaimed')
   })
 
-  it("user cannot import under another account's row id", async () => {
-    // Given a caller authenticated as user-a and a tag owned by user-b
-    const ctx = { userId: 'user-a' }
-
-    // When the guard is asked about user-b's id
+  it("user cannot import under another household's row id", async () => {
+    // Given a tag of hh-2
+    // When the guard is asked about it
     // Then it throws, so no call site can carry on and overwrite that row
-    await expect(requireOwnRowOrUnclaimed(ctx, 'tag', 'tag-theirs')).rejects.toThrow(/Forbidden/)
+    await expect(requireOwnRowOrUnclaimed(caller, 'tag', 'tag-theirs')).rejects.toThrow(/Forbidden/)
   })
 
-  it("user sees the same refusal for another account's row as for a missing location", async () => {
+  it("a cart is still checked by account, not by household, until H3b", async () => {
+    // Given a cart of `other`, who is in the caller's household
+    // When the guard is asked about it, and about the caller's own cart
+    // Then the caller's own cart is "own", and `other`'s cart is refused:
+    // `Cart` keeps its `userId` scope until H3b
+    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'cart-mine')).resolves.toBe('own')
+    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'cart-others')).rejects.toThrow(
+      /Forbidden/,
+    )
+  })
+
+  it("user sees the same refusal for another household's row as for a missing location", async () => {
     // NEGATIVE CONTROL. This test compares two string literals and passes
     // whatever the scoping does, so it is not evidence that the guard works.
     // It is here to pin the wording: both seams must refuse with the same
@@ -505,11 +571,9 @@ describe('requireOwnRowOrUnclaimed', () => {
     // 'unclaimed' for an id no row holds — it does not refuse it — so this
     // helper has no missing-id refusal of its own to compare against. The
     // nearest one is `requireLocationRole`'s, which does refuse a missing id.
-    const ctx = { userId: 'user-a' }
-
     const refusals: GraphQLError[] = []
-    await requireOwnRowOrUnclaimed(ctx, 'tag', 'tag-theirs').catch((e) => refusals.push(e))
-    await requireLocationRole(ctx, 'loc-missing', 'viewer').catch((e) => refusals.push(e))
+    await requireOwnRowOrUnclaimed(caller, 'tag', 'tag-theirs').catch((e) => refusals.push(e))
+    await requireLocationRole(caller, 'loc-missing', 'viewer').catch((e) => refusals.push(e))
 
     expect(refusals).toHaveLength(2)
     expect(refusals[0].message).toBe('Forbidden')
@@ -533,13 +597,93 @@ describe('requireOwnRowOrUnclaimed', () => {
 
   it('user importing an item is checked against the item model, not tag', async () => {
     // Given an id held only in the tag store, by the caller's own tag
-    const ctx = { userId: 'user-a' }
-
     // When the guard is asked about that id for the ITEM model
-    const verdict = await requireOwnRowOrUnclaimed(ctx, 'item', 'tag-mine')
+    const verdict = await requireOwnRowOrUnclaimed(caller, 'item', 'tag-mine')
 
-    // Then no item holds it, so it is unclaimed. A delegateFor that ignored
-    // the model and always returned prisma.tag would answer 'own' here.
+    // Then no item holds it, so it is unclaimed. A delegate lookup that
+    // ignored the model and always returned prisma.tag would answer 'own'.
     expect(verdict).toBe('unclaimed')
+  })
+})
+
+describe('requireCatalogIds', () => {
+  beforeEach(() => {
+    seed({ callerHouseholdRole: 'member' })
+    seedCatalog()
+  })
+
+  it("passes ids of the caller's household, including rows another member made", async () => {
+    await expect(
+      requireCatalogIds(caller, 'hh-1', 'tag', ['tag-mine', 'tag-others']),
+    ).resolves.toBeUndefined()
+  })
+
+  it("refuses an id of another household with FORBIDDEN", async () => {
+    const error = await requireCatalogIds(caller, 'hh-1', 'tag', ['tag-mine', 'tag-theirs']).catch(
+      (e: GraphQLError) => e,
+    )
+    expect(error).toBeInstanceOf(GraphQLError)
+    expect((error as GraphQLError).extensions.code).toBe('FORBIDDEN')
+    expect((error as GraphQLError).message).toBe('Forbidden')
+  })
+
+  it('refuses an id no row holds with BAD_USER_INPUT', async () => {
+    const error = await requireCatalogIds(caller, 'hh-1', 'tag', ['tag-gone']).catch(
+      (e: GraphQLError) => e,
+    )
+    expect((error as GraphQLError).extensions.code).toBe('BAD_USER_INPUT')
+  })
+
+  it("refuses with FORBIDDEN when a list holds both another household's id and a missing one", async () => {
+    const error = await requireCatalogIds(caller, 'hh-1', 'tag', ['tag-gone', 'tag-theirs']).catch(
+      (e: GraphQLError) => e,
+    )
+    expect((error as GraphQLError).extensions.code).toBe('FORBIDDEN')
+  })
+
+  it("with missing: 'allow', lets an id no row holds through, and still refuses another household's", async () => {
+    const allow = { missing: 'allow' } as const
+    await expect(
+      requireCatalogIds(caller, 'hh-1', 'tag', ['tag-mine', 'tag-gone'], allow),
+    ).resolves.toBeUndefined()
+    await expect(
+      requireCatalogIds(caller, 'hh-1', 'tag', ['tag-theirs'], allow),
+    ).rejects.toThrow(/Forbidden/)
+  })
+
+  it('checks a repeated id once, and passes it', async () => {
+    await expect(
+      requireCatalogIds(caller, 'hh-1', 'tag', ['tag-mine', 'tag-mine']),
+    ).resolves.toBeUndefined()
+    // One query: every id was the household's, so the unscoped second read
+    // never ran
+    expect(state.lookups).toBe(1)
+  })
+
+  it('reads nothing for an empty list', async () => {
+    await expect(requireCatalogIds(caller, 'hh-1', 'tag', [])).resolves.toBeUndefined()
+    expect(state.lookups).toBe(0)
+  })
+
+  it('checks the model it is given, not tag', async () => {
+    // `tag-mine` is a tag, not an item: as an item id, no row holds it
+    const error = await requireCatalogIds(caller, 'hh-1', 'item', ['tag-mine']).catch(
+      (e: GraphQLError) => e,
+    )
+    expect((error as GraphQLError).extensions.code).toBe('BAD_USER_INPUT')
+  })
+})
+
+describe('requireCatalogRole', () => {
+  it("returns the caller's household when the role is high enough", async () => {
+    seed({ callerHouseholdRole: 'manager' })
+    await expect(requireCatalogRole(caller, 'manager')).resolves.toBe('hh-1')
+  })
+
+  it('refuses a household member a manager check', async () => {
+    // Given the caller is a `member` of hh-1, and `other` is its manager. A
+    // check that read `other`'s row, or no row, would pass here.
+    seed({ callerHouseholdRole: 'member' })
+    await expect(requireCatalogRole(caller, 'manager')).rejects.toThrow(/Forbidden/)
   })
 })

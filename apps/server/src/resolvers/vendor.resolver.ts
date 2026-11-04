@@ -1,15 +1,24 @@
 import { GraphQLError } from 'graphql'
-import { requireLocationRole, requireOwnRowOrUnclaimed } from '../lib/authz.js'
+import {
+  requireCatalogRole,
+  requireLocationRole,
+  requireOwnRowOrUnclaimed,
+} from '../lib/authz.js'
 import { cartIdFor, parseCartId } from '../lib/cartId.js'
 import { prisma } from '../lib/prisma.js'
 import { requireAuth } from '../context.js'
 import type { Resolvers, Vendor } from '../generated/graphql.js'
 
+// ── Household scope (households H3a, task 3.7) ──
+//
+// Reading vendors needs household role `member`; every write needs `manager`
+// (design, *Household roles*), through `requireCatalogRole` (lib/authz.ts).
+// Carts are NOT moved here: every `Cart.userId` filter stays until H3b.
 export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
   Query: {
     vendors: async (_, __, ctx) => {
-      const userId = requireAuth(ctx)
-      return prisma.vendor.findMany({ where: { userId } }) as unknown as Promise<Vendor[]>
+      const householdId = await requireCatalogRole(ctx, 'member')
+      return prisma.vendor.findMany({ where: { householdId } }) as unknown as Promise<Vendor[]>
     },
   },
   Mutation: {
@@ -19,12 +28,16 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     createVendor: async (_, { name, locationId }, ctx) => {
       const userId = requireAuth(ctx)
 
-      // `participant`, not `viewer`: this mutation writes a Cart row at that
-      // location. The id arrives from the client, so it goes through the one
+      // Two checks, because this mutation writes at two levels: a Vendor in
+      // the household's catalog needs household role `manager`, and a Cart
+      // row at the location needs location role `participant` (not `viewer`).
+      // The location id arrives from the client, so it goes through the one
       // authorization seam (lib/authz.ts) before it reaches any query.
+      const householdId = await requireCatalogRole(ctx, 'manager')
       await requireLocationRole(ctx, locationId, 'participant')
 
-      const vendor = await prisma.vendor.create({ data: { name, userId } })
+      // `userId` is still written until task 3.14 drops the column.
+      const vendor = await prisma.vendor.create({ data: { name, householdId, userId } })
 
       // ONE cart, at the location the caller is looking at — the same half
       // local mode does (createVendor, apps/web/src/db/operations.ts). The
@@ -42,11 +55,12 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       })
       return vendor as unknown as Vendor
     },
-    // Ownership is checked by `requireOwnRowOrUnclaimed` (lib/authz.ts), which
-    // throws FORBIDDEN for another account's vendor. No call site compares a
-    // `userId`. Before 2026-11-04 both writes below used `where: { id }`
-    // alone — docs/global/bugs/2026-11-04-bug-unscoped-catalog-writes.md.
+    // The row is checked by `requireOwnRowOrUnclaimed` (lib/authz.ts), which
+    // throws FORBIDDEN for another household's vendor. No call site compares a
+    // `userId` or a `householdId`. Before 2026-11-04 both writes below used
+    // `where: { id }` alone — docs/global/bugs/2026-11-04-bug-unscoped-catalog-writes.md.
     updateVendor: async (_, { id, name }, ctx) => {
+      await requireCatalogRole(ctx, 'manager')
       if ((await requireOwnRowOrUnclaimed(ctx, 'vendor', id)) === 'unclaimed') {
         throw new GraphQLError('Vendor not found', { extensions: { code: 'NOT_FOUND' } })
       }
@@ -60,7 +74,8 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     },
     deleteVendor: async (_, { id }, ctx) => {
       const userId = requireAuth(ctx)
-      // Ownership FIRST, outside the try below: a refused call must change
+      await requireCatalogRole(ctx, 'manager')
+      // The row check FIRST, outside the try below: a refused call must change
       // nothing — not even the caller's own carts that name this vendor id —
       // and its FORBIDDEN must reach the client rather than become `false`.
       // A missing vendor returns false, as it did before.
@@ -76,6 +91,12 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         // The vendor part is read back with `parseCartId` rather than matched
         // with `endsWith(':' + id)`, because a vendor id may itself contain ':'
         // and the split rule is "first colon only" (lib/cartId.ts).
+        //
+        // Still the CALLER's carts only (`userId`), because carts keep their
+        // `userId` scope until H3b. So another household member's carts that
+        // name this vendor are left behind. Nobody can share a household
+        // before H5, so this cannot happen yet; H3b must scope this through
+        // the location instead.
         const carts = await prisma.cart.findMany({ where: { userId }, select: { id: true } })
         const cartIds = carts.filter((c) => parseCartId(c.id).vendorId === id).map((c) => c.id)
         if (cartIds.length > 0) {

@@ -21,12 +21,22 @@ import { typeDefs } from '../schema/index.js'
 // here. `vi.mock` is per file, so the stateful fake lives in its own file —
 // the same reason `import-ownership.resolver.test.ts` gives.
 //
+// ─── Since households H3a task 3.7 ───────────────────────────────────────────
+//
+// "Mine" and "A's" now mean "my HOUSEHOLD's" and "A's household's". The
+// three catalog stores are scoped by `householdId` (and still require
+// `userId` on a create, until task 3.14). `Cart` and `CartItem` keep their
+// `userId` scope until H3b. Each person is the `owner` of their own
+// household, so every role check passes here: the role checks, with three
+// people, are in `catalog-household.resolver.test.ts`.
+//
 // ─── The fixture ─────────────────────────────────────────────────────────────
 //
-// TWO users. The caller is `ME`; `A` owns the rows the caller must not touch.
-// Per model there is a row of mine, a row of A's, and an id no row holds.
-// With one user, "the row I own" and "the row that exists" are the same set,
-// so a resolver with no ownership check at all would pass every test.
+// TWO users in two households. The caller is `ME`; `A` owns the rows the
+// caller must not touch. Per model there is a row of mine, a row of A's, and
+// an id no row holds. With one household, "the row I own" and "the row that
+// exists" are the same set, so a resolver with no check at all would pass
+// every test.
 //
 // Two rows are deliberately BAD: a tag of mine whose `typeId` is A's tag type,
 // and a tag of mine whose `parentId` is A's tag. Before the guard, `createTag`
@@ -36,19 +46,40 @@ import { typeDefs } from '../schema/index.js'
 // when the walk is not scoped.
 vi.mock('../lib/prisma.js', async () => {
   const { createOwnedRowFake } = await import('../test/ownedRowFake.js')
+  const { createHouseholdFake } = await import('../test/householdFake.js')
+  const T = new Date('2026-11-01T00:00:00.000Z')
+  const households = createHouseholdFake({
+    households: [
+      { id: 'hh_me', name: 'Mine', ownerId: 'user_me', ownerGoneAt: null, createdAt: T, updatedAt: T },
+      { id: 'hh_a', name: 'Theirs', ownerId: 'user_a', ownerGoneAt: null, createdAt: T, updatedAt: T },
+    ],
+    householdMembers: [
+      { householdId: 'hh_me', userId: 'user_me', role: 'owner', joinedAt: T },
+      { householdId: 'hh_a', userId: 'user_a', role: 'owner', joinedAt: T },
+    ],
+  })
+  const catalog = { scope: 'householdId' as const, requiredColumns: ['userId'] }
   const tag = createOwnedRowFake<{
     id: string
+    householdId: string
     userId: string
     name: string
     typeId: string
     parentId: string | null
-  }>({ model: 'Tag', columns: ['typeId', 'parentId'] })
-  const tagType = createOwnedRowFake<{ id: string; userId: string; name: string; color: string }>(
-    { model: 'TagType' },
-  )
-  const vendor = createOwnedRowFake<{ id: string; userId: string; name: string }>({
-    model: 'Vendor',
-  })
+  }>({ model: 'Tag', columns: ['typeId', 'parentId'], ...catalog })
+  const tagType = createOwnedRowFake<{
+    id: string
+    householdId: string
+    userId: string
+    name: string
+    color: string
+  }>({ model: 'TagType', ...catalog })
+  const vendor = createOwnedRowFake<{
+    id: string
+    householdId: string
+    userId: string
+    name: string
+  }>({ model: 'Vendor', ...catalog })
   const cart = createOwnedRowFake<{ id: string; userId: string; locationId: string }>({
     model: 'Cart',
   })
@@ -61,6 +92,8 @@ vi.mock('../lib/prisma.js', async () => {
   }>({ model: 'CartItem', columns: ['cartId'] })
   return {
     prisma: {
+      household: households.client.household,
+      householdMember: households.client.householdMember,
       tag: tag.client,
       tagType: tagType.client,
       vendor: vendor.client,
@@ -80,9 +113,16 @@ vi.mock('../lib/prisma.js', async () => {
 import { prisma } from '../lib/prisma.js'
 import type { OwnedRowFake } from '../test/ownedRowFake.js'
 
-type TagRow = { id: string; userId: string; name: string; typeId: string; parentId: string | null }
-type TagTypeRow = { id: string; userId: string; name: string; color: string }
-type VendorRow = { id: string; userId: string; name: string }
+type TagRow = {
+  id: string
+  householdId: string
+  userId: string
+  name: string
+  typeId: string
+  parentId: string | null
+}
+type TagTypeRow = { id: string; householdId: string; userId: string; name: string; color: string }
+type VendorRow = { id: string; householdId: string; userId: string; name: string }
 type CartRow = { id: string; userId: string; locationId: string }
 type CartItemRow = { id: string; userId: string; cartId: string; itemId: string; quantity: number }
 
@@ -96,6 +136,8 @@ const fakes = prisma as unknown as {
 
 const ME = 'user_me'
 const A = 'user_a'
+const HH_ME = 'hh_me'
+const HH_A = 'hh_a'
 
 const TT_MINE = 'tt_mine'
 const TT_A = 'tt_a'
@@ -134,29 +176,29 @@ afterAll(async () => {
 
 beforeEach(() => {
   fakes.$tagType.reset([
-    { id: TT_MINE, userId: ME, name: 'Category', color: 'blue' },
-    { id: TT_A, userId: A, name: 'Theirs', color: 'red' },
+    { id: TT_MINE, householdId: HH_ME, userId: ME, name: 'Category', color: 'blue' },
+    { id: TT_A, householdId: HH_A, userId: A, name: 'Theirs', color: 'red' },
   ])
   fakes.$tag.reset([
-    { id: TAG_MINE, userId: ME, name: 'Dairy', typeId: TT_MINE, parentId: null },
-    { id: TAG_MINE_CHILD, userId: ME, name: 'Milk', typeId: TT_MINE, parentId: TAG_MINE },
+    { id: TAG_MINE, householdId: HH_ME, userId: ME, name: 'Dairy', typeId: TT_MINE, parentId: null },
+    { id: TAG_MINE_CHILD, householdId: HH_ME, userId: ME, name: 'Milk', typeId: TT_MINE, parentId: TAG_MINE },
     {
       id: TAG_MINE_GRANDCHILD,
-      userId: ME,
+      householdId: HH_ME, userId: ME,
       name: 'Oat milk',
       typeId: TT_MINE,
       parentId: TAG_MINE_CHILD,
     },
-    { id: TAG_MINE_OTHER, userId: ME, name: 'Fruit', typeId: TT_MINE, parentId: null },
-    { id: TAG_MINE_OF_A_TYPE, userId: ME, name: 'Odd type', typeId: TT_A, parentId: null },
-    { id: TAG_MINE_UNDER_A, userId: ME, name: 'Odd parent', typeId: TT_MINE, parentId: TAG_A },
-    { id: TAG_A, userId: A, name: 'Theirs', typeId: TT_A, parentId: null },
-    { id: TAG_A_CHILD, userId: A, name: 'Their child', typeId: TT_A, parentId: TAG_A },
-    { id: TAG_A_UNDER_MINE, userId: A, name: 'Under mine', typeId: TT_A, parentId: TAG_MINE },
+    { id: TAG_MINE_OTHER, householdId: HH_ME, userId: ME, name: 'Fruit', typeId: TT_MINE, parentId: null },
+    { id: TAG_MINE_OF_A_TYPE, householdId: HH_ME, userId: ME, name: 'Odd type', typeId: TT_A, parentId: null },
+    { id: TAG_MINE_UNDER_A, householdId: HH_ME, userId: ME, name: 'Odd parent', typeId: TT_MINE, parentId: TAG_A },
+    { id: TAG_A, householdId: HH_A, userId: A, name: 'Theirs', typeId: TT_A, parentId: null },
+    { id: TAG_A_CHILD, householdId: HH_A, userId: A, name: 'Their child', typeId: TT_A, parentId: TAG_A },
+    { id: TAG_A_UNDER_MINE, householdId: HH_A, userId: A, name: 'Under mine', typeId: TT_A, parentId: TAG_MINE },
   ])
   fakes.$vendor.reset([
-    { id: VEN_MINE, userId: ME, name: 'Costco' },
-    { id: VEN_A, userId: A, name: 'Theirs' },
+    { id: VEN_MINE, householdId: HH_ME, userId: ME, name: 'Costco' },
+    { id: VEN_A, householdId: HH_A, userId: A, name: 'Theirs' },
   ])
   fakes.$cart.reset([
     { id: `${LOC_MINE}:${VEN_MINE}`, userId: ME, locationId: LOC_MINE },

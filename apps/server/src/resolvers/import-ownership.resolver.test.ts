@@ -43,30 +43,54 @@ import { typeDefs } from '../schema/index.js'
 //     the guard that flag is what silently dropped the caller's own row.
 //   - `create` / `createMany` HONOUR `data.id`, so "the payload's id was
 //     written" is an assertion that can fail.
+//
+// ─── Since households H3a task 3.7 ───────────────────────────────────────────
+//
+// The four catalog stores are scoped by `householdId`, and still require
+// `userId` on a create until task 3.14. `requireOwnRowOrUnclaimed` now asks
+// "is this row in the caller's HOUSEHOLD", so "the caller's" row below means
+// the caller's household's, and "the STRANGER's" means a row of another
+// household. `householdMember` (householdFake) answers `requireHousehold`.
+// Import role gating is H4, so no role is checked here.
 vi.mock('../lib/prisma.js', async () => {
   const { createOwnedRowFake } = await import('../test/ownedRowFake.js')
+  const { createHouseholdFake } = await import('../test/householdFake.js')
+  const T = new Date('2026-11-01T00:00:00.000Z')
+  const households = createHouseholdFake({
+    householdMembers: [
+      { householdId: 'hh_mine', userId: 'user_import_test', role: 'owner', joinedAt: T },
+      { householdId: 'hh_theirs', userId: 'user_stranger', role: 'owner', joinedAt: T },
+    ],
+  })
+  const catalog = { scope: 'householdId' as const, requiredColumns: ['userId'] }
 
   const tag = createOwnedRowFake<{
     id: string
+    householdId: string
     userId: string
     name: string
     typeId: string
     parentId: string | null
-  }>({ model: 'Tag' })
+  }>({ model: 'Tag', ...catalog })
 
   const tagType = createOwnedRowFake<{
     id: string
+    householdId: string
     userId: string
     name: string
     color: string
-  }>({ model: 'TagType' })
+  }>({ model: 'TagType', ...catalog })
 
-  const vendor = createOwnedRowFake<{ id: string; userId: string; name: string }>({
-    model: 'Vendor',
-  })
+  const vendor = createOwnedRowFake<{
+    id: string
+    householdId: string
+    userId: string
+    name: string
+  }>({ model: 'Vendor', ...catalog })
 
   const shelf = createOwnedRowFake<{
     id: string
+    householdId: string
     userId: string
     name: string
     type: string
@@ -75,7 +99,7 @@ vi.mock('../lib/prisma.js', async () => {
     itemIds: string[]
     createdAt: Date
     updatedAt: Date
-  }>({ model: 'Shelf' })
+  }>({ model: 'Shelf', ...catalog })
 
   // `findUnique` is wrapped in a `vi.fn` on every store on top of the fake's
   // real row matching. Two reasons: a test can COUNT the guard's lookups, and
@@ -89,6 +113,7 @@ vi.mock('../lib/prisma.js', async () => {
 
   return {
     prisma: {
+      householdMember: households.client.householdMember,
       tag: wrap(tag.client),
       tagType: wrap(tagType.client),
       vendor: wrap(vendor.client),
@@ -107,11 +132,19 @@ vi.mock('../lib/prisma.js', async () => {
 import { prisma } from '../lib/prisma.js'
 import type { OwnedRowFake } from '../test/ownedRowFake.js'
 
-type TagRow = { id: string; userId: string; name: string; typeId: string; parentId: string | null }
-type TagTypeRow = { id: string; userId: string; name: string; color: string }
-type VendorRow = { id: string; userId: string; name: string }
+type TagRow = {
+  id: string
+  householdId: string
+  userId: string
+  name: string
+  typeId: string
+  parentId: string | null
+}
+type TagTypeRow = { id: string; householdId: string; userId: string; name: string; color: string }
+type VendorRow = { id: string; householdId: string; userId: string; name: string }
 type ShelfRow = {
   id: string
+  householdId: string
   userId: string
   name: string
   type: string
@@ -161,6 +194,8 @@ afterAll(async () => {
 
 const USER = 'user_import_test'
 const STRANGER = 'user_stranger'
+const HH_MINE = 'hh_mine'
+const HH_THEIRS = 'hh_theirs'
 
 const TAG_MINE = 'tag_mine'
 const TAG_THEIRS = 'tag_theirs'
@@ -188,21 +223,21 @@ beforeEach(() => {
   // Both tag types are seeded because `bulkCreateTags` filters out a tag whose
   // `typeId` names no TagType row. Every tag below therefore uses `TT_MINE`.
   mockPrisma.$tagType.reset([
-    { id: TT_MINE, userId: USER, name: 'Category', color: 'blue' },
-    { id: TT_THEIRS, userId: STRANGER, name: 'Theirs', color: 'red' },
+    { id: TT_MINE, householdId: HH_MINE, userId: USER, name: 'Category', color: 'blue' },
+    { id: TT_THEIRS, householdId: HH_THEIRS, userId: STRANGER, name: 'Theirs', color: 'red' },
   ])
   mockPrisma.$tag.reset([
-    { id: TAG_MINE, userId: USER, name: 'Dairy', typeId: TT_MINE, parentId: null },
-    { id: TAG_THEIRS, userId: STRANGER, name: 'Theirs', typeId: TT_MINE, parentId: null },
+    { id: TAG_MINE, householdId: HH_MINE, userId: USER, name: 'Dairy', typeId: TT_MINE, parentId: null },
+    { id: TAG_THEIRS, householdId: HH_THEIRS, userId: STRANGER, name: 'Theirs', typeId: TT_MINE, parentId: null },
   ])
   mockPrisma.$vendor.reset([
-    { id: VEN_MINE, userId: USER, name: 'Costco' },
-    { id: VEN_THEIRS, userId: STRANGER, name: 'Theirs' },
+    { id: VEN_MINE, householdId: HH_MINE, userId: USER, name: 'Costco' },
+    { id: VEN_THEIRS, householdId: HH_THEIRS, userId: STRANGER, name: 'Theirs' },
   ])
   mockPrisma.$shelf.reset([
     {
       id: SHELF_MINE,
-      userId: USER,
+      householdId: HH_MINE, userId: USER,
       name: 'Fridge',
       type: 'manual',
       order: 0,
@@ -213,7 +248,7 @@ beforeEach(() => {
     },
     {
       id: SHELF_THEIRS,
-      userId: STRANGER,
+      householdId: HH_THEIRS, userId: STRANGER,
       name: 'Theirs',
       type: 'manual',
       order: 0,
@@ -247,7 +282,7 @@ function errorCode(result: Awaited<ReturnType<typeof exec>>) {
  * Make the guard's ONE unscoped lookup answer "nobody holds this id", so the
  * payload's stranger id reaches the write and the closing read.
  *
- * Why this exists. With the guard in place the closing read's `userId` filter
+ * Why this exists. With the guard in place the closing read's `householdId` filter
  * is UNREACHABLE through the GraphQL surface: the guard refuses a payload that
  * names another account's id, so no stranger's row can ever be in the closing
  * read's `id: { in: ids }` range. The design doc says the same thing — the
@@ -257,7 +292,7 @@ function errorCode(result: Awaited<ReturnType<typeof exec>>) {
  * they are defence against: a future edit drops the guard, or the guard's
  * lookup misses the row. Stubbing `findUnique` for one call does exactly that
  * and leaves the stored rows legal — one row per id, one owner each. The eight
- * tests that call this are labelled, and each one goes red when `userId` is
+ * tests that call this are labelled, and each one goes red when `householdId` is
  * dropped from its mutation's closing `findMany`.
  *
  * What these tests do NOT prove: that the guard refuses the stranger's id.
@@ -318,6 +353,7 @@ describe('Tag ownership', () => {
     expect(mockPrisma.$tag.state.rows).toHaveLength(2)
     expect(mockPrisma.$tag.state.rows.find((r) => r.id === TAG_THEIRS)).toMatchObject({
       name: 'Theirs',
+      householdId: HH_THEIRS,
       userId: STRANGER,
     })
   })
@@ -335,6 +371,7 @@ describe('Tag ownership', () => {
     expect(mockPrisma.$tag.state.rows).toHaveLength(2)
     expect(mockPrisma.$tag.state.rows.find((r) => r.id === TAG_THEIRS)).toMatchObject({
       name: 'Theirs',
+      householdId: HH_THEIRS,
       userId: STRANGER,
     })
   })
@@ -357,7 +394,7 @@ describe('Tag ownership', () => {
     expect(result.errors).toBeUndefined()
     const stored = mockPrisma.$tag.state.rows.find((r) => r.id === TAG_MINE)
     expect(stored?.name).toBe('Renamed')
-    expect(stored?.userId).toBe(USER)
+    expect(stored).toMatchObject({ householdId: HH_MINE, userId: USER })
   })
 
   it('user importing a batch with one forbidden tag gets no tags written at all', async () => {
@@ -389,7 +426,10 @@ describe('Tag ownership', () => {
     // Then the row is still the STRANGER's. This is what goes red if `userId`
     // creeps back into `update`.
     expect(result.errors).toBeUndefined()
-    expect(mockPrisma.$tag.state.rows.find((r) => r.id === TAG_THEIRS)?.userId).toBe(STRANGER)
+    expect(mockPrisma.$tag.state.rows.find((r) => r.id === TAG_THEIRS)).toMatchObject({
+      householdId: HH_THEIRS,
+      userId: STRANGER,
+    })
   })
 
   it("bulkCreateTags' closing read does not return a tag the caller does not own", async () => {
@@ -423,6 +463,7 @@ describe('TagType ownership', () => {
     expect(mockPrisma.$tagType.state.rows).toHaveLength(2)
     expect(mockPrisma.$tagType.state.rows.find((r) => r.id === TT_THEIRS)).toMatchObject({
       name: 'Theirs',
+      householdId: HH_THEIRS,
       userId: STRANGER,
     })
   })
@@ -433,6 +474,7 @@ describe('TagType ownership', () => {
     expect(mockPrisma.$tagType.state.rows).toHaveLength(2)
     expect(mockPrisma.$tagType.state.rows.find((r) => r.id === TT_THEIRS)).toMatchObject({
       name: 'Theirs',
+      householdId: HH_THEIRS,
       userId: STRANGER,
     })
   })
@@ -442,7 +484,7 @@ describe('TagType ownership', () => {
     expect(result.errors).toBeUndefined()
     const stored = mockPrisma.$tagType.state.rows.find((r) => r.id === TT_MINE)
     expect(stored?.name).toBe('Renamed')
-    expect(stored?.userId).toBe(USER)
+    expect(stored).toMatchObject({ householdId: HH_MINE, userId: USER })
   })
 
   it('user importing a batch with one forbidden tag type gets no tag types written at all', async () => {
@@ -466,7 +508,10 @@ describe('TagType ownership', () => {
     // Then the row is still the STRANGER's. This is what goes red if `userId`
     // creeps back into `update`.
     expect(result.errors).toBeUndefined()
-    expect(mockPrisma.$tagType.state.rows.find((r) => r.id === TT_THEIRS)?.userId).toBe(STRANGER)
+    expect(mockPrisma.$tagType.state.rows.find((r) => r.id === TT_THEIRS)).toMatchObject({
+      householdId: HH_THEIRS,
+      userId: STRANGER,
+    })
   })
 
   it("bulkCreateTagTypes' closing read does not return a tag type the caller does not own", async () => {
@@ -493,6 +538,7 @@ describe('Vendor ownership', () => {
     expect(mockPrisma.$vendor.state.rows).toHaveLength(2)
     expect(mockPrisma.$vendor.state.rows.find((r) => r.id === VEN_THEIRS)).toMatchObject({
       name: 'Theirs',
+      householdId: HH_THEIRS,
       userId: STRANGER,
     })
   })
@@ -503,6 +549,7 @@ describe('Vendor ownership', () => {
     expect(mockPrisma.$vendor.state.rows).toHaveLength(2)
     expect(mockPrisma.$vendor.state.rows.find((r) => r.id === VEN_THEIRS)).toMatchObject({
       name: 'Theirs',
+      householdId: HH_THEIRS,
       userId: STRANGER,
     })
   })
@@ -512,7 +559,7 @@ describe('Vendor ownership', () => {
     expect(result.errors).toBeUndefined()
     const stored = mockPrisma.$vendor.state.rows.find((r) => r.id === VEN_MINE)
     expect(stored?.name).toBe('Renamed')
-    expect(stored?.userId).toBe(USER)
+    expect(stored).toMatchObject({ householdId: HH_MINE, userId: USER })
   })
 
   it('user importing a batch with one forbidden vendor gets no vendors written at all', async () => {
@@ -536,7 +583,10 @@ describe('Vendor ownership', () => {
     // Then the row is still the STRANGER's. This is what goes red if `userId`
     // creeps back into `update`.
     expect(result.errors).toBeUndefined()
-    expect(mockPrisma.$vendor.state.rows.find((r) => r.id === VEN_THEIRS)?.userId).toBe(STRANGER)
+    expect(mockPrisma.$vendor.state.rows.find((r) => r.id === VEN_THEIRS)).toMatchObject({
+      householdId: HH_THEIRS,
+      userId: STRANGER,
+    })
   })
 
   it("bulkCreateVendors' closing read does not return a vendor the caller does not own", async () => {
@@ -563,6 +613,7 @@ describe('Shelf ownership', () => {
     expect(mockPrisma.$shelf.state.rows).toHaveLength(2)
     expect(mockPrisma.$shelf.state.rows.find((r) => r.id === SHELF_THEIRS)).toMatchObject({
       name: 'Theirs',
+      householdId: HH_THEIRS,
       userId: STRANGER,
     })
   })
@@ -573,6 +624,7 @@ describe('Shelf ownership', () => {
     expect(mockPrisma.$shelf.state.rows).toHaveLength(2)
     expect(mockPrisma.$shelf.state.rows.find((r) => r.id === SHELF_THEIRS)).toMatchObject({
       name: 'Theirs',
+      householdId: HH_THEIRS,
       userId: STRANGER,
     })
   })
@@ -582,7 +634,7 @@ describe('Shelf ownership', () => {
     expect(result.errors).toBeUndefined()
     const stored = mockPrisma.$shelf.state.rows.find((r) => r.id === SHELF_MINE)
     expect(stored?.name).toBe('Renamed')
-    expect(stored?.userId).toBe(USER)
+    expect(stored).toMatchObject({ householdId: HH_MINE, userId: USER })
   })
 
   it('user importing a batch with one forbidden shelf gets no shelves written at all', async () => {
@@ -609,7 +661,10 @@ describe('Shelf ownership', () => {
     // Then the row is still the STRANGER's. This is what goes red if `userId`
     // creeps back into `update`.
     expect(result.errors).toBeUndefined()
-    expect(mockPrisma.$shelf.state.rows.find((r) => r.id === SHELF_THEIRS)?.userId).toBe(STRANGER)
+    expect(mockPrisma.$shelf.state.rows.find((r) => r.id === SHELF_THEIRS)).toMatchObject({
+      householdId: HH_THEIRS,
+      userId: STRANGER,
+    })
   })
 
   it("bulkCreateShelves' closing read does not return a shelf the caller does not own", async () => {
@@ -692,6 +747,7 @@ describe('Tag → TagType references', () => {
     // Then the tag is written, owned by the caller, under the type it named
     expect(result.errors).toBeUndefined()
     expect(mockPrisma.$tag.state.rows.find((r) => r.id === TAG_FREE)).toMatchObject({
+      householdId: HH_MINE,
       userId: USER,
       typeId: TT_MINE,
     })

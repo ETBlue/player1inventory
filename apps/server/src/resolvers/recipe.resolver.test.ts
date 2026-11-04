@@ -12,18 +12,29 @@ import type { Context } from '../context.js'
 // `@@unique([itemId, locationId])` and Prisma's `where` semantics so a resolver
 // that dropped the scope cannot stay green.
 //
-// There is no `item` store. Since PR 5 `consumeRecipes` writes no `Item` row at
-// all — the five stock columns are gone and `writeStock` is the whole write. A
-// reinstated `Item` write throws here rather than passing quietly.
+// The `item` store has `findMany` and nothing else. `findMany` answers
+// `requireCatalogIds` (lib/authz.ts) for a recipe's item ids, and echoes every
+// id back: each item here is the household's. Since PR 5 `consumeRecipes`
+// writes no `Item` row at all — the five stock columns are gone and
+// `writeStock` is the whole write. A reinstated `Item` write throws here
+// rather than passing quietly.
+//
+// `user`, `household`, `householdMember`, `locationMember`, `location` and
+// `itemStock` are the stateful fakes joined in `src/test/householdWorld.ts`.
+// Every role is a row `seedWorld` writes. Nothing is derived from a
+// location's `userId` (households H3a task 3.7 removed `derivedRoles` from
+// this file). The household role checks themselves, with three people, are
+// tested in `catalog-household.resolver.test.ts`.
 vi.mock('../lib/prisma.js', async () => {
-  const { createStockFake } = await import('../test/stockFake.js')
-  const stockFake = createStockFake()
-  // Roles derived from the location rows: each location's `userId` owns a
-  // one-person household and organizes the location (src/test/derivedRoles.ts).
-  // `requireLocationRole` reads these since households H3a task 3.5.
-  const roles = (await import('../test/derivedRoles.js')).createDerivedRoles(stockFake)
+  const { createHouseholdWorld } = await import('../test/householdWorld.js')
+  const world = createHouseholdWorld()
   return {
     prisma: {
+      item: {
+        findMany: vi.fn(async ({ where }: { where: { id: { in: string[] } } }) =>
+          where.id.in.map((id) => ({ id })),
+        ),
+      },
       recipe: {
         findMany: vi.fn(),
         findFirst: vi.fn(),
@@ -42,19 +53,17 @@ vi.mock('../lib/prisma.js', async () => {
       inventoryLog: {
         create: vi.fn(),
       },
-      ...stockFake.client,
+      ...world.client,
       // Hung off the client because a `vi.mock` factory is hoisted above every
       // import and cannot close over a module-scope binding.
-      ...roles.client,
-      $roles: roles,
-      $stockFake: stockFake,
+      $world: world,
     },
   }
 })
 
 import { prisma } from '../lib/prisma.js'
-import type { DerivedRoles } from '../test/derivedRoles.js'
-import { makeStock, type StockFake } from '../test/stockFake.js'
+import type { HouseholdWorld } from '../test/householdWorld.js'
+import { makeStock } from '../test/stockFake.js'
 
 const mockPrisma = prisma as unknown as {
   recipe: {
@@ -75,7 +84,7 @@ const mockPrisma = prisma as unknown as {
   inventoryLog: {
     create: ReturnType<typeof vi.fn>
   }
-  $stockFake: StockFake
+  $world: HouseholdWorld
 }
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -113,25 +122,68 @@ const LOC_DEFAULT = 'loc_kitchen'
 const LOC_OTHER = 'loc_garage'
 const LOC_STRANGER = 'loc_theirs'
 
-const stockFake = mockPrisma.$stockFake
-const roles = (prisma as unknown as { $roles: DerivedRoles }).$roles
-// First sign-in (lib/household.ts) runs in a transaction that writes `User`,
-// `Household`, `HouseholdMember` and `LocationMember` as well as `Location`.
-// So the transaction gets the whole mocked client and the role stores too.
-stockFake.configureTransaction({ txClient: prisma, stores: roles.stores })
+const world = mockPrisma.$world
+const stockFake = world.stock
+const T = new Date('2026-11-01T00:00:00.000Z')
 
-beforeEach(async () => {
-  vi.clearAllMocks()
+// Three households: the caller's (`hh_test`, both of the caller's
+// locations), a stranger's (`hh_other`), and `user_B`'s, who has no location.
+// Each person is the `owner` of their own household and the `organizer` of
+// their own locations.
+function seedWorld() {
+  world.reset()
   stockFake.reset(
     [
       // The default is deliberately not first: a lookup that took locations[0]
       // rather than the isDefault row would otherwise pass by coincidence.
-      { id: LOC_OTHER, userId: 'user_test123', isDefault: false },
-      { id: LOC_DEFAULT, userId: 'user_test123', isDefault: true },
-      { id: LOC_STRANGER, userId: 'user_other', isDefault: true },
+      { id: LOC_OTHER, userId: 'user_test123', householdId: 'hh_test', isDefault: false },
+      { id: LOC_DEFAULT, userId: 'user_test123', householdId: 'hh_test', isDefault: true },
+      { id: LOC_STRANGER, userId: 'user_other', householdId: 'hh_other', isDefault: true },
     ],
     [],
   )
+  const household = (id: string, ownerId: string) => ({
+    id,
+    name: `${id} name`,
+    ownerId,
+    ownerGoneAt: null,
+    createdAt: T,
+    updatedAt: T,
+  })
+  const owner = (householdId: string, userId: string) => ({
+    householdId,
+    userId,
+    role: 'owner' as const,
+    joinedAt: T,
+  })
+  const organizer = (locationId: string, userId: string) => ({
+    locationId,
+    userId,
+    role: 'organizer' as const,
+    createdAt: T,
+  })
+  world.seedHouseholds({
+    households: [
+      household('hh_test', 'user_test123'),
+      household('hh_other', 'user_other'),
+      household('hh_b', 'user_B'),
+    ],
+    householdMembers: [
+      owner('hh_test', 'user_test123'),
+      owner('hh_other', 'user_other'),
+      owner('hh_b', 'user_B'),
+    ],
+    locationMembers: [
+      organizer(LOC_OTHER, 'user_test123'),
+      organizer(LOC_DEFAULT, 'user_test123'),
+      organizer(LOC_STRANGER, 'user_other'),
+    ],
+  })
+}
+
+beforeEach(async () => {
+  vi.clearAllMocks()
+  seedWorld()
   server = new ApolloServer<Context>({ typeDefs, resolvers })
   await server.start()
 })
@@ -459,6 +511,12 @@ describe('consumeRecipes writes the cooked quantities', () => {
       ),
     ).toMatchObject({ packedQuantity: 1, unpackedQuantity: 0.5 })
     expect(mockPrisma.inventoryLog.create).toHaveBeenCalledOnce()
+    // And the recipe is marked as cooked only within the caller's household
+    // (households H3a task 3.7)
+    expect(mockPrisma.recipe.updateMany).toHaveBeenCalledWith({
+      where: { id: 'recipe_1', householdId: 'hh_test' },
+      data: { lastCookedAt: expect.any(Date) },
+    })
   })
 })
 
@@ -543,10 +601,10 @@ describe('consumeRecipes writes the cook location\'s ItemStock', () => {
     // Given an account with no Location rows — a brand-new account that has
     // never run the `locations` query. Until issue #287 the stock write returned
     // early here and the cooked quantities were dropped with no error.
-    stockFake.reset([], [])
+    world.reset()
     // And a User row that was never set up. In the server, `ensureUserOrLog`
     // makes this row before any resolver runs; here the test makes it.
-    roles.users.reset([
+    world.users.reset([
       {
         id: 'user_test123',
         displayName: 'Test',
