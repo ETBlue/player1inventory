@@ -5,6 +5,7 @@ import { GraphQLWsLink } from '@apollo/client/link/subscriptions'
 import { getMainDefinition } from '@apollo/client/utilities'
 import { createClient } from 'graphql-ws'
 import { isOffline } from '@/hooks/useIsOffline'
+import i18n from '@/i18n'
 import { cloudCache, createCache } from './cloudCache'
 import { DEFAULT_GRAPHQL_HTTP_URL, DEFAULT_GRAPHQL_WS_URL } from './constants'
 import { offlineWriteLink } from './offlineWriteLink'
@@ -66,6 +67,27 @@ const httpLink = new HttpLink({
   uri: import.meta.env.VITE_GRAPHQL_HTTP_URL ?? DEFAULT_GRAPHQL_HTTP_URL,
 })
 
+/**
+ * Sends the app's current language with every GraphQL request, in the
+ * `x-app-language` header (households H3a, decision H3).
+ *
+ * The server uses it on a person's first request to name their new household
+ * and its first location in that language. It accepts only `en` and `tw`, and
+ * reads anything else as `en`.
+ *
+ * The language is read when each request is sent, not when the client is
+ * built, so a language change in Settings applies to the next request.
+ */
+const languageLink = new SetContextLink(({ headers }) => {
+  const language = i18n.resolvedLanguage ?? i18n.language
+  return {
+    headers: {
+      ...headers,
+      ...(language ? { 'x-app-language': language } : {}),
+    },
+  }
+})
+
 // E2E test client: sends a static x-e2e-user-id header instead of a Clerk JWT.
 // Used by main.tsx when VITE_E2E_TEST_USER_ID is set (never in production).
 export function createApolloClientForE2E(userId: string) {
@@ -73,9 +95,12 @@ export function createApolloClientForE2E(userId: string) {
     headers: { ...headers, 'x-e2e-user-id': userId },
   }))
   return new ApolloClient({
-    // The same stale-read guard as the production client, so cloud E2E runs
-    // the code users run.
-    link: createStaleReadRetryLink().concat(e2eLink).concat(httpLink),
+    // The same stale-read guard and language header as the production client,
+    // so cloud E2E runs the code users run.
+    link: createStaleReadRetryLink()
+      .concat(languageLink)
+      .concat(e2eLink)
+      .concat(httpLink),
     cache: createCache(),
   })
 }
@@ -109,7 +134,9 @@ export function createApolloClient(getToken: () => Promise<string | null>) {
       )
     },
     wsLink,
-    authLink.concat(httpLink),
+    // The server has no subscription endpoint yet, so the WebSocket branch
+    // carries no language. Every query and mutation goes through this one.
+    languageLink.concat(authLink).concat(httpLink),
   )
 
   return new ApolloClient({
