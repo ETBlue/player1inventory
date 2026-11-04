@@ -42,6 +42,17 @@ owner agreed to this order on 2026-11-04:
 `CartItem.userId` and `Cart.userId` filter still gives the right answer after H3a. H3b must
 merge before H5 starts.
 
+**One exception: the E2E second member (decision H9, task 3.11).** That route puts a second
+person in a household before H3b. Any spec that uses it on carts meets the problems below.
+
+**Owed to H3b, found by the review of task 3.8:**
+
+| # | Where | What goes wrong with two people in one household |
+|---|---|---|
+| a | `bootstrapCarts` (`cart.resolver.ts`) | It looks up the existing carts by their global `id`, but its final read filters by `userId`. A second member who bootstraps a location where the first member already made the carts gets an **empty** list: the carts exist, so none is created, and none has the second member's `userId`. `vendorCart` returns the first member's cart row, because it looks up by `id` only. A cart spec that uses the second member before H3b will see this |
+| b | `removeItemFromLocation` (`itemStock.resolver.ts`) | Its cart delete still filters `CartItem.userId`, so a co-member's cart entries of the item at that location stay behind. Its log delete has no such filter (pinned by a test since the task 3.8 review) |
+| c | `vendorCart(vendorId:)` (`cart.resolver.ts`) | It never checks that the vendor belongs to the location's household. A caller can create a cart `${locationId}:${foreignVendorId}` with another household's vendor id in it |
+
 ## What the user gets (once merged AND deployed)
 
 - **The 🏠 item in Settings shows the household's name** in cloud, for example "ET's
@@ -80,7 +91,7 @@ task here: plain English, the report structure with "what did this plan get wron
 22.17.1, this worktree only, measure your own baseline, mutation-check every new test, check
 commits with `git show`, and run the verification gate. Copy them into every brief.
 
-Three more for H3a:
+Four more for H3a:
 
 9. **Never write `row.userId === ctx.userId` or `row.householdId === …` as a guard.** Every
    check goes through a helper in `lib/authz.ts`. A `where` filter on a read is fine.
@@ -89,6 +100,19 @@ Three more for H3a:
     role" give the same answer.
 11. **Do not touch `apps/web/src/db/`.** Local mode keeps `isDefault`, "My Home" and its own
     data model.
+12. **Location data has two fixed patterns** (added by the review of task 3.8; tasks 3.9 to
+    3.14 must follow them):
+    - **A new read of location data** across several locations uses
+      `locationIdsWithRole(ctx)` (`lib/authz.ts`). For one location it uses
+      `requireLocationRole`. Never write a new membership query: one without the decision H18
+      filter counts a stale `LocationMember` row of a person who left the household.
+    - **A new write that takes an item id with a location id** runs
+      `requireLocationRole(ctx, locationId, …)` FIRST, then
+      `requireLocationItems(ctx, locationId, itemIds)`. The other order tells a stranger
+      which location ids exist: an existing foreign location with a missing item id gives
+      `BAD_USER_INPUT`, a made-up location id gives `FORBIDDEN`. Add the same test the six
+      task 3.8 sites have ("a stranger … gets FORBIDDEN, even for a missing item") and
+      mutation-check it by swapping the two calls.
 
 ---
 
@@ -739,6 +763,25 @@ rows live, not in `householdFake`. See the same note under task 3.6.
   `addInventoryLog` and `addToCart` cost two more queries than before. `addItemToLocation`
   and `checkout` also read the caller's location memberships once.
 
+**Review fixes in `ff7ec4cb`** (tests only, no source change):
+
+- **The order of the two checks is now pinned.** At all six sites (`upsertItemStock`,
+  `addItemToLocation`, `applyUnitSwitch`, `addInventoryLog`, `addToCart`, `consumeRecipes`)
+  the location role check runs before `requireLocationItems`. Before the fix, a reviewer
+  swapped the two calls at each site and all 1050 server tests stayed green. The order
+  matters because `requireLocationItems` reads the location's household: run first, it
+  answers `BAD_USER_INPUT` for an existing foreign location with a missing item id, but
+  `FORBIDDEN` for a made-up location id. So a stranger could find out which location ids
+  exist. Each site now has a test that sends exactly that request and expects `FORBIDDEN`
+  with nothing written, and a control with an unknown location id (green in both orders).
+  Swapping the two calls makes the first test red at each of the six sites.
+- **`removeItemFromLocation` deleting a co-member's logs is pinned.** A two-person test:
+  user-m's log of the item at the location is deleted, and user-m's log at another location
+  is kept. Adding `userId` to `tx.inventoryLog.deleteMany` makes it red. Whether a
+  `participant` should be able to do this at all is an open question for the owner, see
+  *Known gaps*.
+- Server tests 1050 → 1062.
+
 ## Task 3.9 — Import
 
 **Files:** `resolvers/import.resolver.ts` and its seven test files; `lib/authz.ts`
@@ -808,6 +851,28 @@ key, composite key `P2002`, and `skipDuplicates` only if a resolver passes it), 
 - **`import-inventoryLog-location.resolver.test.ts`'s `item.findFirst` fake** (about lines
   79-85) still compares `where.userId` and ignores `householdId`. A resolver that dropped its
   household filter would pass there. Move it onto `checkWhere` (`test/whereKeys.ts`).
+
+**Found by the review of task 3.8, and owed here:**
+
+- **The cart item imports check the item against the wrong household.**
+  `bulkCreateCartItems` and `bulkUpsertCartItems` (`import.resolver.ts`, about 898 and 1265)
+  do check `itemId`, but against the CALLER's household (`requireHousehold`), with
+  `prisma.item.findFirst({ where: { id: itemId, householdId } })`. They should check it
+  against the household of the CART's location, as `addToCart` does since task 3.8. Today
+  the two are the same household, because a person is in one household and the cart is
+  scoped by `userId`. Once a person can be in two households (H5), an imported cart row can
+  put household A's item into a cart at household B's location. **`checkout` then buys it
+  into B's stock**, because `checkout` trusts the item ids in cart rows: only `addToCart`
+  checks them. Add both mutations to the list of import ids that need a check. Use
+  `householdOfLocation` / `requireLocationItems` (`lib/authz.ts`), AFTER the cart's
+  location check. Note: `requireLocationItems` throws, but these two mutations SKIP a row
+  whose cart or item does not resolve, on purpose (a partial backup may name an item that
+  is gone). Keep the skip, or refuse the whole batch, and say which and why. Write a
+  two-household test; with one household per person it cannot fail.
+- **`test/derivedRoles.ts` is now used only by the six import test files**
+  (`import-ownership-cart`, `import-ownership-log`, `import-itemStock`, `import-location`,
+  `import-inventoryLog-location` and `import-cart-location`). Removing it from them, as task
+  3.5's review asks above, lets the file itself be deleted.
 
 ## Task 3.10 — Purges and E2E cleanup
 
@@ -1240,6 +1305,15 @@ drops `userId`, `main`'s cloud E2E cannot run on this database at all until H3a 
   right. `consumeRecipes` does check location `participant`, because it names a location.
   Behaviour is not changed in H3a. The owner decides whether this is fine (it writes only
   `lastCookedAt`) or whether the mutation should take a location.
+- **An open question for the owner: who may delete a location's logs** (review of task
+  3.8). Under the design (*Location roles*) a location `participant` may edit the pantry, so
+  they may remove one item from a location (`removeItemFromLocation`). That deletes EVERY log
+  of the item at that location, including the logs other members wrote. But the design's
+  organizer-only purge, *Remove all items from this location*, KEEPS the location's logs. So
+  a participant can delete logs one item at a time, while an organizer cannot delete them
+  all at once. The two rules point different ways. Local mode deletes the logs too, so the
+  two modes agree today. Behaviour is not changed in H3a. The owner decides whether a
+  removal should keep the logs, or whether it needs a higher role.
 - **A manager's reorder in H5 may leave some locations with old orders.** `reorderLocations`
   writes only the ids it is sent, and the web sends only the locations the caller sees. If
   H5 lets a manager see only some of the household's locations, the others keep their old
