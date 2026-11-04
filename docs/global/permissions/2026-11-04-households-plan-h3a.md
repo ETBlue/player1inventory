@@ -600,6 +600,32 @@ Every create writes `householdId` (and `userId` until task 3.14).
 `recipe.resolver.test.ts`, remove `test/derivedRoles.ts` from them here. See the note under
 task 3.6.
 
+**Done** in `959cb705`. What a later task needs to know:
+
+- New in `lib/authz.ts`: `requireCatalogRole(ctx, role)` returns the household id after the
+  role check; `requireCatalogIds(ctx, householdId, model, ids, { missing })` checks attached
+  ids. Another household's id is `FORBIDDEN`; an id no row holds is `BAD_USER_INPUT`, or
+  passes with `missing: 'allow'` (the shelf arrays only, because they are not foreign keys).
+  A repeated id is checked once.
+- `updateRecipeLastCookedAt` and the `lastCookedAt` write in `consumeRecipes` need only
+  household role `member`: marking a recipe as cooked is a cooking right, not a catalog edit.
+- `createVendor` needs household `manager` AND location `participant`.
+- **`requireOwnRowOrUnclaimed`'s body moved here, not in task 3.9.** It had to: the catalog
+  stores refuse `userId` in a `where`. The six catalog models are checked by household; logs
+  and carts keep `userId`. So task 3.9 no longer changes this body.
+- **Part of task 3.9 is done here:** every catalog create in `import.resolver.ts` writes
+  `householdId`, and every catalog read there (closing reads, tag / vendor / item / tag type
+  reference reads, and `requireOwnItemStockRefs`' item read) filters by `householdId`. Task 3.9
+  still owns locations, the fallback location, removing `derivedRoles` from the import tests,
+  and the whole-import test.
+- Still by `userId`, owed by later tasks: `itemStock.resolver.ts` (`applyUnitSwitch` reads
+  the item and recipe by `userId`) and `cart.resolver.ts` (`vendor.findMany` in
+  `bootstrapCarts`) — task 3.8; `clearAllData`, `purge.resolver.ts` and `e2eCleanup.ts` delete
+  catalog rows by `userId` — task 3.10. `deleteVendor`'s cart cleanup reads only the caller's
+  carts — H3b.
+- `itemCountBy*` filter the junction row by `item: { householdId }`. A Prisma fake that serves
+  them must model that relation filter.
+
 ## Task 3.8 — Stock, logs and carts
 
 **Files:** `resolvers/itemStock`, `inventoryLog` and `cart` `.resolver.ts` and tests;
