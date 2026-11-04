@@ -700,6 +700,45 @@ rows live, not in `householdFake`. See the same note under task 3.6.
   So it makes carts only for the vendors the caller created, not for every vendor of the
   household. Move it to `householdId`.
 
+**Done** in `0627baca` (step 0) and `e37dc75d`. What a later task needs to know:
+
+- **Two new helpers in `lib/authz.ts`.** `householdOfLocation(locationId)` reads the
+  household from the LOCATION row (`FORBIDDEN` if there is no such location or it has no
+  household). `requireLocationItems(ctx, locationId, itemIds)` calls `requireCatalogIds`
+  with that household. Call it after `requireLocationRole`; it checks no role. It uses the
+  location's household, not `requireHousehold(ctx)`, on purpose: nothing in the schema
+  stops a person being a member of two households, and then the caller's household and
+  the location's household differ. Tests in `itemStock.resolver.test.ts`,
+  `applyUnitSwitch.resolver.test.ts` and `authz.test.ts` give the caller a second
+  household and go red when the helper uses `requireHousehold`.
+- **Item checks:** `upsertItemStock`, `addItemToLocation`, `addInventoryLog`, `addToCart`,
+  `consumeRecipes` (all items, the whole mutation is refused before the first write) and
+  `applyUnitSwitch` (once per named location). Not checked: `checkout` (its items come from
+  cart rows, which `addToCart` now checks), `removeItemFromLocation` (it only deletes).
+- **`applyUnitSwitch`** needs household `manager` first, then location `participant` and
+  the item check per location, then `requireCatalogIds` over the item AND every item id in
+  `recipeUpdates` (the plan did not list those; they are attached ids, like issue #273's).
+  A missing item is now `BAD_USER_INPUT`, not `NOT_FOUND`. Recipes are read by
+  `householdId` and stay `NOT_FOUND`.
+- **Reads by membership** use `locationId: { in: await locationIdsWithRole(ctx) }`, not a
+  relation filter. So `stockFake` did not need `location: { members: { some } }`. It
+  gained `locationId: { in }` and `orderBy` on `itemStock.findMany` instead.
+  `ensureStockAtLocation` now takes `sourceLocationIds` where it took `userId`.
+- **Log reads have no `userId` filter.** `inventoryLogs` reads every location the caller
+  holds a role on, so a co-member's logs are exported. Creates still write `userId` as the
+  author.
+- **`bootstrapCarts`** reads vendors by `householdOfLocation(locationId)`.
+- **Carts:** no filter changed. Every `Cart.userId` / `CartItem.userId` filter waits for H3b,
+  including the one in `removeItemFromLocation`'s cart delete.
+- **Test doubles:** `householdWorld.extend(models, stores)` adds models to the world's
+  client and their stores to its rollback. `test/householdRows.ts` builds role rows.
+  `inventoryLogFake` gained `deleteMany` and `locationId: { in }`; `shoppingFake`'s vendor
+  keeps and filters `householdId`. `derivedRoles` is gone from the five files of this
+  task; only the six import test files of task 3.9 still use it.
+- **Cost:** each item check is one location read plus one item query, so `upsertItemStock`,
+  `addInventoryLog` and `addToCart` cost two more queries than before. `addItemToLocation`
+  and `checkout` also read the caller's location memberships once.
+
 ## Task 3.9 — Import
 
 **Files:** `resolvers/import.resolver.ts` and its seven test files; `lib/authz.ts`
