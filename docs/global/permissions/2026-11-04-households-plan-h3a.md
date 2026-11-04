@@ -1536,6 +1536,45 @@ that one function.
   `useHousehold`'s local early return gives the same answer, because a skipped query already
   has no data.
 
+**Review findings, fixed in `8d2b723d`** (`fix(households): cap long household names, and
+pin the rename form`):
+
+- **A first sign-in name could be longer than the rename allows.** `firstSignInNames`
+  built the name from `User.displayName` with no cap, and the column is `TEXT`. The owner
+  could then not save the name again unchanged. It now caps the household name at 100
+  (`HOUSEHOLD_NAME_MAX_LENGTH`, moved to `lib/household.ts` so `cleanHouseholdName` and
+  first sign-in share one constant). It shortens the display-name part, keeps the suffix
+  ("'s Household" or "的家"), removes spaces left at the end of the cut, and never ends on
+  the first half of a surrogate pair, so an emoji at the cut is dropped whole.
+- **`HouseholdNameCard` now shows `invalidError` inline** when the trimmed name is over
+  100, and Save is disabled then. Two cases reach it: a stored name that is already longer
+  (see the `add_households` note under task 3.14), and a value set without typing, which
+  `maxLength` does not cut. No new UI string: the existing `invalidError` ("Enter a name of
+  1 to 100 characters." / "請輸入 1 到 {{max}} 個字的名稱。") fits. New story
+  `OwnerNameTooLong`.
+- **The length rule counts UTF-16 code units**, on the server (`String.length`) and in the
+  web (`maxLength` and the new inline check). So an emoji counts as 2 or more. The en and
+  tw strings say "characters" and "字". That is close enough for normal text, and was left
+  as it is on purpose.
+- **The form reset and the cache update are now pinned with real Apollo.**
+  `HouseholdNameCard.apollo.test.tsx` renders `HouseholdLabel` and `HouseholdNameCard`
+  under `MockedProvider` with the real generated hooks, renames to `"  The Lab  "`, and
+  checks that the label shows "The Lab", the field holds the trimmed "The Lab", and Save is
+  disabled. **It needs a `<Suspense>` inside `MockedProvider`.** Without it the tree
+  renders as an empty `<div />` with no error; even a plain element placed before the card
+  is missing. The brief said a `QueryClientProvider` fixes this. Measured: it does not,
+  and it is not needed once the boundary is there. With the boundary nothing suspends (a
+  fallback is never shown). The cause was not found.
+- **The double-submit guard is pinned** by a test with the mutation's `loading: true`
+  that submits the form directly. The `|| rename.isPending` in Save's `disabled` cannot be
+  pinned: `Button` also disables itself while `isLoading` is true, so removing it changes
+  nothing a user can see (the mutation was run: all tests stay green). The guard in
+  `onSubmit` is the one the test proves.
+- **Tests:** server 1154 / 47 → **1160 / 47**; web 2523 / 274 → **2529 / 275**. Mutation
+  checks, each red, each restored from a copy: no cut in `firstSignInNames` (5 tests), no
+  surrogate check (1); no length check in the card (2), no `key={data.name}` (1, the Apollo
+  test: the field kept `"  The Lab  "`), no `rename.isPending` in `onSubmit` (1).
+
 ## Task 3.14 — The second migration: drop the old scope
 
 **Files:** `schema.prisma`; migration `<YYYYMMDD>000000_drop_user_scope`;
@@ -1572,6 +1611,29 @@ still writes `userId` on the seven models.
   **From the review of task 3.12:** dropping `isDefault` breaks several cloud E2E helpers
   and specs, because they select it straight from the server. Task 3.15 must land in the
   same push as this task, or right after it. See task 3.15 for the list.
+
+  **From the review of task 3.13:**
+  - **Existing household names may be longer than 100 code units.** The `add_households`
+    migration built each name from `User.displayName` with no cap. Do NOT edit that
+    migration: it is applied on the test database. Since `8d2b723d` the web name card shows
+    an inline error for such a name and the owner can shorten it, and first sign-in caps
+    new names. **An option, not a requirement:** `drop_user_scope` may also cap the
+    existing names in SQL. If it does, cut the display-name part and keep the suffix, as
+    `firstSignInNames` does. Postgres `left()` and `char_length()` count characters (code
+    points), not UTF-16 code units, so an emoji counts as 1 there and 2 in the app. A cap
+    of 100 in SQL can therefore still leave a name the app calls too long. Cut to fewer
+    characters, or check the result in `verify-migration.ts` with JavaScript
+    `String.length`. The rehearsal (task 3.16) can count how many names are over 100 first.
+  - **Any test with its own `vi.mock('@/generated/graphql')` that renders a route which is
+    not full-screen must stub `useGetHouseholdQuery`** (the sidebar's 🏠 label reads it on
+    every such page). Three files spread `importOriginal` and render item routes, which are
+    full-screen today, so they have no stub: `routes/items/$id/stock.cloud.test.tsx`,
+    `routes/items/$id/index.cloud.test.tsx`, `routes/items/$id/stock.test.tsx` (and
+    `stock.stories.test.tsx`, which renders the same route's stories). If one of them ever
+    renders a route that shows the sidebar, the real query errors, and the label falls
+    back to "My data". A test that asserts "My data" would then pass for the wrong reason.
+    The review also named `hooks/useLocations.test.tsx`; checked: it renders hooks and
+    `LocationList`, not a route, so it is not at risk today.
 - [ ] **Step 2:** Run `pnpm build`. **`tsc` now lists every leftover `userId` use on these
   models.** Fix each one. This is the sweep that proves nothing still scopes by account.
   List the count in the report.
@@ -1738,6 +1800,23 @@ already corrected in `3ba61aeb`.
   `apps/web/src/lib/importData.test.ts` prove the payload the web sends; only E2E proves
   the server writes it there.
 
+**Found by the review of task 3.13, and owed here:**
+
+- **Every cloud page load that renders the sidebar now sends one `household` request**
+  (the 🏠 label; the sidebar is in the DOM at every width, only hidden by CSS on mobile,
+  and only full-screen pages drop it). It calls `requireHousehold`, so it is also a first
+  sign-in path, like `locations`. A spec that counts requests, or waits for the network to
+  go quiet, sees one more.
+- **The 🏠 link and the household page title show `<displayName>'s Household` in cloud**,
+  not "My data". Local and `pwa` keep "My data". Checked with `grep -rn "My data" e2e/`:
+  the hits are in `a11y.spec.ts` (not in the `cloud` project) and in
+  `settings-global-pages.spec.ts`. That file's test "user sees My data and Preferences
+  pinned to the bottom of the sidebar…" skips cloud, and its skip reason is **no longer
+  true**: it says the sidebar renders the same markup in local and E2E cloud, but the 🏠
+  label now differs. Correct the reason, or run the test in cloud with the household name.
+- **Same trap as in unit tests:** see the note under task 3.14 about stubbing
+  `useGetHouseholdQuery`.
+
 ## Task 3.16 — Runbook, docs and the final gate
 
 - [ ] **Step 1: Deploy runbook** `docs/global/backend/<date>-deploy-runbook-households-h3a.md`.
@@ -1801,6 +1880,12 @@ already corrected in `3ba61aeb`.
   second case for that pair: `clearAllData` must take `lockHousehold` before its location
   `deleteMany`, so the two never deadlock (see the task 3.6 review note under task 3.10).
   Today that order is pinned against the fake only.
+
+  **From the review of task 3.13:** list in the runbook's *open on purpose* items that
+  `renameHousehold` has a race with H6's hand-over. It reads the caller's role, then runs
+  one `UPDATE` with no `lockHousehold`, so an owner who hands the household over at the
+  same moment could rename it once more. This is left open on purpose (see the task 3.13
+  Done note); H6 decides whether it matters. Nothing to prove on Postgres for it in H3a.
 - [ ] **Step 4:** Commit: `docs(households): H3a runbook and docs`.
 
 ---
@@ -1929,6 +2014,13 @@ drops `userId`, `main`'s cloud E2E cannot run on this database at all until H3a 
   3.11). Their first sign-in claim (`User.householdSetupAt`) is set, so `ensureHousehold`
   makes no new household for them. `household-member-cleanup.spec.ts` proves this on real
   SQL. H5's "no household" screen must handle this case, not only a person who left.
+- **Owed to H5: what the web shows a cloud user with no household** (review of task 3.13).
+  Today such a user (`NO_HOUSEHOLD`, for example a removed member) sees "My data" on the 🏠
+  link and the household page title, and no name card, with no message at all: the
+  `household` query errors, `useHousehold` returns no data, and every reader falls back.
+  The web has no `NO_HOUSEHOLD` handling anywhere (`grep -rn NO_HOUSEHOLD apps/web/src`
+  finds nothing), and no global Apollo error link that could show one. H5 must decide what
+  that user sees.
 - **Owed to H4/H5: a household `member` sees Delete on every cloud location** (review of
   task 3.12). `LocationList` hides Delete only for the local default, and the web app does
   not know roles yet. When the server refuses with `FORBIDDEN`, the page shows the general
