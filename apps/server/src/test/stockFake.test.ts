@@ -561,3 +561,69 @@ describe('stockFake $transaction rolls back', () => {
     await expect(call).rejects.toThrow(/only the interactive callback form/)
   })
 })
+
+// Households H3a, task 3.5 step 0. `householdFake` resolves the household of a
+// location by reading `householdId` off these rows. Before this, the fake built
+// each created row field by field and left `householdId` out. So every location
+// belonged to no household, and every role check failed closed: right code and
+// wrong code were refused alike.
+describe('stockFake keeps the household of a location', () => {
+  it('a created location keeps the householdId the writer gave', async () => {
+    // Given an empty table
+    const fake = createStockFake()
+    fake.reset([], [])
+
+    // When a location is created inside a household
+    const row = await fake.client.location.create({
+      data: { name: 'Home', order: 0, isDefault: true, userId: 'user_1', householdId: 'hh_1' },
+    })
+
+    // Then the returned row and the stored row both carry it
+    expect(row.householdId).toBe('hh_1')
+    expect(fake.state.locations[0]?.householdId).toBe('hh_1')
+  })
+
+  it('a created location with no householdId stores null, as the column does', async () => {
+    const fake = createStockFake()
+    fake.reset([], [])
+
+    const row = await fake.client.location.create({
+      data: { name: 'Old', order: 0, isDefault: false, userId: 'user_1' },
+    })
+
+    expect(row.householdId).toBeNull()
+  })
+
+  it('a location can be found by householdId, and by a list of ids', async () => {
+    // Given two locations in two households
+    const fake = createStockFake()
+    fake.reset(
+      [
+        { id: 'loc_a', userId: 'user_1', isDefault: true, householdId: 'hh_1' },
+        { id: 'loc_b', userId: 'user_2', isDefault: true, householdId: 'hh_2' },
+      ],
+      [],
+    )
+
+    // When each is looked up
+    const inOne = await fake.client.location.findMany({ where: { householdId: 'hh_1' } })
+    const byIds = await fake.client.location.findMany({ where: { id: { in: ['loc_b'] } } })
+
+    // Then only the matching row comes back
+    expect(inOne.map((l) => l.id)).toEqual(['loc_a'])
+    expect(byIds.map((l) => l.id)).toEqual(['loc_b'])
+  })
+
+  it('an upsert update that names householdId moves the row into that household', async () => {
+    const fake = createStockFake()
+    fake.reset([{ id: 'loc_a', userId: 'user_1', isDefault: true }], [])
+
+    await fake.client.location.upsert({
+      where: { id: 'loc_a' },
+      update: { householdId: 'hh_1' },
+      create: {},
+    })
+
+    expect(fake.state.locations[0]?.householdId).toBe('hh_1')
+  })
+})

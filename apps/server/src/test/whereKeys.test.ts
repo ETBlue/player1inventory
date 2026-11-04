@@ -19,6 +19,9 @@ import { createStockFake, makeStock } from './stockFake.js'
 import { UnknownWhereKeyError, UnsupportedWhereFilterError } from './whereKeys.js'
 
 const UNKNOWN = { householdId: 'h-1' }
+// `Location` gained `householdId` in households H3a (task 3.5), so stockFake's
+// location store models it now. Its tests use a key no model has.
+const UNKNOWN_FOR_LOCATION = { notAColumn: 'x' }
 
 function stockFakeWithOneRow() {
   const fake = createStockFake()
@@ -52,11 +55,11 @@ const carts = [{ id: 'cart-1', locationId: 'loc-1' }]
 describe('stockFake refuses an unknown where key', () => {
   it('location: names the key and the fake', async () => {
     const fake = stockFakeWithOneRow()
-    await expect(fake.client.location.findMany({ where: UNKNOWN })).rejects.toThrow(
+    await expect(fake.client.location.findMany({ where: UNKNOWN_FOR_LOCATION })).rejects.toThrow(
       UnknownWhereKeyError,
     )
-    await expect(fake.client.location.findFirst({ where: UNKNOWN })).rejects.toThrow(
-      /stockFake\(location\).*'householdId'/,
+    await expect(fake.client.location.findFirst({ where: UNKNOWN_FOR_LOCATION })).rejects.toThrow(
+      /stockFake\(location\).*'notAColumn'/,
     )
   })
 
@@ -77,10 +80,10 @@ describe('stockFake refuses an unknown where key', () => {
   it('every location method refuses it on an EMPTY store', async () => {
     const { location } = createStockFake().client
     const calls = [
-      location.findFirst({ where: UNKNOWN }),
-      location.findUnique({ where: UNKNOWN }),
-      location.findMany({ where: UNKNOWN }),
-      location.upsert({ where: UNKNOWN, update: {}, create: { userId: 'u' } }),
+      location.findFirst({ where: UNKNOWN_FOR_LOCATION }),
+      location.findUnique({ where: UNKNOWN_FOR_LOCATION }),
+      location.findMany({ where: UNKNOWN_FOR_LOCATION }),
+      location.upsert({ where: UNKNOWN_FOR_LOCATION, update: {}, create: { userId: 'u' } }),
     ]
     for (const call of calls) await expect(call).rejects.toThrow(UnknownWhereKeyError)
   })

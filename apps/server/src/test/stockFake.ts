@@ -76,6 +76,11 @@ export interface FakeLocation {
   id: string
   userId: string
   isDefault: boolean
+  // Households H3a. Nullable until task 3.14, as in the schema. A fixture row
+  // may leave it out; a created row always carries it (`null` when the writer
+  // gave none). `householdFake` reads it to resolve the household of a
+  // location, so a row without it belongs to no household there.
+  householdId?: string | null
   // Only the rows the fake CREATES carry these. Fixtures may leave them out.
   name?: string
   order?: number
@@ -123,7 +128,12 @@ type Where = Record<string, unknown>
 // shape its kind does not allow, THROWS. `checkWhere` runs ONCE per client
 // call, before the store is searched — never inside the per-row matcher, which
 // an empty store never calls. See `whereKeys.ts`.
-const LOCATION_WHERE: WhereSpec = { id: 'equals', userId: 'equals', isDefault: 'equals' }
+const LOCATION_WHERE: WhereSpec = {
+  id: 'in',
+  userId: 'equals',
+  householdId: 'equals',
+  isDefault: 'equals',
+}
 const STOCK_WHERE: WhereSpec = {
   id: 'equals',
   itemId: 'equals',
@@ -190,8 +200,16 @@ export class StockIdConstraintError extends Error {
 function matchesLocation(row: FakeLocation, where: Where): boolean {
   // `undefined ||` on every key, deliberately: this is Prisma's semantics, and
   // it is what makes dropping a key from a resolver's where clause visible.
-  if (where.id !== undefined && row.id !== where.id) return false
+  if (where.id !== undefined) {
+    // A string, or `{ in: [...] }`. `checkWhere` refused every other shape.
+    const ids = typeof where.id === 'string' ? [where.id] : (where.id as { in: string[] }).in
+    if (!ids.includes(row.id)) return false
+  }
   if (where.userId !== undefined && row.userId !== where.userId) return false
+  // A fixture row with no `householdId` is read as `null`, the column's value.
+  if (where.householdId !== undefined && (row.householdId ?? null) !== where.householdId) {
+    return false
+  }
   if (where.isDefault !== undefined && row.isDefault !== where.isDefault) return false
   return true
 }
@@ -417,6 +435,7 @@ export function createStockFake() {
       id,
       userId,
       isDefault,
+      householdId: (data.householdId as string | null | undefined) ?? null,
       name: data.name as string,
       order: data.order as number,
       createdAt: (data.createdAt as Date | undefined) ?? now,
@@ -437,6 +456,7 @@ export function createStockFake() {
     if ('name' in data) row.name = data.name as string
     if ('order' in data) row.order = data.order as number
     if ('userId' in data) row.userId = data.userId as string
+    if ('householdId' in data) row.householdId = data.householdId as string | null
     if ('createdAt' in data) row.createdAt = data.createdAt as Date
     if ('updatedAt' in data) row.updatedAt = data.updatedAt as Date
     if ('isDefault' in data) {
