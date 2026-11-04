@@ -271,7 +271,10 @@ that any location except the last one can be deleted (see *First sign-in* and de
 
 **Renaming the household is built in H3a** (decision H4): a `renameHousehold(name)` mutation,
 owner only, and a name field on `/settings/household` in cloud. H3a starts to show the name, so
-it must be changeable at the same time.
+it must be changeable at the same time. As built (task 3.13): the server trims the name and
+accepts 1 to 100 characters, refusing anything else with `BAD_USER_INPUT`; a manager or member
+gets `FORBIDDEN` whatever name they send, and on the page sees the name as text. The name is
+shown as stored, never capitalized, like vendor and location names.
 
 ## Authorization
 

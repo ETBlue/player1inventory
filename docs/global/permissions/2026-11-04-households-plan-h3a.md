@@ -1487,6 +1487,55 @@ that one function.
   (the name field), in light and dark mode.
 - [ ] **Step 6:** Commit: `feat(households): show and rename the household in cloud`.
 
+**Done** in `95191ea8`. What a later task needs to know:
+
+- **Server.** `household: Household!` (`apps/server/src/schema/household.graphql`,
+  `resolvers/household.resolver.ts`) returns `{ id, name, role }`, where `role` is the
+  CALLER's household role. It calls `requireHousehold`, so it is also a first sign-in path.
+  `renameHousehold(name)` needs `owner`. The role check runs BEFORE the name check, so a
+  manager or member gets `FORBIDDEN` even for a blank name. The name is trimmed; empty,
+  blank or over 100 characters (`String.length`, UTF-16 units, the same unit as the web
+  field's `maxLength`) is `BAD_USER_INPUT`. The rules live in `cleanHouseholdName`.
+- **No `lockHousehold` in the rename.** It is one `UPDATE` of one row and reads nothing its
+  write depends on, so there is no read-then-write race to close. The one gap: the role is
+  read before the `UPDATE`, so an owner who hands the household over (H6) at the same moment
+  could rename it once more. H6 decides whether that matters.
+- **New GraphQL enum `HouseholdRole`**, and `codegen.ts` now sets `enumsAsTypes: true` for
+  both outputs. Without it, codegen makes a TypeScript `enum`, and the Prisma value `'owner'`
+  is not assignable to it. It was the first GraphQL enum in the schema, so nothing else
+  changed. Task 3.14 or H5 can add `LocationRole` the same way.
+- **Web.** `useHousehold` / `useRenameHousehold` (`hooks/useHousehold.ts`, cloud only),
+  `HouseholdLabel` (the four places that said "My data") and `HouseholdNameCard` (the first
+  card on `/settings/household`). Local mode and a loading cloud query both show "My data".
+  The household name follows the Name Display Convention exception (no `capitalize`), now
+  written down in the root `CLAUDE.md`.
+- **Trap for every later web task: `useGetHouseholdQuery` now runs on every page** (the
+  sidebar's 🏠 link). A test file with its own `vi.mock('@/generated/graphql', …)` that
+  renders the sidebar must stub it, or the real Apollo hook runs and demands a provider.
+  Three files needed it: `cooking.cloud.test.tsx`, `shopping/index.cloud.test.tsx`,
+  `settings/household/locations/index.cloud.test.tsx`. Stories that render the sidebar need
+  an Apollo provider for the same reason; `HouseholdSidebar.stories.tsx` had none and now
+  wraps each story in `MockedProvider`.
+- **a11y: the name field cannot be scanned.** `a11y.spec.ts` runs in `local` and `pwa`
+  only, and the card is cloud only. No cloud a11y project exists, and none was added. The
+  local household page (which changed only its title markup) was re-scanned:
+  `pnpm test:e2e --project=local e2e/tests/a11y.spec.ts` gave 68 passed, 2 skipped.
+- **Plan step 4 said "research found 9 files" that assert "My data".** All of them render
+  local mode, so all stay as they are. The cloud assertions are new files:
+  `routes/settings/household/index.cloud.test.tsx` (6 tests) and
+  `components/global/Sidebar/Sidebar.cloud.test.tsx` (1).
+- **No cloud story for the household PAGE.** The page's cloud state is shown by the
+  `HouseholdNameCard` stories (Owner, Manager) and the `HouseholdSidebar`
+  `CloudHouseholdName` story; a whole-route cloud story would need every root-shell query
+  mocked.
+- **Tests:** server 1139 / 46 → **1154 / 47**; web 2489 / 267 → **2523 / 274**. Mutation
+  checks, all red, all restored from copies: server — a `manager` may rename (2 tests), the
+  name checked before the role (1), no trim (3), limit 101 (1), limit 99 (1), no empty check
+  (2), the read not scoped to the caller's household (4), the read's role a constant (2).
+  Web — 26 mutations across 7 files, each red; one equivalent mutant, not counted: removing
+  `useHousehold`'s local early return gives the same answer, because a skipped query already
+  has no data.
+
 ## Task 3.14 — The second migration: drop the old scope
 
 **Files:** `schema.prisma`; migration `<YYYYMMDD>000000_drop_user_scope`;

@@ -5,8 +5,18 @@ Since households phase H1, every settings page except `/settings` itself lives u
 
 | Route | File | What it shows |
 |---|---|---|
-| `/settings` | `settings/index.tsx` | Desktop: `<Navigate to="/settings/household">`. Mobile: an accordion with two items. "My data" (open) holds six `SettingsNavCard` links. "Preferences" (closed) holds `UserSettingsPanel`. |
-| `/settings/household` | `settings/household/index.tsx` | Title "My data", then `ExportCard` and `ImportCard` |
+| `/settings` | `settings/index.tsx` | Desktop: `<Navigate to="/settings/household">`. Mobile: an accordion with two items. The household item (open), labelled by `HouseholdLabel`, holds six `SettingsNavCard` links. "Preferences" (closed) holds `UserSettingsPanel`. |
+| `/settings/household` | `settings/household/index.tsx` | Title `HouseholdLabel`, then `HouseholdNameCard` (cloud only), `ExportCard` and `ImportCard` |
+
+**The household name (households H3a task 3.13).** In cloud mode the 🏠 sidebar link, the
+household sidebar heading, the household page title and the mobile accordion trigger all
+show the household's name. Local mode has no household and keeps "My data"
+(`settings.household.title`); cloud mode shows "My data" too while the name loads. All four
+render `HouseholdLabel` (see `components/CLAUDE.md`). The name is shown as stored, with no
+`capitalize`. Only the household `owner` can rename it, in `HouseholdNameCard`; the server
+checks the role too (`renameHousehold`, `apps/server/src/resolvers/household.resolver.ts`).
+Tests: `settings/household/index.cloud.test.tsx`; the local "My data" tests stay in
+`index.test.tsx` and `settings/index.test.tsx`.
 | `/settings/household/{locations,shelves,vendors,recipes,tags}` | `settings/household/<section>/index.tsx` | The five list pages. Each has its own Back button on mobile only (`lg:hidden`). |
 | `/settings/household/<section>/<id>…` | detail pages | Full-screen on every screen size |
 
