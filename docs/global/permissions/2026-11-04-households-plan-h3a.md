@@ -529,6 +529,24 @@ Every create writes `householdId` (and `userId` until task 3.14).
   - **Mutation check:** change one `clearAllData` filter to `{}`. The spec goes red.
 - [ ] **Step 6:** Commit: `feat(server): clear and clean up by household`.
 
+**Found by the reviews of tasks 3.1 and 3.2, and owed here:**
+
+- **`lib/e2eCleanup.test.ts` checks only 2 of its 15 filters** (`user`, `shelf`). Give it the
+  same full table as the two resolver tests, and assert what reaches `$transaction`.
+- **`purge-coverage.test.ts` lets any model use any parent path.** Map each model to its
+  allowed path (for example `itemStock: ['location']`, `cartItem: ['cart', 'location']`), so a
+  path that exists but is wrong fails. Today `recipeItem` goes through `recipe` in the two
+  resolvers and through `item` in `/e2e/cleanup`. Pick one, or allow both on purpose and say
+  why.
+- **Add a negative case that refuses the old scope**: `{ where: { userId } }` on a catalog
+  model must fail the form check after this task.
+- **The coverage loop looks only for `prisma.<m>.deleteMany(`**, but the form check also
+  accepts `tx.`. If `clearAllData` moves to an interactive transaction, make the two agree.
+- **A text check cannot see an `undefined` value.** Prisma reads
+  `{ where: { householdId: undefined } }` as no filter, so it deletes every row. Throw before
+  the transaction when the household id is missing, and keep the exact-value unit tests and
+  the two-household spec (step 5).
+
 ## Task 3.11 — A second household member in E2E
 
 **Files:** `apps/server/src/lib/e2eHouseholds.ts` and test (new); `index.ts`;
