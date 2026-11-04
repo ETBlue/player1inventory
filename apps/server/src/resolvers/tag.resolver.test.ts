@@ -10,12 +10,20 @@ vi.mock('../lib/prisma.js', () => ({
   prisma: {
     tagType: {
       findMany: vi.fn(),
+      // `findUnique` / `findFirst` are the two reads `requireOwnRowOrUnclaimed`
+      // (lib/authz.ts) makes. Ownership itself is tested against a stateful
+      // fake in catalog-ownership.resolver.test.ts; here they only say "the
+      // row is the caller's" (or, for the missing-row tests, "no row").
+      findUnique: vi.fn(),
+      findFirst: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
     },
     tag: {
       findMany: vi.fn(),
+      findUnique: vi.fn(),
+      findFirst: vi.fn(),
       count: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
@@ -34,12 +42,16 @@ import { prisma } from '../lib/prisma.js'
 const mockPrisma = prisma as unknown as {
   tagType: {
     findMany: ReturnType<typeof vi.fn>
+    findUnique: ReturnType<typeof vi.fn>
+    findFirst: ReturnType<typeof vi.fn>
     create: ReturnType<typeof vi.fn>
     update: ReturnType<typeof vi.fn>
     delete: ReturnType<typeof vi.fn>
   }
   tag: {
     findMany: ReturnType<typeof vi.fn>
+    findUnique: ReturnType<typeof vi.fn>
+    findFirst: ReturnType<typeof vi.fn>
     count: ReturnType<typeof vi.fn>
     create: ReturnType<typeof vi.fn>
     update: ReturnType<typeof vi.fn>
@@ -59,6 +71,12 @@ const ctx: Context = { userId: 'user_test123' }
 
 beforeEach(async () => {
   vi.clearAllMocks()
+  // Every tag and tag type id these tests name is the caller's own, unless a
+  // test says otherwise.
+  for (const model of [mockPrisma.tag, mockPrisma.tagType]) {
+    model.findUnique.mockImplementation(async ({ where }) => ({ id: where.id }))
+    model.findFirst.mockImplementation(async ({ where }) => ({ id: where.id }))
+  }
   server = new ApolloServer<Context>({ typeDefs, resolvers })
   await server.start()
 })
@@ -136,8 +154,8 @@ describe('TagType resolvers', () => {
   })
 
   it('returns NOT_FOUND error when updating a non-existent tag type', async () => {
-    // Given prisma.tagType.update throws
-    mockPrisma.tagType.update.mockRejectedValue(new Error('Record not found'))
+    // Given no tag type row has that id
+    mockPrisma.tagType.findUnique.mockResolvedValue(null)
 
     // When updating a non-existent tag type
     const result = await execOp(
@@ -263,8 +281,8 @@ describe('Tag resolvers', () => {
   })
 
   it('returns NOT_FOUND error when updating a non-existent tag', async () => {
-    // Given Prisma throws on update
-    mockPrisma.tag.update.mockRejectedValue(new Error('Record not found'))
+    // Given no tag row has that id
+    mockPrisma.tag.findUnique.mockResolvedValue(null)
 
     // When updating a non-existent tag
     const result = await execOp(
@@ -292,7 +310,7 @@ describe('Tag resolvers', () => {
     // Then true is returned and children are orphaned
     expect(result?.data?.deleteTag).toBe(true)
     expect(mockPrisma.tag.updateMany).toHaveBeenCalledWith({
-      where: { parentId: 'tag_1' }, data: { parentId: null },
+      where: { parentId: 'tag_1', userId: 'user_test123' }, data: { parentId: null },
     })
     expect(mockPrisma.tag.delete).toHaveBeenCalledWith({ where: { id: 'tag_1' } })
   })

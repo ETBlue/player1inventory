@@ -530,3 +530,91 @@ describe('ownedRowFake reset', () => {
     expect(fixture).toHaveLength(1)
   })
 })
+
+// Added for the catalog write guard (2026-11-04): `tag.resolver.ts` and
+// `vendor.resolver.ts` write with `update`, `delete` and `updateMany`, and
+// filter by `typeId`, `parentId` and `cartId`.
+describe('ownedRowFake update, delete, updateMany and extra columns', () => {
+  function tagStore(rows: FakeTag[]) {
+    return createOwnedRowFake<FakeTag>({ model: 'tag', rows, columns: ['typeId', 'parentId'] })
+  }
+
+  it('update writes only the matching row and throws P2025 when none matches', async () => {
+    // Given one row each
+    const fake = tagStore([
+      { id: 'tag_mine', userId: MINE, name: 'Dairy' },
+      { id: 'tag_theirs', userId: THEIRS, name: 'Theirs' },
+    ])
+
+    // When my row is renamed
+    const row = await fake.client.update({ where: { id: 'tag_mine' }, data: { name: 'Milk' } })
+
+    // Then only mine changed
+    expect(row.name).toBe('Milk')
+    expect(fake.state.rows.find((r) => r.id === 'tag_theirs')?.name).toBe('Theirs')
+
+    // And an update the where cannot match throws P2025, the way Prisma does —
+    // including a `{ id, userId }` where that names the stranger's id
+    await expect(
+      fake.client.update({ where: { id: 'tag_free' }, data: { name: 'x' } }),
+    ).rejects.toMatchObject({ code: 'P2025' })
+    await expect(
+      fake.client.update({ where: { id: 'tag_theirs', userId: MINE }, data: { name: 'x' } }),
+    ).rejects.toMatchObject({ code: 'P2025' })
+    expect(fake.state.rows.find((r) => r.id === 'tag_theirs')?.name).toBe('Theirs')
+  })
+
+  it('delete removes one row and throws P2025 when none matches', async () => {
+    // Given one row each
+    const fake = tagStore([
+      { id: 'tag_mine', userId: MINE },
+      { id: 'tag_theirs', userId: THEIRS },
+    ])
+
+    // When my row is deleted
+    await fake.client.delete({ where: { id: 'tag_mine' } })
+
+    // Then only mine went
+    expect(fake.state.rows.map((r) => r.id)).toEqual(['tag_theirs'])
+
+    // And a delete of a free id throws P2025
+    await expect(fake.client.delete({ where: { id: 'tag_free' } })).rejects.toMatchObject({
+      code: 'P2025',
+    })
+  })
+
+  it('updateMany returns a count and filters on an extra column, null included', async () => {
+    // Given two children of tag_root — one mine, one a stranger's
+    const fake = tagStore([
+      { id: 'tag_root', userId: MINE, parentId: null },
+      { id: 'tag_child', userId: MINE, parentId: 'tag_root' },
+      { id: 'tag_strange_child', userId: THEIRS, parentId: 'tag_root' },
+    ])
+
+    // When my children of tag_root are orphaned
+    const result = await fake.client.updateMany({
+      where: { parentId: 'tag_root', userId: MINE },
+      data: { parentId: null },
+    })
+
+    // Then only my child changed
+    expect(result.count).toBe(1)
+    expect(fake.state.rows.find((r) => r.id === 'tag_child')?.parentId).toBeNull()
+    expect(fake.state.rows.find((r) => r.id === 'tag_strange_child')?.parentId).toBe('tag_root')
+
+    // And a `null` filter matches a null column — Prisma's `{ parentId: null }`
+    const top = await fake.client.findMany({ where: { parentId: null } })
+    expect(top.map((r) => r.id).sort()).toEqual(['tag_child', 'tag_root'])
+  })
+
+  it('a where key not named in columns is still refused', async () => {
+    // Given a store built with no extra columns
+    const fake = tagFake([{ id: 'tag_a', userId: MINE, typeId: 'tt_1' }])
+
+    // When it is filtered by typeId
+    // Then it throws instead of ignoring the key
+    await expect(fake.client.findMany({ where: { typeId: 'tt_1' } })).rejects.toThrow(
+      /does not model: 'typeId'/,
+    )
+  })
+})

@@ -17,6 +17,12 @@ vi.mock('../lib/prisma.js', async () => {
     prisma: {
       vendor: {
         findMany: vi.fn(),
+        // The two reads `requireOwnRowOrUnclaimed` (lib/authz.ts) makes.
+        // Ownership itself is tested against a stateful fake in
+        // catalog-ownership.resolver.test.ts; here they only say "the row is
+        // the caller's" (or, for the missing-row tests, "no row").
+        findUnique: vi.fn(),
+        findFirst: vi.fn(),
         create: vi.fn(),
         update: vi.fn(),
         delete: vi.fn(),
@@ -45,6 +51,8 @@ import type { StockFake } from '../test/stockFake.js'
 const mockPrisma = prisma as unknown as {
   vendor: {
     findMany: ReturnType<typeof vi.fn>
+    findUnique: ReturnType<typeof vi.fn>
+    findFirst: ReturnType<typeof vi.fn>
     create: ReturnType<typeof vi.fn>
     update: ReturnType<typeof vi.fn>
     delete: ReturnType<typeof vi.fn>
@@ -88,6 +96,9 @@ const ctx: Context = { userId: 'user_test123' }
 beforeEach(async () => {
   vi.clearAllMocks()
   seedLocations()
+  // Every vendor id these tests name is the caller's own, unless a test says otherwise.
+  mockPrisma.vendor.findUnique.mockImplementation(async ({ where }) => ({ id: where.id }))
+  mockPrisma.vendor.findFirst.mockImplementation(async ({ where }) => ({ id: where.id }))
   server = new ApolloServer<Context>({ typeDefs, resolvers })
   await server.start()
 })
@@ -177,8 +188,8 @@ describe('Vendor resolvers', () => {
   })
 
   it('returns NOT_FOUND error when updating a non-existent vendor', async () => {
-    // Given Prisma throws on update
-    mockPrisma.vendor.update.mockRejectedValue(new Error('Record not found'))
+    // Given no vendor row has that id
+    mockPrisma.vendor.findUnique.mockResolvedValue(null)
 
     // When updating a non-existent vendor
     const result = await execOp(
@@ -260,9 +271,8 @@ describe('Vendor resolvers', () => {
   })
 
   it('returns false when deleting a non-existent vendor', async () => {
-    // Given Prisma throws on delete
-    mockPrisma.cart.findMany.mockResolvedValue([])
-    mockPrisma.vendor.delete.mockRejectedValue(new Error('Record not found'))
+    // Given no vendor row has that id
+    mockPrisma.vendor.findUnique.mockResolvedValue(null)
 
     // When deleting a non-existent vendor
     const result = await execOp(
@@ -270,8 +280,10 @@ describe('Vendor resolvers', () => {
       { id: 'does_not_exist' },
     )
 
-    // Then false is returned
+    // Then false is returned, and nothing was deleted
     expect(result?.data?.deleteVendor).toBe(false)
+    expect(mockPrisma.cart.deleteMany).not.toHaveBeenCalled()
+    expect(mockPrisma.vendor.delete).not.toHaveBeenCalled()
   })
 
   it('does not return vendors belonging to another user', async () => {

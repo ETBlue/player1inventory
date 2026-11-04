@@ -87,6 +87,18 @@
 //   - relation WHERE filters, such as `{ item: { userId } }`. All nine models
 //     have a `userId` column of their own, so no import read needs one. An
 //     attempt to use one throws as an unknown key.
+//
+// ── ADDED FOR THE CATALOG WRITE GUARD (2026-11-04) ──
+//
+//   - `update` and `delete` act on exactly ONE row and throw P2025 when the
+//     `where` matches none, the way Prisma does. `updateMany` returns a count
+//     and never throws. `updateVendor`, `deleteTag` and their neighbours in
+//     `tag.resolver.ts` / `vendor.resolver.ts` use all three.
+//   - the `columns` option names EXTRA where keys a store accepts, such as
+//     `typeId` and `parentId` on `Tag` or `cartId` on `CartItem`. Each is
+//     matched as a plain value, `null`, or `{ in: [...] }`. A key not named
+//     still throws, so the refusal described above is kept: a store accepts
+//     only the keys its test file asked for on purpose.
 
 /** The two columns every account-scoped row must have. */
 export interface OwnedRow {
@@ -214,10 +226,16 @@ function matchesColumn(model: string, key: string, value: string, filter: unknow
  * match to keep a scoping test green after the resolver dropped its `userId`.
  * An explicit `undefined` is "not mentioned", which is also Prisma's rule.
  *
- * Supported keys: `id` and `userId`, each as a string or `{ in: [...] }`.
- * Everything else throws — see `UnsupportedWhereKeyError`.
+ * Supported keys: `id` and `userId`, each as a string or `{ in: [...] }`,
+ * plus any extra column the store was built with (`columns`). Everything else
+ * throws — see `UnsupportedWhereKeyError`.
  */
-export function ownedRowMatches(model: string, row: OwnedRow, where: Where): boolean {
+export function ownedRowMatches(
+  model: string,
+  row: OwnedRow,
+  where: Where,
+  columns: readonly string[] = [],
+): boolean {
   for (const [key, filter] of Object.entries(where)) {
     if (filter === undefined) continue
     switch (key) {
@@ -228,10 +246,29 @@ export function ownedRowMatches(model: string, row: OwnedRow, where: Where): boo
         if (!matchesColumn(model, 'userId', row.userId, filter)) return false
         break
       default:
-        throw new UnsupportedWhereKeyError(model, key)
+        if (!columns.includes(key)) throw new UnsupportedWhereKeyError(model, key)
+        if (!matchesNullableColumn(model, key, row, filter)) return false
     }
   }
   return true
+}
+
+/**
+ * Match one of the store's EXTRA columns (the `columns` option). Unlike `id`
+ * and `userId` these may hold `null` — `Tag.parentId` does — so a `null`
+ * filter matches a `null` column, which is Prisma's rule for `{ parentId: null }`.
+ * A column the row does not carry at all counts as `null`.
+ */
+function matchesNullableColumn(model: string, key: string, row: OwnedRow, filter: unknown): boolean {
+  const raw = (row as unknown as Record<string, unknown>)[key]
+  const value = raw === undefined ? null : raw
+  if (filter === null) return value === null
+  if (typeof filter === 'string') return value === filter
+  if (typeof filter === 'object') {
+    const list = (filter as { in?: unknown }).in
+    if (Array.isArray(list)) return list.includes(value)
+  }
+  throw new UnsupportedWhereFilterError(model, key, filter)
 }
 
 export interface OwnedRowFakeOptions<Row extends OwnedRow> {
@@ -246,6 +283,11 @@ export interface OwnedRowFakeOptions<Row extends OwnedRow> {
    * return throws rather than coming back as `undefined`.
    */
   relations?: (row: Row) => Record<string, unknown>
+  /**
+   * Extra `where` keys this store accepts, beyond `id` and `userId` — for
+   * example `['typeId', 'parentId']` for `Tag`. Any other key still throws.
+   */
+  columns?: string[]
 }
 
 export function createOwnedRowFake<Row extends OwnedRow>(
@@ -253,13 +295,14 @@ export function createOwnedRowFake<Row extends OwnedRow>(
 ) {
   const model = options.model ?? 'row'
   const relations = options.relations
+  const columns = options.columns ?? []
   // One plain object holding plain data, so `runInTransaction` (stockFake.ts)
   // can register it as a rollback store and `structuredClone` it.
   const state: { rows: Row[] } = { rows: [...(options.rows ?? [])] }
   let seq = 0
 
   function matches(row: Row, where: Where): boolean {
-    return ownedRowMatches(model, row, where)
+    return ownedRowMatches(model, row, where, columns)
   }
 
   function refuseUnknownOptions(method: string, args: object, allowed: string[]) {
@@ -413,6 +456,30 @@ export function createOwnedRowFake<Row extends OwnedRow>(
       const row = state.rows.find((r) => matches(r, args.where))
       const written = row ? applyUpdate(row, args.update) : insert(args.create)
       return project(written, args.include) as WithRelations<Row>
+    },
+    // ONE row, P2025 when the `where` matches none — Prisma's rule for
+    // `update`. A `where` of `{ id, userId }` is a legal WhereUniqueInput, so
+    // it is applied in full, the same as `findUnique` above.
+    update: async (args: { where: Where; data: Data; include?: Where; select?: Where }) => {
+      refuseUnknownOptions('update', args, ['where', 'data', 'include', 'select'])
+      const row = state.rows.find((r) => matches(r, args.where))
+      if (!row) throw new OwnedRowNotFoundError(model, args.where)
+      return project(applyUpdate(row, args.data), args.include) as WithRelations<Row>
+    },
+    // Every matching row; a count, never a throw — Prisma's rule.
+    updateMany: async (args: { where?: Where; data: Data }) => {
+      refuseUnknownOptions('updateMany', args, ['where', 'data'])
+      const hits = state.rows.filter((r) => matches(r, args.where ?? {}))
+      for (const row of hits) applyUpdate(row, args.data)
+      return { count: hits.length }
+    },
+    // ONE row, P2025 when the `where` matches none — Prisma's rule for `delete`.
+    delete: async (args: { where: Where; select?: Where }) => {
+      refuseUnknownOptions('delete', args, ['where', 'select'])
+      const row = state.rows.find((r) => matches(r, args.where))
+      if (!row) throw new OwnedRowNotFoundError(model, args.where)
+      state.rows = state.rows.filter((r) => r !== row)
+      return row as WithRelations<Row>
     },
     deleteMany: async (args: { where?: Where } = {}) => {
       refuseUnknownOptions('deleteMany', args, ['where'])

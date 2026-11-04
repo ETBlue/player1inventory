@@ -1,5 +1,5 @@
 import { GraphQLError } from 'graphql'
-import { requireLocationRole } from '../lib/authz.js'
+import { requireLocationRole, requireOwnRowOrUnclaimed } from '../lib/authz.js'
 import { cartIdFor, parseCartId } from '../lib/cartId.js'
 import { prisma } from '../lib/prisma.js'
 import { requireAuth } from '../context.js'
@@ -42,8 +42,14 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       })
       return vendor as unknown as Vendor
     },
+    // Ownership is checked by `requireOwnRowOrUnclaimed` (lib/authz.ts), which
+    // throws FORBIDDEN for another account's vendor. No call site compares a
+    // `userId`. Before 2026-11-04 both writes below used `where: { id }`
+    // alone — docs/global/bugs/2026-11-04-bug-unscoped-catalog-writes.md.
     updateVendor: async (_, { id, name }, ctx) => {
-      requireAuth(ctx)
+      if ((await requireOwnRowOrUnclaimed(ctx, 'vendor', id)) === 'unclaimed') {
+        throw new GraphQLError('Vendor not found', { extensions: { code: 'NOT_FOUND' } })
+      }
       const data: Record<string, unknown> = {}
       if (name !== undefined) data.name = name
       try {
@@ -54,6 +60,11 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     },
     deleteVendor: async (_, { id }, ctx) => {
       const userId = requireAuth(ctx)
+      // Ownership FIRST, outside the try below: a refused call must change
+      // nothing — not even the caller's own carts that name this vendor id —
+      // and its FORBIDDEN must reach the client rather than become `false`.
+      // A missing vendor returns false, as it did before.
+      if ((await requireOwnRowOrUnclaimed(ctx, 'vendor', id)) === 'unclaimed') return false
       // ItemVendor rows cascade automatically (onDelete: Cascade on ItemVendor.vendor)
       try {
         // A vendor has one cart PER LOCATION since PR 3b re-keyed Cart.id, so
