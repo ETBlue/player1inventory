@@ -606,7 +606,9 @@ task 3.6.
   role check; `requireCatalogIds(ctx, householdId, model, ids, { missing })` checks attached
   ids. Another household's id is `FORBIDDEN`; an id no row holds is `BAD_USER_INPUT`, or
   passes with `missing: 'allow'` (the shelf arrays only, because they are not foreign keys).
-  A repeated id is checked once.
+  A repeated id is not refused. (It was de-duplicated first in `959cb705`; the review fix
+  `ec17fe8d` removed that, because `id IN (...)` already matches each row once and the test
+  for it passed without it.)
 - `updateRecipeLastCookedAt` and the `lastCookedAt` write in `consumeRecipes` need only
   household role `member`: marking a recipe as cooked is a cooking right, not a catalog edit.
 - `createVendor` needs household `manager` AND location `participant`.
@@ -625,6 +627,20 @@ task 3.6.
   carts — H3b.
 - `itemCountBy*` filter the junction row by `item: { householdId }`. A Prisma fake that serves
   them must model that relation filter.
+
+**Review fix** in `ec17fe8d`. The review of task 3.7 found five things. All five are fixed
+there, each with a test that a mutation turned red:
+
+| Finding | Fix |
+|---|---|
+| `consumeRecipes` asking for `manager` instead of `member` left all 971 tests green | a test where a household `member` who is a location `participant` cooks, and the recipe gets `lastCookedAt` (`recipe.resolver.test.ts`) |
+| `createVendor` asking for location `viewer` instead of `participant` left all tests green | a test where a household manager who is only a location `viewer` is refused, with no vendor and no cart written (`catalog-household.resolver.test.ts`) |
+| `deleteTagType` deleted the household's tags, then the type delete failed (another household's tag still used the type), and it returned `false` with the tags gone | the tag cleanup and the type delete run in ONE interactive transaction. It still returns `false` in that case. The test fake models `Tag_typeId_fkey` (`P2003` when a tag uses the type) |
+| the junction fake's spec allowed `item: { householdId: { in } }`, but its matcher compared a plain string | the spec is `equals` now, so a `{ in }` filter throws |
+| the `requireCatalogIds` dedupe test passed without the dedupe | the dedupe is removed; the test now pins that a repeated id passes and a repeated stranger's id is refused |
+
+**Found by the review of task 3.7, still open:** see the notes under tasks 3.8, 3.9, 3.10,
+3.14 and *Known gaps*.
 
 ## Task 3.8 — Stock, logs and carts
 
@@ -666,6 +682,23 @@ rows live, not in `householdFake`. See the same note under task 3.6.
   tests do not exist yet. In these files every caller is an organizer, because the adapter
   (`derivedRoles`) makes each location's `userId` its `organizer`. So a call site that asks
   for `organizer` by mistake, or for `viewer`, passes every test today.
+
+**Found by the review of task 3.7, and owed here:**
+
+- **`applyUnitSwitch` is a catalog edit as well as a stock write.** It writes `Item`
+  configuration and `RecipeItem` amounts. So it also needs `requireCatalogRole(ctx, 'manager')`,
+  not only location `participant`. Test both: a location `participant` who is a household
+  `member` is refused; a household `manager` who is a location `viewer` is refused.
+- **`applyUnitSwitch` still reads the item and the recipe by `userId`**
+  (`itemStock.resolver.ts`, `prisma.item.findFirst({ where: { id: itemId, userId } })` and
+  the `prisma.recipe.findFirst` below it). Move both to `householdId`.
+- **Any new "this item is the household's" check uses
+  `requireCatalogIds(ctx, householdId, 'item', ids)`**, not a new helper. That covers the
+  item ids of `upsertItemStock`, `addItemToLocation`, `addInventoryLog`, `consumeRecipes`,
+  `applyUnitSwitch` and `addToCart` listed above.
+- **`bootstrapCarts` in `cart.resolver.ts` reads `prisma.vendor.findMany({ where: { userId } })`.**
+  So it makes carts only for the vendors the caller created, not for every vendor of the
+  household. Move it to `householdId`.
 
 ## Task 3.9 — Import
 
@@ -716,6 +749,26 @@ key, composite key `P2002`, and `skipDuplicates` only if a resolver passes it), 
 - **Count `order` within the household**, not per user, the same as `createLocation`.
 - **Use `locationIdsWithRole` or `countedLocationRole`** (`lib/authz.ts`) for any membership
   read. Do not write a new one: a read without the decision H18 filter counts stale rows.
+
+**Found by the review of task 3.7, and owed here:**
+
+- **This task no longer changes the `requireOwnRowOrUnclaimed` body.** Task 3.7 did it (see
+  its Done note). The first bullet of this task and step 3's first mutation are already done.
+- **Import does not check every id it attaches.** `requireCatalogIds` (task 3.7) is used by
+  the normal mutations, not by these:
+
+  | Mutation | Line (about) | Id it does not check |
+  |---|---|---|
+  | `bulkUpsertTags` | 1040-1060 | `typeId` and `parentId`, passed from the payload as they are |
+  | `bulkCreateShelves` | 1321 | `itemIds` and the ids inside `filterConfig` |
+  | `bulkUpsertShelves` | 1482 | `itemIds` and the ids inside `filterConfig` |
+
+  `bulkCreateTags` already skips a tag whose `typeId` is not the household's. Either call
+  `requireCatalogIds` (with `missing: 'allow'` for the shelf arrays, as task 3.7 does), or
+  skip the row the way `bulkCreateTags` does. Pick one and say why. A mutation check per row.
+- **`import-inventoryLog-location.resolver.test.ts`'s `item.findFirst` fake** (about lines
+  79-85) still compares `where.userId` and ignores `householdId`. A resolver that dropped its
+  household filter would pass there. Move it onto `checkWhere` (`test/whereKeys.ts`).
 
 ## Task 3.10 — Purges and E2E cleanup
 
@@ -795,6 +848,12 @@ cascade, or delete the rows on purpose in the test setup and say why.
 - **Add `location.deleteMany` to the fakes**, with the `ItemStock` and `LocationMember`
   cascades. `householdWorld` models the `LocationMember` cascade for `location.delete` only
   (task 3.6). Pin the new method with its own test.
+
+**Found by the review of task 3.7, and owed here:** three places still delete catalog rows by
+`userId`, not by household: `clearAllData` (`import.resolver.ts`), `purge.resolver.ts`, and
+`lib/e2eCleanup.ts` (about lines 82-118: `item`, `tag`, `tagType`, `vendor`, `recipe`,
+`shelf`, and the junction tables through `item: { userId }`). Steps 2 and 4 above already
+change them. Listed here so nobody reads task 3.7 as "the catalog no longer uses `userId`".
 
 ## Task 3.11 — A second household member in E2E
 
@@ -933,6 +992,54 @@ still writes `userId` on the seven models.
   `verify-migration.ts`, keep the race proof's claim the same call as `ensureHousehold`'s
   (`tx.user.updateMany` with `where: { id, householdSetupAt: null }`).
 
+**Found by the review of task 3.7. OPEN QUESTION for the owner: what to do with
+cross-household rows that already exist.** Do not build either option before the owner
+decides. Task 3.16's rehearsal measures how many there are.
+
+*The problem.* Before #273 (task 3.7) the server did not check the ids a write attached. So
+production may hold rows that link one household's row to another household's row. Migration
+step 8b in `add_households` counts five kinds: `ItemTag`, `ItemVendor`, `RecipeItem`,
+`Tag.typeId` and `Tag.parentId`. A sixth kind it does not count: ids of another household
+inside `Shelf.itemIds` and `Shelf.filterConfig`.
+
+Since task 3.7 these rows cause four problems:
+
+| Problem | Why |
+|---|---|
+| a full-set edit fails with `FORBIDDEN` | the web sends the WHOLE list back on every edit, old ids included, and `requireCatalogIds` refuses the other household's id. The places: `routes/items/$id/relation/tags.tsx` (about 144-150), `routes/items/$id/relation/vendors.tsx`, `components/pantry/VendorDetailView.tsx` (about 189), and `toVars` in `hooks/useRecipes.ts`, plus the shelf `itemIds` / `filterConfig` arrays. A reviewer proved the `FORBIDDEN` with a probe. The user probably cannot fix it in the app: the bad id is not one of the household's rows, so the app lists no button to remove it (not checked in a browser) |
+| the other household's ids leak | `item.tagIds` (and the vendor and recipe lists) return the other household's ids to this household |
+| `deleteTagType` fails | a `Tag.typeId` that crosses households makes Postgres refuse the type delete. Since `ec17fe8d` it rolls back and returns `false`, so no data is lost, but the type can never be deleted |
+| a household can never be deleted | the same `Tag_typeId_fkey`, as step 8b's comment says |
+
+*Options.*
+
+- **(A, recommended) Clean them up in `drop_user_scope`.** In the migration, before the
+  guard:
+  - delete cross-household `ItemTag`, `ItemVendor` and `RecipeItem` rows;
+  - set a cross-household `Tag.parentId` to `NULL` (the tag becomes top-level);
+  - remove other households' ids from `Shelf.itemIds` and `Shelf.filterConfig`;
+  - for a cross-household `Tag.typeId`, **a sub-choice the owner must make**: (A1) move the
+    tag to a copy of the type in the tag's own household (same name and color; one copy per
+    household and type), or (A2) delete the tag (its `ItemTag` rows go by cascade). A1 keeps
+    the user's data; A2 is simpler.
+  - report each count with `RAISE NOTICE`, the same way step 8b does;
+  - `verify-migration.ts` seeds one row of each kind and checks each is cleaned, and that a
+    same-household row next to it is kept.
+
+  Why recommended: it removes the leak and every `FORBIDDEN` at once, and the server code
+  stays as it is.
+- **(B) Let `requireCatalogIds` accept an id the row already holds.** The write would pass
+  when the other household's id was attached before. More code at every call site (each has
+  to read the row's current ids first), and it keeps the leak and the `deleteTagType` and
+  household-delete failures.
+
+*How many.* Probably 0 in production: a person could only attach another account's id by
+calling the API by hand with a guessed `cuid`. Task 3.16's rehearsal on a production copy
+records the step 8b counts. Step 8b does not count the shelf arrays, so the rehearsal needs
+one more query for them. If every count is 0, the owner may choose to do nothing, but note
+that import still writes unchecked `typeId` / `parentId` and shelf ids until task 3.9 fixes
+it (see the note there).
+
 ## Task 3.15 — E2E: the default location is gone
 
 **Files** (research 2026-11-03; re-check with
@@ -988,7 +1095,11 @@ already corrected in `3ba61aeb`.
      - the `RAISE NOTICE` counts of cross-household references (`Tag.typeId`,
        `Tag.parentId`, `ItemTag`, `ItemVendor`, `RecipeItem`). These come from the old
        unchecked writes fixed by #371. A `Tag.typeId` that crosses households blocks the
-       deletion of the type's household. If any exist, decide with the owner before the deploy
+       deletion of the type's household. If any exist, decide with the owner before the deploy.
+       Also count other households' ids inside `Shelf.itemIds` and `Shelf.filterConfig`,
+       which step 8b does not count. These counts answer the **open question under task
+       3.14** (found by the review of task 3.7): since task 3.7 such rows make the web's
+       full-set edits fail with `FORBIDDEN`
      - every `User` row the migration created with the placeholder name `'User'`. Those
        people get "User's Household" until Clerk sends `user.updated` or they rename it, and
        their `deletedAt` stays null even if the Clerk account is gone
@@ -1083,6 +1194,13 @@ drops `userId`, `main`'s cloud E2E cannot run on this database at all until H3a 
   the caller has a counted role on. A person is in one household today, so this is the same
   thing. Once H5 lets a person into two households, they will see both households'
   locations. `fallbackImportLocation`'s household filter (above) is the same gap.
+- **A small design mismatch for the owner: marking a recipe as cooked needs no location
+  role** (review of task 3.7). `updateRecipeLastCookedAt` takes no location, and needs only
+  household role `member`. So a household member with no location role, or only `viewer`,
+  can mark a recipe as cooked. The design (*Location roles*) calls cooking a `participant`
+  right. `consumeRecipes` does check location `participant`, because it names a location.
+  Behaviour is not changed in H3a. The owner decides whether this is fine (it writes only
+  `lastCookedAt`) or whether the mutation should take a location.
 - **A manager's reorder in H5 may leave some locations with old orders.** `reorderLocations`
   writes only the ids it is sent, and the web sends only the locations the caller sees. If
   H5 lets a manager see only some of the household's locations, the others keep their old
