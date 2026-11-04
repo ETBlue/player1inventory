@@ -640,6 +640,19 @@ still writes `userId` on the seven models.
   from them, and its indexes. Drop `Location.isDefault`. Keep `order`. In SQL: a
   `DO $$ RAISE EXCEPTION` guard on null `householdId` first, then `SET NOT NULL`, then the
   drops, then `DROP INDEX IF EXISTS "Location_one_default_per_user_key"`.
+
+  **Close the gap between the two migrations first** (task 3.3 review). Each migration
+  file is its own transaction, and the old server keeps serving until Railway switches. So
+  after `add_households` commits, the old server can still write a row with a null
+  `householdId`, a location with no organizer, or a new person with no household. The guard
+  alone would then fail the release. So `drop_user_scope` starts by:
+  1. `LOCK TABLE` on `User` and the seven tables, so no new write lands during the rest;
+  2. re-running steps 2–7 of `add_households` so they only add what is missing
+     (`WHERE "householdId" IS NULL`, `NOT EXISTS` for members and households);
+  3. then the guard, then `SET NOT NULL`.
+
+  `verify-migration.ts` must prove step 2: seed one row with a null `householdId` and one
+  new `User` between the two deploys, and check both are filled in.
 - [ ] **Step 2:** Run `pnpm build`. **`tsc` now lists every leftover `userId` use on these
   models.** Fix each one. This is the sweep that proves nothing still scopes by account.
   List the count in the report.
@@ -699,7 +712,14 @@ still writes `userId` on the seven models.
      branch of production, with the env override proved first (`apps/server/prisma/CLAUDE.md`
      *Prod-copy rehearsals*). Record: users = households = owner rows; no null
      `householdId`; every location has an organizer; how many "Home" locations were added
-     and for whom. **Never point `verify:migration` at it.**
+     and for whom. **Never point `verify:migration` at it.** Also record:
+     - the `RAISE NOTICE` counts of cross-household references (`Tag.typeId`,
+       `Tag.parentId`, `ItemTag`, `ItemVendor`, `RecipeItem`). These come from the old
+       unchecked writes fixed by #371. A `Tag.typeId` that crosses households blocks the
+       deletion of the type's household. If any exist, decide with the owner before the deploy
+     - every `User` row the migration created with the placeholder name `'User'`. Those
+       people get "User's Household" until Clerk sends `user.updated` or they rename it, and
+       their `deletedAt` stays null even if the Clerk account is gone
   4. Merge, watch the Railway release log, wait for Cloudflare, hard reload.
   5. The stale-bundle window: any open tab gets failed queries until it reloads.
   6. A manual smoke test in production: the pantry looks the same; the 🏠 label shows the
@@ -728,6 +748,14 @@ with the owner's consent.
 **Between tasks 3.5 and 3.15 the cloud E2E project is expected to fail** in places that read
 `isDefault` or "My Home". Run narrowed specs for the area each task touches, and the whole
 suite only at task 3.16.
+
+**The test database is shared with every other branch, `main` included.** From task 3.5 on,
+a cloud E2E run on this branch creates `HouseholdMember` rows for the E2E user ids. Until
+task 3.10, `/e2e/cleanup` does not delete them, and `HouseholdMember.userId` stops the
+`User` row from being deleted. So after a cloud E2E run here, cleanup fails with `P2003` on
+**every** branch that uses the same E2E user ids. Before anyone runs `main`'s cloud E2E, re-run
+`verify:migration` (with the owner's consent) or delete those member rows. After task 3.14
+drops `userId`, `main`'s cloud E2E cannot run on this database at all until H3a merges.
 
 ## Known gaps
 
