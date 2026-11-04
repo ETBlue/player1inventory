@@ -7,6 +7,7 @@ import { expressMiddleware } from '@as-integrations/express5'
 import { DEFAULT_CLIENT_ORIGIN, DEFAULT_PORT, GRAPHQL_PATH } from './constants.js'
 import { clerkWebhookHandler } from './lib/clerkWebhook.js'
 import { e2eCleanupHandler } from './lib/e2eCleanup.js'
+import { e2eAddHouseholdMemberHandler } from './lib/e2eHouseholds.js'
 import {
   e2eCreateUserHandler,
   e2eReadUserHandler,
@@ -61,6 +62,11 @@ if (E2E_TEST_MODE) {
   app.post('/e2e/users', e2eCreateUserHandler)
   app.post('/e2e/users/:id/deleted', e2eUserDeletedHandler)
   app.get('/e2e/users/:id', e2eReadUserHandler)
+
+  // Put a second person into a household, with a household role and location
+  // roles (lib/e2eHouseholds.ts, households H3a task 3.11). It adds anybody to
+  // anybody's household with no check of who asks, so it must stay in here.
+  app.post('/e2e/household-members', e2eAddHouseholdMemberHandler)
 }
 
 // Where ensureUser takes a new User row's name and email. E2E mode never

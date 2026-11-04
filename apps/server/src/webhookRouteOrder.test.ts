@@ -23,6 +23,10 @@
  * the same holds for `DELETE /e2e/cleanup`, which deletes a user's data and
  * their `User` row.
  *
+ * Since households H3a task 3.11, also `POST /e2e/household-members`
+ * (lib/e2eHouseholds.ts). It adds anybody to anybody's household with no
+ * check of who asks.
+ *
  * "Inside" is checked on the parsed syntax tree, with the TypeScript parser,
  * not by comparing text positions. A route placed after the block's closing
  * brace is outside it, and a position check against the `if` line alone would
@@ -144,6 +148,7 @@ describe('index.ts mounts the E2E-only routes', () => {
     ['post', '/e2e/users', 'e2eCreateUserHandler'],
     ['post', '/e2e/users/:id/deleted', 'e2eUserDeletedHandler'],
     ['get', '/e2e/users/:id', 'e2eReadUserHandler'],
+    ['post', '/e2e/household-members', 'e2eAddHouseholdMemberHandler'],
   ])('mounts %s %s once, inside the block', (method, path, handler) => {
     const found = routeMounts().filter((m) => m.path === path)
     expect(found).toEqual([{ receiver: 'app', method, path, handler, insideE2eBlock: true }])
@@ -155,9 +160,9 @@ describe('index.ts mounts the E2E-only routes', () => {
     const e2eRoutes = routeMounts().filter(
       (m) => m.path === '/e2e' || m.path.startsWith('/e2e/'),
     )
-    // The cleanup route and the three user routes. A route added later is
-    // checked too.
-    expect(e2eRoutes.length).toBeGreaterThanOrEqual(4)
+    // The cleanup route, the three user routes and the household member
+    // route (task 3.11). A route added later is checked too.
+    expect(e2eRoutes.length).toBeGreaterThanOrEqual(5)
     expect(e2eRoutes.filter((m) => !m.insideE2eBlock)).toEqual([])
   })
 
@@ -211,12 +216,13 @@ describe('index.ts mounts the E2E-only routes', () => {
     expect(routers).toEqual([])
   })
 
-  it('names the four E2E handlers nowhere outside the block, except in the import', () => {
+  it('names the five E2E handlers nowhere outside the block, except in the import', () => {
     const handlers = [
       'e2eCleanupHandler',
       'e2eCreateUserHandler',
       'e2eUserDeletedHandler',
       'e2eReadUserHandler',
+      'e2eAddHouseholdMemberHandler',
     ]
     const [block] = e2eBlocks()
     const body = block?.thenStatement
