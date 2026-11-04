@@ -867,6 +867,36 @@ describe('consumeRecipes takes only items of the cook location\'s household', ()
     expect(stockFake.state.itemStocks).toHaveLength(0)
     expect(mockPrisma.inventoryLog.create).not.toHaveBeenCalled()
   })
+
+  // `requireLocationRole` must run BEFORE `requireLocationItems`. Run the other
+  // way round, an existing foreign location plus an item id no row holds gives
+  // BAD_USER_INPUT, while an unknown location gives FORBIDDEN, so a stranger
+  // could tell which location ids exist (task 3.8 review).
+  it("a stranger cooking at another household's location gets FORBIDDEN, even for a missing item", async () => {
+    // Given LOC_STRANGER exists and the caller holds no role on it, and no
+    // item has the id item_ghost
+    const result = await execOp(CONSUME, {
+      input: consumeInput([{ ...COOKED_MILK, itemId: 'item_ghost' }], ['recipe_1'], LOC_STRANGER),
+    })
+
+    // Then the answer is FORBIDDEN, the same as for an unknown location, and
+    // nothing is written
+    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(stockFake.state.itemStocks).toHaveLength(0)
+    expect(mockPrisma.inventoryLog.create).not.toHaveBeenCalled()
+    expect(mockPrisma.recipe.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('an unknown cook location with a missing item gets the same FORBIDDEN (control)', async () => {
+    // A negative control: green in both orders. It shows the answer above
+    // matches this one.
+    const result = await execOp(CONSUME, {
+      input: consumeInput([{ ...COOKED_MILK, itemId: 'item_ghost' }], [], 'loc_does_not_exist'),
+    })
+    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(stockFake.state.itemStocks).toHaveLength(0)
+    expect(mockPrisma.inventoryLog.create).not.toHaveBeenCalled()
+  })
 })
 
 describe('consumeRecipes needs location role participant', () => {

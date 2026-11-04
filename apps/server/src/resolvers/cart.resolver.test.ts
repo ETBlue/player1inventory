@@ -1699,4 +1699,29 @@ describe('addToCart takes only an item of the cart location\'s household', () =>
     expect(result?.errors?.[0]?.extensions?.code).toBe('BAD_USER_INPUT')
     expect(mockPrisma.cartItem.create).not.toHaveBeenCalled()
   })
+
+  // The cart's location role must be checked BEFORE `requireLocationItems`.
+  // Run the other way round, an existing foreign location plus an item id no
+  // row holds gives BAD_USER_INPUT, while an unknown location gives
+  // FORBIDDEN, so a stranger could tell which location ids exist (task 3.8
+  // review).
+  it("a stranger adding to a cart at another household's location gets FORBIDDEN, even for a missing item", async () => {
+    // Given LOC_STRANGER exists and the caller holds no role on it, and no
+    // item has the id item_ghost
+    const result = await execOp(ADD, { c: `${LOC_STRANGER}:no-vendor`, i: 'item_ghost' })
+
+    // Then the answer is FORBIDDEN, the same as for an unknown location, and
+    // nothing is read or written
+    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(mockPrisma.cartItem.findFirst).not.toHaveBeenCalled()
+    expect(mockPrisma.cartItem.create).not.toHaveBeenCalled()
+  })
+
+  it('an unknown location in the cart id with a missing item gets the same FORBIDDEN (control)', async () => {
+    // A negative control: green in both orders. It shows the answer above
+    // matches this one.
+    const result = await execOp(ADD, { c: 'loc_does_not_exist:no-vendor', i: 'item_ghost' })
+    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(mockPrisma.cartItem.create).not.toHaveBeenCalled()
+  })
 })

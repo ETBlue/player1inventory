@@ -790,4 +790,31 @@ describe('addInventoryLog needs location role participant, and an item of the lo
     const id = (result?.data?.addInventoryLog as { id: string }).id
     expect(mockPrisma.$logFake.state.logs.find((l) => l.id === id)?.userId).toBe(USER)
   })
+
+  // `requireLocationRole` must run BEFORE `requireLocationItems`. Run the other
+  // way round, an existing foreign location plus an item id no row holds gives
+  // BAD_USER_INPUT, while an unknown location gives FORBIDDEN, so a stranger
+  // could tell which location ids exist (task 3.8 review).
+  it('a stranger adding a log at another household\'s location gets FORBIDDEN, even for a missing item', async () => {
+    // Given LOC_STRANGER exists and USER holds no role on it, and no item has
+    // the id item_ghost
+    const before = mockPrisma.$logFake.state.logs.length
+
+    // When USER adds a log there
+    const result = await add('item_ghost', LOC_STRANGER)
+
+    // Then the answer is FORBIDDEN, the same as for an unknown location, and
+    // nothing is written
+    expect(errorCode(result)).toBe('FORBIDDEN')
+    expect(mockPrisma.$logFake.state.logs).toHaveLength(before)
+  })
+
+  it('an unknown location id with a missing item gets the same FORBIDDEN (control)', async () => {
+    // A negative control: green in both orders. It shows the answer above
+    // matches this one.
+    const before = mockPrisma.$logFake.state.logs.length
+    const result = await add('item_ghost', 'loc_does_not_exist')
+    expect(errorCode(result)).toBe('FORBIDDEN')
+    expect(mockPrisma.$logFake.state.logs).toHaveLength(before)
+  })
 })

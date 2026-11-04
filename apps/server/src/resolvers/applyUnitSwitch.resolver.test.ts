@@ -580,4 +580,42 @@ describe('applyUnitSwitch takes only the household\'s items', () => {
     expect(stockAt(LOC_THEIRS)).toBeUndefined()
     expect(flour()).toMatchObject({ targetUnit: 'measurement' })
   })
+
+  // In the per-location loop, `requireLocationRole` must run BEFORE
+  // `requireLocationItems`. Run the other way round, an existing foreign
+  // location plus an item id no row holds gives BAD_USER_INPUT, while an
+  // unknown location gives FORBIDDEN, so a stranger could tell which location
+  // ids exist (task 3.8 review).
+  it("a stranger naming another household's location gets FORBIDDEN, even for a missing item", async () => {
+    // Given user_a (hh_a's owner, so the catalog role check passes) holds no
+    // role on hh_b's LOC_THEIRS, and no item has the id item_ghost
+    const input = {
+      ...fullSwitch,
+      itemId: 'item_ghost',
+      stockConversions: [{ locationId: LOC_THEIRS, quantities: GARAGE_AFTER }],
+      recipeUpdates: [],
+    }
+
+    // When user_a runs the switch
+    const res = await run(MUTATION, { input })
+
+    // Then the answer is FORBIDDEN, the same as for an unknown location, and
+    // no row appears at LOC_THEIRS
+    expect(res.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(stockAt(LOC_THEIRS)).toBeUndefined()
+  })
+
+  it('an unknown location with a missing item gets the same FORBIDDEN (control)', async () => {
+    // A negative control: green in both orders. It shows the answer above
+    // matches this one.
+    const res = await run(MUTATION, {
+      input: {
+        ...fullSwitch,
+        itemId: 'item_ghost',
+        stockConversions: [{ locationId: 'loc_does_not_exist', quantities: GARAGE_AFTER }],
+        recipeUpdates: [],
+      },
+    })
+    expect(res.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+  })
 })

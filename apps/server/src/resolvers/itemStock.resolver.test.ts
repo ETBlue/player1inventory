@@ -836,3 +836,79 @@ describe('itemStock writes take only an item of the location\'s household', () =
     expect(ok.errors).toBeUndefined()
   })
 })
+
+// ─── The order of the two checks ────────────────────────────────────────────
+//
+// `requireLocationRole` must run BEFORE `requireLocationItems`. The second
+// one reads the location's household, so when it runs first it tells a
+// stranger "this location exists": an existing foreign location plus an item
+// id no row holds gives BAD_USER_INPUT, while an unknown location gives
+// FORBIDDEN. In the right order both give FORBIDDEN, so a stranger cannot
+// tell a real location id from a made-up one.
+//
+// Found in the task 3.8 review: swapping the two calls at each site left
+// every other test green.
+describe('itemStock writes check the location role before the item', () => {
+  beforeEach(() => {
+    seed()
+    seedStocks()
+  })
+
+  it('a stranger setting stock at another household\'s location gets FORBIDDEN, even for a missing item', async () => {
+    // Given loc-b exists and is hh-b's, user-a holds no role on it, and no
+    // item has the id item-ghost
+    // When user-a sets stock there
+    const res = await run(UPSERT_ONE, { i: 'item-ghost', l: 'loc-b', in: { packedQuantity: 4 } })
+
+    // Then the answer is FORBIDDEN, the same as for a location that does not
+    // exist, and no row is written
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(stockState.itemStocks.map((s) => s.id).sort()).toEqual(['st-home', 'st-theirs'])
+  })
+
+  it('a stranger adding an item to another household\'s location gets FORBIDDEN, even for a missing item', async () => {
+    const res = await run(ADD, { i: 'item-ghost', l: 'loc-b' })
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(stockState.itemStocks.map((s) => s.id).sort()).toEqual(['st-home', 'st-theirs'])
+  })
+
+  it('an unknown location id gets the same FORBIDDEN (control)', async () => {
+    // A negative control. It stays green in both orders, because
+    // `householdOfLocation` also refuses a missing location with FORBIDDEN.
+    // It is here to show that the two answers above match this one.
+    const res = await run(UPSERT_ONE, { i: 'item-ghost', l: 'loc-nowhere', in: { packedQuantity: 4 } })
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(stockState.itemStocks.map((s) => s.id).sort()).toEqual(['st-home', 'st-theirs'])
+  })
+})
+
+// ─── A removal deletes every member's logs, not only the caller's ───────────
+//
+// A log belongs to its LOCATION. `InventoryLog.userId` is its author (task
+// 3.8). So removing an item from a location also deletes the logs a
+// co-member wrote there. The fixture of the first describe block has only
+// user-a's logs, so it cannot tell "this location's logs" from "my logs at
+// this location".
+describe('removing an item from a location deletes the logs a co-member wrote there', () => {
+  beforeEach(() => {
+    seed()
+    seedStocks()
+    logs.reset([
+      makeInventoryLog({ id: 'log-mine', itemId: 'item-milk', locationId: 'loc-a', userId: 'user-a' }),
+      // Written by user-m, the co-member, at the same location
+      makeInventoryLog({ id: 'log-comember', itemId: 'item-milk', locationId: 'loc-a', userId: 'user-m' }),
+      // Written by user-m at ANOTHER location of the same household
+      makeInventoryLog({ id: 'log-comember-away', itemId: 'item-milk', locationId: 'loc-a2', userId: 'user-m' }),
+    ])
+  })
+
+  it('user removing an item from a location also deletes a co-member\'s logs of it there', async () => {
+    // When user-a removes item-milk from loc-a
+    const res = await run(REMOVE_ONE, { i: 'item-milk', l: 'loc-a' })
+
+    // Then both logs at loc-a went, the co-member's included, and the log at
+    // loc-a2 stayed
+    expect(res.errors).toBeUndefined()
+    expect(logs.state.logs.map((l) => l.id)).toEqual(['log-comember-away'])
+  })
+})
