@@ -66,7 +66,7 @@ vi.mock('../lib/prisma.js', async () => {
 
 import { prisma } from '../lib/prisma.js'
 import { makeStock, type StockFake } from '../test/stockFake.js'
-import { cartItemMatches, type FakeCart, type FakeCartItem } from '../test/cartItemFake.js'
+import { type FakeCart, type FakeCartItem, filterCartItems } from '../test/cartItemFake.js'
 
 const mockPrisma = prisma as unknown as {
   cart: {
@@ -181,8 +181,7 @@ beforeEach(async () => {
   // for every test, whatever another test did to the mock.
   mockPrisma.cartItem.count.mockImplementation(
     async ({ where = {} }: { where?: Record<string, unknown> } = {}) =>
-      cartItemStore.cartItems.filter((c) => cartItemMatches(c, where, cartItemStore.carts))
-        .length,
+      filterCartItems(cartItemStore.cartItems, where, cartItemStore.carts).length,
   )
   server = new ApolloServer<Context>({ typeDefs, resolvers })
   await server.start()

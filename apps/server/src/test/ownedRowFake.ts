@@ -9,9 +9,6 @@
 // stranger held the id. `requireOwnRowOrUnclaimed` (lib/authz.ts) closes both.
 // Five of those nine models had no fake at all before this file.
 //
-// NOT a test file, so `tsc` type-checks it — the same reasoning
-// `src/test/stockFake.ts` and `src/test/cartItemFake.ts` record.
-//
 // ── WHAT IT MODELS, AND WHY EACH ONE ──
 //
 // It exists to model CONSTRAINTS, not the happy path (root CLAUDE.md → "Write
@@ -100,6 +97,13 @@
 //     still throws, so the refusal described above is kept: a store accepts
 //     only the keys its test file asked for on purpose.
 
+import {
+  checkWhere,
+  UnknownWhereKeyError,
+  UnsupportedWhereFilterError,
+  type WhereSpec,
+} from './whereKeys.js'
+
 /** The two columns every account-scoped row must have. */
 export interface OwnedRow {
   id: string
@@ -143,35 +147,20 @@ export class OwnedRowNotFoundError extends Error {
   }
 }
 
-/**
- * Raised when a `where` carries a key this fake does not understand.
- *
- * Throwing is the whole point. A fake that walks `where` key by key and
- * IGNORES an unknown key returns the same rows with the key and without it, so
- * every test passes against a resolver that dropped the filter. That is what
- * happened to the cartItem fake in PR 3c (root CLAUDE.md). If a resolver needs
- * a new key, add it to `ownedRowMatches` on purpose.
- */
-export class UnsupportedWhereKeyError extends Error {
-  constructor(model: string, key: string) {
-    super(
-      `ownedRowFake(${model}) was given a where key it does not model: '${key}'. ` +
-        'It throws instead of ignoring the key, because ignoring one makes every ' +
-        'test pass against a resolver that dropped the filter. Model the key in ' +
-        'ownedRowMatches if a resolver really needs it.',
-    )
-  }
-}
-
-/** Raised when a supported key carries a filter shape this fake does not model. */
-export class UnsupportedWhereFilterError extends Error {
-  constructor(model: string, key: string, filter: unknown) {
-    super(
-      `ownedRowFake(${model}) models '${key}' as a string or { in: [...] }, not ` +
-        `${JSON.stringify(filter)}. It throws rather than matching everything.`,
-    )
-  }
-}
+// The two `where` errors are the SHARED classes from `whereKeys.ts`, under
+// the names this file has always exported. So one `instanceof
+// UnknownWhereKeyError` catches an unknown key from this fake and from the
+// four older fakes alike, and the same for `UnsupportedWhereFilterError`.
+//
+// Throwing is the whole point. A fake that walks `where` key by key and
+// IGNORES an unknown key returns the same rows with the key and without it, so
+// every test passes against a resolver that dropped the filter. That is what
+// happened to the cartItem fake in PR 3c (root CLAUDE.md). If a resolver needs
+// a new key, add it to `columns` or to `ownedRowMatches` on purpose.
+export {
+  UnknownWhereKeyError as UnsupportedWhereKeyError,
+  UnsupportedWhereFilterError,
+} from './whereKeys.js'
 
 /** Raised when an `include` cannot be resolved, instead of returning a row without the key. */
 export class UnsupportedIncludeError extends Error {
@@ -215,7 +204,12 @@ function matchesColumn(model: string, key: string, value: string, filter: unknow
     const list = (filter as { in?: unknown }).in
     if (Array.isArray(list)) return list.includes(value)
   }
-  throw new UnsupportedWhereFilterError(model, key, filter)
+  throw new UnsupportedWhereFilterError(
+    `ownedRowFake(${model})`,
+    key,
+    filter,
+    'a string or { in: [...] }',
+  )
 }
 
 /**
@@ -246,7 +240,9 @@ export function ownedRowMatches(
         if (!matchesColumn(model, 'userId', row.userId, filter)) return false
         break
       default:
-        if (!columns.includes(key)) throw new UnsupportedWhereKeyError(model, key)
+        if (!columns.includes(key)) {
+          throw new UnknownWhereKeyError(`ownedRowFake(${model})`, key)
+        }
         if (!matchesNullableColumn(model, key, row, filter)) return false
     }
   }
@@ -268,7 +264,12 @@ function matchesNullableColumn(model: string, key: string, row: OwnedRow, filter
     const list = (filter as { in?: unknown }).in
     if (Array.isArray(list)) return list.includes(value)
   }
-  throw new UnsupportedWhereFilterError(model, key, filter)
+  throw new UnsupportedWhereFilterError(
+    `ownedRowFake(${model})`,
+    key,
+    filter,
+    'null, a string or { in: [...] }',
+  )
 }
 
 export interface OwnedRowFakeOptions<Row extends OwnedRow> {
@@ -300,6 +301,20 @@ export function createOwnedRowFake<Row extends OwnedRow>(
   // can register it as a rollback store and `structuredClone` it.
   const state: { rows: Row[] } = { rows: [...(options.rows ?? [])] }
   let seq = 0
+
+  // Every `where` key this store models, and how. Checked ONCE per call by
+  // `checkOwnedWhere`, before the store is searched. `ownedRowMatches` runs
+  // per row, and a per-row check never runs on an empty store, so an unknown
+  // key there would come back as "no rows" with no error. See `whereKeys.ts`.
+  const whereSpec: WhereSpec = {
+    ...Object.fromEntries(columns.map((c) => [c, 'nullableIn' as const])),
+    id: 'in',
+    userId: 'in',
+  }
+
+  function checkOwnedWhere(where: Where | undefined): void {
+    checkWhere(`ownedRowFake(${model})`, where, whereSpec)
+  }
 
   function matches(row: Row, where: Where): boolean {
     return ownedRowMatches(model, row, where, columns)
@@ -392,10 +407,12 @@ export function createOwnedRowFake<Row extends OwnedRow>(
     // `{ id }`. Same matcher as `findFirst` for exactly that reason.
     findUnique: async (args: { where: Where; include?: Where; select?: Where }) => {
       refuseUnknownOptions('findUnique', args, ['where', 'include', 'select'])
+      checkOwnedWhere(args.where)
       return project(state.rows.find((r) => matches(r, args.where)) ?? null, args.include)
     },
     findFirst: async (args: { where?: Where; include?: Where; select?: Where } = {}) => {
       refuseUnknownOptions('findFirst', args, ['where', 'include', 'select'])
+      checkOwnedWhere(args.where)
       return project(
         state.rows.find((r) => matches(r, args.where ?? {})) ?? null,
         args.include,
@@ -403,6 +420,7 @@ export function createOwnedRowFake<Row extends OwnedRow>(
     },
     findMany: async (args: { where?: Where; include?: Where; select?: Where } = {}) => {
       refuseUnknownOptions('findMany', args, ['where', 'include', 'select'])
+      checkOwnedWhere(args.where)
       return state.rows
         .filter((r) => matches(r, args.where ?? {}))
         .map((r) => project(r, args.include) as WithRelations<Row>)
@@ -412,6 +430,7 @@ export function createOwnedRowFake<Row extends OwnedRow>(
     // distinguishable from "here it is".
     findUniqueOrThrow: async (args: { where: Where; include?: Where; select?: Where }) => {
       refuseUnknownOptions('findUniqueOrThrow', args, ['where', 'include', 'select'])
+      checkOwnedWhere(args.where)
       const row = state.rows.find((r) => matches(r, args.where))
       if (!row) throw new OwnedRowNotFoundError(model, args.where)
       return project(row, args.include) as WithRelations<Row>
@@ -453,6 +472,7 @@ export function createOwnedRowFake<Row extends OwnedRow>(
       select?: Where
     }) => {
       refuseUnknownOptions('upsert', args, ['where', 'create', 'update', 'include', 'select'])
+      checkOwnedWhere(args.where)
       const row = state.rows.find((r) => matches(r, args.where))
       const written = row ? applyUpdate(row, args.update) : insert(args.create)
       return project(written, args.include) as WithRelations<Row>
@@ -462,6 +482,7 @@ export function createOwnedRowFake<Row extends OwnedRow>(
     // it is applied in full, the same as `findUnique` above.
     update: async (args: { where: Where; data: Data; include?: Where; select?: Where }) => {
       refuseUnknownOptions('update', args, ['where', 'data', 'include', 'select'])
+      checkOwnedWhere(args.where)
       const row = state.rows.find((r) => matches(r, args.where))
       if (!row) throw new OwnedRowNotFoundError(model, args.where)
       return project(applyUpdate(row, args.data), args.include) as WithRelations<Row>
@@ -469,6 +490,7 @@ export function createOwnedRowFake<Row extends OwnedRow>(
     // Every matching row; a count, never a throw — Prisma's rule.
     updateMany: async (args: { where?: Where; data: Data }) => {
       refuseUnknownOptions('updateMany', args, ['where', 'data'])
+      checkOwnedWhere(args.where)
       const hits = state.rows.filter((r) => matches(r, args.where ?? {}))
       for (const row of hits) applyUpdate(row, args.data)
       return { count: hits.length }
@@ -476,6 +498,7 @@ export function createOwnedRowFake<Row extends OwnedRow>(
     // ONE row, P2025 when the `where` matches none — Prisma's rule for `delete`.
     delete: async (args: { where: Where; select?: Where }) => {
       refuseUnknownOptions('delete', args, ['where', 'select'])
+      checkOwnedWhere(args.where)
       const row = state.rows.find((r) => matches(r, args.where))
       if (!row) throw new OwnedRowNotFoundError(model, args.where)
       state.rows = state.rows.filter((r) => r !== row)
@@ -483,6 +506,7 @@ export function createOwnedRowFake<Row extends OwnedRow>(
     },
     deleteMany: async (args: { where?: Where } = {}) => {
       refuseUnknownOptions('deleteMany', args, ['where'])
+      checkOwnedWhere(args.where)
       const where = args.where ?? {}
       const before = state.rows.length
       state.rows = state.rows.filter((r) => !matches(r, where))

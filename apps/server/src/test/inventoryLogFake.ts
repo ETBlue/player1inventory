@@ -1,8 +1,5 @@
 // A stateful Prisma double for `inventoryLog`.
 //
-// NOT a test file, so `tsc` type-checks it — the same reasoning stockFake.ts
-// records.
-//
 // ── WHY IT EXISTS ──
 //
 // Before PR 3a Task 2, inventoryLog.resolver.test.ts mocked `inventoryLog` as
@@ -42,7 +39,7 @@
 // row with a null `occurredAt`, so no assertion depends on the difference —
 // but a future test that does must not trust this fake for ordering.
 
-import { assertKnownWhereKeys } from './whereKeys.js'
+import { checkWhere, type WhereSpec } from './whereKeys.js'
 
 export interface FakeInventoryLog {
   id: string
@@ -75,12 +72,24 @@ function matchesNumber(value: number | null, filter: unknown): boolean {
   return true
 }
 
-// Every key `matchesLog` models. A key outside this list THROWS — see
-// `whereKeys.ts`.
-const LOG_WHERE_KEYS = ['id', 'itemId', 'userId', 'locationId', 'delta', 'quantity'] as const
+// Every key `matchesLog` models, and how. A key outside this spec, or a value
+// shape its kind does not allow, THROWS. `checkLogWhere` runs ONCE per client
+// call, before the store is searched — never inside `matchesLog`, which an
+// empty store never calls. See `whereKeys.ts`.
+const LOG_WHERE: WhereSpec = {
+  id: 'equals',
+  itemId: 'equals',
+  userId: 'equals',
+  locationId: 'equals',
+  delta: 'number',
+  quantity: 'number',
+}
+
+function checkLogWhere(where: Where | undefined): void {
+  checkWhere('inventoryLogFake(inventoryLog)', where, LOG_WHERE)
+}
 
 function matchesLog(row: FakeInventoryLog, where: Where): boolean {
-  assertKnownWhereKeys('inventoryLogFake(inventoryLog)', where, LOG_WHERE_KEYS)
   // `undefined ||` on every key, on purpose: this is Prisma's semantics, and
   // it is what makes dropping a key from a resolver's `where` visible.
   if (where.id !== undefined && row.id !== where.id) return false
@@ -143,23 +152,33 @@ export function createInventoryLogFake() {
     findMany: async ({
       where = {},
       orderBy,
-    }: { where?: Where; orderBy?: { occurredAt?: 'asc' | 'desc' } } = {}) =>
-      sortRows(
+    }: { where?: Where; orderBy?: { occurredAt?: 'asc' | 'desc' } } = {}) => {
+      checkLogWhere(where)
+      return sortRows(
         state.logs.filter((l) => matchesLog(l, where)),
         orderBy,
-      ),
+      )
+    },
     findFirst: async ({
       where = {},
       orderBy,
-    }: { where?: Where; orderBy?: { occurredAt?: 'asc' | 'desc' } } = {}) =>
-      sortRows(
-        state.logs.filter((l) => matchesLog(l, where)),
-        orderBy,
-      )[0] ?? null,
-    count: async ({ where = {} }: { where?: Where } = {}) =>
-      state.logs.filter((l) => matchesLog(l, where)).length,
-    findUnique: async ({ where = {} }: { where?: Where } = {}) =>
-      state.logs.find((l) => matchesLog(l, where)) ?? null,
+    }: { where?: Where; orderBy?: { occurredAt?: 'asc' | 'desc' } } = {}) => {
+      checkLogWhere(where)
+      return (
+        sortRows(
+          state.logs.filter((l) => matchesLog(l, where)),
+          orderBy,
+        )[0] ?? null
+      )
+    },
+    count: async ({ where = {} }: { where?: Where } = {}) => {
+      checkLogWhere(where)
+      return state.logs.filter((l) => matchesLog(l, where)).length
+    },
+    findUnique: async ({ where = {} }: { where?: Where } = {}) => {
+      checkLogWhere(where)
+      return state.logs.find((l) => matchesLog(l, where)) ?? null
+    },
     create: async ({ data }: { data: Record<string, unknown> }) => insert(data),
     upsert: async ({
       where = {},
@@ -170,6 +189,7 @@ export function createInventoryLogFake() {
       create: Record<string, unknown>
       update: Record<string, unknown>
     }) => {
+      checkLogWhere(where)
       const existing = state.logs.find((l) => matchesLog(l, where))
       if (!existing) return insert(create)
       // Only the keys `update` actually carries are applied — Prisma's own

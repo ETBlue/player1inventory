@@ -3,7 +3,7 @@ import { ApolloServer } from '@apollo/server'
 import { typeDefs } from '../schema/index.js'
 import { resolvers } from '../resolvers/index.js'
 import { runInTransaction } from '../test/stockFake.js'
-import { cartItemMatches, type FakeCart, type FakeCartItem } from '../test/cartItemFake.js'
+import { type FakeCart, type FakeCartItem, filterCartItems } from '../test/cartItemFake.js'
 import type { Context } from '../context.js'
 
 interface FakeStock {
@@ -86,8 +86,10 @@ const { state, client } = vi.hoisted(() => {
   // `cart: { locationId }` means. A local copy could quietly ignore that key,
   // and then every cascade test below would pass against a resolver with no
   // location scope at all.
-  function matchesCartItem(c: FakeCartItem, where: Record<string, unknown>): boolean {
-    return cartItemMatches(c, where, state.carts)
+  // `filterCartItems` checks the whole `where` once, before it reads a row, so
+  // an unknown key throws even when the store is empty.
+  function selectCartItems(where: Record<string, unknown>): FakeCartItem[] {
+    return filterCartItems(state.cartItems, where, state.carts)
   }
 
   type StockCreateData = Omit<FakeStock, 'id' | 'createdAt' | 'updatedAt'>
@@ -212,7 +214,8 @@ const { state, client } = vi.hoisted(() => {
           throw new Error('cartItem.deleteMany exploded')
         }
         const before = state.cartItems.length
-        state.cartItems = state.cartItems.filter((c) => !matchesCartItem(c, where))
+        const hits = new Set(selectCartItems(where))
+        state.cartItems = state.cartItems.filter((c) => !hits.has(c))
         return { count: before - state.cartItems.length }
       },
     },

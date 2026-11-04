@@ -4,9 +4,6 @@
 // `ItemStock` is now the only place a cloud quantity lives, so these stores
 // are the real subject rather than one half of a mirror.
 //
-// NOT a test file, so `tsc` type-checks it — the same reasoning
-// `apps/web/src/test/cloudFixtures.ts` records for the web fixtures.
-//
 // It exists to model CONSTRAINTS, not the happy path (root CLAUDE.md → "Write
 // test doubles to model the constraint, not the happy path"):
 //
@@ -73,7 +70,7 @@
 // caller inside a `$transaction` callback passes `tx` and its stock write is
 // covered by the same rollback. `applyUnitSwitch` is the only such caller.
 
-import { assertKnownWhereKeys } from './whereKeys.js'
+import { checkWhere, type WhereSpec } from './whereKeys.js'
 
 export interface FakeLocation {
   id: string
@@ -122,17 +119,26 @@ export type RollbackStore = Record<string, unknown>
 
 type Where = Record<string, unknown>
 
-// Every key each matcher below models. A key outside these lists THROWS —
-// see `whereKeys.ts`.
-const LOCATION_WHERE_KEYS = ['id', 'userId', 'isDefault'] as const
-const STOCK_WHERE_KEYS = [
-  'id',
-  'itemId',
-  'locationId',
-  'location',
-  'itemId_locationId',
-] as const
-const STOCK_LOCATION_WHERE_KEYS = ['userId'] as const
+// Every key each store models, and how. A key outside these specs, or a value
+// shape its kind does not allow, THROWS. `checkWhere` runs ONCE per client
+// call, before the store is searched — never inside the per-row matcher, which
+// an empty store never calls. See `whereKeys.ts`.
+const LOCATION_WHERE: WhereSpec = { id: 'equals', userId: 'equals', isDefault: 'equals' }
+const STOCK_WHERE: WhereSpec = {
+  id: 'equals',
+  itemId: 'equals',
+  locationId: 'equals',
+  location: { nested: { userId: 'equals' } },
+  itemId_locationId: { nested: { itemId: 'equals', locationId: 'equals' } },
+}
+
+function checkLocationWhere(where: Where | undefined): void {
+  checkWhere('stockFake(location)', where, LOCATION_WHERE)
+}
+
+function checkStockWhere(where: Where | undefined): void {
+  checkWhere('stockFake(itemStock)', where, STOCK_WHERE)
+}
 
 // Prisma's P2002. The message shape matters only so a surprised reader can see
 // what blew up; tests match on the `code`.
@@ -182,7 +188,6 @@ export class StockIdConstraintError extends Error {
 }
 
 function matchesLocation(row: FakeLocation, where: Where): boolean {
-  assertKnownWhereKeys('stockFake(location)', where, LOCATION_WHERE_KEYS)
   // `undefined ||` on every key, deliberately: this is Prisma's semantics, and
   // it is what makes dropping a key from a resolver's where clause visible.
   if (where.id !== undefined && row.id !== where.id) return false
@@ -192,7 +197,6 @@ function matchesLocation(row: FakeLocation, where: Where): boolean {
 }
 
 function matchesStock(row: FakeStock, where: Where, locations: FakeLocation[]): boolean {
-  assertKnownWhereKeys('stockFake(itemStock)', where, STOCK_WHERE_KEYS)
   if (where.id !== undefined && row.id !== where.id) return false
   if (where.itemId !== undefined && row.itemId !== where.itemId) return false
   if (where.locationId !== undefined && row.locationId !== where.locationId) return false
@@ -207,9 +211,6 @@ function matchesStock(row: FakeStock, where: Where, locations: FakeLocation[]): 
   // all. That is the exact failure root CLAUDE.md records for the cartItem
   // fake in PR 3c.
   const location = where.location as { userId?: string } | undefined
-  if (location !== undefined) {
-    assertKnownWhereKeys('stockFake(itemStock.location)', location, STOCK_LOCATION_WHERE_KEYS)
-  }
   if (location?.userId !== undefined) {
     const owner = locations.find((l) => l.id === row.locationId)
     if (owner?.userId !== location.userId) return false
@@ -459,18 +460,24 @@ export function createStockFake() {
     // snapshots.
     $transaction,
     location: {
-      findFirst: async ({ where = {} }: { where?: Where } = {}) =>
-        state.locations.find((l) => matchesLocation(l, where)) ?? null,
+      findFirst: async ({ where = {} }: { where?: Where } = {}) => {
+        checkLocationWhere(where)
+        return state.locations.find((l) => matchesLocation(l, where)) ?? null
+      },
       // Prisma's `findUnique` takes a WhereUniqueInput, which since Prisma 5
       // may carry extra non-unique filters alongside the unique key — so
       // `{ id, userId }` is a legal argument and MUST be applied, not reduced
       // to `{ id }`. Same `matchesLocation` as `findFirst` for exactly that
       // reason: a fake that answered on `id` alone would keep a scoped lookup
       // green after the resolver dropped its `userId`.
-      findUnique: async ({ where }: { where: Where }) =>
-        state.locations.find((l) => matchesLocation(l, where)) ?? null,
-      findMany: async ({ where = {} }: { where?: Where } = {}) =>
-        state.locations.filter((l) => matchesLocation(l, where)),
+      findUnique: async ({ where }: { where: Where }) => {
+        checkLocationWhere(where)
+        return state.locations.find((l) => matchesLocation(l, where)) ?? null
+      },
+      findMany: async ({ where = {} }: { where?: Where } = {}) => {
+        checkLocationWhere(where)
+        return state.locations.filter((l) => matchesLocation(l, where))
+      },
       create: async ({ data }: { data: Record<string, unknown> }) =>
         insertLocation(data),
       // `create` and `update` are kept APART, and `update` is applied key by
@@ -488,19 +495,27 @@ export function createStockFake() {
         update: Record<string, unknown>
         create: Record<string, unknown>
       }) => {
+        checkLocationWhere(where)
         const row = state.locations.find((l) => matchesLocation(l, where))
         return row ? applyLocationUpdate(row, update) : insertLocation(create)
       },
     },
     itemStock: {
-      findUnique: async ({ where }: { where: Where }) =>
-        state.itemStocks.find((s) => matchesStock(s, where, state.locations)) ?? null,
-      findFirst: async ({ where = {} }: { where?: Where } = {}) =>
-        state.itemStocks.find((s) => matchesStock(s, where, state.locations)) ?? null,
-      findMany: async ({ where = {} }: { where?: Where } = {}) =>
-        state.itemStocks.filter((s) => matchesStock(s, where, state.locations)),
+      findUnique: async ({ where }: { where: Where }) => {
+        checkStockWhere(where)
+        return state.itemStocks.find((s) => matchesStock(s, where, state.locations)) ?? null
+      },
+      findFirst: async ({ where = {} }: { where?: Where } = {}) => {
+        checkStockWhere(where)
+        return state.itemStocks.find((s) => matchesStock(s, where, state.locations)) ?? null
+      },
+      findMany: async ({ where = {} }: { where?: Where } = {}) => {
+        checkStockWhere(where)
+        return state.itemStocks.filter((s) => matchesStock(s, where, state.locations))
+      },
       create: async ({ data }: { data: Record<string, unknown> }) => insert(data),
       update: async ({ where, data }: { where: Where; data: Record<string, unknown> }) => {
+        checkStockWhere(where)
         const row = state.itemStocks.find((s) => matchesStock(s, where, state.locations))
         if (!row) throw new Error('ItemStock not found')
         return applyUpdate(row, data)
@@ -514,6 +529,7 @@ export function createStockFake() {
         update: Record<string, unknown>
         create: Record<string, unknown>
       }) => {
+        checkStockWhere(where)
         const row = state.itemStocks.find((s) => matchesStock(s, where, state.locations))
         return row ? applyUpdate(row, update) : insert(create)
       },
@@ -522,6 +538,7 @@ export function createStockFake() {
       // (itemId, locationId) pair under a different id, so it must be able to
       // tell "I removed one" from "there was nothing there".
       delete: async ({ where }: { where: Where }) => {
+        checkStockWhere(where)
         const index = state.itemStocks.findIndex((s) =>
           matchesStock(s, where, state.locations),
         )
@@ -530,6 +547,7 @@ export function createStockFake() {
         return row
       },
       deleteMany: async ({ where = {} }: { where?: Where } = {}) => {
+        checkStockWhere(where)
         const before = state.itemStocks.length
         state.itemStocks = state.itemStocks.filter((s) => !matchesStock(s, where, state.locations))
         return { count: before - state.itemStocks.length }

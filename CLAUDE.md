@@ -1448,7 +1448,7 @@ weak fixture. The server suite has hit this six times:
   model only (`shoppingFake.cart.createMany`). The doubles that covered the other four could
   not be reused: `shoppingFake.vendor.create` ignores `data.id` and generates
   `vendor-${++seq}` (line 106), `cartItemFake` exports **no client at all** — only the
-  `cartItemMatches` matcher — and `inventoryLogFake` has no `findFirst`. A missing fake does
+  `cartItemMatches` matcher (since 2026-11-04 the export is `filterCartItems`) — and `inventoryLogFake` has no `findFirst`. A missing fake does
   not report as missing. It reports as "no test for this model", which reads like a gap in
   coverage rather than a gap that cannot be closed. Fixed 2026-10-28 (issue #327) by
   `apps/server/src/test/ownedRowFake.ts`

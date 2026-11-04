@@ -2,9 +2,6 @@
 // `resolvers/cartBootstrap.test.ts` to run createVendor and bootstrapCarts
 // against one another end to end.
 //
-// NOT a test file, so `tsc` type-checks it — the same reasoning
-// `src/test/stockFake.ts` records.
-//
 // Why a stateful fake and not the call recorders the other cart specs use:
 // Task 2's question is "does this vendor have a cart at the location I just
 // switched to", and that is an END STATE spanning two mutations. A recorder can
@@ -33,7 +30,7 @@
 // by key, so a column an upsert writes can be read back — see the note on
 // `upsert` below.)
 
-import { assertKnownWhereKeys } from './whereKeys.js'
+import { checkWhere, type WhereSpec } from './whereKeys.js'
 
 export interface FakeVendor {
   id: string
@@ -63,22 +60,30 @@ export class CartIdConstraintError extends Error {
   }
 }
 
+// Every key each store models, and how. A key outside these specs, or a value
+// shape its kind does not allow, THROWS. `checkWhere` runs ONCE per client
+// call, before the store is searched — never inside the per-row matcher, which
+// an empty store never calls. See `whereKeys.ts`.
+const VENDOR_WHERE: WhereSpec = { id: 'equals', userId: 'equals' }
+const CART_WHERE: WhereSpec = { id: 'in', userId: 'equals', locationId: 'equals' }
+
+function checkVendorWhere(where: Where | undefined): void {
+  checkWhere('shoppingFake(vendor)', where, VENDOR_WHERE)
+}
+
+function checkCartWhere(where: Where | undefined): void {
+  checkWhere('shoppingFake(cart)', where, CART_WHERE)
+}
+
 // `undefined ||` on every key, deliberately: that is Prisma's semantics, and it
 // is what makes dropping a key from a resolver's where clause visible.
-// Every key each matcher models. A key outside these lists THROWS — see
-// `whereKeys.ts`.
-const VENDOR_WHERE_KEYS = ['id', 'userId'] as const
-const CART_WHERE_KEYS = ['id', 'userId', 'locationId'] as const
-
 function matchesVendor(row: FakeVendor, where: Where): boolean {
-  assertKnownWhereKeys('shoppingFake(vendor)', where, VENDOR_WHERE_KEYS)
   if (where.id !== undefined && row.id !== where.id) return false
   if (where.userId !== undefined && row.userId !== where.userId) return false
   return true
 }
 
 function matchesCart(row: FakeCart, where: Where): boolean {
-  assertKnownWhereKeys('shoppingFake(cart)', where, CART_WHERE_KEYS)
   if (where.userId !== undefined && row.userId !== where.userId) return false
   if (where.locationId !== undefined && row.locationId !== where.locationId) return false
   const id = where.id
@@ -109,8 +114,10 @@ export function createShoppingFake() {
 
   const client = {
     vendor: {
-      findMany: async ({ where = {} }: { where?: Where } = {}) =>
-        state.vendors.filter((v) => matchesVendor(v, where)),
+      findMany: async ({ where = {} }: { where?: Where } = {}) => {
+        checkVendorWhere(where)
+        return state.vendors.filter((v) => matchesVendor(v, where))
+      },
       create: async ({ data }: { data: Record<string, unknown> }) => {
         const row: FakeVendor = {
           id: `vendor-${++seq}`,
@@ -121,20 +128,26 @@ export function createShoppingFake() {
         return row
       },
       delete: async ({ where }: { where: Where }) => {
+        checkVendorWhere(where)
         const idx = state.vendors.findIndex((v) => matchesVendor(v, where))
         if (idx === -1) throw new Error('Vendor not found')
         return state.vendors.splice(idx, 1)[0]
       },
     },
     cart: {
-      findUnique: async ({ where }: { where: Where }) =>
-        state.carts.find((c) => matchesCart(c, where)) ?? null,
-      findFirst: async ({ where = {} }: { where?: Where } = {}) =>
-        state.carts.find((c) => matchesCart(c, where)) ?? null,
+      findUnique: async ({ where }: { where: Where }) => {
+        checkCartWhere(where)
+        return state.carts.find((c) => matchesCart(c, where)) ?? null
+      },
+      findFirst: async ({ where = {} }: { where?: Where } = {}) => {
+        checkCartWhere(where)
+        return state.carts.find((c) => matchesCart(c, where)) ?? null
+      },
       findMany: async ({
         where = {},
         orderBy,
       }: { where?: Where; orderBy?: unknown } = {}) => {
+        checkCartWhere(where)
         const rows = state.carts.filter((c) => matchesCart(c, where))
         // Only `[{ id: 'asc' }]` is used by the resolvers, so that is the only
         // order modelled. Anything else is left unsorted rather than quietly
@@ -173,6 +186,7 @@ export function createShoppingFake() {
         create: Record<string, unknown>
         update: Record<string, unknown>
       }) => {
+        checkCartWhere(where)
         const existing = state.carts.find((c) => matchesCart(c, where))
         if (!existing) return insertCart(create)
         // Only the keys `update` actually carries are applied — Prisma's own
@@ -192,6 +206,7 @@ export function createShoppingFake() {
         return existing
       },
       deleteMany: async ({ where = {} }: { where?: Where } = {}) => {
+        checkCartWhere(where)
         const before = state.carts.length
         state.carts = state.carts.filter((c) => !matchesCart(c, where))
         return { count: before - state.carts.length }
