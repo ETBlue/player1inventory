@@ -31,7 +31,7 @@ next one starts, because H3 changes the database and must ship alone.
 |---|---|---|
 | H1 Settings layout and route moves (both modes, no backend change) | **Full** — tasks 1.1–1.9 | 1 |
 | H2 `User` model, Clerk webhook, `lastSeenAt`, E2E user support | **Full** — tasks 2.1–2.7 | 2 |
-| H3 Households, roles, data migration, read scoping | Outline — its own detailed plan is written when H2 merges | 3 |
+| H3 Households, roles, data migration, read scoping | Outline. Split into H3a and H3b; detailed plan for H3a: [2026-11-04-households-plan-h3a.md](2026-11-04-households-plan-h3a.md) | 3 (now H3a, `chore/build-shared-types`, H3b) |
 | H4 Import and export | Outline | 4 |
 | H5 Invites, join, members, read-only views | Outline | 5 |
 | H6 Transfer, hand-over, purges, activity | Outline | 6 |
@@ -627,29 +627,67 @@ design and from the issues filed on `main`.
 
 ### H3 — Households, roles, migration, read scoping
 
+**H3 is now three PRs, plus one fix that came first** (agreed with the owner on 2026-11-04).
+The detailed plan is [2026-11-04-households-plan-h3a.md](2026-11-04-households-plan-h3a.md).
+Its decisions H1–H16 are written back into the design. (Decision numbers H1–H16 are not the
+phases H1–H7.)
+
+| Order | PR | Contents |
+|---|---|---|
+| 1 | `fix/catalog-write-scope` | ✅ Merged 2026-11-04 (#371). Seven tag, tag type and vendor writes check ownership through `requireOwnRowOrUnclaimed` |
+| 2 | **H3a** | Households, roles, the data migration, first sign-in, scoping for every resolver, `isDefault` removed, the household name in the 🏠 label, rename |
+| 3 | `chore/build-shared-types` | A build step for `@p1i/types`, so the server can import shared code at runtime |
+| 4 | **H3b** | Shared carts. Must merge before H5 starts |
+
+The outline below is the first version. Each bullet is marked with where it went: **[H3a]**,
+**[H3b]**, **[H7]**, or a mix. Where the H3a plan changed the bullet, the change follows it.
+
 - Models `Household`, `HouseholdMember`, `LocationMember`, `LocationPreference`,
   `UserPreference` (decide here whether it merges into `User`). `householdId` on `Location` and
   the six catalog models. `Location.order`, `isDefault` and its partial index dropped.
   `dataUpdatedAt` and its writers. One migration with a deploy runbook and a check against a
   branch of production data.
+  - **[H3a]** `Household`, `HouseholdMember`, `LocationMember`, `householdId`, `isDefault` and
+    its index dropped, the runbook and the production-branch check. **Two** migrations, not
+    one (decision H16).
+  - **[H7]** `LocationPreference`, `UserPreference` and `dataUpdatedAt` with its writers
+    (decision H6). `Location.order` is **kept** until H7 (decision H5).
 - First sign-in in one transaction, guarded by the `User` primary key. Delete
   `ensureDefaultLocation` and the four places that argue from its index (#360).
+  - **[H3a]** The `User` primary key cannot be the guard any more: phase H2 creates the `User`
+    row first. The guard is a claim column, `User.householdSetupAt` (decision H1).
 - Real role checks in `requireLocationRole` (rename roles to `viewer | participant | organizer`)
-  and the new `requireHouseholdRole`. Read scoping for every query. Fixes #273.
+  and the new `requireHouseholdRole`. Read scoping for every query. Fixes #273. **[H3a]**
 - Re-derive all nine `CartItem.userId` filters; one row per item per cart; drop `Cart.userId`
   (#358). Shared-cart checkout in one transaction, with the server computing the log total;
-  move `buildCheckoutLogQuantities` to shared code; the same for `consumeRecipes`.
+  move `buildCheckoutLogQuantities` to shared code; the same for `consumeRecipes`. **[H3b]**
+  (decisions H7 and H8)
+  - **There are 15 `CartItem.userId` filters, not nine** (research 2026-11-03, measured at
+    `e48bbe2f`; line numbers drift):
+    - `apps/server/src/resolvers/cart.resolver.ts` 137, 159, 161, 166, 174, 190, 201, 228,
+      375, 454
+    - `apps/server/src/resolvers/itemStock.resolver.ts` 199
+    - `apps/server/src/resolvers/import.resolver.ts` 1577
+    - `apps/server/src/resolvers/purge.resolver.ts` 26
+    - `apps/server/src/lib/e2eCleanup.ts` 83
+    - `apps/server/src/lib/authz.ts` 152, through the `cartItem` delegate
+  - H3a already changes three of them: `purge.resolver.ts` (removed with `purgeUserData`),
+    `import.resolver.ts` (`clearAllData`) and `e2eCleanup.ts` (H3a task 3.10).
 - Before changing the purge filters: the 11 missing `where` assertions in both paths, and a
   filter-form check in `purge-coverage.test.ts` (#320). Remove `purgeUserData`; `clearAllData`
-  becomes the household clear.
+  becomes the household clear. **[H3a]** (tasks 3.2 and 3.10). The real-SQL two-household test
+  listed under H6 below also moved to H3a (decision H10).
 - Remove the six `userId: String!` GraphQL fields only after a web build from `8465406b` or later
-  is live (#359).
+  is live (#359). **[H3a]** (task 3.14, decision H11)
 - Fakes for the new models that honour every `where` key and the primary keys. Every role test
   has a second person with a different role and a location the caller has no role on.
+  **[H3a]** (tasks 3.1 and 3.4; plus an E2E-only second-member route, decision H9)
 - Rewrite the E2E specs and helpers that depend on the default location
   (`data-mode-migration.spec.ts`, `import-strategies.spec.ts`, `backupAssertions.ts`,
-  `cloudSeed.ts`). Add the migration to `verify-migration.ts`.
-- Cloud UI: the 🏠 label shows the household name.
+  `cloudSeed.ts`). Add the migration to `verify-migration.ts`. **[H3a]** (tasks 3.3, 3.14 and
+  3.15; about 20 E2E files, not four)
+- Cloud UI: the 🏠 label shows the household name. **[H3a]** (task 3.13), plus
+  `renameHousehold` (decision H4)
 
 ### H4 — Import and export
 
@@ -674,11 +712,16 @@ design and from the issues filed on `main`.
 
 - `OwnershipOffer`, the banner, transfer, the `user.deleted` hand-over branch in
   `handleClerkEvent`, the three purges and the danger zone, `HouseholdActivity` and its page.
-- Real-SQL test with two households: a purge of one leaves the other's rows.
+- Real-SQL test with two households: a purge of one leaves the other's rows. **Moved to H3a**
+  (decision H10, `e2e/tests/purge-two-households.spec.ts`), because H3a changes the filters.
+  H6 still owes the same kind of test for its new purges.
 
 ### H7 — Personal order, household switch and create
 
 - `LocationPreference` order and the four sorts; Switch to… and Create new.
+- **Moved here from H3** (H3a plan decisions H5 and H6): the `LocationPreference` and
+  `UserPreference` tables, `Location.dataUpdatedAt` and its writers, and copying the shared
+  `Location.order` into each person's `customOrder`.
 - The household switch must set the active location and clear the household-scoped Apollo cache
   (including the persisted `Player1InventoryCloudCache`) in one step. A test switches with a
   cart in the old household and sees no old rows.
