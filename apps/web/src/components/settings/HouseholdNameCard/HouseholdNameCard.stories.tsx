@@ -11,7 +11,10 @@ import { HouseholdNameCard } from '.'
 // Saving in Storybook sends a `RenameHousehold` that no mock answers, so it
 // shows the general error toast. Fixtures stay module-local: CSF turns every
 // named export into a story.
-function mocksFor(role: 'owner' | 'manager' | 'member') {
+function mocksFor(
+  role: 'owner' | 'manager' | 'member',
+  name = "ET's Household",
+) {
   const mocks: NonNullable<MockedProviderProps['mocks']> = [
     {
       request: { query: GetHouseholdDocument },
@@ -20,7 +23,7 @@ function mocksFor(role: 'owner' | 'manager' | 'member') {
           household: {
             __typename: 'Household',
             id: 'household-1',
-            name: "ET's Household",
+            name,
             role,
           },
         },
@@ -30,6 +33,9 @@ function mocksFor(role: 'owner' | 'manager' | 'member') {
   ]
   return mocks
 }
+
+// 120 characters: 20 over the limit.
+const LONG_NAME = `${'Very Long Name '.repeat(7)}Household's Hou`
 
 function cloudMode() {
   localStorage.setItem('data-mode', 'cloud')
@@ -64,6 +70,20 @@ export const Manager: Story = {
   decorators: [
     (Story) => (
       <MockedProvider mocks={mocksFor('manager')}>
+        <Story />
+      </MockedProvider>
+    ),
+  ],
+  beforeEach: cloudMode,
+}
+
+// The owner, with a stored name over 100 characters. The add_households
+// migration made names from the display name with no cap. The field shows the
+// length error at once, and Save stays off until the name is short enough.
+export const OwnerNameTooLong: Story = {
+  decorators: [
+    (Story) => (
+      <MockedProvider mocks={mocksFor('owner', LONG_NAME)}>
         <Story />
       </MockedProvider>
     ),

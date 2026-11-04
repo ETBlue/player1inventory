@@ -1,13 +1,11 @@
 import { GraphQLError } from 'graphql'
 import { requireHousehold, requireHouseholdRole } from '../lib/authz.js'
+import { HOUSEHOLD_NAME_MAX_LENGTH } from '../lib/household.js'
 import { prisma } from '../lib/prisma.js'
 import type { Resolvers } from '../generated/graphql.js'
 
 // The caller's household: its name, and the caller's role in it (households
 // H3a, task 3.13, decision H4).
-
-/** The longest household name `renameHousehold` accepts, after trimming. */
-export const HOUSEHOLD_NAME_MAX_LENGTH = 100
 
 function badName(message: string): GraphQLError {
   return new GraphQLError(message, { extensions: { code: 'BAD_USER_INPUT' } })

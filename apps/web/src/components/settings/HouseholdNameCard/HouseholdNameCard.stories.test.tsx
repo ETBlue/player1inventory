@@ -5,9 +5,12 @@ import * as stories from './HouseholdNameCard.stories'
 
 // `setup.ts` stubs `useGetHouseholdQuery` with no data, and `MockedProvider`
 // takes effect only in real Storybook. So this file gives the hook the role
-// each story mocks. `role` is set by each test before it renders.
+// and name each story mocks. Each test sets them before it renders.
 const { state } = vi.hoisted(() => ({
-  state: { role: 'owner' as 'owner' | 'manager' | 'member' },
+  state: {
+    role: 'owner' as 'owner' | 'manager' | 'member',
+    name: "ET's Household",
+  },
 }))
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
@@ -21,7 +24,7 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
             household: {
               __typename: 'Household',
               id: 'household-1',
-              name: "ET's Household",
+              name: state.name,
               role: state.role,
             },
           },
@@ -33,9 +36,12 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
 
 // composeStories does not run a story's `beforeEach`, so the data mode is set
 // here.
-const { Owner, Manager } = composeStories(stories)
+const { Owner, Manager, OwnerNameTooLong } = composeStories(stories)
 
-beforeEach(() => localStorage.setItem('data-mode', 'cloud'))
+beforeEach(() => {
+  localStorage.setItem('data-mode', 'cloud')
+  state.name = "ET's Household"
+})
 afterEach(() => localStorage.removeItem('data-mode'))
 
 describe('HouseholdNameCard stories smoke tests', () => {
@@ -53,5 +59,15 @@ describe('HouseholdNameCard stories smoke tests', () => {
     render(<Manager />)
     expect(screen.getByText("ET's Household")).toBeInTheDocument()
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  })
+
+  it('OwnerNameTooLong renders the length error with Save off', () => {
+    state.role = 'owner'
+    state.name = 'x'.repeat(120)
+    render(<OwnerNameTooLong />)
+    expect(
+      screen.getByText('Enter a name of 1 to 100 characters.'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
 })

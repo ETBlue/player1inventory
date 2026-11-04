@@ -19,18 +19,48 @@ export interface FirstSignInNames {
 }
 
 /**
+ * The longest household name, after trimming. `renameHousehold` refuses a
+ * longer one (`cleanHouseholdName` in resolvers/household.resolver.ts), and
+ * first sign-in never makes a longer one (`firstSignInNames` below).
+ *
+ * The length is counted in UTF-16 code units (`String.length`), the same
+ * unit the web form's `maxLength` counts in. So an emoji counts as 2 or more.
+ */
+export const HOUSEHOLD_NAME_MAX_LENGTH = 100
+
+/**
  * The names for a new household, in the app language. `<displayName>` is the
  * `User.displayName` H2 stores. The owner can rename the household (task
  * 3.13) and the location at any time.
+ *
+ * The household name is at most `HOUSEHOLD_NAME_MAX_LENGTH` code units, so
+ * the owner can save it again unchanged. `User.displayName` has no length
+ * limit, so a long one is shortened. The suffix ("'s Household", "的家") is
+ * always kept.
  *
  * The `tw` strings are a first version for the owner to review in the PR.
  */
 export function firstSignInNames(language: AppLanguage, displayName: string): FirstSignInNames {
   const location = firstLocationName(language)
-  if (language === 'tw') {
-    return { household: `${displayName}的家`, location }
-  }
-  return { household: `${displayName}'s Household`, location }
+  const suffix = language === 'tw' ? '的家' : "'s Household"
+  const room = HOUSEHOLD_NAME_MAX_LENGTH - suffix.length
+  return { household: `${cutToLength(displayName, room)}${suffix}`, location }
+}
+
+/**
+ * `text` cut to at most `max` UTF-16 code units. It never ends on the first
+ * half of a surrogate pair, so an emoji at the cut is dropped whole, not
+ * split into a broken character. Spaces at the end of a cut text are
+ * removed.
+ */
+function cutToLength(text: string, max: number): string {
+  if (text.length <= max) return text
+  let end = max
+  const last = text.charCodeAt(end - 1)
+  // 0xD800-0xDBFF: a high surrogate, the first half of a pair. Its second
+  // half is at `end`, past the cut.
+  if (last >= 0xd800 && last <= 0xdbff) end -= 1
+  return text.slice(0, end).trimEnd()
 }
 
 /**

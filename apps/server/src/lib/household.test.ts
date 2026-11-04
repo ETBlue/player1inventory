@@ -180,3 +180,60 @@ describe('ensureHousehold — names in the app language', () => {
     })
   })
 })
+
+describe('firstSignInNames — the 100 code unit cap', () => {
+  // `renameHousehold` refuses a name over 100 UTF-16 code units. A longer
+  // first name would be one the owner cannot save again unchanged.
+  // "'s Household" is 12 code units, so 88 are left for the display name.
+  // "的家" is 2, so 98 are left.
+
+  /** True when the text holds half of a surrogate pair on its own. */
+  function hasLoneSurrogate(text: string): boolean {
+    return /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(text)
+  }
+
+  it('keeps a display name that fits exactly', () => {
+    const name = 'a'.repeat(88)
+    const { household } = firstSignInNames('en', name)
+    expect(household).toBe(`${name}'s Household`)
+    expect(household).toHaveLength(100)
+  })
+
+  it('shortens a long English display name and keeps the suffix', () => {
+    const { household } = firstSignInNames('en', 'a'.repeat(300))
+    expect(household).toBe(`${'a'.repeat(88)}'s Household`)
+    expect(household).toHaveLength(100)
+  })
+
+  it('shortens a long tw display name and keeps the suffix', () => {
+    const { household } = firstSignInNames('tw', '明'.repeat(300))
+    expect(household).toBe(`${'明'.repeat(98)}的家`)
+    expect(household).toHaveLength(100)
+  })
+
+  it('drops an emoji at the cut whole, and does not split it', () => {
+    // Given an emoji (2 code units) at code units 87 and 88: the cut at 88
+    // falls between its two halves
+    const name = `${'a'.repeat(87)}😀${'b'.repeat(20)}`
+
+    const { household } = firstSignInNames('en', name)
+
+    // Then the emoji is gone whole, and no half of it is left
+    expect(household).toBe(`${'a'.repeat(87)}'s Household`)
+    expect(household).toHaveLength(99)
+    expect(hasLoneSurrogate(household)).toBe(false)
+  })
+
+  it('keeps an emoji that ends exactly at the cut', () => {
+    const name = `${'a'.repeat(86)}😀${'b'.repeat(20)}`
+    const { household } = firstSignInNames('en', name)
+    expect(household).toBe(`${'a'.repeat(86)}😀's Household`)
+    expect(household).toHaveLength(100)
+  })
+
+  it('removes spaces left at the end of a cut display name', () => {
+    const name = `${'a'.repeat(80)}${' '.repeat(10)}tail`
+    const { household } = firstSignInNames('en', name)
+    expect(household).toBe(`${'a'.repeat(80)}'s Household`)
+  })
+})

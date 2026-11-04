@@ -1,5 +1,5 @@
 import { CombinedGraphQLErrors } from '@apollo/client/errors'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -13,6 +13,9 @@ import { HouseholdNameCard } from '.'
 type QueryResult = { data?: unknown; loading: boolean }
 const mockQuery = vi.fn<() => QueryResult>()
 const mockRename = vi.fn()
+// The rename mutation's `loading`. A test sets it to `true` to render the
+// card while a save is still on its way.
+const renameState = vi.hoisted(() => ({ loading: false }))
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
@@ -20,7 +23,10 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     ...original,
     useGetHouseholdQuery: (options: { skip?: boolean }) =>
       options.skip ? { data: undefined, loading: false } : mockQuery(),
-    useRenameHouseholdMutation: () => [mockRename, { loading: false }],
+    useRenameHouseholdMutation: () => [
+      mockRename,
+      { loading: renameState.loading },
+    ],
   }
 })
 
@@ -52,6 +58,7 @@ beforeEach(() => {
 
 afterEach(() => {
   localStorage.removeItem('data-mode')
+  renameState.loading = false
   vi.resetAllMocks()
   vi.restoreAllMocks()
 })
@@ -181,5 +188,73 @@ describe('HouseholdNameCard', () => {
     expect(mockRename).toHaveBeenCalledTimes(1)
     expect(errorToast).not.toHaveBeenCalled()
     expect(successToast).not.toHaveBeenCalled()
+  })
+
+  it('household owner sees a stored name over 100 characters marked too long, and cannot save it', async () => {
+    // Given a stored name of 150 characters (the add_households migration
+    // made names from the display name with no cap)
+    const user = userEvent.setup()
+    mockQuery.mockReturnValue(household('owner', 'a'.repeat(150)))
+    render(<HouseholdNameCard />)
+
+    // Then the field says so at once
+    expect(
+      screen.getByText('Enter a name of 1 to 100 characters.'),
+    ).toBeInTheDocument()
+
+    // When the owner shortens it by one character only
+    await user.type(nameField(), '{Backspace}')
+
+    // Then it is still too long, so Save stays off
+    expect(nameField()).toHaveValue('a'.repeat(149))
+    expect(
+      screen.getByText('Enter a name of 1 to 100 characters.'),
+    ).toBeInTheDocument()
+    expect(saveButton()).toBeDisabled()
+  })
+
+  it('household owner sees a pasted name over 100 characters marked too long', () => {
+    render(<HouseholdNameCard />)
+
+    // `maxLength` does not cut a value set without typing
+    fireEvent.change(nameField(), { target: { value: 'b'.repeat(101) } })
+
+    expect(
+      screen.getByText('Enter a name of 1 to 100 characters.'),
+    ).toBeInTheDocument()
+    expect(saveButton()).toBeDisabled()
+  })
+
+  it('household owner can save a name of exactly 100 characters', async () => {
+    render(<HouseholdNameCard />)
+
+    fireEvent.change(nameField(), { target: { value: 'c'.repeat(100) } })
+
+    expect(
+      screen.queryByText('Enter a name of 1 to 100 characters.'),
+    ).not.toBeInTheDocument()
+    expect(saveButton()).toBeEnabled()
+  })
+
+  it('household owner cannot send a second rename while one is on its way', () => {
+    // Given a rename that is still pending
+    renameState.loading = true
+    render(<HouseholdNameCard />)
+
+    // When the owner changes the name and submits the form
+    fireEvent.change(nameField(), { target: { value: 'The Lab' } })
+    // Save is off. Note: this holds even without `rename.isPending` in the
+    // card's `disabled`, because `Button` also disables itself while
+    // `isLoading` is true. So the guard that this test proves is the one in
+    // `onSubmit`, below.
+    expect(saveButton()).toBeDisabled()
+    // A disabled Save cannot be clicked, so submit the form itself. This is
+    // the path the guard in `onSubmit` closes.
+    const form = nameField().closest('form')
+    if (!form) throw new Error('the name field is not inside a form')
+    fireEvent.submit(form)
+
+    // Then nothing is sent
+    expect(mockRename).not.toHaveBeenCalled()
   })
 })

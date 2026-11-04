@@ -73,9 +73,20 @@ function HouseholdNameForm({ household }: { household: CloudHousehold }) {
   const [name, setName] = useState(household.name)
 
   const trimmed = name.trim()
-  // `maxLength` on the input stops a longer name being typed, so only the
-  // empty case needs a message. The server checks both rules again.
-  const nameError = trimmed === '' ? t('validation.required') : undefined
+  // `maxLength` on the input stops a longer name being typed, but not every
+  // long name: a stored name can already be longer (the add_households
+  // migration made names from `User.displayName` with no cap), and `maxLength`
+  // does not cut a value that was set without typing. So the length gets a
+  // message too, and the owner can shorten the name and save it. The server
+  // checks both rules again. Both count UTF-16 code units (`String.length`).
+  const nameError =
+    trimmed === ''
+      ? t('validation.required')
+      : trimmed.length > HOUSEHOLD_NAME_MAX_LENGTH
+        ? t('settings.household.name.invalidError', {
+            max: HOUSEHOLD_NAME_MAX_LENGTH,
+          })
+        : undefined
   const isDirty = trimmed !== household.name
 
   const onSubmit = (e: React.FormEvent) => {
