@@ -397,10 +397,26 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     if (location !== undefined) locations('LocationMember')
   }
 
-  /** `findUnique` and the single-row writes must name the unique key. */
+  /**
+   * `findUnique` and the single-row writes must name the unique key, with a
+   * PLAIN value. Prisma refuses a filter such as `{ id: { in: [...] } }` in a
+   * unique where, because it could match more than one row.
+   *
+   * A compound key (`householdId_userId`, `locationId_userId`) is an object.
+   * Its fields are checked elsewhere: the `'equals'` kind in `checkWhere`
+   * refuses an operator object, and `checkCompound` requires a string.
+   */
   function requireUnique(model: string, method: string, where: Where, key: string) {
-    if (where[key] === undefined) {
+    const value = where[key]
+    if (value === undefined) {
       throw new HouseholdFakeUnsupportedError(model, `a ${method} whose where has no '${key}'`)
+    }
+    if (key === 'id' && typeof value !== 'string') {
+      throw new HouseholdFakeUnsupportedError(
+        model,
+        `a ${method} whose 'id' is not a plain string (${JSON.stringify(value)}). ` +
+          'Prisma allows no filter on the unique key here',
+      )
     }
   }
 
@@ -499,7 +515,13 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     if (data.id !== undefined && data.id !== row.id) {
       throw new HouseholdFakeUnsupportedError('Household', 'an update that changes the id')
     }
-    Object.assign(row, stripUndefined(data))
+    // Build the new row and check it BEFORE writing, as the member updates do,
+    // so a refused update leaves the row as it was.
+    const next = { ...row, ...stripUndefined(data) } as HouseholdRow
+    if (typeof next.name !== 'string') {
+      throw new HouseholdFakeMissingColumnError('Household', 'name')
+    }
+    Object.assign(row, next)
     row.updatedAt = new Date()
     return row
   }

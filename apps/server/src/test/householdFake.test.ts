@@ -757,3 +757,166 @@ describe('householdFake works with the shared helpers', () => {
     expect(err.constraint).toBe('X')
   })
 })
+
+// Rules a review found unpinned (task 3.4 review). Each test below goes red
+// when its rule is removed from householdFake.ts.
+describe('householdFake: rules pinned after review', () => {
+  it('household.update that sets name to null throws and leaves the row as it was', async () => {
+    // Given the fixture
+    const fake = fixture()
+
+    // When ours is updated with a null name (the column is NOT NULL)
+    // Then it throws, and the stored name and updatedAt are unchanged
+    await expect(
+      fake.client.household.update({ where: { id: OURS }, data: { name: null } }),
+    ).rejects.toThrow(HouseholdFakeMissingColumnError)
+    const ours = fake.state.households.find((h) => h.id === OURS)
+    expect(ours?.name).toBe(`${OURS} name`)
+    expect(ours?.updatedAt).toEqual(T0)
+  })
+
+  it('a unique where with a filter instead of a plain value throws', async () => {
+    // Given the fixture
+    const fake = fixture()
+
+    // When findUnique or update names id as { in: [...] }, or a compound key
+    // field as { in: [...] }
+    // Then each throws. Prisma refuses a filter in a unique where.
+    await expect(
+      fake.client.household.findUnique({ where: { id: { in: [OURS, THEIRS] } } }),
+    ).rejects.toThrow(/'id' is not a plain string/)
+    await expect(
+      fake.client.household.update({ where: { id: { in: [OURS] } }, data: { name: 'X' } }),
+    ).rejects.toThrow(HouseholdFakeUnsupportedError)
+    await expect(
+      fake.client.householdMember.findUnique({
+        where: { householdId_userId: { householdId: OURS, userId: { in: [CALLER] } } },
+      }),
+    ).rejects.toThrow(UnsupportedWhereFilterError)
+    expect(fake.state.households.find((h) => h.id === OURS)?.name).toBe(`${OURS} name`)
+  })
+
+  it('a HouseholdMember write with a role outside the enum throws', async () => {
+    // Given the fixture
+    const fake = fixture()
+
+    // When a member is created, or updated, with a LOCATION role
+    // Then both throw, and nothing is written
+    await expect(
+      fake.client.householdMember.create({
+        data: { householdId: OURS, userId: 'user_new', role: 'organizer' },
+      }),
+    ).rejects.toThrow(InvalidRoleError)
+    await expect(
+      fake.client.householdMember.update({
+        where: { householdId_userId: { householdId: OURS, userId: SECOND } },
+        data: { role: 'viewer' },
+      }),
+    ).rejects.toThrow(InvalidRoleError)
+    expect(fake.state.householdMembers).toHaveLength(3)
+    expect(
+      fake.state.householdMembers.find((m) => m.householdId === OURS && m.userId === SECOND)
+        ?.role,
+    ).toBe('manager')
+  })
+
+  it('householdMember.upsert keeps create and update apart', async () => {
+    // Given the second person is a manager of ours, and the caller is not a
+    // member of theirs
+    const fake = fixture()
+
+    // When an upsert runs for the existing pair, and for a new pair. Each
+    // call's create and update carry DIFFERENT roles.
+    await fake.client.householdMember.upsert({
+      where: { householdId_userId: { householdId: OURS, userId: SECOND } },
+      create: { householdId: OURS, userId: SECOND, role: 'manager' },
+      update: { role: 'member' },
+    })
+    await fake.client.householdMember.upsert({
+      where: { householdId_userId: { householdId: THEIRS, userId: CALLER } },
+      create: { householdId: THEIRS, userId: CALLER, role: 'member' },
+      update: { role: 'manager' },
+    })
+
+    // Then the existing row took the update, and the new row took the create
+    const role = (householdId: string, userId: string) =>
+      fake.state.householdMembers.find((m) => m.householdId === householdId && m.userId === userId)
+        ?.role
+    expect(role(OURS, SECOND)).toBe('member')
+    expect(role(THEIRS, CALLER)).toBe('member')
+    expect(fake.state.householdMembers).toHaveLength(4)
+  })
+
+  it('a role outside the enum inside members.some throws, on Household and on the H18 path', async () => {
+    // Given the fixture
+    const fake = fixture()
+
+    // When members.some names a LOCATION role, which a household member never
+    // has. Without the check this matches nothing and returns null quietly.
+    // Then it throws, on the Household filter and on the H18 filter
+    await expect(
+      fake.client.household.findFirst({
+        where: { members: { some: { userId: CALLER, role: 'organizer' } } },
+      }),
+    ).rejects.toThrow(InvalidRoleError)
+    await expect(
+      fake.client.locationMember.findFirst({
+        where: {
+          locationId: KITCHEN,
+          userId: CALLER,
+          location: { household: { members: { some: { userId: CALLER, role: 'organizer' } } } },
+        },
+      }),
+    ).rejects.toThrow(InvalidRoleError)
+  })
+
+  it('findFirst returns a copy on every store', async () => {
+    // Given the fixture
+    const fake = fixture()
+
+    // When the caller changes the rows findFirst gave back
+    const h = await fake.client.household.findFirst({ where: { id: OURS } })
+    const m = await fake.client.householdMember.findFirst({ where: { userId: SECOND } })
+    const l = await fake.client.locationMember.findFirst({ where: { userId: SECOND } })
+    if (h) h.name = 'Changed'
+    if (m) m.role = 'owner'
+    if (l) l.role = 'organizer'
+
+    // Then the stores are unchanged
+    expect(fake.state.households.find((r) => r.id === OURS)?.name).toBe(`${OURS} name`)
+    expect(fake.state.householdMembers.find((r) => r.userId === SECOND)?.role).toBe('manager')
+    expect(fake.state.locationMembers.find((r) => r.userId === SECOND)?.role).toBe('viewer')
+  })
+
+  it('deleteMany with no where deletes every row (Prisma rule)', async () => {
+    // Given the fixture
+    const fake = fixture()
+
+    // When deleteMany runs with no arguments on both member stores
+    const members = await fake.client.householdMember.deleteMany()
+    const locMembers = await fake.client.locationMember.deleteMany()
+
+    // Then every row is gone, and the counts say so
+    expect(members).toEqual({ count: 3 })
+    expect(locMembers).toEqual({ count: 3 })
+    expect(fake.state.householdMembers).toHaveLength(0)
+    expect(fake.state.locationMembers).toHaveLength(0)
+  })
+
+  it('findUnique without the full compound key throws, on both member stores', async () => {
+    // Given the fixture
+    const fake = fixture()
+
+    // When findUnique names half of the LocationMember key, or no
+    // HouseholdMember key at all
+    // Then each throws instead of matching on what it was given
+    await expect(
+      fake.client.locationMember.findUnique({
+        where: { locationId_userId: { locationId: KITCHEN } },
+      }),
+    ).rejects.toThrow(/no string 'userId'/)
+    await expect(
+      fake.client.householdMember.findUnique({ where: { householdId: OURS, userId: CALLER } }),
+    ).rejects.toThrow(/no 'householdId_userId'/)
+  })
+})

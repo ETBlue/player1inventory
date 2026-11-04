@@ -266,6 +266,21 @@ describe('userFake updateMany supports id, lastSeenAt null, lastSeenAt { lt } an
     expect(fake.state.rows.find((r) => r.id === 'user_b')?.lastSeenAt).toEqual(YESTERDAY)
   })
 
+  it('an empty OR matches nothing, as in Prisma', async () => {
+    // Given two users, neither seen today
+    const fake = createUserFake([userRow('user_a', { lastSeenAt: YESTERDAY }), userRow('user_b')])
+
+    // When updateMany runs with `OR: []`
+    const result = await fake.client.updateMany({
+      where: { OR: [] },
+      data: { lastSeenAt: TODAY },
+    })
+
+    // Then no row matched. An OR with no branch is false, not true.
+    expect(result).toEqual({ count: 0 })
+    expect(fake.state.rows.map((r) => r.lastSeenAt)).toEqual([YESTERDAY, null])
+  })
+
   it('lastSeenAt { lt } does not match a null lastSeenAt, as in SQL', async () => {
     // Given a user never seen
     const fake = createUserFake([userRow('user_never')])
