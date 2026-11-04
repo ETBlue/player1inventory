@@ -321,6 +321,13 @@ model LocationMember {
   `migrate diff`. Prisma 6 also needs the owner's own words after its warning, passed in
   `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`.
 
+  **Re-run owed (review of task 3.5).** The race proof was changed after this step was
+  planned: it now runs Prisma's `tx.user.updateMany` with the same `where` as
+  `ensureHousehold` (`lib/household.ts`), not raw SQL (commit `3ba61aeb`). The new version
+  has only been type-checked. The next `verify:migration` run against the test database
+  (with the owner's consent) must include it and report that it passed. If this step has
+  already been run, it ran the old raw-SQL version.
+
 ## Task 3.4 — Fakes for the new models
 
 **Files:** `apps/server/src/test/householdFake.ts` and test (new); `ownedRowFake.ts` and test.
@@ -456,6 +463,25 @@ and test (deleted); `apps/server/src/test/stockFake.ts` and test (step 0).
   Commit the web header separately if it is cleaner:
   `feat(web): send the app language with every GraphQL request`.
 
+**Done** in `add940c3` (step 0), `c62b686d` (the helpers and first sign-in) and `73f84bdc`
+(the web header), with review fixes in `3ba61aeb`. What a later task needs to know:
+
+- `fallbackImportLocation` (`lib/authz.ts`) does not create a location. When no location
+  qualifies, it throws a `GraphQLError` with code `NO_LOCATION`.
+- `deleteLocation` still reads `isDefault`, with its own `findUnique`, because
+  `requireLocationRole` no longer selects it. Task 3.6 removes that read.
+- The GraphQL context moved out of `index.ts` into `lib/graphqlContext.ts`, with its own test.
+- The `tw` names are `<displayName>的家` for the household and `住家` for the location. The
+  owner reviews them in the PR.
+- Review fixes in `3ba61aeb`: the race proof in `verify-migration.ts` now runs
+  `tx.user.updateMany`, the same call as `ensureHousehold`, instead of raw SQL. It must be
+  re-run against the test database (see task 3.3 step 6). Location role `member` was renamed
+  to `participant` in 10 comments and 2 GraphQL descriptions that step 5 missed. Stale
+  comments in `household.ts`, `e2eCleanup.ts`, `authz.ts` (`fallbackImportLocation`) and
+  four places in `e2e/CLAUDE.md` were corrected.
+- `test/derivedRoles.ts` (new) lets 14 old test files keep working. It must go; see the notes
+  under tasks 3.6, 3.8, 3.9 and 3.10.
+
 ## Task 3.6 — Locations
 
 **Files:** `resolvers/location.resolver.ts` and tests; `schema/location.graphql`.
@@ -487,6 +513,35 @@ and test (deleted); `apps/server/src/test/stockFake.ts` and test (step 0).
   `ItemStock` rows.** Those rows live in `stockFake`, so the filter belongs in `stockFake`, not
   in `householdFake`. `householdFake` resolves `members.some` only on `Household` and on the
   H18 path of `LocationMember`.
+
+**Found by the review of task 3.5, and owed here: remove `test/derivedRoles.ts` from every
+test file this task touches.** `derivedRoles` adds an `organizer` row, and a household, for
+any location that has no `householdId`. So in a file that uses it, every location the
+caller made counts as theirs, and no role test is real. A resolver that forgets to write a
+role row still passes. Seed the roles in each file instead, with the three-person fixture
+(rule 10). The 14 files that import it after task 3.5 (check with
+`git grep -l derivedRoles -- apps/server/src`):
+
+| Task | Files (`apps/server/src/resolvers/`) |
+|---|---|
+| 3.6 | `location.resolver.test.ts` |
+| 3.8 | `applyUnitSwitch.resolver.test.ts`, `cart.resolver.test.ts`, `cartBootstrap.test.ts`, `inventoryLog.resolver.test.ts`, `itemStock.resolver.test.ts`, `recipe.resolver.test.ts`, `vendor.resolver.test.ts` |
+| 3.9 | `import-cart-location.resolver.test.ts`, `import-inventoryLog-location.resolver.test.ts`, `import-itemStock.resolver.test.ts`, `import-location.resolver.test.ts`, `import-ownership-cart.resolver.test.ts`, `import-ownership-log.resolver.test.ts` |
+
+`vendor.resolver.test.ts` and `recipe.resolver.test.ts` may be touched first by task 3.7.
+Whichever task touches a file first removes `derivedRoles` from it.
+
+**Found by the review of task 3.5, and owed here: `createLocation` must write the role row.**
+Today `createLocation` writes no `householdId` and no `LocationMember` row. In the fake,
+`derivedRoles` invents an `organizer` row for it, so `createLocation` then `updateLocation`
+passes. A reviewer's probe showed that. On Postgres there is no such row, so the rename is
+refused with `Forbidden`. So:
+
+- `createLocation` writes the location with `householdId` and the caller's `organizer` row in
+  ONE transaction.
+- Its test must not use `derivedRoles`.
+- Add a test that creates a location through the resolver and then renames it, and one that
+  creates it and then writes stock into it. Both must use only rows the resolvers wrote.
 
 ## Task 3.7 — The catalog: items, tags, tag types, vendors, recipes, shelves
 
@@ -527,6 +582,10 @@ Every create writes `householdId` (and `userId` until task 3.14).
   `householdId` in the **same step** as the stores. Switch one without the other and those
   tests throw `UnknownWhereKeyError`.
 
+**Found by the review of task 3.5:** if this task touches `vendor.resolver.test.ts` or
+`recipe.resolver.test.ts`, remove `test/derivedRoles.ts` from them here. See the note under
+task 3.6.
+
 ## Task 3.8 — Stock, logs and carts
 
 **Files:** `resolvers/itemStock`, `inventoryLog` and `cart` `.resolver.ts` and tests;
@@ -560,6 +619,14 @@ location memberships" filter `Location` or `ItemStock` rows with a shape like
 `location: { members: { some: { userId } } }`. Model that filter in `stockFake`, where those
 rows live, not in `householdFake`. See the same note under task 3.6.
 
+**Found by the review of task 3.5, and owed here:**
+
+- Remove `test/derivedRoles.ts` from the seven files listed under task 3.6.
+- **Add a role test per call site: a `viewer` is refused, a `participant` passes.** These
+  tests do not exist yet. In these files every caller is an organizer, because the adapter
+  (`derivedRoles`) makes each location's `userId` its `organizer`. So a call site that asks
+  for `organizer` by mistake, or for `viewer`, passes every test today.
+
 ## Task 3.9 — Import
 
 **Files:** `resolvers/import.resolver.ts` and its seven test files; `lib/authz.ts`
@@ -588,6 +655,16 @@ rows live, not in `householdFake`. See the same note under task 3.6.
 `locationMember.createMany`. If the bulk location mutations write their `organizer` rows with
 `createMany`, add it to the fake first, with the same checks as `create` (role enum, foreign
 key, composite key `P2002`, and `skipDuplicates` only if a resolver passes it), and a test.
+
+**Found by the review of task 3.5, and owed here:**
+
+- Remove `test/derivedRoles.ts` from the six import test files listed under task 3.6.
+- `bulkCreateLocations` / `bulkUpsertLocations` have the same hole as `createLocation` (task
+  3.6): today they write no `householdId` and no `organizer` row, and `derivedRoles` invents
+  them in the fake. Their tests must not use `derivedRoles`.
+- Add a test of a whole import through the resolvers: import the locations, then import item
+  stocks into them. It must use only rows the resolvers wrote. On Postgres today the second
+  step is refused, because the imported locations have no role rows.
 
 ## Task 3.10 — Purges and E2E cleanup
 
@@ -644,6 +721,19 @@ key, composite key `P2002`, and `skipDuplicates` only if a resolver passes it), 
 `LocationMember` cascade (see the note under task 3.6). `clearAllData` deletes locations, so
 in the fake their `LocationMember` rows stay behind, while in Postgres they go. Model the
 cascade, or delete the rows on purpose in the test setup and say why.
+
+**Found by the review of task 3.5, and owed here:**
+
+- **`clearAllData` leaves the household with no location today.** It deletes every location.
+  Before task 3.5, the next `locations` query ran `ensureDefaultLocation`, which made a new
+  one. Now that query runs `requireHousehold`, and its fast path returns at once because the
+  household still exists, so nothing makes a location. A "clear" import that then writes a
+  log or a cart with no usable location fails with `NO_LOCATION` from
+  `fallbackImportLocation`. Step 2 (decision H17) fixes this. Add a test that runs
+  `clearAllData` and then `locations`, and expects one "Home" with an `organizer` row.
+- **Delete `apps/server/src/test/derivedRoles.ts`** once no file imports it. Check with
+  `git grep -l derivedRoles -- apps/server/src`, which must print nothing. If a file
+  still imports it here, remove it from that file first (see the note under task 3.6).
 
 ## Task 3.11 — A second household member in E2E
 
@@ -765,6 +855,11 @@ still writes `userId` on the seven models.
 - [ ] **Step 7 (main session):** with the owner's consent, migrate the test database again,
   as in task 3.3 step 6.
 
+  **From the review of task 3.5:** if the race proof was not re-run since commit `3ba61aeb`
+  (see task 3.3 step 6), this run is where it happens. Report its result. When step 5 edits
+  `verify-migration.ts`, keep the race proof's claim the same call as `ensureHousehold`'s
+  (`tx.user.updateMany` with `where: { id, householdSetupAt: null }`).
+
 ## Task 3.15 — E2E: the default location is gone
 
 **Files** (research 2026-11-03; re-check with
@@ -794,6 +889,17 @@ still writes `userId` on the seven models.
 - [ ] **Step 5:** Run the cloud project alone, then local alone. **Copy `test-results/` aside
   before any re-run** (root `CLAUDE.md`).
 - [ ] **Step 6:** Commit: `test(e2e): cloud has no default location any more`.
+
+**Found by the review of task 3.5, and owed here:** these `e2e/` files still name the deleted
+`ensureDefaultLocation` or `lib/defaultLocation.ts` in comments: `helpers/cloudSeed.ts`,
+`helpers/backupAssertions.ts`, `tests/cleanup-endpoint.spec.ts`, `tests/item-logs.spec.ts`,
+`tests/item-stock-pager.spec.ts`, `tests/location-switcher.spec.ts`,
+`tests/settings/data-mode-migration.spec.ts`, `tests/settings/import-export-cloud.spec.ts`,
+`tests/settings/import-strategies.spec.ts` and `tests/settings/locations.spec.ts`. Correct
+them here. Find them with `git grep -n -w ensureDefaultLocation -- e2e/` and
+`git grep -n defaultLocation.ts -- e2e/`. (`ensureDefaultLocationRow` in
+`import-export-local.spec.ts` is a local-mode name, not this one.) `e2e/CLAUDE.md` was
+already corrected in `3ba61aeb`.
 
 ## Task 3.16 — Runbook, docs and the final gate
 
@@ -827,6 +933,11 @@ still writes `userId` on the seven models.
   *Sequencing* table: H3a built. `docs/INDEX.md`. Re-measure every count you write.
 - [ ] **Step 3: Final gate:** the verification gate, then `pnpm test:e2e:all`. All three
   projects green.
+
+  **From the review of task 3.5:** before this step, confirm that `verify:migration` has
+  passed against the test database with the `updateMany` race proof (commit `3ba61aeb`; see
+  task 3.3 step 6 and task 3.14 step 7). If it has not, it needs the owner's consent and a
+  run here.
 - [ ] **Step 4:** Commit: `docs(households): H3a runbook and docs`.
 
 ---
@@ -841,6 +952,24 @@ with the owner's consent.
 **Between tasks 3.5 and 3.15 the cloud E2E project is expected to fail** in places that read
 `isDefault` or "My Home". Run narrowed specs for the area each task touches, and the whole
 suite only at task 3.16.
+
+**The review of task 3.5 found more expected failures** in that window. Each ends at the task
+named:
+
+| What fails in cloud E2E | Why | Ends at |
+|---|---|---|
+| creating a location, then renaming it, stocking it, or writing a log or cart there | `createLocation` writes no `organizer` row, so `requireLocationRole` refuses the next call | 3.6 |
+| cloud import with locations, for example `settings/import-export-cloud.spec.ts` | `bulkCreateLocations` / `bulkUpsertLocations` write no role rows, so the item stocks that follow are refused | 3.9 |
+| anything after `clearAllData` that needs a location | the household is left with no location, and `fallbackImportLocation` throws `NO_LOCATION` | 3.10 |
+| `/e2e/cleanup` for any user who has signed in since 3.5 | it does not delete `HouseholdMember` rows, so deleting the `User` row fails with `P2003` (see below) | 3.10 |
+
+**A user left behind by `main`'s cloud E2E breaks first sign-in here.** `main`'s server still
+runs `ensureDefaultLocation`. On the shared test database it can leave a user with an
+`isDefault` location (no household) and `householdSetupAt` null. For that user,
+`ensureHousehold` claims the user, then creates a second `isDefault` location, and
+`Location_one_default_per_user_key` refuses it with `P2002`. The transaction rolls back, the
+claim is undone, and the same thing happens on **every** request for that user. Delete that
+user's old locations (with the owner's consent) before running this branch's cloud E2E.
 
 **The test database is shared with every other branch, `main` included.** From task 3.5 on,
 a cloud E2E run on this branch creates `HouseholdMember` rows for the E2E user ids. Until
@@ -865,3 +994,7 @@ drops `userId`, `main`'s cloud E2E cannot run on this database at all until H3a 
 - **The import fallback location is a stopgap** (decision H12). H4's dialog replaces it.
 - **The `tw` household and location names are a first version.** The owner reviews them in
   the PR.
+- **`fallbackImportLocation`'s `householdId` filter has no test that can fail** (review of
+  task 3.5). A person is in exactly one household today, so removing the filter still picks
+  the right location and every test stays green. The task that first lets a person into two
+  households (H5 or later) must add a two-household test for it and mutation-check it.
