@@ -102,7 +102,7 @@ extend type Query {
 }
 
 extend type Mutation {
-  "Add an item to a cart. The cart id names the location, and the caller needs the `member` role on it."
+  "Add an item to a cart. The cart id names the location, and the caller needs the `participant` role on it."
   addToCart(cartId: ID!, itemId: ID!, quantity: Int!): CartItem!
 
   "Change one cart item's quantity. `id` is a CartItem id; its location comes from the row's own cartId."

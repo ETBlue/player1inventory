@@ -198,9 +198,10 @@ Before that date the endpoint deleted 12 models and missed both. The effect was 
 visible in a single run, so it went unnoticed:
 
 - `Location` rows stayed in the test database forever. `ensureDefaultLocation`
-  (`apps/server/src/lib/defaultLocation.ts`) returns early when the user already has a
-  default location, so it never recreated a clean default. Run 2 of a location test saw
-  run 1's locations.
+  (then in `apps/server/src/lib/defaultLocation.ts`) returned early when the user already
+  had a default location, so it never recreated a clean default. Run 2 of a location test
+  saw run 1's locations. (That file was deleted in households H3a task 3.5. A new user's
+  first location now comes from `ensureHousehold` in `apps/server/src/lib/household.ts`.)
 - `ItemStock` rows went away by accident, through the `ON DELETE CASCADE` on their
   `itemId`, not because the endpoint asked for them.
 
@@ -326,8 +327,16 @@ on them. `ItemStock`'s readback is weak for the cascade reason above; its count 
 speaks for it.
 
 **`Location` is read back LAST, because reading it recreates one.** The `locations` query
-runs `ensureDefaultLocation`, so the readback asserts exactly one location and that its id
-is neither of the two the spec seeded. `afterEach` deletes that fresh row.
+calls `requireHousehold` (`apps/server/src/lib/authz.ts`), which runs `ensureHousehold`
+(`apps/server/src/lib/household.ts`). For a user with no household, that is first sign-in:
+it makes a household, one location and the user's `HouseholdMember` and `LocationMember`
+rows. So the readback asserts exactly one location and that its id is neither of the two
+the spec seeded. `afterEach` deletes that fresh row.
+
+**Since households H3a task 3.5 and until task 3.10, `afterEach` cannot delete it.**
+`/e2e/cleanup` does not yet delete `HouseholdMember` rows, and that row's foreign key to
+`User` is `ON DELETE RESTRICT`. So the cleanup's `user.deleteMany` fails with `P2003` and
+the whole transaction rolls back. Task 3.10 adds the household rows to the cleanup list.
 
 ### The consequence: every cloud test now starts with zero locations
 
@@ -349,11 +358,23 @@ run 1's app created the default location, and the old cleanup left it behind for
 that test had been passing on a leaked row, and would have failed on any genuinely fresh
 database.
 
-**The server no longer drops the write.** `ensureDefaultLocation`
-(`apps/server/src/lib/defaultLocation.ts`) creates the default location when the user has
-none, and every stock write path reaches it — `updateItem`, `bulkCreateItems`,
-`bulkUpsertItems`, `checkout` and `consumeRecipes`. Seed order no longer decides whether
-stock survives.
+**The server no longer drops the write.** Today every stock write takes its location id
+from the caller — `writeStock` in `apps/server/src/lib/itemStockWrite.ts`, and the
+`ItemStock` bulk imports in `import.resolver.ts` — so there is no silent fallback to drop
+it into.
+
+Where the server makes or picks a location by itself today (households H3a task 3.5
+deleted `ensureDefaultLocation` and `apps/server/src/lib/defaultLocation.ts`):
+
+| Case | Code | What it does |
+|---|---|---|
+| first sign-in | `ensureHousehold` in `apps/server/src/lib/household.ts`, reached through `requireHousehold` in `apps/server/src/lib/authz.ts` | a user with no household gets one, plus one location ("Home" in English) with `isDefault: true` and `order: 0`, and an `organizer` row on it. The `locations` query is the usual first caller. |
+| an import row that names no usable location | `fallbackImportLocation` in `apps/server/src/lib/authz.ts` | picks the caller's location with the lowest `order` (ties broken by id), in the caller's household, on which the caller is `participant` or `organizer`. It does not create one. If none qualifies, the import fails with `NO_LOCATION`. |
+
+`fallbackImportLocation` reads `LocationMember` rows. Until H3a tasks 3.6 and 3.9,
+`createLocation` and the bulk location imports write none, so a location made by them is
+never picked. And `clearAllData` deletes every location without making a new one (fixed in
+task 3.10). Both can lead to `NO_LOCATION` in cloud E2E until then.
 
 **`ensureCloudDefaultLocation(request)` (`e2e/helpers/cloudSeed.ts`) is still there, and
 still worth calling first.** It is no longer a workaround: `seedCloudFixture` needs the
@@ -722,7 +743,7 @@ than a missing id.
 | Helper | How it assigns `order` |
 |---|---|
 | `seedLocalFixture` | `order: index` for **every** location, default included (`localSeed.ts` line 50) |
-| `seedCloudFixture` | never creates the default — it reads back the one `ensureDefaultLocation` made at `order: 0` and `continue`s past `isDefault` entries in its creation loop (`cloudSeed.ts` line 106). `createLocation` appends `maxOrder + 1`. |
+| `seedCloudFixture` | never creates the default — it reads back the one the server made at `order: 0` (first sign-in, `ensureHousehold` in `apps/server/src/lib/household.ts`; before households H3a task 3.5 it was `ensureDefaultLocation`) and `continue`s past `isDefault` entries in its creation loop (`cloudSeed.ts` line 117). `createLocation` appends `maxOrder + 1`. |
 
 So only the relative order of the **non-default** locations follows the array in cloud.
 Moving the default entry elsewhere in the array is **invisible in cloud** and changes the

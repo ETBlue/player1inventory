@@ -641,12 +641,20 @@ async function assertHouseholdsConstraints(): Promise<void> {
       if (typeof pid !== 'number') throw new Error(`FAIL: pg_backend_pid() returned ${String(pid)}`)
       return pid
     }
+    // The claim, written exactly as ensureHousehold in src/lib/household.ts
+    // writes it: Prisma's updateMany with the same where. scripts/ must not
+    // import from src, so the call is repeated here. Keep the two the same.
+    // If ensureHousehold's claim changes, change this one too, or this proof
+    // stops being about the code that runs.
+    const claim = (tx: Prisma.TransactionClient) =>
+      tx.user.updateMany({
+        where: { id: raceUserId, householdSetupAt: null },
+        data: { householdSetupAt: new Date() },
+      })
 
     const txA = clientA.$transaction(async (tx) => {
       const pid = await backendPid(tx)
-      const count = await tx.$executeRaw`
-        UPDATE "User" SET "householdSetupAt" = now()
-        WHERE "id" = ${raceUserId} AND "householdSetupAt" IS NULL`
+      const { count } = await claim(tx)
       reportPidA(pid)
       await aMayCommit
       return count
@@ -658,9 +666,8 @@ async function assertHouseholdsConstraints(): Promise<void> {
     let bSettled = false
     const txB = clientB.$transaction(async (tx) => {
       reportPidB(await backendPid(tx))
-      return tx.$executeRaw`
-        UPDATE "User" SET "householdSetupAt" = now()
-        WHERE "id" = ${raceUserId} AND "householdSetupAt" IS NULL`
+      const { count } = await claim(tx)
+      return count
     }, txOptions)
     txB.then(
       () => {

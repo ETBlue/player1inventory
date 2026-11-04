@@ -59,9 +59,21 @@ function noHousehold(): GraphQLError {
  * The first request to run it locks the `User` row. Postgres makes every other
  * request wait for that lock. When the first transaction commits, the others
  * re-check the `WHERE`, match 0 rows, and read the winner's household instead.
- * So only one household is ever made. `scripts/verify-migration.ts` proves this
- * against real Postgres. The unit tests can only prove the logic, because the
- * Prisma fake has no row lock.
+ * So only one household is ever made.
+ *
+ * What is proved on real Postgres, and what is not:
+ *
+ * - `scripts/verify-migration.ts` runs this exact claim, the same
+ *   `tx.user.updateMany` with the same `where`, in two transactions on two
+ *   connections. It checks that the second claim waits for the first one's
+ *   row lock, and that the first updates 1 row and the second 0. The script
+ *   cannot import from `src`, so it repeats the call. If the claim here
+ *   changes, change the script too.
+ * - It does NOT run `ensureHousehold` itself. The read before the
+ *   transaction, the `count === 0` branch that reads the winner's household,
+ *   and the rows created after the claim are not run on real Postgres by
+ *   that script. The unit tests cover their logic only, because the Prisma
+ *   fake has no row lock.
  *
  * ── WHEN IT THROWS ──
  *

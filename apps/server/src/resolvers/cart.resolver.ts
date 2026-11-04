@@ -17,7 +17,7 @@ import type { Cart, CartItem, Resolvers } from '../generated/graphql.js'
  * before it reaches any query — that call is the one authorization seam for
  * location data (lib/authz.ts). Do NOT replace it with a
  * `row.userId === ctx.userId` test: root CLAUDE.md forbids that, because it
- * denies a legitimate `member` of a shared location.
+ * denies a legitimate `participant` of a shared location.
  *
  * A pre-PR-3b cart id has no ':' at all, so it parses as a location id that no
  * `Location` row matches and this throws FORBIDDEN. That is the intended
@@ -96,7 +96,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
     vendorCart: async (_, { vendorId = null, locationId }, ctx) => {
       const userId = requireAuth(ctx)
 
-      // `member`, not `viewer`: this query CREATES the cart when it is missing.
+      // `participant`, not `viewer`: this query CREATES the cart when it is missing.
       await requireLocationRole(ctx, locationId, 'participant')
 
       const cartId = cartIdFor(locationId, vendorId ?? null)
@@ -391,7 +391,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
      */
     bootstrapCarts: async (_, { locationId }, ctx) => {
       const userId = requireAuth(ctx)
-      // `member`, not `viewer`: this creates rows.
+      // `participant`, not `viewer`: this creates rows.
       await requireLocationRole(ctx, locationId, 'participant')
 
       const vendors = await prisma.vendor.findMany({

@@ -136,8 +136,21 @@ export async function requireLocationRole(
  * `requireHousehold` runs first, so a new person gets "Home" here exactly as
  * they did from `ensureDefaultLocation` before. If the caller still has no
  * location they may write to, the import is refused with `NO_LOCATION`.
- * Before H5 that cannot happen: deleting the last location is refused
- * (decision H13), and the creator of a location organizes it.
+ *
+ * That CAN happen today, in two ways, until later tasks of H3a close them:
+ *
+ * - `clearAllData` deletes every location, and nothing makes a new one. The
+ *   household still exists, so `requireHousehold` returns at once and does
+ *   not run first sign-in again. So a "clear" import followed by a log or
+ *   cart that names no location gets `NO_LOCATION`. Task 3.10 fixes this
+ *   (decision H17).
+ * - `createLocation` and `bulkCreateLocations` / `bulkUpsertLocations` do
+ *   not yet write an `organizer` row, so a location made by them does not
+ *   count here. Tasks 3.6 and 3.9 fix this.
+ *
+ * Once both are fixed, it cannot happen before H5: deleting the last
+ * location is refused (decision H13), and the creator of a location
+ * organizes it.
  */
 export async function fallbackImportLocation(ctx: Context): Promise<string> {
   const userId = requireAuth(ctx)

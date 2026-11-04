@@ -19,7 +19,7 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     createVendor: async (_, { name, locationId }, ctx) => {
       const userId = requireAuth(ctx)
 
-      // `member`, not `viewer`: this mutation writes a Cart row at that
+      // `participant`, not `viewer`: this mutation writes a Cart row at that
       // location. The id arrives from the client, so it goes through the one
       // authorization seam (lib/authz.ts) before it reaches any query.
       await requireLocationRole(ctx, locationId, 'participant')

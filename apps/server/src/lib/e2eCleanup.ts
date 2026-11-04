@@ -103,10 +103,18 @@ export async function e2eCleanupHandler(req: Request, res: Response): Promise<vo
     prisma.shelf.deleteMany({ where: { userId } }),
     // Locations are user-scoped too. Without this they accumulate across runs
     // in the shared test DB, and the next run starts with the previous run's
-    // locations instead of a fresh first location. (Until households H3a
-    // task 3.5 the fresh one came from ensureDefaultLocation; it now comes
-    // from first sign-in, lib/household.ts. Task 3.10 adds the household rows
-    // to this list.)
+    // locations instead of a fresh first location.
+    //
+    // NOT TRUE YET for a user who has signed in since households H3a task
+    // 3.5. Until task 3.5, ensureDefaultLocation made the fresh location on
+    // the next request. Now first sign-in (ensureHousehold, lib/household.ts)
+    // makes a household, a location and a `HouseholdMember` row, and this
+    // list does not delete `HouseholdMember` rows. That row's foreign key to
+    // `User` is ON DELETE RESTRICT, so the `user.deleteMany` below fails with
+    // P2003 and the whole transaction rolls back: nothing is deleted. Only a
+    // user with no `HouseholdMember` row is cleaned up, and that user gets a
+    // fresh household and location on the next request. Task 3.10 adds the
+    // household rows to this list and makes this comment true again.
     prisma.location.deleteMany({ where: { userId } }),
     // The User row itself (households task 2.6). Its key is `id`, not
     // `userId`: the row IS the user. It goes LAST. No model has a relation

@@ -76,7 +76,7 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
       // out of the Kitchen. Task 3 added the field; Task 4 made it REQUIRED and
       // removed the default-location fallback.
 
-      // `member`, not `viewer`: this mutation writes stock and log rows there.
+      // `participant`, not `viewer`: this mutation writes stock and log rows there.
       // The id arrives from the client, so it goes through the one
       // authorization seam (lib/authz.ts) before any query sees it. This throws
       // out of the WHOLE mutation rather than landing in one item's

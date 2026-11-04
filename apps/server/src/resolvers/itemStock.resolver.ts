@@ -218,7 +218,7 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // ── AUTHORIZATION: every location, before anything is written ────────
       //
       // `stockConversions` names several locations. Decided 2026-09-20: if the
-      // caller lacks `member` on ANY of them, the whole mutation fails with
+      // caller lacks `participant` on ANY of them, the whole mutation fails with
       // FORBIDDEN and nothing changes.
       //
       // Converting only the locations the caller may write would leave the

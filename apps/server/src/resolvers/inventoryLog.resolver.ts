@@ -19,7 +19,7 @@ export const JSONScalar = new GraphQLScalarType({
  * before it reaches any query. That call is the one authorization seam for
  * location data (lib/authz.ts). Do NOT replace it with a
  * `row.userId === ctx.userId` test — root CLAUDE.md forbids that, because it
- * denies a legitimate `member` of a shared location.
+ * denies a legitimate `participant` of a shared location.
  *
  * There is no "caller named no location" branch any more. The argument is
  * `ID!` in the schema, so GraphQL rejects a request that omits it before this
@@ -107,7 +107,7 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
       ctx,
     ) => {
       const userId = requireAuth(ctx)
-      // A write needs `member`, not `viewer`: a viewer may read a location's
+      // A write needs `participant`, not `viewer`: a viewer may read a location's
       // logs but must not add one.
       const scopedLocationId = await requireLocation(ctx, locationId, 'participant')
       return prisma.inventoryLog.create({
