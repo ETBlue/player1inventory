@@ -663,29 +663,49 @@ type ImportedFilterConfig = {
 
 /**
  * The ids a shelf ATTACHES — its `itemIds` and the tag, vendor and recipe ids
- * in its `filterConfig` — cut down to the ids of rows of `householdId`
+ * in its `filterConfig` — with every id of ANOTHER household's row removed
  * (households H3a task 3.9). Returns a function that gives each shelf its
  * cut-down arrays.
  *
- * Before this, both import mutations wrote the arrays as given, so a shelf of
- * the caller's could name another household's items, tags, vendors and
- * recipes. `createShelf` / `updateShelf` refuse such a shelf with FORBIDDEN
- * (`requireCatalogIds`, task 3.7). Import does NOT refuse it. It DROPS each id
- * that is not a row of the household, and the shelf still lands, for the
- * reason every other reference in this file is skipped: a partial backup can
- * name a row that is gone, and "not yours" must look the same as "not there".
+ * Before task 3.9, both import mutations wrote the arrays as given, so a
+ * shelf of the caller's could name another household's items, tags, vendors
+ * and recipes. `createShelf` / `updateShelf` refuse such a shelf with
+ * FORBIDDEN (`requireCatalogIds`, task 3.7). Import does NOT refuse it. It
+ * DROPS each such id, and the shelf still lands, for the reason every other
+ * reference in this file is skipped: one bad id in a backup must not stop the
+ * whole import.
  *
- * So an id NO row holds is dropped too. `createShelf` lets such an id through
- * (`missing: 'allow'`), because refusing it would refuse the user's own edit.
- * Here dropping it refuses nothing, and keeping it while dropping a
- * stranger's id would tell the caller which of the two an id is.
+ * | An id is | Result |
+ * |---|---|
+ * | a row of `householdId` | kept |
+ * | a row of another household | dropped |
+ * | held by no row | KEPT — the same rule as `createShelf`'s `missing: 'allow'` |
  *
- * Shelves are the LAST entity the client imports (`ENTITY_SPECS`,
- * apps/web/src/lib/importData.ts), after items, tags, vendors and recipes. So
- * the ids a backup's shelves name already exist when this runs.
+ * Why an id no row holds is kept. On the `replace` strategy the web client
+ * runs TWO passes (`importData.ts`, the replace flow): first `bulkCreate*`
+ * for the rows with no conflict, over every entity with shelves last, and
+ * THEN `bulkUpsert*` for the conflicting rows. An item, tag, vendor or recipe
+ * that conflicts with a cloud row by NAME only keeps its payload id and is
+ * written in the SECOND pass. A new shelf naming it is written in the FIRST
+ * pass, before that row exists. So "shelves are imported last" is true only
+ * inside one pass, and dropping a missing id here would lose the user's own
+ * shelf contents. The first version of this helper (task 3.9) did drop it.
+ * Before task 3.9 the id was kept, so that was a regression, found in the
+ * task 3.9 review and fixed.
  *
- * At most four queries per batch, one per model, whatever the number of
- * shelves. A model no shelf names costs none.
+ * Keeping a missing id is also safe: the shelf arrays are plain arrays, not
+ * foreign keys, and nothing removes an id from them when its row is deleted,
+ * so a shelf may already name a deleted row (see `requireCatalogIds`).
+ *
+ * Accepted cost: the caller can tell a stranger's id (dropped) from a free
+ * one (kept) by reading the shelf back. That is the same answer
+ * `requireOwnRowOrUnclaimed` gives on purpose ('unclaimed' vs FORBIDDEN), and
+ * the same protection holds: ids are `cuid()` and cannot be guessed.
+ *
+ * Queries: per model, one SCOPED read for the household's ids, and one
+ * UNSCOPED existence read for the rest only when some id is not the
+ * household's — the shape of `requireCatalogIds`. A model no shelf names
+ * costs none. No fetched row's `householdId` is compared.
  */
 async function householdShelfRefs(
   householdId: string,
@@ -700,32 +720,41 @@ async function householdShelfRefs(
   const named = (pick: (s: (typeof shelves)[number]) => readonly string[] | null | undefined) => [
     ...new Set(shelves.flatMap((s) => pick(s) ?? [])),
   ]
-  // The subset of `ids` that are rows of the household. SCOPED in SQL; no
-  // fetched row's `householdId` is compared here.
-  const ownOf = async (
-    model: 'item' | 'tag' | 'vendor' | 'recipe',
-    ids: string[],
+  type ShelfRefModel = 'item' | 'tag' | 'vendor' | 'recipe'
+  const findIds = async (
+    model: ShelfRefModel,
+    where: { id: { in: string[] }; householdId?: string },
   ): Promise<Set<string>> => {
-    if (ids.length === 0) return new Set()
-    const where = { id: { in: ids }, householdId }
+    const select = { id: true } as const
     const rows =
       model === 'item'
-        ? await prisma.item.findMany({ where, select: { id: true } })
+        ? await prisma.item.findMany({ where, select })
         : model === 'tag'
-          ? await prisma.tag.findMany({ where, select: { id: true } })
+          ? await prisma.tag.findMany({ where, select })
           : model === 'vendor'
-            ? await prisma.vendor.findMany({ where, select: { id: true } })
-            : await prisma.recipe.findMany({ where, select: { id: true } })
+            ? await prisma.vendor.findMany({ where, select })
+            : await prisma.recipe.findMany({ where, select })
     return new Set(rows.map((r) => r.id))
   }
+  // The subset of `ids` that are rows of ANOTHER household: the ids to drop.
+  const strangersOf = async (model: ShelfRefModel, ids: string[]): Promise<Set<string>> => {
+    if (ids.length === 0) return new Set()
+    // SCOPED in SQL: the household's own ids.
+    const own = await findIds(model, { id: { in: ids }, householdId })
+    const rest = ids.filter((id) => !own.has(id))
+    if (rest.length === 0) return new Set()
+    // UNSCOPED on purpose: "is this id held by any row" tells a stranger's id
+    // from one no row holds yet. Only `id` is selected.
+    return findIds(model, { id: { in: rest } })
+  }
 
-  const items = await ownOf('item', named((s) => s.itemIds))
-  const tags = await ownOf('tag', named((s) => s.filterConfig?.tagIds))
-  const vendors = await ownOf('vendor', named((s) => s.filterConfig?.vendorIds))
-  const recipes = await ownOf('recipe', named((s) => s.filterConfig?.recipeIds))
+  const items = await strangersOf('item', named((s) => s.itemIds))
+  const tags = await strangersOf('tag', named((s) => s.filterConfig?.tagIds))
+  const vendors = await strangersOf('vendor', named((s) => s.filterConfig?.vendorIds))
+  const recipes = await strangersOf('recipe', named((s) => s.filterConfig?.recipeIds))
 
-  const keep = (ids: readonly string[] | null | undefined, ok: Set<string>) =>
-    ids == null ? ids : ids.filter((id) => ok.has(id))
+  const keep = (ids: readonly string[] | null | undefined, drop: Set<string>) =>
+    ids == null ? ids : ids.filter((id) => !drop.has(id))
 
   return (shelf) => {
     const fc = shelf.filterConfig
@@ -768,6 +797,9 @@ async function householdShelfRefs(
 //   `filterConfig` ids, and a cart item's `itemId` against the household of
 //   the CART's location. Each unusable id is SKIPPED (the row or the edge),
 //   the same as every other reference in this file. See each mutation.
+//   One difference for shelves: only another household's id is dropped. An
+//   id no row holds is KEPT, because on `replace` the row it names may be
+//   written later in the same import. See `householdShelfRefs`.
 //
 // Still owed: `clearAllData` (task 3.10). Logs and carts keep their `userId`
 // scope until H3b and H4. No import role check is added: that is H4.
@@ -1823,6 +1855,26 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       const householdId = await requireHousehold(ctx)
       // `organizer` on an existing id, because the update below renames it.
       // See `requireOwnLocationIdsOrUnclaimed`.
+      //
+      // NOT ATOMIC PER ROW since task 3.9. The old single `upsert` per row is
+      // now a pre-check, then a `create` or an `update`. Two known races:
+      //
+      //  - two imports of the same NEW id at the same time: both see the id
+      //    as free, and the second `create` fails with `P2002`
+      //  - a row deleted between the pre-check and its `update`: the update
+      //    fails with `P2025`
+      //
+      // Accepted for now: the web app never sends this mutation.
+      // `partitionPayload` (apps/web/src/lib/importData.ts) puts every
+      // location on the CREATE pass and leaves `toUpsert.locations` empty,
+      // and `importData.test.ts` (about line 2416) asserts
+      // `BulkUpsertLocations` is not called on `replace`.
+      //
+      // Keep `householdId` (and `userId`) OUT of the `update` below. H5 owes a
+      // two-household test for that: a caller who organizes a location of
+      // household B while importing into household A. When the location is
+      // in the caller's own household, a `householdId` in `update` writes the
+      // same value again, so a test of that case passes either way.
       const existing = await requireOwnLocationIdsOrUnclaimed(ctx, locations, 'organizer')
       const results: Location[] = []
       for (const location of locations) {

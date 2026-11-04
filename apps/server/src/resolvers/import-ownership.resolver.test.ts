@@ -101,13 +101,29 @@ vi.mock('../lib/prisma.js', async () => {
     updatedAt: Date
   }>({ model: 'Shelf', ...catalog })
 
-  // `item` and `recipe` are here only for the shelf ids. `itemIds` and the
+  // `item` and `recipe` are here for the shelf ids. `itemIds` and the
   // recipe ids in `filterConfig` are checked against the household since
-  // households H3a task 3.9; only `findMany` is read.
+  // households H3a task 3.9.
+  //
+  // `item` also serves `bulkUpsertItems`, for the test that models the two
+  // passes of a `replace` import. That mutation reads the item back with
+  // `include: { tags, vendors }`, and no test here gives an item tags or
+  // vendors, so the hook returns two empty lists.
   const item = createOwnedRowFake<{ id: string; householdId: string; userId: string; name: string }>({
     model: 'Item',
     ...catalog,
+    relations: () => ({ tags: [], vendors: [] }),
   })
+  // `bulkUpsertItems` clears and rewrites these junction rows. No test here
+  // asserts them, so they are call recorders only.
+  const itemTag = {
+    deleteMany: vi.fn(async () => ({ count: 0 })),
+    createMany: vi.fn(async () => ({ count: 0 })),
+  }
+  const itemVendor = {
+    deleteMany: vi.fn(async () => ({ count: 0 })),
+    createMany: vi.fn(async () => ({ count: 0 })),
+  }
   const recipe = createOwnedRowFake<{ id: string; householdId: string; userId: string; name: string }>({
     model: 'Recipe',
     ...catalog,
@@ -131,6 +147,8 @@ vi.mock('../lib/prisma.js', async () => {
       vendor: wrap(vendor.client),
       shelf: wrap(shelf.client),
       item: item.client,
+      itemTag,
+      itemVendor,
       recipe: recipe.client,
       // Handles onto the fakes, hung off the mocked client because a `vi.mock`
       // factory is hoisted above every import and cannot close over a
@@ -838,6 +856,29 @@ describe('bulkUpsertTags: the tag type and the parent', () => {
     expect(tagRow(TAG_FREE)).toBeUndefined()
   })
 
+  it('user replacing tags gets no child written when its parent in the same payload is skipped', async () => {
+    // Given a NEW parent whose `typeId` names the STRANGER's tag type, and a
+    // child under the caller's own type whose `parentId` names that parent.
+    // The parent is skipped for its type, so the child has no parent it can
+    // use. A pass that counted every payload id as written at the start would
+    // write the child under a parent that never lands.
+    const result = await exec(UPSERT_TAGS, {
+      tags: [
+        tagIn('tag_bad_parent', 'Parent', TT_THEIRS),
+        { ...tagIn('tag_orphan', 'Child'), parentId: 'tag_bad_parent' },
+      ],
+    })
+
+    // Then both are skipped, and only the two seeded tags remain
+    expect(result.errors).toBeUndefined()
+    expect(result.data?.bulkUpsertTags).toEqual([])
+    expect(tagRow('tag_bad_parent')).toBeUndefined()
+    expect(tagRow('tag_orphan')).toBeUndefined()
+    expect(mockPrisma.$tag.state.rows.map((r) => r.id).sort()).toEqual(
+      [TAG_MINE, TAG_THEIRS].sort(),
+    )
+  })
+
   it('user replacing tags can hang a tag under their own tag, or under a tag of the same payload', async () => {
     // Given a child under the caller's existing tag, and a second child whose
     // parent comes LATER in the same payload. The positive half: a filter
@@ -862,22 +903,27 @@ describe('bulkUpsertTags: the tag type and the parent', () => {
 //
 // Households H3a task 3.9. Until then both shelf imports wrote these arrays as
 // the payload gave them, so a shelf of the caller's could name another
-// household's items, tags, vendors and recipes. Now each id that is not a row
-// of the caller's household is DROPPED and the shelf still lands: the same
-// "skip the edge" the item import does for `tagIds` and `vendorIds`.
+// household's items, tags, vendors and recipes. Now each id of ANOTHER
+// household's row is DROPPED and the shelf still lands: the same "skip the
+// edge" the item import does for `tagIds` and `vendorIds`.
 //
-// An id NO row holds is dropped too (`ITEM_GONE`), so "not yours" and "not
-// there" give the same answer. `createShelf` keeps such an id
-// (`missing: 'allow'`); see `householdShelfRefs` in import.resolver.ts for why
-// import does not.
+// An id NO row holds is KEPT (`ITEM_GONE` and the `*_LATER` ids), the same
+// rule as `createShelf`'s `missing: 'allow'`. The first version of task 3.9
+// dropped it, and that lost shelf contents on a `replace` import: the web
+// client writes a new shelf in its first pass, and a row that conflicts with a
+// cloud row by name only in its second pass. The last test below models those
+// two passes. See `householdShelfRefs` in import.resolver.ts.
 
-describe('shelf imports keep only the household ids', () => {
+const ITEM_LATER = 'item_later'
+const TAG_LATER = 'tag_later'
+
+describe('shelf imports drop the ids of other households', () => {
   const mixed = {
     id: SHELF_FREE,
     name: 'Mixed',
     type: 'filter',
     order: 3,
-    itemIds: [ITEM_THEIRS, ITEM_MINE, ITEM_GONE],
+    itemIds: [ITEM_THEIRS, ITEM_MINE],
     filterConfig: {
       tagIds: [TAG_THEIRS, TAG_MINE],
       vendorIds: [VEN_MINE, VEN_THEIRS],
@@ -887,13 +933,24 @@ describe('shelf imports keep only the household ids', () => {
     updatedAt: PAYLOAD_UPDATED,
   }
 
+  const missing = {
+    ...mixed,
+    name: 'Not yet there',
+    itemIds: [ITEM_GONE, ITEM_MINE],
+    filterConfig: {
+      tagIds: ['tag_gone'],
+      vendorIds: ['ven_gone'],
+      recipeIds: ['rec_gone'],
+    },
+  }
+
   for (const [label, query] of [
     ['bulkCreateShelves', CREATE_SHELVES],
     ['bulkUpsertShelves', UPSERT_SHELVES],
   ] as const) {
-    it(`${label}: user importing a shelf keeps only the ids of their own household`, async () => {
+    it(`${label}: user importing a shelf loses the ids of another household`, async () => {
       // Given a new shelf naming, in each array, one id of the caller's
-      // household and one of another household (and one item no row holds)
+      // household and one of another household
       const result = await exec(query, { shelves: [mixed] })
 
       // Then the shelf lands, with each array cut down to the caller's ids,
@@ -910,6 +967,24 @@ describe('shelf imports keep only the household ids', () => {
       })
     })
 
+    it(`${label}: user importing a shelf keeps ids that no row holds yet`, async () => {
+      // Given a new shelf naming, in each array, an id no row holds (and, in
+      // `itemIds`, one of the caller's own items beside it)
+      const result = await exec(query, { shelves: [missing] })
+
+      // Then every id is kept, in the payload's order
+      expect(result.errors).toBeUndefined()
+      expect(mockPrisma.$shelf.state.rows.find((r) => r.id === SHELF_FREE)).toMatchObject({
+        householdId: HH_MINE,
+        itemIds: [ITEM_GONE, ITEM_MINE],
+        filterConfig: {
+          tagIds: ['tag_gone'],
+          vendorIds: ['ven_gone'],
+          recipeIds: ['rec_gone'],
+        },
+      })
+    })
+
     it(`${label}: user importing a shelf with no filter keeps no filter`, async () => {
       // Given a shelf with `filterConfig: null` and an empty item list
       const result = await exec(query, { shelves: [shelfIn(SHELF_FREE, 'Plain')] })
@@ -921,4 +996,57 @@ describe('shelf imports keep only the household ids', () => {
       expect(row?.filterConfig ?? null).toBeNull()
     })
   }
+
+  it('user replacing data keeps a new shelf that names an item and a tag written in the second pass', async () => {
+    // Given the order the web client uses on `replace` (apps/web/src/lib/
+    // importData.ts): a create pass, then an upsert pass. The item and the tag
+    // share a NAME with a cloud row but not an id, so the client sends them
+    // on the upsert pass. The new shelf that names them goes on the create
+    // pass, before either row exists.
+    const created = await exec(CREATE_SHELVES, {
+      shelves: [
+        {
+          ...mixed,
+          name: 'Two passes',
+          itemIds: [ITEM_LATER],
+          filterConfig: { tagIds: [TAG_LATER] },
+        },
+      ],
+    })
+    expect(created.errors).toBeUndefined()
+
+    // When the upsert pass writes the item and the tag
+    const items = await exec(
+      'mutation ($items: [ItemInput!]!) { bulkUpsertItems(items: $items) { id } }',
+      {
+        items: [
+          {
+            id: ITEM_LATER,
+            name: 'Milk',
+            tagIds: [],
+            targetUnit: 'package',
+            consumeAmount: 1,
+            createdAt: PAYLOAD_CREATED,
+            updatedAt: PAYLOAD_UPDATED,
+          },
+        ],
+      },
+    )
+    expect(items.errors).toBeUndefined()
+    const tags = await exec(UPSERT_TAGS, { tags: [tagIn(TAG_LATER, 'Dairy')] })
+    expect(tags.errors).toBeUndefined()
+
+    // Then the shelf still names both, and both are rows of the caller's
+    // household
+    expect(mockPrisma.$shelf.state.rows.find((r) => r.id === SHELF_FREE)).toMatchObject({
+      itemIds: [ITEM_LATER],
+      filterConfig: { tagIds: [TAG_LATER] },
+    })
+    expect(mockPrisma.$item.state.rows.find((r) => r.id === ITEM_LATER)).toMatchObject({
+      householdId: HH_MINE,
+    })
+    expect(mockPrisma.$tag.state.rows.find((r) => r.id === TAG_LATER)).toMatchObject({
+      householdId: HH_MINE,
+    })
+  })
 })
