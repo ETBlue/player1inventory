@@ -543,6 +543,20 @@ refused with `Forbidden`. So:
 - Add a test that creates a location through the resolver and then renames it, and one that
   creates it and then writes stock into it. Both must use only rows the resolvers wrote.
 
+**Done** in `71029099`, with review fixes in `27ccea7e`. What a later task needs to know:
+
+- `deleteLocation` locks the household row FIRST, before it reads or counts. The helper is
+  `lockHousehold`, exported from `lib/household.ts` (moved there in `27ccea7e`). A test pins
+  that the `household.update` runs before the `findFirst` and the `count`.
+- `reorderLocations` returns the caller's visible locations (the same list as `locations`),
+  not every location it wrote. It refuses a list with a repeated id with `BAD_USER_INPUT`
+  and writes nothing.
+- `createLocation` no longer sends `isDefault`. The column default, `false`, applies.
+- The `member` check on `createLocation` cannot be tested yet. `member` is the lowest
+  household role, so the only person it refuses is someone in no household, and nobody can
+  be in that state before H5.
+- `locations` breaks ties in `order` by `id`, and a test pins it.
+
 ## Task 3.7 — The catalog: items, tags, tag types, vendors, recipes, shelves
 
 **Files:** `resolvers/item`, `tag`, `vendor`, `recipe` and `shelf` `.resolver.ts` and tests.
@@ -666,6 +680,17 @@ key, composite key `P2002`, and `skipDuplicates` only if a resolver passes it), 
   stocks into them. It must use only rows the resolvers wrote. On Postgres today the second
   step is refused, because the imported locations have no role rows.
 
+**Found by the review of task 3.6, and owed here:**
+
+- **Without `organizer` rows (and `householdId`), imported locations are invisible.** Today
+  `locations` lists only locations the caller has a role on. So a location made by
+  `bulkCreateLocations` / `bulkUpsertLocations` is missing from `locations`, the location
+  switcher, the settings list, the Stock-tab pager, and a cloud export (`exportData.ts` reads
+  `GetLocations`). An export then import round trip loses them.
+- **Count `order` within the household**, not per user, the same as `createLocation`.
+- **Use `locationIdsWithRole` or `countedLocationRole`** (`lib/authz.ts`) for any membership
+  read. Do not write a new one: a read without the decision H18 filter counts stale rows.
+
 ## Task 3.10 — Purges and E2E cleanup
 
 **Files:** `resolvers/purge.resolver.ts` and test; `schema/purge.graphql`;
@@ -735,6 +760,16 @@ cascade, or delete the rows on purpose in the test setup and say why.
   `git grep -l derivedRoles -- apps/server/src`, which must print nothing. If a file
   still imports it here, remove it from that file first (see the note under task 3.6).
 
+**Found by the review of task 3.6, and owed here:**
+
+- **`clearAllData` must call `lockHousehold` (`lib/household.ts`) FIRST**, before its
+  `deleteMany` on locations. If it locks later, it can deadlock with `deleteLocation`:
+  `deleteLocation` holds the household lock and waits on a location row, while
+  `clearAllData` holds that location row and waits on the household lock.
+- **Add `location.deleteMany` to the fakes**, with the `ItemStock` and `LocationMember`
+  cascades. `householdWorld` models the `LocationMember` cascade for `location.delete` only
+  (task 3.6). Pin the new method with its own test.
+
 ## Task 3.11 — A second household member in E2E
 
 **Files:** `apps/server/src/lib/e2eHouseholds.ts` and test (new); `index.ts`;
@@ -780,6 +815,18 @@ cascade, or delete the rows on purpose in the test setup and say why.
   Grep the test files for `isDefault` yourself (root `CLAUDE.md`: the type-check does not
   catch an extra key in an untyped mock).
 - [ ] **Step 7:** Commit: `feat(web): stop reading isDefault in cloud mode`.
+
+**Found by the review of task 3.6, and owed here:**
+
+- **The web app hides `deleteLocation` errors.**
+  `apps/web/src/routes/settings/household/locations/index.tsx` (about line 106) calls
+  `deleteLocation.mutate(location.id)` with no `onError`. So a `LAST_LOCATION` refusal shows
+  nothing at all. Wire an `onError`, and add the messages to `en.json` and `tw.json`. Step 4
+  depends on this.
+- `LAST_LOCATION` is reachable in cloud today: after a "clear" import the household has no
+  "Home" until task 3.10, so the first location created after it is the last one.
+- The reorder cache write in `useReorderLocations` already matches the server's answer (the
+  caller's visible locations). No change is needed there.
 
 ## Task 3.13 — The household name and rename
 
@@ -938,6 +985,13 @@ already corrected in `3ba61aeb`.
   passed against the test database with the `updateMany` race proof (commit `3ba61aeb`; see
   task 3.3 step 6 and task 3.14 step 7). If it has not, it needs the owner's consent and a
   run here.
+
+  **From the review of task 3.6:** prove the household lock on real Postgres. Add a case to
+  the two-connection harness in `verify-migration.ts`, like the `User` claim race proof: two
+  transactions each run `lockHousehold`'s `UPDATE` on the same household, and the script
+  checks with `pg_blocking_pids` that the second waits for the first. Then the second
+  transaction's count must see the first one's committed delete. Run by the main session,
+  with the owner's consent.
 - [ ] **Step 4:** Commit: `docs(households): H3a runbook and docs`.
 
 ---
@@ -961,6 +1015,7 @@ named:
 | creating a location, then renaming it, stocking it, or writing a log or cart there | `createLocation` writes no `organizer` row, so `requireLocationRole` refuses the next call | 3.6 |
 | cloud import with locations, for example `settings/import-export-cloud.spec.ts` | `bulkCreateLocations` / `bulkUpsertLocations` write no role rows, so the item stocks that follow are refused | 3.9 |
 | anything after `clearAllData` that needs a location | the household is left with no location, and `fallbackImportLocation` throws `NO_LOCATION` | 3.10 |
+| a location created by a cloud import (`bulkCreateLocations` / `bulkUpsertLocations`) or by a local→cloud migration is missing from `locations`, the switcher and exports | those mutations write no `organizer` row, and since 3.6 `locations` lists only locations with a role row | 3.9 |
 | `/e2e/cleanup` for any user who has signed in since 3.5 | it does not delete `HouseholdMember` rows, so deleting the `User` row fails with `P2003` (see below) | 3.10 |
 
 **A user left behind by `main`'s cloud E2E breaks first sign-in here.** `main`'s server still
@@ -998,3 +1053,12 @@ drops `userId`, `main`'s cloud E2E cannot run on this database at all until H3a 
   task 3.5). A person is in exactly one household today, so removing the filter still picks
   the right location and every test stays green. The task that first lets a person into two
   households (H5 or later) must add a two-household test for it and mutation-check it.
+- **`locations` does not filter by household** (review of task 3.6). It lists every location
+  the caller has a counted role on. A person is in one household today, so this is the same
+  thing. Once H5 lets a person into two households, they will see both households'
+  locations. `fallbackImportLocation`'s household filter (above) is the same gap.
+- **A manager's reorder in H5 may leave some locations with old orders.** `reorderLocations`
+  writes only the ids it is sent, and the web sends only the locations the caller sees. If
+  H5 lets a manager see only some of the household's locations, the others keep their old
+  `order`, and the list can end up with duplicate orders. Unless H5 lets managers see every
+  location, H5 must handle this.

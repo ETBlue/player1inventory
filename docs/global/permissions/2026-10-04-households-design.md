@@ -402,6 +402,12 @@ last location with a new error code, `LAST_LOCATION`, until H5. An empty househo
 screen to land on before H5 builds the "no locations" screen. Any other location can now be
 deleted in cloud. Local mode does not change.
 
+Two deletes at once could both count two locations and both delete. To stop that,
+`deleteLocation` first locks the household row (`lockHousehold` in
+`apps/server/src/lib/household.ts`), so the second delete waits and then counts again after
+the first one commits. `clearAllData` takes the same lock, also first, so the two cannot
+deadlock. Not yet proved on real Postgres (plan H3a, task 3.16).
+
 A person who signs up through an invite link gets their own household too, then joins the
 inviting one.
 
