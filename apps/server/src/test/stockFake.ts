@@ -73,6 +73,8 @@
 // caller inside a `$transaction` callback passes `tx` and its stock write is
 // covered by the same rollback. `applyUnitSwitch` is the only such caller.
 
+import { assertKnownWhereKeys } from './whereKeys.js'
+
 export interface FakeLocation {
   id: string
   userId: string
@@ -119,6 +121,18 @@ export interface StockFakeState {
 export type RollbackStore = Record<string, unknown>
 
 type Where = Record<string, unknown>
+
+// Every key each matcher below models. A key outside these lists THROWS —
+// see `whereKeys.ts`.
+const LOCATION_WHERE_KEYS = ['id', 'userId', 'isDefault'] as const
+const STOCK_WHERE_KEYS = [
+  'id',
+  'itemId',
+  'locationId',
+  'location',
+  'itemId_locationId',
+] as const
+const STOCK_LOCATION_WHERE_KEYS = ['userId'] as const
 
 // Prisma's P2002. The message shape matters only so a surprised reader can see
 // what blew up; tests match on the `code`.
@@ -168,6 +182,7 @@ export class StockIdConstraintError extends Error {
 }
 
 function matchesLocation(row: FakeLocation, where: Where): boolean {
+  assertKnownWhereKeys('stockFake(location)', where, LOCATION_WHERE_KEYS)
   // `undefined ||` on every key, deliberately: this is Prisma's semantics, and
   // it is what makes dropping a key from a resolver's where clause visible.
   if (where.id !== undefined && row.id !== where.id) return false
@@ -177,6 +192,7 @@ function matchesLocation(row: FakeLocation, where: Where): boolean {
 }
 
 function matchesStock(row: FakeStock, where: Where, locations: FakeLocation[]): boolean {
+  assertKnownWhereKeys('stockFake(itemStock)', where, STOCK_WHERE_KEYS)
   if (where.id !== undefined && row.id !== where.id) return false
   if (where.itemId !== undefined && row.itemId !== where.itemId) return false
   if (where.locationId !== undefined && row.locationId !== where.locationId) return false
@@ -191,6 +207,9 @@ function matchesStock(row: FakeStock, where: Where, locations: FakeLocation[]): 
   // all. That is the exact failure root CLAUDE.md records for the cartItem
   // fake in PR 3c.
   const location = where.location as { userId?: string } | undefined
+  if (location !== undefined) {
+    assertKnownWhereKeys('stockFake(itemStock.location)', location, STOCK_LOCATION_WHERE_KEYS)
+  }
   if (location?.userId !== undefined) {
     const owner = locations.find((l) => l.id === row.locationId)
     if (owner?.userId !== location.userId) return false

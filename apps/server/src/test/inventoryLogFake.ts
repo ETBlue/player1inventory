@@ -42,6 +42,8 @@
 // row with a null `occurredAt`, so no assertion depends on the difference —
 // but a future test that does must not trust this fake for ordering.
 
+import { assertKnownWhereKeys } from './whereKeys.js'
+
 export interface FakeInventoryLog {
   id: string
   itemId: string
@@ -73,7 +75,12 @@ function matchesNumber(value: number | null, filter: unknown): boolean {
   return true
 }
 
+// Every key `matchesLog` models. A key outside this list THROWS — see
+// `whereKeys.ts`.
+const LOG_WHERE_KEYS = ['id', 'itemId', 'userId', 'locationId', 'delta', 'quantity'] as const
+
 function matchesLog(row: FakeInventoryLog, where: Where): boolean {
+  assertKnownWhereKeys('inventoryLogFake(inventoryLog)', where, LOG_WHERE_KEYS)
   // `undefined ||` on every key, on purpose: this is Prisma's semantics, and
   // it is what makes dropping a key from a resolver's `where` visible.
   if (where.id !== undefined && row.id !== where.id) return false

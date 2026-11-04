@@ -33,6 +33,8 @@
 // by key, so a column an upsert writes can be read back — see the note on
 // `upsert` below.)
 
+import { assertKnownWhereKeys } from './whereKeys.js'
+
 export interface FakeVendor {
   id: string
   name: string
@@ -63,13 +65,20 @@ export class CartIdConstraintError extends Error {
 
 // `undefined ||` on every key, deliberately: that is Prisma's semantics, and it
 // is what makes dropping a key from a resolver's where clause visible.
+// Every key each matcher models. A key outside these lists THROWS — see
+// `whereKeys.ts`.
+const VENDOR_WHERE_KEYS = ['id', 'userId'] as const
+const CART_WHERE_KEYS = ['id', 'userId', 'locationId'] as const
+
 function matchesVendor(row: FakeVendor, where: Where): boolean {
+  assertKnownWhereKeys('shoppingFake(vendor)', where, VENDOR_WHERE_KEYS)
   if (where.id !== undefined && row.id !== where.id) return false
   if (where.userId !== undefined && row.userId !== where.userId) return false
   return true
 }
 
 function matchesCart(row: FakeCart, where: Where): boolean {
+  assertKnownWhereKeys('shoppingFake(cart)', where, CART_WHERE_KEYS)
   if (where.userId !== undefined && row.userId !== where.userId) return false
   if (where.locationId !== undefined && row.locationId !== where.locationId) return false
   const id = where.id

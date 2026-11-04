@@ -31,6 +31,8 @@
 // it is DERIVED from the column, and a fake that read the string would keep a
 // resolver green after it went back to parsing ids.
 
+import { assertKnownWhereKeys } from './whereKeys.js'
+
 /** Only the columns a location filter needs. */
 export interface FakeCart {
   id: string
@@ -69,16 +71,23 @@ export class MissingCartError extends Error {
  * green after the resolver dropped the scope.
  *
  * Supported keys: `id` (plain string or `{ in: [...] }`), `cartId`, `itemId`,
- * `userId`, and the relation filter `cart: { locationId }`.
+ * `userId`, and the relation filter `cart: { locationId }`. Any other key,
+ * at either level, throws `UnknownWhereKeyError` (`whereKeys.ts`).
  *
  * @param carts every `Cart` row the fixture holds — the relation filter reads
  *   `locationId` off these, never off the cart id string
  */
+// Every key `cartItemMatches` models. A key outside these lists THROWS — see
+// `whereKeys.ts`.
+const CART_ITEM_WHERE_KEYS = ['id', 'cartId', 'itemId', 'userId', 'cart'] as const
+const CART_ITEM_CART_WHERE_KEYS = ['locationId'] as const
+
 export function cartItemMatches(
   row: FakeCartItem,
   where: Record<string, unknown>,
   carts: FakeCart[],
 ): boolean {
+  assertKnownWhereKeys('cartItemFake(cartItem)', where, CART_ITEM_WHERE_KEYS)
   if (where.itemId !== undefined && row.itemId !== where.itemId) return false
   if (where.userId !== undefined && row.userId !== where.userId) return false
   if (where.cartId !== undefined && row.cartId !== where.cartId) return false
@@ -92,6 +101,7 @@ export function cartItemMatches(
 
   const cartFilter = where.cart as { locationId?: string } | undefined
   if (cartFilter !== undefined) {
+    assertKnownWhereKeys('cartItemFake(cartItem.cart)', cartFilter, CART_ITEM_CART_WHERE_KEYS)
     const cart = carts.find((c) => c.id === row.cartId)
     if (!cart) throw new MissingCartError(row.id, row.cartId)
     if (cartFilter.locationId !== undefined && cart.locationId !== cartFilter.locationId) {
