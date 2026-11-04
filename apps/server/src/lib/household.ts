@@ -26,10 +26,19 @@ export interface FirstSignInNames {
  * The `tw` strings are a first version for the owner to review in the PR.
  */
 export function firstSignInNames(language: AppLanguage, displayName: string): FirstSignInNames {
+  const location = firstLocationName(language)
   if (language === 'tw') {
-    return { household: `${displayName}的家`, location: '住家' }
+    return { household: `${displayName}的家`, location }
   }
-  return { household: `${displayName}'s Household`, location: 'Home' }
+  return { household: `${displayName}'s Household`, location }
+}
+
+/**
+ * The name of a household's first location: "Home" in English. Also the
+ * name `clearAllData` gives the location it makes again (decision H17).
+ */
+export function firstLocationName(language: AppLanguage): string {
+  return language === 'tw' ? '住家' : 'Home'
 }
 
 function noHousehold(): GraphQLError {
@@ -134,26 +143,50 @@ export async function ensureHousehold(
       data: { householdId: household.id, userId, role: 'owner' },
     })
 
-    // Both scope columns until task 3.14 drops `userId` (decision H16).
-    // `isDefault: true` because the web app still reads it until task 3.12,
-    // the same as the add_households migration's 'Home' rows. A new user has
-    // no other default, so "Location_one_default_per_user_key" cannot refuse
-    // it.
-    const location = await tx.location.create({
-      data: {
-        name: names.location,
-        order: 0,
-        isDefault: true,
-        userId,
-        householdId: household.id,
-      },
-    })
-    await tx.locationMember.create({
-      data: { locationId: location.id, userId, role: 'organizer' },
-    })
+    await createFirstLocation(tx, { householdId: household.id, userId, name: names.location })
 
     return household.id
   })
+}
+
+/**
+ * The first location of a household, and the caller's `organizer` row on it.
+ * Run it inside the caller's transaction.
+ *
+ * Two places make it: first sign-in (`ensureHousehold` above) and
+ * `clearAllData` (resolvers/import.resolver.ts), which makes "Home" again
+ * after it deletes every location of the household (decision H17). One
+ * function, so the two cannot drift apart before tasks 3.12 and 3.14 change
+ * what a location row carries.
+ *
+ * - Both scope columns until task 3.14 drops `userId` (decision H16).
+ * - `isDefault: true` because the web app still reads it until task 3.12,
+ *   the same as the add_households migration's 'Home' rows. The partial
+ *   unique index "Location_one_default_per_user_key" allows one default per
+ *   `userId`. A new user has no other default. After `clearAllData` the
+ *   caller's default is gone too, because it was a location of the same
+ *   household. A default the caller holds OUTSIDE this household (a row with
+ *   a null `householdId`, left by `main`'s server on a shared database; see
+ *   the plan's *Execution* notes) makes this create fail with `P2002`, and
+ *   the whole transaction rolls back.
+ */
+export async function createFirstLocation(
+  tx: Prisma.TransactionClient,
+  args: { householdId: string; userId: string; name: string },
+): Promise<{ id: string }> {
+  const location = await tx.location.create({
+    data: {
+      name: args.name,
+      order: 0,
+      isDefault: true,
+      userId: args.userId,
+      householdId: args.householdId,
+    },
+  })
+  await tx.locationMember.create({
+    data: { locationId: location.id, userId: args.userId, role: 'organizer' },
+  })
+  return location
 }
 
 /**
@@ -178,7 +211,7 @@ export async function ensureHousehold(
  * above, decision H1).
  *
  * Every transaction that removes locations of a household must take this
- * lock, and take it first: `deleteLocation` now, and `clearAllData` from task
+ * lock, and take it first: `deleteLocation`, and `clearAllData` since task
  * 3.10. If one of them took it later, after it had locked a location row, the
  * two could wait on each other (a deadlock).
  *

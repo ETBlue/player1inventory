@@ -5,7 +5,6 @@ import { inventoryLogResolvers, JSONScalar } from './inventoryLog.resolver.js'
 import { itemResolvers } from './item.resolver.js'
 import { itemStockResolvers } from './itemStock.resolver.js'
 import { locationResolvers } from './location.resolver.js'
-import { purgeResolvers } from './purge.resolver.js'
 import { recipeResolvers } from './recipe.resolver.js'
 import { tagResolvers } from './tag.resolver.js'
 import { vendorResolvers } from './vendor.resolver.js'
@@ -32,7 +31,6 @@ const resolversObject: Resolvers = {
     ...importResolvers.Mutation,
     ...cartResolvers.Mutation,
     ...inventoryLogResolvers.Mutation,
-    ...purgeResolvers.Mutation,
     ...shelfResolvers.Mutation,
     ...locationResolvers.Mutation,
     ...itemStockResolvers.Mutation,

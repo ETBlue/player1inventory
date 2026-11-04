@@ -5,10 +5,12 @@ import {
   type LocationRole,
   type OwnedModel,
   requireHousehold,
+  requireHouseholdRole,
   requireLocationRole,
   requireOwnRowOrUnclaimed,
 } from '../lib/authz.js'
 import { parseCartId } from '../lib/cartId.js'
+import { createFirstLocation, firstLocationName, lockHousehold } from '../lib/household.js'
 import { prisma } from '../lib/prisma.js'
 import { type Context, requireAuth } from '../context.js'
 import { toGraphQL as locationToGraphQL } from './location.resolver.js'
@@ -801,8 +803,12 @@ async function householdShelfRefs(
 //   id no row holds is KEPT, because on `replace` the row it names may be
 //   written later in the same import. See `householdShelfRefs`.
 //
-// Still owed: `clearAllData` (task 3.10). Logs and carts keep their `userId`
-// scope until H3b and H4. No import role check is added: that is H4.
+// - `clearAllData` clears the caller's household, owner only, and makes
+//   "Home" again (task 3.10, decision H17). See its own comment.
+//
+// Still owed: logs and carts keep their `userId` scope until H3b and H4. No
+// import role check is added: that is H4. (`clearAllData`'s owner check
+// already makes the `clear` strategy owner only.)
 export const importResolvers: Pick<Resolvers, 'Mutation'> = {
   Mutation: {
     // -------------------------------------------------------------------------
@@ -1975,35 +1981,67 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     },
 
     // -------------------------------------------------------------------------
-    // Clear all data — deletes all entities for the authenticated user
-    // in dependency order to avoid orphan references
+    // Clear the household (households H3a, task 3.10; design *Purge*)
     // -------------------------------------------------------------------------
+    //
+    // Deletes the caller's household's catalog and every location of it, with
+    // everything in them. Keeps the household, its members and their
+    // household roles. Then makes "Home" again (decision H17).
+    //
+    // - Household role `owner` only: *Clear household* is owner only, and so
+    //   is the `clear` import strategy that calls this (decision H17).
+    // - Every filter is the household, or goes through the location, the
+    //   item, the recipe or the cart. NONE goes by `userId`: "no path deletes
+    //   rows because of who created them" (issue #320). So a log or a cart a
+    //   co-member wrote in this household goes too.
+    // - The household lock comes FIRST, before any delete. `deleteLocation`
+    //   also takes it first. If this took it later, after the location delete
+    //   had locked location rows, the two could wait on each other.
+    // - "Home" is made in the SAME transaction, so the household is never
+    //   left with no location: there is no screen for that before H5
+    //   (decision H13). If making it fails, every delete is rolled back.
+    //
+    // The order of the deletes is children before parents, as before.
+    // `ItemStock`, `Cart`, `InventoryLog` and `LocationMember` would also go
+    // by ON DELETE CASCADE with their location, and the junction rows with
+    // their item; the explicit deletes keep the list complete for
+    // `purge-coverage.test.ts`, and nothing here depends on the cascades.
+    // `LocationMember` has no explicit delete: it goes with its location.
     clearAllData: async (_, __, ctx) => {
       const userId = requireAuth(ctx)
-      await prisma.$transaction([
-        prisma.inventoryLog.deleteMany({ where: { userId } }),
-        prisma.cartItem.deleteMany({ where: { userId } }),
-        prisma.cart.deleteMany({ where: { userId } }),
-        prisma.recipeItem.deleteMany({ where: { recipe: { userId } } }),
-        prisma.recipe.deleteMany({ where: { userId } }),
-        prisma.itemTag.deleteMany({ where: { item: { userId } } }),
-        prisma.itemVendor.deleteMany({ where: { item: { userId } } }),
-        // ItemStock has no userId of its own — scoped through its location,
-        // matching how recipeItem/itemTag/itemVendor are scoped through their
-        // parent above. Must run before BOTH item.deleteMany and
-        // location.deleteMany: ItemStock FKs to both, and ItemStock_itemId_fkey
-        // is ON DELETE CASCADE — deleting items first would cascade-delete these
-        // rows before this deleteMany runs. clearAllData doesn't return counts so
-        // that alone wouldn't be observable here, but the ordering is kept
-        // consistent with purgeUserData rather than relying on that difference.
-        prisma.itemStock.deleteMany({ where: { location: { userId } } }),
-        prisma.item.deleteMany({ where: { userId } }),
-        prisma.tag.deleteMany({ where: { userId } }),
-        prisma.tagType.deleteMany({ where: { userId } }),
-        prisma.vendor.deleteMany({ where: { userId } }),
-        prisma.shelf.deleteMany({ where: { userId } }),
-        prisma.location.deleteMany({ where: { userId } }),
-      ])
+      const householdId = await requireHousehold(ctx)
+      // Prisma reads `{ householdId: undefined }` as NO filter, so every
+      // delete below would empty its table for EVERY household. No text check
+      // can see an `undefined` value, so refuse it here, before the role
+      // check and before the transaction.
+      if (!householdId) throw new Error('clearAllData: no household id')
+      await requireHouseholdRole(ctx, householdId, 'owner')
+
+      await prisma.$transaction(async (tx) => {
+        await lockHousehold(tx, householdId)
+        await tx.inventoryLog.deleteMany({ where: { location: { householdId } } })
+        await tx.cartItem.deleteMany({ where: { cart: { location: { householdId } } } })
+        await tx.cart.deleteMany({ where: { location: { householdId } } })
+        await tx.recipeItem.deleteMany({ where: { recipe: { householdId } } })
+        await tx.recipe.deleteMany({ where: { householdId } })
+        await tx.itemTag.deleteMany({ where: { item: { householdId } } })
+        await tx.itemVendor.deleteMany({ where: { item: { householdId } } })
+        // Before both `item` and `location`: ItemStock has a foreign key to
+        // each, both ON DELETE CASCADE.
+        await tx.itemStock.deleteMany({ where: { location: { householdId } } })
+        await tx.item.deleteMany({ where: { householdId } })
+        await tx.tag.deleteMany({ where: { householdId } })
+        await tx.tagType.deleteMany({ where: { householdId } })
+        await tx.vendor.deleteMany({ where: { householdId } })
+        await tx.shelf.deleteMany({ where: { householdId } })
+        // Its `LocationMember` rows go by ON DELETE CASCADE.
+        await tx.location.deleteMany({ where: { householdId } })
+        await createFirstLocation(tx, {
+          householdId,
+          userId,
+          name: firstLocationName(ctx.language ?? 'en'),
+        })
+      })
       return true
     },
   },

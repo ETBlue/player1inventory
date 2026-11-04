@@ -144,7 +144,9 @@ const STOCK_WHERE: WhereSpec = {
   // search) read the locations the caller holds a role on (households H3a,
   // task 3.8).
   locationId: 'in',
-  location: { nested: { userId: 'equals' } },
+  // `householdId` since task 3.10: `clearAllData` deletes a household's
+  // stock rows through their location.
+  location: { nested: { userId: 'equals', householdId: 'equals' } },
   itemId_locationId: { nested: { itemId: 'equals', locationId: 'equals' } },
 }
 
@@ -289,10 +291,16 @@ function matchesStock(row: FakeStock, where: Where, locations: FakeLocation[]): 
   // of such a resolver would pass against a resolver with no user scope at
   // all. That is the exact failure root CLAUDE.md records for the cartItem
   // fake in PR 3c.
-  const location = where.location as { userId?: string } | undefined
+  const location = where.location as { userId?: string; householdId?: string } | undefined
   if (location?.userId !== undefined) {
     const owner = locations.find((l) => l.id === row.locationId)
     if (owner?.userId !== location.userId) return false
+  }
+  // `location: { householdId }`, resolved the same way (task 3.10). A
+  // location row with no `householdId` is read as `null`, the column's value.
+  if (location?.householdId !== undefined) {
+    const parent = locations.find((l) => l.id === row.locationId)
+    if (!parent || (parent.householdId ?? null) !== location.householdId) return false
   }
   const compound = where.itemId_locationId as
     | { itemId: string; locationId: string }
@@ -376,10 +384,11 @@ export function makeStock(
  * fake's writes have ALREADY landed. A snapshot taken at that moment is the
  * state AFTER those writes, and restoring it would report a rollback that
  * did not happen — worse than not modelling the form at all.
- * `purge.resolver.test.ts:131` and `import.resolver.test.ts:511` record the
- * same evaluation-order fact for their own mocks. Four resolvers use the
- * array form today (import, purge, location, index.ts) and none of them is
- * tested through this fake.
+ * `import.resolver.test.ts` and `lib/e2eCleanup.test.ts` record the same
+ * evaluation-order fact for their own mocks. Code that still uses the array
+ * form (`lib/e2eCleanup.ts` among it) is not tested through this fake.
+ * (`purge.resolver.ts` used it too, until households H3a task 3.10 removed
+ * that file, and `clearAllData` moved to the callback form in the same task.)
  *
  * The snapshot is a DEEP copy (`structuredClone`). A shallow copy would
  * restore each array but share the row objects inside it, so
@@ -625,6 +634,18 @@ export function createStockFake() {
         if (!row) throw new LocationNotFoundError(where)
         state.itemStocks = state.itemStocks.filter((s) => s.locationId !== row.id)
         return row
+      },
+      // Every matching row, and their stock rows with them (the same cascade
+      // as `delete`). `clearAllData` deletes a household's locations this way
+      // (households H3a, task 3.10). The `LocationMember` cascade is in
+      // `householdWorld.ts`, as for `delete`. Matching nothing is not an
+      // error: the count is 0, as in Prisma.
+      deleteMany: async ({ where = {} }: { where?: Where } = {}) => {
+        checkLocationWhere(where)
+        const gone = state.locations.filter((l) => matchesLocation(l, where)).map((l) => l.id)
+        state.locations = state.locations.filter((l) => !gone.includes(l.id))
+        state.itemStocks = state.itemStocks.filter((s) => !gone.includes(s.locationId))
+        return { count: gone.length }
       },
       // `create` and `update` are kept APART, and `update` is applied key by
       // key. The import upserts deliberately pass a NARROWER `update` than

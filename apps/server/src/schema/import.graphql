@@ -198,6 +198,10 @@ extend type Mutation {
   bulkUpsertLocations(locations: [LocationInput!]!): [Location!]!
   bulkUpsertItemStocks(itemStocks: [ItemStockImportInput!]!): [ItemStock!]!
 
-  # Clear all data — used for "clear & import" strategy
+  # Clear the caller's household — used for the "clear & import" strategy.
+  # Household role `owner` only. Deletes the catalog and every location, with
+  # everything in them, and keeps the household and its members. Then makes
+  # one new location, "Home", with the caller as organizer, in the same
+  # transaction (households H3a task 3.10, decision H17).
   clearAllData: Boolean!
 }

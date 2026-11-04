@@ -10,6 +10,15 @@ import { makeGql } from '../utils/cloud'
 // apps/server/src/index.ts) — that it really deletes the test user's rows,
 // its `User` row included, against real Postgres.
 //
+// Since households H3a task 3.10 the route deletes by the households the
+// user OWNS, plus the user's own role rows, and returns 18 counts. The seed
+// below makes the user's household on the first request (first sign-in), so
+// the three new counts — `locationMembers`, `householdMembers` and
+// `households` — are at least 1 too. The rule "never delete a household the
+// user only belongs to" needs a second member, which E2E cannot add before
+// task 3.11 (`POST /e2e/household-members`). It is pinned only by the unit
+// test `apps/server/src/lib/e2eCleanup.test.ts`.
+//
 // ── WHY IT EXISTS (issue #319) ───────────────────────────────────────────────
 //
 // `apps/server/src/resolvers/purge-coverage.test.ts` guards the route's delete
@@ -144,9 +153,10 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     // means the `users` count does not depend on that.
     await createCloudUser(request, E2E_USER_ID, 'Cleanup Spec User')
 
-    // Location — the `locations` query creates the caller's default
-    // (`ensureDefaultLocation`, apps/server/src/lib/defaultLocation.ts), and a
-    // second is created outright. Two, so the readback can tell "the seeded
+    // Location — the first request makes the caller's household and its
+    // first location, "Home", with a `HouseholdMember` and a `LocationMember`
+    // row (`ensureHousehold`, apps/server/src/lib/household.ts), and a
+    // second is created outright, with a second `LocationMember` row. Two, so the readback can tell "the seeded
     // locations are gone" from "there happens to be one location".
     const { locations } = await gql<{
       locations: { id: string; isDefault: boolean }[]
@@ -177,7 +187,7 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
       typeId: createTagType.id,
     })
 
-    // Vendor — and, as a side effect, this vendor's Cart at My Home
+    // Vendor — and, as a side effect, this vendor's Cart at Home
     // (`createVendor`, apps/server/src/resolvers/vendor.resolver.ts).
     const { createVendor } = await gql<{ createVendor: Row }>(CREATE_VENDOR, {
       name: 'Corner Shop',
@@ -230,7 +240,7 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
       itemIds: [itemId],
     })
 
-    // Cart and CartItem — the no-vendor cart at My Home, with one entry.
+    // Cart and CartItem — the no-vendor cart at Home, with one entry.
     const { vendorCart } = await gql<{ vendorCart: Row }>(VENDOR_CART, {
       vendorId: null,
       locationId: home.id,
@@ -311,10 +321,11 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     // three parents are gone by now. Their `deleted` counts above are the only
     // check on them.
 
-    // Location is read back LAST, because reading it recreates one. The
-    // `locations` query runs `ensureDefaultLocation`, so it answers with a
-    // brand-new default — exactly one row, and not one of the seeded ids.
-    // `afterEach` deletes it.
+    // Location is read back LAST, because reading it recreates one. The user
+    // has no household any more, so the `locations` query runs first sign-in
+    // again (`ensureHousehold`) and answers with a brand-new "Home" — exactly
+    // one row, and not one of the seeded ids. `afterEach` deletes it, with
+    // its new household.
     const { locations: afterLocations } = await gql<{
       locations: { id: string }[]
     }>(LOCATIONS)

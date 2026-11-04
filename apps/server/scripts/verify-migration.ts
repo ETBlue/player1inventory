@@ -714,8 +714,9 @@ async function assertHouseholdsConstraints(): Promise<void> {
   // Every householdId foreign key is ON DELETE CASCADE, and the tables below
   // them cascade from those rows. "Tag_typeId_fkey" is NO ACTION (changed from
   // RESTRICT in this migration): the type and its tags go in the same
-  // statement. Nothing deletes a household until H3a task 3.10 (/e2e/cleanup)
-  // and H6, so this is the first place it runs.
+  // statement. Since H3a task 3.10, `/e2e/cleanup` deletes households too,
+  // but it deletes every child row itself first, so it never relies on the
+  // cascade. Until H6 this is the only place the cascade itself runs.
   //
   // The fixture has at least one row in each of the 17 tables a household
   // reaches, including a tag with a parent tag. For each table the check:

@@ -1,41 +1,44 @@
 /**
- * Schema-coverage guard for the three purge paths (issue #250).
+ * Schema-coverage guard for the two purge paths (issue #250, issue #320,
+ * households H3a task 3.10).
  *
  * WHY THIS FILE EXISTS
  *
- * `purgeUserData` (purge.resolver.ts), `clearAllData` (import.resolver.ts) and the
- * E2E-only `DELETE /e2e/cleanup` endpoint (lib/e2eCleanup.ts) each hand-maintain a list of
- * `prisma.<model>.deleteMany(...)` calls. Nothing links those
- * lists to `prisma/schema.prisma`, so adding a user-owned model is a three-place
- * edit that no compiler checks — and the two resolvers' unit tests hand-maintain
- * yet another duplicate, the mocked Prisma client. When `Shelf` was added, the resolvers were updated but
- * the mocks were not: `prisma.shelf` was `undefined` and all three purge tests blew
- * up with "Cannot read properties of undefined (reading 'deleteMany')". Worse, had
- * the mock happened to be permissive, the resolvers could have silently *skipped* a
- * table and left user rows behind after a purge.
+ * `clearAllData` (import.resolver.ts) and the E2E-only `DELETE /e2e/cleanup`
+ * endpoint (lib/e2eCleanup.ts) each hand-maintain a list of `deleteMany`
+ * calls. Nothing links those lists to `prisma/schema.prisma`, so adding a
+ * model is an edit in two places that no compiler checks. When `Shelf` was
+ * added, the resolvers were updated but their test mocks were not, and had a
+ * mock been permissive, a path could have silently SKIPPED a table and left
+ * rows behind.
  *
- * This guard reads the Prisma schema from disk and asserts the invariant directly
- * against the resolver *source*, so it cannot be satisfied by a mock:
+ * This guard reads the Prisma schema and the source from disk, so a mock
+ * cannot satisfy it. It checks three things for each path:
  *
- *   Every model in prisma/schema.prisma that owns a `userId` field must be deleted
- *   by ALL THREE purge paths.
+ * 1. **Every model in the schema is either deleted by the path or listed in
+ *    its `kept` list, with a reason.** A new model fails here until someone
+ *    decides which. (Until task 3.10 the rule was "every model with a
+ *    `userId`", which no longer says which rows a path owns.)
+ * 2. **Every call carries an allowed filter.** Each model has its own
+ *    allowed parent path (`MODEL_PATHS`), so a path that exists but is wrong
+ *    for that model fails. `{}`, no argument, or the old `{ userId }` scope
+ *    all fail.
+ * 3. **Every call uses the path's client.** `clearAllData` runs an
+ *    interactive transaction, so each call must be on `tx`. A
+ *    `prisma.<model>.deleteMany` inside the callback would run OUTSIDE the
+ *    transaction and would not be rolled back. `/e2e/cleanup` uses the array
+ *    form, so each call must be on `prisma`.
  *
- * ItemTag, ItemVendor and RecipeItem are junction models with no `userId` of their
- * own. ItemStock also has no `userId` — despite carrying real per-location state
- * (targetQuantity, refillThreshold, packedQuantity, unpackedQuantity, dueDate), it
- * is scoped through its parent Location, not a row a user owns directly. All four
- * are deleted through a parent relation filter and are deliberately out of scope
- * here.
+ * `purgeUserData` (purge.resolver.ts) was the third path until task 3.10
+ * removed it: it had no web caller, and it deleted by `userId`, which "no path
+ * deletes rows because of who created them" (design *Purge*) forbids.
  *
- * `User` (households H2) is out of scope too, for a different reason: it has
- * no `userId` field. Its key is `id`, because the row IS the user. Only
- * `/e2e/cleanup` deletes it, with `where: { id: userId }`, and
- * `lib/e2eCleanup.test.ts` pins that line. `purgeUserData` and `clearAllData`
- * delete a user's DATA and leave the account, so they must not delete it.
- * The last three tests in the first `describe` check both halves of that.
- *
- * The second `describe` (issue #320) checks the FILTER each call carries, not
- * only that the call exists. See *The filter form* below.
+ * A TEXT CHECK CANNOT SEE A VALUE. `{ where: { householdId } }` passes here
+ * even when `householdId` is `undefined` at run time, and Prisma reads that as
+ * NO filter. So `clearAllData` throws before its transaction when the id is
+ * missing, `clearAllData.resolver.test.ts` and `lib/e2eCleanup.test.ts` pin the
+ * exact values, and e2e/tests/purge-two-households.spec.ts checks the rows
+ * against real Postgres.
  */
 
 import { readFileSync } from 'node:fs'
@@ -49,18 +52,9 @@ function read(relativePath: string): string {
   return readFileSync(resolve(HERE, relativePath), 'utf8')
 }
 
-/**
- * Extracts the names of every `model X { ... }` block whose body declares a
- * `userId` scalar field.
- */
-function parseUserOwnedModels(schema: string): string[] {
-  const models: string[] = []
-  const blockPattern = /^model\s+(\w+)\s*\{([\s\S]*?)^\}/gm
-  for (const match of schema.matchAll(blockPattern)) {
-    const [, name, body] = match
-    if (/^\s*userId\s+\S/m.test(body)) models.push(name)
-  }
-  return models
+/** The name of every `model X { ... }` block in the schema, in schema order. */
+function parseModels(schema: string): string[] {
+  return [...schema.matchAll(/^model\s+(\w+)\s*\{/gm)].map((match) => match[1] ?? '')
 }
 
 /** Prisma client property name for a model: `InventoryLog` → `inventoryLog`. */
@@ -69,60 +63,30 @@ function clientProperty(modelName: string): string {
 }
 
 const schemaSource = read('../../prisma/schema.prisma')
-const parsedUserIdModels = parseUserOwnedModels(schemaSource)
+const SCHEMA_MODELS = parseModels(schemaSource).map(clientProperty).sort()
 
-// Two models carry a `userId` that does not mean "this person owns the row".
-// Households H3a (task 3.3) added them. Their `userId` names a MEMBER, and
-// what each purge path does with member rows is a households decision:
+// ─── The filter form ─────────────────────────────────────────────────────────
 //
-//   - `/e2e/cleanup` must delete them before the `User` row, because their
-//     `user` foreign key is RESTRICT.
-//   - `clearAllData` clears a household, which keeps its members.
-//   - `purgeUserData` is removed.
+// Finding a `deleteMany(` in the source says a model IS deleted. It says
+// nothing about WHICH rows. A call changed to `deleteMany({})` deletes every
+// household's rows and still passes that check. So every call is also checked
+// against the forms allowed for its model.
 //
-// Task 3.10 makes those changes, and must then remove this list. Until then
-// the coverage loop below skips these two, and the parser test checks that
-// both are still found, so this list cannot go stale without failing.
-const MEMBER_MODELS_PENDING_TASK_3_10 = ['HouseholdMember', 'LocationMember'] as const
-const userOwnedModels = parsedUserIdModels.filter(
-  (m) => !(MEMBER_MODELS_PENDING_TASK_3_10 as readonly string[]).includes(m),
-)
-
-// ─── The filter form (issue #320) ────────────────────────────────────────────
+// Each path in `PURGE_PATHS` carries its own `scope`: the filter text every
+// chain ends in, exactly as the source writes it.
 //
-// Finding `prisma.<model>.deleteMany(` in the source says a model IS deleted.
-// It says nothing about WHICH rows. A call changed to `deleteMany({})` deletes
-// every account's rows and still passes that check. So every call is also
-// checked against a list of allowed filter forms.
+// `MODEL_PATHS` says, for each model, the parent chain its filter goes
+// through before it reaches the scope. `[]` is the scope on the row itself.
+// Both paths share it, so they cannot drift apart. It is a map, not a list
+// any model may use: `itemStock: { item: { householdId } }` exists in Prisma
+// and is wrong here, because it would also delete another household's stock
+// of this household's items, and miss this household's stock of another
+// household's items.
 //
-// Each path in `PURGE_PATHS` carries its OWN rules, because the paths do not
-// share one scope after households task 3.10:
-//
-// - `scope`: the filter text every chain ends in, exactly as the source
-//   writes it. Today it is `{ userId }` on all three paths.
-// - `scopePaths`: the parent chains a filter may go through before it
-//   reaches `scope`. `[]` is the scope on the row itself.
-// - `exceptions`: whole filters allowed on one model only, for a row the
-//   scope form cannot describe. Today there is one: the User row in
-//   `/e2e/cleanup`.
-//
-// WHAT HOUSEHOLDS TASK 3.10 CHANGES HERE (plan
-// docs/global/permissions/2026-11-04-households-plan-h3a.md):
-//
-// 1. Step 1 removes `purgeUserData`, so its `PURGE_PATHS` entry goes.
-// 2. Step 2 changes the `clearAllData` entry: `scope` becomes the household
-//    form (for example `{ householdId }`), and `scopePaths` becomes the
-//    chains through the location or the item (for example `['location']`
-//    for an item stock, `['cart', 'location']` for a cart item).
-// 3. Step 4 changes the `e2eCleanup` entry: `scope` becomes the owned
-//    households (for example `{ householdId: { in: ownedHouseholdIds } }`),
-//    and each filter that is not that scope gets its own entry in
-//    `exceptions`. That covers the memberships deleted by `userId`, the
-//    rows of the three new tables, and the User row, which stays.
-// 4. Each entry's `models` list changes to the models that path deletes.
-//
-// The exact filter text is whatever 3.10 writes in the source. The rules
-// here must be changed to match it, entry by entry.
+// `recipeItem` goes through `recipe` in both paths. Until task 3.10
+// `/e2e/cleanup` went through `item` and `clearAllData` through `recipe`. A
+// recipe item belongs to its recipe (it is a line of it), so `recipe` was
+// kept.
 
 /** A whole filter allowed on one model only, in one path. */
 interface FilterException {
@@ -130,18 +94,22 @@ interface FilterException {
   arg: string
 }
 
-/** The filter rules for one purge path. */
-interface FilterRules {
-  /** The filter every chain ends in, exactly as the source writes it. */
-  scope: string
-  /**
-   * The parent relations a filter may go through before it reaches
-   * `scope`. `[]` is the scope on the row itself: `{ where: { userId } }`.
-   * `['item']` is `{ where: { item: { userId } } }`, for a row with no
-   * `userId` column of its own (ItemTag, ItemVendor, RecipeItem, ItemStock).
-   */
-  scopePaths: readonly (readonly string[])[]
-  exceptions: readonly FilterException[]
+/** The parent chain, for each model a path may delete through the scope. */
+const MODEL_PATHS: Readonly<Record<string, readonly string[]>> = {
+  inventoryLog: ['location'],
+  cartItem: ['cart', 'location'],
+  cart: ['location'],
+  recipeItem: ['recipe'],
+  recipe: [],
+  itemTag: ['item'],
+  itemVendor: ['item'],
+  itemStock: ['location'],
+  item: [],
+  tag: [],
+  tagType: [],
+  vendor: [],
+  shelf: [],
+  location: [],
 }
 
 /** Builds the filter text for one parent chain, in the source's spacing. */
@@ -150,26 +118,9 @@ function filterFor(scope: string, path: readonly string[]): string {
   return `{ where: ${inner} }`
 }
 
-/** Every filter the scope form allows, on any model. */
-function allowedFilters(rules: FilterRules): string[] {
-  return rules.scopePaths.map((path) => filterFor(rules.scope, path))
-}
-
-/** Today's scope, shared by all three paths until task 3.10 splits them. */
-const USER_SCOPE = '{ userId }'
-const USER_SCOPE_PATHS: readonly (readonly string[])[] = [[], ['item'], ['recipe'], ['location']]
-
-/**
- * The User row, deleted only by `/e2e/cleanup`. Its key is `id`, because
- * the row IS the user, so `{ where: { id: userId } }` is the right filter
- * for it. The same filter on any OTHER model would compare that model's id
- * with a user id. It would match nothing, so the purge would leave every
- * row behind. So it is an exception for `user` only, and only in the path
- * that may delete the User row at all.
- */
-const USER_ROW_EXCEPTION: FilterException = { model: 'user', arg: '{ where: { id: userId } }' }
-
 interface DeleteManyCall {
+  /** `prisma` or `tx`: the client the call is made on. */
+  client: string
   model: string
   /**
    * The argument text, with trailing commas dropped and every run of
@@ -181,18 +132,19 @@ interface DeleteManyCall {
 
 /**
  * Finds every `prisma.<model>.deleteMany(…)` and `tx.<model>.deleteMany(…)`
- * call in `source` and returns its argument text. The argument is read up to
- * the matching `)`, counting parentheses, so a multi-line argument is read
- * whole. It does not understand strings or comments. A `(` or `)` inside a
- * string argument would make the argument text wrong: cut short, or run on
- * into the next call. That wrong text is not one of the allowed forms, so the
- * filter check fails. It cannot pass by mistake. No purge filter holds a
- * string today.
+ * call in `source` and returns its client and argument text. The argument is
+ * read up to the matching `)`, counting parentheses, so a multi-line argument
+ * is read whole. It does not understand strings or comments. A `(` or `)`
+ * inside a string argument would make the argument text wrong: cut short, or
+ * run on into the next call. That wrong text is not one of the allowed forms,
+ * so the filter check fails. It cannot pass by mistake. No purge filter holds
+ * a string today.
  */
 function deleteManyCalls(source: string): DeleteManyCall[] {
   const calls: DeleteManyCall[] = []
-  for (const match of source.matchAll(/\b(?:prisma|tx)\.(\w+)\.deleteMany\(/g)) {
-    const model = match[1] ?? ''
+  for (const match of source.matchAll(/\b(prisma|tx)\.(\w+)\.deleteMany\(/g)) {
+    const client = match[1] ?? ''
+    const model = match[2] ?? ''
     const start = (match.index ?? 0) + match[0].length
     let depth = 1
     let end = start
@@ -207,20 +159,28 @@ function deleteManyCalls(source: string): DeleteManyCall[] {
       .replace(/,(\s*[}\]])/g, '$1')
       .replace(/\s+/g, ' ')
       .trim()
-    calls.push({ model, arg })
+    calls.push({ client, model, arg })
   }
   return calls
 }
 
+/** The filter rules for one purge path. */
+interface FilterRules {
+  /** The filter every chain ends in, exactly as the source writes it. */
+  scope: string
+  /** Whole filters allowed on one model only, for rows the scope cannot describe. */
+  exceptions: readonly FilterException[]
+}
+
 /**
- * Returns the calls whose filter is not one of the allowed forms, as
+ * Returns the calls whose filter is not allowed for their model, as
  * `model: arg` strings, so a failure names the call.
  */
 function badFilters(calls: DeleteManyCall[], rules: FilterRules): string[] {
-  const allowed = allowedFilters(rules)
   return calls
     .filter(({ model, arg }) => {
-      if (allowed.includes(arg)) return false
+      const path = MODEL_PATHS[model]
+      if (path && arg === filterFor(rules.scope, path)) return false
       if (rules.exceptions.some((e) => e.model === model && e.arg === arg)) return false
       return true
     })
@@ -249,217 +209,238 @@ function bodyAfter(source: string, marker: string): string {
 }
 
 const importResolverSource = read('./import.resolver.ts')
+const cleanupSource = read('../lib/e2eCleanup.ts')
+
+/** The 14 data models both paths delete through the scope, sorted. */
+const DATA_MODELS = Object.keys(MODEL_PATHS).sort()
+
+/** `/e2e/cleanup`'s scope: the households the user owns. */
+const OWNED_SCOPE = '{ householdId: owned }'
 
 /**
- * The 14 models both resolvers delete today, sorted. Each appears once. A
- * count alone cannot see one junction delete swapped for a second copy of
- * another; this list can.
+ * `/e2e/cleanup`'s four filters that are not the scope. Each is allowed on
+ * its one model only.
+ *
+ * - `locationMember` and `householdMember`: every role row in the owned
+ *   households, and the user's OWN role rows anywhere else. Both have a
+ *   RESTRICT foreign key to `User`, so the `User` row cannot go while one
+ *   exists. The `{ userId }` half is allowed here and nowhere else: it picks
+ *   the user's own membership, not rows the user wrote.
+ * - `household`: the owned households themselves, by their `id`.
+ * - `user`: the User row. Its key is `id`, because the row IS the user. The
+ *   same filter on any other model would compare that model's id with a user
+ *   id and match nothing.
  */
-const DATA_MODELS = [
-  'cart',
-  'cartItem',
-  'inventoryLog',
-  'item',
-  'itemStock',
-  'itemTag',
-  'itemVendor',
-  'location',
-  'recipe',
-  'recipeItem',
-  'shelf',
-  'tag',
-  'tagType',
-  'vendor',
-] as const
+const CLEANUP_EXCEPTIONS: readonly FilterException[] = [
+  {
+    model: 'locationMember',
+    arg: '{ where: { OR: [{ userId }, { location: { householdId: owned } }] } }',
+  },
+  {
+    model: 'householdMember',
+    arg: '{ where: { OR: [{ userId }, { householdId: owned }] } }',
+  },
+  { model: 'household', arg: '{ where: { id: owned } }' },
+  { model: 'user', arg: '{ where: { id: userId } }' },
+]
 
 interface PurgePath extends FilterRules {
   label: string
-  source: string
   /** Only this path's own body, so a deleteMany elsewhere in the file does not count. */
   purgeSource: string
-  deleteCount: number
+  /** The client every call must be made on. */
+  client: 'prisma' | 'tx'
   /** The models this path deletes, sorted, one entry per deleteMany call. */
   models: readonly string[]
+  /** The schema models this path does NOT delete, sorted, each on purpose. */
+  kept: readonly string[]
 }
 
 const PURGE_PATHS: readonly PurgePath[] = [
   {
-    label: 'purgeUserData',
-    source: read('./purge.resolver.ts'),
-    // The whole file is the one resolver.
-    purgeSource: read('./purge.resolver.ts'),
-    deleteCount: 14,
-    models: DATA_MODELS,
-    scope: USER_SCOPE,
-    scopePaths: USER_SCOPE_PATHS,
-    exceptions: [],
-  },
-  {
     label: 'clearAllData',
-    source: importResolverSource,
     purgeSource: bodyAfter(importResolverSource, 'clearAllData: async'),
-    deleteCount: 14,
+    client: 'tx',
     models: DATA_MODELS,
-    scope: USER_SCOPE,
-    scopePaths: USER_SCOPE_PATHS,
+    // Clear household keeps the household, its members and their household
+    // roles (design *Purge*), and the caller's account. `locationMember` has
+    // no delete of its own: its rows go with their location (ON DELETE
+    // CASCADE), and the caller gets a new one on the new "Home".
+    kept: ['household', 'householdMember', 'locationMember', 'user'],
+    scope: '{ householdId }',
     exceptions: [],
   },
-  // The E2E-only DELETE /e2e/cleanup endpoint is a THIRD hand-maintained copy of
-  // the same delete list. It is not a resolver, so no resolver test reads it.
-  // This guard is what keeps the three lists from drifting apart. Its handler
-  // moved from index.ts to lib/e2eCleanup.ts in households task 2.6.
+  // The E2E-only DELETE /e2e/cleanup endpoint. It is not a resolver, so no
+  // resolver test reads it. Its handler moved from index.ts to
+  // lib/e2eCleanup.ts in households task 2.6.
   {
     label: 'e2eCleanup',
-    source: read('../lib/e2eCleanup.ts'),
-    // The whole file is the one handler.
-    purgeSource: read('../lib/e2eCleanup.ts'),
-    // The same 14 as the two resolvers, plus the User row.
-    deleteCount: 15,
-    models: [...DATA_MODELS, 'user'].sort(),
-    scope: USER_SCOPE,
-    scopePaths: USER_SCOPE_PATHS,
-    exceptions: [USER_ROW_EXCEPTION],
+    purgeSource: cleanupSource,
+    client: 'prisma',
+    models: [...DATA_MODELS, 'household', 'householdMember', 'locationMember', 'user'].sort(),
+    kept: [],
+    scope: OWNED_SCOPE,
+    exceptions: CLEANUP_EXCEPTIONS,
   },
 ]
 
 /** The rules of one path, by label. Throws if the label is unknown. */
-function rulesOf(label: string): FilterRules {
+function rulesOf(label: string): PurgePath {
   const path = PURGE_PATHS.find((p) => p.label === label)
   if (!path) throw new Error(`no purge path: ${label}`)
   return path
 }
 
 describe('purge coverage against prisma/schema.prisma', () => {
-  it('parses the user-owned models out of the schema', () => {
-    // Given the Prisma schema on disk
-    // Then the parser finds every model carrying a userId — a broken parser or a
-    // moved schema file must fail HERE rather than making the loops below vacuous
-    expect(userOwnedModels).toEqual([
-      'TagType',
-      'Tag',
-      'Vendor',
-      'Item',
-      'Recipe',
-      'Cart',
-      'CartItem',
-      'InventoryLog',
-      'Shelf',
-      'Location',
-    ])
-    expect(userOwnedModels.length).toBe(10)
-    // And the two member models are found too, and set aside on purpose (see
-    // MEMBER_MODELS_PENDING_TASK_3_10). Compared sorted: the parser returns
-    // models in schema order, and nothing keeps the member models last.
-    expect([...parsedUserIdModels].sort()).toEqual(
-      [...userOwnedModels, ...MEMBER_MODELS_PENDING_TASK_3_10].sort(),
+  it('parses every model out of the schema', () => {
+    // A broken parser or a moved schema file must fail HERE rather than
+    // making the checks below pass for any source.
+    expect(SCHEMA_MODELS).toEqual(
+      [
+        'cart',
+        'cartItem',
+        'household',
+        'householdMember',
+        'inventoryLog',
+        'item',
+        'itemStock',
+        'itemTag',
+        'itemVendor',
+        'location',
+        'locationMember',
+        'recipe',
+        'recipeItem',
+        'shelf',
+        'tag',
+        'tagType',
+        'user',
+        'vendor',
+      ],
     )
   })
 
-  it('knows about all three purge paths', () => {
-    expect(PURGE_PATHS).toHaveLength(3)
-    for (const path of PURGE_PATHS) expect(path.source.length).toBeGreaterThan(0)
+  it('knows about both purge paths', () => {
+    expect(PURGE_PATHS.map((p) => p.label)).toEqual(['clearAllData', 'e2eCleanup'])
+    for (const path of PURGE_PATHS) expect(path.purgeSource.length).toBeGreaterThan(0)
   })
 
-  for (const { label, purgeSource } of PURGE_PATHS) {
-    it(`${label} deletes every user-owned model`, () => {
-      // Given the models that own a userId in prisma/schema.prisma
-      expect(userOwnedModels.length).toBeGreaterThan(0)
+  for (const path of PURGE_PATHS) {
+    it(`${path.label} deletes every schema model, or keeps it on purpose`, () => {
+      // Given which models this path deletes, read from its own body
+      const deleted = new Set(deleteManyCalls(path.purgeSource).map((c) => c.model))
 
-      // When checking which of them the resolver deletes. `purgeSource` is
-      // only this path's own body, so a `deleteMany` in another resolver of
-      // the same file does not count.
-      const missing = userOwnedModels.filter(
-        (model) => !purgeSource.includes(`prisma.${clientProperty(model)}.deleteMany(`),
+      // Then every schema model is in exactly one of the two lists. A new
+      // model fails here until it is added to the path or to `kept`.
+      const unaccounted = SCHEMA_MODELS.filter(
+        (model) => !deleted.has(model) && !path.kept.includes(model),
       )
-
-      // Then none are missing — a new user-owned model must be added to this
-      // purge path (and to its test's Prisma mock)
-      expect(missing).toEqual([])
+      expect(unaccounted).toEqual([])
+      expect(path.kept.filter((model) => deleted.has(model))).toEqual([])
+      expect([...path.models, ...path.kept].sort()).toEqual(SCHEMA_MODELS)
     })
   }
 
-  // `purgeUserData` and `clearAllData` delete a user's DATA. The account
-  // stays, so its `User` row must stay too. Only `/e2e/cleanup` deletes it.
+  // `clearAllData` deletes the household's DATA. The account stays, so its
+  // `User` row must stay too. Only `/e2e/cleanup` deletes it.
   //
   // The pattern matches `.user.delete(` and `.user.deleteMany(` on any
   // client name, so `prisma.user.…` and a transaction's `tx.user.…` both
   // count. It does not match a client held under another name for the
   // model, such as `const users = prisma.user` and then `users.delete(`.
   const DELETES_USER_ROW = /\.user\.delete(Many)?\(/
-  for (const { label, source } of PURGE_PATHS.filter((p) => p.label !== 'e2eCleanup')) {
-    it(`${label} does not delete the User row`, () => {
-      expect(source).not.toMatch(DELETES_USER_ROW)
-    })
-  }
+  it('clearAllData does not delete the User row', () => {
+    expect(rulesOf('clearAllData').purgeSource).not.toMatch(DELETES_USER_ROW)
+  })
 
   it('e2eCleanup does delete the User row', () => {
-    // The positive control for the two tests above: the pattern they look
-    // for matches the call the cleanup really uses. If it did not, the two
-    // `not.toMatch` checks would pass for any source.
-    const cleanup = PURGE_PATHS.find((p) => p.label === 'e2eCleanup')
-    expect(cleanup?.source).toMatch(DELETES_USER_ROW)
-    expect(cleanup?.source).toContain('prisma.user.deleteMany(')
+    // The positive control for the test above: the pattern it looks for
+    // matches the call the cleanup really uses. If it did not, the
+    // `not.toMatch` check would pass for any source.
+    expect(cleanupSource).toMatch(DELETES_USER_ROW)
+    expect(cleanupSource).toContain('prisma.user.deleteMany(')
   })
 })
 
 describe('purge filter form (issue #320)', () => {
   for (const path of PURGE_PATHS) {
-    it(`${path.label} scopes every deleteMany to the caller`, () => {
+    it(`${path.label} scopes every deleteMany to the household, on its own client`, () => {
       // Given every deleteMany call in this path's body
       const calls = deleteManyCalls(path.purgeSource)
 
-      // Then the parser found all of them. A broken parser that finds none
-      // would make the next check pass for any source.
-      expect(calls).toHaveLength(path.deleteCount)
-
-      // And they are the expected models, each once. A count alone would
-      // not see one delete swapped for a second copy of another.
+      // Then they are the expected models, each once. A broken parser that
+      // finds none fails here, and so does one delete swapped for a second
+      // copy of another.
       expect(calls.map((c) => c.model).sort()).toEqual(path.models)
-      expect(path.models).toHaveLength(path.deleteCount)
 
-      // And each filter is one of the allowed scope forms. `{}`, no
-      // argument, or a filter by some other key all fail here.
+      // And each filter is the allowed form for its model. `{}`, no
+      // argument, `{ userId }`, or the wrong parent chain all fail here.
       expect(badFilters(calls, path)).toEqual([])
+
+      // And each call is on the path's client
+      expect(calls.filter((c) => c.client !== path.client).map((c) => c.model)).toEqual([])
     })
   }
 
-  it('lists the allowed filter forms built from each path scope', () => {
+  it('builds the allowed forms from MODEL_PATHS and each path scope', () => {
     // A check on the builder, so a mistake in it cannot widen the list.
-    const today = [
-      '{ where: { userId } }',
-      '{ where: { item: { userId } } }',
-      '{ where: { recipe: { userId } } }',
-      '{ where: { location: { userId } } }',
-    ]
-    for (const path of PURGE_PATHS) expect(allowedFilters(path), path.label).toEqual(today)
-    expect(rulesOf('e2eCleanup').exceptions).toEqual([
-      { model: 'user', arg: '{ where: { id: userId } }' },
-    ])
+    expect(filterFor('{ householdId }', MODEL_PATHS.cartItem ?? [])).toBe(
+      '{ where: { cart: { location: { householdId } } } }',
+    )
+    expect(filterFor('{ householdId }', MODEL_PATHS.tag ?? [])).toBe(
+      '{ where: { householdId } }',
+    )
+    expect(filterFor(OWNED_SCOPE, MODEL_PATHS.itemStock ?? [])).toBe(
+      '{ where: { location: { householdId: owned } } }',
+    )
+    expect(DATA_MODELS).toHaveLength(14)
   })
 
   // The checker itself, on made-up sources. The real sources hold only good
   // filters, so without these nothing shows that a bad one is caught.
-  it('refuses a filter that names no scope', () => {
+  it('refuses a filter that names no scope, or the wrong parent', () => {
     const source = [
-      'prisma.tag.deleteMany({})',
-      'prisma.tag.deleteMany()',
-      "prisma.tag.deleteMany({ where: { id: 'x' } })",
-      'prisma.tag.deleteMany({ where: { name: userId } })',
-      'prisma.itemTag.deleteMany({ where: { tag: { userId } } })',
+      'tx.tag.deleteMany({})',
+      'tx.tag.deleteMany()',
+      "tx.tag.deleteMany({ where: { id: 'x' } })",
+      'tx.tag.deleteMany({ where: { name: householdId } })',
+      'tx.itemStock.deleteMany({ where: { item: { householdId } } })',
+      'tx.recipeItem.deleteMany({ where: { item: { householdId } } })',
+      'tx.cartItem.deleteMany({ where: { location: { householdId } } })',
     ].join('\n')
 
-    expect(badFilters(deleteManyCalls(source), rulesOf('e2eCleanup'))).toEqual([
+    expect(badFilters(deleteManyCalls(source), rulesOf('clearAllData'))).toEqual([
       'tag: {}',
       'tag: (no argument)',
       "tag: { where: { id: 'x' } }",
-      'tag: { where: { name: userId } }',
-      'itemTag: { where: { tag: { userId } } }',
+      'tag: { where: { name: householdId } }',
+      'itemStock: { where: { item: { householdId } } }',
+      'recipeItem: { where: { item: { householdId } } }',
+      'cartItem: { where: { location: { householdId } } }',
     ])
+  })
+
+  it('refuses the old scope, { userId }, on every data model in both paths', () => {
+    // Before task 3.10 every purge filter ended in `{ userId }`. That deletes
+    // rows by who CREATED them, which design *Purge* forbids. It must fail
+    // now, on the row itself and through every parent chain.
+    for (const path of PURGE_PATHS) {
+      const source = DATA_MODELS.map(
+        (model) => `${path.client}.${model}.deleteMany(${filterFor('{ userId }', MODEL_PATHS[model] ?? [])})`,
+      ).join('\n')
+      const calls = deleteManyCalls(source)
+      expect(calls, path.label).toHaveLength(14)
+      expect(badFilters(calls, path), path.label).toHaveLength(14)
+    }
+    // And one by name, as the plan asks: a catalog model
+    expect(
+      badFilters(deleteManyCalls('tx.item.deleteMany({ where: { userId } })'), rulesOf('clearAllData')),
+    ).toEqual(['item: { where: { userId } }'])
   })
 
   it('allows an exception only on its model, and only in its path', () => {
     const userRow = 'prisma.user.deleteMany({ where: { id: userId } })'
     const otherModel = 'prisma.tag.deleteMany({ where: { id: userId } })'
+    const memberByUser = 'prisma.tag.deleteMany({ where: { OR: [{ userId }, { householdId: owned }] } })'
 
     expect(badFilters(deleteManyCalls(userRow), rulesOf('e2eCleanup'))).toEqual([])
     expect(badFilters(deleteManyCalls(userRow), rulesOf('clearAllData'))).toEqual([
@@ -468,26 +449,35 @@ describe('purge filter form (issue #320)', () => {
     expect(badFilters(deleteManyCalls(otherModel), rulesOf('e2eCleanup'))).toEqual([
       'tag: { where: { id: userId } }',
     ])
+    expect(badFilters(deleteManyCalls(memberByUser), rulesOf('e2eCleanup'))).toEqual([
+      'tag: { where: { OR: [{ userId }, { householdId: owned }] } }',
+    ])
+  })
+
+  it('refuses a call on the wrong client', () => {
+    // Inside clearAllData's interactive transaction, `prisma.` would run
+    // outside it and would not be rolled back.
+    const calls = deleteManyCalls(
+      'tx.tag.deleteMany({ where: { householdId } })\nprisma.item.deleteMany({ where: { householdId } })',
+    )
+    expect(calls.map((c) => c.client)).toEqual(['tx', 'prisma'])
+    const wrong = calls.filter((c) => c.client !== rulesOf('clearAllData').client)
+    expect(wrong.map((c) => c.model)).toEqual(['item'])
   })
 
   it('reads a multi-line argument, with trailing commas, on a transaction client', () => {
-    // Given a filter built from this path's own rules, so the test follows
-    // the scope when task 3.10 changes it. The deepest chain is used, so a
-    // nested filter is split over the most lines.
-    const rules = rulesOf('clearAllData')
-    const deepest = [...rules.scopePaths].sort((a, b) => b.length - a.length)[0] ?? []
-    const filter = filterFor(rules.scope, deepest)
-    // And the same filter as a formatter would write it: one key per line,
-    // each followed by a trailing comma.
+    // Given the deepest filter clearAllData uses, as a formatter would write
+    // it: one key per line, each followed by a trailing comma
+    const filter = filterFor('{ householdId }', MODEL_PATHS.cartItem ?? [])
     const multiLine = filter.replace(/\{ /g, '{\n  ').replace(/ \}/g, ',\n}')
     expect(multiLine).toContain(',\n}')
 
     // When it is read from a transaction client's call
-    const calls = deleteManyCalls(`tx.item.deleteMany(${multiLine})`)
+    const calls = deleteManyCalls(`tx.cartItem.deleteMany(${multiLine})`)
 
     // Then it reads back as the one-line form, and passes the check
-    expect(calls).toEqual([{ model: 'item', arg: filter }])
-    expect(badFilters(calls, rules)).toEqual([])
+    expect(calls).toEqual([{ client: 'tx', model: 'cartItem', arg: filter }])
+    expect(badFilters(calls, rulesOf('clearAllData'))).toEqual([])
   })
 
   it('reads only the clearAllData body out of import.resolver.ts', () => {

@@ -36,6 +36,40 @@ describe('householdWorld', () => {
     expect(world.households.state.locationMembers.map((m) => m.locationId)).toEqual(['loc-1'])
   })
 
+  it('deleteMany on locations deletes their LocationMember rows too, and no others', async () => {
+    // Given two households, each with a location and role rows
+    const world = createHouseholdWorld()
+    world.stock.reset(
+      [
+        { id: 'loc-1', userId: 'u1', isDefault: true, householdId: 'hh-1', name: 'A', order: 0 },
+        { id: 'loc-2', userId: 'u1', isDefault: false, householdId: 'hh-1', name: 'B', order: 1 },
+        { id: 'loc-3', userId: 'u2', isDefault: true, householdId: 'hh-2', name: 'C', order: 0 },
+      ],
+      [],
+    )
+    world.seedHouseholds({
+      households: [household('hh-1', 'u1'), household('hh-2', 'u2')],
+      householdMembers: [
+        { householdId: 'hh-1', userId: 'u1', role: 'owner', joinedAt: T },
+        { householdId: 'hh-2', userId: 'u2', role: 'owner', joinedAt: T },
+      ],
+      locationMembers: [
+        { locationId: 'loc-1', userId: 'u1', role: 'organizer', createdAt: T },
+        { locationId: 'loc-2', userId: 'u1', role: 'organizer', createdAt: T },
+        { locationId: 'loc-3', userId: 'u2', role: 'organizer', createdAt: T },
+      ],
+    })
+
+    // When hh-1's locations are deleted with one deleteMany
+    const result = await world.client.location.deleteMany({ where: { householdId: 'hh-1' } })
+
+    // Then the count is the locations, and only hh-2's role row is left
+    expect(result).toEqual({ count: 2 })
+    expect(world.households.state.locationMembers.map((m) => m.locationId)).toEqual(['loc-3'])
+    // And the household rows are not touched
+    expect(world.households.state.householdMembers).toHaveLength(2)
+  })
+
   it('a delete that matches no location leaves the LocationMember rows alone', async () => {
     const world = createHouseholdWorld()
     world.stock.reset(

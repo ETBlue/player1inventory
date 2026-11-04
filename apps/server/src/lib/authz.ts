@@ -154,20 +154,16 @@ export async function locationIdsWithRole(ctx: Context): Promise<string[]> {
  * they did from `ensureDefaultLocation` before. If the caller still has no
  * location they may write to, the import is refused with `NO_LOCATION`.
  *
- * That CAN happen today, in one way, until task 3.10 closes it:
- * `clearAllData` deletes every location, and nothing makes a new one. The
- * household still exists, so `requireHousehold` returns at once and does not
- * run first sign-in again. So a "clear" import followed by a log or cart
- * that names no location gets `NO_LOCATION` (decision H17).
+ * Before H5 that cannot happen: deleting the last location is refused
+ * (decision H13), the creator of a location organizes it, and
+ * `clearAllData` makes "Home" again, with an `organizer` row, in the same
+ * transaction as its deletes (decision H17, task 3.10).
  *
- * (There was a second way until task 3.9: `bulkCreateLocations` /
- * `bulkUpsertLocations` wrote no `organizer` row, so a location they made did
- * not count here. They write one now, as `createLocation` has since task
- * 3.6.)
- *
- * Once task 3.10 is done, it cannot happen before H5: deleting the last
- * location is refused (decision H13), and the creator of a location
- * organizes it.
+ * There were two ways in before. Until task 3.10, `clearAllData` deleted
+ * every location and nothing made a new one, so a "clear" import followed by
+ * a log or cart that names no location got `NO_LOCATION`. Until task 3.9,
+ * `bulkCreateLocations` / `bulkUpsertLocations` wrote no `organizer` row, so
+ * a location they made did not count here.
  */
 export async function fallbackImportLocation(ctx: Context): Promise<string> {
   const userId = requireAuth(ctx)

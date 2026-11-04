@@ -339,8 +339,6 @@ const BULK_UPSERT_ITEMS = `
   }
 `
 
-const CLEAR_ALL_DATA = `mutation { clearAllData }`
-
 // Issue #335. Separate from BULK_CREATE_ITEMS / BULK_UPSERT_ITEMS above so the
 // existing tests keep their narrow selection sets.
 const BULK_CREATE_ITEMS_WITH_NOTE = `
@@ -631,110 +629,10 @@ describe('bulkUpsertItems', () => {
   })
 })
 
-/** The 14 deletes, in the order `clearAllData` sends them to `$transaction`. */
-const CLEAR_ALL_DATA_ORDER = [
-  'inventoryLog',
-  'cartItem',
-  'cart',
-  'recipeItem',
-  'recipe',
-  'itemTag',
-  'itemVendor',
-  'itemStock',
-  'item',
-  'tag',
-  'tagType',
-  'vendor',
-  'shelf',
-  'location',
-] as const
-
-describe('clearAllData', () => {
-  // This file's `beforeEach` runs `vi.clearAllMocks()`, which keeps a
-  // `mockReturnValue`. Reset the 14 deleteMany mocks after each test here,
-  // so the `op:<model>` markers armed below never reach a later test.
-  afterEach(() => {
-    const deletes = p as unknown as Record<string, { deleteMany: ReturnType<typeof vi.fn> }>
-    for (const model of CLEAR_ALL_DATA_ORDER) deletes[model]?.deleteMany.mockReset()
-  })
-
-  it('user can clear all their data', async () => {
-    // Given each deleteMany returns its own `op:<model>` marker, so the
-    // array handed to `$transaction` says which deletes it holds. With every
-    // mock returning `undefined`, that array could not tell one delete from
-    // another, or from none.
-    const deletes = p as unknown as Record<string, { deleteMany: ReturnType<typeof vi.fn> }>
-    for (const model of CLEAR_ALL_DATA_ORDER) {
-      deletes[model]?.deleteMany.mockReturnValue(`op:${model}`)
-    }
-    // And the transaction resolves
-    p.$transaction.mockResolvedValue([
-      { count: 0 }, { count: 0 }, { count: 0 }, { count: 0 },
-      { count: 0 }, { count: 0 }, { count: 0 }, { count: 0 },
-      { count: 0 }, { count: 0 }, { count: 0 }, { count: 0 },
-      { count: 0 }, { count: 0 },
-    ])
-
-    // When calling clearAllData
-    const response = await server.executeOperation(
-      { query: CLEAR_ALL_DATA },
-      { contextValue: CONTEXT },
-    )
-
-    // Then it returns true
-    expect(response.body.kind).toBe('single')
-    if (response.body.kind === 'single') {
-      expect(response.body.singleResult.errors).toBeUndefined()
-      expect(response.body.singleResult.data?.clearAllData).toBe(true)
-    }
-    // And every one of the 14 tables was asked to delete this user's rows,
-    // each with today's exact filter (issue #320). Until 2026-11-04 only
-    // shelf, location and itemStock were checked here, so the other 11
-    // filters could change to anything, `{}` included, and this test stayed
-    // green. Households task 3.10 changes these filters, and this table with
-    // them. Models with no userId of their own (the three junction tables and
-    // itemStock) are scoped through a parent.
-    // See also purge-coverage.test.ts, which checks the filter FORM in the
-    // source, and issue #250.
-    const expectedFilters: Record<string, unknown> = {
-      inventoryLog: { where: { userId: 'user_import_test' } },
-      cartItem: { where: { userId: 'user_import_test' } },
-      cart: { where: { userId: 'user_import_test' } },
-      recipeItem: { where: { recipe: { userId: 'user_import_test' } } },
-      recipe: { where: { userId: 'user_import_test' } },
-      itemTag: { where: { item: { userId: 'user_import_test' } } },
-      itemVendor: { where: { item: { userId: 'user_import_test' } } },
-      itemStock: { where: { location: { userId: 'user_import_test' } } },
-      item: { where: { userId: 'user_import_test' } },
-      tag: { where: { userId: 'user_import_test' } },
-      tagType: { where: { userId: 'user_import_test' } },
-      vendor: { where: { userId: 'user_import_test' } },
-      shelf: { where: { userId: 'user_import_test' } },
-      location: { where: { userId: 'user_import_test' } },
-    }
-    expect(Object.keys(expectedFilters)).toHaveLength(14)
-    for (const [model, filter] of Object.entries(expectedFilters)) {
-      const deleteMany = (p as unknown as Record<string, { deleteMany: ReturnType<typeof vi.fn> }>)[
-        model
-      ]?.deleteMany
-      expect(deleteMany, model).toBeDefined()
-      expect(deleteMany?.mock.calls, model).toStrictEqual([[filter]])
-    }
-    // And every one of those 14 deletes is IN the one transaction, in this
-    // order. Checking the arguments above is not enough: a real
-    // PrismaPromise is lazy, so a deleteMany that is built but left out of
-    // the `$transaction` array never runs, and its arguments still look
-    // right.
-    //
-    // The order matters too. itemStock must come before item and before
-    // location: real ItemStock_itemId_fkey is ON DELETE CASCADE, so deleting
-    // items first would destroy ItemStock rows before this deleteMany runs,
-    // and ItemStock_locationId_fkey needs the location to still exist.
-    expect(p.$transaction.mock.calls).toStrictEqual([
-      [CLEAR_ALL_DATA_ORDER.map((model) => `op:${model}`)],
-    ])
-  })
-})
+// `clearAllData` used to be tested here, against this file's recording mock.
+// Since households H3a task 3.10 it clears a household in an interactive
+// transaction and makes "Home" again, so its tests moved to
+// `clearAllData.resolver.test.ts`, which runs on `householdWorld`.
 
 // ─── note and wikidataUrl through the import path (issue #335) ───────────────
 //

@@ -73,8 +73,8 @@ describe('stockFake refuses an unknown where key', () => {
   it('itemStock.location: refuses an unknown key inside the relation filter', async () => {
     const fake = stockFakeWithOneRow()
     await expect(
-      fake.client.itemStock.findMany({ where: { location: UNKNOWN } }),
-    ).rejects.toThrow(/stockFake\(itemStock\).*'location\.householdId'/)
+      fake.client.itemStock.findMany({ where: { location: UNKNOWN_FOR_LOCATION } }),
+    ).rejects.toThrow(/stockFake\(itemStock\).*'location\.notAColumn'/)
   })
 
   it('every location method refuses it on an EMPTY store', async () => {
@@ -107,8 +107,10 @@ describe('stockFake refuses an unknown where key', () => {
     const fake = stockFakeWithOneRow()
     // Then the nested `location` filter is still checked
     await expect(
-      fake.client.itemStock.findMany({ where: { itemId: 'no-such-item', location: UNKNOWN } }),
-    ).rejects.toThrow(/'location\.householdId'/)
+      fake.client.itemStock.findMany({
+        where: { itemId: 'no-such-item', location: UNKNOWN_FOR_LOCATION },
+      }),
+    ).rejects.toThrow(/'location\.notAColumn'/)
   })
 
   it('refuses an operator object on a plain-equality key', async () => {

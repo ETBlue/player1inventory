@@ -44,7 +44,11 @@ export function createHouseholdWorld() {
     household: households.client.household,
     householdMember: households.client.householdMember,
     locationMember: households.client.locationMember,
-    location: { ...stock.client.location, delete: deleteLocation },
+    location: {
+      ...stock.client.location,
+      delete: deleteLocation,
+      deleteMany: deleteLocations,
+    },
     itemStock: stock.client.itemStock,
     $transaction,
   }
@@ -60,6 +64,21 @@ export function createHouseholdWorld() {
       (m) => m.locationId !== row.id,
     )
     return row
+  }
+
+  // The same cascade for `deleteMany`, which `clearAllData` uses (task 3.10).
+  // The ids are read BEFORE the delete, because after it the rows are gone
+  // and nothing says which locations matched. Pinned in
+  // `householdWorld.test.ts`.
+  async function deleteLocations(args: { where?: Record<string, unknown> } = {}) {
+    const ids = (await stock.client.location.findMany({ where: args.where ?? {} })).map(
+      (l) => l.id,
+    )
+    const result = await stock.client.location.deleteMany(args)
+    households.state.locationMembers = households.state.locationMembers.filter(
+      (m) => !ids.includes(m.locationId),
+    )
+    return result
   }
 
   async function $transaction(arg: unknown): Promise<unknown> {

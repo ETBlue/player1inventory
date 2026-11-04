@@ -723,6 +723,61 @@ describe('stockFake location calls for location.resolver.ts', () => {
       code: 'P2025',
     })
   })
+
+  it('location.deleteMany removes every matching row and their stock rows, and returns the count', async () => {
+    // Given two locations in hh_1 and one in hh_2, each with a stock row
+    // (households H3a task 3.10: `clearAllData` deletes a household's
+    // locations with one deleteMany)
+    const fake = createStockFake()
+    fake.reset(rows(), [
+      makeStock({ id: 's_b', itemId: 'item_1', locationId: 'loc_b' }),
+      makeStock({ id: 's_a', itemId: 'item_1', locationId: 'loc_a' }),
+      makeStock({ id: 's_c', itemId: 'item_1', locationId: 'loc_c' }),
+    ])
+
+    // When hh_1's locations are deleted
+    const result = await fake.client.location.deleteMany({ where: { householdId: 'hh_1' } })
+
+    // Then both go, with their stock rows (ON DELETE CASCADE), and hh_2's stay
+    expect(result).toEqual({ count: 2 })
+    expect(fake.state.locations.map((l) => l.id)).toEqual(['loc_c'])
+    expect(fake.state.itemStocks.map((s) => s.id)).toEqual(['s_c'])
+
+    // And a filter that matches nothing deletes nothing, without an error
+    expect(await fake.client.location.deleteMany({ where: { householdId: 'hh_9' } })).toEqual({
+      count: 0,
+    })
+    expect(fake.state.locations).toHaveLength(1)
+  })
+
+  it('itemStock.deleteMany through location: { householdId } deletes only that household’s stock', async () => {
+    // Given stock rows at locations of two households
+    const fake = createStockFake()
+    fake.reset(rows(), [
+      makeStock({ id: 's_b', itemId: 'item_1', locationId: 'loc_b' }),
+      makeStock({ id: 's_a', itemId: 'item_2', locationId: 'loc_a' }),
+      makeStock({ id: 's_c', itemId: 'item_1', locationId: 'loc_c' }),
+    ])
+
+    // When hh_1's stock is deleted through the location
+    const result = await fake.client.itemStock.deleteMany({
+      where: { location: { householdId: 'hh_1' } },
+    })
+
+    // Then only hh_2's row is left
+    expect(result).toEqual({ count: 2 })
+    expect(fake.state.itemStocks.map((s) => s.id)).toEqual(['s_c'])
+  })
+
+  it('location.deleteMany refuses a where key it does not model', async () => {
+    const fake = createStockFake()
+    fake.reset(rows(), [])
+
+    await expect(
+      fake.client.location.deleteMany({ where: { household: { ownerId: 'user_1' } } }),
+    ).rejects.toThrow()
+    expect(fake.state.locations).toHaveLength(3)
+  })
 })
 
 describe('stockFake itemStock.findMany orderBy', () => {
