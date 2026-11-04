@@ -191,14 +191,17 @@ These things about it are easy to get wrong. The list grows; count the bullets r
 than trusting a number here — it said **four** when there were seven.
 
 - **It parks migrations by NAME.** `scripts/verify-migration.ts` holds a `MIGRATIONS` list —
-  **six** entries today:
+  **seven** entries today:
   `20260830000000_add_location_and_item_stock`,
   `20260916000000_add_location_to_log_and_cart`,
   `20260917000000_rekey_cart_to_location_vendor`,
   `20261004000000_drop_item_stock_state_columns` (cloud locations PR 5, three assertions),
   `20261008000000_add_item_note_and_wikidata_url` (cloud-parity PR B, issue #335, four
   assertions — see the additive section below) and
-  `20261031000000_add_user` (households H2, a new empty `"User"` table, five checks).
+  `20261031000000_add_user` (households H2, a new empty `"User"` table, five checks) and
+  `20261104000000_add_households` (households H3a). The last one is applied in a **second**
+  `migrate deploy`, after a second seed step writes two `"User"` rows: the first seed runs
+  before `add_user`, so it cannot write one. See `seedUsersBeforeHouseholds` in the script.
   **Count the array rather than trusting this line.** It said **four** until 2026-10-08:
   ```bash
   grep -c "^  '2026" apps/server/scripts/verify-migration.ts

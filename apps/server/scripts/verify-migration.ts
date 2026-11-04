@@ -2,7 +2,7 @@
 // resolver test suite runs entirely against a hand-written Prisma fake and
 // cannot exercise SQL at all.
 //
-// Six migrations are under test, applied in order:
+// Seven migrations are under test, applied in order:
 //   1. 20260830000000_add_location_and_item_stock      (PR 1)  — Location, ItemStock
 //   2. 20260916000000_add_location_to_log_and_cart     (PR 3a) — InventoryLog.locationId,
 //      Cart.locationId
@@ -14,9 +14,15 @@
 //      Item.wikidataUrl, both nullable
 //   6. 20261031000000_add_user                         (households H2) — a new,
 //      empty "User" table keyed by the Clerk user id
+//   7. 20261104000000_add_households                   (households H3a) — Household,
+//      HouseholdMember, LocationMember, User.householdSetupAt, and a nullable
+//      householdId on Location and the six catalog models, filled in for every row
 // This count and the MIGRATIONS array below must agree. The comment said "Four"
 // for a while after entry 5 was added, so check the array rather than trusting
 // this line.
+// Migration 7 reads the "User" table that 6 creates. So it is applied in a
+// second `migrate deploy`, after a second seed step writes two "User" rows.
+// See seedUsersBeforeHouseholds below for why.
 // Migration 6 is not a location migration and depends on none of the others.
 // It is parked with them anyway. Left unparked, `migrate reset` would apply it
 // BEFORE migrations 1-5, which is not the order production applies them in.
@@ -256,6 +262,388 @@ async function seedFixture(): Promise<void> {
   `)
 }
 
+// The thirteen users seedFixture writes, each of whom owns data. Module scope
+// because assertHouseholdsBackfill reads it as well as main().
+const EXPECTED_USER_IDS = [
+  'user-a', // Item
+  'user-b', // Item
+  'user-c', // TagType
+  'user-d', // Vendor
+  'user-e', // Recipe
+  'user-f', // Shelf
+  'user-g', // Tag
+  'user-h', // CartItem
+  'user-i', // Cart
+  'user-j', // InventoryLog
+  'user-k', // Cart + CartItem — owns the shared 'no-vendor' row (PR 3b)
+  'user-l', // CartItem only — two items on the shared row (PR 3b)
+  'user-m', // Cart + CartItem — the control, nothing on the shared row (PR 3b)
+] as const
+
+// The second seed step, for add_households (households H3a).
+//
+// seedFixture above runs BEFORE add_user, when there is no "User" table, so it
+// cannot write a "User" row. But two of add_households' cases need one:
+//
+//   user-a      has data AND a "User" row, with a real name that contains an
+//               apostrophe: "Ann O'Neil". The migration must keep this row and
+//               its name (step 2 adds rows only for ids with no row), and the
+//               household must be "Ann O'Neil's Household". Every other seeded
+//               user has data and NO "User" row, so they get one named 'User'.
+//               With only that kind of user, a migration that renamed every
+//               user to 'User', or ignored existing rows, would still pass.
+//   user-empty  has a "User" row and NO data at all (decision H2): a person who
+//               signed in once and saved nothing. They must get a household and
+//               exactly one 'Home' location. No other seeded user can show this,
+//               because every one of them owns data, so each already has a
+//               location from migration 1's backfill.
+//
+// So main() applies migrations 1-6, runs this, then applies add_households
+// alone. This is the order production sees too: add_user is deployed, users
+// sign in and get "User" rows, and only then does add_households run.
+//
+// Raw SQL on purpose. The Prisma client is generated from the FINAL schema, so
+// prisma.user.create would ask for "householdSetupAt" in its RETURNING clause,
+// and that column does not exist until add_households runs.
+const NAMED_USER_ID = 'user-a'
+const NAMED_USER_NAME = "Ann O'Neil"
+const NO_DATA_USER_ID = 'user-empty'
+const NO_DATA_USER_NAME = 'Nobody'
+
+async function seedUsersBeforeHouseholds(): Promise<void> {
+  console.log('Seeding two "User" rows before add_households (one with data, one without)...')
+  await prisma.$executeRaw`
+    INSERT INTO "User" ("id","displayName","createdAt","updatedAt") VALUES
+      (${NAMED_USER_ID}, ${NAMED_USER_NAME}, NOW(), NOW()),
+      (${NO_DATA_USER_ID}, ${NO_DATA_USER_NAME}, NOW(), NOW())
+  `
+}
+
+// The seven tables that gain a nullable "householdId" in add_households, and
+// the four tables that must NOT gain one. Cart, CartItem and InventoryLog keep
+// "userId" (it means the author now), and ItemStock is scoped through its
+// location. A migration that added the column to the wrong table would pass a
+// "present" check alone (apps/server/prisma/CLAUDE.md, "An ADD COLUMN needs the
+// same two halves").
+const HOUSEHOLD_SCOPED_TABLES = [
+  'Location',
+  'Item',
+  'Tag',
+  'TagType',
+  'Vendor',
+  'Recipe',
+  'Shelf',
+] as const
+const NOT_HOUSEHOLD_SCOPED_TABLES = ['ItemStock', 'Cart', 'CartItem', 'InventoryLog'] as const
+
+// ══════════════════════════════════════════════════════════════════════
+// 20261104000000 — households, part 1: the backfill (households H3a)
+// ══════════════════════════════════════════════════════════════════════
+//
+// Read-only. main() calls this right after the last deploy, before any other
+// block writes a row. Fourteen users exist at this point: the thirteen
+// seedFixture users, all with data, and user-empty, with a "User" row and no
+// data. Of the thirteen, only user-a had a "User" row before the migration.
+async function assertHouseholdsBackfill(): Promise<void> {
+  console.log('add_households — the backfill:')
+  const allUserIds = [...EXPECTED_USER_IDS, NO_DATA_USER_ID]
+
+  // ── Step 2: a "User" row for every userId in the data ──
+  const users = await prisma.user.findMany()
+  assert(
+    users.length === allUserIds.length && allUserIds.every((id) => users.some((u) => u.id === id)),
+    `there is one "User" row for each of the ${allUserIds.length} users and no other (read: ${users.length})`,
+  )
+  const namedUser = users.find((u) => u.id === NAMED_USER_ID)
+  assert(
+    namedUser?.displayName === NAMED_USER_NAME,
+    `${NAMED_USER_ID}'s existing "User" row keeps its name "${NAMED_USER_NAME}" — the migration adds rows only for ids with no row (read: ${namedUser?.displayName})`,
+  )
+  const createdUsers = users.filter((u) => u.id !== NAMED_USER_ID && u.id !== NO_DATA_USER_ID)
+  assert(
+    createdUsers.length === EXPECTED_USER_IDS.length - 1 &&
+      createdUsers.every((u) => u.displayName === 'User'),
+    `the ${EXPECTED_USER_IDS.length - 1} users found only in the data get a "User" row named 'User' (decision H2)`,
+  )
+
+  // ── Step 3: one household per user, named after them, owned by them ──
+  const households = await prisma.household.findMany({ include: { members: true } })
+  assert(
+    households.length === allUserIds.length,
+    `one Household per "User" row: ${allUserIds.length} (read: ${households.length})`,
+  )
+  for (const user of users) {
+    const own = households.filter((h) => h.ownerId === user.id)
+    const household = own[0]
+    const expectedName = `${user.displayName}'s Household`
+    assert(
+      own.length === 1 &&
+        household?.name === expectedName &&
+        household.members.length === 1 &&
+        household.members[0]?.userId === user.id &&
+        household.members[0]?.role === 'owner',
+      `${user.id} has exactly one household, named "${expectedName}", and is its only member, with role owner (read: ${own.length} household(s), name ${household?.name}, members ${household?.members.map((m) => `${m.userId}/${m.role}`).join(', ')})`,
+    )
+  }
+  const householdOfUser = new Map(households.map((h) => [h.ownerId, h.id]))
+
+  // ── Step 7: every user is marked as set up ──
+  assert(
+    users.every((u) => u.householdSetupAt !== null),
+    'every user with a household has householdSetupAt set, so first sign-in will not make a second one (decision H1)',
+  )
+
+  // ── Step 4: user-empty got exactly one 'Home'; nobody else got one ──
+  const homes = await prisma.location.findMany({ where: { userId: NO_DATA_USER_ID } })
+  const home = homes[0]
+  assert(
+    homes.length === 1 &&
+      home?.name === 'Home' &&
+      home.order === 0 &&
+      home.isDefault &&
+      home.householdId === householdOfUser.get(NO_DATA_USER_ID),
+    `${NO_DATA_USER_ID}, who has no data, gets exactly one location: 'Home', order 0, isDefault, in their own household (read: ${homes.map((l) => `${l.name}/${l.order}/${l.isDefault}`).join(', ')})`,
+  )
+  assert(
+    (await prisma.location.count({ where: { name: 'Home' } })) === 1,
+    "no user who already had a location gets a 'Home' as well",
+  )
+
+  // ── Step 5: the seven tables. No null householdId; each row is in its owner's household ──
+  //
+  // Each table has at least one seeded row, so these checks cannot pass on an
+  // empty table. "Location" and "Item" have rows from several owners, so a
+  // backfill that wrote one household into every row fails on them. The join
+  // compares each row's household owner with the row's own "userId".
+  // $queryRawUnsafe because a table name cannot be a bound parameter; the
+  // names come from the constant list above, never from input.
+  for (const table of HOUSEHOLD_SCOPED_TABLES) {
+    const rows = await prisma.$queryRawUnsafe<{ total: bigint; nulls: bigint; wrong: bigint }[]>(`
+      SELECT count(*) AS total,
+             count(*) FILTER (WHERE t."householdId" IS NULL) AS nulls,
+             count(*) FILTER (WHERE h."ownerId" IS DISTINCT FROM t."userId") AS wrong
+      FROM "${table}" t
+      LEFT JOIN "Household" h ON h."id" = t."householdId"
+    `)
+    const r = rows[0]
+    assert(
+      r !== undefined && r.total > 0n && r.nulls === 0n && r.wrong === 0n,
+      `"${table}": every row has a householdId, and it is the household its userId owns (read: ${r?.total} rows, ${r?.nulls} null, ${r?.wrong} in the wrong household)`,
+    )
+  }
+
+  // ── The column itself: nullable text on the seven, absent on the four ──
+  for (const table of HOUSEHOLD_SCOPED_TABLES) {
+    const meta = await columnMetaOf(table, 'householdId')
+    assert(
+      meta?.dataType === 'text' && meta?.isNullable === 'YES',
+      `"${table}"."householdId" is nullable text until drop_user_scope (decision H16) (read: ${meta ? `${meta.dataType}, nullable=${meta.isNullable}` : 'column missing'})`,
+    )
+    assert(
+      (await columnNamesOf(table)).has('userId'),
+      `"${table}"."userId" is still there — add_households keeps it (decision H16)`,
+    )
+  }
+  for (const table of NOT_HOUSEHOLD_SCOPED_TABLES) {
+    assert(
+      !(await columnNamesOf(table)).has('householdId'),
+      `"${table}" has NO householdId — it is scoped through its location or keeps its userId`,
+    )
+  }
+
+  // ── Step 6: every location has its owner as organizer, and no one else ──
+  const locations = await prisma.location.findMany({ include: { members: true } })
+  const badLocations = locations.filter(
+    (l) =>
+      l.members.length !== 1 ||
+      l.members[0]?.userId !== l.userId ||
+      l.members[0]?.role !== 'organizer',
+  )
+  assert(
+    locations.length === allUserIds.length && badLocations.length === 0,
+    `each of the ${allUserIds.length} locations has exactly one LocationMember: its own userId, as organizer${badLocations.length ? ` (wrong: ${badLocations.map((l) => l.id).join(', ')})` : ''}`,
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 20261104000000 — households, part 2: constraints and the race guard
+// ══════════════════════════════════════════════════════════════════════
+//
+// These write rows, so main() calls this at the end. Each check uses users
+// and households it creates itself, except the owner-index check, which uses
+// user-a's household and a new user.
+async function assertHouseholdsConstraints(): Promise<void> {
+  console.log('add_households — constraints and the first sign-in race guard:')
+
+  // ── HouseholdMember_one_owner_key: one owner per household (decision H15) ──
+  //
+  // user-second has no row in user-a's household, so the primary key
+  // (householdId, userId) cannot be what rejects the first insert. Only the
+  // partial index can.
+  const householdA = await prisma.household.findFirstOrThrow({ where: { ownerId: NAMED_USER_ID } })
+  await prisma.user.create({ data: { id: 'user-second', displayName: 'Second' } })
+  let secondOwnerCode: string | undefined
+  try {
+    await prisma.householdMember.create({
+      data: { householdId: householdA.id, userId: 'user-second', role: 'owner' },
+    })
+  } catch (err) {
+    secondOwnerCode = err instanceof Prisma.PrismaClientKnownRequestError ? err.code : undefined
+  }
+  assert(
+    secondOwnerCode === 'P2002',
+    `a second owner row for one household is rejected with P2002 (HouseholdMember_one_owner_key) (read: ${secondOwnerCode})`,
+  )
+  // The other half: the index is PARTIAL. A unique index on "householdId"
+  // alone, or on ("householdId", "role"), would reject this second
+  // non-owner row too, or a third.
+  await prisma.householdMember.create({
+    data: { householdId: householdA.id, userId: 'user-second', role: 'manager' },
+  })
+  assert(
+    (await prisma.householdMember.count({ where: { householdId: householdA.id } })) === 2,
+    'a second member who is NOT an owner is allowed — the index covers only role owner',
+  )
+
+  // ── The first sign-in race guard (decision H1) ──
+  //
+  // Two separate PrismaClients, so two separate database connections. One
+  // client could run both transactions on one connection, one after the
+  // other, and then nothing would race.
+  //
+  // Transaction A runs the claim and stays open. Transaction B then runs the
+  // same claim. Postgres makes B wait for A's row lock. The script waits until
+  // it can SEE that B is waiting (a lock request not granted, in pg_locks),
+  // and only then lets A commit. When A commits, B re-checks its WHERE against
+  // the committed row and matches 0 rows.
+  //
+  // pg_locks is read, not pg_stat_activity: on a managed database the
+  // query text of other sessions can be hidden, but a lock that is not granted
+  // is always listed. Nothing else runs on the test database during this
+  // script, so any ungranted lock is B's.
+  const raceUserId = 'user-race'
+  await prisma.user.create({ data: { id: raceUserId, displayName: 'Race' } })
+  const clientA = new PrismaClient({ datasources: { db: { url: TEST_URL } } })
+  const clientB = new PrismaClient({ datasources: { db: { url: TEST_URL } } })
+  let releaseA: () => void = () => {}
+  try {
+    await Promise.all([clientA.$connect(), clientB.$connect()])
+    const aMayCommit = new Promise<void>((resolve) => {
+      releaseA = resolve
+    })
+    let reportClaimA: (count: number) => void = () => {}
+    const aClaimed = new Promise<number>((resolve) => {
+      reportClaimA = resolve
+    })
+    const txOptions = { maxWait: 10_000, timeout: 30_000 }
+
+    const txA = clientA.$transaction(async (tx) => {
+      const count = await tx.$executeRaw`
+        UPDATE "User" SET "householdSetupAt" = now()
+        WHERE "id" = ${raceUserId} AND "householdSetupAt" IS NULL`
+      reportClaimA(count)
+      await aMayCommit
+      return count
+    }, txOptions)
+    // txA cannot finish before releaseA() is called, so if it wins this race
+    // it failed, and the race passes its error on.
+    await Promise.race([aClaimed, txA])
+
+    let bSettled = false
+    const txB = clientB.$transaction(
+      async (tx) =>
+        tx.$executeRaw`
+          UPDATE "User" SET "householdSetupAt" = now()
+          WHERE "id" = ${raceUserId} AND "householdSetupAt" IS NULL`,
+      txOptions,
+    )
+    txB.then(
+      () => {
+        bSettled = true
+      },
+      () => {
+        bSettled = true
+      },
+    )
+
+    let bWaiting = false
+    for (let attempt = 0; attempt < 50 && !bWaiting && !bSettled; attempt++) {
+      const rows = await prisma.$queryRaw<{ n: bigint }[]>`
+        SELECT count(*) AS n FROM pg_locks WHERE NOT granted`
+      bWaiting = (rows[0]?.n ?? 0n) > 0n
+      if (!bWaiting) await new Promise((resolve) => setTimeout(resolve, 200))
+    }
+    assert(
+      bWaiting,
+      `the second claim WAITED for the first transaction's row lock, so the two really overlapped (bSettled before A committed: ${bSettled})`,
+    )
+
+    releaseA()
+    const [countA, countB] = await Promise.all([txA, txB])
+    assert(
+      countA === 1 && countB === 0,
+      `exactly one of two overlapping claims wins: the first updates 1 row, the second 0 (read: ${countA} and ${countB})`,
+    )
+    const raced = await prisma.user.findUniqueOrThrow({ where: { id: raceUserId } })
+    assert(raced.householdSetupAt !== null, 'the claimed user has householdSetupAt set')
+  } finally {
+    releaseA()
+    await Promise.all([clientA.$disconnect(), clientB.$disconnect()])
+  }
+
+  // ── Deleting a household deletes everything in it ──
+  //
+  // Every householdId foreign key is ON DELETE CASCADE. One existing foreign
+  // key is RESTRICT: "Tag_typeId_fkey". The migration adds the "Tag" foreign
+  // key before the "TagType" one so that tags are removed first; this check
+  // proves the order works. Nothing deletes a household until H3a task 3.10
+  // (/e2e/cleanup) and H6, so this is the first place it runs.
+  const cascadeUser = 'user-cascade'
+  await prisma.user.create({ data: { id: cascadeUser, displayName: 'Cascade' } })
+  const doomed = await prisma.household.create({
+    data: {
+      name: "Cascade's Household",
+      ownerId: cascadeUser,
+      members: { create: { userId: cascadeUser, role: 'owner' } },
+    },
+  })
+  const scope = { userId: cascadeUser, householdId: doomed.id }
+  const tagType = await prisma.tagType.create({ data: { name: 'Kind', color: 'red', ...scope } })
+  const tag = await prisma.tag.create({ data: { name: 'Dairy', typeId: tagType.id, ...scope } })
+  const item = await prisma.item.create({ data: { name: 'Butter', targetUnit: 'package', ...scope } })
+  await prisma.itemTag.create({ data: { itemId: item.id, tagId: tag.id } })
+  const vendor = await prisma.vendor.create({ data: { name: 'Shop', ...scope } })
+  const recipe = await prisma.recipe.create({ data: { name: 'Toast', ...scope } })
+  const shelf = await prisma.shelf.create({ data: { name: 'Top', type: 'manual', order: 0, itemIds: [], ...scope } })
+  const location = await prisma.location.create({
+    data: { name: 'Cellar', order: 0, ...scope, members: { create: { userId: cascadeUser, role: 'organizer' } } },
+  })
+  await prisma.itemStock.create({ data: { itemId: item.id, locationId: location.id } })
+
+  await prisma.household.delete({ where: { id: doomed.id } })
+  const left = {
+    tagType: await prisma.tagType.count({ where: { id: tagType.id } }),
+    tag: await prisma.tag.count({ where: { id: tag.id } }),
+    item: await prisma.item.count({ where: { id: item.id } }),
+    vendor: await prisma.vendor.count({ where: { id: vendor.id } }),
+    recipe: await prisma.recipe.count({ where: { id: recipe.id } }),
+    shelf: await prisma.shelf.count({ where: { id: shelf.id } }),
+    location: await prisma.location.count({ where: { id: location.id } }),
+    itemStock: await prisma.itemStock.count({ where: { locationId: location.id } }),
+    householdMember: await prisma.householdMember.count({ where: { householdId: doomed.id } }),
+    locationMember: await prisma.locationMember.count({ where: { locationId: location.id } }),
+  }
+  const survivors = Object.entries(left).filter(([, n]) => n !== 0)
+  assert(
+    survivors.length === 0,
+    `deleting a household deletes its rows in all seven tables, their stock, and both kinds of member row${survivors.length ? ` (left: ${survivors.map(([k, n]) => `${k}=${n}`).join(', ')})` : ''}`,
+  )
+  assert(
+    (await prisma.user.count({ where: { id: cascadeUser } })) === 1,
+    'the owner\'s "User" row survives — a household delete never deletes a person',
+  )
+}
+
 const SERVER_DIR = fileURLToPath(new URL('..', import.meta.url))
 
 // In apply order. Adding a later migration under test means adding it here.
@@ -266,7 +654,13 @@ const MIGRATIONS = [
   '20261004000000_drop_item_stock_state_columns',
   '20261008000000_add_item_note_and_wikidata_url',
   '20261031000000_add_user',
+  '20261104000000_add_households',
 ] as const
+
+// Applied on its own, in a second `migrate deploy`, after
+// seedUsersBeforeHouseholds. It must be the LAST entry above: every entry
+// before it is applied in the first deploy.
+const HOUSEHOLDS_MIGRATION = '20261104000000_add_households'
 
 const PARKED_ROOT = join(SERVER_DIR, '.migration-under-test')
 const migrationDir = (name: string) => join(SERVER_DIR, 'prisma/migrations', name)
@@ -338,33 +732,43 @@ async function main(): Promise<void> {
       stdio: 'inherit',
     })
     await seedFixture()
+
+    // Apply migrations 1-6 first, then seed the "User" rows that only exist
+    // once add_user has run. See seedUsersBeforeHouseholds for why.
+    console.log(`Applying every migration under test except ${HOUSEHOLDS_MIGRATION}...`)
+    for (const name of MIGRATIONS) {
+      if (name !== HOUSEHOLDS_MIGRATION) renameSync(parkedDir(name), migrationDir(name))
+    }
+    execSync('pnpm exec prisma migrate deploy', { cwd: SERVER_DIR, env, stdio: 'inherit' })
+    await seedUsersBeforeHouseholds()
   } finally {
     restoreIfParked()
     parked = false
   }
 
-  console.log('Applying the migrations under test...')
+  console.log(`Applying ${HOUSEHOLDS_MIGRATION}...`)
   execSync('pnpm exec prisma migrate deploy', { cwd: SERVER_DIR, env, stdio: 'inherit' })
 
   console.log('Asserting...')
 
-  const EXPECTED_USER_IDS = [
-    'user-a', // Item
-    'user-b', // Item
-    'user-c', // TagType
-    'user-d', // Vendor
-    'user-e', // Recipe
-    'user-f', // Shelf
-    'user-g', // Tag
-    'user-h', // CartItem
-    'user-i', // Cart
-    'user-j', // InventoryLog
-    'user-k', // Cart + CartItem — owns the shared 'no-vendor' row (PR 3b)
-    'user-l', // CartItem only — two items on the shared row (PR 3b)
-    'user-m', // Cart + CartItem — the control, nothing on the shared row (PR 3b)
-  ] as const
+  // Runs FIRST, before the older blocks below, because those blocks write rows
+  // the backfill never saw: a 'Garage' location and an "Item" with no
+  // householdId, and they delete three locations. Read now, the database is
+  // exactly what add_households left.
+  await assertHouseholdsBackfill()
 
-  const locations = await prisma.location.findMany({ orderBy: { userId: 'asc' } })
+  // add_households (H3a) adds exactly ONE location: user-empty's 'Home', for
+  // the "User" row with no data. That row is not PR 1's work, so it is set
+  // aside here, and the block below checks PR 1's backfill as before. The
+  // count check first makes sure it is the only row set aside: a stray extra
+  // location for any of the thirteen would still fail the assertions below.
+  // assertHouseholdsBackfill checks the 'Home' row itself.
+  const allLocations = await prisma.location.findMany({ orderBy: { userId: 'asc' } })
+  const locations = allLocations.filter((l) => l.userId !== NO_DATA_USER_ID)
+  assert(
+    allLocations.length === locations.length + 1,
+    `exactly one Location belongs to ${NO_DATA_USER_ID}, the user add_households gave a 'Home' (read: ${allLocations.length - locations.length})`,
+  )
   assert(
     locations.length === EXPECTED_USER_IDS.length,
     `one Location per user across all ${EXPECTED_USER_IDS.length} users (all nine union arms plus Item)`,
@@ -831,6 +1235,8 @@ async function main(): Promise<void> {
     duplicateUserCode === 'P2002',
     'a second User with the same Clerk id is rejected with P2002 (User_pkey) — the race guard for first sign-in',
   )
+
+  await assertHouseholdsConstraints()
 
   console.log('\nMigration verified.')
 }

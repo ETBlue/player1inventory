@@ -30,7 +30,7 @@
 //     `'key' in data` is wrong.
 //   - It never invents a timestamp except `createdAt` (`@default(now())`, on
 //     create when not given) and `updatedAt` (`@updatedAt`, on every create
-//     and update). `lastSeenAt` and `deletedAt` stay `null` until a payload
+//     and update). `lastSeenAt`, `deletedAt` and `householdSetupAt` stay `null` until a payload
 //     writes them, so a test can see a missing write.
 //   - Rows are returned as COPIES. A caller that changes a returned row does
 //     not change the store, the same as with a real database.
@@ -156,6 +156,9 @@ export function createUserFake(rows: UserRow[] = []) {
       email: null,
       lastSeenAt: null,
       deletedAt: null,
+      // Added by add_households (H3a). Nullable with no default, so a new
+      // row starts null. Task 3.4 models its claim update.
+      householdSetupAt: null,
       createdAt: now,
       ...stripUndefined(data),
       // @updatedAt: Prisma sets it on create too.

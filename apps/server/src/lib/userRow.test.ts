@@ -140,6 +140,7 @@ function storedRow(id: string, extra: Partial<UserRow> = {}): UserRow {
     email: 'stored@example.com',
     lastSeenAt: null,
     deletedAt: null,
+    householdSetupAt: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     ...extra,

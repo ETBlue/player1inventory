@@ -69,7 +69,24 @@ function clientProperty(modelName: string): string {
 }
 
 const schemaSource = read('../../prisma/schema.prisma')
-const userOwnedModels = parseUserOwnedModels(schemaSource)
+const parsedUserIdModels = parseUserOwnedModels(schemaSource)
+
+// Two models carry a `userId` that does not mean "this person owns the row".
+// Households H3a (task 3.3) added them. Their `userId` names a MEMBER, and
+// what each purge path does with member rows is a households decision:
+//
+//   - `/e2e/cleanup` must delete them before the `User` row, because their
+//     `user` foreign key is RESTRICT.
+//   - `clearAllData` clears a household, which keeps its members.
+//   - `purgeUserData` is removed.
+//
+// Task 3.10 makes those changes, and must then remove this list. Until then
+// the coverage loop below skips these two, and the parser test checks that
+// both are still found, so this list cannot go stale without failing.
+const MEMBER_MODELS_PENDING_TASK_3_10 = ['HouseholdMember', 'LocationMember'] as const
+const userOwnedModels = parsedUserIdModels.filter(
+  (m) => !(MEMBER_MODELS_PENDING_TASK_3_10 as readonly string[]).includes(m),
+)
 
 // ─── The filter form (issue #320) ────────────────────────────────────────────
 //
@@ -330,6 +347,9 @@ describe('purge coverage against prisma/schema.prisma', () => {
       'Location',
     ])
     expect(userOwnedModels.length).toBe(10)
+    // And the two member models are found too, and set aside on purpose (see
+    // MEMBER_MODELS_PENDING_TASK_3_10).
+    expect(parsedUserIdModels).toEqual([...userOwnedModels, ...MEMBER_MODELS_PENDING_TASK_3_10])
   })
 
   it('knows about all three purge paths', () => {

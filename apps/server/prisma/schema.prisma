@@ -34,39 +34,54 @@ enum TagColor {
 }
 
 model TagType {
-  id       String   @id @default(cuid())
-  name     String
-  color    TagColor
-  userId   String
+  id          String   @id @default(cuid())
+  name        String
+  color       TagColor
+  userId      String
+  // Households H3a. Nullable until the drop_user_scope migration (task 3.14)
+  // sets it NOT NULL and drops userId. See the add_households migration.
+  householdId String?
 
-  tags Tag[]
+  household Household? @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  tags      Tag[]
 
   @@index([userId, name])
+  @@index([householdId, name])
 }
 
 model Tag {
-  id       String  @id @default(cuid())
-  name     String
-  typeId   String
-  userId   String
-  parentId String?
+  id          String  @id @default(cuid())
+  name        String
+  typeId      String
+  userId      String
+  // Households H3a. Nullable until the drop_user_scope migration (task 3.14)
+  // sets it NOT NULL and drops userId. See the add_households migration.
+  householdId String?
+  parentId    String?
 
-  type     TagType   @relation(fields: [typeId], references: [id])
-  parent   Tag?      @relation("TagHierarchy", fields: [parentId], references: [id])
-  children Tag[]     @relation("TagHierarchy")
-  items    ItemTag[]
+  household Household? @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  type      TagType    @relation(fields: [typeId], references: [id])
+  parent    Tag?       @relation("TagHierarchy", fields: [parentId], references: [id])
+  children  Tag[]      @relation("TagHierarchy")
+  items     ItemTag[]
 
   @@index([userId, typeId])
+  @@index([householdId, typeId])
 }
 
 model Vendor {
-  id       String  @id @default(cuid())
-  name     String
-  userId   String
+  id          String  @id @default(cuid())
+  name        String
+  userId      String
+  // Households H3a. Nullable until the drop_user_scope migration (task 3.14)
+  // sets it NOT NULL and drops userId. See the add_households migration.
+  householdId String?
 
-  items ItemVendor[]
+  household Household?   @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  items     ItemVendor[]
 
   @@index([userId, name])
+  @@index([householdId, name])
 }
 
 model Item {
@@ -86,9 +101,13 @@ model Item {
   expirationThreshold Int?
   expirationMode      ExpirationMode @default(disabled)
   userId              String
+  // Households H3a. Nullable until the drop_user_scope migration (task 3.14)
+  // sets it NOT NULL and drops userId. See the add_households migration.
+  householdId         String?
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
+  household     Household?     @relation(fields: [householdId], references: [id], onDelete: Cascade)
   tags          ItemTag[]
   vendors       ItemVendor[]
   recipes       RecipeItem[]
@@ -98,6 +117,8 @@ model Item {
 
   @@index([userId, updatedAt])
   @@index([userId, name])
+  @@index([householdId, updatedAt])
+  @@index([householdId, name])
 }
 
 model ItemTag {
@@ -125,10 +146,15 @@ model Recipe {
   name         String
   lastCookedAt DateTime?
   userId       String
+  // Households H3a. Nullable until the drop_user_scope migration (task 3.14)
+  // sets it NOT NULL and drops userId. See the add_households migration.
+  householdId  String?
 
-  items RecipeItem[]
+  household Household?   @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  items     RecipeItem[]
 
   @@index([userId, name])
+  @@index([householdId, name])
 }
 
 model RecipeItem {
@@ -224,37 +250,49 @@ model InventoryLog {
 }
 
 model Shelf {
-  id           String    @id @default(cuid())
+  id           String   @id @default(cuid())
   name         String
   type         String
   order        Int
   filterConfig Json?
   itemIds      String[]
   userId       String
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  // Households H3a. Nullable until the drop_user_scope migration (task 3.14)
+  // sets it NOT NULL and drops userId. See the add_households migration.
+  householdId  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  household Household? @relation(fields: [householdId], references: [id], onDelete: Cascade)
 
   @@index([userId, order])
+  @@index([householdId, order])
 }
 
 model Location {
-  id        String   @id @default(cuid())
-  name      String
-  order     Int
+  id          String   @id @default(cuid())
+  name        String
+  order       Int
   // Exactly one per user. NOT derivable from `order`: dnd-kit's `disabled`
   // stops the default row being dragged but not from being displaced by
   // another row dropped above it, so lowest-order is not stable.
   // A partial unique index enforces the invariant — see the migration.
-  isDefault Boolean  @default(false)
-  userId    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  isDefault   Boolean  @default(false)
+  userId      String
+  // Households H3a. Nullable until the drop_user_scope migration (task 3.14)
+  // sets it NOT NULL and drops userId. See the add_households migration.
+  householdId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
+  household     Household?       @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  members       LocationMember[]
   itemStocks    ItemStock[]
   inventoryLogs InventoryLog[]
   carts         Cart[]
 
   @@index([userId, order])
+  @@index([householdId, order])
 }
 
 // Per-(item × location) stock STATE. Configuration (units, packaging,
@@ -288,18 +326,112 @@ model ItemStock {
 // fills it (households H2); see
 // docs/global/permissions/2026-10-04-households-design.md.
 //
-// No relation to any other model yet. Every other model still names its owner
-// with a plain `userId` string. Households H3 adds the relations.
+// Households H3a adds the relations to Household, HouseholdMember and
+// LocationMember. The seven models that still carry a plain `userId` string
+// (Location and the six catalog models) have no relation to User: that column
+// is dropped in the drop_user_scope migration (task 3.14).
 model User {
-  // The Clerk user id. Also the race guard for first sign-in in H3: two
-  // concurrent first requests cannot both create this row.
-  id          String    @id
-  displayName String
+  // The Clerk user id. Since H2 the webhook and ensureUser create this row
+  // before first sign-in runs, so this key cannot be the first sign-in race
+  // guard. householdSetupAt below is (decision H1).
+  id               String    @id
+  displayName      String
   // Optional: a Clerk account may sign in by phone or username, and the
   // user.deleted event carries no email.
-  email       String?
-  lastSeenAt  DateTime?
-  deletedAt   DateTime?
+  email            String?
+  lastSeenAt       DateTime?
+  deletedAt        DateTime?
+  // The first sign-in claim (decision H1). Null means this person has never
+  // had a household set up. First sign-in runs
+  //   updateMany({ where: { id, householdSetupAt: null }, data: { householdSetupAt: now } })
+  // as the first statement of its transaction. A count of 1 means this request
+  // creates the household; 0 means another request already did. It also tells
+  // "never set up" apart from "left their household" (H5), so leaving does not
+  // make a new household.
+  householdSetupAt DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  // Households whose ownerId is this person. Named, because the relation from
+  // Household to User is not the only path between them: HouseholdMember joins
+  // them too. The name keeps the two apart for a reader.
+  ownedHouseholds      Household[]       @relation("HouseholdOwner")
+  householdMemberships HouseholdMember[]
+  locationMemberships  LocationMember[]
+}
+
+enum HouseholdRole {
+  owner
+  manager
+  member
+}
+
+enum LocationRole {
+  organizer
+  participant
+  viewer
+}
+
+// A group of people who share a catalog and locations. Households H3a. See
+// docs/global/permissions/2026-10-04-households-design.md.
+model Household {
+  id          String    @id @default(cuid())
+  name        String
+  // Mirrors the HouseholdMember row with role owner, and is written in the same
+  // transaction as that row (decision H15). The member row is the source of
+  // truth for rights. Null after the owner's account is deleted, until someone
+  // accepts the hand-over (H6).
+  ownerId     String?
+  owner       User?     @relation("HouseholdOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  ownerGoneAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  members   HouseholdMember[]
+  locations Location[]
+  items     Item[]
+  tags      Tag[]
+  tagTypes  TagType[]
+  vendors   Vendor[]
+  recipes   Recipe[]
+  shelves   Shelf[]
+}
+
+// A person's role in a household. The source of truth for household rights.
+// At most one owner row per household: the add_households migration creates
+// the partial unique index HouseholdMember_one_owner_key by hand, because
+// Prisma has no syntax for a partial index (decision H15).
+//
+// The `user` relation has no onDelete, so Prisma's default (Restrict) applies:
+// a User row that still has member rows cannot be deleted. Production never
+// deletes a User row (H2 sets deletedAt), so such a delete is a bug and should
+// fail loudly. /e2e/cleanup deletes the member rows first.
+model HouseholdMember {
+  householdId String
+  userId      String
+  role        HouseholdRole
+  joinedAt    DateTime      @default(now())
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@id([householdId, userId])
+  @@index([userId])
+}
+
+// A person's role on one location. It counts only while the person is also a
+// HouseholdMember of the location's household (decision H18). Postgres cannot
+// check that with a simple constraint, so requireLocationRole checks it.
+// No onDelete on `user`, for the same reason as HouseholdMember.
+model LocationMember {
+  locationId String
+  userId     String
+  role       LocationRole
+  createdAt  DateTime     @default(now())
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@id([locationId, userId])
+  @@index([userId])
 }
