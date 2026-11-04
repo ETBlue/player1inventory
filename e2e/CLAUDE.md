@@ -524,17 +524,17 @@ reconcile finds nothing to remove and creates every row the fixture lists. No ed
 loop was needed in 4b or in PR 5 — which is the whole argument for reading state back
 instead of predicting it.
 
-**The `cloud` project's `testMatch` is 27 files today** (`e2e/playwright.config.ts`,
-measured 2026-11-04), up from 13 on 2026-09-23. **Count the array rather than reusing that
-27** — it grows most weeks:
+**The `cloud` project's `testMatch` is 29 files today** (`e2e/playwright.config.ts`,
+measured 2026-11-04, after households H3a task 3.11), up from 13 on 2026-09-23. **Count the
+array rather than reusing that 29** — it grows most weeks:
 
 ```bash
 awk "/name: 'cloud'/,/name: 'pwa'/" e2e/playwright.config.ts | grep -c "spec\.ts'"
 ```
 
 The `awk` range matters: the file holds **three** such lists — `local`'s `testIgnore`,
-`cloud`'s `testMatch` and `pwa`'s `testMatch` — and a grep over the whole file counts all 36
-entries instead of the 27 that belong to `cloud`.
+`cloud`'s `testMatch` and `pwa`'s `testMatch` — and a grep over the whole file counts all 40
+entries instead of the 29 that belong to `cloud`.
 
 **The command this section used to give printed 0 from 2026-10-30.** It ended
 `| grep -m1 testMatch | grep -o "'\*\*/[^']*\.spec\.ts'" | wc -l`, so it only counted the
@@ -593,8 +593,8 @@ only". So in cloud its template test would write to IndexedDB, reach **zero** re
 still pass `await expect(page).toHaveURL('/')`. That is a test reporting as covered while
 covering nothing. The product gap is issue **#347**.
 
-The `local` project is 23 spec files: 31 files under `e2e/tests/` minus the 8 in its
-`testIgnore` (measured 2026-11-04).
+The `local` project is 23 spec files: 33 files under `e2e/tests/` minus the 10 in its
+`testIgnore` (measured 2026-11-04, after households H3a task 3.11).
 
 File 26 is `cloud-user-row.spec.ts`, added 2026-10-31 by households H2 task 2.7. It is
 cloud-only and has no browser, so it is also in `local`'s `testIgnore`. Its 3 tests act as
@@ -611,6 +611,41 @@ B's GraphQL, and A must be left with one new "Home". **It is the only real-SQL c
 2026-11-04: `tx.shelf.deleteMany({})` in `clearAllData` made it fail with
 `"shelves": Array []` where B's one shelf was expected. It cannot check a SHARED household:
 that needs a second member, which E2E can add only from task 3.11.
+
+Files 28 and 29 arrived on 2026-11-04 with households H3a task 3.11. Both are cloud-only,
+have no browser, and are in `local`'s `testIgnore`. Both put a second person into one
+household with `addHouseholdMember` (`e2e/helpers/cloudUsers.ts`), which calls the E2E-only
+route `POST /e2e/household-members` (`apps/server/src/lib/e2eHouseholds.ts`, decision H9).
+
+| File | Tests | What it proves on real SQL |
+|---|---|---|
+| `cloud-roles.spec.ts` | 3 | a household `member` cannot create a tag and a `manager` can; a location `viewer` can read stock but not change it and a `participant` can; a location with no role is `FORBIDDEN` for read and write |
+| `household-member-cleanup.spec.ts` | 2 | `/e2e/cleanup` with two people in one household, in both orders: the member's cleanup leaves the owner's household and every row in it (even rows the member wrote); the owner's cleanup takes the member's role rows with the household |
+
+**Use `addHouseholdMember` in this order, or it answers 409:**
+
+1. The OWNER sends one GraphQL request first. That request makes the household.
+2. Add the member BEFORE the member sends any GraphQL request. A request would make the
+   member a household of their own, and the route refuses a person who is already in a
+   household. (`ensureHousehold` reads a person's household with `findFirst` and no
+   `orderBy`, so a person in two households would get one of them at random.)
+
+The route sets the member's first sign-in claim (`User.householdSetupAt`). So after the
+owner's cleanup removes the member's row, the member's next request gets `NO_HOUSEHOLD`. It
+does NOT make them a new household. `household-member-cleanup.spec.ts` checks that.
+
+**Avoid carts in a spec with a second member** until H3b: `bootstrapCarts` gives the second
+member an empty cart list where the first member already made carts. Neither file makes a
+vendor or a cart.
+
+Proved by mutation on 2026-11-04, each against `--project=cloud` and undone from a copy:
+
+| Mutation | Red test |
+|---|---|
+| `requireLocationRole` ignores `role` (`lib/authz.ts`) | the viewer test, `Received promise resolved instead of rejected` |
+| `requireHouseholdRole` ignores `role` | the tag test, the same message |
+| `/e2e/cleanup` reads the user's member rows without `role: 'owner'` | member-first cleanup, 8 counts differ |
+| `/e2e/cleanup` deletes member rows by `{ userId }` only | owner-first cleanup, `householdMembers` 1 where 2 was expected |
 
 **Cloud test counts, measured, not quoted. Measure your own — do not subtract any number
 below.** The one-line command:
@@ -630,7 +665,8 @@ What the number has been, so you can see how fast it moves rather than reuse a f
 | 2026-10-08 | `feature/import-strategy-coverage` (cloud-parity PR C) | 108 |
 | 2026-10-12 | `feature/cloud-spec-coverage` (issue #323) | 121 |
 | 2026-10-31 | `feature/households-h2`, after `cloud-user-row.spec.ts` | 124 |
-| 2026-11-04 | `feature/households-h3a`, after `purge-two-households.spec.ts` | **125** |
+| 2026-11-04 | `feature/households-h3a`, after `purge-two-households.spec.ts` | 125 |
+| 2026-11-04 | `feature/households-h3a`, after task 3.11's two specs | **130** |
 
 Attribution for the steps that are known: 4b added 5 (1 for the leak spec, 4 because
 `import-export-cloud.spec.ts` went 2 → 6). Cloud-parity PR A added 1 to
