@@ -1216,6 +1216,78 @@ Two cautions:
   task 3.14). Any later step of the spec that acts as the member at a location fails with
   `FORBIDDEN`. That is today's behaviour, not a spec bug.
 
+**Done** in `11e48fe8` (the route) and `554ef090` (the specs). What a later task needs to know:
+
+- **`POST /e2e/household-members`** (`lib/e2eHouseholds.ts`), mounted inside
+  `if (E2E_TEST_MODE)`. Body `{ ownerUserId, memberUserId, householdRole, locations }`. One
+  interactive transaction: find the owner's `owner` row; check every location is in that
+  household; upsert the member's `User` row (named by its id); set the member's first
+  sign-in claim `householdSetupAt` if it is null; refuse if the member is already in a
+  household; write the `HouseholdMember` row, then the `LocationMember` rows. Answers
+  `{ ok: true, householdId }`.
+- **What it refuses:** 400 for a bad body, an unknown role, `householdRole: 'owner'` (one
+  owner per household, decision H15; hand-over is H6), the owner as the member, a location
+  listed twice, or a location outside the owner's household (a made-up id too). 409 when the
+  owner owns no household, or when the member is already in a household. A refusal writes
+  nothing.
+- **The plan assumed the member had their own household. The route refuses that.** The
+  caution above says "the member already has one (their own first sign-in "Home")". But
+  `ensureHousehold` reads a person's household with `householdMember.findFirst({ where:
+  { userId } })` and no `orderBy`, so a person in two households would get one of them at
+  random, and nothing before H5 is built for two households. So the member must be added
+  BEFORE their first GraphQL request, and the route sets their claim so that request makes
+  no household of its own. Result: the member has no `isDefault` location at all, so the
+  first caution cannot happen. **H5 (invites) must decide what happens to the household a
+  person already has when they accept an invite.**
+- **Decision H18:** a location role without a household role cannot be written here.
+  `householdRole` is required, and the household row is written first, in the same
+  transaction. There is no separate "refuse" branch because the state cannot be reached.
+- **After the owner's cleanup removes the member's row, the member gets `NO_HOUSEHOLD`**,
+  not a new household, because the claim is set. `household-member-cleanup.spec.ts`
+  checks it. This is the first real-SQL test that reaches `NO_HOUSEHOLD`.
+- **Helper:** `addHouseholdMember(request, { ownerUserId, memberUserId, householdRole,
+  locations })` in `e2e/helpers/cloudUsers.ts`. Returns the household id.
+- **Specs, both cloud-only with no browser** (in `cloud`'s `testMatch` and `local`'s
+  `testIgnore`):
+  - `cloud-roles.spec.ts`, 3 tests: catalog (`member` refused, `manager` writes), location
+    (`viewer` reads but cannot write, `participant` writes), no role (`FORBIDDEN` for read
+    and write; the member's `locations` list leaves that location out).
+  - `household-member-cleanup.spec.ts`, 2 tests: the two-member cleanup from the 3.10
+    review, both orders. Put in its own file because its subject is the cleanup route,
+    not roles.
+  - Neither makes a vendor or a cart (see "Owed to H3b").
+- **The route guard:** `webhookRouteOrder.test.ts` names the new route and its handler.
+  Moving the route below the block's closing brace turned 4 of its tests red.
+- **Mutation checks, all red and all undone from copies:** unit: no claim (3 tests), no
+  location check (2), no "already in a household" check (2), the owner read without
+  `role: 'owner'` (1). One mutation stayed green and showed dead code: writing the claim in
+  the upsert's `create` as well as in the `updateMany`; the `create` copy was removed. E2E,
+  `--project=cloud`: `requireLocationRole` ignoring `role` turned the viewer test red
+  (`Received promise resolved instead of rejected`); `requireHouseholdRole` ignoring `role`
+  turned the tag test red; the cleanup's owner read without `role: 'owner'` turned the
+  member-first test red (8 counts); the cleanup's `householdMember` delete by `{ userId }`
+  only turned the owner-first test red (`householdMembers` 1, expected 2).
+- **E2E runs:** the two new specs plus `purge-two-households.spec.ts` and
+  `cleanup-endpoint.spec.ts`, `--project=cloud`: 7 passed in 2.1m, and 7 passed in 2.0m after
+  every mutation was undone. Load average 2.7 to 7.0. `cloud` collects 130 tests in 29 files
+  (was 125 in 27); `local` 183 in 23 (unchanged).
+- Server tests 1107 → 1139 (45 → 46 files). Web 2474 / 265 and spec 70, unchanged.
+
+**Still open after this task:**
+
+- **The route and a member's first request at the same moment are not tested.** By
+  reasoning, the `User` row lock covers it, as for decision H1: when the route's
+  `updateMany` sets the claim, it holds the lock until it commits, so a first sign-in waits,
+  matches 0 rows, and then reads the committed membership. And the route reads "already in
+  a household" after its own claim, so a first sign-in that won earlier is seen and
+  refused. E2E sends one request at a time, so neither order is reached, and no real-SQL
+  test runs them together.
+- **Not every resolver is role-checked on real SQL.** One read and one write per level.
+  `organizer`-only writes (rename, delete, reorder a location) and every cart resolver have
+  no two-person real-SQL test.
+- **Root `CLAUDE.md` does not list the new route** next to H2's E2E-only routes, and its
+  count of cloud spec files ("26 of the 30") is stale. Task 3.16 owns the root docs.
+
 ## Task 3.12 — The web app stops using `isDefault` in cloud
 
 **Files:** `apps/web/src/apollo/operations/locations.graphql` (4 operations select
