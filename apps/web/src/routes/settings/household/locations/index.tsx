@@ -3,6 +3,7 @@ import { ArrowLeft, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { OfflineWriteError } from '@/apollo/offlineWriteLink'
 import { LocationList } from '@/components/location/LocationList'
 import { AddNameDialog } from '@/components/shared/AddNameDialog'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -53,11 +54,16 @@ export function LocationSettingsPage() {
   // A failed delete must say so. In cloud the server refuses to delete a
   // household's last location (`LAST_LOCATION`, households decision H13):
   // there is no default location to keep, so this is the only thing that
-  // stops a household from having none. Any other failure (no role, offline,
-  // a local Dexie error) gets a general message rather than nothing.
+  // stops a household from having none. Any other failure (no role, a local
+  // Dexie error) gets a general message rather than nothing.
+  //
+  // Offline is the exception. `offlineWriteLink` has already shown its own
+  // "You are offline" toast before it rejects with `OfflineWriteError`, so a
+  // second, general toast here would only repeat the same failure.
   const handleDelete = (location: Location) => {
     deleteLocation.mutate(location.id, {
       onError: (err: unknown) => {
+        if (err instanceof OfflineWriteError) return
         toast.error(
           hasGraphQLErrorCode(err, 'LAST_LOCATION')
             ? t('settings.locations.deleteLastError')

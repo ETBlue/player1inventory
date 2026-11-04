@@ -146,7 +146,8 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
 
   // Once the location list has loaded, an active id matching none of its
   // entries is stale — a deleted location, or an id belonging to the other data
-  // mode — and falls back to the user's default location.
+  // mode — and falls back to the first location in cloud, the default in
+  // local.
   //
   // NO id is special-cased as always-valid. This effect used to return early
   // when the active id equalled `DEFAULT_LOCATION_ID`, which made the local

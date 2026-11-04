@@ -3157,6 +3157,27 @@ describe('buildLocationRemap / applyLocationRemap — the remap rule', () => {
     expect(buildLocationRemap(payload, 'cloud_default').size).toBe(0)
   })
 
+  it('nothing is remapped when the payload default is already a destination location', () => {
+    // Given a backup whose default is Home, restored into a household that
+    // still has Home but whose FIRST location is now Attic
+    const payload = emptyPayload({
+      locations: [
+        { id: 'cloud_home', name: 'Home', order: 0 },
+        { id: 'cloud_garage', name: 'Garage', order: 1 },
+      ],
+    })
+
+    // When the remap is built with every destination id
+    const remap = buildLocationRemap(
+      payload,
+      'cloud_attic',
+      new Set(['cloud_attic', 'cloud_home', 'cloud_garage']),
+    )
+
+    // Then Home stays Home
+    expect(remap.size).toBe(0)
+  })
+
   it('a pre-v18 backup with no isDefault key treats the local id as its default', () => {
     // Given a backup written before Dexie v18 added `Location.isDefault`
     const payload = emptyPayload({
@@ -3387,6 +3408,85 @@ describe('importCloudData — every location travels to cloud (PR 4b task 3)', (
     expect(sentOf(client, 'locations').map((l) => l.id)).toContain(
       'cloud_first',
     )
+  })
+
+  // Households task 3.12 review, finding 1. The destination "default" is now
+  // the FIRST location by `order`, which can be a location the backup does
+  // not contain. Two payload shapes reach the same remap, so both are run: a
+  // backup made since task 3.12 (no `isDefault` key, so its default is the
+  // lowest `order`) and an older one with `isDefault: true` on Home.
+  it.each([
+    [
+      'a backup with no isDefault key',
+      [
+        { id: 'cloud_home', name: 'Home', order: 0 },
+        { id: 'cloud_garage', name: 'Garage', order: 1 },
+      ],
+    ],
+    [
+      'an older backup with isDefault on Home',
+      [
+        { id: 'cloud_home', name: 'Home', order: 0, isDefault: true },
+        { id: 'cloud_garage', name: 'Garage', order: 1, isDefault: false },
+      ],
+    ],
+  ])('user restoring %s into the same household keeps Home’s data on Home after a new location moved to the top', async (_label, locations) => {
+    // Given a backup of Home (order 0) and Garage, with stock, a cart and a
+    // log at each
+    const payload = emptyPayload({
+      items: [makeItem('item-1', 'Milk')],
+      locations,
+      itemStocks: [
+        {
+          id: 's-home',
+          itemId: 'item-1',
+          locationId: 'cloud_home',
+          targetQuantity: 4,
+          refillThreshold: 1,
+          packedQuantity: 3,
+          unpackedQuantity: 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+      shoppingCarts: [
+        { id: 'cloud_home:vendor_1' },
+        { id: 'cloud_garage:vendor_1' },
+      ],
+      cartItems: [makeCartItem('ci-1', 'cloud_home:vendor_1', 'item-1')],
+      inventoryLogs: [
+        { ...makeInventoryLog('log-home'), locationId: 'cloud_home' },
+      ],
+    })
+    // And the same household today: Attic was added later and dragged to the
+    // top, so it is the first location the server returns
+    const client = makeCloudClient([
+      { id: 'cloud_attic', name: 'Attic', order: 0 },
+      { id: 'cloud_home', name: 'Home', order: 1 },
+      { id: 'cloud_garage', name: 'Garage', order: 2 },
+    ])
+
+    // When the backup is restored without clearing
+    await importCloudData(payload, 'replace', client as never)
+
+    // Then every Home row still names Home, and nothing names Attic
+    expect(sentOf(client, 'locations').map((l) => [l.id, l.name])).toEqual([
+      ['cloud_home', 'Home'],
+      ['cloud_garage', 'Garage'],
+    ])
+    expect(sentOf(client, 'itemStocks').map((s) => s.locationId)).toEqual([
+      'cloud_home',
+    ])
+    expect(sentOf(client, 'carts').map((c) => c.id)).toEqual([
+      'cloud_home:vendor_1',
+      'cloud_garage:vendor_1',
+    ])
+    expect(sentOf(client, 'cartItems').map((c) => c.cartId)).toEqual([
+      'cloud_home:vendor_1',
+    ])
+    expect(sentOf(client, 'logs').map((l) => l.locationId)).toEqual([
+      'cloud_home',
+    ])
   })
 
   // Replaces the deleted `inventory logs from other locations are not sent`.

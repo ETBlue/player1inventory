@@ -19,7 +19,8 @@ Location CRUD at `/settings/household/locations`. A **Location** is a place the 
 | Error | Toast (`settings.locations.*`) |
 |---|---|
 | `LAST_LOCATION` | `deleteLastError`: "You cannot delete your last location. Add another location first." |
-| anything else (another code, offline, a Dexie error) | `deleteError`: "Could not delete this location. Please try again." |
+| `OfflineWriteError` (cloud, no network) | none from the page. `offlineWriteLink` (`src/apollo/offlineWriteLink.ts`) has already shown `pwa.writeBlocked` before it rejects, so the page returns early instead of adding a second toast |
+| anything else (another code such as `FORBIDDEN`, a Dexie error) | `deleteError`: "Could not delete this location. Please try again." |
 
 Before task 3.12 the page called `deleteLocation.mutate(location.id)` with no `onError`, so a refused delete showed nothing.
 
@@ -53,4 +54,4 @@ Global `Item`s are **not** touched — an item stocked only in the deleted locat
 
 **i18n**: `settings.locations.*` in `src/i18n/locales/{en,tw}.json`.
 
-**Tests**: `src/routes/settings/household/locations/index.test.tsx` (route, local), `index.cloud.test.tsx` (route, cloud: the `LAST_LOCATION` toast and the general one), `index.stories.tsx` + `index.stories.test.tsx` (stories + smoke), location operations/cascade in `src/db/operations.test.ts`, E2E in `e2e/tests/location-switcher.spec.ts` and `e2e/tests/settings/locations.spec.ts`.
+**Tests**: `src/routes/settings/household/locations/index.test.tsx` (route, local), `index.cloud.test.tsx` (route, cloud: the `LAST_LOCATION` toast, the general one, and no second toast when offline), `index.stories.tsx` + `index.stories.test.tsx` (stories + smoke), location operations/cascade in `src/db/operations.test.ts`, E2E in `e2e/tests/location-switcher.spec.ts` and `e2e/tests/settings/locations.spec.ts`.

@@ -458,15 +458,41 @@ function findPayloadDefaultLocationId(payload: ExportPayload): string | null {
 
 // Build the payload-id -> destination-id map. It holds AT MOST ONE
 // non-identity entry, by design; any id absent from the map is kept verbatim.
+//
+// `destinationLocationIds` is EVERY location id the destination holds now, not
+// only its default. When the payload's default is one of them, nothing is
+// remapped: the backup is going back into the household it came from, and its
+// default location still exists there under its own id.
+//
+// Why this matters since households task 3.12: in cloud the "destination
+// default" is the household's FIRST location by `order`, and that can be a
+// location the backup does not contain. Back up a household with Home (order
+// 0) and Garage, later add Attic and drag it to the top, then restore with
+// `skip` or `replace`. Without this check the remap is Home -> Attic, so
+// Home's stock, carts and logs land under Attic, and with `replace` Attic is
+// renamed "Home". Before task 3.12 the destination default was the
+// `isDefault` row, which had the backup's default id, so the remap was the
+// identity and this could not happen.
+//
+// A FIRST copy between modes or accounts is unchanged: there the payload's
+// default id is not in the destination, so it still lands on the destination
+// default. After a `clear` the destination holds only the new "Home", so the
+// same is true.
+//
+// The local side passes no set. Its destination default is always
+// DEFAULT_LOCATION_ID, and a local backup always flags that same id, so a
+// local -> local restore is already the identity.
 export function buildLocationRemap(
   payload: ExportPayload,
   destinationDefaultLocationId: string | null,
+  destinationLocationIds: ReadonlySet<string> = new Set(),
 ): Map<string, string> {
   const remap = new Map<string, string>()
   if (destinationDefaultLocationId === null) return remap
   const payloadDefaultLocationId = findPayloadDefaultLocationId(payload)
   if (payloadDefaultLocationId === null) return remap
   if (payloadDefaultLocationId === destinationDefaultLocationId) return remap
+  if (destinationLocationIds.has(payloadDefaultLocationId)) return remap
 
   // The destination's default id is already held by a DIFFERENT row in this
   // payload. Remapping would give two payload rows the same id, and the write
@@ -573,9 +599,12 @@ export function applyLocationRemap(
 // uses it. PR 4a shipped exactly that bug — a location id that was valid when
 // read and gone when used — and it cost a full E2E gate run to find, because
 // no test fake models the deletion.
+//
+// It also returns EVERY location id the household holds, for the
+// same-household check in `buildLocationRemap`.
 async function fetchCloudDefaultLocationId(
   client: ApolloClient,
-): Promise<string | null> {
+): Promise<{ firstId: string | null; ids: Set<string> }> {
   const result = await client.query<GetLocationsQuery>({
     query: GetLocationsDocument,
     fetchPolicy: 'network-only',
@@ -584,7 +613,10 @@ async function fetchCloudDefaultLocationId(
   // "destination default" is the FIRST location. The server returns the list
   // by `order`. After a clear that is the new "Home", the only location left.
   const locations = result.data?.locations ?? []
-  return locations[0]?.id ?? null
+  return {
+    firstId: locations[0]?.id ?? null,
+    ids: new Set(locations.map((location) => location.id)),
+  }
 }
 
 // A PRE-v15 backup carries its stock INLINE on each item, has no `itemStocks`
@@ -652,14 +684,11 @@ async function prepareCloudPayload(
   payload: ExportPayload,
   client: ApolloClient,
 ): Promise<ExportPayload> {
-  const destinationDefaultLocationId = await fetchCloudDefaultLocationId(client)
-  const upgraded = upgradeLegacyPayloadForCloud(
-    payload,
-    destinationDefaultLocationId,
-  )
+  const destination = await fetchCloudDefaultLocationId(client)
+  const upgraded = upgradeLegacyPayloadForCloud(payload, destination.firstId)
   return applyLocationRemap(
     upgraded,
-    buildLocationRemap(upgraded, destinationDefaultLocationId),
+    buildLocationRemap(upgraded, destination.firstId, destination.ids),
   )
 }
 

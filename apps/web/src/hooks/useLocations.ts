@@ -271,7 +271,8 @@ export function useDeleteLocation() {
   // pager pages over `useLocations()`, which this list does refetch, so a stale
   // `ItemStocksForItem` row for a deleted location has no page to render on.
   // Deleting the ACTIVE location additionally moves `activeLocationId` to the
-  // default (`useActiveLocation`), which changes `PantryData`'s variables and
+  // first location in cloud, the default in local (`useActiveLocation`),
+  // which changes `PantryData`'s variables and
   // fetches afresh. Recorded rather than assumed — if a surface ever reads
   // stock across locations without consulting the location list, its refetch
   // belongs here.

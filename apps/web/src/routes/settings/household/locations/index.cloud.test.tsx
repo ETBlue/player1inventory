@@ -7,7 +7,9 @@ import {
 } from '@tanstack/react-router'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { OfflineWriteError } from '@/apollo/offlineWriteLink'
 import { activeLocationStorageKey } from '@/hooks/useActiveLocation'
 import { routeTree } from '@/routeTree.gen'
 import { CLOUD_LOCATIONS, cloudLocation, LOC_A } from '@/test/cloudFixtures'
@@ -67,6 +69,7 @@ function serverRefusal(code: string, message: string) {
 const LAST_LOCATION_MESSAGE =
   'You cannot delete your last location. Add another location first.'
 const GENERAL_MESSAGE = 'Could not delete this location. Please try again.'
+const OFFLINE_MESSAGE = 'You are offline. Changes cannot be saved right now.'
 
 describe('Settings locations page — cloud mode', () => {
   let queryClient: QueryClient
@@ -151,5 +154,26 @@ describe('Settings locations page — cloud mode', () => {
     // Then a general failure message is shown, not the last-location one
     expect(await screen.findByText(GENERAL_MESSAGE)).toBeInTheDocument()
     expect(screen.queryByText(LAST_LOCATION_MESSAGE)).not.toBeInTheDocument()
+  })
+
+  it('user deleting a location while offline sees only the offline message', async () => {
+    // Given two locations, and no network. The mock does what
+    // `offlineWriteLink` does: it shows its own toast, then rejects with
+    // `OfflineWriteError`.
+    mockLocations.mockReturnValue(CLOUD_LOCATIONS)
+    mockDeleteLocation.mockImplementation(async () => {
+      toast.error(OFFLINE_MESSAGE)
+      throw new OfflineWriteError()
+    })
+    renderPage()
+
+    // When the user deletes the second location
+    await deleteLocationNamed('Cloud Garage')
+
+    // Then the offline message is shown
+    expect(await screen.findByText(OFFLINE_MESSAGE)).toBeInTheDocument()
+    expect(mockDeleteLocation).toHaveBeenCalledTimes(1)
+    // And the page adds no second, general toast for the same failure
+    expect(screen.queryByText(GENERAL_MESSAGE)).not.toBeInTheDocument()
   })
 })

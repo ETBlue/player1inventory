@@ -76,7 +76,7 @@ export function usePostLoginMigration({ isLoaded, isSignedIn }: MigrationAuth) {
   // Be careful about WHY this half survives. It is NOT what feeds the remap:
   // `importCloudData` reads the destination's default itself, with its own
   // `network-only` GetLocations query (`importData.ts`,
-  // `fetchCloudDefaultLocationId` → `remapPayloadForCloud`), on every
+  // `fetchCloudDefaultLocationId` → `prepareCloudPayload`), on every
   // strategy. So the copy cannot map the payload's default onto nothing even
   // with no gate at all. What this gate buys is ordering: the copy is one-shot
   // and destructive on the cloud side, and `clear` deletes every Location row
