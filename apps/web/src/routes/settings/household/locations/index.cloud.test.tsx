@@ -57,6 +57,9 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     useGetTagsQuery: () => emptyQuery,
     useGetTagTypesQuery: () => emptyQuery,
     useGetVendorsQuery: () => emptyQuery,
+    // The household sidebar heading reads the household name
+    // (`HouseholdLabel`).
+    useGetHouseholdQuery: () => emptyQuery,
   }
 })
 

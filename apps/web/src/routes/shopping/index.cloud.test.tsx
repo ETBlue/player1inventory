@@ -68,6 +68,8 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     useReorderLocationsMutation: mutationStub,
     // `ActiveLocationProvider` calls this on every render (Rules of Hooks).
     useBootstrapCartsMutation: mutationStub,
+    // The sidebar's 🏠 entry reads the household name (`HouseholdLabel`).
+    useGetHouseholdQuery: () => emptyQuery,
     usePantryDataQuery: () => mockUsePantryDataQuery(),
     useGetVendorsQuery: () => mockUseGetVendorsQuery(),
     useAllCartsQuery: () => mockUseAllCartsQuery(),

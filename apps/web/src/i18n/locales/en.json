@@ -473,6 +473,14 @@
       "general": {
         "label": "General",
         "description": "Export and import your data"
+      },
+      "name": {
+        "label": "Household name",
+        "ownerOnly": "Only the household owner can change the name.",
+        "saved": "Household name saved",
+        "forbiddenError": "Only the household owner can rename the household.",
+        "invalidError": "Enter a name of 1 to {{max}} characters.",
+        "saveError": "Could not save the household name. Please try again."
       }
     },
     "user": {

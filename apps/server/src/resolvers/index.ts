@@ -9,6 +9,7 @@ import { recipeResolvers } from './recipe.resolver.js'
 import { tagResolvers } from './tag.resolver.js'
 import { vendorResolvers } from './vendor.resolver.js'
 import { shelfResolvers } from './shelf.resolver.js'
+import { householdResolvers } from './household.resolver.js'
 
 const resolversObject: Resolvers = {
   Query: {
@@ -22,6 +23,7 @@ const resolversObject: Resolvers = {
     ...shelfResolvers.Query,
     ...locationResolvers.Query,
     ...itemStockResolvers.Query,
+    ...householdResolvers.Query,
   },
   Mutation: {
     ...itemResolvers.Mutation,
@@ -34,6 +36,7 @@ const resolversObject: Resolvers = {
     ...shelfResolvers.Mutation,
     ...locationResolvers.Mutation,
     ...itemStockResolvers.Mutation,
+    ...householdResolvers.Mutation,
   },
   Recipe: recipeResolvers.Recipe,
   InventoryLog: inventoryLogResolvers.InventoryLog,

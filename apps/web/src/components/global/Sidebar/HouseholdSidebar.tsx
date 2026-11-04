@@ -9,6 +9,7 @@ import {
   Tags,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { HouseholdLabel } from '@/components/settings/HouseholdLabel'
 import { Button } from '@/components/ui/button'
 import { lastAppPage } from '@/lib/layoutRules'
 import { loadNavigationHistory } from '@/lib/sessionStorage'
@@ -85,7 +86,11 @@ export function HouseholdSidebar() {
           {t('navigation.back')}
         </Button>
       </div>
-      <h2 className="px-5 py-3">{t('settings.household.title')}</h2>
+      {/* The household's name in cloud mode, "My data" in local mode. A long
+          name wraps instead of widening the 224px column. */}
+      <h2 className="px-5 py-3 break-words">
+        <HouseholdLabel />
+      </h2>
       <div className="flex flex-col gap-1 px-2">
         {householdLinks.map(({ to, labelKey, icon: Icon, exact }) => (
           <Link

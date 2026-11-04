@@ -10,6 +10,7 @@ import {
   User,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { HouseholdLabel } from '@/components/settings/HouseholdLabel'
 import { SettingsNavCard } from '@/components/settings/SettingsNavCard'
 import {
   UserLabel,
@@ -53,7 +54,11 @@ function SettingsAccordion() {
             <AccordionTrigger className="px-4">
               <span className="flex items-center gap-4">
                 <Home className="h-5 w-5 text-foreground-muted shrink-0" />
-                {t('settings.household.title')}
+                {/* The household's name in cloud mode, "My data" in local
+                    mode. The desktop 🏠 link uses the same component. */}
+                <span className="min-w-0 break-words">
+                  <HouseholdLabel />
+                </span>
               </span>
             </AccordionTrigger>
             <AccordionContent className="p-0 space-y-px">

@@ -7,8 +7,9 @@ import {
   User,
   Warehouse,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { HouseholdLabel } from '@/components/settings/HouseholdLabel'
 import { UserLabel } from '@/components/settings/UserSettingsPanel'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { useIsDesktop } from '@/hooks/useIsDesktop'
@@ -26,9 +27,9 @@ const navRoutes = [
   { to: '/cooking', labelKey: 'navigation.cooking', icon: CookingPot },
 ] as const
 
-// 🏠 "My data" in both modes until H3 gives households a name (plan P3).
-// The 👤 user entry below it is a button, not a link: the user view has no
-// route.
+// 🏠 The household's name in cloud mode, "My data" in local mode
+// (`HouseholdLabel`, households H3a task 3.13). The 👤 user entry below it is
+// a button, not a link: the user view has no route.
 const householdRoute = {
   to: '/settings/household',
   labelKey: 'settings.household.title',
@@ -119,7 +120,12 @@ function MainSidebar({
 
   // Shared by both blocks so the pinned entry keeps exactly the styling, icon
   // and active-state logic of the links above it.
-  const renderLink = ({ to, labelKey, icon: Icon }: SidebarRoute) => {
+  // `label` replaces `t(labelKey)` when given. The household link passes
+  // `HouseholdLabel`, which can be a long name, so it truncates.
+  const renderLink = (
+    { to, labelKey, icon: Icon }: SidebarRoute,
+    label?: ReactNode,
+  ) => {
     const isActive = pathname === to || (to !== '/' && pathname.startsWith(to))
 
     return (
@@ -134,7 +140,11 @@ function MainSidebar({
         )}
       >
         <Icon className="h-5 w-5 shrink-0" />
-        <span>{t(labelKey)}</span>
+        {label === undefined ? (
+          <span>{t(labelKey)}</span>
+        ) : (
+          <span className="min-w-0 truncate">{label}</span>
+        )}
       </Link>
     )
   }
@@ -151,14 +161,14 @@ function MainSidebar({
         <LocationSwitcher variant="full" />
       </div>
       <div className="flex flex-col gap-1 px-2">
-        {navRoutes.map(renderLink)}
+        {navRoutes.map((route) => renderLink(route))}
       </div>
       {/* The settings entries are global, not location-aware — pin them to the
           bottom so the switcher and the routes it scopes read as one group and
           settings as another. `mt-auto` works because <nav> is a flex column
           with min-h-[100cqh]. */}
       <div className="mt-auto flex flex-col gap-1 px-2 pb-2">
-        {renderLink(householdRoute)}
+        {renderLink(householdRoute, <HouseholdLabel />)}
         {/* `aria-expanded` is always false while this button is visible: the
             user view replaces the main view, so the button is gone while the
             view is open. It still tells a screen reader that the button opens
