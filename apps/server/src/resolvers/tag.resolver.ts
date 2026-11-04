@@ -1,8 +1,38 @@
 import { GraphQLError } from 'graphql'
+import { type OwnedModel, requireOwnRowOrUnclaimed } from '../lib/authz.js'
 import { prisma } from '../lib/prisma.js'
-import { requireAuth } from '../context.js'
+import { type Context, requireAuth } from '../context.js'
 import type { Resolvers, Tag, TagType } from '../generated/graphql.js'
 import type { TagColor } from '@prisma/client'
+
+// ── Ownership ──
+//
+// Every write below that names an existing row asks `requireOwnRowOrUnclaimed`
+// (lib/authz.ts) first. It throws FORBIDDEN for another account's row, so a
+// refused call writes nothing. No call site here compares a `userId`: root
+// CLAUDE.md forbids that as an authorization check, and households will
+// change only the helper's body. Before 2026-11-04 these writes used
+// `where: { id }` alone — see
+// docs/global/bugs/2026-11-04-bug-unscoped-catalog-writes.md.
+
+/**
+ * A row this tag will POINT AT — its `typeId` or `parentId` — must be the
+ * caller's own. Another account's row: the helper throws FORBIDDEN. No row
+ * with that id: BAD_USER_INPUT, because the reference is simply wrong (before
+ * this check it failed later, as a foreign-key error from Postgres).
+ */
+async function requireOwnReference(
+  ctx: Context,
+  model: Extract<OwnedModel, 'tag' | 'tagType'>,
+  id: string,
+  field: 'typeId' | 'parentId',
+): Promise<void> {
+  if ((await requireOwnRowOrUnclaimed(ctx, model, id)) === 'unclaimed') {
+    throw new GraphQLError(`No ${model === 'tag' ? 'tag' : 'tag type'} matches ${field}`, {
+      extensions: { code: 'BAD_USER_INPUT' },
+    })
+  }
+}
 
 export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
   Query: {
@@ -31,7 +61,9 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       }) as unknown as Promise<TagType>
     },
     updateTagType: async (_, { id, name, color }, ctx) => {
-      requireAuth(ctx)
+      if ((await requireOwnRowOrUnclaimed(ctx, 'tagType', id)) === 'unclaimed') {
+        throw new GraphQLError('TagType not found', { extensions: { code: 'NOT_FOUND' } })
+      }
       const data: Record<string, unknown> = {}
       if (name !== undefined) data.name = name
       if (color !== undefined) data.color = color as TagColor
@@ -46,7 +78,13 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     },
     deleteTagType: async (_, { id }, ctx) => {
       const userId = requireAuth(ctx)
-      // Cascade: delete all tags of this type (and their ItemTag rows via DB cascade), then delete the type
+      // Ownership FIRST, so a refused call deletes none of the caller's own
+      // tags either. A missing type returns false, as it did before.
+      if ((await requireOwnRowOrUnclaimed(ctx, 'tagType', id)) === 'unclaimed') return false
+      // Cascade: delete all tags of this type (and their ItemTag rows via DB cascade), then delete the type.
+      // Only the caller's tags. Tag_typeId_fkey is ON DELETE RESTRICT, so if
+      // another account holds a tag of this type (`createTag` did not check
+      // `typeId` before 2026-11-04), the delete below fails and this returns false.
       await prisma.tag.deleteMany({ where: { typeId: id, userId } })
       try {
         await prisma.tagType.delete({ where: { id } })
@@ -57,12 +95,21 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     },
     createTag: async (_, { name, typeId, parentId }, ctx) => {
       const userId = requireAuth(ctx)
+      await requireOwnReference(ctx, 'tagType', typeId, 'typeId')
+      // `parentId: null` (or omitted) means a top-level tag, and is allowed.
+      if (parentId != null) await requireOwnReference(ctx, 'tag', parentId, 'parentId')
       return prisma.tag.create({
         data: { name, typeId, userId, parentId: parentId ?? null },
       }) as unknown as Promise<Tag>
     },
     updateTag: async (_, { id, name, typeId, parentId }, ctx) => {
-      requireAuth(ctx)
+      if ((await requireOwnRowOrUnclaimed(ctx, 'tag', id)) === 'unclaimed') {
+        throw new GraphQLError('Tag not found', { extensions: { code: 'NOT_FOUND' } })
+      }
+      // `typeId: null` cannot be written (the column is NOT NULL), so it is
+      // left to Prisma to refuse, as before.
+      if (typeId != null) await requireOwnReference(ctx, 'tagType', typeId, 'typeId')
+      if (parentId != null) await requireOwnReference(ctx, 'tag', parentId, 'parentId')
       const data: Record<string, unknown> = {}
       if (name !== undefined) data.name = name
       if (typeId !== undefined) data.typeId = typeId
@@ -75,16 +122,34 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       }
     },
     deleteTag: async (_, { id, deleteChildren }, ctx) => {
-      requireAuth(ctx)
+      const userId = requireAuth(ctx)
+      // Ownership of the ROOT first, so a refused call changes nothing.
+      const scope = await requireOwnRowOrUnclaimed(ctx, 'tag', id)
+      // A missing tag keeps the results it had before: true with
+      // deleteChildren (an empty bulk delete), false without (a failed delete).
+      if (scope === 'unclaimed') return Boolean(deleteChildren)
+
+      // The descendant walk and the orphaning step below are scoped to the
+      // caller's rows by a `userId` FILTER, not a guard. They must be: until
+      // 2026-11-04 `createTag` did not check `parentId`, so another account's
+      // tag may sit under this one. That tag is not deleted and not written
+      // here. When this root is deleted, Postgres sets its `parentId` to null
+      // (Tag_parentId_fkey is ON DELETE SET NULL).
       if (deleteChildren) {
         // Collect all descendant IDs recursively, then delete in bulk
         const collectDescendants = async (parentId: string): Promise<string[]> => {
-          const children = await prisma.tag.findMany({ where: { parentId }, select: { id: true } })
+          const children = await prisma.tag.findMany({
+            where: { parentId, userId },
+            select: { id: true },
+          })
           const childIds = children.map((c) => c.id)
           const nested = await Promise.all(childIds.map(collectDescendants))
           return [...childIds, ...nested.flat()]
         }
         const descendantIds = await collectDescendants(id)
+        // Every id here is the caller's: the root passed the guard above, and
+        // the walk reads only the caller's rows. So the bulk delete below
+        // needs no filter of its own.
         const allIds = [id, ...descendantIds]
         // ItemTag rows are deleted by DB cascade (onDelete: Cascade on ItemTag.tag)
         await prisma.tag.deleteMany({ where: { id: { in: allIds } } })
@@ -92,7 +157,7 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       }
 
       // Orphan children: clear their parentId so they become top-level
-      await prisma.tag.updateMany({ where: { parentId: id }, data: { parentId: null } })
+      await prisma.tag.updateMany({ where: { parentId: id, userId }, data: { parentId: null } })
       // ItemTag rows for this tag are deleted by DB cascade
       try {
         await prisma.tag.delete({ where: { id } })
