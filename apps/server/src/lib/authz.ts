@@ -154,18 +154,18 @@ export async function locationIdsWithRole(ctx: Context): Promise<string[]> {
  * they did from `ensureDefaultLocation` before. If the caller still has no
  * location they may write to, the import is refused with `NO_LOCATION`.
  *
- * That CAN happen today, in two ways, until later tasks of H3a close them:
+ * That CAN happen today, in one way, until task 3.10 closes it:
+ * `clearAllData` deletes every location, and nothing makes a new one. The
+ * household still exists, so `requireHousehold` returns at once and does not
+ * run first sign-in again. So a "clear" import followed by a log or cart
+ * that names no location gets `NO_LOCATION` (decision H17).
  *
- * - `clearAllData` deletes every location, and nothing makes a new one. The
- *   household still exists, so `requireHousehold` returns at once and does
- *   not run first sign-in again. So a "clear" import followed by a log or
- *   cart that names no location gets `NO_LOCATION`. Task 3.10 fixes this
- *   (decision H17).
- * - `bulkCreateLocations` / `bulkUpsertLocations` do not yet write an
- *   `organizer` row, so a location made by them does not count here. Task
- *   3.9 fixes this. (`createLocation` writes one since task 3.6.)
+ * (There was a second way until task 3.9: `bulkCreateLocations` /
+ * `bulkUpsertLocations` wrote no `organizer` row, so a location they made did
+ * not count here. They write one now, as `createLocation` has since task
+ * 3.6.)
  *
- * Once both are fixed, it cannot happen before H5: deleting the last
+ * Once task 3.10 is done, it cannot happen before H5: deleting the last
  * location is refused (decision H13), and the creator of a location
  * organizes it.
  */

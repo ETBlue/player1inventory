@@ -19,14 +19,24 @@ import { typeDefs } from '../schema/index.js'
 // into that file without rewriting its seven existing tests. Tasks 3, 4 and 5
 // each wrote their own file for the same reason; this is the fourth.
 //
-// `src/test/stockFake.ts` carries most of it, plus a small `item` store below
-// because `requireOwnItemStockRefs` scopes `itemId` to the caller and
-// `stockFake` owns no `item` model. Five things about those fakes carry these
-// tests:
+// The fakes:
 //
-//   - `findUnique` / `findFirst` apply `where` key by key
-//     (`where.x === undefined || row.x === where.x`), so dropping `userId`
-//     from a scoped lookup returns MORE rows and the fixture sees it.
+//   - `src/test/householdWorld.ts` for `location` and `itemStock` (its
+//     `stockFake`) and the household and role rows. Every role is a row
+//     `beforeEach` seeds (`soloHouseholds`), or a row the resolvers under
+//     test write. Nothing is derived from a location's `userId`: households
+//     H3a task 3.9 removed `derivedRoles`.
+//   - `src/test/ownedRowFake.ts` for `item`, scoped by `householdId`.
+//     `requireOwnItemStockRefs` asks "is this item id in the caller's
+//     household", and the whole-import test at the end of this file writes
+//     items through `bulkCreateItems`.
+//
+// Five things about those fakes carry these tests:
+//
+//   - every `where` is checked ONCE by `checkWhere` (src/test/whereKeys.ts),
+//     so an unknown key THROWS, and is then applied key by key, so dropping a
+//     scope column from a lookup returns MORE rows and the fixture sees it.
+//     (The `item` fake here was a hand-written store until task 3.9.)
 //   - `itemStock.create` HONOURS `data.id`, `data.createdAt` and
 //     `data.updatedAt`, so "the payload's values are preserved" is an
 //     assertion that can fail. Before task 6 it threw all three away and
@@ -42,84 +52,69 @@ import { typeDefs } from '../schema/index.js'
 //   - `itemStock.delete` throws when nothing matches, so the stale-pair drop
 //     cannot silently no-op.
 vi.mock('../lib/prisma.js', async () => {
-  const { createStockFake } = await import('../test/stockFake.js')
-  const stock = createStockFake()
-  // Roles derived from the location rows: each location's `userId` owns a
-  // one-person household and organizes the location (src/test/derivedRoles.ts).
-  // `requireLocationRole` reads these since households H3a task 3.5.
-  const roles = (await import('../test/derivedRoles.js')).createDerivedRoles(stock)
+  const { createHouseholdWorld } = await import('../test/householdWorld.js')
+  const { createOwnedRowFake } = await import('../test/ownedRowFake.js')
+  const world = createHouseholdWorld()
+  const stock = world.stock
 
-  // A minimal stateful `item` store. Only `findFirst` is needed —
-  // `requireOwnItemStockRefs` asks "is this item id in the caller's
-  // household" and reads nothing else. It applies `where` key by key,
-  // Prisma's own semantics, so a resolver that drops `householdId` from the
-  // filter matches MORE rows and the two-household fixture sees it. A
-  // `vi.fn()` told to resolve to a row would pass against a resolver with no
-  // item scope at all.
-  //
-  // It THROWS on any key but `id` and `householdId` (households H3a task
-  // 3.7). Before that it ignored an unknown key, so when the resolver moved
-  // from `userId` to `householdId` this fake matched the stranger's item and
-  // two tests went red for the wrong reason. Ignoring a key is the
-  // `cartItemFake` trap in root CLAUDE.md.
-  const items: { id: string; householdId: string; userId: string }[] = []
-  const item = {
-    findFirst: vi.fn(async ({ where = {} }: { where?: Record<string, unknown> } = {}) => {
-      for (const key of Object.keys(where)) {
-        if (key !== 'id' && key !== 'householdId') {
-          throw new Error(`item fake does not model the where key '${key}'`)
-        }
-      }
-      return (
-        items.find(
-          (i) =>
-            (where.id === undefined || i.id === where.id) &&
-            (where.householdId === undefined || i.householdId === where.householdId),
-        ) ?? null
-      )
-    }),
-  }
+  // A catalog model, so scoped by `householdId` (and still requiring `userId`
+  // on a create until task 3.14). No item in this file has tags or vendors,
+  // so the `include: { tags, vendors }` of `bulkCreateItems`' closing read
+  // resolves to two empty lists.
+  const item = createOwnedRowFake<{ id: string; householdId: string; userId: string }>({
+    model: 'Item',
+    scope: 'householdId',
+    requiredColumns: ['userId'],
+    relations: () => ({ tags: [], vendors: [] }),
+  })
 
   return {
     prisma: {
-      ...stock.client,
-      item,
+      ...world.client,
+      item: {
+        ...item.client,
+        // Wrapped so a test can count HOW MANY item checks ran, on top of the
+        // fake's real row matching.
+        findFirst: vi.fn(item.client.findFirst),
+      },
       itemStock: {
-        ...stock.client.itemStock,
+        ...world.client.itemStock,
         // Wrapped so a test can count HOW MANY lookups ran, on top of the
         // fake's real row matching.
-        findUnique: vi.fn(stock.client.itemStock.findUnique),
-        findFirst: vi.fn(stock.client.itemStock.findFirst),
+        findUnique: vi.fn(world.client.itemStock.findUnique),
+        findFirst: vi.fn(world.client.itemStock.findFirst),
       },
       location: {
-        ...stock.client.location,
-        findFirst: vi.fn(stock.client.location.findFirst),
+        ...world.client.location,
+        findFirst: vi.fn(world.client.location.findFirst),
       },
-      // Handles onto the fakes, hung off the mocked client because a `vi.mock`
-      // factory is hoisted above every import and cannot close over a
-      // module-scope binding.
-      ...roles.client,
       // Wrapped so a test can count HOW MANY location role checks ran.
       // Since households H3a task 3.5, `requireLocationRole` reads
       // `locationMember`, not `location`.
       locationMember: {
-        ...roles.client.locationMember,
-        findFirst: vi.fn(roles.client.locationMember.findFirst),
+        ...world.client.locationMember,
+        findFirst: vi.fn(world.client.locationMember.findFirst),
       },
-      $roles: roles,
+      // Handles onto the fakes, hung off the mocked client because a `vi.mock`
+      // factory is hoisted above every import and cannot close over a
+      // module-scope binding.
+      $world: world,
       $stockFake: stock,
-      $items: items,
+      $item: item,
     },
   }
 })
 
 import { prisma } from '../lib/prisma.js'
+import type { HouseholdWorld } from '../test/householdWorld.js'
+import { soloHouseholds } from '../test/householdRows.js'
+import type { OwnedRowFake } from '../test/ownedRowFake.js'
 import type { StockFake } from '../test/stockFake.js'
-import { derivedHouseholdId } from '../test/derivedRoles.js'
 
 const mockPrisma = prisma as unknown as {
+  $world: HouseholdWorld
   $stockFake: StockFake
-  $items: { id: string; householdId: string; userId: string }[]
+  $item: OwnedRowFake<{ id: string; householdId: string; userId: string }>
 }
 
 // ─── Server ──────────────────────────────────────────────────────────────────
@@ -160,6 +155,10 @@ const ITEM_A = 'item_milk' // USER's
 const ITEM_B = 'item_rice' // USER's
 const ITEM_THEIRS = 'item_theirs' // STRANGER's — must be refused
 
+// Each person owns one household and organizes their own locations.
+const HH_USER = 'hh_user'
+const HH_STRANGER = 'hh_stranger'
+
 const TS = new Date('2026-01-01T00:00:00.000Z')
 const PAYLOAD_CREATED = '2026-02-03T04:05:06.000Z'
 const PAYLOAD_UPDATED = '2026-03-04T05:06:07.000Z'
@@ -168,17 +167,24 @@ const PAYLOAD_DUE = '2026-04-05T06:07:08.000Z'
 beforeEach(() => {
   vi.clearAllMocks()
   mockPrisma.$stockFake.reset([
-    { id: LOC_DEFAULT, userId: USER, isDefault: true, name: 'Kitchen', order: 0, createdAt: TS, updatedAt: TS },
-    { id: LOC_OTHER, userId: USER, isDefault: false, name: 'Garage', order: 1, createdAt: TS, updatedAt: TS },
-    { id: LOC_STRANGER, userId: STRANGER, isDefault: true, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
+    { id: LOC_DEFAULT, userId: USER, householdId: HH_USER, isDefault: true, name: 'Kitchen', order: 0, createdAt: TS, updatedAt: TS },
+    { id: LOC_OTHER, userId: USER, householdId: HH_USER, isDefault: false, name: 'Garage', order: 1, createdAt: TS, updatedAt: TS },
+    { id: LOC_STRANGER, userId: STRANGER, householdId: HH_STRANGER, isDefault: true, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
   ])
-  mockPrisma.$items.length = 0
-  mockPrisma.$items.push(
-    // Each item is in the household `derivedRoles` gives its owner.
-    { id: ITEM_A, householdId: derivedHouseholdId(USER), userId: USER },
-    { id: ITEM_B, householdId: derivedHouseholdId(USER), userId: USER },
-    { id: ITEM_THEIRS, householdId: derivedHouseholdId(STRANGER), userId: STRANGER },
+  // The caller and the stranger are in two different households, each the
+  // owner, each the organizer of their own locations.
+  mockPrisma.$world.seedHouseholds(
+    soloHouseholds([
+      { userId: USER, householdId: HH_USER, locationIds: [LOC_DEFAULT, LOC_OTHER] },
+      { userId: STRANGER, householdId: HH_STRANGER, locationIds: [LOC_STRANGER] },
+    ]),
   )
+  mockPrisma.$world.users.reset([])
+  mockPrisma.$item.reset([
+    { id: ITEM_A, householdId: HH_USER, userId: USER },
+    { id: ITEM_B, householdId: HH_USER, userId: USER },
+    { id: ITEM_THEIRS, householdId: HH_STRANGER, userId: STRANGER },
+  ])
 })
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -800,4 +806,129 @@ describe('ItemStockImportInput is not ItemStockInput', () => {
     expect(result.errors?.[0]?.message).toContain('userId')
     expect(stored()).toHaveLength(0)
   })
+})
+
+// ─── A whole import, through the resolvers only ──────────────────────────────
+//
+// Households H3a task 3.9. The locations, the household and every role row
+// here are written by the resolvers under test, never seeded: a brand-new
+// person's first request makes their household and "Home" (first sign-in,
+// lib/household.ts), the location import writes the imported locations and
+// their `organizer` rows, and the stock import then writes into them.
+//
+// Before task 3.9 the location import wrote no `householdId` and no role row.
+// So on Postgres the stock import that follows it was refused with FORBIDDEN,
+// and the imported locations were missing from `locations`. The tests above
+// could not see that: they seed the role rows themselves, and the resolvers
+// never had to write one.
+
+describe('a whole import into a new account', () => {
+  const NEW_USER = 'user_new_import'
+  const NEW_CTX: Context = { userId: NEW_USER }
+  const T0 = new Date('2026-11-01T00:00:00.000Z')
+
+  const LOCATIONS = `
+    mutation ($locations: [LocationInput!]!, $upsert: Boolean!) {
+      created: bulkCreateLocations(locations: $locations) @skip(if: $upsert) { id }
+      upserted: bulkUpsertLocations(locations: $locations) @include(if: $upsert) { id }
+    }
+  `
+  const ITEMS = `
+    mutation ($items: [ItemInput!]!) { bulkCreateItems(items: $items) { id } }
+  `
+  const LIST = '{ locations { id name order } }'
+
+  async function run(query: string, variables: Record<string, unknown> = {}) {
+    const response = await server.executeOperation(
+      { query, variables },
+      { contextValue: NEW_CTX },
+    )
+    if (response.body.kind !== 'single') throw new Error('expected a single result')
+    return response.body.singleResult
+  }
+
+  beforeEach(() => {
+    // Nothing of NEW_USER's but the `User` row the request path creates
+    // (`ensureUser`, H2), not yet set up.
+    mockPrisma.$world.users.reset([
+      {
+        id: NEW_USER,
+        displayName: 'New',
+        email: null,
+        lastSeenAt: null,
+        deletedAt: null,
+        householdSetupAt: null,
+        createdAt: T0,
+        updatedAt: T0,
+      },
+    ])
+  })
+
+  for (const upsert of [false, true]) {
+    const label = upsert ? 'bulkUpsertLocations' : 'bulkCreateLocations'
+
+    it(`user importing locations with ${label} can then import stock into them, and sees them listed`, async () => {
+      // Given a new person who imports two locations from a backup
+      const locations = await run(LOCATIONS, {
+        upsert,
+        locations: [
+          { id: 'loc_imp_pantry', name: 'Pantry', order: 1, createdAt: PAYLOAD_CREATED, updatedAt: PAYLOAD_UPDATED },
+          { id: 'loc_imp_cellar', name: 'Cellar', order: 2, createdAt: PAYLOAD_CREATED, updatedAt: PAYLOAD_UPDATED },
+        ],
+      })
+      expect(locations.errors).toBeUndefined()
+
+      // And then an item
+      const items = await run(ITEMS, {
+        items: [
+          {
+            id: 'item_imp_milk',
+            name: 'milk',
+            tagIds: [],
+            targetUnit: 'package',
+            consumeAmount: 1,
+            createdAt: PAYLOAD_CREATED,
+            updatedAt: PAYLOAD_UPDATED,
+          },
+        ],
+      })
+      expect(items.errors).toBeUndefined()
+
+      // When they import that item's stock into BOTH imported locations
+      const stocks = await exec(
+        BULK_CREATE,
+        [
+          input('stock_imp_1', 'item_imp_milk', 'loc_imp_pantry', { packedQuantity: 3 }),
+          input('stock_imp_2', 'item_imp_milk', 'loc_imp_cellar', { packedQuantity: 5 }),
+        ],
+        NEW_CTX,
+      )
+
+      // Then the stock import is NOT refused, and each row is where it was
+      // sent
+      expect(stocks.errors).toBeUndefined()
+      expect(storedRow('stock_imp_1')).toMatchObject({ locationId: 'loc_imp_pantry', packedQuantity: 3 })
+      expect(storedRow('stock_imp_2')).toMatchObject({ locationId: 'loc_imp_cellar', packedQuantity: 5 })
+
+      // And the person sees "Home" (first sign-in) and both imported
+      // locations, in `order`
+      const listed = await run(LIST)
+      expect(listed.errors).toBeUndefined()
+      expect(listed.data?.locations).toEqual([
+        expect.objectContaining({ order: 0 }),
+        { id: 'loc_imp_pantry', name: 'Pantry', order: 1 },
+        { id: 'loc_imp_cellar', name: 'Cellar', order: 2 },
+      ])
+
+      // And the imported locations are in the person's household, which is
+      // the household of "Home"
+      const household = mockPrisma.$world.households.state.householdMembers.find(
+        (m) => m.userId === NEW_USER,
+      )?.householdId
+      expect(household).toBeDefined()
+      for (const id of ['loc_imp_pantry', 'loc_imp_cellar']) {
+        expect(mockPrisma.$stockFake.state.locations.find((l) => l.id === id)?.householdId).toBe(household)
+      }
+    })
+  }
 })

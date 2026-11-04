@@ -101,6 +101,18 @@ vi.mock('../lib/prisma.js', async () => {
     updatedAt: Date
   }>({ model: 'Shelf', ...catalog })
 
+  // `item` and `recipe` are here only for the shelf ids. `itemIds` and the
+  // recipe ids in `filterConfig` are checked against the household since
+  // households H3a task 3.9; only `findMany` is read.
+  const item = createOwnedRowFake<{ id: string; householdId: string; userId: string; name: string }>({
+    model: 'Item',
+    ...catalog,
+  })
+  const recipe = createOwnedRowFake<{ id: string; householdId: string; userId: string; name: string }>({
+    model: 'Recipe',
+    ...catalog,
+  })
+
   // `findUnique` is wrapped in a `vi.fn` on every store on top of the fake's
   // real row matching. Two reasons: a test can COUNT the guard's lookups, and
   // a test can use `mockImplementationOnce` to make one lookup answer "nobody
@@ -118,6 +130,8 @@ vi.mock('../lib/prisma.js', async () => {
       tagType: wrap(tagType.client),
       vendor: wrap(vendor.client),
       shelf: wrap(shelf.client),
+      item: item.client,
+      recipe: recipe.client,
       // Handles onto the fakes, hung off the mocked client because a `vi.mock`
       // factory is hoisted above every import and cannot close over a
       // module-scope binding.
@@ -125,6 +139,8 @@ vi.mock('../lib/prisma.js', async () => {
       $tagType: tagType,
       $vendor: vendor,
       $shelf: shelf,
+      $item: item,
+      $recipe: recipe,
     },
   }
 })
@@ -164,6 +180,8 @@ const mockPrisma = prisma as unknown as {
   $tagType: OwnedRowFake<TagTypeRow>
   $vendor: OwnedRowFake<VendorRow>
   $shelf: OwnedRowFake<ShelfRow>
+  $item: OwnedRowFake<{ id: string; householdId: string; userId: string; name: string }>
+  $recipe: OwnedRowFake<{ id: string; householdId: string; userId: string; name: string }>
 }
 
 // ─── Server ──────────────────────────────────────────────────────────────────
@@ -213,6 +231,13 @@ const SHELF_MINE = 'shelf_mine'
 const SHELF_THEIRS = 'shelf_theirs'
 const SHELF_FREE = 'shelf_free'
 
+const ITEM_MINE = 'item_mine'
+const ITEM_THEIRS = 'item_theirs'
+const ITEM_GONE = 'item_gone' // no row holds it
+
+const REC_MINE = 'rec_mine'
+const REC_THEIRS = 'rec_theirs'
+
 const TS = new Date('2026-01-01T00:00:00.000Z')
 const PAYLOAD_CREATED = '2026-02-03T04:05:06.000Z'
 const PAYLOAD_UPDATED = '2026-03-04T05:06:07.000Z'
@@ -233,6 +258,14 @@ beforeEach(() => {
   mockPrisma.$vendor.reset([
     { id: VEN_MINE, householdId: HH_MINE, userId: USER, name: 'Costco' },
     { id: VEN_THEIRS, householdId: HH_THEIRS, userId: STRANGER, name: 'Theirs' },
+  ])
+  mockPrisma.$item.reset([
+    { id: ITEM_MINE, householdId: HH_MINE, userId: USER, name: 'Milk' },
+    { id: ITEM_THEIRS, householdId: HH_THEIRS, userId: STRANGER, name: 'Theirs' },
+  ])
+  mockPrisma.$recipe.reset([
+    { id: REC_MINE, householdId: HH_MINE, userId: USER, name: 'Soup' },
+    { id: REC_THEIRS, householdId: HH_THEIRS, userId: STRANGER, name: 'Theirs' },
   ])
   mockPrisma.$shelf.reset([
     {
@@ -696,10 +729,8 @@ describe('Shelf ownership', () => {
 // dropped exactly like a tag whose type was deleted. `TT_FREE` below is the
 // negative control that pins the two answers as the same.
 //
-// `bulkUpsertTags` is NOT covered here and is NOT fixed. See the report's
-// Known gaps: that mutation passes `typeId` and `parentId` through in a
-// `...rest` spread inside one `Promise.all`, with no per-row skip to hook a
-// filter onto, so scoping it is a restructure rather than one line.
+// `bulkUpsertTags` got the same skip in households H3a task 3.9, for both
+// `typeId` and `parentId`. Its tests are in the next block.
 
 describe('Tag → TagType references', () => {
   it("user importing a tag under another account's tag type gets no tag written", async () => {
@@ -752,4 +783,142 @@ describe('Tag → TagType references', () => {
       typeId: TT_MINE,
     })
   })
+})
+
+// ─── bulkUpsertTags: `typeId` and `parentId` ─────────────────────────────────
+//
+// Households H3a task 3.9. Until then `bulkUpsertTags` wrote both ids as the
+// payload gave them, so a tag of the caller's could point at another
+// household's tag type, or hang under another household's tag. Now a tag
+// whose type or parent the caller may not use is SKIPPED, as `bulkCreateTags`
+// skips it. The `*_FREE` tests are the negative controls: "not yours" and
+// "not there" give the same answer.
+
+describe('bulkUpsertTags: the tag type and the parent', () => {
+  const tagRow = (id: string) => mockPrisma.$tag.state.rows.find((r) => r.id === id)
+
+  it("user replacing tags cannot put a tag under another household's tag type", async () => {
+    // Given a FREE tag id whose `typeId` names the STRANGER's tag type
+    const result = await exec(UPSERT_TAGS, { tags: [tagIn(TAG_FREE, 'Fine', TT_THEIRS)] })
+
+    // Then the tag is skipped
+    expect(result.errors).toBeUndefined()
+    expect(result.data?.bulkUpsertTags).toEqual([])
+    expect(tagRow(TAG_FREE)).toBeUndefined()
+  })
+
+  it('user replacing tags gets the same answer for a tag type that no longer exists', async () => {
+    const result = await exec(UPSERT_TAGS, { tags: [tagIn(TAG_FREE, 'Fine', TT_FREE)] })
+
+    expect(result.errors).toBeUndefined()
+    expect(result.data?.bulkUpsertTags).toEqual([])
+    expect(tagRow(TAG_FREE)).toBeUndefined()
+  })
+
+  it("user replacing tags cannot hang a tag under another household's tag", async () => {
+    // Given a FREE tag id under the caller's own type, whose `parentId` names
+    // the STRANGER's tag
+    const result = await exec(UPSERT_TAGS, {
+      tags: [{ ...tagIn(TAG_FREE, 'Fine'), parentId: TAG_THEIRS }],
+    })
+
+    // Then the tag is skipped, and the stranger's tag gains no child
+    expect(result.errors).toBeUndefined()
+    expect(result.data?.bulkUpsertTags).toEqual([])
+    expect(tagRow(TAG_FREE)).toBeUndefined()
+  })
+
+  it('user replacing tags gets the same answer for a parent that no longer exists', async () => {
+    const result = await exec(UPSERT_TAGS, {
+      tags: [{ ...tagIn(TAG_FREE, 'Fine'), parentId: 'tag_gone' }],
+    })
+
+    expect(result.errors).toBeUndefined()
+    expect(result.data?.bulkUpsertTags).toEqual([])
+    expect(tagRow(TAG_FREE)).toBeUndefined()
+  })
+
+  it('user replacing tags can hang a tag under their own tag, or under a tag of the same payload', async () => {
+    // Given a child under the caller's existing tag, and a second child whose
+    // parent comes LATER in the same payload. The positive half: a filter
+    // that dropped every parent would pass the tests above.
+    const result = await exec(UPSERT_TAGS, {
+      tags: [
+        { ...tagIn('tag_child_a', 'Child A'), parentId: TAG_MINE },
+        { ...tagIn('tag_child_b', 'Child B'), parentId: 'tag_new_parent' },
+        tagIn('tag_new_parent', 'New parent'),
+      ],
+    })
+
+    // Then all three are written, each under the parent it named
+    expect(result.errors).toBeUndefined()
+    expect(tagRow('tag_child_a')).toMatchObject({ parentId: TAG_MINE, householdId: HH_MINE })
+    expect(tagRow('tag_child_b')).toMatchObject({ parentId: 'tag_new_parent', householdId: HH_MINE })
+    expect(tagRow('tag_new_parent')).toMatchObject({ parentId: null, householdId: HH_MINE })
+  })
+})
+
+// ─── Shelves: `itemIds` and the `filterConfig` ids ───────────────────────────
+//
+// Households H3a task 3.9. Until then both shelf imports wrote these arrays as
+// the payload gave them, so a shelf of the caller's could name another
+// household's items, tags, vendors and recipes. Now each id that is not a row
+// of the caller's household is DROPPED and the shelf still lands: the same
+// "skip the edge" the item import does for `tagIds` and `vendorIds`.
+//
+// An id NO row holds is dropped too (`ITEM_GONE`), so "not yours" and "not
+// there" give the same answer. `createShelf` keeps such an id
+// (`missing: 'allow'`); see `householdShelfRefs` in import.resolver.ts for why
+// import does not.
+
+describe('shelf imports keep only the household ids', () => {
+  const mixed = {
+    id: SHELF_FREE,
+    name: 'Mixed',
+    type: 'filter',
+    order: 3,
+    itemIds: [ITEM_THEIRS, ITEM_MINE, ITEM_GONE],
+    filterConfig: {
+      tagIds: [TAG_THEIRS, TAG_MINE],
+      vendorIds: [VEN_MINE, VEN_THEIRS],
+      recipeIds: [REC_THEIRS, REC_MINE],
+    },
+    createdAt: PAYLOAD_CREATED,
+    updatedAt: PAYLOAD_UPDATED,
+  }
+
+  for (const [label, query] of [
+    ['bulkCreateShelves', CREATE_SHELVES],
+    ['bulkUpsertShelves', UPSERT_SHELVES],
+  ] as const) {
+    it(`${label}: user importing a shelf keeps only the ids of their own household`, async () => {
+      // Given a new shelf naming, in each array, one id of the caller's
+      // household and one of another household (and one item no row holds)
+      const result = await exec(query, { shelves: [mixed] })
+
+      // Then the shelf lands, with each array cut down to the caller's ids,
+      // in the payload's order
+      expect(result.errors).toBeUndefined()
+      expect(mockPrisma.$shelf.state.rows.find((r) => r.id === SHELF_FREE)).toMatchObject({
+        householdId: HH_MINE,
+        itemIds: [ITEM_MINE],
+        filterConfig: {
+          tagIds: [TAG_MINE],
+          vendorIds: [VEN_MINE],
+          recipeIds: [REC_MINE],
+        },
+      })
+    })
+
+    it(`${label}: user importing a shelf with no filter keeps no filter`, async () => {
+      // Given a shelf with `filterConfig: null` and an empty item list
+      const result = await exec(query, { shelves: [shelfIn(SHELF_FREE, 'Plain')] })
+
+      // Then neither is invented
+      expect(result.errors).toBeUndefined()
+      const row = mockPrisma.$shelf.state.rows.find((r) => r.id === SHELF_FREE)
+      expect(row?.itemIds).toEqual([])
+      expect(row?.filterConfig ?? null).toBeNull()
+    })
+  }
 })

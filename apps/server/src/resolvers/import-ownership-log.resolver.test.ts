@@ -60,9 +60,13 @@ import { typeDefs } from '../schema/index.js'
 //
 // ─── The fakes, and why `ownedRowFake` rather than `inventoryLogFake` ────────
 //
-//   - `src/test/stockFake.ts` for `location`, so `resolveLogLocations`,
-//     `requireLocationRole` and `fallbackImportLocation` run against real rows,
-//     with roles derived from those rows (`src/test/derivedRoles.ts`).
+//   - `src/test/householdWorld.ts` for `location` (its `stockFake`) and the
+//     household and role rows, so `resolveLogLocations`,
+//     `requireLocationRole` and `fallbackImportLocation` run against real
+//     rows. Every role is a row `beforeEach` seeds (`soloHouseholds`): the
+//     caller and the stranger are in two different households. (Households
+//     H3a task 3.9 removed `derivedRoles`, which invented those rows from each
+//     location's `userId`.)
 //   - `src/test/ownedRowFake.ts` for `inventoryLog` and `item`.
 //
 // `inventoryLogFake` already carries a `findFirst` with the same key-by-key
@@ -90,14 +94,11 @@ import { typeDefs } from '../schema/index.js'
 // payload's `itemId` exists before it writes. That check is still UNSCOPED, and
 // plan task 8 closes it, not this one.
 vi.mock('../lib/prisma.js', async () => {
-  const { createStockFake } = await import('../test/stockFake.js')
+  const { createHouseholdWorld } = await import('../test/householdWorld.js')
   const { createOwnedRowFake } = await import('../test/ownedRowFake.js')
 
-  const stock = createStockFake()
-  // Roles derived from the location rows: each location's `userId` owns a
-  // one-person household and organizes the location (src/test/derivedRoles.ts).
-  // `requireLocationRole` reads these since households H3a task 3.5.
-  const roles = (await import('../test/derivedRoles.js')).createDerivedRoles(stock)
+  const world = createHouseholdWorld()
+  const stock = world.stock
 
   const inventoryLog = createOwnedRowFake<{
     id: string
@@ -112,7 +113,7 @@ vi.mock('../lib/prisma.js', async () => {
 
   // A catalog model, so scoped by `householdId` since households H3a task
   // 3.7 (and still requiring `userId` on a create until task 3.14). Each item
-  // row is in the household `derivedRoles` gives its owner.
+  // row is in its owner's household (`HH_USER` or `HH_STRANGER` below).
   const item = createOwnedRowFake<{ id: string; householdId: string; userId: string; name: string }>({
     model: 'Item',
     scope: 'householdId',
@@ -121,11 +122,11 @@ vi.mock('../lib/prisma.js', async () => {
 
   return {
     prisma: {
-      ...stock.client,
+      ...world.client,
       location: {
-        ...stock.client.location,
+        ...world.client.location,
         // Wrapped so a test can count how many location checks ran.
-        findFirst: vi.fn(stock.client.location.findFirst),
+        findFirst: vi.fn(world.client.location.findFirst),
       },
       inventoryLog: {
         ...inventoryLog.client,
@@ -140,8 +141,7 @@ vi.mock('../lib/prisma.js', async () => {
       // Handles onto the fakes, hung off the mocked client because a `vi.mock`
       // factory is hoisted above every import and cannot close over a
       // module-scope binding.
-      ...roles.client,
-      $roles: roles,
+      $world: world,
       $stockFake: stock,
       $log: inventoryLog,
       $item: item,
@@ -151,7 +151,8 @@ vi.mock('../lib/prisma.js', async () => {
 
 import { prisma } from '../lib/prisma.js'
 import type { OwnedRowFake } from '../test/ownedRowFake.js'
-import { derivedHouseholdId } from '../test/derivedRoles.js'
+import type { HouseholdWorld } from '../test/householdWorld.js'
+import { soloHouseholds } from '../test/householdRows.js'
 import type { StockFake } from '../test/stockFake.js'
 
 type LogRow = {
@@ -169,6 +170,7 @@ type ItemRow = { id: string; householdId: string; userId: string; name: string }
 const mockPrisma = prisma as unknown as {
   inventoryLog: { findUnique: ReturnType<typeof vi.fn> }
   location: { findFirst: ReturnType<typeof vi.fn> }
+  $world: HouseholdWorld
   $stockFake: StockFake
   $log: OwnedRowFake<LogRow>
   $item: OwnedRowFake<ItemRow>
@@ -231,6 +233,9 @@ const LOG_MINE = 'log_mine' // USER's, at LOC_OTHER
 const LOG_THEIRS = 'log_theirs' // STRANGER's, at LOC_STRANGER — must be refused
 const LOG_FREE = 'log_free' // no log row holds it
 
+const HH_USER = 'hh_user'
+const HH_STRANGER = 'hh_stranger'
+
 const TS = new Date('2026-01-01T00:00:00.000Z')
 const STORED_OCCURRED = new Date('2026-02-01T00:00:00.000Z')
 const PAYLOAD_OCCURRED = '2026-03-01T10:00:00.000Z'
@@ -246,10 +251,18 @@ beforeEach(() => {
   vi.resetAllMocks()
 
   mockPrisma.$stockFake.reset([
-    { id: LOC_OTHER, userId: USER, isDefault: false, name: 'Garage', order: 1, createdAt: TS, updatedAt: TS },
-    { id: LOC_DEFAULT, userId: USER, isDefault: true, name: 'Kitchen', order: 0, createdAt: TS, updatedAt: TS },
-    { id: LOC_STRANGER, userId: STRANGER, isDefault: true, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
+    { id: LOC_OTHER, userId: USER, householdId: HH_USER, isDefault: false, name: 'Garage', order: 1, createdAt: TS, updatedAt: TS },
+    { id: LOC_DEFAULT, userId: USER, householdId: HH_USER, isDefault: true, name: 'Kitchen', order: 0, createdAt: TS, updatedAt: TS },
+    { id: LOC_STRANGER, userId: STRANGER, householdId: HH_STRANGER, isDefault: true, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
   ])
+  // The caller and the stranger are in two different households, each the
+  // owner, each the organizer of their own locations.
+  mockPrisma.$world.seedHouseholds(
+    soloHouseholds([
+      { userId: USER, householdId: HH_USER, locationIds: [LOC_OTHER, LOC_DEFAULT] },
+      { userId: STRANGER, householdId: HH_STRANGER, locationIds: [LOC_STRANGER] },
+    ]),
+  )
 
   mockPrisma.$log.reset([
     {
@@ -275,8 +288,8 @@ beforeEach(() => {
   ])
 
   mockPrisma.$item.reset([
-    { id: ITEM, householdId: derivedHouseholdId(USER), userId: USER, name: 'Milk' },
-    { id: ITEM_THEIRS, householdId: derivedHouseholdId(STRANGER), userId: STRANGER, name: 'Theirs' },
+    { id: ITEM, householdId: HH_USER, userId: USER, name: 'Milk' },
+    { id: ITEM_THEIRS, householdId: HH_STRANGER, userId: STRANGER, name: 'Theirs' },
   ])
 })
 

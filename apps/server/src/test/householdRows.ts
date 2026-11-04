@@ -1,7 +1,8 @@
 // Row builders for `householdWorld.seedHouseholds` (households H3a, task 3.8).
 //
-// They replace `derivedRoles.ts` in the resolver tests of stock, logs and
-// carts. `derivedRoles` invented an `organizer` row for every location from
+// They replaced `derivedRoles.ts` in the resolver tests of stock, logs and
+// carts (task 3.8) and of import (task 3.9, which deleted that file).
+// `derivedRoles` invented an `organizer` row for every location from
 // the location's `userId`, so no role test there was real. With these, every
 // role in a fixture is a row the test wrote on purpose, and a test can give a
 // second person a different role (plan H3a, rule 10).
@@ -36,4 +37,36 @@ export function locationMemberRow(
   role: LocationRole,
 ): LocationMemberRow {
   return { locationId, userId, role, createdAt: T }
+}
+
+/**
+ * One household per person, each person its `owner` and the `organizer` of
+ * every location listed for them (households H3a task 3.9). The rows for
+ * `householdWorld.seedHouseholds`, for fixtures where nobody shares
+ * anything: an import test's "the caller" and "a stranger".
+ *
+ * The location rows themselves live in `stockFake` and must carry the same
+ * `householdId`. A location role counts only through the location's
+ * household (decision H18), so a location row with no `householdId` gives
+ * its organizer nothing.
+ *
+ * This is what `derivedRoles.ts` used to invent from each location's
+ * `userId`, before task 3.9 deleted it. Here every role is a row the test
+ * asked for. Do not use it for a ROLE test: add a second person with a
+ * different role (plan H3a, rule 10).
+ */
+export function soloHouseholds(
+  people: readonly { userId: string; householdId: string; locationIds: readonly string[] }[],
+): {
+  households: HouseholdRow[]
+  householdMembers: HouseholdMemberRow[]
+  locationMembers: LocationMemberRow[]
+} {
+  return {
+    households: people.map((p) => householdRow(p.householdId, p.userId)),
+    householdMembers: people.map((p) => householdMemberRow(p.householdId, p.userId, 'owner')),
+    locationMembers: people.flatMap((p) =>
+      p.locationIds.map((id) => locationMemberRow(id, p.userId, 'organizer')),
+    ),
+  }
 }
