@@ -41,9 +41,22 @@ export function createHouseholdWorld() {
     household: households.client.household,
     householdMember: households.client.householdMember,
     locationMember: households.client.locationMember,
-    location: stock.client.location,
+    location: { ...stock.client.location, delete: deleteLocation },
     itemStock: stock.client.itemStock,
     $transaction,
+  }
+
+  // `LocationMember.locationId` is `onDelete: Cascade`, so in Postgres
+  // deleting a location deletes its role rows. The two stores live in two
+  // fakes, so the cascade is modelled here, where they meet (task 3.6). Without
+  // it, the role rows of a deleted location stay, and a test that counts them
+  // fails against correct code. Pinned in `householdWorld.test.ts`.
+  async function deleteLocation(args: { where: Record<string, unknown> }) {
+    const row = await stock.client.location.delete(args)
+    households.state.locationMembers = households.state.locationMembers.filter(
+      (m) => m.locationId !== row.id,
+    )
+    return row
   }
 
   async function $transaction(arg: unknown): Promise<unknown> {

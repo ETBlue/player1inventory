@@ -8,15 +8,21 @@ type Location {
 }
 
 extend type Query {
-  # Lazily creates the caller's default location if they have none, so a new
-  # account and a pre-migration account both start with exactly one.
+  # The locations the caller has a location role on, by `order`. A new person
+  # gets their household and its first location, "Home", on their first call
+  # (first sign-in, lib/household.ts).
   locations: [Location!]!
 }
 
 extend type Mutation {
+  # Household role `member`. The caller becomes the new location's organizer.
   createLocation(name: String!): Location!
+  # Location role `organizer`.
   updateLocation(id: ID!, input: UpdateLocationInput!): Location!
+  # Household role `manager`. The household's last location is refused with
+  # the error code LAST_LOCATION.
   deleteLocation(id: ID!): Boolean!
+  # Household role `manager`. Every id must be a location of the household.
   reorderLocations(orderedIds: [ID!]!): [Location!]!
 }
 

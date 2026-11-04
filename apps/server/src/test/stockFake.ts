@@ -199,6 +199,54 @@ export class StockIdConstraintError extends Error {
   }
 }
 
+// P2025: `location.update` or `location.delete` matched no row. Real Prisma
+// raises this, so a resolver cannot read "nothing happened" as success.
+export class LocationNotFoundError extends Error {
+  code = 'P2025'
+  constructor(where: Where) {
+    super(`No Location matches ${JSON.stringify(where)}`)
+  }
+}
+
+// `orderBy` on `location.findMany`, as `location.resolver.ts` uses it (task
+// 3.6). Only `order` and `id` are modelled, each `asc` or `desc`, as one object
+// or a list of one-key objects. Any other shape THROWS: before task 3.6 this
+// fake ignored `orderBy` altogether, so a resolver that sorted with it got the
+// rows in store order and no test could see that.
+type LocationOrderBy = Partial<Record<'order' | 'id', 'asc' | 'desc'>>
+
+function sortLocations(
+  rows: FakeLocation[],
+  orderBy: LocationOrderBy | LocationOrderBy[] | undefined,
+): FakeLocation[] {
+  if (orderBy === undefined) return rows
+  const keys = (Array.isArray(orderBy) ? orderBy : [orderBy]).map((entry) => {
+    const pairs = Object.entries(entry)
+    const [pair] = pairs
+    if (
+      pairs.length !== 1 ||
+      !pair ||
+      (pair[0] !== 'order' && pair[0] !== 'id') ||
+      (pair[1] !== 'asc' && pair[1] !== 'desc')
+    ) {
+      throw new Error(
+        `stockFake(location) does not model the orderBy ${JSON.stringify(entry)}. ` +
+          'Only { order } and { id }, each asc or desc, are modelled.',
+      )
+    }
+    return { key: pair[0] as 'order' | 'id', sign: pair[1] === 'asc' ? 1 : -1 }
+  })
+  return [...rows].sort((a, b) => {
+    for (const { key, sign } of keys) {
+      const left = key === 'order' ? (a.order ?? 0) : a.id
+      const right = key === 'order' ? (b.order ?? 0) : b.id
+      if (left < right) return -sign
+      if (left > right) return sign
+    }
+    return 0
+  })
+}
+
 function matchesLocation(row: FakeLocation, where: Where): boolean {
   // `undefined ||` on every key, deliberately: this is Prisma's semantics, and
   // it is what makes dropping a key from a resolver's where clause visible.
@@ -496,12 +544,45 @@ export function createStockFake() {
         checkLocationWhere(where)
         return state.locations.find((l) => matchesLocation(l, where)) ?? null
       },
-      findMany: async ({ where = {} }: { where?: Where } = {}) => {
+      findMany: async ({
+        where = {},
+        orderBy,
+      }: { where?: Where; orderBy?: LocationOrderBy | LocationOrderBy[]; select?: unknown } = {}) => {
         checkLocationWhere(where)
-        return state.locations.filter((l) => matchesLocation(l, where))
+        return sortLocations(
+          state.locations.filter((l) => matchesLocation(l, where)),
+          orderBy,
+        )
+      },
+      count: async ({ where = {} }: { where?: Where } = {}) => {
+        checkLocationWhere(where)
+        return state.locations.filter((l) => matchesLocation(l, where)).length
       },
       create: async ({ data }: { data: Record<string, unknown> }) =>
         insertLocation(data),
+      // One row, found by its `where`. P2025 when none matches, as in Prisma.
+      // `updatedAt` moves unless the writer names it (`@updatedAt`).
+      update: async ({ where, data }: { where: Where; data: Record<string, unknown> }) => {
+        checkLocationWhere(where)
+        const row = state.locations.find((l) => matchesLocation(l, where))
+        if (!row) throw new LocationNotFoundError(where)
+        applyLocationUpdate(row, data)
+        if (!('updatedAt' in data)) row.updatedAt = new Date()
+        return row
+      },
+      // One row, and its stock rows with it: `ItemStock.locationId` is
+      // `onDelete: Cascade`. The `LocationMember` cascade is in
+      // `householdWorld.ts`, where that store lives. `Cart` and `InventoryLog`
+      // also cascade in Postgres; this fake does not hold them.
+      delete: async ({ where }: { where: Where }) => {
+        checkLocationWhere(where)
+        const index = state.locations.findIndex((l) => matchesLocation(l, where))
+        if (index === -1) throw new LocationNotFoundError(where)
+        const [row] = state.locations.splice(index, 1)
+        if (!row) throw new LocationNotFoundError(where)
+        state.itemStocks = state.itemStocks.filter((s) => s.locationId !== row.id)
+        return row
+      },
       // `create` and `update` are kept APART, and `update` is applied key by
       // key. The import upserts deliberately pass a NARROWER `update` than
       // their `create` — no `isDefault`, no `userId` — so a fake that reused

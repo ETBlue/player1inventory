@@ -371,9 +371,9 @@ deleted `ensureDefaultLocation` and `apps/server/src/lib/defaultLocation.ts`):
 | first sign-in | `ensureHousehold` in `apps/server/src/lib/household.ts`, reached through `requireHousehold` in `apps/server/src/lib/authz.ts` | a user with no household gets one, plus one location ("Home" in English) with `isDefault: true` and `order: 0`, and an `organizer` row on it. The `locations` query is the usual first caller. |
 | an import row that names no usable location | `fallbackImportLocation` in `apps/server/src/lib/authz.ts` | picks the caller's location with the lowest `order` (ties broken by id), in the caller's household, on which the caller is `participant` or `organizer`. It does not create one. If none qualifies, the import fails with `NO_LOCATION`. |
 
-`fallbackImportLocation` reads `LocationMember` rows. Until H3a tasks 3.6 and 3.9,
-`createLocation` and the bulk location imports write none, so a location made by them is
-never picked. And `clearAllData` deletes every location without making a new one (fixed in
+`fallbackImportLocation` reads `LocationMember` rows. `createLocation` writes the
+creator's `organizer` row since H3a task 3.6. Until task 3.9, the bulk location imports
+write none, so a location made by them is never picked. And `clearAllData` deletes every location without making a new one (fixed in
 task 3.10). Both can lead to `NO_LOCATION` in cloud E2E until then.
 
 **`ensureCloudDefaultLocation(request)` (`e2e/helpers/cloudSeed.ts`) is still there, and

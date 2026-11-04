@@ -628,3 +628,99 @@ describe('stockFake keeps the household of a location', () => {
     expect(fake.state.locations[0]?.householdId).toBe('hh_1')
   })
 })
+
+// Households H3a task 3.6. `location.resolver.ts` now runs on this fake (through
+// `householdWorld.ts`) instead of a hand-written double, so the fake needs the
+// location calls that resolver makes. Each one is pinned here.
+describe('stockFake location calls for location.resolver.ts', () => {
+  const rows = () => [
+    { id: 'loc_b', userId: 'user_1', isDefault: false, householdId: 'hh_1', name: 'B', order: 2 },
+    { id: 'loc_a', userId: 'user_1', isDefault: true, householdId: 'hh_1', name: 'A', order: 0 },
+    { id: 'loc_c', userId: 'user_2', isDefault: true, householdId: 'hh_2', name: 'C', order: 1 },
+  ]
+
+  it('location.findMany sorts by orderBy, and keeps store order without one', async () => {
+    const fake = createStockFake()
+    fake.reset(rows(), [])
+
+    const asc = await fake.client.location.findMany({ orderBy: { order: 'asc' } })
+    const desc = await fake.client.location.findMany({
+      orderBy: [{ order: 'desc' }, { id: 'asc' }],
+    })
+    const none = await fake.client.location.findMany({})
+
+    expect(asc.map((l) => l.id)).toEqual(['loc_a', 'loc_c', 'loc_b'])
+    expect(desc.map((l) => l.id)).toEqual(['loc_b', 'loc_c', 'loc_a'])
+    expect(none.map((l) => l.id)).toEqual(['loc_b', 'loc_a', 'loc_c'])
+  })
+
+  it('location.findMany breaks an order tie by the next orderBy key', async () => {
+    const fake = createStockFake()
+    fake.reset(
+      [
+        { id: 'loc_z', userId: 'user_1', isDefault: false, order: 1 },
+        { id: 'loc_y', userId: 'user_1', isDefault: false, order: 1 },
+      ],
+      [],
+    )
+
+    const sorted = await fake.client.location.findMany({
+      orderBy: [{ order: 'asc' }, { id: 'asc' }],
+    })
+
+    expect(sorted.map((l) => l.id)).toEqual(['loc_y', 'loc_z'])
+  })
+
+  it('location.findMany refuses an orderBy it does not model', async () => {
+    const fake = createStockFake()
+    fake.reset(rows(), [])
+
+    await expect(
+      fake.client.location.findMany({ orderBy: { name: 'asc' } as never }),
+    ).rejects.toThrow(/orderBy/)
+  })
+
+  it('location.count counts only the rows the where matches', async () => {
+    const fake = createStockFake()
+    fake.reset(rows(), [])
+
+    expect(await fake.client.location.count({ where: { householdId: 'hh_1' } })).toBe(2)
+    expect(await fake.client.location.count({ where: { householdId: 'hh_9' } })).toBe(0)
+  })
+
+  it('location.update changes the named columns of one row, and raises P2025 when none matches', async () => {
+    const fake = createStockFake()
+    fake.reset(rows(), [])
+
+    const row = await fake.client.location.update({
+      where: { id: 'loc_b' },
+      data: { name: 'Shed' },
+    })
+
+    expect(row.name).toBe('Shed')
+    expect(fake.state.locations.find((l) => l.id === 'loc_b')?.order).toBe(2)
+    expect(fake.state.locations.find((l) => l.id === 'loc_a')?.name).toBe('A')
+    await expect(
+      fake.client.location.update({ where: { id: 'nope' }, data: { name: 'x' } }),
+    ).rejects.toMatchObject({ code: 'P2025' })
+  })
+
+  it('location.delete removes one row and its stock rows, and raises P2025 when none matches', async () => {
+    // Given two locations, each with a stock row
+    const fake = createStockFake()
+    fake.reset(rows(), [
+      makeStock({ id: 's_b', itemId: 'item_1', locationId: 'loc_b' }),
+      makeStock({ id: 's_a', itemId: 'item_1', locationId: 'loc_a' }),
+    ])
+
+    // When one location is deleted
+    await fake.client.location.delete({ where: { id: 'loc_b' } })
+
+    // Then its stock row goes with it (ON DELETE CASCADE), and the other stays
+    expect(fake.state.locations.map((l) => l.id)).toEqual(['loc_a', 'loc_c'])
+    expect(fake.state.itemStocks.map((s) => s.id)).toEqual(['s_a'])
+    await expect(fake.client.location.delete({ where: { id: 'loc_b' } })).rejects.toMatchObject({
+      code: 'P2025',
+    })
+  })
+})

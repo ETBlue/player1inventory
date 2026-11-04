@@ -1,0 +1,56 @@
+import { describe, expect, it } from 'vitest'
+import { createHouseholdWorld } from './householdWorld.js'
+
+const T = new Date('2026-11-01T00:00:00.000Z')
+
+function household(id: string, ownerId: string) {
+  return { id, name: `${id} name`, ownerId, ownerGoneAt: null, createdAt: T, updatedAt: T }
+}
+
+// The world's own contract: what it adds on top of the three fakes it joins.
+describe('householdWorld', () => {
+  it('deleting a location deletes its LocationMember rows, as the foreign key cascade does', async () => {
+    // Given two locations in one household, each with role rows
+    const world = createHouseholdWorld()
+    world.stock.reset(
+      [
+        { id: 'loc-1', userId: 'u1', isDefault: true, householdId: 'hh-1', name: 'A', order: 0 },
+        { id: 'loc-2', userId: 'u1', isDefault: false, householdId: 'hh-1', name: 'B', order: 1 },
+      ],
+      [],
+    )
+    world.seedHouseholds({
+      households: [household('hh-1', 'u1')],
+      householdMembers: [{ householdId: 'hh-1', userId: 'u1', role: 'owner', joinedAt: T }],
+      locationMembers: [
+        { locationId: 'loc-1', userId: 'u1', role: 'organizer', createdAt: T },
+        { locationId: 'loc-2', userId: 'u1', role: 'organizer', createdAt: T },
+        { locationId: 'loc-2', userId: 'u2', role: 'viewer', createdAt: T },
+      ],
+    })
+
+    // When one location is deleted
+    await world.client.location.delete({ where: { id: 'loc-2' } })
+
+    // Then that location's role rows are gone, and the other location's stay
+    expect(world.households.state.locationMembers.map((m) => m.locationId)).toEqual(['loc-1'])
+  })
+
+  it('a delete that matches no location leaves the LocationMember rows alone', async () => {
+    const world = createHouseholdWorld()
+    world.stock.reset(
+      [{ id: 'loc-1', userId: 'u1', isDefault: true, householdId: 'hh-1', name: 'A', order: 0 }],
+      [],
+    )
+    world.seedHouseholds({
+      households: [household('hh-1', 'u1')],
+      householdMembers: [{ householdId: 'hh-1', userId: 'u1', role: 'owner', joinedAt: T }],
+      locationMembers: [{ locationId: 'loc-1', userId: 'u1', role: 'organizer', createdAt: T }],
+    })
+
+    await expect(world.client.location.delete({ where: { id: 'nope' } })).rejects.toMatchObject({
+      code: 'P2025',
+    })
+    expect(world.households.state.locationMembers).toHaveLength(1)
+  })
+})

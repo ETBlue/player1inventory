@@ -25,7 +25,7 @@ const WRITE_LOCATION_ROLES: LocationRole[] = ['organizer', 'participant']
  * such row" and "another household's row" all give this same error, so a
  * caller cannot use it to find out which ids exist.
  */
-function forbidden(): GraphQLError {
+export function forbidden(): GraphQLError {
   return new GraphQLError('Forbidden', { extensions: { code: 'FORBIDDEN' } })
 }
 
@@ -126,6 +126,23 @@ export async function requireLocationRole(
 }
 
 /**
+ * The ids of every location on which the caller holds a location role that
+ * still counts (decision H18), whatever the role. This is the list a person
+ * sees: the `locations` query reads it (task 3.6).
+ *
+ * The household role does NOT add locations here. An owner or manager sees a
+ * location only through a `LocationMember` row, until H5.
+ */
+export async function locationIdsWithRole(ctx: Context): Promise<string[]> {
+  const userId = requireAuth(ctx)
+  const memberships = await prisma.locationMember.findMany({
+    where: countedLocationRole(userId),
+    select: { locationId: true },
+  })
+  return memberships.map((m) => m.locationId)
+}
+
+/**
  * Where an import puts a log or a cart that names no location it can use
  * (decision H12): the caller's first location by `order`, in the caller's
  * household, on which the caller is `participant` or higher.
@@ -144,9 +161,9 @@ export async function requireLocationRole(
  *   not run first sign-in again. So a "clear" import followed by a log or
  *   cart that names no location gets `NO_LOCATION`. Task 3.10 fixes this
  *   (decision H17).
- * - `createLocation` and `bulkCreateLocations` / `bulkUpsertLocations` do
- *   not yet write an `organizer` row, so a location made by them does not
- *   count here. Tasks 3.6 and 3.9 fix this.
+ * - `bulkCreateLocations` / `bulkUpsertLocations` do not yet write an
+ *   `organizer` row, so a location made by them does not count here. Task
+ *   3.9 fixes this. (`createLocation` writes one since task 3.6.)
  *
  * Once both are fixed, it cannot happen before H5: deleting the last
  * location is refused (decision H13), and the creator of a location
