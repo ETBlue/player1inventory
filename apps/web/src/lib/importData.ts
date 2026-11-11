@@ -468,11 +468,28 @@ function findPayloadDefaultLocationId(payload: ExportPayload): string | null {
 // default" is the household's FIRST location by `order`, and that can be a
 // location the backup does not contain. Back up a household with Home (order
 // 0) and Garage, later add Attic and drag it to the top, then restore with
-// `skip` or `replace`. Without this check the remap is Home -> Attic, so
-// Home's stock, carts and logs land under Attic, and with `replace` Attic is
-// renamed "Home". Before task 3.12 the destination default was the
+// `skip` or `replace`. Without this check the remap is Home -> Attic. What
+// that does in cloud (read from apps/server/src/resolvers/import.resolver.ts):
+//
+//   - Attic is NOT renamed. Both strategies send `locations` on the create
+//     pass only (`partitionPayload`), and `bulkCreateLocations` skips an id
+//     that exists. The payload's Home row now carries Attic's id, so it is
+//     skipped and Attic keeps its name.
+//   - Every row the import CREATES lands under Attic: a stock row, log or
+//     cart item whose id the destination no longer holds, and a new
+//     `Attic:<vendor>` cart for each of Home's carts.
+//   - A row that EXISTS mostly stays at Home. `bulkUpsertItemStocks` updates
+//     the quantities only, and `bulkUpsertInventoryLogs` writes `locationId`
+//     in `create` only. The exception is a cart item under `replace`:
+//     `bulkUpsertCartItems` writes `cartId` in `update` too, so an existing
+//     cart item moves into the Attic cart.
+//
+// The rename IS real in local mode, where `replace` and `clear` write
+// locations with `bulkPut` (`importLocations`). But the local side never
+// reaches this check (see the last paragraph), so this paragraph is about
+// cloud only. Before task 3.12 the cloud destination default was the
 // `isDefault` row, which had the backup's default id, so the remap was the
-// identity and this could not happen.
+// identity and none of this could happen.
 //
 // A FIRST copy between modes or accounts is unchanged: there the payload's
 // default id is not in the destination, so it still lands on the destination
