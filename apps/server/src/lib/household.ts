@@ -237,9 +237,12 @@ export async function createFirstLocation(
  *
  * The cost: `Household.updatedAt` moves on every call.
  *
- * NOT proved on real Postgres yet (plan H3a, task 3.16). The Prisma fake has
- * no row lock, so the unit tests prove only that the `UPDATE` is sent first,
- * and the count and the refusal. No E2E spec runs two deletes at once.
+ * The Prisma fake has no row lock, so the unit tests prove only that the
+ * `UPDATE` is sent first, and the count and the refusal. No E2E spec runs two
+ * deletes at once. The proof on real Postgres is `assertHouseholdLock` in
+ * scripts/verify-migration.ts (plan H3a, task 3.16): two deletes at once, and
+ * `clearAllData` with `deleteLocation`. It keeps a copy of the `UPDATE` below;
+ * change both together.
  */
 export async function lockHousehold(
   tx: Prisma.TransactionClient,

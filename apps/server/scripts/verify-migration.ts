@@ -1584,6 +1584,381 @@ async function assertDropUserScope(): Promise<void> {
   )
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// The household lock on real Postgres (plan H3a, task 3.16)
+// ══════════════════════════════════════════════════════════════════════
+//
+// `lockHousehold` (src/lib/household.ts) takes a row lock on the "Household"
+// row. Every transaction that removes locations takes it FIRST. The unit tests
+// run against a Prisma fake, which has no row lock, so they prove only the
+// order of the calls. These two checks prove the lock itself:
+//
+//   1. Two `deleteLocation` transactions on the last two locations of one
+//      household (review of task 3.6). The second waits at the lock, then its
+//      count sees the first one's committed delete, so it refuses.
+//   2. `clearAllData` and `deleteLocation` at the same time (review of task
+//      3.10). Both take the lock before their location delete, so the second
+//      waits for the first and the two never deadlock.
+//
+// Both use the same two-connection method as the first sign-in race guard in
+// assertHouseholdsConstraints: two PrismaClients, transaction A holds the lock
+// and stays open, and the script polls pg_blocking_pids until it SEES that A
+// blocks B. Only then does A commit.
+//
+// main() calls this at the very end. It writes its own users, households and
+// locations, so it does not depend on the fixture above.
+
+// The lock, written exactly as lockHousehold in src/lib/household.ts writes
+// it. scripts/ must not import from src (see the no-overlap note in the root
+// CLAUDE.md), so the call is repeated here. If lockHousehold changes, change
+// this one too, or these proofs stop being about the code that runs.
+const lockHouseholdCopy = (tx: Prisma.TransactionClient, householdId: string) =>
+  tx.household.update({ where: { id: householdId }, data: { updatedAt: new Date() } })
+
+async function backendPidOf(tx: Prisma.TransactionClient): Promise<number> {
+  const rows = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`
+  const pid = rows[0]?.pid
+  if (typeof pid !== 'number') throw new Error(`FAIL: pg_backend_pid() returned ${String(pid)}`)
+  return pid
+}
+
+/**
+ * Rejects if `tx` settles while `reached()` is still false. That means the
+ * transaction finished, or failed, before it reached the point the caller
+ * waits for. Otherwise it never settles, so it only ever loses a
+ * Promise.race. Both outcomes of `tx` are handled here, so a later rejection
+ * is never unhandled; the caller still awaits `tx` itself for its result.
+ */
+function failIfSettlesBefore(
+  tx: Promise<unknown>,
+  reached: () => boolean,
+  what: string,
+): Promise<never> {
+  const never = new Promise<never>(() => {})
+  return tx.then(
+    () => {
+      if (!reached()) throw new Error(`FAIL: ${what} finished before it got there`)
+      return never
+    },
+    (err: unknown) => {
+      if (!reached()) throw err
+      return never
+    },
+  )
+}
+
+/**
+ * Runs `first` and `second` on two separate connections so that they overlap.
+ *
+ * `first` must call `hold()` at the point where it holds the lock. `hold()`
+ * returns only after the script has seen `first`'s backend block `second`'s
+ * backend. Then `first` goes on and commits. Returns both results.
+ *
+ * Fails (throws `FAIL: …`) when:
+ *   - `second` is never seen waiting for `first` within about 10 seconds;
+ *   - either transaction fails after the overlap. A deadlock is one such
+ *     failure: Postgres cancels one side with 40P01, and Prisma reports it.
+ */
+async function overlapTwoTransactions<RA, RB>(
+  label: string,
+  first: (tx: Prisma.TransactionClient, hold: () => Promise<void>) => Promise<RA>,
+  second: (tx: Prisma.TransactionClient) => Promise<RB>,
+): Promise<{ first: RA; second: RB }> {
+  const clientA = new PrismaClient({ datasources: { db: { url: TEST_URL } } })
+  const clientB = new PrismaClient({ datasources: { db: { url: TEST_URL } } })
+  let releaseA: () => void = () => {}
+  try {
+    await Promise.all([clientA.$connect(), clientB.$connect()])
+    const aMayCommit = new Promise<void>((resolve) => {
+      releaseA = resolve
+    })
+    let aHeld = false
+    let reportPidA: (pid: number) => void = () => {}
+    const aHolding = new Promise<number>((resolve) => {
+      reportPidA = resolve
+    })
+    let bStartedFlag = false
+    let reportPidB: (pid: number) => void = () => {}
+    const bStarted = new Promise<number>((resolve) => {
+      reportPidB = resolve
+    })
+    const txOptions = { maxWait: 10_000, timeout: 30_000 }
+
+    const txA = clientA.$transaction(async (tx) => {
+      const pid = await backendPidOf(tx)
+      return first(tx, async () => {
+        aHeld = true
+        reportPidA(pid)
+        await aMayCommit
+      })
+    }, txOptions)
+    const pidA = await Promise.race([
+      aHolding,
+      failIfSettlesBefore(txA, () => aHeld, `${label}: the first transaction`),
+    ])
+
+    let bSettled = false
+    const txB = clientB.$transaction(async (tx) => {
+      bStartedFlag = true
+      reportPidB(await backendPidOf(tx))
+      return second(tx)
+    }, txOptions)
+    txB.then(
+      () => {
+        bSettled = true
+      },
+      () => {
+        bSettled = true
+      },
+    )
+    const pidB = await Promise.race([
+      bStarted,
+      failIfSettlesBefore(txB, () => bStartedFlag, `${label}: the second transaction`),
+    ])
+
+    // At most 50 polls, 200 ms apart: about 10 seconds. pg_blocking_pids of
+    // B must contain A's pid: that names this exact pair, not some other wait
+    // on the shared test database.
+    let aBlocksB = false
+    let polls = 0
+    for (; polls < 50 && !aBlocksB && !bSettled; polls++) {
+      const rows = await prisma.$queryRaw<{ blocked: boolean }[]>`
+        SELECT ${pidA}::int = ANY(pg_blocking_pids(${pidB}::int)) AS blocked`
+      aBlocksB = rows[0]?.blocked === true
+      if (!aBlocksB) await new Promise((resolve) => setTimeout(resolve, 200))
+    }
+    assert(
+      aBlocksB,
+      aBlocksB
+        ? `${label}: the second transaction (pid ${pidB}) WAITED for the first (pid ${pidA}), so the two really overlapped`
+        : `${label}: the second transaction (pid ${pidB}) was never seen blocked by the first (pid ${pidA}) after ${polls} polls, about ${polls * 0.2} s. ${bSettled ? 'It finished while the first still held the lock, so it did not wait for the lock.' : 'It is still running: it may be waiting on something else.'}`,
+    )
+
+    releaseA()
+    try {
+      const [a, b] = await Promise.all([txA, txB])
+      return { first: a, second: b }
+    } catch (err) {
+      const code = err instanceof Prisma.PrismaClientKnownRequestError ? err.code : undefined
+      throw new Error(
+        `FAIL: ${label}: a transaction failed after the overlap (Prisma code ${code ?? 'none'}; P2034 is a deadlock or write conflict): ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+  } finally {
+    releaseA()
+    await Promise.all([clientA.$disconnect(), clientB.$disconnect()])
+  }
+}
+
+/** A user who owns one household with two locations, each with an organizer row. */
+async function makeTwoLocationHousehold(
+  tag: string,
+): Promise<{ userId: string; householdId: string; locationIds: [string, string] }> {
+  const userId = `user-lock-${tag}`
+  await prisma.user.create({
+    data: { id: userId, displayName: `Lock ${tag}`, householdSetupAt: new Date() },
+  })
+  const household = await prisma.household.create({
+    data: {
+      name: `Lock ${tag}'s Household`,
+      ownerId: userId,
+      members: { create: { userId, role: 'owner' } },
+    },
+  })
+  const locationIds: [string, string] = [`loc-lock-${tag}-1`, `loc-lock-${tag}-2`]
+  for (const [order, id] of locationIds.entries()) {
+    await prisma.location.create({
+      data: {
+        id,
+        name: `Lock ${tag} ${order + 1}`,
+        order,
+        householdId: household.id,
+        members: { create: { userId, role: 'organizer' } },
+      },
+    })
+  }
+  // One item, stocked at both locations, so clearAllData's deletes below
+  // have rows to delete and the location delete has stock rows to cascade.
+  await prisma.item.create({
+    data: {
+      id: `item-lock-${tag}`,
+      name: `Lock ${tag} item`,
+      targetUnit: 'package',
+      householdId: household.id,
+      itemStocks: {
+        create: locationIds.map((locationId) => ({ locationId, packedQuantity: 1 })),
+      },
+    },
+  })
+  return { userId, householdId: household.id, locationIds }
+}
+
+/**
+ * The body of deleteLocation's transaction, in the same order, with the same
+ * Prisma calls (src/resolvers/location.resolver.ts, `deleteLocation`):
+ *
+ *   lockHouseholdCopy    ← `await lockHousehold(tx, householdId)`
+ *   location.findFirst   ← `tx.location.findFirst({ where: { id, householdId }, … })`
+ *   location.count       ← `tx.location.count({ where: { householdId } })`
+ *   location.delete      ← `tx.location.delete({ where: { id } })`
+ *
+ * The resolver throws `forbidden()` and `LAST_LOCATION`. Here each one is a
+ * result instead, so the script can read which way it went. A thrown error
+ * would roll the transaction back too, so nothing else differs.
+ *
+ * `hold` is called right after the lock, when given.
+ */
+async function deleteLocationBody(
+  tx: Prisma.TransactionClient,
+  householdId: string,
+  id: string,
+  hold?: () => Promise<void>,
+): Promise<{ outcome: 'deleted' | 'forbidden' | 'last-location'; count?: number }> {
+  await lockHouseholdCopy(tx, householdId)
+  if (hold) await hold()
+  const location = await tx.location.findFirst({ where: { id, householdId }, select: { id: true } })
+  if (!location) return { outcome: 'forbidden' }
+  const count = await tx.location.count({ where: { householdId } })
+  if (count <= 1) return { outcome: 'last-location', count }
+  await tx.location.delete({ where: { id } })
+  return { outcome: 'deleted', count }
+}
+
+async function assertHouseholdLock(): Promise<void> {
+  console.log('the household lock (lockHousehold) on real Postgres:')
+
+  // ── 1. Two deletes of the last two locations (review of task 3.6) ──
+  //
+  // A deletes location 1 and holds its transaction open AFTER the delete.
+  // B then tries to delete location 2. B must wait at the lock. When A
+  // commits, B's count is a new statement, so under READ COMMITTED it sees
+  // A's delete: 1 location, and B refuses with LAST_LOCATION.
+  //
+  // Without the lock, B's count would run at once, see 2 (A has not
+  // committed), and delete location 2 as well. Then the household has no
+  // location. Each of the checks below fails in that case.
+  {
+    const { householdId, locationIds } = await makeTwoLocationHousehold('delete-delete')
+    const [loc1, loc2] = locationIds
+    const { first, second } = await overlapTwoTransactions(
+      'two deleteLocation at once',
+      async (tx, hold) => {
+        const result = await deleteLocationBody(tx, householdId, loc1)
+        // Hold AFTER the delete, so B's count would see 2 if it did not wait.
+        await hold()
+        return result
+      },
+      (tx) => deleteLocationBody(tx, householdId, loc2),
+    )
+    assert(
+      first.outcome === 'deleted' && first.count === 2,
+      `two deleteLocation at once: the first counts 2 and deletes its location (read: ${first.outcome}, count ${first.count})`,
+    )
+    assert(
+      second.outcome === 'last-location' && second.count === 1,
+      `two deleteLocation at once: the second, after the wait, counts 1 (it sees the first one's committed delete) and refuses with LAST_LOCATION (read: ${second.outcome}, count ${second.count})`,
+    )
+    const left = (await prisma.location.findMany({ where: { householdId } })).map((l) => l.id)
+    assert(
+      JSON.stringify(left) === JSON.stringify([loc2]),
+      `two deleteLocation at once: the household keeps exactly one location, ${loc2} (read: ${left.join(', ') || 'none'})`,
+    )
+  }
+
+  // ── 2. clearAllData and deleteLocation at once (review of task 3.10) ──
+  //
+  // A runs clearAllData's transaction up to and including its location
+  // deleteMany, and holds it open there. At that point A holds the household
+  // lock AND row locks on both locations. B then runs deleteLocation's
+  // transaction on location 2. B's first statement is the household lock, so
+  // B waits there and touches no location row. When A goes on (makes "Home")
+  // and commits, B gets the lock, its findFirst no longer finds location 2,
+  // and it refuses with forbidden. No deadlock: a deadlock needs each side to
+  // hold a lock the other wants, and B holds none while it waits.
+  //
+  // If clearAllData took the household lock AFTER its location deleteMany,
+  // and deleteLocation took a location row lock before the household lock,
+  // the two could wait on each other. Postgres would then cancel one with
+  // 40P01, and overlapTwoTransactions fails with the Prisma error.
+  //
+  // If deleteLocation took no household lock at all, B would still wait, on
+  // location 2's row lock, but only at its delete. After A commits, that
+  // delete finds no row, Prisma raises P2025, and this check fails too.
+  //
+  // The statements are clearAllData's, in its order, with the same Prisma
+  // calls (src/resolvers/import.resolver.ts, `clearAllData`, the body of its
+  // `prisma.$transaction`). Each line below names the resolver line it mirrors.
+  // The owner check before the transaction (requireHouseholdRole) is left
+  // out: it takes no lock.
+  {
+    const { userId, householdId, locationIds } = await makeTwoLocationHousehold('clear-delete')
+    const [, loc2] = locationIds
+    const { first, second } = await overlapTwoTransactions(
+      'clearAllData and deleteLocation at once',
+      async (tx, hold) => {
+        // `await lockHousehold(tx, householdId)`
+        await lockHouseholdCopy(tx, householdId)
+        // `await tx.inventoryLog.deleteMany({ where: { location: { householdId } } })`
+        await tx.inventoryLog.deleteMany({ where: { location: { householdId } } })
+        // `await tx.cartItem.deleteMany({ where: { cart: { location: { householdId } } } })`
+        await tx.cartItem.deleteMany({ where: { cart: { location: { householdId } } } })
+        // `await tx.cart.deleteMany({ where: { location: { householdId } } })`
+        await tx.cart.deleteMany({ where: { location: { householdId } } })
+        // `await tx.recipeItem.deleteMany({ where: { recipe: { householdId } } })`
+        await tx.recipeItem.deleteMany({ where: { recipe: { householdId } } })
+        // `await tx.recipe.deleteMany({ where: { householdId } })`
+        await tx.recipe.deleteMany({ where: { householdId } })
+        // `await tx.itemTag.deleteMany({ where: { item: { householdId } } })`
+        await tx.itemTag.deleteMany({ where: { item: { householdId } } })
+        // `await tx.itemVendor.deleteMany({ where: { item: { householdId } } })`
+        await tx.itemVendor.deleteMany({ where: { item: { householdId } } })
+        // `await tx.itemStock.deleteMany({ where: { location: { householdId } } })`
+        await tx.itemStock.deleteMany({ where: { location: { householdId } } })
+        // `await tx.item.deleteMany({ where: { householdId } })`
+        await tx.item.deleteMany({ where: { householdId } })
+        // `await tx.tag.deleteMany({ where: { householdId } })`
+        await tx.tag.deleteMany({ where: { householdId } })
+        // `await tx.tagType.deleteMany({ where: { householdId } })`
+        await tx.tagType.deleteMany({ where: { householdId } })
+        // `await tx.vendor.deleteMany({ where: { householdId } })`
+        await tx.vendor.deleteMany({ where: { householdId } })
+        // `await tx.shelf.deleteMany({ where: { householdId } })`
+        await tx.shelf.deleteMany({ where: { householdId } })
+        // `await tx.location.deleteMany({ where: { householdId } })`
+        const { count: locationsDeleted } = await tx.location.deleteMany({
+          where: { householdId },
+        })
+        // Hold here: A now holds the household lock and both location rows.
+        await hold()
+        // `await createFirstLocation(tx, { householdId, userId, name: … })`,
+        // whose body (src/lib/household.ts) is a location.create and a
+        // locationMember.create. The name is "Home", firstLocationName('en').
+        const home = await tx.location.create({
+          data: { name: 'Home', order: 0, householdId },
+        })
+        await tx.locationMember.create({
+          data: { locationId: home.id, userId, role: 'organizer' },
+        })
+        return { locationsDeleted, homeId: home.id }
+      },
+      (tx) => deleteLocationBody(tx, householdId, loc2),
+    )
+    assert(
+      first.locationsDeleted === 2,
+      `clearAllData and deleteLocation at once: clearAllData deletes both locations (read: ${first.locationsDeleted})`,
+    )
+    assert(
+      second.outcome === 'forbidden',
+      `clearAllData and deleteLocation at once: deleteLocation, after the wait, no longer finds ${loc2} and refuses (read: ${second.outcome})`,
+    )
+    const left = (await prisma.location.findMany({ where: { householdId } })).map((l) => l.id)
+    assert(
+      JSON.stringify(left) === JSON.stringify([first.homeId]),
+      `clearAllData and deleteLocation at once: the household keeps exactly one location, the new "Home" (read: ${left.join(', ') || 'none'})`,
+    )
+  }
+}
+
 const SERVER_DIR = fileURLToPath(new URL('..', import.meta.url))
 
 // In apply order. Adding a later migration under test means adding it here.
@@ -1895,6 +2270,9 @@ async function main(): Promise<void> {
   )
 
   await assertHouseholdsConstraints()
+
+  // Last: it writes its own households and locations.
+  await assertHouseholdLock()
 
   console.log('\nMigration verified.')
 }
