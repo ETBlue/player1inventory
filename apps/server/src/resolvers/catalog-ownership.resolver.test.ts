@@ -24,8 +24,8 @@ import { typeDefs } from '../schema/index.js'
 // ─── Since households H3a task 3.7 ───────────────────────────────────────────
 //
 // "Mine" and "A's" now mean "my HOUSEHOLD's" and "A's household's". The
-// three catalog stores are scoped by `householdId` (and still require
-// `userId` on a create, until task 3.14). `Cart` and `CartItem` keep their
+// three catalog stores are scoped by `householdId`, and refuse a write that
+// names `userId` (task 3.14 dropped the column). `Cart` and `CartItem` keep their
 // `userId` scope until H3b. Each person is the `owner` of their own
 // household, so every role check passes here: the role checks, with three
 // people, are in `catalog-household.resolver.test.ts`.
@@ -58,7 +58,7 @@ vi.mock('../lib/prisma.js', async () => {
       { householdId: 'hh_a', userId: 'user_a', role: 'owner', joinedAt: T },
     ],
   })
-  const catalog = { scope: 'householdId' as const, requiredColumns: ['userId'] }
+  const catalog = { scope: 'householdId' as const }
   const tag = createOwnedRowFake<{
     id: string
     householdId: string

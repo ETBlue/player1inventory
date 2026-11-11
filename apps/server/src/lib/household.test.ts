@@ -57,14 +57,14 @@ describe('ensureHousehold — a new user', () => {
     expect(world.households.state.householdMembers).toEqual([
       expect.objectContaining({ householdId, userId: 'user-et', role: 'owner' }),
     ])
-    // And one location, "Home", first in order, in that household, written
-    // with both scope columns until task 3.14 (decision H16)
+    // And one location, "Home", first in order, in that household. The fake
+    // refuses a `userId` or an `isDefault` in the write (columns dropped in
+    // task 3.14).
     expect(world.stock.state.locations).toEqual([
       expect.objectContaining({
         name: 'Home',
         order: 0,
         householdId,
-        userId: 'user-et',
       }),
     ])
     // And the person organizes it

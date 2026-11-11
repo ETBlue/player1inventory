@@ -144,16 +144,15 @@ describe('Item resolvers', () => {
     // When user creates an item
     const result = await execOp(
       `mutation CreateItem($input: CreateItemInput!) {
-        createItem(input: $input) { id name userId tagIds vendorIds createdAt updatedAt }
+        createItem(input: $input) { id name tagIds vendorIds createdAt updatedAt }
       }`,
       { input: { name: 'Milk' } },
     )
 
-    // Then item is returned with userId and mapped fields
+    // Then item is returned with its mapped fields
     expect(result?.errors).toBeUndefined()
-    const created = result?.data?.createItem as { id: string; name: string; userId: string; tagIds: string[]; vendorIds: string[] }
+    const created = result?.data?.createItem as { id: string; name: string; tagIds: string[]; vendorIds: string[] }
     expect(created.name).toBe('Milk')
-    expect(created.userId).toBe('user_test123')
     expect(created.id).toBe('item_1')
     expect(created.tagIds).toEqual([])
     expect(created.vendorIds).toEqual([])

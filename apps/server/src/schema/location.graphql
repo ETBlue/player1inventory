@@ -2,7 +2,6 @@ type Location {
   id: ID!
   name: String!
   order: Int!
-  isDefault: Boolean!
   createdAt: String!
   updatedAt: String!
 }

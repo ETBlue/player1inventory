@@ -44,13 +44,12 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
   },
   Mutation: {
     createRecipe: async (_, { name, items }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
       const householdId = await requireCatalogRole(ctx, 'manager')
       // Issue #273: every item the recipe names must be the household's.
       // Checked BEFORE the recipe is created, so a refused call writes nothing.
       await requireCatalogIds(ctx, householdId, 'item', (items ?? []).map((i) => i.itemId))
-      // `userId` is still written until task 3.14 drops the column.
-      const recipe = await prisma.recipe.create({ data: { name, householdId, userId } })
+      const recipe = await prisma.recipe.create({ data: { name, householdId } })
       if (items?.length) {
         await prisma.recipeItem.createMany({
           data: items.map(i => ({ recipeId: recipe.id, itemId: i.itemId, defaultAmount: i.defaultAmount })),

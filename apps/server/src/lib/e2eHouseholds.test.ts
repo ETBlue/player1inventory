@@ -59,9 +59,9 @@ function seed() {
     userRow('stranger', { householdSetupAt: T }),
   ])
   world.stock.reset([
-    { id: 'loc-home', userId: 'owner', isDefault: true, householdId: 'hh-1', name: 'Home', order: 0 },
-    { id: 'loc-office', userId: 'owner', isDefault: false, householdId: 'hh-1', name: 'Office', order: 1 },
-    { id: 'loc-theirs', userId: 'stranger', isDefault: true, householdId: 'hh-2', name: 'Theirs', order: 0 },
+    { id: 'loc-home', householdId: 'hh-1', name: 'Home', order: 0 },
+    { id: 'loc-office', householdId: 'hh-1', name: 'Office', order: 1 },
+    { id: 'loc-theirs', householdId: 'hh-2', name: 'Theirs', order: 0 },
   ])
   world.seedHouseholds({
     households: [householdRow('hh-1', 'owner'), householdRow('hh-2', 'stranger')],

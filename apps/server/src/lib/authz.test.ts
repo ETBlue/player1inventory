@@ -139,9 +139,9 @@ function seed(options: {
   world.reset()
   world.stock.reset(
     [
-      { id: 'loc-1', userId: 'caller', isDefault: true, householdId: 'hh-1', name: 'Kitchen', order: 1 },
-      { id: 'loc-2', userId: 'other', isDefault: false, householdId: 'hh-1', name: 'Garage', order: 0 },
-      { id: 'loc-s', userId: 'stranger', isDefault: true, householdId: 'hh-2', name: 'Theirs', order: 0 },
+      { id: 'loc-1', householdId: 'hh-1', name: 'Kitchen', order: 1 },
+      { id: 'loc-2', householdId: 'hh-1', name: 'Garage', order: 0 },
+      { id: 'loc-s', householdId: 'hh-2', name: 'Theirs', order: 0 },
     ],
     [],
   )
@@ -707,12 +707,9 @@ describe('householdOfLocation', () => {
     await expect(householdOfLocation('loc-s')).resolves.toBe('hh-2')
   })
 
-  it('refuses an id no location holds, and a location with no household, with FORBIDDEN', async () => {
-    world.stock.state.locations.push({ id: 'loc-orphan', userId: 'caller', isDefault: false })
-    for (const id of ['loc-none', 'loc-orphan']) {
-      const error = await householdOfLocation(id).catch((e: GraphQLError) => e)
-      expect((error as GraphQLError).extensions.code).toBe('FORBIDDEN')
-    }
+  it('refuses an id no location holds with FORBIDDEN', async () => {
+    const error = await householdOfLocation('loc-none').catch((e: GraphQLError) => e)
+    expect((error as GraphQLError).extensions.code).toBe('FORBIDDEN')
   })
 })
 

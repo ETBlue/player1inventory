@@ -57,14 +57,13 @@ vi.mock('../lib/prisma.js', async () => {
   const world = createHouseholdWorld()
   const stock = world.stock
 
-  // A catalog model, so scoped by `householdId` (and still requiring `userId`
-  // on a create until task 3.14). No item in this file has tags or vendors,
+  // A catalog model, so scoped by `householdId` (and refusing a `userId` on a
+  // write since task 3.14). No item in this file has tags or vendors,
   // so the `include: { tags, vendors }` of `bulkCreateItems`' closing read
   // resolves to two empty lists.
   const item = createOwnedRowFake<{ id: string; householdId: string; userId: string }>({
     model: 'Item',
     scope: 'householdId',
-    requiredColumns: ['userId'],
     relations: () => ({ tags: [], vendors: [] }),
   })
 
@@ -167,9 +166,9 @@ const PAYLOAD_DUE = '2026-04-05T06:07:08.000Z'
 beforeEach(() => {
   vi.clearAllMocks()
   mockPrisma.$stockFake.reset([
-    { id: LOC_DEFAULT, userId: USER, householdId: HH_USER, isDefault: true, name: 'Kitchen', order: 0, createdAt: TS, updatedAt: TS },
-    { id: LOC_OTHER, userId: USER, householdId: HH_USER, isDefault: false, name: 'Garage', order: 1, createdAt: TS, updatedAt: TS },
-    { id: LOC_STRANGER, userId: STRANGER, householdId: HH_STRANGER, isDefault: true, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
+    { id: LOC_DEFAULT, householdId: HH_USER, name: 'Kitchen', order: 0, createdAt: TS, updatedAt: TS },
+    { id: LOC_OTHER, householdId: HH_USER, name: 'Garage', order: 1, createdAt: TS, updatedAt: TS },
+    { id: LOC_STRANGER, householdId: HH_STRANGER, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
   ])
   // The caller and the stranger are in two different households, each the
   // owner, each the organizer of their own locations.

@@ -66,8 +66,8 @@ import { typeDefs } from '../schema/index.js'
 //
 // ─── Since households H3a task 3.7 ───────────────────────────────────────────
 //
-// The four catalog stores are scoped by `householdId`, and still require
-// `userId` on a create until task 3.14. "The caller's" row below means the
+// The four catalog stores are scoped by `householdId`, and refuse a write
+// that names `userId` (task 3.14 dropped the column). "The caller's" row below means the
 // caller's household's, and "the STRANGER's" means a row of another household.
 // `householdMember` (householdFake) answers `requireHousehold`. Import role
 // gating is H4, so no role is checked here.
@@ -83,7 +83,7 @@ vi.mock('../lib/prisma.js', async () => {
       { householdId: 'hh_theirs', userId: 'user_stranger', role: 'owner', joinedAt: T },
     ],
   })
-  const catalog = { scope: 'householdId' as const, requiredColumns: ['userId'] }
+  const catalog = { scope: 'householdId' as const }
 
   /**
    * A stateful double for one of the three composite-key junction tables.
@@ -470,11 +470,11 @@ function junctionRows(fake: JunctionFake) {
 
 // ─── Queries ─────────────────────────────────────────────────────────────────
 
-const ITEM_FIELDS = '{ id name userId tagIds vendorIds }'
+const ITEM_FIELDS = '{ id name tagIds vendorIds }'
 const CREATE_ITEMS = `mutation ($items: [ItemInput!]!) { bulkCreateItems(items: $items) ${ITEM_FIELDS} }`
 const UPSERT_ITEMS = `mutation ($items: [ItemInput!]!) { bulkUpsertItems(items: $items) ${ITEM_FIELDS} }`
 
-const RECIPE_FIELDS = '{ id name userId items { itemId defaultAmount } }'
+const RECIPE_FIELDS = '{ id name items { itemId defaultAmount } }'
 const CREATE_RECIPES = `mutation ($recipes: [RecipeInput!]!) { bulkCreateRecipes(recipes: $recipes) ${RECIPE_FIELDS} }`
 const UPSERT_RECIPES = `mutation ($recipes: [RecipeInput!]!) { bulkUpsertRecipes(recipes: $recipes) ${RECIPE_FIELDS} }`
 
@@ -555,7 +555,7 @@ describe('Item ownership', () => {
     expect(result.errors).toBeUndefined()
     const stored = mockPrisma.$item.state.rows.find((r) => r.id === ITEM_MINE)
     expect(stored?.name).toBe('Renamed')
-    expect(stored).toMatchObject({ householdId: HH_MINE, userId: USER })
+    expect(stored).toMatchObject({ householdId: HH_MINE })
   })
 
   it('user importing a batch with one forbidden item gets no items written at all', async () => {
@@ -698,7 +698,7 @@ describe('Recipe ownership', () => {
     expect(result.errors).toBeUndefined()
     const stored = mockPrisma.$recipe.state.rows.find((r) => r.id === RECIPE_MINE)
     expect(stored?.name).toBe('Renamed')
-    expect(stored).toMatchObject({ householdId: HH_MINE, userId: USER })
+    expect(stored).toMatchObject({ householdId: HH_MINE })
   })
 
   it('user importing a batch with one forbidden recipe gets no recipes written at all', async () => {
@@ -831,7 +831,6 @@ describe('Item → Tag and Item → Vendor references', () => {
     expect(result.errors).toBeUndefined()
     expect(mockPrisma.$item.state.rows.find((r) => r.id === ITEM_FREE)).toMatchObject({
       householdId: HH_MINE,
-      userId: USER,
     })
     expect(mockPrisma.$itemTag.state.rows.filter((r) => r.itemId === ITEM_FREE)).toEqual([])
     // And the returned row says so too, so the client cannot be told the link
@@ -856,7 +855,6 @@ describe('Item → Tag and Item → Vendor references', () => {
     expect(result.errors).toBeUndefined()
     expect(mockPrisma.$item.state.rows.find((r) => r.id === ITEM_FREE)).toMatchObject({
       householdId: HH_MINE,
-      userId: USER,
     })
     expect(mockPrisma.$itemTag.state.rows.filter((r) => r.itemId === ITEM_FREE)).toEqual([])
   })
@@ -887,7 +885,6 @@ describe('Item → Tag and Item → Vendor references', () => {
     expect(result.errors).toBeUndefined()
     expect(mockPrisma.$item.state.rows.find((r) => r.id === ITEM_FREE)).toMatchObject({
       householdId: HH_MINE,
-      userId: USER,
     })
     expect(mockPrisma.$itemVendor.state.rows.filter((r) => r.itemId === ITEM_FREE)).toEqual([])
   })
@@ -987,7 +984,6 @@ describe('Recipe → Item references', () => {
     expect(result.errors).toBeUndefined()
     expect(mockPrisma.$recipe.state.rows.find((r) => r.id === RECIPE_FREE)).toMatchObject({
       householdId: HH_MINE,
-      userId: USER,
     })
     expect(mockPrisma.$recipeItem.state.rows.filter((r) => r.recipeId === RECIPE_FREE)).toEqual([])
   })

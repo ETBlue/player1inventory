@@ -116,13 +116,13 @@ async function execOp(query: string, variables?: Record<string, unknown>) {
 describe('TagType resolvers', () => {
   it('user can create a tag type via GraphQL', async () => {
     // Given prisma.tagType.create resolves with a new tag type
-    const newTagType = { id: 'tt_1', name: 'Category', color: 'teal', userId: 'user_test123' }
+    const newTagType = { id: 'tt_1', name: 'Category', color: 'teal', householdId: 'hh_test' }
     mockPrisma.tagType.create.mockResolvedValue(newTagType)
 
     // When creating a tag type
     const result = await execOp(
       `mutation CreateTagType($name: String!, $color: String!) {
-        createTagType(name: $name, color: $color) { id name color userId }
+        createTagType(name: $name, color: $color) { id name color }
       }`,
       { name: 'Category', color: 'teal' },
     )
@@ -132,10 +132,11 @@ describe('TagType resolvers', () => {
       id: 'tt_1',
       name: 'Category',
       color: 'teal',
-      userId: 'user_test123',
     })
+    // And the row is written into the caller's household, with no `userId`
+    // (households H3a task 3.14 dropped the column)
     expect(mockPrisma.tagType.create).toHaveBeenCalledWith({
-      data: { name: 'Category', color: 'teal', householdId: 'hh_test', userId: 'user_test123' },
+      data: { name: 'Category', color: 'teal', householdId: 'hh_test' },
     })
   })
 
@@ -233,22 +234,25 @@ describe('TagType resolvers', () => {
 describe('Tag resolvers', () => {
   it('user can create a tag via GraphQL', async () => {
     // Given prisma.tag.create resolves with a new tag
-    const newTag = { id: 'tag_1', name: 'Dairy', typeId: 'tt_1', userId: 'user_test123', parentId: null }
+    const newTag = { id: 'tag_1', name: 'Dairy', typeId: 'tt_1', householdId: 'hh_test', parentId: null }
     mockPrisma.tag.create.mockResolvedValue(newTag)
 
     // When creating a tag
     const result = await execOp(
       `mutation CreateTag($name: String!, $typeId: String!) {
-        createTag(name: $name, typeId: $typeId) { id name typeId userId }
+        createTag(name: $name, typeId: $typeId) { id name typeId }
       }`,
       { name: 'Dairy', typeId: 'tt_1' },
     )
 
     // Then the tag is returned
-    const tag = result?.data?.createTag as { id: string; name: string; typeId: string; userId: string }
+    const tag = result?.data?.createTag as { id: string; name: string; typeId: string }
     expect(tag.name).toBe('Dairy')
     expect(tag.typeId).toBe('tt_1')
-    expect(tag.userId).toBe('user_test123')
+    // And the row is written into the caller's household, with no `userId`
+    expect(mockPrisma.tag.create).toHaveBeenCalledWith({
+      data: { name: 'Dairy', typeId: 'tt_1', householdId: 'hh_test', parentId: null },
+    })
   })
 
   it('user can list their tags', async () => {

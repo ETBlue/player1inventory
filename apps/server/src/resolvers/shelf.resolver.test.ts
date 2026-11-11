@@ -59,8 +59,6 @@ const { state, sharedClient, snapshot } = vi.hoisted(() => {
       id: row.id,
       name: row.name,
       householdId: row.householdId,
-      // `Item.userId` is still `String!` in GraphQL until task 3.14.
-      userId: 'user_test123',
       consumeAmount: row.consumeAmount,
       packageUnit: null,
       measurementUnit: null,

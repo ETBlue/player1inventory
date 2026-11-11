@@ -36,8 +36,7 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       const householdId = await requireCatalogRole(ctx, 'manager')
       await requireLocationRole(ctx, locationId, 'participant')
 
-      // `userId` is still written until task 3.14 drops the column.
-      const vendor = await prisma.vendor.create({ data: { name, householdId, userId } })
+      const vendor = await prisma.vendor.create({ data: { name, householdId } })
 
       // ONE cart, at the location the caller is looking at — the same half
       // local mode does (createVendor, apps/web/src/db/operations.ts). The

@@ -81,12 +81,8 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           select: { order: true },
         })
         const maxOrder = siblings.reduce((max, l) => Math.max(max, l.order), -1)
-        // Both scope columns until task 3.14 drops `userId` (decision H16).
-        // `isDefault` is left to its column default, `false`. So the partial
-        // index "Location_one_default_per_user_key" (on `userId` WHERE
-        // "isDefault") can never refuse this row.
         const created = await tx.location.create({
-          data: { name: name.trim(), order: maxOrder + 1, userId, householdId },
+          data: { name: name.trim(), order: maxOrder + 1, householdId },
         })
         await tx.locationMember.create({
           data: { locationId: created.id, userId, role: 'organizer' },

@@ -43,9 +43,10 @@ import { typeDefs } from '../schema/index.js'
 //
 // ─── The fakes ───────────────────────────────────────────────────────────────
 //
-// - the six catalog models: `ownedRowFake`, scoped by `householdId` and
-//   requiring `userId` on a create (until task 3.14). A `where` that still
-//   names `userId` throws.
+// - the six catalog models: `ownedRowFake`, scoped by `householdId`. A
+//   `where` that still names `userId` throws, and so does a write that names
+//   it (task 3.14 dropped the column). Some fixture rows below still carry a
+//   `userId` value; nothing reads it.
 // - `ItemTag`, `ItemVendor`, `RecipeItem`: a small junction fake below, with
 //   the composite primary key and the `item: { householdId }` relation filter
 //   the counts use. Any other `where` key throws (`checkWhere`).
@@ -63,7 +64,7 @@ vi.mock('../lib/prisma.js', async () => {
   const { checkWhere } = await import('./../test/whereKeys.js')
 
   const world = createHouseholdWorld()
-  const catalog = { scope: 'householdId' as const, requiredColumns: ['userId'] }
+  const catalog = { scope: 'householdId' as const }
 
   type Junction = Record<string, unknown>
 
@@ -347,8 +348,8 @@ function seed(callerRole: HouseholdRole, callerLocationRole: LocationRole = 'org
   world.reset()
   world.stock.reset(
     [
-      { id: 'loc-1', userId: 'caller', householdId: 'hh-1', isDefault: true, name: 'Kitchen', order: 0 },
-      { id: 'loc-s', userId: 'stranger', householdId: 'hh-2', isDefault: true, name: 'Theirs', order: 0 },
+      { id: 'loc-1', householdId: 'hh-1', name: 'Kitchen', order: 0 },
+      { id: 'loc-s', householdId: 'hh-2', name: 'Theirs', order: 0 },
     ],
     [],
   )
@@ -540,7 +541,7 @@ const WRITES: WriteCase[] = [
     variables: { input: { name: 'Bread', tagIds: ['tag-1'], vendorIds: ['ven-2'] } },
     changed: () => {
       const created = S.item.state.rows.find((r) => r.name === 'Bread')
-      expect(created).toMatchObject({ householdId: 'hh-1', userId: 'caller' })
+      expect(created).toMatchObject({ householdId: 'hh-1' })
     },
   },
   {

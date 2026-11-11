@@ -54,7 +54,7 @@ export const shelfResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
   },
   Mutation: {
     createShelf: async (_, { name, type, filterConfig, itemIds }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
       const householdId = await requireCatalogRole(ctx, 'manager')
       await requireShelfIds(ctx, householdId, itemIds, filterConfig)
       const count = await prisma.shelf.count({ where: { householdId } })
@@ -66,8 +66,6 @@ export const shelfResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           filterConfig: filterConfig ?? undefined,
           itemIds: itemIds ?? [],
           householdId,
-          // Still written until task 3.14 drops the column.
-          userId,
         },
       }) as unknown as Promise<Shelf>
     },

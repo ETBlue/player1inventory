@@ -5,6 +5,7 @@ import { resolvers } from '../resolvers/index.js'
 import type { Context } from '../context.js'
 import type { HouseholdRole, LocationRole } from '../lib/authz.js'
 import type { HouseholdWorld } from '../test/householdWorld.js'
+import type { FakeLocation } from '../test/stockFake.js'
 
 // The location resolvers run on `householdWorld` (src/test/householdWorld.ts):
 // `User`, `Household`, `HouseholdMember`, `LocationMember`, `Location` and
@@ -24,7 +25,6 @@ vi.mock('../lib/prisma.js', async () => {
   const items = createOwnedRowFake({
     model: 'Item',
     scope: 'householdId',
-    requiredColumns: ['userId'],
     rows: [{ id: 'item-1', householdId: 'hh-1', userId: 'caller' }],
   })
   world.extend({ item: { findMany: items.client.findMany } })
@@ -90,11 +90,9 @@ function seed(
     onlyOneLocation = false,
   } = options
   world.reset()
-  const loc = (id: string, householdId: string, userId: string, order: number, isDefault = false) => ({
+  const loc = (id: string, householdId: string, order: number): FakeLocation => ({
     id,
-    userId,
     householdId,
-    isDefault,
     name: `${id} name`,
     order,
     createdAt: T,
@@ -102,11 +100,9 @@ function seed(
   })
   world.stock.reset(
     [
-      loc('loc-kitchen', 'hh-1', 'caller', 1, true),
-      ...(onlyOneLocation
-        ? []
-        : [loc('loc-garage', 'hh-1', 'other', 3), loc('loc-pantry', 'hh-1', 'caller', 0)]),
-      loc('loc-theirs', 'hh-2', 'stranger', 9, true),
+      loc('loc-kitchen', 'hh-1', 1),
+      ...(onlyOneLocation ? [] : [loc('loc-garage', 'hh-1', 3), loc('loc-pantry', 'hh-1', 0)]),
+      loc('loc-theirs', 'hh-2', 9),
     ],
     [],
   )
@@ -146,7 +142,7 @@ function seed(
   })
 }
 
-const CREATE = `mutation Create($name: String!) { createLocation(name: $name) { id name order isDefault } }`
+const CREATE = `mutation Create($name: String!) { createLocation(name: $name) { id name order } }`
 const UPDATE = `mutation Update($id: ID!, $input: UpdateLocationInput!) { updateLocation(id: $id, input: $input) { name } }`
 const DELETE = `mutation Delete($id: ID!) { deleteLocation(id: $id) }`
 const REORDER = `mutation Reorder($ids: [ID!]!) { reorderLocations(orderedIds: $ids) { id order } }`
@@ -256,13 +252,12 @@ describe('locations', () => {
     ])
 
     // When they list locations
-    const res = await run(`query { locations { name isDefault order } }`, {}, 'user-new')
+    const res = await run(`query { locations { name order } }`, {}, 'user-new')
 
     // Then first sign-in made one location for them (lib/household.ts), and
-    // they see it through the organizer row it wrote. `isDefault` stays true
-    // until task 3.12 stops the web app reading it.
+    // they see it through the organizer row it wrote
     expect(res.errors).toBeUndefined()
-    expect(res.data?.locations).toEqual([{ name: 'Home', isDefault: true, order: 0 }])
+    expect(res.data?.locations).toEqual([{ name: 'Home', order: 0 }])
   })
 })
 
@@ -278,7 +273,7 @@ describe('createLocation', () => {
     // Then it goes after loc-garage: max + 1 within the household, not within the
     // caller's own locations (2) and not across households (10)
     expect(res.errors).toBeUndefined()
-    expect(res.data?.createLocation).toMatchObject({ name: 'Cellar', order: 4, isDefault: false })
+    expect(res.data?.createLocation).toMatchObject({ name: 'Cellar', order: 4 })
   })
 
   it('the new location is in the household, and the creator organizes it', async () => {
@@ -286,8 +281,9 @@ describe('createLocation', () => {
     const res = await run(CREATE, { name: 'Cellar' })
     const id = (res.data?.createLocation as { id: string }).id
 
-    // Then the row carries both scope columns (userId until task 3.14)
-    expect(location(id)).toMatchObject({ householdId: 'hh-1', userId: 'caller', isDefault: false })
+    // Then the row is in the caller's household. The fake refuses a `userId`
+    // or an `isDefault` in the write (columns dropped in task 3.14).
+    expect(location(id)).toMatchObject({ householdId: 'hh-1' })
     // And exactly one role row was written: the caller's organizer row
     expect(world.households.state.locationMembers.filter((m) => m.locationId === id)).toEqual([
       expect.objectContaining({ userId: 'caller', role: 'organizer' }),
@@ -491,14 +487,11 @@ describe('deleteLocation', () => {
     expect(lockedAt).toBeLessThan(count.mock.invocationCallOrder[0] ?? 0)
   })
 
-  it('the old default location can be deleted while another location is left', async () => {
-    // Given loc-kitchen still carries isDefault: true (the column stays until task
-    // 3.14), and hh-1 has two more locations
-    expect(location('loc-kitchen')?.isDefault).toBe(true)
-
+  it('the first location by order can be deleted while another location is left', async () => {
+    // Given loc-kitchen was the old default, and hh-1 has two more locations
     const res = await run(DELETE, { id: 'loc-kitchen' })
 
-    // Then isDefault no longer protects it: only "last location" does
+    // Then nothing protects it but the "last location" rule
     expect(res.errors).toBeUndefined()
     expect(location('loc-kitchen')).toBeUndefined()
   })

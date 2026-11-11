@@ -26,7 +26,7 @@ const UNKNOWN_FOR_LOCATION = { notAColumn: 'x' }
 function stockFakeWithOneRow() {
   const fake = createStockFake()
   fake.reset(
-    [{ id: 'loc-1', userId: 'user-1', isDefault: true, name: 'Home', order: 0 }],
+    [{ id: 'loc-1', householdId: 'hh-1', name: 'Home', order: 0 }],
     [makeStock({ id: 'stock-1', itemId: 'item-1', locationId: 'loc-1' })],
   )
   return fake
@@ -35,7 +35,7 @@ function stockFakeWithOneRow() {
 function shoppingFakeWithOneRowEach() {
   const fake = createShoppingFake()
   fake.reset(
-    [{ id: 'vendor-1', name: 'Costco', userId: 'user-1' }],
+    [{ id: 'vendor-1', name: 'Costco', householdId: 'hh-1' }],
     [{ id: 'cart-1', userId: 'user-1', locationId: 'loc-1', lastPurchasedAt: null }],
   )
   return fake
@@ -83,7 +83,7 @@ describe('stockFake refuses an unknown where key', () => {
       location.findFirst({ where: UNKNOWN_FOR_LOCATION }),
       location.findUnique({ where: UNKNOWN_FOR_LOCATION }),
       location.findMany({ where: UNKNOWN_FOR_LOCATION }),
-      location.upsert({ where: UNKNOWN_FOR_LOCATION, update: {}, create: { userId: 'u' } }),
+      location.upsert({ where: UNKNOWN_FOR_LOCATION, update: {}, create: { householdId: 'h' } }),
     ]
     for (const call of calls) await expect(call).rejects.toThrow(UnknownWhereKeyError)
   })
@@ -119,7 +119,7 @@ describe('stockFake refuses an unknown where key', () => {
       fake.client.itemStock.findMany({ where: { itemId: { in: ['item-1'] } } }),
     ).rejects.toThrow(UnsupportedWhereFilterError)
     await expect(
-      fake.client.location.findMany({ where: { userId: { not: 'user-2' } } }),
+      fake.client.location.findMany({ where: { householdId: { not: 'hh-2' } } }),
     ).rejects.toThrow(UnsupportedWhereFilterError)
   })
 
@@ -130,7 +130,7 @@ describe('stockFake refuses an unknown where key', () => {
     })
     expect(byCompound?.id).toBe('stock-1')
     const byOwner = await fake.client.itemStock.findMany({
-      where: { location: { userId: 'user-1' } },
+      where: { location: { householdId: 'hh-1' } },
     })
     expect(byOwner.map((r) => r.id)).toEqual(['stock-1'])
   })
@@ -211,28 +211,36 @@ describe('shoppingFake refuses an unknown where key', () => {
     )
   })
 
-  it('vendor: filters by householdId, and reads a row without one as null', async () => {
+  it('vendor: filters by householdId', async () => {
     const fake = createShoppingFake()
     fake.reset(
       [
-        { id: 'vendor-1', name: 'Costco', userId: 'user-1', householdId: 'hh-1' },
-        { id: 'vendor-2', name: 'Theirs', userId: 'user-2', householdId: 'hh-2' },
-        { id: 'vendor-3', name: 'Old', userId: 'user-1' },
+        { id: 'vendor-1', name: 'Costco', householdId: 'hh-1' },
+        { id: 'vendor-2', name: 'Theirs', householdId: 'hh-2' },
       ],
       [],
     )
     const rows = await fake.client.vendor.findMany({ where: { householdId: 'hh-1' } })
     expect(rows.map((r) => r.id)).toEqual(['vendor-1'])
-    const none = await fake.client.vendor.findMany({ where: { householdId: null } })
-    expect(none.map((r) => r.id)).toEqual(['vendor-3'])
   })
 
   it('vendor.create keeps the householdId it was given', async () => {
     const fake = createShoppingFake()
     const row = await fake.client.vendor.create({
-      data: { name: 'Costco', userId: 'user-1', householdId: 'hh-1' },
+      data: { name: 'Costco', householdId: 'hh-1' },
     })
     expect(row).toMatchObject({ householdId: 'hh-1' })
+  })
+
+  it('vendor.create refuses userId and a missing householdId, as households H3a task 3.14 left the table', async () => {
+    const fake = createShoppingFake()
+    await expect(
+      fake.client.vendor.create({ data: { name: 'Costco', userId: 'user-1', householdId: 'hh-1' } }),
+    ).rejects.toThrow(/userId/)
+    await expect(fake.client.vendor.create({ data: { name: 'Costco' } })).rejects.toThrow(
+      /householdId/,
+    )
+    expect(fake.state.vendors).toHaveLength(0)
   })
 
   it('cart: names the key and the fake', async () => {
@@ -259,7 +267,7 @@ describe('shoppingFake refuses an unknown where key', () => {
   it('refuses an operator object on a plain-equality key', async () => {
     const fake = shoppingFakeWithOneRowEach()
     await expect(
-      fake.client.vendor.findMany({ where: { userId: { in: ['user-1'] } } }),
+      fake.client.vendor.findMany({ where: { householdId: { in: ['hh-1'] } } }),
     ).rejects.toThrow(UnsupportedWhereFilterError)
     await expect(
       fake.client.cart.findMany({ where: { locationId: { in: ['loc-1'] } } }),

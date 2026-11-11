@@ -46,8 +46,8 @@ import { typeDefs } from '../schema/index.js'
 //
 // ─── Since households H3a task 3.7 ───────────────────────────────────────────
 //
-// The four catalog stores are scoped by `householdId`, and still require
-// `userId` on a create until task 3.14. `requireOwnRowOrUnclaimed` now asks
+// The four catalog stores are scoped by `householdId`, and refuse a write
+// that names `userId` (task 3.14 dropped the column). `requireOwnRowOrUnclaimed` now asks
 // "is this row in the caller's HOUSEHOLD", so "the caller's" row below means
 // the caller's household's, and "the STRANGER's" means a row of another
 // household. `householdMember` (householdFake) answers `requireHousehold`.
@@ -62,7 +62,7 @@ vi.mock('../lib/prisma.js', async () => {
       { householdId: 'hh_theirs', userId: 'user_stranger', role: 'owner', joinedAt: T },
     ],
   })
-  const catalog = { scope: 'householdId' as const, requiredColumns: ['userId'] }
+  const catalog = { scope: 'householdId' as const }
 
   const tag = createOwnedRowFake<{
     id: string
@@ -357,19 +357,19 @@ function simulateGuardMiss(delegate: { findUnique: ReturnType<typeof vi.fn> }) {
 
 // ─── Queries ─────────────────────────────────────────────────────────────────
 
-const TAG_FIELDS = '{ id name typeId userId parentId }'
+const TAG_FIELDS = '{ id name typeId parentId }'
 const CREATE_TAGS = `mutation ($tags: [TagInput!]!) { bulkCreateTags(tags: $tags) ${TAG_FIELDS} }`
 const UPSERT_TAGS = `mutation ($tags: [TagInput!]!) { bulkUpsertTags(tags: $tags) ${TAG_FIELDS} }`
 
-const TT_FIELDS = '{ id name color userId }'
+const TT_FIELDS = '{ id name color }'
 const CREATE_TTS = `mutation ($tagTypes: [TagTypeInput!]!) { bulkCreateTagTypes(tagTypes: $tagTypes) ${TT_FIELDS} }`
 const UPSERT_TTS = `mutation ($tagTypes: [TagTypeInput!]!) { bulkUpsertTagTypes(tagTypes: $tagTypes) ${TT_FIELDS} }`
 
-const VEN_FIELDS = '{ id name userId }'
+const VEN_FIELDS = '{ id name }'
 const CREATE_VENS = `mutation ($vendors: [VendorInput!]!) { bulkCreateVendors(vendors: $vendors) ${VEN_FIELDS} }`
 const UPSERT_VENS = `mutation ($vendors: [VendorInput!]!) { bulkUpsertVendors(vendors: $vendors) ${VEN_FIELDS} }`
 
-const SHELF_FIELDS = '{ id name type order userId itemIds }'
+const SHELF_FIELDS = '{ id name type order itemIds }'
 const CREATE_SHELVES = `mutation ($shelves: [ShelfInput!]!) { bulkCreateShelves(shelves: $shelves) ${SHELF_FIELDS} }`
 const UPSERT_SHELVES = `mutation ($shelves: [ShelfInput!]!) { bulkUpsertShelves(shelves: $shelves) ${SHELF_FIELDS} }`
 
@@ -445,7 +445,7 @@ describe('Tag ownership', () => {
     expect(result.errors).toBeUndefined()
     const stored = mockPrisma.$tag.state.rows.find((r) => r.id === TAG_MINE)
     expect(stored?.name).toBe('Renamed')
-    expect(stored).toMatchObject({ householdId: HH_MINE, userId: USER })
+    expect(stored).toMatchObject({ householdId: HH_MINE })
   })
 
   it('user importing a batch with one forbidden tag gets no tags written at all', async () => {
@@ -535,7 +535,7 @@ describe('TagType ownership', () => {
     expect(result.errors).toBeUndefined()
     const stored = mockPrisma.$tagType.state.rows.find((r) => r.id === TT_MINE)
     expect(stored?.name).toBe('Renamed')
-    expect(stored).toMatchObject({ householdId: HH_MINE, userId: USER })
+    expect(stored).toMatchObject({ householdId: HH_MINE })
   })
 
   it('user importing a batch with one forbidden tag type gets no tag types written at all', async () => {
@@ -610,7 +610,7 @@ describe('Vendor ownership', () => {
     expect(result.errors).toBeUndefined()
     const stored = mockPrisma.$vendor.state.rows.find((r) => r.id === VEN_MINE)
     expect(stored?.name).toBe('Renamed')
-    expect(stored).toMatchObject({ householdId: HH_MINE, userId: USER })
+    expect(stored).toMatchObject({ householdId: HH_MINE })
   })
 
   it('user importing a batch with one forbidden vendor gets no vendors written at all', async () => {
@@ -685,7 +685,7 @@ describe('Shelf ownership', () => {
     expect(result.errors).toBeUndefined()
     const stored = mockPrisma.$shelf.state.rows.find((r) => r.id === SHELF_MINE)
     expect(stored?.name).toBe('Renamed')
-    expect(stored).toMatchObject({ householdId: HH_MINE, userId: USER })
+    expect(stored).toMatchObject({ householdId: HH_MINE })
   })
 
   it('user importing a batch with one forbidden shelf gets no shelves written at all', async () => {
@@ -797,7 +797,6 @@ describe('Tag → TagType references', () => {
     expect(result.errors).toBeUndefined()
     expect(mockPrisma.$tag.state.rows.find((r) => r.id === TAG_FREE)).toMatchObject({
       householdId: HH_MINE,
-      userId: USER,
       typeId: TT_MINE,
     })
   })

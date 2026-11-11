@@ -47,11 +47,10 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
   },
   Mutation: {
     createTagType: async (_, { name, color }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
       const householdId = await requireCatalogRole(ctx, 'manager')
       return prisma.tagType.create({
-        // `userId` is still written until task 3.14 drops the column.
-        data: { name, color: color as TagColor, householdId, userId },
+        data: { name, color: color as TagColor, householdId },
       }) as unknown as Promise<TagType>
     },
     updateTagType: async (_, { id, name, color }, ctx) => {
@@ -101,14 +100,13 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       }
     },
     createTag: async (_, { name, typeId, parentId }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
       const householdId = await requireCatalogRole(ctx, 'manager')
       await requireCatalogIds(ctx, householdId, 'tagType', [typeId])
       // `parentId: null` (or omitted) means a top-level tag, and is allowed.
       if (parentId != null) await requireCatalogIds(ctx, householdId, 'tag', [parentId])
       return prisma.tag.create({
-        // `userId` is still written until task 3.14 drops the column.
-        data: { name, typeId, householdId, userId, parentId: parentId ?? null },
+        data: { name, typeId, householdId, parentId: parentId ?? null },
       }) as unknown as Promise<Tag>
     },
     updateTag: async (_, { id, name, typeId, parentId }, ctx) => {

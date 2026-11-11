@@ -9,7 +9,7 @@ import { prisma } from './prisma.js'
 //
 // Replaces `ensureDefaultLocation` (lib/defaultLocation.ts, deleted in the
 // same task). That function's race safety came from the partial unique index
-// "Location_one_default_per_user_key", which task 3.14 drops. The guard here is
+// "Location_one_default_per_user_key", which task 3.14 dropped. The guard here is
 // a claim column on `User` instead, so it does not depend on `isDefault`.
 
 /** The names first sign-in gives a new household and its first location. */
@@ -186,19 +186,11 @@ export async function ensureHousehold(
  * Two places make it: first sign-in (`ensureHousehold` above) and
  * `clearAllData` (resolvers/import.resolver.ts), which makes "Home" again
  * after it deletes every location of the household (decision H17). One
- * function, so the two cannot drift apart before tasks 3.12 and 3.14 change
- * what a location row carries.
+ * function, so the two cannot drift apart.
  *
- * - Both scope columns until task 3.14 drops `userId` (decision H16).
- * - `isDefault: true` because the web app still reads it until task 3.12,
- *   the same as the add_households migration's 'Home' rows. The partial
- *   unique index "Location_one_default_per_user_key" allows one default per
- *   `userId`. A new user has no other default. After `clearAllData` the
- *   caller's default is gone too, because it was a location of the same
- *   household. A default the caller holds OUTSIDE this household (a row with
- *   a null `householdId`, left by `main`'s server on a shared database; see
- *   the plan's *Execution* notes) makes this create fail with `P2002`, and
- *   the whole transaction rolls back.
+ * A location carries no `userId` and no `isDefault` since task 3.14 (the
+ * drop_user_scope migration). The caller's `organizer` row is what ties them
+ * to it.
  */
 export async function createFirstLocation(
   tx: Prisma.TransactionClient,
@@ -208,8 +200,6 @@ export async function createFirstLocation(
     data: {
       name: args.name,
       order: 0,
-      isDefault: true,
-      userId: args.userId,
       householdId: args.householdId,
     },
   })

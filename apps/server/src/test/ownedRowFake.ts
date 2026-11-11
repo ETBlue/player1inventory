@@ -109,11 +109,20 @@
 //     that still reads by `userId` after task 3.7 fails here instead of
 //     passing. Name `userId` in `columns` only if a test needs it on purpose.
 //   - `create` and `createMany` require the scope column. The
-//     `requiredColumns` option names more NOT NULL columns. Until task 3.14
-//     drops it, `userId` is still NOT NULL on the six catalog models, so a
-//     household-scoped catalog store should pass `requiredColumns: ['userId']`
-//     until then. Without it, a resolver that stops writing `userId` too early
-//     passes here and fails in Postgres.
+//     `requiredColumns` option names more NOT NULL columns.
+//
+// ── CHANGED BY HOUSEHOLDS H3a TASK 3.14 ──
+//
+//   - the drop_user_scope migration drops `userId` from the six catalog
+//     models. So a household-scoped store no longer needs
+//     `requiredColumns: ['userId']` (the catalog stores passed it from task
+//     3.7 to 3.14), and it now REFUSES a write that names `userId`: in
+//     `create`, `createMany`, `update`, `updateMany` and both halves of
+//     `upsert`. Prisma refuses an unknown argument the same way. Without this,
+//     a resolver that still writes `userId` would pass here and fail in
+//     Postgres. The `droppedColumns` option names the refused columns; it
+//     defaults to `['userId']` for a household-scoped store and to none for a
+//     user-scoped one.
 
 import {
   checkWhere,
@@ -209,6 +218,22 @@ export class MissingUserIdError extends Error {
       `ownedRowFake(${model}) was asked to write row '${id}' with no userId. ` +
         'The column is NOT NULL on every account-scoped model, so a resolver ' +
         'that forgets it must fail here rather than write an unowned row.',
+    )
+  }
+}
+
+/**
+ * Raised when a write names a column the table does not have any more (the
+ * `droppedColumns` option). Since households H3a task 3.14 that is `userId`
+ * on the six catalog models.
+ */
+export class DroppedColumnError extends Error {
+  constructor(model: string, column: string) {
+    super(
+      `ownedRowFake(${model}) was asked to write '${column}', which is not a ` +
+        'column of this table any more (households H3a task 3.14 dropped it). ' +
+        'Prisma refuses an unknown argument, so a resolver that still sends it ' +
+        'must fail here.',
     )
   }
 }
@@ -353,10 +378,15 @@ export interface OwnedRowFakeOptions<Row extends ScopedRow> {
    */
   scope?: ScopeColumn
   /**
-   * More NOT NULL columns `create` and `createMany` must be given. Until task
-   * 3.14 a household-scoped catalog store should pass `['userId']`.
+   * More NOT NULL columns `create` and `createMany` must be given.
    */
   requiredColumns?: string[]
+  /**
+   * Columns the table does not have, which every write refuses. Defaults to
+   * `['userId']` for a household-scoped store (households H3a task 3.14
+   * dropped it from the six catalog models) and to none otherwise.
+   */
+  droppedColumns?: string[]
 }
 
 export function createOwnedRowFake<Row extends ScopedRow = OwnedRow>(
@@ -367,6 +397,13 @@ export function createOwnedRowFake<Row extends ScopedRow = OwnedRow>(
   const columns = options.columns ?? []
   const scope: ScopeColumn = options.scope ?? 'userId'
   const required = [scope, ...(options.requiredColumns ?? [])]
+  const dropped = options.droppedColumns ?? (scope === 'householdId' ? ['userId'] : [])
+
+  function refuseDroppedColumns(data: Data): void {
+    for (const column of dropped) {
+      if (column in data) throw new DroppedColumnError(model, column)
+    }
+  }
   // One plain object holding plain data, so `runInTransaction` (stockFake.ts)
   // can register it as a rollback store and `structuredClone` it.
   const state: { rows: Row[] } = { rows: [...(options.rows ?? [])] }
@@ -436,6 +473,7 @@ export function createOwnedRowFake<Row extends ScopedRow = OwnedRow>(
    * must get those exact values back.
    */
   function insert(data: Data): Row {
+    refuseDroppedColumns(data)
     const id = (data.id as string | undefined) ?? `${model}-${++seq}`
     if (state.rows.some((r) => r.id === id)) {
       throw new OwnedRowIdConstraintError(model, id)
@@ -463,6 +501,7 @@ export function createOwnedRowFake<Row extends ScopedRow = OwnedRow>(
    * that is a real value.
    */
   function applyUpdate(row: Row, data: Data): Row {
+    refuseDroppedColumns(data)
     const target = row as unknown as Record<string, unknown>
     for (const [key, value] of Object.entries(data)) {
       if (value === undefined) continue
@@ -518,6 +557,9 @@ export function createOwnedRowFake<Row extends ScopedRow = OwnedRow>(
     // a taken id raises P2002, the way Postgres does.
     createMany: async (args: { data: Data[]; skipDuplicates?: boolean }) => {
       refuseUnknownOptions('createMany', args, ['data', 'skipDuplicates'])
+      // Every row, before any is written: Prisma refuses the whole call, a
+      // row `skipDuplicates` would skip included.
+      for (const data of args.data) refuseDroppedColumns(data)
       let count = 0
       for (const data of args.data) {
         const id = data.id as string | undefined
@@ -544,6 +586,9 @@ export function createOwnedRowFake<Row extends ScopedRow = OwnedRow>(
     }) => {
       refuseUnknownOptions('upsert', args, ['where', 'create', 'update', 'include', 'select'])
       checkOwnedWhere(args.where)
+      // Both halves, whichever one runs: Prisma validates the whole call.
+      refuseDroppedColumns(args.create)
+      refuseDroppedColumns(args.update)
       const row = state.rows.find((r) => matches(r, args.where))
       const written = row ? applyUpdate(row, args.update) : insert(args.create)
       return project(written, args.include) as WithRelations<Row>
@@ -562,6 +607,7 @@ export function createOwnedRowFake<Row extends ScopedRow = OwnedRow>(
     updateMany: async (args: { where?: Where; data: Data }) => {
       refuseUnknownOptions('updateMany', args, ['where', 'data'])
       checkOwnedWhere(args.where)
+      refuseDroppedColumns(args.data)
       const hits = state.rows.filter((r) => matches(r, args.where ?? {}))
       for (const row of hits) applyUpdate(row, args.data)
       return { count: hits.length }

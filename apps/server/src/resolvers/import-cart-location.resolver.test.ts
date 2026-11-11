@@ -135,9 +135,9 @@ const HH_STRANGER = 'hh_stranger'
 beforeEach(() => {
   vi.clearAllMocks()
   mockPrisma.$stockFake.reset([
-    { id: LOC_OTHER, userId: USER, householdId: HH_USER, isDefault: false, name: 'Garage', order: 1, createdAt: TS, updatedAt: TS },
-    { id: LOC_DEFAULT, userId: USER, householdId: HH_USER, isDefault: true, name: 'Kitchen', order: 0, createdAt: TS, updatedAt: TS },
-    { id: LOC_STRANGER, userId: STRANGER, householdId: HH_STRANGER, isDefault: true, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
+    { id: LOC_OTHER, householdId: HH_USER, name: 'Garage', order: 1, createdAt: TS, updatedAt: TS },
+    { id: LOC_DEFAULT, householdId: HH_USER, name: 'Kitchen', order: 0, createdAt: TS, updatedAt: TS },
+    { id: LOC_STRANGER, householdId: HH_STRANGER, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
   ])
   mockPrisma.$world.seedHouseholds(
     soloHouseholds([
@@ -482,9 +482,9 @@ describe('bulkUpsertShoppingCarts — the location comes from the cart id', () =
     // a resolver that moved the cart would move it to the same place, and
     // this test would pass against it.
     mockPrisma.$stockFake.reset([
-      { id: LOC_OTHER, userId: USER, householdId: HH_USER, isDefault: true, name: 'Garage', order: 0, createdAt: TS, updatedAt: TS },
-      { id: LOC_DEFAULT, userId: USER, householdId: HH_USER, isDefault: false, name: 'Kitchen', order: 1, createdAt: TS, updatedAt: TS },
-      { id: LOC_STRANGER, userId: STRANGER, householdId: HH_STRANGER, isDefault: true, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
+      { id: LOC_OTHER, householdId: HH_USER, name: 'Garage', order: 0, createdAt: TS, updatedAt: TS },
+      { id: LOC_DEFAULT, householdId: HH_USER, name: 'Kitchen', order: 1, createdAt: TS, updatedAt: TS },
+      { id: LOC_STRANGER, householdId: HH_STRANGER, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
     ])
     const result = await exec(BULK_UPSERT_CARTS, [
       { id, lastPurchasedAt: '2026-03-01T00:00:00.000Z' },

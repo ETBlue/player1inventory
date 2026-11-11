@@ -64,7 +64,7 @@ vi.mock('../lib/prisma.js', async () => {
   const { createOwnedRowFake } = await import('../test/ownedRowFake.js')
   const { checkWhere } = await import('../test/whereKeys.js')
   const world = createHouseholdWorld()
-  const catalog = { scope: 'householdId' as const, requiredColumns: ['userId'] }
+  const catalog = { scope: 'householdId' as const }
   const items = createOwnedRowFake<FakeItem>({
     model: 'Item',
     ...catalog,
@@ -188,9 +188,9 @@ function seed() {
   world.reset()
   stockFake.reset(
     [
-      { id: LOC_KITCHEN, userId: 'user_a', householdId: 'hh_a', isDefault: true },
-      { id: LOC_GARAGE, userId: 'user_a', householdId: 'hh_a', isDefault: false },
-      { id: LOC_THEIRS, userId: 'user_b', householdId: 'hh_b', isDefault: true },
+      { id: LOC_KITCHEN, householdId: 'hh_a' },
+      { id: LOC_GARAGE, householdId: 'hh_a' },
+      { id: LOC_THEIRS, householdId: 'hh_b' },
     ],
     [
       {

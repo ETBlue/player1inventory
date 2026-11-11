@@ -125,7 +125,7 @@ async function run(
 }
 
 const CLEAR = 'mutation { clearAllData }'
-const LOCATIONS = 'query { locations { id name isDefault } }'
+const LOCATIONS = 'query { locations { id name } }'
 
 /** The 14 deletes, in the order `clearAllData` runs them. */
 const DELETE_ORDER = [
@@ -160,9 +160,9 @@ function seed(callerRole: 'owner' | 'manager' | 'member' = 'owner') {
   world.reset()
   world.stock.reset(
     [
-      { id: 'loc-kitchen', userId: 'caller', isDefault: true, householdId: 'hh-1', name: 'Kitchen', order: 0 },
-      { id: 'loc-pantry', userId: 'other', isDefault: false, householdId: 'hh-1', name: 'Pantry', order: 1 },
-      { id: 'loc-theirs', userId: 'stranger', isDefault: true, householdId: 'hh-2', name: 'Theirs', order: 0 },
+      { id: 'loc-kitchen', householdId: 'hh-1', name: 'Kitchen', order: 0 },
+      { id: 'loc-pantry', householdId: 'hh-1', name: 'Pantry', order: 1 },
+      { id: 'loc-theirs', householdId: 'hh-2', name: 'Theirs', order: 0 },
     ],
     [
       makeStock({ id: 's-kitchen', itemId: 'item-1', locationId: 'loc-kitchen' }),
@@ -264,13 +264,12 @@ describe('clearAllData clears the household', () => {
     // When the locations are read
     const res = await run(LOCATIONS)
 
-    // Then there is exactly one, "Home", the default until task 3.12
+    // Then there is exactly one, "Home"
     expect(res.errors).toBeUndefined()
-    const locations = res.data?.locations as { id: string; name: string; isDefault: boolean }[]
+    const locations = res.data?.locations as { id: string; name: string }[]
     expect(locations).toHaveLength(1)
     const home = locations[0]
     expect(home?.name).toBe('Home')
-    expect(home?.isDefault).toBe(true)
     // And it is a location of the same household, with the caller as organizer
     expect(world.stock.state.locations.find((l) => l.id === home?.id)?.householdId).toBe('hh-1')
     expect(

@@ -88,9 +88,9 @@ function seed(options: { callerRoleOnOther?: LocationRole } = {}) {
     [
       // The default is deliberately NOT first: a resolver that took
       // `locations[0]` would otherwise pass by coincidence.
-      { id: LOC_OTHER, userId: 'user_test123', householdId: 'hh_test', isDefault: false },
-      { id: LOC_DEFAULT, userId: 'user_test123', householdId: 'hh_test', isDefault: true },
-      { id: LOC_STRANGER, userId: 'user_other', householdId: 'hh_other', isDefault: true },
+      { id: LOC_OTHER, householdId: 'hh_test' },
+      { id: LOC_DEFAULT, householdId: 'hh_test' },
+      { id: LOC_STRANGER, householdId: 'hh_other' },
     ],
     [],
   )
@@ -271,7 +271,6 @@ describe('bootstrapCarts fills in the locations createVendor skipped', () => {
     shoppingFake.state.vendors.push({
       id: 'vendor_stranger',
       name: 'Their Shop',
-      userId: 'user_other',
       householdId: 'hh_other',
     })
 

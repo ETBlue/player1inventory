@@ -112,12 +112,11 @@ vi.mock('../lib/prisma.js', async () => {
   }>({ model: 'InventoryLog' })
 
   // A catalog model, so scoped by `householdId` since households H3a task
-  // 3.7 (and still requiring `userId` on a create until task 3.14). Each item
+  // 3.7 (and refusing a `userId` on a write since task 3.14). Each item
   // row is in its owner's household (`HH_USER` or `HH_STRANGER` below).
   const item = createOwnedRowFake<{ id: string; householdId: string; userId: string; name: string }>({
     model: 'Item',
     scope: 'householdId',
-    requiredColumns: ['userId'],
   })
 
   return {
@@ -251,9 +250,9 @@ beforeEach(() => {
   vi.resetAllMocks()
 
   mockPrisma.$stockFake.reset([
-    { id: LOC_OTHER, userId: USER, householdId: HH_USER, isDefault: false, name: 'Garage', order: 1, createdAt: TS, updatedAt: TS },
-    { id: LOC_DEFAULT, userId: USER, householdId: HH_USER, isDefault: true, name: 'Kitchen', order: 0, createdAt: TS, updatedAt: TS },
-    { id: LOC_STRANGER, userId: STRANGER, householdId: HH_STRANGER, isDefault: true, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
+    { id: LOC_OTHER, householdId: HH_USER, name: 'Garage', order: 1, createdAt: TS, updatedAt: TS },
+    { id: LOC_DEFAULT, householdId: HH_USER, name: 'Kitchen', order: 0, createdAt: TS, updatedAt: TS },
+    { id: LOC_STRANGER, householdId: HH_STRANGER, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
   ])
   // The caller and the stranger are in two different households, each the
   // owner, each the organizer of their own locations.

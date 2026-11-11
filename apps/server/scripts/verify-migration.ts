@@ -2,7 +2,7 @@
 // resolver test suite runs entirely against a hand-written Prisma fake and
 // cannot exercise SQL at all.
 //
-// Seven migrations are under test, applied in order:
+// Eight migrations are under test, applied in order:
 //   1. 20260830000000_add_location_and_item_stock      (PR 1)  — Location, ItemStock
 //   2. 20260916000000_add_location_to_log_and_cart     (PR 3a) — InventoryLog.locationId,
 //      Cart.locationId
@@ -17,12 +17,20 @@
 //   7. 20261104000000_add_households                   (households H3a) — Household,
 //      HouseholdMember, LocationMember, User.householdSetupAt, and a nullable
 //      householdId on Location and the six catalog models, filled in for every row
+//   8. 20261111000000_drop_user_scope                  (households H3a, task 3.14) —
+//      re-runs 7's backfill for rows written between the two deploys, cleans up
+//      references that cross households, then sets householdId NOT NULL and
+//      drops userId (seven tables) and Location.isDefault
 // This count and the MIGRATIONS array below must agree. The comment said "Four"
 // for a while after entry 5 was added, so check the array rather than trusting
 // this line.
 // Migration 7 reads the "User" table that 6 creates. So it is applied in a
 // second `migrate deploy`, after a second seed step writes two "User" rows.
 // See seedUsersBeforeHouseholds below for why.
+// Migration 8 is applied in a THIRD `migrate deploy`. Between 7 and 8 the
+// script asserts every block that reads "userId" or "isDefault" (both are gone
+// after 8), then writes what the OLD server could write between the two
+// deploys in production. See seedBetweenDeploys.
 // Migration 6 is not a location migration and depends on none of the others.
 // It is parked with them anyway. Left unparked, `migrate reset` would apply it
 // BEFORE migrations 1-5, which is not the order production applies them in.
@@ -121,6 +129,31 @@ async function columnMetaOf(
   `
   const row = rows[0]
   return row ? { dataType: row.data_type, isNullable: row.is_nullable } : undefined
+}
+
+// "Location" as it is BEFORE drop_user_scope, with the two columns that
+// migration drops: "userId" and "isDefault". Read with raw SQL because the
+// Prisma client is generated from the FINAL schema, which has neither, so
+// `prisma.location` cannot select them. Only valid between add_households and
+// drop_user_scope: the blocks that call it run in that window (see main()).
+interface LegacyLocation {
+  id: string
+  name: string
+  order: number
+  isDefault: boolean
+  userId: string
+  householdId: string | null
+}
+
+async function legacyLocations(): Promise<LegacyLocation[]> {
+  return prisma.$queryRaw<LegacyLocation[]>`
+    SELECT "id", "name", "order", "isDefault", "userId", "householdId"
+    FROM "Location" ORDER BY "userId", "id"
+  `
+}
+
+async function legacyLocationsById(): Promise<Map<string, LegacyLocation>> {
+  return new Map((await legacyLocations()).map((l) => [l.id, l]))
 }
 
 // A fixture shaped like production BEFORE the migration: Item still carries
@@ -331,14 +364,19 @@ async function seedUsersBeforeHouseholds(): Promise<void> {
 //
 //   kind          crossing (counted)                     same household (not counted)
 //   Tag.typeId    tag-g -> tt-c (seedFixture),           tag-c1, tag-c2 -> tt-c (all user-c)
-//                 tag-a1 (user-a) -> tt-c (user-c)
+//                 tag-a1, tag-a2 (user-a) -> tt-c (user-c)
 //   Tag.parentId  tag-c1 (user-c) -> tag-g (user-g)      tag-c2 -> tag-c1 (both user-c)
 //   ItemTag       item-a1 (user-a) + tag-g (user-g)      item-a1 + tag-a1 (both user-a)
 //   ItemVendor    item-b1 (user-b) + vendor-d (user-d)   item-a1 + vendor-a (both user-a)
 //   RecipeItem    recipe-e (user-e) + item-b1 (user-b)   recipe-a + item-a1 (both user-a)
 //
-// Tag.typeId counts 2 and every other kind 1, so a query that put one kind's
+// Tag.typeId counts 3 and every other kind 1, so a query that put one kind's
 // count under another kind's label fails too.
+//
+// tag-a2 was added for drop_user_scope's cleanup (task 3.14, owner's choice
+// A1): tag-a1 and tag-a2 are TWO tags of one household that use ONE foreign
+// type, so the cleanup must make one copy of tt-c for user-a's household, not
+// two. See assertDropUserScope.
 //
 // Only existing users, on purpose. A new user would add a "User" row, a
 // household and a 'Home' location, and the backfill checks count those. And
@@ -346,7 +384,7 @@ async function seedUsersBeforeHouseholds(): Promise<void> {
 // No check deletes the households of user-a, -b, -c, -d, -e or -g, so these
 // rows block nothing (a crossing Tag.typeId blocks deleting tt-c's household).
 const EXPECTED_CROSS_HOUSEHOLD_COUNTS: Record<string, number> = {
-  'Tag.typeId': 2,
+  'Tag.typeId': 3,
   'Tag.parentId': 1,
   ItemTag: 1,
   ItemVendor: 1,
@@ -358,6 +396,7 @@ async function seedCrossHouseholdReferences(): Promise<void> {
   await prisma.$executeRawUnsafe(`
     INSERT INTO "Tag" ("id","name","typeId","userId","parentId") VALUES
       ('tag-a1','Fresh','tt-c','user-a',NULL),
+      ('tag-a2','Ripe','tt-c','user-a',NULL),
       ('tag-c1','Chilled','tt-c','user-c','tag-g'),
       ('tag-c2','Frozen','tt-c','user-c','tag-c1')
   `)
@@ -415,8 +454,10 @@ const NOT_HOUSEHOLD_SCOPED_TABLES = ['ItemStock', 'Cart', 'CartItem', 'Inventory
 // 20261104000000 — households, part 1: the backfill (households H3a)
 // ══════════════════════════════════════════════════════════════════════
 //
-// Read-only. main() calls this right after the last deploy, before any other
-// block writes a row. Fourteen users exist at this point: the thirteen
+// Read-only. main() calls this right after add_households is deployed, before
+// any other block writes a row, and before drop_user_scope. It reads
+// "Location"."userId" and "isDefault", which drop_user_scope removes, through
+// `legacyLocations`. Fourteen users exist at this point: the thirteen
 // seedFixture users, all with data, and user-empty, with a "User" row and no
 // data. Of the thirteen, only user-a had a "User" row before the migration.
 async function assertHouseholdsBackfill(): Promise<void> {
@@ -469,7 +510,8 @@ async function assertHouseholdsBackfill(): Promise<void> {
   )
 
   // ── Step 4: user-empty got exactly one 'Home'; nobody else got one ──
-  const homes = await prisma.location.findMany({ where: { userId: NO_DATA_USER_ID } })
+  const legacy = await legacyLocations()
+  const homes = legacy.filter((l) => l.userId === NO_DATA_USER_ID)
   const home = homes[0]
   assert(
     homes.length === 1 &&
@@ -527,11 +569,12 @@ async function assertHouseholdsBackfill(): Promise<void> {
   }
 
   // ── Step 6: every location has its owner as organizer, and no one else ──
+  const ownerOf = new Map(legacy.map((l) => [l.id, l.userId]))
   const locations = await prisma.location.findMany({ include: { members: true } })
   const badLocations = locations.filter(
     (l) =>
       l.members.length !== 1 ||
-      l.members[0]?.userId !== l.userId ||
+      l.members[0]?.userId !== ownerOf.get(l.id) ||
       l.members[0]?.role !== 'organizer',
   )
   assert(
@@ -561,7 +604,7 @@ async function assertHouseholdsBackfill(): Promise<void> {
 // 20261104000000 — households, part 2: constraints and the race guard
 // ══════════════════════════════════════════════════════════════════════
 //
-// These write rows, so main() calls this at the end. Each check uses users
+// These write rows, so main() calls this at the end, after drop_user_scope. Each check uses users
 // and households it creates itself, except the owner-index check, which uses
 // user-a's household and a new user.
 async function assertHouseholdsConstraints(): Promise<void> {
@@ -736,7 +779,9 @@ async function assertHouseholdsConstraints(): Promise<void> {
       members: { create: { userId: cascadeUser, role: 'owner' } },
     },
   })
-  const scope = { userId: cascadeUser, householdId: doomed.id }
+  // The six catalog models and "Location" carry only "householdId" since
+  // drop_user_scope. "Cart", "CartItem" and "InventoryLog" keep "userId".
+  const scope = { householdId: doomed.id }
   const tagType = await prisma.tagType.create({ data: { name: 'Kind', color: 'red', ...scope } })
   const parentTag = await prisma.tag.create({ data: { name: 'Dairy', typeId: tagType.id, ...scope } })
   const childTag = await prisma.tag.create({
@@ -853,119 +898,20 @@ async function assertHouseholdsConstraints(): Promise<void> {
   )
 }
 
-const SERVER_DIR = fileURLToPath(new URL('..', import.meta.url))
-
-// In apply order. Adding a later migration under test means adding it here.
-const MIGRATIONS = [
-  '20260830000000_add_location_and_item_stock',
-  '20260916000000_add_location_to_log_and_cart',
-  '20260917000000_rekey_cart_to_location_vendor',
-  '20261004000000_drop_item_stock_state_columns',
-  '20261008000000_add_item_note_and_wikidata_url',
-  '20261031000000_add_user',
-  '20261104000000_add_households',
-] as const
-
-// Applied on its own, in a second `migrate deploy`, after
-// seedUsersBeforeHouseholds. It must be the LAST entry above: every entry
-// before it is applied in the first deploy.
-const HOUSEHOLDS_MIGRATION = '20261104000000_add_households'
-
-const PARKED_ROOT = join(SERVER_DIR, '.migration-under-test')
-const migrationDir = (name: string) => join(SERVER_DIR, 'prisma/migrations', name)
-const parkedDir = (name: string) => join(PARKED_ROOT, name)
-
-// Idempotent by construction: safe to call from a startup self-heal check,
-// from the normal finally block, and from a SIGINT/SIGTERM handler, in any
-// combination, without throwing on a directory that isn't there.
-function restoreIfParked(): void {
-  if (!existsSync(PARKED_ROOT)) return
-  for (const name of MIGRATIONS) {
-    const parked = parkedDir(name)
-    if (!existsSync(parked)) continue
-    if (existsSync(migrationDir(name))) {
-      // Both exist — a previous restore already succeeded but the parked copy
-      // was never cleaned up (e.g. two restore calls raced). Trust the live
-      // migration directory and discard the stale parked copy.
-      console.log(`Both ${name} and a stale parked copy exist — discarding the parked copy.`)
-      rmSync(parked, { recursive: true, force: true })
-      continue
-    }
-    console.log(`Restoring parked ${name}...`)
-    renameSync(parked, migrationDir(name))
-  }
-  rmSync(PARKED_ROOT, { recursive: true, force: true })
-}
-
-let parked = false
-
-// A SIGINT (Ctrl-C) or SIGTERM delivered while the migration is parked would,
-// with no handler registered, kill the process immediately at the OS level —
-// bypassing the try/finally entirely, since Node's default disposition for
-// these signals is unconditional termination, not "run pending finally
-// blocks". Registering a handler overrides that default, so the process
-// instead waits for in-flight synchronous work (e.g. execSync) to return
-// before this handler runs, giving the restore a chance to happen.
-function handleFatalSignal(signal: NodeJS.Signals): void {
-  console.error(`\nReceived ${signal}.`)
-  if (parked) restoreIfParked()
-  process.exit(1)
-}
-process.on('SIGINT', handleFatalSignal)
-process.on('SIGTERM', handleFatalSignal)
-
-async function main(): Promise<void> {
-  // Self-heal: if a previous run was killed between parking and restoring,
-  // recover instead of throwing on the renameSync below.
-  restoreIfParked()
-
-  // `prisma migrate reset` applies EVERY committed migration — including the
-  // one under test. Seeding after that would run the backfill against an
-  // empty database and make `migrate deploy` a no-op, so the assertions below
-  // would verify nothing. Park the migration, reset to the state before it,
-  // seed a production-shaped fixture, then restore and apply it.
-  //
-  // This is also the property apps/server/prisma/CLAUDE.md demands — "a
-  // migration must be valid on a DB built only from committed history" — so
-  // the harness now tests that directly rather than assuming it.
-  console.log(`Parking ${MIGRATIONS.join(', ')}...`)
-  mkdirSync(PARKED_ROOT, { recursive: true })
-  for (const name of MIGRATIONS) renameSync(migrationDir(name), parkedDir(name))
-  parked = true
-
-  try {
-    console.log('Resetting test database to pre-migration history...')
-    execSync('pnpm exec prisma migrate reset --force --skip-seed --skip-generate', {
-      cwd: SERVER_DIR,
-      env,
-      stdio: 'inherit',
-    })
-    await seedFixture()
-
-    // Apply migrations 1-6 first, then seed the "User" rows that only exist
-    // once add_user has run. See seedUsersBeforeHouseholds for why.
-    console.log(`Applying every migration under test except ${HOUSEHOLDS_MIGRATION}...`)
-    for (const name of MIGRATIONS) {
-      if (name !== HOUSEHOLDS_MIGRATION) renameSync(parkedDir(name), migrationDir(name))
-    }
-    execSync('pnpm exec prisma migrate deploy', { cwd: SERVER_DIR, env, stdio: 'inherit' })
-    await seedUsersBeforeHouseholds()
-    await seedCrossHouseholdReferences()
-  } finally {
-    restoreIfParked()
-    parked = false
-  }
-
-  console.log(`Applying ${HOUSEHOLDS_MIGRATION}...`)
-  execSync('pnpm exec prisma migrate deploy', { cwd: SERVER_DIR, env, stdio: 'inherit' })
-
-  console.log('Asserting...')
-
-  // Runs FIRST, before the older blocks below, because those blocks write rows
-  // the backfill never saw: a 'Garage' location and an "Item" with no
-  // householdId, and they delete three locations. Read now, the database is
-  // exactly what add_households left.
-  await assertHouseholdsBackfill()
+// ══════════════════════════════════════════════════════════════════════
+// PR 1, PR 3a and PR 3b — read BEFORE drop_user_scope
+// ══════════════════════════════════════════════════════════════════════
+//
+// These blocks prove which location each row of the oldest migrations went
+// to, and they do it by the location's "userId" and "isDefault". Both columns
+// are gone after drop_user_scope, and that migration's cleanup deletes most
+// of the cart items and one log these blocks check (they name another
+// account's item: the PR 3a and PR 3b fixtures need that). So main() runs
+// this between add_households and drop_user_scope. It reads the two columns
+// through `legacyLocations`, and writes only deletes, which the Prisma client
+// of the final schema can still do.
+async function assertLocationMigrationsBeforeDrop(): Promise<void> {
+  const legacy = await legacyLocationsById()
 
   // add_households (H3a) adds exactly ONE location: user-empty's 'Home', for
   // the "User" row with no data. That row is not PR 1's work, so it is set
@@ -973,7 +919,7 @@ async function main(): Promise<void> {
   // count check first makes sure it is the only row set aside: a stray extra
   // location for any of the thirteen would still fail the assertions below.
   // assertHouseholdsBackfill checks the 'Home' row itself.
-  const allLocations = await prisma.location.findMany({ orderBy: { userId: 'asc' } })
+  const allLocations = await legacyLocations()
   const locations = allLocations.filter((l) => l.userId !== NO_DATA_USER_ID)
   assert(
     allLocations.length === locations.length + 1,
@@ -1002,14 +948,14 @@ async function main(): Promise<void> {
   })
   assert(stocks.length === 3, 'one ItemStock per Item')
   assert(
-    stocks.every((s) => s.location.isDefault),
+    stocks.every((s) => legacy.get(s.locationId)?.isDefault === true),
     'every ItemStock sits under its default location (structural invariant in THIS fixture: no non-default Location exists yet when Backfill 2 runs, so this cannot go red on its own and is NOT evidence for the `AND l."isDefault"` JOIN filter — see the migration-check report for why that filter is unfalsifiable within a single migration file)',
   )
   // The scoping assertion that a single-user fixture could not make.
   const rice = stocks.find((s) => s.itemId === 'item-b1')
-  assert(rice?.location.userId === 'user-b', "user-b's item is stocked under user-b's location")
+  assert(legacy.get(rice?.locationId ?? '')?.userId === 'user-b', "user-b's item is stocked under user-b's location")
   const milk = stocks.find((s) => s.itemId === 'item-a1')
-  assert(milk?.location.userId === 'user-a', "user-a's item is stocked under user-a's location")
+  assert(legacy.get(milk?.locationId ?? '')?.userId === 'user-a', "user-a's item is stocked under user-a's location")
   assert(
     milk?.targetQuantity === 3 &&
       milk?.refillThreshold === 1 &&
@@ -1022,34 +968,16 @@ async function main(): Promise<void> {
   // There used to be an assertion here that "Item"."targetQuantity" still read
   // 3 — "dropped in PR 5, not here". PR 5 is now in this script's MIGRATIONS
   // list, so the column is gone by the time the assertions run and that
-  // SELECT would throw 42703. It is replaced, inverted, by the PR 5 block at
-  // the end of this function. The `milk` assertion above is what proves the
+  // SELECT would throw 42703. It is replaced, inverted, by the PR 5 block in
+  // main(). The `milk` assertion above is what proves the
   // five values survived the drop: they are read off "ItemStock", their new
   // home, after PR 5 has removed "Item"'s copy.
 
-  // The partial unique index must actually reject a second default — and for
-  // the right reason (P2002 / unique violation), not merely "some error".
-  let rejectCode: string | undefined
-  try {
-    await prisma.location.create({
-      data: { name: 'Second Default', order: 1, isDefault: true, userId: 'user-a' },
-    })
-  } catch (err) {
-    rejectCode = err instanceof Prisma.PrismaClientKnownRequestError ? err.code : undefined
-  }
-  assert(
-    rejectCode === 'P2002',
-    'a second isDefault location for one user is rejected by the database with P2002 (unique violation)',
-  )
-
-  // A non-default second location is fine.
-  await prisma.location.create({
-    data: { name: 'Garage', order: 1, isDefault: false, userId: 'user-a' },
-  })
-  assert(
-    (await prisma.location.count({ where: { userId: 'user-a' } })) === 2,
-    'a non-default second location is allowed',
-  )
+  // Two checks of PR 1's partial unique index "Location_one_default_per_user_key"
+  // stood here: a second default for one user fails with P2002, and a second
+  // NON-default location is allowed. drop_user_scope (households H3a task
+  // 3.14) drops the index with the "isDefault" column, so both were replaced
+  // by assertDropUserScope's "the column and the index are gone" checks.
 
   // ItemStock_itemId_locationId_key must actually be enforced.
   let duplicateCode: string | undefined
@@ -1096,11 +1024,11 @@ async function main(): Promise<void> {
   const logA = logs.find((l) => l.id === 'log-a')
   const logJ = logs.find((l) => l.id === 'log-j')
   assert(
-    logA?.location.userId === 'user-a' && logA?.location.isDefault === true,
+    legacy.get(logA?.locationId ?? '')?.userId === 'user-a' && legacy.get(logA?.locationId ?? '')?.isDefault === true,
     "user-a's log is backfilled to user-a's default location",
   )
   assert(
-    logJ?.location.userId === 'user-j' && logJ?.location.isDefault === true,
+    legacy.get(logJ?.locationId ?? '')?.userId === 'user-j' && legacy.get(logJ?.locationId ?? '')?.isDefault === true,
     "user-j's log is backfilled to user-j's default location — NOT user-a's, even though the log's item (item-a1) belongs to user-a. This is what catches a backfill that joins through Item instead of through InventoryLog.userId",
   )
   assert(
@@ -1116,7 +1044,7 @@ async function main(): Promise<void> {
   const cartA = carts.find((c) => c.userId === 'user-a')
   const cartI = carts.find((c) => c.userId === 'user-i')
   assert(
-    cartA?.location.userId === 'user-a' && cartI?.location.userId === 'user-i',
+    legacy.get(cartA?.locationId ?? '')?.userId === 'user-a' && legacy.get(cartI?.locationId ?? '')?.userId === 'user-i',
     "each cart is backfilled to its OWN owner's default location",
   )
   assert(
@@ -1160,11 +1088,11 @@ async function main(): Promise<void> {
   const cartL = carts.find((c) => c.userId === 'user-l')
   const cartM = carts.find((c) => c.userId === 'user-m')
   assert(
-    cartK?.id === `${cartK?.locationId}:no-vendor` && cartK?.location.userId === 'user-k',
+    cartK?.id === `${cartK?.locationId}:no-vendor` && legacy.get(cartK?.locationId ?? '')?.userId === 'user-k',
     "user-k (who owned the shared row) ends up with `${their own locationId}:no-vendor`",
   )
   assert(
-    cartL?.id === `${cartL?.locationId}:no-vendor` && cartL?.location.userId === 'user-l',
+    cartL?.id === `${cartL?.locationId}:no-vendor` && legacy.get(cartL?.locationId ?? '')?.userId === 'user-l',
     "user-l (who owned no cart at all) gets a NEW `${their own locationId}:no-vendor` — this is the split, and nothing else in this script proves it ran",
   )
   assert(
@@ -1278,6 +1206,521 @@ async function main(): Promise<void> {
     (await prisma.itemStock.count({ where: { itemId: 'item-a2' } })) === 0,
     'deleting an Item cascades to delete its ItemStock rows',
   )
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 20261111000000 — drop_user_scope: the seed between the two deploys
+// ══════════════════════════════════════════════════════════════════════
+//
+// Each migration file is its own transaction. In production, after
+// add_households commits, the OLD server keeps serving until Railway switches
+// to the new one. drop_user_scope must handle what it writes in that window
+// (plan, task 3.14 step 1). This seed writes those rows the way the old
+// server writes them: "userId" only, no "householdId", no role row.
+//
+//   user-late     a new person: ensureUser made their "User" row, then the
+//                 old ensureDefaultLocation made 'My Home' (isDefault) and
+//                 they saved one item. Must get a household, an owner row,
+//                 an organizer row on 'My Home', and NO second location.
+//   user-webhook  a new person the Clerk webhook created, with no data. Must
+//                 get a household and one 'Home', like user-empty did in
+//                 add_households.
+//   user-ghost    wrote a vendor, but has no "User" row (ensureUserOrLog never
+//                 fails a request). Must get a "User" row named 'User', a
+//                 household, a 'Home', and the vendor in that household.
+//   user-a        an EXISTING person, who wrote a tag type, a tag and a new
+//                 location 'Garage' after add_households. The three rows must
+//                 go into user-a's household, and 'Garage' must get user-a as
+//                 organizer.
+//   user-removed  has householdSetupAt set and is in NO household: the shape
+//                 of a person removed from a household (the E2E member route
+//                 on the test database; H5 adds leaving). No data. Must NOT
+//                 get a household: first sign-in would not give one either.
+//
+// Then one row of each kind the cleanup handles (owner's choice A, with A1
+// for a tag's type, and Q4 for the three stock-side kinds), each with a
+// same-household row next to it that must be KEPT. The five catalog kinds
+// were seeded before add_households (seedCrossHouseholdReferences); the rows
+// below add the shelf arrays and the stock-side kinds:
+//
+//   kind                 crossing (cleaned)                    same household (kept)
+//   Shelf.itemIds        shelf-mix names item-b1 (user-b)       item-a1; and 'item-gone',
+//                                                              which no row holds
+//   Shelf.filterConfig   tag-g, vendor-d, recipe-e              tag-a1, vendor-a, recipe-a,
+//                                                              'tag-gone', and a "note" key
+//   ItemStock            stock-cross: item-b1 at user-a's       item-a1 at user-a's location
+//                        location                              (the PR 1 backfill's row)
+//   CartItem             ci-cross: item-b1 in user-a's cart     ci-own: item-a1 in the same cart
+//   InventoryLog         log-cross: item-b1 at user-a's        log-a (seedFixture)
+//                        location
+//
+// shelf-b-own (user-b) names only item-b1, its own household's item, so it
+// must not change at all.
+const LATE_USER = 'user-late'
+const WEBHOOK_USER = 'user-webhook'
+const GHOST_USER = 'user-ghost'
+const REMOVED_USER = 'user-removed'
+const SHELF_MIX_FILTER = {
+  tagIds: ['tag-a1', 'tag-g', 'tag-gone'],
+  vendorIds: ['vendor-a', 'vendor-d'],
+  recipeIds: ['recipe-a', 'recipe-e'],
+  note: 'keep',
+}
+
+async function seedBetweenDeploys(): Promise<void> {
+  console.log('Seeding what the old server writes between the two deploys, and one row of each kind the cleanup handles...')
+  const householdA = await prisma.household.findFirstOrThrow({ where: { ownerId: 'user-a' } })
+  const householdB = await prisma.household.findFirstOrThrow({ where: { ownerId: 'user-b' } })
+  const locationA = (await legacyLocations()).find((l) => l.userId === 'user-a' && l.isDefault)
+  if (!locationA) throw new Error("FAIL: user-a's default location is missing before drop_user_scope")
+  const cartA = await prisma.cart.findFirst({ where: { userId: 'user-a' } })
+  if (!cartA) throw new Error("FAIL: user-a's cart is missing before drop_user_scope")
+
+  // ── The old server's writes ──
+  await prisma.$executeRaw`
+    INSERT INTO "User" ("id","displayName","householdSetupAt","createdAt","updatedAt") VALUES
+      (${LATE_USER}, 'Late', NULL, NOW(), NOW()),
+      (${WEBHOOK_USER}, 'Hook', NULL, NOW(), NOW()),
+      (${REMOVED_USER}, 'Removed', NOW(), NOW(), NOW())
+  `
+  await prisma.$executeRaw`
+    INSERT INTO "Location" ("id","name","order","isDefault","userId","createdAt","updatedAt") VALUES
+      ('loc-late', 'My Home', 0, true, ${LATE_USER}, NOW(), NOW()),
+      ('loc-a-late', 'Garage', 1, false, 'user-a', NOW(), NOW())
+  `
+  await prisma.$executeRaw`
+    INSERT INTO "Item" ("id","name","targetUnit","consumeAmount","expirationMode","userId","createdAt","updatedAt")
+    VALUES ('item-late', 'Tea', 'package', 1, 'disabled', ${LATE_USER}, NOW(), NOW())
+  `
+  await prisma.$executeRaw`
+    INSERT INTO "Vendor" ("id","name","userId") VALUES ('vendor-ghost', 'Ghost Mart', ${GHOST_USER})
+  `
+  await prisma.$executeRaw`
+    INSERT INTO "TagType" ("id","name","color","userId") VALUES ('tt-a-late', 'Late Kind', 'green', 'user-a')
+  `
+  await prisma.$executeRaw`
+    INSERT INTO "Tag" ("id","name","typeId","userId") VALUES ('tag-a-late', 'Late Tag', 'tt-a-late', 'user-a')
+  `
+
+  // ── One row of each kind the cleanup handles, written as the H3a server
+  //    would (with "householdId"), next to a row it must keep ──
+  await prisma.$executeRaw`
+    INSERT INTO "Shelf" ("id","name","type","order","itemIds","filterConfig","userId","householdId","createdAt","updatedAt") VALUES
+      ('shelf-mix', 'Mixed', 'filter', 1, ARRAY['item-a1','item-b1','item-gone'],
+       ${JSON.stringify(SHELF_MIX_FILTER)}::jsonb, 'user-a', ${householdA.id}, NOW(), NOW()),
+      ('shelf-b-own', 'Own', 'manual', 0, ARRAY['item-b1'], NULL, 'user-b', ${householdB.id}, NOW(), NOW())
+  `
+  await prisma.$executeRaw`
+    INSERT INTO "ItemStock" ("id","itemId","locationId","createdAt","updatedAt")
+    VALUES ('stock-cross', 'item-b1', ${locationA.id}, NOW(), NOW())
+  `
+  await prisma.$executeRaw`
+    INSERT INTO "CartItem" ("id","cartId","itemId","quantity","userId") VALUES
+      ('ci-cross', ${cartA.id}, 'item-b1', 1, 'user-a'),
+      ('ci-own', ${cartA.id}, 'item-a1', 2, 'user-a')
+  `
+  await prisma.$executeRaw`
+    INSERT INTO "InventoryLog" ("id","itemId","delta","quantity","occurredAt","userId","locationId")
+    VALUES ('log-cross', 'item-b1', 1, 1, NOW(), 'user-a', ${locationA.id})
+  `
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 20261111000000 — drop_user_scope: the final state
+// ══════════════════════════════════════════════════════════════════════
+//
+// Read-only. main() calls this right after drop_user_scope is deployed. Three
+// groups of checks:
+//   1. the shape: what is gone, and what must still be there
+//   2. step 2, the re-run of add_households' backfill (seedBetweenDeploys)
+//   3. step 3, the cleanup of references that cross households
+async function assertDropUserScope(): Promise<void> {
+  console.log('drop_user_scope — the shape:')
+
+  // ── 1. The shape. Each "gone" check has a "still there" half next to it
+  //    (apps/server/prisma/CLAUDE.md, "A column DROP inverts the usual
+  //    assertion shape") ──
+  for (const table of HOUSEHOLD_SCOPED_TABLES) {
+    assert(
+      !(await columnNamesOf(table)).has('userId'),
+      `"${table}"."userId" is gone`,
+    )
+    const meta = await columnMetaOf(table, 'householdId')
+    assert(
+      meta?.dataType === 'text' && meta?.isNullable === 'NO',
+      `"${table}"."householdId" is NOT NULL text (read: ${meta ? `${meta.dataType}, nullable=${meta.isNullable}` : 'column missing'})`,
+    )
+  }
+  for (const table of ['Cart', 'CartItem', 'InventoryLog', 'HouseholdMember', 'LocationMember'] as const) {
+    assert(
+      (await columnNamesOf(table)).has('userId'),
+      `"${table}"."userId" is still there — drop_user_scope drops it from the seven tables only`,
+    )
+  }
+  const locationColumns = await columnNamesOf('Location')
+  assert(
+    !locationColumns.has('isDefault') && locationColumns.has('order'),
+    '"Location"."isDefault" is gone, and "order" stays (decision H5)',
+  )
+
+  // Indexes, read from pg_indexes. The partial index went with "isDefault";
+  // every index on the seven tables that named "userId" went with that
+  // column. The "householdId" indexes beside them must still be there.
+  const indexes = await prisma.$queryRaw<{ indexname: string; tablename: string; indexdef: string }[]>`
+    SELECT indexname::text AS indexname, tablename::text AS tablename, indexdef
+    FROM pg_indexes WHERE schemaname = 'public'
+  `
+  assert(
+    !indexes.some((i) => i.indexname === 'Location_one_default_per_user_key'),
+    '"Location_one_default_per_user_key" is gone',
+  )
+  const userIdIndexes = indexes.filter(
+    (i) => (HOUSEHOLD_SCOPED_TABLES as readonly string[]).includes(i.tablename) && i.indexdef.includes('"userId"'),
+  )
+  assert(
+    userIdIndexes.length === 0,
+    `no index on the seven tables names "userId"${userIdIndexes.length ? ` (left: ${userIdIndexes.map((i) => i.indexname).join(', ')})` : ''}`,
+  )
+  const householdIndexes = [
+    'Location_householdId_order_idx',
+    'Item_householdId_updatedAt_idx',
+    'Item_householdId_name_idx',
+    'Tag_householdId_typeId_idx',
+    'TagType_householdId_name_idx',
+    'Vendor_householdId_name_idx',
+    'Recipe_householdId_name_idx',
+    'Shelf_householdId_order_idx',
+  ]
+  const missingIndexes = householdIndexes.filter((name) => !indexes.some((i) => i.indexname === name))
+  assert(
+    missingIndexes.length === 0,
+    `the eight "householdId" indexes are still there${missingIndexes.length ? ` (missing: ${missingIndexes.join(', ')})` : ''}`,
+  )
+
+  console.log('drop_user_scope — step 2, the re-run of the backfill:')
+
+  // ── 2. The re-run (seedBetweenDeploys says what each user stands for) ──
+  const households = await prisma.household.findMany({ include: { members: true } })
+  const householdOf = (userId: string) => households.filter((h) => h.ownerId === userId)
+  for (const [userId, name] of [
+    [LATE_USER, "Late's Household"],
+    [WEBHOOK_USER, "Hook's Household"],
+    [GHOST_USER, "User's Household"],
+  ] as const) {
+    const own = householdOf(userId)
+    assert(
+      own.length === 1 &&
+        own[0]?.name === name &&
+        own[0].members.length === 1 &&
+        own[0].members[0]?.userId === userId &&
+        own[0].members[0]?.role === 'owner',
+      `${userId} gets exactly one household, "${name}", and is its only member, as owner (read: ${own.length} household(s), ${own.map((h) => `${h.name}: ${h.members.map((m) => `${m.userId}/${m.role}`).join(', ')}`).join('; ')})`,
+    )
+  }
+  const ghost = await prisma.user.findUnique({ where: { id: GHOST_USER } })
+  assert(
+    ghost?.displayName === 'User',
+    `${GHOST_USER}, found only in the data, gets a "User" row named 'User' (read: ${ghost?.displayName})`,
+  )
+  const setUp = await prisma.user.findMany({ where: { id: { in: [LATE_USER, WEBHOOK_USER, GHOST_USER] } } })
+  assert(
+    setUp.length === 3 && setUp.every((u) => u.householdSetupAt !== null),
+    'the three new people are marked as set up, so first sign-in makes no second household',
+  )
+  const removed = await prisma.user.findUnique({ where: { id: REMOVED_USER } })
+  assert(
+    householdOf(REMOVED_USER).length === 0 &&
+      (await prisma.householdMember.count({ where: { userId: REMOVED_USER } })) === 0 &&
+      removed?.householdSetupAt !== null,
+    `${REMOVED_USER}, set up and in no household (removed from one), gets NO household`,
+  )
+
+  const householdIdOf = (userId: string) => householdOf(userId)[0]?.id
+  const locations = await prisma.location.findMany({ include: { members: true } })
+  const lateLocations = locations.filter((l) => l.householdId === householdIdOf(LATE_USER))
+  assert(
+    lateLocations.length === 1 &&
+      lateLocations[0]?.id === 'loc-late' &&
+      lateLocations[0].members.length === 1 &&
+      lateLocations[0].members[0]?.userId === LATE_USER &&
+      lateLocations[0].members[0]?.role === 'organizer',
+    `${LATE_USER}'s 'My Home' from the old server is in their household with them as organizer, and they get no second location (read: ${lateLocations.map((l) => l.id).join(', ')})`,
+  )
+  for (const userId of [WEBHOOK_USER, GHOST_USER]) {
+    const theirs = locations.filter((l) => l.householdId === householdIdOf(userId))
+    assert(
+      theirs.length === 1 &&
+        theirs[0]?.name === 'Home' &&
+        theirs[0].order === 0 &&
+        theirs[0].members.length === 1 &&
+        theirs[0].members[0]?.userId === userId &&
+        theirs[0].members[0]?.role === 'organizer',
+      `${userId}, who had no location, gets exactly one 'Home', order 0, as its organizer (read: ${theirs.map((l) => `${l.name}/${l.order}`).join(', ')})`,
+    )
+  }
+  const householdA = householdIdOf('user-a')
+  const garage = locations.find((l) => l.id === 'loc-a-late')
+  assert(
+    garage?.householdId === householdA &&
+      garage.members.length === 1 &&
+      garage.members[0]?.userId === 'user-a' &&
+      garage.members[0]?.role === 'organizer',
+    "user-a's 'Garage' from the old server is in user-a's household, with user-a as its only organizer",
+  )
+  const lateItem = await prisma.item.findUnique({ where: { id: 'item-late' } })
+  const ghostVendor = await prisma.vendor.findUnique({ where: { id: 'vendor-ghost' } })
+  const lateType = await prisma.tagType.findUnique({ where: { id: 'tt-a-late' } })
+  const lateTag = await prisma.tag.findUnique({ where: { id: 'tag-a-late' } })
+  assert(
+    lateItem?.householdId === householdIdOf(LATE_USER) &&
+      ghostVendor?.householdId === householdIdOf(GHOST_USER) &&
+      lateType?.householdId === householdA &&
+      lateTag?.householdId === householdA &&
+      lateTag.typeId === 'tt-a-late',
+    'every row the old server wrote with no householdId is filled in with its person\'s household (item, vendor, tag type, tag), and a tag whose type is in its OWN household keeps that type',
+  )
+  assert(
+    (await prisma.location.count({ where: { name: 'Home' } })) === 3,
+    "exactly three 'Home' locations: user-empty's from add_households, and the two from this re-run",
+  )
+
+  console.log('drop_user_scope — step 3, the cleanup of references that cross households:')
+
+  // ── 3a. Tag.typeId (A1): one copy of the type per household ──
+  const householdG = householdIdOf('user-g')
+  const householdC = householdIdOf('user-c')
+  const storageTypes = await prisma.tagType.findMany({ where: { name: 'Storage' } })
+  const copyA = storageTypes.filter((t) => t.householdId === householdA)
+  const copyG = storageTypes.filter((t) => t.householdId === householdG)
+  assert(
+    storageTypes.length === 3 &&
+      storageTypes.some((t) => t.id === 'tt-c' && t.householdId === householdC) &&
+      copyA.length === 1 &&
+      copyG.length === 1 &&
+      storageTypes.every((t) => t.color === 'blue'),
+    `tt-c ('Storage', blue) stays in user-c's household, and ONE copy with the same name and color is made in user-a's and in user-g's household: two tags of user-a use it, and they share one copy (read: ${storageTypes.map((t) => `${t.id}/${t.color}`).join(', ')})`,
+  )
+  const tags = new Map((await prisma.tag.findMany()).map((t) => [t.id, t]))
+  assert(
+    tags.get('tag-a1')?.typeId === copyA[0]?.id &&
+      tags.get('tag-a2')?.typeId === copyA[0]?.id &&
+      tags.get('tag-g')?.typeId === copyG[0]?.id,
+    "tag-a1 and tag-a2 point at user-a's copy, tag-g at user-g's copy",
+  )
+  assert(
+    tags.get('tag-c1')?.typeId === 'tt-c' && tags.get('tag-c2')?.typeId === 'tt-c',
+    "tag-c1 and tag-c2 keep tt-c: it is in their own household (the control)",
+  )
+
+  // ── 3b. Tag.parentId ──
+  assert(
+    tags.get('tag-c1')?.parentId === null && tags.get('tag-c2')?.parentId === 'tag-c1',
+    "tag-c1's parent in another household (tag-g) is cleared; tag-c2 keeps its same-household parent tag-c1",
+  )
+
+  // ── 3c. The three join tables ──
+  const itemTags = await prisma.itemTag.findMany({ where: { itemId: 'item-a1' } })
+  assert(
+    !itemTags.some((j) => j.tagId === 'tag-g') && itemTags.some((j) => j.tagId === 'tag-a1'),
+    'ItemTag: item-a1 + tag-g (another household) is deleted; item-a1 + tag-a1 is kept',
+  )
+  const itemVendors = await prisma.itemVendor.findMany()
+  assert(
+    !itemVendors.some((j) => j.itemId === 'item-b1' && j.vendorId === 'vendor-d') &&
+      itemVendors.some((j) => j.itemId === 'item-a1' && j.vendorId === 'vendor-a'),
+    'ItemVendor: item-b1 + vendor-d is deleted; item-a1 + vendor-a is kept',
+  )
+  const recipeItems = await prisma.recipeItem.findMany()
+  assert(
+    !recipeItems.some((j) => j.recipeId === 'recipe-e' && j.itemId === 'item-b1') &&
+      recipeItems.some((j) => j.recipeId === 'recipe-a' && j.itemId === 'item-a1'),
+    'RecipeItem: recipe-e + item-b1 is deleted; recipe-a + item-a1 is kept',
+  )
+
+  // ── 3d and 3e. The shelf arrays ──
+  const shelfMix = await prisma.shelf.findUnique({ where: { id: 'shelf-mix' } })
+  assert(
+    JSON.stringify(shelfMix?.itemIds) === JSON.stringify(['item-a1', 'item-gone']),
+    `shelf-mix loses item-b1 (another household), and keeps item-a1 and 'item-gone' (no row holds it), in their order (read: ${JSON.stringify(shelfMix?.itemIds)})`,
+  )
+  const expectedFilter = {
+    tagIds: ['tag-a1', 'tag-gone'],
+    vendorIds: ['vendor-a'],
+    recipeIds: ['recipe-a'],
+    note: 'keep',
+  }
+  const readFilter = shelfMix?.filterConfig as Record<string, unknown> | null | undefined
+  assert(
+    readFilter !== null &&
+      readFilter !== undefined &&
+      Object.keys(readFilter).length === Object.keys(expectedFilter).length &&
+      Object.entries(expectedFilter).every(([k, v]) => JSON.stringify(readFilter[k]) === JSON.stringify(v)),
+    `shelf-mix's filterConfig loses tag-g, vendor-d and recipe-e, and keeps its own ids, 'tag-gone' and the "note" key (read: ${JSON.stringify(readFilter)})`,
+  )
+  const shelfB = await prisma.shelf.findUnique({ where: { id: 'shelf-b-own' } })
+  assert(
+    JSON.stringify(shelfB?.itemIds) === JSON.stringify(['item-b1']) && shelfB?.filterConfig === null,
+    "shelf-b-own, which names only its own household's item, is unchanged",
+  )
+
+  // ── 3f. The three stock-side kinds ──
+  const myHomeA = locations.find((l) => l.householdId === householdA && l.name === 'My Home')
+  const stocks = await prisma.itemStock.findMany()
+  assert(
+    myHomeA !== undefined &&
+      !stocks.some((s) => s.id === 'stock-cross') &&
+      stocks.some((s) => s.itemId === 'item-a1' && s.locationId === myHomeA.id),
+    "ItemStock: stock-cross (item-b1, user-b's item, at user-a's 'My Home') is deleted; item-a1 at that location is kept",
+  )
+  const cartItems = (await prisma.cartItem.findMany()).map((c) => c.id).sort()
+  assert(
+    JSON.stringify(cartItems) === JSON.stringify(['ci-own']),
+    `CartItem: only ci-own is left. ci-cross is deleted, and so are ci-k1, ci-l1, ci-l2 and ci-m1 from the PR 3b fixture, which put user-a's and user-b's items in other people's carts (read: ${cartItems.join(', ')})`,
+  )
+  const logs = (await prisma.inventoryLog.findMany()).map((l) => l.id).sort()
+  assert(
+    JSON.stringify(logs) === JSON.stringify(['log-a']),
+    `InventoryLog: log-cross is deleted; log-a, item-a1 at user-a's location, is kept (read: ${logs.join(', ')})`,
+  )
+}
+
+const SERVER_DIR = fileURLToPath(new URL('..', import.meta.url))
+
+// In apply order. Adding a later migration under test means adding it here.
+const MIGRATIONS = [
+  '20260830000000_add_location_and_item_stock',
+  '20260916000000_add_location_to_log_and_cart',
+  '20260917000000_rekey_cart_to_location_vendor',
+  '20261004000000_drop_item_stock_state_columns',
+  '20261008000000_add_item_note_and_wikidata_url',
+  '20261031000000_add_user',
+  '20261104000000_add_households',
+  '20261111000000_drop_user_scope',
+] as const
+
+// Applied on its own, in a second `migrate deploy`, after
+// seedUsersBeforeHouseholds. Every entry before it is applied in the first
+// deploy.
+const HOUSEHOLDS_MIGRATION = '20261104000000_add_households'
+
+// Applied on its own, in a third `migrate deploy`, after seedBetweenDeploys.
+// It must be the LAST entry above.
+const DROP_USER_SCOPE_MIGRATION = '20261111000000_drop_user_scope'
+
+const PARKED_ROOT = join(SERVER_DIR, '.migration-under-test')
+const migrationDir = (name: string) => join(SERVER_DIR, 'prisma/migrations', name)
+const parkedDir = (name: string) => join(PARKED_ROOT, name)
+
+// Idempotent by construction: safe to call from a startup self-heal check,
+// from the normal finally block, and from a SIGINT/SIGTERM handler, in any
+// combination, without throwing on a directory that isn't there.
+function restoreIfParked(): void {
+  if (!existsSync(PARKED_ROOT)) return
+  for (const name of MIGRATIONS) {
+    const parked = parkedDir(name)
+    if (!existsSync(parked)) continue
+    if (existsSync(migrationDir(name))) {
+      // Both exist — a previous restore already succeeded but the parked copy
+      // was never cleaned up (e.g. two restore calls raced). Trust the live
+      // migration directory and discard the stale parked copy.
+      console.log(`Both ${name} and a stale parked copy exist — discarding the parked copy.`)
+      rmSync(parked, { recursive: true, force: true })
+      continue
+    }
+    console.log(`Restoring parked ${name}...`)
+    renameSync(parked, migrationDir(name))
+  }
+  rmSync(PARKED_ROOT, { recursive: true, force: true })
+}
+
+let parked = false
+
+// A SIGINT (Ctrl-C) or SIGTERM delivered while the migration is parked would,
+// with no handler registered, kill the process immediately at the OS level —
+// bypassing the try/finally entirely, since Node's default disposition for
+// these signals is unconditional termination, not "run pending finally
+// blocks". Registering a handler overrides that default, so the process
+// instead waits for in-flight synchronous work (e.g. execSync) to return
+// before this handler runs, giving the restore a chance to happen.
+function handleFatalSignal(signal: NodeJS.Signals): void {
+  console.error(`\nReceived ${signal}.`)
+  if (parked) restoreIfParked()
+  process.exit(1)
+}
+process.on('SIGINT', handleFatalSignal)
+process.on('SIGTERM', handleFatalSignal)
+
+async function main(): Promise<void> {
+  // Self-heal: if a previous run was killed between parking and restoring,
+  // recover instead of throwing on the renameSync below.
+  restoreIfParked()
+
+  // `prisma migrate reset` applies EVERY committed migration — including the
+  // one under test. Seeding after that would run the backfill against an
+  // empty database and make `migrate deploy` a no-op, so the assertions below
+  // would verify nothing. Park the migration, reset to the state before it,
+  // seed a production-shaped fixture, then restore and apply it.
+  //
+  // This is also the property apps/server/prisma/CLAUDE.md demands — "a
+  // migration must be valid on a DB built only from committed history" — so
+  // the harness now tests that directly rather than assuming it.
+  console.log(`Parking ${MIGRATIONS.join(', ')}...`)
+  mkdirSync(PARKED_ROOT, { recursive: true })
+  for (const name of MIGRATIONS) renameSync(migrationDir(name), parkedDir(name))
+  parked = true
+
+  try {
+    console.log('Resetting test database to pre-migration history...')
+    execSync('pnpm exec prisma migrate reset --force --skip-seed --skip-generate', {
+      cwd: SERVER_DIR,
+      env,
+      stdio: 'inherit',
+    })
+    await seedFixture()
+
+    // Apply migrations 1-6 first, then seed the "User" rows that only exist
+    // once add_user has run. See seedUsersBeforeHouseholds for why.
+    console.log(
+      `Applying every migration under test except ${HOUSEHOLDS_MIGRATION} and ${DROP_USER_SCOPE_MIGRATION}...`,
+    )
+    for (const name of MIGRATIONS) {
+      if (name !== HOUSEHOLDS_MIGRATION && name !== DROP_USER_SCOPE_MIGRATION) {
+        renameSync(parkedDir(name), migrationDir(name))
+      }
+    }
+    execSync('pnpm exec prisma migrate deploy', { cwd: SERVER_DIR, env, stdio: 'inherit' })
+    await seedUsersBeforeHouseholds()
+    await seedCrossHouseholdReferences()
+
+    console.log(`Applying ${HOUSEHOLDS_MIGRATION}...`)
+    renameSync(parkedDir(HOUSEHOLDS_MIGRATION), migrationDir(HOUSEHOLDS_MIGRATION))
+    execSync('pnpm exec prisma migrate deploy', { cwd: SERVER_DIR, env, stdio: 'inherit' })
+
+    console.log(`Asserting, before ${DROP_USER_SCOPE_MIGRATION}...`)
+
+    // Runs FIRST, before the older blocks below, because those blocks delete
+    // three locations and an item. Read now, the database is exactly what
+    // add_households left.
+    await assertHouseholdsBackfill()
+
+    // Reads "Location"."userId" and "isDefault", and checks cart items and a
+    // log that drop_user_scope's cleanup deletes, so it must run now.
+    await assertLocationMigrationsBeforeDrop()
+
+    // What the old server could write after add_households commits and
+    // before the new server takes traffic, plus one row of each kind
+    // drop_user_scope's cleanup handles.
+    await seedBetweenDeploys()
+  } finally {
+    restoreIfParked()
+    parked = false
+  }
+
+  console.log(`Applying ${DROP_USER_SCOPE_MIGRATION}...`)
+  execSync('pnpm exec prisma migrate deploy', { cwd: SERVER_DIR, env, stdio: 'inherit' })
+
+  console.log(`Asserting, after ${DROP_USER_SCOPE_MIGRATION}...`)
+  await assertDropUserScope()
 
   // ══════════════════════════════════════════════════════════════════════
   // PR 5 — Item's five stock state columns are gone, ItemStock's are not
@@ -1290,7 +1733,7 @@ async function main(): Promise<void> {
   //   ALTER TABLE "ItemStock" DROP COLUMN ...
   // as happily as against the real migration.
   //
-  // Row deletions earlier in this function cannot affect either answer — these
+  // Row deletions earlier in this script cannot affect either answer — these
   // read the catalog, not the data.
   const itemColumns = await columnNamesOf('Item')
   const itemStockColumns = await columnNamesOf('ItemStock')
@@ -1355,10 +1798,13 @@ async function main(): Promise<void> {
   }
 
   // user-a still owns item-a1 (Milk); item-a2 was deleted by the cascade check
-  // above, so insert a fresh row rather than reusing one.
+  // in assertLocationMigrationsBeforeDrop, so insert a fresh row rather than
+  // reusing one. In user-a's household: "Item" has no "userId" since
+  // drop_user_scope, and "householdId" is NOT NULL.
   await prisma.$executeRawUnsafe(`
-    INSERT INTO "Item" ("id","name","targetUnit","consumeAmount","expirationMode","userId","createdAt","updatedAt")
-    VALUES ('item-note-none','Plain','package',1,'disabled','user-a',NOW(),NOW())
+    INSERT INTO "Item" ("id","name","targetUnit","consumeAmount","expirationMode","householdId","createdAt","updatedAt")
+    VALUES ('item-note-none','Plain','package',1,'disabled',
+            (SELECT "id" FROM "Household" WHERE "ownerId" = 'user-a'),NOW(),NOW())
   `)
   const plain = await prisma.item.findUnique({ where: { id: 'item-note-none' } })
   assert(

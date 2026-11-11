@@ -61,13 +61,10 @@ import { prisma } from './prisma.js'
 //
 // So a spec should add a member BEFORE that member sends any GraphQL request.
 //
-// ── NO isDefault ──
+// ── NO LOCATION ──
 //
 // This route creates no location. A member's first request makes no "Home"
-// either, because they already have a household. So the member never gets an
-// `isDefault` location, and the partial unique index
-// "Location_one_default_per_user_key" (one default per `userId`) cannot
-// refuse a later `clearAllData` they run. Task 3.14 drops that index.
+// either, because they already have a household.
 //
 // No route here ever logs the request body. A database error is logged by
 // name and code only, the same as lib/e2eUsers.ts.

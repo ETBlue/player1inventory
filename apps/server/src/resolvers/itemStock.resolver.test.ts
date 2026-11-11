@@ -53,7 +53,6 @@ vi.mock('../lib/prisma.js', async () => {
   const items = createOwnedRowFake<{ id: string; householdId: string; userId: string }>({
     model: 'Item',
     scope: 'householdId',
-    requiredColumns: ['userId'],
   })
   const logs = createInventoryLogFake()
   const carts = {
@@ -146,12 +145,12 @@ function seed(options: { callerRole?: LocationRole } = {}) {
   world.reset()
   world.stock.reset(
     [
-      { id: 'loc-a', userId: 'user-a', householdId: 'hh-a', isDefault: true },
-      { id: 'loc-a2', userId: 'user-a', householdId: 'hh-a', isDefault: false },
-      { id: 'loc-a3', userId: 'user-a', householdId: 'hh-a', isDefault: false },
-      { id: 'loc-shared', userId: 'user-m', householdId: 'hh-a', isDefault: false },
-      { id: 'loc-hidden', userId: 'user-a', householdId: 'hh-a', isDefault: false },
-      { id: 'loc-b', userId: 'user-b', householdId: 'hh-b', isDefault: true },
+      { id: 'loc-a', householdId: 'hh-a' },
+      { id: 'loc-a2', householdId: 'hh-a' },
+      { id: 'loc-a3', householdId: 'hh-a' },
+      { id: 'loc-shared', householdId: 'hh-a' },
+      { id: 'loc-hidden', householdId: 'hh-a' },
+      { id: 'loc-b', householdId: 'hh-b' },
     ],
     [],
   )
@@ -450,8 +449,7 @@ describe('itemStock resolvers', () => {
   const UPSERT = `mutation M($i: ID!, $l: ID!, $in: ItemStockInput!) { upsertItemStock(itemId: $i, locationId: $l, input: $in) { packedQuantity } }`
 
   it('user editing stock at a non-default location writes THAT location, not the default', async () => {
-    // Given loc-a2 is NOT user-a's default, and item-far is stocked only there
-    expect(stockState.locations.find((l) => l.id === 'loc-a2')?.isDefault).toBe(false)
+    // Given loc-a2 is NOT user-a's first location, and item-far is stocked only there
     expect(stockState.itemStocks.filter((s) => s.itemId === 'item-far')).toHaveLength(1)
 
     // When the user sets packedQuantity there

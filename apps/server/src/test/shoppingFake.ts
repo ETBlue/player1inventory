@@ -35,11 +35,10 @@ import { checkWhere, type WhereSpec } from './whereKeys.js'
 export interface FakeVendor {
   id: string
   name: string
-  userId: string
   // Households H3a. A vendor belongs to a household (task 3.7), and
   // `bootstrapCarts` reads the vendors of the location's household (task
-  // 3.8). A fixture row may leave it out; it is then read as `null`.
-  householdId?: string | null
+  // 3.8). NOT NULL since task 3.14, which also dropped `Vendor.userId`.
+  householdId: string
 }
 
 export interface FakeCart {
@@ -68,7 +67,7 @@ export class CartIdConstraintError extends Error {
 // shape its kind does not allow, THROWS. `checkWhere` runs ONCE per client
 // call, before the store is searched — never inside the per-row matcher, which
 // an empty store never calls. See `whereKeys.ts`.
-const VENDOR_WHERE: WhereSpec = { id: 'equals', userId: 'equals', householdId: 'equals' }
+const VENDOR_WHERE: WhereSpec = { id: 'equals', householdId: 'equals' }
 const CART_WHERE: WhereSpec = { id: 'in', userId: 'equals', locationId: 'equals' }
 
 function checkVendorWhere(where: Where | undefined): void {
@@ -83,10 +82,7 @@ function checkCartWhere(where: Where | undefined): void {
 // is what makes dropping a key from a resolver's where clause visible.
 function matchesVendor(row: FakeVendor, where: Where): boolean {
   if (where.id !== undefined && row.id !== where.id) return false
-  if (where.userId !== undefined && row.userId !== where.userId) return false
-  if (where.householdId !== undefined && (row.householdId ?? null) !== where.householdId) {
-    return false
-  }
+  if (where.householdId !== undefined && row.householdId !== where.householdId) return false
   return true
 }
 
@@ -125,12 +121,20 @@ export function createShoppingFake() {
         checkVendorWhere(where)
         return state.vendors.filter((v) => matchesVendor(v, where))
       },
+      // `Vendor` has no `userId` since households H3a task 3.14, and its
+      // `householdId` is NOT NULL. A write that breaks either rule throws, as
+      // Prisma would.
       create: async ({ data }: { data: Record<string, unknown> }) => {
+        if ('userId' in data) {
+          throw new Error('shoppingFake(vendor): "userId" is not a column of Vendor since households H3a task 3.14.')
+        }
+        if (typeof data.householdId !== 'string') {
+          throw new Error('shoppingFake(vendor): `householdId` is required (NOT NULL since households H3a task 3.14).')
+        }
         const row: FakeVendor = {
           id: `vendor-${++seq}`,
           name: data.name as string,
-          userId: data.userId as string,
-          householdId: (data.householdId as string | undefined) ?? null,
+          householdId: data.householdId,
         }
         state.vendors.push(row)
         return row

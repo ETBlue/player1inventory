@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { HouseholdScopedRow, OwnedRow } from './ownedRowFake.js'
 import {
   createOwnedRowFake,
+  DroppedColumnError,
   MissingColumnError,
   MissingUserIdError,
   UnsupportedWhereKeyError,
@@ -698,18 +699,18 @@ describe('ownedRowFake scope: householdId for the six catalog models (H3a)', () 
     // Given an empty household-scoped store
     const fake = vendorFake()
 
-    // When a row is created with a userId but no householdId
+    // When a row is created with no householdId
     // Then it throws and writes nothing
+    await expect(fake.client.create({ data: { id: 'v_1', name: 'X' } })).rejects.toThrow(
+      MissingColumnError,
+    )
     await expect(
-      fake.client.create({ data: { id: 'v_1', userId: MINE, name: 'X' } }),
-    ).rejects.toThrow(MissingColumnError)
-    await expect(
-      fake.client.createMany({ data: [{ id: 'v_2', userId: MINE, name: 'Y' }] }),
+      fake.client.createMany({ data: [{ id: 'v_2', name: 'Y' }] }),
     ).rejects.toThrow(/no householdId/)
     expect(fake.state.rows).toHaveLength(0)
   })
 
-  it('create on a household-scoped store does not require userId by default', async () => {
+  it('create on a household-scoped store does not require userId', async () => {
     // Given an empty household-scoped store with no extra required columns
     const fake = vendorFake()
 
@@ -721,20 +722,55 @@ describe('ownedRowFake scope: householdId for the six catalog models (H3a)', () 
     expect(fake.state.rows).toHaveLength(1)
   })
 
-  it('requiredColumns makes userId required too, as it is until task 3.14', async () => {
-    // Given a household-scoped store that still treats userId as NOT NULL
-    const fake = vendorFake([], ['userId'])
+  it('requiredColumns makes another column required too', async () => {
+    // Given a household-scoped store that treats `name` as NOT NULL
+    const fake = vendorFake([], ['name'])
 
-    // When a row is created with householdId but no userId
-    // Then it throws the userId error and writes nothing
-    await expect(
-      fake.client.create({ data: { householdId: OURS, name: 'X' } }),
-    ).rejects.toThrow(MissingUserIdError)
+    // When a row is created with householdId but no name
+    // Then it throws and writes nothing
+    await expect(fake.client.create({ data: { householdId: OURS } })).rejects.toThrow(
+      MissingColumnError,
+    )
     expect(fake.state.rows).toHaveLength(0)
 
     // And a row with both is stored
-    await fake.client.create({ data: { householdId: OURS, userId: MINE, name: 'Y' } })
+    await fake.client.create({ data: { householdId: OURS, name: 'Y' } })
     expect(fake.state.rows).toHaveLength(1)
+  })
+
+  it('a household-scoped store refuses userId on every write, the column task 3.14 dropped', async () => {
+    // Given a household-scoped store with one row
+    const fake = vendorFake([{ id: 'v_1', householdId: OURS, name: 'Ours' }])
+
+    // When a resolver still writes userId, in any write
+    // Then each one throws, the way Prisma refuses an unknown argument
+    await expect(
+      fake.client.create({ data: { householdId: OURS, userId: MINE, name: 'X' } }),
+    ).rejects.toThrow(DroppedColumnError)
+    // createMany refuses the whole call, a row skipDuplicates would skip included
+    await expect(
+      fake.client.createMany({
+        data: [{ id: 'v_1', householdId: OURS, userId: MINE, name: 'X' }],
+        skipDuplicates: true,
+      }),
+    ).rejects.toThrow(DroppedColumnError)
+    await expect(
+      fake.client.update({ where: { id: 'v_1' }, data: { userId: MINE } }),
+    ).rejects.toThrow(DroppedColumnError)
+    await expect(
+      fake.client.updateMany({ where: { id: 'v_1' }, data: { userId: MINE } }),
+    ).rejects.toThrow(DroppedColumnError)
+    // upsert checks both halves, whichever one runs
+    await expect(
+      fake.client.upsert({
+        where: { id: 'v_1' },
+        create: { id: 'v_1', householdId: OURS, userId: MINE, name: 'X' },
+        update: { name: 'Y' },
+      }),
+    ).rejects.toThrow(DroppedColumnError)
+
+    // And nothing was written
+    expect(fake.state.rows).toEqual([{ id: 'v_1', householdId: OURS, name: 'Ours' }])
   })
 
   it('an upsert whose update carries householdId moves the row to that household', async () => {

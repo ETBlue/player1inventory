@@ -41,7 +41,6 @@ vi.mock('../lib/prisma.js', async () => {
   const items = createOwnedRowFake({
     model: 'Item',
     scope: 'householdId',
-    requiredColumns: ['userId'],
     rows: [
       { id: 'item_milk', householdId: 'hh_test', userId: 'user_test123' },
       { id: 'item_bread', householdId: 'hh_test', userId: 'user_member' },
@@ -158,9 +157,9 @@ function seedLocations(options: { callerRole?: LocationRole } = {}) {
     [
       // Deliberately NOT first in the array: a mirror that took `locations[0]`
       // instead of the `isDefault` row would still pass with the default first.
-      { id: LOC_OTHER, userId: 'user_test123', householdId: 'hh_test', isDefault: false },
-      { id: LOC_DEFAULT, userId: 'user_test123', householdId: 'hh_test', isDefault: true },
-      { id: LOC_STRANGER, userId: 'user_other', householdId: 'hh_other', isDefault: true },
+      { id: LOC_OTHER, householdId: 'hh_test' },
+      { id: LOC_DEFAULT, householdId: 'hh_test' },
+      { id: LOC_STRANGER, householdId: 'hh_other' },
     ],
     [],
   )
@@ -1104,10 +1103,12 @@ describe('checkout writes the cart location\'s ItemStock', () => {
     mockPrisma.cart.create.mockImplementation(
       async ({ data }: { data: { id: string } }) => makeCart({ id: data.id }),
     )
-    const listed = await execOp(`query Locations { locations { id isDefault name } }`)
+    const listed = await execOp(`query Locations { locations { id name } }`)
     expect(listed?.errors).toBeUndefined()
-    const created = stockFake.state.locations.find((l) => l.userId === 'user_test123')
-    expect(created).toMatchObject({ isDefault: true, name: 'Home' })
+    const listedIds = (listed?.data?.locations as { id: string }[] | undefined)?.map((l) => l.id)
+    expect(listedIds).toHaveLength(1)
+    const created = stockFake.state.locations.find((l) => l.id === listedIds?.[0])
+    expect(created).toMatchObject({ name: 'Home' })
 
     // And opening the no-vendor cart at that location creates it under the
     // composite id

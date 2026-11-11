@@ -14,8 +14,8 @@ describe('householdWorld', () => {
     const world = createHouseholdWorld()
     world.stock.reset(
       [
-        { id: 'loc-1', userId: 'u1', isDefault: true, householdId: 'hh-1', name: 'A', order: 0 },
-        { id: 'loc-2', userId: 'u1', isDefault: false, householdId: 'hh-1', name: 'B', order: 1 },
+        { id: 'loc-1', householdId: 'hh-1', name: 'A', order: 0 },
+        { id: 'loc-2', householdId: 'hh-1', name: 'B', order: 1 },
       ],
       [],
     )
@@ -41,9 +41,9 @@ describe('householdWorld', () => {
     const world = createHouseholdWorld()
     world.stock.reset(
       [
-        { id: 'loc-1', userId: 'u1', isDefault: true, householdId: 'hh-1', name: 'A', order: 0 },
-        { id: 'loc-2', userId: 'u1', isDefault: false, householdId: 'hh-1', name: 'B', order: 1 },
-        { id: 'loc-3', userId: 'u2', isDefault: true, householdId: 'hh-2', name: 'C', order: 0 },
+        { id: 'loc-1', householdId: 'hh-1', name: 'A', order: 0 },
+        { id: 'loc-2', householdId: 'hh-1', name: 'B', order: 1 },
+        { id: 'loc-3', householdId: 'hh-2', name: 'C', order: 0 },
       ],
       [],
     )
@@ -73,7 +73,7 @@ describe('householdWorld', () => {
   it('a delete that matches no location leaves the LocationMember rows alone', async () => {
     const world = createHouseholdWorld()
     world.stock.reset(
-      [{ id: 'loc-1', userId: 'u1', isDefault: true, householdId: 'hh-1', name: 'A', order: 0 }],
+      [{ id: 'loc-1', householdId: 'hh-1', name: 'A', order: 0 }],
       [],
     )
     world.seedHouseholds({
@@ -99,7 +99,7 @@ describe('householdWorld', () => {
       },
     }
     world.extend({ things }, [extra])
-    world.stock.reset([{ id: 'loc-1', userId: 'u1', isDefault: true, householdId: 'hh-1' }], [])
+    world.stock.reset([{ id: 'loc-1', householdId: 'hh-1' }], [])
 
     // When a transaction writes the extra model and a stock row, then throws
     const client = world.client as unknown as {

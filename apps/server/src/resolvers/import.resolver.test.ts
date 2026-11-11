@@ -312,7 +312,6 @@ function makePrismaItem(id: string, name = 'Milk') {
     targetUnit: 'package',
     consumeAmount: 1,
     expirationMode: 'disabled',
-    userId: 'user_import_test',
     packageUnit: null,
     measurementUnit: null,
     amountPerPackage: null,
@@ -329,7 +328,7 @@ function makePrismaItem(id: string, name = 'Milk') {
 
 const BULK_CREATE_ITEMS = `
   mutation BulkCreateItems($items: [ItemInput!]!) {
-    bulkCreateItems(items: $items) { id name userId }
+    bulkCreateItems(items: $items) { id name }
   }
 `
 
@@ -381,11 +380,10 @@ describe('bulkCreateItems', () => {
     expect(response.body.kind).toBe('single')
     if (response.body.kind === 'single') {
       expect(response.body.singleResult.errors).toBeUndefined()
-      const items = response.body.singleResult.data?.bulkCreateItems as Array<{ id: string; name: string; userId: string }>
+      const items = response.body.singleResult.data?.bulkCreateItems as Array<{ id: string; name: string }>
       expect(items).toHaveLength(1)
       expect(items[0].id).toBe('item_abc123')
       expect(items[0].name).toBe('Milk')
-      expect(items[0].userId).toBe('user_import_test')
     }
   })
 
@@ -440,10 +438,10 @@ describe('bulkCreateItems', () => {
     }
   })
 
-  it('assigns the authenticated userId to imported items', async () => {
+  it("writes imported items into the caller's household, with no userId", async () => {
     // Given a new item
     p.item.findUnique.mockResolvedValue(null)
-    const prismaItem = { ...makePrismaItem('item_xyz', 'Eggs'), userId: 'new_user' }
+    const prismaItem = makePrismaItem('item_xyz', 'Eggs')
     p.item.create.mockResolvedValue(prismaItem)
     p.itemTag.createMany.mockResolvedValue({ count: 0 })
     p.itemVendor.createMany.mockResolvedValue({ count: 0 })
@@ -458,18 +456,17 @@ describe('bulkCreateItems', () => {
       { contextValue: { userId: 'new_user' } },
     )
 
-    // Then userId on the returned item matches the authenticated user
+    // Then the import succeeds
     expect(response.body.kind).toBe('single')
     if (response.body.kind === 'single') {
       expect(response.body.singleResult.errors).toBeUndefined()
-      const items = response.body.singleResult.data?.bulkCreateItems as Array<{ userId: string }>
-      expect(items[0].userId).toBe('new_user')
     }
-    // And the row is written into the caller's household, beside the
-    // `userId` that is still written until task 3.14 (households H3a task 3.7)
+    // And the row is written into the caller's household. `Item` has no
+    // `userId` column since households H3a task 3.14, so the write names none.
     expect(p.item.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ householdId: 'hh_test', userId: 'new_user' }),
+      data: expect.objectContaining({ householdId: 'hh_test' }),
     })
+    expect(Object.keys(p.item.create.mock.calls[0][0].data)).not.toContain('userId')
   })
 
   // ── NO STOCK COMES FROM THE ITEM IMPORT (cloud locations PR 4b) ───────────

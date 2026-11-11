@@ -35,7 +35,6 @@ vi.mock('../lib/prisma.js', async () => {
   const items = createOwnedRowFake({
     model: 'Item',
     scope: 'householdId',
-    requiredColumns: ['userId'],
   })
   return {
     prisma: {
@@ -150,9 +149,9 @@ function seedWorld(
     [
       // The default is deliberately not first: a lookup that took locations[0]
       // rather than the isDefault row would otherwise pass by coincidence.
-      { id: LOC_OTHER, userId: 'user_test123', householdId: 'hh_test', isDefault: false },
-      { id: LOC_DEFAULT, userId: 'user_test123', householdId: 'hh_test', isDefault: true },
-      { id: LOC_STRANGER, userId: 'user_other', householdId: 'hh_other', isDefault: true },
+      { id: LOC_OTHER, householdId: 'hh_test' },
+      { id: LOC_DEFAULT, householdId: 'hh_test' },
+      { id: LOC_STRANGER, householdId: 'hh_other' },
     ],
     [],
   )
@@ -234,16 +233,20 @@ describe('Recipe resolvers', () => {
     // When creating the recipe
     const result = await execOp(
       `mutation CreateRecipe($name: String!) {
-        createRecipe(name: $name) { id name userId items { itemId defaultAmount } }
+        createRecipe(name: $name) { id name items { itemId defaultAmount } }
       }`,
       { name: 'Pancakes' },
     )
 
     // Then recipe is returned with correct fields
     expect(result?.errors).toBeUndefined()
-    const created = result?.data?.createRecipe as { id: string; name: string; userId: string; items: unknown[] }
+    const created = result?.data?.createRecipe as { id: string; name: string; items: unknown[] }
     expect(created.name).toBe('Pancakes')
-    expect(created.userId).toBe('user_test123')
+    // And the row is written into the caller's household, with no `userId`
+    // (households H3a task 3.14 dropped the column)
+    expect(mockPrisma.recipe.create).toHaveBeenCalledWith({
+      data: { name: 'Pancakes', householdId: 'hh_test' },
+    })
     expect(created.id).toBe('recipe_1')
     expect(created.items).toHaveLength(0)
   })
@@ -682,10 +685,12 @@ describe('consumeRecipes writes the cook location\'s ItemStock', () => {
     // "Home" (lib/household.ts), and the client then names
     // the id it got back. That is the real client's order too —
     // `useCloudLocationId` reads `GetLocations` before the mutation is sent.
-    const listed = await execOp(`query Locations { locations { id isDefault name } }`)
+    const listed = await execOp(`query Locations { locations { id name } }`)
     expect(listed?.errors).toBeUndefined()
-    const created = stockFake.state.locations.find((l) => l.userId === 'user_test123')
-    expect(created).toMatchObject({ isDefault: true, name: 'Home' })
+    const listedIds = (listed?.data?.locations as { id: string }[] | undefined)?.map((l) => l.id)
+    expect(listedIds).toHaveLength(1)
+    const created = stockFake.state.locations.find((l) => l.id === listedIds?.[0])
+    expect(created).toMatchObject({ name: 'Home' })
     // And the item cooked is an item of the household first sign-in made
     seedItems(created?.householdId ?? 'none')
 

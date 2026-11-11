@@ -9,8 +9,8 @@ import { typeDefs } from '../schema/index.js'
 // `import.resolver.test.ts` mocks every Prisma model as a plain `vi.fn()` call
 // recorder, which answers "yes, that location is yours" for ANY id, a
 // stranger's included. An ownership check written against that file's stubs
-// therefore cannot fail, and a recorder cannot show which `isDefault` value
-// was stored. Root CLAUDE.md, "Write test doubles to model the constraint, not
+// therefore cannot fail, and a recorder cannot show which columns were
+// stored. Root CLAUDE.md, "Write test doubles to model the constraint, not
 // the happy path". `vi.mock` is per FILE, so the stateful fake cannot be mixed
 // into that file without rewriting its existing tests. Tasks 3 and 4 each
 // wrote their own file for the same reason; this is the third.
@@ -25,8 +25,9 @@ import { typeDefs } from '../schema/index.js'
 //     returns MORE rows.
 //   - `location.create` HONOURS `data.id`, so "the payload's ids are
 //     preserved" is an assertion that can fail, and keeps `householdId`.
-//   - `location.create` enforces `Location.id`'s primary key and the partial
-//     unique index on ("userId") WHERE "isDefault", both with P2002.
+//   - `location.create` enforces `Location.id`'s primary key with P2002, and
+//     refuses a `userId` or an `isDefault` (columns dropped in households H3a
+//     task 3.14) and a missing `householdId`.
 //   - `locationMember.create` checks the foreign key to the location, the
 //     role enum and the composite primary key, with P2002.
 //   - `$transaction` rolls back every store, so "the location is not left
@@ -117,11 +118,11 @@ const PAYLOAD_UPDATED = '2026-03-04T05:06:07.000Z'
 beforeEach(() => {
   vi.clearAllMocks()
   world.stock.reset([
-    { id: LOC_DEFAULT, userId: USER, householdId: HH_USER, isDefault: true, name: 'Kitchen', order: 0, createdAt: TS, updatedAt: TS },
-    { id: LOC_OTHER, userId: USER, householdId: HH_USER, isDefault: false, name: 'Garage', order: 1, createdAt: TS, updatedAt: TS },
-    { id: LOC_SHARED, userId: MEMBER, householdId: HH_USER, isDefault: false, name: 'Shared', order: 2, createdAt: TS, updatedAt: TS },
-    { id: LOC_HIDDEN, userId: MEMBER, householdId: HH_USER, isDefault: false, name: 'Hidden', order: 3, createdAt: TS, updatedAt: TS },
-    { id: LOC_STRANGER, userId: STRANGER, householdId: HH_STRANGER, isDefault: true, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
+    { id: LOC_DEFAULT, householdId: HH_USER, name: 'Kitchen', order: 0, createdAt: TS, updatedAt: TS },
+    { id: LOC_OTHER, householdId: HH_USER, name: 'Garage', order: 1, createdAt: TS, updatedAt: TS },
+    { id: LOC_SHARED, householdId: HH_USER, name: 'Shared', order: 2, createdAt: TS, updatedAt: TS },
+    { id: LOC_HIDDEN, householdId: HH_USER, name: 'Hidden', order: 3, createdAt: TS, updatedAt: TS },
+    { id: LOC_STRANGER, householdId: HH_STRANGER, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
   ])
   world.seedHouseholds({
     households: [householdRow(HH_USER, USER), householdRow(HH_STRANGER, STRANGER)],
@@ -147,7 +148,7 @@ beforeEach(() => {
 
 const CONTEXT: Context = { userId: USER }
 
-const FIELDS = '{ id name order isDefault createdAt updatedAt }'
+const FIELDS = '{ id name order createdAt updatedAt }'
 
 const BULK_CREATE = `
   mutation BulkCreateLocations($locations: [LocationInput!]!) {
@@ -194,10 +195,6 @@ function storedRow(id: string) {
   return stored().find((l) => l.id === id)
 }
 
-function defaultsOf(userId: string) {
-  return stored().filter((l) => l.userId === userId && l.isDefault)
-}
-
 /** The role rows of one location, as `{ userId, role }`, sorted by user. */
 function rolesOn(locationId: string) {
   return world.households.state.locationMembers
@@ -224,9 +221,11 @@ for (const [label, query] of [
 
       // Then the row is in the caller's household. Without `householdId` it
       // belongs to no household, so no role on it can ever count (decision
-      // H18) and nobody sees it.
+      // H18) and nobody sees it. The fake refuses a `userId` or an
+      // `isDefault` in the write (both columns were dropped in households H3a
+      // task 3.14), so a resolver that still sent one fails here.
       expect(result.errors).toBeUndefined()
-      expect(storedRow('loc_new')).toMatchObject({ householdId: HH_USER, userId: USER })
+      expect(storedRow('loc_new')).toMatchObject({ householdId: HH_USER })
     })
 
     it('user importing a location becomes its organizer, and nobody else gets a role', async () => {
@@ -265,22 +264,6 @@ for (const [label, query] of [
       expect(result.errors).toBeDefined()
       expect(storedRow('loc_new')).toBeUndefined()
     })
-
-    it('user importing a location never gets it marked as the default', async () => {
-      // Given an account with NO default location. This is the fixture that
-      // makes the assertion mean something: with a default already there, the
-      // partial unique index refuses a second one, so a resolver writing
-      // `isDefault: true` would fail rather than succeed wrongly.
-      world.stock.reset(stored().filter((l) => l.userId !== USER))
-
-      // When the import runs
-      const result = await exec(query, [input('loc_fresh')])
-
-      // Then the row is stored, and it is NOT the default
-      expect(result.errors).toBeUndefined()
-      expect(storedRow('loc_fresh')?.isDefault).toBe(false)
-      expect(defaultsOf(USER)).toHaveLength(0)
-    })
   })
 
   describe(`${label}: an id the caller may not use`, () => {
@@ -292,11 +275,9 @@ for (const [label, query] of [
       // it does not count: USER is not a member of hh_stranger.
       expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
       expect(storedRow(LOC_STRANGER)).toMatchObject({
-        userId: STRANGER,
         householdId: HH_STRANGER,
         name: 'Theirs',
         order: 0,
-        isDefault: true,
       })
     })
 
@@ -353,14 +334,12 @@ describe('bulkCreateLocations', () => {
     expect(storedRow('loc_from_backup_a')).toMatchObject({
       name: 'Pantry',
       order: 3,
-      userId: USER,
-      isDefault: false,
+      householdId: HH_USER,
     })
     expect(storedRow('loc_from_backup_b')).toMatchObject({
       name: 'Cellar',
       order: 4,
-      userId: USER,
-      isDefault: false,
+      householdId: HH_USER,
     })
     // And the returned rows carry the same ids
     const returned = result.data?.bulkCreateLocations as { id: string }[]
@@ -435,24 +414,20 @@ describe('bulkCreateLocations', () => {
     expect(rolesOn('loc_twice')).toEqual([{ userId: USER, role: 'organizer' }])
   })
 
-  it('user importing locations keeps their own default location untouched', async () => {
-    // Given the caller's default is LOC_DEFAULT, named "Kitchen"
-    expect(defaultsOf(USER).map((l) => l.id)).toEqual([LOC_DEFAULT])
+  it("user importing locations keeps their household's first location untouched", async () => {
+    // Given the caller's first location is LOC_DEFAULT, named "Kitchen"
+    expect(storedRow(LOC_DEFAULT)).toMatchObject({ name: 'Kitchen', order: 0 })
 
     // When two more locations are imported
     const result = await exec(BULK_CREATE, [input('loc_new_1'), input('loc_new_2')])
 
-    // Then the import succeeded — the partial unique index on
-    // ("userId") WHERE "isDefault" would reject a second default with P2002,
-    // and under the "clear & import" strategy that error arrives AFTER
-    // clearAllData has run, leaving the account empty
+    // Then the import succeeded
     expect(result.errors).toBeUndefined()
     expect(storedRow('loc_new_1')).toBeDefined()
     expect(storedRow('loc_new_2')).toBeDefined()
 
-    // And exactly one row is still the default, still LOC_DEFAULT, unrenamed
-    expect(defaultsOf(USER)).toHaveLength(1)
-    expect(storedRow(LOC_DEFAULT)).toMatchObject({ isDefault: true, name: 'Kitchen', order: 0 })
+    // And LOC_DEFAULT is unrenamed, still first
+    expect(storedRow(LOC_DEFAULT)).toMatchObject({ name: 'Kitchen', order: 0 })
   })
 
   it('checks each distinct location id once, not once per row', async () => {
@@ -493,9 +468,7 @@ describe('bulkUpsertLocations', () => {
     expect(storedRow(LOC_OTHER)).toMatchObject({
       name: 'Garage Shelf',
       order: 5,
-      userId: USER,
       householdId: HH_USER,
-      isDefault: false,
     })
     expect(stored()).toHaveLength(5)
     // And an update grants and changes no role: the role rows are as seeded
@@ -510,13 +483,12 @@ describe('bulkUpsertLocations', () => {
     // When the upsert import runs
     const result = await exec(BULK_UPSERT, payload)
 
-    // Then it is created, under the payload's id, and not as the default
+    // Then it is created, under the payload's id, in the caller's household
     expect(result.errors).toBeUndefined()
     expect(storedRow('loc_upsert_new')).toMatchObject({
       name: 'Loft',
       order: 8,
-      userId: USER,
-      isDefault: false,
+      householdId: HH_USER,
     })
   })
 
@@ -546,26 +518,22 @@ describe('bulkUpsertLocations', () => {
     expect(storedRow(LOC_SHARED)).toMatchObject({ name: 'Shared', order: 2 })
   })
 
-  it('user re-importing their own default location keeps it the default', async () => {
-    // Given a payload naming the caller's default id. The client's remap
-    // rewrites the payload's default id to the destination's own default id,
-    // so this is the shape a replace-conflicts import really produces.
+  it("user re-importing their household's first location keeps it in the household", async () => {
+    // Given a payload naming the caller's first location. The client's remap
+    // rewrites the payload's first location id to the destination's own, so
+    // this is the shape a replace-conflicts import really produces.
     const payload = [input(LOC_DEFAULT, { name: 'Kitchen Renamed', order: 2 })]
 
     // When the upsert import runs
     const result = await exec(BULK_UPSERT, payload)
 
-    // Then the name and order change — but the row is STILL the default.
-    // `isDefault` is absent from the update on purpose: writing `false` there
-    // would clear the account's only default, and the web app still reads the
-    // flag until households H3a task 3.12.
+    // Then the name and order change, and the row stays in its household
     expect(result.errors).toBeUndefined()
     expect(storedRow(LOC_DEFAULT)).toMatchObject({
       name: 'Kitchen Renamed',
       order: 2,
-      isDefault: true,
+      householdId: HH_USER,
     })
-    expect(defaultsOf(USER)).toHaveLength(1)
   })
 })
 
@@ -575,14 +543,13 @@ describe('LocationInput carries no isDefault', () => {
   it('rejects a payload that tries to set isDefault', async () => {
     // Given a hand-edited payload carrying the flag. The schema is the guard:
     // GraphQL refuses an input field the type does not declare, so the
-    // resolver never sees it. This test is what keeps someone from "helpfully"
-    // adding the field later — see `LocationInput` in schema/import.graphql
-    // for the three reasons.
+    // resolver never sees it. Cloud locations have had no `isDefault` column
+    // since households H3a task 3.14 (`LocationInput` in
+    // schema/import.graphql).
     const result = await exec(BULK_CREATE, [input('loc_sneaky', { isDefault: true })])
 
     // Then the mutation does not run at all
     expect(result.errors?.[0]?.message).toContain('isDefault')
     expect(storedRow('loc_sneaky')).toBeUndefined()
-    expect(defaultsOf(USER)).toHaveLength(1)
   })
 })

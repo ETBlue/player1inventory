@@ -142,7 +142,7 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
 
   Mutation: {
     createItem: async (_, { input }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
       const householdId = await requireCatalogRole(ctx, 'manager')
       const { tagIds, vendorIds, expirationMode, targetUnit, ...rest } = input
 
@@ -187,9 +187,6 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           wikidataUrl: strOr(rest.wikidataUrl),
           note: strOr(rest.note),
           householdId,
-          // Still written until task 3.14 drops the column, which is NOT NULL
-          // until then. It is no longer read to decide who may see the item.
-          userId,
         },
       })
 

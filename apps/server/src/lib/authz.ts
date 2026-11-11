@@ -385,13 +385,11 @@ export async function requireOwnRowOrUnclaimed(
 
 /**
  * The household a location belongs to. Refuses with the usual `FORBIDDEN`
- * when no location has that id, or the location belongs to no household.
+ * when no location has that id.
  *
  * It does NOT check a role. Call it AFTER `requireLocationRole`, which is the
  * check. A location that passed `requireLocationRole` always has a household:
  * a role counts only through `location.household.members` (decision H18).
- * Until task 3.14 `Location.householdId` is nullable, so the `null` case is
- * still handled here rather than assumed away.
  *
  * Read from the LOCATION row on purpose, not from `requireHousehold(ctx)`.
  * `requireHousehold` answers "the caller's household", and nothing in the
@@ -404,7 +402,7 @@ export async function householdOfLocation(locationId: string): Promise<string> {
     where: { id: locationId },
     select: { householdId: true },
   })
-  if (!location?.householdId) throw forbidden()
+  if (!location) throw forbidden()
   return location.householdId
 }
 

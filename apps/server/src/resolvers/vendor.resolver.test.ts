@@ -94,9 +94,9 @@ function seedWorld() {
   world.stock.reset(
     [
       // Not first on purpose.
-      { id: LOC_OTHER, userId: 'user_test123', householdId: 'hh_test', isDefault: false },
-      { id: LOC_DEFAULT, userId: 'user_test123', householdId: 'hh_test', isDefault: true },
-      { id: LOC_STRANGER, userId: 'user_other', householdId: 'hh_other', isDefault: true },
+      { id: LOC_OTHER, householdId: 'hh_test' },
+      { id: LOC_DEFAULT, householdId: 'hh_test' },
+      { id: LOC_STRANGER, householdId: 'hh_other' },
     ],
     [],
   )
@@ -166,7 +166,7 @@ async function execOp(query: string, variables?: Record<string, unknown>) {
 describe('Vendor resolvers', () => {
   it('user can create a vendor via GraphQL', async () => {
     // Given prisma.vendor.create resolves with a new vendor
-    const newVendor = { id: 'v_1', name: 'Costco', userId: 'user_test123' }
+    const newVendor = { id: 'v_1', name: 'Costco', householdId: 'hh_test' }
     mockPrisma.vendor.create.mockResolvedValue(newVendor)
     // createVendor also upserts a permanent cart with the vendor ID
     mockPrisma.cart.upsert.mockResolvedValue({ id: 'v_1', userId: 'user_test123', lastPurchasedAt: null })
@@ -174,18 +174,19 @@ describe('Vendor resolvers', () => {
     // When creating a vendor at the caller's default location
     const result = await execOp(
       `mutation CreateVendor($name: String!, $locationId: ID!) {
-        createVendor(name: $name, locationId: $locationId) { id name userId }
+        createVendor(name: $name, locationId: $locationId) { id name }
       }`,
       { name: 'Costco', locationId: LOC_DEFAULT },
     )
 
     // Then the vendor is returned
-    const vendor = result?.data?.createVendor as { id: string; name: string; userId: string }
+    const vendor = result?.data?.createVendor as { id: string; name: string }
     expect(vendor.name).toBe('Costco')
-    expect(vendor.userId).toBe('user_test123')
     expect(vendor.id).toBeDefined()
+    // And the row is written into the caller's household, with no `userId`
+    // (households H3a task 3.14 dropped the column)
     expect(mockPrisma.vendor.create).toHaveBeenCalledWith({
-      data: { name: 'Costco', householdId: 'hh_test', userId: 'user_test123' },
+      data: { name: 'Costco', householdId: 'hh_test' },
     })
     // And a permanent cart is created/ensured for the new vendor, at the
     // location the caller NAMED. `createVendor(locationId:)` is `ID!` since

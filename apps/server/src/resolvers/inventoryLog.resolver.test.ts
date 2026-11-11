@@ -35,7 +35,6 @@ vi.mock('../lib/prisma.js', async () => {
   const items = createOwnedRowFake({
     model: 'Item',
     scope: 'householdId',
-    requiredColumns: ['userId'],
     rows: [
       { id: 'item_1', householdId: 'hh_test', userId: 'user_test123' },
       { id: 'item_2', householdId: 'hh_test', userId: 'user_test123' },
@@ -124,12 +123,12 @@ function seedLocations(options: { callerRoleOnOther?: LocationRole } = {}) {
     [
       // Not first on purpose: a resolver taking `locations[0]` would still
       // pass if the default came first.
-      { id: LOC_OTHER, userId: USER, householdId: 'hh_test', isDefault: false },
-      { id: LOC_DEFAULT, userId: USER, householdId: 'hh_test', isDefault: true },
-      { id: LOC_SHARED, userId: MEMBER, householdId: 'hh_test', isDefault: false },
-      { id: LOC_HIDDEN, userId: USER, householdId: 'hh_test', isDefault: false },
-      { id: LOC_STRANGER, userId: STRANGER, householdId: 'hh_other', isDefault: true },
-      { id: LOC_USER_B, userId: USER_B, householdId: 'hh_b', isDefault: true },
+      { id: LOC_OTHER, householdId: 'hh_test' },
+      { id: LOC_DEFAULT, householdId: 'hh_test' },
+      { id: LOC_SHARED, householdId: 'hh_test' },
+      { id: LOC_HIDDEN, householdId: 'hh_test' },
+      { id: LOC_STRANGER, householdId: 'hh_other' },
+      { id: LOC_USER_B, householdId: 'hh_b' },
     ],
     [],
   )
