@@ -1419,8 +1419,24 @@ that one function.
   can be a location the backup does not contain. Example: back up Home (order 0) and
   Garage, later add Attic and drag it to the top, restore with `skip` or `replace`.
   `buildLocationRemap` returned `Home → Attic`, for a new-format file and for an older file
-  with `isDefault: true` alike. Home's stock, carts and logs landed under Attic, and with
-  `replace` Attic was renamed "Home".
+  with `isDefault: true` alike. Every row the import CREATED for Home landed under Attic,
+  and each of Home's carts got a new `Attic:<vendor>` twin.
+
+  **Corrected by the review of task 3.15.** This note said that "Home's stock, carts and
+  logs landed under Attic, and with `replace` Attic was renamed 'Home'". Both halves were
+  wrong for cloud, and the comment above `buildLocationRemap` said the same. Read from
+  `apps/server/src/resolvers/import.resolver.ts`:
+  - **Attic is not renamed.** `skip` and `replace` both send `locations` on the create pass
+    only (`partitionPayload`; the upsert pass gets `locations: []`), and
+    `bulkCreateLocations` skips an id that exists. The payload's Home row carried Attic's
+    id, so it was skipped.
+  - **A row that already exists mostly stays at Home.** `bulkUpsertItemStocks` updates
+    the quantities only, and `bulkUpsertInventoryLogs` writes `locationId` in `create`
+    only. The one exception is a cart item under `replace`: `bulkUpsertCartItems` writes
+    `cartId` in `update` too, so it moved into the Attic cart.
+  - The rename IS what local mode would do (`importLocations` writes with `bulkPut` on
+    `replace` and `clear`), but local never runs the same-household check: it passes no
+    set, and its destination default is always `DEFAULT_LOCATION_ID`.
 - **Tests:** web 2474 / 265 → **2485 / 267**. New: `index.cloud.test.tsx` (the
   `LAST_LOCATION` toast and the general one, through the real `useDeleteLocation` cloud
   branch and the real toast in `__root.tsx`), `graphqlErrorCode.test.ts`, a local fallback
@@ -1878,7 +1894,54 @@ that mutation. Probably because the server's upserts keep an existing row's loca
 the id matches, so only the cart, whose id carries its location, moved. Not checked in the
 server code. The `skip` test stays green under the mutation: it is a negative control.
 
+**Review of task 3.15** (fixed 2026-11-11, after `421b9286`):
 
+- **The guess in the note above is right, and is now checked in the server code.**
+  `bulkUpsertItemStocks` updates the quantities only, and `bulkUpsertInventoryLogs` writes
+  `locationId` in `create` only, so an existing stock row or log stays at Home whatever the
+  remap says. `bulkUpsertCartItems` writes `cartId` in `update` too, so under `replace` an
+  existing cart item moves into the new `Attic:<vendor>` cart. That is why only the cart
+  went red.
+- **The comment above `buildLocationRemap` was false for cloud, and the task 3.12 note
+  copied it** ("Home's stock, carts and logs land under Attic, and with `replace` Attic is
+  renamed"). Attic is not renamed: locations go on the create pass only, and
+  `bulkCreateLocations` skips an id that exists. Both are corrected (see the task 3.12
+  note). The rename is what local would do, but local never runs this check.
+- **The restore test can now fail on stock and logs.** After the export it calls
+  `removeItemFromLocation(CLOUD_ITEM_ID, Home)`, which deletes Home's stock row, log and
+  cart item (location role `organizer`, which the test user holds on Home through
+  `createFirstLocation`). A precondition checks all three are gone. The restore then has
+  to create them, and a created row takes the remapped location. `replace` re-creates all
+  three on Home. `skip` re-creates the log and the cart item but not the stock
+  (`stocksForItems` sends stock only for items it creates), so Home's stock is expected to
+  be empty there. Readbacks after the import use `expect.poll`.
+- **Mutation, same-household check removed, every post-restore assertion made soft for one
+  run so each could be seen:**
+
+  | Assertion | `skip` | `replace` |
+  |---|---|---|
+  | four location names; Attic kept its name | green | green |
+  | Home's stock | green (expects `[]`; negative control) | **red**: `[]`, expected `[2]` |
+  | Attic holds no stock | green (negative control) | **red**: `[2]` |
+  | Home's cart count is 1 | **red**: 0 | **red**: 0 |
+  | Attic's cart count is 0 | **red**: 1 | **red**: 1 |
+  | Home's log is back | **red**: `[]` | **red**: `[]` |
+  | no log at Attic | **red**: log `…006` there | **red**: log `…006` there |
+
+  With hard assertions (as committed) the first red line is the cart (`skip`) and the stock
+  (`replace`). Restored from a copy, checked with `cmp`.
+- **"keeps each cart at its own location"** now checks that the row it calls Home holds
+  Home's stock (2). Before, a lookup that picked a location with no cart (Fixture Cabin)
+  also passed its "0 carts at Home" check. Mutation (the lookup picks Fixture Cabin): red,
+  received `[3]`.
+- The opening line of the task 3.5 paragraph below was lost in `421b9286` and is restored.
+- Gate after the fixes: `pnpm lint`, root `pnpm build` (no `TS6385`), `build-storybook`,
+  `pnpm check` all exit 0; `pnpm test`: web **2529 / 275**, server **1161 / 47**, spec
+  **70**. E2E: `import-export-cloud.spec.ts` in `cloud` **8 passed** (3.7m); the whole
+  `cloud` project **126 passed, 7 skipped** (22.1m; load average 5.8 at the start, 1.6 at
+  the end).
+
+**Found by the review of task 3.5, and owed here:** these `e2e/` files still name the deleted
 `ensureDefaultLocation` or `lib/defaultLocation.ts` in comments: `helpers/cloudSeed.ts`,
 `helpers/backupAssertions.ts`, `tests/cleanup-endpoint.spec.ts`, `tests/item-logs.spec.ts`,
 `tests/item-stock-pager.spec.ts`, `tests/location-switcher.spec.ts`,
@@ -1888,6 +1951,12 @@ them here. Find them with `git grep -n -w ensureDefaultLocation -- e2e/` and
 `git grep -n defaultLocation.ts -- e2e/`. (`ensureDefaultLocationRow` in
 `import-export-local.spec.ts` is a local-mode name, not this one.) `e2e/CLAUDE.md` was
 already corrected in `3ba61aeb`.
+
+**Done in `f16d497f`** (checked 2026-11-11 by the review of task 3.15). The two `git grep`
+commands above still find four hits outside `e2e/CLAUDE.md`, and each is written as
+history (the function "was deleted", "until task 3.5"), so it is correct:
+`e2e/helpers/cloudSeed.ts:64-67`, `e2e/helpers/backupAssertions.ts:57`,
+`e2e/tests/item-stock-pager.spec.ts:68` and `:264`.
 
 **Found by the review of task 3.12, and owed here:**
 
