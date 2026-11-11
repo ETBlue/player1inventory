@@ -134,6 +134,17 @@ It never deletes all data. **Do not describe the cleanup endpoint as wiping the
 database.** (Until households H3a task 3.10 it ran `deleteMany({ where: { userId } })` per
 model.)
 
+**Since 2026-11-11 the shared test database carries the households H3a schema.** The main
+session ran `verify:migration` there, which applies `drop_user_scope`: `Location` and the six
+catalog models have no `userId` column, and `Location` has no `isDefault`. So **`main`'s
+cloud E2E cannot run on this database until H3a merges**: `main`'s server writes and reads
+those columns. A cloud location is no longer "the default" (see below), and `/e2e/cleanup`
+deletes **18** models (count the distinct `deleteMany` models in `lib/e2eCleanup.ts`).
+
+The last E2E counts on the H3a branch, 2026-11-11, from **three separate runs** (not one
+`pnpm test:e2e:all`): `cloud` **126 passed / 7 skipped**, `local` **178 passed / 6 skipped**,
+`pwa` **73 passed**. Re-measure rather than quote.
+
 This was obscured for a while by a leftover `MONGODB_URI` from the MongoDB → Prisma
 migration, which made the config *look* isolated. The server never read it (Prisma reads
 `DATABASE_URL`/`DIRECT_URL`), so it was inert rather than erroring. Removed in PR #242;

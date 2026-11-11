@@ -908,10 +908,10 @@ and the owner agreed to the order below. Detail:
 
 | PR | Contents | User-visible |
 |---|---|---|
-| H1 | Settings layout and route moves (both modes). No backend change. Can start before PR 5 | Yes: new Settings layout |
-| H2 | `User` model, Clerk webhook, `lastSeenAt`, E2E user creation | No |
+| H1 | ✅ Merged 2026-10-31 (#368). Settings layout and route moves (both modes). No backend change. Can start before PR 5 | Yes: new Settings layout |
+| H2 | ✅ Merged 2026-11-03 (#370). `User` model, Clerk webhook, `lastSeenAt`, E2E user creation | No |
 | `fix/catalog-write-scope` (#371) | ✅ Merged 2026-11-04. Seven tag, tag type and vendor writes check ownership. A live security bug, so it did not wait for H3 | No |
-| **H3a** | `Household`, `HouseholdMember`, `LocationMember`, `User.householdSetupAt`, the data migration (two migrations, decision H16), first sign-in, real role checks in both helpers, read scoping for every resolver, `isDefault` removed, the six `userId: String!` GraphQL fields removed, the household name in the 🏠 label, `renameHousehold`, `deleteLocation` refuses the last location, the two-household purge test, an E2E-only route that adds a second household member (`POST /e2e/household-members`, decision H9). Fixes #273, #360, #359 step two, and #320 for the filters H3a changes | Small: the household name and rename; "Home" for a new account; any location but the last can be deleted |
+| **H3a** | **Built 2026-11-11 on `feature/households-h3a`, NOT merged and NOT deployed.** The rehearsal on a production copy, the household lock proof and the final E2E gate are still open; see the [deploy runbook](../backend/2026-11-11-deploy-runbook-households-h3a.md). `Household`, `HouseholdMember`, `LocationMember`, `User.householdSetupAt`, the data migration (two migrations, decision H16), first sign-in, real role checks in both helpers, read scoping for every resolver, `isDefault` removed, the six `userId: String!` GraphQL fields removed, the household name in the 🏠 label, `renameHousehold`, `deleteLocation` refuses the last location, the two-household purge test, an E2E-only route that adds a second household member (`POST /e2e/household-members`, decision H9). Fixes #273, #360, #359 step two, and #320 for the filters H3a changes | Small: the household name and rename; "Home" for a new account; any location but the last can be deleted |
 | `chore/build-shared-types` | A build step for `@p1i/types`, so the server can import shared code at runtime (needed by H3b, decision H7) | No |
 | **H3b** | Shared carts: `@@unique([cartId, itemId])` (decision H8), the 15 `CartItem.userId` filters, `Cart.userId` dropped, checkout and `consumeRecipes` in one transaction with a server-computed total. Fixes #358. **Must merge before H5 starts** | No (one person per household) |
 | H4 | Import and export: the new id rule, and `requireOwnRowOrUnclaimed` moved to the target household scope (#327 itself is already fixed by #354). Replaces H3a's import fallback location (decision H12) | The "Import into which location?" dialog |
@@ -925,6 +925,10 @@ deployed web bundle still selects makes the whole query fail. #367 removed every
 2026-10-31, so H3a may drop the fields only when the web build live on Cloudflare is from that
 commit (`8465406b`) or later. The H3a deploy runbook checks this first (decision H11). H3a
 also removes `isDefault` from the `Location` type, which breaks a stale bundle the same way.
+`main`'s web bundle still selects `isDefault`, so **the web must deploy before the server**:
+the new bundle works against the old server, and the old bundle does not work against the
+new one. The runbook turns off Railway's automatic deploy for this one merge to get that
+order.
 
 ## Testing notes
 

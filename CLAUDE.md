@@ -108,13 +108,37 @@ that really set up that role.
 
 ## Authorization (cloud)
 
-> See `docs/global/permissions/2026-10-04-households-design.md` (which replaces the role table of `docs/global/permissions/2026-08-29-design-location-rbac.md`) — rights come from roles, not from having created the row: a **household** role (owner / manager / member) governs the catalog and membership, and a **location** role (organizer / participant / viewer) governs a location's stock, carts and logs. Being built in households H3a (`feature/households-h3a`): since its task 3.6 locations are scoped by household and location role, and since task 3.7 the six catalog models are scoped by household and household role (see the catalog paragraph below). Stock, logs and carts are still partly scoped by a flat `userId` until tasks 3.8 and H3b. One deliberate exception, from before households: **`ItemStock` carries no `userId` column at all**. It is scoped *through* its location (`where: { location: { userId } }`), the shape RBAC needs, and the same pattern `RecipeItem` already uses (`{ recipe: { userId } }`). A `userId` column there would put the forbidden `stock.userId === ctx.userId` guard within easy reach at every call site — do not add one. Every `ItemStock` resolver goes through `requireLocationRole(locationId, role)` instead, which is the one function body RBAC will fill in.
+> See `docs/global/permissions/2026-10-04-households-design.md` (which replaces the role table of `docs/global/permissions/2026-08-29-design-location-rbac.md`). Rights come from roles, not from having created the row. **Households are built in H3a** (`feature/households-h3a`, built 2026-11-11, not merged or deployed yet; deploy steps in `docs/global/backend/2026-11-11-deploy-runbook-households-h3a.md`). Each person still has exactly one household until H5, so nothing is shared yet.
 >
-> **Never write `row.userId === ctx.userId` as an authorization check.** It is not merely premature: it denies a legitimate `member` editing a shared location's data, which is the point of the feature, and it would have to be torn out of every call site when RBAC lands. If a guard is needed now, put it behind a helper whose signature already takes the location and the required role, so RBAC becomes one function body rather than N call sites. Local mode is single-user IndexedDB and is out of scope — no role check belongs in `apps/web/src/db/`.
+> | Role ladder | Names, weakest first | Governs |
+> |---|---|---|
+> | `HouseholdRole` (Prisma enum) | `member`, `manager`, `owner` | the catalog, the household and its locations list |
+> | `LocationRole` (Prisma enum) | `viewer`, `participant`, `organizer` | one location's stock, carts and logs |
+>
+> All checks go through `apps/server/src/lib/authz.ts`:
+>
+> | Helper | What it does |
+> |---|---|
+> | `requireHousehold(ctx)` | the caller's household id. Also first sign-in: it calls `ensureHousehold` (`lib/household.ts`), which makes the household and its first location, "Home", once, guarded by the `User.householdSetupAt` claim |
+> | `requireHouseholdRole(ctx, householdId, role)` | refuses with `FORBIDDEN` unless the caller's household role is `role` or stronger |
+> | `requireCatalogRole(ctx, role)` | both of the above; returns the household id. Catalog reads ask `member`, writes `manager` |
+> | `requireLocationRole(ctx, locationId, role)` | refuses unless the caller has `role` or stronger on that location. A location role counts only while the matching `HouseholdMember` row exists (decision H18) |
+> | `locationIdsWithRole(ctx)` | every location the caller has a counted role on. Use it for a read across locations; never write a new membership query |
+> | `requireLocationItems(ctx, locationId, itemIds)` | every item is in the location's household. Call it AFTER `requireLocationRole` |
+> | `requireCatalogIds(ctx, householdId, model, ids)` | every id a write attaches is in the household (#273) |
+> | `requireOwnRowOrUnclaimed(ctx, model, id)` | see the next paragraphs |
+>
+> **`removeItemFromLocation` needs `organizer`, not `participant`** (owner decision 2026-11-11, `f4d993db`). It deletes every log of the item at that location, including other members' logs.
+>
+> **`ItemStock` carries no `userId` column at all**, by design from before households. It is scoped *through* its location: `requireLocationRole` for one location, `locationIdsWithRole` for several. Do not add a `userId` column there.
+>
+> History: until H3a this section said households were "decided, not yet built", that cloud models were "scoped by a flat `userId`", and that `requireLocationRole` was "the one function body RBAC will fill in". All three were true then and are not now. `Location` and the six catalog models have no `userId` column since the `drop_user_scope` migration (H3a task 3.14).
+>
+> **Never write `row.userId === ctx.userId` or `row.householdId === …` as an authorization check.** It denies a legitimate `member` editing a shared location's data, which is the point of the feature. Every check goes through a helper in `lib/authz.ts`. A `where` filter on a read is fine. Local mode is single-user IndexedDB and is out of scope: no role check belongs in `apps/web/src/db/`.
 >
 > **There is a second seam: `requireOwnRowOrUnclaimed` in `apps/server/src/lib/authz.ts`.** Added 2026-10-28 (issue #327). It decides account ownership for the **nine models that belong to no location**, so `requireLocationRole` cannot reach them: `Item`, `Tag`, `TagType`, `Vendor`, `Recipe`, `InventoryLog`, `Cart`, `CartItem`, `Shelf`. One row id gets one of three answers — the caller's own row returns `'own'`, somebody else's row **throws** `FORBIDDEN`, an id no row holds returns `'unclaimed'`. The "somebody else's" case throws instead of returning, so a call site cannot ignore it. No call site compares a `userId`.
 >
-> **Its body is what changes when households or RBAC land.** `where: { id, userId }` becomes whatever the new scope is, and no call site moves. That is the same contract `requireLocationRole` carries, and it is why the model is passed as a string literal (`OwnedModel`) rather than a delegate.
+> **Its body is what changes when the scope changes**, and no call site moves. That is why the model is passed as a string literal (`OwnedModel`) rather than a delegate. It was `where: { id, userId }` for all nine until H3a.
 >
 > **Since households H3a task 3.7 the body has two scopes.** For the six catalog models (`Item`, `Tag`, `TagType`, `Vendor`, `Recipe`, `Shelf` — the `CatalogModel` type) "own" means **in the caller's household** (`where: { id, householdId: await requireHousehold(ctx) }`), so a row another member of the household made is `'own'`. `InventoryLog`, `Cart` and `CartItem` still use `where: { id, userId }` until H3b and H4. The helper checks no household ROLE; the catalog resolvers check it first, and import role gating is H4. No call site moved, including the 22 import mutations.
 >
@@ -140,20 +164,14 @@ that really set up that role.
 >
 > `deleteTag`'s descendant walk and its orphaning `updateMany` carry a `householdId` **filter** (a `userId` one until H3a task 3.7), because before the fix `createTag` accepted another account's `parentId`, so another household's tag may sit under the caller's. Tested against `ownedRowFake` in `apps/server/src/resolvers/catalog-ownership.resolver.test.ts`.
 >
-> **Six GraphQL types still declare `userId: String!`, and no web document selects it any more.** This is **step one of two** for issue #359, done 2026-10-31. The fields are `Item` (`item.graphql:18`), `TagType` (`tag.graphql:5`), `Tag` (`tag.graphql:12`), `Vendor` (`vendor.graphql:4`), `Recipe` (`recipe.graphql:59`) and `Shelf` (`shelf.graphql:20`).
->
-> **The schema still has all six. Issue #359 is NOT closed.** Step two removes them, and that is a households change in its own release. Do not read "the selections are gone" as "the field is gone".
->
-> Why the two steps are split: dropping a field a deployed bundle still selects fails GraphQL **validation**, so the whole query errors rather than one field going null. The Cloudflare deploy and the server deploy are separate steps, so there is always a window where the two disagree. Removing the selections first closes that window — once no deployed bundle names the field, step two breaks nothing.
->
-> Check the state with these two commands, not from memory:
+> **Issue #359: both steps are done; the issue stays OPEN until H3a merges and deploys.** Six GraphQL types declared `userId: String!` (`Item`, `TagType`, `Tag`, `Vendor`, `Recipe`, `Shelf`). Step one (2026-10-31, #367) removed every web selection of them. Step two (H3a task 3.14, `2312707a`) removed the six fields from the schema. Check with:
 >
 > ```bash
-> grep -rn userId apps/web/src/apollo/operations/          # must return nothing
-> grep -rn "userId: String!" apps/server/src/schema/ | wc -l  # 6 until step two
+> git grep -n userId -- apps/web/src/apollo/operations/          # must return nothing
+> git grep -c "userId: String!" -- apps/server/src/schema/        # must return nothing since 2312707a
 > ```
 >
-> **Nothing in `apps/web` ever read the field** — that is what made step one safe. Measured 2026-10-31: the only `.userId` accesses in `apps/web/src` are `snapshot.userId` in `apollo/persistence.ts` (the Apollo cache's own Dexie column, unrelated) and two comments. Both test counts were unchanged by the removal: web **2321 / 251**, server **522 / 32**.
+> Why the two steps were split: dropping a field a deployed bundle still selects fails GraphQL **validation**, so the whole query errors rather than one field going null. The Cloudflare deploy and the server deploy are separate steps, so there is always a window where the two disagree. Removing the selections first closed that window for `userId`. **`Location.isDefault` did NOT get a step one**: `main`'s web bundle still selects it, so the H3a runbook deploys the web before the server.
 >
 > **The `userId` still named in `exportData.ts` and `importData.ts` tests is deliberate.** Those mappers are allow-lists — each names the keys it forwards, so anything else is dropped by omission. The tests feed `userId` in by hand, so they now prove the general rule that an unexpected key never reaches a backup file, not that one real field is stripped. No live Apollo result carries it any more.
 
@@ -180,7 +198,7 @@ that really set up that role.
 > - A created location gets `householdId` and an `organizer` row for the caller, in one transaction (`createImportedLocation`). An update writes and changes no role row. `order` is the payload's own value, not `max + 1`.
 > - The cart item imports check the item against the household of the **cart's location** (`resolveCartItemParents`: the cart by `userId`, then `requireLocationRole` on its location, then `householdOfLocation`), not the caller's household.
 
-> **The `User` row — households H2, built 2026-10-31.** `model User` (`apps/server/prisma/schema.prisma`) is one row per Clerk account: `id` is the Clerk user id, plus `displayName`, an optional `email`, `lastSeenAt` and `deletedAt`. Nothing relates to it yet; H3 adds the relations. Nothing reads it for authorization either. Two paths write it:
+> **The `User` row — households H2, built 2026-10-31.** `model User` (`apps/server/prisma/schema.prisma`) is one row per Clerk account: `id` is the Clerk user id, plus `displayName`, an optional `email`, `lastSeenAt` and `deletedAt`. Since H3a it also has `householdSetupAt` (the first sign-in claim, decision H1), and `HouseholdMember` and `LocationMember` point at it. (This said "Nothing relates to it yet" until H3a.) Two paths write it:
 >
 > | Path | Where | What it does |
 > |---|---|---|
@@ -387,9 +405,10 @@ skips half the work. Nothing else in the gate checks `e2e/` formatting: `pnpm li
 `apps/server`'s build already carries a second pass for `scripts/`.
 
 **`pnpm test` runs both workspaces.** The root script is `pnpm -r test`, which recurses into
-every workspace package that defines a `test` script — today `apps/web` (**2321 tests**
-across 251 files) and `apps/server` (**522** across 32). Measured 2026-10-28 on
-`fix/import-ownership-guard`, plus **70** in `scripts/spec` from `pnpm test:spec`.
+every workspace package that defines a `test` script — today `apps/web` (**2529 tests**
+across 275 files) and `apps/server` (**1161** across 47). Measured 2026-11-11 on
+`feature/households-h3a` (it said 2321 / 251 and 522 / 32, measured 2026-10-28, before
+households H3a), plus **70** in `scripts/spec` from `pnpm test:spec`.
 
 A short history of these numbers, because they move almost every week and briefs keep
 quoting them: they said ~1700 and ~100 until 2026-09-29; `apps/server` said 259 across 20

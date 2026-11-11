@@ -1997,7 +1997,9 @@ history (the function "was deleted", "until task 3.5"), so it is correct:
 
 ## Task 3.16 — Runbook, docs and the final gate
 
-- [ ] **Step 1: Deploy runbook** `docs/global/backend/<date>-deploy-runbook-households-h3a.md`.
+- [x] **Step 1: Deploy runbook** `docs/global/backend/<date>-deploy-runbook-households-h3a.md`.
+  (Written 2026-11-11 as `docs/global/backend/2026-11-11-deploy-runbook-households-h3a.md`.
+  The rehearsal itself is still open: its results are `TBD after rehearsal` there.)
   Model it on `2026-09-18-deploy-runbook-cart-rekey.md`. It must cover:
   1. **First:** check that the live Cloudflare web build is from `8465406b` or later (#359).
   2. Take a Neon branch of production. This is the rollback.
@@ -2050,7 +2052,7 @@ history (the function "was deleted", "until task 3.5"), so it is correct:
       with `LOCK TABLE … IN EXCLUSIVE MODE` on 18 tables. It can wait behind a long
       transaction, or deadlock with the old server. In a deadlock Postgres cancels one
       side. A cancelled migration fails cleanly, and it can be run again.
-- [ ] **Step 2: Docs.** Root `CLAUDE.md` *Authorization (cloud)*: households are built; the
+- [x] **Step 2: Docs.** Root `CLAUDE.md` *Authorization (cloud)*: households are built; the
   helper bodies; the role names; `requireOwnRowOrUnclaimed` covers six catalog models by
   household and three by `userId` until H3b and H4. `apps/server/prisma/CLAUDE.md`,
   `e2e/CLAUDE.md` (cleanup, the default location, 18 models), `apps/web/src/routes/settings/CLAUDE.md`
@@ -2058,6 +2060,11 @@ history (the function "was deleted", "until task 3.5"), so it is correct:
   *Sequencing* table: H3a built. `docs/INDEX.md`. Re-measure every count you write.
 - [ ] **Step 3: Final gate:** the verification gate, then `pnpm test:e2e:all`. All three
   projects green.
+
+  **2026-11-11:** the verification gate passed (see the task 3.16 Done note). The two lock
+  proofs below are WRITTEN (`assertHouseholdLock` in `verify-migration.ts`, `f25936ed`) but
+  NOT RUN. Still open: running them (main session, owner's consent), the rehearsal, and
+  `pnpm test:e2e:all`.
 
   **From the review of task 3.5:** before this step, confirm that `verify:migration` has
   passed against the test database with the `updateMany` race proof (commit `3ba61aeb`; see
@@ -2083,6 +2090,24 @@ history (the function "was deleted", "until task 3.5"), so it is correct:
   same moment could rename it once more. This is left open on purpose (see the task 3.13
   Done note); H6 decides whether it matters. Nothing to prove on Postgres for it in H3a.
 - [ ] **Step 4:** Commit: `docs(households): H3a runbook and docs`.
+
+**Done in part, 2026-11-11** (steps 1 and 2, and the lock proofs written): `f25936ed` (the
+two lock proofs in `verify-migration.ts`), `faa88d61` (the runbook) and the docs commit after
+it. The verification gate passed on that tree: `pnpm lint`, `pnpm build`, `build-storybook`
+and `pnpm check` exit 0, 0 `TS6385`, `pnpm test` web **2529 / 275**, server **1161 / 47**,
+`scripts/spec` **70**. Still open, all for the main session:
+
+- the rehearsal on a fresh branch of production (runbook section 3, owner's consent), which
+  fills every `TBD after rehearsal`;
+- the first run of `assertHouseholdLock` with `verify:migration` on the test database
+  (owner's consent);
+- `pnpm test:e2e:all`.
+
+**What the brief for this task got wrong:** it asked for the two lock proofs "in raw SQL".
+They use the same Prisma calls as the resolvers instead, copied in their order. A raw-SQL
+copy would be a hand translation of what Prisma sends, so it could lock different rows from
+the code it claims to prove. The existing claim race proof uses the Prisma call for the same
+reason.
 
 ---
 
