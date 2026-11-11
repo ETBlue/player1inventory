@@ -1583,10 +1583,15 @@ pin the rename form`):
 `recipe.graphql:59`, `shelf.graphql:20`); `test/stockFake.ts`; every resolver and test that
 still writes `userId` on the seven models.
 
-- [ ] **Step 1:** Schema: `householdId` becomes required on the seven models. Drop `userId`
+- [x] **Step 1:** Schema: `householdId` becomes required on the seven models. Drop `userId`
   from them, and its indexes. Drop `Location.isDefault`. Keep `order`. In SQL: a
-  `DO $$ RAISE EXCEPTION` guard on null `householdId` first, then `SET NOT NULL`, then the
-  drops, then `DROP INDEX IF EXISTS "Location_one_default_per_user_key"`.
+  `DO $$ RAISE EXCEPTION` guard on null `householdId` first, then `SET NOT NULL`, then
+  `DROP INDEX IF EXISTS "Location_one_default_per_user_key"` BY NAME, then the other
+  drops. The named drop comes FIRST: `DROP COLUMN "isDefault"` also removes that partial
+  index, because the index names the column, so a `DROP INDEX` after it would find
+  nothing. The migration drops it by name so a reader can find where it went. (This step
+  used to say "the drops, then `DROP INDEX`". It was built the other way, which is the
+  order above. Done in `2312707a`.)
 
   **Close the gap between the two migrations first** (task 3.3 review). Each migration
   file is its own transaction, and the old server keeps serving until Railway switches. So
@@ -1635,24 +1640,28 @@ still writes `userId` on the seven models.
     back to "My data". A test that asserts "My data" would then pass for the wrong reason.
     The review also named `hooks/useLocations.test.tsx`; checked: it renders hooks and
     `LocationList`, not a route, so it is not at risk today.
-- [ ] **Step 2:** Run `pnpm build`. **`tsc` now lists every leftover `userId` use on these
+- [x] **Step 2:** Run `pnpm build`. **`tsc` now lists every leftover `userId` use on these
   models.** Fix each one. This is the sweep that proves nothing still scopes by account.
   List the count in the report.
-- [ ] **Step 3:** Remove `isDefault` from the `Location` GraphQL type and its comments in
+- [x] **Step 3:** Remove `isDefault` from the `Location` GraphQL type and its comments in
   `import.graphql`. Remove the six `userId: String!` fields (#359 step two; decision H11).
-- [ ] **Step 3b:** Drop `requiredColumns: ['userId']` from the catalog `ownedRowFake` stores
+- [x] **Step 3b:** Drop `requiredColumns: ['userId']` from the catalog `ownedRowFake` stores
   (added in task 3.7). The column no longer exists, so a fake that still requires it would
   refuse every correct create.
-- [ ] **Step 4:** `stockFake.ts`: remove `DefaultLocationConstraintError` and every
-  `isDefault` match. Remove the places the design says argue from the old index: the
-  migration comments in `20260916…/migration.sql` (about 30) and `20260917…/migration.sql`
-  (about 49) stay as history, but add a line saying the index is gone as of this migration.
-- [ ] **Step 5: `verify-migration.ts`.** Add the folder to `MIGRATIONS`. **Re-read every
+- [x] **Step 4:** `stockFake.ts`: remove `DefaultLocationConstraintError` and every
+  `isDefault` match. The migration comments in `20260916…/migration.sql` (about 30) and
+  `20260917…/migration.sql` (about 49) argue from the old index. They stay as history and
+  are NOT edited: both migrations are applied, and editing an applied migration changes
+  its checksum, so `prisma migrate` would report it as modified. Instead, the comment
+  above `DROP INDEX` in `drop_user_scope` names both files and says the index is gone
+  from this migration on. (This step used to say "add a line" to the two old files.
+  Done in `2312707a`.)
+- [x] **Step 5: `verify-migration.ts`.** Add the folder to `MIGRATIONS`. **Re-read every
   earlier assertion**: the PR 1 block asserts `isDefault` exists and that a second default
   fails with `P2002` (about 373-438). The script asserts the **final** state, so those break.
   Replace them with the new facts (no `isDefault` column; the index is gone), following the
   "present on one table, absent on the other" rule in `apps/server/prisma/CLAUDE.md`.
-- [ ] **Step 6:** Full gate. Commit:
+- [x] **Step 6:** Full gate. Commit:
   `feat(server): drop the account scope from locations and the catalog (#359, #360)`.
 - [ ] **Step 7 (main session):** with the owner's consent, migrate the test database again,
   as in task 3.3 step 6.
@@ -1661,6 +1670,26 @@ still writes `userId` on the seven models.
   (see task 3.3 step 6), this run is where it happens. Report its result. When step 5 edits
   `verify-migration.ts`, keep the race proof's claim the same call as `ensureHousehold`'s
   (`tx.user.updateMany` with `where: { id, householdSetupAt: null }`).
+
+**Done** (steps 1 to 6) in `2312707a` (the code and the migration
+`20261111000000_drop_user_scope`) and `56aa15de` (the owner's answers on cross-household
+rows). Step 7 is still open.
+
+**What the implementer said the plan got wrong:**
+
+- **`tsc` does not list every leftover write (step 2).** Seven writes in
+  `import.resolver.ts` were behind `as any`, so `tsc` could not see them. They were found
+  by grep. The test fakes now refuse a dropped column on every write, so such a write
+  fails a test.
+- **Step 5 needed a third deploy in `verify-migration.ts`.** The Q4 cleanup deletes the
+  PR 3a and PR 3b fixture rows. So the blocks that read `userId` and `isDefault` run
+  between `add_households` and `drop_user_scope`, and `drop_user_scope` is applied after
+  them.
+- **The literal re-run of `add_households` steps 2 to 7 breaks** on household members and
+  removed members. So each statement got its own condition (for example
+  `"householdSetupAt" IS NULL` in 2b and 2c, and the join through `HouseholdMember` in 2d).
+- **The file list omitted `apps/server/src/test/shoppingFake.ts`.** It also writes the
+  dropped columns, and was changed.
 
 **Found by the review of task 3.7: what to do with cross-household rows that already exist.
 DECIDED by the owner on 2026-11-11: option A, with A1 for a tag's type, and the three
@@ -1870,6 +1899,24 @@ already corrected in `3ba61aeb`.
      name; rename it; create, rename and delete a location; the last location cannot be
      deleted; a checkout still works.
   7. What to do if the release command fails (`migrate resolve --rolled-back`).
+  8. **Deploy order for `Location.isDefault`** (review of task 3.14). `main`'s web bundle
+     selects `Location.isDefault`: `apps/web/src/apollo/operations/locations.graphql` on
+     `main`, lines 6, 17, 28 and 43 (`GetLocations`, `CreateLocation`, `UpdateLocation`,
+     `ReorderLocations`), and `import.graphql` lines 206 and 217 (`BulkCreateLocations`,
+     `BulkUpsertLocations`). Check with `git show origin/main:<path>`. This branch removes
+     the field from the schema. A query that names a field the schema does not have fails
+     GraphQL validation, so the whole query errors. Between the server deploy and the web
+     deploy, every location query and mutation from the old bundle fails. This is the same
+     two-step problem root `CLAUDE.md` describes for `userId` (#359). The runbook must say
+     which deploys first, and how long the gap may be.
+  9. **Do not rely on `RAISE NOTICE` reaching the deploy output** (review of task 3.14).
+     It is not known whether `prisma migrate deploy` prints notices. So in the rehearsal,
+     either run a plain count query for each cleanup kind against the production copy
+     before deploying, or prove once that the notices appear.
+  10. **The lock has no `lock_timeout`** (review of task 3.14). `drop_user_scope` starts
+      with `LOCK TABLE … IN EXCLUSIVE MODE` on 18 tables. It can wait behind a long
+      transaction, or deadlock with the old server. In a deadlock Postgres cancels one
+      side. A cancelled migration fails cleanly, and it can be run again.
 - [ ] **Step 2: Docs.** Root `CLAUDE.md` *Authorization (cloud)*: households are built; the
   helper bodies; the role names; `requireOwnRowOrUnclaimed` covers six catalog models by
   household and three by `userId` until H3b and H4. `apps/server/prisma/CLAUDE.md`,
@@ -2050,6 +2097,33 @@ drops `userId`, `main`'s cloud E2E cannot run on this database at all until H3a 
   file's location comes in under its own id as a separate row. Rare (two restores, with a
   reorder between them). A cloud backup has no other way to name a default, so the fix is
   a design choice, not a guard.
+
+- **Test database only: `/e2e/cleanup` can leave rows the migration re-run handles badly**
+  (review of task 3.14). For a household member, `/e2e/cleanup`
+  (`apps/server/src/lib/e2eCleanup.ts`, about 149-154) deletes their `User` row and their
+  `LocationMember` rows. It keeps the rows they wrote in a household they do not own,
+  because it deletes catalog rows by owned household. When `drop_user_scope` then runs,
+  step 2a gives that `userId` a new `User` row named 'User', and step 2b gives them a
+  household. Step 2e can make them organizer of a location in ANOTHER household (a
+  location they cannot reach), or a guard in step 4 raises. Production cannot reach this:
+  `user.deleted` keeps the `User` row.
+- **`verify-migration.ts` stays green if any of these is removed** (review of task 3.14),
+  because no fixture or check reaches them:
+  - the `LOCK TABLE` in step 1;
+  - the whole guard in step 4 (no fixture makes it raise, so its raise path never runs);
+  - step 2d's join through `HouseholdMember`, if changed back to `Household."ownerId"`
+    (no fixture has a member who is not the owner AND has rows with a null
+    `householdId`);
+  - `"householdSetupAt" IS NULL` in step 2c;
+  - the `jsonb_typeof(…) = 'array'` filter in step 3e (every `filterConfig` fixture holds
+    arrays).
+- **Step 2b of `drop_user_scope` builds new household names with no length cap** (review
+  of task 3.14). First sign-in caps them at 100 (`firstSignInNames`). So a person filled in
+  by the re-run can get a name longer than the rename allows, like the `add_households`
+  names noted under task 3.14.
+- **Step 3e turns a non-string element of a `filterConfig` array into a string** (review of
+  task 3.14). It reads the arrays with `jsonb_array_elements_text`. This is harmless for
+  `FilterConfig`, whose arrays are `[String!]`.
 
 ### Traps (review of task 3.10)
 
