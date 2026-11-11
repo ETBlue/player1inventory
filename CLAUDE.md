@@ -1144,6 +1144,17 @@ Use git worktrees by default for feature work. Create isolated workspaces in `.w
 
 **Worktree before implementation (mandatory):** After brainstorming is complete and the branch name is derived, before writing the design doc, always create a git worktree using `superpowers:using-git-worktrees` (or follow the manual steps in "Advanced: Git Worktrees" below if the skill is unavailable). All subsequent work — design doc, implementation plan, and code — happens inside the worktree. Branch name is derived from the brainstorming topic: choose `feature/`, `fix/`, `refactor/`, or `docs/` prefix based on context, then add a short kebab-case topic (e.g. brainstorming about cooking expand/collapse → `feature/cooking-expand`).
 
+**Households work targets `develop`, not `main` (since 2026-11-12).** A merge to `main`
+deploys to production: Cloudflare Pages builds the web, and Railway deploys the server. So
+until the households feature is done, households phase PRs (H3a onward) use `develop` as their
+base, and `develop` is merged into `main` only at planned **checkpoint releases**. Each
+checkpoint has its own deploy runbook and a fresh rehearsal on a Neon branch of production.
+Base a households branch on `origin/develop` and rebase onto it. A fix unrelated to households
+can still go to `main`. **How such a fix reaches `develop` is not decided yet:** rebasing
+`develop` onto `main` rewrites a shared branch and needs a force-push, and merging `main` into
+`develop` breaks the rebase rule below. Ask the owner before doing either. See
+`docs/global/permissions/2026-10-31-households-plan.md`, *How this plan is split*.
+
 **Absorbing upstream changes: always rebase, never merge**
 
 When a feature branch needs to incorporate changes from `main`, use rebase:

@@ -24,8 +24,18 @@ Server 4, Prisma 6, Postgres on Neon, `@clerk/express` (server); Vitest, Playwri
 
 ## How this plan is split
 
-The design names seven phases, H1–H7. Each phase is **one PR**, merged and deployed before the
-next one starts, because H3 changes the database and must ship alone.
+The design names seven phases, H1–H7. Each phase is **one PR**. H1 and H2 were merged to
+`main` and deployed one at a time.
+
+**From H3a on, phase PRs merge into `develop`, not `main`** (owner decision, 2026-11-12).
+Merging to `main` deploys to production: Cloudflare Pages builds the web, and Railway deploys
+the server. Phases H3a to H4 give users nothing they can see, because nothing is shared until
+H5. So each phase no longer needs its own deploy day. Instead, `develop` is merged into `main`
+at a few **checkpoint releases**, for example after H3b and again before H5. Each checkpoint
+has its own runbook and its own rehearsal on a fresh Neon branch of production, covering every
+migration that is new since the last release. How a hotfix that lands on `main` in between reaches
+`develop` is not decided yet: a rebase of `develop` needs a force-push, and a merge breaks the
+repo's rebase-only rule. Ask the owner when it first happens.
 
 | Phase | Detail in this file | PR |
 |---|---|---|

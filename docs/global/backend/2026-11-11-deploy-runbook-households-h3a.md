@@ -10,6 +10,14 @@ and `apps/server/prisma/migrations/20261111000000_drop_user_scope/migration.sql`
 [`2026-10-05-deploy-runbook-item-column-drop.md`](2026-10-05-deploy-runbook-item-column-drop.md),
 [`2026-10-08-deploy-runbook-checkout-items-arg.md`](2026-10-08-deploy-runbook-checkout-items-arg.md)
 
+**When this runbook runs: at the first checkpoint release, not when the H3a PR merges.**
+Since 2026-11-12 the H3a PR merges into `develop`, which deploys nothing (see the households
+plan, *How this plan is split*). This runbook runs when `develop` is merged into `main`. If
+that release carries more migrations than these two (for example H3b's), the rehearsal in
+section 3 must be run again on a fresh branch of production, with every new migration, and
+this runbook extended or replaced. The rehearsal results below are from 2026-11-12 and prove
+these two migrations against production as it was that day.
+
 **Who does what.** "Owner" means ETBlue, the person with the Railway, Cloudflare, Neon and
 Clerk dashboards. "Main session" means the Claude session that runs commands in the
 worktree, and only with the owner's consent for each command that touches a database.
@@ -32,7 +40,7 @@ owner or the main session on the day.
 | 2 | Rehearse both migrations on a fresh branch of production, and record the counts | main session, owner's consent | 3 |
 | 3 | Take a Neon branch of production on deploy day. This is the rollback | owner | 4.1 |
 | 4 | Turn off Railway's automatic deploy | owner | 4.2 |
-| 5 | Merge. Wait for Cloudflare. Update every device | owner | 4.3 |
+| 5 | Merge `develop` into `main`. Wait for Cloudflare. Update every device | owner | 4.3 |
 | 6 | Deploy the server on Railway. Watch the release log | owner | 4.4 |
 | 7 | Check the database | owner or main session | 5 |
 | 8 | The manual smoke test | owner | 6 |
@@ -524,12 +532,12 @@ the web go first (section 1.3), stop that for one merge:
 using the app, and after the merge, update every device (4.3) as soon as Cloudflare is live.
 Until a device updates, cloud mode does not work there.
 
-### 4.3 Merge. Wait for Cloudflare. Update every device
+### 4.3 Merge `develop` into `main`. Wait for Cloudflare. Update every device
 
 **Owner.**
 
 1. Pick a time when nobody uses the app. Tell anyone else to stop.
-2. Merge the PR to `main`.
+2. Merge the release PR (`develop` into `main`).
 3. Wait for the Cloudflare Pages production build to finish. Read its commit SHA, and check
    it is the merge commit or later.
 4. On **every device** from 2.2: open the app, wait for the update prompt, and **accept
