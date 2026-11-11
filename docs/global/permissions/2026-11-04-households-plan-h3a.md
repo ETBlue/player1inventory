@@ -1604,6 +1604,7 @@ still writes `userId` on the seven models.
   **From the review of task 3.10:**
   - The re-run of steps 2–7 also fills the null-`householdId` rows that pile up on the
     shared test database (see *Known gaps*, *Traps*). Once it has run there, they stop.
+    (The owner decided on 2026-11-11 not to build Q3's `/e2e/cleanup` change for this.)
   - `createFirstLocation` (`lib/household.ts`) is the ONE place that writes `isDefault: true`
     and `userId` for a new "Home" (first sign-in and `clearAllData`). Remove both there; no
     other call site writes them for "Home".
@@ -1661,9 +1662,18 @@ still writes `userId` on the seven models.
   `verify-migration.ts`, keep the race proof's claim the same call as `ensureHousehold`'s
   (`tx.user.updateMany` with `where: { id, householdSetupAt: null }`).
 
-**Found by the review of task 3.7. OPEN QUESTION for the owner: what to do with
-cross-household rows that already exist.** Do not build either option before the owner
-decides. Task 3.16's rehearsal measures how many there are.
+**Found by the review of task 3.7: what to do with cross-household rows that already exist.
+DECIDED by the owner on 2026-11-11: option A, with A1 for a tag's type, and the three
+stock-side kinds too (Q4).** `drop_user_scope` cleans them up, in its step 3, before the
+guard. Task 3.16's rehearsal still measures how many there are (the `RAISE NOTICE` lines).
+
+| Question | Decision (owner, 2026-11-11) |
+|---|---|
+| A: clean up cross-household rows in `drop_user_scope` | **Yes, option A.** |
+| A-sub: a tag whose `typeId` is another household's type | **A1:** copy the type into the tag's own household (same name and color; one copy per household and type) and point the tag at the copy |
+| Q4: also clean cross-household `ItemStock`, `CartItem` and `InventoryLog` rows | **Yes.** They are deleted |
+
+The text below is the question as it was asked, kept for the reasons.
 
 *The problem.* Before #273 (task 3.7) the server did not check the ids a write attached. So
 production may hold rows that link one household's row to another household's row. Migration
@@ -1729,15 +1739,21 @@ ANOTHER household but names this household's item. This is not new: the old `use
 filters did the same. It is probably 0 rows. It belongs to this open question, not to a
 separate fix.
 
-**Open questions for the owner (from task 3.10).** Each has a recommendation. Nothing is
-built for them in H3a.
+**Questions for the owner (from task 3.10). DECIDED on 2026-11-11.**
 
-| # | Question | Recommendation |
-|---|---|---|
-| Q1 | After *Clear household*, should the other members get a role on the new "Home"? Today only the caller gets `organizer`, so the others see no location until H5 | Nothing is needed before H5: every household has one person. Decide in H5 or H6, for example `organizer` for the owner and managers, `participant` for members |
-| Q2 | Should the new "Home" be "Home" or "住家" by the app language, as first sign-in does? Task 3.10 used the app language; the plan said "Home" | Keep it by the app language |
-| Q3 | Until task 3.14, should `/e2e/cleanup` also delete the user's rows with a null `householdId`? E2E only, and temporary | Yes, if `main`'s cloud E2E still runs on the shared test database. Otherwise it is not needed |
-| Q4 | Should option A's cleanup (task 3.14) also cover cross-household `ItemStock`, `CartItem` and `InventoryLog` rows? | Yes |
+| # | Question | Recommendation | Decision (owner, 2026-11-11) |
+|---|---|---|---|
+| Q1 | After *Clear household*, should the other members get a role on the new "Home"? Today only the caller gets `organizer`, so the others see no location until H5 | Nothing is needed before H5: every household has one person. Decide in H5 or H6, for example `organizer` for the owner and managers, `participant` for members | **Nothing before H5.** Nothing is built |
+| Q2 | Should the new "Home" be "Home" or "住家" by the app language, as first sign-in does? Task 3.10 used the app language; the plan said "Home" | Keep it by the app language | **Yes, by the app language.** Task 3.10 already does this; no change |
+| Q3 | Until task 3.14, should `/e2e/cleanup` also delete the user's rows with a null `householdId`? E2E only, and temporary | Yes, if `main`'s cloud E2E still runs on the shared test database. Otherwise it is not needed | **Not built.** `drop_user_scope`'s re-run of the backfill fills those rows, and `SET NOT NULL` ends them |
+| Q4 | Should option A's cleanup (task 3.14) also cover cross-household `ItemStock`, `CartItem` and `InventoryLog` rows? | Yes | **Yes** (see the table above) |
+
+**The owner also checked (2026-11-11):** `E2E_TEST_MODE` is `false` on production Railway.
+`apps/server/src/index.ts` (about line 25) compares it with `=== 'true'`, so the E2E-only
+routes stay off in production.
+
+**Still open:** whether `removeItemFromLocation` should delete the logs other members wrote
+(see *Known gaps*, "who may delete a location's logs"). Behaviour is not changed in H3a.
 
 ## Task 3.15 — E2E: the default location is gone
 
@@ -1831,14 +1847,14 @@ already corrected in `3ba61aeb`.
      - the `RAISE NOTICE` counts of cross-household references (`Tag.typeId`,
        `Tag.parentId`, `ItemTag`, `ItemVendor`, `RecipeItem`). These come from the old
        unchecked writes fixed by #371. A `Tag.typeId` that crosses households blocks the
-       deletion of the type's household. If any exist, decide with the owner before the deploy.
-       Also count other households' ids inside `Shelf.itemIds` and `Shelf.filterConfig`,
-       which step 8b does not count. These counts answer the **open question under task
-       3.14** (found by the review of task 3.7): since task 3.7 such rows make the web's
-       full-set edits fail with `FORBIDDEN`. **Also count** (review of task 3.10) the
-       `ItemStock`, `CartItem` and `InventoryLog` rows whose item's household is not the
-       household of their location (for `CartItem`, the cart's location). Step 8b does not
-       count these either
+       deletion of the type's household.
+       **Since 2026-11-11 `drop_user_scope` cleans these up** (the owner chose option A, A1
+       and Q4; see the decision under task 3.14). Its step 3 reports one `RAISE NOTICE`
+       count per kind: type copies made, tags moved to a copy, tag parents cleared,
+       `ItemTag`, `ItemVendor` and `RecipeItem` rows deleted, shelves that lost item ids
+       and filter tag, vendor or recipe ids, and `ItemStock`, `CartItem` and
+       `InventoryLog` rows deleted. Record each count. A count above 0 is data the cleanup
+       changed in production, so tell the owner
      - every `User` row the migration created with the placeholder name `'User'`. Those
        people get "User's Household" until Clerk sends `user.updated` or they rename it, and
        their `deletedAt` stays null even if the Clerk account is gone
@@ -2043,8 +2059,8 @@ drops `userId`, `main`'s cloud E2E cannot run on this database at all until H3a 
   from runs of this branch before task 3.7. Several cloud specs seed fixed ids, for example
   `'item-milk'`. A leftover null row with that id can make such a spec fail with `FORBIDDEN`
   (the id belongs to no household of the caller) or `P2002` (the id is taken). That is a
-  dirty database, not a code bug. Task 3.14's backfill re-run ends it; owner question Q3
-  (after task 3.14) asks whether to clean them up before that.
+  dirty database, not a code bug. Task 3.14's backfill re-run ends it. The owner decided
+  on 2026-11-11 (Q3) not to clean them up before that.
 - **`resolvers/purge-coverage.test.ts` refuses `{ householdId: householdId }`**, though it means the
   same as the shorthand `{ householdId }`. The text check accepts only the shorthand. It
   fails safe (a correct filter is refused, never a wrong one accepted). Write the shorthand.
