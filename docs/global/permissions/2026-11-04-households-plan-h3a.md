@@ -812,9 +812,31 @@ rows live, not in `householdFake`. See the same note under task 3.6.
 - **`removeItemFromLocation` deleting a co-member's logs is pinned.** A two-person test:
   user-m's log of the item at the location is deleted, and user-m's log at another location
   is kept. Adding `userId` to `tx.inventoryLog.deleteMany` makes it red. Whether a
-  `participant` should be able to do this at all is an open question for the owner, see
-  *Known gaps*.
+  `participant` should be able to do this at all was an open question for the owner. It is
+  decided now, see *Owner decisions 2026-11-11* below.
 - Server tests 1050 → 1062.
+
+**Owner decisions 2026-11-11.**
+
+- **Removing an item from a location needs location role `organizer`.** The owner decided
+  this on 2026-11-11. `removeItemFromLocation` now calls
+  `requireLocationRole(ctx, locationId, 'organizer')`, where it called `'participant'`.
+  What the removal deletes does not change: the stock row, EVERY log of the item at the
+  location (the logs other members wrote too), and the item's entries in that location's
+  carts. The reason: the removal deletes co-members' logs, so it needs a higher role than
+  editing stock. A participant can still edit stock, add an item to the location, cook and
+  shop.
+- Tests in `itemStock.resolver.test.ts`, describe block *removing an item from a location
+  needs location role organizer*: a `participant` is refused with `FORBIDDEN` and the stock
+  row, both logs (one is the co-member's) and the cart entry are all kept; an `organizer`
+  succeeds and all of them are deleted; a `viewer` is refused. Mutation check:
+  `'organizer'` back to `'participant'` makes the participant test red.
+- `removeItemFromLocation` still has no `requireLocationItems`. It only deletes, so it never
+  attaches an item to a location, and rule 12 does not apply.
+- **Known gap for H5:** the web Stock tab shows the *Remove from location* button to every
+  role. A participant who presses it gets `FORBIDDEN`, and the web shows no message: the
+  dialog stays open and the error is an unhandled promise rejection. H3a has no role-aware
+  UI. See *Known gaps*.
 
 ## Task 3.9 — Import
 
@@ -1781,8 +1803,9 @@ separate fix.
 `apps/server/src/index.ts` (about line 25) compares it with `=== 'true'`, so the E2E-only
 routes stay off in production.
 
-**Still open:** whether `removeItemFromLocation` should delete the logs other members wrote
-(see *Known gaps*, "who may delete a location's logs"). Behaviour is not changed in H3a.
+**Decided on 2026-11-11:** removing an item from a location (`removeItemFromLocation`) needs
+location role `organizer`. It still deletes the logs other members wrote. See task 3.8,
+*Owner decisions 2026-11-11*.
 
 ## Task 3.15 — E2E: the default location is gone
 
@@ -2021,15 +2044,21 @@ drops `userId`, `main`'s cloud E2E cannot run on this database at all until H3a 
   right. `consumeRecipes` does check location `participant`, because it names a location.
   Behaviour is not changed in H3a. The owner decides whether this is fine (it writes only
   `lastCookedAt`) or whether the mutation should take a location.
-- **An open question for the owner: who may delete a location's logs** (review of task
-  3.8). Under the design (*Location roles*) a location `participant` may edit the pantry, so
-  they may remove one item from a location (`removeItemFromLocation`). That deletes EVERY log
-  of the item at that location, including the logs other members wrote. But the design's
-  organizer-only purge, *Remove all items from this location*, KEEPS the location's logs. So
-  a participant can delete logs one item at a time, while an organizer cannot delete them
-  all at once. The two rules point different ways. Local mode deletes the logs too, so the
-  two modes agree today. Behaviour is not changed in H3a. The owner decides whether a
-  removal should keep the logs, or whether it needs a higher role.
+- **DECIDED 2026-11-11: removing an item from a location is `organizer` only** (was an open
+  question from the review of task 3.8). `removeItemFromLocation` deletes EVERY log of the
+  item at that location, including the logs other members wrote. The organizer-only purge,
+  *Remove all items from this location*, KEEPS the location's logs. So with `participant` a
+  person could delete co-members' logs one item at a time. The owner decided the removal
+  needs `organizer`, and it still deletes the logs. See task 3.8, *Owner decisions
+  2026-11-11*. Local mode is single-user and has no role check.
+- **The web shows every role the *Remove from location* button, and a refusal shows no
+  message** (from the 2026-11-11 decision). H3a has no role-aware UI. In cloud, a
+  `participant` or `viewer` who confirms the removal gets `FORBIDDEN`. `DeleteButton`'s
+  `handleConfirm` has `try/finally` and no `catch`, and `handleRemove` in
+  `apps/web/src/routes/items/$id/stock.tsx` does not catch either. So the dialog stays open,
+  its buttons come back, nothing is removed, and the error is an unhandled promise
+  rejection in the console. Nobody shares a location before H5, so nobody can hit this
+  yet. H5 must hide the button for a role below `organizer`, or show an error.
 - **On `replace`, a create-pass row loses a reference to a row that comes in the second
   pass** (review of task 3.9). The web client sends rows with no conflict first
   (`bulkCreate*`), then conflicting rows (`bulkUpsert*`). A row that conflicts with a cloud

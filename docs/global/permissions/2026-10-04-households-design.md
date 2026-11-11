@@ -119,7 +119,15 @@ There are two levels. Each role includes every right of the roles below it.
 | Leave the location | ✅ | ✅ | ✅ |
 | Give or remove participant / viewer | ✅ | ❌ | ❌ |
 | Rename the location | ✅ | ❌ | ❌ |
+| Remove one item from the location (`removeItemFromLocation`) | ✅ | ❌ | ❌ |
 | Remove all items from the location (purge) | ✅ | ❌ | ❌ |
+
+**Removing one item from a location is organizer only** (owner decision, 2026-11-11). The
+removal deletes the item's stock row there, EVERY log of the item at that location (the logs
+other members wrote too), and its entries in that location's carts. Deleting co-members' logs
+needs a higher role than editing stock, so a participant cannot do it. The purge in the last
+row keeps the location's logs; this removal still deletes them. A participant can still edit
+the stock, add an item to the location, cook and shop. Local mode has no role check.
 
 ### Rules that cross the two levels
 
