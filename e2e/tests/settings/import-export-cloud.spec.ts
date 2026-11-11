@@ -9,10 +9,11 @@ import {
   destinationDefaultLocationName,
   expectFixtureStockPerLocation,
   expectStockNotCollapsedOntoDefault,
+  FIXTURE_STOCK_BY_LOCATION,
 } from '../../helpers/backupAssertions'
 import { ensureCloudHomeLocation } from '../../helpers/cloudSeed'
 import { cleanupCloudData } from '../../helpers/cloudTeardown'
-import { readLocations } from '../../helpers/stockReadback'
+import { readLocations, readStocksForItem } from '../../helpers/stockReadback'
 import { ItemPage } from '../../pages/ItemPage'
 import { PantryPage } from '../../pages/PantryPage'
 import { SettingsPage } from '../../pages/SettingsPage'
@@ -612,3 +613,133 @@ test('user copying a local pantry to cloud keeps every location’s stock', asyn
   if (!defaultLocation) throw new Error('no default location after the import')
   expect(await cartCountAt(request, LOCAL_ITEM_ID, defaultLocation.id)).toBe(0)
 })
+
+// A RESTORE INTO THE SAME HOUSEHOLD, AFTER A NEW LOCATION WAS MOVED TO THE TOP.
+//
+// Owed by the review of households H3a task 3.12. Cloud has no default
+// location since that task, so the web app's import remap treats the
+// destination's FIRST location (by `order`) as the place the payload's default
+// lands (`fetchCloudDefaultLocationId` in apps/web/src/lib/importData.ts). A
+// cloud backup made since then names its default the same way: its location
+// with the lowest `order`.
+//
+// So: back up a household whose first location is Home, add "Attic" and move
+// it to the top, then restore the backup. Without the same-household check in
+// `buildLocationRemap` (`destinationLocationIds.has(payloadDefaultLocationId)`,
+// commit 79c92fec) the remap is Home -> Attic, and Home's stock, carts and logs
+// are written under Attic. The unit tests in importData.test.ts prove the
+// payload the web SENDS; only this proves where the server WRITES it.
+//
+// Home holds one stock row, one log (from the fixture) and one cart item (added
+// below), each with an id of its own, so each can be found again at Home and
+// not at Attic.
+for (const strategy of ['Skip conflicts', 'Replace matches'] as const) {
+  test(`user restoring a same-household backup with "${strategy}" keeps Home's stock, carts and logs on Home after a new location is moved to the top`, async ({
+    page,
+    request,
+    baseURL,
+  }) => {
+    // A full seed, export and import, like the cloud → cloud test above
+    test.setTimeout(60000)
+    const settings = new SettingsPage(page)
+    const gql = makeGql(request)
+
+    // Given a household whose first location is Home, with Fixture Office and
+    // Fixture Cabin after it
+    const locationIds = await seedCloudFixture(request)
+    const fixtureDefault = (
+      cloudFixture.locations as Array<{ id: string; isDefault?: boolean }>
+    ).find((loc) => loc.isDefault === true)
+    if (!fixtureDefault) throw new Error('cloud-backup.json has no default')
+    const homeId = locationIds[fixtureDefault.id]
+    if (!homeId) throw new Error('the seed returned no id for Home')
+
+    // And one cart item in the vendor's cart AT HOME (the fixture's only cart
+    // is at Fixture Office)
+    const { vendorCart } = await gql<{ vendorCart: { id: string } }>(
+      `query ($vendorId: ID, $locationId: ID!) { vendorCart(vendorId: $vendorId, locationId: $locationId) { id } }`,
+      { vendorId: CLOUD_VENDOR_ID, locationId: homeId },
+    )
+    await gql(
+      `mutation ($cartId: ID!, $itemId: ID!, $quantity: Int!) { addToCart(cartId: $cartId, itemId: $itemId, quantity: $quantity) { id } }`,
+      { cartId: vendorCart.id, itemId: CLOUD_ITEM_ID, quantity: 3 },
+    )
+    expect(await cartCountAt(request, CLOUD_ITEM_ID, homeId)).toBe(1)
+
+    // And the household is backed up
+    await page.goto('/')
+    await page.waitForLoadState('networkidle')
+    await settings.navigateTo()
+    const download = await settings.triggerExport()
+    const downloadPath = await download.path()
+    if (!downloadPath) throw new Error('Download path is null')
+
+    // When a new location "Attic" is created and moved to the top
+    const { createLocation: attic } = await gql<{
+      createLocation: { id: string }
+    }>(`mutation ($name: String!) { createLocation(name: $name) { id } }`, {
+      name: 'Attic',
+    })
+    const before = await readLocations(page, request, baseURL)
+    await gql(
+      `mutation ($orderedIds: [ID!]!) { reorderLocations(orderedIds: $orderedIds) { id } }`,
+      {
+        orderedIds: [
+          attic.id,
+          ...before.map((l) => l.id).filter((id) => id !== attic.id),
+        ],
+      },
+    )
+    // Precondition: Attic really is the first location now. Without this, a
+    // reorder that silently did nothing would leave Home first, and every
+    // assertion below would pass against the old, broken remap too.
+    const reordered = await readLocations(page, request, baseURL)
+    expect(reordered.find((l) => l.isHome)?.id).toBe(attic.id)
+
+    // And the backup is restored. Every row in it already exists, so the
+    // conflict dialog opens and the strategy is chosen there.
+    await settings.navigateTo()
+    await settings.triggerImport(downloadPath)
+    await expect(
+      settings
+        .getConflictDialog()
+        .getByRole('heading', { name: 'Conflicts detected' }),
+    ).toBeVisible()
+    await settings.chooseConflictStrategy(strategy)
+    await settings.waitForImportDone('cloud')
+
+    // Then the household still has exactly four locations, and Attic kept
+    // its own name
+    const after = await readLocations(page, request, baseURL)
+    expect(after.map((l) => l.name).sort()).toEqual(
+      ['Attic', 'Fixture Cabin', 'Fixture Home', 'Fixture Office'].sort(),
+    )
+    expect(after.find((l) => l.id === attic.id)?.name).toBe('Attic')
+
+    // And Home's stock row is still at Home, with Home's numbers, and Attic
+    // holds no stock for the item
+    const stocks = await readStocksForItem(
+      page,
+      request,
+      baseURL,
+      CLOUD_ITEM_ID,
+    )
+    expect(
+      stocks
+        .filter((row) => row.locationId === homeId)
+        .map((row) => row.packedQuantity),
+    ).toEqual([FIXTURE_STOCK_BY_LOCATION.DEFAULT.packedQuantity])
+    expect(stocks.filter((row) => row.locationId === attic.id)).toEqual([])
+
+    // And Home's cart item is still at Home, and Attic has none
+    expect(await cartCountAt(request, CLOUD_ITEM_ID, homeId)).toBe(1)
+    expect(await cartCountAt(request, CLOUD_ITEM_ID, attic.id)).toBe(0)
+
+    // And Home's log is still at Home, and no log sits at Attic
+    const logs = await readLogs(request)
+    expect(
+      logs.filter((log) => log.locationId === homeId).map((log) => log.logKey),
+    ).toEqual(['log.purchased'])
+    expect(logs.filter((log) => log.locationId === attic.id)).toEqual([])
+  })
+}
