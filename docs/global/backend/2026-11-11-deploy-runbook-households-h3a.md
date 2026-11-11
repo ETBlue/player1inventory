@@ -191,7 +191,7 @@ the `PROD_COPY_*` variables since #333, but do not rely on that.
    `20261104000000_add_households` and `20261111000000_drop_user_scope`. If it lists more,
    production is behind `main`. Stop and find out why first.
 
-Result: hosts `TBD after rehearsal` (different / same). Pending list `TBD after rehearsal`.
+Result (2026-11-12): hosts **different**. Pending list: exactly `20261104000000_add_households` and `20261111000000_drop_user_scope`.
 
 ### 3.2 Before any migration: who will get a placeholder name or a "Home"
 
@@ -242,7 +242,11 @@ UNION ALL SELECT 'ItemVendor', count(*) FROM "ItemVendor"
 UNION ALL SELECT 'RecipeItem', count(*) FROM "RecipeItem";
 ```
 
-Results: A `TBD after rehearsal`. B `TBD after rehearsal`. C `TBD after rehearsal`.
+Results (2026-11-12):
+
+- **A: 1 userId.** A second account with 1 location, 1 cart, no items and no logs. Its last row is from 2026-10-03, before H2 added the `User` row, so it never signed in after H2. It gets a `User` row named 'User' and "User's Household".
+- **B: 0 rows.** The one `User` row (the owner's account) already has 4 locations.
+- **C:** `User` 1, `Location` 5, `Item` 186, `Tag` 61, `TagType` 3, `Vendor` 23, `Recipe` 9, `Shelf` 13, `ItemStock` 189, `Cart` 42, `CartItem` 7, `InventoryLog` 1531, `ItemTag` 493, `ItemVendor` 390, `RecipeItem` 74.
 
 ### 3.3 Apply `add_households` ONLY
 
@@ -265,7 +269,7 @@ on a later commit would be a missing migration.
 Write down whether the `RAISE NOTICE` lines of step 8b appear in this output. If they do,
 that answers item 9 of the plan for a bare `migrate deploy`.
 
-Result: `TBD after rehearsal` (exit code; notices printed: yes / no).
+Result (2026-11-12): exit 0. Notices printed: **no**. The output shows no `NOTICE` line. So the 3.5 count queries are the only record of what step 3 changes.
 
 ### 3.4 After `add_households`: the record queries
 
@@ -320,12 +324,12 @@ WHERE n.len > 100;
 
 | # | Expected | Result |
 |---|---|---|
-| 1 | three equal numbers | `TBD after rehearsal` |
-| 2 | 0 | `TBD after rehearsal` |
-| 3 | 0 | `TBD after rehearsal` |
-| 4 | one row per person in 3.2 B (and 3.2 A with no location) | `TBD after rehearsal` |
-| 5 | the people in 3.2 A, plus any fallback rows | `TBD after rehearsal` |
-| 6 | probably 0 rows | `TBD after rehearsal` |
+| 1 | three equal numbers | 2, 2, 2 |
+| 2 | 0 | 0 |
+| 3 | 0 | 0 |
+| 4 | one row per person in 3.2 B (and 3.2 A with no location) | 0 rows. 3.2 B was empty, and the 3.2 A account already had a location |
+| 5 | the people in 3.2 A, plus any fallback rows | 1 row: the 3.2 A account, `deletedAt` null. No fallback rows |
+| 6 | probably 0 rows | 0 rows |
 
 **About the people in query 5.** They get "User's Household" until Clerk sends
 `user.updated` or they rename it. Their `deletedAt` stays null even if their Clerk account
@@ -429,19 +433,19 @@ WHERE i."householdId" <> l."householdId";
 
 | Step | Kind | Expected | Result |
 |---|---|---|---|
-| 3a | tag types copied | probably 0 | `TBD after rehearsal` |
-| 3a | tags moved to a copy | probably 0 | `TBD after rehearsal` |
-| 3b | tags that lose a parent | probably 0 | `TBD after rehearsal` |
-| 3c | `ItemTag` rows deleted | probably 0 | `TBD after rehearsal` |
-| 3c | `ItemVendor` rows deleted | probably 0 | `TBD after rehearsal` |
-| 3c | `RecipeItem` rows deleted | probably 0 | `TBD after rehearsal` |
-| 3d | shelves that lose item ids (ids removed) | probably 0 | `TBD after rehearsal` |
-| 3e | shelves that lose filter tag ids | probably 0 | `TBD after rehearsal` |
-| 3e | shelves that lose filter vendor ids | probably 0 | `TBD after rehearsal` |
-| 3e | shelves that lose filter recipe ids | probably 0 | `TBD after rehearsal` |
-| 3f | `ItemStock` rows deleted | probably 0 | `TBD after rehearsal` |
-| 3f | `CartItem` rows deleted | probably 0 | `TBD after rehearsal` |
-| 3f | `InventoryLog` rows deleted | probably 0 | `TBD after rehearsal` |
+| 3a | tag types copied | probably 0 | 0 |
+| 3a | tags moved to a copy | probably 0 | 0 |
+| 3b | tags that lose a parent | probably 0 | 0 |
+| 3c | `ItemTag` rows deleted | probably 0 | 0 |
+| 3c | `ItemVendor` rows deleted | probably 0 | 0 |
+| 3c | `RecipeItem` rows deleted | probably 0 | 0 |
+| 3d | shelves that lose item ids (ids removed) | probably 0 | 0 (0) |
+| 3e | shelves that lose filter tag ids | probably 0 | 0 |
+| 3e | shelves that lose filter vendor ids | probably 0 | 0 |
+| 3e | shelves that lose filter recipe ids | probably 0 | 0 |
+| 3f | `ItemStock` rows deleted | probably 0 | 0 |
+| 3f | `CartItem` rows deleted | probably 0 | 0 |
+| 3f | `InventoryLog` rows deleted | probably 0 | 0 |
 
 "Probably 0" because a person could only make such a row by calling the API by hand with a
 guessed id. **Any count above 0 is production data the cleanup will change. Tell the owner
@@ -458,13 +462,13 @@ pnpm exec prisma migrate diff --from-url "$PROD_COPY_DIRECT_URL" --to-schema-dat
 
 | Check | Expected | Result |
 |---|---|---|
-| `migrate deploy` | exit 0 | `TBD after rehearsal` |
-| step 3 notices in the output | write down: printed or not | `TBD after rehearsal` |
-| `migrate status` | "Database schema is up to date!" | `TBD after rehearsal` |
-| `migrate diff … --exit-code` | exit 0 (no drift) | `TBD after rehearsal` |
-| every query in 3.5, run again | all 0 | `TBD after rehearsal` |
-| query C of 3.2, run again | each table's count went down by exactly its 3.5 number, `TagType` went UP by the copies, every other table is unchanged | `TBD after rehearsal` |
-| queries 1 and 3 of 3.4, run again | the same as before | `TBD after rehearsal` |
+| `migrate deploy` | exit 0 | exit 0 |
+| step 3 notices in the output | write down: printed or not | not printed |
+| `migrate status` | "Database schema is up to date!" | "Database schema is up to date!" |
+| `migrate diff … --exit-code` | exit 0 (no drift) | exit 0, "No difference detected." |
+| every query in 3.5, run again | all 0 | all 0 |
+| query C of 3.2, run again | each table's count went down by exactly its 3.5 number, `TagType` went UP by the copies, every other table is unchanged | every table unchanged from 3.2 C, except `User` 1 → 2 (the 3.2 A account, added by `add_households`) |
+| queries 1 and 3 of 3.4, run again | the same as before | the same: 2, 2, 2 and 0 |
 
 The 3.5 queries do not name `userId`, so they still run after `drop_user_scope`. Query 4 of
 3.4 does name it, so do not re-run that one.
@@ -706,7 +710,7 @@ These are known and accepted for H3a. None blocks the deploy.
 |---|---|
 | `renameHousehold` has a race with H6's hand-over | It reads the caller's role, then runs one `UPDATE` with no `lockHousehold`. An owner who hands the household over at the same moment could rename it once more. Nobody can hand a household over before H6. H6 decides whether this matters. Nothing to prove on Postgres in H3a (plan, task 3.13 Done note) |
 | `clearAllData` checks role `owner` before its transaction | Nobody can stop being the owner before H6. H6 must move the check inside the transaction, after `lockHousehold` (plan, *Owed to H6*) |
-| The household lock is proved only by `verify-migration.ts` | `assertHouseholdLock` (two deletes at once; `clearAllData` with `deleteLocation`). Result of its first run: `TBD after the lock-proof run` |
+| The household lock is proved only by `verify-migration.ts` | `assertHouseholdLock` (two deletes at once; `clearAllData` with `deleteLocation`). Run on the test database on 2026-11-12: exit 0, both cases pass (in each, the second transaction was seen waiting). Proved by mutation the same day: with `lockHouseholdCopy` removed from `deleteLocationBody`, case 1 fails with "was never seen blocked", and case 2 (run with case 1 skipped) fails with `P2025` on `tx.location.delete` |
 | No `lock_timeout` on `drop_user_scope` | See 4.4. A cancelled migration fails cleanly and can be run again |
 | Names over 100 code units | `add_households` and `drop_user_scope` step 2b do not cap names. The name card shows an error and the owner can shorten it. Count in 3.4 query 6 |
 | Shared carts | H3b. Until H5 every household has one person, so the `userId` filters on carts still give the right answer |
