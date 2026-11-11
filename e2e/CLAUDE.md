@@ -411,7 +411,7 @@ deleted `ensureDefaultLocation` and `apps/server/src/lib/defaultLocation.ts`):
 
 | Case | Code | What it does |
 |---|---|---|
-| first sign-in | `ensureHousehold` in `apps/server/src/lib/household.ts`, reached through `requireHousehold` in `apps/server/src/lib/authz.ts` | a user with no household gets one, plus one location ("Home" in English) with `isDefault: true` and `order: 0`, and an `organizer` row on it. The `locations` query is the usual first caller. |
+| first sign-in | `ensureHousehold` in `apps/server/src/lib/household.ts`, reached through `requireHousehold` in `apps/server/src/lib/authz.ts` | a user with no household gets one, plus one location ("Home" in English) at `order: 0`, and an `organizer` row on it. There is no `isDefault` column since households H3a task 3.14. The `locations` query is the usual first caller. |
 | an import row that names no usable location | `fallbackImportLocation` in `apps/server/src/lib/authz.ts` | picks the caller's location with the lowest `order` (ties broken by id), in the caller's household, on which the caller is `participant` or `organizer`. It does not create one. If none qualifies, the import fails with `NO_LOCATION`. |
 
 `fallbackImportLocation` reads `LocationMember` rows. `createLocation` writes the
@@ -422,12 +422,24 @@ write none, so a location made by them is never picked. And until task 3.10,
 task 3.9, and `clearAllData` makes "Home" again, with an `organizer` row, in the same
 transaction since task 3.10 (decision H17).
 
-**`ensureCloudDefaultLocation(request)` (`e2e/helpers/cloudSeed.ts`) is still there, and
-still worth calling first.** It is no longer a workaround: `seedCloudFixture` needs the
-default location's id (to map the fixture's default key onto) and its name (to decide
-whether to rename it), so the call has its own reason to exist. `cooking.spec.ts` also
-still calls it — a seed that guarantees its own preconditions does not depend on server
-behaviour to be correct.
+**`ensureCloudHomeLocation(request)` (`e2e/helpers/cloudSeed.ts`) is worth calling
+first.** It runs the `locations` query (which runs first sign-in) and returns the FIRST
+location in the answer: "Home", at `order` 0, on a clean account. `seedCloudFixture` needs
+that location's id (to map the fixture's home key onto) and its name (to decide whether to
+rename it). `cooking.spec.ts`, `item-logs.spec.ts`, `shopping.spec.ts` and
+`item-list-state-restore.spec.ts` also call it, because their stock writes need a location
+id.
+
+It was `ensureCloudDefaultLocation` until households H3a task 3.15, and picked the row with
+`isDefault: true`. Task 3.14 dropped that column from the server, so every spec that
+selected `isDefault` failed GraphQL validation (`Cannot query field "isDefault" on type
+"Location"`). Measured on the branch before task 3.15: **76 of 130** cloud tests failed,
+**57** of them with that error and the other 19 on the old "My Home" name (in `locations.spec.ts` and `location-switcher.spec.ts`).
+
+**A cloud location is never "the default" any more.** "First" means first in the server's
+answer, which is sorted by `order`, then by `id`. The web app uses the same rule for its
+fallback location (`useActiveLocation`, and `fetchCloudDefaultLocationId` in
+`apps/web/src/lib/importData.ts`).
 
 ## A seed that writes an item must also write its stock — in BOTH modes
 
@@ -443,7 +455,7 @@ worked because the other project's four failures are reported separately:
 | Mode | Writes | What to add |
 |---|---|---|
 | local | `db.transaction('items', 'readwrite')` | `await splitInlineStock(page)` from `helpers/locationSeed.ts`, after the item write |
-| cloud | `createItem` over GraphQL | `upsertItemStock` after each `createItem`, with the location id from `ensureCloudDefaultLocation(request)` (`helpers/cloudSeed.ts`) |
+| cloud | `createItem` over GraphQL | `upsertItemStock` after each `createItem`, with the location id from `ensureCloudHomeLocation(request)` (`helpers/cloudSeed.ts`) |
 
 `splitInlineStock` touches IndexedDB only and does **nothing** for the cloud branch.
 
@@ -563,7 +575,7 @@ and now run in both:
 | File | Tests in `cloud` | What the cloud run adds |
 |---|---|---|
 | `settings/shelves.spec.ts` | 1 | first real-SQL coverage of `shelf(id:)` (`apps/server/src/resolvers/shelf.resolver.ts:17`) and `deleteShelf` (`:50`) |
-| `settings-global-pages.spec.ts` | 2 collected, 1 run | no new resolver. Its second test carries a `test.skip` for cloud — `Sidebar.tsx` has no data-mode branch, so a cloud run would measure the same markup twice |
+| `settings-global-pages.spec.ts` | 2 collected, 1 run (2 run since households H3a task 3.15) | no new resolver. Its second test skipped cloud until task 3.15, because the sidebar was the same markup in both modes. Since task 3.13 the 🏠 label shows the household name in cloud, so the test now runs there: it renames the household first and checks the label shows that name |
 | `unified-item-search.spec.ts` | 10 | first real-SQL coverage of **`applyShelfFilterPicks`** (`:85`) and of `updateShelf(itemIds:)` (`:38`) |
 
 **`applyShelfFilterPicks` was the target worth the work, and issue #323 never names it.** It
@@ -666,7 +678,14 @@ What the number has been, so you can see how fast it moves rather than reuse a f
 | 2026-10-12 | `feature/cloud-spec-coverage` (issue #323) | 121 |
 | 2026-10-31 | `feature/households-h2`, after `cloud-user-row.spec.ts` | 124 |
 | 2026-11-04 | `feature/households-h3a`, after `purge-two-households.spec.ts` | 125 |
-| 2026-11-04 | `feature/households-h3a`, after task 3.11's two specs | **130** |
+| 2026-11-04 | `feature/households-h3a`, after task 3.11's two specs | 130 |
+| 2026-11-11 | `feature/households-h3a`, after task 3.15 | **133** |
+
+Task 3.15 added 3: the cloud last-location test in `settings/locations.spec.ts` (skipped
+in `local`, so `local` collects 184 and runs 178), and the same-household restore test in
+`settings/import-export-cloud.spec.ts`, once per strategy (`skip`, `replace`). Its
+sidebar test in `settings-global-pages.spec.ts` was collected before and now runs in cloud
+instead of skipping.
 
 Attribution for the steps that are known: 4b added 5 (1 for the leak spec, 4 because
 `import-export-cloud.spec.ts` went 2 → 6). Cloud-parity PR A added 1 to
@@ -837,7 +856,7 @@ than a missing id.
 | Helper | How it assigns `order` |
 |---|---|
 | `seedLocalFixture` | `order: index` for **every** location, default included (`localSeed.ts` line 50) |
-| `seedCloudFixture` | never creates the default — it reads back the one the server made at `order: 0` (first sign-in, `ensureHousehold` in `apps/server/src/lib/household.ts`; before households H3a task 3.5 it was `ensureDefaultLocation`) and `continue`s past `isDefault` entries in its creation loop (`cloudSeed.ts` line 117). `createLocation` appends `maxOrder + 1`. |
+| `seedCloudFixture` | never creates the fixture's home entry (the one marked `isDefault`) — it maps it onto the location first sign-in made at `order: 0` ("Home", `ensureHousehold` in `apps/server/src/lib/household.ts`; before households H3a task 3.5 it was `ensureDefaultLocation`), renames it to the fixture's name, and `continue`s past `isDefault` entries in its creation loop. `createLocation` appends `maxOrder + 1`. |
 
 So only the relative order of the **non-default** locations follows the array in cloud.
 Moving the default entry elsewhere in the array is **invisible in cloud** and changes the
@@ -866,9 +885,15 @@ specs are the users today.
 `readLocations(page, request, baseURL)` joined it on 2026-10-04 (cloud locations PR 4b
 task 8) and branches the same way: local reads the `locations` store, cloud runs the
 `locations` query. **Look a location up by NAME, never by id.** The ids differ between the
-modes on purpose — the local default is the `'local'` sentinel, a cloud default is a
+modes on purpose — the local default is the `'local'` sentinel, a cloud location is a
 server-generated cuid, and the import remap rewrites the payload's default onto whichever
 one the destination holds.
+
+Each row carries `isHome`, not `isDefault` (since households H3a task 3.15). Local: the row
+Dexie flags `isDefault`. Cloud: the FIRST row of the `locations` answer, because cloud has
+no default location and the web's import remap lands the payload's default on the first
+location. So in cloud "exactly one home" is always true; what a cloud assertion can still
+check is that the first location has the expected name.
 
 ### `e2e/helpers/backupAssertions.ts` — the import/export location checks, written once
 
@@ -884,9 +909,9 @@ The new checks therefore live in **one** module, not a third copy:
 
 | Export | What it asserts |
 |---|---|
-| `expectFixtureLocations` | three locations, exactly one default, and that one's name |
+| `expectFixtureLocations` | three locations, and the home location's name (local: the `isDefault` row; cloud: the first location) |
 | `expectFixtureStockPerLocation` | one stock row per location, each with its own quantities |
-| `expectStockNotCollapsedOntoDefault` | the two non-default rows are not sitting on the default |
+| `expectStockNotCollapsedOntoDefault` | the two non-default rows are not sitting on the home location |
 
 **Both fixtures describe the same three locations under the same names, with the same three
 different quantities.** `e2e/fixtures/local-backup.json`'s default id is the `'local'`
@@ -905,20 +930,27 @@ remap has put the backup's default row on the id the destination already holds, 
 is always the one `skip` leaves alone: local filters it out by `existingIds`, cloud's
 `bulkCreateLocations` skips a taken id. Measured 2026-10-04 — a backup whose default was
 called "Fixture Home" came back as `[ "Fixture Cabin", "My Home", "Fixture Office" ]` in
-both projects. That is why `DESTINATION_DEFAULT_LOCATION_NAME` exists and why the default's
-expected name is a parameter rather than a constant in the fixture.
+both projects. That is why `destinationDefaultLocationName(baseURL)` exists and why the
+default's expected name is a parameter rather than a constant in the fixture.
+
+**The destination's name differs by mode since households H3a.** Local starts with
+"My Home" (Dexie's `on('populate')`); cloud starts with "Home" (first sign-in, and again
+after `clearAllData`). `homeLocationName(baseURL)` in `e2e/constants.ts` gives the right
+one, and `destinationDefaultLocationName` in `helpers/backupAssertions.ts` returns it.
+Until task 3.15 this was one constant, `DESTINATION_DEFAULT_LOCATION_NAME = 'My Home'`,
+because the old server also said "My Home".
 
 **`clear` and `replace` differ from `skip` — in LOCAL mode only.** `importLocations`
 (`apps/web/src/lib/importData.ts`) branches on `strategy === 'skip'` and on nothing else, so
 both other strategies `bulkPut` the whole location list and the local default row takes the
-backup's name. Cloud keeps "My Home" whatever the strategy, because `bulkCreateLocations`
+backup's name. Cloud keeps "Home" whatever the strategy, because `bulkCreateLocations`
 skips a row whose id is already taken. So a dual-mode spec running `clear` or `replace` must
 branch on `baseURL === CLOUD_WEB_URL` for the expected default name:
 
 | strategy | local expects | cloud expects |
 |---|---|---|
-| `skip` | `DESTINATION_DEFAULT_LOCATION_NAME` | `DESTINATION_DEFAULT_LOCATION_NAME` |
-| `replace`, `clear` | `FIXTURE_DEFAULT_LOCATION_NAME` | `DESTINATION_DEFAULT_LOCATION_NAME` |
+| `skip` | `destinationDefaultLocationName(baseURL)` ("My Home") | `destinationDefaultLocationName(baseURL)` ("Home") |
+| `replace`, `clear` | `FIXTURE_DEFAULT_LOCATION_NAME` | `destinationDefaultLocationName(baseURL)` ("Home") |
 
 `settings/import-strategies.spec.ts` does that branch in `expectedDefaultLocationName`.
 

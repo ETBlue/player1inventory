@@ -1624,9 +1624,9 @@ coverage of the four bulk mutations 4a added — `bulkCreate`/`bulkUpsertLocatio
 `locationId` field.
 
 Three more joined on 2026-10-12 (issue #323) — `settings/shelves.spec.ts` (1 cloud test
-case), `settings-global-pages.spec.ts` (2 collected, 1 run — its second test carries a
-`test.skip` for cloud, because `Sidebar.tsx` has no data-mode branch and a cloud run would
-measure the same markup twice) and `unified-item-search.spec.ts` (10). The `cloud` project
+case), `settings-global-pages.spec.ts` (2 collected, 1 run until households H3a task 3.15 —
+its second test skipped cloud because the sidebar was the same markup in both modes; since
+task 3.13 the 🏠 label shows the household name in cloud, so both run there now) and `unified-item-search.spec.ts` (10). The `cloud` project
 went 108 → **121** collected and 22 → **25** files. They give the first real-SQL coverage of
 four resolvers in `apps/server/src/resolvers/shelf.resolver.ts`: `shelf(id:)` (line 17),
 `updateShelf(itemIds:)` (38), `deleteShelf` (50) and **`applyShelfFilterPicks`** (85).
