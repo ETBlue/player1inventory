@@ -167,7 +167,12 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
 
     removeItemFromLocation: async (_, { itemId, locationId }, ctx) => {
       const userId = requireAuth(ctx)
-      await requireLocationRole(ctx, locationId, 'participant')
+      // `organizer`, not `participant` (owner decision, 2026-11-11, plan H3a
+      // *Owner decisions 2026-11-11*). The removal deletes EVERY log of the
+      // item at this location, including the logs other members wrote, so it
+      // needs a higher role than editing stock. No `requireLocationItems`
+      // here: the mutation only deletes, so it never attaches an item.
+      await requireLocationRole(ctx, locationId, 'organizer')
       // Three deletes, matching local's `removeItemFromLocation`
       // (apps/web/src/db/operations.ts): the stock row, this item's inventory
       // logs at this location, and this item's entries in this location's

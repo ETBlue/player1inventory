@@ -765,20 +765,70 @@ describe('itemStock writes need location role participant', () => {
     expect(stockState.itemStocks.some((s) => s.itemId === 'item-new' && s.locationId === 'loc-a')).toBe(true)
   })
 
-  it('a location viewer cannot remove an item from the location', async () => {
-    seed({ callerRole: 'viewer' })
+})
+
+// ─── Removing an item from a location needs location role organizer ─────────
+//
+// The owner decided this on 2026-11-11 (plan H3a, *Owner decisions
+// 2026-11-11*). A removal deletes EVERY log of the item at the location,
+// including the logs other members wrote (see the last describe block in this
+// file). So it needs a higher role than editing stock does. The organizer-only
+// purge "Remove all items from this location" keeps the logs; this removal
+// still deletes them.
+describe('removing an item from a location needs location role organizer', () => {
+  // One row of each kind the removal deletes, so a refusal can prove that
+  // NOTHING went, not only the stock row.
+  function seedRemovable(callerRole: LocationRole) {
+    seed({ callerRole })
     seedStocks()
+    logs.reset([
+      makeInventoryLog({ id: 'log-here', itemId: 'item-milk', locationId: 'loc-a', userId: 'user-a' }),
+      // Written by the co-member user-m. This is the row the decision is about.
+      makeInventoryLog({ id: 'log-comember', itemId: 'item-milk', locationId: 'loc-a', userId: 'user-m' }),
+    ])
+    carts.carts = [{ id: 'loc-a:no-vendor', locationId: 'loc-a' }]
+    carts.cartItems = [
+      { id: 'ci-here', cartId: 'loc-a:no-vendor', itemId: 'item-milk', userId: 'user-a' },
+    ]
+    carts.failCartItemDeleteMany = false
+  }
+
+  it('a location viewer cannot remove an item from the location', async () => {
+    seedRemovable('viewer')
     const res = await run(REMOVE_ONE, { i: 'item-milk', l: 'loc-a' })
     expect(code(res)).toBe('FORBIDDEN')
     expect(stockState.itemStocks.some((s) => s.id === 'st-home')).toBe(true)
   })
 
-  it('a location participant can remove an item from the location', async () => {
-    seed({ callerRole: 'participant' })
-    seedStocks()
+  it('a location participant cannot remove an item from the location, and nothing is deleted', async () => {
+    // Given user-a is a participant at loc-a (user-m is its organizer)
+    seedRemovable('participant')
+
+    // When user-a removes item-milk from loc-a
     const res = await run(REMOVE_ONE, { i: 'item-milk', l: 'loc-a' })
+
+    // Then it is refused
+    expect(code(res)).toBe('FORBIDDEN')
+    // And the stock row, both logs (the co-member's too) and the cart entry
+    // are all still there
+    expect(stockState.itemStocks.some((s) => s.id === 'st-home')).toBe(true)
+    expect(logs.state.logs.map((l) => l.id).sort()).toEqual(['log-comember', 'log-here'])
+    expect(carts.cartItems.map((c) => c.id)).toEqual(['ci-here'])
+  })
+
+  it('a location organizer can remove an item from the location', async () => {
+    // Given user-a is an organizer at loc-a (user-m is a participant)
+    seedRemovable('organizer')
+
+    // When user-a removes item-milk from loc-a
+    const res = await run(REMOVE_ONE, { i: 'item-milk', l: 'loc-a' })
+
+    // Then the stock row, both logs and the cart entry are gone
     expect(res.errors).toBeUndefined()
+    expect(res.data?.removeItemFromLocation).toBe(true)
     expect(stockState.itemStocks.some((s) => s.id === 'st-home')).toBe(false)
+    expect(logs.state.logs).toEqual([])
+    expect(carts.cartItems).toEqual([])
   })
 })
 
@@ -889,7 +939,9 @@ describe('itemStock writes check the location role before the item', () => {
 // this location".
 describe('removing an item from a location deletes the logs a co-member wrote there', () => {
   beforeEach(() => {
-    seed()
+    // The caller is an organizer at loc-a: a removal needs that role since
+    // 2026-11-11 (see the describe block on removal above).
+    seed({ callerRole: 'organizer' })
     seedStocks()
     logs.reset([
       makeInventoryLog({ id: 'log-mine', itemId: 'item-milk', locationId: 'loc-a', userId: 'user-a' }),
