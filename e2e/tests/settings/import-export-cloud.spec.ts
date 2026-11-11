@@ -510,6 +510,14 @@ test('user re-importing a cloud backup keeps each cart at its own location', asy
     (l) => l.isHome,
   )
   if (!defaultLocation) throw new Error('no default location after the import')
+  // That row really is Home: it holds Home's stock. Without this, a lookup that
+  // picked a location holding nothing (Fixture Cabin has no cart either) would
+  // pass the zero count below too.
+  expect(
+    (await readStocksForItem(page, request, baseURL, CLOUD_ITEM_ID))
+      .filter((row) => row.locationId === defaultLocation.id)
+      .map((row) => row.packedQuantity),
+  ).toEqual([FIXTURE_STOCK_BY_LOCATION.DEFAULT.packedQuantity])
   expect(await cartCountAt(request, CLOUD_ITEM_ID, defaultLocation.id)).toBe(0)
 })
 
@@ -631,10 +639,25 @@ test('user copying a local pantry to cloud keeps every location’s stock', asyn
 // payload the web SENDS; only this proves where the server WRITES it.
 //
 // Home holds one stock row, one log (from the fixture) and one cart item (added
-// below), each with an id of its own, so each can be found again at Home and
-// not at Attic.
+// below), each with an id of its own. After the export, the item is REMOVED
+// from Home, which deletes all three. So the restore has to CREATE them again,
+// and a created row takes whatever location the remap gave it.
+//
+// Why the removal: a row that still EXISTS mostly stays where it is, whatever
+// the remap says. `bulkUpsertItemStocks` updates the quantities only, and
+// `bulkUpsertInventoryLogs` writes `locationId` in `create` only
+// (apps/server/src/resolvers/import.resolver.ts). Before the removal was added,
+// only the cart item under "Replace matches" could see a wrong remap, because
+// `bulkUpsertCartItems` writes `cartId` in `update` too.
+//
+// What each strategy re-creates:
+//   - the log and the cart item, under both strategies (their ids are gone, so
+//     they are not conflicts and go on the create pass);
+//   - the stock row under "Replace matches" only. "Skip conflicts" sends stock
+//     only for items it creates (`stocksForItems` in importData.ts), and the
+//     item still exists, so Home's stock stays gone.
 for (const strategy of ['Skip conflicts', 'Replace matches'] as const) {
-  test(`user restoring a same-household backup with "${strategy}" keeps Home's stock, carts and logs on Home after a new location is moved to the top`, async ({
+  test(`user restoring a same-household backup with "${strategy}" puts Home's removed rows back on Home after a new location is moved to the top`, async ({
     page,
     request,
     baseURL,
@@ -673,6 +696,33 @@ for (const strategy of ['Skip conflicts', 'Replace matches'] as const) {
     const download = await settings.triggerExport()
     const downloadPath = await download.path()
     if (!downloadPath) throw new Error('Download path is null')
+
+    // And the item is removed from Home after the backup. This deletes Home's
+    // stock row, its log and its cart item in one transaction. It needs the
+    // location role `organizer`, which the test user holds on Home: first
+    // sign-in made Home and its organizer row (`createFirstLocation`).
+    await gql(
+      `mutation ($itemId: ID!, $locationId: ID!) { removeItemFromLocation(itemId: $itemId, locationId: $locationId) }`,
+      { itemId: CLOUD_ITEM_ID, locationId: homeId },
+    )
+    // Precondition: Home holds no stock, cart item or log for the item now.
+    // Without this, a removal that did nothing would leave the old rows in
+    // place, and the checks below would pass against a wrong remap too.
+    const stocksAfterRemoval = await readStocksForItem(
+      page,
+      request,
+      baseURL,
+      CLOUD_ITEM_ID,
+    )
+    expect(
+      stocksAfterRemoval.filter((row) => row.locationId === homeId),
+    ).toEqual([])
+    expect(await cartCountAt(request, CLOUD_ITEM_ID, homeId)).toBe(0)
+    expect(
+      (await readLogs(request)).filter(
+        (log) => log.locationId === homeId && log.itemId === CLOUD_ITEM_ID,
+      ),
+    ).toEqual([])
 
     // When a new location "Attic" is created and moved to the top
     const { createLocation: attic } = await gql<{
@@ -716,30 +766,34 @@ for (const strategy of ['Skip conflicts', 'Replace matches'] as const) {
     )
     expect(after.find((l) => l.id === attic.id)?.name).toBe('Attic')
 
-    // And Home's stock row is still at Home, with Home's numbers, and Attic
-    // holds no stock for the item
-    const stocks = await readStocksForItem(
-      page,
-      request,
-      baseURL,
-      CLOUD_ITEM_ID,
-    )
-    expect(
-      stocks
-        .filter((row) => row.locationId === homeId)
-        .map((row) => row.packedQuantity),
-    ).toEqual([FIXTURE_STOCK_BY_LOCATION.DEFAULT.packedQuantity])
-    expect(stocks.filter((row) => row.locationId === attic.id)).toEqual([])
+    // And Home's stock row is back at Home with Home's numbers under
+    // "Replace matches", and not re-created under "Skip conflicts". Attic
+    // holds no stock for the item under either. `expect.poll` because these
+    // read the server after the import's clicks.
+    const expectedHomeStock =
+      strategy === 'Replace matches'
+        ? [FIXTURE_STOCK_BY_LOCATION.DEFAULT.packedQuantity]
+        : []
+    const stocksAt = async (locationId: string) =>
+      (await readStocksForItem(page, request, baseURL, CLOUD_ITEM_ID))
+        .filter((row) => row.locationId === locationId)
+        .map((row) => row.packedQuantity)
+    await expect.poll(() => stocksAt(homeId)).toEqual(expectedHomeStock)
+    expect(await stocksAt(attic.id)).toEqual([])
 
-    // And Home's cart item is still at Home, and Attic has none
-    expect(await cartCountAt(request, CLOUD_ITEM_ID, homeId)).toBe(1)
+    // And Home's cart item is back at Home, and Attic has none
+    await expect.poll(() => cartCountAt(request, CLOUD_ITEM_ID, homeId)).toBe(1)
     expect(await cartCountAt(request, CLOUD_ITEM_ID, attic.id)).toBe(0)
 
-    // And Home's log is still at Home, and no log sits at Attic
+    // And Home's log is back at Home, and no log sits at Attic
+    await expect
+      .poll(async () =>
+        (await readLogs(request))
+          .filter((log) => log.locationId === homeId)
+          .map((log) => log.logKey),
+      )
+      .toEqual(['log.purchased'])
     const logs = await readLogs(request)
-    expect(
-      logs.filter((log) => log.locationId === homeId).map((log) => log.logKey),
-    ).toEqual(['log.purchased'])
     expect(logs.filter((log) => log.locationId === attic.id)).toEqual([])
   })
 }
