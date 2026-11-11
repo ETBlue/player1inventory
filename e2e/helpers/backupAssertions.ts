@@ -1,5 +1,6 @@
 import type { APIRequestContext, Page } from '@playwright/test'
 import { expect } from '@playwright/test'
+import { homeLocationName } from '../constants'
 import { readLocations, readStocksForItem } from './stockReadback'
 
 // The location half of the import/export round-trip checks, shared by
@@ -20,8 +21,15 @@ import { readLocations, readStocksForItem } from './stockReadback'
 // BOTH FIXTURES (e2e/fixtures/local-backup.json and cloud-backup.json) DESCRIBE
 // THE SAME THREE LOCATIONS, with the same quantities. Only the ids differ,
 // which is the point: the local default is the `'local'` sentinel, the cloud
-// default is a server-generated cuid, and the import remap rewrites the
+// home location is a server-generated cuid, and the import remap rewrites the
 // payload's default onto whichever one the destination holds.
+//
+// "HOME" BELOW MEANS: in local, the `isDefault` row; in cloud, the household's
+// FIRST location by `order`. Cloud has no default location since households
+// H3a (the server dropped `Location.isDefault` in task 3.14). The web app's
+// cloud import remap puts the payload's default onto that first location
+// (`fetchCloudDefaultLocationId` in apps/web/src/lib/importData.ts), and
+// `readLocations` marks the same row `isHome`.
 
 /** The two locations whose NAME survives an import in both modes. */
 export const FIXTURE_NON_DEFAULT_LOCATION_NAMES = [
@@ -32,18 +40,22 @@ export const FIXTURE_NON_DEFAULT_LOCATION_NAMES = [
 /**
  * The name the FIXTURES give their default location.
  *
- * It is deliberately NOT `DESTINATION_DEFAULT_LOCATION_NAME`: a fixture whose
- * default was already called "My Home" could not tell "the backup's name was
- * applied" apart from "the destination's name was kept".
+ * It is deliberately NOT `destinationDefaultLocationName(...)`: a fixture
+ * whose default was already called "My Home" or "Home" could not tell "the
+ * backup's name was applied" apart from "the destination's name was kept".
  */
 export const FIXTURE_DEFAULT_LOCATION_NAME = 'Fixture Home'
 
 /**
- * The name the DESTINATION's default location keeps after an import.
+ * The name the DESTINATION's home location keeps after an import.
  *
- * It is the literal `'My Home'` in both modes: `apps/web/src/db/index.ts` line
- * 62 for Dexie's `on('populate')`, and `DEFAULT_LOCATION_NAME` in
- * `apps/server/src/lib/defaultLocation.ts` for `ensureDefaultLocation`.
+ * It is NOT the same in the two modes (`homeLocationName` in e2e/constants.ts):
+ *
+ *   - local: "My Home", from Dexie's `on('populate')` (apps/web/src/db/index.ts);
+ *   - cloud: "Home", from first sign-in and from `clearAllData`
+ *     (`firstLocationName` in apps/server/src/lib/household.ts). Until
+ *     households H3a the server's `ensureDefaultLocation` called it "My Home"
+ *     too, so this used to be one constant for both modes.
  *
  * It is the right expected value for EVERY cloud import, and for a LOCAL import
  * that runs `skip`. The table further down says which case is which.
@@ -63,15 +75,16 @@ export const FIXTURE_DEFAULT_LOCATION_NAME = 'Fixture Home'
  *
  * Measured 2026-10-04: restoring a backup whose default was called "Fixture
  * Home" gave `[ "Fixture Cabin", "My Home", "Fixture Office" ]` in BOTH
- * projects. The two non-default locations keep their names, because they are
- * genuinely missing from the destination and so `skip` adds them.
+ * projects. (Cloud now says "Home" where it said "My Home".) The two
+ * non-default locations keep their names, because they are genuinely missing
+ * from the destination and so `skip` adds them.
  *
  * `clear` AND `replace` ARE NOT DIFFERENT FROM EACH OTHER HERE, AND THEY DIFFER
  * FROM `skip` IN LOCAL MODE ONLY. `importLocations` branches on
  * `strategy === 'skip'` and on nothing else, so both of the other two strategies
  * `bulkPut` the whole location list and the LOCAL default row takes the backup's
  * name. Cloud does not follow: `bulkCreateLocations` skips a row whose id is
- * already taken whatever the strategy, so the server's default keeps "My Home".
+ * already taken whatever the strategy, so the server's home location keeps "Home".
  * That split was PR 4b task 4's choice, made so `locations` stays on the create
  * pass ahead of the carts and logs that name them. A location row holds only a
  * name and an order, so no stock, cart or log is lost either way.
@@ -79,10 +92,12 @@ export const FIXTURE_DEFAULT_LOCATION_NAME = 'Fixture Home'
  * SO A SPEC THAT RUNS `clear` OR `replace` IN BOTH PROJECTS MUST BRANCH ON
  * `baseURL === CLOUD_WEB_URL` for the default's expected name:
  *
- *   | strategy          | local expects                 | cloud expects                       |
- *   |-------------------|-------------------------------|-------------------------------------|
- *   | `skip`            | DESTINATION_DEFAULT_LOCATION_NAME | DESTINATION_DEFAULT_LOCATION_NAME |
- *   | `replace`, `clear`| FIXTURE_DEFAULT_LOCATION_NAME | DESTINATION_DEFAULT_LOCATION_NAME   |
+ *   | strategy           | local expects                    | cloud expects             |
+ *   |--------------------|----------------------------------|---------------------------|
+ *   | `skip`             | "My Home" (the destination's)    | "Home" (the destination's)|
+ *   | `replace`, `clear` | FIXTURE_DEFAULT_LOCATION_NAME    | "Home" (the destination's)|
+ *
+ * The "destination's" column is `destinationDefaultLocationName(baseURL)`.
  *
  * `e2e/tests/settings/import-strategies.spec.ts` does that branch, in its
  * `expectedDefaultLocationName` helper.
@@ -108,14 +123,20 @@ export const FIXTURE_DEFAULT_LOCATION_NAME = 'Fixture Home'
  * Radix `Dialog` (`role="dialog"`), `DataModeCard`'s three are Radix
  * `AlertDialog`s (`role="alertdialog"`).
  */
-export const DESTINATION_DEFAULT_LOCATION_NAME = 'My Home'
+export function destinationDefaultLocationName(
+  baseURL: string | undefined,
+): string {
+  return homeLocationName(baseURL)
+}
 
 /**
  * What each location holds after the round trip.
  *
- * `DEFAULT` is keyed by the `isDefault` FLAG, not by a name, because the two
- * strategies disagree about that name (see `DESTINATION_DEFAULT_LOCATION_NAME`) and
- * both answers are correct for their strategy.
+ * `DEFAULT` is keyed by the HOME location (`isHome` from `readLocations`: the
+ * `isDefault` row in local, the first location in cloud), not by a name,
+ * because the strategies disagree about that name (see
+ * `destinationDefaultLocationName`) and both answers are correct for their
+ * strategy.
  *
  * THE THREE ROWS CARRY THREE DIFFERENT QUANTITIES ON PURPOSE. With one
  * location, or with equal numbers, "each row kept its own location" and "every
@@ -136,14 +157,19 @@ export const FIXTURE_STOCK_BY_LOCATION: Record<
 }
 
 /**
- * Every fixture location survived the round trip, exactly one of them is the
- * default, and that one is called `defaultLocationName`.
+ * Every fixture location survived the round trip, and the HOME location is
+ * called `defaultLocationName`.
  *
- * "Exactly one default" and "exactly three locations" are what catch a stray
- * extra location. A payload whose default row kept its own id lands BESIDE the
- * destination's own default instead of on it, which gives four locations and
- * two defaults in local mode (and, in cloud mode, a `P2002` on
- * `Location_one_default_per_user_key` after `clearAllData` has already run).
+ * "Exactly three locations" is what catches a stray extra location. A payload
+ * whose default row kept its own id lands BESIDE the destination's home
+ * instead of on it, which gives four locations. In local mode that is also
+ * two `isDefault` rows. In cloud mode there is no flag: "exactly one home" is
+ * always true there, because `isHome` marks the first row. What the cloud
+ * half checks is that the FIRST location by `order` has the expected name, so
+ * a payload whose rows landed in the wrong order, or whose default landed on
+ * the wrong row, still fails. (Before households H3a task 3.14 a stray cloud
+ * default failed with a `P2002` on `Location_one_default_per_user_key`. That
+ * index is gone.)
  *
  * Returns `Record<locationName, id>` with the default's id also under the key
  * `DEFAULT`.
@@ -159,7 +185,7 @@ export async function expectFixtureLocations(
   expect(locations.map((l) => l.name).sort()).toEqual(
     [defaultLocationName, ...FIXTURE_NON_DEFAULT_LOCATION_NAMES].sort(),
   )
-  expect(locations.filter((l) => l.isDefault).map((l) => l.name)).toEqual([
+  expect(locations.filter((l) => l.isHome).map((l) => l.name)).toEqual([
     defaultLocationName,
   ])
 
@@ -171,7 +197,7 @@ export async function expectFixtureLocations(
       )
     }
     ids[location.name] = location.id
-    if (location.isDefault) ids.DEFAULT = location.id
+    if (location.isHome) ids.DEFAULT = location.id
   }
   return ids
 }
@@ -237,8 +263,8 @@ export async function expectFixtureStockPerLocation(
  *
  * It is kept because it says the rule in the words a reader needs — "the
  * payload's location, not the caller's default" — and because it reads the
- * default by its `isDefault` FLAG rather than by name, which is one fewer thing
- * to get wrong if the name assertions ever change. Do not count it toward
+ * default as the HOME row (`isHome`) rather than by name, which is one fewer
+ * thing to get wrong if the name assertions ever change. Do not count it toward
  * coverage, and do not add a third such restatement.
  */
 export async function expectStockNotCollapsedOntoDefault(
@@ -248,10 +274,10 @@ export async function expectStockNotCollapsedOntoDefault(
   itemId: string,
 ): Promise<void> {
   const locations = await readLocations(page, request, baseURL)
-  const defaultLocation = locations.find((l) => l.isDefault)
+  const defaultLocation = locations.find((l) => l.isHome)
   if (!defaultLocation) {
     throw new Error(
-      `expectStockNotCollapsedOntoDefault: no default location — got ${JSON.stringify(locations)}`,
+      `expectStockNotCollapsedOntoDefault: no home location — got ${JSON.stringify(locations)}`,
     )
   }
   const rows = await readStocksForItem(page, request, baseURL, itemId)

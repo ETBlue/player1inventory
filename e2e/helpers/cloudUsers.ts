@@ -118,7 +118,8 @@ export type LocationRole = 'organizer' | 'participant' | 'viewer'
  *   only. The route creates the member's `User` row when it is missing.
  *
  * Each location must be one of the owner's household. The route gives the
- * member no location of their own, so no `isDefault` row.
+ * member no location of their own. (A "Home" comes only from first sign-in,
+ * and the route sets the member's first sign-in claim.)
  *
  * Clean the member up with `cleanupCloudData(request, memberUserId)` in both
  * hooks. Run the owner's cleanup too: it deletes the household and every

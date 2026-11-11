@@ -131,7 +131,7 @@ const PWA_WEB_SERVER = {
 // two: its web app talks to the API server over GraphQL. No spec in `local` or
 // `pwa` reaches the API server — every spec that names CLOUD_SERVER_URL,
 // CLOUD_GRAPHQL_URL, makeGql, cleanupCloudData, seedCloudFixture or
-// ensureCloudDefaultLocation is either cloud-only or guarded on
+// ensureCloudHomeLocation is either cloud-only or guarded on
 // `baseURL === CLOUD_WEB_URL`.
 //
 // One spec crosses projects: a11y.spec.ts runs in BOTH `local` and `pwa`, and its

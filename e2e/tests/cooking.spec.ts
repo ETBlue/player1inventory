@@ -5,7 +5,7 @@ import {
   test,
 } from '@playwright/test'
 import { CLOUD_WEB_URL } from '../constants'
-import { ensureCloudDefaultLocation } from '../helpers/cloudSeed'
+import { ensureCloudHomeLocation } from '../helpers/cloudSeed'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
 import { splitInlineStock } from '../helpers/locationSeed'
 import { CookingPage } from '../pages/CookingPage'
@@ -25,16 +25,17 @@ async function seedDatabase(
     // Cloud: create items and recipe via GraphQL API
     const gql = makeGql(request)
 
-    // Make the default location exist before the stock writes below.
+    // Make the household's first location ("Home") exist before the stock
+    // writes below, and get its id. The `locations` query runs first sign-in.
     //
     // This started as a workaround for a server bug (issue #287):
     // `mirrorStockToDefaultLocation` ended in `if (!locationId) return`, so a
     // stock write that arrived before the user's first `locations` query was
-    // dropped in silence and the Stock tab showed 0. The server now creates the
-    // default location itself, so this call is no longer what makes the test
-    // pass. It stays because a seed that guarantees its own preconditions does
-    // not depend on server behaviour to be correct.
-    const home = await ensureCloudDefaultLocation(request)
+    // dropped in silence and the Stock tab showed 0. Every stock write now
+    // names its location, so this call is no longer what makes the test pass.
+    // It stays because the writes below need a location id, and a seed that
+    // guarantees its own preconditions does not depend on server behaviour.
+    const home = await ensureCloudHomeLocation(request)
 
     // The opening quantities go to `upsertItemStock`, which NAMES its location.
     //

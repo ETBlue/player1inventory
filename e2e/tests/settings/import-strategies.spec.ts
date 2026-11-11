@@ -8,7 +8,7 @@ import type { APIRequestContext, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { CLOUD_WEB_URL } from '../../constants'
 import {
-  DESTINATION_DEFAULT_LOCATION_NAME,
+  destinationDefaultLocationName,
   expectFixtureStockPerLocation,
   FIXTURE_DEFAULT_LOCATION_NAME,
   FIXTURE_STOCK_BY_LOCATION,
@@ -112,7 +112,9 @@ const SEED_ONLY_STOCK = {
 /**
  * The destination, written the same way in both modes (helpers/fixture.ts).
  *
- * ONE LOCATION ONLY, named like the destination's own default. The backup brings
+ * ONE LOCATION ONLY, named like the destination's own home location ("My Home"
+ * in local, "Home" in cloud), so `seedCloudFixture` does not rename it. The
+ * backup brings
  * three locations of its own: its default is remapped onto this one, and
  * "Fixture Office" / "Fixture Cabin" are created with the backup's own ids. That
  * is the shape `helpers/backupAssertions.ts` was written for, and it is also the
@@ -120,9 +122,13 @@ const SEED_ONLY_STOCK = {
  * creates a non-default location through `createLocation`, which assigns a
  * server cuid that no fixture file can name in advance.
  */
-const DESTINATION: Fixture = {
+const destination = (baseURL: string | undefined): Fixture => ({
   locations: [
-    { key: 'home', name: DESTINATION_DEFAULT_LOCATION_NAME, isDefault: true },
+    {
+      key: 'home',
+      name: destinationDefaultLocationName(baseURL),
+      isDefault: true,
+    },
   ],
   vendors: [],
   items: [
@@ -135,7 +141,7 @@ const DESTINATION: Fixture = {
   ],
   shelves: [],
   recipes: [],
-}
+})
 
 const isCloud = (baseURL: string | undefined) => baseURL === CLOUD_WEB_URL
 
@@ -147,13 +153,13 @@ const isCloud = (baseURL: string | undefined) => baseURL === CLOUD_WEB_URL
  * strategy that is not `skip`, so the LOCAL default row — remapped onto the
  * `'local'` sentinel — takes the backup's name, "Fixture Home". In CLOUD,
  * `bulkCreateLocations` (apps/server/src/resolvers/import.resolver.ts) skips a
- * row whose id is already taken, so the server's default keeps "My Home". That
+ * row whose id is already taken, so the server's home location keeps "Home". That
  * difference was PR 4b task 4's choice, made so `locations` stays on the create
  * pass ahead of the carts and logs that name them.
  */
 function expectedDefaultLocationName(baseURL: string | undefined): string {
   return isCloud(baseURL)
-    ? DESTINATION_DEFAULT_LOCATION_NAME
+    ? destinationDefaultLocationName(baseURL)
     : FIXTURE_DEFAULT_LOCATION_NAME
 }
 
@@ -189,15 +195,15 @@ async function readItemNamesById(
   return byId
 }
 
-/** Write `DESTINATION` into whichever backend this project runs against. */
+/** Write `destination(baseURL)` into whichever backend this project runs against. */
 async function seedDestination(
   page: Page,
   request: APIRequestContext,
   baseURL: string | undefined,
 ): Promise<string> {
   const locationIds = isCloud(baseURL)
-    ? await seedCloudFixture(request, DESTINATION)
-    : await seedLocalFixture(page, DESTINATION)
+    ? await seedCloudFixture(request, destination(baseURL))
+    : await seedLocalFixture(page, destination(baseURL))
   return locationIds.home
 }
 
@@ -330,9 +336,9 @@ test('user can clear existing data and import a backup over it', async ({
   })
 
   // And its stock row went with it. Read by item rather than by location id,
-  // because cloud's `clearAllData` deletes every Location row and
-  // `ensureDefaultLocation` then re-creates the default with a NEW cuid — the id
-  // the seed returned above no longer exists.
+  // because cloud's `clearAllData` deletes every Location row and creates a
+  // new "Home" with a NEW cuid in the same transaction, so the id the seed
+  // returned above no longer exists.
   expect(
     await readStocksForItem(page, request, baseURL, SEED_ONLY_ITEM_ID),
   ).toEqual([])

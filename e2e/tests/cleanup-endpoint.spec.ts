@@ -69,7 +69,7 @@ import { makeGql } from '../utils/cloud'
 
 type Row = { id: string }
 
-const LOCATIONS = `query { locations { id name isDefault } }`
+const LOCATIONS = `query { locations { id name } }`
 const CREATE_LOCATION = `mutation ($name: String!) { createLocation(name: $name) { id } }`
 const CREATE_TAG_TYPE = `mutation ($name: String!, $color: String!) {
   createTagType(name: $name, color: $color) { id }
@@ -159,12 +159,15 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     // second is created outright, with a second `LocationMember` row. Two, so the readback can tell "the seeded
     // locations are gone" from "there happens to be one location".
     const { locations } = await gql<{
-      locations: { id: string; isDefault: boolean }[]
+      locations: { id: string; name: string }[]
     }>(LOCATIONS)
-    const home = locations.find((loc) => loc.isDefault)
+    // Exactly one: the account was cleaned in `beforeEach`, so first sign-in
+    // has just made "Home" and nothing else.
+    expect(locations).toHaveLength(1)
+    const home = locations[0]
     if (!home)
       throw new Error(
-        `no default location after the locations query — got ${JSON.stringify(locations)}`,
+        `no location after the locations query — got ${JSON.stringify(locations)}`,
       )
     const { createLocation } = await gql<{ createLocation: Row }>(
       CREATE_LOCATION,

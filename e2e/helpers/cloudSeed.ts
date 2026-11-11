@@ -23,11 +23,11 @@ import {
 // Ids come back from `createLocation`, and stock is written one row at a time
 // through `upsertItemStock`.
 
-type LocationRow = { id: string; name: string; isDefault: boolean }
+type LocationRow = { id: string; name: string }
 type StockRow = { itemId: string; locationId: string }
 
-const LOCATIONS_QUERY = `query { locations { id name isDefault } }`
-const CREATE_LOCATION = `mutation ($name: String!) { createLocation(name: $name) { id name isDefault } }`
+const LOCATIONS_QUERY = `query { locations { id name } }`
+const CREATE_LOCATION = `mutation ($name: String!) { createLocation(name: $name) { id name } }`
 const RENAME_LOCATION = `mutation ($id: ID!, $name: String!) { updateLocation(id: $id, input: { name: $name }) { id name } }`
 const BULK_VENDORS = `mutation ($vendors: [VendorInput!]!) { bulkCreateVendors(vendors: $vendors) { id } }`
 const BULK_TAG_TYPES = `mutation ($tagTypes: [TagTypeInput!]!) { bulkCreateTagTypes(tagTypes: $tagTypes) { id } }`
@@ -42,44 +42,42 @@ const UPSERT_STOCK = `mutation ($itemId: ID!, $locationId: ID!, $input: ItemStoc
 }`
 
 /**
- * Read the caller's locations and return the default one, creating it if the
- * `locations` query has never run for this user.
+ * Read the caller's locations and return the FIRST one, the household's home.
  *
- * `seedCloudFixture` needs the default location's ID AND NAME: the id to map the
- * fixture's default location key onto, the name to decide whether to rename it. So
- * this helper is required regardless of what the server does on its own.
+ * Cloud has no default location (households H3a task 3.12 in the web app,
+ * task 3.14 on the server, which dropped `Location.isDefault`). What a fresh
+ * account has instead is the location first sign-in makes: "Home" in English,
+ * at `order` 0 (`ensureHousehold` and `createFirstLocation` in
+ * apps/server/src/lib/household.ts). The `locations` query is what runs first
+ * sign-in, so after this call the household and "Home" exist.
  *
- * It began as a workaround for a server bug (issue #287, fixed 2026-09-16). A stock
- * write that arrived before the user's first `locations` query used to be dropped in
- * silence — `mirrorStockToDefaultLocation` ended with `if (!locationId) return`, so
- * the item was created, `Item`'s legacy columns were set, and no `ItemStock` row was
- * written. The pantry then rendered the item below the "not stocked here" divider
- * showing 0. That function lived in apps/server/src/lib/stockDualWrite.ts, WHICH NO
- * LONGER EXISTS: cloud locations PR 5 deleted the whole module along with `Item`'s
- * five state columns, so there is no bridge left to drop a write in silence.
+ * "First" means first in the server's answer, which is sorted by `order`, then
+ * by `id`. That is the same rule the web app uses for its fallback location
+ * (`fetchCloudDefaultLocationId` in apps/web/src/lib/importData.ts, and
+ * `useActiveLocation`), so a seed written here lands where the app looks first.
+ * Every spec calls this on a clean account (`cleanupCloudData` runs in
+ * `beforeEach`), where "Home" is the only location.
  *
- * That is fixed at the source: `ensureDefaultLocation` (apps/server/src/lib/
- * defaultLocation.ts) now creates the location instead of returning null, and every
- * stock write path goes through it. A cloud seed no longer has to call this first to
- * avoid losing writes — but calling it first is still the clearer way to write a
- * seed, and it is how this helper gets the id it returns.
+ * `seedCloudFixture` needs the location's ID AND NAME: the id to map the
+ * fixture's home key onto, the name to decide whether to rename it.
  *
- * The bug was invisible until 2026-09-14, because `/e2e/cleanup` did not delete
- * `Location`. Every run inherited the previous run's default location, so the mirror
- * always had somewhere to write.
+ * History: until task 3.14 this was `ensureCloudDefaultLocation` and picked the
+ * row with `isDefault: true`. Before households H3a task 3.5 the server made
+ * that row in `ensureDefaultLocation` (apps/server/src/lib/defaultLocation.ts,
+ * now deleted).
  */
-export async function ensureCloudDefaultLocation(
+export async function ensureCloudHomeLocation(
   request: APIRequestContext,
 ): Promise<{ id: string; name: string }> {
   const gql = makeGql(request)
   const { locations } = await gql<{ locations: LocationRow[] }>(LOCATIONS_QUERY)
-  const serverDefault = locations.find((loc) => loc.isDefault)
-  if (!serverDefault) {
+  const home = locations[0]
+  if (!home) {
     throw new Error(
-      `ensureCloudDefaultLocation: no default location after the locations query — got ${JSON.stringify(locations)}`,
+      `ensureCloudHomeLocation: no location after the locations query — got ${JSON.stringify(locations)}`,
     )
   }
-  return serverDefault
+  return home
 }
 
 /**
@@ -95,19 +93,20 @@ export async function seedCloudFixture(
   const defaultLocation = defaultFixtureLocation(fixture)
   const locationIds: Record<string, string> = {}
 
-  // 1. Reading `locations` is what runs `ensureDefaultLocation`
-  //    (location.resolver.ts), so the caller's default location exists from
-  //    here on. Its id is a cuid, never the local `'local'` sentinel.
-  const serverDefault = await ensureCloudDefaultLocation(request)
-  locationIds[defaultLocation.key] = serverDefault.id
+  // 1. Reading `locations` runs first sign-in, so the household's first
+  //    location exists from here on. Its id is a cuid, never the local
+  //    `'local'` sentinel. The fixture's home entry (`isDefault: true`) is
+  //    mapped onto it.
+  const serverHome = await ensureCloudHomeLocation(request)
+  locationIds[defaultLocation.key] = serverHome.id
 
-  // The server names its default location from DEFAULT_LOCATION_NAME
-  // ('My Home', location.resolver.ts). Rename it when the fixture disagrees, so
-  // the fixture stays the single description of the data in both modes instead
-  // of silently inheriting a server constant.
-  if (serverDefault.name !== defaultLocation.name) {
+  // First sign-in names that location "Home" (`firstLocationName` in
+  // apps/server/src/lib/household.ts). Rename it when the fixture disagrees,
+  // so the fixture stays the single description of the data in both modes
+  // instead of silently inheriting a server constant.
+  if (serverHome.name !== defaultLocation.name) {
     await gql(RENAME_LOCATION, {
-      id: serverDefault.id,
+      id: serverHome.id,
       name: defaultLocation.name,
     })
   }

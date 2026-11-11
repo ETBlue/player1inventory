@@ -1,7 +1,8 @@
 import type { APIRequestContext, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
+import { CLOUD_HOME_LOCATION_NAME } from '../../constants'
 import {
-  DESTINATION_DEFAULT_LOCATION_NAME,
+  destinationDefaultLocationName,
   expectFixtureStockPerLocation,
   FIXTURE_DEFAULT_LOCATION_NAME,
   FIXTURE_NON_DEFAULT_LOCATION_NAMES,
@@ -107,12 +108,13 @@ const CLOUD_ONLY_LOCATION_NAME = 'Cloud Only Shed'
  *   - `replace` and `skip` keep both, which gives an extra item and a FOURTH
  *     location.
  *
- * The default is named `DESTINATION_DEFAULT_LOCATION_NAME` so `seedCloudFixture`
- * does not rename the server's own default — the server already calls it that.
+ * The home entry is named `CLOUD_HOME_LOCATION_NAME` ("Home") so
+ * `seedCloudFixture` does not rename the household's first location: first
+ * sign-in already calls it that.
  */
 const CLOUD_DESTINATION: Fixture = {
   locations: [
-    { key: 'home', name: DESTINATION_DEFAULT_LOCATION_NAME, isDefault: true },
+    { key: 'home', name: CLOUD_HOME_LOCATION_NAME, isDefault: true },
     { key: 'shed', name: CLOUD_ONLY_LOCATION_NAME },
   ],
   vendors: [],
@@ -343,10 +345,11 @@ test('user can switch from offline to cloud mode and clear & import their local 
   // All three locations, each holding its OWN quantities.
   //
   // The default's expected name is the DESTINATION's, not the fixture's.
-  // `clearAllData` deletes every `Location` row; `fetchCloudDefaultLocationId`
-  // then reads the list, which makes `ensureDefaultLocation` create a fresh
-  // default called "My Home"; the remap puts the payload's default row onto that
-  // id, and `bulkCreateLocations` skips a row whose id is already taken. So the
+  // `clearAllData` deletes every `Location` row and creates a fresh "Home" in
+  // the same transaction (households H3a task 3.10). `fetchCloudDefaultLocationId`
+  // then reads the list and takes its FIRST location, that new "Home". The
+  // remap puts the payload's default row onto that id, and
+  // `bulkCreateLocations` skips a row whose id is already taken. So the
   // backup's "Fixture Home" does not survive in cloud mode, which is PR 4b task
   // 4's choice rather than a defect — see `helpers/backupAssertions.ts`.
   await expectFixtureStockPerLocation(
@@ -354,6 +357,6 @@ test('user can switch from offline to cloud mode and clear & import their local 
     request,
     baseURL,
     ITEM_ID,
-    DESTINATION_DEFAULT_LOCATION_NAME,
+    destinationDefaultLocationName(baseURL),
   )
 })

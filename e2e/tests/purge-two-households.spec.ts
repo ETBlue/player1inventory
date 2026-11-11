@@ -49,7 +49,7 @@ const USER_B = `${E2E_SECOND_USER_ID}-purge-b`
 
 type Row = { id: string }
 
-const LOCATIONS = `query { locations { id name isDefault } }`
+const LOCATIONS = `query { locations { id name } }`
 const CREATE_LOCATION = `mutation ($name: String!) { createLocation(name: $name) { id } }`
 const CREATE_TAG_TYPE = `mutation ($name: String!, $color: String!) {
   createTagType(name: $name, color: $color) { id }
@@ -127,7 +127,7 @@ async function seedEverything(
   // Location: the first request makes the household and "Home" (first
   // sign-in), and a second location is created outright
   const { locations } = await gql<{
-    locations: { id: string; isDefault: boolean }[]
+    locations: { id: string }[]
   }>(LOCATIONS)
   const home = locations[0]
   if (!home) throw new Error(`${label}: no location after first sign-in`)

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { CLOUD_WEB_URL } from '../constants'
-import { ensureCloudDefaultLocation } from '../helpers/cloudSeed'
+import { ensureCloudHomeLocation } from '../helpers/cloudSeed'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
 import { relocateCarts, splitInlineStock } from '../helpers/locationSeed'
 import { PantryPage } from '../pages/PantryPage'
@@ -82,7 +82,7 @@ test('user can see expiration badge updated after checkout without manual refres
     )
     expect(testItem.id).toBeDefined()
 
-    // Stock it in the account's default location. Since cloud-locations PR 2
+    // Stock it in the household's first location, "Home". Since cloud-locations PR 2
     // the cloud pantry reads `PantryData` and shows only items with an
     // `ItemStock` row HERE, and since PR 5 `CreateItemInput` does not even
     // DECLARE the five per-location state fields — sending one fails GraphQL
@@ -92,12 +92,9 @@ test('user can see expiration badge updated after checkout without manual refres
     // `useCreateItem`'s cloud branch always follows the create with an
     // `upsertItemStock` (see apps/web/src/hooks/useItems.ts). This seed has to
     // do the same two steps to stand in for it.
-    const { locations } = await gql<{
-      locations: { id: string; isDefault: boolean }[]
-    }>(`query { locations { id isDefault } }`, {})
-    const defaultLocationId = (
-      locations.find((l) => l.isDefault) ?? locations[0]
-    ).id
+    // Cloud has no default location since households H3a, so this is the
+    // first location in the answer, the one the app opens on.
+    const { id: defaultLocationId } = await ensureCloudHomeLocation(request)
     await gql(
       `mutation Upsert($itemId: ID!, $locationId: ID!, $input: ItemStockInput!) {
         upsertItemStock(itemId: $itemId, locationId: $locationId, input: $input) { id }
@@ -658,7 +655,7 @@ test.describe('cloud mode vendor carts', () => {
     // `createVendor(locationId:)` is `ID!` since cloud-locations PR 3b Task 4 —
     // the server pre-creates the vendor's cart AT that location, so the seed has
     // to name the one the app will be viewing.
-    const home = await ensureCloudDefaultLocation(request)
+    const home = await ensureCloudHomeLocation(request)
     const CREATE_VENDOR = `mutation CreateVendor($name: String!, $locationId: ID!) {
       createVendor(name: $name, locationId: $locationId) { id }
     }`
@@ -698,7 +695,7 @@ test.describe('cloud mode vendor carts', () => {
     const gql = makeGql(request)
 
     // See the note on the sibling test: `locationId` is required since PR 3b.
-    const home = await ensureCloudDefaultLocation(request)
+    const home = await ensureCloudHomeLocation(request)
     const { createVendor: vendor } = await gql<{
       createVendor: { id: string }
     }>(

@@ -56,13 +56,17 @@ const ITEM = 'item-milk'
 //   local  — `seedLocalFixture` writes `order: index` for every location
 //            (helpers/localSeed.ts line 50), so the ARRAY order is the order,
 //            default location included.
-//   cloud  — the default location is pinned at `order: 0` by
-//            `ensureDefaultLocation` (apps/server/src/lib/defaultLocation.ts
-//            line 52) whatever the array says, because `seedCloudFixture` does
-//            not create it — it reads back the one the server made. Every other
-//            location is then appended by `createLocation` at `maxOrder + 1`
-//            (apps/server/src/resolvers/location.resolver.ts lines 40-42), in
-//            the array's own order.
+//   cloud  — the home location is pinned at `order: 0` by first sign-in
+//            (`createFirstLocation` in apps/server/src/lib/household.ts)
+//            whatever the array says, because `seedCloudFixture` does not
+//            create it — it reads back the one the server made and renames it
+//            to "My Home". Every other location is then appended by
+//            `createLocation` at `maxOrder + 1`
+//            (apps/server/src/resolvers/location.resolver.ts), in the array's
+//            own order. Cloud has no default location since households H3a;
+//            this test needs only the order. (Until task 3.5 the server's
+//            `ensureDefaultLocation` pinned it, in the deleted
+//            apps/server/src/lib/defaultLocation.ts.)
 //
 // MEASURED 2026-09-24, by moving `HOME_LOCATION` to the middle of the page-order
 // test's array and running both projects:
@@ -256,8 +260,11 @@ test.describe('items stock tab — location pager', () => {
     //      - `InventoryLogInput` (apps/server/src/schema/import.graphql) has no
     //        `locationId` field at all.
     //      - `bulkCreateInventoryLogs` and `bulkCreateShoppingCarts`
-    //        (apps/server/src/resolvers/import.resolver.ts) both hardcode
-    //        `locationId: await ensureDefaultLocation(userId)`.
+    //        (apps/server/src/resolvers/import.resolver.ts) both hardcoded
+    //        `locationId: await ensureDefaultLocation(userId)` when this was
+    //        written. (That function was deleted in households H3a task 3.5,
+    //        and the imports now take a location from the payload. Not
+    //        re-checked here, because this test still runs in local only.)
     //    So every imported log and cart lands at the default location, and the
     //    fixture would silently become "both rows are at My Home" — a test that
     //    still passes while proving nothing.
