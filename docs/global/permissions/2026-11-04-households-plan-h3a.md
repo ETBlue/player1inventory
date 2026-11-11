@@ -1685,8 +1685,22 @@ still writes `userId` on the seven models.
   "present on one table, absent on the other" rule in `apps/server/prisma/CLAUDE.md`.
 - [x] **Step 6:** Full gate. Commit:
   `feat(server): drop the account scope from locations and the catalog (#359, #360)`.
-- [ ] **Step 7 (main session):** with the owner's consent, migrate the test database again,
+- [x] **Step 7 (main session):** with the owner's consent, migrate the test database again,
   as in task 3.3 step 6.
+
+  **Done 2026-11-11** on the shared test database (`ep-round-surf-a1owh3iu`), after a
+  reset:
+  - `verify:migration` exited 0, with 162 `ok` lines. Every cleanup kind was checked.
+  - The first sign-in race proof passed, with the claim made by `tx.user.updateMany`
+    (the same call as `ensureHousehold`): "the second claim WAITED for the first
+    transaction … exactly one of two overlapping claims wins: 1 and 0".
+  - `prisma migrate diff --from-url $TEST_DIRECT_URL --to-schema-datamodel
+    prisma/schema.prisma --exit-code` exited 0: no drift.
+  - **The `RAISE NOTICE` counts did NOT appear in the script's output.** So the
+    rehearsal in task 3.16 must count with plain queries (the review's runbook item 9
+    already says this). This run proves it only for the way `verify-migration.ts` calls
+    `migrate deploy`. It is still not proven whether a bare `prisma migrate deploy`
+    prints them.
 
   **From the review of task 3.5:** if the race proof was not re-run since commit `3ba61aeb`
   (see task 3.3 step 6), this run is where it happens. Report its result. When step 5 edits
@@ -1695,7 +1709,7 @@ still writes `userId` on the seven models.
 
 **Done** (steps 1 to 6) in `2312707a` (the code and the migration
 `20261111000000_drop_user_scope`) and `56aa15de` (the owner's answers on cross-household
-rows). Step 7 is still open.
+rows). Step 7 was done by the main session on 2026-11-11 (see above).
 
 **What the implementer said the plan got wrong:**
 
@@ -1820,24 +1834,51 @@ location role `organizer`. It still deletes the logs other members wrote. See ta
 `item-list-state-restore`, `cleanup-endpoint`, `cart-id-cross-user-leak`,
 `location-switcher` `.spec.ts`; `e2e/CLAUDE.md`.
 
-- [ ] **Step 1:** `ensureCloudDefaultLocation` becomes `ensureCloudHomeLocation`. It calls
+- [x] **Step 1:** `ensureCloudDefaultLocation` becomes `ensureCloudHomeLocation`. It calls
   `locations` (which runs first sign-in) and returns the first location. Fixtures keep a
   `HOME` key, mapped onto that location for cloud. Local seeds keep `isDefault` and
   "My Home".
-- [ ] **Step 2:** Cloud expectations of "My Home" become "Home". `settings/locations.spec.ts`'s
+- [x] **Step 2:** Cloud expectations of "My Home" become "Home". `settings/locations.spec.ts`'s
   "Default location is undeletable" becomes two tests: local (unchanged) and cloud (the last
   location cannot be deleted; a second one can).
-- [ ] **Step 3:** `item-stock-pager.spec.ts` relies on the default being at `order` 0. The
+- [x] **Step 3:** `item-stock-pager.spec.ts` relies on the default being at `order` 0. The
   first sign-in location is created with `order` 0, so check that this still holds.
-- [ ] **Step 4:** `import-strategies.spec.ts` and `data-mode-migration.spec.ts`: keep the
+- [x] **Step 4:** `import-strategies.spec.ts` and `data-mode-migration.spec.ts`: keep the
   `clear` → "Home is re-created" expectation, and keep the colliding item **and** the new item
   in `import-strategies.spec.ts` (#330 guard, design *Known gaps*). H4 rewrites them again
   for its dialog.
-- [ ] **Step 5:** Run the cloud project alone, then local alone. **Copy `test-results/` aside
+- [x] **Step 5:** Run the cloud project alone, then local alone. **Copy `test-results/` aside
   before any re-run** (root `CLAUDE.md`).
-- [ ] **Step 6:** Commit: `test(e2e): cloud has no default location any more`.
+- [x] **Step 6:** Commit: `test(e2e): cloud has no default location any more`.
 
-**Found by the review of task 3.5, and owed here:** these `e2e/` files still name the deleted
+**Done 2026-11-11** in `f16d497f` (the specs and helpers) and `5d4322f3` (the new
+same-household restore test). Notes:
+
+- Step 1: the fixtures keep their `isDefault` key, not a new `HOME` key. Local needs the
+  flag anyway, and in cloud `seedCloudFixture` maps that entry onto "Home" and renames it.
+  So a fixture that says "My Home" shows "My Home" in both projects, and only the specs that
+  never seed (`locations`, `location-switcher`) needed the cloud name. They use
+  `homeLocationName(baseURL)` from `e2e/constants.ts`. `readLocations` returns `isHome`
+  (the `isDefault` row in local, the first location in cloud).
+- Step 3: holds. The pager tests pass in cloud: first sign-in makes "Home" at `order` 0.
+- Step 4: `DESTINATION_DEFAULT_LOCATION_NAME` became `destinationDefaultLocationName(baseURL)`
+  ("My Home" in local, "Home" in cloud). Both import-strategies items are kept.
+- `settings-global-pages.spec.ts`'s sidebar test now runs in cloud. It renames the household
+  first and checks the 🏠 label shows that name.
+- Step 5: before this task **76 of 130** cloud tests failed (57 on `isDefault`, 19 on the
+  name). After it: cloud **126 passed, 7 skipped** (133), local **178 passed, 6 skipped**,
+  pwa **73 passed**.
+- The two items owed by the review of task 3.12 are done: every `isDefault` read is gone
+  from `e2e/`, and the same-household restore test exists (see the next note).
+
+**What this task found about the restore test (review of task 3.12).** Mutation: removing
+the same-household check in `buildLocationRemap` makes the `replace` test fail, but only on
+the CART (Home's cart count 0, expected 1). Home's stock row and log stayed on Home under
+that mutation. Probably because the server's upserts keep an existing row's location when
+the id matches, so only the cart, whose id carries its location, moved. Not checked in the
+server code. The `skip` test stays green under the mutation: it is a negative control.
+
+
 `ensureDefaultLocation` or `lib/defaultLocation.ts` in comments: `helpers/cloudSeed.ts`,
 `helpers/backupAssertions.ts`, `tests/cleanup-endpoint.spec.ts`, `tests/item-logs.spec.ts`,
 `tests/item-stock-pager.spec.ts`, `tests/location-switcher.spec.ts`,
