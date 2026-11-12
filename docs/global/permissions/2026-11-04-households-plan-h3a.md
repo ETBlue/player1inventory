@@ -35,7 +35,7 @@ owner agreed to this order on 2026-11-04:
 |---|---|---|
 | 1 | `fix/catalog-write-scope` | Seven tag, tag type and vendor writes that never checked whose row they change. A live security bug, so it does not wait for H3 |
 | 2 | **H3a (this plan)** | Households, roles, the data migration, first sign-in, scoping for every resolver, `isDefault` removed, the household name in the 🏠 label, rename |
-| 3 | `chore/build-shared-types` | A build step for `@p1i/types`, so the server can import shared code at runtime |
+| 3 | `chore/build-shared-types` | A build step for `@p1i/types`, so the server can import shared code at runtime. ✅ Built 2026-11-13 (after H3a merged into `develop`, #375): the server build bundles with esbuild. [Design](../backend/2026-11-13-build-shared-types-design.md) |
 | 4 | H3b | Shared carts: `@@unique([cartId, itemId])`, the `CartItem.userId` filters (15, not 9), `Cart.userId` dropped, checkout and `consumeRecipes` in one transaction with a server-computed total |
 
 **Why carts can wait for H3b.** Until H5 every household has one person. So every
@@ -163,7 +163,7 @@ The rest were made while writing. Task 3.0 writes all of them back into the desi
 | H4 | No phase owned renaming the household | H3a adds `renameHousehold(name)`, owner only, and a name field on `/settings/household` (cloud) | H3a starts showing the name, so it must be changeable |
 | H5 | The design drops `Location.order` in H3, but personal order arrives in H7 | **Keep `Location.order` and drag-to-reorder until H7.** H3a drops only `isDefault` and its index. Reordering needs the household role `manager` | Dropping it would remove a working feature for four phases. Nobody shares a location before H5 |
 | H6 | `LocationPreference`, `UserPreference` and `dataUpdatedAt` serve only H7's sorts | **All three move to H7** | Nothing reads them before H7. A column nobody reads is a column nobody tests |
-| H7 | The design says to share `buildCheckoutLogQuantities` | H3b, after `chore/build-shared-types` | The server cannot load `@p1i/types` at runtime today |
+| H7 | The design says to share `buildCheckoutLogQuantities` | H3b, after `chore/build-shared-types` | The server could not load `@p1i/types` at runtime when this was written. Since `chore/build-shared-types` (2026-11-13) it can |
 | H8 | `CartItem` can hold two rows for one item | H3b adds `@@unique([cartId, itemId])` and merges duplicates in its migration | Carts are H3b |
 | H9 | Two-user role tests need a second member, but invites are H5 | E2E-only route `POST /e2e/household-members`, inside `if (E2E_TEST_MODE)` like H2's routes | Real SQL for roles in H3a, not two phases later |
 | H10 | The design puts the two-household purge test before H3; the phase plan puts it in H6 | **H3a**, task 3.10 | H3a changes the filters, so the test must exist when they change |
