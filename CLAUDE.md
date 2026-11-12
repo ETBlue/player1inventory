@@ -382,7 +382,7 @@ After each implementation phase (each numbered step in an implementation plan), 
 
 ```bash
 pnpm lint                                  # ROOT, not apps/web: web src + e2e/ (see below)
-pnpm build 2>&1 | tee /tmp/p1i-build.log   # FULL build from repo root: codegen + web (tsc -b && vite) + server (tsc) + e2e/ type-check
+pnpm build 2>&1 | tee /tmp/p1i-build.log   # FULL build from repo root: codegen + web (tsc -b && vite) + server (tsc + esbuild bundle + start check) + e2e/ type-check
 (cd apps/web && pnpm build-storybook)
 pnpm check                                 # ROOT, not apps/web: web src + e2e/ (see below)
 grep 'TS6385' /tmp/p1i-build.log && echo "FAIL: deprecated imports found" || echo "OK: no deprecated imports"
@@ -785,13 +785,15 @@ migration against real SQL — passed the whole gate. Proved by mutation: a deli
 exits 2.
 
 ```
-build:     tsc && tsc -p tsconfig.scripts.json && cp src/schema/*.graphql dist/schema/
-typecheck: tsc --noEmit && tsc -p tsconfig.scripts.json
+build:     prisma generate && tsc --noEmit && tsc -p tsconfig.scripts.json && node scripts/build.mjs && node scripts/check-start.mjs
+typecheck: prisma generate && tsc --noEmit && tsc -p tsconfig.scripts.json
 ```
 
-**The two passes do not overlap**, which is why this costs little: `tsc` checks and emits the
-**53** files under `src`, the second pass checks the **3** under `scripts`, and nothing is
-checked twice. The first version of this fix reused the whole-project `typecheck` and so
+**The two passes do not overlap**, which is why this costs little: `tsc --noEmit` checks the
+files under `src`, the second pass checks the **3** `.ts` files under `scripts`, and nothing is
+checked twice. (`src` was **53** files when this was written; on 2026-11-13
+`tsc --noEmit --listFiles` listed **86**. The two `.mjs` build scripts in `scripts/` are not
+type-checked, because `allowJs` is off.) The first version of this fix reused the whole-project `typecheck` and so
 checked `src` twice — 105 files instead of 53, and 3.4s. **`apps/web`'s own second pass,
 added 2026-10-30, does overlap** — see *Web test and story files ARE type-checked* above for
 what that costs.
@@ -803,6 +805,10 @@ what that costs.
 |---|---|---|---|
 | `verify-migration.ts` only | 1 | 188 | 3.04s, 2.89s, 3.09s, 3.08s |
 | plus `databaseIsolation.ts` and its `.test.ts` | 3 | 234 | 3.45s, 3.63s |
+
+Re-measured 2026-11-13 on `chore/build-shared-types`, when the build gained the esbuild
+bundle and the start check (see below): the old steps took **3.70–3.92s**, and the whole
+server build **3.84–4.43s**. The start check alone costs about 0.2–0.5s.
 
 The 46 extra declaration files are **vitest's types**, pulled in by the test file's
 `import … from 'vitest'`. That is the whole cost: about **0.5s** on every server build, in
@@ -816,11 +822,38 @@ test file, so `tsc` checks every `apps/server/src/**/*.test.ts`: measured 2026-1
 `pnpm --filter server exec tsc --noEmit` exit 2 with `TS2322`. `apps/web`'s test files have
 been checked since 2026-10-30.)
 
-Why two tsconfigs rather than one: `tsconfig.json` **emits**, with `rootDir: "src"` and
-`outDir: "dist"`. Adding `scripts` to its `include` moves `rootDir` to `.` and emits
-`dist/src/…` plus `dist/scripts/…`, which breaks `start: node dist/index.js`.
-`tsconfig.scripts.json` extends it with `rootDir: "."`, `noEmit: true` and
-`include: ["scripts"]`. **Do not merge them.**
+Why two tsconfigs rather than one: until 2026-11-13 `tsconfig.json` **emitted** `dist/`,
+with `rootDir: "src"`, and adding `scripts` to it would have moved the output to `dist/src/…`.
+That reason is gone. `tsconfig.json` now sets `noEmit: true` and has no `outDir` or
+`rootDir`; esbuild writes `dist/` (see below). The configs stay separate for the no-overlap
+reason only: `tsconfig.scripts.json` extends `tsconfig.json` with `include: ["scripts"]`, so
+each file is checked once.
+
+**`apps/server`'s build bundles the server with esbuild, then starts it once** — since
+2026-11-13 (`chore/build-shared-types`). Design:
+`docs/global/backend/2026-11-13-build-shared-types-design.md`.
+
+- **Why:** `@p1i/types` exports raw TypeScript. A plain `tsc` emit kept the bare import, and
+  `node dist/index.js` failed with `ERR_UNKNOWN_FILE_EXTENSION`. `tsc`, `tsx` and Vitest all
+  read the source, so none of them saw it. Now the server imports `cartIdFor`, `parseCartId`
+  and `isBeingBought` from `@p1i/types`, and its own copies are deleted.
+- **`scripts/build.mjs`** bundles `src/index.ts` into `dist/index.js` (about 129 KiB, plus a
+  source map). It bundles `workspace:` packages and keeps every other dependency external.
+  It copies the 12 `.graphql` files **flat** into `dist/`, not `dist/schema/`, because
+  `src/schema/index.ts` reads them from the folder of the running file. `dist/` no longer
+  holds the 46 `*.test.js` files the old `tsc` emit shipped.
+- **`scripts/check-start.mjs`** runs `node --enable-source-maps dist/index.js` with
+  `PORT=0`, a database URL that points at a closed local port, `E2E_TEST_MODE=false`, in an
+  empty temp folder. It passes when the server prints `Server ready at` within 20s, and it
+  always stops the server. It needs no secrets.
+- **Proved by mutation:** leaving `@p1i/types` external fails it with
+  `ERR_UNKNOWN_FILE_EXTENSION`, exit 1; copying the `.graphql` files into `dist/schema/`
+  fails it with `ENOENT … dist/schema.graphql`.
+- **It runs inside `pnpm --filter server build`**, so the root `pnpm build`, the gate and
+  Railway's build all run it. The `cloud` E2E project starts the server from source with
+  `tsx`, so E2E does not prove the bundle; this check does.
+- **Not yet proved on Railway.** Nobody has run the start check there. If it fails there,
+  the deploy build fails and the old server keeps running. Read the build log.
 
 **The no-overlap trick depends on a fact that could change.** `scripts/` imports nothing from
 `src` today — only `@prisma/client`, `vitest`, node builtins, and its own sibling modules. If
@@ -1149,11 +1182,13 @@ deploys to production: Cloudflare Pages builds the web, and Railway deploys the 
 until the households feature is done, households phase PRs (H3a onward) use `develop` as their
 base, and `develop` is merged into `main` only at planned **checkpoint releases**. Each
 checkpoint has its own deploy runbook and a fresh rehearsal on a Neon branch of production.
-Base a households branch on `origin/develop` and rebase onto it. A fix unrelated to households
-can still go to `main`. **How such a fix reaches `develop` is not decided yet:** rebasing
-`develop` onto `main` rewrites a shared branch and needs a force-push, and merging `main` into
-`develop` breaks the rebase rule below. Ask the owner before doing either. See
-`docs/global/permissions/2026-10-31-households-plan.md`, *How this plan is split*.
+Base a households branch on `origin/develop` and rebase onto it. **No changes go to `main`
+until households is done.** The owner decided this on 2026-11-13 ("I'll not touch branch main
+before the household feature is done"). So the question of how a `main` hotfix reaches
+`develop` is closed. If that ever changes, ask the owner first: rebasing `develop` onto `main`
+rewrites a shared branch and needs a force-push, and merging `main` into `develop` breaks the
+rebase rule below. See `docs/global/permissions/2026-10-31-households-plan.md`, *How this plan
+is split*.
 
 **Absorbing upstream changes: always rebase, never merge**
 
