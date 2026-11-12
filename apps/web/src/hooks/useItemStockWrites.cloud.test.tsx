@@ -425,7 +425,7 @@ describe('cloud stock writes go to one location', () => {
       localStorage.removeItem(activeLocationStorageKey('cloud'))
     })
 
-    it('user creating an item has it stocked in the real default location', async () => {
+    it('user creating an item has it stocked in the first cloud location', async () => {
       // Given a brand-new cloud session with no remembered location
       const { result } = renderHook(() => useCreateItem(), {
         wrapper: makeWrapper(),
@@ -444,7 +444,7 @@ describe('cloud stock writes go to one location', () => {
         unpackedQuantity: 0,
       })
 
-      // Then the stock landed in the isDefault location — NOT under the
+      // Then the stock landed in the first location — NOT under the
       // `'local'` sentinel, which names no cloud Location and whose upsert the
       // server refuses
       expect(rowAt('item-new', LOC_A)?.targetQuantity).toBe(3)
@@ -453,7 +453,7 @@ describe('cloud stock writes go to one location', () => {
       expect(created?.locationId).toBe(LOC_A)
     })
 
-    it('user editing stock has it written to the real default location', async () => {
+    it('user editing stock has it written to the first cloud location', async () => {
       // Given the same fresh session
       const { result } = renderHook(() => useUpdateItem(), {
         wrapper: makeWrapper(),

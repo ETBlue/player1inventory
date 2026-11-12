@@ -15,7 +15,6 @@ type Item {
   estimatedDueDays: Int
   expirationThreshold: Int
   expirationMode: String
-  userId: String!
   createdAt: String!
   updatedAt: String!
 }

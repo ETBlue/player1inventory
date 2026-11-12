@@ -21,25 +21,29 @@ import { typeDefs } from '../schema/index.js'
 // without rewriting its seven existing tests. This file carries its own mock
 // built from two stateful fakes:
 //
-//   - `src/test/stockFake.ts` for `location`, so `ensureDefaultLocation` and
-//     `requireLocationRole` run against real rows. Its `location.findFirst`
-//     applies `where` key by key (`where.x === undefined || row.x === where.x`),
-//     so dropping `userId` from the ownership query returns MORE rows and the
-//     fixture sees it.
+//   - `src/test/householdWorld.ts` for `location` (its `stockFake`) and the
+//     household and role rows. Every role is a row `beforeEach` seeds: each
+//     person owns one household and organizes its own locations
+//     (`soloHouseholds`). So `fallbackImportLocation` and
+//     `requireLocationRole` run against real rows, and a stranger's location
+//     is refused because the caller has no role on it. (Households H3a task
+//     3.9 removed `derivedRoles`, which invented those rows from each
+//     location's `userId`.)
 //   - `src/test/shoppingFake.ts` for `cart`, so a written row can be read back
 //     and its `locationId` column inspected. Its `upsert` keeps `create` and
 //     `update` apart and applies `update` key by key, which is what makes a
 //     wrongly MOVED cart visible.
 vi.mock('../lib/prisma.js', async () => {
-  const { createStockFake } = await import('../test/stockFake.js')
+  const { createHouseholdWorld } = await import('../test/householdWorld.js')
   const { createShoppingFake } = await import('../test/shoppingFake.js')
-  const stock = createStockFake()
+  const world = createHouseholdWorld()
+  const stock = world.stock
   const shopping = createShoppingFake()
   return {
     prisma: {
-      ...stock.client,
+      ...world.client,
       location: {
-        ...stock.client.location,
+        ...world.client.location,
         // Wrapped so a test can count HOW MANY ownership checks ran, on top of
         // the fake's real row matching.
         findFirst: vi.fn(stock.client.location.findFirst),
@@ -62,6 +66,14 @@ vi.mock('../lib/prisma.js', async () => {
       // Handles onto the fakes, hung off the mocked client because a `vi.mock`
       // factory is hoisted above every import and cannot close over a
       // module-scope binding.
+      // Wrapped so a test can count HOW MANY location role checks ran.
+      // Since households H3a task 3.5, `requireLocationRole` reads
+      // `locationMember`, not `location`.
+      locationMember: {
+        ...world.client.locationMember,
+        findFirst: vi.fn(world.client.locationMember.findFirst),
+      },
+      $world: world,
       $stockFake: stock,
       $shoppingFake: shopping,
     },
@@ -69,10 +81,13 @@ vi.mock('../lib/prisma.js', async () => {
 })
 
 import { prisma } from '../lib/prisma.js'
+import type { HouseholdWorld } from '../test/householdWorld.js'
+import { soloHouseholds } from '../test/householdRows.js'
 import type { ShoppingFake } from '../test/shoppingFake.js'
 import type { StockFake } from '../test/stockFake.js'
 
 const mockPrisma = prisma as unknown as {
+  $world: HouseholdWorld
   $stockFake: StockFake
   $shoppingFake: ShoppingFake
 }
@@ -113,13 +128,23 @@ const VENDOR = 'vendor_costco'
 
 const TS = new Date('2026-01-01T00:00:00.000Z')
 
+// Each person owns one household and organizes their own locations.
+const HH_USER = 'hh_user'
+const HH_STRANGER = 'hh_stranger'
+
 beforeEach(() => {
   vi.clearAllMocks()
   mockPrisma.$stockFake.reset([
-    { id: LOC_OTHER, userId: USER, isDefault: false, name: 'Garage', order: 1, createdAt: TS, updatedAt: TS },
-    { id: LOC_DEFAULT, userId: USER, isDefault: true, name: 'Kitchen', order: 0, createdAt: TS, updatedAt: TS },
-    { id: LOC_STRANGER, userId: STRANGER, isDefault: true, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
+    { id: LOC_OTHER, householdId: HH_USER, name: 'Garage', order: 1, createdAt: TS, updatedAt: TS },
+    { id: LOC_DEFAULT, householdId: HH_USER, name: 'Kitchen', order: 0, createdAt: TS, updatedAt: TS },
+    { id: LOC_STRANGER, householdId: HH_STRANGER, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
   ])
+  mockPrisma.$world.seedHouseholds(
+    soloHouseholds([
+      { userId: USER, householdId: HH_USER, locationIds: [LOC_OTHER, LOC_DEFAULT] },
+      { userId: STRANGER, householdId: HH_STRANGER, locationIds: [LOC_STRANGER] },
+    ]),
+  )
   mockPrisma.$shoppingFake.reset([], [])
 })
 
@@ -164,8 +189,8 @@ function storedLocationOf(id: string): string | undefined {
 }
 
 const locationFindFirst = (
-  prisma as unknown as { location: { findFirst: ReturnType<typeof vi.fn> } }
-).location.findFirst
+  prisma as unknown as { locationMember: { findFirst: ReturnType<typeof vi.fn> } }
+).locationMember.findFirst
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -339,7 +364,7 @@ describe('bulkCreateShoppingCarts — the location comes from the cart id', () =
     expect(storedLocationOf(`${LOC_OTHER}:v1`)).toBe(LOC_OTHER)
     expect(storedLocationOf(`${LOC_DEFAULT}:v2`)).toBe(LOC_DEFAULT)
     // And the ownership check ran twice — once per DISTINCT location, not five
-    // times. `ensureDefaultLocation` is not called at all, because no id was
+    // times. `fallbackImportLocation` is not called at all, because no id was
     // bare.
     expect(locationFindFirst).toHaveBeenCalledTimes(2)
   })
@@ -449,12 +474,17 @@ describe('bulkUpsertShoppingCarts — the location comes from the cart id', () =
     await exec(BULK_UPSERT_CARTS, [{ id, lastPurchasedAt: '2026-02-01T00:00:00.000Z' }])
     expect(storedLocationOf(id)).toBe(LOC_DEFAULT)
 
-    // When the same id is re-imported while the caller's default has moved to
-    // LOC_OTHER — the account's default changed between the two imports
+    // When the same id is re-imported while the caller's fallback location
+    // has moved to LOC_OTHER — the account's locations were reordered between
+    // the two imports. Since households H3a task 3.5 the fallback is the
+    // caller's FIRST location by `order` (decision H12), not the `isDefault`
+    // row, so it is `order` that moves here. With LOC_DEFAULT still first,
+    // a resolver that moved the cart would move it to the same place, and
+    // this test would pass against it.
     mockPrisma.$stockFake.reset([
-      { id: LOC_OTHER, userId: USER, isDefault: true, name: 'Garage', order: 1, createdAt: TS, updatedAt: TS },
-      { id: LOC_DEFAULT, userId: USER, isDefault: false, name: 'Kitchen', order: 0, createdAt: TS, updatedAt: TS },
-      { id: LOC_STRANGER, userId: STRANGER, isDefault: true, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
+      { id: LOC_OTHER, householdId: HH_USER, name: 'Garage', order: 0, createdAt: TS, updatedAt: TS },
+      { id: LOC_DEFAULT, householdId: HH_USER, name: 'Kitchen', order: 1, createdAt: TS, updatedAt: TS },
+      { id: LOC_STRANGER, householdId: HH_STRANGER, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
     ])
     const result = await exec(BULK_UPSERT_CARTS, [
       { id, lastPurchasedAt: '2026-03-01T00:00:00.000Z' },

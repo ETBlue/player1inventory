@@ -473,6 +473,14 @@
       "general": {
         "label": "一般",
         "description": "匯出與匯入資料"
+      },
+      "name": {
+        "label": "家庭名稱",
+        "ownerOnly": "只有家庭擁有者可以修改名稱。",
+        "saved": "家庭名稱已儲存",
+        "forbiddenError": "只有家庭擁有者可以修改家庭名稱。",
+        "invalidError": "請輸入 1 到 {{max}} 個字的名稱。",
+        "saveError": "無法儲存家庭名稱，請再試一次。"
       }
     },
     "user": {
@@ -580,6 +588,8 @@
       "deleteLabel": "刪除 {{name}}",
       "deleteTitle": "刪除「{{name}}」？",
       "deleteDescription": "將會移除這個據點。",
+      "deleteLastError": "無法刪除最後一個據點。請先新增另一個據點。",
+      "deleteError": "無法刪除這個據點，請再試一次。",
       "defaultHint": "預設",
       "dragToReorder": "拖曳以重新排序 {{name}}",
       "dragInstructions": "按空白鍵或 Enter 拿起據點，使用方向鍵移動，再按一次空白鍵或 Enter 放下。",

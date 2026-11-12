@@ -37,3 +37,26 @@ export const E2E_USER_ID = 'e2e-test-user'
  * rows left here survive into the next spec.
  */
 export const E2E_SECOND_USER_ID = 'e2e-test-user-2'
+
+/**
+ * The name of the location a NEW, empty pantry starts with.
+ *
+ * LOCAL: Dexie's `on('populate')` creates "My Home" (apps/web/src/db/index.ts),
+ * flagged `isDefault`.
+ *
+ * CLOUD: first sign-in creates "Home" in English (`firstLocationName` in
+ * apps/server/src/lib/household.ts), and `clearAllData` creates it again.
+ * Cloud has had no default location since households H3a: "Home" is only the
+ * household's first location, at `order` 0, and it can be renamed or deleted
+ * like any other (the server refuses only the household's LAST location).
+ * The E2E browser runs in English, so the Chinese name "住家" never appears.
+ */
+export const LOCAL_HOME_LOCATION_NAME = 'My Home'
+export const CLOUD_HOME_LOCATION_NAME = 'Home'
+
+/** `CLOUD_HOME_LOCATION_NAME` in the cloud project, `LOCAL_HOME_LOCATION_NAME` otherwise. */
+export function homeLocationName(baseURL: string | undefined): string {
+  return baseURL === CLOUD_WEB_URL
+    ? CLOUD_HOME_LOCATION_NAME
+    : LOCAL_HOME_LOCATION_NAME
+}

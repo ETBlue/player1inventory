@@ -391,17 +391,16 @@ describe('sanitiseCloudPayload — strip Apollo/server fields from cloud export'
 // entity, never as a thrown error that hides which query was dropped.
 // ---------------------------------------------------------------------------
 
-// TWO locations, and the office one is NOT the default. With a single location
-// "every location's stock" and "the only location's stock" are the same
+// TWO locations. Cloud rows carry no `isDefault` (households task 3.12).
+// With a single location "every location's stock" and "the only location's stock" are the same
 // answer, so a one-location fixture cannot tell a correct implementation from
 // one that ignores location entirely (root CLAUDE.md, Proving a Test Works).
 const CLOUD_LOCATIONS = [
   {
     __typename: 'Location',
     id: 'loc-home',
-    name: 'My Home',
+    name: 'Home',
     order: 0,
-    isDefault: true,
     createdAt: '2026-02-01T00:00:00.000Z',
     updatedAt: '2026-02-01T00:00:00.000Z',
   },
@@ -410,7 +409,6 @@ const CLOUD_LOCATIONS = [
     id: 'loc-office',
     name: 'Office',
     order: 1,
-    isDefault: false,
     createdAt: '2026-02-01T00:00:00.000Z',
     updatedAt: '2026-02-01T00:00:00.000Z',
   },
@@ -569,8 +567,8 @@ describe('fetchCloudPayload — item note and wikidata URL (issue #335)', () => 
 })
 
 describe('fetchCloudPayload — the cloud backup is lossless', () => {
-  it('user can export every location, not only the default one', async () => {
-    // Given a cloud account with two locations, one of them not the default
+  it('user can export every location, not only the first one', async () => {
+    // Given a cloud household with two locations
     const client = makeCloudClient()
 
     // When the cloud export payload is fetched
@@ -587,29 +585,23 @@ describe('fetchCloudPayload — the cloud backup is lossless', () => {
     ])
     expect(locations.find((l) => l.id === 'loc-office')?.name).toBe('Office')
 
-    // And `isDefault` IS kept in the file, while Apollo's `__typename` is not.
+    // And each location keeps its `order`, while Apollo's `__typename` is
+    // dropped. The file carries no `isDefault`: a household has no default
+    // location (households task 3.12). The import side finds the payload's
+    // "default" as the location with the lowest `order`
+    // (`findPayloadDefaultLocationId` in lib/importData.ts), so `order` is
+    // what the remap rule needs from this file now.
     //
-    // THIS ASSERTION WAS INVERTED UNTIL PR 4b TASK 3. It read
-    // `not.toHaveProperty('isDefault')`, on the grounds that `LocationInput`
-    // has no such field — true, and not the question. The flag is never
-    // UPLOADED (`toLocationInput` drops it, and the server would reject a
-    // second default with a P2002), but the BACKUP FILE is the only place the
-    // import side can learn which of the payload's locations is its default.
-    // `findPayloadDefaultLocationId` (lib/importData.ts) reads this flag and
-    // nothing else, so dropping it here made the remap rule a no-op for every
-    // cloud-sourced payload: restoring your own cloud backup with "clear and
-    // import" would leave a stray empty default location beside the restored
-    // one, because `clearAllData` deletes the old default and
-    // `ensureDefaultLocation` creates a new id in its place.
-    //
-    // The comment beside the `GetLocations` call in `fetchCloudPayload`
-    // already claimed "the backup records it" while this test asserted the
-    // opposite. The comment was the intent; the test was the accident.
+    // History: until task 3.12 this asserted the flag WAS kept, because the
+    // import side read the flag and nothing else. Since PR 4b task 3, a file
+    // without it made the remap rule a no-op for every cloud-sourced payload.
+    // The `order` fallback is what replaces it.
     for (const location of locations) {
       expect(location).not.toHaveProperty('__typename')
+      expect(location).not.toHaveProperty('isDefault')
     }
-    expect(locations.find((l) => l.id === 'loc-home')?.isDefault).toBe(true)
-    expect(locations.find((l) => l.id === 'loc-office')?.isDefault).toBe(false)
+    expect(locations.find((l) => l.id === 'loc-home')?.order).toBe(0)
+    expect(locations.find((l) => l.id === 'loc-office')?.order).toBe(1)
   })
 
   it('user can export the stock held in each location separately', async () => {

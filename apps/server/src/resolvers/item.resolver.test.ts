@@ -13,9 +13,25 @@ import type { Context } from '../context.js'
 // deleted that mirror. Leaving the stores here would make a reinstated mirror
 // pass quietly; without them it throws `Cannot read properties of undefined`,
 // which is what makes the deletion observable.
+//
+// `householdMember` answers the two reads `requireCatalogRole` (lib/authz.ts)
+// makes: every caller here is the `owner` of `hh_test`. The role checks
+// themselves are tested against stateful fakes in
+// `catalog-household.resolver.test.ts`, with three people.
+//
+// `tag.findMany` and `vendor.findMany` answer `requireCatalogIds`: they echo
+// back every id asked for, so every tag and vendor id here is the household's.
 vi.mock('../lib/prisma.js', async () => {
+  const echoIds = async ({ where }: { where: { id: { in: string[] } } }) =>
+    where.id.in.map((id) => ({ id }))
   return {
     prisma: {
+      householdMember: {
+        findFirst: vi.fn(async () => ({ householdId: 'hh_test' })),
+        findUnique: vi.fn(async () => ({ role: 'owner' })),
+      },
+      tag: { findMany: vi.fn(echoIds) },
+      vendor: { findMany: vi.fn(echoIds) },
       item: {
         findMany: vi.fn(),
         findFirst: vi.fn(),
@@ -128,16 +144,15 @@ describe('Item resolvers', () => {
     // When user creates an item
     const result = await execOp(
       `mutation CreateItem($input: CreateItemInput!) {
-        createItem(input: $input) { id name userId tagIds vendorIds createdAt updatedAt }
+        createItem(input: $input) { id name tagIds vendorIds createdAt updatedAt }
       }`,
       { input: { name: 'Milk' } },
     )
 
-    // Then item is returned with userId and mapped fields
+    // Then item is returned with its mapped fields
     expect(result?.errors).toBeUndefined()
-    const created = result?.data?.createItem as { id: string; name: string; userId: string; tagIds: string[]; vendorIds: string[] }
+    const created = result?.data?.createItem as { id: string; name: string; tagIds: string[]; vendorIds: string[] }
     expect(created.name).toBe('Milk')
-    expect(created.userId).toBe('user_test123')
     expect(created.id).toBe('item_1')
     expect(created.tagIds).toEqual([])
     expect(created.vendorIds).toEqual([])
@@ -256,7 +271,7 @@ describe('Item resolvers', () => {
     const list = result?.data?.items as { id: string; name: string }[]
     expect(list).toHaveLength(2)
     expect(mockPrisma.item.findMany).toHaveBeenCalledWith({
-      where: { userId: 'user_test123' },
+      where: { householdId: 'hh_test' },
       include: { tags: true, vendors: true },
     })
   })
@@ -276,7 +291,7 @@ describe('Item resolvers', () => {
     expect(result?.errors).toBeUndefined()
     expect((result?.data?.item as { name: string }).name).toBe('Butter')
     expect(mockPrisma.item.findFirst).toHaveBeenCalledWith({
-      where: { id: 'item_1', userId: 'user_test123' },
+      where: { id: 'item_1', householdId: 'hh_test' },
       include: { tags: true, vendors: true },
     })
   })
@@ -346,7 +361,7 @@ describe('Item resolvers', () => {
   })
 
   it('returns NOT_FOUND when updating a non-existent item', async () => {
-    // Given no item for the given id+userId
+    // Given no item for the given id in the caller's household
     mockPrisma.item.findFirst.mockResolvedValue(null)
 
     // When updating a non-existent item
@@ -408,8 +423,11 @@ describe('Item resolvers', () => {
     // Then an empty list is returned
     expect(result?.errors).toBeUndefined()
     expect(result?.data?.items).toHaveLength(0)
+    // (the household stub puts every caller in `hh_test`, so this pins only
+    // that the read is filtered by household; the stranger case is in
+    // catalog-household.resolver.test.ts)
     expect(mockPrisma.item.findMany).toHaveBeenCalledWith({
-      where: { userId: 'user_B' },
+      where: { householdId: 'hh_test' },
       include: { tags: true, vendors: true },
     })
   })
@@ -439,7 +457,9 @@ describe('Item resolvers', () => {
     // Then the count is returned
     expect(result?.errors).toBeUndefined()
     expect(result?.data?.itemCountByTag).toBe(3)
-    expect(mockPrisma.itemTag.count).toHaveBeenCalledWith({ where: { tagId: 'tag_1' } })
+    expect(mockPrisma.itemTag.count).toHaveBeenCalledWith({
+      where: { tagId: 'tag_1', item: { householdId: 'hh_test' } },
+    })
   })
 
   it('itemCountByVendor returns count from prisma.itemVendor.count', async () => {
@@ -455,7 +475,9 @@ describe('Item resolvers', () => {
     // Then the count is returned
     expect(result?.errors).toBeUndefined()
     expect(result?.data?.itemCountByVendor).toBe(2)
-    expect(mockPrisma.itemVendor.count).toHaveBeenCalledWith({ where: { vendorId: 'vendor_1' } })
+    expect(mockPrisma.itemVendor.count).toHaveBeenCalledWith({
+      where: { vendorId: 'vendor_1', item: { householdId: 'hh_test' } },
+    })
   })
 
   it('itemCountByRecipe returns count from prisma.recipeItem.count', async () => {
@@ -471,7 +493,9 @@ describe('Item resolvers', () => {
     // Then the count is returned
     expect(result?.errors).toBeUndefined()
     expect(result?.data?.itemCountByRecipe).toBe(4)
-    expect(mockPrisma.recipeItem.count).toHaveBeenCalledWith({ where: { recipeId: 'recipe_1' } })
+    expect(mockPrisma.recipeItem.count).toHaveBeenCalledWith({
+      where: { recipeId: 'recipe_1', item: { householdId: 'hh_test' } },
+    })
   })
 
   it('createdAt and updatedAt are ISO strings in the GraphQL response', async () => {

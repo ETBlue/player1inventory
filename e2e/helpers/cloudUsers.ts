@@ -3,9 +3,10 @@ import { CLOUD_SERVER_URL } from '../constants'
 
 /**
  * Helpers for the server's E2E-only `User` routes (households plan, tasks 2.5
- * and 2.7). All three routes exist only when the server runs with `E2E_TEST_MODE=true`
+ * and 2.7) and its household member route (households H3a, task 3.11). All
+ * four routes exist only when the server runs with `E2E_TEST_MODE=true`
  * (apps/server/src/index.ts, inside the `if (E2E_TEST_MODE)` block; the
- * handlers are in apps/server/src/lib/e2eUsers.ts).
+ * handlers are in apps/server/src/lib/e2eUsers.ts and e2eHouseholds.ts).
  *
  * Which id to pass:
  *
@@ -94,4 +95,52 @@ export async function readCloudUser(
   }
   const body = (await response.json()) as { user: CloudUserRow | null }
   return body.user
+}
+
+/** A household role `POST /e2e/household-members` can give. Never `owner`. */
+export type AddableHouseholdRole = 'manager' | 'member'
+
+/** A location role, as `LocationRole` in apps/server/prisma/schema.prisma. */
+export type LocationRole = 'organizer' | 'participant' | 'viewer'
+
+/**
+ * Put `memberUserId` into the household `ownerUserId` owns, with a household
+ * role and some location roles. `POST /e2e/household-members` (households H3a,
+ * task 3.11; the handler is in apps/server/src/lib/e2eHouseholds.ts). Returns
+ * the household id.
+ *
+ * Two things must be true first, or the route refuses with 409:
+ *
+ * - **The owner has sent one GraphQL request.** First sign-in makes the
+ *   household then.
+ * - **The member has NOT sent any GraphQL request.** A request makes the
+ *   member a household of their own, and a person may be in one household
+ *   only. The route creates the member's `User` row when it is missing.
+ *
+ * Each location must be one of the owner's household. The route gives the
+ * member no location of their own. (A "Home" comes only from first sign-in,
+ * and the route sets the member's first sign-in claim.)
+ *
+ * Clean the member up with `cleanupCloudData(request, memberUserId)` in both
+ * hooks. Run the owner's cleanup too: it deletes the household and every
+ * member row in it, the member's included.
+ */
+export async function addHouseholdMember(
+  request: APIRequestContext,
+  args: {
+    ownerUserId: string
+    memberUserId: string
+    householdRole: AddableHouseholdRole
+    locations: { locationId: string; role: LocationRole }[]
+  },
+): Promise<string> {
+  const url = `${CLOUD_SERVER_URL}/e2e/household-members`
+  const response = await request.post(url, { data: args })
+  if (!response.ok()) {
+    throw new Error(
+      `addHouseholdMember(${args.memberUserId}): POST ${url} returned ${response.status()} ${response.statusText()} — ${await response.text()}`,
+    )
+  }
+  const body = (await response.json()) as { householdId: string }
+  return body.householdId
 }

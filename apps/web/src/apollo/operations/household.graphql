@@ -1,0 +1,15 @@
+query GetHousehold {
+  household {
+    id
+    name
+    role
+  }
+}
+
+mutation RenameHousehold($name: String!) {
+  renameHousehold(name: $name) {
+    id
+    name
+    role
+  }
+}

@@ -90,6 +90,8 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     useGetVendorsQuery: () => emptyQuery,
     useLastPurchaseDatesQuery: () => emptyQuery,
     useCreateRecipeMutation: () => [vi.fn(), {}],
+    // The sidebar's 🏠 entry reads the household name (`HouseholdLabel`).
+    useGetHouseholdQuery: () => emptyQuery,
   }
 })
 

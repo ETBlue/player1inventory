@@ -63,10 +63,11 @@ input InventoryLogInput {
   # OPTIONAL, not `ID!`, on purpose. A client built before cloud locations
   # sends no such field, and making it required would reject every import
   # that client issues. When it is absent the resolver falls back to the
-  # caller's default location, which is what the field replaced.
+  # caller's first location they may write to (`fallbackImportLocation`,
+  # lib/authz.ts, households decision H12).
   #
   # Attacker-controlled. The resolvers verify it through
-  # `requireLocationRole(ctx, locationId, 'member')` before any row is
+  # `requireLocationRole(ctx, locationId, 'participant')` before any row is
   # written — a log in someone else's location would be a cross-user write.
   locationId: ID
 }
@@ -89,34 +90,9 @@ input LocationInput {
   order: Int!
   createdAt: String!
   updatedAt: String!
-  # NO `isDefault` FIELD, ON PURPOSE. `bulkCreateLocations` always writes
-  # `isDefault: false`, and `bulkUpsertLocations` never names the column at
-  # all, so an existing row keeps whatever flag it has.
-  #
-  # Three reasons, and each one is enough on its own:
-  #
-  #  1. The payload's default location is never uploaded as a row. The client
-  #     rewrites its id to the destination account's existing `isDefault` id
-  #     (design §6, brainstorming decision 7), so only NON-default locations
-  #     ever reach these mutations. A field only the remap could fill is a
-  #     field nothing fills.
-  #  2. `ensureDefaultLocation(userId)` (lib/defaultLocation.ts) already
-  #     guarantees the account has exactly one default, so the server does not
-  #     need the payload's opinion about which row that is.
-  #  3. The database would REJECT a second default, not accept it. PR 1's
-  #     migration adds `CREATE UNIQUE INDEX "Location_one_default_per_user_key"
-  #     ON "Location" ("userId") WHERE "isDefault"`
-  #     (20260830000000_add_location_and_item_stock/migration.sql:57). So
-  #     honouring the flag would not corrupt the account — it would make the
-  #     import DIE with an unhandled P2002, and under the "clear & import"
-  #     strategy that happens AFTER `clearAllData` has run, leaving the account
-  #     empty and the import dead.
-  #
-  # Note which way round point 3 is. The PR 4 design doc and the PR 4a plan both
-  # SAID there is "no database constraint keeping it to one row per user". That
-  # was wrong — the index exists — and both were corrected on 2026-10-02
-  # (commit 9f5a7692). The decision is the same either way; only the failure it
-  # prevents is different.
+  # No `isDefault` field. Cloud locations have had no `isDefault` column since
+  # households H3a task 3.14 (the drop_user_scope migration). A cloud backup's
+  # first location is the one with the lowest `order`.
 }
 
 # One ItemStock row from a backup: the per-(item x location) stock STATE.
@@ -195,6 +171,10 @@ extend type Mutation {
   bulkUpsertLocations(locations: [LocationInput!]!): [Location!]!
   bulkUpsertItemStocks(itemStocks: [ItemStockImportInput!]!): [ItemStock!]!
 
-  # Clear all data — used for "clear & import" strategy
+  # Clear the caller's household — used for the "clear & import" strategy.
+  # Household role `owner` only. Deletes the catalog and every location, with
+  # everything in them, and keeps the household and its members. Then makes
+  # one new location, "Home", with the caller as organizer, in the same
+  # transaction (households H3a task 3.10, decision H17).
   clearAllData: Boolean!
 }

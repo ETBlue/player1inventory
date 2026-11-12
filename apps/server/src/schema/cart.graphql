@@ -102,7 +102,7 @@ extend type Query {
 }
 
 extend type Mutation {
-  "Add an item to a cart. The cart id names the location, and the caller needs the `member` role on it."
+  "Add an item to a cart. The cart id names the location, and the caller needs the `participant` role on it."
   addToCart(cartId: ID!, itemId: ID!, quantity: Int!): CartItem!
 
   "Change one cart item's quantity. `id` is a CartItem id; its location comes from the row's own cartId."
@@ -154,8 +154,8 @@ extend type Mutation {
      would have to create `locations x vendors` carts on every call. This
      mutation creates one location's worth, when that location becomes active.
   3. Authorization fits. One caller-supplied `locationId` goes through
-     `requireLocationRole(locationId, 'member')`, the same seam every other
-     location write uses. A read path would have to demand `member` on every
+     `requireLocationRole(locationId, 'participant')`, the same seam every other
+     location write uses. A read path would have to demand `participant` on every
      location just to list them.
 
   `locationId` was required from the start, and there is no default-location

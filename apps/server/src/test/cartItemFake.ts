@@ -3,9 +3,6 @@
 // (`cartItemCountByItem`) and `itemStock.resolver.test.ts`
 // (`removeItemFromLocation`'s cascade).
 //
-// NOT a test file, so `tsc` type-checks it — the same reasoning
-// `src/test/stockFake.ts` records.
-//
 // ── WHY THIS IS SHARED AND NOT COPIED ──
 //
 // Both resolvers ask the same question: "which of this item's cart entries
@@ -30,6 +27,8 @@
 // with the location id today (`${locationId}:${vendorId | 'no-vendor'}`), but
 // it is DERIVED from the column, and a fake that read the string would keep a
 // resolver green after it went back to parsing ids.
+
+import { checkWhere, type WhereSpec } from './whereKeys.js'
 
 /** Only the columns a location filter needs. */
 export interface FakeCart {
@@ -61,20 +60,50 @@ export class MissingCartError extends Error {
   }
 }
 
+// Every key the matcher models, and how. A key outside this spec, at either
+// level, or a value shape its kind does not allow, THROWS — see
+// `whereKeys.ts`.
+const CART_ITEM_WHERE: WhereSpec = {
+  id: 'in',
+  cartId: 'equals',
+  itemId: 'equals',
+  userId: 'equals',
+  cart: { nested: { locationId: 'equals' } },
+}
+
 /**
- * Apply Prisma's `where` semantics for `CartItem`.
+ * The `CartItem` rows a Prisma `where` selects, out of `rows`.
+ *
+ * This is the ONLY export that matches rows, on purpose. It checks the whole
+ * `where` ONCE, before it looks at a row, and only then filters. An exported
+ * per-row matcher would let each caller run the check inside
+ * `Array.filter`, where it never runs on an empty store and never reaches the
+ * nested `cart` filter when an outer key already failed. Both of those return
+ * "no rows" with no error, which is exactly what a cross-account test
+ * expects. See `whereKeys.ts`.
  *
  * Every key is `where.x === undefined || row.x === where.x`, which is Prisma's
  * own rule. A hardcoded ownership or location match would keep a scoping test
  * green after the resolver dropped the scope.
  *
  * Supported keys: `id` (plain string or `{ in: [...] }`), `cartId`, `itemId`,
- * `userId`, and the relation filter `cart: { locationId }`.
+ * `userId`, and the relation filter `cart: { locationId }`. Any other key,
+ * at either level, throws `UnknownWhereKeyError`; an operator object on a
+ * plain key throws `UnsupportedWhereFilterError`.
  *
  * @param carts every `Cart` row the fixture holds — the relation filter reads
  *   `locationId` off these, never off the cart id string
  */
-export function cartItemMatches(
+export function filterCartItems<Row extends FakeCartItem>(
+  rows: readonly Row[],
+  where: Record<string, unknown> | undefined,
+  carts: FakeCart[],
+): Row[] {
+  checkWhere('cartItemFake(cartItem)', where, CART_ITEM_WHERE)
+  return rows.filter((row) => cartItemMatches(row, where ?? {}, carts))
+}
+
+function cartItemMatches(
   row: FakeCartItem,
   where: Record<string, unknown>,
   carts: FakeCart[],

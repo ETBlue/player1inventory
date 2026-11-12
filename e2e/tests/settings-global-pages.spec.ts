@@ -9,6 +9,7 @@ import { seedCloudFixture } from '../helpers/cloudSeed'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
 import type { Fixture } from '../helpers/fixture'
 import { seedLocalFixture } from '../helpers/localSeed'
+import { makeGql } from '../utils/cloud'
 
 // Issue #247 part 2 — the Settings assignment surfaces became GLOBAL.
 //
@@ -20,8 +21,9 @@ import { seedLocalFixture } from '../helpers/localSeed'
 //     Settings link, and test 2 checks that layout plus the household view
 //     🏠 opens.
 //
-// TEST 1 RUNS IN BOTH PROJECTS as of issue #323 task 2. TEST 2 RUNS IN `local`
-// ONLY — see its own `test.skip`.
+// TEST 1 RUNS IN BOTH PROJECTS as of issue #323 task 2. TEST 2 RUNS IN BOTH
+// PROJECTS as of households H3a task 3.15: the 🏠 label is "My data" in local
+// and the household's name in cloud, so the two runs measure different markup.
 //
 // The header comment here used to say the whole file was local-only because
 // "cloud has no `ItemStock` and no locations, so neither behaviour is
@@ -213,18 +215,30 @@ test('user sees no location stock on a settings items tab, while the pantry show
 
 test('user sees My data and Preferences pinned to the bottom of the sidebar, and My data opens the household sidebar', async ({
   page,
+  request,
   baseURL,
 }) => {
-  // LOCAL ONLY, on purpose. The only mode-aware part of the main sidebar is
-  // the 👤 label (`UserLabel` in
-  // src/components/settings/UserSettingsPanel/UserSettingsPanel.tsx). It says
-  // "Preferences" in local mode AND in E2E cloud mode, because E2E cloud has
-  // no Clerk user name. So a cloud run would measure the same links, the same
-  // button and the same bounding boxes a second time.
-  test.skip(
-    baseURL === CLOUD_WEB_URL,
-    'the sidebar renders the same markup in local and E2E cloud mode (the 👤 label is "Preferences" in both), so a cloud run measures identical bounding boxes',
-  )
+  // BOTH PROJECTS. This test was local only until households H3a task 3.15,
+  // with the reason "the sidebar renders the same markup in local and E2E
+  // cloud mode". That stopped being true in task 3.13: the 🏠 label
+  // (`HouseholdLabel`, src/components/settings/HouseholdLabel/HouseholdLabel.tsx)
+  // shows the household's NAME in cloud, and "My data" only in local. The 👤
+  // label is still "Preferences" in both, because E2E cloud has no Clerk user
+  // name.
+  //
+  // In cloud the household is renamed first, to a name no other text on the
+  // page has. That proves the label reads the stored name: the default name
+  // "<displayName>'s Household" depends on the E2E user's display name, and a
+  // label that ignored the household would still show "My data".
+  // The title keeps saying "My data"; it is a sentence for the spec site.
+  let homeLabel = 'My data'
+  if (baseURL === CLOUD_WEB_URL) {
+    homeLabel = 'Pinned Test Household'
+    await makeGql(request)(
+      'mutation ($name: String!) { renameHousehold(name: $name) { id name } }',
+      { name: homeLabel },
+    )
+  }
 
   // Given the pantry at a desktop viewport, where the sidebar is rendered
   // (it is `hidden lg:flex`, so a narrower viewport has no sidebar at all)
@@ -235,6 +249,11 @@ test('user sees My data and Preferences pinned to the bottom of the sidebar, and
   // (<nav aria-label="Sidebar navigation"> — src/components/global/Sidebar/Sidebar.tsx)
   const sidebar = page.getByRole('navigation', { name: 'Sidebar navigation' })
   await expect(sidebar).toBeVisible()
+  // Wait for the 🏠 label first. `allInnerTexts` does not retry, and in cloud
+  // the label shows "My data" until the `household` query answers. Measured:
+  // without this wait the cloud run read "My data" while the page snapshot,
+  // taken a moment later, already showed the household name.
+  await expect(sidebar.getByRole('link', { name: homeLabel })).toBeVisible()
   const labels = await sidebar.getByRole('link').allInnerTexts()
 
   // Then 🏠 "My data" comes after the three location-aware destinations, and
@@ -243,7 +262,7 @@ test('user sees My data and Preferences pinned to the bottom of the sidebar, and
     'Pantry',
     'Shopping',
     'Cooking',
-    'My data',
+    homeLabel,
   ])
 
   // And 🏠 "My data" and the 👤 "Preferences" button are PINNED TO THE BOTTOM,
@@ -255,7 +274,7 @@ test('user sees My data and Preferences pinned to the bottom of the sidebar, and
     .getByRole('link', { name: 'Cooking' })
     .boundingBox()
   const myData = await sidebar
-    .getByRole('link', { name: 'My data' })
+    .getByRole('link', { name: homeLabel })
     .boundingBox()
   const preferences = await sidebar
     .getByRole('button', { name: 'Preferences' })
@@ -283,7 +302,7 @@ test('user sees My data and Preferences pinned to the bottom of the sidebar, and
   // (`?sort=recent&dir=asc&q=&expanded=`), so wait for it before reading it
   await expect(page).toHaveURL(/\/cooking\?/)
   const cookingUrl = page.url()
-  await sidebar.getByRole('link', { name: 'My data' }).click()
+  await sidebar.getByRole('link', { name: homeLabel }).click()
 
   // Then the household config page opens, and the sidebar shows the
   // household view: Back, the heading, and six links
@@ -291,7 +310,7 @@ test('user sees My data and Preferences pinned to the bottom of the sidebar, and
   await expect(page).toHaveURL(/\/settings\/household$/)
   await expect(sidebar.getByRole('button', { name: 'Back' })).toBeVisible()
   await expect(
-    sidebar.getByRole('heading', { name: 'My data', level: 2 }),
+    sidebar.getByRole('heading', { name: homeLabel, level: 2 }),
   ).toBeVisible()
   await expect(sidebar.getByRole('link')).toHaveText([
     'General',
@@ -319,5 +338,5 @@ test('user sees My data and Preferences pinned to the bottom of the sidebar, and
   // Then they return to the last app page they saw, Cooking. Not the `/`
   // fallback: that is why the test visits Cooking first.
   await expect(page).toHaveURL(cookingUrl)
-  await expect(sidebar.getByRole('link', { name: 'My data' })).toBeVisible()
+  await expect(sidebar.getByRole('link', { name: homeLabel })).toBeVisible()
 })

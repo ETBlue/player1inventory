@@ -9,9 +9,6 @@
 // stranger held the id. `requireOwnRowOrUnclaimed` (lib/authz.ts) closes both.
 // Five of those nine models had no fake at all before this file.
 //
-// NOT a test file, so `tsc` type-checks it — the same reasoning
-// `src/test/stockFake.ts` and `src/test/cartItemFake.ts` record.
-//
 // ── WHAT IT MODELS, AND WHY EACH ONE ──
 //
 // It exists to model CONSTRAINTS, not the happy path (root CLAUDE.md → "Write
@@ -99,12 +96,61 @@
 //     matched as a plain value, `null`, or `{ in: [...] }`. A key not named
 //     still throws, so the refusal described above is kept: a store accepts
 //     only the keys its test file asked for on purpose.
+//
+// ── ADDED FOR HOUSEHOLDS H3a (task 3.4) ──
+//
+//   - the `scope` option picks the SCOPE COLUMN: `'userId'` (the default, so
+//     every existing store is unchanged) or `'householdId'`. The six catalog
+//     models — `Item`, `Tag`, `TagType`, `Vendor`, `Recipe`, `Shelf` — move to
+//     `householdId` in task 3.7. `InventoryLog`, `Cart` and `CartItem` keep
+//     `userId`.
+//   - the scope column is the one a `where` may name besides `id`. A
+//     household-scoped store REFUSES a `userId` in the `where`, so a resolver
+//     that still reads by `userId` after task 3.7 fails here instead of
+//     passing. Name `userId` in `columns` only if a test needs it on purpose.
+//   - `create` and `createMany` require the scope column. The
+//     `requiredColumns` option names more NOT NULL columns.
+//
+// ── CHANGED BY HOUSEHOLDS H3a TASK 3.14 ──
+//
+//   - the drop_user_scope migration drops `userId` from the six catalog
+//     models. So a household-scoped store no longer needs
+//     `requiredColumns: ['userId']` (the catalog stores passed it from task
+//     3.7 to 3.14), and it now REFUSES a write that names `userId`: in
+//     `create`, `createMany`, `update`, `updateMany` and both halves of
+//     `upsert`. Prisma refuses an unknown argument the same way. Without this,
+//     a resolver that still writes `userId` would pass here and fail in
+//     Postgres. The `droppedColumns` option names the refused columns; it
+//     defaults to `['userId']` for a household-scoped store and to none for a
+//     user-scoped one.
+
+import {
+  checkWhere,
+  UnknownWhereKeyError,
+  UnsupportedWhereFilterError,
+  type WhereSpec,
+} from './whereKeys.js'
 
 /** The two columns every account-scoped row must have. */
 export interface OwnedRow {
   id: string
   userId: string
 }
+
+/**
+ * The two columns every household-scoped row must have (H3a). Use with
+ * `scope: 'householdId'`.
+ */
+export interface HouseholdScopedRow {
+  id: string
+  householdId: string
+}
+
+/** The column a store is scoped by. */
+export type ScopeColumn = 'userId' | 'householdId'
+
+/** Any row a store can hold: an id plus its scope column. */
+type ScopedRow = { id: string }
 
 /**
  * What a read returns. The row's own columns, plus whatever an `include`
@@ -143,35 +189,20 @@ export class OwnedRowNotFoundError extends Error {
   }
 }
 
-/**
- * Raised when a `where` carries a key this fake does not understand.
- *
- * Throwing is the whole point. A fake that walks `where` key by key and
- * IGNORES an unknown key returns the same rows with the key and without it, so
- * every test passes against a resolver that dropped the filter. That is what
- * happened to the cartItem fake in PR 3c (root CLAUDE.md). If a resolver needs
- * a new key, add it to `ownedRowMatches` on purpose.
- */
-export class UnsupportedWhereKeyError extends Error {
-  constructor(model: string, key: string) {
-    super(
-      `ownedRowFake(${model}) was given a where key it does not model: '${key}'. ` +
-        'It throws instead of ignoring the key, because ignoring one makes every ' +
-        'test pass against a resolver that dropped the filter. Model the key in ' +
-        'ownedRowMatches if a resolver really needs it.',
-    )
-  }
-}
-
-/** Raised when a supported key carries a filter shape this fake does not model. */
-export class UnsupportedWhereFilterError extends Error {
-  constructor(model: string, key: string, filter: unknown) {
-    super(
-      `ownedRowFake(${model}) models '${key}' as a string or { in: [...] }, not ` +
-        `${JSON.stringify(filter)}. It throws rather than matching everything.`,
-    )
-  }
-}
+// The two `where` errors are the SHARED classes from `whereKeys.ts`, under
+// the names this file has always exported. So one `instanceof
+// UnknownWhereKeyError` catches an unknown key from this fake and from the
+// four older fakes alike, and the same for `UnsupportedWhereFilterError`.
+//
+// Throwing is the whole point. A fake that walks `where` key by key and
+// IGNORES an unknown key returns the same rows with the key and without it, so
+// every test passes against a resolver that dropped the filter. That is what
+// happened to the cartItem fake in PR 3c (root CLAUDE.md). If a resolver needs
+// a new key, add it to `columns` or to `ownedRowMatches` on purpose.
+export {
+  UnknownWhereKeyError as UnsupportedWhereKeyError,
+  UnsupportedWhereFilterError,
+} from './whereKeys.js'
 
 /** Raised when an `include` cannot be resolved, instead of returning a row without the key. */
 export class UnsupportedIncludeError extends Error {
@@ -189,6 +220,43 @@ export class MissingUserIdError extends Error {
         'that forgets it must fail here rather than write an unowned row.',
     )
   }
+}
+
+/**
+ * Raised when a write names a column the table does not have any more (the
+ * `droppedColumns` option). Since households H3a task 3.14 that is `userId`
+ * on the six catalog models.
+ */
+export class DroppedColumnError extends Error {
+  constructor(model: string, column: string) {
+    super(
+      `ownedRowFake(${model}) was asked to write '${column}', which is not a ` +
+        'column of this table any more (households H3a task 3.14 dropped it). ' +
+        'Prisma refuses an unknown argument, so a resolver that still sends it ' +
+        'must fail here.',
+    )
+  }
+}
+
+/**
+ * Raised when a write omits a NOT NULL column other than `userId`: the
+ * `householdId` of a household-scoped store, or a column named in
+ * `requiredColumns`.
+ */
+export class MissingColumnError extends Error {
+  constructor(model: string, id: string, column: string) {
+    super(
+      `ownedRowFake(${model}) was asked to write row '${id}' with no ${column}. ` +
+        'This store treats the column as NOT NULL, so a resolver that forgets ' +
+        'it must fail here rather than write a row Postgres would refuse.',
+    )
+  }
+}
+
+function missingColumn(model: string, id: string, column: string): Error {
+  return column === 'userId'
+    ? new MissingUserIdError(model, id)
+    : new MissingColumnError(model, id, column)
 }
 
 /** Raised when an option this fake does not model is passed. */
@@ -215,7 +283,12 @@ function matchesColumn(model: string, key: string, value: string, filter: unknow
     const list = (filter as { in?: unknown }).in
     if (Array.isArray(list)) return list.includes(value)
   }
-  throw new UnsupportedWhereFilterError(model, key, filter)
+  throw new UnsupportedWhereFilterError(
+    `ownedRowFake(${model})`,
+    key,
+    filter,
+    'a string or { in: [...] }',
+  )
 }
 
 /**
@@ -226,29 +299,29 @@ function matchesColumn(model: string, key: string, value: string, filter: unknow
  * match to keep a scoping test green after the resolver dropped its `userId`.
  * An explicit `undefined` is "not mentioned", which is also Prisma's rule.
  *
- * Supported keys: `id` and `userId`, each as a string or `{ in: [...] }`,
- * plus any extra column the store was built with (`columns`). Everything else
- * throws — see `UnsupportedWhereKeyError`.
+ * Supported keys: `id` and the scope column (`userId` by default, or
+ * `householdId`), each as a string or `{ in: [...] }`, plus any extra column
+ * the store was built with (`columns`). Everything else throws — see
+ * `UnsupportedWhereKeyError`.
  */
 export function ownedRowMatches(
   model: string,
-  row: OwnedRow,
+  row: ScopedRow,
   where: Where,
   columns: readonly string[] = [],
+  scope: ScopeColumn = 'userId',
 ): boolean {
+  const record = row as unknown as Record<string, string>
   for (const [key, filter] of Object.entries(where)) {
     if (filter === undefined) continue
-    switch (key) {
-      case 'id':
-        if (!matchesColumn(model, 'id', row.id, filter)) return false
-        break
-      case 'userId':
-        if (!matchesColumn(model, 'userId', row.userId, filter)) return false
-        break
-      default:
-        if (!columns.includes(key)) throw new UnsupportedWhereKeyError(model, key)
-        if (!matchesNullableColumn(model, key, row, filter)) return false
+    if (key === 'id' || key === scope) {
+      if (!matchesColumn(model, key, record[key] as string, filter)) return false
+      continue
     }
+    if (!columns.includes(key)) {
+      throw new UnknownWhereKeyError(`ownedRowFake(${model})`, key)
+    }
+    if (!matchesNullableColumn(model, key, row, filter)) return false
   }
   return true
 }
@@ -259,7 +332,12 @@ export function ownedRowMatches(
  * filter matches a `null` column, which is Prisma's rule for `{ parentId: null }`.
  * A column the row does not carry at all counts as `null`.
  */
-function matchesNullableColumn(model: string, key: string, row: OwnedRow, filter: unknown): boolean {
+function matchesNullableColumn(
+  model: string,
+  key: string,
+  row: ScopedRow,
+  filter: unknown,
+): boolean {
   const raw = (row as unknown as Record<string, unknown>)[key]
   const value = raw === undefined ? null : raw
   if (filter === null) return value === null
@@ -268,10 +346,15 @@ function matchesNullableColumn(model: string, key: string, row: OwnedRow, filter
     const list = (filter as { in?: unknown }).in
     if (Array.isArray(list)) return list.includes(value)
   }
-  throw new UnsupportedWhereFilterError(model, key, filter)
+  throw new UnsupportedWhereFilterError(
+    `ownedRowFake(${model})`,
+    key,
+    filter,
+    'null, a string or { in: [...] }',
+  )
 }
 
-export interface OwnedRowFakeOptions<Row extends OwnedRow> {
+export interface OwnedRowFakeOptions<Row extends ScopedRow> {
   /** Names the model in every error message, and prefixes a generated id. */
   model?: string
   /** Rows the store starts with. Copied, so the caller's array is not shared. */
@@ -284,25 +367,64 @@ export interface OwnedRowFakeOptions<Row extends OwnedRow> {
    */
   relations?: (row: Row) => Record<string, unknown>
   /**
-   * Extra `where` keys this store accepts, beyond `id` and `userId` — for
-   * example `['typeId', 'parentId']` for `Tag`. Any other key still throws.
+   * Extra `where` keys this store accepts, beyond `id` and the scope column —
+   * for example `['typeId', 'parentId']` for `Tag`. Any other key still throws.
    */
   columns?: string[]
+  /**
+   * The column the store is scoped by, and the one `create` requires.
+   * `'userId'` (the default) or `'householdId'` (the six catalog models from
+   * H3a task 3.7 on).
+   */
+  scope?: ScopeColumn
+  /**
+   * More NOT NULL columns `create` and `createMany` must be given.
+   */
+  requiredColumns?: string[]
+  /**
+   * Columns the table does not have, which every write refuses. Defaults to
+   * `['userId']` for a household-scoped store (households H3a task 3.14
+   * dropped it from the six catalog models) and to none otherwise.
+   */
+  droppedColumns?: string[]
 }
 
-export function createOwnedRowFake<Row extends OwnedRow>(
+export function createOwnedRowFake<Row extends ScopedRow = OwnedRow>(
   options: OwnedRowFakeOptions<Row> = {},
 ) {
   const model = options.model ?? 'row'
   const relations = options.relations
   const columns = options.columns ?? []
+  const scope: ScopeColumn = options.scope ?? 'userId'
+  const required = [scope, ...(options.requiredColumns ?? [])]
+  const dropped = options.droppedColumns ?? (scope === 'householdId' ? ['userId'] : [])
+
+  function refuseDroppedColumns(data: Data): void {
+    for (const column of dropped) {
+      if (column in data) throw new DroppedColumnError(model, column)
+    }
+  }
   // One plain object holding plain data, so `runInTransaction` (stockFake.ts)
   // can register it as a rollback store and `structuredClone` it.
   const state: { rows: Row[] } = { rows: [...(options.rows ?? [])] }
   let seq = 0
 
+  // Every `where` key this store models, and how. Checked ONCE per call by
+  // `checkOwnedWhere`, before the store is searched. `ownedRowMatches` runs
+  // per row, and a per-row check never runs on an empty store, so an unknown
+  // key there would come back as "no rows" with no error. See `whereKeys.ts`.
+  const whereSpec: WhereSpec = {
+    ...Object.fromEntries(columns.map((c) => [c, 'nullableIn' as const])),
+    id: 'in',
+    [scope]: 'in',
+  }
+
+  function checkOwnedWhere(where: Where | undefined): void {
+    checkWhere(`ownedRowFake(${model})`, where, whereSpec)
+  }
+
   function matches(row: Row, where: Where): boolean {
-    return ownedRowMatches(model, row, where, columns)
+    return ownedRowMatches(model, row, where, columns, scope)
   }
 
   function refuseUnknownOptions(method: string, args: object, allowed: string[]) {
@@ -351,13 +473,15 @@ export function createOwnedRowFake<Row extends OwnedRow>(
    * must get those exact values back.
    */
   function insert(data: Data): Row {
+    refuseDroppedColumns(data)
     const id = (data.id as string | undefined) ?? `${model}-${++seq}`
     if (state.rows.some((r) => r.id === id)) {
       throw new OwnedRowIdConstraintError(model, id)
     }
-    const userId = data.userId
-    if (typeof userId !== 'string') throw new MissingUserIdError(model, id)
-    const row = { ...data, id, userId } as unknown as Row
+    for (const column of required) {
+      if (typeof data[column] !== 'string') throw missingColumn(model, id, column)
+    }
+    const row = { ...data, id } as unknown as Row
     state.rows.push(row)
     return row
   }
@@ -377,6 +501,7 @@ export function createOwnedRowFake<Row extends OwnedRow>(
    * that is a real value.
    */
   function applyUpdate(row: Row, data: Data): Row {
+    refuseDroppedColumns(data)
     const target = row as unknown as Record<string, unknown>
     for (const [key, value] of Object.entries(data)) {
       if (value === undefined) continue
@@ -392,10 +517,12 @@ export function createOwnedRowFake<Row extends OwnedRow>(
     // `{ id }`. Same matcher as `findFirst` for exactly that reason.
     findUnique: async (args: { where: Where; include?: Where; select?: Where }) => {
       refuseUnknownOptions('findUnique', args, ['where', 'include', 'select'])
+      checkOwnedWhere(args.where)
       return project(state.rows.find((r) => matches(r, args.where)) ?? null, args.include)
     },
     findFirst: async (args: { where?: Where; include?: Where; select?: Where } = {}) => {
       refuseUnknownOptions('findFirst', args, ['where', 'include', 'select'])
+      checkOwnedWhere(args.where)
       return project(
         state.rows.find((r) => matches(r, args.where ?? {})) ?? null,
         args.include,
@@ -403,6 +530,7 @@ export function createOwnedRowFake<Row extends OwnedRow>(
     },
     findMany: async (args: { where?: Where; include?: Where; select?: Where } = {}) => {
       refuseUnknownOptions('findMany', args, ['where', 'include', 'select'])
+      checkOwnedWhere(args.where)
       return state.rows
         .filter((r) => matches(r, args.where ?? {}))
         .map((r) => project(r, args.include) as WithRelations<Row>)
@@ -412,6 +540,7 @@ export function createOwnedRowFake<Row extends OwnedRow>(
     // distinguishable from "here it is".
     findUniqueOrThrow: async (args: { where: Where; include?: Where; select?: Where }) => {
       refuseUnknownOptions('findUniqueOrThrow', args, ['where', 'include', 'select'])
+      checkOwnedWhere(args.where)
       const row = state.rows.find((r) => matches(r, args.where))
       if (!row) throw new OwnedRowNotFoundError(model, args.where)
       return project(row, args.include) as WithRelations<Row>
@@ -428,6 +557,9 @@ export function createOwnedRowFake<Row extends OwnedRow>(
     // a taken id raises P2002, the way Postgres does.
     createMany: async (args: { data: Data[]; skipDuplicates?: boolean }) => {
       refuseUnknownOptions('createMany', args, ['data', 'skipDuplicates'])
+      // Every row, before any is written: Prisma refuses the whole call, a
+      // row `skipDuplicates` would skip included.
+      for (const data of args.data) refuseDroppedColumns(data)
       let count = 0
       for (const data of args.data) {
         const id = data.id as string | undefined
@@ -453,6 +585,10 @@ export function createOwnedRowFake<Row extends OwnedRow>(
       select?: Where
     }) => {
       refuseUnknownOptions('upsert', args, ['where', 'create', 'update', 'include', 'select'])
+      checkOwnedWhere(args.where)
+      // Both halves, whichever one runs: Prisma validates the whole call.
+      refuseDroppedColumns(args.create)
+      refuseDroppedColumns(args.update)
       const row = state.rows.find((r) => matches(r, args.where))
       const written = row ? applyUpdate(row, args.update) : insert(args.create)
       return project(written, args.include) as WithRelations<Row>
@@ -462,6 +598,7 @@ export function createOwnedRowFake<Row extends OwnedRow>(
     // it is applied in full, the same as `findUnique` above.
     update: async (args: { where: Where; data: Data; include?: Where; select?: Where }) => {
       refuseUnknownOptions('update', args, ['where', 'data', 'include', 'select'])
+      checkOwnedWhere(args.where)
       const row = state.rows.find((r) => matches(r, args.where))
       if (!row) throw new OwnedRowNotFoundError(model, args.where)
       return project(applyUpdate(row, args.data), args.include) as WithRelations<Row>
@@ -469,6 +606,8 @@ export function createOwnedRowFake<Row extends OwnedRow>(
     // Every matching row; a count, never a throw — Prisma's rule.
     updateMany: async (args: { where?: Where; data: Data }) => {
       refuseUnknownOptions('updateMany', args, ['where', 'data'])
+      checkOwnedWhere(args.where)
+      refuseDroppedColumns(args.data)
       const hits = state.rows.filter((r) => matches(r, args.where ?? {}))
       for (const row of hits) applyUpdate(row, args.data)
       return { count: hits.length }
@@ -476,6 +615,7 @@ export function createOwnedRowFake<Row extends OwnedRow>(
     // ONE row, P2025 when the `where` matches none — Prisma's rule for `delete`.
     delete: async (args: { where: Where; select?: Where }) => {
       refuseUnknownOptions('delete', args, ['where', 'select'])
+      checkOwnedWhere(args.where)
       const row = state.rows.find((r) => matches(r, args.where))
       if (!row) throw new OwnedRowNotFoundError(model, args.where)
       state.rows = state.rows.filter((r) => r !== row)
@@ -483,6 +623,7 @@ export function createOwnedRowFake<Row extends OwnedRow>(
     },
     deleteMany: async (args: { where?: Where } = {}) => {
       refuseUnknownOptions('deleteMany', args, ['where'])
+      checkOwnedWhere(args.where)
       const where = args.where ?? {}
       const before = state.rows.length
       state.rows = state.rows.filter((r) => !matches(r, where))
@@ -499,4 +640,6 @@ export function createOwnedRowFake<Row extends OwnedRow>(
   return { state, client, reset }
 }
 
-export type OwnedRowFake<Row extends OwnedRow> = ReturnType<typeof createOwnedRowFake<Row>>
+export type OwnedRowFake<Row extends ScopedRow = OwnedRow> = ReturnType<
+  typeof createOwnedRowFake<Row>
+>

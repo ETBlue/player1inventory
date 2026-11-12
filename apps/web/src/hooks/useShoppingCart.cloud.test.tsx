@@ -227,7 +227,7 @@ beforeEach(() => {
 })
 
 describe('cloud cart reads are scoped to the active location', () => {
-  it("user viewing a NON-DEFAULT location gets that location's cart", async () => {
+  it("user viewing another location gets that location's cart", async () => {
     // Given Cloud Garage — which is not the default — is active
     localStorage.setItem(activeLocationStorageKey('cloud'), LOC_B)
 
@@ -246,7 +246,7 @@ describe('cloud cart reads are scoped to the active location', () => {
     )
   })
 
-  it('user viewing the DEFAULT location gets that location cart instead', async () => {
+  it('user viewing the first location gets that location cart instead', async () => {
     // Given Cloud Kitchen — the default — is active
     localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
 
@@ -263,7 +263,7 @@ describe('cloud cart reads are scoped to the active location', () => {
     )
   })
 
-  it('user in a NON-DEFAULT location sees only that location carts in the list', async () => {
+  it('user in another location sees only that location carts in the list', async () => {
     // Given the Garage is active, and `allCarts` returns EVERY location's carts
     localStorage.setItem(activeLocationStorageKey('cloud'), LOC_B)
 
@@ -285,7 +285,7 @@ describe('cloud cart reads are scoped to the active location', () => {
     )
   })
 
-  it('user in a NON-DEFAULT location gets that location last-purchased dates', async () => {
+  it('user in another location gets that location last-purchased dates', async () => {
     // Given the Garage is active. Costco was last bought 2026-06-01 in the
     // Kitchen and 2026-01-01 in the Garage.
     localStorage.setItem(activeLocationStorageKey('cloud'), LOC_B)
@@ -375,7 +375,7 @@ describe('the active-location effect bootstraps that location carts', () => {
     // active id is the `'local'` sentinel until `GetLocations` resolves
     renderHook(() => useAllActiveCarts(), { wrapper: makeWrapper() })
 
-    // Then the bootstrap runs for the DEFAULT location's real cuid and never
+    // Then the bootstrap runs for the first location's real cuid and never
     // for the sentinel. The sentinel's mock is registered, so a bad call would
     // resolve rather than error — this assertion is what catches it.
     await waitFor(() => expect(recordedBootstraps).toContain(LOC_A))
@@ -384,7 +384,7 @@ describe('the active-location effect bootstraps that location carts', () => {
 })
 
 describe('cloud cart writes resolve the location at call time', () => {
-  it('a vendor created on a FRESH session gets its cart at the real default location', async () => {
+  it('a vendor created on a FRESH session gets its cart at the household’s first location', async () => {
     // Given a fresh cloud session: NO `active-location-id:cloud` slot, so
     // `readStoredLocationId('cloud')` hands back the `'local'` sentinel, which
     // names no cloud `Location`. Every other test in this file seeds the slot
@@ -400,7 +400,7 @@ describe('cloud cart writes resolve the location at call time', () => {
       await result.current.mutateAsync('Costco')
     })
 
-    // Then its cart landed at the account's real default location, not under
+    // Then its cart landed at the household's first location, not under
     // the `'local'` sentinel. Resolving the location at RENDER time sends the
     // sentinel here and the real server answers FORBIDDEN, losing the write.
     await waitFor(() =>

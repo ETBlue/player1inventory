@@ -116,16 +116,29 @@ describe('Settings locations page', () => {
     })
   })
 
-  it('default location renders with no delete control', async () => {
-    // Given only the default location exists
+  it('user cannot delete or drag the default location in local mode', async () => {
+    // Given the default location ("My Home", `isDefault: true`) and one other
+    await createLocation('Office')
     renderPage()
 
-    // Then the default location is shown but has no delete button
+    // Then the default location is shown but has no delete button and no
+    // drag handle (a lock icon stands in its place), while the other location
+    // has both. Local mode keeps its default location (households task 3.12
+    // changes cloud only).
     await waitFor(() =>
       expect(inMain().getByText('My Home')).toBeInTheDocument(),
     )
     expect(
       screen.queryByRole('button', { name: /delete my home/i }),
     ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /drag to reorder my home/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /delete office/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /drag to reorder office/i }),
+    ).toBeInTheDocument()
   })
 })

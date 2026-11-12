@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { CLOUD_WEB_URL } from '../../constants'
+import { CLOUD_WEB_URL, homeLocationName } from '../../constants'
 import { cleanupCloudData } from '../../helpers/cloudTeardown'
 
 // Runs in BOTH projects, local and cloud.
@@ -12,11 +12,19 @@ import { cleanupCloudData } from '../../helpers/cloudTeardown'
 // the file is therefore local-only. That was false — the file never seeded
 // anything.
 //
-// Cloud isolation is by row ownership, not by database: every write is owned by
-// E2E_USER_ID, and `/e2e/cleanup` deletes that user's rows. As of this branch
-// that endpoint also deletes `Location`. Without it, `ensureDefaultLocation`
-// (lib/defaultLocation.ts) returns early whenever the user already has a
-// default, so run 2 would see run 1's "Office" and fail.
+// Cloud isolation is by row ownership, not by database: `/e2e/cleanup` deletes
+// the household E2E_USER_ID owns, its locations included. The next request
+// then runs first sign-in, which makes a new household with one location,
+// "Home". Without that cleanup run 2 would see run 1's "Office" and fail.
+//
+// THE STARTING LOCATION HAS A DIFFERENT NAME IN EACH MODE: "My Home" in local
+// (Dexie's `on('populate')`), "Home" in cloud (first sign-in,
+// `firstLocationName` in apps/server/src/lib/household.ts). `homeLocationName`
+// in e2e/constants.ts picks the right one. They also follow different delete
+// rules: local's "My Home" is the default and cannot be deleted; cloud has no
+// default location, and the server refuses to delete only the household's
+// LAST location (`LAST_LOCATION`). The two delete tests at the end of this
+// file cover one mode each.
 //
 // Name lookups are scoped to <main>: /settings/household/locations is not a fullscreen
 // page, so at Playwright's default (desktop) viewport the sidebar's
@@ -67,11 +75,14 @@ test.afterEach(async ({ page, request, baseURL }) => {
   })
 })
 
-test('user can create a location', async ({ page }) => {
-  // Given the locations settings page is open (default "My Home" seeded on first open)
+test('user can create a location', async ({ page, baseURL }) => {
+  // Given the locations settings page is open, showing the starting location
   await page.goto('/settings/household/locations')
-  // Default location is undeletable and visible
-  await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
+  await expect(
+    page
+      .getByRole('main')
+      .getByText(homeLocationName(baseURL), { exact: true }),
+  ).toBeVisible()
 
   // When the user adds a location named "Office"
   // Add button aria-label: settings.locations.addLabel = "Add location" (src/routes/settings/household/locations/index.tsx)
@@ -85,9 +96,13 @@ test('user can create a location', async ({ page }) => {
   await expect(page.getByText('Office')).toBeVisible()
 })
 
-test('user can rename a location', async ({ page }) => {
+test('user can rename a location', async ({ page, baseURL }) => {
   await page.goto('/settings/household/locations')
-  await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
+  await expect(
+    page
+      .getByRole('main')
+      .getByText(homeLocationName(baseURL), { exact: true }),
+  ).toBeVisible()
 
   // Given a location "Office" exists
   await page.getByRole('button', { name: 'Add location' }).click()
@@ -108,9 +123,13 @@ test('user can rename a location', async ({ page }) => {
   await expect(page.getByText('Office')).not.toBeVisible()
 })
 
-test('user can delete a non-default location', async ({ page }) => {
+test('user can delete a non-default location', async ({ page, baseURL }) => {
   await page.goto('/settings/household/locations')
-  await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
+  await expect(
+    page
+      .getByRole('main')
+      .getByText(homeLocationName(baseURL), { exact: true }),
+  ).toBeVisible()
 
   // Given a location "Office" exists
   await page.getByRole('button', { name: 'Add location' }).click()
@@ -131,7 +150,13 @@ test('user can delete a non-default location', async ({ page }) => {
   await expect(page.getByText('Office')).not.toBeVisible()
 })
 
-test('the default location cannot be deleted', async ({ page }) => {
+test('the default location cannot be deleted', async ({ page, baseURL }) => {
+  // LOCAL ONLY. Cloud has no default location; its rule is the test below.
+  test.skip(
+    baseURL === CLOUD_WEB_URL,
+    'cloud has no default location; see the last-location test',
+  )
+
   // Given the locations page with only the default location
   await page.goto('/settings/household/locations')
   await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
@@ -142,9 +167,78 @@ test('the default location cannot be deleted', async ({ page }) => {
   ).toHaveCount(0)
 })
 
-test('user can reorder locations', async ({ page }) => {
+test('user cannot delete the last location in cloud, but can delete Home once another location exists', async ({
+  page,
+  baseURL,
+}) => {
+  // CLOUD ONLY. Local keeps a default location that is never deletable; see
+  // the test above.
+  test.skip(
+    baseURL !== CLOUD_WEB_URL,
+    'local has a default location; see the test above',
+  )
+  const main = page.getByRole('main')
+
+  // Given the household has one location, "Home" (made by first sign-in)
   await page.goto('/settings/household/locations')
-  await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
+  await expect(main.getByText('Home', { exact: true })).toBeVisible()
+
+  // When the user deletes it and confirms. Cloud shows Delete on every row,
+  // this one too: the web app does not know which location is the last one.
+  // Delete button aria-label: settings.locations.deleteLabel = "Delete {{name}}"
+  await main.getByRole('button', { name: 'Delete Home' }).click()
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: /^delete$/i })
+    .click()
+
+  // Then the server refuses it with LAST_LOCATION, and the page says why.
+  // t('settings.locations.deleteLastError')
+  await expect(
+    page.getByText(
+      'You cannot delete your last location. Add another location first.',
+    ),
+  ).toBeVisible()
+  // And "Home" is still listed after a reload, so the refusal was the
+  // server's and not only the page's
+  await page.reload()
+  await expect(main.getByText('Home', { exact: true })).toBeVisible()
+
+  // Given a second location "Office" exists
+  await page.getByRole('button', { name: 'Add location' }).click()
+  await page.getByRole('dialog').getByLabel('Name').fill('Office')
+  await page.getByRole('dialog').getByRole('button', { name: /^add$/i }).click()
+  await expect(main.getByText('Office')).toBeVisible()
+
+  // When the user deletes "Home" now. It is the first location, but not a
+  // default: cloud has none since households H3a.
+  await main.getByRole('button', { name: 'Delete Home' }).click()
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: /^delete$/i })
+    .click()
+
+  // Then "Home" is gone and "Office" stays. "Office" is asserted first, so a
+  // list that has not rendered yet cannot satisfy the absence check.
+  //
+  // The page is checked BEFORE the reload too. A click resolves when it is
+  // dispatched, not when the delete it starts has landed, so a reload right
+  // after it can abort the request: the first version of this test did that,
+  // and "Home" was still there after the reload.
+  await expect(main.getByText('Office')).toBeVisible()
+  await expect(main.getByText('Home', { exact: true })).toHaveCount(0)
+  await page.reload()
+  await expect(main.getByText('Office')).toBeVisible()
+  await expect(main.getByText('Home', { exact: true })).toHaveCount(0)
+})
+
+test('user can reorder locations', async ({ page, baseURL }) => {
+  await page.goto('/settings/household/locations')
+  await expect(
+    page
+      .getByRole('main')
+      .getByText(homeLocationName(baseURL), { exact: true }),
+  ).toBeVisible()
 
   // Given two extra locations exist: "Office" then "Cabin"
   await page.getByRole('button', { name: 'Add location' }).click()

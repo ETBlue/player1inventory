@@ -6,13 +6,19 @@ import type { Context } from '../context.js'
 
 // ─── Mock Prisma ─────────────────────────────────────────────────────────────
 
-// `location` is the STATEFUL fake (src/test/stockFake.ts): createVendor's
-// permanent cart now needs a locationId, resolved through
-// ensureDefaultLocation, and a call recorder cannot answer "did it pick the
-// caller's default one".
+// `location`, `householdMember` and `locationMember` are the STATEFUL fakes
+// joined in `src/test/householdWorld.ts`: createVendor's permanent cart needs
+// a locationId, checked through `requireLocationRole`, and the vendor itself
+// needs household role `manager` (`requireCatalogRole`). A call recorder
+// cannot answer "did it pick the right one".
+//
+// Every role here is a row `seedWorld` writes. Nothing is derived from a
+// location's `userId` (households H3a task 3.7 removed `derivedRoles` from
+// this file). The role checks themselves, with three people, are tested in
+// `catalog-household.resolver.test.ts`.
 vi.mock('../lib/prisma.js', async () => {
-  const { createStockFake } = await import('../test/stockFake.js')
-  const stockFake = createStockFake()
+  const { createHouseholdWorld } = await import('../test/householdWorld.js')
+  const world = createHouseholdWorld()
   return {
     prisma: {
       vendor: {
@@ -36,17 +42,17 @@ vi.mock('../lib/prisma.js', async () => {
       cartItem: {
         deleteMany: vi.fn(),
       },
-      ...stockFake.client,
-      // Handle onto the fake's state, hung off the mocked client because a
+      ...world.client,
+      // Handle onto the fakes, hung off the mocked client because a
       // `vi.mock` factory is hoisted above every import and cannot close over
       // a module-scope binding.
-      $stockFake: stockFake,
+      $world: world,
     },
   }
 })
 
 import { prisma } from '../lib/prisma.js'
-import type { StockFake } from '../test/stockFake.js'
+import type { HouseholdWorld } from '../test/householdWorld.js'
 
 const mockPrisma = prisma as unknown as {
   vendor: {
@@ -66,7 +72,7 @@ const mockPrisma = prisma as unknown as {
   cartItem: {
     deleteMany: ReturnType<typeof vi.fn>
   }
-  $stockFake: StockFake
+  $world: HouseholdWorld
 }
 
 // THREE locations: the caller's default, the caller's other one, and a
@@ -76,16 +82,61 @@ const LOC_DEFAULT = 'loc_kitchen'
 const LOC_OTHER = 'loc_garage'
 const LOC_STRANGER = 'loc_theirs'
 
-function seedLocations() {
-  mockPrisma.$stockFake.reset(
+const T = new Date('2026-11-01T00:00:00.000Z')
+
+// Three households: the caller's (`hh_test`, both of the caller's
+// locations), a stranger's (`hh_other`), and `user_B`'s, who has no location.
+// Each person is the `owner` of their own household and the `organizer` of
+// their own locations.
+function seedWorld() {
+  const world = mockPrisma.$world
+  world.reset()
+  world.stock.reset(
     [
       // Not first on purpose.
-      { id: LOC_OTHER, userId: 'user_test123', isDefault: false },
-      { id: LOC_DEFAULT, userId: 'user_test123', isDefault: true },
-      { id: LOC_STRANGER, userId: 'user_other', isDefault: true },
+      { id: LOC_OTHER, householdId: 'hh_test' },
+      { id: LOC_DEFAULT, householdId: 'hh_test' },
+      { id: LOC_STRANGER, householdId: 'hh_other' },
     ],
     [],
   )
+  const household = (id: string, ownerId: string) => ({
+    id,
+    name: `${id} name`,
+    ownerId,
+    ownerGoneAt: null,
+    createdAt: T,
+    updatedAt: T,
+  })
+  const owner = (householdId: string, userId: string) => ({
+    householdId,
+    userId,
+    role: 'owner' as const,
+    joinedAt: T,
+  })
+  const organizer = (locationId: string, userId: string) => ({
+    locationId,
+    userId,
+    role: 'organizer' as const,
+    createdAt: T,
+  })
+  world.seedHouseholds({
+    households: [
+      household('hh_test', 'user_test123'),
+      household('hh_other', 'user_other'),
+      household('hh_b', 'user_B'),
+    ],
+    householdMembers: [
+      owner('hh_test', 'user_test123'),
+      owner('hh_other', 'user_other'),
+      owner('hh_b', 'user_B'),
+    ],
+    locationMembers: [
+      organizer(LOC_OTHER, 'user_test123'),
+      organizer(LOC_DEFAULT, 'user_test123'),
+      organizer(LOC_STRANGER, 'user_other'),
+    ],
+  })
 }
 
 // ─── Test setup ───────────────────────────────────────────────────────────────
@@ -95,7 +146,7 @@ const ctx: Context = { userId: 'user_test123' }
 
 beforeEach(async () => {
   vi.clearAllMocks()
-  seedLocations()
+  seedWorld()
   // Every vendor id these tests name is the caller's own, unless a test says otherwise.
   mockPrisma.vendor.findUnique.mockImplementation(async ({ where }) => ({ id: where.id }))
   mockPrisma.vendor.findFirst.mockImplementation(async ({ where }) => ({ id: where.id }))
@@ -115,7 +166,7 @@ async function execOp(query: string, variables?: Record<string, unknown>) {
 describe('Vendor resolvers', () => {
   it('user can create a vendor via GraphQL', async () => {
     // Given prisma.vendor.create resolves with a new vendor
-    const newVendor = { id: 'v_1', name: 'Costco', userId: 'user_test123' }
+    const newVendor = { id: 'v_1', name: 'Costco', householdId: 'hh_test' }
     mockPrisma.vendor.create.mockResolvedValue(newVendor)
     // createVendor also upserts a permanent cart with the vendor ID
     mockPrisma.cart.upsert.mockResolvedValue({ id: 'v_1', userId: 'user_test123', lastPurchasedAt: null })
@@ -123,18 +174,19 @@ describe('Vendor resolvers', () => {
     // When creating a vendor at the caller's default location
     const result = await execOp(
       `mutation CreateVendor($name: String!, $locationId: ID!) {
-        createVendor(name: $name, locationId: $locationId) { id name userId }
+        createVendor(name: $name, locationId: $locationId) { id name }
       }`,
       { name: 'Costco', locationId: LOC_DEFAULT },
     )
 
     // Then the vendor is returned
-    const vendor = result?.data?.createVendor as { id: string; name: string; userId: string }
+    const vendor = result?.data?.createVendor as { id: string; name: string }
     expect(vendor.name).toBe('Costco')
-    expect(vendor.userId).toBe('user_test123')
     expect(vendor.id).toBeDefined()
+    // And the row is written into the caller's household, with no `userId`
+    // (households H3a task 3.14 dropped the column)
     expect(mockPrisma.vendor.create).toHaveBeenCalledWith({
-      data: { name: 'Costco', userId: 'user_test123' },
+      data: { name: 'Costco', householdId: 'hh_test' },
     })
     // And a permanent cart is created/ensured for the new vendor, at the
     // location the caller NAMED. `createVendor(locationId:)` is `ID!` since
@@ -166,7 +218,7 @@ describe('Vendor resolvers', () => {
     const vendors = result?.data?.vendors as { id: string }[]
     expect(Array.isArray(vendors)).toBe(true)
     expect(vendors).toHaveLength(1)
-    expect(mockPrisma.vendor.findMany).toHaveBeenCalledWith({ where: { userId: 'user_test123' } })
+    expect(mockPrisma.vendor.findMany).toHaveBeenCalledWith({ where: { householdId: 'hh_test' } })
   })
 
   it('user can update a vendor', async () => {
@@ -287,7 +339,7 @@ describe('Vendor resolvers', () => {
   })
 
   it('does not return vendors belonging to another user', async () => {
-    // Given no vendors for user_B
+    // Given no vendors in user_B's household
     mockPrisma.vendor.findMany.mockResolvedValue([])
 
     // When listing vendors as user_B
@@ -299,6 +351,6 @@ describe('Vendor resolvers', () => {
 
     // Then an empty list is returned
     expect(result?.data?.vendors).toHaveLength(0)
-    expect(mockPrisma.vendor.findMany).toHaveBeenCalledWith({ where: { userId: 'user_B' } })
+    expect(mockPrisma.vendor.findMany).toHaveBeenCalledWith({ where: { householdId: 'hh_b' } })
   })
 })

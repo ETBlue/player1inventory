@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // `ensureUser` writes through `prisma.user`. Here that is the stateful `User`
 // double from src/test/userFake.ts, with every method wrapped in a `vi.fn()`
-// so a test can COUNT queries (the same way as lib/defaultLocation.test.ts).
+// so a test can COUNT queries.
 // `userRowFromClerk` does not touch prisma, so this mock does not change its
 // tests.
 vi.mock('./prisma.js', async () => {
@@ -140,6 +140,7 @@ function storedRow(id: string, extra: Partial<UserRow> = {}): UserRow {
     email: 'stored@example.com',
     lastSeenAt: null,
     deletedAt: null,
+    householdSetupAt: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     ...extra,

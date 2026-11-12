@@ -7,7 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 import { expect, test } from '@playwright/test'
 import {
-  DESTINATION_DEFAULT_LOCATION_NAME,
+  destinationDefaultLocationName,
   expectFixtureLocations,
   expectFixtureStockPerLocation,
   expectStockNotCollapsedOntoDefault,
@@ -231,13 +231,13 @@ async function verifyRelations(
   // `ImportCard` runs the `skip` strategy when there is no conflict, and the
   // remap puts the backup's default row on the id the live database already
   // holds — so that one row is the one `skip` leaves alone. See
-  // `DESTINATION_DEFAULT_LOCATION_NAME`.
+  // `destinationDefaultLocationName`.
   await expectFixtureStockPerLocation(
     page,
     request,
     baseURL,
     itemId,
-    DESTINATION_DEFAULT_LOCATION_NAME,
+    destinationDefaultLocationName(baseURL),
   )
 
   // 9. And the two non-default locations' stock is not sitting on the default.
@@ -398,7 +398,7 @@ test('user importing a cloud backup into local mode gets exactly one default loc
     page,
     request,
     baseURL,
-    DESTINATION_DEFAULT_LOCATION_NAME,
+    destinationDefaultLocationName(baseURL),
   )
 
   // And the flagged row is the LOCAL sentinel id, not the backup's own. This
@@ -408,5 +408,5 @@ test('user importing a cloud backup into local mode gets exactly one default loc
   const rows = await readRows(page, 'locations')
   expect(
     rows.filter((r) => r.isDefault === true).map((r) => [r.id, r.name]),
-  ).toEqual([['local', DESTINATION_DEFAULT_LOCATION_NAME]])
+  ).toEqual([['local', destinationDefaultLocationName(baseURL)]])
 })

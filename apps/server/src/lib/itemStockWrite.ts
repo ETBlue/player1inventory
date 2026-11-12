@@ -62,9 +62,9 @@ import type { ItemStock, Prisma } from '@prisma/client'
  *
  * ── AUTHORIZATION ──
  *
- * Nothing here authorizes anything. A caller must hold `member` on
+ * Nothing here authorizes anything. A caller must hold `participant` on
  * `locationId` before it gets this far, through
- * `requireLocationRole(ctx, locationId, 'member')` (lib/authz.ts) — never a
+ * `requireLocationRole(ctx, locationId, 'participant')` (lib/authz.ts) — never a
  * `row.userId === ctx.userId` comparison (root CLAUDE.md, Authorization).
  *
  * Current callers and where their authorization happens:
@@ -200,10 +200,16 @@ export async function writeStock(
  * ── AUTHORIZATION ──
  *
  * Nothing here authorizes anything, exactly as in `writeStock` above. A caller
- * must already hold `member` on `locationId`. `userId` is NOT an authorization
- * check — it scopes the SOURCE search, so one user's row can never seed
- * another user's location. `ItemStock` has no `userId` column, so that scope is
- * the relation filter `location: { userId }` (root CLAUDE.md, Authorization).
+ * must already hold `participant` on `locationId`, and must already have
+ * checked that `itemId` is an item of that location's household
+ * (`requireLocationItems`, lib/authz.ts).
+ *
+ * `sourceLocationIds` is NOT an authorization check either — it scopes the
+ * SOURCE search to the locations the caller may read, so a row the caller
+ * cannot see never seeds a location. Callers pass `locationIdsWithRole(ctx)`
+ * (lib/authz.ts). Until households H3a task 3.8 this was a `userId` and the
+ * relation filter `location: { userId }`, "the locations I made", which
+ * missed a location another member made and shares with the caller.
  *
  * ── CONCURRENCY ──
  *
@@ -219,7 +225,7 @@ export async function writeStock(
 export async function ensureStockAtLocation(
   itemId: string,
   locationId: string,
-  userId: string,
+  sourceLocationIds: readonly string[],
   sourceLocationId?: string | null,
   client: Prisma.TransactionClient = prisma,
 ): Promise<ItemStock> {
@@ -229,7 +235,7 @@ export async function ensureStockAtLocation(
   if (existing) return existing
 
   const all = await client.itemStock.findMany({
-    where: { itemId, location: { userId } },
+    where: { itemId, locationId: { in: [...sourceLocationIds] } },
   })
   const source =
     (sourceLocationId

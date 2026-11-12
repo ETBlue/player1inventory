@@ -361,6 +361,15 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
+    useGetHouseholdQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useRenameHouseholdMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
   }
 })
 

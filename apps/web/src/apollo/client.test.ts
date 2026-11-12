@@ -1,6 +1,7 @@
 import type { InMemoryCache } from '@apollo/client'
 import { gql } from '@apollo/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import i18n from '@/i18n'
 import {
   createApolloClient,
   createApolloClientForE2E,
@@ -394,6 +395,58 @@ describe('createApolloClient — a mutation refused offline', () => {
     } finally {
       vi.unstubAllGlobals()
       await client.clearStore()
+    }
+  })
+})
+
+describe('both Apollo clients send the app language', () => {
+  // Households H3a, decision H3: the server names a new household and its
+  // first location in the language this header carries. Both clients are
+  // tested, because the E2E client exists to run the code users run.
+  const LANGUAGE_PROBE = gql`
+    query LanguageProbe {
+      languageProbe
+    }
+  `
+
+  function headerSent(fetchMock: ReturnType<typeof vi.fn>): string | null {
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined
+    return new Headers(init?.headers).get('x-app-language')
+  }
+
+  it.each([
+    ['production', () => createApolloClient(async () => null)],
+    ['e2e', () => createApolloClientForE2E('e2e-user')],
+  ])('%s client sends x-app-language from the current language', async (_name, makeClient) => {
+    // Given the app is in Traditional Chinese
+    const before = i18n.language
+    await i18n.changeLanguage('tw')
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ data: { languageProbe: 'ok' } }), {
+          headers: { 'content-type': 'application/json' },
+        }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    setOnLine(true)
+    const client = makeClient()
+    try {
+      // When the client sends a query
+      await client.query({ query: LANGUAGE_PROBE, fetchPolicy: 'network-only' })
+
+      // Then the request carries the language
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(headerSent(fetchMock)).toBe('tw')
+
+      // And a language change applies to the next request
+      await i18n.changeLanguage('en')
+      fetchMock.mockClear()
+      await client.query({ query: LANGUAGE_PROBE, fetchPolicy: 'network-only' })
+      expect(headerSent(fetchMock)).toBe('en')
+    } finally {
+      vi.unstubAllGlobals()
+      await client.clearStore()
+      await i18n.changeLanguage(before)
     }
   })
 })

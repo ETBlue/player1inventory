@@ -79,7 +79,6 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
             id: DEFAULT_LOCATION_ID,
             name: 'My Home',
             order: 0,
-            isDefault: true,
             createdAt: '2026-01-01T00:00:00.000Z',
             updatedAt: '2026-01-01T00:00:00.000Z',
           },

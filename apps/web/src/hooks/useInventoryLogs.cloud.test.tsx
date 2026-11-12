@@ -239,7 +239,7 @@ describe('cloud inventory-log reads are scoped to the active location', () => {
     logs = [MILK_A1, MILK_A2, MILK_B1, RICE_B1]
   })
 
-  it('user viewing an item in the DEFAULT location sees only that location logs', async () => {
+  it('user viewing an item in the first location sees only that location logs', async () => {
     // Given Cloud Kitchen is active, and Milk has logs in both locations
     localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
 
@@ -254,8 +254,8 @@ describe('cloud inventory-log reads are scoped to the active location', () => {
     expect(result.current.data?.map((l) => l.id)).not.toContain('log-b1')
   })
 
-  it('user viewing an item in a NON-DEFAULT location sees only that location logs', async () => {
-    // Given Cloud Garage — which is not the default — is active
+  it('user viewing an item in another location sees only that location logs', async () => {
+    // Given Cloud Garage — which is not the first location — is active
     localStorage.setItem(activeLocationStorageKey('cloud'), LOC_B)
 
     // When the item's log list is read
@@ -271,7 +271,7 @@ describe('cloud inventory-log reads are scoped to the active location', () => {
   // The per-item `useLastPurchaseDate` used to be proved here too. It is gone
   // (#305) — `ItemCard` takes the date as a prop from the batch query below,
   // which this next test already covers with the same two-location fixture.
-  it('sorting data in a NON-DEFAULT location uses that location purchase dates', async () => {
+  it('sorting data in another location uses that location purchase dates', async () => {
     // Given Cloud Garage is active and the list holds both items
     localStorage.setItem(activeLocationStorageKey('cloud'), LOC_B)
     const items = [
@@ -349,7 +349,7 @@ describe('cloud inventory-log writes name the location', () => {
     logs = [MILK_A1, MILK_A2, MILK_B1, RICE_B1]
   })
 
-  it('user adding a log in a NON-DEFAULT location writes it there', async () => {
+  it('user adding a log in another location writes it there', async () => {
     // Given Cloud Garage is active
     localStorage.setItem(activeLocationStorageKey('cloud'), LOC_B)
     const { result } = renderHook(() => useAddInventoryLog(), {
@@ -380,7 +380,7 @@ describe('cloud inventory-log writes name the location', () => {
       localStorage.removeItem(activeLocationStorageKey('cloud'))
     })
 
-    it('user adding a log immediately has it written to the real default location', async () => {
+    it('user adding a log immediately has it written to the first cloud location', async () => {
       // Given a brand-new cloud session with no remembered location, so the
       // active id is still the `'local'` sentinel
       const { result } = renderHook(() => useAddInventoryLog(), {
@@ -397,7 +397,7 @@ describe('cloud inventory-log writes name the location', () => {
         })
       })
 
-      // Then it landed in the isDefault location — NOT under the `'local'`
+      // Then it landed in the first location — NOT under the `'local'`
       // sentinel, which names no cloud Location and whose write the server
       // refuses with FORBIDDEN
       expect(logsAt('item-milk', LOC_A)).toHaveLength(3)

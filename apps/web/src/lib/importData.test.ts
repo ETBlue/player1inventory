@@ -1024,8 +1024,19 @@ describe('importLocalData — item stock and locations (v15 split)', () => {
     }
   }
 
+  // `isDefault` on every row, as a local (Dexie v18+) export writes it. A row
+  // set with no `isDefault` key at all is the shape of a cloud backup since
+  // households task 3.12, and `findPayloadDefaultLocationId` then picks the
+  // lowest `order` as the default. These fixtures are local backups.
   function makeLocation(id: string, name: string, order = 0) {
-    return { id, name, order, createdAt: new Date(), updatedAt: new Date() }
+    return {
+      id,
+      name,
+      order,
+      isDefault: id === 'local',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
   }
 
   it('user can restore a v15 backup and see the pantry populated', async () => {
@@ -1852,8 +1863,8 @@ describe('cloud import input mappers — strip server-only fields', () => {
   })
 
   it('toLocationInput drops isDefault', () => {
-    // Given a location row out of a cloud export, which DOES record isDefault
-    // (GetLocations selects it) — but LocationInput has no such field, and
+    // Given a location row out of an OLDER cloud export, which recorded
+    // isDefault (GetLocations selected it until households task 3.12) — but LocationInput has no such field, and
     // sending it would fail GraphQL validation
     const rawLocation = {
       __typename: 'Location',
@@ -2126,8 +2137,9 @@ describe('importCloudData — locations and stock upload in dependency order', (
   // The GraphQL operation name of a document, e.g. 'BulkCreateLocations'.
   // Comparing names rather than document objects keeps the failure message
   // readable: a wrong order prints two lists of names.
-  // The destination account's one location, flagged default. The remap maps
-  // the PAYLOAD's default onto this id and leaves every other id alone, so a
+  // The destination household's one location. Since households task 3.12 it
+  // carries no `isDefault`: the first location is the destination "default".
+  // The remap maps the PAYLOAD's default onto this id and leaves every other id alone, so a
   // fixture needs at least one non-default location to tell the two rules
   // apart. This one seeds THREE.
   const CLOUD_DEFAULT_ID = 'cloud_default'
@@ -2145,7 +2157,6 @@ describe('importCloudData — locations and stock upload in dependency order', (
                   id: CLOUD_DEFAULT_ID,
                   name: 'My Home',
                   order: 0,
-                  isDefault: true,
                   createdAt: '2026-01-01T00:00:00.000Z',
                   updatedAt: '2026-01-01T00:00:00.000Z',
                 },
@@ -2338,8 +2349,8 @@ describe('importCloudData — locations and stock upload in dependency order', (
       'loc_office',
     ])
     expect(uploaded.map((l) => l.name)).toEqual(['Home', 'Garage', 'Office'])
-    // And `isDefault` is never sent — the column is a per-user unique partial
-    // index, so a second default would raise P2002 after `clearAllData`
+    // And `isDefault` is never sent — `LocationInput` has no such field, so
+    // GraphQL validation would refuse the whole batch
     expect(uploaded.every((l) => !('isDefault' in l))).toBe(true)
   })
 
@@ -2383,7 +2394,6 @@ describe('importCloudData — locations and stock upload in dependency order', (
                 id: CLOUD_DEFAULT_ID,
                 name: 'My Home',
                 order: 0,
-                isDefault: true,
                 createdAt: '2026-01-01T00:00:00.000Z',
                 updatedAt: '2026-01-01T00:00:00.000Z',
               },
@@ -3147,6 +3157,27 @@ describe('buildLocationRemap / applyLocationRemap — the remap rule', () => {
     expect(buildLocationRemap(payload, 'cloud_default').size).toBe(0)
   })
 
+  it('nothing is remapped when the payload default is already a destination location', () => {
+    // Given a backup whose default is Home, restored into a household that
+    // still has Home but whose FIRST location is now Attic
+    const payload = emptyPayload({
+      locations: [
+        { id: 'cloud_home', name: 'Home', order: 0 },
+        { id: 'cloud_garage', name: 'Garage', order: 1 },
+      ],
+    })
+
+    // When the remap is built with every destination id
+    const remap = buildLocationRemap(
+      payload,
+      'cloud_attic',
+      new Set(['cloud_attic', 'cloud_home', 'cloud_garage']),
+    )
+
+    // Then Home stays Home
+    expect(remap.size).toBe(0)
+  })
+
   it('a pre-v18 backup with no isDefault key treats the local id as its default', () => {
     // Given a backup written before Dexie v18 added `Location.isDefault`
     const payload = emptyPayload({
@@ -3161,6 +3192,40 @@ describe('buildLocationRemap / applyLocationRemap — the remap rule', () => {
     expect([...buildLocationRemap(payload, 'cloud_default').entries()]).toEqual(
       [['local', 'cloud_default']],
     )
+  })
+
+  it('user restoring a cloud backup with no default location has its first location used as the default', () => {
+    // Given a cloud backup made since households task 3.12: no row carries an
+    // `isDefault` key, and no row is the local sentinel. The rows are NOT in
+    // `order` in the array, so "lowest order" and "first in the array" differ.
+    const payload = emptyPayload({
+      locations: [
+        { id: 'cloud_garage', name: 'Garage', order: 1 },
+        { id: 'cloud_home', name: 'Home', order: 0 },
+        { id: 'cloud_office', name: 'Office', order: 2 },
+      ],
+    })
+
+    // When the remap is built against this device's default
+    const remap = buildLocationRemap(payload, DEFAULT_LOCATION_ID)
+
+    // Then the location with the lowest `order` lands on the default, and
+    // nothing else moves
+    expect([...remap.entries()]).toEqual([['cloud_home', DEFAULT_LOCATION_ID]])
+  })
+
+  it('a backup whose rows carry isDefault but none is true has no default', () => {
+    // Given a hand-edited file: every row has the key, none is `true`
+    const payload = emptyPayload({
+      locations: [
+        { id: 'loc_garage', name: 'Garage', order: 0, isDefault: false },
+        { id: 'loc_office', name: 'Office', order: 1, isDefault: false },
+      ],
+    })
+
+    // Then nothing is remapped. Guessing would rename a location the user did
+    // not choose.
+    expect(buildLocationRemap(payload, 'cloud_default').size).toBe(0)
   })
 
   it('a payload with no locations array names no default', () => {
@@ -3283,9 +3348,7 @@ describe('importCloudData — every location travels to cloud (PR 4b task 3)', (
     return defined(variables[key], `the \`${key}\` batch`)
   }
 
-  const DESTINATION = [
-    { id: 'cloud_default', name: 'Home', order: 0, isDefault: true },
-  ]
+  const DESTINATION = [{ id: 'cloud_default', name: 'Home', order: 0 }]
 
   const PAYLOAD_LOCATIONS = [
     { id: 'local', name: 'My Home', order: 0, isDefault: true },
@@ -3317,6 +3380,112 @@ describe('importCloudData — every location travels to cloud (PR 4b task 3)', (
     expect(sentOf(client, 'cartItems').map((c) => c.cartId)).toEqual([
       'cloud_default:vendor_1',
       'loc_garage:no-vendor',
+    ])
+  })
+
+  it('user copying a pantry to cloud lands the default location on the household’s first location', async () => {
+    // Given a household with TWO locations and no default (households task
+    // 3.12: cloud rows carry no `isDefault`). The server returns them by
+    // `order`, so the first row is the household's first location.
+    const payload = emptyPayload({
+      items: [makeItem('item-1', 'Milk')],
+      locations: PAYLOAD_LOCATIONS,
+      shoppingCarts: [{ id: 'local:vendor_1' }],
+      cartItems: [makeCartItem('ci-1', 'local:vendor_1', 'item-1')],
+    })
+    const client = makeCloudClient([
+      { id: 'cloud_first', name: 'Home', order: 0 },
+      { id: 'cloud_second', name: 'Cabin', order: 1 },
+    ])
+
+    // When the pantry is copied up
+    await importCloudData(payload, 'skip', client as never)
+
+    // Then the payload's default lands on the FIRST location, not the second
+    expect(sentOf(client, 'carts').map((c) => c.id)).toEqual([
+      'cloud_first:vendor_1',
+    ])
+    expect(sentOf(client, 'locations').map((l) => l.id)).toContain(
+      'cloud_first',
+    )
+  })
+
+  // Households task 3.12 review, finding 1. The destination "default" is now
+  // the FIRST location by `order`, which can be a location the backup does
+  // not contain. Two payload shapes reach the same remap, so both are run: a
+  // backup made since task 3.12 (no `isDefault` key, so its default is the
+  // lowest `order`) and an older one with `isDefault: true` on Home.
+  it.each([
+    [
+      'a backup with no isDefault key',
+      [
+        { id: 'cloud_home', name: 'Home', order: 0 },
+        { id: 'cloud_garage', name: 'Garage', order: 1 },
+      ],
+    ],
+    [
+      'an older backup with isDefault on Home',
+      [
+        { id: 'cloud_home', name: 'Home', order: 0, isDefault: true },
+        { id: 'cloud_garage', name: 'Garage', order: 1, isDefault: false },
+      ],
+    ],
+  ])('user restoring %s into the same household keeps Home’s data on Home after a new location moved to the top', async (_label, locations) => {
+    // Given a backup of Home (order 0) and Garage, with stock, a cart and a
+    // log at each
+    const payload = emptyPayload({
+      items: [makeItem('item-1', 'Milk')],
+      locations,
+      itemStocks: [
+        {
+          id: 's-home',
+          itemId: 'item-1',
+          locationId: 'cloud_home',
+          targetQuantity: 4,
+          refillThreshold: 1,
+          packedQuantity: 3,
+          unpackedQuantity: 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+      shoppingCarts: [
+        { id: 'cloud_home:vendor_1' },
+        { id: 'cloud_garage:vendor_1' },
+      ],
+      cartItems: [makeCartItem('ci-1', 'cloud_home:vendor_1', 'item-1')],
+      inventoryLogs: [
+        { ...makeInventoryLog('log-home'), locationId: 'cloud_home' },
+      ],
+    })
+    // And the same household today: Attic was added later and dragged to the
+    // top, so it is the first location the server returns
+    const client = makeCloudClient([
+      { id: 'cloud_attic', name: 'Attic', order: 0 },
+      { id: 'cloud_home', name: 'Home', order: 1 },
+      { id: 'cloud_garage', name: 'Garage', order: 2 },
+    ])
+
+    // When the backup is restored without clearing
+    await importCloudData(payload, 'replace', client as never)
+
+    // Then every Home row still names Home, and nothing names Attic
+    expect(sentOf(client, 'locations').map((l) => [l.id, l.name])).toEqual([
+      ['cloud_home', 'Home'],
+      ['cloud_garage', 'Garage'],
+    ])
+    expect(sentOf(client, 'itemStocks').map((s) => s.locationId)).toEqual([
+      'cloud_home',
+    ])
+    expect(sentOf(client, 'carts').map((c) => c.id)).toEqual([
+      'cloud_home:vendor_1',
+      'cloud_garage:vendor_1',
+    ])
+    expect(sentOf(client, 'cartItems').map((c) => c.cartId)).toEqual([
+      'cloud_home:vendor_1',
+    ])
+    expect(sentOf(client, 'logs').map((l) => l.locationId)).toEqual([
+      'cloud_home',
     ])
   })
 
@@ -3367,7 +3536,6 @@ describe('importCloudData — every location travels to cloud (PR 4b task 3)', (
               id: cleared ? 'cloud_default_after' : 'cloud_default_before',
               name: 'Home',
               order: 0,
-              isDefault: true,
             },
           ],
         },
@@ -3775,8 +3943,8 @@ describe('importLocalData — a cloud backup keeps every location (PR 4b task 5)
     }
   }
 
-  // A cloud export as PR 4b task 2 now writes it: real `locations` (with
-  // `isDefault` kept in the file), real `itemStocks`, and logs carrying
+  // A cloud export as PR 4b task 2 wrote it: real `locations` (with
+  // `isDefault` kept in the file, as until households task 3.12), real `itemStocks`, and logs carrying
   // `locationId`. Every location id is a server cuid, so none of them matches
   // DEFAULT_LOCATION_ID.
   function cloudBackup(): ExportPayload {
@@ -4104,9 +4272,7 @@ describe('importCloudData — a pre-v15 backup keeps its stock (PR 4b task 8)', 
     shelves: [],
   }
 
-  const DESTINATION = [
-    { id: 'cloud_default', name: 'My Home', order: 0, isDefault: true },
-  ]
+  const DESTINATION = [{ id: 'cloud_default', name: 'My Home', order: 0 }]
 
   function makeCloudClient(destinationLocations: unknown[] = DESTINATION) {
     return {

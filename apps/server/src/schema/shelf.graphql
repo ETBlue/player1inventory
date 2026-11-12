@@ -17,7 +17,6 @@ type Shelf {
   order: Int!
   filterConfig: FilterConfig
   itemIds: [String!]
-  userId: String!
 }
 
 extend type Query {

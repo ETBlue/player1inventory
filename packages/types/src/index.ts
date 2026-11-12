@@ -260,13 +260,18 @@ export interface Location {
   id: string
   name: string
   order: number
-  // The user's single undeletable location. Exactly one row carries `true`.
+  // LOCAL MODE ONLY. The local user's single undeletable location ("My Home").
+  // Exactly one local row carries `true`, and its id is DEFAULT_LOCATION_ID.
   // Not derivable from `order`: LocationList disables dragging *of* the default
   // row, but another row dragged above it still displaces it, so the default's
-  // order is not stable. In local mode this is always DEFAULT_LOCATION_ID; in
-  // cloud mode the default's id is a server-generated cuid, which is why the
-  // flag exists rather than an id comparison.
-  isDefault: boolean
+  // order is not stable.
+  //
+  // Cloud rows never carry it (households H3a, task 3.12). A household has no
+  // default location: any location can be deleted except the last one, which
+  // the server refuses with `LAST_LOCATION`. Where cloud code needs "the
+  // fallback location", it uses the FIRST location (the server returns them
+  // by `order`). So code must test `isDefault === true`, never just read it.
+  isDefault?: boolean
   createdAt: Date
   updatedAt: Date
 }

@@ -21,11 +21,19 @@ import type { Context } from '../context.js'
 // spread inside the factory (not just closed over) would hit the
 // temporal-dead-zone; vi.hoisted() is the escape hatch Vitest provides for
 // exactly this.
+//
+// Since households H3a task 3.7 the rows carry a `householdId`, and the two
+// `findFirst` fakes accept `id` and `householdId` and THROW on any other key.
+// `householdMember` answers the reads `requireCatalogRole` makes: the caller
+// is the `owner` of `hh_test`. `tag.findMany` and `vendor.findMany` answer
+// `requireCatalogIds` by echoing every id back, so every tag and vendor id
+// here is the household's. The refusals of another household's ids are
+// tested with stateful fakes in `catalog-household.resolver.test.ts`.
 
 interface FakeItemRow {
   id: string
   name: string
-  userId: string
+  householdId: string
   consumeAmount: number
   tagIds: string[]
   vendorIds: string[]
@@ -33,7 +41,7 @@ interface FakeItemRow {
 
 interface FakeRecipeRow {
   id: string
-  userId: string
+  householdId: string
   items: { itemId: string; defaultAmount: number }[]
 }
 
@@ -50,7 +58,7 @@ const { state, sharedClient, snapshot } = vi.hoisted(() => {
     return {
       id: row.id,
       name: row.name,
-      userId: row.userId,
+      householdId: row.householdId,
       consumeAmount: row.consumeAmount,
       packageUnit: null,
       measurementUnit: null,
@@ -83,6 +91,20 @@ const { state, sharedClient, snapshot } = vi.hoisted(() => {
   // would insert the same key twice here and the fake would silently absorb
   // it via the `!includes` guard — exactly the gap that let the dedupe-loss
   // mutation stay green (see 'shelf.resolver.test.ts' finding notes).
+  // The only `where` keys the two `findFirst` fakes model. Any other key
+  // throws, so a resolver that still filters by `userId` fails here instead
+  // of matching every row.
+  function checkKeys(model: string, where: Record<string, unknown>) {
+    for (const key of Object.keys(where)) {
+      if (key !== 'id' && key !== 'householdId') {
+        throw new Error(`fake ${model}.findFirst does not model the where key '${key}'`)
+      }
+    }
+  }
+
+  const echoIds = async ({ where }: { where: { id: { in: string[] } } }) =>
+    where.id.in.map((id) => ({ id }))
+
   function assertNoDuplicateKey(pairs: [string, string][], fieldNames: string) {
     const seen = new Set<string>()
     for (const [a, b] of pairs) {
@@ -95,16 +117,25 @@ const { state, sharedClient, snapshot } = vi.hoisted(() => {
   }
 
   const sharedClient = {
+    householdMember: {
+      findFirst: async () => ({ householdId: 'hh_test' }),
+      findUnique: async () => ({ role: 'owner' }),
+    },
+    tag: { findMany: echoIds },
+    vendor: { findMany: echoIds },
     item: {
       // Filters only on the fields actually present in `where`, like real
-      // Prisma does — NOT hardcoded to require `userId` to match. Mirrors
-      // the `recipe.findFirst` fake below for the same reason: if this
-      // silently re-enforced ownership regardless of what the resolver
-      // passed, the "delete userId from the where clause" mutation check for
-      // the item-ownership guard would be meaningless.
-      findFirst: async ({ where }: { where: { id: string; userId?: string } }) => {
+      // Prisma does — NOT hardcoded to require `householdId` to match.
+      // Mirrors the `recipe.findFirst` fake below for the same reason: if
+      // this silently re-enforced the scope regardless of what the resolver
+      // passed, the "delete householdId from the where clause" mutation check
+      // for the item guard would be meaningless.
+      findFirst: async ({ where }: { where: { id: string; householdId?: string } }) => {
+        checkKeys('item', where)
         const row = state.items.find(
-          (i) => i.id === where.id && (where.userId === undefined || i.userId === where.userId),
+          (i) =>
+            i.id === where.id &&
+            (where.householdId === undefined || i.householdId === where.householdId),
         )
         return row ? projectItem(row) : null
       },
@@ -168,18 +199,31 @@ const { state, sharedClient, snapshot } = vi.hoisted(() => {
     },
     recipe: {
       // Filters only on the fields actually present in `where`, like real
-      // Prisma does — NOT hardcoded to require `userId` to match. If this
-      // silently re-enforced ownership regardless of what the resolver
-      // passed, the "delete userId from the where clause" mutation check
-      // for the ownership guard would be meaningless: the fake would keep
-      // rejecting cross-user access even when the resolver itself no
-      // longer asks it to.
-      findFirst: async ({ where }: { where: { id: string; userId?: string } }) => {
+      // Prisma does — NOT hardcoded to require `householdId` to match. If
+      // this silently re-enforced the scope regardless of what the resolver
+      // passed, the "delete householdId from the where clause" mutation check
+      // for the guard would be meaningless: the fake would keep rejecting
+      // another household's recipe even when the resolver itself no longer
+      // asks it to.
+      findFirst: async ({ where }: { where: { id: string; householdId?: string } }) => {
+        checkKeys('recipe', where)
         const row = state.recipes.find(
-          (r) => r.id === where.id && (where.userId === undefined || r.userId === where.userId),
+          (r) =>
+            r.id === where.id &&
+            (where.householdId === undefined || r.householdId === where.householdId),
         )
-        return row ? { id: row.id, userId: row.userId, items: row.items } : null
+        return row ? { id: row.id, householdId: row.householdId, items: row.items } : null
       },
+      // `requireCatalogIds` (lib/authz.ts): the recipe rows among a list of
+      // ids, filtered by `householdId` when it is given.
+      findMany: async ({ where }: { where: { id: { in: string[] }; householdId?: string } }) =>
+        state.recipes
+          .filter(
+            (r) =>
+              where.id.in.includes(r.id) &&
+              (where.householdId === undefined || r.householdId === where.householdId),
+          )
+          .map((r) => ({ id: r.id })),
     },
     recipeItem: {
       create: async ({
@@ -227,7 +271,7 @@ function makeItemRow(overrides: Partial<FakeItemRow> = {}): FakeItemRow {
   return {
     id: overrides.id ?? 'item_1',
     name: overrides.name ?? 'Milk',
-    userId: overrides.userId ?? 'user_test123',
+    householdId: overrides.householdId ?? 'hh_test',
     consumeAmount: overrides.consumeAmount ?? 2,
     tagIds: overrides.tagIds ?? [],
     vendorIds: overrides.vendorIds ?? [],
@@ -237,7 +281,7 @@ function makeItemRow(overrides: Partial<FakeItemRow> = {}): FakeItemRow {
 function makeRecipeRow(overrides: Partial<FakeRecipeRow> = {}): FakeRecipeRow {
   return {
     id: overrides.id ?? 'recipe_1',
-    userId: overrides.userId ?? 'user_test123',
+    householdId: overrides.householdId ?? 'hh_test',
     items: overrides.items ?? [],
   }
 }
@@ -373,9 +417,9 @@ describe('applyShelfFilterPicks resolver', () => {
     expect(state.recipes[0].items).toEqual([{ itemId: 'item_1', defaultAmount: 1 }])
   })
 
-  it('rejects a call naming another user\'s item', async () => {
-    // Given an item owned by a different user
-    state.items = [makeItemRow({ id: 'item_1', userId: 'user_other', tagIds: [] })]
+  it('rejects a call naming another household\'s item', async () => {
+    // Given an item in a different household
+    state.items = [makeItemRow({ id: 'item_1', householdId: 'hh_other', tagIds: [] })]
 
     // When the authenticated user targets that item
     const result = await execOp(APPLY_PICKS_MUTATION, {
@@ -441,19 +485,22 @@ describe('applyShelfFilterPicks resolver', () => {
     expect(sharedClient.itemVendor.createMany).not.toHaveBeenCalled()
   })
 
-  it("rejects a call naming another user's recipe", async () => {
-    // Given an item the caller owns, but a recipe owned by someone else
+  it("rejects a call naming another household's recipe", async () => {
+    // Given an item of the caller's household, but a recipe of another one
     state.items = [makeItemRow({ id: 'item_1', tagIds: [] })]
-    state.recipes = [makeRecipeRow({ id: 'recipe_1', userId: 'user_other', items: [] })]
+    state.recipes = [makeRecipeRow({ id: 'recipe_1', householdId: 'hh_other', items: [] })]
 
     // When applying picks that name that recipe
     const result = await execOp(APPLY_PICKS_MUTATION, {
       input: { itemId: 'item_1', addTagIds: [], addVendorIds: [], addRecipeId: 'recipe_1' },
     })
 
-    // Then the call is rejected and the other user's recipe is untouched
+    // Then the call is refused before the transaction, by `requireCatalogIds`
+    // (issue #273: FORBIDDEN, where it was NOT_FOUND from inside the
+    // transaction before households H3a task 3.7), and the other household's
+    // recipe is untouched
     expect(result?.errors).toBeDefined()
-    expect(result?.errors?.[0]?.extensions?.code).toBe('NOT_FOUND')
+    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
     expect(state.recipes[0].items).toEqual([])
   })
 })

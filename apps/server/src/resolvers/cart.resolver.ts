@@ -1,6 +1,12 @@
 import { GraphQLError } from 'graphql'
 import type { Prisma } from '@prisma/client'
-import { type LocationRole, requireLocationRole } from '../lib/authz.js'
+import {
+  householdOfLocation,
+  type LocationRole,
+  locationIdsWithRole,
+  requireLocationItems,
+  requireLocationRole,
+} from '../lib/authz.js'
 import { cartIdFor, parseCartId } from '../lib/cartId.js'
 import { isBeingBought } from '../lib/checkout.js'
 import { prisma } from '../lib/prisma.js'
@@ -17,7 +23,7 @@ import type { Cart, CartItem, Resolvers } from '../generated/graphql.js'
  * before it reaches any query — that call is the one authorization seam for
  * location data (lib/authz.ts). Do NOT replace it with a
  * `row.userId === ctx.userId` test: root CLAUDE.md forbids that, because it
- * denies a legitimate `member` of a shared location.
+ * denies a legitimate `participant` of a shared location.
  *
  * A pre-PR-3b cart id has no ':' at all, so it parses as a location id that no
  * `Location` row matches and this throws FORBIDDEN. That is the intended
@@ -84,8 +90,9 @@ async function requireCartLocation(
  *
  * Issue #358 asks for this warning only. What each query should scope by is a
  * households decision and is NOT made here. `InventoryLog.userId` has the
- * identical shape — kept, meaning "the author" — and is flagged the same way
- * in resolvers/inventoryLog.resolver.ts.
+ * identical shape — kept, meaning "the author". Households H3a task 3.8
+ * dropped it from every log READ (resolvers/inventoryLog.resolver.ts); the
+ * cart filters here wait for H3b.
  */
 export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
   Query: {
@@ -96,8 +103,8 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
     vendorCart: async (_, { vendorId = null, locationId }, ctx) => {
       const userId = requireAuth(ctx)
 
-      // `member`, not `viewer`: this query CREATES the cart when it is missing.
-      await requireLocationRole(ctx, locationId, 'member')
+      // `participant`, not `viewer`: this query CREATES the cart when it is missing.
+      await requireLocationRole(ctx, locationId, 'participant')
 
       const cartId = cartIdFor(locationId, vendorId ?? null)
       let cart = await prisma.cart.findUnique({ where: { id: cartId } })
@@ -170,7 +177,10 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
   Mutation: {
     addToCart: async (_, { cartId, itemId, quantity }, ctx) => {
       const userId = requireAuth(ctx)
-      await requireCartLocation(ctx, cartId, 'member')
+      const locationId = await requireCartLocation(ctx, cartId, 'participant')
+      // The item must be an item of the cart's location's household
+      // (households H3a, task 3.8). Before, any item id was taken on trust.
+      await requireLocationItems(ctx, locationId, [itemId])
       const existing = await prisma.cartItem.findFirst({ where: { cartId, itemId, userId } })
       if (existing) {
         return prisma.cartItem.update({
@@ -189,7 +199,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       const userId = requireAuth(ctx)
       const existing = await prisma.cartItem.findFirst({ where: { id, userId } })
       if (!existing) throw new GraphQLError('CartItem not found', { extensions: { code: 'NOT_FOUND' } })
-      await requireCartLocation(ctx, existing.cartId, 'member')
+      await requireCartLocation(ctx, existing.cartId, 'participant')
       return prisma.cartItem.update({
         where: { id },
         data: { quantity },
@@ -200,7 +210,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       const userId = requireAuth(ctx)
       const existing = await prisma.cartItem.findFirst({ where: { id, userId } })
       if (!existing) return false
-      await requireCartLocation(ctx, existing.cartId, 'member')
+      await requireCartLocation(ctx, existing.cartId, 'participant')
       await prisma.cartItem.delete({ where: { id } })
       return true
     },
@@ -216,7 +226,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       // inventory log against the Kitchen. That was the limitation PR 3a
       // shipped; Task 1's re-key of `Cart.id` is what made the real location
       // reachable here.
-      const cartLocationId = await requireCartLocation(ctx, cartId, 'member')
+      const cartLocationId = await requireCartLocation(ctx, cartId, 'participant')
       // Issue #358: this read decides WHICH rows get bought, and
       // `CartItem.userId` becomes "added by" under households while this
       // filter KEEPS COMPILING. Left as it is, a shared checkout moves stock
@@ -301,6 +311,9 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       })
 
       const now = new Date()
+      // The locations a copy-on-add below may copy from: the ones the caller
+      // holds a role on (households H3a, task 3.8). Read once, not per item.
+      const sourceLocationIds = await locationIdsWithRole(ctx)
 
       for (const { ci, quantity: finalQuantity } of purchases) {
         // Stock the item at the cart's location if it is not stocked there yet,
@@ -321,7 +334,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
         // third bucket offers "add to location", not "add to cart". This is the
         // defensive path, and the two modes disagreeing on it is the thing
         // being removed before households.
-        await ensureStockAtLocation(ci.itemId, cartLocationId, userId)
+        await ensureStockAtLocation(ci.itemId, cartLocationId, sourceLocationIds)
 
         // The cart location's own stock row, and since PR 5 the ONLY place the
         // purchase is recorded — `Item`'s five stock columns are gone, and with
@@ -391,11 +404,15 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
      */
     bootstrapCarts: async (_, { locationId }, ctx) => {
       const userId = requireAuth(ctx)
-      // `member`, not `viewer`: this creates rows.
-      await requireLocationRole(ctx, locationId, 'member')
+      // `participant`, not `viewer`: this creates rows.
+      await requireLocationRole(ctx, locationId, 'participant')
 
+      // Every vendor of the LOCATION's household, whoever made it (households
+      // H3a, task 3.8). Until then this read `where: { userId }`, so a
+      // location got carts only for the vendors the caller had made, not for
+      // a vendor another member added to the shared catalog.
       const vendors = await prisma.vendor.findMany({
-        where: { userId },
+        where: { householdId: await householdOfLocation(locationId) },
         select: { id: true },
       })
       // The no-vendor cart first, then one per vendor — the same set local
@@ -436,7 +453,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
 
     abandonCart: async (_, { cartId }, ctx) => {
       const userId = requireAuth(ctx)
-      await requireCartLocation(ctx, cartId, 'member')
+      await requireCartLocation(ctx, cartId, 'participant')
       // Issue #358, and the two lines below need DIFFERENT fixes because they
       // read different columns.
       //

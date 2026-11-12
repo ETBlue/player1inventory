@@ -56,7 +56,6 @@ type Recipe {
   name: String!
   items: [RecipeItem!]!
   lastCookedAt: String
-  userId: String!
 }
 
 extend type Query {

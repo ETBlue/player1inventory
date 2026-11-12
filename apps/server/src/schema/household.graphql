@@ -1,0 +1,30 @@
+# The caller's household (households H3a, task 3.13).
+
+# The three household roles (decision H14). `owner` > `manager` > `member`.
+enum HouseholdRole {
+  owner
+  manager
+  member
+}
+
+type Household {
+  id: ID!
+  # Set by the owner. First sign-in names it "<display name>'s Household"
+  # in the app language (decision H3).
+  name: String!
+  # The CALLER's role in this household, not a property of the household.
+  role: HouseholdRole!
+}
+
+extend type Query {
+  # The caller's household. A new person gets their household, and its first
+  # location, on their first call (first sign-in, lib/household.ts).
+  household: Household!
+}
+
+extend type Mutation {
+  # Household role `owner` (decision H4). The name is trimmed. An empty or
+  # blank name, or one longer than 100 characters, is refused with the error
+  # code BAD_USER_INPUT.
+  renameHousehold(name: String!): Household!
+}

@@ -36,6 +36,9 @@ queries Prisma batches into one transaction with no logic between them:
 `apps/server/src/resolvers/import.resolver.ts:499`,
 `apps/server/src/resolvers/purge.resolver.ts:22`, and
 `apps/server/src/lib/e2eCleanup.ts` (the E2E-only cleanup endpoint).
+(`purge.resolver.ts` was removed in households H3a task 3.10, and the same
+task moved `clearAllData` in `import.resolver.ts` to the interactive form.
+`e2eCleanup.ts` still uses the array form.)
 
 `apps/server/src/resolvers/shelf.resolver.ts:89`'s `applyShelfFilterPicks`
 resolver introduces the first **interactive (callback) form** —
@@ -191,14 +194,21 @@ These things about it are easy to get wrong. The list grows; count the bullets r
 than trusting a number here — it said **four** when there were seven.
 
 - **It parks migrations by NAME.** `scripts/verify-migration.ts` holds a `MIGRATIONS` list —
-  **six** entries today:
+  **eight** entries today (2026-11-11):
   `20260830000000_add_location_and_item_stock`,
   `20260916000000_add_location_to_log_and_cart`,
   `20260917000000_rekey_cart_to_location_vendor`,
   `20261004000000_drop_item_stock_state_columns` (cloud locations PR 5, three assertions),
   `20261008000000_add_item_note_and_wikidata_url` (cloud-parity PR B, issue #335, four
   assertions — see the additive section below) and
-  `20261031000000_add_user` (households H2, a new empty `"User"` table, five checks).
+  `20261031000000_add_user` (households H2, a new empty `"User"` table, five checks),
+  `20261104000000_add_households` (households H3a) and `20261111000000_drop_user_scope`
+  (households H3a task 3.14). `add_households` is applied in a **second** `migrate deploy`,
+  after a second seed step writes two `"User"` rows: the first seed runs before `add_user`,
+  so it cannot write one. See `seedUsersBeforeHouseholds` in the script. `drop_user_scope`
+  is applied in a **third** `migrate deploy`. Before it, the script asserts every block that
+  reads `Location.userId` or `isDefault` (both are gone after it), then writes the rows the
+  old server could write between the two deploys (`seedBetweenDeploys`).
   **Count the array rather than trusting this line.** It said **four** until 2026-10-08:
   ```bash
   grep -c "^  '2026" apps/server/scripts/verify-migration.ts
@@ -288,6 +298,21 @@ than trusting a number here — it said **four** when there were seven.
 
   A value that does not parse as a URL is skipped rather than crashing the run — an unrelated
   variable ending in `_URL` may hold anything, and `new URL()` throws on a malformed value.
+- **It also proves two things that are not migrations** (households H3a). At the end of
+  `main()`, after the migrations, `assertHouseholdsConstraints` proves the first sign-in claim
+  race on real Postgres, and `assertHouseholdLock` (task 3.16) proves `lockHousehold`: two
+  `deleteLocation` transactions on the last two locations, and `clearAllData` with
+  `deleteLocation` at once. Both use two `PrismaClient`s and read `pg_blocking_pids` to SEE
+  that the second transaction waits. Each keeps a copy of the code it proves, because
+  `scripts/` must not import from `src`: the `updateMany` claim of `ensureHousehold`, the
+  `UPDATE` of `lockHousehold`, and the statements of `deleteLocation` and `clearAllData`.
+  **When you change one of those in `src`, change the copy too**, or the proof stops being
+  about the code that runs. The lock proof was written on 2026-11-11 and has not been run
+  yet at the time of writing; check the H3a runbook, section 8, for its result.
+- **`RAISE NOTICE` lines do not show in its output.** Measured 2026-11-11: the `RAISE NOTICE`
+  counts of `drop_user_scope` step 3 did not appear when the script ran `migrate deploy`. A
+  rehearsal must count with plain SQL queries instead. The H3a runbook gives one query per
+  cleanup kind.
 - **Never point it at a copy of production.** For that, use an additive-only rehearsal:
   `migrate deploy` plus read-only assertions. See the *Production-data rehearsals* section of
   `docs/features/locations/2026-08-30-cloud-locations-design.md` §7. Since #333 the guard
@@ -304,6 +329,13 @@ If the override silently falls back, the migration is applied to the dev databas
 command still prints success. The rehearsal then reports green while having tested nothing,
 which is worse than a failure. PR 3a's rehearsal (2026-09-17) did this check first; the
 result is recorded in `docs/features/locations/cloud-locations-status.md`.
+
+**To stop between two migrations on a copy, park the later one.** `prisma migrate deploy`
+applies every pending migration. The H3a rehearsal needs counts AFTER `add_households` and
+BEFORE `drop_user_scope`, so it moves the `drop_user_scope` folder to
+`apps/server/.migration-under-test/` (in `.gitignore`) for one `migrate deploy`, then moves it
+back and checks `git status`. See section 3.3 of
+`docs/global/backend/2026-11-11-deploy-runbook-households-h3a.md`.
 
 Two more rules from that run:
 

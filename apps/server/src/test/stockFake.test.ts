@@ -20,7 +20,7 @@ describe('stockFake models the constraints resolvers rely on', () => {
     // Given a row already exists for (item, location)
     const fake = createStockFake()
     fake.reset(
-      [{ id: 'loc_a', userId: 'user_1', isDefault: true }],
+      [{ id: 'loc_a', householdId: 'hh_1' }],
       [makeStock({ id: 'st_1', itemId: 'item_1', locationId: 'loc_a' })],
     )
 
@@ -47,8 +47,8 @@ describe('stockFake models the constraints resolvers rely on', () => {
     const fake = createStockFake()
     fake.reset(
       [
-        { id: 'loc_a', userId: 'user_1', isDefault: true },
-        { id: 'loc_b', userId: 'user_1', isDefault: false },
+        { id: 'loc_a', householdId: 'hh_1' },
+        { id: 'loc_b', householdId: 'hh_1' },
       ],
       [makeStock({ id: 'st_1', itemId: 'item_1', locationId: 'loc_a' })],
     )
@@ -67,7 +67,7 @@ describe('stockFake models the constraints resolvers rely on', () => {
     // Given a row at 2 packed
     const fake = createStockFake()
     fake.reset(
-      [{ id: 'loc_a', userId: 'user_1', isDefault: true }],
+      [{ id: 'loc_a', householdId: 'hh_1' }],
       [
         makeStock({
           id: 'st_1',
@@ -92,39 +92,34 @@ describe('stockFake models the constraints resolvers rely on', () => {
     expect(fake.state.itemStocks[0]?.packedQuantity).toBe(5)
   })
 
-  it('a second default location for one user throws P2002, the way the partial index does', async () => {
-    // Given the user already has a default location
+  it('location.create refuses userId and isDefault, the columns task 3.14 dropped', async () => {
+    // Given an empty table
     const fake = createStockFake()
-    fake.reset([{ id: 'loc_a', userId: 'user_1', isDefault: true }], [])
+    fake.reset([], [])
 
-    // When another default is created for the same user
-    const create = fake.client.location.create({
-      data: { name: 'My Home', order: 0, isDefault: true, userId: 'user_1' },
-    })
+    // When a writer still sends either dropped column
+    for (const extra of [{ userId: 'user_1' }, { isDefault: true }]) {
+      const create = fake.client.location.create({
+        data: { name: 'Home', order: 0, householdId: 'hh_1', ...extra },
+      })
 
-    // Then it is rejected with Prisma's unique-violation code and no row is
-    // left behind. `ensureDefaultLocation` (lib/defaultLocation.ts) catches
-    // exactly this and re-reads the winner, so a fake that accepted the
-    // duplicate would leave that path unexercised.
-    await expect(create).rejects.toMatchObject({ code: 'P2002' })
-    expect(fake.state.locations).toHaveLength(1)
+      // Then it is refused, the way Prisma refuses an unknown argument. A
+      // fake that stored the key would let a resolver write a column the
+      // table does not have.
+      await expect(create).rejects.toThrow(/is not a column of Location/)
+    }
+    // And no row is left behind
+    expect(fake.state.locations).toHaveLength(0)
   })
 
-  it('a default location for a DIFFERENT user is allowed', async () => {
-    // Given user_1 has a default location
+  it('location.create refuses a row with no householdId, which is NOT NULL', async () => {
     const fake = createStockFake()
-    fake.reset([{ id: 'loc_a', userId: 'user_1', isDefault: true }], [])
+    fake.reset([], [])
 
-    // When user_2 gets one too — the index is partial and per-user, so this
-    // must pass. A fake that rejected it would make "creates the default for a
-    // new user" fail for the wrong reason.
-    const row = await fake.client.location.create({
-      data: { name: 'My Home', order: 0, isDefault: true, userId: 'user_2' },
-    })
+    const create = fake.client.location.create({ data: { name: 'Home', order: 0 } })
 
-    // Then both exist
-    expect(row.userId).toBe('user_2')
-    expect(fake.state.locations).toHaveLength(2)
+    await expect(create).rejects.toThrow(/householdId` is required/)
+    expect(fake.state.locations).toHaveLength(0)
   })
 
   // ─── Location writes the import mutations rely on (PR 4a task 5) ──────────
@@ -143,7 +138,7 @@ describe('stockFake models the constraints resolvers rely on', () => {
 
     // When a row is created WITH an id, the way the import mutations do
     const row = await fake.client.location.create({
-      data: { id: 'loc_from_payload', name: 'Pantry', order: 3, isDefault: false, userId: 'user_1' },
+      data: { id: 'loc_from_payload', name: 'Pantry', order: 3, householdId: 'hh_1' },
     })
 
     // Then that exact id is stored. `inventoryLogFake` threw `data.id` away
@@ -159,9 +154,9 @@ describe('stockFake models the constraints resolvers rely on', () => {
     const fake = createStockFake()
     fake.reset([], [])
 
-    // When `ensureDefaultLocation` / `createLocation` create without an id
+    // When first sign-in (lib/household.ts) or `createLocation` creates without an id
     const row = await fake.client.location.create({
-      data: { name: 'My Home', order: 0, isDefault: true, userId: 'user_1' },
+      data: { name: 'Home', order: 0, householdId: 'hh_1' },
     })
 
     // Then the fake supplies one, as the database's @default(cuid()) would
@@ -171,7 +166,7 @@ describe('stockFake models the constraints resolvers rely on', () => {
   it('itemStock.create keeps the id and the timestamps the writer supplies', async () => {
     // Given an import writing a backup's own id and timestamps verbatim
     const fake = createStockFake()
-    fake.reset([{ id: 'loc_a', userId: 'user_1', isDefault: true }], [])
+    fake.reset([{ id: 'loc_a', householdId: 'hh_1' }], [])
     const created = new Date('2026-02-03T04:05:06.000Z')
     const updated = new Date('2026-03-04T05:06:07.000Z')
 
@@ -199,7 +194,7 @@ describe('stockFake models the constraints resolvers rely on', () => {
     // GLOBAL primary key, and this model has no userId column at all
     const fake = createStockFake()
     fake.reset(
-      [{ id: 'loc_theirs', userId: 'user_2', isDefault: true }],
+      [{ id: 'loc_theirs', householdId: 'hh_2' }],
       [makeStock({ id: 'stock_taken', itemId: 'item_theirs', locationId: 'loc_theirs' })],
     )
 
@@ -227,8 +222,8 @@ describe('stockFake models the constraints resolvers rely on', () => {
     const fake = createStockFake()
     fake.reset(
       [
-        { id: 'loc_theirs', userId: 'user_2', isDefault: true },
-        { id: 'loc_mine', userId: 'user_1', isDefault: true },
+        { id: 'loc_theirs', householdId: 'hh_2' },
+        { id: 'loc_mine', householdId: 'hh_1' },
       ],
       [makeStock({ id: 'st_1', itemId: 'item_theirs', locationId: 'loc_theirs' })],
     )
@@ -249,7 +244,7 @@ describe('stockFake models the constraints resolvers rely on', () => {
   it('itemStock.delete throws when nothing matches, so a stale-pair drop cannot no-op', async () => {
     // Given an empty store
     const fake = createStockFake()
-    fake.reset([{ id: 'loc_a', userId: 'user_1', isDefault: true }], [])
+    fake.reset([{ id: 'loc_a', householdId: 'hh_1' }], [])
 
     // When a delete names an id no row holds
     const del = fake.client.itemStock.delete({ where: { id: 'nope' } })
@@ -262,14 +257,14 @@ describe('stockFake models the constraints resolvers rely on', () => {
   })
 
   it('a create reusing an existing location id throws P2002, the way the primary key does', async () => {
-    // Given another user already holds that id — `Location.id` is a GLOBAL
-    // primary key with no userId in it
+    // Given another household already holds that id — `Location.id` is a
+    // GLOBAL primary key
     const fake = createStockFake()
-    fake.reset([{ id: 'loc_taken', userId: 'user_2', isDefault: false }], [])
+    fake.reset([{ id: 'loc_taken', householdId: 'hh_2' }], [])
 
     // When user_1's import tries to create the same id
     const create = fake.client.location.create({
-      data: { id: 'loc_taken', name: 'Mine', order: 1, isDefault: false, userId: 'user_1' },
+      data: { id: 'loc_taken', name: 'Mine', order: 1, householdId: 'hh_1' },
     })
 
     // Then it is rejected and the existing row is left alone. A fake that
@@ -277,96 +272,90 @@ describe('stockFake models the constraints resolvers rely on', () => {
     // `bulkCreateLocations`.
     await expect(create).rejects.toMatchObject({ code: 'P2002' })
     expect(fake.state.locations).toHaveLength(1)
-    expect(fake.state.locations[0]?.userId).toBe('user_2')
+    expect(fake.state.locations[0]?.householdId).toBe('hh_2')
   })
 
   it('location.upsert applies its update payload key by key and leaves omitted columns alone', async () => {
-    // Given a row that IS the user's default
+    // Given a row in hh_1
     const fake = createStockFake()
-    fake.reset(
-      [{ id: 'loc_a', userId: 'user_1', isDefault: true, name: 'Kitchen', order: 0 }],
-      [],
-    )
+    fake.reset([{ id: 'loc_a', householdId: 'hh_1', name: 'Kitchen', order: 0 }], [])
 
     // When an upsert names only `name` and `order` — the exact shape
-    // `bulkUpsertLocations` sends, which deliberately omits `isDefault` and
-    // `userId`
+    // `bulkUpsertLocations` sends, which deliberately omits `householdId`
     const row = await fake.client.location.upsert({
       where: { id: 'loc_a' },
-      create: { id: 'loc_a', name: 'Never', order: 9, isDefault: false, userId: 'user_other' },
+      create: { id: 'loc_a', name: 'Never', order: 9, householdId: 'hh_other' },
       update: { name: 'Kitchen Renamed', order: 2 },
     })
 
-    // Then the named columns changed and the omitted ones did not. A fake that
+    // Then the named columns changed and the omitted one did not. A fake that
     // reused `create` for both — or ignored `update`, as
-    // `shoppingFake.cart.upsert` did until task 4 — would report a demoted
-    // default and a stolen row as if nothing had happened.
-    expect(row).toMatchObject({
-      name: 'Kitchen Renamed',
-      order: 2,
-      isDefault: true,
-      userId: 'user_1',
-    })
+    // `shoppingFake.cart.upsert` did until task 4 — would report a row moved
+    // to another household as if nothing had happened.
+    expect(row).toMatchObject({ name: 'Kitchen Renamed', order: 2, householdId: 'hh_1' })
     expect(fake.state.locations).toHaveLength(1)
   })
 
-  it('an update promoting a SECOND row to default throws P2002', async () => {
-    // Given the user already has a default. Not reachable from any resolver
-    // today — no writer sets `isDefault` on update — so this is pinned here.
+  it('a location update that names a dropped column throws', async () => {
+    // Given a stored row. No resolver sends `isDefault` or `userId` since
+    // households H3a task 3.14, so this is pinned here.
     const fake = createStockFake()
-    fake.reset(
-      [
-        { id: 'loc_default', userId: 'user_1', isDefault: true },
-        { id: 'loc_other', userId: 'user_1', isDefault: false },
-      ],
-      [],
-    )
+    fake.reset([{ id: 'loc_a', householdId: 'hh_1' }], [])
 
-    // When an update tries to make the second row default too
+    // When an update names `isDefault`
     const update = fake.client.location.upsert({
-      where: { id: 'loc_other' },
-      create: { id: 'loc_other', userId: 'user_1' },
+      where: { id: 'loc_a' },
+      create: { id: 'loc_a', householdId: 'hh_1' },
       update: { isDefault: true },
     })
 
-    // Then the partial index rejects it, as Postgres would on UPDATE
-    await expect(update).rejects.toMatchObject({ code: 'P2002' })
-    expect(fake.state.locations.filter((l) => l.isDefault)).toHaveLength(1)
+    // Then it is refused, as Prisma refuses an unknown argument
+    await expect(update).rejects.toThrow(/is not a column of Location/)
   })
 
   it('location.findFirst models Prisma where semantics — an absent key filters nothing', async () => {
-    // Given two users, each with a default location
+    // Given three locations in two households
     const fake = createStockFake()
     fake.reset(
       [
-        { id: 'loc_other', userId: 'user_1', isDefault: false },
-        { id: 'loc_mine', userId: 'user_1', isDefault: true },
-        { id: 'loc_theirs', userId: 'user_2', isDefault: true },
+        { id: 'loc_other', householdId: 'hh_2' },
+        { id: 'loc_mine', householdId: 'hh_1' },
+        { id: 'loc_theirs', householdId: 'hh_2' },
       ],
       [],
     )
 
-    // When the caller's default is looked up
-    const mine = await fake.client.location.findFirst({
-      where: { userId: 'user_1', isDefault: true },
-    })
+    // When the caller's household's location is looked up
+    const mine = await fake.client.location.findFirst({ where: { householdId: 'hh_1' } })
 
-    // Then it is theirs, not the first isDefault row in the table
+    // Then it is theirs, not the first row in the table
     expect(mine?.id).toBe('loc_mine')
 
-    // And a where clause missing `userId` matches across users — which is what
-    // makes a resolver that DROPS the scope visible instead of silently green
-    const unscoped = await fake.client.location.findFirst({
-      where: { isDefault: true },
-    })
-    expect(unscoped?.id).toBe('loc_mine')
-    const all = await fake.client.location.findMany({ where: { isDefault: true } })
-    expect(all.map((l) => l.id)).toEqual(['loc_mine', 'loc_theirs'])
+    // And a where clause missing `householdId` matches across households —
+    // which is what makes a resolver that DROPS the scope visible instead of
+    // silently green
+    const unscoped = await fake.client.location.findFirst({})
+    expect(unscoped?.id).toBe('loc_other')
+    const all = await fake.client.location.findMany({})
+    expect(all.map((l) => l.id)).toEqual(['loc_other', 'loc_mine', 'loc_theirs'])
   })
 
-  // `itemStock.findMany({ where: { location: { userId } } })` — the relation
-  // filter every whole-account ItemStock read uses, because ItemStock has no
-  // userId column of its own (root CLAUDE.md, Authorization).
+  it('location.findFirst refuses userId and isDefault in a where', async () => {
+    const fake = createStockFake()
+    fake.reset([{ id: 'loc_a', householdId: 'hh_1' }], [])
+
+    await expect(fake.client.location.findFirst({ where: { userId: 'user_1' } })).rejects.toThrow(
+      /userId/,
+    )
+    await expect(fake.client.location.findFirst({ where: { isDefault: true } })).rejects.toThrow(
+      /isDefault/,
+    )
+  })
+
+  // `itemStock.findMany({ where: { location: { householdId } } })` — the
+  // relation filter `clearAllData` uses, because ItemStock has no scope column
+  // of its own (root CLAUDE.md, Authorization). It was `location: { userId }`
+  // until households H3a.
   //
   // Pinned here for the same reason the duplicate-create guard above is: no
   // resolver tested THROUGH this fake uses the key today (`allItemStocks`,
@@ -377,13 +366,13 @@ describe('stockFake models the constraints resolvers rely on', () => {
   // this fake needs it: a fake that IGNORED the key would pass against a
   // resolver with no user scope at all.
   it('itemStock.findMany resolves the location relation filter through the Location row', async () => {
-    // Given two users, each with a location holding one stock row
+    // Given two households, each with a location holding one stock row
     const fake = createStockFake()
     fake.reset(
       [
-        { id: 'loc_mine', userId: 'user_1', isDefault: true },
-        { id: 'loc_mine_2', userId: 'user_1', isDefault: false },
-        { id: 'loc_theirs', userId: 'user_2', isDefault: true },
+        { id: 'loc_mine', householdId: 'hh_1' },
+        { id: 'loc_mine_2', householdId: 'hh_1' },
+        { id: 'loc_theirs', householdId: 'hh_2' },
       ],
       [
         makeStock({ id: 'st_mine', itemId: 'item_1', locationId: 'loc_mine' }),
@@ -394,12 +383,12 @@ describe('stockFake models the constraints resolvers rely on', () => {
 
     // When the rows are read through the relation filter
     const mine = await fake.client.itemStock.findMany({
-      where: { location: { userId: 'user_1' } },
+      where: { location: { householdId: 'hh_1' } },
     })
 
-    // Then BOTH of user_1's locations come back and user_2's row does not.
+    // Then BOTH of hh_1's locations come back and hh_2's row does not.
     // Two locations is what makes this assertion mean anything — with one,
-    // "the caller's rows" and "this location's rows" are the same set.
+    // "the household's rows" and "this location's rows" are the same set.
     expect(mine.map((s) => s.id)).toEqual(['st_mine', 'st_mine_2'])
 
     // And an absent `location` key filters nothing, which is what makes a
@@ -422,8 +411,8 @@ describe('stockFake $transaction rolls back', () => {
     // every row" and "restored one row" are the same assertion.
     fake.reset(
       [
-        { id: 'loc_kitchen', userId: 'user_1', isDefault: true },
-        { id: 'loc_garage', userId: 'user_1', isDefault: false },
+        { id: 'loc_kitchen', householdId: 'hh_1' },
+        { id: 'loc_garage', householdId: 'hh_1' },
       ],
       [
         makeStock({
@@ -559,5 +548,254 @@ describe('stockFake $transaction rolls back', () => {
     // array have already run by now, so any snapshot taken here is the state
     // AFTER those writes.
     await expect(call).rejects.toThrow(/only the interactive callback form/)
+  })
+})
+
+// Households H3a, task 3.5 step 0. `householdFake` resolves the household of a
+// location by reading `householdId` off these rows. Before this, the fake built
+// each created row field by field and left `householdId` out. So every location
+// belonged to no household, and every role check failed closed: right code and
+// wrong code were refused alike.
+describe('stockFake keeps the household of a location', () => {
+  it('a created location keeps the householdId the writer gave', async () => {
+    // Given an empty table
+    const fake = createStockFake()
+    fake.reset([], [])
+
+    // When a location is created inside a household
+    const row = await fake.client.location.create({
+      data: { name: 'Home', order: 0, householdId: 'hh_1' },
+    })
+
+    // Then the returned row and the stored row both carry it
+    expect(row.householdId).toBe('hh_1')
+    expect(fake.state.locations[0]?.householdId).toBe('hh_1')
+  })
+
+
+  it('a location can be found by householdId, and by a list of ids', async () => {
+    // Given two locations in two households
+    const fake = createStockFake()
+    fake.reset(
+      [
+        { id: 'loc_a', householdId: 'hh_1' },
+        { id: 'loc_b', householdId: 'hh_2' },
+      ],
+      [],
+    )
+
+    // When each is looked up
+    const inOne = await fake.client.location.findMany({ where: { householdId: 'hh_1' } })
+    const byIds = await fake.client.location.findMany({ where: { id: { in: ['loc_b'] } } })
+
+    // Then only the matching row comes back
+    expect(inOne.map((l) => l.id)).toEqual(['loc_a'])
+    expect(byIds.map((l) => l.id)).toEqual(['loc_b'])
+  })
+
+  it('an upsert update that names householdId moves the row into that household', async () => {
+    const fake = createStockFake()
+    fake.reset([{ id: 'loc_a', householdId: 'hh_0' }], [])
+
+    await fake.client.location.upsert({
+      where: { id: 'loc_a' },
+      update: { householdId: 'hh_1' },
+      create: {},
+    })
+
+    expect(fake.state.locations[0]?.householdId).toBe('hh_1')
+  })
+})
+
+// Households H3a task 3.6. `location.resolver.ts` now runs on this fake (through
+// `householdWorld.ts`) instead of a hand-written double, so the fake needs the
+// location calls that resolver makes. Each one is pinned here.
+describe('stockFake location calls for location.resolver.ts', () => {
+  const rows = () => [
+    { id: 'loc_b', householdId: 'hh_1', name: 'B', order: 2 },
+    { id: 'loc_a', householdId: 'hh_1', name: 'A', order: 0 },
+    { id: 'loc_c', householdId: 'hh_2', name: 'C', order: 1 },
+  ]
+
+  it('location.findMany sorts by orderBy, and keeps store order without one', async () => {
+    const fake = createStockFake()
+    fake.reset(rows(), [])
+
+    const asc = await fake.client.location.findMany({ orderBy: { order: 'asc' } })
+    const desc = await fake.client.location.findMany({
+      orderBy: [{ order: 'desc' }, { id: 'asc' }],
+    })
+    const none = await fake.client.location.findMany({})
+
+    expect(asc.map((l) => l.id)).toEqual(['loc_a', 'loc_c', 'loc_b'])
+    expect(desc.map((l) => l.id)).toEqual(['loc_b', 'loc_c', 'loc_a'])
+    expect(none.map((l) => l.id)).toEqual(['loc_b', 'loc_a', 'loc_c'])
+  })
+
+  it('location.findMany breaks an order tie by the next orderBy key', async () => {
+    const fake = createStockFake()
+    fake.reset(
+      [
+        { id: 'loc_z', householdId: 'hh_1', order: 1 },
+        { id: 'loc_y', householdId: 'hh_1', order: 1 },
+      ],
+      [],
+    )
+
+    const sorted = await fake.client.location.findMany({
+      orderBy: [{ order: 'asc' }, { id: 'asc' }],
+    })
+
+    expect(sorted.map((l) => l.id)).toEqual(['loc_y', 'loc_z'])
+  })
+
+  it('location.findMany refuses an orderBy it does not model', async () => {
+    const fake = createStockFake()
+    fake.reset(rows(), [])
+
+    await expect(
+      fake.client.location.findMany({ orderBy: { name: 'asc' } as never }),
+    ).rejects.toThrow(/orderBy/)
+  })
+
+  it('location.count counts only the rows the where matches', async () => {
+    const fake = createStockFake()
+    fake.reset(rows(), [])
+
+    expect(await fake.client.location.count({ where: { householdId: 'hh_1' } })).toBe(2)
+    expect(await fake.client.location.count({ where: { householdId: 'hh_9' } })).toBe(0)
+  })
+
+  it('location.update changes the named columns of one row, and raises P2025 when none matches', async () => {
+    const fake = createStockFake()
+    fake.reset(rows(), [])
+
+    const row = await fake.client.location.update({
+      where: { id: 'loc_b' },
+      data: { name: 'Shed' },
+    })
+
+    expect(row.name).toBe('Shed')
+    expect(fake.state.locations.find((l) => l.id === 'loc_b')?.order).toBe(2)
+    expect(fake.state.locations.find((l) => l.id === 'loc_a')?.name).toBe('A')
+    await expect(
+      fake.client.location.update({ where: { id: 'nope' }, data: { name: 'x' } }),
+    ).rejects.toMatchObject({ code: 'P2025' })
+  })
+
+  it('location.delete removes one row and its stock rows, and raises P2025 when none matches', async () => {
+    // Given two locations, each with a stock row
+    const fake = createStockFake()
+    fake.reset(rows(), [
+      makeStock({ id: 's_b', itemId: 'item_1', locationId: 'loc_b' }),
+      makeStock({ id: 's_a', itemId: 'item_1', locationId: 'loc_a' }),
+    ])
+
+    // When one location is deleted
+    await fake.client.location.delete({ where: { id: 'loc_b' } })
+
+    // Then its stock row goes with it (ON DELETE CASCADE), and the other stays
+    expect(fake.state.locations.map((l) => l.id)).toEqual(['loc_a', 'loc_c'])
+    expect(fake.state.itemStocks.map((s) => s.id)).toEqual(['s_a'])
+    await expect(fake.client.location.delete({ where: { id: 'loc_b' } })).rejects.toMatchObject({
+      code: 'P2025',
+    })
+  })
+
+  it('location.deleteMany removes every matching row and their stock rows, and returns the count', async () => {
+    // Given two locations in hh_1 and one in hh_2, each with a stock row
+    // (households H3a task 3.10: `clearAllData` deletes a household's
+    // locations with one deleteMany)
+    const fake = createStockFake()
+    fake.reset(rows(), [
+      makeStock({ id: 's_b', itemId: 'item_1', locationId: 'loc_b' }),
+      makeStock({ id: 's_a', itemId: 'item_1', locationId: 'loc_a' }),
+      makeStock({ id: 's_c', itemId: 'item_1', locationId: 'loc_c' }),
+    ])
+
+    // When hh_1's locations are deleted
+    const result = await fake.client.location.deleteMany({ where: { householdId: 'hh_1' } })
+
+    // Then both go, with their stock rows (ON DELETE CASCADE), and hh_2's stay
+    expect(result).toEqual({ count: 2 })
+    expect(fake.state.locations.map((l) => l.id)).toEqual(['loc_c'])
+    expect(fake.state.itemStocks.map((s) => s.id)).toEqual(['s_c'])
+
+    // And a filter that matches nothing deletes nothing, without an error
+    expect(await fake.client.location.deleteMany({ where: { householdId: 'hh_9' } })).toEqual({
+      count: 0,
+    })
+    expect(fake.state.locations).toHaveLength(1)
+  })
+
+  it('itemStock.deleteMany through location: { householdId } deletes only that household’s stock', async () => {
+    // Given stock rows at locations of two households
+    const fake = createStockFake()
+    fake.reset(rows(), [
+      makeStock({ id: 's_b', itemId: 'item_1', locationId: 'loc_b' }),
+      makeStock({ id: 's_a', itemId: 'item_2', locationId: 'loc_a' }),
+      makeStock({ id: 's_c', itemId: 'item_1', locationId: 'loc_c' }),
+    ])
+
+    // When hh_1's stock is deleted through the location
+    const result = await fake.client.itemStock.deleteMany({
+      where: { location: { householdId: 'hh_1' } },
+    })
+
+    // Then only hh_2's row is left
+    expect(result).toEqual({ count: 2 })
+    expect(fake.state.itemStocks.map((s) => s.id)).toEqual(['s_c'])
+  })
+
+  it('location.deleteMany refuses a where key it does not model', async () => {
+    const fake = createStockFake()
+    fake.reset(rows(), [])
+
+    await expect(
+      fake.client.location.deleteMany({ where: { household: { ownerId: 'user_1' } } }),
+    ).rejects.toThrow()
+    expect(fake.state.locations).toHaveLength(3)
+  })
+})
+
+describe('stockFake itemStock.findMany orderBy', () => {
+  function fakeWithRows() {
+    const fake = createStockFake()
+    fake.reset(
+      [],
+      [
+        makeStock({ id: 's-3', itemId: 'item-b', locationId: 'loc-2' }),
+        makeStock({ id: 's-1', itemId: 'item-b', locationId: 'loc-1' }),
+        makeStock({ id: 's-2', itemId: 'item-a', locationId: 'loc-1' }),
+      ],
+    )
+    return fake
+  }
+
+  it('returns store order when no orderBy is given', async () => {
+    const rows = await fakeWithRows().client.itemStock.findMany({})
+    expect(rows.map((r) => r.id)).toEqual(['s-3', 's-1', 's-2'])
+  })
+
+  it('applies an array of clauses as a tie-break chain', async () => {
+    const rows = await fakeWithRows().client.itemStock.findMany({
+      orderBy: [{ locationId: 'asc' }, { itemId: 'asc' }],
+    })
+    expect(rows.map((r) => r.id)).toEqual(['s-2', 's-1', 's-3'])
+  })
+
+  it('applies one clause, and desc', async () => {
+    const rows = await fakeWithRows().client.itemStock.findMany({
+      orderBy: { locationId: 'desc' },
+    })
+    expect(rows.map((r) => r.id)).toEqual(['s-3', 's-1', 's-2'])
+  })
+
+  it('throws on a column it does not model', async () => {
+    await expect(
+      fakeWithRows().client.itemStock.findMany({
+        orderBy: { updatedAt: 'asc' } as unknown as { itemId: 'asc' },
+      }),
+    ).rejects.toThrow(/orderBy 'updatedAt'/)
   })
 })

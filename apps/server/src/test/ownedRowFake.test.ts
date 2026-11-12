@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import type { OwnedRow } from './ownedRowFake.js'
-import { createOwnedRowFake } from './ownedRowFake.js'
+import type { HouseholdScopedRow, OwnedRow } from './ownedRowFake.js'
+import {
+  createOwnedRowFake,
+  DroppedColumnError,
+  MissingColumnError,
+  MissingUserIdError,
+  UnsupportedWhereKeyError,
+} from './ownedRowFake.js'
 import { runInTransaction } from './stockFake.js'
 
 // The double's OWN contract.
@@ -616,5 +622,170 @@ describe('ownedRowFake update, delete, updateMany and extra columns', () => {
     await expect(fake.client.findMany({ where: { typeId: 'tt_1' } })).rejects.toThrow(
       /does not model: 'typeId'/,
     )
+  })
+})
+
+describe('ownedRowFake scope: householdId for the six catalog models (H3a)', () => {
+  // Two households, so a scoped read and an unscoped read give different
+  // answers. With one household both would return every row.
+  const OURS = 'household_ours'
+  const OTHER = 'household_other'
+
+  interface FakeVendor extends HouseholdScopedRow {
+    name: string
+    userId?: string
+  }
+
+  function vendorFake(rows: FakeVendor[] = [], requiredColumns?: string[]) {
+    return createOwnedRowFake<FakeVendor>({
+      model: 'vendor',
+      scope: 'householdId',
+      rows,
+      requiredColumns,
+    })
+  }
+
+  it("findMany scoped by householdId does not return another household's row", async () => {
+    // Given one vendor in each household
+    const fake = vendorFake([
+      { id: 'v_ours', householdId: OURS, name: 'Ours' },
+      { id: 'v_other', householdId: OTHER, name: 'Other' },
+    ])
+
+    // When the vendors of our household are read
+    const rows = await fake.client.findMany({ where: { householdId: OURS } })
+
+    // Then only ours comes back
+    expect(rows.map((r) => r.id)).toEqual(['v_ours'])
+  })
+
+  it('householdId accepts { in: [...] } as well as a string', async () => {
+    // Given one vendor in each household
+    const fake = vendorFake([
+      { id: 'v_ours', householdId: OURS, name: 'Ours' },
+      { id: 'v_other', householdId: OTHER, name: 'Other' },
+    ])
+
+    // When the where names our household in an `in` list
+    const rows = await fake.client.findMany({ where: { householdId: { in: [OURS] } } })
+
+    // Then only ours comes back
+    expect(rows.map((r) => r.id)).toEqual(['v_ours'])
+  })
+
+  it('a household-scoped store refuses userId in the where, even when empty', async () => {
+    // Given an empty household-scoped store
+    const fake = vendorFake()
+
+    // When a resolver still reads by userId, as before task 3.7
+    // Then it throws. Ignoring the key would let the old scope pass unseen.
+    await expect(fake.client.findMany({ where: { userId: MINE } })).rejects.toThrow(
+      UnsupportedWhereKeyError,
+    )
+  })
+
+  it('a user-scoped store still refuses householdId in the where', async () => {
+    // Given a store with the default scope
+    const fake = tagFake()
+
+    // When the where names householdId
+    // Then it throws: the default scope is unchanged
+    await expect(fake.client.findMany({ where: { householdId: OURS } })).rejects.toThrow(
+      UnsupportedWhereKeyError,
+    )
+  })
+
+  it('create requires householdId on a household-scoped store', async () => {
+    // Given an empty household-scoped store
+    const fake = vendorFake()
+
+    // When a row is created with no householdId
+    // Then it throws and writes nothing
+    await expect(fake.client.create({ data: { id: 'v_1', name: 'X' } })).rejects.toThrow(
+      MissingColumnError,
+    )
+    await expect(
+      fake.client.createMany({ data: [{ id: 'v_2', name: 'Y' }] }),
+    ).rejects.toThrow(/no householdId/)
+    expect(fake.state.rows).toHaveLength(0)
+  })
+
+  it('create on a household-scoped store does not require userId', async () => {
+    // Given an empty household-scoped store with no extra required columns
+    const fake = vendorFake()
+
+    // When a row is created with only householdId
+    const row = await fake.client.create({ data: { householdId: OURS, name: 'X' } })
+
+    // Then it is stored
+    expect(row.householdId).toBe(OURS)
+    expect(fake.state.rows).toHaveLength(1)
+  })
+
+  it('requiredColumns makes another column required too', async () => {
+    // Given a household-scoped store that treats `name` as NOT NULL
+    const fake = vendorFake([], ['name'])
+
+    // When a row is created with householdId but no name
+    // Then it throws and writes nothing
+    await expect(fake.client.create({ data: { householdId: OURS } })).rejects.toThrow(
+      MissingColumnError,
+    )
+    expect(fake.state.rows).toHaveLength(0)
+
+    // And a row with both is stored
+    await fake.client.create({ data: { householdId: OURS, name: 'Y' } })
+    expect(fake.state.rows).toHaveLength(1)
+  })
+
+  it('a household-scoped store refuses userId on every write, the column task 3.14 dropped', async () => {
+    // Given a household-scoped store with one row
+    const fake = vendorFake([{ id: 'v_1', householdId: OURS, name: 'Ours' }])
+
+    // When a resolver still writes userId, in any write
+    // Then each one throws, the way Prisma refuses an unknown argument
+    await expect(
+      fake.client.create({ data: { householdId: OURS, userId: MINE, name: 'X' } }),
+    ).rejects.toThrow(DroppedColumnError)
+    // createMany refuses the whole call, a row skipDuplicates would skip included
+    await expect(
+      fake.client.createMany({
+        data: [{ id: 'v_1', householdId: OURS, userId: MINE, name: 'X' }],
+        skipDuplicates: true,
+      }),
+    ).rejects.toThrow(DroppedColumnError)
+    await expect(
+      fake.client.update({ where: { id: 'v_1' }, data: { userId: MINE } }),
+    ).rejects.toThrow(DroppedColumnError)
+    await expect(
+      fake.client.updateMany({ where: { id: 'v_1' }, data: { userId: MINE } }),
+    ).rejects.toThrow(DroppedColumnError)
+    // upsert checks both halves, whichever one runs
+    await expect(
+      fake.client.upsert({
+        where: { id: 'v_1' },
+        create: { id: 'v_1', householdId: OURS, userId: MINE, name: 'X' },
+        update: { name: 'Y' },
+      }),
+    ).rejects.toThrow(DroppedColumnError)
+
+    // And nothing was written
+    expect(fake.state.rows).toEqual([{ id: 'v_1', householdId: OURS, name: 'Ours' }])
+  })
+
+  it('an upsert whose update carries householdId moves the row to that household', async () => {
+    // Given a vendor in the other household
+    const fake = vendorFake([{ id: 'v_1', householdId: OTHER, name: 'Theirs' }])
+
+    // When an upsert's update payload names our household
+    await fake.client.upsert({
+      where: { id: 'v_1' },
+      create: { id: 'v_1', householdId: OURS, name: 'unused' },
+      update: { householdId: OURS },
+    })
+
+    // Then the row changed household. This is what makes a scope column left
+    // in an update payload visible to a test.
+    expect(fake.state.rows[0]?.householdId).toBe(OURS)
   })
 })

@@ -34,39 +34,48 @@ enum TagColor {
 }
 
 model TagType {
-  id       String   @id @default(cuid())
-  name     String
-  color    TagColor
-  userId   String
+  id          String   @id @default(cuid())
+  name        String
+  color       TagColor
+  householdId String
 
-  tags Tag[]
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  tags      Tag[]
 
-  @@index([userId, name])
+  @@index([householdId, name])
 }
 
 model Tag {
-  id       String  @id @default(cuid())
-  name     String
-  typeId   String
-  userId   String
-  parentId String?
+  id          String  @id @default(cuid())
+  name        String
+  typeId      String
+  householdId String
+  parentId    String?
 
-  type     TagType   @relation(fields: [typeId], references: [id])
-  parent   Tag?      @relation("TagHierarchy", fields: [parentId], references: [id])
-  children Tag[]     @relation("TagHierarchy")
-  items    ItemTag[]
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  // NoAction, not the default Restrict (households H3a). Deleting a household
+  // deletes its tag types and its tags in one statement, by two cascades.
+  // NO ACTION refuses only if a tag still names the deleted type when the
+  // check runs. A type that still has tags still cannot be deleted on its own,
+  // so deleteTagType behaves as before. Not Cascade: that would let one account
+  // delete another account's tags through a shared typeId.
+  type      TagType   @relation(fields: [typeId], references: [id], onDelete: NoAction)
+  parent    Tag?      @relation("TagHierarchy", fields: [parentId], references: [id])
+  children  Tag[]     @relation("TagHierarchy")
+  items     ItemTag[]
 
-  @@index([userId, typeId])
+  @@index([householdId, typeId])
 }
 
 model Vendor {
-  id       String  @id @default(cuid())
-  name     String
-  userId   String
+  id          String @id @default(cuid())
+  name        String
+  householdId String
 
-  items ItemVendor[]
+  household Household    @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  items     ItemVendor[]
 
-  @@index([userId, name])
+  @@index([householdId, name])
 }
 
 model Item {
@@ -85,10 +94,11 @@ model Item {
   estimatedDueDays    Int?
   expirationThreshold Int?
   expirationMode      ExpirationMode @default(disabled)
-  userId              String
+  householdId         String
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
+  household     Household      @relation(fields: [householdId], references: [id], onDelete: Cascade)
   tags          ItemTag[]
   vendors       ItemVendor[]
   recipes       RecipeItem[]
@@ -96,8 +106,8 @@ model Item {
   cartItems     CartItem[]
   itemStocks    ItemStock[]
 
-  @@index([userId, updatedAt])
-  @@index([userId, name])
+  @@index([householdId, updatedAt])
+  @@index([householdId, name])
 }
 
 model ItemTag {
@@ -124,11 +134,12 @@ model Recipe {
   id           String    @id @default(cuid())
   name         String
   lastCookedAt DateTime?
-  userId       String
+  householdId  String
 
-  items RecipeItem[]
+  household Household    @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  items     RecipeItem[]
 
-  @@index([userId, name])
+  @@index([householdId, name])
 }
 
 model RecipeItem {
@@ -163,8 +174,9 @@ model Cart {
   // local mode: deleteLocation in apps/web/src/db/operations.ts:1215 deletes
   // the location's carts and their cart items. CartItem already cascades from
   // Cart, so one cascade removes both. Restrict was the alternative and is
-  // worse here: deleteLocation already refuses only the default location, so
-  // Restrict would turn deleting any location with a cart into a raw P2003
+  // worse here: deleteLocation refuses only the household's last location
+  // (it refused only the default one until households H3a), so Restrict would
+  // turn deleting any location with a cart into a raw P2003
   // foreign-key error the resolver does not handle.
   locationId      String
   lastPurchasedAt DateTime?
@@ -224,46 +236,49 @@ model InventoryLog {
 }
 
 model Shelf {
-  id           String    @id @default(cuid())
+  id           String   @id @default(cuid())
   name         String
   type         String
   order        Int
   filterConfig Json?
   itemIds      String[]
-  userId       String
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  householdId  String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  @@index([userId, order])
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@index([householdId, order])
 }
 
 model Location {
-  id        String   @id @default(cuid())
-  name      String
-  order     Int
-  // Exactly one per user. NOT derivable from `order`: dnd-kit's `disabled`
-  // stops the default row being dragged but not from being displaced by
-  // another row dropped above it, so lowest-order is not stable.
-  // A partial unique index enforces the invariant — see the migration.
-  isDefault Boolean  @default(false)
-  userId    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  name        String
+  order       Int
+  // No `isDefault` and no `userId` since the drop_user_scope migration
+  // (households H3a task 3.14). A location belongs to a household, and a
+  // person's rights on it come from LocationMember.
+  householdId String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
+  household     Household        @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  members       LocationMember[]
   itemStocks    ItemStock[]
   inventoryLogs InventoryLog[]
   carts         Cart[]
 
-  @@index([userId, order])
+  @@index([householdId, order])
 }
 
 // Per-(item × location) stock STATE. Configuration (units, packaging,
 // expiration mode, consume amount) lives on Item and does not vary by location.
 //
-// Deliberately has NO userId: an ItemStock is scoped through its location
-// (`where: { location: { userId } }`), the shape location RBAC needs. A userId
-// column would put `stock.userId === ctx.userId` within reach at every call
-// site — the guard the RBAC design forbids.
+// Deliberately has NO userId and no householdId: an ItemStock is scoped
+// through its location, by `requireLocationRole` (lib/authz.ts). It was
+// `where: { location: { userId } }` until households H3a. A scope column here
+// would put `stock.userId === ctx.userId` within reach at every call site —
+// the guard the RBAC design forbids.
 model ItemStock {
   id               String    @id @default(cuid())
   itemId           String
@@ -288,18 +303,117 @@ model ItemStock {
 // fills it (households H2); see
 // docs/global/permissions/2026-10-04-households-design.md.
 //
-// No relation to any other model yet. Every other model still names its owner
-// with a plain `userId` string. Households H3 adds the relations.
+// Households H3a adds the relations to Household, HouseholdMember and
+// LocationMember. Location and the six catalog models have no `userId` since
+// the drop_user_scope migration (task 3.14): they belong to a household.
+// Cart, CartItem and InventoryLog keep a plain `userId` string (the author)
+// with no relation to User.
 model User {
-  // The Clerk user id. Also the race guard for first sign-in in H3: two
-  // concurrent first requests cannot both create this row.
-  id          String    @id
-  displayName String
+  // The Clerk user id. Since H2 the webhook and ensureUser create this row
+  // before first sign-in runs, so this key cannot be the first sign-in race
+  // guard. householdSetupAt below is (decision H1).
+  id               String    @id
+  displayName      String
   // Optional: a Clerk account may sign in by phone or username, and the
   // user.deleted event carries no email.
-  email       String?
-  lastSeenAt  DateTime?
-  deletedAt   DateTime?
+  email            String?
+  lastSeenAt       DateTime?
+  deletedAt        DateTime?
+  // The first sign-in claim (decision H1). Null means this person has never
+  // had a household set up. First sign-in runs
+  //   updateMany({ where: { id, householdSetupAt: null }, data: { householdSetupAt: now } })
+  // as the first statement of its transaction. A count of 1 means this request
+  // creates the household; 0 means another request already did. It also tells
+  // "never set up" apart from "left their household" (H5), so leaving does not
+  // make a new household.
+  householdSetupAt DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  // Households whose ownerId is this person. Named, because the relation from
+  // Household to User is not the only path between them: HouseholdMember joins
+  // them too. The name keeps the two apart for a reader.
+  ownedHouseholds      Household[]       @relation("HouseholdOwner")
+  householdMemberships HouseholdMember[]
+  locationMemberships  LocationMember[]
+}
+
+enum HouseholdRole {
+  owner
+  manager
+  member
+}
+
+enum LocationRole {
+  organizer
+  participant
+  viewer
+}
+
+// A group of people who share a catalog and locations. Households H3a. See
+// docs/global/permissions/2026-10-04-households-design.md.
+model Household {
+  id          String    @id @default(cuid())
+  name        String
+  // Mirrors the HouseholdMember row with role owner, and is written in the same
+  // transaction as that row (decision H15). The member row is the source of
+  // truth for rights. Null after the owner's account is deleted, until someone
+  // accepts the hand-over (H6).
+  ownerId     String?
+  owner       User?     @relation("HouseholdOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  ownerGoneAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  members   HouseholdMember[]
+  locations Location[]
+  items     Item[]
+  tags      Tag[]
+  tagTypes  TagType[]
+  vendors   Vendor[]
+  recipes   Recipe[]
+  shelves   Shelf[]
+
+  // Finds "the households this person owns", and serves the ON DELETE SET
+  // NULL above, which Postgres runs as a lookup by ownerId.
+  @@index([ownerId])
+}
+
+// A person's role in a household. The source of truth for household rights.
+// At most one owner row per household: the add_households migration creates
+// the partial unique index HouseholdMember_one_owner_key by hand, because
+// Prisma has no syntax for a partial index (decision H15).
+//
+// The `user` relation has no onDelete, so Prisma's default (Restrict) applies:
+// a User row that still has member rows cannot be deleted. Production never
+// deletes a User row (H2 sets deletedAt), so such a delete is a bug and should
+// fail loudly. /e2e/cleanup deletes the member rows first.
+model HouseholdMember {
+  householdId String
+  userId      String
+  role        HouseholdRole
+  joinedAt    DateTime      @default(now())
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@id([householdId, userId])
+  @@index([userId])
+}
+
+// A person's role on one location. It counts only while the person is also a
+// HouseholdMember of the location's household (decision H18). Postgres cannot
+// check that with a simple constraint, so requireLocationRole checks it.
+// No onDelete on `user`, for the same reason as HouseholdMember.
+model LocationMember {
+  locationId String
+  userId     String
+  role       LocationRole
+  createdAt  DateTime     @default(now())
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@id([locationId, userId])
+  @@index([userId])
 }

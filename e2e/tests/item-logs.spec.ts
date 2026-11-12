@@ -5,7 +5,7 @@ import {
   test,
 } from '@playwright/test'
 import { CLOUD_WEB_URL } from '../constants'
-import { ensureCloudDefaultLocation } from '../helpers/cloudSeed'
+import { ensureCloudHomeLocation } from '../helpers/cloudSeed'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
 import { CookingPage } from '../pages/CookingPage'
 import { ItemPage } from '../pages/ItemPage'
@@ -24,10 +24,11 @@ async function seedCookingData(
   if (baseURL === CLOUD_WEB_URL) {
     const gql = makeGql(request)
 
-    // Reading `locations` is what makes the default location exist
-    // (`ensureDefaultLocation` in location.resolver.ts), and the stock write
-    // below has to name a location, so this comes first.
-    const home = await ensureCloudDefaultLocation(request)
+    // Reading `locations` runs first sign-in, which makes the household's
+    // first location, "Home" (`ensureHousehold` in
+    // apps/server/src/lib/household.ts). The stock write below has to name a
+    // location, so this comes first.
+    const home = await ensureCloudHomeLocation(request)
 
     const { createItem: milk } = await gql<{ createItem: { id: string } }>(
       'mutation CreateItem($name: String!) { createItem(input: { name: $name }) { id } }',

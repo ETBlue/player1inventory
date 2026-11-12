@@ -131,7 +131,7 @@ const PWA_WEB_SERVER = {
 // two: its web app talks to the API server over GraphQL. No spec in `local` or
 // `pwa` reaches the API server — every spec that names CLOUD_SERVER_URL,
 // CLOUD_GRAPHQL_URL, makeGql, cleanupCloudData, seedCloudFixture or
-// ensureCloudDefaultLocation is either cloud-only or guarded on
+// ensureCloudHomeLocation is either cloud-only or guarded on
 // `baseURL === CLOUD_WEB_URL`.
 //
 // One spec crosses projects: a11y.spec.ts runs in BOTH `local` and `pwa`, and its
@@ -175,9 +175,11 @@ export default defineConfig({
       // server this project runs against does not have — it only runs
       // under the 'pwa' project, against the built preview output.
       // location-scoped-writes.spec.ts, cleanup-endpoint.spec.ts,
-      // cart-id-cross-user-leak.spec.ts and cloud-user-row.spec.ts drive the
+      // cart-id-cross-user-leak.spec.ts, cloud-user-row.spec.ts,
+      // purge-two-households.spec.ts, cloud-roles.spec.ts and
+      // household-member-cleanup.spec.ts drive the
       // cloud backend directly and never open a page — none has a local-mode
-      // counterpart. The last two also act as users other than E2E_USER_ID,
+      // counterpart. The last five also act as users other than E2E_USER_ID,
       // which the web build cannot be (VITE_E2E_TEST_USER_ID below is one
       // value).
       testIgnore: [
@@ -188,6 +190,9 @@ export default defineConfig({
         '**/cart-id-cross-user-leak.spec.ts',
         '**/settings/data-mode-migration.spec.ts',
         '**/cloud-user-row.spec.ts',
+        '**/purge-two-households.spec.ts',
+        '**/cloud-roles.spec.ts',
+        '**/household-member-cleanup.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'], baseURL: LOCAL_WEB_URL },
     },
@@ -237,6 +242,9 @@ export default defineConfig({
         '**/cart-id-cross-user-leak.spec.ts',
         '**/unified-item-search.spec.ts',
         '**/cloud-user-row.spec.ts',
+        '**/purge-two-households.spec.ts',
+        '**/cloud-roles.spec.ts',
+        '**/household-member-cleanup.spec.ts',
       ],
     },
     {

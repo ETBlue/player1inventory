@@ -90,7 +90,7 @@ export async function resolveLocalActiveLocationId(): Promise<string> {
   const locations = await getLocations()
   if (locations.some((loc) => loc.id === stored)) return stored
   return (
-    locations.find((loc) => loc.isDefault)?.id ??
+    locations.find((loc) => loc.isDefault === true)?.id ??
     locations[0]?.id ??
     DEFAULT_LOCATION_ID
   )
@@ -146,7 +146,8 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
 
   // Once the location list has loaded, an active id matching none of its
   // entries is stale — a deleted location, or an id belonging to the other data
-  // mode — and falls back to the user's default location.
+  // mode — and falls back to the first location in cloud, the default in
+  // local.
   //
   // NO id is special-cased as always-valid. This effect used to return early
   // when the active id equalled `DEFAULT_LOCATION_ID`, which made the local
@@ -154,21 +155,29 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
   // it was never corrected and every location-scoped query came back empty —
   // a silently empty pantry rather than a cosmetic fallback.
   //
-  // The fallback target is the `isDefault` location, not the `'local'` literal:
-  // a cloud default's id is a server-generated cuid (see `Location.isDefault`).
+  // The fallback target, by mode:
+  //   - local: the `isDefault` row ("My Home"), then any row;
+  //   - cloud: the FIRST location. A household has no default location
+  //     (task 3.12) and cloud rows carry no `isDefault`. The server returns
+  //     the list by `order`, so "first" is the top row of the locations page.
+  // Never the `'local'` literal: in cloud it names nothing.
   //
   // A list that has loaded but is EMPTY leaves the active id untouched: there
   // is nothing to point at, and blanking it would discard the user's choice for
   // the moment the list does arrive. An empty list is far more often transient
   // (a refetch in flight, a failed cloud read) than a genuine "no locations" —
-  // local seeds a default on populate and the server creates one lazily.
+  // local seeds a default on populate, the server creates "Home" at first
+  // sign-in, and it refuses to delete a household's last location.
   useEffect(() => {
     if (!locations) return
     if (locations.some((loc) => loc.id === activeLocationId)) return
     const fallbackId =
-      locations.find((loc) => loc.isDefault)?.id ?? locations[0]?.id
+      mode === 'cloud'
+        ? locations[0]?.id
+        : (locations.find((loc) => loc.isDefault === true)?.id ??
+          locations[0]?.id)
     if (fallbackId) setActiveLocationId(fallbackId)
-  }, [locations, activeLocationId, setActiveLocationId])
+  }, [mode, locations, activeLocationId, setActiveLocationId])
 
   // `getCart` is a pure read (see db/operations.ts) — it no longer creates a
   // missing cart on demand. Bootstrap the no-vendor + per-vendor carts for

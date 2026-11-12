@@ -58,8 +58,14 @@ import { typeDefs } from '../schema/index.js'
 //
 // ─── The fakes ───────────────────────────────────────────────────────────────
 //
-//   - `src/test/stockFake.ts` for `location`, so `resolveCartLocations`,
-//     `requireLocationRole` and `ensureDefaultLocation` run against real rows.
+//   - `src/test/householdWorld.ts` for `location` (its `stockFake`) and the
+//     household and role rows, so `resolveCartLocations`,
+//     `requireLocationRole`, `fallbackImportLocation` and
+//     `householdOfLocation` run against real rows. Every role is a row
+//     `beforeEach` seeds (`soloHouseholds`): the caller and the stranger are
+//     in two different households. (Households H3a task 3.9 removed
+//     `derivedRoles`, which invented those rows from each location's
+//     `userId`.)
 //   - `src/test/ownedRowFake.ts` for `cart`, `cartItem` and `item`. Three of
 //     the things it models are what let these tests fail: `where` is applied
 //     KEY BY KEY (Prisma's own semantics), `upsert` keeps `create` and
@@ -73,10 +79,11 @@ import { typeDefs } from '../schema/index.js'
 //     UNSCOPED, and so is its `cartId` twin — a separate hole that plan task 8
 //     closes, not this one.
 vi.mock('../lib/prisma.js', async () => {
-  const { createStockFake } = await import('../test/stockFake.js')
+  const { createHouseholdWorld } = await import('../test/householdWorld.js')
   const { createOwnedRowFake } = await import('../test/ownedRowFake.js')
 
-  const stock = createStockFake()
+  const world = createHouseholdWorld()
+  const stock = world.stock
 
   const cart = createOwnedRowFake<{
     id: string
@@ -93,8 +100,12 @@ vi.mock('../lib/prisma.js', async () => {
     quantity: number
   }>({ model: 'CartItem' })
 
-  const item = createOwnedRowFake<{ id: string; userId: string; name: string }>({
+  // A catalog model, so scoped by `householdId` since households H3a task
+  // 3.7 (and refusing a `userId` on a write since task 3.14). Each item
+  // row is in its owner's household (`HH_USER` or `HH_STRANGER` below).
+  const item = createOwnedRowFake<{ id: string; householdId: string; userId: string; name: string }>({
     model: 'Item',
+    scope: 'householdId',
   })
 
   // `findUnique` is wrapped in a `vi.fn` on top of the fake's real row
@@ -108,11 +119,11 @@ vi.mock('../lib/prisma.js', async () => {
 
   return {
     prisma: {
-      ...stock.client,
+      ...world.client,
       location: {
-        ...stock.client.location,
+        ...world.client.location,
         // Wrapped so a test can count how many location checks ran.
-        findFirst: vi.fn(stock.client.location.findFirst),
+        findFirst: vi.fn(world.client.location.findFirst),
       },
       cart: wrap(cart.client),
       cartItem: wrap(cartItem.client),
@@ -120,6 +131,7 @@ vi.mock('../lib/prisma.js', async () => {
       // Handles onto the fakes, hung off the mocked client because a `vi.mock`
       // factory is hoisted above every import and cannot close over a
       // module-scope binding.
+      $world: world,
       $stockFake: stock,
       $cart: cart,
       $cartItem: cartItem,
@@ -129,6 +141,8 @@ vi.mock('../lib/prisma.js', async () => {
 })
 
 import { prisma } from '../lib/prisma.js'
+import type { HouseholdWorld } from '../test/householdWorld.js'
+import { householdMemberRow, householdRow, locationMemberRow, soloHouseholds } from '../test/householdRows.js'
 import type { OwnedRowFake } from '../test/ownedRowFake.js'
 import type { StockFake } from '../test/stockFake.js'
 
@@ -145,12 +159,13 @@ type CartItemRow = {
   itemId: string
   quantity: number
 }
-type ItemRow = { id: string; userId: string; name: string }
+type ItemRow = { id: string; householdId: string; userId: string; name: string }
 
 const mockPrisma = prisma as unknown as {
   cart: { findUnique: ReturnType<typeof vi.fn> }
   cartItem: { findUnique: ReturnType<typeof vi.fn> }
   location: { findFirst: ReturnType<typeof vi.fn> }
+  $world: HouseholdWorld
   $stockFake: StockFake
   $cart: OwnedRowFake<CartRow>
   $cartItem: OwnedRowFake<CartItemRow>
@@ -230,6 +245,9 @@ const CI_MINE = 'ci_mine' // USER's
 const CI_THEIRS = 'ci_theirs' // STRANGER's — must be refused
 const CI_FREE = 'ci_free' // no cart item row holds it
 
+const HH_USER = 'hh_user'
+const HH_STRANGER = 'hh_stranger'
+
 const TS = new Date('2026-01-01T00:00:00.000Z')
 const STORED_PURCHASED = new Date('2026-02-01T00:00:00.000Z')
 const PAYLOAD_PURCHASED = '2026-03-01T00:00:00.000Z'
@@ -249,10 +267,18 @@ beforeEach(() => {
   vi.resetAllMocks()
 
   mockPrisma.$stockFake.reset([
-    { id: LOC_OTHER, userId: USER, isDefault: false, name: 'Garage', order: 1, createdAt: TS, updatedAt: TS },
-    { id: LOC_DEFAULT, userId: USER, isDefault: true, name: 'Kitchen', order: 0, createdAt: TS, updatedAt: TS },
-    { id: LOC_STRANGER, userId: STRANGER, isDefault: true, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
+    { id: LOC_OTHER, householdId: HH_USER, name: 'Garage', order: 1, createdAt: TS, updatedAt: TS },
+    { id: LOC_DEFAULT, householdId: HH_USER, name: 'Kitchen', order: 0, createdAt: TS, updatedAt: TS },
+    { id: LOC_STRANGER, householdId: HH_STRANGER, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
   ])
+  // The caller and the stranger are in two different households, each the
+  // owner, each the organizer of their own locations.
+  mockPrisma.$world.seedHouseholds(
+    soloHouseholds([
+      { userId: USER, householdId: HH_USER, locationIds: [LOC_OTHER, LOC_DEFAULT] },
+      { userId: STRANGER, householdId: HH_STRANGER, locationIds: [LOC_STRANGER] },
+    ]),
+  )
 
   mockPrisma.$cart.reset([
     { id: CART_MINE, userId: USER, locationId: LOC_OTHER, lastPurchasedAt: STORED_PURCHASED },
@@ -266,9 +292,9 @@ beforeEach(() => {
   ])
 
   mockPrisma.$item.reset([
-    { id: ITEM_MINE, userId: USER, name: 'Milk' },
-    { id: ITEM_OTHER, userId: USER, name: 'Rice' },
-    { id: ITEM_THEIRS, userId: STRANGER, name: 'Theirs' },
+    { id: ITEM_MINE, householdId: HH_USER, userId: USER, name: 'Milk' },
+    { id: ITEM_OTHER, householdId: HH_USER, userId: USER, name: 'Rice' },
+    { id: ITEM_THEIRS, householdId: HH_STRANGER, userId: STRANGER, name: 'Theirs' },
   ])
 })
 
@@ -790,4 +816,121 @@ describe('CartItem → Cart and CartItem → Item references', () => {
       quantity: 6,
     })
   })
+})
+
+// ─── The item is checked against the CART's household ─────────────────────────
+//
+// Households H3a task 3.9. Until then both cart-item mutations checked the
+// item against the CALLER's household (`requireHousehold`). With one household
+// per person that is the same household as the cart's location, so a test can
+// only tell the two apart when the caller is in TWO households. Nothing in the
+// schema stops that, and H5 makes it real.
+//
+// | Person | Household | Household role | Location roles        |
+// |--------|-----------|----------------|-----------------------|
+// | USER   | hh_user   | owner          | LOC_OTHER, LOC_DEFAULT: organizer |
+// | USER   | hh_second | member         | LOC_SECOND: participant |
+// | OWNER2 | hh_second | owner          | LOC_SECOND: organizer |
+//
+// USER's `hh_user` row is seeded FIRST, so `requireHousehold` (the first
+// membership it finds) answers `hh_user`. USER has a cart at LOC_SECOND.
+
+describe('CartItem → Item is checked against the household of the cart location', () => {
+  const OWNER2 = 'user_second_owner'
+  const HH_SECOND = 'hh_second'
+  const LOC_SECOND = 'loc_second'
+  const CART_SECOND = `${LOC_SECOND}:${VENDOR}` // USER's cart at hh_second's location
+  const ITEM_SECOND = 'item_second' // an item of hh_second
+
+  beforeEach(() => {
+    mockPrisma.$stockFake.reset([
+      ...mockPrisma.$stockFake.state.locations,
+      { id: LOC_SECOND, householdId: HH_SECOND, name: 'Second', order: 0, createdAt: TS, updatedAt: TS },
+    ])
+    const solo = soloHouseholds([
+      { userId: USER, householdId: HH_USER, locationIds: [LOC_OTHER, LOC_DEFAULT] },
+      { userId: STRANGER, householdId: HH_STRANGER, locationIds: [LOC_STRANGER] },
+    ])
+    mockPrisma.$world.seedHouseholds({
+      households: [...solo.households, householdRow(HH_SECOND, OWNER2)],
+      householdMembers: [
+        ...solo.householdMembers,
+        householdMemberRow(HH_SECOND, OWNER2, 'owner'),
+        householdMemberRow(HH_SECOND, USER, 'member'),
+      ],
+      locationMembers: [
+        ...solo.locationMembers,
+        locationMemberRow(LOC_SECOND, OWNER2, 'organizer'),
+        locationMemberRow(LOC_SECOND, USER, 'participant'),
+      ],
+    })
+    mockPrisma.$cart.reset([
+      ...mockPrisma.$cart.state.rows,
+      { id: CART_SECOND, userId: USER, locationId: LOC_SECOND, lastPurchasedAt: null },
+    ])
+    mockPrisma.$item.reset([
+      ...mockPrisma.$item.state.rows,
+      { id: ITEM_SECOND, householdId: HH_SECOND, userId: OWNER2, name: 'Second' },
+    ])
+  })
+
+  for (const [label, query, field] of [
+    ['bulkCreateCartItems', CREATE_CART_ITEMS, 'bulkCreateCartItems'],
+    ['bulkUpsertCartItems', UPSERT_CART_ITEMS, 'bulkUpsertCartItems'],
+  ] as const) {
+    it(`${label}: user cannot put an item of their own household into a cart at another household's location`, async () => {
+      // Given a cart item in USER's cart at LOC_SECOND (hh_second), naming
+      // ITEM_MINE, an item of hh_user — the CALLER's household
+      const payload = [cartItemIn(CI_FREE, { cartId: CART_SECOND, itemId: ITEM_MINE })]
+
+      // When the import runs
+      const result = await exec(query, { cartItems: payload })
+
+      // Then the row is SKIPPED, as for any item that is not usable here.
+      // Checked against the caller's household, ITEM_MINE would pass and
+      // `checkout` would later buy it into hh_second's stock.
+      expect(result.errors).toBeUndefined()
+      expect(result.data?.[field]).toEqual([])
+      expect(storedCartItem(CI_FREE)).toBeUndefined()
+    })
+
+    it(`${label}: user can put an item of the cart location's household into that cart`, async () => {
+      // Given the same cart, naming ITEM_SECOND, an item of hh_second. This
+      // is the positive half: a check against the CALLER's household skips it.
+      const payload = [cartItemIn(CI_FREE, { cartId: CART_SECOND, itemId: ITEM_SECOND })]
+
+      // When the import runs
+      const result = await exec(query, { cartItems: payload })
+
+      // Then it is written
+      expect(result.errors).toBeUndefined()
+      expect(storedCartItem(CI_FREE)).toMatchObject({
+        userId: USER,
+        cartId: CART_SECOND,
+        itemId: ITEM_SECOND,
+      })
+    })
+
+    it(`${label}: user with no role left on their cart's location is refused, with nothing written`, async () => {
+      // Given USER's own cart at LOC_SECOND, and USER's role there removed.
+      // (H5 makes this real: a person removed from a location keeps the
+      // cart rows they wrote.) An allowed row comes FIRST.
+      mockPrisma.$world.households.state.locationMembers =
+        mockPrisma.$world.households.state.locationMembers.filter(
+          (m) => !(m.locationId === LOC_SECOND && m.userId === USER),
+        )
+      const payload = [
+        cartItemIn(CI_FREE, { cartId: CART_MINE, itemId: ITEM_MINE }),
+        cartItemIn('ci_free_2', { cartId: CART_SECOND, itemId: ITEM_SECOND }),
+      ]
+
+      // When the import runs
+      const result = await exec(query, { cartItems: payload })
+
+      // Then the whole batch is refused before the first write
+      expect(errorCode(result)).toBe('FORBIDDEN')
+      expect(storedCartItem(CI_FREE)).toBeUndefined()
+      expect(storedCartItem('ci_free_2')).toBeUndefined()
+    })
+  }
 })

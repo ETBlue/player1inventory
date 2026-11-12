@@ -86,8 +86,10 @@ const ELSEWHERE_RECIPE = 'Cold Brew'
 // sets for UI-driven setup.
 //
 // 'HOME' and 'OFFICE' are symbolic keys, not ids. HOME is the default location,
-// which is also the active one — local falls back to the `isDefault` row and so
-// does cloud (src/hooks/useActiveLocation.tsx).
+// which is also the active one. Local falls back to the `isDefault` row; cloud
+// has no default since households H3a and falls back to the FIRST location by
+// `order`, which is where `seedCloudFixture` puts HOME
+// (src/hooks/useActiveLocation.tsx).
 const FIXTURE: Fixture = {
   locations: [
     { key: 'HOME', name: 'My Home', isDefault: true },

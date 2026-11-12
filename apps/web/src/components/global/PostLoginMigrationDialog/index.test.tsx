@@ -83,7 +83,6 @@ function mockCloudLocations(rows: { id: string; name: string }[]) {
         __typename: 'Location',
         ...row,
         order,
-        isDefault: order === 0,
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z',
       })),

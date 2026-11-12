@@ -101,7 +101,7 @@ type CartItemRow = { id: string; cartId: string; itemId: string }
 // shape a hand-edited backup can still carry.
 const BARE_CART_ID = 'no-vendor'
 
-const LOCATIONS = `query { locations { id name isDefault } }`
+const LOCATIONS = `query { locations { id name } }`
 const CREATE_ITEM = `mutation ($input: CreateItemInput!) {
   createItem(input: $input) { id }
 }`
@@ -138,18 +138,20 @@ test.describe('cloud import — a bare cart id another account holds is refused'
   test('user cannot import a cart under a bare id that another account holds', async ({
     request,
   }) => {
-    // Given two separate accounts, each with their own default location and item
+    // Given two separate accounts, each with their own first location ("Home") and item
     const gqlA = makeGql(request, E2E_USER_ID)
     const gqlB = makeGql(request, E2E_SECOND_USER_ID)
 
     const { locations: locationsA } = await gqlA<{
-      locations: { id: string; isDefault: boolean }[]
+      locations: { id: string }[]
     }>(LOCATIONS)
     const { locations: locationsB } = await gqlB<{
-      locations: { id: string; isDefault: boolean }[]
+      locations: { id: string }[]
     }>(LOCATIONS)
-    const defaultA = locationsA.find((l) => l.isDefault)?.id
-    const defaultB = locationsB.find((l) => l.isDefault)?.id
+    // Each account's first location, "Home" (first sign-in). Cloud has no
+    // default location since households H3a.
+    const defaultA = locationsA[0]?.id
+    const defaultB = locationsB[0]?.id
     expect(defaultA).toBeTruthy()
     expect(defaultB).toBeTruthy()
     // The two accounts really are separate accounts, not one account read
@@ -314,15 +316,15 @@ test.describe('cloud import — a bare cart id another account holds is refused'
     const gqlA = makeGql(request, E2E_USER_ID)
     const gqlB = makeGql(request, E2E_SECOND_USER_ID)
 
-    // Given each account's own default location
+    // Given each account's own first location, "Home"
     const { locations: locationsA } = await gqlA<{
-      locations: { id: string; isDefault: boolean }[]
+      locations: { id: string }[]
     }>(LOCATIONS)
     const { locations: locationsB } = await gqlB<{
-      locations: { id: string; isDefault: boolean }[]
+      locations: { id: string }[]
     }>(LOCATIONS)
-    const defaultA = locationsA.find((l) => l.isDefault)?.id as string
-    const defaultB = locationsB.find((l) => l.isDefault)?.id as string
+    const defaultA = locationsA[0]?.id as string
+    const defaultB = locationsB[0]?.id as string
     expect(defaultA).not.toBe(defaultB)
 
     // When each imports its no-vendor cart under the composite id

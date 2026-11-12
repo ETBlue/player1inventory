@@ -63,8 +63,27 @@ import { typeDefs } from '../schema/index.js'
 // than an `ownedRowFake`, and they are wired into each owned store's
 // `relations` hook so `include: { tags: true, vendors: true }` and
 // `include: { items: true }` resolve.
+//
+// ─── Since households H3a task 3.7 ───────────────────────────────────────────
+//
+// The four catalog stores are scoped by `householdId`, and refuse a write
+// that names `userId` (task 3.14 dropped the column). "The caller's" row below means the
+// caller's household's, and "the STRANGER's" means a row of another household.
+// `householdMember` (householdFake) answers `requireHousehold`. Import role
+// gating is H4, so no role is checked here.
 vi.mock('../lib/prisma.js', async () => {
   const { createOwnedRowFake } = await import('../test/ownedRowFake.js')
+  const { createHouseholdFake } = await import('../test/householdFake.js')
+  const { checkWhere } = await import('../test/whereKeys.js')
+  type WhereSpec = import('../test/whereKeys.js').WhereSpec
+  const T = new Date('2026-11-01T00:00:00.000Z')
+  const households = createHouseholdFake({
+    householdMembers: [
+      { householdId: 'hh_mine', userId: 'user_import_test', role: 'owner', joinedAt: T },
+      { householdId: 'hh_theirs', userId: 'user_stranger', role: 'owner', joinedAt: T },
+    ],
+  })
+  const catalog = { scope: 'householdId' as const }
 
   /**
    * A stateful double for one of the three composite-key junction tables.
@@ -74,6 +93,12 @@ vi.mock('../lib/prisma.js', async () => {
    * a fake that ignores an unknown key returns the same rows with the filter
    * and without it, so every test passes against a resolver that dropped it.
    *
+   * The check is `checkWhere` (src/test/whereKeys.ts), run ONCE per call,
+   * before the rows are searched (households H3a task 3.9, step 0). Until
+   * then it ran inside the per-row matcher, so on an empty table it never ran
+   * at all, and a filter shape such as `{ in: [...] }` on a known key was
+   * compared to a string and matched nothing, with no error.
+   *
    * The composite primary key is enforced, so `createMany` without
    * `skipDuplicates` raises P2002 the way Postgres does. `bulkUpsertItems`
    * calls `itemVendor.createMany` with NO `skipDuplicates`, which is a real
@@ -82,21 +107,14 @@ vi.mock('../lib/prisma.js', async () => {
    */
   function createJunctionFake(model: string, keys: string[]) {
     const state: { rows: Record<string, unknown>[] } = { rows: [] }
+    // Every column is a plain-equality key. Any other key, or any operator
+    // object on a known key, throws in `checkWhere`.
+    const spec: WhereSpec = Object.fromEntries(keys.map((k) => [k, 'equals' as const]))
 
-    const matches = (row: Record<string, unknown>, where: Record<string, unknown>) => {
-      for (const [key, value] of Object.entries(where)) {
-        if (value === undefined) continue
-        if (!keys.includes(key)) {
-          throw new Error(
-            `junctionFake(${model}) was given a where key it does not model: '${key}'. ` +
-              'It throws instead of ignoring the key, because ignoring one makes ' +
-              'every test pass against a resolver that dropped the filter.',
-          )
-        }
-        if (row[key] !== value) return false
-      }
-      return true
-    }
+    // Runs AFTER `checkWhere`, so every key here is known and every value is
+    // a plain value.
+    const matches = (row: Record<string, unknown>, where: Record<string, unknown>) =>
+      Object.entries(where).every(([key, value]) => value === undefined || row[key] === value)
 
     const primaryKey = (row: Record<string, unknown>) =>
       keys
@@ -134,6 +152,7 @@ vi.mock('../lib/prisma.js', async () => {
         },
         deleteMany: async (args: { where?: Record<string, unknown> } = {}) => {
           const where = args.where ?? {}
+          checkWhere(`junctionFake(${model})`, where, spec)
           const before = state.rows.length
           state.rows = state.rows.filter((r) => !matches(r, where))
           return { count: before - state.rows.length }
@@ -148,6 +167,7 @@ vi.mock('../lib/prisma.js', async () => {
 
   const item = createOwnedRowFake<{
     id: string
+    householdId: string
     userId: string
     name: string
     targetUnit: string
@@ -157,6 +177,7 @@ vi.mock('../lib/prisma.js', async () => {
     updatedAt: Date
   }>({
     model: 'Item',
+    ...catalog,
     // `itemToGraphQL` reads `item.tags.map(t => t.tagId)` and
     // `item.vendors.map(v => v.vendorId)`, so both names must come back.
     relations: (row) => ({
@@ -167,11 +188,13 @@ vi.mock('../lib/prisma.js', async () => {
 
   const recipe = createOwnedRowFake<{
     id: string
+    householdId: string
     userId: string
     name: string
     lastCookedAt: Date | null
   }>({
     model: 'Recipe',
+    ...catalog,
     relations: (row) => ({
       items: recipeItem.state.rows.filter((r) => r.recipeId === row.id),
     }),
@@ -182,15 +205,17 @@ vi.mock('../lib/prisma.js', async () => {
   // has to exist AND belong to the caller for a junction row to be written at
   // all. `userId` in that `where` is plan task 8; before it the read was
   // unscoped on the create path and absent on the upsert path.
-  const tag = createOwnedRowFake<{ id: string; userId: string; name: string }>({
+  const tag = createOwnedRowFake<{ id: string; householdId: string; userId: string; name: string }>({
     model: 'Tag',
+    ...catalog,
   })
 
   // Same for `vendorIds`, where plan task 8 added the filter outright — both
   // item mutations wrote every `vendorId` the payload named with no lookup at
   // all, so this store did not exist in this file before.
-  const vendor = createOwnedRowFake<{ id: string; userId: string; name: string }>({
+  const vendor = createOwnedRowFake<{ id: string; householdId: string; userId: string; name: string }>({
     model: 'Vendor',
+    ...catalog,
   })
 
   // `findUnique` and `findUniqueOrThrow` are wrapped in a `vi.fn` on top of
@@ -212,6 +237,7 @@ vi.mock('../lib/prisma.js', async () => {
 
   return {
     prisma: {
+      householdMember: households.client.householdMember,
       item: wrap(item.client),
       recipe: wrap(recipe.client),
       tag: tag.client,
@@ -238,6 +264,7 @@ import type { OwnedRowFake } from '../test/ownedRowFake.js'
 
 type ItemRow = {
   id: string
+  householdId: string
   userId: string
   name: string
   targetUnit: string
@@ -246,9 +273,15 @@ type ItemRow = {
   createdAt: Date
   updatedAt: Date
 }
-type RecipeRow = { id: string; userId: string; name: string; lastCookedAt: Date | null }
-type TagRow = { id: string; userId: string; name: string }
-type VendorRow = { id: string; userId: string; name: string }
+type RecipeRow = {
+  id: string
+  householdId: string
+  userId: string
+  name: string
+  lastCookedAt: Date | null
+}
+type TagRow = { id: string; householdId: string; userId: string; name: string }
+type VendorRow = { id: string; householdId: string; userId: string; name: string }
 type JunctionFake = {
   state: { rows: Record<string, unknown>[] }
   reset: (rows?: Record<string, unknown>[]) => void
@@ -305,6 +338,8 @@ afterAll(async () => {
 
 const USER = 'user_import_test'
 const STRANGER = 'user_stranger'
+const HH_MINE = 'hh_mine'
+const HH_THEIRS = 'hh_theirs'
 
 const ITEM_MINE = 'item_mine'
 const ITEM_THEIRS = 'item_theirs'
@@ -334,6 +369,7 @@ const PAYLOAD_UPDATED = '2026-03-04T05:06:07.000Z'
 
 const baseItem = (id: string, userId: string, name: string): ItemRow => ({
   id,
+  householdId: userId === USER ? HH_MINE : HH_THEIRS,
   userId,
   name,
   targetUnit: 'package',
@@ -351,19 +387,19 @@ beforeEach(() => {
     baseItem(ITEM_THEIRS, STRANGER, 'Theirs'),
   ])
   mockPrisma.$recipe.reset([
-    { id: RECIPE_MINE, userId: USER, name: 'Pancakes', lastCookedAt: LAST_COOKED },
-    { id: RECIPE_THEIRS, userId: STRANGER, name: 'Theirs', lastCookedAt: null },
+    { id: RECIPE_MINE, householdId: HH_MINE, userId: USER, name: 'Pancakes', lastCookedAt: LAST_COOKED },
+    { id: RECIPE_THEIRS, householdId: HH_THEIRS, userId: STRANGER, name: 'Theirs', lastCookedAt: null },
   ])
   mockPrisma.$tag.reset([
-    { id: TAG_ID, userId: USER, name: 'Dairy' },
-    { id: TAG_THEIRS, userId: STRANGER, name: 'Theirs' },
+    { id: TAG_ID, householdId: HH_MINE, userId: USER, name: 'Dairy' },
+    { id: TAG_THEIRS, householdId: HH_THEIRS, userId: STRANGER, name: 'Theirs' },
   ])
   // A `Vendor` row for `VENDOR_ID` has to exist now: before plan task 8 both
   // item mutations wrote a `vendorId` with no lookup, so this store was not
   // needed at all.
   mockPrisma.$vendor.reset([
-    { id: VENDOR_ID, userId: USER, name: 'Costco' },
-    { id: VENDOR_THEIRS, userId: STRANGER, name: 'Theirs' },
+    { id: VENDOR_ID, householdId: HH_MINE, userId: USER, name: 'Costco' },
+    { id: VENDOR_THEIRS, householdId: HH_THEIRS, userId: STRANGER, name: 'Theirs' },
   ])
   mockPrisma.$itemTag.reset([
     { itemId: ITEM_MINE, tagId: TAG_ID },
@@ -401,7 +437,7 @@ function errorCode(result: Awaited<ReturnType<typeof exec>>) {
  * Make the guard's ONE unscoped lookup answer "nobody holds this id", so the
  * payload's stranger id reaches the write and the closing read.
  *
- * Why this exists. With the guard in place the closing read's `userId` filter
+ * Why this exists. With the guard in place the closing read's `householdId` filter
  * is UNREACHABLE through the GraphQL surface: the guard refuses a payload that
  * names another account's id, so no stranger's row can ever be in the closing
  * read's range. The design doc says the same thing — the scoped reads are
@@ -434,11 +470,11 @@ function junctionRows(fake: JunctionFake) {
 
 // ─── Queries ─────────────────────────────────────────────────────────────────
 
-const ITEM_FIELDS = '{ id name userId tagIds vendorIds }'
+const ITEM_FIELDS = '{ id name tagIds vendorIds }'
 const CREATE_ITEMS = `mutation ($items: [ItemInput!]!) { bulkCreateItems(items: $items) ${ITEM_FIELDS} }`
 const UPSERT_ITEMS = `mutation ($items: [ItemInput!]!) { bulkUpsertItems(items: $items) ${ITEM_FIELDS} }`
 
-const RECIPE_FIELDS = '{ id name userId items { itemId defaultAmount } }'
+const RECIPE_FIELDS = '{ id name items { itemId defaultAmount } }'
 const CREATE_RECIPES = `mutation ($recipes: [RecipeInput!]!) { bulkCreateRecipes(recipes: $recipes) ${RECIPE_FIELDS} }`
 const UPSERT_RECIPES = `mutation ($recipes: [RecipeInput!]!) { bulkUpsertRecipes(recipes: $recipes) ${RECIPE_FIELDS} }`
 
@@ -477,6 +513,7 @@ describe('Item ownership', () => {
     expect(mockPrisma.$item.state.rows).toHaveLength(2)
     expect(mockPrisma.$item.state.rows.find((r) => r.id === ITEM_THEIRS)).toMatchObject({
       name: 'Theirs',
+      householdId: HH_THEIRS,
       userId: STRANGER,
     })
   })
@@ -494,6 +531,7 @@ describe('Item ownership', () => {
     expect(mockPrisma.$item.state.rows).toHaveLength(2)
     expect(mockPrisma.$item.state.rows.find((r) => r.id === ITEM_THEIRS)).toMatchObject({
       name: 'Theirs',
+      householdId: HH_THEIRS,
       userId: STRANGER,
     })
   })
@@ -517,7 +555,7 @@ describe('Item ownership', () => {
     expect(result.errors).toBeUndefined()
     const stored = mockPrisma.$item.state.rows.find((r) => r.id === ITEM_MINE)
     expect(stored?.name).toBe('Renamed')
-    expect(stored?.userId).toBe(USER)
+    expect(stored).toMatchObject({ householdId: HH_MINE })
   })
 
   it('user importing a batch with one forbidden item gets no items written at all', async () => {
@@ -577,7 +615,10 @@ describe('Item ownership', () => {
     // `findUniqueOrThrow` is scoped, finds nothing, and raises P2025, so this
     // call DOES return an error. The next test is about that error. What this
     // one asserts is the stored row's owner, which the error does not change.
-    expect(mockPrisma.$item.state.rows.find((r) => r.id === ITEM_THEIRS)?.userId).toBe(STRANGER)
+    expect(mockPrisma.$item.state.rows.find((r) => r.id === ITEM_THEIRS)).toMatchObject({
+      householdId: HH_THEIRS,
+      userId: STRANGER,
+    })
   })
 
   it("bulkUpsertItems' closing read does not return an item the caller does not own", async () => {
@@ -595,7 +636,7 @@ describe('Item ownership', () => {
     // because those mutations close with `findMany`; this one closes with
     // `findUniqueOrThrow`, which raises P2025.
     //
-    // Drop `userId` from that `where` and the read succeeds: `errors` becomes
+    // Drop `householdId` from that `where` and the read succeeds: `errors` becomes
     // undefined and the stranger's row comes back in `data`.
     expect(result.errors).toBeDefined()
     expect(result.data?.bulkUpsertItems).toBeFalsy()
@@ -609,7 +650,7 @@ describe('Item ownership', () => {
     // construction, because `create` sets `userId` from the context. So there
     // is no payload that makes this read return a stranger's row.
     //
-    // It is still worth pinning: dropping `userId` from the `where` is exactly
+    // It is still worth pinning: dropping `householdId` from the `where` is exactly
     // the edit `bulkCreateLocations` records as the hazard, and this assertion
     // goes red when it happens.
     const result = await exec(CREATE_ITEMS, { items: [itemIn(ITEM_FREE, 'Fine')] })
@@ -618,7 +659,7 @@ describe('Item ownership', () => {
     expect(mockPrisma.item.findUniqueOrThrow).toHaveBeenCalledTimes(1)
     expect(mockPrisma.item.findUniqueOrThrow.mock.calls[0][0].where).toEqual({
       id: ITEM_FREE,
-      userId: USER,
+      householdId: HH_MINE,
     })
   })
 })
@@ -632,6 +673,7 @@ describe('Recipe ownership', () => {
     expect(mockPrisma.$recipe.state.rows).toHaveLength(2)
     expect(mockPrisma.$recipe.state.rows.find((r) => r.id === RECIPE_THEIRS)).toMatchObject({
       name: 'Theirs',
+      householdId: HH_THEIRS,
       userId: STRANGER,
     })
   })
@@ -642,6 +684,7 @@ describe('Recipe ownership', () => {
     expect(mockPrisma.$recipe.state.rows).toHaveLength(2)
     expect(mockPrisma.$recipe.state.rows.find((r) => r.id === RECIPE_THEIRS)).toMatchObject({
       name: 'Theirs',
+      householdId: HH_THEIRS,
       userId: STRANGER,
     })
   })
@@ -655,7 +698,7 @@ describe('Recipe ownership', () => {
     expect(result.errors).toBeUndefined()
     const stored = mockPrisma.$recipe.state.rows.find((r) => r.id === RECIPE_MINE)
     expect(stored?.name).toBe('Renamed')
-    expect(stored?.userId).toBe(USER)
+    expect(stored).toMatchObject({ householdId: HH_MINE })
   })
 
   it('user importing a batch with one forbidden recipe gets no recipes written at all', async () => {
@@ -722,9 +765,10 @@ describe('Recipe ownership', () => {
     // Then the row is still the STRANGER's. This goes red if `userId` creeps
     // back into `update`. The call also returns an error, for the reason the
     // next test describes.
-    expect(mockPrisma.$recipe.state.rows.find((r) => r.id === RECIPE_THEIRS)?.userId).toBe(
-      STRANGER,
-    )
+    expect(mockPrisma.$recipe.state.rows.find((r) => r.id === RECIPE_THEIRS)).toMatchObject({
+      householdId: HH_THEIRS,
+      userId: STRANGER,
+    })
   })
 
   it("bulkUpsertRecipes' closing read does not return a recipe the caller does not own", async () => {
@@ -733,7 +777,7 @@ describe('Recipe ownership', () => {
 
     // The scoped `findUniqueOrThrow` matches nothing and raises P2025, so the
     // mutation fails rather than handing back a row the caller does not own.
-    // Drop `userId` from that `where` and `errors` becomes undefined and the
+    // Drop `householdId` from that `where` and `errors` becomes undefined and the
     // stranger's row comes back in `data`.
     expect(result.errors).toBeDefined()
     expect(result.data?.bulkUpsertRecipes).toBeFalsy()
@@ -750,7 +794,7 @@ describe('Recipe ownership', () => {
     expect(mockPrisma.recipe.findUniqueOrThrow).toHaveBeenCalledTimes(1)
     expect(mockPrisma.recipe.findUniqueOrThrow.mock.calls[0][0].where).toEqual({
       id: RECIPE_FREE,
-      userId: USER,
+      householdId: HH_MINE,
     })
   })
 })
@@ -785,7 +829,9 @@ describe('Item → Tag and Item → Vendor references', () => {
     // names it. The two junction stores still hold exactly the two rows per
     // table the fixture seeded.
     expect(result.errors).toBeUndefined()
-    expect(mockPrisma.$item.state.rows.find((r) => r.id === ITEM_FREE)?.userId).toBe(USER)
+    expect(mockPrisma.$item.state.rows.find((r) => r.id === ITEM_FREE)).toMatchObject({
+      householdId: HH_MINE,
+    })
     expect(mockPrisma.$itemTag.state.rows.filter((r) => r.itemId === ITEM_FREE)).toEqual([])
     // And the returned row says so too, so the client cannot be told the link
     // exists when it does not.
@@ -807,7 +853,9 @@ describe('Item → Tag and Item → Vendor references', () => {
     // Then the answer is the same as the test above: item written, no link, no
     // error.
     expect(result.errors).toBeUndefined()
-    expect(mockPrisma.$item.state.rows.find((r) => r.id === ITEM_FREE)?.userId).toBe(USER)
+    expect(mockPrisma.$item.state.rows.find((r) => r.id === ITEM_FREE)).toMatchObject({
+      householdId: HH_MINE,
+    })
     expect(mockPrisma.$itemTag.state.rows.filter((r) => r.itemId === ITEM_FREE)).toEqual([])
   })
 
@@ -835,7 +883,9 @@ describe('Item → Tag and Item → Vendor references', () => {
 
     // Then the item is written and NO `ItemVendor` row names it
     expect(result.errors).toBeUndefined()
-    expect(mockPrisma.$item.state.rows.find((r) => r.id === ITEM_FREE)?.userId).toBe(USER)
+    expect(mockPrisma.$item.state.rows.find((r) => r.id === ITEM_FREE)).toMatchObject({
+      householdId: HH_MINE,
+    })
     expect(mockPrisma.$itemVendor.state.rows.filter((r) => r.itemId === ITEM_FREE)).toEqual([])
   })
 
@@ -932,7 +982,9 @@ describe('Recipe → Item references', () => {
     // Then the recipe is written, owned by the caller, with no `RecipeItem`
     // row naming it
     expect(result.errors).toBeUndefined()
-    expect(mockPrisma.$recipe.state.rows.find((r) => r.id === RECIPE_FREE)?.userId).toBe(USER)
+    expect(mockPrisma.$recipe.state.rows.find((r) => r.id === RECIPE_FREE)).toMatchObject({
+      householdId: HH_MINE,
+    })
     expect(mockPrisma.$recipeItem.state.rows.filter((r) => r.recipeId === RECIPE_FREE)).toEqual([])
   })
 

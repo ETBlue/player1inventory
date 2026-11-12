@@ -1,6 +1,11 @@
 import { GraphQLScalarType } from 'graphql'
 import type { Prisma } from '@prisma/client'
-import { type LocationRole, requireLocationRole } from '../lib/authz.js'
+import {
+  type LocationRole,
+  locationIdsWithRole,
+  requireLocationItems,
+  requireLocationRole,
+} from '../lib/authz.js'
 import { prisma } from '../lib/prisma.js'
 import { type Context, requireAuth } from '../context.js'
 import type { InventoryLog, Resolvers } from '../generated/graphql.js'
@@ -19,7 +24,7 @@ export const JSONScalar = new GraphQLScalarType({
  * before it reaches any query. That call is the one authorization seam for
  * location data (lib/authz.ts). Do NOT replace it with a
  * `row.userId === ctx.userId` test — root CLAUDE.md forbids that, because it
- * denies a legitimate `member` of a shared location.
+ * denies a legitimate `participant` of a shared location.
  *
  * There is no "caller named no location" branch any more. The argument is
  * `ID!` in the schema, so GraphQL rejects a request that omits it before this
@@ -37,60 +42,56 @@ async function requireLocation(
 }
 
 /**
- * `userId` in the `where` clauses below is a query SCOPE, not an authorization
- * decision. Root CLAUDE.md forbids `row.userId === ctx.userId` as a GUARD; it
- * does not forbid `userId` inside a `where` clause, which only narrows what
- * the query can match. Authorization is `requireLocationRole` above.
+ * `InventoryLog.userId` means the AUTHOR of a log, not its owner (households
+ * H3a, task 3.8). A log belongs to its LOCATION. So no read below filters by
+ * `userId`:
  *
- * This note used to cite `mirrorItemStockToItem` in lib/stockDualWrite.ts as
- * the other place the distinction was written down. Cloud locations PR 5
- * deleted that module; the rule did not change.
+ * | Query | Scope |
+ * |---|---|
+ * | `itemLogs`, `inventoryLogCountByItem`, `lastPurchaseDates` | the one location named, after `requireLocationRole(…, 'viewer')` |
+ * | `inventoryLogs` | every location the caller holds a role on (`locationIdsWithRole`) |
  *
- * When location RBAC lands, these `userId` scopes must be dropped from the
- * three location-scoped queries: `InventoryLog.userId` records who WROTE the
- * log, and a member reading a shared location has to see logs their
- * co-members wrote. `inventoryLogs` keeps its `userId` — it names no location,
- * so `userId` is the only scope it has.
+ * Until task 3.8 all four also filtered by `userId`. In a shared location
+ * that hid every log a co-member wrote, and `inventoryLogs` (export) missed
+ * them too. Every create still WRITES `userId`, as the author.
  */
 
 export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'InventoryLog'> = {
   Query: {
     itemLogs: async (_, { itemId, locationId }, ctx) => {
-      const userId = requireAuth(ctx)
       const scopedLocationId = await requireLocation(ctx, locationId, 'viewer')
       return prisma.inventoryLog.findMany({
-        where: { itemId, userId, locationId: scopedLocationId },
+        where: { itemId, locationId: scopedLocationId },
         orderBy: { occurredAt: 'asc' },
       }) as unknown as Promise<InventoryLog[]>
     },
 
     inventoryLogCountByItem: async (_, { itemId, locationId }, ctx) => {
-      const userId = requireAuth(ctx)
       const scopedLocationId = await requireLocation(ctx, locationId, 'viewer')
       return prisma.inventoryLog.count({
-        where: { itemId, userId, locationId: scopedLocationId },
+        where: { itemId, locationId: scopedLocationId },
       })
     },
 
     // No location argument, and that is the intended behaviour — see the
-    // schema doc string. Export and import both need every location.
+    // schema doc string. Export and import both need every location: every
+    // location the caller holds a role on, any role.
     inventoryLogs: async (_, __, ctx) => {
-      const userId = requireAuth(ctx)
+      const locationIds = await locationIdsWithRole(ctx)
       return prisma.inventoryLog.findMany({
-        where: { userId },
+        where: { locationId: { in: locationIds } },
         orderBy: { occurredAt: 'asc' },
       }) as unknown as Promise<InventoryLog[]>
     },
 
     lastPurchaseDates: async (_, { itemIds, locationId }, ctx) => {
-      const userId = requireAuth(ctx)
       // Resolved once, before the loop: the role check does not depend on the
       // item, and repeating it per item would be one extra query per item.
       const scopedLocationId = await requireLocation(ctx, locationId, 'viewer')
       const results = await Promise.all(
         itemIds.map(async (itemId) => {
           const log = await prisma.inventoryLog.findFirst({
-            where: { itemId, userId, locationId: scopedLocationId, delta: { gt: 0 } },
+            where: { itemId, locationId: scopedLocationId, delta: { gt: 0 } },
             orderBy: { occurredAt: 'desc' },
           })
           return { itemId, date: log?.occurredAt?.toISOString() ?? null }
@@ -107,15 +108,20 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
       ctx,
     ) => {
       const userId = requireAuth(ctx)
-      // A write needs `member`, not `viewer`: a viewer may read a location's
+      // A write needs `participant`, not `viewer`: a viewer may read a location's
       // logs but must not add one.
-      const scopedLocationId = await requireLocation(ctx, locationId, 'member')
+      const scopedLocationId = await requireLocation(ctx, locationId, 'participant')
+      // The item must be an item of the location's household (households H3a,
+      // task 3.8). Checked before the write, so a refusal writes nothing.
+      await requireLocationItems(ctx, scopedLocationId, [itemId])
       return prisma.inventoryLog.create({
         data: {
           itemId,
           delta,
           quantity,
           occurredAt: new Date(occurredAt),
+          // The AUTHOR of the log, not its owner: the log belongs to its
+          // location.
           userId,
           locationId: scopedLocationId,
           ...(note ? { note } : {}),

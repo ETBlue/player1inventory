@@ -3,7 +3,6 @@ query GetLocations {
     id
     name
     order
-    isDefault
     createdAt
     updatedAt
   }
@@ -14,7 +13,6 @@ mutation CreateLocation($name: String!) {
     id
     name
     order
-    isDefault
     createdAt
     updatedAt
   }
@@ -25,7 +23,6 @@ mutation UpdateLocation($id: ID!, $input: UpdateLocationInput!) {
     id
     name
     order
-    isDefault
     createdAt
     updatedAt
   }
@@ -40,7 +37,6 @@ mutation ReorderLocations($orderedIds: [ID!]!) {
     id
     name
     order
-    isDefault
     createdAt
     updatedAt
   }

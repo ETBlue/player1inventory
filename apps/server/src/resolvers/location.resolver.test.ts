@@ -1,262 +1,558 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApolloServer } from '@apollo/server'
 import { typeDefs } from '../schema/index.js'
 import { resolvers } from '../resolvers/index.js'
 import type { Context } from '../context.js'
+import type { HouseholdRole, LocationRole } from '../lib/authz.js'
+import type { HouseholdWorld } from '../test/householdWorld.js'
+import type { FakeLocation } from '../test/stockFake.js'
 
-interface FakeLocation {
-  id: string
-  name: string
-  order: number
-  isDefault: boolean
-  userId: string
-  createdAt: Date
-  updatedAt: Date
-}
-
-const { state, client } = vi.hoisted(() => {
-  const state = {
-    locations: [] as FakeLocation[],
-    itemStocks: [] as { id: string; locationId: string }[],
-    // One-shot control for the ensureDefaultLocation race test below: makes the
-    // next findFirst({ where: { userId } }) for this userId return null even
-    // though a default row already exists in the store — exactly what the
-    // loser of a concurrent ensureDefaultLocation race sees.
-    simulateDefaultRaceOnce: null as string | null,
-  }
-  let seq = 0
-
-  function matches(l: FakeLocation, where: Record<string, unknown>): boolean {
-    // Filters only on keys present in `where`, like real Prisma. Hardcoding a
-    // userId check would leave every ownership mutation check meaningless.
-    if (where.id !== undefined && l.id !== where.id) return false
-    if (where.userId !== undefined && l.userId !== where.userId) return false
-    if (where.isDefault !== undefined && l.isDefault !== where.isDefault) return false
-    return true
-  }
-
-  const client = {
-    location: {
-      findFirst: async ({ where = {}, orderBy }: { where?: Record<string, unknown>; orderBy?: { order: 'asc' | 'desc' } }) => {
-        // Only the ensureDefaultLocation lookup queries by userId alone (no id) —
-        // trip the one-shot race flag only for that shape, so requireLocationRole's
-        // findFirst({ where: { id, userId } }) calls are unaffected.
-        if (where.id === undefined && where.userId !== undefined && where.userId === state.simulateDefaultRaceOnce) {
-          state.simulateDefaultRaceOnce = null
-          return null
-        }
-        const rows = state.locations.filter((l) => matches(l, where))
-        if (orderBy?.order === 'asc') rows.sort((a, b) => a.order - b.order)
-        return rows[0] ?? null
-      },
-      findMany: async ({ where = {}, orderBy }: { where?: Record<string, unknown>; orderBy?: { order: 'asc' | 'desc' } }) => {
-        const rows = state.locations.filter((l) => matches(l, where))
-        if (orderBy?.order === 'asc') rows.sort((a, b) => a.order - b.order)
-        return rows
-      },
-      create: async ({ data }: { data: Omit<FakeLocation, 'id' | 'createdAt' | 'updatedAt'> }) => {
-        // Models the partial unique index from the migration. Without this the
-        // "drop the isDefault guard" mutation check would stay green.
-        if (data.isDefault && state.locations.some((l) => l.userId === data.userId && l.isDefault)) {
-          throw new Error('Unique constraint failed on the fields: (`userId`)')
-        }
-        const row: FakeLocation = { ...data, id: `loc-${++seq}`, createdAt: new Date(), updatedAt: new Date() }
-        state.locations.push(row)
-        return row
-      },
-      update: async ({ where, data }: { where: { id: string }; data: Partial<FakeLocation> }) => {
-        const row = state.locations.find((l) => l.id === where.id)
-        if (!row) throw new Error('Location not found')
-        Object.assign(row, data, { updatedAt: new Date() })
-        return row
-      },
-      delete: async ({ where }: { where: { id: string } }) => {
-        const i = state.locations.findIndex((l) => l.id === where.id)
-        if (i === -1) throw new Error('Location not found')
-        const [row] = state.locations.splice(i, 1)
-        // FK ON DELETE CASCADE
-        state.itemStocks = state.itemStocks.filter((s) => s.locationId !== row.id)
-        return row
-      },
-      count: async ({ where = {} }: { where?: Record<string, unknown> }) =>
-        state.locations.filter((l) => matches(l, where)).length,
-    },
-    $transaction: async (arg: unknown) => {
-      const snapshot = JSON.parse(JSON.stringify(state))
-      try {
-        return typeof arg === 'function' ? await (arg as (tx: unknown) => Promise<unknown>)(client) : await Promise.all(arg as Promise<unknown>[])
-      } catch (err) {
-        state.locations = snapshot.locations.map((l: FakeLocation) => ({
-          ...l,
-          createdAt: new Date(l.createdAt),
-          updatedAt: new Date(l.updatedAt),
-        }))
-        state.itemStocks = snapshot.itemStocks
-        throw err
-      }
-    },
-  }
-  return { state, client }
+// The location resolvers run on `householdWorld` (src/test/householdWorld.ts):
+// `User`, `Household`, `HouseholdMember`, `LocationMember`, `Location` and
+// `ItemStock` in one mocked client with one `$transaction`. Every role here is
+// a real row the test seeded or the resolver wrote. Nothing is derived from a
+// location's `userId` (households H3a task 3.6 removed `derivedRoles` from
+// this file), so a resolver that forgets to write a role row fails here.
+//
+// The `item` model has `findMany` only, over one row: `item-1`, an item of
+// hh-1. `upsertItemStock` checks that the item it is given is an item of the
+// location's household (households H3a, task 3.8), and the "create a location
+// and then stock it" test below writes `item-1`.
+vi.mock('../lib/prisma.js', async () => {
+  const { createHouseholdWorld } = await import('../test/householdWorld.js')
+  const { createOwnedRowFake } = await import('../test/ownedRowFake.js')
+  const world = createHouseholdWorld()
+  const items = createOwnedRowFake({
+    model: 'Item',
+    scope: 'householdId',
+    rows: [{ id: 'item-1', householdId: 'hh-1', userId: 'caller' }],
+  })
+  world.extend({ item: { findMany: items.client.findMany } })
+  return { prisma: { ...world.client, $world: world } }
 })
 
-vi.mock('../lib/prisma.js', () => ({ prisma: client }))
+import { prisma } from '../lib/prisma.js'
+
+const world = (prisma as unknown as { $world: HouseholdWorld }).$world
+
+const T = new Date('2026-11-01T00:00:00.000Z')
 
 const server = new ApolloServer<Context>({ typeDefs, resolvers })
 
-async function run(query: string, variables: Record<string, unknown> = {}, userId: string | null = 'user-a') {
-  const res = await server.executeOperation({ query, variables }, { contextValue: { userId } })
+async function run(
+  query: string,
+  variables: Record<string, unknown> = {},
+  userId: string | null = 'caller',
+) {
+  const res = await server.executeOperation(
+    { query, variables },
+    { contextValue: { userId } },
+  )
   if (res.body.kind !== 'single') throw new Error('expected single result')
   return res.body.singleResult
 }
 
-describe('location resolvers', () => {
-  beforeEach(() => {
-    state.locations = [
-      { id: 'loc-a', name: 'My Home', order: 0, isDefault: true, userId: 'user-a', createdAt: new Date(), updatedAt: new Date() },
-      { id: 'loc-a2', name: 'Garage', order: 1, isDefault: false, userId: 'user-a', createdAt: new Date(), updatedAt: new Date() },
-      // order: 5 is deliberately above user-a's own max (1) — see the
-      // 'appended after the highest order' test, which needs a foreign
-      // higher order in the fixture to prove maxOrder is userId-scoped.
-      { id: 'loc-b', name: 'Their Home', order: 5, isDefault: true, userId: 'user-b', createdAt: new Date(), updatedAt: new Date() },
-    ]
-    state.itemStocks = [{ id: 'st-1', locationId: 'loc-a2' }]
+function errorCode(res: Awaited<ReturnType<typeof run>>): unknown {
+  return res.errors?.[0]?.extensions?.code
+}
+
+const location = (id: string) => world.stock.state.locations.find((l) => l.id === id)
+
+// ── The three-person fixture (plan H3a rule 10) ──
+//
+// | Person   | Household | Household role                 | Location roles                                  |
+// |----------|-----------|--------------------------------|-------------------------------------------------|
+// | caller   | hh-1      | set by each test               | loc-kitchen: set by each test; loc-pantry: organizer       |
+// | other    | hh-1      | manager (member if caller is   | loc-kitchen: organizer (viewer if caller organizes);  |
+// |          |           | manager), so it always differs | loc-garage and loc-pantry: organizer                      |
+// | stranger | hh-2      | owner                          | loc-theirs: organizer                                |
+//
+// - `loc-garage` is in the caller's household, but the caller has no role on it.
+// - `other` always holds a DIFFERENT role from the caller, so a check that
+//   reads the wrong person's row, or ignores the role, gives a different
+//   answer.
+// - The orders are picked so a wrong scope shows: the highest order in hh-1
+//   is loc-garage's 3, on a location the caller cannot see, and loc-theirs in hh-2 has
+//   9.
+//
+// `onlyOneLocation` leaves hh-1 with loc-kitchen alone (decision H13 tests). hh-2
+// still has loc-theirs, so a count that is not scoped to the household sees 2.
+function seed(
+  options: {
+    callerHouseholdRole?: HouseholdRole | null
+    callerLocationRole?: LocationRole | null
+    onlyOneLocation?: boolean
+  } = {},
+) {
+  const {
+    callerHouseholdRole = 'owner',
+    callerLocationRole = 'organizer',
+    onlyOneLocation = false,
+  } = options
+  world.reset()
+  const loc = (id: string, householdId: string, order: number): FakeLocation => ({
+    id,
+    householdId,
+    name: `${id} name`,
+    order,
+    createdAt: T,
+    updatedAt: T,
   })
+  world.stock.reset(
+    [
+      loc('loc-kitchen', 'hh-1', 1),
+      ...(onlyOneLocation ? [] : [loc('loc-garage', 'hh-1', 3), loc('loc-pantry', 'hh-1', 0)]),
+      loc('loc-theirs', 'hh-2', 9),
+    ],
+    [],
+  )
+  const household = (id: string, ownerId: string) => ({
+    id,
+    name: `${id} name`,
+    ownerId,
+    ownerGoneAt: null,
+    createdAt: T,
+    updatedAt: T,
+  })
+  const otherHouseholdRole: HouseholdRole = callerHouseholdRole === 'manager' ? 'member' : 'manager'
+  const otherLoc1Role: LocationRole = callerLocationRole === 'organizer' ? 'viewer' : 'organizer'
+  world.seedHouseholds({
+    households: [household('hh-1', 'caller'), household('hh-2', 'stranger')],
+    householdMembers: [
+      ...(callerHouseholdRole
+        ? [{ householdId: 'hh-1', userId: 'caller', role: callerHouseholdRole, joinedAt: T }]
+        : []),
+      { householdId: 'hh-1', userId: 'other', role: otherHouseholdRole, joinedAt: T },
+      { householdId: 'hh-2', userId: 'stranger', role: 'owner' as const, joinedAt: T },
+    ],
+    locationMembers: [
+      ...(callerLocationRole
+        ? [{ locationId: 'loc-kitchen', userId: 'caller', role: callerLocationRole, createdAt: T }]
+        : []),
+      { locationId: 'loc-kitchen', userId: 'other', role: otherLoc1Role, createdAt: T },
+      ...(onlyOneLocation
+        ? []
+        : [
+            { locationId: 'loc-garage', userId: 'other', role: 'organizer' as const, createdAt: T },
+            { locationId: 'loc-pantry', userId: 'caller', role: 'organizer' as const, createdAt: T },
+            { locationId: 'loc-pantry', userId: 'other', role: 'organizer' as const, createdAt: T },
+          ]),
+      { locationId: 'loc-theirs', userId: 'stranger', role: 'organizer' as const, createdAt: T },
+    ],
+  })
+}
 
-  it('user can list only their own locations, in order', async () => {
-    // Given user-a owns two locations and user-b owns one
-    // When user-a lists locations
-    const res = await run(`query { locations { id name order isDefault } }`)
+const CREATE = `mutation Create($name: String!) { createLocation(name: $name) { id name order } }`
+const UPDATE = `mutation Update($id: ID!, $input: UpdateLocationInput!) { updateLocation(id: $id, input: $input) { name } }`
+const DELETE = `mutation Delete($id: ID!) { deleteLocation(id: $id) }`
+const REORDER = `mutation Reorder($ids: [ID!]!) { reorderLocations(orderedIds: $ids) { id order } }`
 
-    // Then only user-a's are returned, ordered — user-b's is absent
+beforeEach(() => {
+  seed()
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+describe('locations', () => {
+  it('user sees only the locations they have a role on, in order', async () => {
+    // Given the caller organizes loc-kitchen (order 1) and loc-pantry (order 0), has no
+    // role on loc-garage in their own household, and loc-theirs is a stranger's
+
+    // When the caller lists locations
+    const res = await run(`query { locations { id order } }`)
+
+    // Then only loc-pantry and loc-kitchen come back, by order. loc-garage is left out until
+    // H5 lets an owner or manager see every location of the household.
     expect(res.errors).toBeUndefined()
     expect(res.data?.locations).toEqual([
-      expect.objectContaining({ id: 'loc-a', order: 0, isDefault: true }),
-      expect.objectContaining({ id: 'loc-a2', order: 1, isDefault: false }),
+      { id: 'loc-pantry', order: 0 },
+      { id: 'loc-kitchen', order: 1 },
     ])
+  })
+
+  it('user sees two locations with the same order sorted by id', async () => {
+    // Given loc-pantry and loc-kitchen both have order 0, and loc-pantry comes
+    // FIRST in the store. The fake's sort is stable, so without the id
+    // tie-break the store order would win and loc-pantry would come first.
+    const kitchen = location('loc-kitchen')
+    const pantry = location('loc-pantry')
+    if (!kitchen || !pantry) throw new Error('fixture: loc-kitchen and loc-pantry must exist')
+    kitchen.order = 0
+    pantry.order = 0
+    world.stock.state.locations = [
+      pantry,
+      ...world.stock.state.locations.filter((l) => l.id !== 'loc-pantry'),
+    ]
+
+    // When the caller lists locations
+    const res = await run(`query { locations { id order } }`)
+
+    // Then the tie is broken by id: 'loc-kitchen' < 'loc-pantry'
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.locations).toEqual([
+      { id: 'loc-kitchen', order: 0 },
+      { id: 'loc-pantry', order: 0 },
+    ])
+  })
+
+  it('a location role counts only while the person is in that household (decision H18)', async () => {
+    // Given the caller moved to hh-2 (a member there, organizer of loc-theirs), but
+    // their old LocationMember rows on loc-kitchen and loc-pantry in hh-1 were left behind
+    seed()
+    const members = world.households.state.householdMembers
+    world.households.state.householdMembers = [
+      ...members.filter((m) => m.userId !== 'caller'),
+      { householdId: 'hh-2', userId: 'caller', role: 'member', joinedAt: T },
+    ]
+    world.households.state.locationMembers.push({
+      locationId: 'loc-theirs',
+      userId: 'caller',
+      role: 'organizer',
+      createdAt: T,
+    })
+
+    // When the caller lists locations
+    const res = await run(`query { locations { id } }`)
+
+    // Then only loc-theirs comes back. The stale rows in hh-1 do not count.
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.locations).toEqual([{ id: 'loc-theirs' }])
   })
 
   it('user can read createdAt/updatedAt as real ISO-8601 strings, not epoch ms', async () => {
-    // Given loc-a's seeded Date objects
-    const seeded = state.locations.find((l) => l.id === 'loc-a')
-    if (!seeded) throw new Error('fixture missing loc-a')
-
-    // When user-a lists locations
+    // When the caller lists locations
     const res = await run(`query { locations { id createdAt updatedAt } }`)
 
-    // Then createdAt/updatedAt come back as the row's actual ISO string, not
-    // Date.valueOf()'s epoch-millisecond coercion (a bare numeric string would
-    // also satisfy a looser 'is a non-empty string' assertion, so this pins the
-    // exact ISO value instead)
-    // `singleResult.data` is untyped (`Record<string, unknown>`), so narrow it
-    // before using array methods — `tsc` rejects `.find` on `{}` even though
-    // vitest/esbuild strips types and would run it fine. Caught only by the
-    // root `pnpm build`, never by `pnpm test`.
+    // Then createdAt/updatedAt come back as the row's ISO string, not
+    // Date.valueOf()'s epoch milliseconds. `singleResult.data` is untyped, so
+    // narrow it before using array methods.
     const locations = res.data?.locations as
       | Array<{ id: string; createdAt: string; updatedAt: string }>
       | undefined
-    const loc = locations?.find((l) => l.id === 'loc-a')
-    expect(loc?.createdAt).toBe(seeded.createdAt.toISOString())
-    expect(loc?.updatedAt).toBe(seeded.updatedAt.toISOString())
-    expect(loc?.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+    const loc = locations?.find((l) => l.id === 'loc-kitchen')
+    expect(loc?.createdAt).toBe(T.toISOString())
+    expect(loc?.updatedAt).toBe(T.toISOString())
   })
 
-  it('user with no locations gets a default created lazily', async () => {
-    // Given a user who owns nothing
-    state.locations = []
+  it('user signing in for the first time gets a Home location', async () => {
+    // Given a new person: a User row that was never set up, and no household
+    world.users.reset([
+      {
+        id: 'user-new',
+        displayName: 'New',
+        email: null,
+        lastSeenAt: null,
+        deletedAt: null,
+        householdSetupAt: null,
+        createdAt: T,
+        updatedAt: T,
+      },
+    ])
 
     // When they list locations
-    const res = await run(`query { locations { name isDefault order } }`, {}, 'user-new')
+    const res = await run(`query { locations { name order } }`, {}, 'user-new')
 
-    // Then exactly one default location was created for them
-    expect(res.data?.locations).toEqual([{ name: 'My Home', isDefault: true, order: 0 }])
-  })
-
-  it('user can create a location, appended after the highest order', async () => {
-    const res = await run(`mutation { createLocation(name: "Cellar") { name order isDefault } }`)
-    expect(res.data?.createLocation).toEqual({ name: 'Cellar', order: 2, isDefault: false })
-  })
-
-  it('user can rename their own location', async () => {
-    const res = await run(
-      `mutation Update($id: ID!, $input: UpdateLocationInput!) { updateLocation(id: $id, input: $input) { name } }`,
-      { id: 'loc-a2', input: { name: 'Shed' } },
-    )
-    expect(res.data?.updateLocation).toEqual({ name: 'Shed' })
-  })
-
-  it('user cannot rename another user\'s location', async () => {
-    const res = await run(
-      `mutation Update($id: ID!, $input: UpdateLocationInput!) { updateLocation(id: $id, input: $input) { name } }`,
-      { id: 'loc-b', input: { name: 'Hijacked' } },
-    )
-    expect(res.errors?.[0]?.message).toMatch(/Forbidden/)
-    expect(state.locations.find((l) => l.id === 'loc-b')?.name).toBe('Their Home')
-  })
-
-  it('user can delete a non-default location, cascading its stock', async () => {
-    const res = await run(`mutation { deleteLocation(id: "loc-a2") }`)
-    expect(res.data?.deleteLocation).toBe(true)
-    expect(state.locations.some((l) => l.id === 'loc-a2')).toBe(false)
-    expect(state.itemStocks).toHaveLength(0)
-  })
-
-  it('user cannot delete the default location', async () => {
-    const res = await run(`mutation { deleteLocation(id: "loc-a") }`)
-    expect(res.errors?.[0]?.message).toMatch(/default location cannot be deleted/i)
-    expect(state.locations.some((l) => l.id === 'loc-a')).toBe(true)
-  })
-
-  it('user cannot delete another user\'s location', async () => {
-    // Note: loc-b is also a default here, so even with ownership unchecked
-    // the isDefault guard would block this delete too, just with a
-    // different error message. Still a valid regression test — it goes red
-    // on an ownership regression — but if loc-b ever becomes non-default in
-    // this fixture, re-check that the Forbidden assertion still holds.
-    const res = await run(`mutation { deleteLocation(id: "loc-b") }`)
-    expect(res.errors?.[0]?.message).toMatch(/Forbidden/)
-    expect(state.locations.some((l) => l.id === 'loc-b')).toBe(true)
-  })
-
-  it('user can reorder their locations', async () => {
-    const res = await run(
-      `mutation Reorder($ids: [ID!]!) { reorderLocations(orderedIds: $ids) { id order } }`,
-      { ids: ['loc-a2', 'loc-a'] },
-    )
-    expect(res.data?.reorderLocations).toEqual([
-      { id: 'loc-a2', order: 0 },
-      { id: 'loc-a', order: 1 },
-    ])
-  })
-
-  it('reorder rejects the whole batch if any id is another user\'s', async () => {
-    // Given a batch mixing user-a's location with user-b's
-    const res = await run(
-      `mutation Reorder($ids: [ID!]!) { reorderLocations(orderedIds: $ids) { id } }`,
-      { ids: ['loc-a2', 'loc-b'] },
-    )
-
-    // Then nothing is written — user-a's own order is unchanged too
-    expect(res.errors?.[0]?.message).toMatch(/Forbidden/)
-    expect(state.locations.find((l) => l.id === 'loc-a2')?.order).toBe(1)
-  })
-
-  it('ensureDefaultLocation swallows a lost create race and returns the winning row', async () => {
-    // Given user-a already has a default location (loc-a, seeded above), and
-    // the guard lookup loses the race — it sees null even though the row
-    // exists, exactly like the loser of a concurrent ensureDefaultLocation
-    // call. Its own create then collides with the fake's partial-unique-index
-    // check and must be swallowed, not thrown.
-    state.simulateDefaultRaceOnce = 'user-a'
-
-    // When user-a lists locations
-    const res = await run(`query { locations { id isDefault order } }`)
-
-    // Then the query does not throw, and no duplicate default was created —
-    // still exactly loc-a (default) and loc-a2, not a third row
+    // Then first sign-in made one location for them (lib/household.ts), and
+    // they see it through the organizer row it wrote
     expect(res.errors).toBeUndefined()
-    expect(res.data?.locations).toEqual([
-      expect.objectContaining({ id: 'loc-a', isDefault: true }),
-      expect.objectContaining({ id: 'loc-a2', isDefault: false }),
+    expect(res.data?.locations).toEqual([{ name: 'Home', order: 0 }])
+  })
+})
+
+describe('createLocation', () => {
+  it('user can create a location, after the highest order in their household', async () => {
+    // Given hh-1's highest order is 3 (loc-garage, which the caller cannot see) and
+    // hh-2 has a 9
+
+    // When a household member creates a location
+    seed({ callerHouseholdRole: 'member' })
+    const res = await run(CREATE, { name: '  Cellar  ' })
+
+    // Then it goes after loc-garage: max + 1 within the household, not within the
+    // caller's own locations (2) and not across households (10)
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.createLocation).toMatchObject({ name: 'Cellar', order: 4 })
+  })
+
+  it('the new location is in the household, and the creator organizes it', async () => {
+    // When the caller creates a location
+    const res = await run(CREATE, { name: 'Cellar' })
+    const id = (res.data?.createLocation as { id: string }).id
+
+    // Then the row is in the caller's household. The fake refuses a `userId`
+    // or an `isDefault` in the write (columns dropped in task 3.14).
+    expect(location(id)).toMatchObject({ householdId: 'hh-1' })
+    // And exactly one role row was written: the caller's organizer row
+    expect(world.households.state.locationMembers.filter((m) => m.locationId === id)).toEqual([
+      expect.objectContaining({ userId: 'caller', role: 'organizer' }),
     ])
+  })
+
+  it('a failed role row leaves no location behind (one transaction)', async () => {
+    // Given writing the role row fails
+    vi.spyOn(world.households.client.locationMember, 'create').mockRejectedValueOnce(
+      new Error('boom'),
+    )
+    const before = world.stock.state.locations.length
+
+    // When the caller creates a location
+    const res = await run(CREATE, { name: 'Cellar' })
+
+    // Then the error comes back and the location row was rolled back
+    expect(res.errors).toBeDefined()
+    expect(world.stock.state.locations).toHaveLength(before)
+  })
+
+  it('user can create a location and then rename it, using only rows the resolvers wrote', async () => {
+    // Given a household member with no role on any new location yet
+    seed({ callerHouseholdRole: 'member' })
+
+    // When they create a location and then rename it
+    const created = await run(CREATE, { name: 'Cellar' })
+    const id = (created.data?.createLocation as { id: string }).id
+    const renamed = await run(UPDATE, { id, input: { name: 'Wine cellar' } })
+
+    // Then the rename passes the organizer check through the role row
+    // `createLocation` wrote
+    expect(renamed.errors).toBeUndefined()
+    expect(renamed.data?.updateLocation).toEqual({ name: 'Wine cellar' })
+  })
+
+  it('user can create a location and then stock it, using only rows the resolvers wrote', async () => {
+    seed({ callerHouseholdRole: 'member' })
+
+    // When they create a location and write stock into it
+    const created = await run(CREATE, { name: 'Cellar' })
+    const id = (created.data?.createLocation as { id: string }).id
+    const stocked = await run(
+      `mutation Stock($locationId: ID!) {
+        upsertItemStock(itemId: "item-1", locationId: $locationId, input: { packedQuantity: 3 }) {
+          packedQuantity
+        }
+      }`,
+      { locationId: id },
+    )
+
+    // Then the write passes the participant check, and the row is there
+    expect(stocked.errors).toBeUndefined()
+    expect(stocked.data?.upsertItemStock).toEqual({ packedQuantity: 3 })
+    expect(world.stock.state.itemStocks).toEqual([
+      expect.objectContaining({ itemId: 'item-1', locationId: id, packedQuantity: 3 }),
+    ])
+  })
+})
+
+describe('updateLocation', () => {
+  it('location organizer can rename it', async () => {
+    const res = await run(UPDATE, { id: 'loc-kitchen', input: { name: 'Pantry' } })
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.updateLocation).toEqual({ name: 'Pantry' })
+  })
+
+  it('location participant cannot rename it', async () => {
+    // Given the caller is a participant on loc-kitchen, and `other` organizes it
+    seed({ callerLocationRole: 'participant' })
+
+    const res = await run(UPDATE, { id: 'loc-kitchen', input: { name: 'Pantry' } })
+
+    expect(errorCode(res)).toBe('FORBIDDEN')
+    expect(location('loc-kitchen')?.name).toBe('loc-kitchen name')
+  })
+
+  it('household owner with no role on a location cannot rename it', async () => {
+    // Given the caller owns hh-1 but has no role on loc-garage
+    const res = await run(UPDATE, { id: 'loc-garage', input: { name: 'Mine' } })
+
+    expect(errorCode(res)).toBe('FORBIDDEN')
+    expect(location('loc-garage')?.name).toBe('loc-garage name')
+  })
+
+  it("user cannot rename another household's location", async () => {
+    const res = await run(UPDATE, { id: 'loc-theirs', input: { name: 'Hijacked' } })
+
+    expect(errorCode(res)).toBe('FORBIDDEN')
+    expect(location('loc-theirs')?.name).toBe('loc-theirs name')
+  })
+})
+
+describe('deleteLocation', () => {
+  it('household manager can delete a location, with its stock and role rows', async () => {
+    // Given the caller manages hh-1 and is only a viewer on loc-kitchen, and loc-kitchen
+    // has a stock row
+    seed({ callerHouseholdRole: 'manager', callerLocationRole: 'viewer' })
+    world.stock.state.itemStocks.push({
+      id: 'st-1',
+      itemId: 'item-1',
+      locationId: 'loc-kitchen',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      dueDate: null,
+      createdAt: T,
+      updatedAt: T,
+    })
+
+    // When the caller deletes loc-kitchen
+    const res = await run(DELETE, { id: 'loc-kitchen' })
+
+    // Then it is gone, and so are its stock row and its role rows. The
+    // household role decides, not the location role.
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.deleteLocation).toBe(true)
+    expect(location('loc-kitchen')).toBeUndefined()
+    expect(world.stock.state.itemStocks).toHaveLength(0)
+    expect(world.households.state.locationMembers.some((m) => m.locationId === 'loc-kitchen')).toBe(
+      false,
+    )
+  })
+
+  it('household manager can delete a location they have no role on', async () => {
+    seed({ callerHouseholdRole: 'manager' })
+
+    const res = await run(DELETE, { id: 'loc-garage' })
+
+    expect(res.data?.deleteLocation).toBe(true)
+    expect(location('loc-garage')).toBeUndefined()
+  })
+
+  it('household owner can delete a location', async () => {
+    const res = await run(DELETE, { id: 'loc-pantry' })
+
+    expect(res.data?.deleteLocation).toBe(true)
+    expect(location('loc-pantry')).toBeUndefined()
+  })
+
+  it.each([['participant'], ['organizer']] as const)(
+    'household member who is a location %s cannot delete it',
+    async (locationRole) => {
+      // Given the caller is a household member, and `other` manages hh-1
+      seed({ callerHouseholdRole: 'member', callerLocationRole: locationRole })
+
+      const res = await run(DELETE, { id: 'loc-kitchen' })
+
+      expect(errorCode(res)).toBe('FORBIDDEN')
+      expect(location('loc-kitchen')).toBeDefined()
+    },
+  )
+
+  it("user cannot delete another household's location", async () => {
+    // Given the caller owns hh-1, and loc-theirs is in hh-2
+    const res = await run(DELETE, { id: 'loc-theirs' })
+
+    expect(errorCode(res)).toBe('FORBIDDEN')
+    expect(location('loc-theirs')).toBeDefined()
+  })
+
+  it('user cannot delete a location that does not exist', async () => {
+    const res = await run(DELETE, { id: 'loc-missing' })
+    expect(errorCode(res)).toBe('FORBIDDEN')
+  })
+
+  it("user cannot delete the household's last location (decision H13)", async () => {
+    // Given hh-1 has only loc-kitchen, while hh-2 still has loc-theirs
+    seed({ onlyOneLocation: true })
+
+    const res = await run(DELETE, { id: 'loc-kitchen' })
+
+    expect(errorCode(res)).toBe('LAST_LOCATION')
+    expect(location('loc-kitchen')).toBeDefined()
+  })
+
+  it('locks the household row first, before it reads or counts the locations', async () => {
+    // Given spies on the three statements. `vi.spyOn` calls through, so the
+    // delete still runs. `world.client.location` is its own object (a spread
+    // of stockFake's, plus the cascading delete), so the spies go on it, not
+    // on `world.stock.client.location`.
+    const lock = vi.spyOn(world.client.household, 'update')
+    const read = vi.spyOn(world.client.location, 'findFirst')
+    const count = vi.spyOn(world.client.location, 'count')
+
+    // When the caller deletes a location
+    const res = await run(DELETE, { id: 'loc-pantry' })
+    expect(res.errors).toBeUndefined()
+
+    // Then the lock is an update of THIS household's row
+    expect(lock).toHaveBeenCalledTimes(1)
+    expect(lock).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'hh-1' } }))
+    // And it runs before the read and the count. In Postgres, a count that
+    // ran before the lock could see a location that a second delete is about
+    // to remove (lib/household.ts, `lockHousehold`).
+    const lockedAt = lock.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(count).toHaveBeenCalledTimes(1)
+    expect(lockedAt).toBeLessThan(read.mock.invocationCallOrder[0] ?? 0)
+    expect(lockedAt).toBeLessThan(count.mock.invocationCallOrder[0] ?? 0)
+  })
+
+  it('the first location by order can be deleted while another location is left', async () => {
+    // Given loc-kitchen was the old default, and hh-1 has two more locations
+    const res = await run(DELETE, { id: 'loc-kitchen' })
+
+    // Then nothing protects it but the "last location" rule
+    expect(res.errors).toBeUndefined()
+    expect(location('loc-kitchen')).toBeUndefined()
+  })
+})
+
+describe('reorderLocations', () => {
+  it('household manager can reorder every location of the household', async () => {
+    // Given the caller manages hh-1, and has no role on loc-garage
+    seed({ callerHouseholdRole: 'manager' })
+
+    // When they reorder all three
+    const res = await run(REORDER, { ids: ['loc-garage', 'loc-kitchen', 'loc-pantry'] })
+
+    // Then every order is written, loc-garage's too
+    expect(res.errors).toBeUndefined()
+    expect([location('loc-garage')?.order, location('loc-kitchen')?.order, location('loc-pantry')?.order]).toEqual(
+      [0, 1, 2],
+    )
+    // And the answer is what `locations` returns: the caller's, by order
+    expect(res.data?.reorderLocations).toEqual([
+      { id: 'loc-kitchen', order: 1 },
+      { id: 'loc-pantry', order: 2 },
+    ])
+  })
+
+  it('household member cannot reorder, and nothing is written', async () => {
+    seed({ callerHouseholdRole: 'member' })
+
+    const res = await run(REORDER, { ids: ['loc-kitchen', 'loc-pantry'] })
+
+    expect(errorCode(res)).toBe('FORBIDDEN')
+    expect(location('loc-kitchen')?.order).toBe(1)
+    expect(location('loc-pantry')?.order).toBe(0)
+  })
+
+  it("a batch with another household's location changes nothing", async () => {
+    // Given the caller owns hh-1, and loc-theirs is in hh-2
+    const res = await run(REORDER, { ids: ['loc-kitchen', 'loc-theirs'] })
+
+    // Then the whole batch is refused: loc-kitchen keeps its order too
+    expect(errorCode(res)).toBe('FORBIDDEN')
+    expect(location('loc-kitchen')?.order).toBe(1)
+    expect(location('loc-theirs')?.order).toBe(9)
+  })
+
+  it('a batch with a repeated id is refused, and nothing is written', async () => {
+    // Given the caller owns hh-1, and every id is a location of hh-1
+    // When they send loc-kitchen twice
+    const res = await run(REORDER, { ids: ['loc-kitchen', 'loc-kitchen', 'loc-pantry'] })
+
+    // Then the batch is refused as bad input, and no order moved
+    expect(errorCode(res)).toBe('BAD_USER_INPUT')
+    expect(location('loc-kitchen')?.order).toBe(1)
+    expect(location('loc-pantry')?.order).toBe(0)
+    expect(location('loc-garage')?.order).toBe(3)
+  })
+
+  it('a batch with an id that does not exist changes nothing', async () => {
+    const res = await run(REORDER, { ids: ['loc-kitchen', 'loc-missing'] })
+
+    expect(errorCode(res)).toBe('FORBIDDEN')
+    expect(location('loc-kitchen')?.order).toBe(1)
   })
 })

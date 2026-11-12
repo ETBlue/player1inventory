@@ -203,7 +203,6 @@ mutation BulkCreateLocations($locations: [LocationInput!]!) {
     id
     name
     order
-    isDefault
     createdAt
     updatedAt
   }
@@ -214,7 +213,6 @@ mutation BulkUpsertLocations($locations: [LocationInput!]!) {
     id
     name
     order
-    isDefault
     createdAt
     updatedAt
   }

@@ -1,7 +1,16 @@
 import { GraphQLError } from 'graphql'
-import { type OwnedModel, requireLocationRole, requireOwnRowOrUnclaimed } from '../lib/authz.js'
+import {
+  fallbackImportLocation,
+  householdOfLocation,
+  type LocationRole,
+  type OwnedModel,
+  requireHousehold,
+  requireHouseholdRole,
+  requireLocationRole,
+  requireOwnRowOrUnclaimed,
+} from '../lib/authz.js'
 import { parseCartId } from '../lib/cartId.js'
-import { ensureDefaultLocation } from '../lib/defaultLocation.js'
+import { createFirstLocation, firstLocationName, lockHousehold } from '../lib/household.js'
 import { prisma } from '../lib/prisma.js'
 import { type Context, requireAuth } from '../context.js'
 import { toGraphQL as locationToGraphQL } from './location.resolver.js'
@@ -30,7 +39,6 @@ function itemToGraphQL(item: {
   estimatedDueDays?: number | null
   expirationThreshold?: number | null
   expirationMode: ExpirationMode
-  userId: string
   createdAt: Date
   updatedAt: Date
   tags: { tagId: string }[]
@@ -58,8 +66,8 @@ function itemToGraphQL(item: {
  * payload is verified through `requireLocationRole` — the one authorization
  * seam for location-scoped data (lib/authz.ts). A row naming a location the
  * caller does not hold makes the whole mutation fail with FORBIDDEN. It must
- * NOT fall back to the default: a silent fallback would write the log into a
- * location the user never asked for and report success.
+ * NOT fall back to the fallback location: a silent fallback would write the
+ * log into a location the user never asked for and report success.
  *
  * Three things about the shape are deliberate:
  *
@@ -69,44 +77,44 @@ function itemToGraphQL(item: {
  *    transactional, so throwing from inside the loop would leave the rows
  *    already written behind. Checking first means a payload naming a forbidden
  *    location writes nothing at all.
- *  - The caller's default is resolved only when some row omits `locationId`,
- *    so an import whose every row names a location does not create one.
+ *  - The fallback location (`fallbackImportLocation`, lib/authz.ts, decision
+ *    H12) is resolved only when some row omits `locationId`, so an import
+ *    whose every row names a location does not look for one.
  *
- * `'member'` is the role asked for because writing a log is a write, and
- * member is the LOWEST role that may write under location RBAC (owner/member
- * edit, viewer reads — docs/global/permissions/2026-08-29-design-location-rbac.md).
- * Asking for `'owner'` would deny a legitimate member of a shared location
- * once RBAC lands.
+ * `'participant'` is the role asked for because writing a log is a write, and
+ * participant is the LOWEST location role that may write (organizer and
+ * participant write, viewer reads — households design, *Location roles*).
+ * Asking for `'organizer'` would deny a legitimate participant of a shared
+ * location.
  */
 async function resolveLogLocations(
   ctx: Context,
-  userId: string,
   logs: readonly { locationId?: string | null }[],
 ): Promise<(inputLocationId: string | null | undefined) => string> {
   const verified = new Set<string>()
-  let defaultLocationId: string | null = null
+  let fallbackLocationId: string | null = null
 
   for (const log of logs) {
     if (log.locationId) {
       if (verified.has(log.locationId)) continue
-      await requireLocationRole(ctx, log.locationId, 'member')
+      await requireLocationRole(ctx, log.locationId, 'participant')
       verified.add(log.locationId)
-    } else if (defaultLocationId === null) {
-      defaultLocationId = await ensureDefaultLocation(userId)
+    } else if (fallbackLocationId === null) {
+      fallbackLocationId = await fallbackImportLocation(ctx)
     }
   }
 
   return (inputLocationId) => {
     if (inputLocationId) return inputLocationId
-    if (defaultLocationId === null) {
-      // Unreachable: the loop above resolved the default for the first row
+    if (fallbackLocationId === null) {
+      // Unreachable: the loop above resolved the fallback for the first row
       // that omitted a location, and this function is only called with rows
       // from that same list. It is here to keep the return type `string`
       // rather than `string | null`, because an empty-string fallback would
       // write a broken foreign key instead of failing.
-      throw new Error('resolveLogLocations: no default location resolved')
+      throw new Error('resolveLogLocations: no fallback location resolved')
     }
-    return defaultLocationId
+    return fallbackLocationId
   }
 }
 
@@ -144,13 +152,15 @@ function locationIdInCartId(cartId: string): string | null {
  * written. The cart twin of `resolveLogLocations` above, and the same three
  * shape decisions apply for the same reasons: each DISTINCT location checked
  * once, every check before the write loop (these resolvers are not
- * transactional), and the caller's default resolved only if some id needs it.
+ * transactional), and the caller's fallback location resolved only if some
+ * id needs it.
  *
  * ── THE RULE (task 8) ──
  *
  * Three cases per distinct id named by a cart id:
  *
- *  - no `Location` row holds it → write the cart to the caller's DEFAULT
+ *  - no `Location` row holds it → write the cart to the caller's fallback
+ *    location (`fallbackImportLocation`, decision H12)
  *  - a row holds it and the caller holds a role on it → write the cart there
  *  - a row holds it and the caller does NOT → `requireLocationRole` throws
  *    FORBIDDEN, and nothing is written at all
@@ -191,45 +201,44 @@ function locationIdInCartId(cartId: string): string | null {
  * partial write stays on disk. The query reads one column, `id`, and makes no
  * authorization decision; the decision is still entirely
  * `requireLocationRole`'s (lib/authz.ts), never an inline comparison of
- * `location.userId` against the caller (root CLAUDE.md, Authorization).
+ * a row's scope column against the caller (root CLAUDE.md, Authorization).
  *
- * Why this is not `requireOwnLocationIdsOrUnclaimed` itself: that helper
- * returns `void`, because for `LocationInput` an unclaimed id simply means
- * "free to create" and the caller needs no further answer. Here the resolver
- * must KNOW which ids came back unclaimed, so it can send those carts to the
- * default instead. Same two-step pattern — unscoped existence check, then
- * `requireLocationRole` — with a result rather than a bare assertion.
+ * Why this is not `requireOwnLocationIdsOrUnclaimed` itself: for
+ * `LocationInput` an unclaimed id simply means "free to create". Here the
+ * resolver must send the carts of an unclaimed id to the fallback location,
+ * and map each cart id to the location it is written to. Same two-step
+ * pattern — unscoped existence check, then `requireLocationRole` — with a
+ * different result.
  *
- * `'member'` for the same reason as every other helper here: it is the LOWEST
- * role that may write under location RBAC, so a legitimate member of a shared
- * location is not denied the day RBAC lands.
+ * `'participant'` for the same reason as every other helper here: it is the
+ * LOWEST location role that may write, so a legitimate participant of a
+ * shared location is not denied.
  */
 async function resolveCartLocations(
   ctx: Context,
-  userId: string,
   carts: readonly { id: string }[],
 ): Promise<(cartId: string) => string> {
   // Named location id → the location the cart is actually written to. Either
-  // the named id itself (it exists and is the caller's) or the caller's
-  // default (no row holds it). One entry per DISTINCT named id, so 500 carts
+  // the named id itself (it exists and the caller holds a role on it) or the
+  // caller's fallback location (no row holds it). One entry per DISTINCT named id, so 500 carts
   // across 3 locations cost 3 existence checks, not 500.
   const resolved = new Map<string, string>()
-  let defaultLocationId: string | null = null
+  let fallbackLocationId: string | null = null
 
   // Resolved at most once per mutation, and only when some id needs it, so an
-  // import whose every cart names a live location of the caller's never creates
-  // a default.
-  async function ensureDefault(): Promise<string> {
-    if (defaultLocationId === null) {
-      defaultLocationId = await ensureDefaultLocation(userId)
+  // import whose every cart names a live location of the caller's never looks
+  // for a fallback.
+  async function ensureFallback(): Promise<string> {
+    if (fallbackLocationId === null) {
+      fallbackLocationId = await fallbackImportLocation(ctx)
     }
-    return defaultLocationId
+    return fallbackLocationId
   }
 
   for (const cart of carts) {
     const named = locationIdInCartId(cart.id)
     if (named === null) {
-      await ensureDefault()
+      await ensureFallback()
       continue
     }
     if (resolved.has(named)) continue
@@ -241,16 +250,16 @@ async function resolveCartLocations(
       select: { id: true },
     })
     if (taken) {
-      await requireLocationRole(ctx, named, 'member')
+      await requireLocationRole(ctx, named, 'participant')
       resolved.set(named, named)
     } else {
-      resolved.set(named, await ensureDefault())
+      resolved.set(named, await ensureFallback())
     }
   }
 
   return (cartId) => {
     const named = locationIdInCartId(cartId)
-    const target = named === null ? defaultLocationId : resolved.get(named)
+    const target = named === null ? fallbackLocationId : resolved.get(named)
     if (target == null) {
       // Unreachable: the loop above resolved every id in this list, and this
       // function is only called with ids from that same list. It is here to
@@ -265,27 +274,42 @@ async function resolveCartLocations(
 
 /**
  * Authorize every location id a payload names, BEFORE any row is written.
+ * Returns the ids of the locations that already exist (and on which the
+ * caller holds `role` or higher).
  *
  * `LocationInput.id` is attacker-controlled and `Location.id` is a GLOBAL
- * primary key with no `userId` in it, so an id in the payload can name a row
- * belonging to somebody else. Each distinct id falls into one of three cases:
+ * primary key, so an id in the payload can name a row of another household.
+ * Each distinct id falls into one of three cases:
  *
- *  - it exists and the caller holds a role on it → the caller's own row, so
- *    `bulkCreate` skips it and `bulkUpsert` replaces it
+ *  - it exists and the caller holds `role` or higher on it → in the returned
+ *    set, so `bulkCreate` skips it and `bulkUpsert` updates it
  *  - it exists and the caller does NOT → `requireLocationRole` throws
  *    FORBIDDEN, and nothing is written at all
- *  - it does not exist → free to create
+ *  - it does not exist → not in the set, free to create
+ *
+ * "Holds a role" is decided by `requireLocationRole` (lib/authz.ts), which
+ * reads the caller's `LocationMember` row through `countedLocationRole`, the
+ * decision H18 filter. So a location of the caller's OWN household on which
+ * the caller has no role, or a stale role row in a household the caller has
+ * left, is refused here. It is never "free to create". (It has read
+ * membership this way since households H3a task 3.5. Task 3.9 added the
+ * `role` argument and the returned set.)
+ *
+ * `role` depends on what the mutation does to an existing row:
+ *
+ *  - `bulkCreateLocations` asks `participant`, the LOWEST location role that
+ *    may write. It writes nothing to an existing row (it only skips it), so a
+ *    participant of a shared location is not denied.
+ *  - `bulkUpsertLocations` asks `organizer`, because it RENAMES an existing
+ *    row, and `updateLocation` (location.resolver.ts) asks `organizer` for a
+ *    rename. With `participant` here, a participant could rename a shared
+ *    location through an import, but not on the settings page.
  *
  * Why the unscoped `findUnique` comes first. The question it asks is "is this
- * primary key taken", which is not an authorization question and has no user
- * to scope by; only `id` is selected. The AUTHORIZATION decision is made
- * entirely by `requireLocationRole` (lib/authz.ts), the one seam the whole
- * series routes location checks through — never by comparing a row's `userId`
- * to the caller's, which root CLAUDE.md forbids.
- *
- * `'member'` for the same reason as the log and cart helpers above: it is the
- * LOWEST role that may write under location RBAC, so a legitimate member of a
- * shared location is not denied the day RBAC lands.
+ * primary key taken", which is not an authorization question and has no
+ * scope; only `id` is selected. The AUTHORIZATION decision is made entirely by
+ * `requireLocationRole` — never by comparing a row's `userId` or
+ * `householdId` to the caller's, which root CLAUDE.md forbids.
  *
  * WITHOUT this pre-check, copying the house style verbatim would have shipped
  * two cross-user holes, the same class task 4 found in the unscoped cart
@@ -305,11 +329,10 @@ async function resolveCartLocations(
  * `requireOwnRowIdsOrUnclaimed` below, `userId` is out of all nine `update`
  * payloads, and all 12 closing reads are scoped — including the
  * `bulkCreateShelves` `findMany` named above, which is now
- * `findMany({ where: { id: { in: ids }, userId } })`. So the list above reads
+ * `findMany({ where: { id: { in: ids }, householdId } })` since households
+ * H3a task 3.7 (it was `userId` before). So the list above reads
  * as history: it is why this pre-check exists, not a description of the file's
- * current state. The one remaining difference is that this helper returns
- * `void` while `requireOwnRowIdsOrUnclaimed` returns the ids the caller already
- * owns.
+ * current state.
  *
  * Three things about the shape, all for the same reasons as the log helper:
  * each DISTINCT id is checked once; the whole check runs before the write loop
@@ -323,7 +346,9 @@ async function resolveCartLocations(
 async function requireOwnLocationIdsOrUnclaimed(
   ctx: Context,
   locations: readonly { id: string }[],
-): Promise<void> {
+  role: LocationRole,
+): Promise<Set<string>> {
+  const existing = new Set<string>()
   const checked = new Set<string>()
   for (const { id } of locations) {
     if (checked.has(id)) continue
@@ -332,8 +357,58 @@ async function requireOwnLocationIdsOrUnclaimed(
       where: { id },
       select: { id: true },
     })
-    if (taken) await requireLocationRole(ctx, id, 'member')
+    if (taken) {
+      await requireLocationRole(ctx, id, role)
+      existing.add(id)
+    }
   }
+  return existing
+}
+
+/**
+ * Create one imported location in `householdId`, with the caller as its
+ * `organizer` (households H3a task 3.9).
+ *
+ * The same two writes as `createLocation` (location.resolver.ts), in ONE
+ * transaction, so an imported location never exists without its organizer
+ * row. Without that row nobody could see it, stock it, or write a log or a
+ * cart there: `locations` and every location check read `LocationMember`
+ * (lib/authz.ts). Before task 3.9 these mutations wrote no role row and no
+ * `householdId`. So an imported location was missing from `locations`, the
+ * switcher and a cloud export, and the item stocks imported right after it
+ * were refused.
+ *
+ * `order` is the payload's own value. It is NOT `max + 1` within the
+ * household, as `createLocation` counts it: a backup carries the user's own
+ * order, and an import restores it. Two locations of one household can then
+ * share an `order`. `locations` breaks that tie by id, so the list order is
+ * still stable.
+ *
+ * The location carries `householdId` only. It has had no `userId` and no
+ * `isDefault` since task 3.14 (the drop_user_scope migration); the caller's
+ * `organizer` row is what ties them to it.
+ */
+async function createImportedLocation(
+  userId: string,
+  householdId: string,
+  input: { id: string; name: string; order: number; createdAt: string; updatedAt: string },
+): Promise<PrismaLocation> {
+  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const created = await tx.location.create({
+      data: {
+        id: input.id,
+        name: input.name,
+        order: input.order,
+        createdAt: new Date(input.createdAt),
+        updatedAt: new Date(input.updatedAt),
+        householdId,
+      },
+    })
+    await tx.locationMember.create({
+      data: { locationId: created.id, userId, role: 'organizer' },
+    })
+    return created
+  })
 }
 
 /**
@@ -342,8 +417,9 @@ async function requireOwnLocationIdsOrUnclaimed(
  *
  * This is the account-scoped twin of `requireOwnLocationIdsOrUnclaimed` above.
  * It serves the nine models in `OwnedModel` (lib/authz.ts) — the models that
- * carry a `userId` column and belong to no location, so `requireLocationRole`
- * cannot reach them.
+ * belong to no location, so `requireLocationRole` cannot reach them. Six of
+ * them (the catalog) belong to a household; `InventoryLog`, `Cart` and
+ * `CartItem` still carry a `userId`.
  *
  * Every `id` in an import payload is attacker-controlled, and each of these
  * primary keys is GLOBAL with no `userId` in it. So an id in the payload can
@@ -405,10 +481,10 @@ async function requireOwnRowIdsOrUnclaimed(
  *    unconditionally. There is no "unclaimed id is free" case as there is for
  *    `LocationInput`: an id no `Location` row holds is a broken foreign key,
  *    not a new location.
- *  - `itemId` — the row's other parent. `Item` DOES have a `userId` column, so
- *    the check is a SCOPED query (`where: { id, userId }`) and never a
- *    comparison of a fetched row's `userId` against the caller's, which root
- *    CLAUDE.md forbids.
+ *  - `itemId` — the row's other parent. `Item` belongs to a household (since
+ *    households H3a task 3.7), so the check is a SCOPED query
+ *    (`where: { id, householdId }`) and never a comparison of a fetched row's
+ *    `householdId` against the caller's, which root CLAUDE.md forbids.
  *  - `id` — the row's own primary key, GLOBAL and with no `userId` in it. If a
  *    row already holds it, that row's OWN location must be one the caller
  *    holds. This is the check `requireOwnLocationIdsOrUnclaimed` cannot serve:
@@ -436,22 +512,20 @@ async function requireOwnRowIdsOrUnclaimed(
  * transactional and a throw from inside leaves earlier rows on disk; and it
  * reads nothing it does not need.
  *
- * `'member'` for the same reason as every other helper here: it is the LOWEST
- * role that may write under location RBAC, so a legitimate member of a shared
- * location is not denied the day RBAC lands. Asking for `'owner'` would pass
- * today, because `requireLocationRole` ignores `role` pre-RBAC, and deny them
- * silently later.
+ * `'participant'` for the same reason as every other helper here: it is the
+ * LOWEST location role that may write, so a legitimate participant of a
+ * shared location is not denied. Asking for `'organizer'` would deny them.
  */
 async function requireOwnItemStockRefs(
   ctx: Context,
-  userId: string,
   stocks: readonly { id: string; itemId: string; locationId: string }[],
 ): Promise<void> {
+  const householdId = await requireHousehold(ctx)
   const checkedLocations = new Set<string>()
   for (const { locationId } of stocks) {
     if (checkedLocations.has(locationId)) continue
     checkedLocations.add(locationId)
-    await requireLocationRole(ctx, locationId, 'member')
+    await requireLocationRole(ctx, locationId, 'participant')
   }
 
   const checkedItems = new Set<string>()
@@ -459,7 +533,7 @@ async function requireOwnItemStockRefs(
     if (checkedItems.has(itemId)) continue
     checkedItems.add(itemId)
     const own = await prisma.item.findFirst({
-      where: { id: itemId, userId },
+      where: { id: itemId, householdId },
       select: { id: true },
     })
     // Same wording and code as `requireLocationRole`'s refusal, and for the
@@ -482,18 +556,266 @@ async function requireOwnItemStockRefs(
       where: { id },
       select: { locationId: true },
     })
-    if (taken) await requireLocationRole(ctx, taken.locationId, 'member')
+    if (taken) await requireLocationRole(ctx, taken.locationId, 'participant')
   }
 }
 
+/**
+ * Decide, BEFORE any row is written, which imported cart items may be written:
+ * the cart must be the caller's, and the item must be an item of the
+ * household of the CART's location (households H3a task 3.9). Returns a
+ * function that answers that for one `(cartId, itemId)` pair.
+ *
+ * Why the cart's location, not the caller's household. Until task 3.9 the
+ * item was checked against `requireHousehold(ctx)`, the caller's household.
+ * Today that is the same household, because a person is in one household and
+ * a cart is the caller's own. Once a person can be in two households (H5), it
+ * is not: a cart row could then put household A's item into a cart at
+ * household B's location, and `checkout` buys it into B's stock, because
+ * `checkout` trusts the item ids in cart rows. `addToCart` checks the item
+ * against the cart's location since task 3.8; this is the import twin.
+ *
+ * The order of the checks is rule 12 of the H3a plan:
+ *
+ *  1. The cart, scoped by `userId` (until H3b). A cart that is not the
+ *     caller's, or is gone, makes its rows SKIPPED.
+ *  2. The location role on the cart's location, `participant`, through
+ *     `requireLocationRole`. A cart of the caller's at a location they hold
+ *     no role on any more THROWS FORBIDDEN for the whole batch, the same
+ *     refusal `resolveCartLocations` gives a stranger's location. Nobody can
+ *     reach this before H5.
+ *  3. The item, scoped by the household of the cart's location
+ *     (`householdOfLocation`). An item of another household, or one that is
+ *     gone, makes its row SKIPPED.
+ *
+ * Steps 1 and 3 SKIP rather than refuse, as they did before: a partial backup
+ * legitimately names a cart or an item that is gone, and "not yours" must
+ * look the same as "not there". So this does not call `requireLocationItems`,
+ * which throws; it reads the same household with `householdOfLocation` and
+ * filters.
+ *
+ * Each distinct cart, location and (household, item) pair is read once.
+ */
+async function resolveCartItemParents(
+  ctx: Context,
+  cartItems: readonly { cartId: string; itemId: string }[],
+): Promise<(cartId: string, itemId: string) => boolean> {
+  const userId = requireAuth(ctx)
+
+  // cart id → the household of its location, or null when the cart is not
+  // the caller's.
+  const cartHousehold = new Map<string, string | null>()
+  const locationHousehold = new Map<string, string>()
+  for (const { cartId } of cartItems) {
+    if (cartHousehold.has(cartId)) continue
+    const cart = await prisma.cart.findFirst({
+      where: { id: cartId, userId },
+      select: { id: true, locationId: true },
+    })
+    if (!cart) {
+      cartHousehold.set(cartId, null)
+      continue
+    }
+    let householdId = locationHousehold.get(cart.locationId)
+    if (householdId === undefined) {
+      // The role FIRST, then the household (rule 12): `householdOfLocation`
+      // reads any location, so run first it would tell a stranger which
+      // location ids exist.
+      await requireLocationRole(ctx, cart.locationId, 'participant')
+      householdId = await householdOfLocation(cart.locationId)
+      locationHousehold.set(cart.locationId, householdId)
+    }
+    cartHousehold.set(cartId, householdId)
+  }
+
+  // `${householdId}\u0000${itemId}` of every item that is a row of that
+  // household. NUL as the separator, for the reason `bulkCreateItemStocks`
+  // gives.
+  const usable = new Set<string>()
+  const byHousehold = new Map<string, Set<string>>()
+  for (const { cartId, itemId } of cartItems) {
+    const householdId = cartHousehold.get(cartId)
+    if (!householdId) continue
+    const ids = byHousehold.get(householdId) ?? new Set<string>()
+    ids.add(itemId)
+    byHousehold.set(householdId, ids)
+  }
+  for (const [householdId, ids] of byHousehold) {
+    // SCOPED in SQL; no fetched row's `householdId` is compared here.
+    const own = await prisma.item.findMany({
+      where: { id: { in: [...ids] }, householdId },
+      select: { id: true },
+    })
+    for (const { id } of own) usable.add(`${householdId}\u0000${id}`)
+  }
+
+  return (cartId, itemId) => {
+    const householdId = cartHousehold.get(cartId)
+    return !!householdId && usable.has(`${householdId}\u0000${itemId}`)
+  }
+}
+
+type ImportedFilterConfig = {
+  tagIds?: string[] | null
+  vendorIds?: string[] | null
+  recipeIds?: string[] | null
+}
+
+/**
+ * The ids a shelf ATTACHES — its `itemIds` and the tag, vendor and recipe ids
+ * in its `filterConfig` — with every id of ANOTHER household's row removed
+ * (households H3a task 3.9). Returns a function that gives each shelf its
+ * cut-down arrays.
+ *
+ * Before task 3.9, both import mutations wrote the arrays as given, so a
+ * shelf of the caller's could name another household's items, tags, vendors
+ * and recipes. `createShelf` / `updateShelf` refuse such a shelf with
+ * FORBIDDEN (`requireCatalogIds`, task 3.7). Import does NOT refuse it. It
+ * DROPS each such id, and the shelf still lands, for the reason every other
+ * reference in this file is skipped: one bad id in a backup must not stop the
+ * whole import.
+ *
+ * | An id is | Result |
+ * |---|---|
+ * | a row of `householdId` | kept |
+ * | a row of another household | dropped |
+ * | held by no row | KEPT — the same rule as `createShelf`'s `missing: 'allow'` |
+ *
+ * Why an id no row holds is kept. On the `replace` strategy the web client
+ * runs TWO passes (`importData.ts`, the replace flow): first `bulkCreate*`
+ * for the rows with no conflict, over every entity with shelves last, and
+ * THEN `bulkUpsert*` for the conflicting rows. An item, tag, vendor or recipe
+ * that conflicts with a cloud row by NAME only keeps its payload id and is
+ * written in the SECOND pass. A new shelf naming it is written in the FIRST
+ * pass, before that row exists. So "shelves are imported last" is true only
+ * inside one pass, and dropping a missing id here would lose the user's own
+ * shelf contents. The first version of this helper (task 3.9) did drop it.
+ * Before task 3.9 the id was kept, so that was a regression, found in the
+ * task 3.9 review and fixed.
+ *
+ * Keeping a missing id is also safe: the shelf arrays are plain arrays, not
+ * foreign keys, and nothing removes an id from them when its row is deleted,
+ * so a shelf may already name a deleted row (see `requireCatalogIds`).
+ *
+ * Accepted cost: the caller can tell a stranger's id (dropped) from a free
+ * one (kept) by reading the shelf back. That is the same answer
+ * `requireOwnRowOrUnclaimed` gives on purpose ('unclaimed' vs FORBIDDEN), and
+ * the same protection holds: ids are `cuid()` and cannot be guessed.
+ *
+ * Queries: per model, one SCOPED read for the household's ids, and one
+ * UNSCOPED existence read for the rest only when some id is not the
+ * household's — the shape of `requireCatalogIds`. A model no shelf names
+ * costs none. No fetched row's `householdId` is compared.
+ */
+async function householdShelfRefs(
+  householdId: string,
+  shelves: readonly { itemIds?: readonly string[] | null; filterConfig?: ImportedFilterConfig | null }[],
+): Promise<
+  (shelf: { itemIds?: readonly string[] | null; filterConfig?: ImportedFilterConfig | null }) => {
+    itemIds: string[]
+    filterConfig: ImportedFilterConfig | undefined
+  }
+> {
+  // Every id the batch names for one model, each once.
+  const named = (pick: (s: (typeof shelves)[number]) => readonly string[] | null | undefined) => [
+    ...new Set(shelves.flatMap((s) => pick(s) ?? [])),
+  ]
+  type ShelfRefModel = 'item' | 'tag' | 'vendor' | 'recipe'
+  const findIds = async (
+    model: ShelfRefModel,
+    where: { id: { in: string[] }; householdId?: string },
+  ): Promise<Set<string>> => {
+    const select = { id: true } as const
+    const rows =
+      model === 'item'
+        ? await prisma.item.findMany({ where, select })
+        : model === 'tag'
+          ? await prisma.tag.findMany({ where, select })
+          : model === 'vendor'
+            ? await prisma.vendor.findMany({ where, select })
+            : await prisma.recipe.findMany({ where, select })
+    return new Set(rows.map((r) => r.id))
+  }
+  // The subset of `ids` that are rows of ANOTHER household: the ids to drop.
+  const strangersOf = async (model: ShelfRefModel, ids: string[]): Promise<Set<string>> => {
+    if (ids.length === 0) return new Set()
+    // SCOPED in SQL: the household's own ids.
+    const own = await findIds(model, { id: { in: ids }, householdId })
+    const rest = ids.filter((id) => !own.has(id))
+    if (rest.length === 0) return new Set()
+    // UNSCOPED on purpose: "is this id held by any row" tells a stranger's id
+    // from one no row holds yet. Only `id` is selected.
+    return findIds(model, { id: { in: rest } })
+  }
+
+  const items = await strangersOf('item', named((s) => s.itemIds))
+  const tags = await strangersOf('tag', named((s) => s.filterConfig?.tagIds))
+  const vendors = await strangersOf('vendor', named((s) => s.filterConfig?.vendorIds))
+  const recipes = await strangersOf('recipe', named((s) => s.filterConfig?.recipeIds))
+
+  const keep = (ids: readonly string[] | null | undefined, drop: Set<string>) =>
+    ids == null ? ids : ids.filter((id) => !drop.has(id))
+
+  return (shelf) => {
+    const fc = shelf.filterConfig
+    return {
+      itemIds: keep(shelf.itemIds, items) ?? [],
+      // A key the payload left out stays out, and `null` stays `null`, so
+      // the stored JSON has the shape the client sent.
+      filterConfig: fc
+        ? {
+            ...fc,
+            ...(fc.tagIds !== undefined ? { tagIds: keep(fc.tagIds, tags) } : {}),
+            ...(fc.vendorIds !== undefined ? { vendorIds: keep(fc.vendorIds, vendors) } : {}),
+            ...(fc.recipeIds !== undefined ? { recipeIds: keep(fc.recipeIds, recipes) } : {}),
+          }
+        : undefined,
+    }
+  }
+}
+
+// ── Households H3a, task 3.7: the catalog part only ──
+//
+// The six catalog models (`Item`, `Tag`, `TagType`, `Vendor`, `Recipe`,
+// `Shelf`) belong to a household. So every catalog row these mutations
+// create carries `householdId` (and, since task 3.14, no `userId`), and
+// every catalog read below is filtered by `householdId`. That had to happen
+// in the same step as `requireOwnRowOrUnclaimed`'s body moving to the
+// household, or an imported row would be refused as "somebody else's" by the
+// very next import.
+//
+// Task 3.9 did the rest of the import part:
+//
+// - Locations: a created location carries `householdId` and gets an
+//   `organizer` row for the caller, in one transaction
+//   (`createImportedLocation`). An existing location is never given a role
+//   row by an import.
+// - The log and cart location fallbacks use `fallbackImportLocation`
+//   (decision H12), since task 3.5.
+// - The ids a row ATTACHES are checked against the household: a tag's
+//   `typeId` and `parentId` in `bulkUpsertTags`, a shelf's `itemIds` and
+//   `filterConfig` ids, and a cart item's `itemId` against the household of
+//   the CART's location. Each unusable id is SKIPPED (the row or the edge),
+//   the same as every other reference in this file. See each mutation.
+//   One difference for shelves: only another household's id is dropped. An
+//   id no row holds is KEPT, because on `replace` the row it names may be
+//   written later in the same import. See `householdShelfRefs`.
+//
+// - `clearAllData` clears the caller's household, owner only, and makes
+//   "Home" again (task 3.10, decision H17). See its own comment.
+//
+// Still owed: logs and carts keep their `userId` scope until H3b and H4. No
+// import role check is added: that is H4. (`clearAllData`'s owner check
+// already makes the `clear` strategy owner only.)
 export const importResolvers: Pick<Resolvers, 'Mutation'> = {
   Mutation: {
     // -------------------------------------------------------------------------
     // Bulk create — inserts records with original IDs, skips existing ones.
     // -------------------------------------------------------------------------
     bulkCreateItems: async (_, { items }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
       if (items.length === 0) return []
+      const householdId = await requireHousehold(ctx)
       // Authorizes every id the payload names BEFORE the first write, and
       // returns the ids the caller ALREADY OWNS. A payload naming another
       // account's item id fails the whole mutation with nothing written.
@@ -527,7 +849,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
               : 'disabled',
             createdAt: new Date(createdAt),
             updatedAt: new Date(updatedAt),
-            userId,
+            householdId,
           },
         })
         // NO STOCK IS WRITTEN HERE, AND THAT IS THE POINT (cloud locations
@@ -547,8 +869,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         // cloud pantry, the break is in the client's `itemStocks` upload
         // (`apps/web/src/lib/importData.ts`, `ENTITY_SPECS`) or in
         // `bulkCreateItemStocks` — not here.
-        // SCOPED BY `userId`, and a tag the caller does not own is SKIPPED —
-        // not refused. Plan task 8.
+        // SCOPED, and a tag the caller does not own is SKIPPED — not refused.
+        // Plan task 8. ("Own" means "in the caller's household" since
+        // households H3a task 3.7: the filter is `householdId`, not `userId`.)
         //
         // Why skip rather than throw FORBIDDEN. A reference that does not
         // resolve is a normal thing in a partial backup: a user exports, then
@@ -566,7 +889,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         // `ItemTag` row.
         if (tagIds?.length) {
           const existingTags = await prisma.tag.findMany({
-            where: { id: { in: tagIds }, userId },
+            where: { id: { in: tagIds }, householdId },
             select: { id: true },
           })
           const validTagIds = existingTags.map((t) => t.id)
@@ -583,7 +906,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         // reason spelled out above the tag filter.
         if (vendorIds?.length) {
           const existingVendors = await prisma.vendor.findMany({
-            where: { id: { in: vendorIds }, userId },
+            where: { id: { in: vendorIds }, householdId },
             select: { id: true },
           })
           const validVendorIds = existingVendors.map((v) => v.id)
@@ -600,9 +923,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         // two different things, and a future edit that drops the guard then
         // has nothing catching it. `findUniqueOrThrow` takes the same
         // `WhereUniqueInput` as `findUnique`, which since Prisma 5 may carry
-        // extra non-unique filters, so the `userId` here is type-legal.
+        // extra non-unique filters, so the `householdId` here is type-legal.
         const full = await prisma.item.findUniqueOrThrow({
-          where: { id: created.id, userId },
+          where: { id: created.id, householdId },
           include: { tags: true, vendors: true },
         })
         results.push(itemToGraphQL(full))
@@ -611,18 +934,19 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     },
 
     bulkCreateTags: async (_, { tags }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
       if (tags.length === 0) return []
+      const householdId = await requireHousehold(ctx)
       const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'tag', tags)
       const ids = tags.map((t) => t.id)
-      const docs = tags.map((tag): Record<string, unknown> & { id: string; userId: string } => {
+      const docs = tags.map((tag): Record<string, unknown> & { id: string } => {
         const { id, userId: _u, familyId: _f, ...rest } = tag as unknown as Record<string, unknown>
-        return { id: id as string, ...rest, userId }
+        return { id: id as string, ...rest, householdId }
       })
       // Filter out tags whose typeId references a TagType that doesn't exist
       // (orphaned tags from deleted TagTypes in the source data).
       //
-      // SCOPED BY `userId` since plan task 8. `Tag.typeId` is a foreign key to
+      // SCOPED since plan task 8 (by `householdId` since households H3a task 3.7). `Tag.typeId` is a foreign key to
       // `TagType`, and this read was UNSCOPED, so the caller's own tag could
       // point at a STRANGER's tag type. Skip, not refuse: a tag whose type the
       // caller may not use is dropped exactly like a tag whose type no longer
@@ -631,7 +955,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // and a throw is right in `requireOwnItemStockRefs`.
       const typeIds = [...new Set(docs.map((d) => d.typeId as string))]
       const existingTypeIds = await prisma.tagType.findMany({
-        where: { id: { in: typeIds }, userId },
+        where: { id: { in: typeIds }, householdId },
         select: { id: true },
       })
       const validTypeIdSet = new Set(existingTypeIds.map((t) => t.id))
@@ -665,13 +989,14 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // be in range. It is scoped anyway because an unscoped read makes a skip
       // mean two different things, so a future edit that dropped the guard
       // would have nothing catching it.
-      const inserted = await prisma.tag.findMany({ where: { id: { in: ids }, userId } })
+      const inserted = await prisma.tag.findMany({ where: { id: { in: ids }, householdId } })
       return inserted as unknown as Tag[]
     },
 
     bulkCreateTagTypes: async (_, { tagTypes }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
       if (tagTypes.length === 0) return []
+      const householdId = await requireHousehold(ctx)
       // The guard is the only change here. There is no existence check to
       // replace: this mutation never had one, and `skipDuplicates` below did
       // the skipping. After the guard `skipDuplicates` can only skip the
@@ -681,18 +1006,19 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       const ids = tagTypes.map((t) => t.id)
       const docs = tagTypes.map((tt) => {
         const { id, userId: _u, familyId: _f, ...rest } = tt as unknown as Record<string, unknown>
-        return { id: id as string, ...rest, color: (rest as { color: string }).color as TagColor, userId }
+        return { id: id as string, ...rest, color: (rest as { color: string }).color as TagColor, householdId }
       })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await prisma.tagType.createMany({ data: docs as any, skipDuplicates: true })
       // SCOPED — same reason as `bulkCreateTags`' closing read above.
-      const inserted = await prisma.tagType.findMany({ where: { id: { in: ids }, userId } })
+      const inserted = await prisma.tagType.findMany({ where: { id: { in: ids }, householdId } })
       return inserted as unknown as TagType[]
     },
 
     bulkCreateVendors: async (_, { vendors }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
       if (vendors.length === 0) return []
+      const householdId = await requireHousehold(ctx)
       // The guard is the only change, for the same reason as
       // `bulkCreateTagTypes` above: `skipDuplicates` can now only skip the
       // caller's OWN rows.
@@ -700,18 +1026,19 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       const ids = vendors.map((v) => v.id)
       const docs = vendors.map((v) => {
         const { id, userId: _u, familyId: _f, ...rest } = v as unknown as Record<string, unknown>
-        return { id: id as string, ...rest, userId }
+        return { id: id as string, ...rest, householdId }
       })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await prisma.vendor.createMany({ data: docs as any, skipDuplicates: true })
       // SCOPED — same reason as `bulkCreateTags`' closing read above.
-      const inserted = await prisma.vendor.findMany({ where: { id: { in: ids }, userId } })
+      const inserted = await prisma.vendor.findMany({ where: { id: { in: ids }, householdId } })
       return inserted as unknown as Vendor[]
     },
 
     bulkCreateRecipes: async (_, { recipes }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
       if (recipes.length === 0) return []
+      const householdId = await requireHousehold(ctx)
       // Same guard, same position and same reason as `bulkCreateItems` above.
       const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'recipe', recipes)
       const results: Recipe[] = []
@@ -724,18 +1051,18 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           data: {
             id,
             name: recipe.name,
-            userId,
+            householdId,
             lastCookedAt: lastCookedAt ? new Date(lastCookedAt) : undefined,
           },
         })
-        // SCOPED BY `userId` since plan task 8, where there was NO check at
+        // SCOPED since plan task 8 (by `householdId` since households H3a task 3.7), where there was NO check at
         // all before: any `itemId` the payload named went straight into
         // `RecipeItem`, a stranger's included. An ingredient the caller does
         // not own is SKIPPED and the recipe still lands — skip, not refuse,
         // for the reason spelled out above `bulkCreateItems`' tag filter.
         if (items?.length) {
           const ownItems = await prisma.item.findMany({
-            where: { id: { in: items.map((i) => i.itemId) }, userId },
+            where: { id: { in: items.map((i) => i.itemId) }, householdId },
             select: { id: true },
           })
           const ownItemIds = new Set(ownItems.map((i) => i.id))
@@ -748,7 +1075,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           }
         }
         // SCOPED — same reason as `bulkCreateItems`' closing read above.
-        const full = await prisma.recipe.findUniqueOrThrow({ where: { id, userId }, include: { items: true } })
+        const full = await prisma.recipe.findUniqueOrThrow({ where: { id, householdId }, include: { items: true } })
         results.push(full as unknown as Recipe)
       }
       return results
@@ -757,9 +1084,10 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     bulkCreateInventoryLogs: async (_, { logs }, ctx) => {
       const userId = requireAuth(ctx)
       if (logs.length === 0) return []
+      const householdId = await requireHousehold(ctx)
       // Verifies every location the payload names before the first write, so a
       // forbidden location fails the whole mutation with nothing written.
-      const locationIdFor = await resolveLogLocations(ctx, userId, logs)
+      const locationIdFor = await resolveLogLocations(ctx, logs)
       // Authorizes every LOG id the payload names. It runs AFTER
       // `resolveLogLocations` on purpose, so a forbidden location is still
       // refused first and the existing location tests keep their error.
@@ -781,8 +1109,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         // per-row read this replaces was unscoped, so it could not tell those
         // two apart.
         if (ownIds.has(id)) continue
-        // SCOPED BY `userId` since plan task 8 — a `findFirst`, because
-        // `{ id, userId }` is not a unique key. The read this replaces was a
+        // SCOPED since plan task 8 — a `findFirst`, because
+        // `{ id, householdId }` is not a unique key (by `householdId` since
+        // households H3a task 3.7; `userId` before). The read this replaces was a
         // plain `findUnique({ where: { id } })`, so a log of the caller's
         // could be attached to a STRANGER's item.
         //
@@ -792,7 +1121,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         // partial backup and turn the mutation into a probe for another
         // account's item ids. Same pattern as `requireOwnItemStockRefs:450`,
         // which throws only because `ItemStock` has no other scope.
-        const itemExists = await prisma.item.findFirst({ where: { id: (rest as { itemId: string }).itemId, userId }, select: { id: true } })
+        const itemExists = await prisma.item.findFirst({ where: { id: (rest as { itemId: string }).itemId, householdId }, select: { id: true } })
         if (!itemExists) continue
         const created = await prisma.inventoryLog.create({
           data: {
@@ -802,7 +1131,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             note: note ?? undefined,
             userId,
             // The payload's own location when it names one, the caller's
-            // default when it does not. Both already verified.
+            // fallback location when it does not. Both already verified.
             locationId: locationIdFor(locationId),
             ...(logParams ? { logParams: logParams as Prisma.InputJsonValue } : {}),
           },
@@ -822,9 +1151,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       if (carts.length === 0) return []
       // Resolves every location the payload's cart ids name before the first
       // write: a live location of the caller's is used, an unclaimed id falls
-      // back to the caller's default, and a stranger's live location fails the
+      // back to the caller's fallback location, and a stranger's live location fails the
       // whole mutation with nothing written.
-      const locationIdFor = await resolveCartLocations(ctx, userId, carts)
+      const locationIdFor = await resolveCartLocations(ctx, carts)
       // Authorizes every CART id the payload names. It runs AFTER
       // `resolveCartLocations` on purpose, so a stranger's live location is
       // still refused first and the existing location tests keep their error.
@@ -849,7 +1178,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             lastPurchasedAt: lastPurchasedAt ? new Date(lastPurchasedAt as string) : undefined,
             userId,
             // The location named by the cart's OWN id since PR 3b
-            // (`${locationId}:${vendorId}`), and the caller's default when no
+            // (`${locationId}:${vendorId}`), and the caller's fallback location when no
             // `Location` row holds that id — a pre-3b bare id, or a cloud
             // backup whose source locations `clearAllData` just deleted. All
             // resolved and verified above.
@@ -875,6 +1204,8 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // the UNSCOPED `findUnique` this replaces read that row as "already
       // exists" and silently dropped the caller's own cart item.
       const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'cartItem', cartItems)
+      // The cart and the item of every row, resolved before the first write.
+      const parentsUsable = await resolveCartItemParents(ctx, cartItems)
       const results: CartItem[] = []
       for (const ci of cartItems) {
         const { id, cartId, itemId, quantity } = ci
@@ -882,25 +1213,21 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         // reach here, so the per-row read this replaces has nothing left to
         // find out.
         if (ownIds.has(id)) continue
-        // BOTH references are SCOPED BY `userId` since plan task 8, each a
-        // `findFirst` because `{ id, userId }` is not a unique key. The two
-        // reads this replaces were plain `findUnique({ where: { id } })`, and
-        // the `cartId` one is the exact hole
-        // `e2e/tests/cart-id-cross-user-leak.spec.ts` demonstrates against
-        // real Postgres: account B's `CartItem` rows landing inside account
-        // A's `Cart`.
+        // BOTH references are SCOPED since plan task 8: the cart by `userId`
+        // (until H3b), the item by the household of the CART's location
+        // (since households H3a task 3.9; the caller's household before). See
+        // `resolveCartItemParents`. Before plan task 8 both reads were plain
+        // `findUnique({ where: { id } })`, and the `cartId` one is the exact
+        // hole `e2e/tests/cart-id-cross-user-leak.spec.ts` demonstrates
+        // against real Postgres: account B's `CartItem` rows landing inside
+        // account A's `Cart`.
         //
-        // The existing `continue` STAYS on both. A cart or item the caller may
-        // not use is skipped exactly like one that does not exist, which is
-        // what these checks already did. A partial backup legitimately names a
-        // parent that is gone, and making "not yours" distinguishable from
-        // "not there" would turn the mutation into a probe for another
-        // account's ids. Same pattern as `requireOwnItemStockRefs:450`, which
-        // throws only because `ItemStock` has no other scope.
-        const cartExists = await prisma.cart.findFirst({ where: { id: cartId, userId }, select: { id: true } })
-        if (!cartExists) continue
-        const itemExists = await prisma.item.findFirst({ where: { id: itemId, userId }, select: { id: true } })
-        if (!itemExists) continue
+        // The `continue` STAYS. A cart or item the caller may not use is
+        // skipped exactly like one that does not exist. A partial backup
+        // legitimately names a parent that is gone, and making "not yours"
+        // distinguishable from "not there" would turn the mutation into a
+        // probe for another account's ids.
+        if (!parentsUsable(cartId, itemId)) continue
         const created = await prisma.cartItem.create({
           data: { id, cartId, itemId, quantity, userId },
         })
@@ -916,8 +1243,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     // Bulk upsert — inserts or replaces records by their original ID
     // -------------------------------------------------------------------------
     bulkUpsertItems: async (_, { items }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
       if (items.length === 0) return []
+      const householdId = await requireHousehold(ctx)
       // Authorizes every id the payload names BEFORE the first write. Without
       // it an `upsert` on a bare `{ id }` with `userId` inside `update`
       // overwrote another account's item AND took ownership of it.
@@ -940,8 +1268,8 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         }
         await prisma.item.upsert({
           where: { id },
-          create: { id, ...data, userId },
-          // `userId` is in `create` and NOT in `update` — the shape
+          create: { id, ...data, householdId },
+          // `householdId` is in `create` and NOT in `update` — the shape
           // `bulkUpsertLocations` uses. A row's owner is not something an
           // import may rewrite, and leaving the column out of `update` means a
           // future edit that drops the guard above cannot reassign a row by
@@ -954,7 +1282,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         // Replace junction rows
         await prisma.itemTag.deleteMany({ where: { itemId: id } })
         await prisma.itemVendor.deleteMany({ where: { itemId: id } })
-        // BOTH filters are SCOPED BY `userId` since plan task 8, where this
+        // BOTH filters are SCOPED since plan task 8 (by `householdId` since households H3a task 3.7), where this
         // mutation had NO check on either reference — every `tagId` and
         // `vendorId` the payload named went straight into `ItemTag` /
         // `ItemVendor`, a stranger's included. A reference the caller does not
@@ -972,7 +1300,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         // foreign keys, so only a real-Postgres test could prove it.
         if (tagIds?.length) {
           const existingTags = await prisma.tag.findMany({
-            where: { id: { in: tagIds }, userId },
+            where: { id: { in: tagIds }, householdId },
             select: { id: true },
           })
           const validTagIds = existingTags.map((t) => t.id)
@@ -984,7 +1312,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         }
         if (vendorIds?.length) {
           const existingVendors = await prisma.vendor.findMany({
-            where: { id: { in: vendorIds }, userId },
+            where: { id: { in: vendorIds }, householdId },
             select: { id: true },
           })
           const validVendorIds = existingVendors.map((v) => v.id)
@@ -996,7 +1324,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         }
         // SCOPED — same reason as `bulkCreateItems`' closing read above.
         const full = await prisma.item.findUniqueOrThrow({
-          where: { id, userId },
+          where: { id, householdId },
           include: { tags: true, vendors: true },
         })
         results.push(itemToGraphQL(full))
@@ -1005,74 +1333,118 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     },
 
     bulkUpsertTags: async (_, { tags }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
       if (tags.length === 0) return []
-      await requireOwnRowIdsOrUnclaimed(ctx, 'tag', tags)
-      await Promise.all(
-        tags.map((tag) => {
-          const { id, userId: _u, familyId: _f, ...rest } = tag as unknown as Record<string, unknown>
-          const data = { ...rest }
-          // `userId` is in `create` and NOT in `update` — the shape
-          // `bulkUpsertLocations` uses. A row's owner is not something an
-          // import may rewrite, and leaving the column out of `update` means a
-          // future edit that drops the guard above cannot reassign a row by
-          // accident.
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          return prisma.tag.upsert({ where: { id: id as string }, create: { id: id as string, ...data, userId } as any, update: data as any })
-        }),
-      )
+      const householdId = await requireHousehold(ctx)
+      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'tag', tags)
+      // The two ids a tag ATTACHES, checked against the household (households
+      // H3a task 3.9). Before this, both went into the row as given, so a
+      // tag of the caller's could point at another household's tag type, or
+      // hang under another household's tag.
+      //
+      // A tag whose `typeId` or `parentId` is not usable is SKIPPED, not
+      // refused, exactly as `bulkCreateTags` skips it. A partial backup can
+      // name a type or a parent that is gone, and "not yours" must look the
+      // same as "not there", or the mutation becomes a probe for another
+      // household's ids.
+      //
+      // `typeId`: a tag type of the caller's household.
+      const typeIds = [...new Set(tags.map((t) => t.typeId))]
+      const ownTypes = await prisma.tagType.findMany({
+        where: { id: { in: typeIds }, householdId },
+        select: { id: true },
+      })
+      const ownTypeIds = new Set(ownTypes.map((t) => t.id))
+      // `parentId`: a tag of the caller's household, or a tag of this payload
+      // that is written before it. So the tags are written in passes, parents
+      // first, as in `bulkCreateTags`. That also gives Postgres the parent row
+      // before the child's foreign key needs it, which the old single
+      // `Promise.all` did not.
+      const parentIds = [...new Set(tags.flatMap((t) => (t.parentId ? [t.parentId] : [])))]
+      const ownParents =
+        parentIds.length === 0
+          ? []
+          : await prisma.tag.findMany({
+              where: { id: { in: parentIds }, householdId },
+              select: { id: true },
+            })
+      const written = new Set<string>([...ownIds, ...ownParents.map((t) => t.id)])
+      let remaining = tags.filter((t) => ownTypeIds.has(t.typeId))
+      while (remaining.length > 0) {
+        const batch = remaining.filter((t) => !t.parentId || written.has(t.parentId))
+        if (batch.length === 0) break // a cycle or a parent nobody can use: skip the rest
+        await Promise.all(
+          batch.map((tag) => {
+            const { id, userId: _u, familyId: _f, ...rest } = tag as unknown as Record<string, unknown>
+            const data = { ...rest }
+            // `householdId` is in `create` and NOT in `update` — the shape
+            // `bulkUpsertLocations` uses. A row's owner is not something an
+            // import may rewrite, and leaving the column out of `update` means a
+            // future edit that drops the guard above cannot reassign a row by
+            // accident.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            return prisma.tag.upsert({ where: { id: id as string }, create: { id: id as string, ...data, householdId } as any, update: data as any })
+          }),
+        )
+        for (const t of batch) written.add(t.id)
+        const batchIds = new Set(batch.map((t) => t.id))
+        remaining = remaining.filter((t) => !batchIds.has(t.id))
+      }
       // SCOPED — same reason as `bulkCreateTags`' closing read.
-      const inserted = await prisma.tag.findMany({ where: { id: { in: tags.map((t) => t.id) }, userId } })
+      const inserted = await prisma.tag.findMany({ where: { id: { in: tags.map((t) => t.id) }, householdId } })
       return inserted as unknown as Tag[]
     },
 
     bulkUpsertTagTypes: async (_, { tagTypes }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
       if (tagTypes.length === 0) return []
+      const householdId = await requireHousehold(ctx)
       await requireOwnRowIdsOrUnclaimed(ctx, 'tagType', tagTypes)
       await Promise.all(
         tagTypes.map((tt) => {
           const { id, userId: _u, familyId: _f, ...rest } = tt as unknown as Record<string, unknown>
           const data = { ...rest, color: (rest as { color: string }).color as TagColor }
-          // `userId` is in `create` and NOT in `update` — the shape
+          // `householdId` is in `create` and NOT in `update` — the shape
           // `bulkUpsertLocations` uses. A row's owner is not something an
           // import may rewrite, and leaving the column out of `update` means a
           // future edit that drops the guard above cannot reassign a row by
           // accident.
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          return prisma.tagType.upsert({ where: { id: id as string }, create: { id: id as string, ...data, userId } as any, update: data as any })
+          return prisma.tagType.upsert({ where: { id: id as string }, create: { id: id as string, ...data, householdId } as any, update: data as any })
         }),
       )
       // SCOPED — same reason as `bulkCreateTags`' closing read.
-      const inserted = await prisma.tagType.findMany({ where: { id: { in: tagTypes.map((t) => t.id) }, userId } })
+      const inserted = await prisma.tagType.findMany({ where: { id: { in: tagTypes.map((t) => t.id) }, householdId } })
       return inserted as unknown as TagType[]
     },
 
     bulkUpsertVendors: async (_, { vendors }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
       if (vendors.length === 0) return []
+      const householdId = await requireHousehold(ctx)
       await requireOwnRowIdsOrUnclaimed(ctx, 'vendor', vendors)
       await Promise.all(
         vendors.map((v) => {
           const { id, userId: _u, familyId: _f, ...rest } = v as unknown as Record<string, unknown>
           const data = { ...rest }
-          // `userId` is in `create` and NOT in `update` — the shape
+          // `householdId` is in `create` and NOT in `update` — the shape
           // `bulkUpsertLocations` uses. A row's owner is not something an
           // import may rewrite, and leaving the column out of `update` means a
           // future edit that drops the guard above cannot reassign a row by
           // accident.
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          return prisma.vendor.upsert({ where: { id: id as string }, create: { id: id as string, ...data, userId } as any, update: data as any })
+          return prisma.vendor.upsert({ where: { id: id as string }, create: { id: id as string, ...data, householdId } as any, update: data as any })
         }),
       )
       // SCOPED — same reason as `bulkCreateTags`' closing read.
-      const inserted = await prisma.vendor.findMany({ where: { id: { in: vendors.map((v) => v.id) }, userId } })
+      const inserted = await prisma.vendor.findMany({ where: { id: { in: vendors.map((v) => v.id) }, householdId } })
       return inserted as unknown as Vendor[]
     },
 
     bulkUpsertRecipes: async (_, { recipes }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
       if (recipes.length === 0) return []
+      const householdId = await requireHousehold(ctx)
       // Same guard, same position and same reason as `bulkUpsertItems` above.
       await requireOwnRowIdsOrUnclaimed(ctx, 'recipe', recipes)
       const results: Recipe[] = []
@@ -1084,12 +1456,12 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         }
         await prisma.recipe.upsert({
           where: { id },
-          create: { id, ...data, userId },
-          // `userId` is in `create` and NOT in `update` — same shape and same
+          create: { id, ...data, householdId },
+          // `householdId` is in `create` and NOT in `update` — same shape and same
           // reason as `bulkUpsertItems` above.
           update: data,
         })
-        // SCOPED BY `userId` since plan task 8, where there was NO check at
+        // SCOPED since plan task 8 (by `householdId` since households H3a task 3.7), where there was NO check at
         // all. An ingredient the caller does not own is SKIPPED and the recipe
         // still lands — skip, not refuse, for the reason spelled out above
         // `bulkCreateItems`' tag filter.
@@ -1101,7 +1473,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           await prisma.recipeItem.deleteMany({ where: { recipeId: id } })
           if (items.length) {
             const ownItems = await prisma.item.findMany({
-              where: { id: { in: items.map((i) => i.itemId) }, userId },
+              where: { id: { in: items.map((i) => i.itemId) }, householdId },
               select: { id: true },
             })
             const ownItemIds = new Set(ownItems.map((i) => i.id))
@@ -1114,7 +1486,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           }
         }
         // SCOPED — same reason as `bulkCreateItems`' closing read above.
-        const full = await prisma.recipe.findUniqueOrThrow({ where: { id, userId }, include: { items: true } })
+        const full = await prisma.recipe.findUniqueOrThrow({ where: { id, householdId }, include: { items: true } })
         results.push(full as unknown as Recipe)
       }
       return results
@@ -1123,9 +1495,10 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     bulkUpsertInventoryLogs: async (_, { logs }, ctx) => {
       const userId = requireAuth(ctx)
       if (logs.length === 0) return []
+      const householdId = await requireHousehold(ctx)
       // Same pre-check as bulkCreateInventoryLogs: every location the payload
       // names is verified before the first write.
-      const locationIdFor = await resolveLogLocations(ctx, userId, logs)
+      const locationIdFor = await resolveLogLocations(ctx, logs)
       // The same log-id guard as `bulkCreateInventoryLogs`, in the same place:
       // after the location check, so a forbidden location is still refused
       // first. Without it an `upsert` on a bare `{ id }` with `userId` inside
@@ -1143,15 +1516,15 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           note: note ?? undefined,
           ...(logParams ? { logParams: logParams as Prisma.InputJsonValue } : {}),
         }
-        // SCOPED BY `userId`, and SKIPPED when it does not resolve. New in
-        // plan task 8: this mutation had NO item check at all, so a log of the
+        // SCOPED (by `householdId` since households H3a task 3.7), and SKIPPED
+        // when it does not resolve. New in plan task 8: this mutation had NO item check at all, so a log of the
         // caller's could be attached to a STRANGER's item, and an `itemId` no
         // row held reached Postgres as an unhandled foreign-key `P2003`.
         //
         // The `continue` matches `bulkCreateInventoryLogs` above exactly, so
         // the two siblings now agree on what an unusable `itemId` means: the
         // log is dropped, not refused, and the rest of the batch still lands.
-        const itemExists = await prisma.item.findFirst({ where: { id: (rest as { itemId: string }).itemId, userId }, select: { id: true } })
+        const itemExists = await prisma.item.findFirst({ where: { id: (rest as { itemId: string }).itemId, householdId }, select: { id: true } })
         if (!itemExists) continue
         const upserted = await prisma.inventoryLog.upsert({
           where: { id },
@@ -1165,7 +1538,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           //
           // `locationId`: an upsert that carried it into `update` would MOVE an
           // existing log on every re-import. The value is the payload's own
-          // when it names one, the caller's default when it does not — both
+          // when it names one, the caller's fallback location when it does not — both
           // verified above.
           create: { id, ...data, userId, locationId: locationIdFor(locationId) },
           update: data,
@@ -1183,7 +1556,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       if (carts.length === 0) return []
       // Same pre-check as bulkCreateShoppingCarts: every location the payload's
       // cart ids name is resolved and verified before the first write.
-      const locationIdFor = await resolveCartLocations(ctx, userId, carts)
+      const locationIdFor = await resolveCartLocations(ctx, carts)
       // The same cart-id guard as `bulkCreateShoppingCarts`, in the same
       // place: after the location check, so a stranger's live location is
       // still refused first. Without it an `upsert` on a bare `{ id }` with
@@ -1212,7 +1585,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           // `locationId`: the same reason as the log upsert above — a
           // re-import must not MOVE an existing cart. The value comes from the
           // cart's own id when a `Location` row holds that id, and the
-          // caller's default when none does. Both resolved above.
+          // caller's fallback location when none does. Both resolved above.
           create: { id, ...data, userId, locationId: locationIdFor(id) },
           update: data,
         })
@@ -1232,6 +1605,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // `update` overwrote another account's cart item and took ownership of
       // it.
       await requireOwnRowIdsOrUnclaimed(ctx, 'cartItem', cartItems)
+      // The cart and the item of every row, resolved before the first write,
+      // as in `bulkCreateCartItems`.
+      const parentsUsable = await resolveCartItemParents(ctx, cartItems)
       const results: CartItem[] = []
       for (const ci of cartItems) {
         const { id, cartId, itemId, quantity } = ci
@@ -1248,7 +1624,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         // may rewrite, and because a future edit that drops the guard above
         // must still not be able to reassign a cart item.
         const data = { cartId, itemId, quantity }
-        // BOTH references are SCOPED BY `userId`, and SKIPPED when they do not
+        // BOTH references are SCOPED — the cart by `userId` (until H3b), the
+        // item by the household of the cart's location (since households H3a
+        // task 3.9, `resolveCartItemParents`) — and SKIPPED when they do not
         // resolve. New in plan task 8: this mutation had NO check on either
         // one, so the `replace` import strategy could write the caller's cart
         // item into a STRANGER's cart — the same leak
@@ -1261,10 +1639,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         // item is dropped, not refused, and the rest of the batch still lands.
         // That also keeps `replace` and `skip` giving the same answer for a
         // partial backup whose cart or item is gone.
-        const cartExists = await prisma.cart.findFirst({ where: { id: cartId, userId }, select: { id: true } })
-        if (!cartExists) continue
-        const itemExists = await prisma.item.findFirst({ where: { id: itemId, userId }, select: { id: true } })
-        if (!itemExists) continue
+        if (!parentsUsable(cartId, itemId)) continue
         const upserted = await prisma.cartItem.upsert({
           where: { id },
           create: { id, ...data, userId },
@@ -1279,8 +1654,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     },
 
     bulkCreateShelves: async (_, { shelves }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
       if (shelves.length === 0) return []
+      const householdId = await requireHousehold(ctx)
       const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'shelf', shelves)
       const ids = shelves.map((s) => s.id)
       // Rebuilt from the guard's result, not from a fresh read. The read this
@@ -1289,24 +1665,30 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       const existingIds = ownIds
       const toCreate = shelves.filter((s) => !existingIds.has(s.id))
       if (toCreate.length > 0) {
+        // Only the household's ids reach the row. See `householdShelfRefs`.
+        const refsOf = await householdShelfRefs(householdId, toCreate)
         await prisma.shelf.createMany({
-          data: toCreate.map(({ id, createdAt, updatedAt, filterConfig, itemIds, ...rest }) => ({
-            id,
-            ...rest,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            filterConfig: filterConfig ? (filterConfig as any) : undefined,
-            itemIds: itemIds ?? [],
-            createdAt: new Date(createdAt),
-            updatedAt: new Date(updatedAt),
-            userId,
-          })),
+          data: toCreate.map((shelf) => {
+            const { id, createdAt, updatedAt, filterConfig: _f, itemIds: _i, ...rest } = shelf
+            const { itemIds, filterConfig } = refsOf(shelf)
+            return {
+              id,
+              ...rest,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              filterConfig: filterConfig ? (filterConfig as any) : undefined,
+              itemIds,
+              createdAt: new Date(createdAt),
+              updatedAt: new Date(updatedAt),
+              householdId,
+            }
+          }),
           // `skipDuplicates` stays. After the guard it can only skip the
           // caller's own rows.
           skipDuplicates: true,
         })
       }
       // SCOPED — same reason as `bulkCreateTags`' closing read.
-      const inserted = await prisma.shelf.findMany({ where: { id: { in: ids }, userId } })
+      const inserted = await prisma.shelf.findMany({ where: { id: { in: ids }, householdId } })
       return inserted as unknown as Shelf[]
     },
 
@@ -1330,31 +1712,28 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     bulkCreateLocations: async (_, { locations }, ctx) => {
       const userId = requireAuth(ctx)
       if (locations.length === 0) return []
-      await requireOwnLocationIdsOrUnclaimed(ctx, locations)
+      // The caller's household. H4 changes this to the import's TARGET
+      // household ("Import into which household?").
+      const householdId = await requireHousehold(ctx)
+      // Refuses every id held by a location the caller has no role on, and
+      // returns the ids that already exist. After it an id is one of two
+      // things: a location the caller holds a role on, or free.
+      const existing = await requireOwnLocationIdsOrUnclaimed(ctx, locations, 'participant')
       const results: Location[] = []
-      for (const { id, name, order, createdAt, updatedAt } of locations) {
-        // SCOPED to the caller, unlike the other 18 bulk creates. The
-        // pre-check has already refused every id held by somebody else, so
-        // anything this finds is the caller's own row — and anything it does
-        // not find is an id no row holds. An unscoped `findUnique` here would
-        // make `continue` mean two different things.
-        const existing = await prisma.location.findUnique({ where: { id, userId } })
-        if (existing) {
-          results.push(locationToGraphQL(existing as unknown as PrismaLocation))
+      for (const location of locations) {
+        if (existing.has(location.id)) {
+          // "Skip conflicts": the stored row is returned unchanged, and no
+          // role row is added. UNSCOPED read: the pre-check above already
+          // proved the caller holds a role on this id. A `householdId` filter
+          // here would wrongly miss a location of another household the
+          // caller shares (H5).
+          const row = await prisma.location.findUnique({ where: { id: location.id } })
+          if (row) results.push(locationToGraphQL(row as unknown as PrismaLocation))
           continue
         }
-        const row = await prisma.location.create({
-          data: {
-            id,
-            name,
-            order,
-            // Always false, never from the payload. See `LocationInput`.
-            isDefault: false,
-            createdAt: new Date(createdAt),
-            updatedAt: new Date(updatedAt),
-            userId,
-          },
-        })
+        const row = await createImportedLocation(userId, householdId, location)
+        // A second payload row with the same id is now a skip, not a P2002.
+        existing.add(location.id)
         results.push(locationToGraphQL(row as unknown as PrismaLocation))
       }
       return results
@@ -1394,9 +1773,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
      * is examined. First row wins, consistent with skip-conflicts.
      */
     bulkCreateItemStocks: async (_, { itemStocks }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
       if (itemStocks.length === 0) return []
-      await requireOwnItemStockRefs(ctx, userId, itemStocks)
+      await requireOwnItemStockRefs(ctx, itemStocks)
       const results: ItemStock[] = []
       const seen = new Set<string>()
       for (const stock of itemStocks) {
@@ -1438,66 +1817,92 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     },
 
     bulkUpsertShelves: async (_, { shelves }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
       if (shelves.length === 0) return []
+      const householdId = await requireHousehold(ctx)
       await requireOwnRowIdsOrUnclaimed(ctx, 'shelf', shelves)
+      // Only the household's ids reach the row. See `householdShelfRefs`.
+      const refsOf = await householdShelfRefs(householdId, shelves)
       await Promise.all(
-        shelves.map(({ id, createdAt, updatedAt, filterConfig, itemIds, ...rest }) => {
+        shelves.map((shelf) => {
+          const { id, createdAt, updatedAt, filterConfig: _f, itemIds: _i, ...rest } = shelf
+          const { itemIds, filterConfig } = refsOf(shelf)
           const data = {
             ...rest,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             filterConfig: filterConfig ? (filterConfig as any) : undefined,
-            itemIds: itemIds ?? [],
+            itemIds,
             createdAt: new Date(createdAt),
             updatedAt: new Date(updatedAt),
           }
-          // `userId` is in `create` and NOT in `update` — the shape
+          // `householdId` is in `create` and NOT in `update` — the shape
           // `bulkUpsertLocations` uses. A row's owner is not something an
           // import may rewrite, and leaving the column out of `update` means a
           // future edit that drops the guard above cannot reassign a row by
           // accident.
-          return prisma.shelf.upsert({ where: { id }, create: { id, ...data, userId }, update: data })
+          return prisma.shelf.upsert({ where: { id }, create: { id, ...data, householdId }, update: data })
         }),
       )
       // SCOPED — same reason as `bulkCreateTags`' closing read.
-      const inserted = await prisma.shelf.findMany({ where: { id: { in: shelves.map((s) => s.id) }, userId } })
+      const inserted = await prisma.shelf.findMany({ where: { id: { in: shelves.map((s) => s.id) }, householdId } })
       return inserted as unknown as Shelf[]
     },
 
     bulkUpsertLocations: async (_, { locations }, ctx) => {
       const userId = requireAuth(ctx)
       if (locations.length === 0) return []
-      await requireOwnLocationIdsOrUnclaimed(ctx, locations)
+      // The caller's household, as in `bulkCreateLocations`. H4 changes it
+      // to the import's TARGET household.
+      const householdId = await requireHousehold(ctx)
+      // `organizer` on an existing id, because the update below renames it.
+      // See `requireOwnLocationIdsOrUnclaimed`.
+      //
+      // NOT ATOMIC PER ROW since task 3.9. The old single `upsert` per row is
+      // now a pre-check, then a `create` or an `update`. Two known races:
+      //
+      //  - two imports of the same NEW id at the same time: both see the id
+      //    as free, and the second `create` fails with `P2002`
+      //  - a row deleted between the pre-check and its `update`: the update
+      //    fails with `P2025`
+      //
+      // Accepted for now: the web app never sends this mutation.
+      // `partitionPayload` (apps/web/src/lib/importData.ts) puts every
+      // location on the CREATE pass and leaves `toUpsert.locations` empty,
+      // and `importData.test.ts` (about line 2416) asserts
+      // `BulkUpsertLocations` is not called on `replace`.
+      //
+      // Keep `householdId` OUT of the `update` below. H5 owes a
+      // two-household test for that: a caller who organizes a location of
+      // household B while importing into household A. When the location is
+      // in the caller's own household, a `householdId` in `update` writes the
+      // same value again, so a test of that case passes either way.
+      const existing = await requireOwnLocationIdsOrUnclaimed(ctx, locations, 'organizer')
       const results: Location[] = []
-      for (const { id, name, order, createdAt, updatedAt } of locations) {
-        // `update` is NARROWER than `create`, on purpose — the other bulk
-        // upserts pass one `data` object to both, and here that would be two
-        // bugs:
+      for (const location of locations) {
+        const { id, name, order, createdAt, updatedAt } = location
+        if (!existing.has(id)) {
+          // A new id: the location, its `householdId` and the caller's
+          // `organizer` row, in one transaction. Not an `upsert`: an upsert
+          // cannot write the role row for its create branch only.
+          const row = await createImportedLocation(userId, householdId, location)
+          // A second payload row with the same id is now an update.
+          existing.add(id)
+          results.push(locationToGraphQL(row as unknown as PrismaLocation))
+          continue
+        }
+        // An existing location the caller organizes. Only its own columns
+        // change, and NO role row is written or changed: the caller already
+        // holds `organizer` here, and an import must not grant or change
+        // anybody's role.
         //
-        //  - `isDefault: false` in `update` would DEMOTE the caller's own
-        //    default if the payload ever named its id, leaving the account with
-        //    no default at all; `ensureDefaultLocation` would then build a
-        //    spare "My Home" beside the real one. Omitting the column leaves
-        //    whatever flag the row already has.
-        //  - `userId` in `update` is the row-steal half of the hole the
-        //    pre-check closes. Leaving it out means a future edit that drops
-        //    the pre-check cannot reassign a row by accident.
+        // `data` is NARROWER than the create, on purpose:
         //
-        // Same trap as task 3's `...rest` in `bulkUpsertInventoryLogs`, in a
-        // different shape: there the input field leaked INTO `update`, here a
-        // hardcoded column would have.
-        const row = await prisma.location.upsert({
+        //  - no `householdId`: a location's household is not
+        //    something an import may move. Leaving them out means a future
+        //    edit that drops the pre-check cannot move a row by accident.
+        const row = await prisma.location.update({
           where: { id },
-          create: {
-            id,
-            name,
-            order,
-            isDefault: false,
-            createdAt: new Date(createdAt),
-            updatedAt: new Date(updatedAt),
-            userId,
-          },
-          update: {
+          data: {
             name,
             order,
             createdAt: new Date(createdAt),
@@ -1540,9 +1945,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
      * copy, not the shared-`data` shape the other nine upserts use.
      */
     bulkUpsertItemStocks: async (_, { itemStocks }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
       if (itemStocks.length === 0) return []
-      await requireOwnItemStockRefs(ctx, userId, itemStocks)
+      await requireOwnItemStockRefs(ctx, itemStocks)
       const results: ItemStock[] = []
       for (const stock of itemStocks) {
         const { id, itemId, locationId, createdAt, updatedAt, dueDate, ...quantities } = stock
@@ -1567,35 +1972,67 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     },
 
     // -------------------------------------------------------------------------
-    // Clear all data — deletes all entities for the authenticated user
-    // in dependency order to avoid orphan references
+    // Clear the household (households H3a, task 3.10; design *Purge*)
     // -------------------------------------------------------------------------
+    //
+    // Deletes the caller's household's catalog and every location of it, with
+    // everything in them. Keeps the household, its members and their
+    // household roles. Then makes "Home" again (decision H17).
+    //
+    // - Household role `owner` only: *Clear household* is owner only, and so
+    //   is the `clear` import strategy that calls this (decision H17).
+    // - Every filter is the household, or goes through the location, the
+    //   item, the recipe or the cart. NONE goes by `userId`: "no path deletes
+    //   rows because of who created them" (issue #320). So a log or a cart a
+    //   co-member wrote in this household goes too.
+    // - The household lock comes FIRST, before any delete. `deleteLocation`
+    //   also takes it first. If this took it later, after the location delete
+    //   had locked location rows, the two could wait on each other.
+    // - "Home" is made in the SAME transaction, so the household is never
+    //   left with no location: there is no screen for that before H5
+    //   (decision H13). If making it fails, every delete is rolled back.
+    //
+    // The order of the deletes is children before parents, as before.
+    // `ItemStock`, `Cart`, `InventoryLog` and `LocationMember` would also go
+    // by ON DELETE CASCADE with their location, and the junction rows with
+    // their item; the explicit deletes keep the list complete for
+    // `purge-coverage.test.ts`, and nothing here depends on the cascades.
+    // `LocationMember` has no explicit delete: it goes with its location.
     clearAllData: async (_, __, ctx) => {
       const userId = requireAuth(ctx)
-      await prisma.$transaction([
-        prisma.inventoryLog.deleteMany({ where: { userId } }),
-        prisma.cartItem.deleteMany({ where: { userId } }),
-        prisma.cart.deleteMany({ where: { userId } }),
-        prisma.recipeItem.deleteMany({ where: { recipe: { userId } } }),
-        prisma.recipe.deleteMany({ where: { userId } }),
-        prisma.itemTag.deleteMany({ where: { item: { userId } } }),
-        prisma.itemVendor.deleteMany({ where: { item: { userId } } }),
-        // ItemStock has no userId of its own — scoped through its location,
-        // matching how recipeItem/itemTag/itemVendor are scoped through their
-        // parent above. Must run before BOTH item.deleteMany and
-        // location.deleteMany: ItemStock FKs to both, and ItemStock_itemId_fkey
-        // is ON DELETE CASCADE — deleting items first would cascade-delete these
-        // rows before this deleteMany runs. clearAllData doesn't return counts so
-        // that alone wouldn't be observable here, but the ordering is kept
-        // consistent with purgeUserData rather than relying on that difference.
-        prisma.itemStock.deleteMany({ where: { location: { userId } } }),
-        prisma.item.deleteMany({ where: { userId } }),
-        prisma.tag.deleteMany({ where: { userId } }),
-        prisma.tagType.deleteMany({ where: { userId } }),
-        prisma.vendor.deleteMany({ where: { userId } }),
-        prisma.shelf.deleteMany({ where: { userId } }),
-        prisma.location.deleteMany({ where: { userId } }),
-      ])
+      const householdId = await requireHousehold(ctx)
+      // Prisma reads `{ householdId: undefined }` as NO filter, so every
+      // delete below would empty its table for EVERY household. No text check
+      // can see an `undefined` value, so refuse it here, before the role
+      // check and before the transaction.
+      if (!householdId) throw new Error('clearAllData: no household id')
+      await requireHouseholdRole(ctx, householdId, 'owner')
+
+      await prisma.$transaction(async (tx) => {
+        await lockHousehold(tx, householdId)
+        await tx.inventoryLog.deleteMany({ where: { location: { householdId } } })
+        await tx.cartItem.deleteMany({ where: { cart: { location: { householdId } } } })
+        await tx.cart.deleteMany({ where: { location: { householdId } } })
+        await tx.recipeItem.deleteMany({ where: { recipe: { householdId } } })
+        await tx.recipe.deleteMany({ where: { householdId } })
+        await tx.itemTag.deleteMany({ where: { item: { householdId } } })
+        await tx.itemVendor.deleteMany({ where: { item: { householdId } } })
+        // Before both `item` and `location`: ItemStock has a foreign key to
+        // each, both ON DELETE CASCADE.
+        await tx.itemStock.deleteMany({ where: { location: { householdId } } })
+        await tx.item.deleteMany({ where: { householdId } })
+        await tx.tag.deleteMany({ where: { householdId } })
+        await tx.tagType.deleteMany({ where: { householdId } })
+        await tx.vendor.deleteMany({ where: { householdId } })
+        await tx.shelf.deleteMany({ where: { householdId } })
+        // Its `LocationMember` rows go by ON DELETE CASCADE.
+        await tx.location.deleteMany({ where: { householdId } })
+        await createFirstLocation(tx, {
+          householdId,
+          userId,
+          name: firstLocationName(ctx.language ?? 'en'),
+        })
+      })
       return true
     },
   },

@@ -8,6 +8,9 @@ const config: CodegenConfig = {
       config: {
         contextType: '../context.js#Context',
         useIndexSignature: true,
+        // GraphQL enums become string unions, not TS enums, so a Prisma enum
+        // value such as 'owner' fits the generated type as it is.
+        enumsAsTypes: true,
         scalars: {
           JSON: 'Record<string, unknown>',
         },
@@ -28,6 +31,7 @@ const config: CodegenConfig = {
         withResultType: false,
         withMutationOptionsType: false,
         withMutationFn: false,
+        enumsAsTypes: true,
         scalars: {
           JSON: 'Record<string, unknown>',
         },

@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, afterAll, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { ApolloServer } from '@apollo/server'
 import { typeDefs } from '../schema/index.js'
 import { resolvers } from '../resolvers/index.js'
@@ -6,8 +6,14 @@ import type { Context } from '../context.js'
 
 // ─── Mock Prisma ─────────────────────────────────────────────────────────────
 
+// `householdMember` answers `requireHousehold` (lib/authz.ts): the caller is a
+// member of `hh_test`. The catalog mutations read and write by household
+// since households H3a task 3.7.
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
+    householdMember: {
+      findFirst: vi.fn(async () => ({ householdId: 'hh_test' })),
+    },
     item: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
@@ -214,17 +220,19 @@ afterAll(async () => {
   await server.stop()
 })
 
-// A default location for `ensureDefaultLocation` (lib/defaultLocation.ts) to
-// find, so `resolveLogLocations` and `resolveCartLocations` have a fallback.
+// A location row for `p.location.findFirst` to answer with, for ANY id.
 //
 // The mock is ARMED on purpose even though no test in this file expects it to
 // be called any more: the two "no stock row from the item import" tests assert
 // `p.location.findFirst` was NOT called, and an armed mock makes that fail with
 // "expected not to be called" instead of crashing on an undefined result.
 //
-// It answers "yes, that location is yours" for ANY id (ground rule 3 of the
-// PR 4b plan), so NO ownership or which-location assertion can fail in this
-// file. Those live in `import-itemStock.resolver.test.ts`,
+// No location ROLE is checked in this file. Since households H3a task 3.5,
+// `requireLocationRole` and `fallbackImportLocation` (lib/authz.ts) read
+// `locationMember`, which this mock does not have, so a test that reached
+// either would fail with "Cannot read properties of undefined". So NO
+// ownership or which-location assertion can fail in this file. Those live in
+// `import-itemStock.resolver.test.ts`,
 // `import-inventoryLog-location.resolver.test.ts` and the resolver tests that
 // use `src/test/stockFake.ts`.
 //
@@ -304,7 +312,6 @@ function makePrismaItem(id: string, name = 'Milk') {
     targetUnit: 'package',
     consumeAmount: 1,
     expirationMode: 'disabled',
-    userId: 'user_import_test',
     packageUnit: null,
     measurementUnit: null,
     amountPerPackage: null,
@@ -321,7 +328,7 @@ function makePrismaItem(id: string, name = 'Milk') {
 
 const BULK_CREATE_ITEMS = `
   mutation BulkCreateItems($items: [ItemInput!]!) {
-    bulkCreateItems(items: $items) { id name userId }
+    bulkCreateItems(items: $items) { id name }
   }
 `
 
@@ -330,8 +337,6 @@ const BULK_UPSERT_ITEMS = `
     bulkUpsertItems(items: $items) { id name }
   }
 `
-
-const CLEAR_ALL_DATA = `mutation { clearAllData }`
 
 // Issue #335. Separate from BULK_CREATE_ITEMS / BULK_UPSERT_ITEMS above so the
 // existing tests keep their narrow selection sets.
@@ -375,11 +380,10 @@ describe('bulkCreateItems', () => {
     expect(response.body.kind).toBe('single')
     if (response.body.kind === 'single') {
       expect(response.body.singleResult.errors).toBeUndefined()
-      const items = response.body.singleResult.data?.bulkCreateItems as Array<{ id: string; name: string; userId: string }>
+      const items = response.body.singleResult.data?.bulkCreateItems as Array<{ id: string; name: string }>
       expect(items).toHaveLength(1)
       expect(items[0].id).toBe('item_abc123')
       expect(items[0].name).toBe('Milk')
-      expect(items[0].userId).toBe('user_import_test')
     }
   })
 
@@ -434,10 +438,10 @@ describe('bulkCreateItems', () => {
     }
   })
 
-  it('assigns the authenticated userId to imported items', async () => {
+  it("writes imported items into the caller's household, with no userId", async () => {
     // Given a new item
     p.item.findUnique.mockResolvedValue(null)
-    const prismaItem = { ...makePrismaItem('item_xyz', 'Eggs'), userId: 'new_user' }
+    const prismaItem = makePrismaItem('item_xyz', 'Eggs')
     p.item.create.mockResolvedValue(prismaItem)
     p.itemTag.createMany.mockResolvedValue({ count: 0 })
     p.itemVendor.createMany.mockResolvedValue({ count: 0 })
@@ -452,13 +456,17 @@ describe('bulkCreateItems', () => {
       { contextValue: { userId: 'new_user' } },
     )
 
-    // Then userId on the returned item matches the authenticated user
+    // Then the import succeeds
     expect(response.body.kind).toBe('single')
     if (response.body.kind === 'single') {
       expect(response.body.singleResult.errors).toBeUndefined()
-      const items = response.body.singleResult.data?.bulkCreateItems as Array<{ userId: string }>
-      expect(items[0].userId).toBe('new_user')
     }
+    // And the row is written into the caller's household. `Item` has no
+    // `userId` column since households H3a task 3.14, so the write names none.
+    expect(p.item.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ householdId: 'hh_test' }),
+    })
+    expect(Object.keys(p.item.create.mock.calls[0][0].data)).not.toContain('userId')
   })
 
   // ── NO STOCK COMES FROM THE ITEM IMPORT (cloud locations PR 4b) ───────────
@@ -516,8 +524,8 @@ describe('bulkCreateItems', () => {
     expect(p.itemStock.upsert).not.toHaveBeenCalled()
     // And the caller's default location is not even looked up. A second,
     // independent guard: `mirrorStockToDefaultLocation` resolved it through
-    // `ensureDefaultLocation`, which is this `findFirst`. No other code path
-    // in `bulkCreateItems` reads a location.
+    // `ensureDefaultLocation` (deleted in households H3a), which was this
+    // `findFirst`. No other code path in `bulkCreateItems` reads a location.
     expect(p.location.findFirst).not.toHaveBeenCalled()
   })
 
@@ -618,49 +626,10 @@ describe('bulkUpsertItems', () => {
   })
 })
 
-describe('clearAllData', () => {
-  it('user can clear all their data', async () => {
-    // Given transaction resolves
-    p.$transaction.mockResolvedValue([
-      { count: 0 }, { count: 0 }, { count: 0 }, { count: 0 },
-      { count: 0 }, { count: 0 }, { count: 0 }, { count: 0 },
-      { count: 0 }, { count: 0 }, { count: 0 }, { count: 0 },
-      { count: 0 }, { count: 0 },
-    ])
-
-    // When calling clearAllData
-    const response = await server.executeOperation(
-      { query: CLEAR_ALL_DATA },
-      { contextValue: CONTEXT },
-    )
-
-    // Then it returns true
-    expect(response.body.kind).toBe('single')
-    if (response.body.kind === 'single') {
-      expect(response.body.singleResult.errors).toBeUndefined()
-      expect(response.body.singleResult.data?.clearAllData).toBe(true)
-    }
-    // And every user-owned table was asked to delete this user's rows —
-    // shelves and locations included (see purge-coverage.test.ts and issue #250).
-    // itemStock has no userId — scoped through its location, like recipeItem.
-    expect(p.shelf.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user_import_test' } })
-    expect(p.location.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user_import_test' } })
-    expect(p.itemStock.deleteMany).toHaveBeenCalledWith({
-      where: { location: { userId: 'user_import_test' } },
-    })
-    // And itemStock is deleted before item and before location — real
-    // ItemStock_itemId_fkey is ON DELETE CASCADE, so deleting items first would
-    // destroy ItemStock rows before this deleteMany runs. Each deleteMany(...)
-    // call executes synchronously while the $transaction array literal is built,
-    // so mock.invocationCallOrder reflects source order.
-    expect(p.itemStock.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
-      p.item.deleteMany.mock.invocationCallOrder[0],
-    )
-    expect(p.itemStock.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
-      p.location.deleteMany.mock.invocationCallOrder[0],
-    )
-  })
-})
+// `clearAllData` used to be tested here, against this file's recording mock.
+// Since households H3a task 3.10 it clears a household in an interactive
+// transaction and makes "Home" again, so its tests moved to
+// `clearAllData.resolver.test.ts`, which runs on `householdWorld`.
 
 // ─── note and wikidataUrl through the import path (issue #335) ───────────────
 //

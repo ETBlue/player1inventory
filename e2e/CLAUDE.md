@@ -127,11 +127,23 @@ The `cloud` project runs against whatever `DATABASE_URL` is set in `apps/server/
 normally the **dev database**. There is no dedicated test database.
 
 Isolation is by **row ownership, not by database**: every write is scoped to
-`E2E_USER_ID` (`e2e/constants.ts`, `'e2e-test-user'`), and the `/e2e/cleanup` endpoint
-(`apps/server/src/lib/e2eCleanup.ts`) runs `deleteMany({ where: { userId } })` per model,
-and `{ where: { id: userId } }` for the `User` row — it
-deletes only that user's rows, never all data. **Do not describe the cleanup endpoint as
-wiping the database.**
+`E2E_USER_ID` (`e2e/constants.ts`, `'e2e-test-user'`) and its household, and the
+`/e2e/cleanup` endpoint (`apps/server/src/lib/e2eCleanup.ts`) deletes only the households
+that user OWNS, the user's own role rows, and the `User` row (`{ where: { id: userId } }`).
+It never deletes all data. **Do not describe the cleanup endpoint as wiping the
+database.** (Until households H3a task 3.10 it ran `deleteMany({ where: { userId } })` per
+model.)
+
+**Since 2026-11-11 the shared test database carries the households H3a schema.** The main
+session ran `verify:migration` there, which applies `drop_user_scope`: `Location` and the six
+catalog models have no `userId` column, and `Location` has no `isDefault`. So **`main`'s
+cloud E2E cannot run on this database until H3a merges**: `main`'s server writes and reads
+those columns. A cloud location is no longer "the default" (see below), and `/e2e/cleanup`
+deletes **18** models (count the distinct `deleteMany` models in `lib/e2eCleanup.ts`).
+
+The last E2E counts on the H3a branch, 2026-11-11, from **three separate runs** (not one
+`pnpm test:e2e:all`): `cloud` **126 passed / 7 skipped**, `local` **178 passed / 6 skipped**,
+`pwa` **73 passed**. Re-measure rather than quote.
 
 This was obscured for a while by a leftover `MONGODB_URI` from the MongoDB → Prisma
 migration, which made the config *look* isolated. The server never read it (Prisma reads
@@ -198,9 +210,10 @@ Before that date the endpoint deleted 12 models and missed both. The effect was 
 visible in a single run, so it went unnoticed:
 
 - `Location` rows stayed in the test database forever. `ensureDefaultLocation`
-  (`apps/server/src/lib/defaultLocation.ts`) returns early when the user already has a
-  default location, so it never recreated a clean default. Run 2 of a location test saw
-  run 1's locations.
+  (then in `apps/server/src/lib/defaultLocation.ts`) returned early when the user already
+  had a default location, so it never recreated a clean default. Run 2 of a location test
+  saw run 1's locations. (That file was deleted in households H3a task 3.5. A new user's
+  first location now comes from `ensureHousehold` in `apps/server/src/lib/household.ts`.)
 - `ItemStock` rows went away by accident, through the `ON DELETE CASCADE` on their
   `itemId`, not because the endpoint asked for them.
 
@@ -208,19 +221,23 @@ Both models are now in the `$transaction` list in `apps/server/src/lib/e2eCleanu
 (The route's handler lived inline in `apps/server/src/index.ts` until households task 2.6
 moved it, so measurements below that name `index.ts` are about the same code.)
 
-**The guard that keeps the three delete lists in step** is
-`apps/server/src/resolvers/purge-coverage.test.ts`. Three paths hand-maintain the same
-list — `purgeUserData` (`purge.resolver.ts`), `clearAllData` (`import.resolver.ts`) and
-`/e2e/cleanup` (`lib/e2eCleanup.ts`). The guard reads resolver source from disk, so a mock
-cannot satisfy it.
+**The guard that keeps the delete lists in step** is
+`apps/server/src/resolvers/purge-coverage.test.ts`. Since households H3a task 3.10, **two**
+paths hand-maintain a list — `clearAllData` (`import.resolver.ts`) and `/e2e/cleanup`
+(`lib/e2eCleanup.ts`). The third, `purgeUserData` (`purge.resolver.ts`), was removed in
+that task: it had no web caller, and it deleted by `userId`. The guard reads the source
+from disk, so a mock cannot satisfy it.
 
-**It only checks models that declare a `userId`.** `ItemStock` has none, on purpose — it
-is scoped through its `Location` (see root `CLAUDE.md` → Authorization). So the
-`itemStock` line in those three lists is covered by no test that can fail on the DATA. If
-someone deletes that line, the rows still go: both of `ItemStock`'s foreign keys cascade.
-Measured 2026-09-25 — with `prisma.itemStock.deleteMany` removed from `index.ts`,
-`cleanup-endpoint.spec.ts` still read back an empty `itemStocksForItem`. The line is there
-to keep the three lists identical, not because the route needs it.
+**It checks every model in the schema now**, not only models that declare a `userId`
+(the rule until task 3.10). For each path, every schema model is either deleted or named
+in that path's `kept` list. `clearAllData` keeps `household`, `householdMember`,
+`locationMember` (they go with their location) and `user`; `/e2e/cleanup` keeps none.
+
+**The `itemStock` line still protects no DATA.** If someone deletes it, the rows still go:
+both of `ItemStock`'s foreign keys cascade. Measured 2026-09-25 — with
+`prisma.itemStock.deleteMany` removed from `index.ts`, `cleanup-endpoint.spec.ts` still
+read back an empty `itemStocksForItem`. The guard now fails on the missing line, and the
+spec fails on the missing `itemStocks` count, but the rows are not at risk either way.
 
 ## `purge-coverage.test.ts` is a SOURCE-TEXT check — what it cannot see
 
@@ -241,10 +258,19 @@ Measured 2026-09-25 with exactly that mutation on the `location` line of `/e2e/c
 
 That pair is the reason the spec below exists (issue #319).
 
+**Since 2026-11-04 the guard reads the filter TEXT** (issue #320, households H3a tasks 3.2
+and 3.10). Each model has one allowed parent path (`MODEL_PATHS` in the test), so
+`{ userId: someWrongValue }`, `{}` and the old `{ userId }` scope all fail it now. It still
+cannot see a VALUE: `{ where: { householdId } }` passes the text check even when
+`householdId` is `undefined` at run time, and Prisma reads that as no filter at all. That is
+why `clearAllData` throws before its transaction when the id is missing, and why the two
+specs below run against real Postgres.
+
 ## `cleanup-endpoint.spec.ts` — the behavioural guard on `/e2e/cleanup`
 
 `e2e/tests/cleanup-endpoint.spec.ts` (added 2026-09-25, one cloud test) seeds **one row of
-every model `/e2e/cleanup` deletes** — all 15 since households task 2.6, 14 before it —
+every model `/e2e/cleanup` deletes** — all 18 since households H3a task 3.10, 15 since
+households task 2.6, 14 before it —
 calls the route, and asserts every returned count is at least 1, then reads the data back
 and asserts empty. It is cloud-only and has no browser: it is in the `cloud` project's
 `testMatch` and the `local` project's `testIgnore`, like `location-scoped-writes.spec.ts`.
@@ -252,8 +278,35 @@ and asserts empty. It is cloud-only and has no browser: it is in the `cloud` pro
 **The route now returns per-model deleted counts.** `prisma.deleteMany` already returns
 `{ count }`; `index.ts` used to throw those away and answer `{ ok: true }`. It now answers
 `{ ok: true, deleted: { inventoryLogs, cartItems, carts, itemTags, itemVendors,
-recipeItems, itemStocks, items, tags, tagTypes, vendors, recipes, shelves, locations,
-users } }`. The route is mounted only under `E2E_TEST_MODE`, so production is unaffected.
+recipeItems, itemStocks, items, tags, tagTypes, vendors, recipes, shelves,
+locationMembers, locations, householdMembers, households, users } }` — 18 keys since
+households H3a task 3.10. The route is mounted only under `E2E_TEST_MODE`, so production
+is unaffected.
+
+### Households — the 16th to 18th models, since 2026-11-04 (households H3a, task 3.10)
+
+The route now deletes by the households the user **owns** (a `HouseholdMember` row with
+role `owner`), not by `userId`:
+
+1. everything in each owned household, every member's role rows in it, and the household;
+2. the user's OWN `HouseholdMember` and `LocationMember` rows in households they do not
+   own. Both tables have a RESTRICT foreign key to `User`;
+3. the `User` row, last.
+
+**It never deletes a household the user only belongs to.** Two-user specs run cleanup once
+per user. If the first call emptied a household the user was only a member of, it would
+delete the other user's data before that user's own cleanup ran. Pinned only by
+`apps/server/src/lib/e2eCleanup.test.ts`: no E2E spec can make a second member before task
+3.11 adds `POST /e2e/household-members`.
+
+The same four places changed together as in task 2.6: `lib/e2eCleanup.ts`,
+`cloudTeardown.ts`, `cleanup-endpoint.spec.ts` (comments only: its seed already makes a
+household on the first request) and this file. 15 → 18.
+
+**Rows that belong to no household are never deleted.** A row with a null `householdId` —
+left on the shared test database by `main`'s server, which does not know the column —
+survives every cleanup. See the plan's *Execution* notes for the one case that breaks
+first sign-in.
 
 ### The `User` row — the 15th model, since 2026-10-31 (households H2, task 2.6)
 
@@ -267,10 +320,11 @@ users } }`. The route is mounted only under `E2E_TEST_MODE`, so production is un
 | `e2e/tests/cleanup-endpoint.spec.ts` | seeds the row with `createCloudUser(request, E2E_USER_ID, …)` |
 | this file | 14 → 15 |
 
-**`purge-coverage.test.ts` does not list `User`, and that is correct.** Its parser picks
-models that declare a `userId` field. `User` has none: its key is `id`, because the row IS
-the user. And only `/e2e/cleanup` deletes it — `purgeUserData` and `clearAllData` delete a
-user's data and leave the account. So the source-text guard has nothing to say about it.
+**`purge-coverage.test.ts` allows the `User` row's filter in `/e2e/cleanup` only.** Its key
+is `id`, because the row IS the user, so `{ where: { id: userId } }` is an exception for
+the `user` model alone. `clearAllData` deletes a household's data and leaves the account, so
+it lists `user` as kept. (Until task 3.10 the guard read only models with a `userId` field,
+and so said nothing about `User`.)
 
 What guards it instead:
 
@@ -326,8 +380,17 @@ on them. `ItemStock`'s readback is weak for the cascade reason above; its count 
 speaks for it.
 
 **`Location` is read back LAST, because reading it recreates one.** The `locations` query
-runs `ensureDefaultLocation`, so the readback asserts exactly one location and that its id
-is neither of the two the spec seeded. `afterEach` deletes that fresh row.
+calls `requireHousehold` (`apps/server/src/lib/authz.ts`), which runs `ensureHousehold`
+(`apps/server/src/lib/household.ts`). For a user with no household, that is first sign-in:
+it makes a household, one location and the user's `HouseholdMember` and `LocationMember`
+rows. So the readback asserts exactly one location and that its id is neither of the two
+the spec seeded. `afterEach` deletes that fresh row.
+
+**Between households H3a tasks 3.5 and 3.10, `afterEach` could not delete it.**
+`/e2e/cleanup` did not delete `HouseholdMember` rows then, and that row's foreign key to
+`User` is `ON DELETE RESTRICT`, so the cleanup's `user.deleteMany` failed with `P2003` and
+the whole transaction rolled back. Task 3.10 added the household rows to the list, and the
+first run after it deleted the households those earlier runs had left behind.
 
 ### The consequence: every cloud test now starts with zero locations
 
@@ -349,18 +412,45 @@ run 1's app created the default location, and the old cleanup left it behind for
 that test had been passing on a leaked row, and would have failed on any genuinely fresh
 database.
 
-**The server no longer drops the write.** `ensureDefaultLocation`
-(`apps/server/src/lib/defaultLocation.ts`) creates the default location when the user has
-none, and every stock write path reaches it — `updateItem`, `bulkCreateItems`,
-`bulkUpsertItems`, `checkout` and `consumeRecipes`. Seed order no longer decides whether
-stock survives.
+**The server no longer drops the write.** Today every stock write takes its location id
+from the caller — `writeStock` in `apps/server/src/lib/itemStockWrite.ts`, and the
+`ItemStock` bulk imports in `import.resolver.ts` — so there is no silent fallback to drop
+it into.
 
-**`ensureCloudDefaultLocation(request)` (`e2e/helpers/cloudSeed.ts`) is still there, and
-still worth calling first.** It is no longer a workaround: `seedCloudFixture` needs the
-default location's id (to map the fixture's default key onto) and its name (to decide
-whether to rename it), so the call has its own reason to exist. `cooking.spec.ts` also
-still calls it — a seed that guarantees its own preconditions does not depend on server
-behaviour to be correct.
+Where the server makes or picks a location by itself today (households H3a task 3.5
+deleted `ensureDefaultLocation` and `apps/server/src/lib/defaultLocation.ts`):
+
+| Case | Code | What it does |
+|---|---|---|
+| first sign-in | `ensureHousehold` in `apps/server/src/lib/household.ts`, reached through `requireHousehold` in `apps/server/src/lib/authz.ts` | a user with no household gets one, plus one location ("Home" in English) at `order: 0`, and an `organizer` row on it. There is no `isDefault` column since households H3a task 3.14. The `locations` query is the usual first caller. |
+| an import row that names no usable location | `fallbackImportLocation` in `apps/server/src/lib/authz.ts` | picks the caller's location with the lowest `order` (ties broken by id), in the caller's household, on which the caller is `participant` or `organizer`. It does not create one. If none qualifies, the import fails with `NO_LOCATION`. |
+
+`fallbackImportLocation` reads `LocationMember` rows. `createLocation` writes the
+creator's `organizer` row since H3a task 3.6. Until task 3.9, the bulk location imports
+write none, so a location made by them is never picked. And until task 3.10,
+`clearAllData` deleted every location without making a new one. Both could lead to
+`NO_LOCATION` in cloud E2E. Both are fixed: the imports write the `organizer` row since
+task 3.9, and `clearAllData` makes "Home" again, with an `organizer` row, in the same
+transaction since task 3.10 (decision H17).
+
+**`ensureCloudHomeLocation(request)` (`e2e/helpers/cloudSeed.ts`) is worth calling
+first.** It runs the `locations` query (which runs first sign-in) and returns the FIRST
+location in the answer: "Home", at `order` 0, on a clean account. `seedCloudFixture` needs
+that location's id (to map the fixture's home key onto) and its name (to decide whether to
+rename it). `cooking.spec.ts`, `item-logs.spec.ts`, `shopping.spec.ts` and
+`item-list-state-restore.spec.ts` also call it, because their stock writes need a location
+id.
+
+It was `ensureCloudDefaultLocation` until households H3a task 3.15, and picked the row with
+`isDefault: true`. Task 3.14 dropped that column from the server, so every spec that
+selected `isDefault` failed GraphQL validation (`Cannot query field "isDefault" on type
+"Location"`). Measured on the branch before task 3.15: **76 of 130** cloud tests failed,
+**57** of them with that error and the other 19 on the old "My Home" name (in `locations.spec.ts` and `location-switcher.spec.ts`).
+
+**A cloud location is never "the default" any more.** "First" means first in the server's
+answer, which is sorted by `order`, then by `id`. The web app uses the same rule for its
+fallback location (`useActiveLocation`, and `fetchCloudDefaultLocationId` in
+`apps/web/src/lib/importData.ts`).
 
 ## A seed that writes an item must also write its stock — in BOTH modes
 
@@ -376,7 +466,7 @@ worked because the other project's four failures are reported separately:
 | Mode | Writes | What to add |
 |---|---|---|
 | local | `db.transaction('items', 'readwrite')` | `await splitInlineStock(page)` from `helpers/locationSeed.ts`, after the item write |
-| cloud | `createItem` over GraphQL | `upsertItemStock` after each `createItem`, with the location id from `ensureCloudDefaultLocation(request)` (`helpers/cloudSeed.ts`) |
+| cloud | `createItem` over GraphQL | `upsertItemStock` after each `createItem`, with the location id from `ensureCloudHomeLocation(request)` (`helpers/cloudSeed.ts`) |
 
 `splitInlineStock` touches IndexedDB only and does **nothing** for the cloud branch.
 
@@ -457,17 +547,17 @@ reconcile finds nothing to remove and creates every row the fixture lists. No ed
 loop was needed in 4b or in PR 5 — which is the whole argument for reading state back
 instead of predicting it.
 
-**The `cloud` project's `testMatch` is 26 files today** (`e2e/playwright.config.ts`,
-measured 2026-10-31), up from 13 on 2026-09-23. **Count the array rather than reusing that
-26** — it grows most weeks:
+**The `cloud` project's `testMatch` is 29 files today** (`e2e/playwright.config.ts`,
+measured 2026-11-04, after households H3a task 3.11), up from 13 on 2026-09-23. **Count the
+array rather than reusing that 29** — it grows most weeks:
 
 ```bash
 awk "/name: 'cloud'/,/name: 'pwa'/" e2e/playwright.config.ts | grep -c "spec\.ts'"
 ```
 
 The `awk` range matters: the file holds **three** such lists — `local`'s `testIgnore`,
-`cloud`'s `testMatch` and `pwa`'s `testMatch` — and a grep over the whole file counts all 35
-entries instead of the 26 that belong to `cloud`.
+`cloud`'s `testMatch` and `pwa`'s `testMatch` — and a grep over the whole file counts all 40
+entries instead of the 29 that belong to `cloud`.
 
 **The command this section used to give printed 0 from 2026-10-30.** It ended
 `| grep -m1 testMatch | grep -o "'\*\*/[^']*\.spec\.ts'" | wc -l`, so it only counted the
@@ -496,7 +586,7 @@ and now run in both:
 | File | Tests in `cloud` | What the cloud run adds |
 |---|---|---|
 | `settings/shelves.spec.ts` | 1 | first real-SQL coverage of `shelf(id:)` (`apps/server/src/resolvers/shelf.resolver.ts:17`) and `deleteShelf` (`:50`) |
-| `settings-global-pages.spec.ts` | 2 collected, 1 run | no new resolver. Its second test carries a `test.skip` for cloud — `Sidebar.tsx` has no data-mode branch, so a cloud run would measure the same markup twice |
+| `settings-global-pages.spec.ts` | 2 collected, 1 run (2 run since households H3a task 3.15) | no new resolver. Its second test skipped cloud until task 3.15, because the sidebar was the same markup in both modes. Since task 3.13 the 🏠 label shows the household name in cloud, so the test now runs there: it renames the household first and checks the label shows that name |
 | `unified-item-search.spec.ts` | 10 | first real-SQL coverage of **`applyShelfFilterPicks`** (`:85`) and of `updateShelf(itemIds:)` (`:38`) |
 
 **`applyShelfFilterPicks` was the target worth the work, and issue #323 never names it.** It
@@ -526,13 +616,59 @@ only". So in cloud its template test would write to IndexedDB, reach **zero** re
 still pass `await expect(page).toHaveURL('/')`. That is a test reporting as covered while
 covering nothing. The product gap is issue **#347**.
 
-The `local` project is 23 spec files: 30 files under `e2e/tests/` minus the 7 in its
-`testIgnore` (measured 2026-10-31).
+The `local` project is 23 spec files: 33 files under `e2e/tests/` minus the 10 in its
+`testIgnore` (measured 2026-11-04, after households H3a task 3.11).
 
 File 26 is `cloud-user-row.spec.ts`, added 2026-10-31 by households H2 task 2.7. It is
 cloud-only and has no browser, so it is also in `local`'s `testIgnore`. Its 3 tests act as
 three new user ids, one per test, built from `E2E_SECOND_USER_ID`. Each id is cleaned up
 with `cleanupCloudData(request, id)` in both hooks.
+
+File 27 is `purge-two-households.spec.ts`, added 2026-11-04 by households H3a task 3.10
+(decision H10). It is cloud-only and has no browser, so it is also in `local`'s
+`testIgnore`. Its 1 test makes two users, A and B, each with their own household and one
+row of every model `clearAllData` deletes, built from `E2E_SECOND_USER_ID`
+(`…-purge-a`, `…-purge-b`). A clears; every one of B's rows must survive, read back through
+B's GraphQL, and A must be left with one new "Home". **It is the only real-SQL check that
+`clearAllData`'s relation filters match the right rows.** Proved by mutation on
+2026-11-04: `tx.shelf.deleteMany({})` in `clearAllData` made it fail with
+`"shelves": Array []` where B's one shelf was expected. It cannot check a SHARED household:
+that needs a second member, which E2E can add only from task 3.11.
+
+Files 28 and 29 arrived on 2026-11-04 with households H3a task 3.11. Both are cloud-only,
+have no browser, and are in `local`'s `testIgnore`. Both put a second person into one
+household with `addHouseholdMember` (`e2e/helpers/cloudUsers.ts`), which calls the E2E-only
+route `POST /e2e/household-members` (`apps/server/src/lib/e2eHouseholds.ts`, decision H9).
+
+| File | Tests | What it proves on real SQL |
+|---|---|---|
+| `cloud-roles.spec.ts` | 3 | a household `member` cannot create a tag and a `manager` can; a location `viewer` can read stock but not change it and a `participant` can; a location with no role is `FORBIDDEN` for read and write |
+| `household-member-cleanup.spec.ts` | 2 | `/e2e/cleanup` with two people in one household, in both orders: the member's cleanup leaves the owner's household and every row in it (even rows the member wrote); the owner's cleanup takes the member's role rows with the household |
+
+**Use `addHouseholdMember` in this order, or it answers 409:**
+
+1. The OWNER sends one GraphQL request first. That request makes the household.
+2. Add the member BEFORE the member sends any GraphQL request. A request would make the
+   member a household of their own, and the route refuses a person who is already in a
+   household. (`ensureHousehold` reads a person's household with `findFirst` and no
+   `orderBy`, so a person in two households would get one of them at random.)
+
+The route sets the member's first sign-in claim (`User.householdSetupAt`). So after the
+owner's cleanup removes the member's row, the member's next request gets `NO_HOUSEHOLD`. It
+does NOT make them a new household. `household-member-cleanup.spec.ts` checks that.
+
+**Avoid carts in a spec with a second member** until H3b: `bootstrapCarts` gives the second
+member an empty cart list where the first member already made carts. Neither file makes a
+vendor or a cart.
+
+Proved by mutation on 2026-11-04, each against `--project=cloud` and undone from a copy:
+
+| Mutation | Red test |
+|---|---|
+| `requireLocationRole` ignores `role` (`lib/authz.ts`) | the viewer test, `Received promise resolved instead of rejected` |
+| `requireHouseholdRole` ignores `role` | the tag test, the same message |
+| `/e2e/cleanup` reads the user's member rows without `role: 'owner'` | member-first cleanup, 8 counts differ |
+| `/e2e/cleanup` deletes member rows by `{ userId }` only | owner-first cleanup, `householdMembers` 1 where 2 was expected |
 
 **Cloud test counts, measured, not quoted. Measure your own — do not subtract any number
 below.** The one-line command:
@@ -551,7 +687,16 @@ What the number has been, so you can see how fast it moves rather than reuse a f
 | 2026-10-08 | `feature/cloud-item-note-wikidata`, after it | 105 |
 | 2026-10-08 | `feature/import-strategy-coverage` (cloud-parity PR C) | 108 |
 | 2026-10-12 | `feature/cloud-spec-coverage` (issue #323) | 121 |
-| 2026-10-31 | `feature/households-h2`, after `cloud-user-row.spec.ts` | **124** |
+| 2026-10-31 | `feature/households-h2`, after `cloud-user-row.spec.ts` | 124 |
+| 2026-11-04 | `feature/households-h3a`, after `purge-two-households.spec.ts` | 125 |
+| 2026-11-04 | `feature/households-h3a`, after task 3.11's two specs | 130 |
+| 2026-11-11 | `feature/households-h3a`, after task 3.15 | **133** |
+
+Task 3.15 added 3: the cloud last-location test in `settings/locations.spec.ts` (skipped
+in `local`, so `local` collects 184 and runs 178), and the same-household restore test in
+`settings/import-export-cloud.spec.ts`, once per strategy (`skip`, `replace`). Its
+sidebar test in `settings-global-pages.spec.ts` was collected before and now runs in cloud
+instead of skipping.
 
 Attribution for the steps that are known: 4b added 5 (1 for the leak spec, 4 because
 `import-export-cloud.spec.ts` went 2 → 6). Cloud-parity PR A added 1 to
@@ -722,7 +867,7 @@ than a missing id.
 | Helper | How it assigns `order` |
 |---|---|
 | `seedLocalFixture` | `order: index` for **every** location, default included (`localSeed.ts` line 50) |
-| `seedCloudFixture` | never creates the default — it reads back the one `ensureDefaultLocation` made at `order: 0` and `continue`s past `isDefault` entries in its creation loop (`cloudSeed.ts` line 106). `createLocation` appends `maxOrder + 1`. |
+| `seedCloudFixture` | never creates the fixture's home entry (the one marked `isDefault`) — it maps it onto the location first sign-in made at `order: 0` ("Home", `ensureHousehold` in `apps/server/src/lib/household.ts`; before households H3a task 3.5 it was `ensureDefaultLocation`), renames it to the fixture's name, and `continue`s past `isDefault` entries in its creation loop. `createLocation` appends `maxOrder + 1`. |
 
 So only the relative order of the **non-default** locations follows the array in cloud.
 Moving the default entry elsewhere in the array is **invisible in cloud** and changes the
@@ -751,9 +896,15 @@ specs are the users today.
 `readLocations(page, request, baseURL)` joined it on 2026-10-04 (cloud locations PR 4b
 task 8) and branches the same way: local reads the `locations` store, cloud runs the
 `locations` query. **Look a location up by NAME, never by id.** The ids differ between the
-modes on purpose — the local default is the `'local'` sentinel, a cloud default is a
+modes on purpose — the local default is the `'local'` sentinel, a cloud location is a
 server-generated cuid, and the import remap rewrites the payload's default onto whichever
 one the destination holds.
+
+Each row carries `isHome`, not `isDefault` (since households H3a task 3.15). Local: the row
+Dexie flags `isDefault`. Cloud: the FIRST row of the `locations` answer, because cloud has
+no default location and the web's import remap lands the payload's default on the first
+location. So in cloud "exactly one home" is always true; what a cloud assertion can still
+check is that the first location has the expected name.
 
 ### `e2e/helpers/backupAssertions.ts` — the import/export location checks, written once
 
@@ -769,9 +920,9 @@ The new checks therefore live in **one** module, not a third copy:
 
 | Export | What it asserts |
 |---|---|
-| `expectFixtureLocations` | three locations, exactly one default, and that one's name |
+| `expectFixtureLocations` | three locations, and the home location's name (local: the `isDefault` row; cloud: the first location) |
 | `expectFixtureStockPerLocation` | one stock row per location, each with its own quantities |
-| `expectStockNotCollapsedOntoDefault` | the two non-default rows are not sitting on the default |
+| `expectStockNotCollapsedOntoDefault` | the two non-default rows are not sitting on the home location |
 
 **Both fixtures describe the same three locations under the same names, with the same three
 different quantities.** `e2e/fixtures/local-backup.json`'s default id is the `'local'`
@@ -790,20 +941,27 @@ remap has put the backup's default row on the id the destination already holds, 
 is always the one `skip` leaves alone: local filters it out by `existingIds`, cloud's
 `bulkCreateLocations` skips a taken id. Measured 2026-10-04 — a backup whose default was
 called "Fixture Home" came back as `[ "Fixture Cabin", "My Home", "Fixture Office" ]` in
-both projects. That is why `DESTINATION_DEFAULT_LOCATION_NAME` exists and why the default's
-expected name is a parameter rather than a constant in the fixture.
+both projects. That is why `destinationDefaultLocationName(baseURL)` exists and why the
+default's expected name is a parameter rather than a constant in the fixture.
+
+**The destination's name differs by mode since households H3a.** Local starts with
+"My Home" (Dexie's `on('populate')`); cloud starts with "Home" (first sign-in, and again
+after `clearAllData`). `homeLocationName(baseURL)` in `e2e/constants.ts` gives the right
+one, and `destinationDefaultLocationName` in `helpers/backupAssertions.ts` returns it.
+Until task 3.15 this was one constant, `DESTINATION_DEFAULT_LOCATION_NAME = 'My Home'`,
+because the old server also said "My Home".
 
 **`clear` and `replace` differ from `skip` — in LOCAL mode only.** `importLocations`
 (`apps/web/src/lib/importData.ts`) branches on `strategy === 'skip'` and on nothing else, so
 both other strategies `bulkPut` the whole location list and the local default row takes the
-backup's name. Cloud keeps "My Home" whatever the strategy, because `bulkCreateLocations`
+backup's name. Cloud keeps "Home" whatever the strategy, because `bulkCreateLocations`
 skips a row whose id is already taken. So a dual-mode spec running `clear` or `replace` must
 branch on `baseURL === CLOUD_WEB_URL` for the expected default name:
 
 | strategy | local expects | cloud expects |
 |---|---|---|
-| `skip` | `DESTINATION_DEFAULT_LOCATION_NAME` | `DESTINATION_DEFAULT_LOCATION_NAME` |
-| `replace`, `clear` | `FIXTURE_DEFAULT_LOCATION_NAME` | `DESTINATION_DEFAULT_LOCATION_NAME` |
+| `skip` | `destinationDefaultLocationName(baseURL)` ("My Home") | `destinationDefaultLocationName(baseURL)` ("Home") |
+| `replace`, `clear` | `FIXTURE_DEFAULT_LOCATION_NAME` | `destinationDefaultLocationName(baseURL)` ("Home") |
 
 `settings/import-strategies.spec.ts` does that branch in `expectedDefaultLocationName`.
 
