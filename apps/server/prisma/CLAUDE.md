@@ -267,8 +267,8 @@ than trusting a number here — it said **four** when there were seven.
   have left the script broken. When you add a migration, re-read every assertion already
   there.
 - **The root `pnpm build` type-checks this script** — since 2026-10-07. `apps/server`'s
-  `build` is `tsc && tsc -p tsconfig.scripts.json && cp …`, and the second pass covers
-  `scripts/`. Before that nothing ran it, so a type error here passed the whole gate.
+  `build` runs `tsc --noEmit && tsc -p tsconfig.scripts.json` before it bundles (see the root
+  `CLAUDE.md`), and the second pass covers `scripts/`. Before that nothing ran it, so a type error here passed the whole gate.
   Proved by mutation: a deliberate `const x: number = "s"` gives
   `scripts/verify-migration.ts(698,7): error TS2322` and pnpm exits 2.
 - **It is destructive**, and Prisma's own AI guardrail requires the user's real-time consent
