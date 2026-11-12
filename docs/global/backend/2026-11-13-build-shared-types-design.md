@@ -52,3 +52,39 @@ Nothing. Nothing is deployed until the next checkpoint release.
   `pnpm --filter server build`, which is where the bundle step lives.
 - `prisma migrate deploy` (Railway's release command) does not use `dist/`, so it is not
   affected.
+
+## Result (2026-11-13)
+
+Built on `chore/build-shared-types` as designed. PR not merged, not deployed.
+
+| Part | What was built |
+|---|---|
+| Build | `prisma generate && tsc --noEmit && tsc -p tsconfig.scripts.json && node scripts/build.mjs && node scripts/check-start.mjs`. `tsconfig.json` has `noEmit: true` and no `outDir` or `rootDir` |
+| Bundle | `scripts/build.mjs`: `dist/index.js`, about 129 KiB, plus a source map. Bundles `workspace:` packages, keeps every other dependency external |
+| `.graphql` files | the 12 files are copied **flat** into `dist/`, not `dist/schema/` |
+| Start check | `scripts/check-start.mjs`: starts `node --enable-source-maps dist/index.js` with `PORT=0` and a database URL on a closed local port, in an empty temp folder. Passes on `Server ready at` within 20 s. About 0.2–0.5 s. Server build total 3.84–4.43 s (old steps 3.70–3.92 s) |
+| Mutation proof | `@p1i/types` left external → `ERR_UNKNOWN_FILE_EXTENSION`, exit 1. `.graphql` files in `dist/schema/` → `ENOENT … dist/schema.graphql` |
+| Copies deleted | `src/lib/cartId.ts` and `src/lib/checkout.ts`. Tests now in `src/lib/cartIdRules.test.ts` and `src/lib/isBeingBought.test.ts` |
+
+Where it differs from the text above:
+
+- **Point 2 needed no code change.** Copying the files flat into `dist/` was enough, so
+  `src/schema/index.ts` only gained a comment explaining why.
+- **`tsconfig.scripts.json` is not quite unchanged.** Its settings are the same, but its
+  comment was rewritten, because the emit reason it gave is gone.
+- **Point 4's mutation needs an import that is really used.** The proof only fails when the
+  bundle calls code from `@p1i/types`. A type-only or unused import is removed by esbuild, so
+  leaving the package external would change nothing. Anyone who repeats the proof must
+  check that the bundle really calls a function from `@p1i/types`.
+- **The test count went down by 8.** Server suite **1161 → 1153** tests in 47 files. The 8
+  removed tests only compared the server copy with the web copy, and there is now one copy.
+  Every behaviour case was kept.
+- The old `tsc` emit also shipped 46 `*.test.js` files in `dist/`. The bundle does not.
+
+Still true after this branch:
+
+- Two SQL forms of the same rules are kept in step by hand: `quantity: { gt: 0 }` in
+  `checkout` (the `isBeingBought` rule) and `':no-vendor'` in migration
+  `20260917000000_rekey_cart_to_location_vendor` (the cart id rule).
+- **Not yet proved on Railway.** Nobody has run the start check there. If it fails, the
+  deploy build fails and the old server keeps running.

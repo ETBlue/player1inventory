@@ -43,3 +43,21 @@ Branch `chore/build-shared-types`, from `develop` at `3cfb4606`.
 The whole Verification Gate in the root `CLAUDE.md`, plus `pnpm test:e2e:all` (the
 `cloud` project starts the server from source with `tsx`, so it does not prove the
 bundle; Task 1's check does).
+
+## Status (2026-11-13)
+
+Tasks 1, 2 and 3 are done on `chore/build-shared-types`. The final gate is owed. See the
+design's *Result* section for what was built and measured.
+
+What this plan got wrong or left out:
+
+- Task 1 said to do two things for the `.graphql` files: put them where the bundle reads
+  them, and fix `src/schema/index.ts`. Only the first was needed. The file gained a comment,
+  no code.
+- Task 1's mutation (make `@p1i/types` external) proves nothing until the server really
+  calls a function from it. An unused or type-only import is removed by esbuild, and the
+  mutation then changes nothing.
+- Task 2 said to keep every case. Every behaviour case was kept, but 8 parity-only tests
+  were removed, so the server suite went **1161 → 1153** (47 files).
+- Task 3 did not list the deploy runbook. It now has a note on the start check
+  (`docs/global/backend/2026-11-11-deploy-runbook-households-h3a.md`, section 4.4).
