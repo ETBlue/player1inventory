@@ -548,7 +548,7 @@ export function buildLocationRemap(
 // Cart ids go through `parseCartId` / `cartIdFor`, never `split(':')`: a vendor
 // id may itself contain a colon, because `bulkCreateVendors` stores
 // `VendorInput.id` verbatim with no format check, and
-// apps/server/src/lib/cartId.test.ts pins 16 cases including that one. A BARE
+// apps/server/src/lib/cartIdRules.test.ts pins 16 cases including that one. A BARE
 // cart id (no colon at all) parses as `{ locationId: <the whole id> }`, which
 // no real location matches, so it is left alone — a legacy payload keeps its
 // legacy ids.
