@@ -4,7 +4,7 @@ import {
   requireLocationRole,
   requireOwnRowOrUnclaimed,
 } from '../lib/authz.js'
-import { cartIdFor, parseCartId } from '../lib/cartId.js'
+import { cartIdFor, parseCartId } from '@p1i/types'
 import { prisma } from '../lib/prisma.js'
 import { requireAuth } from '../context.js'
 import type { Resolvers, Vendor } from '../generated/graphql.js'
@@ -89,7 +89,7 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         //
         // The vendor part is read back with `parseCartId` rather than matched
         // with `endsWith(':' + id)`, because a vendor id may itself contain ':'
-        // and the split rule is "first colon only" (lib/cartId.ts).
+        // and the split rule is "first colon only" (`parseCartId` in `@p1i/types`).
         //
         // Still the CALLER's carts only (`userId`), because carts keep their
         // `userId` scope until H3b. So another household member's carts that

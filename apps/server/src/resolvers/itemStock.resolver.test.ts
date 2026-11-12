@@ -215,7 +215,7 @@ describe('itemStock resolvers', () => {
       // "the first location in the table".
       makeInventoryLog({ id: 'log-theirs', itemId: 'item-milk', locationId: 'loc-b', userId: 'user-b' }),
     ])
-    // Cart ids are `${locationId}:${vendorId | 'no-vendor'}` (lib/cartId.ts),
+    // Cart ids are `${locationId}:${vendorId | 'no-vendor'}` (`cartIdFor` in `@p1i/types`),
     // but the cascade filters on `Cart.locationId`, the column those ids are
     // BUILT from. Both are seeded so the two stay distinguishable — see the
     // last cart test in this file.

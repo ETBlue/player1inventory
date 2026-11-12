@@ -9,7 +9,7 @@ import {
   requireLocationRole,
   requireOwnRowOrUnclaimed,
 } from '../lib/authz.js'
-import { parseCartId } from '../lib/cartId.js'
+import { parseCartId } from '@p1i/types'
 import { createFirstLocation, firstLocationName, lockHousehold } from '../lib/household.js'
 import { prisma } from '../lib/prisma.js'
 import { type Context, requireAuth } from '../context.js'
@@ -123,9 +123,9 @@ async function resolveLogLocations(
  *
  * Since PR 3b `Cart.id` is `${locationId}:${vendorId | 'no-vendor'}`, so an
  * imported cart's location rides inside its own primary key and needs no input
- * field. `parseCartId` (lib/cartId.ts) splits on the FIRST colon, which is why
+ * field. `parseCartId` (`@p1i/types`) splits on the FIRST colon, which is why
  * this reuses it rather than splitting again: a vendor id that itself contains
- * ':' then survives, and the two copies of the rule cannot drift.
+ * ':' then survives, and this file cannot drift from the one rule.
  *
  * A vendor id with a colon is not hypothetical. Both id generators produce
  * colon-free ids — `crypto.randomUUID()` in local mode

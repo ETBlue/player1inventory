@@ -7,8 +7,7 @@ import {
   requireLocationItems,
   requireLocationRole,
 } from '../lib/authz.js'
-import { cartIdFor, parseCartId } from '../lib/cartId.js'
-import { isBeingBought } from '../lib/checkout.js'
+import { cartIdFor, isBeingBought, parseCartId } from '@p1i/types'
 import { prisma } from '../lib/prisma.js'
 import { ensureStockAtLocation, writeStock } from '../lib/itemStockWrite.js'
 import { type Context, requireAuth } from '../context.js'
@@ -18,7 +17,7 @@ import type { Cart, CartItem, Resolvers } from '../generated/graphql.js'
  * Read the location out of a cart id, then check the caller may use it.
  *
  * Since PR 3b every `Cart.id` is `${locationId}:${vendorId | 'no-vendor'}`
- * (lib/cartId.ts), so a cart id that arrives from the client carries a location
+ * (`cartIdFor` in `@p1i/types`), so a cart id that arrives from the client carries a location
  * id that also arrives from the client. It goes through `requireLocationRole`
  * before it reaches any query — that call is the one authorization seam for
  * location data (lib/authz.ts). Do NOT replace it with a
@@ -236,7 +235,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       // than hiding it. Re-derive the scope — see the block comment above this
       // object.
       const cartItems = await prisma.cartItem.findMany({ where: { cartId, userId } })
-      // `isBeingBought` is `quantity > 0` (lib/checkout.js). Pinned items
+      // `isBeingBought` is `quantity > 0` (`@p1i/types`). Pinned items
       // (quantity === 0) stay in the permanent cart — no migration needed.
       const buyingItems = cartItems.filter(isBeingBought)
 
@@ -293,11 +292,12 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       //
       // The client sends one entry per cart item that `isBeingBought` accepts —
       // the same rule as `buyingItems` above. Both sides now call a function
-      // named for that rule instead of repeating `ci.quantity > 0`: the client
-      // imports it from `@p1i/types`, this file keeps a second copy, and
-      // `src/lib/checkout.test.ts` compares the two. If the rule changes,
-      // change both copies in the same commit, or a legitimate checkout starts
-      // failing on this error.
+      // named for that rule instead of repeating `ci.quantity > 0`, and both
+      // import the same function from `@p1i/types`. There is one copy of the
+      // rule, so the two sides cannot drift. `src/lib/isBeingBought.test.ts`
+      // pins its answers. The SQL `quantity: { gt: 0 }` in the `deleteMany`
+      // below is a separate form of the same rule and must still be kept in
+      // step by hand.
       const purchases = buyingItems.map((ci) => {
         const quantity = quantityByItemId.get(ci.itemId)
         if (quantity === undefined) {
