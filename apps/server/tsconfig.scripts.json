@@ -1,14 +1,18 @@
 {
   // Type-checks `scripts/` ONLY, and emits nothing.
   //
-  // `scripts/` is excluded from `tsconfig.json` on purpose: that config emits,
-  // with `rootDir: "src"` and `outDir: "dist"`. Adding `scripts` to its
-  // `include` moves `rootDir` to `.` and emits `dist/src/…` plus
-  // `dist/scripts/…`, which breaks `start: node dist/index.js`.
+  // History: `scripts/` was first kept out of `tsconfig.json` because that
+  // config used to EMIT `dist/` with `rootDir: "src"`, and adding `scripts`
+  // would have moved the output to `dist/src/…`. Since 2026-11-13 nothing in
+  // this package emits with `tsc`: `tsconfig.json` sets `noEmit`, and
+  // `scripts/build.mjs` bundles `dist/index.js` with esbuild. The two configs
+  // stay separate for the reason below.
   //
   // It includes `scripts` and NOT `src`, so the two passes do not overlap:
-  // `tsc` checks and emits the 53 files under `src`, this checks the 3 under
-  // `scripts`, and nothing is checked twice. That is only safe because
+  // `tsc --noEmit` checks the files under `src`, this checks the `.ts` files
+  // under `scripts`, and nothing is checked twice. (`scripts/build.mjs` and
+  // `scripts/check-start.mjs` are plain JavaScript, so this pass does not
+  // check them: `allowJs` is off.) That is only safe because
   // `scripts/` imports nothing from `src` — today only `@prisma/client`,
   // `vitest`, node builtins and its own sibling modules. **If a script ever
   // imports from `src`, TypeScript will pull those files into this program and

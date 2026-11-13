@@ -145,6 +145,9 @@ importers:
       '@types/ws':
         specifier: ^8.5.14
         version: 8.18.1
+      esbuild:
+        specifier: ^0.27.2
+        version: 0.27.7
       tsx:
         specifier: ^4.19.4
         version: 4.21.0
@@ -17223,7 +17226,7 @@ snapshots:
 
   tsx@4.21.0:
     dependencies:
-      esbuild: 0.27.2
+      esbuild: 0.27.7
       get-tsconfig: 4.13.1
     optionalDependencies:
       fsevents: 2.3.3

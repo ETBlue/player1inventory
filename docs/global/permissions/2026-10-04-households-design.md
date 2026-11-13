@@ -320,7 +320,7 @@ Under this design those nine split into two scopes:
 Three points matter for H4:
 
 - **`Cart` is checked through its location, and its id must match its location** (issue #361).
-  `Cart.id` is not a cuid. It is built as `${locationId}:${vendorId}` (`apps/server/src/lib/cartId.ts`),
+  `Cart.id` is not a cuid. It is built as `${locationId}:${vendorId}` (`cartIdFor` in `packages/types/src/index.ts`),
   so anyone who knows a location id can build its cart ids. After households, co-members and
   former members know location ids. With an account-scoped check, a former member could ask
   "is this cart id free?" and learn which vendors a household shops with. So H4 does two things:
@@ -524,8 +524,11 @@ tests passing against the server version.
 `consumeRecipes` sends a client-computed total for the same reason, so it has the same stale
 total problem and gets the same fix.
 
-**This whole section is H3b, not H3a.** The server cannot load `@p1i/types` at runtime today,
-so sharing `buildCheckoutLogQuantities` needs a build step first (decision H7). The order is
+**This whole section is H3b, not H3a.** Until 2026-11-13 the server could not load
+`@p1i/types` at runtime, so sharing `buildCheckoutLogQuantities` needed a build step first
+(decision H7). `chore/build-shared-types` is that step: the server build now bundles with
+esbuild, and the server already imports `cartIdFor`, `parseCartId` and `isBeingBought` from
+`@p1i/types` ([design](../backend/2026-11-13-build-shared-types-design.md)). The order is
 H3a, then `chore/build-shared-types`, then H3b. Until H5 every household has one person, so
 the old filters still give the right answer after H3a. H3b must merge before H5 starts.
 
@@ -911,8 +914,8 @@ and the owner agreed to the order below. Detail:
 | H1 | ✅ Merged 2026-10-31 (#368). Settings layout and route moves (both modes). No backend change. Can start before PR 5 | Yes: new Settings layout |
 | H2 | ✅ Merged 2026-11-03 (#370). `User` model, Clerk webhook, `lastSeenAt`, E2E user creation | No |
 | `fix/catalog-write-scope` (#371) | ✅ Merged 2026-11-04. Seven tag, tag type and vendor writes check ownership. A live security bug, so it did not wait for H3 | No |
-| **H3a** | **Built 2026-11-11 on `feature/households-h3a`, NOT merged and NOT deployed.** The rehearsal on a production copy, the household lock proof and the final E2E gate are still open; see the [deploy runbook](../backend/2026-11-11-deploy-runbook-households-h3a.md). `Household`, `HouseholdMember`, `LocationMember`, `User.householdSetupAt`, the data migration (two migrations, decision H16), first sign-in, real role checks in both helpers, read scoping for every resolver, `isDefault` removed, the six `userId: String!` GraphQL fields removed, the household name in the 🏠 label, `renameHousehold`, `deleteLocation` refuses the last location, the two-household purge test, an E2E-only route that adds a second household member (`POST /e2e/household-members`, decision H9). Fixes #273, #360, #359 step two, and #320 for the filters H3a changes | Small: the household name and rename; "Home" for a new account; any location but the last can be deleted |
-| `chore/build-shared-types` | A build step for `@p1i/types`, so the server can import shared code at runtime (needed by H3b, decision H7) | No |
+| **H3a** | ✅ **Merged into `develop` 2026-11-13 (#375), not into `main`, and NOT deployed.** It deploys at the first checkpoint release; see the [deploy runbook](../backend/2026-11-11-deploy-runbook-households-h3a.md). `Household`, `HouseholdMember`, `LocationMember`, `User.householdSetupAt`, the data migration (two migrations, decision H16), first sign-in, real role checks in both helpers, read scoping for every resolver, `isDefault` removed, the six `userId: String!` GraphQL fields removed, the household name in the 🏠 label, `renameHousehold`, `deleteLocation` refuses the last location, the two-household purge test, an E2E-only route that adds a second household member (`POST /e2e/household-members`, decision H9). Fixes #273, #360, #359 step two, and #320 for the filters H3a changes | Small: the household name and rename; "Home" for a new account; any location but the last can be deleted |
+| `chore/build-shared-types` | ✅ Built 2026-11-13, PR not merged. The server build bundles with esbuild, so the server can import shared code from `@p1i/types` at runtime (needed by H3b, decision H7). The server's own copies of `cartIdFor`, `parseCartId` and `isBeingBought` are deleted. [Design](../backend/2026-11-13-build-shared-types-design.md) | No |
 | **H3b** | Shared carts: `@@unique([cartId, itemId])` (decision H8), the 15 `CartItem.userId` filters, `Cart.userId` dropped, checkout and `consumeRecipes` in one transaction with a server-computed total. Fixes #358. **Must merge before H5 starts** | No (one person per household) |
 | H4 | Import and export: the new id rule, and `requireOwnRowOrUnclaimed` moved to the target household scope (#327 itself is already fixed by #354). Replaces H3a's import fallback location (decision H12) | The "Import into which location?" dialog |
 | H5 | Invites, join, members page, location people page, switcher filtering, read-only views. Lifts H3a's "last location" refusal (decision H13) | **Yes: sharing works** |

@@ -155,6 +155,11 @@ export interface ShoppingCart {
 }
 
 // Build the location-scoped cart id. vendorId === null means the no-vendor cart.
+//
+// Both `apps/web` and `apps/server` import this function. The server's cart
+// re-key migration also builds the no-vendor id in SQL as
+// `l."id" || ':no-vendor'`, so changing the format here makes that SQL wrong.
+// `apps/server/src/lib/cartIdRules.test.ts` pins the exact ids.
 export function cartIdFor(locationId: string, vendorId: string | null): string {
   return `${locationId}:${vendorId ?? 'no-vendor'}`
 }
@@ -162,6 +167,11 @@ export function cartIdFor(locationId: string, vendorId: string | null): string {
 // Parse a location-scoped cart id back into its parts. Returns vendorId === null
 // for the no-vendor cart. Handles vendor ids that themselves contain ':' by
 // splitting only on the first colon.
+//
+// A cart id with no colon at all is a pre-migration id. It parses as
+// `{ locationId: <the whole id>, vendorId: null }`. No real location has that
+// id, so the server's `requireLocationRole` rejects it. That is on purpose: an
+// old client must fail loudly rather than read another location's cart.
 export function parseCartId(cartId: string): {
   locationId: string
   vendorId: string | null
@@ -186,20 +196,19 @@ export interface CartItem {
  * A row at quantity 0 is PINNED. It stays in the permanent cart, is not bought,
  * and gets no inventory log. Anything above 0 is being bought.
  *
- * This is the canonical copy. Two sides must give the same answer:
+ * This is the only copy. Two sides must give the same answer, and both import
+ * this function:
  *
  * | Side | Where |
  * |---|---|
- * | web | `apps/web/src/lib/checkoutQuantities.ts` imports this function |
- * | server | `apps/server/src/lib/checkout.ts` keeps a SECOND COPY |
+ * | web | `apps/web/src/lib/checkoutQuantities.ts` |
+ * | server | `apps/server/src/resolvers/cart.resolver.ts` (`checkout`) |
  *
- * `apps/server` cannot import this file at runtime. `@p1i/types` has no build
- * step, so `node dist/index.js` fails with `ERR_UNKNOWN_FILE_EXTENSION` while
- * every check in the verification gate passes. `apps/server/src/lib/checkout.ts`
- * carries the full measurement, and `apps/server/src/lib/checkout.test.ts`
- * imports both copies and asserts they agree.
+ * The server can import it at runtime because `apps/server/scripts/build.mjs`
+ * bundles `@p1i/types` into `dist/index.js` with esbuild.
+ * `apps/server/src/lib/isBeingBought.test.ts` pins its answers.
  *
- * ── WHY A DRIFT HERE BREAKS A REAL CHECKOUT ──
+ * ── WHY BOTH SIDES MUST CALL THIS ONE FUNCTION ──
  *
  * The cloud `checkout` mutation takes a required `items` argument: one entry per
  * bought cart row, carrying the on-hand total the client computed. The resolver
@@ -208,8 +217,9 @@ export interface CartItem {
  * the server filter, the server would be buying a row the client sent no
  * quantity for, and the user's whole checkout would fail.
  *
- * Do not change the rule here without changing `apps/server/src/lib/checkout.ts`
- * in the same commit.
+ * The server's `checkout` also deletes bought rows with the SQL filter
+ * `quantity: { gt: 0 }`. That is a separate form of this rule. Change it in the
+ * same commit if this rule changes.
  */
 export function isBeingBought(cartItem: { quantity: number }): boolean {
   return cartItem.quantity > 0

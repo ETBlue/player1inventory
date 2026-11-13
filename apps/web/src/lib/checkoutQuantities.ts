@@ -52,9 +52,8 @@ export function buildCheckoutLogQuantities(
       // server's `buyingItems` filter must accept the same set: a bought item
       // with no entry in the result fails the whole checkout with
       // `BAD_USER_INPUT`, and the resolver has no fallback on purpose. The
-      // server cannot import `@p1i/types` at runtime, so it keeps a second
-      // copy in `apps/server/src/lib/checkout.ts`, and
-      // `apps/server/src/lib/checkout.test.ts` compares the two.
+      // server imports the same function from `@p1i/types`, so there is one
+      // copy of the rule. `apps/server/src/lib/isBeingBought.test.ts` pins it.
       .filter(isBeingBought)
       .flatMap((ci) => {
         const item = items.find((i) => i.id === ci.itemId)

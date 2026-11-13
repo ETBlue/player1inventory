@@ -33,15 +33,17 @@ the server. Phases H3a to H4 give users nothing they can see, because nothing is
 H5. So each phase no longer needs its own deploy day. Instead, `develop` is merged into `main`
 at a few **checkpoint releases**, for example after H3b and again before H5. Each checkpoint
 has its own runbook and its own rehearsal on a fresh Neon branch of production, covering every
-migration that is new since the last release. How a hotfix that lands on `main` in between reaches
-`develop` is not decided yet: a rebase of `develop` needs a force-push, and a merge breaks the
-repo's rebase-only rule. Ask the owner when it first happens.
+migration that is new since the last release. **No changes go to `main` until households is
+done** (owner decision, 2026-11-13: "I'll not touch branch main before the household feature
+is done"). So there is no hotfix on `main` to bring into `develop`, and that question is
+closed. If the decision changes, ask the owner first: a rebase of `develop` needs a
+force-push, and a merge breaks the repo's rebase-only rule.
 
 | Phase | Detail in this file | PR |
 |---|---|---|
 | H1 Settings layout and route moves (both modes, no backend change) | **Full** — tasks 1.1–1.9 | 1 |
 | H2 `User` model, Clerk webhook, `lastSeenAt`, E2E user support | **Full** — tasks 2.1–2.7 | 2 |
-| H3 Households, roles, data migration, read scoping | Outline. Split into H3a and H3b; detailed plan for H3a: [2026-11-04-households-plan-h3a.md](2026-11-04-households-plan-h3a.md) | 3 (now H3a, `chore/build-shared-types`, H3b) |
+| H3 Households, roles, data migration, read scoping | Outline. Split into H3a and H3b; detailed plan for H3a: [2026-11-04-households-plan-h3a.md](2026-11-04-households-plan-h3a.md) | 3 (now H3a ✅ merged into `develop` #375, `chore/build-shared-types` ✅ built, H3b) |
 | H4 Import and export | Outline | 4 |
 | H5 Invites, join, members, read-only views | Outline | 5 |
 | H6 Transfer, hand-over, purges, activity | Outline | 6 |
@@ -645,8 +647,8 @@ phases H1–H7.)
 | Order | PR | Contents |
 |---|---|---|
 | 1 | `fix/catalog-write-scope` | ✅ Merged 2026-11-04 (#371). Seven tag, tag type and vendor writes check ownership through `requireOwnRowOrUnclaimed` |
-| 2 | **H3a** | Households, roles, the data migration, first sign-in, scoping for every resolver, `isDefault` removed, the household name in the 🏠 label, rename |
-| 3 | `chore/build-shared-types` | A build step for `@p1i/types`, so the server can import shared code at runtime |
+| 2 | **H3a** | ✅ Merged into `develop` 2026-11-13 (#375), not deployed. Households, roles, the data migration, first sign-in, scoping for every resolver, `isDefault` removed, the household name in the 🏠 label, rename |
+| 3 | `chore/build-shared-types` | ✅ Built 2026-11-13, PR not merged. The server build bundles with esbuild, so the server can import shared code from `@p1i/types` at runtime. [Design](../backend/2026-11-13-build-shared-types-design.md) |
 | 4 | **H3b** | Shared carts. Must merge before H5 starts |
 
 The outline below is the first version. Each bullet is marked with where it went: **[H3a]**,

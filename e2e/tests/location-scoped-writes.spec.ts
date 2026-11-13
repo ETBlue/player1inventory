@@ -260,7 +260,7 @@ test.describe('cloud location-scoped writes — checkout and cooking', () => {
         locationId: office,
       },
     )
-    // The cart id is `${locationId}:no-vendor` (apps/server/src/lib/cartId.ts).
+    // The cart id is `${locationId}:no-vendor` (`cartIdFor` in packages/types/src/index.ts).
     // Asserting it here pins the one value `checkout` reads its location from —
     // an id that lost its location prefix would make every assertion below
     // vacuous rather than failing.

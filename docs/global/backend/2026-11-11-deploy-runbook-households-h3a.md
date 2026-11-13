@@ -566,6 +566,17 @@ Result: `TBD on deploy day` (Cloudflare SHA; each device updated).
 4. Hard reload the app on one device (Cmd+Shift+R on macOS). The 🏠 label now shows the
    household name.
 
+**The build now starts the server once** (added 2026-11-13, `chore/build-shared-types`). If
+`main` contains that branch, `pnpm --filter server build` ends with
+`node scripts/check-start.mjs`. It starts the built `dist/index.js` on port 0 with no real
+database, and fails the build if the server does not print `Server ready at` within 20 s.
+Nobody has run this step on Railway yet. If the build fails there:
+
+- The build runs before the release command, so no migration is applied.
+- The old server keeps serving.
+- Read the build log. A failed start prints `start check FAILED:` and the server's own output
+  below it. Stop and decide with the main session before you try again.
+
 **The migration can wait on a lock** (plan item 10). `drop_user_scope` starts with
 `LOCK TABLE … IN EXCLUSIVE MODE` on 18 tables, and sets no `lock_timeout`. While the
 release command runs, the OLD server is still serving. So:

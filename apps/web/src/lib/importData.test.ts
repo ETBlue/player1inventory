@@ -3642,7 +3642,7 @@ describe('importCloudData — every location travels to cloud (PR 4b task 3)', (
 // A cart id carries its location. Local ids are
 // `${locationId}:${vendorId | 'no-vendor'}` (db/operations.ts:720), and cloud
 // ids have had the SAME shape since cloud-locations PR 3b
-// (apps/server/src/lib/cartId.ts). So the id must travel to cloud unchanged.
+// (`cartIdFor` in packages/types/src/index.ts). So the id must travel to cloud unchanged.
 //
 // `flattenPayloadForCloud` (importData.ts) still does two things to it, both
 // written before PR 3b and both wrong now:
