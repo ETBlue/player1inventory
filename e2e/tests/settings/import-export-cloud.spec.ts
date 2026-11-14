@@ -380,9 +380,12 @@ test('user can export and re-import cloud data (cloud → cloud)', async ({
   // restored correctly and only the assertion ran out of time; and the same
   // test passes in 36.5s with `--timeout=90000`.
   //
-  // Deliberately on this test and not on the `cloud` project. The other five
-  // tests in this file pass inside 30s, and raising the project's budget would
-  // mean the next test that quietly grows to 45s tells nobody.
+  // Deliberately on this test and not on the `cloud` project. Raising the
+  // project's budget would mean the next test that quietly grows to 45s tells
+  // nobody. Every test in this file that does a full seed, export and import
+  // carries this same line; see `REIMPORT_TIMEOUT_MS` below for the three
+  // re-import tests. (This comment said "the other five tests pass inside 30s"
+  // until 2026-11-15, by which time three of them no longer did.)
   test.setTimeout(60000)
 
   const settings = new SettingsPage(page)
@@ -429,11 +432,33 @@ test('user can import a local backup into cloud mode (local → cloud)', async (
   await verifyRelations(page, request, baseURL, LOCAL_ITEM_ID)
 })
 
+// The budget for the three re-import tests below: seed, export,
+// `cleanupCloudData`, import, then read back. Each does the same work as the
+// cloud → cloud test above, and they need more than Playwright's default 30s.
+//
+// Measured 2026-11-15 on `feature/households-h3b`, the three run alone with
+// `--timeout=90000` at load average 2.2: 32.7s, 29.2s and 24.0s. A trace of the
+// first one: hooks and seed 13.8s, export and cleanup 5.5s, import 10.9s. Almost
+// all of it is round trips to the shared Neon test database, one or more per
+// GraphQL call.
+//
+// WHY THE FAILURE LOOKED LIKE A DATA BUG. When the 30s ran out in the middle of
+// the import, `afterEach` ran `cleanupCloudData` while the page was still sending
+// import mutations. The cleanup deleted the household's rows under them, so the
+// next mutation failed with a Postgres error: `deadlock detected` in
+// `cartItem.upsert`, a foreign-key error on `CartItem_itemId_fkey` or
+// `ItemStock_itemId_fkey`, or an error in `itemTag.createMany`. The page snapshot
+// is taken AFTER the hooks, so it showed that error. Which one depends only on
+// which mutation was in flight. Bug doc:
+// `docs/global/bugs/2026-11-15-bug-reimport-tests-over-time-budget.md`.
+const REIMPORT_TIMEOUT_MS = 60000
+
 test('user re-importing a cloud backup keeps every location and gains no stray default', async ({
   page,
   request,
   baseURL,
 }) => {
+  test.setTimeout(REIMPORT_TIMEOUT_MS)
   const settings = new SettingsPage(page)
 
   // Given: three locations with three different stock quantities
@@ -476,6 +501,7 @@ test('user re-importing a cloud backup keeps each cart at its own location', asy
   request,
   baseURL,
 }) => {
+  test.setTimeout(REIMPORT_TIMEOUT_MS)
   const settings = new SettingsPage(page)
 
   // Given: the fixture's one cart sits at Fixture Office, NOT at the default
@@ -526,6 +552,7 @@ test('user re-importing a cloud backup keeps each log’s location and message',
   request,
   baseURL,
 }) => {
+  test.setTimeout(REIMPORT_TIMEOUT_MS)
   const settings = new SettingsPage(page)
 
   // Given: two logs — one at the default location, one at Fixture Office —
