@@ -18,7 +18,7 @@ The **item detail Stock tab** is the deliberate exception: it pages across **all
 
 **The Info tab's unit switch works in cloud since PR 3c.** `applyUnitSwitch` is now in `itemStock.graphql`, and `buildStockConversions` no longer gates on `isLocal`. Before that the cloud schema had no such mutation, so a cloud unit switch left every location's tracked quantities in the OLD unit.
 
-**Multi-row writes must be atomic in cloud too.** Local mode wraps them in a Dexie transaction (`consumeRecipesBatch`, `applyUnitSwitchBatch`); the cloud counterpart is a **single combined GraphQL mutation** wrapping all the affected rows in one server-side `prisma.$transaction`, not a sequence of Apollo calls. The item unit switch is the worked example — see `items/CLAUDE.md`. **`consumeRecipes` is still the outstanding one**: its resolver writes row by row with no transaction, so a cooking session that fails partway can leave some items consumed and some not.
+**Multi-row writes must be atomic in cloud too.** Local mode wraps them in a Dexie transaction (`consumeRecipesBatch`, `applyUnitSwitchBatch`); the cloud counterpart is a **single combined GraphQL mutation** wrapping all the affected rows in one server-side `prisma.$transaction`, not a sequence of Apollo calls. The item unit switch is the worked example — see `items/CLAUDE.md`. **`consumeRecipes` joined them in households H3b task B.6.** Until then its resolver wrote row by row with no transaction, so a cook that failed partway left some items consumed and some not. Now every stock row, log and recipe mark is written in one `prisma.$transaction`, or none is.
 
 **Catalog-only create is live in cloud (PR 2 Task 9).** `useCreateItem({ catalogOnly: true })` is honoured in both modes: cloud creates the item and then skips the follow-up `upsertItemStock`. The four Settings
 assignment tabs create items stocked in **no** location, via
@@ -361,6 +361,8 @@ Row 3:            [A / T here · N empty · N low stock]
 
 **State** (in `CookingControlBar`):
 - `searchVisible: boolean` — whether the search input row is visible; initialized from `!!q`
+
+**Cloud cooking sends the amount used, not final numbers (households H3b task B.6).** `handleConfirmDone` sends one `{ itemId, delta, note, logKey, logParams }` per item, where `delta` is minus the amount used (the inventory log's signed change, the same in both modes). It no longer computes `packedQuantity`, `unpackedQuantity` or the log `quantity`. The cloud server reads the stock row at the cook's location, locks it (`SELECT … FOR UPDATE`), applies the shared `consumeItem` and writes the log total with `getPackedTotal`, all in one transaction. Before B.6 two people cooking the same item from the same screen sent the same final numbers, and one use was lost. Local mode computes the same numbers as before, now inside `useConsumeRecipes` from the `localStock` the page passes (see `hooks/CLAUDE.md`). Any failure shows one toast, `cooking.consumeFailed`, and the dialog stays open. Before B.6 a failure showed nothing.
 
 **`lastCookedAt`:** When Done is confirmed, `lastCookedAt` is recorded on each Recipe that had at least one item checked. This timestamp drives the `recent` sort order.
 
