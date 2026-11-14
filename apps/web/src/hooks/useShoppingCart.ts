@@ -1,3 +1,4 @@
+import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { useApolloClient } from '@apollo/client/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -254,26 +255,38 @@ export function useRemoveFromCart() {
 /**
  * What `useCheckout` is called with.
  *
- * `items` is the on-hand total each inventory log row records, in PACKAGE
- * units, computed by the CALLER. The cloud resolver cannot compute it:
- * `amountPerPackage` is a global `Item` field and the resolver holds only the
- * per-location `ItemStock` row. See the doc string on `CheckoutItemInput` in
- * apps/server/src/schema/cart.graphql for the full reason and the formula.
+ * `items` lists the cart rows the screen showed as being bought
+ * (`quantity > 0`), each with the amount it showed. The cloud `checkout`
+ * buys exactly those rows, or refuses with `CART_CHANGED` when the shared
+ * cart changed after the screen loaded (households H3b task B.5). The server
+ * computes every inventory log total itself; the client no longer sends one.
+ * See the doc string on `CheckoutItemInput` in
+ * apps/server/src/schema/cart.graphql.
  *
- * `useConsumeRecipes` already works this way, for the same reason.
- *
- * It is REQUIRED even though the LOCAL branch ignores it. Local mode computes
- * the same number itself inside `checkout` (src/db/operations.ts) and never
- * calls GraphQL. Making the field optional would let the one cloud call site
- * drop it and fail at runtime with `BAD_USER_INPUT`; required means `tsc`
- * catches that instead.
+ * It is REQUIRED even though the LOCAL branch ignores it. Local mode has one
+ * user and reads its own cart inside `checkout` (src/db/operations.ts).
+ * Making the field optional would let the one cloud call site drop it, and
+ * the server would answer `CART_CHANGED` for every cart with rows being
+ * bought; required means `tsc` catches that instead.
  */
 interface CheckoutArgs {
   cartId: string
-  items: { itemId: string; quantity: number }[]
+  items: { cartItemId: string; quantity: number }[]
   note?: string
   logKey?: string
   logParams?: Record<string, string>
+}
+
+/**
+ * True when a cloud `checkout` was refused because the cart changed after the
+ * screen loaded (server error code `CART_CHANGED`, plan decision P4). Reads
+ * `extensions.code`, never the message.
+ */
+export function isCartChangedError(err: unknown): boolean {
+  return (
+    CombinedGraphQLErrors.is(err) &&
+    err.errors.some((e) => e.extensions?.code === 'CART_CHANGED')
+  )
 }
 
 export function useCheckout() {
@@ -284,9 +297,9 @@ export function useCheckout() {
   const client = useApolloClient()
 
   const localMutation = useMutation({
-    // `items` is destructured off nowhere here on purpose: local `checkout`
-    // reads the stock rows itself and computes the same total. Only the cloud
-    // branch has to be told.
+    // `items` is destructured off nowhere here on purpose: local mode has one
+    // user, and local `checkout` reads its own cart and stock rows. Only the
+    // cloud branch, where the cart is shared, has to say what it showed.
     mutationFn: ({ cartId, logKey, logParams }: CheckoutArgs) =>
       checkout(cartId, {
         ...(logKey ? { logKey } : {}),
@@ -302,6 +315,27 @@ export function useCheckout() {
   const [cloudCheckout, { loading: cloudCheckoutLoading }] =
     useCheckoutMutation()
 
+  // On `CART_CHANGED` the screen is out of date: a co-member changed or bought
+  // the cart. Read this cart's rows again from the server, so the page shows
+  // the cart as it is now, then let the error through for the page to show
+  // its message. A failed reload must not hide the refusal, so its error is
+  // dropped.
+  //
+  // `network-only` and the same document and variables as `useCartItems`,
+  // so the result lands in the cache entry the page is watching.
+  async function reloadChangedCart(err: unknown, cartId: string) {
+    if (!isCartChangedError(err)) return
+    try {
+      await client.query({
+        query: CartItemsDocument,
+        variables: { cartId },
+        fetchPolicy: 'network-only',
+      })
+    } catch {
+      // the refusal below is what the user needs to see
+    }
+  }
+
   if (mode === 'cloud') {
     return {
       mutate: (
@@ -312,8 +346,8 @@ export function useCheckout() {
           variables: {
             cartId,
             // Spread unconditionally, unlike the three optional fields below:
-            // `items` is non-null in the schema, and an empty list is a real
-            // (if pointless) checkout, not a missing argument.
+            // `items` is non-null in the schema. An empty list is accepted
+            // only while the cart has no rows being bought.
             items,
             ...(note ? { note } : {}),
             ...(logKey ? { logKey } : {}),
@@ -343,7 +377,8 @@ export function useCheckout() {
             })
             options?.onSuccess?.()
           },
-          (err) => {
+          async (err) => {
+            await reloadChangedCart(err, cartId)
             options?.onError?.(err)
           },
         ),
@@ -354,25 +389,31 @@ export function useCheckout() {
         logKey,
         logParams,
       }: CheckoutArgs) => {
-        const r = await cloudCheckout({
-          variables: {
-            cartId,
-            // Spread unconditionally, unlike the three optional fields below:
-            // `items` is non-null in the schema, and an empty list is a real
-            // (if pointless) checkout, not a missing argument.
-            items,
-            ...(note ? { note } : {}),
-            ...(logKey ? { logKey } : {}),
-            ...(logParams ? { logParams } : {}),
-          },
-          refetchQueries: [
-            { query: CartItemsDocument, variables: { cartId } },
-            { query: GetItemsDocument },
-            'VendorCart',
-            { query: AllCartsDocument },
-            { query: AllCartItemsDocument },
-          ],
-        })
+        let r: Awaited<ReturnType<typeof cloudCheckout>>
+        try {
+          r = await cloudCheckout({
+            variables: {
+              cartId,
+              // Spread unconditionally, unlike the three optional fields below:
+              // `items` is non-null in the schema. An empty list is accepted
+              // only while the cart has no rows being bought.
+              items,
+              ...(note ? { note } : {}),
+              ...(logKey ? { logKey } : {}),
+              ...(logParams ? { logParams } : {}),
+            },
+            refetchQueries: [
+              { query: CartItemsDocument, variables: { cartId } },
+              { query: GetItemsDocument },
+              'VendorCart',
+              { query: AllCartsDocument },
+              { query: AllCartItemsDocument },
+            ],
+          })
+        } catch (err) {
+          await reloadChangedCart(err, cartId)
+          throw err
+        }
         client.cache.evict({
           id: 'ROOT_QUERY',
           fieldName: 'lastPurchaseDates',

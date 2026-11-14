@@ -1,9 +1,11 @@
 // Behaviour tests for the "is this cart row being bought?" rule in `@p1i/types`
 // (`isBeingBought`, in `packages/types/src/index.ts`).
 //
-// The server's `checkout` resolver and the web app's
-// `buildCheckoutLogQuantities` both import this one function. These tests pin
-// its exact answer for each case, so a change to the rule goes red here.
+// The web shopping page uses this function to pick the rows a cloud checkout
+// sends, and the server's `checkout` reads the same rows with the SQL filter
+// `quantity: { gt: 0 }` (households H3b task B.5). These tests pin the
+// function's exact answer for each case, so a change to the rule goes red
+// here.
 // `packages/types` has no test runner of its own, and this file runs in
 // `pnpm test` (the server suite).
 import { isBeingBought } from '@p1i/types'

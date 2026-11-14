@@ -6,17 +6,17 @@ import type { Context } from '../context.js'
 import type { CartFake, CartItemRow, CartRow } from '../test/cartFake.js'
 import type { HouseholdWorld } from '../test/householdWorld.js'
 
-// Shared carts: every cart read and write except `checkout`, scoped by the
+// Shared carts: every cart read and write except `checkout` (see
+// `cart-checkout.resolver.test.ts`), scoped by the
 // cart's LOCATION, not by who added a row (households H3b, task B.4).
 //
 // ── WHY A FILE OF ITS OWN ──
 //
-// `cart.resolver.test.ts` mocks `cart` and `cartItem` with plain `vi.fn()`
-// recorders, and its `checkout` tests still need them: `checkout` still
-// filters by `CartItem.userId` until task B.5, and `cartFake` THROWS on a
-// `userId` where key. So the resolvers task B.4 moved live here, on the
-// stateful `cartFake` (src/test/cartFake.ts), and `checkout` stays there until
-// B.5 moves it.
+// `cart.resolver.test.ts` mocks `cart` with plain `vi.fn()` recorders for
+// `vendorCart` and `allCarts`. The resolvers task B.4 moved live here, on the
+// stateful `cartFake` (src/test/cartFake.ts). `checkout` has its own file,
+// `cart-checkout.resolver.test.ts` (task B.5), because it needs the stock, log
+// and item stores too, all registered for rollback.
 //
 // ── WHAT THE FAKE MAKES TESTABLE ──
 //

@@ -23,10 +23,11 @@ import { makeGql } from '../utils/cloud'
 // `TEST_DATABASE_URL` (a dedicated Neon branch), so these tests do.
 //
 // Since issue #336 it also covers ONE non-location behaviour of `checkout`:
-// the on-hand total the purchase log records. That number now arrives from the
-// client in the required `items` argument, and this file is the only place the
-// whole path runs against real SQL, so the assertion belongs here even though
-// it is not about location. It has its own fixture, `PACKED_FIXTURE`.
+// the on-hand total the purchase log records. Since households H3b task B.5 the
+// SERVER computes that number (`getPackedTotal` on the stock row it wrote), and
+// this file is the only place that runs against real SQL, so the assertion
+// belongs here even though it is not about location. It has its own fixture,
+// `PACKED_FIXTURE`.
 //
 // ── WHY THE FIXTURE ALWAYS HAS TWO LOCATIONS ─────────────────────────────────
 //
@@ -193,12 +194,11 @@ const ITEM = `query ($id: ID!) { item(id: $id) { id targetUnit amountPerPackage 
 const ADD_TO_CART = `mutation ($cartId: ID!, $itemId: ID!, $quantity: Int!) {
   addToCart(cartId: $cartId, itemId: $itemId, quantity: $quantity) { id quantity }
 }`
-// `items` is REQUIRED (issue #336). It carries, per bought item, the on-hand
-// total in PACKAGE units that the CLIENT computed — see `CheckoutItemInput` in
-// apps/server/src/schema/cart.graphql for why the server cannot compute it.
-// Omitting it fails GraphQL validation with
-// `argument "items" of type "[CheckoutItemInput!]!" is required`, so every
-// caller below has to supply the number the web client would have sent.
+// `items` is REQUIRED. Since households H3b task B.5 it lists the cart rows the
+// screen showed as being bought, as `{ cartItemId, quantity }` with the amount
+// shown, and the server refuses with `CART_CHANGED` when it does not match the
+// cart. It carries no stock total any more. See `CheckoutItemInput` in
+// apps/server/src/schema/cart.graphql.
 const CHECKOUT = `mutation ($cartId: ID!, $items: [CheckoutItemInput!]!, $note: String) {
   checkout(cartId: $cartId, items: $items, note: $note) { id lastPurchasedAt }
 }`
@@ -265,16 +265,14 @@ test.describe('cloud location-scoped writes — checkout and cooking', () => {
     // an id that lost its location prefix would make every assertion below
     // vacuous rather than failing.
     expect(vendorCart.id).toBe(`${office}:no-vendor`)
-    await gql(ADD_TO_CART, { cartId: vendorCart.id, itemId: MILK, quantity: 2 })
-    // The total the web client would send: Milk has no `amountPerPackage` here,
-    // so `getPackedTotal({ packed: 5, unpacked: 0 })` is 5, plus the 2 bought.
-    // This fixture CANNOT prove the pack conversion — without an
-    // `amountPerPackage` the conversion and the plain sum give the same 7. The
-    // test that proves it is `user sees the converted on-hand total …` below,
-    // which seeds `PACKED_FIXTURE`.
+    const { addToCart } = await gql<{ addToCart: { id: string } }>(
+      ADD_TO_CART,
+      { cartId: vendorCart.id, itemId: MILK, quantity: 2 },
+    )
+    // The row the screen shows, with the amount it shows.
     await gql(CHECKOUT, {
       cartId: vendorCart.id,
-      items: [{ itemId: MILK, quantity: 7 }],
+      items: [{ cartItemId: addToCart.id, quantity: 2 }],
       note: 'bought at the office',
     })
 
@@ -324,21 +322,23 @@ test.describe('cloud location-scoped writes — checkout and cooking', () => {
     // coverage.
     expect(item.amountPerPackage).toBe(6)
 
-    // When the user buys 1 Milk from the OFFICE cart, sending the total the web
-    // client computes: `getPackedTotal({ packed: 2, unpacked: 3,
-    // amountPerPackage: 6 }) + 1` = 2.5 + 1 = 3.5
-    // (apps/web/src/lib/checkoutQuantities.ts). The cart quantity is added
-    // AFTER the conversion, because it is already counted in packs.
+    // When the user buys 1 Milk from the OFFICE cart. The server computes the
+    // log total itself (households H3b task B.5): `getPackedTotal` of the
+    // stock after the purchase, 3 packed + 3/6 = 3.5. The cart quantity is in
+    // the packed column and is never divided by `amountPerPackage`.
     const { vendorCart } = await gql<{ vendorCart: { id: string } }>(
       VENDOR_CART,
       {
         locationId: office,
       },
     )
-    await gql(ADD_TO_CART, { cartId: vendorCart.id, itemId: MILK, quantity: 1 })
+    const { addToCart } = await gql<{ addToCart: { id: string } }>(
+      ADD_TO_CART,
+      { cartId: vendorCart.id, itemId: MILK, quantity: 1 },
+    )
     await gql(CHECKOUT, {
       cartId: vendorCart.id,
-      items: [{ itemId: MILK, quantity: 3.5 }],
+      items: [{ cartItemId: addToCart.id, quantity: 1 }],
       note: 'bought a pack at the office',
     })
 
@@ -353,8 +353,7 @@ test.describe('cloud location-scoped writes — checkout and cooking', () => {
     }>(ITEM_LOGS, { itemId: MILK, locationId: office })
     expect(officeLogs.itemLogs).toHaveLength(1)
     expect(officeLogs.itemLogs[0].quantity).toBe(3.5)
-    // `delta` is still the server's own `ci.quantity` — only the converted
-    // total moved to the client, so a swap of the two fields fails here.
+    // `delta` is the amount bought, so a swap of the two fields fails here.
     expect(officeLogs.itemLogs[0].delta).toBe(1)
     expect(officeLogs.itemLogs[0].note).toBe('bought a pack at the office')
 
@@ -368,7 +367,7 @@ test.describe('cloud location-scoped writes — checkout and cooking', () => {
 
     // And the OFFICE stock row gained a whole pack while its unpacked
     // remainder was left alone: 2 → 3 packed, 3 unpacked. `checkout` writes
-    // `packedQuantity: { increment: ci.quantity }` and touches nothing else, so
+    // `packedQuantity: { increment: <amount bought> }` and touches nothing else, so
     // a resolver that folded the purchase into `unpackedQuantity` fails here.
     const { itemStocksForItem } = await gql<{ itemStocksForItem: StockRow[] }>(
       STOCKS_FOR_ITEM,

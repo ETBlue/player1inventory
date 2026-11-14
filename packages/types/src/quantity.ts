@@ -139,8 +139,10 @@ export function consumeItem(item: Stock, amount: number): void {
 }
 
 /**
- * One entry of the cloud `checkout` mutation's `items` argument. Matches
- * `CheckoutItemInput` in apps/server/src/schema/cart.graphql.
+ * One item's on-hand total after a checkout, as `buildCheckoutLogQuantities`
+ * returns it. Until households H3b task B.5 this was also the shape of the
+ * cloud `checkout` mutation's `items` argument; that input is now
+ * `{ cartItemId, quantity }` and carries no total.
  */
 export interface CheckoutLogQuantity {
   itemId: string
@@ -160,18 +162,25 @@ type CheckoutStockItem = { id: string } & Pick<
   Partial<Pick<StockConfigFields, 'amountPerPackage'>>
 
 /**
- * Builds the `items` argument the cloud `checkout` mutation requires: for each
- * item being bought, its on-hand total in PACKAGE units AFTER the purchase.
+ * For each item being bought, its on-hand total in PACKAGE units AFTER the
+ * purchase: `getPackedTotal(stock) + bought amount`.
  *
- * The client owns this number because the cloud resolver cannot compute it.
- * `amountPerPackage` is a global `Item` field and the resolver holds only the
- * per-location `ItemStock` row, so it used to write `packedQuantity +
- * unpackedQuantity` raw — 6 where local mode gives 3.5 for an item with
- * `amountPerPackage` 6 holding 2 packed and 3 unpacked, plus 1 bought.
- * Issue #336.
+ * Issue #336: for an item with `amountPerPackage` 6 holding 2 packed and 3
+ * unpacked, buying 1 gives 3.5. The raw `packed + unpacked + bought` gives 6.
+ *
+ * ── WHO CALLS IT ──
+ *
+ * From issue #336 until households H3b task B.5 the shopping page called it
+ * to build the cloud `checkout` mutation's `items` argument, because the
+ * resolver did not read `amountPerPackage`. Since task B.5 the resolver reads
+ * it and computes the same number itself, with `getPackedTotal` on the stock
+ * row it has just written (apps/server/src/resolvers/cart.resolver.ts). No
+ * production code calls this function now. It stays as the reference answer:
+ * its own tests (apps/web/src/lib/checkoutQuantities.test.ts) pin the rule,
+ * and the server's checkout tests compare their log totals with it.
  *
  * Local mode computes the same number itself inside `checkout`
- * (apps/web/src/db/operations.ts) and never calls this.
+ * (apps/web/src/db/operations.ts) and never called this.
  */
 export function buildCheckoutLogQuantities(
   cartItems: readonly CheckoutCartItem[],
@@ -179,20 +188,14 @@ export function buildCheckoutLogQuantities(
 ): CheckoutLogQuantity[] {
   return (
     cartItems
-      // `isBeingBought` is the SHARED rule, defined in `./index.ts`. The
-      // server's `buyingItems` filter must accept the same set: a bought item
-      // with no entry in the result fails the whole checkout with
-      // `BAD_USER_INPUT`, and the resolver has no fallback on purpose. The
-      // server imports the same function from `@p1i/types`, so there is one
-      // copy of the rule. `apps/server/src/lib/isBeingBought.test.ts` pins it.
+      // `isBeingBought` is the SHARED rule, defined in `./index.ts`: only rows
+      // being bought (`quantity > 0`) get a log, the same set the server's
+      // checkout buys. `apps/server/src/lib/isBeingBought.test.ts` pins it.
       .filter(isBeingBought)
       .flatMap((ci) => {
         const item = items.find((i) => i.id === ci.itemId)
-        // A cart row whose item is not in `items` is skipped rather than sent
-        // with a guessed total. The page renders from the same `items` list,
-        // so this only happens when another device added the cart row after
-        // this page rendered — the accepted race. The checkout then fails with
-        // `BAD_USER_INPUT` naming the item and the user retries.
+        // A cart row whose item is not in `items` is skipped rather than given
+        // a guessed total.
         if (!item) return []
         return [
           {

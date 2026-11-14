@@ -6,6 +6,7 @@ import {
 import { ArrowLeft, ArrowUpFromLine, Check, Loader2, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { ItemSearchTail } from '@/components/item/ItemSearchTail'
@@ -42,14 +43,14 @@ import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
+import { isCartChangedError } from '@/hooks/useShoppingCart'
 import { useShowStock } from '@/hooks/useShowStock'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
-import { buildCheckoutLogQuantities } from '@/lib/checkoutQuantities'
 import { filterItems, filterItemsByRecipes } from '@/lib/filterUtils'
 import { isInactiveHere, isStockedHere } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
-import type { PantryItem } from '@/types'
+import { isBeingBought, type PantryItem } from '@/types'
 
 export const Route = createFileRoute('/shopping/$vendorId')({
   component: VendorCart,
@@ -313,14 +314,16 @@ function VendorCart() {
     })
     .reduce((sum, ci) => sum + ci.quantity, 0)
 
-  // What `checkout` writes into each inventory log's `quantity`: each bought
-  // item's on-hand total in PACKAGE units AFTER the purchase. The rule, the
-  // term order and the `ci.quantity > 0` filter all live in the helper, with
-  // unit tests in `lib/checkoutQuantities.test.ts`. Issue #336.
-  //
-  // `items` here is a `PantryItem`, so it carries the joined per-location
-  // stock AND the global `amountPerPackage` the helper needs.
-  const checkoutLogQuantities = buildCheckoutLogQuantities(cartItems, items)
+  // What the cloud `checkout` is told: every row of this cart being bought
+  // (`isBeingBought`, `quantity > 0`), with the amount this screen shows.
+  // ALL of the cart's rows, not only the ones the vendor filter above keeps:
+  // the server buys every row being bought and refuses with `CART_CHANGED`
+  // when the list leaves one out. The server computes each log total itself
+  // (households H3b task B.5); the page used to send one per item, built by
+  // `buildCheckoutLogQuantities` (issue #336). Local `checkout` ignores this.
+  const checkoutRows = cartItems
+    .filter(isBeingBought)
+    .map((ci) => ({ cartItemId: ci.id, quantity: ci.quantity }))
 
   function handleToggleCart(item: PantryItem) {
     const ci = cartItemMap.get(item.id)
@@ -608,7 +611,7 @@ function VendorCart() {
                   try {
                     await checkout.mutateAsync({
                       cartId: cart.id,
-                      items: checkoutLogQuantities,
+                      items: checkoutRows,
                       note,
                       logKey,
                       logParams,
@@ -619,8 +622,17 @@ function VendorCart() {
                       replace: true,
                     })
                     setShowCheckoutDialog(false)
-                  } catch {
-                    // mutation failed; dialog stays open so user can retry
+                  } catch (err) {
+                    // The shared cart changed after this screen loaded (cloud
+                    // only). `useCheckout` has already reloaded the cart's
+                    // rows, so close the dialog and let the user check the
+                    // cart again before retrying.
+                    if (isCartChangedError(err)) {
+                      setShowCheckoutDialog(false)
+                      toast.error(t('shopping.cartChanged'))
+                    }
+                    // Any other failure: the dialog stays open so the user
+                    // can retry, as before.
                     return
                   }
                   setIsCheckoutRefetching(true)

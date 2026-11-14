@@ -71,6 +71,7 @@
       "title": "Abandon this shopping trip?",
       "description": "All items will be removed from the cart."
     },
+    "cartChanged": "This cart changed. Please check and try again.",
     "checkoutDialog": {
       "title": "Complete shopping trip?",
       "description": "Quantities will be updated based on your cart."

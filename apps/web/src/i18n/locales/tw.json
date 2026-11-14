@@ -71,6 +71,7 @@
       "title": "放棄這次購物？",
       "description": "放棄購物後，會清空購物車。"
     },
+    "cartChanged": "購物車已有變動，請確認後再試一次。",
     "checkoutDialog": {
       "title": "完成購物？",
       "description": "完成購物後，會更新各品項的庫存數量。"

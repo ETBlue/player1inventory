@@ -76,9 +76,8 @@ describe('buildCheckoutLogQuantities', () => {
     // When the checkout payload is built
     const result = buildCheckoutLogQuantities(cartItems, [PACKED_ITEM, other])
 
-    // Then only the bought item has an entry. This matches the server's
-    // `buyingItems` filter (cart.resolver.ts:167), which writes a log row for
-    // exactly the same set.
+    // Then only the bought item has an entry. The server's `checkout` writes a
+    // log row for exactly the same set (`quantity: { gt: 0 }`).
     expect(result).toEqual([{ itemId: 'item-1', quantity: 3.5 }])
   })
 
@@ -92,9 +91,7 @@ describe('buildCheckoutLogQuantities', () => {
     // When the checkout payload is built
     const result = buildCheckoutLogQuantities(cartItems, [PACKED_ITEM])
 
-    // Then it is skipped rather than sent with a guessed total. The server
-    // then rejects the whole checkout with `BAD_USER_INPUT` naming `ghost`,
-    // which is the accepted race — it must not silently log a wrong number.
+    // Then it is skipped rather than given a guessed total.
     expect(result).toEqual([{ itemId: 'item-1', quantity: 3.5 }])
   })
 
