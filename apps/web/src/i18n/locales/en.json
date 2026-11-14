@@ -120,6 +120,7 @@
       "requested": "requested",
       "available": "available"
     },
+    "consumeFailed": "Could not finish cooking. Please try again.",
     "cancelDialog": {
       "title": "Discard all selections?",
       "description": "All recipe selections and amount adjustments will be reset."

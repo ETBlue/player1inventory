@@ -120,6 +120,7 @@
       "requested": "需要",
       "available": "現有"
     },
+    "consumeFailed": "做菜沒有完成，請再試一次。",
     "cancelDialog": {
       "title": "放棄做菜？",
       "description": "食譜跟材料的打勾狀態會取消，用量設定也會歸零。"

@@ -402,30 +402,25 @@ test.describe('cloud location-scoped writes — checkout and cooking', () => {
         occurredAt: new Date().toISOString(),
         recipeIds: [PANCAKES],
         locationId: office,
-        items: [
-          {
-            itemId: MILK,
-            packedQuantity: 4,
-            unpackedQuantity: 0,
-            delta: -1,
-            quantity: 4,
-            note: 'cooked at the office',
-          },
-        ],
+        // Since households H3b task B.6 the input is the amount used, as a
+        // negative `delta`, and no final numbers. The server reads the stock
+        // row, applies `consumeItem` and computes the log total itself.
+        items: [{ itemId: MILK, delta: -1, note: 'cooked at the office' }],
       },
     })
-    // `consumeRecipes` swallows a per-item failure into `itemResults` instead
-    // of throwing, so a broken write would otherwise look like a clean run
-    // with missing rows.
+    // Since B.6 a failure is a GraphQL error on the whole cook (one
+    // transaction), so `gql` would have thrown. Kept as a cheap check.
     expect(consumeRecipes.allSucceeded).toBe(true)
 
     // Then the inventory log is at the OFFICE
     const officeLogs = await gql<{
-      itemLogs: { delta: number; note: string | null }[]
+      itemLogs: { delta: number; quantity: number; note: string | null }[]
     }>(ITEM_LOGS, { itemId: MILK, locationId: office })
     expect(officeLogs.itemLogs).toHaveLength(1)
     expect(officeLogs.itemLogs[0].delta).toBe(-1)
     expect(officeLogs.itemLogs[0].note).toBe('cooked at the office')
+    // And the log total is the one the SERVER computed: 5 - 1 = 4
+    expect(officeLogs.itemLogs[0].quantity).toBe(4)
 
     // And the DEFAULT location has no log at all — the assertion that fails
     // when `consumeRecipes` falls back to the caller's default location.
@@ -442,6 +437,74 @@ test.describe('cloud location-scoped writes — checkout and cooking', () => {
     )
     expect(stockAt(itemStocksForItem, office)?.packedQuantity).toBe(4)
     expect(stockAt(itemStocksForItem, home)?.packedQuantity).toBe(3)
+  })
+
+  // Households H3b task B.6. Before it, each screen sent the final numbers it
+  // computed from the stock it had loaded, so two cooks from the same screen
+  // both sent "4 left" and one use was lost. These two tests are the only
+  // place the server's `SELECT … FOR UPDATE` runs against real Postgres.
+  test('two cooks of the same item, one after the other from the same screen, both count', async ({
+    request,
+  }) => {
+    // Given Milk at the Office: 5 packed
+    const gql = makeGql(request)
+    const { office } = await seed(request)
+    const cookOne = () =>
+      gql(CONSUME_RECIPES, {
+        input: {
+          occurredAt: new Date().toISOString(),
+          recipeIds: [],
+          locationId: office,
+          items: [{ itemId: MILK, delta: -1 }],
+        },
+      })
+
+    // When the same cook (1 Milk) is sent twice
+    await cookOne()
+    await cookOne()
+
+    // Then both uses are taken off: 5 - 1 - 1 = 3
+    const { itemStocksForItem } = await gql<{ itemStocksForItem: StockRow[] }>(
+      STOCKS_FOR_ITEM,
+      { itemId: MILK },
+    )
+    expect(stockAt(itemStocksForItem, office)?.packedQuantity).toBe(3)
+    // And each log total is the stock after its own cook
+    const { itemLogs } = await gql<{ itemLogs: { quantity: number }[] }>(
+      ITEM_LOGS,
+      { itemId: MILK, locationId: office },
+    )
+    expect(itemLogs.map((l) => l.quantity).sort()).toEqual([3, 4])
+  })
+
+  test('two cooks of the same item sent at the same time both count', async ({
+    request,
+  }) => {
+    // Given Milk at the Office: 5 packed
+    const gql = makeGql(request)
+    const { office } = await seed(request)
+    const cookOne = () =>
+      gql(CONSUME_RECIPES, {
+        input: {
+          occurredAt: new Date().toISOString(),
+          recipeIds: [],
+          locationId: office,
+          items: [{ itemId: MILK, delta: -1 }],
+        },
+      })
+
+    // When two cooks of 1 Milk are sent together. The row lock makes the
+    // second transaction wait for the first. Without it, both could read 5
+    // and both write 4. (Whether the two requests really overlap depends on
+    // timing, so a green run here proves the SQL works, not the race.)
+    await Promise.all([cookOne(), cookOne()])
+
+    // Then both uses are taken off
+    const { itemStocksForItem } = await gql<{ itemStocksForItem: StockRow[] }>(
+      STOCKS_FOR_ITEM,
+      { itemId: MILK },
+    )
+    expect(stockAt(itemStocksForItem, office)?.packedQuantity).toBe(3)
   })
 })
 

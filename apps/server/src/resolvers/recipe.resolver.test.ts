@@ -6,21 +6,16 @@ import type { Context } from '../context.js'
 
 // ─── Mock Prisma ─────────────────────────────────────────────────────────────
 
-// `recipe` / `recipeItem` / `inventoryLog` are plain `vi.fn()` call recorders.
-// `location` and `itemStock` are the stateful fake (src/test/stockFake.ts):
-// consumeRecipes' stock write is an end state, and the fake models
-// `@@unique([itemId, locationId])` and Prisma's `where` semantics so a resolver
-// that dropped the scope cannot stay green.
+// `recipe` and `recipeItem` are plain `vi.fn()` call recorders.
 //
 // The `item` store has `findMany` and nothing else. `findMany` answers
-// `requireCatalogIds` (lib/authz.ts) for a recipe's item ids and for the items
-// `consumeRecipes` cooks (households H3a, task 3.8). It reads a
+// `requireCatalogIds` (lib/authz.ts) for a recipe's item ids. It reads a
 // household-scoped `ownedRowFake` store: every item the tests name is
 // `hh_test`'s, except `item_theirs`, which is the stranger's (`hh_other`).
-// Until task 3.8 it echoed every id back, so no test here could see a
-// stranger's item. Since PR 5 `consumeRecipes` writes no `Item` row at all —
-// the five stock columns are gone and `writeStock` is the whole write. A
-// reinstated `Item` write throws here rather than passing quietly.
+//
+// `consumeRecipes` (cooking) is tested in `recipe-consume.resolver.test.ts`
+// since households H3b task B.6. Its stock, log and recipe writes run in one
+// transaction, and its tests need stateful stores registered for rollback.
 //
 // `user`, `household`, `householdMember`, `locationMember`, `location` and
 // `itemStock` are the stateful fakes joined in `src/test/householdWorld.ts`.
@@ -55,9 +50,6 @@ vi.mock('../lib/prisma.js', async () => {
         createMany: vi.fn(),
         deleteMany: vi.fn(),
       },
-      inventoryLog: {
-        create: vi.fn(),
-      },
       ...world.client,
       // Hung off the client because a `vi.mock` factory is hoisted above every
       // import and cannot close over a module-scope binding.
@@ -69,7 +61,6 @@ vi.mock('../lib/prisma.js', async () => {
 import { prisma } from '../lib/prisma.js'
 import type { HouseholdRole, LocationRole } from '../lib/authz.js'
 import type { HouseholdWorld } from '../test/householdWorld.js'
-import { makeStock } from '../test/stockFake.js'
 
 const mockPrisma = prisma as unknown as {
   recipe: {
@@ -86,9 +77,6 @@ const mockPrisma = prisma as unknown as {
     count: ReturnType<typeof vi.fn>
     createMany: ReturnType<typeof vi.fn>
     deleteMany: ReturnType<typeof vi.fn>
-  }
-  inventoryLog: {
-    create: ReturnType<typeof vi.fn>
   }
   $world: HouseholdWorld
   $items: { reset: (rows: { id: string; householdId: string; userId: string }[]) => void }
@@ -117,14 +105,8 @@ function makeRecipe(overrides: Partial<{
 let server: ApolloServer<Context>
 const ctx: Context = { userId: 'user_test123' }
 
-// TWO locations for the cooking user, plus one belonging to somebody else that
-// is ALSO flagged isDefault. Two different assertions need this:
-//
-//   - Since PR 3b Task 3 a cook writes the location it NAMES. One location
-//     cannot tell that apart from "the caller's default location", so the last
-//     group below sends LOC_OTHER — the caller's non-default location.
-//   - LOC_STRANGER belongs to somebody else and is ALSO flagged isDefault,
-//     which is what makes the FORBIDDEN case real.
+// Two locations for the caller and one for a stranger. Only the recipe
+// resolvers above read them, through the role checks.
 const LOC_DEFAULT = 'loc_kitchen'
 const LOC_OTHER = 'loc_garage'
 const LOC_STRANGER = 'loc_theirs'
@@ -460,462 +442,7 @@ describe('Recipe resolvers', () => {
 
 // ─── consumeRecipes ──────────────────────────────────────────────────────────
 //
-// Three groups, on purpose, and what they pin changed in cloud locations PR 5.
-//
-// The first two used to be the two halves of PR 2's dual-write — group 1 the
-// `Item` write, group 2 the `ItemStock` write — and deleting either half turned
-// exactly one group red. PR 5 deleted `Item`'s five state columns and the
-// `prisma.item.updateMany` that fed them, so there is no `Item` half left.
-// Group 1 now pins the end state of the ONE write (`writeStock`) plus the
-// inventory log; group 2 pins the stock row that write lands on.
-//
-// This file's prisma mock no longer carries an `item` store at all, so a
-// reinstated `Item` write throws `Cannot read properties of undefined` rather
-// than passing quietly. That is the guard, not an assertion — two
-// `expect(mockPrisma.item.updateMany).not.toHaveBeenCalled()` controls were
-// removed in PR 5 task 2 precisely because, with the source call gone, they
-// could never fail.
-//
-// The third group, at the bottom of this file, pins PR 3b Task 3: WHICH
-// location those writes land in. The first two groups cannot: they omit
-// `locationId`, so for them the cook's location and the caller's default
-// location are the same string.
-
-const CONSUME = `mutation Consume($input: ConsumeRecipesInput!) {
-  consumeRecipes(input: $input) { allSucceeded itemResults { itemId success } }
-}`
-
-function consumeInput(
-  items: Array<{
-    itemId: string
-    packedQuantity: number
-    unpackedQuantity: number
-    delta: number
-    quantity: number
-  }>,
-  recipeIds: string[] = [],
-  // `ConsumeRecipesInput.locationId` is `ID!` since PR 3b Task 4, so every cook
-  // names one. LOC_DEFAULT is the default here only so the older tests below
-  // keep the fixture they were written against — for those, "the location the
-  // cook named" and "the caller's default location" are the same string, so
-  // they CANNOT tell the two implementations apart. The last group passes
-  // LOC_OTHER, and it is the only group that can.
-  locationId: string = LOC_DEFAULT,
-) {
-  return {
-    occurredAt: '2026-03-01T12:00:00.000Z',
-    recipeIds,
-    items,
-    locationId,
-  }
-}
-
-const COOKED_MILK = {
-  itemId: 'item_milk',
-  packedQuantity: 1,
-  unpackedQuantity: 0.5,
-  delta: -1.5,
-  quantity: 1.5,
-}
-
-// This group was called "consumeRecipes writes the Item columns" and asserted
-// `prisma.item.updateMany`'s call arguments. PR 5 dropped those columns, so the
-// cook's quantities now land on the named location's `ItemStock` row and nowhere
-// else. The test keeps its subject — "the quantities are written and a log is
-// recorded" — and reads it off the row instead of off a call recorder.
-describe('consumeRecipes writes the cooked quantities', () => {
-  it('user cooking a recipe has each item\'s quantities written and a log recorded', async () => {
-    // Given a cook that leaves Milk at 1 packed + 0.5 unpacked
-    mockPrisma.inventoryLog.create.mockResolvedValue({})
-    mockPrisma.recipe.updateMany.mockResolvedValue({ count: 1 })
-
-    // When the cook is submitted
-    const result = await execOp(CONSUME, { input: consumeInput([COOKED_MILK], ['recipe_1']) })
-
-    // Then the cook location's stock row holds those numbers
-    expect(result?.errors).toBeUndefined()
-    expect(result?.data?.consumeRecipes).toMatchObject({ allSucceeded: true })
-    expect(
-      stockFake.state.itemStocks.find(
-        (st) => st.itemId === 'item_milk' && st.locationId === LOC_DEFAULT,
-      ),
-    ).toMatchObject({ packedQuantity: 1, unpackedQuantity: 0.5 })
-    expect(mockPrisma.inventoryLog.create).toHaveBeenCalledOnce()
-    // And the recipe is marked as cooked only within the caller's household
-    // (households H3a task 3.7)
-    expect(mockPrisma.recipe.updateMany).toHaveBeenCalledWith({
-      where: { id: 'recipe_1', householdId: 'hh_test' },
-      data: { lastCookedAt: expect.any(Date) },
-    })
-  })
-})
-
-// Cooking is a COOKING right, not a catalog edit (households H3a task 3.7).
-// So a household `member` who is a location `participant` can cook, and the
-// recipe is still marked as cooked. Every other test in this file runs as the
-// household `owner`, so a `consumeRecipes` that asked for `manager` would pass
-// all of them. This test is the one that goes red then.
-describe('consumeRecipes needs only household member and location participant', () => {
-  it('user who is a household member and a location participant can cook a recipe', async () => {
-    // Given the caller is only a household `member` and a location `participant`
-    seedWorld({ household: 'member', location: 'participant' })
-    mockPrisma.inventoryLog.create.mockResolvedValue({})
-    mockPrisma.recipe.updateMany.mockResolvedValue({ count: 1 })
-
-    // When they cook
-    const result = await execOp(CONSUME, { input: consumeInput([COOKED_MILK], ['recipe_1']) })
-
-    // Then the cook works: stock written, log written, recipe marked as cooked
-    expect(result?.errors).toBeUndefined()
-    expect(result?.data?.consumeRecipes).toMatchObject({ allSucceeded: true })
-    expect(
-      stockFake.state.itemStocks.find(
-        (st) => st.itemId === 'item_milk' && st.locationId === LOC_DEFAULT,
-      ),
-    ).toMatchObject({ packedQuantity: 1, unpackedQuantity: 0.5 })
-    expect(mockPrisma.inventoryLog.create).toHaveBeenCalledOnce()
-    expect(mockPrisma.recipe.updateMany).toHaveBeenCalledWith({
-      where: { id: 'recipe_1', householdId: 'hh_test' },
-      data: { lastCookedAt: expect.any(Date) },
-    })
-  })
-})
-
-// These used to be called "the dual-write onto ItemStock" and were the second
-// half of a pair: `Item`'s five stock columns were the source of truth and
-// `ItemStock` held a copy for the cook's location. PR 5 dropped those columns,
-// so the write these tests pin is now the ONLY record a cook leaves.
-describe('consumeRecipes writes the cook location\'s ItemStock', () => {
-  function stockAt(locationId: string) {
-    return stockFake.state.itemStocks.find(
-      (s) => s.itemId === 'item_milk' && s.locationId === locationId,
-    )
-  }
-
-  beforeEach(() => {
-    mockPrisma.inventoryLog.create.mockResolvedValue({})
-    mockPrisma.recipe.updateMany.mockResolvedValue({ count: 1 })
-  })
-
-  it('user cooking at the default location leaves the other locations alone', async () => {
-    // Given Milk stocked in both of the user's locations and in a stranger's,
-    // and a cook that names LOC_DEFAULT. This is a NEGATIVE CONTROL for the
-    // location behaviour — the location it names is the caller's default, so
-    // it stays green against an implementation that ignores the argument. What
-    // it does pin is that the OTHER two rows are untouched.
-    stockFake.reset(stockFake.state.locations, [
-      makeStock({ id: 'st_default', itemId: 'item_milk', locationId: LOC_DEFAULT, packedQuantity: 3, unpackedQuantity: 1 }),
-      makeStock({ id: 'st_other', itemId: 'item_milk', locationId: LOC_OTHER, packedQuantity: 40, unpackedQuantity: 9 }),
-      makeStock({ id: 'st_stranger', itemId: 'item_milk', locationId: LOC_STRANGER, packedQuantity: 99, unpackedQuantity: 8 }),
-    ])
-
-    // When the user cooks
-    const result = await execOp(CONSUME, { input: consumeInput([COOKED_MILK]) })
-
-    // Then only the default location's row carries the post-cooking numbers
-    expect(result?.errors).toBeUndefined()
-    expect(stockAt(LOC_DEFAULT)).toMatchObject({ packedQuantity: 1, unpackedQuantity: 0.5 })
-    // And the other two are untouched — the assertion a one-location fixture
-    // could not make
-    expect(stockAt(LOC_OTHER)).toMatchObject({ packedQuantity: 40, unpackedQuantity: 9 })
-    expect(stockAt(LOC_STRANGER)).toMatchObject({ packedQuantity: 99, unpackedQuantity: 8 })
-  })
-
-  it('user cooking an item with no stock row there gets one created at the cooked quantities', async () => {
-    // Given the item has no ItemStock anywhere yet
-    stockFake.reset(stockFake.state.locations, [])
-
-    // When the user cooks with it
-    await execOp(CONSUME, { input: consumeInput([COOKED_MILK]) })
-
-    // Then a single row appears, in the default location, holding exactly the
-    // post-cooking values — absolute, not a delta
-    expect(stockFake.state.itemStocks).toHaveLength(1)
-    expect(stockFake.state.itemStocks[0]).toMatchObject({
-      itemId: 'item_milk',
-      locationId: LOC_DEFAULT,
-      packedQuantity: 1,
-      unpackedQuantity: 0.5,
-    })
-  })
-
-  it('cooking twice sets rather than accumulates, and never duplicates the row', async () => {
-    // Given a first cook has already written the row
-    stockFake.reset(stockFake.state.locations, [])
-    await execOp(CONSUME, { input: consumeInput([COOKED_MILK]) })
-
-    // When a second cook leaves it at 0 packed / 0.25 unpacked
-    await execOp(CONSUME, {
-      input: consumeInput([
-        { ...COOKED_MILK, packedQuantity: 0, unpackedQuantity: 0.25 },
-      ]),
-    })
-
-    // Then the row holds the SECOND cook's numbers, not their sum — and the
-    // @@unique constraint the fake enforces was respected by taking the update
-    // branch rather than a second create
-    expect(stockFake.state.itemStocks).toHaveLength(1)
-    expect(stockAt(LOC_DEFAULT)).toMatchObject({ packedQuantity: 0, unpackedQuantity: 0.25 })
-  })
-
-  it('a user with no locations gets one, and the stock write still lands (issue #287)', async () => {
-    // Given an account with no Location rows — a brand-new account that has
-    // never run the `locations` query. Until issue #287 the stock write returned
-    // early here and the cooked quantities were dropped with no error.
-    world.reset()
-    // And a User row that was never set up. In the server, `ensureUserOrLog`
-    // makes this row before any resolver runs; here the test makes it.
-    world.users.reset([
-      {
-        id: 'user_test123',
-        displayName: 'Test',
-        email: null,
-        lastSeenAt: null,
-        deletedAt: null,
-        householdSetupAt: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-    ])
-
-    // The account reads its location list first. Since PR 3b Task 4
-    // `ConsumeRecipesInput.locationId` is `ID!`, so this is the only way such
-    // an account can reach a cook at all: the `locations` query calls
-    // `requireHousehold`, which creates the household and its first location,
-    // "Home" (lib/household.ts), and the client then names
-    // the id it got back. That is the real client's order too —
-    // `useCloudLocationId` reads `GetLocations` before the mutation is sent.
-    const listed = await execOp(`query Locations { locations { id name } }`)
-    expect(listed?.errors).toBeUndefined()
-    const listedIds = (listed?.data?.locations as { id: string }[] | undefined)?.map((l) => l.id)
-    expect(listedIds).toHaveLength(1)
-    const created = stockFake.state.locations.find((l) => l.id === listedIds?.[0])
-    expect(created).toMatchObject({ name: 'Home' })
-    // And the item cooked is an item of the household first sign-in made
-    seedItems(created?.householdId ?? 'none')
-
-    // When they cook there
-    const result = await execOp(CONSUME, {
-      input: consumeInput([COOKED_MILK], [], created?.id),
-    })
-
-    // Then the cook reports success and the cooked quantities landed in the
-    // location that was created for them
-    expect(result?.data?.consumeRecipes).toMatchObject({ allSucceeded: true })
-    expect(stockFake.state.itemStocks).toHaveLength(1)
-    expect(stockFake.state.itemStocks[0]).toMatchObject({
-      itemId: 'item_milk',
-      locationId: created?.id,
-      packedQuantity: 1,
-      unpackedQuantity: 0.5,
-    })
-  })
-
-  it('omitting locationId is refused — the default-location fallback is gone', async () => {
-    // Given a cook that sends no locationId. Until PR 3b Task 4 the server fell
-    // back to the caller's default location, so cooking while viewing the
-    // Garage took the Kitchen's stock. The field is `ID!` now — see
-    // src/schema/recipe.graphql.
-    stockFake.reset(stockFake.state.locations, [
-      makeStock({ id: 'st_default', itemId: 'item_milk', locationId: LOC_DEFAULT, packedQuantity: 3, unpackedQuantity: 1 }),
-    ])
-
-    // When it is sent
-    const result = await execOp(CONSUME, {
-      input: {
-        occurredAt: '2026-03-01T12:00:00.000Z',
-        recipeIds: [],
-        items: [COOKED_MILK],
-      },
-    })
-
-    // Then the request fails and NOTHING is written, because the whole
-    // operation is refused before any resolver runs.
-    //
-    // `BAD_USER_INPUT`, not `GRAPHQL_VALIDATION_FAILED`: a missing field of an
-    // INPUT OBJECT is caught while coercing the variable, one stage later than
-    // a missing field ARGUMENT. `vendorCart` and `createVendor` take theirs as
-    // arguments and fail with `GRAPHQL_VALIDATION_FAILED` instead.
-    expect(result?.errors?.[0]?.extensions?.code).toBe('BAD_USER_INPUT')
-    expect(mockPrisma.inventoryLog.create).not.toHaveBeenCalled()
-    expect(stockAt(LOC_DEFAULT)).toMatchObject({ packedQuantity: 3, unpackedQuantity: 1 })
-  })
-})
-
-// ─── consumeRecipes: PR 3b Task 3, the COOK's location ───────────────────────
-//
-// Every test above names LOC_DEFAULT, so "the location the cook names" and
-// "the caller's default location" are the same string and neither group can
-// tell the two implementations apart. These pass LOC_OTHER, the caller's
-// NON-default location, which is the only fixture that can.
-//
-// Before Task 3, `ConsumeRecipesInput` carried no location at all and cooking
-// while viewing the Garage took the stock out of the Kitchen.
-
-describe("consumeRecipes writes the COOK's location, not the caller's default", () => {
-  function stockAt(locationId: string) {
-    return stockFake.state.itemStocks.find(
-      (s) => s.itemId === 'item_milk' && s.locationId === locationId,
-    )
-  }
-
-  beforeEach(() => {
-    mockPrisma.inventoryLog.create.mockResolvedValue({})
-    mockPrisma.recipe.updateMany.mockResolvedValue({ count: 1 })
-    stockFake.reset(stockFake.state.locations, [
-      makeStock({ id: 'st_default', itemId: 'item_milk', locationId: LOC_DEFAULT, packedQuantity: 3, unpackedQuantity: 1 }),
-      makeStock({ id: 'st_other', itemId: 'item_milk', locationId: LOC_OTHER, packedQuantity: 40, unpackedQuantity: 9 }),
-      makeStock({ id: 'st_stranger', itemId: 'item_milk', locationId: LOC_STRANGER, packedQuantity: 99, unpackedQuantity: 8 }),
-    ])
-  })
-
-  it("user cooking at their Garage takes the stock out of the GARAGE", async () => {
-    // Given the cook names the caller's Garage, which is NOT their default
-    // When they cook
-    const result = await execOp(CONSUME, {
-      input: consumeInput([COOKED_MILK], [], LOC_OTHER),
-    })
-
-    // Then the GARAGE's row carries the post-cooking numbers
-    expect(result?.errors).toBeUndefined()
-    expect(stockAt(LOC_OTHER)).toMatchObject({ packedQuantity: 1, unpackedQuantity: 0.5 })
-
-    // And the Kitchen — the caller's DEFAULT location — is untouched. This is
-    // the assertion that goes red if consumeRecipes resolves the default
-    // location again instead of reading the input.
-    expect(stockAt(LOC_DEFAULT)).toMatchObject({ packedQuantity: 3, unpackedQuantity: 1 })
-    // And so is the stranger's, whose location is ALSO flagged isDefault
-    expect(stockAt(LOC_STRANGER)).toMatchObject({ packedQuantity: 99, unpackedQuantity: 8 })
-  })
-
-  it('user cooking at their Garage logs it against the Garage', async () => {
-    // Given the same cook
-    // When it is submitted
-    const result = await execOp(CONSUME, {
-      input: consumeInput([COOKED_MILK], [], LOC_OTHER),
-    })
-
-    // Then the inventory log names the Garage, not the Kitchen. The log row and
-    // the stock move it explains must never name different locations.
-    expect(result?.errors).toBeUndefined()
-    expect(mockPrisma.inventoryLog.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ locationId: LOC_OTHER, itemId: 'item_milk' }),
-    })
-  })
-
-  it("cooking at another user's location is FORBIDDEN, and writes nothing", async () => {
-    // Given a location id belonging to somebody else, which is also flagged
-    // isDefault — so a resolver that looked up "a default location" rather than
-    // checking the role could find it
-    // When the caller sends it
-    const result = await execOp(CONSUME, {
-      input: consumeInput([COOKED_MILK], [], LOC_STRANGER),
-    })
-
-    // Then the WHOLE mutation is refused, not one entry in itemResults
-    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
-
-    // And nothing was written: not the log, and no stock row anywhere. The role
-    // check runs before the first write.
-    expect(mockPrisma.inventoryLog.create).not.toHaveBeenCalled()
-    expect(stockAt(LOC_STRANGER)).toMatchObject({ packedQuantity: 99, unpackedQuantity: 8 })
-  })
-
-  it('an explicit Kitchen still writes the Kitchen', async () => {
-    // Given the cook names the caller's DEFAULT location explicitly — kept so
-    // "reads the input" is not confused with "always picks the non-default
-    // location"
-    // When they cook
-    await execOp(CONSUME, { input: consumeInput([COOKED_MILK], [], LOC_DEFAULT) })
-
-    // Then the Kitchen moved and the Garage did not
-    expect(stockAt(LOC_DEFAULT)).toMatchObject({ packedQuantity: 1, unpackedQuantity: 0.5 })
-    expect(stockAt(LOC_OTHER)).toMatchObject({ packedQuantity: 40, unpackedQuantity: 9 })
-    expect(mockPrisma.inventoryLog.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ locationId: LOC_DEFAULT }),
-    })
-  })
-})
-
-// ─── consumeRecipes: households H3a task 3.8 ─────────────────────────────────
-
-describe('consumeRecipes takes only items of the cook location\'s household', () => {
-  beforeEach(() => {
-    mockPrisma.inventoryLog.create.mockResolvedValue({})
-    mockPrisma.recipe.updateMany.mockResolvedValue({ count: 1 })
-  })
-
-  it("cooking another household's item is FORBIDDEN, and nothing is written", async () => {
-    // Given a cook that names hh_other's item next to one of the caller's own
-    const result = await execOp(CONSUME, {
-      input: consumeInput(
-        [COOKED_MILK, { ...COOKED_MILK, itemId: 'item_theirs' }],
-        ['recipe_1'],
-      ),
-    })
-
-    // Then the WHOLE mutation is refused, not one entry in itemResults
-    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
-
-    // And nothing was written: no stock row, no log, no recipe marked as
-    // cooked. The check runs before the first write.
-    expect(stockFake.state.itemStocks).toHaveLength(0)
-    expect(mockPrisma.inventoryLog.create).not.toHaveBeenCalled()
-    expect(mockPrisma.recipe.updateMany).not.toHaveBeenCalled()
-  })
-
-  it('cooking an item id no row holds is BAD_USER_INPUT, and nothing is written', async () => {
-    const result = await execOp(CONSUME, {
-      input: consumeInput([{ ...COOKED_MILK, itemId: 'item_ghost' }]),
-    })
-    expect(result?.errors?.[0]?.extensions?.code).toBe('BAD_USER_INPUT')
-    expect(stockFake.state.itemStocks).toHaveLength(0)
-    expect(mockPrisma.inventoryLog.create).not.toHaveBeenCalled()
-  })
-
-  // `requireLocationRole` must run BEFORE `requireLocationItems`. Run the other
-  // way round, an existing foreign location plus an item id no row holds gives
-  // BAD_USER_INPUT, while an unknown location gives FORBIDDEN, so a stranger
-  // could tell which location ids exist (task 3.8 review).
-  it("a stranger cooking at another household's location gets FORBIDDEN, even for a missing item", async () => {
-    // Given LOC_STRANGER exists and the caller holds no role on it, and no
-    // item has the id item_ghost
-    const result = await execOp(CONSUME, {
-      input: consumeInput([{ ...COOKED_MILK, itemId: 'item_ghost' }], ['recipe_1'], LOC_STRANGER),
-    })
-
-    // Then the answer is FORBIDDEN, the same as for an unknown location, and
-    // nothing is written
-    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
-    expect(stockFake.state.itemStocks).toHaveLength(0)
-    expect(mockPrisma.inventoryLog.create).not.toHaveBeenCalled()
-    expect(mockPrisma.recipe.updateMany).not.toHaveBeenCalled()
-  })
-
-  it('an unknown cook location with a missing item gets the same FORBIDDEN (control)', async () => {
-    // A negative control: green in both orders. It shows the answer above
-    // matches this one.
-    const result = await execOp(CONSUME, {
-      input: consumeInput([{ ...COOKED_MILK, itemId: 'item_ghost' }], [], 'loc_does_not_exist'),
-    })
-    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
-    expect(stockFake.state.itemStocks).toHaveLength(0)
-    expect(mockPrisma.inventoryLog.create).not.toHaveBeenCalled()
-  })
-})
-
-describe('consumeRecipes needs location role participant', () => {
-  it('a household member who is only a location viewer cannot cook, and nothing is written', async () => {
-    // Given the caller is a household `member` and only a `viewer` at both
-    // of their locations
-    seedWorld({ household: 'member', location: 'viewer' })
-    mockPrisma.inventoryLog.create.mockResolvedValue({})
-
-    const result = await execOp(CONSUME, { input: consumeInput([COOKED_MILK], ['recipe_1']) })
-
-    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
-    expect(stockFake.state.itemStocks).toHaveLength(0)
-    expect(mockPrisma.inventoryLog.create).not.toHaveBeenCalled()
-    expect(mockPrisma.recipe.updateMany).not.toHaveBeenCalled()
-  })
-})
+// Moved to `recipe-consume.resolver.test.ts` in households H3b task B.6. The
+// cook now runs in one transaction, and its tests need stateful log and
+// recipe stores registered for rollback, which this file's call recorders are
+// not.
