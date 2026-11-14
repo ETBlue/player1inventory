@@ -295,3 +295,56 @@ runbook deploys with auto-deploy off, as it did for H3a.
 - **`InventoryLog.userId`** still means "author", and H3b does not change it.
 - **The parent design said 15 filters.** There are 12 at `0dfd536f`. The plan finds them by
   name, not by line number.
+
+## Result
+
+Built on `feature/households-h3b` from 2026-11-14 to 2026-11-15, in tasks B.1 to B.10 of the
+[plan](2026-11-14-households-plan-h3b.md). **Not merged into `develop`, not deployed.** It
+deploys at the next checkpoint release, together with H3a, by
+[`../backend/2026-11-15-deploy-runbook-households-h3b.md`](../backend/2026-11-15-deploy-runbook-households-h3b.md).
+
+### What was built
+
+| Part | Commits | What |
+|---|---|---|
+| shared rules | `7de5ba26` | `getPackedTotal`, `getCurrentQuantity`, `consumeItem`, `roundToStep`, `decimalPlaces` and `buildCheckoutLogQuantities` in `packages/types/src/quantity.ts`. The web modules re-export them; the tests stay in `apps/web` |
+| cart fake | `31a853be` | `apps/server/src/test/cartFake.ts`: one stateful store for `Cart` and `CartItem`, rolled back by `runInTransaction`, `P2002` on a second `(cartId, itemId)` row, `{ increment }`, and it throws on a `userId` `where` key |
+| migration | `e5cda94f`, `e9ba830f` | `20261114000000_shared_carts`: merge by lowest id with the sum, `CartItem_cartId_itemId_key`, drop `CartItem_cartId_idx`, drop `Cart.userId`. `verify:migration` passed on the TEST database on 2026-11-15 |
+| cart resolvers | `f8a0f545`, `be98e04e`, `f1d62efe` | scoped by location role; `addToCart` is one `upsert` with `increment`; `findCartItemForWrite` for update and remove |
+| checkout | `9171f1d3`, `54a1a0fa` | one transaction; input `{ cartItemId, quantity }`; `CART_CHANGED`; web toast `shopping.cartChanged` |
+| cooking | `8f82ffdc`, `8e36f7fe` | one transaction; input keeps `delta`; the stock row locked `FOR UPDATE`; web toast `cooking.consumeFailed` |
+| import and vendors | `b56ceb0e`, `7f73e79f`, `f5d6bd49` | cart and cart-item ownership by location role; pairs summed; `deleteVendor` across the household |
+| local mode | `d0d995f6`, `dcb8e0bb`, `5cf58ee0` | `addToCart` in one transaction; local import merges pairs; Dexie 19 (merge) and 20 (`&[cartId+itemId]`); the web `partitionPayload` fixes for `replace` and `skip` |
+| E2E | `e5c89cee`, `ecf46471`, `f010ead9`, `1b7e88f4`, `8c5fafa2` | `shared-cart.spec.ts` (8 cloud tests, 7 mutations each red against real Postgres); cart pairs kept in one upload batch; three re-import tests given a 60 s budget |
+
+### Where the build differs from the text above
+
+| Section | The text says | What was built, and why |
+|---|---|---|
+| 3, step 4 | compute the log total "with the shared rule (section 6)", meaning `buildCheckoutLogQuantities` | `getPackedTotal` of the stock row as saved in the transaction. It gives the same number for the same row, and needs no separate rule. **`buildCheckoutLogQuantities` is now used by no production code**; it stays as a reference for its 6 web tests. Deleting it is the owner's call |
+| 3 | "the second transaction finds the rows gone (or the amounts different)" | at `READ COMMITTED` two checkouts can both read the rows before either commits, so a read alone does not stop a double purchase. Each row is claimed by a `deleteMany` that names its id AND its shown amount and must delete exactly 1 row; otherwise `CART_CHANGED` and a rollback. Rows are claimed in id order, stock rows written in item id order. Timeout 30 s |
+| 4 | read, apply `consumeItem`, write | the same, plus `SELECT … FOR UPDATE` on the `ItemStock` row first. `consumeItem` is not a sum, so without the lock two cooks of one item read the same old row. On real Postgres, without the lock, 4 of 5 runs lost a use. `delta >= 0` is refused with `BAD_USER_INPUT` |
+| 2 | `updateCartItem`, `removeFromCart`: find `{ id }`, then `participant` | find `{ id }`, then return "not found" when the caller holds **no** role at that location, before the role check. The order in the text would answer `FORBIDDEN` for a stranger's id and `NOT_FOUND` for a free id, which tells a stranger which ids exist (`findCartItemForWrite`) |
+| 5 | (says nothing about batches) | the web sends cart items in batches of 50, and the server sums a pair only inside one call. A pair split across two batches was SET twice on `replace`. `chunkCartItemsByPair` now keeps every row of one pair in one batch (`f010ead9`) |
+| 6 | the moved list | `getCurrentQuantity` moved too, because `consumeItem` calls it (already noted there) |
+| 7 | "one error" for cooking | a toast, `cooking.consumeFailed`; before B.6 a failure showed nothing |
+
+### What is now wrong in this doc
+
+- *What the developer gets* says "The checkout total rule has one copy". True, but the rule the
+  server uses is `getPackedTotal`, not `buildCheckoutLogQuantities`.
+- *Tests* says the cart fakes are built so they "raise `P2002`", which is true, but does not
+  name the file: it is `cartFake.ts`, not `ownedRowFake` (the plan's first choice; see the
+  file's header for why it does not fit).
+- Section 3 ends "Each row is bought once" as if it followed from the read. It follows from
+  the claim described in the table above. The plan's *Known gaps* said two real concurrent
+  checkouts were proved "only by fakes and a serial E2E run"; `shared-cart.spec.ts` now sends
+  two checkouts and two adds with `Promise.all` against real Postgres (5 and 3 rounds). A round
+  does not always overlap: two of its mutations went red only in round 2.
+
+### New strings the owner has not confirmed
+
+| Key | English | Traditional Chinese |
+|---|---|---|
+| `shopping.cartChanged` | This cart changed. Please check and try again. | 購物車已有變動，請確認後再試一次。 |
+| `cooking.consumeFailed` | Could not finish cooking. Please try again. | 做菜沒有完成，請再試一次。 |
