@@ -194,7 +194,10 @@ These things about it are easy to get wrong. The list grows; count the bullets r
 than trusting a number here — it said **four** when there were seven.
 
 - **It parks migrations by NAME.** `scripts/verify-migration.ts` holds a `MIGRATIONS` list —
-  **eight** entries today (2026-11-11):
+  **nine** entries since households H3b task B.3 (2026-11-15; eight on 2026-11-11). The
+  ninth, `20261114000000_shared_carts`, is applied in a **fourth** `migrate deploy`, after
+  `seedSharedCartDuplicates` writes duplicate cart rows that its unique index would refuse.
+  The eight before it:
   `20260830000000_add_location_and_item_stock`,
   `20260916000000_add_location_to_log_and_cart`,
   `20260917000000_rekey_cart_to_location_vendor`,

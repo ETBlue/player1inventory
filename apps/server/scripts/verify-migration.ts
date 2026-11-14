@@ -21,7 +21,11 @@
 //      re-runs 7's backfill for rows written between the two deploys, cleans up
 //      references that cross households, then sets householdId NOT NULL and
 //      drops userId (seven tables) and Location.isDefault
-// This count and the MIGRATIONS array below must agree. The comment said "Four"
+//   9. 20261114000000_shared_carts                     (households H3b, task B.3) —
+//      merges CartItem rows with the same (cartId, itemId), adds the unique
+//      index on that pair, drops CartItem_cartId_idx, and drops Cart.userId
+// Nine migrations, then. This count and the MIGRATIONS array below must agree.
+// (It said "Eight" until H3b task B.3.) The comment said "Four"
 // for a while after entry 5 was added, so check the array rather than trusting
 // this line.
 // Migration 7 reads the "User" table that 6 creates. So it is applied in a
@@ -31,6 +35,9 @@
 // script asserts every block that reads "userId" or "isDefault" (both are gone
 // after 8), then writes what the OLD server could write between the two
 // deploys in production. See seedBetweenDeploys.
+// Migration 9 is applied in a FOURTH `migrate deploy`, after
+// seedSharedCartDuplicates writes duplicate cart rows. Those rows cannot be
+// written once 9 has run: its unique index refuses them.
 // Migration 6 is not a location migration and depends on none of the others.
 // It is parked with them anyway. Left unparked, `migrate reset` would apply it
 // BEFORE migrations 1-5, which is not the order production applies them in.
@@ -154,6 +161,23 @@ async function legacyLocations(): Promise<LegacyLocation[]> {
 
 async function legacyLocationsById(): Promise<Map<string, LegacyLocation>> {
   return new Map((await legacyLocations()).map((l) => [l.id, l]))
+}
+
+// "Cart" as it is BEFORE shared_carts, with the "userId" column that
+// migration drops. Raw SQL for the same reason as `legacyLocations`: the
+// Prisma client is generated from the FINAL schema, so `prisma.cart` cannot
+// select "userId". Only valid before shared_carts.
+interface LegacyCart {
+  id: string
+  userId: string
+  locationId: string
+  lastPurchasedAt: Date | null
+}
+
+async function legacyCarts(): Promise<LegacyCart[]> {
+  return prisma.$queryRaw<LegacyCart[]>`
+    SELECT "id", "userId", "locationId", "lastPurchasedAt" FROM "Cart" ORDER BY "id"
+  `
 }
 
 // A fixture shaped like production BEFORE the migration: Item still carries
@@ -780,7 +804,8 @@ async function assertHouseholdsConstraints(): Promise<void> {
     },
   })
   // The six catalog models and "Location" carry only "householdId" since
-  // drop_user_scope. "Cart", "CartItem" and "InventoryLog" keep "userId".
+  // drop_user_scope. "CartItem" and "InventoryLog" keep "userId"; "Cart" has
+  // none since shared_carts (this runs after it).
   const scope = { householdId: doomed.id }
   const tagType = await prisma.tagType.create({ data: { name: 'Kind', color: 'red', ...scope } })
   const parentTag = await prisma.tag.create({ data: { name: 'Dairy', typeId: tagType.id, ...scope } })
@@ -799,7 +824,7 @@ async function assertHouseholdsConstraints(): Promise<void> {
   })
   await prisma.itemStock.create({ data: { itemId: item.id, locationId: location.id } })
   const cart = await prisma.cart.create({
-    data: { id: `${location.id}:no-vendor`, userId: cascadeUser, locationId: location.id },
+    data: { id: `${location.id}:no-vendor`, locationId: location.id },
   })
   await prisma.cartItem.create({ data: { cartId: cart.id, itemId: item.id, quantity: 1, userId: cascadeUser } })
   await prisma.inventoryLog.create({
@@ -1039,7 +1064,11 @@ async function assertLocationMigrationsBeforeDrop(): Promise<void> {
   // PR 3b re-keys Cart.id, so these rows can no longer be found by their seeded
   // ids. Each of the five users below owns exactly one cart, so `userId` is an
   // unambiguous handle that survives the re-key.
-  const carts = await prisma.cart.findMany({ include: { location: true }, orderBy: { id: 'asc' } })
+  //
+  // Read with raw SQL (`legacyCarts`): "Cart"."userId" is still in the
+  // database here, but the Prisma client no longer knows it since
+  // shared_carts.
+  const carts = await legacyCarts()
 
   const cartA = carts.find((c) => c.userId === 'user-a')
   const cartI = carts.find((c) => c.userId === 'user-i')
@@ -1273,7 +1302,7 @@ async function seedBetweenDeploys(): Promise<void> {
   const householdB = await prisma.household.findFirstOrThrow({ where: { ownerId: 'user-b' } })
   const locationA = (await legacyLocations()).find((l) => l.userId === 'user-a' && l.isDefault)
   if (!locationA) throw new Error("FAIL: user-a's default location is missing before drop_user_scope")
-  const cartA = await prisma.cart.findFirst({ where: { userId: 'user-a' } })
+  const cartA = (await legacyCarts()).find((c) => c.userId === 'user-a')
   if (!cartA) throw new Error("FAIL: user-a's cart is missing before drop_user_scope")
 
   // ── The old server's writes ──
@@ -1971,6 +2000,7 @@ const MIGRATIONS = [
   '20261031000000_add_user',
   '20261104000000_add_households',
   '20261111000000_drop_user_scope',
+  '20261114000000_shared_carts',
 ] as const
 
 // Applied on its own, in a second `migrate deploy`, after
@@ -1979,8 +2009,11 @@ const MIGRATIONS = [
 const HOUSEHOLDS_MIGRATION = '20261104000000_add_households'
 
 // Applied on its own, in a third `migrate deploy`, after seedBetweenDeploys.
-// It must be the LAST entry above.
 const DROP_USER_SCOPE_MIGRATION = '20261111000000_drop_user_scope'
+
+// Applied on its own, in a fourth `migrate deploy`, after
+// seedSharedCartDuplicates. It must be the LAST entry above.
+const SHARED_CARTS_MIGRATION = '20261114000000_shared_carts'
 
 const PARKED_ROOT = join(SERVER_DIR, '.migration-under-test')
 const migrationDir = (name: string) => join(SERVER_DIR, 'prisma/migrations', name)
@@ -2025,6 +2058,219 @@ function handleFatalSignal(signal: NodeJS.Signals): void {
 process.on('SIGINT', handleFatalSignal)
 process.on('SIGTERM', handleFatalSignal)
 
+// ══════════════════════════════════════════════════════════════════════
+// 20261114000000 — shared_carts (households H3b, task B.3)
+// ══════════════════════════════════════════════════════════════════════
+//
+// main() calls `seedSharedCartDuplicates` after drop_user_scope and BEFORE
+// shared_carts, then `assertSharedCarts` after it. The duplicate rows can only
+// be written before: the migration's unique index refuses them after.
+//
+// Its own location, carts and items, so the expected numbers do not depend on
+// what the older blocks deleted. In user-a's household. Raw SQL, because
+// "Cart"."userId" is still NOT NULL here and the Prisma client no longer
+// knows the column.
+//
+// | Cart          | Rows (id: item, quantity, userId)                       | Expected after              |
+// |---------------|---------------------------------------------------------|-----------------------------|
+// | sc:cart-dup   | sc-dup-b: item-sc-1, 3.5, user-b (written FIRST)        | deleted                     |
+// |               | sc-dup-a: item-sc-1, 2,   user-a (written second)       | kept: 5.5, userId user-a    |
+// |               | sc-tri-2: item-sc-2, 10,  user-a                        | deleted                     |
+// |               | sc-tri-1: item-sc-2, 1,   user-b                        | kept: 111, userId user-b    |
+// |               | sc-tri-3: item-sc-2, 100, user-m                        | deleted                     |
+// | sc:cart-clean | sc-clean-1: item-sc-1, 4; sc-clean-2: item-sc-2, 6      | both unchanged              |
+// | sc:cart-other | sc-other-1: item-sc-1, 7                                | unchanged, not merged       |
+//
+// Why each one:
+//   - the pair has DIFFERENT amounts and DIFFERENT userIds, so "kept the sum"
+//     and "kept its own userId" can each fail on their own. The lowest id,
+//     sc-dup-a, is written SECOND: a merge that kept the first row written
+//     (by ctid) instead of the lowest id fails here.
+//   - the group of THREE catches a merge that only handles pairs, or that
+//     deletes only one other row.
+//   - sc:cart-clean holds the same two items with no duplicates: a merge that
+//     touched every row of a cart that has duplicates elsewhere fails here.
+//   - sc:cart-other holds item-sc-1 too, in a DIFFERENT cart: a merge grouped
+//     by "itemId" alone would fold it into sc:cart-dup.
+const SC_LOCATION = 'loc-sc'
+const SC_CART_DUP = `${SC_LOCATION}:cart-dup`
+const SC_CART_CLEAN = `${SC_LOCATION}:cart-clean`
+const SC_CART_OTHER = `${SC_LOCATION}:cart-other`
+
+interface CartItemSnapshot {
+  id: string
+  cartId: string
+  itemId: string
+  quantity: number
+  userId: string
+}
+
+// Every CartItem row before shared_carts, keyed by id. Filled by
+// seedSharedCartDuplicates, read by assertSharedCarts.
+let cartItemsBeforeSharedCarts = new Map<string, CartItemSnapshot>()
+
+async function seedSharedCartDuplicates(): Promise<void> {
+  console.log('Seeding duplicate cart rows for shared_carts...')
+  const householdA = await prisma.household.findFirstOrThrow({ where: { ownerId: 'user-a' } })
+  await prisma.$executeRaw`
+    INSERT INTO "Location" ("id","name","order","householdId","createdAt","updatedAt")
+    VALUES (${SC_LOCATION}, 'Shared carts', 9, ${householdA.id}, NOW(), NOW())
+  `
+  await prisma.$executeRaw`
+    INSERT INTO "Item" ("id","name","targetUnit","consumeAmount","expirationMode","householdId","createdAt","updatedAt") VALUES
+      ('item-sc-1', 'Eggs', 'package', 1, 'disabled', ${householdA.id}, NOW(), NOW()),
+      ('item-sc-2', 'Flour', 'package', 1, 'disabled', ${householdA.id}, NOW(), NOW()),
+      ('item-sc-3', 'Sugar', 'package', 1, 'disabled', ${householdA.id}, NOW(), NOW())
+  `
+  await prisma.$executeRaw`
+    INSERT INTO "Cart" ("id","userId","locationId","lastPurchasedAt") VALUES
+      (${SC_CART_DUP}, 'user-a', ${SC_LOCATION}, NULL),
+      (${SC_CART_CLEAN}, 'user-b', ${SC_LOCATION}, NULL),
+      (${SC_CART_OTHER}, 'user-a', ${SC_LOCATION}, NULL)
+  `
+  // One statement per row, so the rows are written in this order. sc-dup-b
+  // goes in before sc-dup-a on purpose (see the table above).
+  const rows: CartItemSnapshot[] = [
+    { id: 'sc-dup-b', cartId: SC_CART_DUP, itemId: 'item-sc-1', quantity: 3.5, userId: 'user-b' },
+    { id: 'sc-dup-a', cartId: SC_CART_DUP, itemId: 'item-sc-1', quantity: 2, userId: 'user-a' },
+    { id: 'sc-tri-2', cartId: SC_CART_DUP, itemId: 'item-sc-2', quantity: 10, userId: 'user-a' },
+    { id: 'sc-tri-1', cartId: SC_CART_DUP, itemId: 'item-sc-2', quantity: 1, userId: 'user-b' },
+    { id: 'sc-tri-3', cartId: SC_CART_DUP, itemId: 'item-sc-2', quantity: 100, userId: 'user-m' },
+    { id: 'sc-clean-1', cartId: SC_CART_CLEAN, itemId: 'item-sc-1', quantity: 4, userId: 'user-b' },
+    { id: 'sc-clean-2', cartId: SC_CART_CLEAN, itemId: 'item-sc-2', quantity: 6, userId: 'user-a' },
+    { id: 'sc-other-1', cartId: SC_CART_OTHER, itemId: 'item-sc-1', quantity: 7, userId: 'user-a' },
+  ]
+  for (const r of rows) {
+    await prisma.$executeRaw`
+      INSERT INTO "CartItem" ("id","cartId","itemId","quantity","userId")
+      VALUES (${r.id}, ${r.cartId}, ${r.itemId}, ${r.quantity}, ${r.userId})
+    `
+  }
+
+  // `prisma.cartItem` is safe here: "CartItem" loses no column in shared_carts.
+  const all = await prisma.cartItem.findMany()
+  cartItemsBeforeSharedCarts = new Map(all.map((r) => [r.id, { ...r }]))
+  assert(
+    all.filter((r) => r.cartId === SC_CART_DUP && r.itemId === 'item-sc-1').length === 2 &&
+      all.filter((r) => r.cartId === SC_CART_DUP && r.itemId === 'item-sc-2').length === 3,
+    'before shared_carts: the duplicate pair and the group of three are really in the table — without them the merge checks below would prove nothing',
+  )
+}
+
+async function assertSharedCarts(): Promise<void> {
+  console.log('shared_carts — the merge:')
+  const after = new Map((await prisma.cartItem.findMany()).map((r) => [r.id, r]))
+
+  // ── The pair ──
+  const dupA = after.get('sc-dup-a')
+  assert(
+    dupA?.quantity === 5.5 && dupA.userId === 'user-a' && dupA.cartId === SC_CART_DUP && dupA.itemId === 'item-sc-1',
+    `the pair: the lowest id (sc-dup-a) stays, with the sum 2 + 3.5 = 5.5 and its OWN userId user-a (read: ${JSON.stringify(dupA)})`,
+  )
+  assert(!after.has('sc-dup-b'), 'the pair: the other row (sc-dup-b, written first) is gone — a merge by write order instead of by lowest id fails here')
+
+  // ── The group of three ──
+  const tri1 = after.get('sc-tri-1')
+  assert(
+    tri1?.quantity === 111 && tri1.userId === 'user-b',
+    `the group of three: sc-tri-1 stays with 1 + 10 + 100 = 111 and its own userId user-b (read: ${JSON.stringify(tri1)})`,
+  )
+  assert(!after.has('sc-tri-2') && !after.has('sc-tri-3'), 'the group of three: both other rows are gone')
+
+  // ── No other row changed ──
+  //
+  // Every row that was in the table before, except the four merged away and
+  // the two that got a new sum, must be exactly as it was. This covers the
+  // cart with no duplicates (sc:cart-clean), the other cart holding the same
+  // item (sc:cart-other), and every row the older blocks left behind.
+  const merged = new Set(['sc-dup-a', 'sc-dup-b', 'sc-tri-1', 'sc-tri-2', 'sc-tri-3'])
+  const changed: string[] = []
+  for (const [id, before] of cartItemsBeforeSharedCarts) {
+    if (merged.has(id)) continue
+    const now = after.get(id)
+    if (!now || JSON.stringify({ ...now }) !== JSON.stringify(before)) changed.push(id)
+  }
+  assert(
+    changed.length === 0 && after.size === cartItemsBeforeSharedCarts.size - 3,
+    `every row outside the two groups is unchanged, and the table lost exactly 3 rows (read: ${cartItemsBeforeSharedCarts.size} -> ${after.size}${changed.length ? `, changed: ${changed.join(', ')}` : ''})`,
+  )
+  assert(
+    after.get('sc-other-1')?.quantity === 7 && after.get('sc-other-1')?.cartId === SC_CART_OTHER,
+    'sc-other-1 holds the same item in ANOTHER cart and is not merged — a merge grouped by itemId alone fails here',
+  )
+  assert(
+    after.get('sc-clean-1')?.quantity === 4 && after.get('sc-clean-2')?.quantity === 6,
+    'the cart with no duplicates (sc:cart-clean) is unchanged',
+  )
+
+  console.log('shared_carts — the shape:')
+
+  // ── "Cart"."userId" is gone; "CartItem"."userId" stays ──
+  //
+  // Both halves (apps/server/prisma/CLAUDE.md, "A column DROP inverts the
+  // usual assertion shape"): the two tables share the column name, and
+  // CartItem's means "added by" and must survive.
+  const cartColumns = await columnNamesOf('Cart')
+  assert(
+    !cartColumns.has('userId') && cartColumns.has('locationId') && cartColumns.has('lastPurchasedAt'),
+    `"Cart"."userId" is gone, and "locationId" and "lastPurchasedAt" stay (read: ${[...cartColumns].sort().join(', ')})`,
+  )
+  assert(
+    (await columnNamesOf('CartItem')).has('userId'),
+    '"CartItem"."userId" is still there — it means "added by" and shared_carts keeps it',
+  )
+
+  // ── Indexes ──
+  const indexes = await prisma.$queryRaw<{ indexname: string; indexdef: string }[]>`
+    SELECT indexname::text AS indexname, indexdef
+    FROM pg_indexes WHERE schemaname = 'public' AND tablename IN ('Cart', 'CartItem')
+  `
+  const pair = indexes.find((i) => i.indexname === 'CartItem_cartId_itemId_key')
+  assert(
+    !!pair && pair.indexdef.includes('UNIQUE') && pair.indexdef.includes('("cartId", "itemId")'),
+    `"CartItem_cartId_itemId_key" is a UNIQUE index on ("cartId", "itemId") (read: ${pair?.indexdef ?? 'missing'})`,
+  )
+  assert(
+    !indexes.some((i) => i.indexname === 'CartItem_cartId_idx'),
+    '"CartItem_cartId_idx" is gone — the unique index starts with "cartId" and serves those lookups (plan decision P2)',
+  )
+  assert(
+    !indexes.some((i) => i.indexname === 'Cart_userId_idx'),
+    '"Cart_userId_idx" is gone with its column',
+  )
+  assert(
+    indexes.some((i) => i.indexname === 'CartItem_itemId_idx'),
+    '"CartItem_itemId_idx" is still there — shared_carts must not drop the other index',
+  )
+
+  // ── The unique index refuses a second row ──
+  //
+  // A new item in the same cart is accepted FIRST, so the refusal below
+  // cannot pass because every write fails.
+  await prisma.cartItem.create({
+    data: { id: 'sc-new', cartId: SC_CART_DUP, itemId: 'item-sc-3', quantity: 1, userId: 'user-b' },
+  })
+  let duplicateCode: string | undefined
+  try {
+    await prisma.cartItem.create({
+      data: { cartId: SC_CART_DUP, itemId: 'item-sc-1', quantity: 1, userId: 'user-b' },
+    })
+  } catch (err) {
+    duplicateCode = err instanceof Prisma.PrismaClientKnownRequestError ? err.code : undefined
+  }
+  assert(
+    duplicateCode === 'P2002',
+    `a second CartItem row for (sc:cart-dup, item-sc-1) is refused with P2002, while a new item in the same cart was accepted (read: ${duplicateCode ?? 'no error'})`,
+  )
+
+  // ── A cart is written with no "userId" now ──
+  await prisma.cart.create({ data: { id: `${SC_LOCATION}:cart-new`, locationId: SC_LOCATION } })
+  assert(
+    (await prisma.cart.findUnique({ where: { id: `${SC_LOCATION}:cart-new` } }))?.locationId === SC_LOCATION,
+    'a Cart row is created with no "userId", the way the H3b server writes it',
+  )
+}
+
 async function main(): Promise<void> {
   // Self-heal: if a previous run was killed between parking and restoring,
   // recover instead of throwing on the renameSync below.
@@ -2056,10 +2302,14 @@ async function main(): Promise<void> {
     // Apply migrations 1-6 first, then seed the "User" rows that only exist
     // once add_user has run. See seedUsersBeforeHouseholds for why.
     console.log(
-      `Applying every migration under test except ${HOUSEHOLDS_MIGRATION} and ${DROP_USER_SCOPE_MIGRATION}...`,
+      `Applying every migration under test except ${HOUSEHOLDS_MIGRATION}, ${DROP_USER_SCOPE_MIGRATION} and ${SHARED_CARTS_MIGRATION}...`,
     )
     for (const name of MIGRATIONS) {
-      if (name !== HOUSEHOLDS_MIGRATION && name !== DROP_USER_SCOPE_MIGRATION) {
+      if (
+        name !== HOUSEHOLDS_MIGRATION &&
+        name !== DROP_USER_SCOPE_MIGRATION &&
+        name !== SHARED_CARTS_MIGRATION
+      ) {
         renameSync(parkedDir(name), migrationDir(name))
       }
     }
@@ -2086,16 +2336,29 @@ async function main(): Promise<void> {
     // before the new server takes traffic, plus one row of each kind
     // drop_user_scope's cleanup handles.
     await seedBetweenDeploys()
+
+    // Inside the `try` since H3b task B.3: shared_carts must stay parked
+    // during this deploy, and `restoreIfParked` in `finally` restores every
+    // parked migration. So drop_user_scope is restored on its own here.
+    console.log(`Applying ${DROP_USER_SCOPE_MIGRATION}...`)
+    renameSync(parkedDir(DROP_USER_SCOPE_MIGRATION), migrationDir(DROP_USER_SCOPE_MIGRATION))
+    execSync('pnpm exec prisma migrate deploy', { cwd: SERVER_DIR, env, stdio: 'inherit' })
+
+    console.log(`Asserting, after ${DROP_USER_SCOPE_MIGRATION}...`)
+    await assertDropUserScope()
+
+    // Duplicate cart rows, which only a database before shared_carts can hold.
+    await seedSharedCartDuplicates()
   } finally {
     restoreIfParked()
     parked = false
   }
 
-  console.log(`Applying ${DROP_USER_SCOPE_MIGRATION}...`)
+  console.log(`Applying ${SHARED_CARTS_MIGRATION}...`)
   execSync('pnpm exec prisma migrate deploy', { cwd: SERVER_DIR, env, stdio: 'inherit' })
 
-  console.log(`Asserting, after ${DROP_USER_SCOPE_MIGRATION}...`)
-  await assertDropUserScope()
+  console.log(`Asserting, after ${SHARED_CARTS_MIGRATION}...`)
+  await assertSharedCarts()
 
   // ══════════════════════════════════════════════════════════════════════
   // PR 5 — Item's five stock state columns are gone, ItemStock's are not
