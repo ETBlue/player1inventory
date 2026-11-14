@@ -67,7 +67,7 @@ export function useCreateVendor() {
   const { activeLocationId } = useActiveLocation()
   // Resolved at CALL time, not render time. `createVendor(locationId:)` is
   // `ID!` since PR 3b Task 4 and the server writes a `Cart` row at that
-  // location, so it demands the `member` role on it. On a fresh cloud session
+  // location, so it demands the `participant` location role on it. On a fresh cloud session
   // the render-time active id is still the `'local'` sentinel: the mutation
   // would be refused with FORBIDDEN and the vendor would never be created.
   // See `useCloudLocationId`.

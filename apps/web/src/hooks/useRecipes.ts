@@ -330,7 +330,7 @@ export function useConsumeRecipes() {
   const { activeLocationId } = useActiveLocation()
   const [cloudConsumeRecipes] = useConsumeRecipesMutation()
   // Resolved at CALL time, not render time — `ConsumeRecipesInput.locationId`
-  // is `ID!` since PR 3b Task 4 and the server takes the `member` role on it,
+  // is `ID!` since PR 3b Task 4 and the server asks for the `participant` location role on it,
   // so the `'local'` sentinel of a fresh cloud session would lose the whole
   // cook to FORBIDDEN. See `useCloudLocationId`.
   const resolveCloudLocationId = useCloudLocationId()

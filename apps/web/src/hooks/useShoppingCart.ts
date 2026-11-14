@@ -451,7 +451,7 @@ export function useVendorCart(vendorId: string | null) {
   const isCloud = mode === 'cloud'
   const { activeLocationId } = useActiveLocation()
   // `vendorCart` CREATES the cart when it is missing, so the server asks for
-  // the `member` role on `locationId`. Sending the `'local'` sentinel of a
+  // the `participant` location role on `locationId`. Sending the `'local'` sentinel of a
   // fresh cloud session would be refused with FORBIDDEN and Apollo would keep
   // that request as a live observer — see `useCloudLocationKnown`.
   const locationKnown = useCloudLocationKnown(activeLocationId, isCloud)
