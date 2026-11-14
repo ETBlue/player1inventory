@@ -145,6 +145,8 @@ amounts different) and gets `CART_CHANGED`. Each row is bought once.
 The web, on `CART_CHANGED`: refetch the cart and show "This cart changed. Please check and try
 again." (new i18n key, both languages).
 
+This section is cloud only. Local mode has one user and keeps its checkout as it is.
+
 The current rule "a row added after you opened the cart fails the checkout with
 `BAD_USER_INPUT`" becomes `CART_CHANGED` too. This is a change from the parent design, which
 said rows added later stay in the cart and the checkout goes on. The owner chose the stricter
@@ -153,10 +155,14 @@ rule (Q1): with no live updates, a changed cart means the screen is out of date.
 ### 4. Server: cooking (D4)
 
 `ConsumeRecipesItemInput` drops `packedQuantity`, `unpackedQuantity` and `quantity` (the final
-numbers and the log total). It keeps `itemId`, `delta` (the amount used, in the item's
-consumption unit), `note`, `logKey` and `logParams`. The plan confirms the exact meaning of
-`delta` against `apps/web/src/routes/cooking.tsx` (`handleConfirmDone`, about line 384) before
-it changes the field.
+numbers and the log total). It keeps `itemId`, `delta`, `note`, `logKey` and `logParams`.
+
+`delta` keeps its meaning, which is the same in both modes: it is `InventoryLog.delta`, the
+signed change written to the log. For cooking it is `-totalAmount`, the amount used, in the unit
+`consumeItem` takes (measurement units when the item tracks in measurement, otherwise packages).
+Checked in `apps/web/src/routes/cooking.tsx`, `handleConfirmDone`. The server uses `-delta` as
+the amount to pass to `consumeItem`. As today, `consumeItem` stops at zero, so when stock runs
+out the stock falls by less than the log's `delta`. H3b does not change that.
 
 In one interactive transaction, for every item: read `Item` and the `ItemStock` at the input
 location, apply the shared `consumeItem`, write the stock with `writeStock(tx, …)`, write the
@@ -228,8 +234,9 @@ The rehearsal counts, before anything runs:
 **The two changed inputs are a breaking change.** A web bundle selects the old fields, and
 GraphQL validation refuses the whole request when the shapes disagree. The server and the web
 must deploy back to back. An old cached bundle (an installed PWA) fails checkout and cooking
-with a validation error until it reloads. Production has two accounts today, so the plan only
-records this in the runbook; it does not build a two-shape server.
+with a validation error until it reloads. The owner accepted this on 2026-11-15: "it's ok
+for old app versions to break since I'm the only one user for now". The plan records it in the
+runbook and does not build a server that accepts both shapes.
 
 **The `Cart.userId` drop has the same short window as H3a.** While the old server still runs
 after the migration, a request that creates a cart writes into a dropped column and fails. The
