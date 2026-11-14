@@ -1,6 +1,5 @@
 import { GraphQLError } from 'graphql'
 import {
-  locationIdsWithRole,
   requireCatalogRole,
   requireLocationRole,
   requireOwnRowOrUnclaimed,
@@ -74,7 +73,7 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     },
     deleteVendor: async (_, { id }, ctx) => {
       requireAuth(ctx)
-      await requireCatalogRole(ctx, 'manager')
+      const householdId = await requireCatalogRole(ctx, 'manager')
       // The row check FIRST, outside the try below: a refused call must change
       // nothing — not even the caller's own carts that name this vendor id —
       // and its FORBIDDEN must reach the client rather than become `false`.
@@ -92,15 +91,24 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         // with `endsWith(':' + id)`, because a vendor id may itself contain ':'
         // and the split rule is "first colon only" (`parseCartId` in `@p1i/types`).
         //
-        // STOPGAP (households H3b task B.3), finished by task B.7: the carts
-        // at every location the caller has a role on. `Cart.userId` is gone,
-        // so this can no longer read "the caller's carts". Task B.7 widens it
-        // to every location of the caller's household (decision D8), so a
-        // location the caller holds no role on also loses this vendor's cart.
-        // Nobody can share a household before H5, so today the two give the
-        // same answer.
+        // The vendor's carts at EVERY location of the caller's household
+        // (households H3b task B.7, decision D8), including a location where
+        // the caller holds no location role. The vendor is a catalog row of
+        // the household, and `requireCatalogRole` above asked for `manager`,
+        // so deleting it takes its carts everywhere it has one. A cart left
+        // behind would name a vendor that no longer exists.
+        //
+        // `householdId` is the one `requireCatalogRole` returned, and the
+        // vendor passed `requireOwnRowOrUnclaimed` above, so it is this
+        // household's vendor. Another household's carts are not read: their
+        // locations are not in this list. (Until task B.7 this read the carts
+        // at `locationIdsWithRole`, a stopgap from task B.3.)
+        const locations = await prisma.location.findMany({
+          where: { householdId },
+          select: { id: true },
+        })
         const carts = await prisma.cart.findMany({
-          where: { locationId: { in: await locationIdsWithRole(ctx) } },
+          where: { locationId: { in: locations.map((l) => l.id) } },
           select: { id: true },
         })
         const cartIds = carts.filter((c) => parseCartId(c.id).vendorId === id).map((c) => c.id)

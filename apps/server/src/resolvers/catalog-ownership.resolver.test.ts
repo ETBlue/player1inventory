@@ -26,8 +26,9 @@ import { typeDefs } from '../schema/index.js'
 // "Mine" and "A's" now mean "my HOUSEHOLD's" and "A's household's". The
 // three catalog stores are scoped by `householdId`, and refuse a write that
 // names `userId` (task 3.14 dropped the column). `Cart` has no `userId` since
-// households H3b task B.3: `deleteVendor` finds carts through the caller's
-// location roles, so this file seeds `LocationMember` rows too. Each person is the `owner` of their own
+// households H3b task B.3. Since task B.7 (decision D8) `deleteVendor` finds
+// the vendor's carts at every location of the caller's HOUSEHOLD, so this
+// file has a small `location` store and seeds `LocationMember` rows too. Each person is the `owner` of their own
 // household, so every role check passes here: the role checks, with three
 // people, are in `catalog-household.resolver.test.ts`.
 //
@@ -115,8 +116,28 @@ vi.mock('../lib/prisma.js', async () => {
     itemId: string
     quantity: number
   }>({ model: 'CartItem', columns: ['cartId'] })
+  // The three locations, read by `deleteVendor` (households H3b task B.7)
+  // to find every location of the caller's household. Only `householdId` is
+  // modelled; any other `where` key throws, so a read that scopes by
+  // something else is not silently answered.
+  const locationRows = [
+    { id: 'loc_mine', householdId: 'hh_me' },
+    { id: 'loc_attic', householdId: 'hh_me' },
+    { id: 'loc_a', householdId: 'hh_a' },
+  ]
+  const location = {
+    findMany: async ({ where = {} }: { where?: Record<string, unknown> } = {}) => {
+      for (const key of Object.keys(where)) {
+        if (key !== 'householdId') throw new Error(`location store does not model the where key '${key}'`)
+      }
+      return locationRows
+        .filter((l) => where.householdId === undefined || l.householdId === where.householdId)
+        .map((l) => ({ ...l }))
+    },
+  }
   const { runInTransaction } = await import('../test/stockFake.js')
   const client: Record<string, unknown> = {
+    location,
     household: households.client.household,
     householdMember: households.client.householdMember,
     locationMember: households.client.locationMember,
@@ -248,11 +269,19 @@ beforeEach(() => {
     { id: `${LOC_MINE}:${VEN_A}`, locationId: LOC_MINE },
     // My vendor's cart at the location only ME2 has a role on.
     { id: `${LOC_ATTIC}:${VEN_MINE}`, locationId: LOC_ATTIC },
+    // A cart of A's HOUSEHOLD whose id names MY vendor. Only a hand-edited
+    // import can make one, but it is what tells "the carts of my household"
+    // apart from "every cart that names this vendor": a deleteVendor that
+    // read all carts would delete it.
+    { id: `${LOC_A}:${VEN_MINE}`, locationId: LOC_A },
   ])
   fakes.$cartItem.reset([
     { id: 'ci_mine', userId: ME, cartId: `${LOC_MINE}:${VEN_MINE}`, itemId: 'i1', quantity: 1 },
     { id: 'ci_a', userId: A, cartId: `${LOC_A}:${VEN_A}`, itemId: 'i2', quantity: 1 },
     { id: 'ci_mine_a', userId: ME, cartId: `${LOC_MINE}:${VEN_A}`, itemId: 'i3', quantity: 1 },
+    // ME2 added it, at the location ME has no role on.
+    { id: 'ci_attic', userId: ME2, cartId: `${LOC_ATTIC}:${VEN_MINE}`, itemId: 'i4', quantity: 1 },
+    { id: 'ci_a_mine', userId: A, cartId: `${LOC_A}:${VEN_MINE}`, itemId: 'i5', quantity: 1 },
   ])
 })
 
@@ -328,23 +357,26 @@ describe('deleteVendor ownership', () => {
   })
 
   it('user can still delete their own vendor, with its carts and their items', async () => {
+    // Given my vendor has a cart at LOC_MINE (I have a role there) and at
+    // LOC_ATTIC (my household, but only ME2 has a role there, and ME2 added
+    // its row)
     const result = await exec(DELETE_VENDOR, { id: VEN_MINE })
 
+    // Then both carts are gone, with their rows: deleteVendor clears the
+    // vendor's carts at EVERY location of my household (households H3b task
+    // B.7, decision D8), not only where I have a role. A's cart that names my
+    // vendor id stays: it is in another household.
     expect(result.data?.deleteVendor).toBe(true)
     expect(fakes.$vendor.state.rows.map((r) => r.id)).toEqual([VEN_A])
-    // The cart at LOC_ATTIC stays: the caller has no role there. STOPGAP
-    // (households H3b task B.3): task B.7 widens deleteVendor to every
-    // location of the caller's household (decision D8), and must change this
-    // line.
     expect(cartIds()).toEqual(
       [
         `${LOC_A}:${VEN_A}`,
-        `${LOC_ATTIC}:${VEN_MINE}`,
+        `${LOC_A}:${VEN_MINE}`,
         `${LOC_MINE}:${VEN_A}`,
         `${LOC_MINE}:no-vendor`,
       ].sort(),
     )
-    expect(cartItemIds()).toEqual(['ci_a', 'ci_mine_a'])
+    expect(cartItemIds()).toEqual(['ci_a', 'ci_a_mine', 'ci_mine_a'])
   })
 
   it('a second member deleting the vendor removes its cart at the location they share, and at their own', async () => {
@@ -355,12 +387,18 @@ describe('deleteVendor ownership', () => {
     const result = await exec(DELETE_VENDOR, { id: VEN_MINE }, ME2)
 
     // Then both of the vendor's carts in my household are gone, with their
-    // items, and no other cart is touched
+    // items, and no other cart is touched — another vendor's cart in my
+    // household, and another household's cart, included
     expect(result.data?.deleteVendor).toBe(true)
     expect(cartIds()).toEqual(
-      [`${LOC_A}:${VEN_A}`, `${LOC_MINE}:${VEN_A}`, `${LOC_MINE}:no-vendor`].sort(),
+      [
+        `${LOC_A}:${VEN_A}`,
+        `${LOC_A}:${VEN_MINE}`,
+        `${LOC_MINE}:${VEN_A}`,
+        `${LOC_MINE}:no-vendor`,
+      ].sort(),
     )
-    expect(cartItemIds()).toEqual(['ci_a', 'ci_mine_a'])
+    expect(cartItemIds()).toEqual(['ci_a', 'ci_a_mine', 'ci_mine_a'])
   })
 
   it('a missing vendor still returns false and deletes nothing', async () => {
