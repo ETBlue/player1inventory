@@ -46,8 +46,7 @@
 //     H3b plan: `CartItem.userId` means "added by" and is never a scope, and
 //     `Cart.userId` is dropped by task B.3. A resolver that still scopes by
 //     `userId` fails here instead of passing. The shared `filterCartItems`
-//     still accepts `userId`, because the two older resolver specs use it
-//     until task B.4.
+//     refuses it too, since task B.4.
 //   - `Cart` has no `userId` column. A write that names it throws
 //     `DroppedColumnError`, the way Prisma refuses an unknown argument after
 //     task B.3. `CartItem.userId` stays and is required on create.
@@ -161,9 +160,9 @@ export class UnsupportedNumberWriteError extends Error {
 }
 
 // Every `where` key each store models. `userId` is in neither, on purpose
-// (see the file head). The CartItem spec is the shared one in
-// `cartItemFake.ts` minus `userId`; `filterCartItems` then checks again with
-// its own spec, which accepts a superset.
+// (see the file head). The CartItem spec is the same as the shared one in
+// `cartItemFake.ts` (which also dropped `userId` in task B.4);
+// `filterCartItems` then checks again with its own spec.
 const CART_WHERE: WhereSpec = { id: 'in', locationId: 'in' }
 const CART_ITEM_WHERE: WhereSpec = {
   id: 'in',

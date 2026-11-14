@@ -1,15 +1,15 @@
-// Prisma `where` matching for `CartItem`, shared by the two resolver specs
-// that filter cart entries by location — `cart.resolver.test.ts`
-// (`cartItemCountByItem`) and `itemStock.resolver.test.ts`
-// (`removeItemFromLocation`'s cascade) — and by the stateful cart store in
-// `cartFake.ts` (households H3b task B.2), so all three agree on what a
-// `where` means.
+// Prisma `where` matching for `CartItem`, shared by
+// `itemStock.resolver.test.ts` (`removeItemFromLocation`'s cascade) and by the
+// stateful cart store in `cartFake.ts` (households H3b task B.2), which
+// `cart-shared.resolver.test.ts` runs `cartItemCountByItem` against. So both
+// agree on what a `where` means.
 //
 // ── WHY THIS IS SHARED AND NOT COPIED ──
 //
 // Both resolvers ask the same question: "which of this item's cart entries
-// belong to this location". Since PR 3c both ask it with the SAME relation
-// filter, `where: { itemId, userId, cart: { locationId } }`. The Stock tab
+// belong to this location". Both ask it with the SAME relation filter,
+// `where: { itemId, cart: { locationId } }` (a `userId` was in it from PR 3c
+// until households H3b task B.4). The Stock tab
 // shows the count in its remove-confirmation dialog and the removal then acts
 // on it, so a disagreement between the two would show the user a number the
 // removal does not match. One matcher keeps the two specs honest about that.
@@ -78,7 +78,9 @@ const CART_ITEM_WHERE: WhereSpec = {
   id: 'in',
   cartId: 'in',
   itemId: 'equals',
-  userId: 'equals',
+  // No `userId`, since households H3b task B.4: `CartItem.userId` means
+  // "added by" and is never a scope (H3b plan, rule 13). A resolver that
+  // still filters by it throws here instead of passing.
   quantity: 'number',
   cart: { nested: { locationId: 'in' } },
 }
@@ -99,7 +101,7 @@ const CART_ITEM_WHERE: WhereSpec = {
  * green after the resolver dropped the scope.
  *
  * Supported keys: `id` and `cartId` (each a plain string or `{ in: [...] }`),
- * `itemId`, `userId`, `quantity` (a number or `{ gt | gte | lt | lte }`), and
+ * `itemId`, `quantity` (a number or `{ gt | gte | lt | lte }`), and
  * the relation filter `cart: { locationId }` (a plain string or
  * `{ in: [...] }`). Any other key,
  * at either level, throws `UnknownWhereKeyError`; an operator object on a
@@ -123,7 +125,6 @@ function cartItemMatches(
   carts: FakeCart[],
 ): boolean {
   if (where.itemId !== undefined && row.itemId !== where.itemId) return false
-  if (where.userId !== undefined && row.userId !== where.userId) return false
   if (!matchesIn(row.cartId, where.cartId)) return false
   if (!matchesIn(row.id, where.id)) return false
   if (where.quantity !== undefined && !matchesQuantity(row, where.quantity)) return false
