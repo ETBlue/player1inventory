@@ -6,9 +6,24 @@ import { makeGql } from '../utils/cloud'
 // ── WHAT THIS FILE PROVES ────────────────────────────────────────────────────
 //
 // That a BARE cart id — one with no location prefix, such as `'no-vendor'` —
-// can no longer be used by one account to reach another account's `Cart` row.
-// Two users import a cart under that id. The first one wins the id. The second
-// one is REFUSED with `FORBIDDEN`, and writes nothing.
+// can no longer be used by one HOUSEHOLD to reach another household's `Cart`
+// row. Two users import a cart under that id. The first one wins the id. The
+// second one is REFUSED with `FORBIDDEN`, and writes nothing.
+//
+// ── AFTER HOUSEHOLDS H3B: TWO HOUSEHOLDS, NOT TWO ACCOUNTS ───────────────────
+//
+// Since H3b a cart is SHARED by everyone with a role at its location, and no
+// cart read or write is scoped by `userId` any more (`Cart.userId` is gone,
+// and `CartItem.userId` only means "added by"). So "two accounts" is no
+// longer the boundary. The boundary is the location role, and through it the
+// household.
+//
+// The two users here are each alone in a household of their own: each first
+// request makes one (first sign-in, `ensureHousehold` in
+// apps/server/src/lib/household.ts). Neither holds any role on the other's
+// locations. So every refusal and every empty answer below now proves that
+// two HOUSEHOLDS do not share cart rows. The opposite case, two people in ONE
+// household who DO share a cart, is `shared-cart.spec.ts`.
 //
 // Four pieces of the server make that true, all read from the code:
 //
@@ -17,13 +32,17 @@ import { makeGql } from '../utils/cloud'
 //      everybody. That has not changed and cannot change here.
 //   2. `bulkCreateShoppingCarts` (apps/server/src/resolvers/import.resolver.ts)
 //      now calls `requireOwnRowIdsOrUnclaimed(ctx, 'cart', carts)` before its
-//      first write. A cart id held by a stranger throws `FORBIDDEN`; an id no
-//      row holds is free; an id the caller already owns is skipped. It used to
-//      ask `prisma.cart.findUnique({ where: { id } })` — UNSCOPED — and
-//      `continue` when any row answered, so the second user got no cart row of
-//      their own and no error either.
-//   3. `bulkCreateCartItems` resolves `cartId` with
-//      `findFirst({ where: { id: cartId, userId } })` — SCOPED. It used to use
+//      first write. A cart id at a location where the caller is not
+//      `participant` or higher throws `FORBIDDEN`; an id no row holds is free;
+//      an id of a cart the caller may write is skipped. (Since H3b task B.7
+//      the guard asks the location role. Before, it asked `Cart.userId`.) It
+//      used to ask `prisma.cart.findUnique({ where: { id } })` — UNSCOPED —
+//      and `continue` when any row answered, so the second user got no cart
+//      row of their own and no error either.
+//   3. `bulkCreateCartItems` resolves `cartId` in `resolveCartItemParents`
+//      with `findFirst({ where: { id: cartId, locationId: { in: writable } } })`,
+//      where `writable` is every location the caller is `participant` or
+//      higher on — SCOPED. (By `userId` until H3b task B.7.) It used to use
 //      the same unscoped `findUnique`, so the second user's cart items were
 //      created pointing at the first user's cart.
 //   4. `bulkUpsertCartItems` carries the same scoped lookup, so the `replace`
@@ -88,8 +107,8 @@ import { makeGql } from '../utils/cloud'
 //
 // ── TEARDOWN COVERS BOTH USERS ───────────────────────────────────────────────
 //
-// `/e2e/cleanup` deletes `{ where: { userId } }` for one user per call, so both
-// hooks below call it twice. The second user's rows are invisible to every
+// `/e2e/cleanup` deletes the households ONE user owns per call (since
+// households H3a task 3.10), so both hooks below call it twice. The second user's rows are invisible to every
 // other cloud spec's teardown, so leaving them behind would fail a later spec
 // for a reason nobody would trace back here.
 
@@ -238,10 +257,11 @@ test.describe('cloud import — a bare cart id another account holds is refused'
     // Then nothing is written. B's cart items can no longer land inside A's
     // cart row, which is the second half of the leak.
     //
-    // THIS IS THE LINE TASK 8's SCOPED LOOKUP OWNS. Change
-    // `prisma.cart.findFirst({ where: { id: cartId, userId } })` back to
-    // `prisma.cart.findUnique({ where: { id: cartId } })` in
-    // `bulkCreateCartItems` and this assertion should go red reading
+    // THIS IS THE LINE THE SCOPED CART LOOKUP OWNS. Change the
+    // `prisma.cart.findFirst({ where: { id: cartId, locationId: { in: writable } } })`
+    // in `resolveCartItemParents` back to
+    // `prisma.cart.findUnique({ where: { id: cartId } })` and this assertion
+    // should go red reading
     // `Expected length: 0 / Received length: 1`. UNVERIFIED PREDICTION — no
     // Playwright run was made for it. It fails on a VALUE, not on a missing
     // element, which is why the length is asserted here and not only the
@@ -261,8 +281,10 @@ test.describe('cloud import — a bare cart id another account holds is refused'
     )
     expect(itemsForB.bulkCreateCartItems).toHaveLength(0)
 
-    // And the two accounts' cart items read back the way they were written:
-    // A has one, B has none. `allCartItems` is scoped by `CartItem.userId`.
+    // And the two households' cart items read back the way they were written:
+    // A has one, B has none. `allCartItems` reads the carts at every location
+    // the caller holds a role on (since H3b; by `CartItem.userId` before), and
+    // B holds none of A's.
     const allForA = await gqlA<{ allCartItems: CartItemRow[] }>(ALL_CART_ITEMS)
     const allForB = await gqlB<{ allCartItems: CartItemRow[] }>(ALL_CART_ITEMS)
     expect(allForA.allCartItems.map((ci) => ci.id)).toEqual(['ci-a'])
@@ -270,9 +292,10 @@ test.describe('cloud import — a bare cart id another account holds is refused'
     expect(allForB.allCartItems.map((ci) => ci.id)).toEqual([])
 
     // And the harm is gone, read through the number the app shows.
-    // `cartItemCountByItem` with a `locationId` resolves through
-    // `where: { itemId, userId, cart: { locationId } }`, so it reads the
-    // cart's `locationId` COLUMN rather than parsing the id string. It is the
+    // `cartItemCountByItem` with a `locationId` checks the `viewer` role on
+    // that location, then resolves through `where: { itemId, cart: {
+    // locationId } }` (no `userId` since H3b), so it reads the cart's
+    // `locationId` COLUMN rather than parsing the id string. It is the
     // number the shopping page and the Stock tab's "remove from location"
     // confirmation both display.
     //
@@ -284,7 +307,7 @@ test.describe('cloud import — a bare cart id another account holds is refused'
     )
     expect(countForAAtOwnLocation.cartItemCountByItem).toBe(1)
 
-    // B owns no cart item anywhere. Before this branch B owned one that B
+    // B's household has no cart item anywhere. Before this branch B owned one that B
     // could find nowhere: counted whole-account, but at none of B's own
     // locations, because the cart it hung from was at a location of A's.
     const countForBAnywhere = await gqlB<{ cartItemCountByItem: number }>(

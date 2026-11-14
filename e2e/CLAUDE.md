@@ -657,9 +657,14 @@ The route sets the member's first sign-in claim (`User.householdSetupAt`). So af
 owner's cleanup removes the member's row, the member's next request gets `NO_HOUSEHOLD`. It
 does NOT make them a new household. `household-member-cleanup.spec.ts` checks that.
 
-**Avoid carts in a spec with a second member** until H3b: `bootstrapCarts` gives the second
-member an empty cart list where the first member already made carts. Neither file makes a
-vendor or a cart.
+Neither file makes a vendor or a cart. Until H3b a second member could not share a cart.
+Since H3b carts are shared by location role, and `shared-cart.spec.ts` (households H3b task
+B.9) is the spec for that: three people in one household (`organizer`, `participant`,
+`viewer` on "Home"), one shared cart, and no browser. It is in the `cloud` project's
+`testMatch` and the `local` project's `testIgnore`. Its two "at the same time" tests send
+two requests with `Promise.all`; whether the two transactions really overlap in Postgres is
+up to timing, so read the mutation results in the commit that added it before you rely on
+them.
 
 Proved by mutation on 2026-11-04, each against `--project=cloud` and undone from a copy:
 
