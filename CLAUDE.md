@@ -108,7 +108,7 @@ that really set up that role.
 
 ## Authorization (cloud)
 
-> See `docs/global/permissions/2026-10-04-households-design.md` (which replaces the role table of `docs/global/permissions/2026-08-29-design-location-rbac.md`). Rights come from roles, not from having created the row. **Households are built in H3a** (`feature/households-h3a`, built 2026-11-11, not merged or deployed yet; deploy steps in `docs/global/backend/2026-11-11-deploy-runbook-households-h3a.md`). Each person still has exactly one household until H5, so nothing is shared yet.
+> See `docs/global/permissions/2026-10-04-households-design.md` (which replaces the role table of `docs/global/permissions/2026-08-29-design-location-rbac.md`). Rights come from roles, not from having created the row. **Households are built in H3a** (merged into `develop` in #375, not deployed; deploy steps in `docs/global/backend/2026-11-11-deploy-runbook-households-h3a.md`). **Shared carts are built in H3b** (`feature/households-h3b`, built 2026-11-15, not merged or deployed; deploy steps in `docs/global/backend/2026-11-15-deploy-runbook-households-h3b.md`): a cart belongs to its location, every cart read and write is scoped by location role, `Cart.userId` is dropped, and `CartItem.userId` means only "added by". Each person still has exactly one household until H5, so nothing is shared yet.
 >
 > | Role ladder | Names, weakest first | Governs |
 > |---|---|---|
@@ -150,7 +150,7 @@ that really set up that role.
 >
 > **One thing it does NOT share with `requireLocationRole`: a free id is distinguishable from a stranger's id.** `requireLocationRole` refuses "not found" and "not yours" with the same error on purpose. `requireOwnRowOrUnclaimed` cannot: an import has to create new rows, so an unclaimed id must return `'unclaimed'` and let the write proceed. What protects the ids is that they are `cuid()` and cannot be guessed, and that the refusal names neither the model nor the owner. Do not copy `requireLocationRole`'s stated reason onto this helper — the first version of its comment and of the design doc both did, and both were wrong.
 >
-> **22 bulk import mutations in `apps/server/src/resolvers/import.resolver.ts` are guarded.** Counted 2026-10-28, and the same on 2026-11-04 after households H3a task 3.9 and on 2026-11-15 after households H3b task B.7: **18** through `requireOwnRowOrUnclaimed` (reached by the per-batch `requireOwnRowIdsOrUnclaimed` in that file), **2** through `requireOwnLocationIdsOrUnclaimed`, **2** through `requireOwnItemStockRefs`. Several task briefs said 18, which is only the first group. Count them rather than quoting this:
+> **22 bulk import mutations in `apps/server/src/resolvers/import.resolver.ts` are guarded.** Counted 2026-10-28, and the same on 2026-11-04 after households H3a task 3.9 and on 2026-11-15 after households H3b tasks B.7 and B.10: **18** through `requireOwnRowOrUnclaimed` (reached by the per-batch `requireOwnRowIdsOrUnclaimed` in that file), **2** through `requireOwnLocationIdsOrUnclaimed`, **2** through `requireOwnItemStockRefs`. Several task briefs said 18, which is only the first group. Count them rather than quoting this:
 >
 > ```bash
 > grep -c 'requireOwnRowIdsOrUnclaimed(ctx' apps/server/src/resolvers/import.resolver.ts      # 18
@@ -409,10 +409,10 @@ skips half the work. Nothing else in the gate checks `e2e/` formatting: `pnpm li
 `apps/server`'s build already carries a second pass for `scripts/`.
 
 **`pnpm test` runs both workspaces.** The root script is `pnpm -r test`, which recurses into
-every workspace package that defines a `test` script — today `apps/web` (**2529 tests**
-across 275 files) and `apps/server` (**1161** across 47). Measured 2026-11-11 on
-`feature/households-h3a` (it said 2321 / 251 and 522 / 32, measured 2026-10-28, before
-households H3a), plus **70** in `scripts/spec` from `pnpm test:spec`.
+every workspace package that defines a `test` script — today `apps/web` (**2549 tests**
+across 277 files) and `apps/server` (**1244** across 51). Measured 2026-11-15 on
+`feature/households-h3b` (it said 2529 / 275 and 1161 / 47 on 2026-11-11, on H3a, and
+2321 / 251 and 522 / 32 on 2026-10-28, before households H3a), plus **70** in `scripts/spec` from `pnpm test:spec`.
 
 A short history of these numbers, because they move almost every week and briefs keep
 quoting them: they said ~1700 and ~100 until 2026-09-29; `apps/server` said 259 across 20
@@ -1547,8 +1547,9 @@ weak fixture. The server suite has hit this six times:
   coverage rather than a gap that cannot be closed. Fixed 2026-10-28 (issue #327) by
   `apps/server/src/test/ownedRowFake.ts`
 
-**`ownedRowFake` is the shared double for the nine account-scoped models** — `Item`, `Tag`,
-`TagType`, `Vendor`, `Recipe`, `InventoryLog`, `Cart`, `CartItem` and `Shelf`. One generic
+**`ownedRowFake` is the shared double for the account-scoped models** — `Item`, `Tag`,
+`TagType`, `Vendor`, `Recipe`, `InventoryLog` and `Shelf` (and it was for `Cart` and
+`CartItem` until households H3b; see `cartFake` below). One generic
 stateful store, `createOwnedRowFake<Row extends { id: string; userId: string }>`. Use it;
 do not write a per-model double beside it. What it models, each for a failure listed above:
 
@@ -1576,11 +1577,32 @@ fail its test. Decided in task 2 of that branch and confirmed by mutation in tas
 from the resolvers and an unreachable guard invites deletion as dead code — the reasoning
 `stockFake.test.ts` records.
 
+**`cartFake` is the shared double for `Cart` and `CartItem`** — since households H3b task B.2
+(`apps/server/src/test/cartFake.ts`, pinned by `cartFake.test.ts`). Use it for any cart test;
+do not put carts back on `ownedRowFake`. Its header says why `ownedRowFake` does not fit:
+`Cart` has no scope column any more, and `CartItem` needs a relation filter, a compound
+unique key and `{ increment }`. What it models:
+
+| It does | Because |
+|---|---|
+| raises `P2002` on a second `(cartId, itemId)` row, in `create`, `createMany`, `upsert`, `update` and `updateMany` | without it, a test of "two adds make one row with the sum" passes against code that never merges |
+| `upsert` on `{ cartId_itemId }`, with `quantity: { increment }` or a plain number | `addToCart` and the two cart item imports write this way |
+| **throws** on a `userId` `where` key, on both models | `CartItem.userId` means "added by" and is never a scope (H3b rule 13). `cartItemFake.ts`'s `filterCartItems` refuses it too |
+| keeps both stores in one state object, registered with `runInTransaction` | a rollback restores carts and rows together |
+
 **The Prisma fake models `$transaction` rollback, and only one of its two forms.**
 `src/test/stockFake.ts` exports `runInTransaction`, which snapshots every registered store
 with `structuredClone`, keeps the writes when the callback returns, and restores the
 snapshot when it throws. Import it; do not write a second copy, because a second copy that
 silently does nothing would leave every atomicity test reporting as covered.
+
+**`stockFake`'s `findUnique` and `upsert` return the LIVE stored row, not a copy.** A later
+write changes that same object. So "the row read before the write", "the row the write
+returned" and "the row after another writer" can all be one object, and a value computed
+from the wrong one still comes out right. Prisma returns a new object for every call. Found
+in households H3b task B.6. Only `recipe-consume.resolver.test.ts` works around it (it wraps
+the store with `structuredClone` and a one-macrotask gap after each read); the shared fake
+is not fixed. A test that reads stock before and after a write should copy the row itself.
 
 Only the **interactive callback** form is modelled — `$transaction(async (tx) => …)`. The
 array form, `$transaction([p1, p2])`, throws a clear error on purpose: JavaScript evaluates
@@ -1596,8 +1618,9 @@ Note also that **no *unit* test executes the resolvers against real SQL** — ev
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
 Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
 branch), but only for the spec files listed in the `cloud` project's `testMatch` in
-`e2e/playwright.config.ts` — that list is opt-in and covers **29 of the 33 spec files in
-`e2e/tests/`** (measured 2026-11-04, after households H3a task 3.11 added
+`e2e/playwright.config.ts` — that list is opt-in and covers **30 of the 34 spec files in
+`e2e/tests/`** (measured 2026-11-15, after households H3b task B.9 added
+`shared-cart.spec.ts`; it was 29 of 33 on 2026-11-04, after households H3a task 3.11 added
 `cloud-roles.spec.ts` and `household-member-cleanup.spec.ts`).
 **Count it rather than quote it.** This line said "20 files today (of 27 spec files)" until
 2026-10-12, by which point both numbers were wrong by 3:
