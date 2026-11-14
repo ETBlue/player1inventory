@@ -188,17 +188,19 @@ cooking page shows one error.
 
 ### 6. Shared code (`packages/types`)
 
-Moved from `apps/web/src/lib/` to `packages/types/src/`, with their tests:
+Moved from `apps/web/src/lib/` to `packages/types/src/quantity.ts` (task B.1, `7de5ba26`):
 
 | Function | From |
 |---|---|
-| `getPackedTotal` | `quantityUtils.ts:41` |
-| `consumeItem`, `roundToStep`, `decimalPlaces` | `quantityUtils.ts:263` and its helpers |
-| the checkout log total (`buildCheckoutLogQuantities`) | `checkoutQuantities.ts:44` |
+| `getPackedTotal`, `getCurrentQuantity` | `quantityUtils.ts` |
+| `consumeItem`, `roundToStep`, `decimalPlaces` | `quantityUtils.ts` |
+| the checkout log total (`buildCheckoutLogQuantities`) | `checkoutQuantities.ts` |
 
-The web imports them from `@p1i/types`. The 6 `buildCheckoutLogQuantities` tests become server
-or shared tests against the moved code. Where `packages/types` has no test runner, the tests
-live in `apps/server` and import the shared function.
+`getCurrentQuantity` was not in the first list, but `consumeItem` calls it. The two web
+modules re-export the moved functions, so web imports did not change. The tests stay in
+`apps/web`, because `packages/types` has no test runner, and they run against the shared file
+(proved by mutation in B.1). The server gets its own tests of the checkout and cooking paths
+in B.5 and B.6.
 
 ### 7. Web (cloud)
 

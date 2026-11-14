@@ -71,11 +71,11 @@ Line numbers in this plan were read at `0dfd536f` and will drift. Find code by n
 
 ---
 
-## Task B.1 — Move the quantity rules to `@p1i/types`
+## Task B.1 — Move the quantity rules to `@p1i/types` ✅ `7de5ba26`
 
 No behaviour change.
 
-- Move `getPackedTotal`, `consumeItem`, `roundToStep`, `decimalPlaces` (from
+- Move `getPackedTotal`, `getCurrentQuantity`, `consumeItem`, `roundToStep`, `decimalPlaces` (from
   `apps/web/src/lib/quantityUtils.ts`) and `buildCheckoutLogQuantities` (from
   `apps/web/src/lib/checkoutQuantities.ts`) to `packages/types`. Bring any type or helper they
   need. Check that nothing moved imports from `apps/web`.
