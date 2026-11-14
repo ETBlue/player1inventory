@@ -4700,3 +4700,72 @@ describe('importCloudData — replace sets cart items (H3b task B.8)', () => {
     expect(idsSentBy('BulkCreateCartItems')).toEqual([])
   })
 })
+
+describe('importCloudData — one cart pair never spans two batches (H3b task B.9)', () => {
+  it('user replacing cloud data with an old backup sends both rows of one pair in the same batch', async () => {
+    // Given an empty cloud account
+    const CART = 'cloud_home:vendor_1'
+    const mutate = vi.fn().mockResolvedValue({})
+    const client = {
+      mutate,
+      resetStore: vi.fn().mockResolvedValue(undefined),
+      query: vi.fn().mockResolvedValue({
+        data: {
+          items: [],
+          tags: [],
+          tagTypes: [],
+          vendors: [],
+          recipes: [],
+          inventoryLogs: [],
+          shoppingCarts: [],
+          allCartItems: [],
+          shelves: [],
+        },
+      }),
+    }
+    // And an old backup with 49 single rows, then TWO rows for milk at
+    // positions 50 and 51. A plain split by 50 puts them in two batches, and
+    // `bulkUpsertCartItems` SETS a pair's amount, so the second batch would
+    // set milk to 2 and lose the 3.
+    const fillers = Array.from({ length: 49 }, (_, i) => ({
+      id: `ci-${String(i).padStart(2, '0')}`,
+      cartId: CART,
+      itemId: `item-${i}`,
+      quantity: 1,
+    }))
+    const payload = emptyPayload({
+      cartItems: [
+        ...fillers,
+        { id: 'ci-milk-a', cartId: CART, itemId: 'milk', quantity: 3 },
+        { id: 'ci-milk-b', cartId: CART, itemId: 'milk', quantity: 2 },
+      ],
+    })
+
+    // When the user imports it with `replace`
+    await importCloudData(payload, 'replace', client as never, {})
+
+    // Then every row was sent once, in BulkUpsertCartItems batches
+    const batches = mutate.mock.calls
+      .filter(
+        (call) => opNameOf(rowAt(call).mutation) === 'BulkUpsertCartItems',
+      )
+      .map(
+        (call) =>
+          rowAt(call).variables.cartItems as Array<{
+            id: string
+            itemId: string
+          }>,
+      )
+    expect(batches.flat()).toHaveLength(51)
+    // And both milk rows are in ONE batch, where the server sums them
+    const milkBatches = batches.filter((b) =>
+      b.some((ci) => ci.itemId === 'milk'),
+    )
+    expect(milkBatches).toHaveLength(1)
+    expect(
+      rowAt(milkBatches)
+        .filter((ci) => ci.itemId === 'milk')
+        .map((ci) => ci.id),
+    ).toEqual(['ci-milk-a', 'ci-milk-b'])
+  })
+})

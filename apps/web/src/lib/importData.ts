@@ -741,6 +741,48 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return result
 }
 
+// Cart items in batches of about `size`, with every row of one
+// `(cartId, itemId)` pair in the SAME batch (households H3b, found in task
+// B.8, fixed in task B.9).
+//
+// Why. The server merges the rows of one pair only inside one call
+// (`mergeCartItemRows` in apps/server/src/resolvers/import.resolver.ts). With
+// plain `chunk`, an old backup's two rows for one pair could land in two
+// batches. Under `replace`, `bulkUpsertCartItems` SETS the pair's amount, so
+// the second batch set only its own part of the sum and the first part was
+// lost.
+//
+// Why not merge the rows here instead. The server needs every id of a pair:
+// `bulkCreateCartItems` skips a pair when ANY of its ids is already in the
+// cloud, and a new row takes the lowest id no row holds. A merged row would
+// hide the other ids from both rules.
+//
+// A batch can hold more than `size` rows only when one pair alone has more
+// rows than that. Pairs keep the order in which they first appear, so the
+// batches are the same on a resumed import (the batch keys are by index).
+function chunkCartItemsByPair(rows: unknown[], size: number): unknown[][] {
+  const groups = new Map<string, unknown[]>()
+  for (const row of rows) {
+    const { cartId, itemId } = row as { cartId: string; itemId: string }
+    // NUL as the separator: no id contains it.
+    const key = `${cartId}\u0000${itemId}`
+    const group = groups.get(key)
+    if (group) group.push(row)
+    else groups.set(key, [row])
+  }
+  const result: unknown[][] = []
+  let current: unknown[] = []
+  for (const group of groups.values()) {
+    if (current.length > 0 && current.length + group.length > size) {
+      result.push(current)
+      current = []
+    }
+    current.push(...group)
+  }
+  if (current.length > 0) result.push(current)
+  return result
+}
+
 export interface ImportProgress {
   completedBatches: number
   totalBatches: number
@@ -2146,6 +2188,14 @@ interface EntitySpec {
   select: (data: ExportPayload) => unknown[]
   create: (client: ApolloClient, batch: unknown[]) => Promise<void>
   upsert: (client: ApolloClient, batch: unknown[]) => Promise<void>
+  // How the rows are split into batches. `chunk` by BATCH_SIZE when absent.
+  // Both passes and `computeTotalBatches` read it through `batchesOf`.
+  batch?: (rows: unknown[]) => unknown[][]
+}
+
+function batchesOf(spec: EntitySpec, data: ExportPayload): unknown[][] {
+  const rows = spec.select(data)
+  return spec.batch ? spec.batch(rows) : chunk(rows, BATCH_SIZE)
 }
 
 const ENTITY_SPECS: EntitySpec[] = [
@@ -2381,6 +2431,8 @@ const ENTITY_SPECS: EntitySpec[] = [
   {
     entityType: 'cartItems',
     select: (data) => data.cartItems,
+    // One pair never spans two batches. See `chunkCartItemsByPair`.
+    batch: (rows) => chunkCartItemsByPair(rows, BATCH_SIZE),
     create: (client, batch) =>
       client
         .mutate({
@@ -2452,7 +2504,7 @@ async function runBulkBatches(
   let completedBatches = args.startCompleted
 
   for (const spec of ENTITY_SPECS) {
-    const batches = chunk(spec.select(data), BATCH_SIZE)
+    const batches = batchesOf(spec, data)
     for (const [i, batch] of batches.entries()) {
       // `mode` MUST stay in the key. On the `replace` strategy `bulkCreate` and
       // `bulkUpsert` share one `ImportSession`, so without it the two passes
@@ -2500,7 +2552,7 @@ function bulkUpsert(args: BatchedBulkArgs): Promise<number> {
 // counted in one place and sent in another.
 function computeTotalBatches(data: ExportPayload): number {
   return ENTITY_SPECS.reduce(
-    (total, spec) => total + chunk(spec.select(data), BATCH_SIZE).length,
+    (total, spec) => total + batchesOf(spec, data).length,
     0,
   )
 }
