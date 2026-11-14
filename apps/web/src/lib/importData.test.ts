@@ -4469,3 +4469,135 @@ describe('isForbiddenImportError', () => {
     expect(isForbiddenImportError(err)).toBe(false)
   })
 })
+
+// Households H3b task B.8: one row per `(cartId, itemId)` in local mode, and
+// decision P3's add / set rule on both import paths.
+//
+// Every fixture puts a cart row in the database BEFORE the import, at the pair
+// the payload names. With an empty destination "add", "set" and "skip" leave
+// the same database behind, so a test could not tell them apart.
+describe('importLocalData — one row per item per cart (H3b task B.8)', () => {
+  const CART = 'local:vendor-1'
+  const OTHER_CART = 'local:vendor-2'
+  const HOME = { id: 'local', name: 'My Home', order: 0, isDefault: true }
+
+  function cartPayload(cartItems: unknown[]): ExportPayload {
+    return emptyPayload({ locations: [HOME], cartItems })
+  }
+
+  function row(id: string, cartId: string, itemId: string, quantity: number) {
+    return { id, cartId, itemId, quantity }
+  }
+
+  async function cartRows() {
+    return (await db.cartItems.toArray())
+      .map(({ id, cartId, itemId, quantity }) => ({
+        id,
+        cartId,
+        itemId,
+        quantity,
+      }))
+      .sort((a, b) => (a.id < b.id ? -1 : 1))
+  }
+
+  beforeEach(clearAllTables)
+  afterEach(clearAllTables)
+
+  it('user restoring a backup with duplicate cart rows (clear) gets one row per item, summed', async () => {
+    // Given a backup holding a pair, a group of three, and the same item in
+    // another cart. The lowest id of each group is never written first.
+    const payload = cartPayload([
+      row('ci-b', CART, 'milk', 2),
+      row('ci-a', CART, 'milk', 3),
+      row('ci-e3', CART, 'eggs', 1),
+      row('ci-e1', CART, 'eggs', 4),
+      row('ci-e2', CART, 'eggs', 10),
+      row('ci-o', OTHER_CART, 'milk', 7),
+    ])
+
+    // When the user imports it with `clear`
+    await importLocalData(payload, 'clear')
+
+    // Then each pair has one row: its lowest id, holding the sum
+    expect(await cartRows()).toEqual([
+      row('ci-a', CART, 'milk', 5),
+      row('ci-e1', CART, 'eggs', 15),
+      row('ci-o', OTHER_CART, 'milk', 7),
+    ])
+  })
+
+  it('user importing new cart rows (skip) for an item already in the cart gets the amounts added', async () => {
+    // Given milk already in the cart, 4 of it
+    await db.cartItems.add(row('ci-stored', CART, 'milk', 4))
+    // And a backup with two NEW rows for milk in that cart, 2 and 3
+    const payload = cartPayload([
+      row('ci-n2', CART, 'milk', 2),
+      row('ci-n1', CART, 'milk', 3),
+    ])
+
+    // When the user imports it with `skip`
+    await importLocalData(payload, 'skip')
+
+    // Then the stored row holds 4 + 2 + 3, and no second row exists
+    expect(await cartRows()).toEqual([row('ci-stored', CART, 'milk', 9)])
+  })
+
+  it('user re-importing an old backup (skip) does not add a pair again when one of its ids is stored', async () => {
+    // Given the merged row of an earlier import: ci-a, 5
+    await db.cartItems.add(row('ci-a', CART, 'milk', 5))
+    // And the same old backup, which still holds the pair under two ids
+    const payload = cartPayload([
+      row('ci-a', CART, 'milk', 3),
+      row('ci-b', CART, 'milk', 2),
+      // And a pair not yet in the database, which IS imported
+      row('ci-c', CART, 'eggs', 1),
+    ])
+
+    // When the user imports it with `skip` again
+    await importLocalData(payload, 'skip')
+
+    // Then the milk pair is skipped as a whole (not 5 + 2), and eggs lands
+    expect(await cartRows()).toEqual([
+      row('ci-a', CART, 'milk', 5),
+      row('ci-c', CART, 'eggs', 1),
+    ])
+  })
+
+  it('user replacing cart data sets the amount of an item already in the cart', async () => {
+    // Given milk already in the cart, 4 of it
+    await db.cartItems.add(row('ci-stored', CART, 'milk', 4))
+    // And a backup with two NEW rows for milk in that cart, 2 and 3
+    const payload = cartPayload([
+      row('ci-n2', CART, 'milk', 2),
+      row('ci-n1', CART, 'milk', 3),
+    ])
+
+    // When the user imports it with `replace`
+    await importLocalData(payload, 'replace')
+
+    // Then the stored row holds the backup's 5, not 4 + 5
+    expect(await cartRows()).toEqual([row('ci-stored', CART, 'milk', 5)])
+  })
+
+  it('user replacing cart data never moves a stored row to another item', async () => {
+    // Given ci-x stored as eggs, 1
+    await db.cartItems.add(row('ci-x', CART, 'eggs', 1))
+    // And a backup that names ci-x as milk, 6
+    const payload = cartPayload([row('ci-x', CART, 'milk', 6)])
+
+    // When the user imports it with `replace`
+    await importLocalData(payload, 'replace')
+
+    // Then ci-x is still eggs, 1
+    expect(await db.cartItems.get('ci-x')).toEqual(row('ci-x', CART, 'eggs', 1))
+    // And milk got its own row with the backup's amount, under a new id
+    // (ci-x is taken)
+    const milk = (await db.cartItems.toArray()).filter(
+      (ci) => ci.itemId === 'milk',
+    )
+    expect(milk).toHaveLength(1)
+    expect(rowAt(milk).quantity).toBe(6)
+    expect(rowAt(milk).cartId).toBe(CART)
+    expect(rowAt(milk).id).not.toBe('ci-x')
+  })
+})

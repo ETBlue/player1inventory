@@ -1576,6 +1576,103 @@ function itemIdsOf(entries: unknown[]): Set<string> {
   return new Set((entries as Array<{ id: string }>).map((e) => e.id))
 }
 
+/** The payload rows of one `(cartId, itemId)` pair, merged. */
+interface MergedCartItem {
+  cartId: string
+  itemId: string
+  /** The sum of the rows' amounts. */
+  quantity: number
+  /** Every payload id of the pair, lowest first, without repeats. */
+  ids: string[]
+}
+
+// Rows of one `(cartId, itemId)` pair, summed. The same rule as
+// `mergeCartItemRows` in apps/server/src/resolvers/import.resolver.ts. An old
+// backup can hold two rows for one item in one cart: one made before Dexie
+// version 19 or the cloud migration of households H3b task B.3 merged them.
+// Groups keep the order in which their pair first appears.
+function mergeCartItemRows(rows: readonly CartItem[]): MergedCartItem[] {
+  const groups = new Map<string, MergedCartItem>()
+  for (const { id, cartId, itemId, quantity } of rows) {
+    // NUL as the separator: no id contains it.
+    const key = `${cartId}\u0000${itemId}`
+    const group = groups.get(key)
+    if (group) {
+      group.quantity += quantity
+      if (!group.ids.includes(id)) group.ids.push(id)
+    } else {
+      groups.set(key, { cartId, itemId, quantity, ids: [id] })
+    }
+  }
+  for (const group of groups.values()) group.ids.sort()
+  return [...groups.values()]
+}
+
+// Write the payload's cart items into Dexie, one row per `(cartId, itemId)`
+// (households H3b task B.8, decision P3 of the H3b plan). Since Dexie version
+// 20 the unique index `&[cartId+itemId]` refuses a second row for a pair, so
+// a plain `bulkAdd` / `bulkPut` of a backup that holds one would throw a
+// `ConstraintError` and fail the import.
+//
+// The rules are the cloud's (`bulkCreateCartItems` and `bulkUpsertCartItems`):
+//
+// | `mode` | strategy        | a pair with a stored row | a pair with none |
+// |--------|-----------------|--------------------------|------------------|
+// | `add`  | `skip`, `clear` | the amount is ADDED      | a new row        |
+// | `set`  | `replace`       | the amount is SET        | a new row        |
+//
+// - Rows of one pair in the payload are summed first.
+// - `add` SKIPS a whole pair when any of its ids is already stored: that row
+//   was imported before. Skipping only the stored id would add the other
+//   rows' amounts again on every re-import of an old backup. (`clear` empties
+//   the table first, so for it nothing is skipped.)
+// - A write never moves a row. Under `set`, a payload id that is stored under
+//   ANOTHER pair leaves that row where it is, and the pair the payload names
+//   gets the amount. Until task B.8 local `replace` used `bulkPut`, which
+//   moved the row.
+// - A new row takes the lowest id of its pair that no row holds and no
+//   earlier pair took; none left gives a new random id. The lowest id is what
+//   version 19 and the cloud migration keep, so a backup made before the merge
+//   finds its row under the same id after it.
+// - Only `id`, `cartId`, `itemId` and `quantity` are written, the four
+//   fields of `CartItem`.
+//
+// One `rw` transaction on `cartItems`, so an `addToCart` cannot run between
+// the read and the write. Only Dexie promises are awaited inside it.
+async function importLocalCartItems(
+  rows: readonly CartItem[],
+  mode: 'add' | 'set',
+): Promise<void> {
+  if (rows.length === 0) return
+  await db.transaction('rw', db.cartItems, async () => {
+    const stored = await db.cartItems.toArray()
+    const storedIds = new Set(stored.map((row) => row.id))
+    const storedByPair = new Map(
+      stored.map((row) => [`${row.cartId}\u0000${row.itemId}`, row]),
+    )
+    const taken = new Set(storedIds)
+
+    for (const group of mergeCartItemRows(rows)) {
+      const { cartId, itemId, quantity } = group
+      if (mode === 'add' && group.ids.some((id) => storedIds.has(id))) continue
+
+      const existing = storedByPair.get(`${cartId}\u0000${itemId}`)
+      if (existing) {
+        await db.cartItems.update(existing.id, {
+          quantity: mode === 'add' ? existing.quantity + quantity : quantity,
+        })
+        continue
+      }
+
+      const id =
+        group.ids.find((candidate) => !taken.has(candidate)) ??
+        crypto.randomUUID()
+      taken.add(id)
+      await db.cartItems.add({ id, cartId, itemId, quantity })
+    }
+  })
+}
+
 // `getCart` is a pure read, so nothing recreates a missing sentinel cart on
 // demand. Every import strategy can leave one missing:
 //   - `clear` wipes the cart table, and the payload may carry no carts at all
@@ -1672,7 +1769,9 @@ export async function importLocalData(
         deserializeImportedCart,
       ),
     )
-    await db.cartItems.bulkAdd(payload.cartItems as CartItem[])
+    // The table was cleared above, so nothing is skipped: only the payload's
+    // own duplicate pairs are merged. See `importLocalCartItems`.
+    await importLocalCartItems(payload.cartItems as CartItem[], 'add')
     await db.shelves.bulkAdd(
       ((payload.shelves ?? []) as Shelf[]).map((s) => ({
         ...s,
@@ -1732,9 +1831,10 @@ export async function importLocalData(
         deserializeImportedCart,
       ),
     )
-    await db.cartItems.bulkAdd(toCreate.cartItems as CartItem[], {
-      allKeys: false,
-    })
+    // The WHOLE payload, not `toCreate.cartItems`: `importLocalCartItems`
+    // decides what to skip itself, against the database and by PAIR. A list
+    // already cut down by id would hide that a pair was imported before.
+    await importLocalCartItems(payload.cartItems as CartItem[], 'add')
     await db.shelves.bulkAdd(
       ((toCreate.shelves ?? []) as Shelf[]).map((s) => ({
         ...s,
@@ -1837,9 +1937,6 @@ export async function importLocalData(
       deserializeImportedCart,
     ),
   )
-  await db.cartItems.bulkAdd(toCreate.cartItems as CartItem[], {
-    allKeys: false,
-  })
   await db.shelves.bulkAdd(
     ((toCreate.shelves ?? []) as Shelf[]).map((s) => ({
       ...s,
@@ -1881,7 +1978,11 @@ export async function importLocalData(
       deserializeImportedCart,
     ),
   )
-  await db.cartItems.bulkPut(toUpsert.cartItems as CartItem[])
+  // Every cart item, in one pass that SETS each pair's amount. See
+  // `importLocalCartItems`. The payload is read directly, not `toCreate` /
+  // `toUpsert`, so the local rule does not depend on how `partitionPayload`
+  // splits the cloud upload.
+  await importLocalCartItems(payload.cartItems as CartItem[], 'set')
   await db.shelves.bulkPut(
     ((toUpsert.shelves ?? []) as Shelf[]).map((s) => ({
       ...s,
