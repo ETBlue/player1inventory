@@ -94,6 +94,7 @@ import { householdMemberRow, householdRow, locationMemberRow } from '../test/hou
 import type { HouseholdWorld } from '../test/householdWorld.js'
 import { makeStock } from '../test/stockFake.js'
 import { type FakeCart, type FakeCartItem, filterCartItems } from '../test/cartItemFake.js'
+import { createCartFake } from '../test/cartFake.js'
 
 const mockPrisma = prisma as unknown as {
   cart: {
@@ -137,6 +138,10 @@ const stockFake = world.stock
 const LOC_DEFAULT = 'loc_kitchen'
 const LOC_OTHER = 'loc_garage'
 const LOC_STRANGER = 'loc_theirs'
+// In the caller's OWN household, but the caller holds no role on it; only
+// user_member does (households H3b task B.3). A read scoped by household
+// instead of by location role would wrongly include it.
+const LOC_NOROLE = 'loc_attic'
 
 // ── The three-person fixture (plan H3a, rule 10) ──
 //
@@ -160,6 +165,7 @@ function seedLocations(options: { callerRole?: LocationRole } = {}) {
       { id: LOC_OTHER, householdId: 'hh_test' },
       { id: LOC_DEFAULT, householdId: 'hh_test' },
       { id: LOC_STRANGER, householdId: 'hh_other' },
+      { id: LOC_NOROLE, householdId: 'hh_test' },
     ],
     [],
   )
@@ -180,6 +186,7 @@ function seedLocations(options: { callerRole?: LocationRole } = {}) {
       locationMemberRow(LOC_OTHER, 'user_test123', 'organizer'),
       locationMemberRow(LOC_OTHER, 'user_member', 'organizer'),
       locationMemberRow(LOC_STRANGER, 'user_other', 'organizer'),
+      locationMemberRow(LOC_NOROLE, 'user_member', 'organizer'),
     ],
   })
 }
@@ -188,14 +195,16 @@ function seedLocations(options: { callerRole?: LocationRole } = {}) {
 
 const now = new Date('2024-01-01T00:00:00.000Z')
 
+// No `userId`: households H3b task B.3 dropped `Cart.userId`. The location
+// is read from the id, the same way `cartIdFor` builds it.
 function makeCart(overrides: Partial<{
   id: string
-  userId: string
   lastPurchasedAt: Date | null
 }> = {}) {
+  const id = overrides.id ?? `${LOC_DEFAULT}:no-vendor`
   return {
-    id: overrides.id ?? `${LOC_DEFAULT}:no-vendor`,
-    userId: overrides.userId ?? 'user_test123',
+    id,
+    locationId: id.slice(0, id.indexOf(':')),
     lastPurchasedAt: overrides.lastPurchasedAt ?? null,
   }
 }
@@ -321,7 +330,7 @@ describe('vendorCart', () => {
     // resolver follows the argument rather than the caller's default.
     expect(result?.errors).toBeUndefined()
     expect(mockPrisma.cart.create).toHaveBeenCalledWith({
-      data: { id: `${LOC_DEFAULT}:vendor_2`, userId: 'user_test123', locationId: LOC_DEFAULT },
+      data: { id: `${LOC_DEFAULT}:vendor_2`, locationId: LOC_DEFAULT },
     })
   })
 
@@ -351,7 +360,7 @@ describe('vendorCart', () => {
     expect(found.lastPurchasedAt).toBeNull()
     expect(mockPrisma.cart.create).toHaveBeenCalledOnce()
     expect(mockPrisma.cart.create).toHaveBeenCalledWith({
-      data: { id: `${LOC_DEFAULT}:no-vendor`, userId: 'user_test123', locationId: LOC_DEFAULT },
+      data: { id: `${LOC_DEFAULT}:no-vendor`, locationId: LOC_DEFAULT },
     })
   })
 
@@ -394,7 +403,7 @@ describe('vendorCart', () => {
       where: { id: `${LOC_OTHER}:vendor_1` },
     })
     expect(mockPrisma.cart.create).toHaveBeenCalledWith({
-      data: { id: `${LOC_OTHER}:vendor_1`, userId: 'user_test123', locationId: LOC_OTHER },
+      data: { id: `${LOC_OTHER}:vendor_1`, locationId: LOC_OTHER },
     })
   })
 
@@ -440,29 +449,75 @@ describe('vendorCart', () => {
 // ─── allCarts ────────────────────────────────────────────────────────────────
 
 describe('allCarts', () => {
-  it('user can get all their carts', async () => {
-    // Given two carts exist for the user — one purchased, one never purchased
-    const carts = [
-      makeCart({ id: `${LOC_DEFAULT}:no-vendor`, lastPurchasedAt: now }),
-      makeCart({ id: `${LOC_OTHER}:vendor_1` }),
-    ]
-    mockPrisma.cart.findMany.mockResolvedValue(carts)
+  // A stateful `cart.findMany` (src/test/cartFake.ts) over carts at four
+  // locations, so the answer depends on the `where` the resolver sends. The
+  // fake refuses a `userId` key on `Cart`, the way Prisma does since
+  // households H3b task B.3 dropped the column.
+  function seedCarts() {
+    const fake = createCartFake({
+      carts: [
+        makeCart({ id: `${LOC_DEFAULT}:no-vendor`, lastPurchasedAt: now }),
+        makeCart({ id: `${LOC_OTHER}:vendor_1` }),
+        makeCart({ id: `${LOC_NOROLE}:no-vendor` }),
+        makeCart({ id: `${LOC_STRANGER}:no-vendor` }),
+      ],
+    })
+    mockPrisma.cart.findMany.mockImplementation(fake.client.cart.findMany)
+  }
+
+  it('user can get the carts of every location they have a role on', async () => {
+    // Given carts at the caller's two locations, at LOC_NOROLE (the caller's
+    // household, but only user_member has a role there) and at another
+    // household's location
+    seedCarts()
 
     // When querying allCarts
     const result = await execOp(`query { allCarts { id lastPurchasedAt } }`)
 
-    // Then both carts are returned, each lastPurchasedAt ISO 8601 (or null).
-    // `allCarts` feeds useLastPurchasedByVendor() → the shopping page's
-    // "last purchased" sort, so the wire format matters here specifically.
+    // Then only the carts of the caller's two locations come back, each
+    // lastPurchasedAt ISO 8601 (or null). `allCarts` feeds
+    // useLastPurchasedByVendor() → the shopping page's "last purchased" sort,
+    // so the wire format matters here specifically.
     expect(result?.errors).toBeUndefined()
     const found = result?.data?.allCarts as { id: string; lastPurchasedAt: string | null }[]
-    expect(found).toHaveLength(2)
-    expect(found[0].lastPurchasedAt).toBe(now.toISOString())
-    expect(found[1].lastPurchasedAt).toBeNull()
-    expect(mockPrisma.cart.findMany).toHaveBeenCalledWith({
-      where: { userId: 'user_test123' },
-      orderBy: [{ id: 'asc' }],
-    })
+    expect(found.map((c) => c.id)).toEqual([
+      `${LOC_OTHER}:vendor_1`,
+      `${LOC_DEFAULT}:no-vendor`,
+    ])
+    expect(found[1].lastPurchasedAt).toBe(now.toISOString())
+    expect(found[0].lastPurchasedAt).toBeNull()
+  })
+
+  it('user sees a cart nobody "owns" when they share its location', async () => {
+    // Given the same carts, read by user_member, who has a role on LOC_NOROLE
+    // as well as the two locations the caller has
+    seedCarts()
+
+    // When user_member queries allCarts
+    const result = await execOp(`query { allCarts { id } }`, undefined, { userId: 'user_member' })
+
+    // Then they get the three carts at their three locations, including the
+    // two the caller sees too. Nothing is filtered by who made a cart
+    expect(result?.errors).toBeUndefined()
+    const found = result?.data?.allCarts as { id: string }[]
+    expect(found.map((c) => c.id)).toEqual([
+      `${LOC_NOROLE}:no-vendor`,
+      `${LOC_OTHER}:vendor_1`,
+      `${LOC_DEFAULT}:no-vendor`,
+    ])
+  })
+
+  it('a location viewer still sees the carts there (it is a read)', async () => {
+    // Given the caller is only a viewer at LOC_DEFAULT
+    seedLocations({ callerRole: 'viewer' })
+    seedCarts()
+
+    const result = await execOp(`query { allCarts { id } }`)
+
+    // Then the LOC_DEFAULT cart is still listed
+    expect(result?.errors).toBeUndefined()
+    const found = result?.data?.allCarts as { id: string }[]
+    expect(found.map((c) => c.id)).toContain(`${LOC_DEFAULT}:no-vendor`)
   })
 })
 
@@ -1390,9 +1445,9 @@ describe("checkout writes the CART's location, not the caller's default", () => 
 
 describe('abandonCart', () => {
   it('user can abandon a cart — all items are deleted, cart is returned as-is', async () => {
-    // Given a cart exists for this user, carrying a Prisma `Date`
+    // Given a cart exists at the location, carrying a Prisma `Date`
     const cart = makeCart({ lastPurchasedAt: now })
-    mockPrisma.cart.findFirst.mockResolvedValue(cart)
+    mockPrisma.cart.findUnique.mockResolvedValue(cart)
     mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 2 })
 
     // When abandoning the cart
@@ -1407,6 +1462,12 @@ describe('abandonCart', () => {
     const abandoned = result?.data?.abandonCart as { id: string; lastPurchasedAt: string | null }
     expect(abandoned.id).toBe(`${LOC_DEFAULT}:no-vendor`)
     expect(abandoned.lastPurchasedAt).toBe(now.toISOString())
+
+    // And the cart was looked up by its id alone. `Cart.userId` is gone
+    // (households H3b task B.3); `requireCartLocation` is the check.
+    expect(mockPrisma.cart.findUnique).toHaveBeenCalledWith({
+      where: { id: `${LOC_DEFAULT}:no-vendor` },
+    })
 
     // And all cart items are deleted (including pinned)
     expect(mockPrisma.cartItem.deleteMany).toHaveBeenCalledWith({ where: { cartId: `${LOC_DEFAULT}:no-vendor`, userId: 'user_test123' } })
@@ -1612,7 +1673,7 @@ const WRITES: Array<{
     query: `mutation M($c: ID!) { abandonCart(cartId: $c) { id } }`,
     variables: { c: CART_ID },
     arrange: () => {
-      mockPrisma.cart.findFirst.mockResolvedValue(makeCart())
+      mockPrisma.cart.findUnique.mockResolvedValue(makeCart())
       mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 0 })
     },
     wrote: () => mockPrisma.cartItem.deleteMany,

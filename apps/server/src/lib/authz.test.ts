@@ -7,6 +7,7 @@ interface ScopedRow {
   id: string
   householdId?: string
   userId?: string
+  locationId?: string
 }
 
 // Two kinds of double in one mocked `prisma`:
@@ -17,7 +18,8 @@ interface ScopedRow {
 // - `tag`, `item` and `cart` are small stores for `requireOwnRowOrUnclaimed`
 //   and `requireCatalogIds`, with a `lookups` counter. `tag` and `item` are
 //   catalog models, scoped by `householdId` since households H3a task 3.7.
-//   `cart` is still scoped by `userId` until H3b.
+//   `cart` is scoped by `locationId` since households H3b task B.3, which
+//   dropped `Cart.userId`.
 const { state, client } = vi.hoisted(() => {
   const state = {
     tags: [] as ScopedRow[],
@@ -28,7 +30,12 @@ const { state, client } = vi.hoisted(() => {
     lookups: 0,
   }
 
-  type Where = { id?: string | { in: string[] }; householdId?: string; userId?: string }
+  type Where = {
+    id?: string | { in: string[] }
+    householdId?: string
+    userId?: string
+    locationId?: { in: string[] }
+  }
 
   // Filters only on keys actually present in `where`, exactly as real Prisma
   // does. Hardcoding a scope comparison here would leave the "delete the
@@ -38,7 +45,7 @@ const { state, client } = vi.hoisted(() => {
   // not silently ignored (the `cartItemFake` trap, root CLAUDE.md).
   const matches = (row: ScopedRow, where: Where) => {
     for (const key of Object.keys(where)) {
-      if (key !== 'id' && key !== 'householdId' && key !== 'userId') {
+      if (key !== 'id' && key !== 'householdId' && key !== 'userId' && key !== 'locationId') {
         throw new Error(`authz.test store does not model the where key '${key}'`)
       }
     }
@@ -48,15 +55,22 @@ const { state, client } = vi.hoisted(() => {
     return (
       idOk &&
       (where.householdId === undefined || row.householdId === where.householdId) &&
-      (where.userId === undefined || row.userId === where.userId)
+      (where.userId === undefined || row.userId === where.userId) &&
+      (where.locationId === undefined ||
+        (row.locationId !== undefined && where.locationId.in.includes(row.locationId)))
     )
   }
 
-  const store = (rows: () => ScopedRow[], scope: 'householdId' | 'userId') => {
+  type Scope = 'householdId' | 'userId' | 'locationId'
+  const store = (rows: () => ScopedRow[], scope: Scope) => {
+    // A store refuses a filter on a scope column its model does not have:
+    // `Cart` has no `userId` since households H3b task B.3, and Prisma throws
+    // on such a `where` at run time.
     const check = (where: Where) => {
-      const other = scope === 'householdId' ? 'userId' : 'householdId'
-      if (where[other] !== undefined) {
-        throw new Error(`this store is scoped by ${scope}, not ${other}`)
+      for (const other of ['householdId', 'userId', 'locationId'] as const) {
+        if (other !== scope && where[other] !== undefined) {
+          throw new Error(`this store is scoped by ${scope}, not ${other}`)
+        }
       }
     }
     return {
@@ -83,7 +97,7 @@ const { state, client } = vi.hoisted(() => {
   const client = {
     tag: store(() => state.tags, 'householdId'),
     item: store(() => state.items, 'householdId'),
-    cart: store(() => state.carts, 'userId'),
+    cart: store(() => state.carts, 'locationId'),
   }
   return { state, client }
 })
@@ -506,9 +520,14 @@ function seedCatalog() {
     { id: 'item-mine', householdId: 'hh-1', userId: 'caller' },
     { id: 'item-theirs', householdId: 'hh-2', userId: 'stranger' },
   ]
+  // No cart has an owner since households H3b task B.3. `cart-here` is at
+  // loc-1, where the caller has a role (`other` organizes it too); `cart-loc2`
+  // is in the caller's OWN household but at loc-2, where the caller has no
+  // role; `cart-theirs` is at another household's location.
   state.carts = [
-    { id: 'cart-mine', userId: 'caller' },
-    { id: 'cart-others', userId: 'other' },
+    { id: 'cart-here', locationId: 'loc-1' },
+    { id: 'cart-loc2', locationId: 'loc-2' },
+    { id: 'cart-theirs', locationId: 'loc-s' },
   ]
   state.lookups = 0
 }
@@ -552,13 +571,32 @@ describe('requireOwnRowOrUnclaimed', () => {
     await expect(requireOwnRowOrUnclaimed(caller, 'tag', 'tag-theirs')).rejects.toThrow(/Forbidden/)
   })
 
-  it("a cart is still checked by account, not by household, until H3b", async () => {
-    // Given a cart of `other`, who is in the caller's household
-    // When the guard is asked about it, and about the caller's own cart
-    // Then the caller's own cart is "own", and `other`'s cart is refused:
-    // `Cart` keeps its `userId` scope until H3b
-    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'cart-mine')).resolves.toBe('own')
-    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'cart-others')).rejects.toThrow(
+  it('a cart is checked by its location: any role there makes it own (H3b task B.3)', async () => {
+    // Given carts at loc-1 (the caller has a role), at loc-2 (the caller's own
+    // household, but no role) and at another household's location
+    // When the guard is asked about each
+    // Then only the cart at loc-1 is "own". The cart at loc-2 is refused,
+    // which a check by household would let through
+    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'cart-here')).resolves.toBe('own')
+    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'cart-loc2')).rejects.toThrow(
+      /Forbidden/,
+    )
+    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'cart-theirs')).rejects.toThrow(
+      /Forbidden/,
+    )
+    // And an id no cart holds is still unclaimed
+    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'cart-free')).resolves.toBe('unclaimed')
+  })
+
+  it('a cart is refused once the caller has no role left on its location', async () => {
+    // Given the caller holds no location role at all; `other` still organizes
+    // loc-1, so the cart's location is not empty
+    seed({ callerHouseholdRole: 'member', callerLocationRole: null })
+    seedCatalog()
+
+    // When the guard is asked about the cart at loc-1
+    // Then it is refused: the role is what counts, not the household
+    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'cart-here')).rejects.toThrow(
       /Forbidden/,
     )
   })

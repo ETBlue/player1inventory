@@ -56,11 +56,12 @@ async function requireCartLocation(
  * "Changed models", on the `feature/households` branch) decides OPPOSITE
  * things about them:
  *
- *   `Cart.userId`     — DROPPED. A cart belongs to its location and is shared
- *                       by everyone there. So every line below that names it
- *                       STOPS COMPILING, and the compiler lists them for you:
- *                       the `vendorCart` create, `allCarts`, the two
- *                       `bootstrapCarts` calls, and the `abandonCart` lookup.
+ *   `Cart.userId`     — DROPPED in households H3b task B.3 (migration
+ *                       20261114000000_shared_carts). A cart belongs to its
+ *                       location and is shared by everyone there. The
+ *                       `vendorCart` create, `allCarts`, the two
+ *                       `bootstrapCarts` calls and the `abandonCart` lookup
+ *                       no longer name it.
  *   `CartItem.userId` — KEPT, with a CHANGED MEANING: "added by", not "owns".
  *                       It stops being a scope; scope comes from the cart's
  *                       location. So every filter below that names it KEEPS
@@ -100,7 +101,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
     // omitted argument is now a codegen error rather than a silent read of the
     // wrong location.
     vendorCart: async (_, { vendorId = null, locationId }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
 
       // `participant`, not `viewer`: this query CREATES the cart when it is missing.
       await requireLocationRole(ctx, locationId, 'participant')
@@ -108,26 +109,28 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       const cartId = cartIdFor(locationId, vendorId ?? null)
       let cart = await prisma.cart.findUnique({ where: { id: cartId } })
       if (!cart) {
-        // Issue #358: this write is what decides what every `Cart.userId`
-        // filter in this file MEANS today — the first person to open a
-        // vendor's cart at a location owns the row. Households drops
-        // `Cart.userId`, so this line stops compiling and the column simply
-        // goes. See the block comment above this object.
+        // No `userId` since households H3b: a cart belongs to its location
+        // and has no owner.
         cart = await prisma.cart.create({
-          data: { id: cartId, userId, locationId },
+          data: { id: cartId, locationId },
         })
       }
       return cart as unknown as Cart
     },
 
-    // Whole-account on purpose, like `inventoryLogs`. The shopping page reads
-    // it to show every vendor's "last purchased" and the export path needs
-    // every location's carts or the backup loses rows. Each row's location is
-    // recoverable from its id.
+    // Every location the caller has a role on, like `inventoryLogs`. The
+    // shopping page reads it to show every vendor's "last purchased", and the
+    // export path needs every location's carts or the backup loses rows. Each
+    // row's location is recoverable from its id.
+    //
+    // Scoped by location role since households H3b task B.3, when
+    // `Cart.userId` was dropped. Any role counts, `viewer` included, because
+    // this is a read. Task B.4 also moves `allCartItems` onto the same scope.
     allCarts: async (_, __, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
+      const locationIds = await locationIdsWithRole(ctx)
       return prisma.cart.findMany({
-        where: { userId },
+        where: { locationId: { in: locationIds } },
         orderBy: [{ id: 'asc' }],
       }) as unknown as Promise<Cart[]>
     },
@@ -403,7 +406,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
      * is exactly when local mode calls its own version.
      */
     bootstrapCarts: async (_, { locationId }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
       // `participant`, not `viewer`: this creates rows.
       await requireLocationRole(ctx, locationId, 'participant')
 
@@ -436,17 +439,17 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
         // statements. Without the flag that race raises P2002 and the whole
         // bootstrap fails, taking the carts that were fine with it.
         await prisma.cart.createMany({
-          data: missing.map((id) => ({ id, userId, locationId })),
+          data: missing.map((id) => ({ id, locationId })),
           skipDuplicates: true,
         })
       }
 
       // Scoped by `locationId`, so the caller gets this location's carts only —
-      // `allCarts` is the whole-account read. `userId` here is a query SCOPE
-      // (see the comment above this object), not the authorization decision;
-      // that was `requireLocationRole` at the top.
+      // `allCarts` is the read across locations. The authorization decision
+      // was `requireLocationRole` at the top. (Until households H3b this also
+      // filtered by `Cart.userId`, which is gone.)
       return prisma.cart.findMany({
-        where: { userId, locationId },
+        where: { locationId },
         orderBy: [{ id: 'asc' }],
       }) as unknown as Promise<Cart[]>
     },
@@ -454,18 +457,15 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
     abandonCart: async (_, { cartId }, ctx) => {
       const userId = requireAuth(ctx)
       await requireCartLocation(ctx, cartId, 'participant')
-      // Issue #358, and the two lines below need DIFFERENT fixes because they
-      // read different columns.
+      // The lookup is by the cart's id alone since households H3b task B.3,
+      // when `Cart.userId` was dropped. `requireCartLocation` above is the
+      // authorization decision.
       //
-      // The lookup reads `Cart.userId`, which households DROPS, so that line
-      // stops compiling and has to be rewritten in any case — look the cart up
-      // by its id alone, authorized by `requireCartLocation` above.
-      //
-      // The delete reads `CartItem.userId`, which households KEEPS with the
-      // meaning "added by", so that line KEEPS COMPILING and would clear only
-      // the caller's part of a shared cart while every co-member's row stays.
-      // Re-derive its scope — see the block comment above this object.
-      const existing = await prisma.cart.findFirst({ where: { id: cartId, userId } })
+      // STOPGAP until task B.4: the delete still filters by
+      // `CartItem.userId`, which now means "added by". So it clears only the
+      // caller's part of a shared cart. See the block comment above this
+      // object.
+      const existing = await prisma.cart.findUnique({ where: { id: cartId } })
       if (!existing) throw new GraphQLError('Cart not found', { extensions: { code: 'NOT_FOUND' } })
       // Delete ALL items (including pinned)
       await prisma.cartItem.deleteMany({ where: { cartId, userId } })

@@ -41,9 +41,11 @@ export interface FakeVendor {
   householdId: string
 }
 
+// No `userId`: households H3b task B.3 dropped `Cart.userId`. A write or a
+// `where` that names it THROWS here, the way Prisma refuses an unknown
+// argument, so a resolver that still writes or filters it fails its test.
 export interface FakeCart {
   id: string
-  userId: string
   locationId: string
   lastPurchasedAt: Date | null
 }
@@ -68,7 +70,10 @@ export class CartIdConstraintError extends Error {
 // call, before the store is searched — never inside the per-row matcher, which
 // an empty store never calls. See `whereKeys.ts`.
 const VENDOR_WHERE: WhereSpec = { id: 'equals', householdId: 'equals' }
-const CART_WHERE: WhereSpec = { id: 'in', userId: 'equals', locationId: 'equals' }
+// `locationId` takes `{ in }` since households H3b task B.3: with no
+// `Cart.userId`, `requireOwnRowOrUnclaimed` finds a cart through the
+// locations the caller has a role on.
+const CART_WHERE: WhereSpec = { id: 'in', locationId: 'in' }
 
 function checkVendorWhere(where: Where | undefined): void {
   checkWhere('shoppingFake(vendor)', where, VENDOR_WHERE)
@@ -87,8 +92,15 @@ function matchesVendor(row: FakeVendor, where: Where): boolean {
 }
 
 function matchesCart(row: FakeCart, where: Where): boolean {
-  if (where.userId !== undefined && row.userId !== where.userId) return false
-  if (where.locationId !== undefined && row.locationId !== where.locationId) return false
+  const loc = where.locationId
+  if (loc !== undefined) {
+    if (typeof loc === 'string') {
+      if (row.locationId !== loc) return false
+    } else {
+      const list = (loc as { in?: string[] }).in
+      if (list !== undefined && !list.includes(row.locationId)) return false
+    }
+  }
   const id = where.id
   if (id !== undefined) {
     if (typeof id === 'string') return row.id === id
@@ -102,12 +114,18 @@ export function createShoppingFake() {
   const state: ShoppingFakeState = { vendors: [], carts: [] }
   let seq = 0
 
+  function refuseCartUserId(data: Record<string, unknown>): void {
+    if ('userId' in data) {
+      throw new Error('shoppingFake(cart): "userId" is not a column of Cart since households H3b task B.3.')
+    }
+  }
+
   function insertCart(data: Record<string, unknown>): FakeCart {
+    refuseCartUserId(data)
     const id = data.id as string
     if (state.carts.some((c) => c.id === id)) throw new CartIdConstraintError(id)
     const row: FakeCart = {
       id,
-      userId: data.userId as string,
       locationId: data.locationId as string,
       lastPurchasedAt: (data.lastPurchasedAt as Date | null) ?? null,
     }
@@ -199,6 +217,7 @@ export function createShoppingFake() {
         update: Record<string, unknown>
       }) => {
         checkCartWhere(where)
+        refuseCartUserId(update)
         const existing = state.carts.find((c) => matchesCart(c, where))
         if (!existing) return insertCart(create)
         // Only the keys `update` actually carries are applied — Prisma's own

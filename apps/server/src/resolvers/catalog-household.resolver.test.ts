@@ -53,8 +53,9 @@ import { typeDefs } from '../schema/index.js'
 // - `Household`, `HouseholdMember`, `LocationMember`, `Location`: the
 //   `householdWorld` fakes, for the role checks and `createVendor`'s location
 //   check.
-// - `Cart`, `CartItem`: `ownedRowFake` scoped by `userId`, which carts keep
-//   until H3b.
+// - `Cart`, `CartItem`: `cartFake` (src/test/cartFake.ts). `Cart` has no
+//   `userId` since households H3b task B.3, so `ownedRowFake`, which needs a
+//   scope column, no longer fits.
 // - `$transaction`: `runInTransaction` over every store, for
 //   `applyShelfFilterPicks`.
 vi.mock('../lib/prisma.js', async () => {
@@ -204,13 +205,22 @@ vi.mock('../lib/prisma.js', async () => {
     filterConfig: unknown
     itemIds: string[]
   }>({ model: 'Shelf', ...catalog })
-  const cartStore = createOwnedRowFake<{ id: string; userId: string; locationId: string }>({
-    model: 'Cart',
-  })
-  const cartItemStore = createOwnedRowFake<{ id: string; userId: string; cartId: string }>({
-    model: 'CartItem',
-    columns: ['cartId'],
-  })
+  const { createCartFake } = await import('../test/cartFake.js')
+  const carts = createCartFake()
+  // The `Store` shape the tests below use (`state.rows`, `reset(rows)`), over
+  // the cart fake's own state, which is what the rollback snapshots.
+  const cartStore = {
+    state: {
+      get rows() {
+        return carts.state.carts
+      },
+    },
+    reset: (rows: { id: string; locationId: string; lastPurchasedAt?: Date | null }[] = []) =>
+      carts.reset({
+        carts: rows.map((r) => ({ lastPurchasedAt: null, ...r })),
+        cartItems: [],
+      }),
+  }
 
   // `count` is not modelled by `ownedRowFake`; here it is `findMany` plus a
   // length, so it gets the same `where` checks.
@@ -272,8 +282,8 @@ vi.mock('../lib/prisma.js', async () => {
     itemTag: itemTag.client,
     itemVendor: itemVendor.client,
     recipeItem: recipeItem.client,
-    cart: cartStore.client,
-    cartItem: cartItemStore.client,
+    cart: carts.client.cart,
+    cartItem: carts.client.cartItem,
   }
   const stores = [
     world.users.state,
@@ -288,8 +298,7 @@ vi.mock('../lib/prisma.js', async () => {
     itemTag.state,
     itemVendor.state,
     recipeItem.state,
-    cartStore.state,
-    cartItemStore.state,
+    carts.state,
   ] as unknown as Record<string, unknown>[]
   client.$transaction = (arg: unknown) => runInTransaction(stores, client, arg)
 

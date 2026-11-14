@@ -155,7 +155,11 @@ model RecipeItem {
 
 model Cart {
   id              String    @id
-  userId          String
+  // No "userId" since households H3b (migration 20261114000000_shared_carts).
+  // A cart belongs to its location, and everyone with a role on that location
+  // shares it. Who may read or write a cart is decided by the location role
+  // (lib/authz.ts: requireCartLocation, locationIdsWithRole), never by who
+  // made the cart.
   // The location this cart belongs to. Added in PR 3a, written by every cart
   // writer. PR 3b re-keyed Cart.id to `${locationId}:${vendorId}`, which is what
   // the resolvers look a cart up by; this column is what `bootstrapCarts`
@@ -183,8 +187,6 @@ model Cart {
 
   location Location   @relation(fields: [locationId], references: [id], onDelete: Cascade)
   items    CartItem[]
-
-  @@index([userId])
 }
 
 model CartItem {
@@ -192,12 +194,19 @@ model CartItem {
   cartId   String
   itemId   String
   quantity Float
+  // Who added the row ("added by"). Since households H3b it is never a scope:
+  // no cart read or write filters by it. It is written only when a row is
+  // created, and it is kept when another person's add is merged into the row.
   userId   String
 
   cart Cart @relation(fields: [cartId], references: [id], onDelete: Cascade)
   item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
-  @@index([cartId])
+  // One row per item per cart (households H3b). Two adds of the same item
+  // to the same cart add up in one row. This index starts with "cartId", so
+  // it also serves every lookup by "cartId" alone, and the old
+  // @@index([cartId]) was dropped.
+  @@unique([cartId, itemId])
   @@index([itemId])
 }
 

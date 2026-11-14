@@ -226,8 +226,9 @@ export type CatalogModel = 'item' | 'tag' | 'tagType' | 'vendor' | 'recipe' | 's
  * not here either, for the same reason — it IS the location.
  *
  * Six of them are catalog models, scoped by household since H3a task 3.7.
- * `InventoryLog`, `Cart` and `CartItem` are still scoped by `userId`, until
- * H3b and H4.
+ * `Cart` is scoped by its location since H3b task B.3, which dropped
+ * `Cart.userId`. `InventoryLog` and `CartItem` are still scoped by `userId`,
+ * until H4 and H3b task B.7.
  *
  * This is a hand-maintained list, and a wrong literal at a call site compiles.
  * Every call site therefore needs its own test, and deleting a guard must turn
@@ -263,7 +264,7 @@ interface UserScopedDelegate {
   }): Promise<{ id: string } | null>
 }
 
-type UserScopedModel = Exclude<OwnedModel, CatalogModel>
+type UserScopedModel = Exclude<OwnedModel, CatalogModel | 'cart'>
 
 function isCatalogModel(model: OwnedModel): model is CatalogModel {
   return model !== 'inventoryLog' && model !== 'cart' && model !== 'cartItem'
@@ -300,7 +301,6 @@ function catalogDelegate(model: CatalogModel): CatalogDelegate {
 function userScopedDelegate(model: UserScopedModel): UserScopedDelegate {
   const delegates = {
     inventoryLog: prisma.inventoryLog,
-    cart: prisma.cart,
     cartItem: prisma.cartItem,
   } satisfies Record<UserScopedModel, UserScopedDelegate>
   return delegates[model]
@@ -323,7 +323,8 @@ function userScopedDelegate(model: UserScopedModel): UserScopedDelegate {
  * | Model | The row is "own" when |
  * |---|---|
  * | the six catalog models | it is in the caller's household (`requireHousehold`) |
- * | `InventoryLog`, `Cart`, `CartItem` | its `userId` is the caller's (until H3b and H4) |
+ * | `Cart` | it is at a location the caller has any role on (`locationIdsWithRole`), since H3b task B.3 |
+ * | `InventoryLog`, `CartItem` | its `userId` is the caller's (until H4 and H3b task B.7) |
  *
  * So a tag another member of the caller's household made is `'own'` here, and
  * a tag of another household throws.
@@ -353,21 +354,35 @@ export async function requireOwnRowOrUnclaimed(
 
   // UNSCOPED on purpose, and only `id` is selected. "Is this primary key
   // taken" is not an authorization question and has no scope.
-  const delegate = isCatalogModel(model) ? catalogDelegate(model) : userScopedDelegate(model)
+  const delegate =
+    model === 'cart' ? prisma.cart : isCatalogModel(model) ? catalogDelegate(model) : userScopedDelegate(model)
   const taken = await delegate.findUnique({ where: { id }, select: { id: true } })
   if (!taken) return 'unclaimed'
 
   // The AUTHORIZATION decision, SCOPED IN SQL. Never a comparison of a fetched
-  // row's `userId` or `householdId` against the caller's.
-  const own = isCatalogModel(model)
-    ? await catalogDelegate(model).findFirst({
-        where: { id, householdId: await requireHousehold(ctx) },
-        select: { id: true },
-      })
-    : await userScopedDelegate(model).findFirst({
-        where: { id, userId },
-        select: { id: true },
-      })
+  // row's `userId`, `householdId` or `locationId` against the caller's.
+  //
+  // `Cart` has no `userId` since households H3b task B.3, so it is scoped by
+  // its location: any location role counts. STOPGAP: task B.7 settles the
+  // rule for carts and cart items (`participant` or higher). Keep `cart` out
+  // of `userScopedDelegate`: `satisfies` there does NOT reject a delegate
+  // whose model lacks `userId` (see the note above it), and Prisma would
+  // then throw on the unknown `where` key at run time.
+  const own =
+    model === 'cart'
+      ? await prisma.cart.findFirst({
+          where: { id, locationId: { in: await locationIdsWithRole(ctx) } },
+          select: { id: true },
+        })
+      : isCatalogModel(model)
+        ? await catalogDelegate(model).findFirst({
+            where: { id, householdId: await requireHousehold(ctx) },
+            select: { id: true },
+          })
+        : await userScopedDelegate(model).findFirst({
+            where: { id, userId },
+            select: { id: true },
+          })
 
   // Same wording and code as `requireLocationRole`'s refusal above, so a
   // refusal reveals neither which model nor who owns the row.

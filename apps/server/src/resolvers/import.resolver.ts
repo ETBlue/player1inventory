@@ -3,6 +3,7 @@ import {
   fallbackImportLocation,
   householdOfLocation,
   type LocationRole,
+  locationIdsWithRole,
   type OwnedModel,
   requireHousehold,
   requireHouseholdRole,
@@ -418,8 +419,9 @@ async function createImportedLocation(
  * This is the account-scoped twin of `requireOwnLocationIdsOrUnclaimed` above.
  * It serves the nine models in `OwnedModel` (lib/authz.ts) — the models that
  * belong to no location, so `requireLocationRole` cannot reach them. Six of
- * them (the catalog) belong to a household; `InventoryLog`, `Cart` and
- * `CartItem` still carry a `userId`.
+ * them (the catalog) belong to a household. `InventoryLog` and `CartItem`
+ * still carry a `userId`; a `Cart` is checked by its location (households
+ * H3b task B.3).
  *
  * Every `id` in an import payload is attacker-controlled, and each of these
  * primary keys is GLOBAL with no `userId` in it. So an id in the payload can
@@ -577,8 +579,11 @@ async function requireOwnItemStockRefs(
  *
  * The order of the checks is rule 12 of the H3a plan:
  *
- *  1. The cart, scoped by `userId` (until H3b). A cart that is not the
- *     caller's, or is gone, makes its rows SKIPPED.
+ *  1. The cart, scoped to the locations the caller has a role on
+ *     (`locationIdsWithRole`). It was scoped by `Cart.userId` until
+ *     households H3b task B.3 dropped that column. A cart at a location the
+ *     caller has no role on, or a cart that is gone, makes its rows SKIPPED.
+ *     STOPGAP: task B.7 settles this rule (`participant` or higher).
  *  2. The location role on the cart's location, `participant`, through
  *     `requireLocationRole`. A cart of the caller's at a location they hold
  *     no role on any more THROWS FORBIDDEN for the whole batch, the same
@@ -600,16 +605,17 @@ async function resolveCartItemParents(
   ctx: Context,
   cartItems: readonly { cartId: string; itemId: string }[],
 ): Promise<(cartId: string, itemId: string) => boolean> {
-  const userId = requireAuth(ctx)
+  requireAuth(ctx)
+  const reachable = await locationIdsWithRole(ctx)
 
-  // cart id → the household of its location, or null when the cart is not
-  // the caller's.
+  // cart id → the household of its location, or null when the cart is at no
+  // location the caller has a role on.
   const cartHousehold = new Map<string, string | null>()
   const locationHousehold = new Map<string, string>()
   for (const { cartId } of cartItems) {
     if (cartHousehold.has(cartId)) continue
     const cart = await prisma.cart.findFirst({
-      where: { id: cartId, userId },
+      where: { id: cartId, locationId: { in: reachable } },
       select: { id: true, locationId: true },
     })
     if (!cart) {
@@ -804,7 +810,8 @@ async function householdShelfRefs(
 // - `clearAllData` clears the caller's household, owner only, and makes
 //   "Home" again (task 3.10, decision H17). See its own comment.
 //
-// Still owed: logs and carts keep their `userId` scope until H3b and H4. No
+// Still owed: logs keep their `userId` scope until H4, and cart items until
+// H3b task B.7. (`Cart.userId` was dropped in task B.3.) No
 // import role check is added: that is H4. (`clearAllData`'s owner check
 // already makes the `clear` strategy owner only.)
 export const importResolvers: Pick<Resolvers, 'Mutation'> = {
@@ -1176,7 +1183,6 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           data: {
             id,
             lastPurchasedAt: lastPurchasedAt ? new Date(lastPurchasedAt as string) : undefined,
-            userId,
             // The location named by the cart's OWN id since PR 3b
             // (`${locationId}:${vendorId}`), and the caller's fallback location when no
             // `Location` row holds that id — a pre-3b bare id, or a cloud
@@ -1213,8 +1219,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         // reach here, so the per-row read this replaces has nothing left to
         // find out.
         if (ownIds.has(id)) continue
-        // BOTH references are SCOPED since plan task 8: the cart by `userId`
-        // (until H3b), the item by the household of the CART's location
+        // BOTH references are SCOPED since plan task 8: the cart by the
+        // locations the caller has a role on (by `userId` until households
+        // H3b task B.3), the item by the household of the CART's location
         // (since households H3a task 3.9; the caller's household before). See
         // `resolveCartItemParents`. Before plan task 8 both reads were plain
         // `findUnique({ where: { id } })`, and the `cartId` one is the exact
@@ -1574,19 +1581,14 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         }
         const upserted = await prisma.cart.upsert({
           where: { id },
-          // `userId` and `locationId` live in `create` only, each for its own
-          // reason.
-          //
-          // `userId`: a row's owner is not something an import may rewrite.
-          // Leaving it out means a future edit that drops the guard above
-          // still cannot hand another account's cart to the importer. Same
-          // shape as `bulkUpsertLocations`.
+          // `locationId` lives in `create` only. (`Cart.userId` lived there
+          // too until households H3b task B.3 dropped the column.)
           //
           // `locationId`: the same reason as the log upsert above — a
           // re-import must not MOVE an existing cart. The value comes from the
           // cart's own id when a `Location` row holds that id, and the
           // caller's fallback location when none does. Both resolved above.
-          create: { id, ...data, userId, locationId: locationIdFor(id) },
+          create: { id, ...data, locationId: locationIdFor(id) },
           update: data,
         })
         results.push(upserted as unknown as Cart)
@@ -1624,7 +1626,8 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         // may rewrite, and because a future edit that drops the guard above
         // must still not be able to reassign a cart item.
         const data = { cartId, itemId, quantity }
-        // BOTH references are SCOPED — the cart by `userId` (until H3b), the
+        // BOTH references are SCOPED — the cart by the locations the caller
+        // has a role on (by `userId` until households H3b task B.3), the
         // item by the household of the cart's location (since households H3a
         // task 3.9, `resolveCartItemParents`) — and SKIPPED when they do not
         // resolve. New in plan task 8: this mutation had NO check on either
