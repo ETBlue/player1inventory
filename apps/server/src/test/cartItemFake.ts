@@ -1,7 +1,9 @@
 // Prisma `where` matching for `CartItem`, shared by the two resolver specs
 // that filter cart entries by location — `cart.resolver.test.ts`
 // (`cartItemCountByItem`) and `itemStock.resolver.test.ts`
-// (`removeItemFromLocation`'s cascade).
+// (`removeItemFromLocation`'s cascade) — and by the stateful cart store in
+// `cartFake.ts` (households H3b task B.2), so all three agree on what a
+// `where` means.
 //
 // ── WHY THIS IS SHARED AND NOT COPIED ──
 //
@@ -63,12 +65,22 @@ export class MissingCartError extends Error {
 // Every key the matcher models, and how. A key outside this spec, at either
 // level, or a value shape its kind does not allow, THROWS — see
 // `whereKeys.ts`.
+//
+// Households H3b task B.2 widened three keys, for the stateful store in
+// `cartFake.ts` and the resolvers B.4 to B.7 change:
+//   - `cartId` takes `{ in: [...] }` too (`deleteVendor` deletes the rows of
+//     several carts at once);
+//   - `quantity` takes a number or `{ gt | gte | lt | lte }` (checkout reads
+//     and deletes only the rows being bought, `quantity: { gt: 0 }`);
+//   - `cart: { locationId }` takes `{ in: [...] }` too ("rows in carts at
+//     every location where the caller has a role").
 const CART_ITEM_WHERE: WhereSpec = {
   id: 'in',
-  cartId: 'equals',
+  cartId: 'in',
   itemId: 'equals',
   userId: 'equals',
-  cart: { nested: { locationId: 'equals' } },
+  quantity: 'number',
+  cart: { nested: { locationId: 'in' } },
 }
 
 /**
@@ -86,8 +98,10 @@ const CART_ITEM_WHERE: WhereSpec = {
  * own rule. A hardcoded ownership or location match would keep a scoping test
  * green after the resolver dropped the scope.
  *
- * Supported keys: `id` (plain string or `{ in: [...] }`), `cartId`, `itemId`,
- * `userId`, and the relation filter `cart: { locationId }`. Any other key,
+ * Supported keys: `id` and `cartId` (each a plain string or `{ in: [...] }`),
+ * `itemId`, `userId`, `quantity` (a number or `{ gt | gte | lt | lte }`), and
+ * the relation filter `cart: { locationId }` (a plain string or
+ * `{ in: [...] }`). Any other key,
  * at either level, throws `UnknownWhereKeyError`; an operator object on a
  * plain key throws `UnsupportedWhereFilterError`.
  *
@@ -110,22 +124,48 @@ function cartItemMatches(
 ): boolean {
   if (where.itemId !== undefined && row.itemId !== where.itemId) return false
   if (where.userId !== undefined && row.userId !== where.userId) return false
-  if (where.cartId !== undefined && row.cartId !== where.cartId) return false
+  if (!matchesIn(row.cartId, where.cartId)) return false
+  if (!matchesIn(row.id, where.id)) return false
+  if (where.quantity !== undefined && !matchesQuantity(row, where.quantity)) return false
 
-  const id = where.id
-  if (typeof id === 'string' && row.id !== id) return false
-  if (id !== null && typeof id === 'object') {
-    const list = (id as { in?: string[] }).in
-    if (list !== undefined && !list.includes(row.id)) return false
-  }
-
-  const cartFilter = where.cart as { locationId?: string } | undefined
+  const cartFilter = where.cart as { locationId?: unknown } | undefined
   if (cartFilter !== undefined) {
     const cart = carts.find((c) => c.id === row.cartId)
     if (!cart) throw new MissingCartError(row.id, row.cartId)
-    if (cartFilter.locationId !== undefined && cart.locationId !== cartFilter.locationId) {
-      return false
-    }
+    if (!matchesIn(cart.locationId, cartFilter.locationId)) return false
   }
+  return true
+}
+
+/**
+ * A plain string or `{ in: [...] }`. `undefined` matches every row, which is
+ * Prisma's rule for a key nobody named. `checkWhere` has already refused any
+ * other shape, so nothing else reaches here.
+ */
+function matchesIn(value: string, filter: unknown): boolean {
+  if (filter === undefined) return true
+  if (typeof filter === 'string') return value === filter
+  return ((filter as { in: unknown[] }).in ?? []).includes(value)
+}
+
+/**
+ * A number, or `{ gt | gte | lt | lte }` (all given operators must hold).
+ * A fixture row with no number `quantity` cannot be compared, so it throws
+ * and names the row, instead of quietly matching nothing.
+ */
+function matchesQuantity(row: FakeCartItem, filter: unknown): boolean {
+  const quantity = (row as { quantity?: unknown }).quantity
+  if (typeof quantity !== 'number') {
+    throw new Error(
+      `Fixture error: CartItem '${row.id}' has no number quantity, but the where filters on quantity. ` +
+        'CartItem.quantity is a NOT NULL Float, so give the row one.',
+    )
+  }
+  if (typeof filter === 'number') return quantity === filter
+  const ops = filter as { gt?: number; gte?: number; lt?: number; lte?: number }
+  if (ops.gt !== undefined && !(quantity > ops.gt)) return false
+  if (ops.gte !== undefined && !(quantity >= ops.gte)) return false
+  if (ops.lt !== undefined && !(quantity < ops.lt)) return false
+  if (ops.lte !== undefined && !(quantity <= ops.lte)) return false
   return true
 }

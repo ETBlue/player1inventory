@@ -182,8 +182,10 @@ describe('cartItemFake refuses an unknown where key', () => {
     ).toThrow(/'cart\.householdId'/)
   })
 
+  // `itemId`, not `cartId`: households H3b task B.2 made `cartId` accept
+  // `{ in }` (deleteVendor), so it is no longer a plain-equality key.
   it('refuses an operator object on a plain-equality key', () => {
-    expect(() => filterCartItems([cartRow], { cartId: { in: ['cart-1'] } }, carts)).toThrow(
+    expect(() => filterCartItems([cartRow], { itemId: { in: ['item-1'] } }, carts)).toThrow(
       UnsupportedWhereFilterError,
     )
   })
