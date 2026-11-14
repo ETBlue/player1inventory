@@ -196,6 +196,10 @@ cooking page shows one error.
 | a cart item whose CART is at a location where the caller is `viewer` | the row is SKIPPED, like a cart that is gone | it is a reference that does not resolve. A backup that names an existing ROW there is still refused, by `requireOwnRowOrUnclaimed('cartItem')`. Until B.7 a viewer got `FORBIDDEN` for the whole batch, and a caller with no role got a skip (B.3 stopgap) |
 | how is each write done | one `upsert` on `cartId_itemId`, `increment` for `skip` and `clear`, a plain number for `replace` | no read-then-write, so a concurrent `addToCart` cannot cause `P2002` or a lost amount |
 
+**Fixed in task B.8.** `partitionPayload` now sends every cart item to the upsert pass on
+`replace`, and on `skip` drops a whole pair when any of its ids is a conflict. What it said
+before the fix:
+
 **Not yet true end to end.** The web's `replace` strategy (`partitionPayload` in
 `apps/web/src/lib/importData.ts`) splits cart items by ID conflict: a row whose id the cloud
 does not hold goes to `bulkCreateCartItems`, which ADDS. So on `replace`, a new id whose pair

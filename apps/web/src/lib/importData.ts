@@ -480,9 +480,12 @@ function findPayloadDefaultLocationId(payload: ExportPayload): string | null {
 //     `Attic:<vendor>` cart for each of Home's carts.
 //   - A row that EXISTS mostly stays at Home. `bulkUpsertItemStocks` updates
 //     the quantities only, and `bulkUpsertInventoryLogs` writes `locationId`
-//     in `create` only. The exception is a cart item under `replace`:
-//     `bulkUpsertCartItems` writes `cartId` in `update` too, so an existing
-//     cart item moves into the Attic cart.
+//     in `create` only. A cart item under `replace` stays at Home too, since
+//     households H3b task B.7: `bulkUpsertCartItems` writes by
+//     `(cartId, itemId)` and never moves a row, so the existing row is left
+//     alone and the Attic cart gets the amount (a new row, or its own row's
+//     amount set). Before B.7 it wrote `cartId` in `update`, and the existing
+//     cart item moved into the Attic cart.
 //
 // The rename IS real in local mode, where `replace` and `clear` write
 // locations with `bulkPut` (`importLocations`). But the local side never
@@ -1307,6 +1310,28 @@ function stocksForItems(
 // pass on `replace` would silently discard the quantities in the file the user
 // chose to restore.
 
+// The cart items `skip` may send to `bulkCreateCartItems`: every row of a
+// `(cartId, itemId)` pair in which NO id is a conflict.
+//
+// By pair, not by id, because the server skips by pair. `bulkCreateCartItems`
+// skips a whole pair when any of its ids is already the caller's, and adds
+// the rest of the pair to the stored row. An old backup holds a merged pair
+// under several ids, and the merge kept only the lowest. If the web dropped
+// just the conflicting id, the server would never see it, would not know the
+// pair was imported before, and would ADD the other rows' amounts again on
+// every re-import. The local import applies the same rule
+// (`importLocalCartItems`).
+function cartItemsOutsideConflictingPairs(
+  rows: readonly CartItem[],
+  conflictIds: Set<string>,
+): CartItem[] {
+  const pairOf = (row: CartItem) => `${row.cartId}\u0000${row.itemId}`
+  const conflictingPairs = new Set(
+    rows.filter((row) => conflictIds.has(row.id)).map(pairOf),
+  )
+  return rows.filter((row) => !conflictingPairs.has(pairOf(row)))
+}
+
 export function partitionPayload(
   payload: ExportPayload,
   conflicts: ConflictSummary,
@@ -1364,8 +1389,10 @@ export function partitionPayload(
         shoppingCarts: (payload.shoppingCarts as IdOnlyEntity[]).filter(
           (e) => !conflictIdSets.shoppingCarts.has(e.id),
         ),
-        cartItems: (payload.cartItems as IdOnlyEntity[]).filter(
-          (e) => !conflictIdSets.cartItems.has(e.id),
+        // By PAIR, not by id. See `cartItemsOutsideConflictingPairs`.
+        cartItems: cartItemsOutsideConflictingPairs(
+          payload.cartItems as CartItem[],
+          conflictIdSets.cartItems,
         ),
         shelves: ((payload.shelves ?? []) as IdOnlyEntity[]).filter(
           (e) => !conflictIdSets.shelves.has(e.id),
@@ -1415,9 +1442,11 @@ export function partitionPayload(
       shoppingCarts: (payload.shoppingCarts as IdOnlyEntity[]).filter(
         (e) => !conflictIdSets.shoppingCarts.has(e.id),
       ),
-      cartItems: (payload.cartItems as IdOnlyEntity[]).filter(
-        (e) => !conflictIdSets.cartItems.has(e.id),
-      ),
+      // No cart item on the create pass under `replace`: `bulkCreateCartItems`
+      // ADDS to a pair that already has a row, and `replace` must SET it
+      // (households H3b decision P3). They all go to `toUpsert`, the same as
+      // `itemStocks` below.
+      cartItems: [],
       shelves: ((payload.shelves ?? []) as IdOnlyEntity[]).filter(
         (e) => !conflictIdSets.shelves.has(e.id),
       ),
@@ -1454,9 +1483,12 @@ export function partitionPayload(
       shoppingCarts: (payload.shoppingCarts as IdOnlyEntity[]).filter((e) =>
         conflictIdSets.shoppingCarts.has(e.id),
       ),
-      cartItems: (payload.cartItems as IdOnlyEntity[]).filter((e) =>
-        conflictIdSets.cartItems.has(e.id),
-      ),
+      // Every cart item, not only the conflicting ids. `bulkUpsertCartItems`
+      // writes by PAIR, never by id: a pair with a cloud row gets the amount
+      // SET, a pair with none gets a new row under its lowest free id. Before
+      // households H3b task B.8 a new id went to the create pass, so a new id
+      // whose pair already had a cloud row was ADDED to it, not set.
+      cartItems: payload.cartItems,
       shelves: ((payload.shelves ?? []) as IdOnlyEntity[]).filter((e) =>
         conflictIdSets.shelves.has(e.id),
       ),

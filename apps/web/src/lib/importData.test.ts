@@ -4601,3 +4601,102 @@ describe('importLocalData — one row per item per cart (H3b task B.8)', () => {
     expect(rowAt(milk).id).not.toBe('ci-x')
   })
 })
+
+describe('partitionPayload — cart items by pair (H3b task B.8)', () => {
+  const CART = 'local:vendor-1'
+  const existing = emptyExisting({
+    cartItems: [{ id: 'ci-known', cartId: CART, itemId: 'milk', quantity: 4 }],
+  })
+  const payload = emptyPayload({
+    cartItems: [
+      // The stored id, and a second id of the same pair from an old backup
+      { id: 'ci-known', cartId: CART, itemId: 'milk', quantity: 3 },
+      { id: 'ci-same-pair', cartId: CART, itemId: 'milk', quantity: 2 },
+      // A new id for another pair
+      { id: 'ci-new', cartId: CART, itemId: 'eggs', quantity: 1 },
+    ],
+  })
+  const idsOf = (rows: unknown[]) =>
+    (rows as Array<{ id: string }>).map((r) => r.id)
+
+  it('user replacing cloud cart data has every cart item sent to the upsert pass', () => {
+    // Given one cart item id the cloud holds and two it does not
+    // When partitioning for `replace`
+    const { toCreate, toUpsert } = partitionPayload(
+      payload,
+      detectConflicts(payload, existing),
+      'replace',
+    )
+
+    // Then none goes to the create pass, where `bulkCreateCartItems` would
+    // ADD a new id's amount to its pair's cloud row instead of setting it
+    expect(idsOf(toCreate.cartItems)).toEqual([])
+    expect(idsOf(toUpsert.cartItems)).toEqual([
+      'ci-known',
+      'ci-same-pair',
+      'ci-new',
+    ])
+  })
+
+  it('user skipping conflicts in cloud drops the whole pair of a known cart item id', () => {
+    // Given the same payload
+    // When partitioning for `skip`
+    const { toCreate } = partitionPayload(
+      payload,
+      detectConflicts(payload, existing),
+      'skip',
+    )
+
+    // Then the milk pair is dropped as a whole, so the server cannot add
+    // ci-same-pair's 2 to the stored row a second time. Eggs goes up.
+    expect(idsOf(toCreate.cartItems)).toEqual(['ci-new'])
+  })
+})
+
+describe('importCloudData — replace sets cart items (H3b task B.8)', () => {
+  it('user replacing cloud data sends a new cart item id to BulkUpsertCartItems, not BulkCreateCartItems', async () => {
+    // Given a cloud account holding a milk row in the cart
+    const CART = 'cloud_home:vendor_1'
+    const mutate = vi.fn().mockResolvedValue({})
+    const client = {
+      mutate,
+      resetStore: vi.fn().mockResolvedValue(undefined),
+      query: vi.fn().mockResolvedValue({
+        data: {
+          items: [],
+          tags: [],
+          tagTypes: [],
+          vendors: [],
+          recipes: [],
+          inventoryLogs: [],
+          shoppingCarts: [],
+          allCartItems: [
+            { id: 'ci-cloud', cartId: CART, itemId: 'milk', quantity: 4 },
+          ],
+          shelves: [],
+        },
+      }),
+    }
+    // And a backup with a NEW id for that same pair
+    const payload = emptyPayload({
+      cartItems: [
+        { id: 'ci-backup', cartId: CART, itemId: 'milk', quantity: 2 },
+      ],
+    })
+
+    // When the user imports it with `replace`
+    await importCloudData(payload, 'replace', client as never, {})
+
+    // Then the row is sent to the mutation that SETS the pair's amount
+    const idsSentBy = (operation: string) =>
+      mutate.mock.calls
+        .filter((call) => opNameOf(rowAt(call).mutation) === operation)
+        .flatMap((call) =>
+          (rowAt(call).variables.cartItems as Array<{ id: string }>).map(
+            (ci) => ci.id,
+          ),
+        )
+    expect(idsSentBy('BulkUpsertCartItems')).toEqual(['ci-backup'])
+    expect(idsSentBy('BulkCreateCartItems')).toEqual([])
+  })
+})
