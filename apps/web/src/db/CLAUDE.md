@@ -2,11 +2,11 @@
 
 The local-mode data source. `index.ts` declares the Dexie schema, `operations.ts` holds every read/write. Components never touch Dexie directly — they go through the Query hooks in `src/hooks/` (see `src/hooks/CLAUDE.md`).
 
-**Files:** `index.ts` (schema + migrations), `operations.ts` (+ `operations.test.ts`), `migrations.test.ts`, `upgradeV15.test.ts`, `upgradeV16.test.ts`, `upgradeV17.test.ts`, `upgradeV18.test.ts`.
+**Files:** `index.ts` (schema + migrations), `operations.ts` (+ `operations.test.ts`), `migrations.test.ts`, `upgradeV15.test.ts`, `upgradeV16.test.ts`, `upgradeV17.test.ts`, `upgradeV18.test.ts`, `upgradeV19V20.test.ts`.
 
 ## Schema versioning
 
-One `db.version(n).stores({...})` per migration in `index.ts`. Migrations are **forward-only** and **idempotent within a bump**. Current version: **18**.
+One `db.version(n).stores({...})` per migration in `index.ts`. Migrations are **forward-only** and **idempotent within a bump**. Current version: **20**.
 
 Rules:
 - **Add a new version; never edit a shipped one.** An upgrade function must be valid on a database built only from committed history.
@@ -81,6 +81,47 @@ Adds a boolean `isDefault` to `locations`, backfilled `isDefault: location.id ==
 
 **Restored backups.** A pre-v18 payload carries locations with no `isDefault`. `importData.ts` calls `ensureDefaultLocationRow()` after the location rows land, which seeds the `'local'` row only if it is absent — so a payload containing non-default locations does not arrive flagged, and exactly one row ends up flagged.
 
+### v19 and v20 — one row per item per cart
+
+Households H3b task B.8 (design decision D6). Cloud got `@@unique([cartId, itemId])` in task
+B.3; local mode gets the same rule.
+
+| Version | Stores | Upgrade |
+|---|---|---|
+| 19 | same as 18 | merges rows with the same `(cartId, itemId)`: keeps the **lowest** id (plain string order), sets its `quantity` to the sum, deletes the others. A pair with one row is not touched |
+| 20 | `cartItems: 'id, cartId, itemId, &[cartId+itemId]'` | none |
+
+**Why two versions.** Dexie creates a version's new indexes **before** it runs that version's
+upgrade. With the merge and the unique index in one version, IndexedDB tries to build the
+index over rows that still hold duplicates, the upgrade transaction aborts, and `db.open()`
+fails. Measured with fake-indexeddb: moving the index into version 19 makes the open fail with
+`AbortError`, and two tests in `upgradeV19V20.test.ts` go red.
+
+**Why the lowest id.** The cloud migration of task B.3 keeps the lowest id too, and both import
+paths create a merged pair under its lowest free id. So a backup made before the merge finds
+its row under the same id after it, and `skip` sees it as already imported.
+
+**`cartId` and `itemId` keep their own indexes** — reads use `where('cartId')` and
+`where('itemId')`.
+
+**`on('populate')` needed no change.** A fresh database opens straight at version 20, with the
+index and no rows to merge. `upgradeV19V20.test.ts` checks this: a fresh database is at
+version 20, the index is unique, a second row for a pair is refused, and the default location
+is still seeded.
+
+**Two writers had to change before the index could land**, because each could create a second
+row for a pair:
+
+- `addToCart` (`operations.ts`) runs its read and its write in one `rw` transaction on
+  `cartItems`. IndexedDB runs two read-write transactions on one table one after the other, so
+  two calls at once give one row with the sum. Without the transaction the second `add` throws
+  `ConstraintError` (measured).
+- the local import (`importLocalCartItems` in `lib/importData.ts`) merges a backup's rows by
+  pair and follows decision P3 of the H3b plan, the same rule as the cloud mutations: `skip`
+  and `clear` ADD to a stored pair and skip a whole pair when any of its ids is stored;
+  `replace` SETS the pair's amount; no write moves a row. Before task B.8 it used `bulkAdd` and
+  `bulkPut`, so `replace` moved a row whose id the backup named under another pair.
+
 ## The Item/ItemStock join
 
 An item is **"stocked at" a location iff an `ItemStock` row exists for the pair.** Reads join the two: `useItems`/`useItem` return a `PantryItem` (global `Item` + the active location's stock) via `joinItemStock` / `stripStockFields`, both exported from `operations.ts` so the Stock-tab pager re-joins against a different location with the same implementation.
@@ -107,7 +148,7 @@ Cascades run as sequential awaits rather than one Dexie transaction, consistentl
 
 ## Transactional batches
 
-Three operations wrap their writes in a single `db.transaction('rw', …)`. All three must declare **every** table they touch (touching an undeclared one throws at runtime, not compile time) and none may `await` a non-Dexie promise inside the body — a Dexie transaction is zone-scoped, and awaiting a foreign promise can detach the zone so later writes commit *outside* the transaction. **This does not force a caller to compute everything up front**: a plain Dexie read (`db.items.get`, `db.recipes.get`, …) is itself a Dexie promise, so it stays inside the zone and is safe to await mid-transaction — the hazard is specifically a *non*-Dexie await (a network call, a timer, another library's promise), and only `applyShelfFilterPicksBatch` below actually needs the distinction; the other two do compute their rows first, but that is a property of what they happen to need, not a rule the transaction imposes.
+Three operations wrap their writes in a single `db.transaction('rw', …)`. (Since households H3b task B.8, `addToCart` and the import's `importLocalCartItems` also run in one `rw` transaction on `cartItems` alone; see v19 and v20 above.) All three must declare **every** table they touch (touching an undeclared one throws at runtime, not compile time) and none may `await` a non-Dexie promise inside the body — a Dexie transaction is zone-scoped, and awaiting a foreign promise can detach the zone so later writes commit *outside* the transaction. **This does not force a caller to compute everything up front**: a plain Dexie read (`db.items.get`, `db.recipes.get`, …) is itself a Dexie promise, so it stays inside the zone and is safe to await mid-transaction — the hazard is specifically a *non*-Dexie await (a network call, a timer, another library's promise), and only `applyShelfFilterPicksBatch` below actually needs the distinction; the other two do compute their rows first, but that is a property of what they happen to need, not a rule the transaction imposes.
 
 - **`consumeRecipesBatch`** — cooking's "done": quantities, logs and `lastCookedAt` over `items`, `itemStocks`, `inventoryLogs`, `recipes`. Callers compute the finished rows first and hand them over.
 - **`applyUnitSwitchBatch`** — the Info tab's unit switch over `items`, `itemStocks`, `recipes`: the `Item`'s configuration, one `ItemStock` per location whose tracked quantities the switch moves, and one recipe per `defaultAmount` expressed in the old unit. As separate writes a failure partway left the item on the **new** unit while some locations and recipes still held **old**-unit numbers — mixed units, silently. It shares `updateItem`'s field routing via the internal `writeItemUpdate` rather than re-deriving the rule. Callers compute the finished rows first and hand them over.
