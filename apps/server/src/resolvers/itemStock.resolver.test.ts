@@ -789,6 +789,10 @@ describe('removing an item from a location needs location role organizer', () =>
     carts.carts = [{ id: 'loc-a:no-vendor', locationId: 'loc-a' }]
     carts.cartItems = [
       { id: 'ci-here', cartId: 'loc-a:no-vendor', itemId: 'item-milk', userId: 'user-a' },
+      // Added by the co-member user-m to the same shared cart (households H3b
+      // task B.4). A removal that still scoped the cart delete by `userId`
+      // would leave this row behind.
+      { id: 'ci-comember', cartId: 'loc-a:no-vendor', itemId: 'item-milk', userId: 'user-m' },
     ]
     carts.failCartItemDeleteMany = false
   }
@@ -813,7 +817,7 @@ describe('removing an item from a location needs location role organizer', () =>
     // are all still there
     expect(stockState.itemStocks.some((s) => s.id === 'st-home')).toBe(true)
     expect(logs.state.logs.map((l) => l.id).sort()).toEqual(['log-comember', 'log-here'])
-    expect(carts.cartItems.map((c) => c.id)).toEqual(['ci-here'])
+    expect(carts.cartItems.map((c) => c.id).sort()).toEqual(['ci-comember', 'ci-here'])
   })
 
   it('a location organizer can remove an item from the location', async () => {
@@ -823,7 +827,8 @@ describe('removing an item from a location needs location role organizer', () =>
     // When user-a removes item-milk from loc-a
     const res = await run(REMOVE_ONE, { i: 'item-milk', l: 'loc-a' })
 
-    // Then the stock row, both logs and the cart entry are gone
+    // Then the stock row, both logs and both cart entries are gone, the
+    // co-member's cart entry too
     expect(res.errors).toBeUndefined()
     expect(res.data?.removeItemFromLocation).toBe(true)
     expect(stockState.itemStocks.some((s) => s.id === 'st-home')).toBe(false)

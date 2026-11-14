@@ -6,16 +6,15 @@ import type { Context } from '../context.js'
 
 // ─── Mock Prisma ─────────────────────────────────────────────────────────────
 
-// `cart` / `item` / `inventoryLog` and most of `cartItem` stay plain `vi.fn()`
-// call recorders — every assertion on them is "was this called with X".
+// `cart` / `item` / `inventoryLog` and `cartItem` stay plain `vi.fn()` call
+// recorders — every assertion on them is "was this called with X". This file
+// tests `vendorCart`, `allCarts` and `checkout`. The other cart resolvers are
+// tested in `cart-shared.resolver.test.ts` on the stateful `cartFake`
+// (households H3b task B.4); `checkout` moves there in task B.5, when it
+// stops filtering by `CartItem.userId`, a `where` key `cartFake` refuses.
 //
-// `cartItem.count` is the exception. Since PR 3c the location-scoped form of
-// `cartItemCountByItem` filters with `where: { itemId, userId, cart: {
-// locationId } }`, a RELATION filter, and a recorder told to resolve to 3
-// returns 3 no matter what the where clause says. So `count` gets a real
-// implementation over `cartItemStore` (below), driven by the shared matcher
-// in `src/test/cartItemFake.ts`. See that file for why the matcher is shared
-// with `itemStock.resolver.test.ts`.
+// (`cartItem.count` used to run a real matcher over a small store here, for
+// `cartItemCountByItem`'s relation filter. That test moved with the resolver.)
 //
 // `location` and `itemStock` are a STATEFUL fake instead (src/test/stockFake.ts),
 // because checkout's stock write is only meaningful as an end state: the
@@ -49,20 +48,15 @@ vi.mock('../lib/prisma.js', async () => {
   })
   const recorders = {
     cart: {
-      findFirst: vi.fn(),
       findUnique: vi.fn(),
       findMany: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
-      delete: vi.fn(),
     },
+    // Only what `checkout` calls. The other cart resolvers are tested in
+    // `cart-shared.resolver.test.ts`.
     cartItem: {
-      findFirst: vi.fn(),
       findMany: vi.fn(),
-      count: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
       deleteMany: vi.fn(),
     },
     inventoryLog: {
@@ -93,25 +87,17 @@ import type { LocationRole } from '../lib/authz.js'
 import { householdMemberRow, householdRow, locationMemberRow } from '../test/householdRows.js'
 import type { HouseholdWorld } from '../test/householdWorld.js'
 import { makeStock } from '../test/stockFake.js'
-import { type FakeCart, type FakeCartItem, filterCartItems } from '../test/cartItemFake.js'
 import { createCartFake } from '../test/cartFake.js'
 
 const mockPrisma = prisma as unknown as {
   cart: {
-    findFirst: ReturnType<typeof vi.fn>
     findUnique: ReturnType<typeof vi.fn>
     findMany: ReturnType<typeof vi.fn>
     create: ReturnType<typeof vi.fn>
     update: ReturnType<typeof vi.fn>
-    delete: ReturnType<typeof vi.fn>
   }
   cartItem: {
-    findFirst: ReturnType<typeof vi.fn>
     findMany: ReturnType<typeof vi.fn>
-    count: ReturnType<typeof vi.fn>
-    create: ReturnType<typeof vi.fn>
-    update: ReturnType<typeof vi.fn>
-    delete: ReturnType<typeof vi.fn>
     deleteMany: ReturnType<typeof vi.fn>
   }
   inventoryLog: {
@@ -225,19 +211,6 @@ function makeCartItem(overrides: Partial<{
   }
 }
 
-// The rows `cartItem.count` runs against. `Cart` rows are seeded too, because
-// `CartItem` has no `locationId` column: the location lives in `Cart.locationId`
-// and the relation filter reads it from there.
-const cartItemStore: { carts: FakeCart[]; cartItems: FakeCartItem[] } = {
-  carts: [],
-  cartItems: [],
-}
-
-function seedCartItems(carts: FakeCart[], cartItems: FakeCartItem[]) {
-  cartItemStore.carts = carts
-  cartItemStore.cartItems = cartItems
-}
-
 // ─── Test setup ───────────────────────────────────────────────────────────────
 
 let server: ApolloServer<Context>
@@ -246,13 +219,6 @@ const ctx: Context = { userId: 'user_test123' }
 beforeEach(async () => {
   vi.clearAllMocks()
   seedLocations()
-  seedCartItems([], [])
-  // Set after `clearAllMocks` so the implementation is unmistakably in force
-  // for every test, whatever another test did to the mock.
-  mockPrisma.cartItem.count.mockImplementation(
-    async ({ where = {} }: { where?: Record<string, unknown> } = {}) =>
-      filterCartItems(cartItemStore.cartItems, where, cartItemStore.carts).length,
-  )
   server = new ApolloServer<Context>({ typeDefs, resolvers })
   await server.start()
 })
@@ -521,266 +487,13 @@ describe('allCarts', () => {
   })
 })
 
-// ─── addToCart ───────────────────────────────────────────────────────────────
-
-describe('addToCart', () => {
-  it('user can add a new item to the cart', async () => {
-    // Given no existing cart item for this item
-    mockPrisma.cartItem.findFirst.mockResolvedValue(null)
-    const cartItem = makeCartItem({ itemId: 'item_milk', quantity: 2 })
-    mockPrisma.cartItem.create.mockResolvedValue(cartItem)
-
-    // When adding an item
-    const result = await execOp(
-      `mutation AddToCart($cartId: ID!, $itemId: ID!, $quantity: Int!) {
-        addToCart(cartId: $cartId, itemId: $itemId, quantity: $quantity) { id cartId itemId quantity }
-      }`,
-      { cartId: `${LOC_DEFAULT}:no-vendor`, itemId: 'item_milk', quantity: 2 },
-    )
-
-    // Then the cart item is created
-    expect(result?.errors).toBeUndefined()
-    const created = result?.data?.addToCart as { id: string; cartId: string; itemId: string; quantity: number }
-    expect(created.itemId).toBe('item_milk')
-    expect(created.quantity).toBe(2)
-    expect(mockPrisma.cartItem.create).toHaveBeenCalledOnce()
-  })
-
-  it('user can add the same item again — quantity is incremented (upsert)', async () => {
-    // Given cart item already exists with quantity 2
-    const existing = makeCartItem({ itemId: 'item_milk', quantity: 2 })
-    mockPrisma.cartItem.findFirst.mockResolvedValue(existing)
-    const updated = makeCartItem({ itemId: 'item_milk', quantity: 5 })
-    mockPrisma.cartItem.update.mockResolvedValue(updated)
-
-    // When adding the same item again with quantity 3
-    const result = await execOp(
-      `mutation AddToCart($cartId: ID!, $itemId: ID!, $quantity: Int!) {
-        addToCart(cartId: $cartId, itemId: $itemId, quantity: $quantity) { id quantity }
-      }`,
-      { cartId: `${LOC_DEFAULT}:no-vendor`, itemId: 'item_milk', quantity: 3 },
-    )
-
-    // Then the quantity is incremented to 5
-    expect(result?.errors).toBeUndefined()
-    const cartItem = result?.data?.addToCart as { id: string; quantity: number }
-    expect(cartItem.quantity).toBe(5)
-    expect(mockPrisma.cartItem.create).not.toHaveBeenCalled()
-    expect(mockPrisma.cartItem.update).toHaveBeenCalledWith({
-      where: { id: existing.id },
-      data: { quantity: 5 },
-    })
-  })
-})
-
-// ─── updateCartItem ──────────────────────────────────────────────────────────
-
-describe('updateCartItem', () => {
-  it('user can update the quantity of a cart item', async () => {
-    // Given a cart item exists for this user
-    const existing = makeCartItem({ quantity: 2 })
-    mockPrisma.cartItem.findFirst.mockResolvedValue(existing)
-    const updated = makeCartItem({ quantity: 5 })
-    mockPrisma.cartItem.update.mockResolvedValue(updated)
-
-    // When updating the quantity
-    const result = await execOp(
-      `mutation UpdateCartItem($id: ID!, $quantity: Int!) {
-        updateCartItem(id: $id, quantity: $quantity) { id quantity }
-      }`,
-      { id: 'cartitem_1', quantity: 5 },
-    )
-
-    // Then the quantity is updated
-    expect(result?.errors).toBeUndefined()
-    const cartItem = result?.data?.updateCartItem as { id: string; quantity: number }
-    expect(cartItem.quantity).toBe(5)
-  })
-
-  it('updating a cart item belonging to another user throws NOT_FOUND', async () => {
-    // Given no cart item found for user B
-    mockPrisma.cartItem.findFirst.mockResolvedValue(null)
-
-    // When user B tries to update it
-    const result = await execOp(
-      `mutation UpdateCartItem($id: ID!, $quantity: Int!) {
-        updateCartItem(id: $id, quantity: $quantity) { id quantity }
-      }`,
-      { id: 'cartitem_1', quantity: 99 },
-      { userId: 'user_B' },
-    )
-
-    // Then a NOT_FOUND error is returned
-    expect(result?.errors).toBeDefined()
-    expect(result?.errors![0].extensions?.code).toBe('NOT_FOUND')
-  })
-})
-
-// ─── cartItemCountByItem ──────────────────────────────────────────────────────
-
-describe('cartItemCountByItem', () => {
-  // Fixtures every test here shares: the item sits in two of LOC_DEFAULT's
-  // carts and one of LOC_OTHER's, and a second user holds one of their own.
-  // Three numbers are therefore distinguishable — 2 at LOC_DEFAULT, 3 for
-  // this user across every location, 4 for everybody. A single-location,
-  // single-user fixture would return the same number for all three and could
-  // not fail.
-  const COUNT_CARTS: FakeCart[] = [
-    { id: `${LOC_DEFAULT}:no-vendor`, locationId: LOC_DEFAULT },
-    { id: `${LOC_DEFAULT}:ven_1`, locationId: LOC_DEFAULT },
-    { id: `${LOC_OTHER}:ven_1`, locationId: LOC_OTHER },
-    { id: `${LOC_STRANGER}:no-vendor`, locationId: LOC_STRANGER },
-  ]
-  const COUNT_ITEMS: FakeCartItem[] = [
-    { id: 'ci_1', cartId: `${LOC_DEFAULT}:no-vendor`, itemId: 'item_1', userId: 'user_test123' },
-    { id: 'ci_2', cartId: `${LOC_DEFAULT}:ven_1`, itemId: 'item_1', userId: 'user_test123' },
-    { id: 'ci_3', cartId: `${LOC_OTHER}:ven_1`, itemId: 'item_1', userId: 'user_test123' },
-    { id: 'ci_4', cartId: `${LOC_STRANGER}:no-vendor`, itemId: 'item_1', userId: 'user_other' },
-    // A different item, so the itemId filter is not free either.
-    { id: 'ci_5', cartId: `${LOC_DEFAULT}:ven_1`, itemId: 'item_2', userId: 'user_test123' },
-  ]
-
-  it('user can get the count of cart items for a given item across every location', async () => {
-    // Given item_1 is in three of this user's carts, spread over two locations
-    seedCartItems(COUNT_CARTS, COUNT_ITEMS)
-
-    // When querying the count with no locationId
-    const result = await execOp(
-      `query CartItemCountByItem($itemId: ID!) { cartItemCountByItem(itemId: $itemId) }`,
-      { itemId: 'item_1' },
-    )
-
-    // Then it is 3 — both locations, but not the other user's row and not
-    // item_2
-    expect(result?.errors).toBeUndefined()
-    expect(result?.data?.cartItemCountByItem).toBe(3)
-  })
-
-  it('count is scoped to the requesting user — other users\' carts are excluded', async () => {
-    // Given the same rows, one of which belongs to user_other
-    seedCartItems(COUNT_CARTS, COUNT_ITEMS)
-
-    // When user_other queries the count
-    const result = await execOp(
-      `query CartItemCountByItem($itemId: ID!) { cartItemCountByItem(itemId: $itemId) }`,
-      { itemId: 'item_1' },
-      { userId: 'user_other' },
-    )
-
-    // Then they see only their own row, not this user's three
-    expect(result?.errors).toBeUndefined()
-    expect(result?.data?.cartItemCountByItem).toBe(1)
-  })
-
-  // The location-scoped form (PR 3c). The Stock tab's "remove from location"
-  // confirmation asks this way, so the number must equal exactly what
-  // `removeItemFromLocation` deletes — both filter with the same
-  // `cart: { locationId }`.
-  it('user can count only one location\'s cart entries for an item', async () => {
-    // Given item_1 is in two of LOC_DEFAULT's carts and one of LOC_OTHER's
-    seedCartItems(COUNT_CARTS, COUNT_ITEMS)
-
-    // When the count is asked for LOC_DEFAULT
-    const result = await execOp(
-      `query C($itemId: ID!, $locationId: ID) { cartItemCountByItem(itemId: $itemId, locationId: $locationId) }`,
-      { itemId: 'item_1', locationId: LOC_DEFAULT },
-    )
-
-    // Then it is 2, not the 3 the unscoped form returns. Drop
-    // `cart: { locationId }` from the resolver and this goes red.
-    expect(result?.errors).toBeUndefined()
-    expect(result?.data?.cartItemCountByItem).toBe(2)
-  })
-
-  it('a location-scoped count reads the cart\'s locationId, not the text of its cart id', async () => {
-    // Given two carts whose id TEXT and whose `locationId` COLUMN disagree.
-    // Production cannot reach this state — `cartIdFor` builds the id out of
-    // the column — and that is what makes it the one fixture that can tell
-    // the two rules apart. The column is the source; the id is derived.
-    seedCartItems(
-      [
-        { id: `${LOC_OTHER}:ven_9`, locationId: LOC_DEFAULT },
-        { id: `${LOC_DEFAULT}:ven_9`, locationId: LOC_OTHER },
-      ],
-      [
-        { id: 'ci_col_here', cartId: `${LOC_OTHER}:ven_9`, itemId: 'item_1', userId: 'user_test123' },
-        { id: 'ci_col_away', cartId: `${LOC_DEFAULT}:ven_9`, itemId: 'item_1', userId: 'user_test123' },
-      ],
-    )
-
-    const result = await execOp(
-      `query C($itemId: ID!, $locationId: ID) { cartItemCountByItem(itemId: $itemId, locationId: $locationId) }`,
-      { itemId: 'item_1', locationId: LOC_DEFAULT },
-    )
-
-    // Then it is 1 — the row whose CART is at LOC_DEFAULT. A resolver that
-    // parsed the cart id would have counted the other one, also giving 1, so
-    // the id assertion below names WHICH row by deleting it instead.
-    expect(result?.data?.cartItemCountByItem).toBe(1)
-
-    // The count alone cannot say which row was chosen, so ask again with only
-    // the id-text match present. A parser would say 1; the column says 0.
-    seedCartItems(
-      [{ id: `${LOC_DEFAULT}:ven_9`, locationId: LOC_OTHER }],
-      [
-        { id: 'ci_col_away', cartId: `${LOC_DEFAULT}:ven_9`, itemId: 'item_1', userId: 'user_test123' },
-      ],
-    )
-    const second = await execOp(
-      `query C($itemId: ID!, $locationId: ID) { cartItemCountByItem(itemId: $itemId, locationId: $locationId) }`,
-      { itemId: 'item_1', locationId: LOC_DEFAULT },
-    )
-    expect(second?.data?.cartItemCountByItem).toBe(0)
-  })
-
-  it('a location-scoped count is refused for a location the caller holds no role on', async () => {
-    seedCartItems(COUNT_CARTS, COUNT_ITEMS)
-
-    const result = await execOp(
-      `query C($itemId: ID!, $locationId: ID) { cartItemCountByItem(itemId: $itemId, locationId: $locationId) }`,
-      { itemId: 'item_1', locationId: LOC_STRANGER },
-    )
-
-    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
-    expect(mockPrisma.cartItem.count).not.toHaveBeenCalled()
-  })
-})
-
-// ─── removeFromCart ──────────────────────────────────────────────────────────
-
-describe('removeFromCart', () => {
-  it('user can remove an item from the cart — returns true', async () => {
-    // Given a cart item exists for this user
-    const existing = makeCartItem()
-    mockPrisma.cartItem.findFirst.mockResolvedValue(existing)
-    mockPrisma.cartItem.delete.mockResolvedValue(existing)
-
-    // When removing the item
-    const result = await execOp(
-      `mutation RemoveFromCart($id: ID!) { removeFromCart(id: $id) }`,
-      { id: 'cartitem_1' },
-    )
-
-    // Then true is returned
-    expect(result?.errors).toBeUndefined()
-    expect(result?.data?.removeFromCart).toBe(true)
-  })
-
-  it('removing a non-existent item returns false', async () => {
-    // Given no cart item found for this user
-    mockPrisma.cartItem.findFirst.mockResolvedValue(null)
-
-    // When trying to remove it
-    const result = await execOp(
-      `mutation RemoveFromCart($id: ID!) { removeFromCart(id: $id) }`,
-      { id: 'nonexistent_id' },
-    )
-
-    // Then false is returned
-    expect(result?.errors).toBeUndefined()
-    expect(result?.data?.removeFromCart).toBe(false)
-  })
-})
+// ─── Moved to cart-shared.resolver.test.ts (households H3b task B.4) ─────────
+//
+// The tests of `cartItems`, `cartItemCountByItem`, `allCartItems`,
+// `addToCart`, `updateCartItem`, `removeFromCart` and `abandonCart` live in
+// `cart-shared.resolver.test.ts`, on the stateful `cartFake`, with two members
+// in one cart. They cannot run here: this file's `cart` and `cartItem` are
+// call recorders, and `checkout` (task B.5) still needs those.
 
 // ─── checkout ────────────────────────────────────────────────────────────────
 
@@ -1441,93 +1154,9 @@ describe("checkout writes the CART's location, not the caller's default", () => 
   })
 })
 
-// ─── abandonCart ─────────────────────────────────────────────────────────────
-
-describe('abandonCart', () => {
-  it('user can abandon a cart — all items are deleted, cart is returned as-is', async () => {
-    // Given a cart exists at the location, carrying a Prisma `Date`
-    const cart = makeCart({ lastPurchasedAt: now })
-    mockPrisma.cart.findUnique.mockResolvedValue(cart)
-    mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 2 })
-
-    // When abandoning the cart
-    const result = await execOp(
-      `mutation AbandonCart($cartId: ID!) { abandonCart(cartId: $cartId) { id lastPurchasedAt } }`,
-      { cartId: `${LOC_DEFAULT}:no-vendor` },
-    )
-
-    // Then the cart is returned (no status change — permanent cart model),
-    // with lastPurchasedAt still ISO 8601
-    expect(result?.errors).toBeUndefined()
-    const abandoned = result?.data?.abandonCart as { id: string; lastPurchasedAt: string | null }
-    expect(abandoned.id).toBe(`${LOC_DEFAULT}:no-vendor`)
-    expect(abandoned.lastPurchasedAt).toBe(now.toISOString())
-
-    // And the cart was looked up by its id alone. `Cart.userId` is gone
-    // (households H3b task B.3); `requireCartLocation` is the check.
-    expect(mockPrisma.cart.findUnique).toHaveBeenCalledWith({
-      where: { id: `${LOC_DEFAULT}:no-vendor` },
-    })
-
-    // And all cart items are deleted (including pinned)
-    expect(mockPrisma.cartItem.deleteMany).toHaveBeenCalledWith({ where: { cartId: `${LOC_DEFAULT}:no-vendor`, userId: 'user_test123' } })
-
-    // And cart itself is NOT deleted (permanent)
-    expect(mockPrisma.cart.delete).not.toHaveBeenCalled()
-  })
-})
-
 // ─── Cross-user isolation ─────────────────────────────────────────────────────
 
 describe('cross-user isolation', () => {
-  it("user cannot read the cart items of a location they do not hold", async () => {
-    // Given user_B names a cart id whose location belongs to user_test123
-    // When user_B queries its items
-    const result = await execOp(
-      `query CartItems($cartId: ID!) { cartItems(cartId: $cartId) { id } }`,
-      { cartId: `${LOC_DEFAULT}:no-vendor` },
-      { userId: 'user_B' },
-    )
-
-    // Then the read is refused before it reaches the database.
-    //
-    // Before PR 3b this returned an empty list: the cart id carried no
-    // location, so the only defence was the `userId` scope in the where clause.
-    // Now the id names a location and requireLocationRole answers first.
-    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
-    expect(mockPrisma.cartItem.findMany).not.toHaveBeenCalled()
-  })
-
-  it('user cannot remove another user\'s cart item', async () => {
-    // Given no cart item found for user B
-    mockPrisma.cartItem.findFirst.mockResolvedValue(null)
-
-    // When user B tries to remove that cart item
-    const result = await execOp(
-      `mutation RemoveFromCart($id: ID!) { removeFromCart(id: $id) }`,
-      { id: 'cartitem_1' },
-      { userId: 'user_B' },
-    )
-
-    // Then false is returned (item not found for user B)
-    expect(result?.errors).toBeUndefined()
-    expect(result?.data?.removeFromCart).toBe(false)
-  })
-
-  it("user cannot abandon a cart in a location they do not hold", async () => {
-    // Given user_B names user_test123's cart
-    // When user_B tries to abandon it
-    const result = await execOp(
-      `mutation AbandonCart($cartId: ID!) { abandonCart(cartId: $cartId) { id } }`,
-      { cartId: `${LOC_DEFAULT}:no-vendor` },
-      { userId: 'user_B' },
-    )
-
-    // Then it is refused, and no cart item is deleted
-    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
-    expect(mockPrisma.cartItem.deleteMany).not.toHaveBeenCalled()
-  })
-
   it("user cannot check out a cart in a location they do not hold", async () => {
     // Given user_B names user_test123's cart
     // When user_B checks it out
@@ -1549,59 +1178,13 @@ describe('cross-user isolation', () => {
     expect(stockFake.state.itemStocks).toHaveLength(0)
     expect(mockPrisma.inventoryLog.create).not.toHaveBeenCalled()
   })
-
-  it("user cannot add to a cart in a location they do not hold", async () => {
-    // Given user_B names user_test123's cart
-    // When user_B adds an item to it
-    const result = await execOp(
-      `mutation AddToCart($cartId: ID!, $itemId: ID!, $quantity: Int!) {
-        addToCart(cartId: $cartId, itemId: $itemId, quantity: $quantity) { id }
-      }`,
-      { cartId: `${LOC_DEFAULT}:no-vendor`, itemId: 'item_milk', quantity: 1 },
-      { userId: 'user_B' },
-    )
-
-    // Then it is refused and nothing is written
-    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
-    expect(mockPrisma.cartItem.create).not.toHaveBeenCalled()
-  })
-})
-
-// ─── Pre-PR-3b cart ids ───────────────────────────────────────────────────────
-//
-// An old browser bundle sends the bare vendor id, or the literal 'no-vendor'.
-// Those ids have no ':' at all, so parseCartId reads the WHOLE id as a location
-// id, no Location row matches, and the request is refused.
-//
-// This is the deploy hazard the PR 3b brainstorming chose to accept: the
-// migration and the new server go out together, and in the gap between them an
-// old client fails loudly instead of quietly reading or creating the wrong row.
-
-describe('a cart id from before the re-key', () => {
-  for (const [label, cartId] of [
-    ['a bare vendor id', 'vendor_1'],
-    ["the literal 'no-vendor'", 'no-vendor'],
-  ] as const) {
-    it(`${label} is refused, not silently created`, async () => {
-      // Given an old client sends a pre-migration cart id
-      // When it adds an item to that cart
-      const result = await execOp(
-        `mutation AddToCart($cartId: ID!, $itemId: ID!, $quantity: Int!) {
-          addToCart(cartId: $cartId, itemId: $itemId, quantity: $quantity) { id }
-        }`,
-        { cartId, itemId: 'item_milk', quantity: 1 },
-      )
-
-      // Then it is refused and no row is written
-      expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
-      expect(mockPrisma.cartItem.create).not.toHaveBeenCalled()
-    })
-  }
 })
 
 // ─── Households H3a task 3.8: location roles and the household's items ───────
 //
 // Every cart write needs location role `participant`; a read needs `viewer`.
+// Only `vendorCart` and `checkout` are tested here; the other writes and the
+// reads are in `cart-shared.resolver.test.ts` (households H3b task B.4).
 // Until task 3.8 every caller in this file was an `organizer` (the old
 // `derivedRoles` adapter), so a call site that asked for `organizer` by
 // mistake, or for `viewer`, passed every test here.
@@ -1628,36 +1211,6 @@ const WRITES: Array<{
     wrote: () => mockPrisma.cart.create,
   },
   {
-    name: 'addToCart',
-    query: `mutation M($c: ID!) { addToCart(cartId: $c, itemId: "item_milk", quantity: 1) { id } }`,
-    variables: { c: CART_ID },
-    arrange: () => {
-      mockPrisma.cartItem.findFirst.mockResolvedValue(null)
-      mockPrisma.cartItem.create.mockResolvedValue(makeCartItem())
-    },
-    wrote: () => mockPrisma.cartItem.create,
-  },
-  {
-    name: 'updateCartItem',
-    query: `mutation M { updateCartItem(id: "cartitem_1", quantity: 4) { id } }`,
-    variables: {},
-    arrange: () => {
-      mockPrisma.cartItem.findFirst.mockResolvedValue(makeCartItem())
-      mockPrisma.cartItem.update.mockResolvedValue(makeCartItem({ quantity: 4 }))
-    },
-    wrote: () => mockPrisma.cartItem.update,
-  },
-  {
-    name: 'removeFromCart',
-    query: `mutation M { removeFromCart(id: "cartitem_1") }`,
-    variables: {},
-    arrange: () => {
-      mockPrisma.cartItem.findFirst.mockResolvedValue(makeCartItem())
-      mockPrisma.cartItem.delete.mockResolvedValue(makeCartItem())
-    },
-    wrote: () => mockPrisma.cartItem.delete,
-  },
-  {
     name: 'checkout',
     query: CHECKOUT,
     variables: { cartId: CART_ID, items: [] },
@@ -1667,16 +1220,6 @@ const WRITES: Array<{
       mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 0 })
     },
     wrote: () => mockPrisma.cart.update,
-  },
-  {
-    name: 'abandonCart',
-    query: `mutation M($c: ID!) { abandonCart(cartId: $c) { id } }`,
-    variables: { c: CART_ID },
-    arrange: () => {
-      mockPrisma.cart.findUnique.mockResolvedValue(makeCart())
-      mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 0 })
-    },
-    wrote: () => mockPrisma.cartItem.deleteMany,
   },
 ]
 
@@ -1704,86 +1247,4 @@ describe('cart writes need location role participant', () => {
       expect(op.wrote()).toHaveBeenCalled()
     })
   }
-})
-
-describe('cart reads need only location role viewer', () => {
-  beforeEach(() => {
-    seedLocations({ callerRole: 'viewer' })
-  })
-
-  it('a location viewer can read the cart items', async () => {
-    mockPrisma.cartItem.findMany.mockResolvedValue([makeCartItem()])
-    const result = await execOp(
-      `query CartItems($cartId: ID!) { cartItems(cartId: $cartId) { id } }`,
-      { cartId: CART_ID },
-    )
-    expect(result?.errors).toBeUndefined()
-    expect(result?.data?.cartItems).toEqual([{ id: 'cartitem_1' }])
-  })
-
-  it('a location viewer can count the cart entries of an item at the location', async () => {
-    seedCartItems(
-      [{ id: CART_ID, locationId: LOC_DEFAULT }],
-      [{ id: 'ci_1', cartId: CART_ID, itemId: 'item_milk', userId: 'user_test123' }],
-    )
-    const result = await execOp(
-      `query Count($itemId: ID!, $locationId: ID) { cartItemCountByItem(itemId: $itemId, locationId: $locationId) }`,
-      { itemId: 'item_milk', locationId: LOC_DEFAULT },
-    )
-    expect(result?.errors).toBeUndefined()
-    expect(result?.data?.cartItemCountByItem).toBe(1)
-  })
-})
-
-describe('addToCart takes only an item of the cart location\'s household', () => {
-  const ADD = `mutation M($c: ID!, $i: ID!) { addToCart(cartId: $c, itemId: $i, quantity: 1) { id } }`
-
-  beforeEach(() => {
-    mockPrisma.cartItem.findFirst.mockResolvedValue(null)
-    mockPrisma.cartItem.create.mockResolvedValue(makeCartItem())
-  })
-
-  it('user can add an item another member of the household made', async () => {
-    const result = await execOp(ADD, { c: CART_ID, i: 'item_bread' })
-    expect(result?.errors).toBeUndefined()
-    expect(mockPrisma.cartItem.create).toHaveBeenCalledOnce()
-  })
-
-  it("user cannot add another household's item, and nothing is written", async () => {
-    const result = await execOp(ADD, { c: CART_ID, i: 'item_theirs' })
-    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
-    expect(mockPrisma.cartItem.findFirst).not.toHaveBeenCalled()
-    expect(mockPrisma.cartItem.create).not.toHaveBeenCalled()
-  })
-
-  it('an item id no row holds is refused with BAD_USER_INPUT, and nothing is written', async () => {
-    const result = await execOp(ADD, { c: CART_ID, i: 'item_ghost' })
-    expect(result?.errors?.[0]?.extensions?.code).toBe('BAD_USER_INPUT')
-    expect(mockPrisma.cartItem.create).not.toHaveBeenCalled()
-  })
-
-  // The cart's location role must be checked BEFORE `requireLocationItems`.
-  // Run the other way round, an existing foreign location plus an item id no
-  // row holds gives BAD_USER_INPUT, while an unknown location gives
-  // FORBIDDEN, so a stranger could tell which location ids exist (task 3.8
-  // review).
-  it("a stranger adding to a cart at another household's location gets FORBIDDEN, even for a missing item", async () => {
-    // Given LOC_STRANGER exists and the caller holds no role on it, and no
-    // item has the id item_ghost
-    const result = await execOp(ADD, { c: `${LOC_STRANGER}:no-vendor`, i: 'item_ghost' })
-
-    // Then the answer is FORBIDDEN, the same as for an unknown location, and
-    // nothing is read or written
-    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
-    expect(mockPrisma.cartItem.findFirst).not.toHaveBeenCalled()
-    expect(mockPrisma.cartItem.create).not.toHaveBeenCalled()
-  })
-
-  it('an unknown location in the cart id with a missing item gets the same FORBIDDEN (control)', async () => {
-    // A negative control: green in both orders. It shows the answer above
-    // matches this one.
-    const result = await execOp(ADD, { c: 'loc_does_not_exist:no-vendor', i: 'item_ghost' })
-    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
-    expect(mockPrisma.cartItem.create).not.toHaveBeenCalled()
-  })
 })
