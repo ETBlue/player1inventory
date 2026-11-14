@@ -201,7 +201,7 @@ export interface CartItem {
  *
  * | Side | Where |
  * |---|---|
- * | web | `apps/web/src/lib/checkoutQuantities.ts` |
+ * | web | `buildCheckoutLogQuantities` in `packages/types/src/quantity.ts` (re-exported by `apps/web/src/lib/checkoutQuantities.ts`) |
  * | server | `apps/server/src/resolvers/cart.resolver.ts` (`checkout`) |
  *
  * The server can import it at runtime because `apps/server/scripts/build.mjs`
@@ -285,3 +285,9 @@ export interface Location {
   createdAt: Date
   updatedAt: Date
 }
+
+// The quantity rules shared by the web and the server (households H3b, task
+// B.1). `quantity.ts` imports `isBeingBought` and three types back from this
+// file. That import cycle is safe: `quantity.ts` only calls `isBeingBought`
+// inside a function body, never while the modules are loading.
+export * from './quantity'
