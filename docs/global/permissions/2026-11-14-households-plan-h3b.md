@@ -9,6 +9,25 @@ Nothing deploys until a checkpoint release.
 
 Task numbers are `B.n`, so they are not confused with H3a's `3.n` or the decision numbers.
 
+## Status
+
+**Built on the branch, 2026-11-15. Not merged into `develop`. Not deployed.** All ten tasks
+are done; each task heading below names its commits. It deploys at the next checkpoint
+release together with H3a, by
+[`../backend/2026-11-15-deploy-runbook-households-h3b.md`](../backend/2026-11-15-deploy-runbook-households-h3b.md).
+What was built, and where it differs from the design, is in the design's *Result* section.
+
+Final gate (task B.10, 2026-11-15, Node 22.17.1, at `8c5fafa2` plus doc commits only):
+
+| Command | Result |
+|---|---|
+| `pnpm lint`, `pnpm build`, `build-storybook`, `pnpm check` | all exit 0; no `TS6385` |
+| `pnpm test` | web **2549** tests / 277 files, server **1244** / 51, `scripts/spec` **70**, all passed |
+| `pnpm test:e2e:all` | all three PASS, 0 failed: `local` **178 passed / 6 skipped** (3m27s), `cloud` **136 passed / 7 skipped** (24m52s), `pwa` **73 passed** (1m33s); about 30 min in total, load average 2.9 to 5.4 |
+
+For scale: B.1's commit measured web 2529 / 275 and server 1153 / 47 before any behaviour
+changed.
+
 ## What the user gets (once merged AND deployed)
 
 See the design's *What the user gets*. Before H5 almost nothing is visible: one row per item per
@@ -85,7 +104,7 @@ No behaviour change.
   see web tests go red, restore from a saved copy.
 - `pnpm --filter server build` must still pass its start check.
 
-## Task B.2 — Stateful cart fakes with the unique rule
+## Task B.2 — Stateful cart fakes with the unique rule ✅ `31a853be`
 
 Tests only; no resolver change.
 
@@ -100,7 +119,7 @@ Tests only; no resolver change.
 - Move the existing `cart.resolver.test.ts` tests onto the fakes only where needed for later
   tasks; do not change what they assert.
 
-## Task B.3 — Schema and the one migration
+## Task B.3 — Schema and the one migration ✅ `e5cda94f`, `e9ba830f`
 
 - `schema.prisma`:
   - `CartItem`: add `@@unique([cartId, itemId])`; drop `@@index([cartId])` (P2).
@@ -122,7 +141,7 @@ Tests only; no resolver change.
   reports.
 - Follow `apps/server/prisma/CLAUDE.md`.
 
-## Task B.4 — Cart reads and writes, scoped by location
+## Task B.4 — Cart reads and writes, scoped by location ✅ `f8a0f545`, `be98e04e`, `f1d62efe`
 
 Design section 2. Every `CartItem.userId` scope filter goes.
 
@@ -146,7 +165,7 @@ Design section 2. Every `CartItem.userId` scope filter goes.
   the `create` writes and comments. Rewrite the issue #358 header comment to say what is true
   now.
 
-## Task B.5 — Checkout in one transaction (D1)
+## Task B.5 — Checkout in one transaction (D1) ✅ `9171f1d3`, `54a1a0fa`
 
 Design section 3. Server and web in one commit where the schema changes (rule 15).
 
@@ -174,7 +193,7 @@ Design section 3. Server and web in one commit where the schema changes (rule 15
   untyped mock (root `CLAUDE.md`).
 - Local checkout does not change.
 
-## Task B.6 — Cooking in one transaction (D4)
+## Task B.6 — Cooking in one transaction (D4) ✅ `8f82ffdc`, `8e36f7fe`
 
 Design section 4. Server and web in one commit (rule 15).
 
@@ -191,7 +210,7 @@ Design section 4. Server and web in one commit (rule 15).
   `useConsumeRecipes` matches. One error message for a failure.
 - Local cooking does not change.
 
-## Task B.7 — Import, ownership and vendors (D5, D7, D8)
+## Task B.7 — Import, ownership and vendors (D5, D7, D8) ✅ `b56ceb0e`, `7f73e79f`, `f5d6bd49`
 
 Design section 5.
 
@@ -212,7 +231,7 @@ Design section 5.
 - Check every `cartItem.create`, `createMany` and `upsert` in `apps/server/src` for a path that
   can now raise `P2002`. List them in the report.
 
-## Task B.8 — Local mode (D6)
+## Task B.8 — Local mode (D6) ✅ `d0d995f6`, `dcb8e0bb`, `5cf58ee0`
 
 The only task that changes `apps/web/src/db/`. Read `apps/web/src/db/CLAUDE.md` first.
 
@@ -229,7 +248,7 @@ The only task that changes `apps/web/src/db/`. Read `apps/web/src/db/CLAUDE.md` 
   two concurrent `addToCart` calls give one row with the sum; a local import with duplicates.
 - Update `apps/web/src/db/CLAUDE.md` with versions 19 and 20.
 
-## Task B.9 — E2E
+## Task B.9 — E2E ✅ `f010ead9`, `1b7e88f4`, `8c5fafa2` (and the debug commits `e5c89cee`, `ecf46471`)
 
 - `location-scoped-writes.spec.ts`: the new `checkout` and `consumeRecipes` inputs.
 - A new cloud spec, no browser, in the `cloud` project's `testMatch` and the `local` project's
@@ -244,7 +263,7 @@ The only task that changes `apps/web/src/db/`. Read `apps/web/src/db/CLAUDE.md` 
 - Mutation-check the new spec against real Postgres: drop the `CART_CHANGED` check and see it
   go red.
 
-## Task B.10 — Runbook, docs and the final gate
+## Task B.10 — Runbook, docs and the final gate ✅ (this task's doc commits; see *Status*)
 
 - Deploy runbook for the next checkpoint release (a new file next to
   `docs/global/backend/2026-11-11-deploy-runbook-households-h3a.md`, or a section in it):
@@ -267,10 +286,37 @@ between tasks, and the main session reports each result to the owner. Order: B.1
 `apps/web/src/db/` and `lib/importData.ts`, so it may run beside B.5–B.7 if the machine is not
 loaded; nothing else runs in parallel.
 
+## What this plan got wrong
+
+Collected from the task reports and commit messages, so the next plan does not repeat them.
+
+| Task | What the plan said | What was true |
+|---|---|---|
+| B.1 | move `getPackedTotal`, `consumeItem`, `roundToStep`, `decimalPlaces`, `buildCheckoutLogQuantities` | `consumeItem` calls `getCurrentQuantity`, so it had to move too. Fixed in `a4cb293e` |
+| B.1 (P1) | the tests stay in `apps/web` | the design's section 6 said the opposite (tests become server or shared tests). P1 changed the design without saying so. P1 was the right call (`packages/types` has no test runner), and the design was corrected in `a4cb293e` |
+| B.3 | "check what `prisma migrate dev --create-only` generates" | `migrate dev` needs a database even with `--create-only`, and a subagent may not touch one. The migration was written by hand and proved by `verify:migration` on the TEST database instead |
+| B.3 | "fix every `tsc` error from the dropped `Cart.userId`" | `tsc` did not report the `cart` delegate in `authz.ts`: its `satisfies` check does not reject a delegate that lacks `userId`. Prisma would have thrown at run time. Found by reading, not by the compiler |
+| B.4 | find `{ id }`, then `requireCartLocation(…, 'participant')` | in that order a stranger's id gets `FORBIDDEN` and a free id `NOT_FOUND`, which tells a stranger which ids exist. `findCartItemForWrite` answers "not found" for a location with no role first |
+| B.5 | read the rows, write stock and logs, then delete the bought rows | no guard against two checkouts at once: at `READ COMMITTED` both read the rows and both add the stock. Each row is now claimed by a delete that names its amount and must delete exactly 1 row |
+| B.5 | log total from `buildCheckoutLogQuantities` | `getPackedTotal` of the saved row. `buildCheckoutLogQuantities` is now used by no production code |
+| B.6 | read, apply `consumeItem`, write | no guard against two cooks at once. `consumeItem` is not a sum, so the row needs `SELECT … FOR UPDATE`. Without it, 4 of 5 real-Postgres runs lost a use |
+| B.8 | change `addToCart`, the local import and Dexie | the web's `partitionPayload` also split cart items by id, not by pair. On `replace` a new id ADDED instead of SET; on `skip` the rest of a pair was added again on every re-import. Fixed in `5cf58ee0` |
+| B.9 | the spec and its mutations | the cloud import sends cart items in batches of 50, and the server sums a pair only inside one call. A pair split across two batches was SET twice on `replace`. Fixed in `f010ead9` |
+| B.9 | (nothing on time) | three cloud re-import tests ran past the default 30 s budget. When they timed out, `afterEach` cleaned up while the import still ran, and the error looked like a data bug. Given 60 s in `e5c89cee`; see `docs/global/bugs/2026-11-15-bug-reimport-tests-over-time-budget.md` |
+| *Known gaps* | concurrent checkouts proved "only by fakes and a serial E2E run" | `shared-cart.spec.ts` runs two checkouts and two adds at once with `Promise.all` against real Postgres. Still timing-dependent: a round does not always overlap |
+
 ## Known gaps
 
 - Live updates (H3c).
 - Bare-id carts (#361) stay until H4.
 - `InventoryLog.userId` still means "author"; no change.
-- The `READ COMMITTED` behaviour of two real concurrent checkouts is proved only by fakes and a
-  serial E2E run, because E2E runs one worker.
+- Two real concurrent checkouts and adds: `shared-cart.spec.ts` sends them with `Promise.all`
+  inside one test, against real Postgres. Whether a round really overlaps is up to timing.
+  (This line said "proved only by fakes and a serial E2E run" before task B.9.)
+- `stockFake` returns LIVE row objects from `findUnique` and `upsert`, so a test can compute
+  from the wrong read and still pass. Only `recipe-consume.resolver.test.ts` wraps it with
+  copies. The shared fake is not fixed.
+- `buildCheckoutLogQuantities` is used by no production code. Keep or delete: the owner's call.
+- The two new Traditional Chinese strings (`shopping.cartChanged`, `cooking.consumeFailed`) are
+  not confirmed by the owner.
+- `addToCart` still takes the amount as sent, 0 and negative numbers too (unchanged by H3b).
