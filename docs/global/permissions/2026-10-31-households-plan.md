@@ -43,7 +43,7 @@ force-push, and a merge breaks the repo's rebase-only rule.
 |---|---|---|
 | H1 Settings layout and route moves (both modes, no backend change) | **Full** — tasks 1.1–1.9 | 1 |
 | H2 `User` model, Clerk webhook, `lastSeenAt`, E2E user support | **Full** — tasks 2.1–2.7 | 2 |
-| H3 Households, roles, data migration, read scoping | Outline. Split into H3a, H3b and H3c; detailed plan for H3a: [2026-11-04-households-plan-h3a.md](2026-11-04-households-plan-h3a.md); design for H3b: [2026-11-14-households-h3b-design.md](2026-11-14-households-h3b-design.md) | 3 (now H3a ✅ merged into `develop` #375, `chore/build-shared-types` ✅ merged into `develop` #376, H3b, H3c) |
+| H3 Households, roles, data migration, read scoping | Outline. Split into H3a, H3b and H3c; detailed plan for H3a: [2026-11-04-households-plan-h3a.md](2026-11-04-households-plan-h3a.md); design for H3b: [2026-11-14-households-h3b-design.md](2026-11-14-households-h3b-design.md), plan: [2026-11-14-households-plan-h3b.md](2026-11-14-households-plan-h3b.md) | 3 (now H3a ✅ merged into `develop` #375, `chore/build-shared-types` ✅ merged into `develop` #376, H3b built on its branch 2026-11-15, not merged, not deployed, H3c) |
 | H4 Import and export | Outline | 4 |
 | H5 Invites, join, members, read-only views | Outline | 5 |
 | H6 Transfer, hand-over, purges, activity | Outline | 6 |
@@ -649,7 +649,7 @@ phases H1–H7.)
 | 1 | `fix/catalog-write-scope` | ✅ Merged 2026-11-04 (#371). Seven tag, tag type and vendor writes check ownership through `requireOwnRowOrUnclaimed` |
 | 2 | **H3a** | ✅ Merged into `develop` 2026-11-13 (#375), not deployed. Households, roles, the data migration, first sign-in, scoping for every resolver, `isDefault` removed, the household name in the 🏠 label, rename |
 | 3 | `chore/build-shared-types` | ✅ Merged into `develop` 2026-11-13 (#376), not deployed. The server build bundles with esbuild, so the server can import shared code from `@p1i/types` at runtime. [Design](../backend/2026-11-13-build-shared-types-design.md) |
-| 4 | **H3b** | Shared carts. Must merge before H5 starts. [Design](2026-11-14-households-h3b-design.md) · [brainstorming](2026-11-14-brainstorming-households-h3b.md) |
+| 4 | **H3b** | Shared carts. Must merge before H5 starts. **Built on `feature/households-h3b` 2026-11-15; not merged into `develop`, not deployed.** [Design](2026-11-14-households-h3b-design.md) · [brainstorming](2026-11-14-brainstorming-households-h3b.md) · [plan](2026-11-14-households-plan-h3b.md) · [deploy runbook](../backend/2026-11-15-deploy-runbook-households-h3b.md) |
 | 5 | **H3c** | Live updates for everything shared: carts, stock, items, tags, vendors, recipes, shelves and locations. After H3b, before H5. If it is too large it may move to after H5 (owner, 2026-11-13). Not designed yet; see *H3c* below |
 
 The outline below is the first version. Each bullet is marked with where it went: **[H3a]**,
@@ -675,6 +675,9 @@ The outline below is the first version. Each bullet is marked with where it went
   (#358). Shared-cart checkout in one transaction, with the server computing the log total;
   move `buildCheckoutLogQuantities` to shared code; the same for `consumeRecipes`. **[H3b]**
   (decisions H7 and H8)
+  - **Built in H3b (2026-11-15, on its branch, not merged):** all 12 are gone, and
+    `deleteVendor` covers the whole household. The server computes the log total with
+    `getPackedTotal`, not `buildCheckoutLogQuantities`. See the H3b design's *Result*.
   - **12 are left at `0dfd536f`** (research 2026-11-13): H3a already changed the three in
     `purgeUserData`, `clearAllData` and `e2eCleanup.ts`. The research also found that
     `deleteVendor` (`vendor.resolver.ts`) deletes only the caller's carts; H3b fixes it. See
