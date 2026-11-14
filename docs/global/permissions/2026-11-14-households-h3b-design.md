@@ -186,6 +186,23 @@ cooking page shows one error.
   location of the caller's household, and deletes them and their rows.
 - `createVendor`'s cart upsert (`vendor.resolver.ts:50`) drops `userId`.
 
+**Decided while building task B.7** (the plan left these open):
+
+| Question | Answer | Why |
+|---|---|---|
+| Which id does a merged pair keep? | the lowest id of the pair that no row holds and no other pair took; none left → a new id | the migration and local version 19 keep the lowest id, so a backup made before the merge finds its row under the same id. A taken id would raise `P2002` on the primary key |
+| `skip`: a pair with one id already in the cloud and another that is new | the whole pair is skipped | an old backup holds a merged pair under several ids. Skipping only the known id would add the others' amounts again on every re-import |
+| `replace`: an existing id under another `(cartId, itemId)` | the stored row stays where it is; the pair the payload names gets the amount (set) | "an update never moves a row". Skipping would drop the amount the backup holds for that pair |
+| a cart item whose CART is at a location where the caller is `viewer` | the row is SKIPPED, like a cart that is gone | it is a reference that does not resolve. A backup that names an existing ROW there is still refused, by `requireOwnRowOrUnclaimed('cartItem')`. Until B.7 a viewer got `FORBIDDEN` for the whole batch, and a caller with no role got a skip (B.3 stopgap) |
+| how is each write done | one `upsert` on `cartId_itemId`, `increment` for `skip` and `clear`, a plain number for `replace` | no read-then-write, so a concurrent `addToCart` cannot cause `P2002` or a lost amount |
+
+**Not yet true end to end.** The web's `replace` strategy (`partitionPayload` in
+`apps/web/src/lib/importData.ts`) splits cart items by ID conflict: a row whose id the cloud
+does not hold goes to `bulkCreateCartItems`, which ADDS. So on `replace`, a new id whose pair
+already has a cloud row is added to that row, not set. The server's `bulkUpsertCartItems`
+path that sets it is reached only by an id the cloud already holds. Owed to whichever task
+next changes `partitionPayload` (B.8 touches that file).
+
 ### 6. Shared code (`packages/types`)
 
 Moved from `apps/web/src/lib/` to `packages/types/src/quantity.ts` (task B.1, `7de5ba26`):
