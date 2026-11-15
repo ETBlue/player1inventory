@@ -1,11 +1,17 @@
+import { CombinedGraphQLErrors } from '@apollo/client/errors'
+import { useApolloClient } from '@apollo/client/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { CheckoutMutationVariables } from '@/generated/graphql'
+import {
+  CartItemsDocument,
+  type CheckoutMutationVariables,
+} from '@/generated/graphql'
 import { elementAt } from '@/test/narrow'
 import {
+  isCartChangedError,
   useAbandonCart,
   useAddToCart,
   useCheckout,
@@ -29,12 +35,15 @@ vi.mock('@/db/operations', async (importOriginal) => {
   }
 })
 
-// The `items` argument cloud `checkout` requires: each bought item's on-hand
-// total in PACKAGE units after the purchase, computed by the caller. Built by
-// `buildCheckoutLogQuantities` (src/lib/checkoutQuantities.ts), which owns the
-// formula and is unit-tested there. 3.5 is the value its documented fixture
-// produces — amountPerPackage 6, 2 packed, 3 unpacked, 1 bought.
-const CHECKOUT_ITEMS = [{ itemId: 'item-1', quantity: 3.5 }]
+// The `items` argument cloud `checkout` requires since households H3b task
+// B.5: the cart rows the screen showed as being bought, each with the amount
+// it showed. The server compares them with the cart and refuses with
+// `CART_CHANGED` when they differ. Two rows, so a hook that sent only the
+// first, or reshaped them, is visible.
+const CHECKOUT_ITEMS = [
+  { cartItemId: 'ci-1', quantity: 2 },
+  { cartItemId: 'ci-2', quantity: 0.5 },
+]
 
 // The option object Apollo hands a generated mutate function, with the real
 // generated variables type. This is the file issue #340 was filed for: three
@@ -538,5 +547,89 @@ describe('useAbandonCart (cloud mode)', () => {
       .map((rq) => rq.query.definitions[0]?.name?.value)
     expect(docNames).toContain('AllCartItems')
     expect(docNames).toContain('AllCarts')
+  })
+})
+
+// ─── useCheckout: CART_CHANGED (households H3b task B.5) ─────────────────────
+
+describe('useCheckout (cloud mode) — the cart changed after the screen loaded', () => {
+  function cartChanged(code: string) {
+    return new CombinedGraphQLErrors({
+      data: null,
+      errors: [{ message: 'refused', extensions: { code } }],
+    })
+  }
+
+  // A client whose `query` the test can read. The stub in `src/test/setup.ts`
+  // returns a NEW object on every call, so its `query` cannot be inspected.
+  function stableClient() {
+    const client = {
+      cache: { evict: vi.fn(), gc: vi.fn() },
+      query: vi.fn().mockResolvedValue({ data: {} }),
+    }
+    vi.mocked(useApolloClient).mockReturnValue(
+      client as unknown as ReturnType<typeof useApolloClient>,
+    )
+    return client
+  }
+
+  it('user whose cart changed gets the cart reloaded from the server, and the refusal passed on', async () => {
+    // Given cloud mode, and a server that refuses with CART_CHANGED
+    localStorage.setItem('data-mode', 'cloud')
+    const client = stableClient()
+    mockCloudCheckout.mockRejectedValueOnce(cartChanged('CART_CHANGED'))
+    const { result } = renderHook(() => useCheckout(), {
+      wrapper: createWrapper(),
+    })
+
+    // When the page checks out
+    let caught: unknown
+    await act(async () => {
+      try {
+        await result.current.mutateAsync({
+          cartId: 'loc-1:no-vendor',
+          items: CHECKOUT_ITEMS,
+        })
+      } catch (err) {
+        caught = err
+      }
+    })
+
+    // Then the error reaches the page, still recognisable
+    expect(isCartChangedError(caught)).toBe(true)
+    // And this cart's rows were read again from the server, into the same
+    // cache entry `useCartItems` watches
+    expect(client.query).toHaveBeenCalledTimes(1)
+    expect(client.query).toHaveBeenCalledWith({
+      query: CartItemsDocument,
+      variables: { cartId: 'loc-1:no-vendor' },
+      fetchPolicy: 'network-only',
+    })
+  })
+
+  it('any other refusal does not reload the cart', async () => {
+    // A negative control: it shows the reload is tied to CART_CHANGED.
+    localStorage.setItem('data-mode', 'cloud')
+    const client = stableClient()
+    mockCloudCheckout.mockRejectedValueOnce(cartChanged('FORBIDDEN'))
+    const { result } = renderHook(() => useCheckout(), {
+      wrapper: createWrapper(),
+    })
+
+    let caught: unknown
+    await act(async () => {
+      try {
+        await result.current.mutateAsync({
+          cartId: 'loc-1:no-vendor',
+          items: CHECKOUT_ITEMS,
+        })
+      } catch (err) {
+        caught = err
+      }
+    })
+
+    expect(isCartChangedError(caught)).toBe(false)
+    expect(caught).toBeDefined()
+    expect(client.query).not.toHaveBeenCalled()
   })
 })

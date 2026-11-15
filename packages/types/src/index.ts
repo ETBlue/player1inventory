@@ -196,30 +196,25 @@ export interface CartItem {
  * A row at quantity 0 is PINNED. It stays in the permanent cart, is not bought,
  * and gets no inventory log. Anything above 0 is being bought.
  *
- * This is the only copy. Two sides must give the same answer, and both import
- * this function:
+ * This is the only JavaScript copy. Two places must give the same answer:
  *
- * | Side | Where |
- * |---|---|
- * | web | `apps/web/src/lib/checkoutQuantities.ts` |
- * | server | `apps/server/src/resolvers/cart.resolver.ts` (`checkout`) |
+ * | Side | Where | Form |
+ * |---|---|---|
+ * | web | the cloud shopping page, `checkoutRows` in `apps/web/src/routes/shopping/$vendorId.tsx` | this function |
+ * | server | `checkout` in `apps/server/src/resolvers/cart.resolver.ts` | the SQL filter `quantity: { gt: 0 }` |
  *
- * The server can import it at runtime because `apps/server/scripts/build.mjs`
- * bundles `@p1i/types` into `dist/index.js` with esbuild.
+ * ── WHY THEY MUST AGREE ──
+ *
+ * Since households H3b task B.5 the cloud `checkout` mutation takes the rows
+ * the screen showed as being bought (`{ cartItemId, quantity }`), and refuses
+ * the whole checkout with `CART_CHANGED` when that list is not exactly the
+ * cart's rows with `quantity > 0`. So if the web rule and the SQL filter ever
+ * disagreed, every checkout of a cart holding the row they disagree about
+ * would be refused. Change the SQL filter in the same commit if this rule
+ * changes. (Until task B.5 the server also called this function, and a
+ * mismatch failed with `BAD_USER_INPUT`.)
+ *
  * `apps/server/src/lib/isBeingBought.test.ts` pins its answers.
- *
- * ── WHY BOTH SIDES MUST CALL THIS ONE FUNCTION ──
- *
- * The cloud `checkout` mutation takes a required `items` argument: one entry per
- * bought cart row, carrying the on-hand total the client computed. The resolver
- * throws `BAD_USER_INPUT` when a bought row has no entry, with no raw-sum
- * fallback, on purpose (issue #336). So if the web filter became narrower than
- * the server filter, the server would be buying a row the client sent no
- * quantity for, and the user's whole checkout would fail.
- *
- * The server's `checkout` also deletes bought rows with the SQL filter
- * `quantity: { gt: 0 }`. That is a separate form of this rule. Change it in the
- * same commit if this rule changes.
  */
 export function isBeingBought(cartItem: { quantity: number }): boolean {
   return cartItem.quantity > 0
@@ -285,3 +280,8 @@ export interface Location {
   createdAt: Date
   updatedAt: Date
 }
+
+// The quantity rules shared by the web and the server (households H3b, task
+// B.1). `quantity.ts` imports two types back from this file. That import is
+// type-only, so it is erased at build time and makes no runtime cycle.
+export * from './quantity'

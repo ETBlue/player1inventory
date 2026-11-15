@@ -169,7 +169,7 @@ describe('Vendor resolvers', () => {
     const newVendor = { id: 'v_1', name: 'Costco', householdId: 'hh_test' }
     mockPrisma.vendor.create.mockResolvedValue(newVendor)
     // createVendor also upserts a permanent cart with the vendor ID
-    mockPrisma.cart.upsert.mockResolvedValue({ id: 'v_1', userId: 'user_test123', lastPurchasedAt: null })
+    mockPrisma.cart.upsert.mockResolvedValue({ id: 'v_1', locationId: LOC_DEFAULT, lastPurchasedAt: null })
 
     // When creating a vendor at the caller's default location
     const result = await execOp(
@@ -200,7 +200,8 @@ describe('Vendor resolvers', () => {
     // an id the migration's guard forbids.
     expect(mockPrisma.cart.upsert).toHaveBeenCalledWith({
       where: { id: `${LOC_DEFAULT}:v_1` },
-      create: { id: `${LOC_DEFAULT}:v_1`, userId: 'user_test123', locationId: LOC_DEFAULT },
+      // No `userId`: `Cart.userId` is gone since households H3b task B.3
+      create: { id: `${LOC_DEFAULT}:v_1`, locationId: LOC_DEFAULT },
       update: {},
     })
   })

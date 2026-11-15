@@ -19,43 +19,36 @@ type CartItem {
 }
 
 """
-One bought item, with the on-hand total the CLIENT computed for its log row.
+One cart row the screen showed as being bought, and the amount it showed.
 
-── WHY THE CLIENT OWNS THIS NUMBER ──
+Since households H3b task B.5 (decision D1) a cart is shared by everyone with a
+role at its location, so it can change under the screen that shows it. The
+client sends back exactly what it showed, and `checkout` buys those rows or
+nothing:
 
-The log's `quantity` is the item's on-hand total in PACKAGE units after the
-purchase. Turning the unpacked remainder into a fraction of a pack needs
-`amountPerPackage`, which is a global field on `Item`, not on `ItemStock`. The
-resolver holds only the `ItemStock` row that `writeStock` returned, so it
-cannot do the conversion.
+- `cartItemId` is the `CartItem.id` of a row with `quantity > 0`.
+- `quantity` is the amount the screen showed for that row. It is compared with
+  the stored amount; it is not a stock total.
 
-It used to add the two columns raw — `stock.packedQuantity +
-stock.unpackedQuantity` — while local mode ran `getPackedTotal(...)` instead
-(apps/web/src/lib/quantityUtils.ts). The two answers differ whenever an item
-has an `amountPerPackage` AND a non-zero `unpackedQuantity`: with
-`amountPerPackage` 6, 2 packed and 3 unpacked, local logs 2.5 and cloud logged
-5. That is issue #336.
+Send one entry for every row being bought, each once. Anything else (an unknown
+or pinned row, another cart's row, a different amount, the same id twice, a
+row left out) refuses the whole checkout with the error code `CART_CHANGED`,
+and nothing is written.
 
-`consumeRecipes` set this precedent: `ConsumeRecipesItemInput` already carries
-a client-computed `quantity` for the same reason (src/schema/recipe.graphql).
+── THE CLIENT NO LONGER SENDS A STOCK TOTAL ──
 
-── WHAT `quantity` MUST BE ──
+From issue #336 until task B.5 this input was `{ itemId, quantity }`, where
+`quantity` was the post-purchase on-hand total the CLIENT computed, because the
+resolver did not read `amountPerPackage`. The resolver now reads `Item` and the
+`ItemStock` row in its own transaction and computes the log total with
+`getPackedTotal` from `@p1i/types`, the rule local mode uses. A total computed
+by the client could also be out of date by the time it arrived.
 
-The POST-purchase total, already converted:
-
-    getPackedTotal({ packedQuantity, unpackedQuantity, amountPerPackage })
-      + cartItem.quantity
-
-Read `packedQuantity` and `unpackedQuantity` from the PRE-purchase stock row.
-The cart quantity is added AFTER the conversion, because the cart quantity is
-already counted in packs and must not be divided by `amountPerPackage`.
-
-Send one entry for every cart item with `quantity > 0` — the same rule the
-resolver's `buyingItems` filter uses. A bought item with no entry here fails
-the whole checkout with `BAD_USER_INPUT`; there is no fallback.
+An old web bundle still sends `itemId` and fails GraphQL validation. The owner
+accepted that on 2026-11-15 (H3b design, *Deploy*).
 """
 input CheckoutItemInput {
-  itemId: ID!
+  cartItemId: ID!
   quantity: Float!
 }
 
@@ -112,16 +105,16 @@ extend type Mutation {
   removeFromCart(id: ID!): Boolean!
 
   """
-  Buy everything in the cart with a quantity above zero.
+  Buy every row of the cart with a quantity above zero, whoever added it, in
+  one transaction. Pinned rows (quantity 0) stay.
 
-  The cart id names the location, is authorized against it, and — since PR 3b
-  Task 3 — is the location the stock move and the inventory log are written to.
-  Both used to go to the caller's DEFAULT location, so a checkout made while
-  viewing the Garage credited the Kitchen.
+  The cart id names the location, and the caller needs the `participant` role
+  on it. That location is where the stock move and the inventory log are
+  written (PR 3b Task 3).
 
-  `items` carries the on-hand total each log row records, computed by the
-  client. It is REQUIRED and has no fallback — see `CheckoutItemInput` above
-  for why the client owns that number, and what breaks for an old client.
+  `items` must list exactly the rows being bought, with the amounts the screen
+  showed. If the cart changed, the checkout is refused with `CART_CHANGED` and
+  nothing is written. See `CheckoutItemInput` above.
   """
   checkout(
     cartId: ID!

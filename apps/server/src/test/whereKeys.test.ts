@@ -36,7 +36,7 @@ function shoppingFakeWithOneRowEach() {
   const fake = createShoppingFake()
   fake.reset(
     [{ id: 'vendor-1', name: 'Costco', householdId: 'hh-1' }],
-    [{ id: 'cart-1', userId: 'user-1', locationId: 'loc-1', lastPurchasedAt: null }],
+    [{ id: 'cart-1', locationId: 'loc-1', lastPurchasedAt: null }],
   )
   return fake
 }
@@ -182,8 +182,10 @@ describe('cartItemFake refuses an unknown where key', () => {
     ).toThrow(/'cart\.householdId'/)
   })
 
+  // `itemId`, not `cartId`: households H3b task B.2 made `cartId` accept
+  // `{ in }` (deleteVendor), so it is no longer a plain-equality key.
   it('refuses an operator object on a plain-equality key', () => {
-    expect(() => filterCartItems([cartRow], { cartId: { in: ['cart-1'] } }, carts)).toThrow(
+    expect(() => filterCartItems([cartRow], { itemId: { in: ['item-1'] } }, carts)).toThrow(
       UnsupportedWhereFilterError,
     )
   })
@@ -270,7 +272,7 @@ describe('shoppingFake refuses an unknown where key', () => {
       fake.client.vendor.findMany({ where: { householdId: { in: ['hh-1'] } } }),
     ).rejects.toThrow(UnsupportedWhereFilterError)
     await expect(
-      fake.client.cart.findMany({ where: { locationId: { in: ['loc-1'] } } }),
+      fake.client.cart.findMany({ where: { locationId: { not: 'loc-1' } } }),
     ).rejects.toThrow(UnsupportedWhereFilterError)
   })
 
@@ -278,6 +280,26 @@ describe('shoppingFake refuses an unknown where key', () => {
     const fake = shoppingFakeWithOneRowEach()
     const rows = await fake.client.cart.findMany({ where: { id: { in: ['cart-1'] } } })
     expect(rows.map((r) => r.id)).toEqual(['cart-1'])
+  })
+
+  it('accepts cart locationId as a string or { in } (households H3b task B.3)', async () => {
+    const fake = shoppingFakeWithOneRowEach()
+    const inList = await fake.client.cart.findMany({ where: { locationId: { in: ['loc-1'] } } })
+    expect(inList.map((r) => r.id)).toEqual(['cart-1'])
+    const notIn = await fake.client.cart.findMany({ where: { locationId: { in: ['loc-2'] } } })
+    expect(notIn).toEqual([])
+    const plain = await fake.client.cart.findMany({ where: { locationId: 'loc-2' } })
+    expect(plain).toEqual([])
+  })
+
+  it('refuses a cart userId: the column is gone since households H3b task B.3', async () => {
+    const fake = shoppingFakeWithOneRowEach()
+    await expect(fake.client.cart.findMany({ where: { userId: 'user-1' } })).rejects.toThrow(
+      /shoppingFake\(cart\).*'userId'/,
+    )
+    await expect(
+      fake.client.cart.create({ data: { id: 'cart-2', userId: 'user-1', locationId: 'loc-1' } }),
+    ).rejects.toThrow(/"userId" is not a column of Cart/)
   })
 
   it('refuses a second operator next to { in }', async () => {

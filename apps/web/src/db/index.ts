@@ -629,6 +629,99 @@ db.version(18)
       }),
   )
 
+// Versions 19 and 20: one row per item per cart (households H3b task B.8,
+// design decision D6)
+//
+// Cloud got `@@unique([cartId, itemId])` in task B.3. Local mode gets the
+// same rule as the unique compound index `&[cartId+itemId]`, so a second row
+// for one item in one cart is a database error, not a quiet duplicate.
+//
+// WHY TWO VERSIONS. Dexie creates a version's new indexes BEFORE it runs that
+// version's upgrade function. If the merge and the unique index were in one
+// version, IndexedDB would try to build the index over rows that still hold
+// duplicates and refuse. The upgrade transaction aborts and `db.open()` fails
+// (measured with fake-indexeddb: `AbortError`), so the user could not open the
+// app at all. So version 19 merges the duplicates (no index change), and
+// version 20 adds the index over rows that are already unique.
+// `upgradeV19V20.test.ts` opens a version-18 database that holds duplicates;
+// moving the index into version 19 turns two of its tests red.
+//
+// A fresh database never runs either upgrade: Dexie opens it straight at
+// version 20, with the index and no rows to merge. `on('populate')` seeds only
+// the default location, so it needs no change.
+
+// Version 19: merge duplicate cart rows. Same stores as 18.
+//
+// Rows with the same `(cartId, itemId)` become one row:
+//
+// - it keeps the LOWEST id of the group (plain string order). The cloud
+//   migration of task B.3 keeps the lowest id too, and both import paths
+//   create a merged pair under its lowest free id, so a backup made before
+//   the merge finds its row under the same id after it;
+// - its `quantity` is the sum of the group's amounts;
+// - the other rows of the group are deleted.
+//
+// Rows of a pair with only one row are not touched. Nothing else changes.
+db.version(19)
+  .stores({
+    items: 'id, name, createdAt, updatedAt',
+    itemStocks: 'id, itemId, locationId, [itemId+locationId], updatedAt',
+    tags: 'id, typeId, parentId, createdAt',
+    tagTypes: 'id, name',
+    inventoryLogs: 'id, itemId, locationId, occurredAt, createdAt',
+    shoppingCarts: 'id',
+    cartItems: 'id, cartId, itemId',
+    vendors: 'id, name',
+    recipes: 'id, name, lastCookedAt',
+    shelves: 'id, name, type, order',
+    locations: 'id, order, name',
+  })
+  .upgrade(async (tx) => {
+    const table = tx.table('cartItems')
+    const rows = (await table.toArray()) as Array<{
+      id: string
+      cartId: string
+      itemId: string
+      quantity: number
+    }>
+    const groups = new Map<string, typeof rows>()
+    for (const row of rows) {
+      // NUL as the separator: no id contains it, so two different pairs can
+      // never give the same key.
+      const key = `${row.cartId}\u0000${row.itemId}`
+      const group = groups.get(key)
+      if (group) group.push(row)
+      else groups.set(key, [row])
+    }
+    for (const group of groups.values()) {
+      if (group.length < 2) continue
+      group.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      const [kept, ...rest] = group as [(typeof rows)[number], ...typeof rows]
+      const quantity = group.reduce((sum, row) => sum + row.quantity, 0)
+      await table.update(kept.id, { quantity })
+      await table.bulkDelete(rest.map((row) => row.id))
+    }
+  })
+
+// Version 20: the unique compound index `&[cartId+itemId]` on `cartItems`.
+//
+// `cartId` and `itemId` keep their own indexes, because reads use
+// `where('cartId')` and `where('itemId')`. No upgrade function: version 19
+// already left one row per pair, so the index builds cleanly.
+db.version(20).stores({
+  items: 'id, name, createdAt, updatedAt',
+  itemStocks: 'id, itemId, locationId, [itemId+locationId], updatedAt',
+  tags: 'id, typeId, parentId, createdAt',
+  tagTypes: 'id, name',
+  inventoryLogs: 'id, itemId, locationId, occurredAt, createdAt',
+  shoppingCarts: 'id',
+  cartItems: 'id, cartId, itemId, &[cartId+itemId]',
+  vendors: 'id, name',
+  recipes: 'id, name, lastCookedAt',
+  shelves: 'id, name, type, order',
+  locations: 'id, order, name',
+})
+
 // Fresh-DB seed: `on('populate')` fires exactly once, when the database is
 // first created at the latest version (brand-new users). The version upgrade
 // fns above do NOT run in that case, so the default location is seeded here.

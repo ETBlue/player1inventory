@@ -4469,3 +4469,303 @@ describe('isForbiddenImportError', () => {
     expect(isForbiddenImportError(err)).toBe(false)
   })
 })
+
+// Households H3b task B.8: one row per `(cartId, itemId)` in local mode, and
+// decision P3's add / set rule on both import paths.
+//
+// Every fixture puts a cart row in the database BEFORE the import, at the pair
+// the payload names. With an empty destination "add", "set" and "skip" leave
+// the same database behind, so a test could not tell them apart.
+describe('importLocalData — one row per item per cart (H3b task B.8)', () => {
+  const CART = 'local:vendor-1'
+  const OTHER_CART = 'local:vendor-2'
+  const HOME = { id: 'local', name: 'My Home', order: 0, isDefault: true }
+
+  function cartPayload(cartItems: unknown[]): ExportPayload {
+    return emptyPayload({ locations: [HOME], cartItems })
+  }
+
+  function row(id: string, cartId: string, itemId: string, quantity: number) {
+    return { id, cartId, itemId, quantity }
+  }
+
+  async function cartRows() {
+    return (await db.cartItems.toArray())
+      .map(({ id, cartId, itemId, quantity }) => ({
+        id,
+        cartId,
+        itemId,
+        quantity,
+      }))
+      .sort((a, b) => (a.id < b.id ? -1 : 1))
+  }
+
+  beforeEach(clearAllTables)
+  afterEach(clearAllTables)
+
+  it('user restoring a backup with duplicate cart rows (clear) gets one row per item, summed', async () => {
+    // Given a backup holding a pair, a group of three, and the same item in
+    // another cart. The lowest id of each group is never written first.
+    const payload = cartPayload([
+      row('ci-b', CART, 'milk', 2),
+      row('ci-a', CART, 'milk', 3),
+      row('ci-e3', CART, 'eggs', 1),
+      row('ci-e1', CART, 'eggs', 4),
+      row('ci-e2', CART, 'eggs', 10),
+      row('ci-o', OTHER_CART, 'milk', 7),
+    ])
+
+    // When the user imports it with `clear`
+    await importLocalData(payload, 'clear')
+
+    // Then each pair has one row: its lowest id, holding the sum
+    expect(await cartRows()).toEqual([
+      row('ci-a', CART, 'milk', 5),
+      row('ci-e1', CART, 'eggs', 15),
+      row('ci-o', OTHER_CART, 'milk', 7),
+    ])
+  })
+
+  it('user importing new cart rows (skip) for an item already in the cart gets the amounts added', async () => {
+    // Given milk already in the cart, 4 of it
+    await db.cartItems.add(row('ci-stored', CART, 'milk', 4))
+    // And a backup with two NEW rows for milk in that cart, 2 and 3
+    const payload = cartPayload([
+      row('ci-n2', CART, 'milk', 2),
+      row('ci-n1', CART, 'milk', 3),
+    ])
+
+    // When the user imports it with `skip`
+    await importLocalData(payload, 'skip')
+
+    // Then the stored row holds 4 + 2 + 3, and no second row exists
+    expect(await cartRows()).toEqual([row('ci-stored', CART, 'milk', 9)])
+  })
+
+  it('user re-importing an old backup (skip) does not add a pair again when one of its ids is stored', async () => {
+    // Given the merged row of an earlier import: ci-a, 5
+    await db.cartItems.add(row('ci-a', CART, 'milk', 5))
+    // And the same old backup, which still holds the pair under two ids
+    const payload = cartPayload([
+      row('ci-a', CART, 'milk', 3),
+      row('ci-b', CART, 'milk', 2),
+      // And a pair not yet in the database, which IS imported
+      row('ci-c', CART, 'eggs', 1),
+    ])
+
+    // When the user imports it with `skip` again
+    await importLocalData(payload, 'skip')
+
+    // Then the milk pair is skipped as a whole (not 5 + 2), and eggs lands
+    expect(await cartRows()).toEqual([
+      row('ci-a', CART, 'milk', 5),
+      row('ci-c', CART, 'eggs', 1),
+    ])
+  })
+
+  it('user replacing cart data sets the amount of an item already in the cart', async () => {
+    // Given milk already in the cart, 4 of it
+    await db.cartItems.add(row('ci-stored', CART, 'milk', 4))
+    // And a backup with two NEW rows for milk in that cart, 2 and 3
+    const payload = cartPayload([
+      row('ci-n2', CART, 'milk', 2),
+      row('ci-n1', CART, 'milk', 3),
+    ])
+
+    // When the user imports it with `replace`
+    await importLocalData(payload, 'replace')
+
+    // Then the stored row holds the backup's 5, not 4 + 5
+    expect(await cartRows()).toEqual([row('ci-stored', CART, 'milk', 5)])
+  })
+
+  it('user replacing cart data never moves a stored row to another item', async () => {
+    // Given ci-x stored as eggs, 1
+    await db.cartItems.add(row('ci-x', CART, 'eggs', 1))
+    // And a backup that names ci-x as milk, 6
+    const payload = cartPayload([row('ci-x', CART, 'milk', 6)])
+
+    // When the user imports it with `replace`
+    await importLocalData(payload, 'replace')
+
+    // Then ci-x is still eggs, 1
+    expect(await db.cartItems.get('ci-x')).toEqual(row('ci-x', CART, 'eggs', 1))
+    // And milk got its own row with the backup's amount, under a new id
+    // (ci-x is taken)
+    const milk = (await db.cartItems.toArray()).filter(
+      (ci) => ci.itemId === 'milk',
+    )
+    expect(milk).toHaveLength(1)
+    expect(rowAt(milk).quantity).toBe(6)
+    expect(rowAt(milk).cartId).toBe(CART)
+    expect(rowAt(milk).id).not.toBe('ci-x')
+  })
+})
+
+describe('partitionPayload — cart items by pair (H3b task B.8)', () => {
+  const CART = 'local:vendor-1'
+  const existing = emptyExisting({
+    cartItems: [{ id: 'ci-known', cartId: CART, itemId: 'milk', quantity: 4 }],
+  })
+  const payload = emptyPayload({
+    cartItems: [
+      // The stored id, and a second id of the same pair from an old backup
+      { id: 'ci-known', cartId: CART, itemId: 'milk', quantity: 3 },
+      { id: 'ci-same-pair', cartId: CART, itemId: 'milk', quantity: 2 },
+      // A new id for another pair
+      { id: 'ci-new', cartId: CART, itemId: 'eggs', quantity: 1 },
+    ],
+  })
+  const idsOf = (rows: unknown[]) =>
+    (rows as Array<{ id: string }>).map((r) => r.id)
+
+  it('user replacing cloud cart data has every cart item sent to the upsert pass', () => {
+    // Given one cart item id the cloud holds and two it does not
+    // When partitioning for `replace`
+    const { toCreate, toUpsert } = partitionPayload(
+      payload,
+      detectConflicts(payload, existing),
+      'replace',
+    )
+
+    // Then none goes to the create pass, where `bulkCreateCartItems` would
+    // ADD a new id's amount to its pair's cloud row instead of setting it
+    expect(idsOf(toCreate.cartItems)).toEqual([])
+    expect(idsOf(toUpsert.cartItems)).toEqual([
+      'ci-known',
+      'ci-same-pair',
+      'ci-new',
+    ])
+  })
+
+  it('user skipping conflicts in cloud drops the whole pair of a known cart item id', () => {
+    // Given the same payload
+    // When partitioning for `skip`
+    const { toCreate } = partitionPayload(
+      payload,
+      detectConflicts(payload, existing),
+      'skip',
+    )
+
+    // Then the milk pair is dropped as a whole, so the server cannot add
+    // ci-same-pair's 2 to the stored row a second time. Eggs goes up.
+    expect(idsOf(toCreate.cartItems)).toEqual(['ci-new'])
+  })
+})
+
+describe('importCloudData — replace sets cart items (H3b task B.8)', () => {
+  it('user replacing cloud data sends a new cart item id to BulkUpsertCartItems, not BulkCreateCartItems', async () => {
+    // Given a cloud account holding a milk row in the cart
+    const CART = 'cloud_home:vendor_1'
+    const mutate = vi.fn().mockResolvedValue({})
+    const client = {
+      mutate,
+      resetStore: vi.fn().mockResolvedValue(undefined),
+      query: vi.fn().mockResolvedValue({
+        data: {
+          items: [],
+          tags: [],
+          tagTypes: [],
+          vendors: [],
+          recipes: [],
+          inventoryLogs: [],
+          shoppingCarts: [],
+          allCartItems: [
+            { id: 'ci-cloud', cartId: CART, itemId: 'milk', quantity: 4 },
+          ],
+          shelves: [],
+        },
+      }),
+    }
+    // And a backup with a NEW id for that same pair
+    const payload = emptyPayload({
+      cartItems: [
+        { id: 'ci-backup', cartId: CART, itemId: 'milk', quantity: 2 },
+      ],
+    })
+
+    // When the user imports it with `replace`
+    await importCloudData(payload, 'replace', client as never, {})
+
+    // Then the row is sent to the mutation that SETS the pair's amount
+    const idsSentBy = (operation: string) =>
+      mutate.mock.calls
+        .filter((call) => opNameOf(rowAt(call).mutation) === operation)
+        .flatMap((call) =>
+          (rowAt(call).variables.cartItems as Array<{ id: string }>).map(
+            (ci) => ci.id,
+          ),
+        )
+    expect(idsSentBy('BulkUpsertCartItems')).toEqual(['ci-backup'])
+    expect(idsSentBy('BulkCreateCartItems')).toEqual([])
+  })
+})
+
+describe('importCloudData — one cart pair never spans two batches (H3b task B.9)', () => {
+  it('user replacing cloud data with an old backup sends both rows of one pair in the same batch', async () => {
+    // Given an empty cloud account
+    const CART = 'cloud_home:vendor_1'
+    const mutate = vi.fn().mockResolvedValue({})
+    const client = {
+      mutate,
+      resetStore: vi.fn().mockResolvedValue(undefined),
+      query: vi.fn().mockResolvedValue({
+        data: {
+          items: [],
+          tags: [],
+          tagTypes: [],
+          vendors: [],
+          recipes: [],
+          inventoryLogs: [],
+          shoppingCarts: [],
+          allCartItems: [],
+          shelves: [],
+        },
+      }),
+    }
+    // And an old backup with 49 single rows, then TWO rows for milk at
+    // positions 50 and 51. A plain split by 50 puts them in two batches, and
+    // `bulkUpsertCartItems` SETS a pair's amount, so the second batch would
+    // set milk to 2 and lose the 3.
+    const fillers = Array.from({ length: 49 }, (_, i) => ({
+      id: `ci-${String(i).padStart(2, '0')}`,
+      cartId: CART,
+      itemId: `item-${i}`,
+      quantity: 1,
+    }))
+    const payload = emptyPayload({
+      cartItems: [
+        ...fillers,
+        { id: 'ci-milk-a', cartId: CART, itemId: 'milk', quantity: 3 },
+        { id: 'ci-milk-b', cartId: CART, itemId: 'milk', quantity: 2 },
+      ],
+    })
+
+    // When the user imports it with `replace`
+    await importCloudData(payload, 'replace', client as never, {})
+
+    // Then every row was sent once, in BulkUpsertCartItems batches
+    const batches = mutate.mock.calls
+      .filter(
+        (call) => opNameOf(rowAt(call).mutation) === 'BulkUpsertCartItems',
+      )
+      .map(
+        (call) =>
+          rowAt(call).variables.cartItems as Array<{
+            id: string
+            itemId: string
+          }>,
+      )
+    expect(batches.flat()).toHaveLength(51)
+    // And both milk rows are in ONE batch, where the server sums them
+    const milkBatches = batches.filter((b) =>
+      b.some((ci) => ci.itemId === 'milk'),
+    )
+    expect(milkBatches).toHaveLength(1)
+    expect(
+      rowAt(milkBatches)
+        .filter((ci) => ci.itemId === 'milk')
+        .map((ci) => ci.id),
+    ).toEqual(['ci-milk-a', 'ci-milk-b'])
+  })
+})

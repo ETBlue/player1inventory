@@ -160,10 +160,12 @@ describe('createVendor pre-creates the cart at ONE location', () => {
     // "the caller's default location".
     expect(cartIds()).not.toContain(`${LOC_DEFAULT}:${vendorId}`)
 
-    // And the cart row carries the same location its id names
-    expect(shoppingFake.state.carts[0]).toMatchObject({
+    // And the cart row carries the same location its id names, and no
+    // owner: `Cart.userId` is gone since households H3b task B.3
+    expect(shoppingFake.state.carts[0]).toEqual({
+      id: `${LOC_OTHER}:${vendorId}`,
       locationId: LOC_OTHER,
-      userId: 'user_test123',
+      lastPurchasedAt: null,
     })
   })
 

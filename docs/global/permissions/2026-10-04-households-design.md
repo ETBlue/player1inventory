@@ -54,7 +54,7 @@ User stories:
 | `fix/catalog-write-scope` (PR #371) | ✅ Merged 2026-11-04, before H3a. Seven tag, tag type and vendor writes now check ownership through `requireOwnRowOrUnclaimed`. Not part of #273. |
 | Issue #327, cart-id leak (`e2e/tests/cart-id-cross-user-leak.spec.ts`) | ✅ Fixed 2026-10-28 (#354), before this work. It added a second guard, `requireOwnRowOrUnclaimed`. H4 changes that guard's body to the new scopes (see *Authorization*). |
 | Issue #330 (`replace` skips rows) | ✅ Fixed 2026-10-12 (#350), before this work. The import rewrite here must keep the fix (see *Known gaps*). |
-| Issue #358 (`CartItem.userId` filters keep compiling and become wrong) | Answered here, in *Checkout with a shared cart*. Fixed in **H3b**, not H3a. The issue says nine filters; the H3 research found **15** (listed in that section). |
+| Issue #358 (`CartItem.userId` filters keep compiling and become wrong) | Answered here, in *Checkout with a shared cart*. Fixed in **H3b**, not H3a. The issue says nine filters; the H3 research found **15**. H3b counted **12** at its branch point and removed all of them (see that section). |
 | Issue #359 (six `userId: String!` GraphQL fields) | Step one ✅ merged 2026-10-31 (#367): no web document selects them any more. Step two, removing the fields, is H3a task 3.14 (decision H11). See *Sequencing*. |
 | Issue #360 (`ensureDefaultLocation` loses its race guard) | Answered here, in *First sign-in*. Fixed in H3a, with a claim column on `User` (decision H1). |
 | Issue #361 (`Cart.id` is not a cuid) | Answered here, in *Authorization*. Fixed in H4. |
@@ -504,74 +504,34 @@ Only account deletion starts a hand-over in this phase. See *Postponed*.
 
 ### Checkout with a shared cart
 
-`checkout` (`resolvers/cart.resolver.ts`) was written for one person per account. Its own
-comment calls a cart row added during checkout "rare with one account per user". In a shared
-cart it is common, and there are two more problems:
+**Built in H3b. The design that was built is
+[2026-11-14-households-h3b-design.md](2026-11-14-households-h3b-design.md)**, and where the two
+differ, that doc wins. This section used to hold the rules and a per-line table of filters.
+Both were planned before H3b was designed, and several parts did not survive. What is left
+here is the reason for the work and what changed.
 
-| Case | Today | Rule in this design |
+**The reason.** `checkout` (`resolvers/cart.resolver.ts`) was written for one person per
+account. In a shared cart, three things go wrong: someone adds a row after you opened the
+cart; two people press checkout at the same time and the purchase counts twice; and the
+stock changes just before your checkout, so the client's log total is wrong. `consumeRecipes`
+had the same stale-total problem.
+
+**What H3b decided differently from this doc:**
+
+| This doc said | H3b built | Why |
 |---|---|---|
-| Someone adds a row after you opened the cart | The whole checkout fails with `BAD_USER_INPUT` | Checkout buys **only the cart rows the client sent**. Rows added later stay in the cart |
-| Two people press checkout at the same time | No transaction. Both add the stock, so the purchase counts **twice** | Checkout runs in **one transaction** that removes the rows it buys. If they are already gone, it fails with "This cart was just checked out. Refresh to see it." |
-| Someone changes the stock just before your checkout | The log stores the on-hand total the client computed, which is now wrong, with no error | The **server** computes the total from the saved `ItemStock` row, inside the transaction |
+| Checkout buys only the rows the client sent; rows added later stay in the cart | **Stricter.** The client sends the rows it showed (`{ cartItemId, quantity }`). Any difference (an amount changed, a row added or removed) refuses the whole checkout with `CART_CHANGED`, and nothing is written | owner's answer Q1 in the H3b brainstorming: with no live updates, a changed cart means the screen is out of date |
+| Two checkouts at once fail with "This cart was just checked out" | the second one gets `CART_CHANGED`: each row is claimed by a delete that names its amount and must delete exactly one row | one refusal path for every cause |
+| Move `buildCheckoutLogQuantities` to shared code and use it on the server | the shared rules moved to `packages/types/src/quantity.ts`; the server computes the log total with `getPackedTotal` of the saved row | the saved row already holds the result; `buildCheckoutLogQuantities` is now used by no production code |
+| Cooking sends a total | cooking sends only `delta` (minus the amount used); the server locks the stock row (`SELECT … FOR UPDATE`), applies `consumeItem` and writes the log in one transaction | without the lock, two cooks of one item lost a use in 4 of 5 runs on real Postgres |
+| **15** `CartItem.userId` filters | **12** at `0dfd536f`, the branch point of H3b. H3a had already re-derived the `clearAllData`, `purgeUserData` and `/e2e/cleanup` ones. All 12 are gone; `CartItem.userId` only means "added by" | counted again when H3b was planned |
+| (not covered) `deleteVendor` | deletes the vendor's carts at **every** location of the caller's household, even one where the caller holds no role | decision D8 |
+| (not covered) `Cart.userId` | dropped, with a unique `(cartId, itemId)` rule in Postgres and in Dexie | decisions D6 and D9 |
 
-**Why the total moved to the client, and how this keeps that fix.** Parity-followup PR A (issue
-#336) moved the log total to the client because the conversion needs `Item.amountPerPackage`,
-and the resolver had only the `ItemStock` row. The server can read the `Item` in the same
-transaction. The plan must move the conversion rule (`buildCheckoutLogQuantities`,
-`apps/web/src/lib/checkoutQuantities.ts`) to code both sides can use, and keep its 6 unit
-tests passing against the server version.
+The deploy steps are in
+[`../backend/2026-11-15-deploy-runbook-households-h3b.md`](../backend/2026-11-15-deploy-runbook-households-h3b.md).
 
-`consumeRecipes` sends a client-computed total for the same reason, so it has the same stale
-total problem and gets the same fix.
-
-**This whole section is H3b, not H3a.** Until 2026-11-13 the server could not load
-`@p1i/types` at runtime, so sharing `buildCheckoutLogQuantities` needed a build step first
-(decision H7). `chore/build-shared-types` is that step: the server build now bundles with
-esbuild, and the server already imports `cartIdFor`, `parseCartId` and `isBeingBought` from
-`@p1i/types` ([design](../backend/2026-11-13-build-shared-types-design.md)). The order is
-H3a, then `chore/build-shared-types`, then H3b. Until H5 every household has one person, so
-the old filters still give the right answer after H3a. H3b must merge before H5 starts.
-
-**Every `CartItem.userId` filter is re-derived** (issue #358). The column stays and means "added
-by", so `tsc` reports none of them. Scope comes from the cart's location, checked by
-`requireCartLocation`.
-
-**There are 15, not nine.** Issue #358 and the first version of this doc said nine. The H3
-research (2026-11-03, measured at `e48bbe2f`) found 15. The lines were re-checked at
-`8dde455a` on 2026-11-04 and still match. They will drift; find the code by name.
-
-| File | Lines |
-|---|---|
-| `resolvers/cart.resolver.ts` | 137, 159, 161, 166, 174, 190, 201, 228, 375, 454 |
-| `resolvers/itemStock.resolver.ts` | 199 (`removeItemFromLocation`) |
-| `resolvers/import.resolver.ts` | 1577 (`clearAllData`) |
-| `resolvers/purge.resolver.ts` | 26 (`purgeUserData`) |
-| `lib/e2eCleanup.ts` | 83 |
-| `lib/authz.ts` | 152, through the `cartItem` delegate of `requireOwnRowOrUnclaimed` |
-
-The table below covers the `cart.resolver.ts` lines. H3a removes `purgeUserData` and changes
-the `clearAllData` and `/e2e/cleanup` filters (see *Purge*), so those three are re-derived in
-H3a. H3b handles the `cart.resolver.ts` and `itemStock.resolver.ts` ones. The `authz.ts` one
-keeps `userId` after H3a; the H3a plan says "H3b moves carts, and H4 moves the body", and does
-not say which of the two changes this line.
-
-| Today (`cart.resolver.ts`) | After H3b |
-|---|---|
-| `cartItems`: `{ cartId, userId }` | `{ cartId }`. Everyone at the location sees every row |
-| `cartItemCountByItem`, both branches | count rows in carts at locations where the caller has a role |
-| `allCartItems`: `{ userId }` | rows in carts at locations the exporter can read (as *Export*) |
-| add to cart: find the row `{ cartId, itemId, userId }` | `{ cartId, itemId }`. One row per item per cart, enforced by `@@unique([cartId, itemId])`; H3b's migration merges existing duplicates (decision H8). A second person adding the same item changes that row. "Added by" stays the first person (Decision 27) |
-| update and remove a row: `{ id, userId }` | `{ id }`, then the row's cart location needs participant or higher |
-| `checkout` read: `{ cartId, userId }` | the rows the client sent, inside the transaction (see above) |
-| `checkout` delete: `{ cartId, userId, quantity > 0 }` | the rows it bought |
-| `abandonCart` lookup: `Cart` by `{ id, userId }` | by `{ id }`. `Cart.userId` is dropped, so this line stops compiling |
-| `abandonCart` delete: `{ cartId, userId }` | `{ cartId }`. The whole cart is cleared |
-| `vendorCart` create: `data: { id, userId, locationId }` | no `userId`. This line stops compiling |
-
-The same check applies to `InventoryLog.userId` ("the author"), flagged in
-`resolvers/inventoryLog.resolver.ts`. The test for each row needs **two members** adding rows to
-one cart. With one member, "rows I added" and "rows in this cart" are the same, so the test
-cannot fail.
+`InventoryLog.userId` ("the author") still means the author. H3b does not change it.
 
 ### Purge
 

@@ -41,9 +41,11 @@ export interface FakeVendor {
   householdId: string
 }
 
+// No `userId`: households H3b task B.3 dropped `Cart.userId`. A write or a
+// `where` that names it THROWS here, the way Prisma refuses an unknown
+// argument, so a resolver that still writes or filters it fails its test.
 export interface FakeCart {
   id: string
-  userId: string
   locationId: string
   lastPurchasedAt: Date | null
 }
@@ -68,7 +70,10 @@ export class CartIdConstraintError extends Error {
 // call, before the store is searched — never inside the per-row matcher, which
 // an empty store never calls. See `whereKeys.ts`.
 const VENDOR_WHERE: WhereSpec = { id: 'equals', householdId: 'equals' }
-const CART_WHERE: WhereSpec = { id: 'in', userId: 'equals', locationId: 'equals' }
+// `locationId` takes `{ in }` since households H3b task B.3: with no
+// `Cart.userId`, `requireOwnRowOrUnclaimed` finds a cart through the
+// locations the caller has a role on.
+const CART_WHERE: WhereSpec = { id: 'in', locationId: 'in' }
 
 function checkVendorWhere(where: Where | undefined): void {
   checkWhere('shoppingFake(vendor)', where, VENDOR_WHERE)
@@ -87,8 +92,15 @@ function matchesVendor(row: FakeVendor, where: Where): boolean {
 }
 
 function matchesCart(row: FakeCart, where: Where): boolean {
-  if (where.userId !== undefined && row.userId !== where.userId) return false
-  if (where.locationId !== undefined && row.locationId !== where.locationId) return false
+  const loc = where.locationId
+  if (loc !== undefined) {
+    if (typeof loc === 'string') {
+      if (row.locationId !== loc) return false
+    } else {
+      const list = (loc as { in?: string[] }).in
+      if (list !== undefined && !list.includes(row.locationId)) return false
+    }
+  }
   const id = where.id
   if (id !== undefined) {
     if (typeof id === 'string') return row.id === id
@@ -98,16 +110,30 @@ function matchesCart(row: FakeCart, where: Where): boolean {
   return true
 }
 
+// Every read and write returns a COPY of the stored row (`structuredClone`, so
+// `lastPurchasedAt` is copied too), never the stored object. Prisma returns a
+// new object for every call. Until 2026-11-15 this fake returned the live row,
+// the same flaw `stockFake` had.
+function copy<T>(row: T): T {
+  return structuredClone(row)
+}
+
 export function createShoppingFake() {
   const state: ShoppingFakeState = { vendors: [], carts: [] }
   let seq = 0
 
+  function refuseCartUserId(data: Record<string, unknown>): void {
+    if ('userId' in data) {
+      throw new Error('shoppingFake(cart): "userId" is not a column of Cart since households H3b task B.3.')
+    }
+  }
+
   function insertCart(data: Record<string, unknown>): FakeCart {
+    refuseCartUserId(data)
     const id = data.id as string
     if (state.carts.some((c) => c.id === id)) throw new CartIdConstraintError(id)
     const row: FakeCart = {
       id,
-      userId: data.userId as string,
       locationId: data.locationId as string,
       lastPurchasedAt: (data.lastPurchasedAt as Date | null) ?? null,
     }
@@ -119,7 +145,7 @@ export function createShoppingFake() {
     vendor: {
       findMany: async ({ where = {} }: { where?: Where } = {}) => {
         checkVendorWhere(where)
-        return state.vendors.filter((v) => matchesVendor(v, where))
+        return state.vendors.filter((v) => matchesVendor(v, where)).map(copy)
       },
       // `Vendor` has no `userId` since households H3a task 3.14, and its
       // `householdId` is NOT NULL. A write that breaks either rule throws, as
@@ -137,23 +163,26 @@ export function createShoppingFake() {
           householdId: data.householdId,
         }
         state.vendors.push(row)
-        return row
+        return copy(row)
       },
       delete: async ({ where }: { where: Where }) => {
         checkVendorWhere(where)
         const idx = state.vendors.findIndex((v) => matchesVendor(v, where))
         if (idx === -1) throw new Error('Vendor not found')
-        return state.vendors.splice(idx, 1)[0]
+        const [row] = state.vendors.splice(idx, 1)
+        return row ? copy(row) : row
       },
     },
     cart: {
       findUnique: async ({ where }: { where: Where }) => {
         checkCartWhere(where)
-        return state.carts.find((c) => matchesCart(c, where)) ?? null
+        const row = state.carts.find((c) => matchesCart(c, where))
+        return row ? copy(row) : null
       },
       findFirst: async ({ where = {} }: { where?: Where } = {}) => {
         checkCartWhere(where)
-        return state.carts.find((c) => matchesCart(c, where)) ?? null
+        const row = state.carts.find((c) => matchesCart(c, where))
+        return row ? copy(row) : null
       },
       findMany: async ({
         where = {},
@@ -167,9 +196,9 @@ export function createShoppingFake() {
         if (Array.isArray(orderBy) && (orderBy[0] as { id?: string })?.id === 'asc') {
           rows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
         }
-        return rows
+        return rows.map(copy)
       },
-      create: async ({ data }: { data: Record<string, unknown> }) => insertCart(data),
+      create: async ({ data }: { data: Record<string, unknown> }) => copy(insertCart(data)),
       createMany: async ({
         data,
         skipDuplicates = false,
@@ -199,8 +228,9 @@ export function createShoppingFake() {
         update: Record<string, unknown>
       }) => {
         checkCartWhere(where)
+        refuseCartUserId(update)
         const existing = state.carts.find((c) => matchesCart(c, where))
-        if (!existing) return insertCart(create)
+        if (!existing) return copy(insertCart(create))
         // Only the keys `update` actually carries are applied — Prisma's own
         // semantics, and what makes a stray `locationId` in `update` visible
         // here as a cart that MOVED. This used to return the existing row
@@ -215,7 +245,7 @@ export function createShoppingFake() {
           if (value === undefined) continue
           ;(existing as unknown as Record<string, unknown>)[key] = value
         }
-        return existing
+        return copy(existing)
       },
       deleteMany: async ({ where = {} }: { where?: Where } = {}) => {
         checkCartWhere(where)

@@ -3,6 +3,7 @@ import {
   fallbackImportLocation,
   householdOfLocation,
   type LocationRole,
+  locationIdsWithRole,
   type OwnedModel,
   requireHousehold,
   requireHouseholdRole,
@@ -418,8 +419,9 @@ async function createImportedLocation(
  * This is the account-scoped twin of `requireOwnLocationIdsOrUnclaimed` above.
  * It serves the nine models in `OwnedModel` (lib/authz.ts) — the models that
  * belong to no location, so `requireLocationRole` cannot reach them. Six of
- * them (the catalog) belong to a household; `InventoryLog`, `Cart` and
- * `CartItem` still carry a `userId`.
+ * them (the catalog) belong to a household. `InventoryLog` and `CartItem`
+ * still carry a `userId`; a `Cart` is checked by its location (households
+ * H3b task B.3).
  *
  * Every `id` in an import payload is attacker-controlled, and each of these
  * primary keys is GLOBAL with no `userId` in it. So an id in the payload can
@@ -577,22 +579,30 @@ async function requireOwnItemStockRefs(
  *
  * The order of the checks is rule 12 of the H3a plan:
  *
- *  1. The cart, scoped by `userId` (until H3b). A cart that is not the
- *     caller's, or is gone, makes its rows SKIPPED.
- *  2. The location role on the cart's location, `participant`, through
- *     `requireLocationRole`. A cart of the caller's at a location they hold
- *     no role on any more THROWS FORBIDDEN for the whole batch, the same
- *     refusal `resolveCartLocations` gives a stranger's location. Nobody can
- *     reach this before H5.
- *  3. The item, scoped by the household of the cart's location
- *     (`householdOfLocation`). An item of another household, or one that is
- *     gone, makes its row SKIPPED.
+ *  1. The cart, scoped to the locations where the caller is `participant` or
+ *     higher (`locationIdsWithRole(ctx, 'participant')`, households H3b task
+ *     B.7, decision D7). A cart at a location where the caller is only
+ *     `viewer`, has no role, or that is in another household, or a cart that
+ *     is gone, makes its rows SKIPPED. This query IS the role check, so no
+ *     `requireLocationRole` follows it.
+ *  2. The item, scoped by the household of the cart's location
+ *     (`householdOfLocation`), read only after step 1 passed. An item of
+ *     another household, or one that is gone, makes its row SKIPPED.
  *
- * Steps 1 and 3 SKIP rather than refuse, as they did before: a partial backup
- * legitimately names a cart or an item that is gone, and "not yours" must
- * look the same as "not there". So this does not call `requireLocationItems`,
- * which throws; it reads the same household with `householdOfLocation` and
- * filters.
+ * Both steps SKIP rather than refuse: a partial backup legitimately names a
+ * cart or an item that is gone, and "not yours" must look the same as "not
+ * there". So this does not call `requireLocationItems`, which throws; it
+ * reads the same household with `householdOfLocation` and filters.
+ *
+ * History. Until task B.3 the cart was found by `Cart.userId`, and a cart of
+ * the caller's at a location where they were only `viewer` THREW FORBIDDEN for
+ * the whole batch. Task B.3 dropped that column and kept the throw for a
+ * viewer as a stopgap, while a cart at a location with no role was skipped.
+ * Task B.7 makes both cases skip. A cart has no owner any more, so "a cart
+ * you may not write to" is a reference that does not resolve, like every
+ * other one in this file. What still REFUSES a viewer is the row's OWN id:
+ * a backup that names an existing cart item at that location is refused by
+ * `requireOwnRowOrUnclaimed('cartItem')` before this runs.
  *
  * Each distinct cart, location and (household, item) pair is read once.
  */
@@ -600,16 +610,17 @@ async function resolveCartItemParents(
   ctx: Context,
   cartItems: readonly { cartId: string; itemId: string }[],
 ): Promise<(cartId: string, itemId: string) => boolean> {
-  const userId = requireAuth(ctx)
+  requireAuth(ctx)
+  const writable = await locationIdsWithRole(ctx, 'participant')
 
-  // cart id → the household of its location, or null when the cart is not
-  // the caller's.
+  // cart id → the household of its location, or null when the cart is at no
+  // location where the caller is `participant` or higher.
   const cartHousehold = new Map<string, string | null>()
   const locationHousehold = new Map<string, string>()
   for (const { cartId } of cartItems) {
     if (cartHousehold.has(cartId)) continue
     const cart = await prisma.cart.findFirst({
-      where: { id: cartId, userId },
+      where: { id: cartId, locationId: { in: writable } },
       select: { id: true, locationId: true },
     })
     if (!cart) {
@@ -620,8 +631,8 @@ async function resolveCartItemParents(
     if (householdId === undefined) {
       // The role FIRST, then the household (rule 12): `householdOfLocation`
       // reads any location, so run first it would tell a stranger which
-      // location ids exist.
-      await requireLocationRole(ctx, cart.locationId, 'participant')
+      // location ids exist. The role was checked by the `writable` scope
+      // above.
       householdId = await householdOfLocation(cart.locationId)
       locationHousehold.set(cart.locationId, householdId)
     }
@@ -653,6 +664,70 @@ async function resolveCartItemParents(
     const householdId = cartHousehold.get(cartId)
     return !!householdId && usable.has(`${householdId}\u0000${itemId}`)
   }
+}
+
+/** One imported cart item, as both cart item import mutations receive it. */
+type CartItemPayloadRow = { id: string; cartId: string; itemId: string; quantity: number }
+
+/** The payload rows of one `(cartId, itemId)` pair, merged. */
+interface MergedCartItem {
+  cartId: string
+  itemId: string
+  /** The sum of the rows' amounts. */
+  quantity: number
+  /** Every payload id of the pair, lowest first, without repeats. */
+  ids: string[]
+}
+
+/**
+ * Merge the payload rows that name the same `(cartId, itemId)` pair, by
+ * summing their amounts (households H3b decision P3). A cart holds ONE row
+ * per item since task B.3 (`@@unique([cartId, itemId])`), and an old backup
+ * may still carry two rows for one item: one made before the migration
+ * merged them, or one from local mode before task B.8.
+ *
+ * Groups keep the order in which their pair first appears, so the rows the
+ * mutation returns follow the payload.
+ */
+function mergeCartItemRows(rows: readonly CartItemPayloadRow[]): MergedCartItem[] {
+  const groups = new Map<string, MergedCartItem>()
+  for (const { id, cartId, itemId, quantity } of rows) {
+    // NUL as the separator, for the reason `bulkCreateItemStocks` gives.
+    const key = `${cartId}\u0000${itemId}`
+    const group = groups.get(key)
+    if (group) {
+      group.quantity += quantity
+      if (!group.ids.includes(id)) group.ids.push(id)
+    } else {
+      groups.set(key, { cartId, itemId, quantity, ids: [id] })
+    }
+  }
+  for (const group of groups.values()) group.ids.sort()
+  return [...groups.values()]
+}
+
+/**
+ * The id a merged group's NEW row is created under: the lowest of its
+ * payload ids that no row holds and no earlier group has taken. `undefined`
+ * when there is none, and then Postgres makes one (`@default(cuid())`).
+ *
+ * Why the lowest id. The migration of task B.3 kept the lowest id of each
+ * duplicate pair, and local mode's version 19 (task B.8) does the same. So a
+ * backup made BEFORE the merge, imported AFTER it, finds its kept row under
+ * the same id, and `bulkCreateCartItems` skips it as already imported.
+ *
+ * Why never an id a row already holds, or one an earlier group took: the
+ * `create` half of the upsert would then raise P2002 on the primary key. The
+ * `upsert`'s conflict target is the pair, not `id`. A payload can repeat an
+ * id under two pairs only when it was edited by hand, but that must not fail
+ * the import.
+ *
+ * `taken` is changed: the id returned is added to it.
+ */
+function takeNewCartItemId(group: MergedCartItem, taken: Set<string>): string | undefined {
+  const id = group.ids.find((candidate) => !taken.has(candidate))
+  if (id !== undefined) taken.add(id)
+  return id
 }
 
 type ImportedFilterConfig = {
@@ -804,7 +879,8 @@ async function householdShelfRefs(
 // - `clearAllData` clears the caller's household, owner only, and makes
 //   "Home" again (task 3.10, decision H17). See its own comment.
 //
-// Still owed: logs and carts keep their `userId` scope until H3b and H4. No
+// Still owed: logs keep their `userId` scope until H4. Carts and cart items
+// are scoped by the cart's location role since H3b task B.7. No
 // import role check is added: that is H4. (`clearAllData`'s owner check
 // already makes the `clear` strategy owner only.)
 export const importResolvers: Pick<Resolvers, 'Mutation'> = {
@@ -1176,7 +1252,6 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           data: {
             id,
             lastPurchasedAt: lastPurchasedAt ? new Date(lastPurchasedAt as string) : undefined,
-            userId,
             // The location named by the cart's OWN id since PR 3b
             // (`${locationId}:${vendorId}`), and the caller's fallback location when no
             // `Location` row holds that id — a pre-3b bare id, or a cloud
@@ -1199,43 +1274,65 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       const userId = requireAuth(ctx)
       if (cartItems.length === 0) return []
       // Authorizes every cart-item id the payload names BEFORE the first
-      // write. `CartItem.id` is a global primary key with no `userId` in it,
-      // so an id in the payload can name a stranger's row. Without the guard
-      // the UNSCOPED `findUnique` this replaces read that row as "already
-      // exists" and silently dropped the caller's own cart item.
+      // write, and returns the ids the caller already "owns": rows whose cart
+      // is at a location where the caller is `participant` or higher
+      // (households H3b task B.7). A row at any other location, a viewer's
+      // included, fails the whole mutation with nothing written. Without the
+      // guard the UNSCOPED `findUnique` this replaces read a stranger's row as
+      // "already exists" and silently dropped the caller's own cart item.
       const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'cartItem', cartItems)
       // The cart and the item of every row, resolved before the first write.
+      //
+      // BOTH references are SCOPED: the cart by the locations where the
+      // caller is `participant` or higher, the item by the household of the
+      // CART's location. See `resolveCartItemParents`. Before plan task 8 both
+      // reads were plain `findUnique({ where: { id } })`, and the `cartId` one
+      // is the exact hole `e2e/tests/cart-id-cross-user-leak.spec.ts`
+      // demonstrates against real Postgres.
+      //
+      // A cart or item the caller may not use is SKIPPED, exactly like one
+      // that does not exist. A partial backup legitimately names a parent
+      // that is gone, and making "not yours" distinguishable from "not there"
+      // would turn the mutation into a probe for another household's ids.
       const parentsUsable = await resolveCartItemParents(ctx, cartItems)
+      const usable = cartItems.filter((ci) => parentsUsable(ci.cartId, ci.itemId))
+
+      // ── The `skip` and `clear` strategies (households H3b decision P3) ──
+      //
+      // 1. Rows of one `(cartId, itemId)` pair are summed first.
+      // 2. A group with an id the caller already owns is SKIPPED: that row was
+      //    imported before, and "skip conflicts" means skip. The whole group,
+      //    not just that row: a backup made before the merge of task B.3 holds
+      //    a pair's rows under several ids, the merge kept the lowest, and the
+      //    others then look new. Skipping only the known id would add the
+      //    other rows' amounts a second time on every re-import.
+      // 3. Otherwise the amount is ADDED to the cloud row of that pair, or a
+      //    new row is made under the group's lowest id.
+      //
+      // One `upsert` on the pair with `increment`, not a read then a write:
+      // Postgres runs it as one `INSERT ... ON CONFLICT ("cartId", "itemId")
+      // DO UPDATE`, so a concurrent `addToCart` of the same item cannot make
+      // it raise P2002 or lose either amount. The `create` half's `id` is an
+      // id no row held when the guard ran (see `takeNewCartItemId`).
+      //
+      // `userId` ("added by") is in `create` only, as in `addToCart`. An
+      // import that adds to another member's row does not take it over.
+      const taken = new Set(ownIds)
       const results: CartItem[] = []
-      for (const ci of cartItems) {
-        const { id, cartId, itemId, quantity } = ci
-        // Own row → skip. Unclaimed → write. After the guard nothing else can
-        // reach here, so the per-row read this replaces has nothing left to
-        // find out.
-        if (ownIds.has(id)) continue
-        // BOTH references are SCOPED since plan task 8: the cart by `userId`
-        // (until H3b), the item by the household of the CART's location
-        // (since households H3a task 3.9; the caller's household before). See
-        // `resolveCartItemParents`. Before plan task 8 both reads were plain
-        // `findUnique({ where: { id } })`, and the `cartId` one is the exact
-        // hole `e2e/tests/cart-id-cross-user-leak.spec.ts` demonstrates
-        // against real Postgres: account B's `CartItem` rows landing inside
-        // account A's `Cart`.
-        //
-        // The `continue` STAYS. A cart or item the caller may not use is
-        // skipped exactly like one that does not exist. A partial backup
-        // legitimately names a parent that is gone, and making "not yours"
-        // distinguishable from "not there" would turn the mutation into a
-        // probe for another account's ids.
-        if (!parentsUsable(cartId, itemId)) continue
-        const created = await prisma.cartItem.create({
-          data: { id, cartId, itemId, quantity, userId },
+      for (const group of mergeCartItemRows(usable)) {
+        if (group.ids.some((id) => ownIds.has(id))) continue
+        const { cartId, itemId, quantity } = group
+        const id = takeNewCartItemId(group, taken)
+        const written = await prisma.cartItem.upsert({
+          where: { cartId_itemId: { cartId, itemId } },
+          create: { ...(id === undefined ? {} : { id }), cartId, itemId, quantity, userId },
+          update: { quantity: { increment: quantity } },
         })
-        results.push(created as unknown as CartItem)
+        results.push(written as unknown as CartItem)
       }
       // NO CLOSING READ — same reason as `bulkCreateShoppingCarts` above. The
-      // returned row is the one `cartItem.create` wrote, and the guard is what
-      // makes it the caller's own. Design decision 5.
+      // returned row is the one the upsert wrote, at a cart the guard and
+      // `resolveCartItemParents` let through. Design decision 5.
       return results
     },
 
@@ -1574,19 +1671,14 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         }
         const upserted = await prisma.cart.upsert({
           where: { id },
-          // `userId` and `locationId` live in `create` only, each for its own
-          // reason.
-          //
-          // `userId`: a row's owner is not something an import may rewrite.
-          // Leaving it out means a future edit that drops the guard above
-          // still cannot hand another account's cart to the importer. Same
-          // shape as `bulkUpsertLocations`.
+          // `locationId` lives in `create` only. (`Cart.userId` lived there
+          // too until households H3b task B.3 dropped the column.)
           //
           // `locationId`: the same reason as the log upsert above — a
           // re-import must not MOVE an existing cart. The value comes from the
           // cart's own id when a `Location` row holds that id, and the
           // caller's fallback location when none does. Both resolved above.
-          create: { id, ...data, userId, locationId: locationIdFor(id) },
+          create: { id, ...data, locationId: locationIdFor(id) },
           update: data,
         })
         results.push(upserted as unknown as Cart)
@@ -1601,55 +1693,62 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       const userId = requireAuth(ctx)
       if (cartItems.length === 0) return []
       // Authorizes every cart-item id the payload names BEFORE the first
-      // write. Without it an `upsert` on a bare `{ id }` with `userId` inside
-      // `update` overwrote another account's cart item and took ownership of
-      // it.
-      await requireOwnRowIdsOrUnclaimed(ctx, 'cartItem', cartItems)
+      // write — the same guard as `bulkCreateCartItems`. Without it an
+      // `upsert` on a bare `{ id }` overwrote another account's cart item.
+      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'cartItem', cartItems)
       // The cart and the item of every row, resolved before the first write,
-      // as in `bulkCreateCartItems`.
+      // and SKIPPED when they do not resolve — as in `bulkCreateCartItems`,
+      // so `replace` and `skip` give the same answer for a partial backup
+      // whose cart or item is gone. New in plan task 8: this mutation had NO
+      // check on either one, so `replace` could write into a STRANGER's cart.
       const parentsUsable = await resolveCartItemParents(ctx, cartItems)
+      const usable = cartItems.filter((ci) => parentsUsable(ci.cartId, ci.itemId))
+
+      // ── The `replace` strategy (households H3b decision P3, design D5) ──
+      //
+      // 1. Rows of one `(cartId, itemId)` pair are summed first.
+      // 2. The amount REPLACES the cloud row of that pair, or a new row is
+      //    made. The write is found by the PAIR, never by the payload's id.
+      //
+      // What that gives for an id the caller already owns:
+      //
+      // | The stored row of that id is at | Result |
+      // |---|---|
+      // | the pair the payload names | its `quantity` is replaced. Nothing else changes |
+      // | another pair | that row is left alone; the payload's pair gets the amount |
+      //
+      // The second row is the "move" case. An update never moves a row to
+      // another `cartId` or `itemId` (design D5): with one row per pair, a
+      // move could land on a pair that already has a row, which is a P2002,
+      // and a move between carts is not something a backup can ask for. So
+      // the payload is taken for what it says, "this cart holds this much of
+      // this item", and written to that pair. Until task B.7 this mutation
+      // moved the row, to match local mode's Dexie `bulkPut` (design decision
+      // 3 of the import ownership guard). Skipping the row instead was
+      // rejected: it would drop the amount the backup holds for that pair.
+      //
+      // `update` writes ONLY `quantity`. Not `cartId` or `itemId` (no move),
+      // and not `userId`: "added by" is not something an import may rewrite,
+      // and a future edit that drops the guard must still not be able to
+      // reassign a row.
+      //
+      // One `upsert` on the pair, for the same reason as in
+      // `bulkCreateCartItems`: no P2002 from a concurrent add, no lost write.
+      const taken = new Set(ownIds)
       const results: CartItem[] = []
-      for (const ci of cartItems) {
-        const { id, cartId, itemId, quantity } = ci
-        // `cartId` and `itemId` STAY in `update`. Only `userId` comes out.
-        //
-        // This differs on purpose from `bulkUpsertItemStocks`, which drops
-        // BOTH of its parents: there the pair IS the row's identity and a
-        // backup may not move it. Here local `importCartItems` does a Dexie
-        // `bulkPut`, which replaces the whole row including both columns, so
-        // dropping them would make the cloud `replace` strategy disagree with
-        // the local one. Design decision 3.
-        //
-        // `userId` comes out because a row's owner is not something an import
-        // may rewrite, and because a future edit that drops the guard above
-        // must still not be able to reassign a cart item.
-        const data = { cartId, itemId, quantity }
-        // BOTH references are SCOPED — the cart by `userId` (until H3b), the
-        // item by the household of the cart's location (since households H3a
-        // task 3.9, `resolveCartItemParents`) — and SKIPPED when they do not
-        // resolve. New in plan task 8: this mutation had NO check on either
-        // one, so the `replace` import strategy could write the caller's cart
-        // item into a STRANGER's cart — the same leak
-        // `e2e/tests/cart-id-cross-user-leak.spec.ts` demonstrates on the
-        // create path — and an id no row held reached Postgres as an unhandled
-        // foreign-key `P2003`.
-        //
-        // The `continue` matches `bulkCreateCartItems` above exactly, so the
-        // two siblings now agree on what an unusable parent means: the cart
-        // item is dropped, not refused, and the rest of the batch still lands.
-        // That also keeps `replace` and `skip` giving the same answer for a
-        // partial backup whose cart or item is gone.
-        if (!parentsUsable(cartId, itemId)) continue
-        const upserted = await prisma.cartItem.upsert({
-          where: { id },
-          create: { id, ...data, userId },
-          update: data,
+      for (const group of mergeCartItemRows(usable)) {
+        const { cartId, itemId, quantity } = group
+        // Never an id a row holds: in the move case that row is elsewhere,
+        // and creating under its id would raise P2002.
+        const id = takeNewCartItemId(group, taken)
+        const written = await prisma.cartItem.upsert({
+          where: { cartId_itemId: { cartId, itemId } },
+          create: { ...(id === undefined ? {} : { id }), cartId, itemId, quantity, userId },
+          update: { quantity },
         })
-        results.push(upserted as unknown as CartItem)
+        results.push(written as unknown as CartItem)
       }
-      // NO CLOSING READ — same reason as the three above. The returned row is
-      // the one `cartItem.upsert` wrote, and the guard is what makes it the
-      // caller's own. Design decision 5.
+      // NO CLOSING READ — same reason as the three above. Design decision 5.
       return results
     },
 

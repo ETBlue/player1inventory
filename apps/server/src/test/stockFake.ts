@@ -57,6 +57,13 @@
 //   - `{ increment: n }` is applied as an increment. A resolver that assigned
 //     the value instead is therefore distinguishable, which is the point of
 //     checkout using the atomic form.
+//   - every read and write returns a COPY of the stored row (`structuredClone`,
+//     so the `Date` fields are copied too), never the stored object itself.
+//     Prisma returns a new object for every call. Until 2026-11-15 this fake
+//     returned the LIVE row, so "the row read before a write" and "the row
+//     after it" could be one object, and a value computed from the wrong one
+//     still came out right (found in households H3b task B.6). Changing a
+//     returned row changes nothing in the store. Pinned in `stockFake.test.ts`.
 //
 // TRANSACTIONS, added in PR 3c. `$transaction` used to be absent on purpose,
 // so no test here could make an atomicity claim it had not earned. PR 3c's
@@ -351,6 +358,11 @@ function sortStocks(rows: FakeStock[], orderBy?: StockOrderBy | StockOrderBy[]):
 
 type NumberWrite = number | { increment: number }
 
+// A deep copy of a stored row, so the caller never holds the stored object.
+function copy<T>(row: T): T {
+  return structuredClone(row)
+}
+
 function applyNumber(current: number, next: NumberWrite | undefined): number {
   if (next === undefined) return current
   return typeof next === 'number' ? next : current + next.increment
@@ -573,7 +585,8 @@ export function createStockFake() {
     location: {
       findFirst: async ({ where = {} }: { where?: Where } = {}) => {
         checkLocationWhere(where)
-        return state.locations.find((l) => matchesLocation(l, where)) ?? null
+        const row = state.locations.find((l) => matchesLocation(l, where))
+        return row ? copy(row) : null
       },
       // Prisma's `findUnique` takes a WhereUniqueInput, which since Prisma 5
       // may carry extra non-unique filters alongside the unique key — so
@@ -583,7 +596,8 @@ export function createStockFake() {
       // lookup green after the resolver dropped its `householdId`.
       findUnique: async ({ where }: { where: Where }) => {
         checkLocationWhere(where)
-        return state.locations.find((l) => matchesLocation(l, where)) ?? null
+        const row = state.locations.find((l) => matchesLocation(l, where))
+        return row ? copy(row) : null
       },
       findMany: async ({
         where = {},
@@ -593,14 +607,14 @@ export function createStockFake() {
         return sortLocations(
           state.locations.filter((l) => matchesLocation(l, where)),
           orderBy,
-        )
+        ).map(copy)
       },
       count: async ({ where = {} }: { where?: Where } = {}) => {
         checkLocationWhere(where)
         return state.locations.filter((l) => matchesLocation(l, where)).length
       },
       create: async ({ data }: { data: Record<string, unknown> }) =>
-        insertLocation(data),
+        copy(insertLocation(data)),
       // One row, found by its `where`. P2025 when none matches, as in Prisma.
       // `updatedAt` moves unless the writer names it (`@updatedAt`).
       update: async ({ where, data }: { where: Where; data: Record<string, unknown> }) => {
@@ -609,7 +623,7 @@ export function createStockFake() {
         if (!row) throw new LocationNotFoundError(where)
         applyLocationUpdate(row, data)
         if (!('updatedAt' in data)) row.updatedAt = new Date()
-        return row
+        return copy(row)
       },
       // One row, and its stock rows with it: `ItemStock.locationId` is
       // `onDelete: Cascade`. The `LocationMember` cascade is in
@@ -622,7 +636,7 @@ export function createStockFake() {
         const [row] = state.locations.splice(index, 1)
         if (!row) throw new LocationNotFoundError(where)
         state.itemStocks = state.itemStocks.filter((s) => s.locationId !== row.id)
-        return row
+        return copy(row)
       },
       // Every matching row, and their stock rows with them (the same cascade
       // as `delete`). `clearAllData` deletes a household's locations this way
@@ -653,17 +667,19 @@ export function createStockFake() {
       }) => {
         checkLocationWhere(where)
         const row = state.locations.find((l) => matchesLocation(l, where))
-        return row ? applyLocationUpdate(row, update) : insertLocation(create)
+        return copy(row ? applyLocationUpdate(row, update) : insertLocation(create))
       },
     },
     itemStock: {
       findUnique: async ({ where }: { where: Where }) => {
         checkStockWhere(where)
-        return state.itemStocks.find((s) => matchesStock(s, where, state.locations)) ?? null
+        const row = state.itemStocks.find((s) => matchesStock(s, where, state.locations))
+        return row ? copy(row) : null
       },
       findFirst: async ({ where = {} }: { where?: Where } = {}) => {
         checkStockWhere(where)
-        return state.itemStocks.find((s) => matchesStock(s, where, state.locations)) ?? null
+        const row = state.itemStocks.find((s) => matchesStock(s, where, state.locations))
+        return row ? copy(row) : null
       },
       findMany: async ({
         where = {},
@@ -673,14 +689,14 @@ export function createStockFake() {
         return sortStocks(
           state.itemStocks.filter((s) => matchesStock(s, where, state.locations)),
           orderBy,
-        )
+        ).map(copy)
       },
-      create: async ({ data }: { data: Record<string, unknown> }) => insert(data),
+      create: async ({ data }: { data: Record<string, unknown> }) => copy(insert(data)),
       update: async ({ where, data }: { where: Where; data: Record<string, unknown> }) => {
         checkStockWhere(where)
         const row = state.itemStocks.find((s) => matchesStock(s, where, state.locations))
         if (!row) throw new Error('ItemStock not found')
-        return applyUpdate(row, data)
+        return copy(applyUpdate(row, data))
       },
       upsert: async ({
         where,
@@ -693,7 +709,7 @@ export function createStockFake() {
       }) => {
         checkStockWhere(where)
         const row = state.itemStocks.find((s) => matchesStock(s, where, state.locations))
-        return row ? applyUpdate(row, update) : insert(create)
+        return copy(row ? applyUpdate(row, update) : insert(create))
       },
       // `delete` throws when no row matches, the way Prisma raises P2025.
       // `bulkUpsertItemStocks` drops a STALE row holding the payload's
@@ -706,7 +722,7 @@ export function createStockFake() {
         )
         if (index === -1) throw new Error('ItemStock not found')
         const [row] = state.itemStocks.splice(index, 1)
-        return row
+        return row ? copy(row) : row
       },
       deleteMany: async ({ where = {} }: { where?: Where } = {}) => {
         checkStockWhere(where)

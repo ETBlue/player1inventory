@@ -56,9 +56,11 @@ mutation RemoveFromCart($id: ID!) {
   removeFromCart(id: $id)
 }
 
-# `items` carries the on-hand total each log row records, computed here because
-# `amountPerPackage` is a global `Item` field the resolver cannot see. See the
-# doc string on `CheckoutItemInput` in apps/server/src/schema/cart.graphql.
+# `items` lists the cart rows the screen showed as being bought, each with the
+# amount it showed (`{ cartItemId, quantity }`). The server buys exactly those
+# rows or refuses with `CART_CHANGED`, and computes every log total itself
+# (households H3b task B.5). See the doc string on `CheckoutItemInput` in
+# apps/server/src/schema/cart.graphql.
 mutation Checkout(
   $cartId: ID!
   $items: [CheckoutItemInput!]!

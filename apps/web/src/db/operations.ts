@@ -767,27 +767,35 @@ export async function addToCart(
   itemId: string,
   quantity: number,
 ): Promise<CartItem> {
-  const existing = await db.cartItems
-    .where('cartId')
-    .equals(cartId)
-    .filter((ci) => ci.itemId === itemId)
-    .first()
+  // One `rw` transaction for the read AND the write (households H3b task B.8).
+  // IndexedDB runs two read-write transactions on the same table one after the
+  // other, so a second call reads the row the first one wrote and adds to it.
+  // Without the transaction both calls could read "no row" and both create
+  // one: before Dexie version 20 that left two rows for one item, and since
+  // version 20 the unique index `&[cartId+itemId]` makes the second `add`
+  // throw a `ConstraintError`.
+  return db.transaction('rw', db.cartItems, async () => {
+    const existing = await db.cartItems
+      .where('[cartId+itemId]')
+      .equals([cartId, itemId])
+      .first()
 
-  if (existing) {
-    await db.cartItems.update(existing.id, {
-      quantity: existing.quantity + quantity,
-    })
-    return { ...existing, quantity: existing.quantity + quantity }
-  }
+    if (existing) {
+      await db.cartItems.update(existing.id, {
+        quantity: existing.quantity + quantity,
+      })
+      return { ...existing, quantity: existing.quantity + quantity }
+    }
 
-  const cartItem: CartItem = {
-    id: crypto.randomUUID(),
-    cartId,
-    itemId,
-    quantity,
-  }
-  await db.cartItems.add(cartItem)
-  return cartItem
+    const cartItem: CartItem = {
+      id: crypto.randomUUID(),
+      cartId,
+      itemId,
+      quantity,
+    }
+    await db.cartItems.add(cartItem)
+    return cartItem
+  })
 }
 
 export async function updateCartItem(

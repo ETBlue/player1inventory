@@ -8,12 +8,31 @@ input RecipeItemInput {
   defaultAmount: Float!
 }
 
+"""
+One item a cook uses.
+
+Since households H3b task B.6 the client sends only the amount used. It sends
+no final stock numbers and no log total. The server reads the stock row at the
+cook's location, takes the amount off with the shared `consumeItem` rule
+(`@p1i/types`), and computes the log total itself. Before B.6 the client sent
+`packedQuantity`, `unpackedQuantity` and `quantity`, computed from the stock it
+had loaded, and the server wrote them as they were. Two people cooking the
+same item from the same screen then wrote the same final numbers, and one use
+was lost.
+"""
 input ConsumeRecipesItemInput {
   itemId: ID!
-  packedQuantity: Float!
-  unpackedQuantity: Float!
+
+  """
+  The signed change written to the inventory log: minus the amount used. It is
+  the same number in local and cloud mode. The unit is the one `consumeItem`
+  takes: measurement units when the item tracks in measurement, otherwise
+  packages. It must be below 0; 0 or more is refused with `BAD_USER_INPUT`.
+
+  The log keeps this full value even when the stock runs out and falls by
+  less.
+  """
   delta: Float!
-  quantity: Float!
   note: String
   logKey: String
   logParams: JSON
@@ -40,6 +59,13 @@ input ConsumeRecipesInput {
   locationId: ID!
 }
 
+"""
+Since households H3b task B.6 a cook runs in one transaction: every item is
+written, or none is. A failure is a GraphQL error on the whole mutation, never
+one entry here. So when a result comes back, every entry has `success: true`
+and `error: null`, and `allSucceeded` is `true`. The shape is kept so the web
+document did not have to change.
+"""
 type ConsumeRecipesItemResult {
   itemId: ID!
   success: Boolean!

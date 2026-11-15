@@ -215,7 +215,7 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
   //
   // Gated on the active id being in the LOADED location list. On a fresh cloud
   // session `activeLocationId` is still the `'local'` sentinel, which names no
-  // cloud `Location`, and `bootstrapCarts` asks for the `member` role on it —
+  // cloud `Location`, and `bootstrapCarts` asks for the `participant` location role on it —
   // so an ungated call is refused with FORBIDDEN and the carts are never
   // created. The validation effect above then corrects the id, this effect
   // re-runs with a real one, and the bootstrap lands. The list itself is the
@@ -249,7 +249,7 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (mode !== 'cloud') return
     // A fresh cloud session still holds the `'local'` sentinel, which names no
-    // cloud `Location`; `bootstrapCarts` asks for the `member` role on it, so
+    // cloud `Location`; `bootstrapCarts` asks for the `participant` location role on it, so
     // an ungated call is refused with FORBIDDEN and the carts are never made.
     // The validation effect above corrects the id, and this effect then runs
     // again with a real one.

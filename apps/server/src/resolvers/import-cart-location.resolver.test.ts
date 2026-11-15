@@ -57,7 +57,8 @@ vi.mock('../lib/prisma.js', async () => {
         // "delegateFor(...).findFirst is not a function". `shoppingFake`
         // already had the method; only this mock did not expose it. Its
         // `matchesCart` applies `where` key by key, so the guard's
-        // `{ id, userId }` really is scoped here.
+        // `{ id, locationId: { in } }` (households H3b task B.3; it was
+        // `{ id, userId }` before) really is scoped here.
         findFirst: vi.fn(shopping.client.cart.findFirst),
         findMany: vi.fn(shopping.client.cart.findMany),
         create: vi.fn(shopping.client.cart.create),

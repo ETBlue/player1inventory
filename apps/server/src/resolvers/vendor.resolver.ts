@@ -13,7 +13,8 @@ import type { Resolvers, Vendor } from '../generated/graphql.js'
 //
 // Reading vendors needs household role `member`; every write needs `manager`
 // (design, *Household roles*), through `requireCatalogRole` (lib/authz.ts).
-// Carts are NOT moved here: every `Cart.userId` filter stays until H3b.
+// `Cart.userId` was dropped in households H3b task B.3; carts are scoped by
+// their location.
 export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
   Query: {
     vendors: async (_, __, ctx) => {
@@ -26,7 +27,7 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     // fallback any more: the web client sends the active location, so a vendor
     // created while viewing the Garage gets its cart in the Garage.
     createVendor: async (_, { name, locationId }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
 
       // Two checks, because this mutation writes at two levels: a Vendor in
       // the household's catalog needs household role `manager`, and a Cart
@@ -47,7 +48,6 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         where: { id: cartIdFor(locationId, vendor.id) },
         create: {
           id: cartIdFor(locationId, vendor.id),
-          userId,
           locationId,
         },
         update: {},
@@ -72,8 +72,8 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       }
     },
     deleteVendor: async (_, { id }, ctx) => {
-      const userId = requireAuth(ctx)
-      await requireCatalogRole(ctx, 'manager')
+      requireAuth(ctx)
+      const householdId = await requireCatalogRole(ctx, 'manager')
       // The row check FIRST, outside the try below: a refused call must change
       // nothing — not even the caller's own carts that name this vendor id —
       // and its FORBIDDEN must reach the client rather than become `false`.
@@ -91,12 +91,26 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         // with `endsWith(':' + id)`, because a vendor id may itself contain ':'
         // and the split rule is "first colon only" (`parseCartId` in `@p1i/types`).
         //
-        // Still the CALLER's carts only (`userId`), because carts keep their
-        // `userId` scope until H3b. So another household member's carts that
-        // name this vendor are left behind. Nobody can share a household
-        // before H5, so this cannot happen yet; H3b must scope this through
-        // the location instead.
-        const carts = await prisma.cart.findMany({ where: { userId }, select: { id: true } })
+        // The vendor's carts at EVERY location of the caller's household
+        // (households H3b task B.7, decision D8), including a location where
+        // the caller holds no location role. The vendor is a catalog row of
+        // the household, and `requireCatalogRole` above asked for `manager`,
+        // so deleting it takes its carts everywhere it has one. A cart left
+        // behind would name a vendor that no longer exists.
+        //
+        // `householdId` is the one `requireCatalogRole` returned, and the
+        // vendor passed `requireOwnRowOrUnclaimed` above, so it is this
+        // household's vendor. Another household's carts are not read: their
+        // locations are not in this list. (Until task B.7 this read the carts
+        // at `locationIdsWithRole`, a stopgap from task B.3.)
+        const locations = await prisma.location.findMany({
+          where: { householdId },
+          select: { id: true },
+        })
+        const carts = await prisma.cart.findMany({
+          where: { locationId: { in: locations.map((l) => l.id) } },
+          select: { id: true },
+        })
         const cartIds = carts.filter((c) => parseCartId(c.id).vendorId === id).map((c) => c.id)
         if (cartIds.length > 0) {
           await prisma.cartItem.deleteMany({ where: { cartId: { in: cartIds } } })

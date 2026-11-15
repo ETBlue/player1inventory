@@ -3,7 +3,10 @@ import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import * as operations from '@/db/operations'
+import { callArgs } from '@/test/narrow'
 import {
+  useConsumeRecipes,
   useCreateRecipe,
   useDeleteRecipe,
   useItemCountByRecipe,
@@ -21,6 +24,7 @@ const mockCloudCreateRecipe = vi.fn()
 const mockCloudUpdateRecipe = vi.fn()
 const mockCloudDeleteRecipe = vi.fn()
 const mockCloudUpdateRecipeLastCookedAt = vi.fn()
+const mockCloudConsumeRecipes = vi.fn()
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
@@ -39,6 +43,7 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       mockCloudUpdateRecipeLastCookedAt,
       {},
     ],
+    useConsumeRecipesMutation: () => [mockCloudConsumeRecipes, {}],
   }
 })
 
@@ -386,5 +391,81 @@ describe('useItemCountByRecipe (cloud mode)', () => {
     expect(capturedItemCountByRecipeOptions).toMatchObject({
       fetchPolicy: 'cache-and-network',
     })
+  })
+})
+
+// ─── useConsumeRecipes ────────────────────────────────────────────────────────
+//
+// Households H3b task B.6 moved the final-number computation for LOCAL mode
+// from `cooking.tsx` into this hook. The page sends `delta` (minus the amount
+// used); the local branch computes the new stock and the log total from
+// `localStock` with the shared `consumeItem` and `getPackedTotal`. These pin
+// the exact numbers, with an item that tracks in measurement, so that opening
+// a package and converting the log total to packages are both visible.
+
+describe('useConsumeRecipes (local mode)', () => {
+  // 6 per package, tracked in measurement: 2 packages and 1 loose unit.
+  const OIL = {
+    id: 'item-oil',
+    targetUnit: 'measurement' as const,
+    measurementUnit: 'ml',
+    amountPerPackage: 6,
+    consumeAmount: 1,
+    targetQuantity: 4,
+    refillThreshold: 1,
+    packedQuantity: 2,
+    unpackedQuantity: 1,
+  }
+
+  it('user cooking in local mode writes the numbers consumeItem computes from the stock shown', async () => {
+    // Given local mode, and a batch write that records what it is given
+    const batch = vi
+      .spyOn(operations, 'consumeRecipesBatch')
+      .mockResolvedValue(undefined)
+    const { result } = renderHook(() => useConsumeRecipes(), {
+      wrapper: createWrapper(),
+    })
+    const occurredAt = new Date('2026-11-15T00:00:00.000Z')
+
+    // When 4 ml are used
+    await result.current.mutateAsync({
+      occurredAt,
+      recipeIds: ['recipe-1'],
+      items: [
+        {
+          itemId: OIL.id,
+          delta: -4,
+          note: 'consumed via Salad',
+          logKey: 'cooking.log.consumedVia',
+          logParams: { recipes: 'Salad' },
+        },
+      ],
+      localStock: [OIL],
+    })
+
+    // Then the 1 loose ml is used, one package is opened for the other 3,
+    // and 3 ml of it are left: 1 package + 3 ml. The log total in packages
+    // is 1 + 3/6 = 1.5. The log keeps the full delta.
+    expect(batch).toHaveBeenCalledTimes(1)
+    expect(callArgs(batch.mock, 0)[0]).toEqual({
+      occurredAt,
+      recipeIds: ['recipe-1'],
+      locationId: 'local',
+      items: [
+        {
+          itemId: OIL.id,
+          packedQuantity: 1,
+          unpackedQuantity: 3,
+          delta: -4,
+          quantity: 1.5,
+          note: 'consumed via Salad',
+          logKey: 'cooking.log.consumedVia',
+          logParams: { recipes: 'Salad' },
+        },
+      ],
+    })
+    // And the cloud mutation is not called
+    expect(mockCloudConsumeRecipes).not.toHaveBeenCalled()
+    batch.mockRestore()
   })
 })

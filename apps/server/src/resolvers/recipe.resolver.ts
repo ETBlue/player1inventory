@@ -9,8 +9,12 @@ import {
 } from '../lib/authz.js'
 import { prisma } from '../lib/prisma.js'
 import { writeStock } from '../lib/itemStockWrite.js'
+import { consumeItem, getPackedTotal } from '@p1i/types'
 import { requireAuth } from '../context.js'
 import type { Recipe, Resolvers } from '../generated/graphql.js'
+
+// See the `timeout` comment at the end of `consumeRecipes`.
+const COOKING_TIMEOUT_MS = 30_000
 
 // ── Household scope (households H3a, task 3.7) ──
 //
@@ -92,8 +96,6 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
       const { occurredAt, recipeIds, items, locationId: consumeLocationId } = input
       const occurredAtDate = new Date(occurredAt)
 
-      const itemResults: Array<{ itemId: string; success: boolean; error?: string }> = []
-
       // `consumeLocationId` is the location the cook names. It used to be the
       // caller's DEFAULT location, because `ConsumeRecipesInput` carried no
       // location at all — so cooking while viewing the Garage took the stock
@@ -102,16 +104,12 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
 
       // `participant`, not `viewer`: this mutation writes stock and log rows there.
       // The id arrives from the client, so it goes through the one
-      // authorization seam (lib/authz.ts) before any query sees it. This throws
-      // out of the WHOLE mutation rather than landing in one item's
-      // `itemResults` entry — a caller who may not write this location has not
-      // partly succeeded.
+      // authorization seam (lib/authz.ts) before any query sees it. A refusal
+      // throws out of the WHOLE mutation before the first write.
       await requireLocationRole(ctx, consumeLocationId, 'participant')
       // Every item cooked must be an item of the cook location's household
-      // (households H3a, task 3.8). Like the role check above, a refusal
-      // throws out of the WHOLE mutation before the first write, rather than
-      // landing in one item's `itemResults` entry: a request that names
-      // another household's item is not a partial success.
+      // (households H3a, task 3.8). AFTER the role check (H3a rule 12): the
+      // other order tells a stranger which location ids exist.
       await requireLocationItems(
         ctx,
         consumeLocationId,
@@ -122,57 +120,176 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
       // comment at the top of this file.
       const householdId = await requireHousehold(ctx)
 
+      // `delta` is the log's signed change, minus the amount used (see
+      // `ConsumeRecipesItemInput` in src/schema/recipe.graphql). A cook only
+      // takes stock away, so 0 or more is refused. The web never sends one:
+      // the cooking page only lists items with an amount above 0. Refusing
+      // rather than ignoring the row means a client with the sign the wrong
+      // way round fails loudly instead of ADDING stock through `consumeItem`,
+      // which does not expect a negative amount.
       for (const item of items) {
-        try {
-          // The cook location's own stock row, and since PR 5 the ONLY place
-          // the cook is recorded — `Item`'s five stock columns are gone, and
-          // with them the `prisma.item.updateMany` that used to run here first.
-          //
-          // Absolute values, not a delta: the client has already computed the
-          // post-cooking quantities. A failure here lands in this item's
-          // `itemResults` entry and leaves the other items alone.
-          await writeStock(item.itemId, consumeLocationId, {
-            packedQuantity: item.packedQuantity,
-            unpackedQuantity: item.unpackedQuantity,
-          })
+        if (!(item.delta < 0)) {
+          throw new GraphQLError(
+            `delta must be below 0 (the amount used, negated); got ${item.delta} for item ${item.itemId}`,
+            { extensions: { code: 'BAD_USER_INPUT' } },
+          )
+        }
+      }
 
-          await prisma.inventoryLog.create({
-            data: {
-              itemId: item.itemId,
-              delta: item.delta,
-              quantity: item.quantity,
-              occurredAt: occurredAtDate,
-              userId,
-              // The cook's own location, the same one the stock write above
-              // used. A log row and the stock move it explains must never name
-              // different locations.
-              locationId: consumeLocationId,
-              ...(item.note ? { note: item.note } : {}),
-              ...(item.logKey ? { logKey: item.logKey } : {}),
-              ...(item.logParams ? { logParams: item.logParams as Prisma.InputJsonValue } : {}),
+      // ── ONE TRANSACTION (households H3b task B.6, decision D4) ──
+      //
+      // Every stock row, every log and every recipe mark is written, or none
+      // is. Until B.6 each item had its own try/catch and no transaction, so
+      // one failing item left the others written and the cook half done, and
+      // a failing recipe mark was ignored.
+      return prisma.$transaction(
+        async (tx) => {
+          // The unit settings `consumeItem` needs live on `Item`, not on
+          // `ItemStock`. Read in the transaction, once for all items.
+          const itemIds = [...new Set(items.map((i) => i.itemId))]
+          const itemRows = await tx.item.findMany({
+            where: { id: { in: itemIds } },
+            select: {
+              id: true,
+              targetUnit: true,
+              measurementUnit: true,
+              amountPerPackage: true,
+              consumeAmount: true,
             },
           })
-          itemResults.push({ itemId: item.itemId, success: true })
-        } catch (err) {
-          itemResults.push({ itemId: item.itemId, success: false, error: String(err) })
-        }
-      }
+          const itemById = new Map(itemRows.map((i) => [i.id, i]))
 
-      for (const recipeId of recipeIds) {
-        try {
-          await prisma.recipe.updateMany({
-            where: { id: recipeId, householdId },
-            data: { lastCookedAt: new Date() },
-          })
-        } catch {
-          // best-effort — ignore
-        }
-      }
+          // Items in id order, so two cooks lock the same stock rows in the
+          // same order and cannot deadlock on each other. A stable sort keeps
+          // two rows for one item in the order they were sent.
+          const ordered = [...items].sort((a, b) =>
+            a.itemId < b.itemId ? -1 : a.itemId > b.itemId ? 1 : 0,
+          )
 
-      return {
-        itemResults,
-        allSucceeded: itemResults.every((r) => r.success),
-      }
+          for (const item of ordered) {
+            const unit = itemById.get(item.itemId)
+            // `requireLocationItems` checked every id above, so this is only a
+            // row deleted in the moment between. Fail, and roll back.
+            if (!unit) {
+              throw new GraphQLError(`Item ${item.itemId} not found`, {
+                extensions: { code: 'NOT_FOUND' },
+              })
+            }
+
+            // ── THE ROW LOCK ──
+            //
+            // Postgres runs at READ COMMITTED. Checkout can add with a plain
+            // `{ increment }`, but cooking cannot: `consumeItem` is not a
+            // sum. It opens packages, rounds to the consume step and stops at
+            // zero, so the new numbers depend on the old ones. If two cooks
+            // both READ the row before either writes, both compute from the
+            // same old numbers and the second write replaces the first. One
+            // use is lost — the bug this task fixes.
+            //
+            // So the row is locked first, with `SELECT … FOR UPDATE`. A second
+            // cook of the same item waits here until the first commits. In
+            // READ COMMITTED every statement sees the latest committed data,
+            // so its read below then sees the first cook's result.
+            //
+            // Chosen over a conditional write (`updateMany` where the stored
+            // numbers still equal the ones read, re-read and retry when the
+            // count is 0) because the lock needs no retry limit, never fails a
+            // cook under contention, and does not compare floats for equality.
+            //
+            // An item with no row here locks nothing, and that is safe: two
+            // such cooks both compute from 0 and both write 0, and
+            // `writeStock` is one upsert, so neither fails.
+            await tx.$queryRaw`SELECT id FROM "ItemStock" WHERE "itemId" = ${item.itemId} AND "locationId" = ${consumeLocationId} FOR UPDATE`
+
+            const stock = await tx.itemStock.findUnique({
+              where: { itemId_locationId: { itemId: item.itemId, locationId: consumeLocationId } },
+            })
+
+            // The shared rule (`@p1i/types`), the same function local mode and
+            // the web use. It changes the object it is given. `-delta` is the
+            // amount used. An item not stocked here starts at 0 and stays at 0.
+            const next: Parameters<typeof consumeItem>[0] = {
+              targetQuantity: stock?.targetQuantity ?? 0,
+              refillThreshold: stock?.refillThreshold ?? 0,
+              packedQuantity: stock?.packedQuantity ?? 0,
+              unpackedQuantity: stock?.unpackedQuantity ?? 0,
+              targetUnit: unit.targetUnit,
+              measurementUnit: unit.measurementUnit ?? undefined,
+              amountPerPackage: unit.amountPerPackage ?? undefined,
+              consumeAmount: unit.consumeAmount,
+            }
+            consumeItem(next, -item.delta)
+
+            // Only the two quantities. `consumeItem` also drops `dueDate` when
+            // the stock reaches 0, but cooking has never cleared it in either
+            // mode (local `consumeRecipesBatch` writes the same two columns),
+            // and B.6 does not change that.
+            //
+            // An item with no row here gets one, as before B.6: `writeStock`
+            // upserts, so the row opens at the computed numbers (0 and 0).
+            const after = await writeStock(
+              item.itemId,
+              consumeLocationId,
+              {
+                packedQuantity: next.packedQuantity,
+                unpackedQuantity: next.unpackedQuantity,
+              },
+              tx,
+            )
+
+            await tx.inventoryLog.create({
+              data: {
+                itemId: item.itemId,
+                // The full amount used, even when the stock ran out and fell
+                // by less. The log records what the cook used.
+                delta: item.delta,
+                // The on-hand total in PACKAGE units after the cook, computed
+                // here from the saved row. The client sent this number until
+                // B.6. `getPackedTotal` is the shared rule.
+                quantity: getPackedTotal({
+                  packedQuantity: after.packedQuantity,
+                  unpackedQuantity: after.unpackedQuantity,
+                  amountPerPackage: unit.amountPerPackage ?? undefined,
+                }),
+                occurredAt: occurredAtDate,
+                userId,
+                // The cook's own location, the same one the stock write above
+                // used. A log row and the stock move it explains must never
+                // name different locations.
+                locationId: consumeLocationId,
+                ...(item.note ? { note: item.note } : {}),
+                ...(item.logKey ? { logKey: item.logKey } : {}),
+                ...(item.logParams ? { logParams: item.logParams as Prisma.InputJsonValue } : {}),
+              },
+            })
+          }
+
+          // Marked after the stock, in id order, one row at a time, so two
+          // cooks lock recipe rows in the same order too. Until B.6 a failure
+          // here was ignored ("best-effort"). Now it rolls the whole cook back:
+          // a cook that took the stock but did not mark the recipe would be
+          // half done.
+          for (const recipeId of [...new Set(recipeIds)].sort()) {
+            await tx.recipe.updateMany({
+              where: { id: recipeId, householdId },
+              data: { lastCookedAt: new Date() },
+            })
+          }
+
+          // Every entry succeeded: a failure threw above and rolled back.
+          // See `ConsumeRecipesResult` in src/schema/recipe.graphql.
+          return {
+            itemResults: items.map((item) => ({ itemId: item.itemId, success: true })),
+            allSucceeded: true,
+          }
+        },
+        // Prisma's interactive transaction times out after 5 s by default. A
+        // cook makes 4 queries per item (lock, read, upsert, log) plus one per
+        // recipe and one item read, each a round trip to the database. 30 s,
+        // the same as `checkout`, leaves room for a large cook on a slow
+        // connection. Hitting it is safe: Prisma rolls everything back.
+        { timeout: COOKING_TIMEOUT_MS },
+      )
     },
     deleteRecipe: async (_, { id }, ctx) => {
       const householdId = await requireCatalogRole(ctx, 'manager')

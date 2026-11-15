@@ -166,7 +166,7 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     },
 
     removeItemFromLocation: async (_, { itemId, locationId }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
       // `organizer`, not `participant` (owner decision, 2026-11-11, plan H3a
       // *Owner decisions 2026-11-11*). The removal deletes EVERY log of the
       // item at this location, including the logs other members wrote, so it
@@ -223,10 +223,11 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         // the two must agree on what "in this location" means — a number the
         // removal then does not match would be a lie to the user.
         //
-        // The `userId` stays until H3b, which re-derives every `CartItem.userId`
-        // filter for shared carts (plan H3a, *Where H3a sits*). The log delete
-        // above has none: logs are scoped by their location.
-        await tx.cartItem.deleteMany({ where: { itemId, userId, cart: { locationId } } })
+        // No `userId`: every row of the item in this location's carts goes,
+        // whoever added it (households H3b task B.4). `CartItem.userId` means
+        // "added by" and is never a scope. The log delete above has none
+        // either: logs are scoped by their location.
+        await tx.cartItem.deleteMany({ where: { itemId, cart: { locationId } } })
       })
       return true
     },

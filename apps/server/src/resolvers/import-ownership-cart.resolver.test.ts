@@ -66,18 +66,19 @@ import { typeDefs } from '../schema/index.js'
 //     in two different households. (Households H3a task 3.9 removed
 //     `derivedRoles`, which invented those rows from each location's
 //     `userId`.)
-//   - `src/test/ownedRowFake.ts` for `cart`, `cartItem` and `item`. Three of
-//     the things it models are what let these tests fail: `where` is applied
-//     KEY BY KEY (Prisma's own semantics), `upsert` keeps `create` and
-//     `update` apart and applies `update` key by key — which is what makes a
-//     `userId` left in `update` visible as a row that CHANGED OWNER — and an
-//     `update` key whose value is `undefined` counts as "not mentioned",
-//     Prisma's rule, which is what keeps a stored `lastPurchasedAt` alive when
-//     the payload omits it.
-//   - `item` is here only because `bulkCreateCartItems` checks that the
-//     payload's `itemId` exists before it writes. That check is still
-//     UNSCOPED, and so is its `cartId` twin — a separate hole that plan task 8
-//     closes, not this one.
+//   - `src/test/cartFake.ts` for `cart` AND `cartItem` (households H3b task
+//     B.7; `cartItem` was on `ownedRowFake` until then). `Cart` has no
+//     `userId` since task B.3, and `CartItem.userId` means "added by" and is
+//     never a scope (H3b rule 13): the fake refuses a `userId` in any cart or
+//     cart item `where`, so a resolver that still scopes by it fails here.
+//     It also models what the P3 import rules need: one row per
+//     `(cartId, itemId)` (a second one raises P2002), `upsert` on
+//     `cartId_itemId`, `quantity: { increment }`, and `update` applied key by
+//     key, so a `userId` left in `update` shows as a row that changed its
+//     "added by". A cart, or a cart item, is "the caller's" when its cart is
+//     at a location where the caller is `participant` or higher.
+//   - `src/test/ownedRowFake.ts` for `item`, which `resolveCartItemParents`
+//     checks against the household of the cart's location.
 vi.mock('../lib/prisma.js', async () => {
   const { createHouseholdWorld } = await import('../test/householdWorld.js')
   const { createOwnedRowFake } = await import('../test/ownedRowFake.js')
@@ -85,20 +86,35 @@ vi.mock('../lib/prisma.js', async () => {
   const world = createHouseholdWorld()
   const stock = world.stock
 
-  const cart = createOwnedRowFake<{
-    id: string
-    userId: string
-    locationId: string
-    lastPurchasedAt: Date | null
-  }>({ model: 'Cart' })
-
-  const cartItem = createOwnedRowFake<{
-    id: string
-    userId: string
-    cartId: string
-    itemId: string
-    quantity: number
-  }>({ model: 'CartItem' })
+  const { createCartFake } = await import('../test/cartFake.js')
+  const carts = createCartFake()
+  // The `state.rows` / `reset(rows)` shape the tests below use, over the cart
+  // fake's two stores. Each `reset` replaces ONE store and leaves the other,
+  // so `beforeEach` can seed carts and then cart items.
+  const cart = {
+    client: carts.client.cart,
+    state: {
+      get rows() {
+        return carts.state.carts
+      },
+    },
+    reset: (rows: { id: string; locationId: string; lastPurchasedAt: Date | null }[]) => {
+      carts.state.carts = [...rows]
+    },
+  }
+  const cartItem = {
+    client: carts.client.cartItem,
+    state: {
+      get rows() {
+        return carts.state.cartItems
+      },
+    },
+    reset: (
+      rows: { id: string; userId: string; cartId: string; itemId: string; quantity: number }[],
+    ) => {
+      carts.state.cartItems = [...rows]
+    },
+  }
 
   // A catalog model, so scoped by `householdId` since households H3a task
   // 3.7 (and refusing a `userId` on a write since task 3.14). Each item
@@ -148,10 +164,10 @@ import type { StockFake } from '../test/stockFake.js'
 
 type CartRow = {
   id: string
-  userId: string
   locationId: string
   lastPurchasedAt: Date | null
 }
+type CartStore = { state: { rows: CartRow[] }; reset: (rows: CartRow[]) => void }
 type CartItemRow = {
   id: string
   userId: string
@@ -167,8 +183,8 @@ const mockPrisma = prisma as unknown as {
   location: { findFirst: ReturnType<typeof vi.fn> }
   $world: HouseholdWorld
   $stockFake: StockFake
-  $cart: OwnedRowFake<CartRow>
-  $cartItem: OwnedRowFake<CartItemRow>
+  $cart: CartStore
+  $cartItem: { state: { rows: CartItemRow[] }; reset: (rows: CartItemRow[]) => void }
   $item: OwnedRowFake<ItemRow>
 }
 
@@ -205,11 +221,10 @@ afterAll(async () => {
 // guard distinguishable from no guard, and `*_FREE` is what keeps a legitimate
 // new row provable.
 //
-// TWO CARTS of the caller's and TWO ITEMS of the caller's, so the cart item
-// tests can MOVE a row from one parent to the other. That is what pins
-// `cartId` and `itemId` STAYING in `bulkUpsertCartItems`' `update` payload —
-// with a single cart and a single item there is nowhere to move to and the
-// assertion could not fail.
+// TWO CARTS of the caller's and TWO ITEMS of the caller's, so a cart item
+// test can name a row under another cart and item. That is what pins a row
+// NOT moving (households H3b task B.7, design D5) — with a single cart and a
+// single item there is nowhere to move to and the assertion could not fail.
 
 const USER = 'user_import_cart_own_test'
 const STRANGER = 'user_stranger'
@@ -217,6 +232,14 @@ const STRANGER = 'user_stranger'
 const LOC_DEFAULT = 'loc_kitchen' // USER's default
 const LOC_OTHER = 'loc_garage' // USER's, NOT default
 const LOC_STRANGER = 'loc_theirs' // STRANGER's — must be refused
+// In USER's own household, but USER holds no role on it; only MEMBER does.
+// Households H3b task B.3: since `Cart.userId` is gone, a cart is usable
+// through a location role, so this is the location a check by household
+// instead of by role would wrongly let through.
+const LOC_NOROLE = 'loc_attic'
+// A second member of USER's household (H3b rule 14). MEMBER organizes
+// LOC_DEFAULT with USER, and LOC_NOROLE alone.
+const MEMBER = 'user_member'
 
 const VENDOR = 'vendor_costco'
 
@@ -230,6 +253,7 @@ const CART_OTHER = `${LOC_DEFAULT}:${VENDOR}` // USER's second cart
 // then these tests would pass with the cart-id guard deleted.
 const CART_THEIRS = 'no-vendor'
 const CART_FREE = `${LOC_OTHER}:vendor_new` // no cart row holds it
+const CART_NOROLE = `${LOC_NOROLE}:${VENDOR}` // in USER's household, no role for USER
 
 const ITEM_MINE = 'item_milk' // USER's
 const ITEM_OTHER = 'item_rice' // USER's second item
@@ -270,20 +294,32 @@ beforeEach(() => {
     { id: LOC_OTHER, householdId: HH_USER, name: 'Garage', order: 1, createdAt: TS, updatedAt: TS },
     { id: LOC_DEFAULT, householdId: HH_USER, name: 'Kitchen', order: 0, createdAt: TS, updatedAt: TS },
     { id: LOC_STRANGER, householdId: HH_STRANGER, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
+    { id: LOC_NOROLE, householdId: HH_USER, name: 'Attic', order: 2, createdAt: TS, updatedAt: TS },
   ])
   // The caller and the stranger are in two different households, each the
-  // owner, each the organizer of their own locations.
-  mockPrisma.$world.seedHouseholds(
-    soloHouseholds([
-      { userId: USER, householdId: HH_USER, locationIds: [LOC_OTHER, LOC_DEFAULT] },
-      { userId: STRANGER, householdId: HH_STRANGER, locationIds: [LOC_STRANGER] },
-    ]),
-  )
+  // owner, each the organizer of their own locations. MEMBER is a second
+  // member of the caller's household: organizer of LOC_DEFAULT (with the
+  // caller) and of LOC_NOROLE (alone).
+  const solo = soloHouseholds([
+    { userId: USER, householdId: HH_USER, locationIds: [LOC_OTHER, LOC_DEFAULT] },
+    { userId: STRANGER, householdId: HH_STRANGER, locationIds: [LOC_STRANGER] },
+  ])
+  mockPrisma.$world.seedHouseholds({
+    households: solo.households,
+    householdMembers: [...solo.householdMembers, householdMemberRow(HH_USER, MEMBER, 'member')],
+    locationMembers: [
+      ...solo.locationMembers,
+      locationMemberRow(LOC_DEFAULT, MEMBER, 'organizer'),
+      locationMemberRow(LOC_NOROLE, MEMBER, 'organizer'),
+    ],
+  })
 
+  // No cart has an owner since households H3b task B.3.
   mockPrisma.$cart.reset([
-    { id: CART_MINE, userId: USER, locationId: LOC_OTHER, lastPurchasedAt: STORED_PURCHASED },
-    { id: CART_OTHER, userId: USER, locationId: LOC_DEFAULT, lastPurchasedAt: null },
-    { id: CART_THEIRS, userId: STRANGER, locationId: LOC_STRANGER, lastPurchasedAt: null },
+    { id: CART_MINE, locationId: LOC_OTHER, lastPurchasedAt: STORED_PURCHASED },
+    { id: CART_OTHER, locationId: LOC_DEFAULT, lastPurchasedAt: null },
+    { id: CART_THEIRS, locationId: LOC_STRANGER, lastPurchasedAt: null },
+    { id: CART_NOROLE, locationId: LOC_NOROLE, lastPurchasedAt: null },
   ])
 
   mockPrisma.$cartItem.reset([
@@ -302,10 +338,10 @@ beforeEach(() => {
 
 const CONTEXT: Context = { userId: USER }
 
-async function exec(query: string, variables: Record<string, unknown>) {
+async function exec(query: string, variables: Record<string, unknown>, context: Context = CONTEXT) {
   const response = await server.executeOperation(
     { query, variables },
-    { contextValue: CONTEXT },
+    { contextValue: context },
   )
   if (response.body.kind !== 'single') throw new Error('expected a single result')
   return response.body.singleResult
@@ -398,9 +434,8 @@ describe('Cart ownership', () => {
     // guard this returned `[]` with NO error: the unscoped `findUnique` found
     // the stranger's row and the caller's own cart was silently dropped.
     expect(errorCode(result)).toBe('FORBIDDEN')
-    expect(mockPrisma.$cart.state.rows).toHaveLength(3)
+    expect(mockPrisma.$cart.state.rows).toHaveLength(4)
     expect(storedCart(CART_THEIRS)).toMatchObject({
-      userId: STRANGER,
       locationId: LOC_STRANGER,
       lastPurchasedAt: null,
     })
@@ -416,32 +451,25 @@ describe('Cart ownership', () => {
 
     // Then it is refused and the stranger keeps their row, date and all
     expect(errorCode(result)).toBe('FORBIDDEN')
-    expect(mockPrisma.$cart.state.rows).toHaveLength(3)
+    expect(mockPrisma.$cart.state.rows).toHaveLength(4)
     expect(storedCart(CART_THEIRS)).toMatchObject({
-      userId: STRANGER,
       locationId: LOC_STRANGER,
       lastPurchasedAt: null,
     })
   })
 
-  it('user re-importing their own cart still replaces it and keeps its owner', async () => {
+  it('user re-importing their own cart still replaces it and does not move it', async () => {
     // Given a payload naming the caller's OWN cart id with a new date
     const payload = [cartIn(CART_MINE, PAYLOAD_PURCHASED)]
 
     // When the upsert-path import runs
     const result = await exec(UPSERT_CARTS, { carts: payload })
 
-    // Then the date is replaced and the owner is unchanged.
-    //
-    // The owner assertion here is a NEGATIVE CONTROL, not coverage. The row is
-    // already the caller's, so putting `userId` back into the `update` payload
-    // writes `USER` over `USER` and this test stays green. Measured on
-    // 2026-10-28, the same way task 4 and task 5 measured it. The test that
-    // DOES catch a `userId` in `update` is "does not reassign a row's owner
-    // even when the guard misses it" below.
+    // Then the date is replaced and the location is unchanged. (This test
+    // also checked the cart's owner until households H3b task B.3 dropped
+    // `Cart.userId`. The cart fake now refuses a `userId` in a write.)
     expect(result.errors).toBeUndefined()
     expect(storedCart(CART_MINE)).toMatchObject({
-      userId: USER,
       locationId: LOC_OTHER,
       lastPurchasedAt: new Date(PAYLOAD_PURCHASED),
     })
@@ -460,28 +488,26 @@ describe('Cart ownership', () => {
     // Then nothing was written — the allowed row is absent too
     expect(errorCode(result)).toBe('FORBIDDEN')
     expect(mockPrisma.$cart.state.rows.map((r) => r.id).sort()).toEqual(
-      [CART_MINE, CART_OTHER, CART_THEIRS].sort(),
+      [CART_MINE, CART_OTHER, CART_THEIRS, CART_NOROLE].sort(),
     )
   })
 
-  it("bulkUpsertShoppingCarts does not reassign a row's owner even when the guard misses it", async () => {
+  it("bulkUpsertShoppingCarts does not move a stranger's cart even when the guard misses it", async () => {
     // Given the guard's lookup misses the stranger's row, so the upsert really
-    // reaches it. This is the case `userId` being OUT of the `update` payload
-    // is defence against: a future edit that drops the guard must not be able
-    // to hand another account's cart to the importer.
+    // reaches it. `locationId` being OUT of the `update` payload is the
+    // defence here: a future edit that drops the guard must not be able to
+    // move another household's cart into the caller's location. (Until
+    // households H3b task B.3 this also checked `Cart.userId`, now dropped.)
     simulateGuardMiss(mockPrisma.cart)
 
     // When the caller upserts under the stranger's id
     const result = await exec(UPSERT_CARTS, { carts: [cartIn(CART_THEIRS, PAYLOAD_PURCHASED)] })
 
-    // Then the row is still the STRANGER's, and it has not MOVED either —
-    // `locationId` is out of `update` too. This is what goes red if `userId`
-    // creeps back in.
+    // Then the row has not MOVED.
     //
     // The mutation itself succeeds: these four resolvers have no closing read
     // to refuse, which is why the guard is the only thing standing here.
     expect(result.errors).toBeUndefined()
-    expect(storedCart(CART_THEIRS)?.userId).toBe(STRANGER)
     expect(storedCart(CART_THEIRS)?.locationId).toBe(LOC_STRANGER)
   })
 
@@ -502,7 +528,7 @@ describe('Cart ownership', () => {
     // goes red.
     expect(errorCode(result)).toBe('FORBIDDEN')
     expect(mockPrisma.cart.findUnique).not.toHaveBeenCalled()
-    expect(mockPrisma.$cart.state.rows).toHaveLength(3)
+    expect(mockPrisma.$cart.state.rows).toHaveLength(4)
   })
 
   it('user re-importing a cart they already own on the create path skips it instead of failing', async () => {
@@ -595,52 +621,69 @@ describe('CartItem ownership', () => {
     )
   })
 
-  it("bulkUpsertCartItems does not reassign a row's owner even when the guard misses it", async () => {
-    // Given the guard's lookup misses the stranger's row, so the upsert really
-    // reaches it — the case `userId` being OUT of `update` is defence against.
+  it("bulkUpsertCartItems never writes through the payload's id, even when the guard misses it", async () => {
+    // Given the guard's lookup misses the stranger's row, so the stranger's
+    // id reaches the write. The payload names the pair CI_MINE holds.
     simulateGuardMiss(mockPrisma.cartItem)
 
     // When the caller upserts under the stranger's id
     const result = await exec(UPSERT_CART_ITEMS, {
-      cartItems: [cartItemIn(CI_THEIRS, { quantity: 99 })],
+      cartItems: [cartItemIn(CI_THEIRS, { cartId: CART_MINE, itemId: ITEM_MINE, quantity: 99 })],
     })
 
-    // Then the row is still the STRANGER's. This goes red if `userId` creeps
-    // back into `update`.
-    //
-    // Note what this test does NOT claim. `cartId` and `itemId` DO stay in
-    // `update` on purpose (design decision 3), so with the guard missed this
-    // payload really does move the stranger's row into the caller's cart. That
-    // is why the guard, not the `update` payload, is what closes the cart-item
-    // hole — the owner column is the only part `update` protects.
+    // Then the write landed on the PAIR's row, CI_MINE, and changed only its
+    // amount. The stranger's row is untouched in every column: since
+    // households H3b task B.7 the upsert finds its row by `(cartId, itemId)`,
+    // never by the payload's id, and `update` holds only `quantity`. Until
+    // then `cartId` and `itemId` stayed in `update`, so a missed guard MOVED
+    // the stranger's row into the caller's cart.
     expect(result.errors).toBeUndefined()
-    expect(storedCartItem(CI_THEIRS)?.userId).toBe(STRANGER)
+    expect(storedCartItem(CI_THEIRS)).toEqual({
+      id: CI_THEIRS,
+      userId: STRANGER,
+      cartId: CART_THEIRS,
+      itemId: ITEM_MINE,
+      quantity: 7,
+    })
+    expect(storedCartItem(CI_MINE)).toEqual({
+      id: CI_MINE,
+      userId: USER,
+      cartId: CART_MINE,
+      itemId: ITEM_MINE,
+      quantity: 99,
+    })
   })
 
-  it('user re-importing their own cart item moves it to the cart and item the payload names', async () => {
+  it('user re-importing their own cart item under another cart and item does not move it', async () => {
     // Given the caller's own cart item, stored in CART_MINE against ITEM_MINE,
     // and a payload that names the SAME cart item id under a DIFFERENT cart
-    // and a different item — both the caller's.
+    // and a different item — both the caller's. That pair has no row yet.
     expect(storedCartItem(CI_MINE)).toMatchObject({ cartId: CART_MINE, itemId: ITEM_MINE })
     const payload = [cartItemIn(CI_MINE, { cartId: CART_OTHER, itemId: ITEM_OTHER, quantity: 3 })]
 
     // When the upsert-path import runs
     const result = await exec(UPSERT_CART_ITEMS, { cartItems: payload })
 
-    // Then both parents follow the payload.
+    // Then the stored row has NOT moved and keeps its amount (design D5: an
+    // update never moves a row), and the pair the payload names gets a NEW
+    // row with the amount. It cannot reuse CI_MINE's id, which is taken.
     //
-    // This is the test for `cartId` and `itemId` STAYING in the `update`
-    // payload. Local `importCartItems` does a Dexie `bulkPut`, which replaces
-    // the whole row including both columns, so dropping either from `update`
-    // would make the cloud `replace` strategy disagree with the local one —
-    // design decision 3. Remove `cartId` from `update` and this goes red.
+    // Until households H3b task B.7 the row moved, to match local mode's
+    // Dexie `bulkPut` (design decision 3 of the import ownership guard).
     expect(result.errors).toBeUndefined()
-    expect(storedCartItem(CI_MINE)).toMatchObject({
+    expect(storedCartItem(CI_MINE)).toEqual({
+      id: CI_MINE,
       userId: USER,
-      cartId: CART_OTHER,
-      itemId: ITEM_OTHER,
-      quantity: 3,
+      cartId: CART_MINE,
+      itemId: ITEM_MINE,
+      quantity: 2,
     })
+    const created = mockPrisma.$cartItem.state.rows.filter(
+      (r) => r.cartId === CART_OTHER && r.itemId === ITEM_OTHER,
+    )
+    expect(created).toHaveLength(1)
+    expect(created[0]).toMatchObject({ userId: USER, quantity: 3 })
+    expect(created[0]?.id).not.toBe(CI_MINE)
   })
 
   it('user re-importing a cart item they already own on the create path skips it instead of failing', async () => {
@@ -797,25 +840,69 @@ describe('CartItem → Cart and CartItem → Item references', () => {
       quantity: 2,
     })
   })
+})
 
-  it('user replacing their own cart item still moves it between carts and items they own', async () => {
-    // Given the CALLER's OWN cart-item id moved to their OTHER cart and OTHER
-    // item. This is the positive half: the two tests above would pass against
-    // a lookup that refused everything, and this is what stops that.
-    const payload = [cartItemIn(CI_MINE, { cartId: CART_OTHER, itemId: ITEM_OTHER, quantity: 6 })]
+// ─── A cart is reached through a location role (households H3b B.3 and B.7) ──
+//
+// `Cart.userId` is gone, so `resolveCartItemParents` finds a cart only at a
+// location where the caller is `participant` or higher
+// (`locationIdsWithRole(ctx, 'participant')`, since task B.7). Rule 14 of the
+// H3b plan: two members, and a location the caller has no role on. CART_NOROLE
+// is in USER's OWN household, at LOC_NOROLE, where only MEMBER has a role. A
+// lookup scoped by household would let USER write into it; a lookup with no
+// scope at all would too.
 
-    // When the upsert-path import runs
-    const result = await exec(UPSERT_CART_ITEMS, { cartItems: payload })
+describe('CartItem → Cart is reached through a location role', () => {
+  for (const [label, query, field] of [
+    ['bulkCreateCartItems', CREATE_CART_ITEMS, 'bulkCreateCartItems'],
+    ['bulkUpsertCartItems', UPSERT_CART_ITEMS, 'bulkUpsertCartItems'],
+  ] as const) {
+    it(`${label}: user cannot put a row into a cart at a location of their household they have no role on`, async () => {
+      // Given a FREE cart-item id naming CART_NOROLE and an item of USER's
+      // household
+      const payload = [cartItemIn(CI_FREE, { cartId: CART_NOROLE, itemId: ITEM_MINE })]
 
-    // Then the row really moved
-    expect(result.errors).toBeUndefined()
-    expect(storedCartItem(CI_MINE)).toMatchObject({
-      userId: USER,
-      cartId: CART_OTHER,
-      itemId: ITEM_OTHER,
-      quantity: 6,
+      // When USER imports it
+      const result = await exec(query, { cartItems: payload })
+
+      // Then the row is skipped, the same answer as a stranger's cart
+      expect(result.errors).toBeUndefined()
+      expect(result.data?.[field]).toEqual([])
+      expect(storedCartItem(CI_FREE)).toBeUndefined()
     })
-  })
+
+    it(`${label}: a second member with a role there can put the same row into that cart`, async () => {
+      // Given the same payload, sent by MEMBER, who organizes LOC_NOROLE. This
+      // is the positive half: a lookup that refused every cart would pass the
+      // test above.
+      const payload = [cartItemIn(CI_FREE, { cartId: CART_NOROLE, itemId: ITEM_MINE, quantity: 3 })]
+
+      // When MEMBER imports it
+      const result = await exec(query, { cartItems: payload }, { userId: MEMBER })
+
+      // Then it is written, with MEMBER as "added by"
+      expect(result.errors).toBeUndefined()
+      expect(storedCartItem(CI_FREE)).toMatchObject({
+        userId: MEMBER,
+        cartId: CART_NOROLE,
+        itemId: ITEM_MINE,
+        quantity: 3,
+      })
+    })
+
+    it(`${label}: user can put a row into a cart they share with a second member`, async () => {
+      // Given CART_OTHER at LOC_DEFAULT, which USER and MEMBER both organize.
+      // No cart has an owner, so it does not matter who made it.
+      const payload = [cartItemIn(CI_FREE, { cartId: CART_OTHER, itemId: ITEM_OTHER, quantity: 2 })]
+
+      // When MEMBER imports it
+      const result = await exec(query, { cartItems: payload }, { userId: MEMBER })
+
+      // Then it is written into the shared cart
+      expect(result.errors).toBeUndefined()
+      expect(storedCartItem(CI_FREE)).toMatchObject({ userId: MEMBER, cartId: CART_OTHER })
+    })
+  }
 })
 
 // ─── The item is checked against the CART's household ─────────────────────────
@@ -866,7 +953,7 @@ describe('CartItem → Item is checked against the household of the cart locatio
     })
     mockPrisma.$cart.reset([
       ...mockPrisma.$cart.state.rows,
-      { id: CART_SECOND, userId: USER, locationId: LOC_SECOND, lastPurchasedAt: null },
+      { id: CART_SECOND, locationId: LOC_SECOND, lastPurchasedAt: null },
     ])
     mockPrisma.$item.reset([
       ...mockPrisma.$item.state.rows,
@@ -911,26 +998,341 @@ describe('CartItem → Item is checked against the household of the cart locatio
       })
     })
 
-    it(`${label}: user with no role left on their cart's location is refused, with nothing written`, async () => {
-      // Given USER's own cart at LOC_SECOND, and USER's role there removed.
-      // (H5 makes this real: a person removed from a location keeps the
-      // cart rows they wrote.) An allowed row comes FIRST.
+    it(`${label}: user who is only a viewer at the cart's location has that row skipped`, async () => {
+      // Given USER's role at LOC_SECOND lowered to viewer, and an allowed row
+      // FIRST, at a pair that has no row yet.
+      //
+      // Households H3b task B.7 (decision D7): a cart is usable for an import
+      // only where the caller is `participant` or higher, and a cart that is
+      // not usable is a reference that does not resolve, so the row is
+      // SKIPPED, like a cart that is gone. Until task B.7 a viewer got
+      // FORBIDDEN for the whole batch (and until task B.3 that was a cart of
+      // USER's found by `Cart.userId`). What still REFUSES a viewer is the
+      // row's own id: see "a viewer at the shared location is refused" below.
       mockPrisma.$world.households.state.locationMembers =
-        mockPrisma.$world.households.state.locationMembers.filter(
-          (m) => !(m.locationId === LOC_SECOND && m.userId === USER),
+        mockPrisma.$world.households.state.locationMembers.map((m) =>
+          m.locationId === LOC_SECOND && m.userId === USER ? { ...m, role: 'viewer' as const } : m,
         )
       const payload = [
-        cartItemIn(CI_FREE, { cartId: CART_MINE, itemId: ITEM_MINE }),
+        cartItemIn(CI_FREE, { cartId: CART_MINE, itemId: ITEM_OTHER }),
         cartItemIn('ci_free_2', { cartId: CART_SECOND, itemId: ITEM_SECOND }),
       ]
 
       // When the import runs
       const result = await exec(query, { cartItems: payload })
 
-      // Then the whole batch is refused before the first write
-      expect(errorCode(result)).toBe('FORBIDDEN')
-      expect(storedCartItem(CI_FREE)).toBeUndefined()
+      // Then the viewer's row is skipped and the other one is written
+      expect(result.errors).toBeUndefined()
+      expect(storedCartItem(CI_FREE)).toMatchObject({ cartId: CART_MINE, itemId: ITEM_OTHER })
+      expect(storedCartItem('ci_free_2')).toBeUndefined()
+    })
+
+    it(`${label}: user with no role left on the cart's location has that row skipped`, async () => {
+      // Given USER's role at LOC_SECOND removed. A cart has no owner since
+      // households H3b task B.3, so a cart at a location USER holds no role
+      // on looks the same as a stranger's cart, or a cart that is gone.
+      mockPrisma.$world.households.state.locationMembers =
+        mockPrisma.$world.households.state.locationMembers.filter(
+          (m) => !(m.locationId === LOC_SECOND && m.userId === USER),
+        )
+      const payload = [
+        cartItemIn(CI_FREE, { cartId: CART_MINE, itemId: ITEM_OTHER }),
+        cartItemIn('ci_free_2', { cartId: CART_SECOND, itemId: ITEM_SECOND }),
+      ]
+
+      // When the import runs
+      const result = await exec(query, { cartItems: payload })
+
+      // Then the row for LOC_SECOND is skipped and the other one is written
+      expect(result.errors).toBeUndefined()
+      expect(storedCartItem(CI_FREE)).toMatchObject({ cartId: CART_MINE, itemId: ITEM_OTHER })
       expect(storedCartItem('ci_free_2')).toBeUndefined()
     })
   }
+})
+
+// ─── A shared cart, and the P3 import rules (households H3b task B.7) ─────────
+//
+// Decisions D5 and D7, written as code paths in decision P3 of the H3b plan.
+//
+// | Person  | Household | Location role at LOC_DEFAULT |
+// |---------|-----------|------------------------------|
+// | USER    | hh_user   | organizer                    |
+// | MEMBER  | hh_user   | organizer                    |
+// | VIEWER  | hh_user   | viewer                       |
+// | STRANGER| hh_stranger | none                       |
+//
+// CART_OTHER is at LOC_DEFAULT, the location USER and MEMBER share. It holds
+// two rows, ONE ADDED BY EACH MEMBER (H3b rule 14). With one member, "rows I
+// added" and "rows in this cart" are the same set, and a guard that still
+// scoped by `CartItem.userId` would pass.
+//
+// Every P3 test starts with a row ALREADY in the cloud for the pair it
+// names. With an empty cart, "add to the row", "set the row" and "make a new
+// row" all leave the same single row behind.
+
+describe('A shared cart, and the import rules for cart rows (households H3b task B.7)', () => {
+  const VIEWER = 'user_viewer'
+  const ITEM_THIRD = 'item_third' // a third item of hh_user, so two pairs are free
+  const CI_SHARED_M = 'ci_shared_member' // MEMBER added it: CART_OTHER, ITEM_MINE, 4
+  const CI_SHARED_U = 'ci_shared_user' // USER added it: CART_OTHER, ITEM_OTHER, 1
+
+  // The rows of the shared cart, as a backup made by USER would name them.
+  const sharedBackup = () => [
+    cartItemIn(CI_SHARED_M, { cartId: CART_OTHER, itemId: ITEM_MINE, quantity: 4 }),
+    cartItemIn(CI_SHARED_U, { cartId: CART_OTHER, itemId: ITEM_OTHER, quantity: 1 }),
+  ]
+
+  const rowsAt = (cartId: string, itemId: string) =>
+    mockPrisma.$cartItem.state.rows.filter((r) => r.cartId === cartId && r.itemId === itemId)
+
+  beforeEach(() => {
+    mockPrisma.$world.households.state.householdMembers = [
+      ...mockPrisma.$world.households.state.householdMembers,
+      householdMemberRow(HH_USER, VIEWER, 'member'),
+    ]
+    mockPrisma.$world.households.state.locationMembers = [
+      ...mockPrisma.$world.households.state.locationMembers,
+      locationMemberRow(LOC_DEFAULT, VIEWER, 'viewer'),
+    ]
+    mockPrisma.$item.reset([
+      ...mockPrisma.$item.state.rows,
+      { id: ITEM_THIRD, householdId: HH_USER, userId: USER, name: 'Eggs' },
+    ])
+    mockPrisma.$cartItem.reset([
+      ...mockPrisma.$cartItem.state.rows,
+      { id: CI_SHARED_M, userId: MEMBER, cartId: CART_OTHER, itemId: ITEM_MINE, quantity: 4 },
+      { id: CI_SHARED_U, userId: USER, cartId: CART_OTHER, itemId: ITEM_OTHER, quantity: 1 },
+    ])
+  })
+
+  for (const [label, query] of [
+    ['bulkCreateCartItems', CREATE_CART_ITEMS],
+    ['bulkUpsertCartItems', UPSERT_CART_ITEMS],
+  ] as const) {
+    it(`${label}: a co-member importing a backup that names the shared cart and its rows is not refused`, async () => {
+      // Given USER's backup of the shared cart, which holds a row MEMBER
+      // added and a row USER added
+      // When MEMBER imports it
+      const result = await exec(query, { cartItems: sharedBackup() }, { userId: MEMBER })
+
+      // Then nothing is refused, and the cart still holds exactly its two rows,
+      // each with its own "added by"
+      expect(result.errors).toBeUndefined()
+      expect(rowsAt(CART_OTHER, ITEM_MINE)).toEqual([
+        { id: CI_SHARED_M, userId: MEMBER, cartId: CART_OTHER, itemId: ITEM_MINE, quantity: 4 },
+      ])
+      expect(rowsAt(CART_OTHER, ITEM_OTHER)).toEqual([
+        { id: CI_SHARED_U, userId: USER, cartId: CART_OTHER, itemId: ITEM_OTHER, quantity: 1 },
+      ])
+    })
+
+    it(`${label}: a viewer at the shared location is refused, with nothing written`, async () => {
+      // Given the same backup, with a new row for USER's own cart FIRST
+      const payload = [cartItemIn(CI_FREE, { cartId: CART_MINE, itemId: ITEM_OTHER }), ...sharedBackup()]
+
+      // When VIEWER, a household member who may only read LOC_DEFAULT,
+      // imports it
+      const result = await exec(query, { cartItems: payload }, { userId: VIEWER })
+
+      // Then the whole batch is refused: the backup names rows that already
+      // exist at a location VIEWER may not write to
+      expect(errorCode(result)).toBe('FORBIDDEN')
+      expect(storedCartItem(CI_FREE)).toBeUndefined()
+      expect(storedCartItem(CI_SHARED_M)?.quantity).toBe(4)
+      expect(storedCartItem(CI_SHARED_U)?.quantity).toBe(1)
+    })
+
+    it(`${label}: a stranger importing the same backup is refused, with nothing written`, async () => {
+      // When STRANGER, of another household, imports it
+      const result = await exec(query, { cartItems: sharedBackup() }, { userId: STRANGER })
+
+      // Then it is refused and the shared rows are unchanged
+      expect(errorCode(result)).toBe('FORBIDDEN')
+      expect(storedCartItem(CI_SHARED_M)).toMatchObject({ userId: MEMBER, quantity: 4 })
+      expect(storedCartItem(CI_SHARED_U)).toMatchObject({ userId: USER, quantity: 1 })
+    })
+
+    it(`${label}: a payload with two rows for one item writes one row, under the lowest id`, async () => {
+      // Given two rows for one free pair — an old backup made before the
+      // shared-cart migration merged them. The higher id comes first.
+      const payload = [
+        cartItemIn('ci_dup_b', { cartId: CART_MINE, itemId: ITEM_THIRD, quantity: 2 }),
+        cartItemIn('ci_dup_a', { cartId: CART_MINE, itemId: ITEM_THIRD, quantity: 1 }),
+      ]
+
+      // When it is imported
+      const result = await exec(query, { cartItems: payload })
+
+      // Then one row holds the sum, under the lowest id, as the migration
+      // kept it. Writing the two rows one by one raises P2002 on the pair.
+      expect(result.errors).toBeUndefined()
+      expect(rowsAt(CART_MINE, ITEM_THIRD)).toEqual([
+        { id: 'ci_dup_a', userId: USER, cartId: CART_MINE, itemId: ITEM_THIRD, quantity: 3 },
+      ])
+    })
+
+    it(`${label}: a payload that repeats one id under two items writes both, with no P2002`, async () => {
+      // Given one id used for two different free pairs. Only a hand-edited
+      // backup holds this, and it must not fail the import.
+      const payload = [
+        cartItemIn('ci_rep', { cartId: CART_MINE, itemId: ITEM_OTHER, quantity: 1 }),
+        cartItemIn('ci_rep', { cartId: CART_MINE, itemId: ITEM_THIRD, quantity: 2 }),
+      ]
+
+      // When it is imported
+      const result = await exec(query, { cartItems: payload })
+
+      // Then both pairs get a row. The first takes the id; the second gets
+      // a new one, because a second row under 'ci_rep' would raise P2002.
+      expect(result.errors).toBeUndefined()
+      expect(rowsAt(CART_MINE, ITEM_OTHER)).toMatchObject([{ id: 'ci_rep', quantity: 1 }])
+      expect(rowsAt(CART_MINE, ITEM_THIRD)).toHaveLength(1)
+      expect(rowsAt(CART_MINE, ITEM_THIRD)[0]).toMatchObject({ quantity: 2 })
+      expect(rowsAt(CART_MINE, ITEM_THIRD)[0]?.id).not.toBe('ci_rep')
+    })
+  }
+
+  for (const [label, query, field] of [
+    ['bulkCreateShoppingCarts', CREATE_CARTS, 'bulkCreateShoppingCarts'],
+    ['bulkUpsertShoppingCarts', UPSERT_CARTS, 'bulkUpsertShoppingCarts'],
+  ] as const) {
+    it(`${label}: a co-member may import the shared cart, a viewer there may not`, async () => {
+      // Given the shared cart CART_OTHER, at LOC_DEFAULT
+      const payload = [cartIn(CART_OTHER, PAYLOAD_PURCHASED)]
+
+      // When VIEWER imports it, then MEMBER
+      const asViewer = await exec(query, { carts: payload }, { userId: VIEWER })
+      const asMember = await exec(query, { carts: payload }, { userId: MEMBER })
+
+      // Then the viewer is refused and the co-member is not. A cart import
+      // writes the cart, so it asks for `participant`, like its rows.
+      expect(errorCode(asViewer)).toBe('FORBIDDEN')
+      expect(asMember.errors).toBeUndefined()
+      expect(asMember.data?.[field]).toBeDefined()
+      expect(storedCart(CART_OTHER)?.locationId).toBe(LOC_DEFAULT)
+    })
+  }
+
+  // ── The four P3 paths, each with a row already in the cloud ──
+
+  it('bulkCreateCartItems: a new id whose item is already in the cart ADDS its amount to that row', async () => {
+    // Given the shared cart holds MEMBER's row for ITEM_MINE, amount 4
+    // When USER imports a NEW id for the same cart and item, amount 2
+    const result = await exec(CREATE_CART_ITEMS, {
+      cartItems: [cartItemIn('ci_new', { cartId: CART_OTHER, itemId: ITEM_MINE, quantity: 2 })],
+    })
+
+    // Then MEMBER's row now holds 6. No second row, no P2002, and the row is
+    // still "added by" MEMBER: an import adds to a row, it does not take it
+    // over.
+    expect(result.errors).toBeUndefined()
+    expect(rowsAt(CART_OTHER, ITEM_MINE)).toEqual([
+      { id: CI_SHARED_M, userId: MEMBER, cartId: CART_OTHER, itemId: ITEM_MINE, quantity: 6 },
+    ])
+  })
+
+  it('bulkCreateCartItems: an id that is already in the cloud is skipped, whoever added it', async () => {
+    // Given MEMBER's row, amount 4
+    // When USER imports that row's id with another amount
+    const result = await exec(CREATE_CART_ITEMS, {
+      cartItems: [cartItemIn(CI_SHARED_M, { cartId: CART_OTHER, itemId: ITEM_MINE, quantity: 9 })],
+    })
+
+    // Then it is skipped: "skip conflicts" means skip, and nothing is added
+    expect(result.errors).toBeUndefined()
+    expect(result.data?.bulkCreateCartItems).toEqual([])
+    expect(storedCartItem(CI_SHARED_M)).toMatchObject({ userId: MEMBER, quantity: 4 })
+  })
+
+  it('bulkCreateCartItems: a row merged before the import is not added again by its other ids', async () => {
+    // Given a backup made before the shared-cart migration: two rows for one
+    // pair. The migration kept the lowest id, CI_SHARED_M, with the sum.
+    // 'ci_shared_zzz' is the id it merged away.
+    const payload = [
+      cartItemIn(CI_SHARED_M, { cartId: CART_OTHER, itemId: ITEM_MINE, quantity: 3 }),
+      cartItemIn('ci_shared_zzz', { cartId: CART_OTHER, itemId: ITEM_MINE, quantity: 1 }),
+    ]
+
+    // When USER imports it again on the skip strategy
+    const result = await exec(CREATE_CART_ITEMS, { cartItems: payload })
+
+    // Then the whole pair is skipped. Skipping only the known id would add
+    // the merged-away row's 1 a second time, on every re-import.
+    expect(result.errors).toBeUndefined()
+    expect(rowsAt(CART_OTHER, ITEM_MINE)).toEqual([
+      { id: CI_SHARED_M, userId: MEMBER, cartId: CART_OTHER, itemId: ITEM_MINE, quantity: 4 },
+    ])
+  })
+
+  it('bulkUpsertCartItems: an id that is already in the cloud has only its amount replaced', async () => {
+    // Given MEMBER's row, amount 4
+    // When USER replaces it with amount 9
+    const result = await exec(UPSERT_CART_ITEMS, {
+      cartItems: [cartItemIn(CI_SHARED_M, { cartId: CART_OTHER, itemId: ITEM_MINE, quantity: 9 })],
+    })
+
+    // Then the amount is 9 and the row is still "added by" MEMBER. This is
+    // the test for `userId` staying OUT of `update`: the row is MEMBER's and
+    // USER writes it, so a `userId` in `update` would show here.
+    expect(result.errors).toBeUndefined()
+    expect(rowsAt(CART_OTHER, ITEM_MINE)).toEqual([
+      { id: CI_SHARED_M, userId: MEMBER, cartId: CART_OTHER, itemId: ITEM_MINE, quantity: 9 },
+    ])
+  })
+
+  it('bulkUpsertCartItems: a new id whose item is already in the cart SETS that row', async () => {
+    // Given MEMBER's row for ITEM_MINE, amount 4
+    // When USER replaces with a NEW id for the same cart and item, amount 2
+    const result = await exec(UPSERT_CART_ITEMS, {
+      cartItems: [cartItemIn('ci_new', { cartId: CART_OTHER, itemId: ITEM_MINE, quantity: 2 })],
+    })
+
+    // Then MEMBER's row now holds 2 — set, not 6 — with no second row
+    expect(result.errors).toBeUndefined()
+    expect(rowsAt(CART_OTHER, ITEM_MINE)).toEqual([
+      { id: CI_SHARED_M, userId: MEMBER, cartId: CART_OTHER, itemId: ITEM_MINE, quantity: 2 },
+    ])
+  })
+
+  it('bulkUpsertCartItems: two rows for an item already in the cart set it to their sum', async () => {
+    // When USER replaces with two new rows for MEMBER's pair, 1 and 2
+    const result = await exec(UPSERT_CART_ITEMS, {
+      cartItems: [
+        cartItemIn('ci_x', { cartId: CART_OTHER, itemId: ITEM_MINE, quantity: 1 }),
+        cartItemIn('ci_y', { cartId: CART_OTHER, itemId: ITEM_MINE, quantity: 2 }),
+      ],
+    })
+
+    // Then the row holds 3: summed first, then set. Set one row at a time,
+    // the last row would win and leave 2.
+    expect(result.errors).toBeUndefined()
+    expect(rowsAt(CART_OTHER, ITEM_MINE)).toEqual([
+      { id: CI_SHARED_M, userId: MEMBER, cartId: CART_OTHER, itemId: ITEM_MINE, quantity: 3 },
+    ])
+  })
+
+  it('bulkUpsertCartItems: a row moved onto an item already in the cart sets that row and moves nothing', async () => {
+    // Given USER's own CI_MINE (CART_MINE, ITEM_MINE, 2), and a payload that
+    // names it under the shared cart's pair (CART_OTHER, ITEM_MINE), which
+    // MEMBER's row already holds
+    const payload = [cartItemIn(CI_MINE, { cartId: CART_OTHER, itemId: ITEM_MINE, quantity: 5 })]
+
+    // When USER replaces
+    const result = await exec(UPSERT_CART_ITEMS, { cartItems: payload })
+
+    // Then no P2002: CI_MINE stays where it is, and MEMBER's row gets the
+    // amount. A move would put two rows on that pair.
+    expect(result.errors).toBeUndefined()
+    expect(storedCartItem(CI_MINE)).toEqual({
+      id: CI_MINE,
+      userId: USER,
+      cartId: CART_MINE,
+      itemId: ITEM_MINE,
+      quantity: 2,
+    })
+    expect(rowsAt(CART_OTHER, ITEM_MINE)).toEqual([
+      { id: CI_SHARED_M, userId: MEMBER, cartId: CART_OTHER, itemId: ITEM_MINE, quantity: 5 },
+    ])
+  })
 })

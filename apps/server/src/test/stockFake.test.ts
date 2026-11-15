@@ -799,3 +799,182 @@ describe('stockFake itemStock.findMany orderBy', () => {
     ).rejects.toThrow(/orderBy 'updatedAt'/)
   })
 })
+
+// Every read and write returns a COPY, never the stored row (since
+// 2026-11-15). Prisma returns a new object for every call. Before that date
+// `findUnique` and `upsert` returned the LIVE row, so a test could compute a
+// value from the wrong read and still pass (found in households H3b task B.6).
+//
+// Each case changes the returned object, a number AND the time inside a
+// `Date`, then reads the store. A shallow copy (`{ ...row }`) would keep the
+// stored `Date` and fail the `Date` half, so the check proves a deep copy.
+describe('stockFake returns copies, not the stored rows', () => {
+  const DUE = new Date('2026-12-24T00:00:00.000Z')
+
+  function seeded() {
+    const fake = createStockFake()
+    fake.reset(
+      [
+        {
+          id: 'loc_a',
+          householdId: 'hh_1',
+          name: 'Home',
+          order: 0,
+          createdAt: new Date(DUE),
+          updatedAt: new Date(DUE),
+        },
+      ],
+      [
+        makeStock({
+          id: 'st_1',
+          itemId: 'item_1',
+          locationId: 'loc_a',
+          packedQuantity: 2,
+          dueDate: new Date(DUE),
+        }),
+      ],
+    )
+    return fake
+  }
+
+  type Fake = ReturnType<typeof seeded>
+  type StockLike = { packedQuantity: number; dueDate: Date | null }
+  type LocationLike = { name?: string; createdAt?: Date }
+
+  const STOCK_CASES: { name: string; call: (f: Fake) => Promise<StockLike | null | undefined> }[] = [
+    { name: 'itemStock.findUnique', call: (f) => f.client.itemStock.findUnique({ where: { id: 'st_1' } }) },
+    { name: 'itemStock.findFirst', call: (f) => f.client.itemStock.findFirst({ where: { id: 'st_1' } }) },
+    {
+      name: 'itemStock.findMany',
+      call: async (f) => (await f.client.itemStock.findMany({ where: { id: 'st_1' } }))[0],
+    },
+    {
+      name: 'itemStock.update',
+      call: (f) => f.client.itemStock.update({ where: { id: 'st_1' }, data: { unpackedQuantity: 1 } }),
+    },
+    {
+      name: 'itemStock.upsert (row exists)',
+      call: (f) =>
+        f.client.itemStock.upsert({
+          where: { itemId_locationId: { itemId: 'item_1', locationId: 'loc_a' } },
+          update: { unpackedQuantity: 1 },
+          create: { itemId: 'item_1', locationId: 'loc_a' },
+        }),
+    },
+  ]
+
+  for (const c of STOCK_CASES) {
+    it(`${c.name}: changing the returned row leaves the stored row alone`, async () => {
+      // Given one stored stock row with 2 packed and a due date
+      const fake = seeded()
+
+      // When the caller changes the row it got back
+      const row = await c.call(fake)
+      if (!row?.dueDate) throw new Error('expected a row with a due date')
+      row.packedQuantity = 99
+      row.dueDate.setTime(0)
+
+      // Then the stored row still holds the old values
+      const stored = fake.state.itemStocks.find((s) => s.id === 'st_1')
+      expect(stored?.packedQuantity).toBe(2)
+      expect(stored?.dueDate).toEqual(DUE)
+    })
+  }
+
+  it('itemStock.create and upsert (no row yet): the returned row is not the stored one', async () => {
+    // Given a store with no stock for item_2 or item_3
+    const fake = seeded()
+
+    // When two rows are created and the caller changes what came back
+    const created = await fake.client.itemStock.create({
+      data: { itemId: 'item_2', locationId: 'loc_a', packedQuantity: 1, dueDate: new Date(DUE) },
+    })
+    const upserted = await fake.client.itemStock.upsert({
+      where: { itemId_locationId: { itemId: 'item_3', locationId: 'loc_a' } },
+      update: {},
+      create: { itemId: 'item_3', locationId: 'loc_a', packedQuantity: 1, dueDate: new Date(DUE) },
+    })
+    for (const row of [created, upserted]) {
+      row.packedQuantity = 99
+      row.dueDate?.setTime(0)
+    }
+
+    // Then the stored rows still hold what was written
+    for (const itemId of ['item_2', 'item_3']) {
+      const stored = fake.state.itemStocks.find((s) => s.itemId === itemId)
+      expect(stored?.packedQuantity).toBe(1)
+      expect(stored?.dueDate).toEqual(DUE)
+    }
+  })
+
+  const LOCATION_CASES: { name: string; call: (f: Fake) => Promise<LocationLike | null | undefined> }[] = [
+    { name: 'location.findUnique', call: (f) => f.client.location.findUnique({ where: { id: 'loc_a' } }) },
+    { name: 'location.findFirst', call: (f) => f.client.location.findFirst({ where: { id: 'loc_a' } }) },
+    {
+      name: 'location.findMany',
+      call: async (f) => (await f.client.location.findMany({ where: { id: 'loc_a' } }))[0],
+    },
+    {
+      name: 'location.update',
+      call: (f) => f.client.location.update({ where: { id: 'loc_a' }, data: { order: 1 } }),
+    },
+    {
+      name: 'location.upsert (row exists)',
+      call: (f) =>
+        f.client.location.upsert({
+          where: { id: 'loc_a' },
+          update: { order: 1 },
+          create: { id: 'loc_a', householdId: 'hh_1', name: 'Home', order: 0 },
+        }),
+    },
+  ]
+
+  for (const c of LOCATION_CASES) {
+    it(`${c.name}: changing the returned row leaves the stored row alone`, async () => {
+      // Given one stored location named Home
+      const fake = seeded()
+
+      // When the caller changes the row it got back
+      const row = await c.call(fake)
+      if (!row?.createdAt) throw new Error('expected a row with createdAt')
+      row.name = 'Changed'
+      row.createdAt.setTime(0)
+
+      // Then the stored row still holds the old values
+      const stored = fake.state.locations.find((l) => l.id === 'loc_a')
+      expect(stored?.name).toBe('Home')
+      expect(stored?.createdAt).toEqual(DUE)
+    })
+  }
+
+  it('location.create: the returned row is not the stored one', async () => {
+    // Given a store with no loc_b
+    const fake = seeded()
+
+    // When it is created and the caller changes what came back
+    const row = await fake.client.location.create({
+      data: { id: 'loc_b', householdId: 'hh_1', name: 'Garage', order: 1 },
+    })
+    row.name = 'Changed'
+
+    // Then the stored row keeps its name
+    expect(fake.state.locations.find((l) => l.id === 'loc_b')?.name).toBe('Garage')
+  })
+
+  it('a rollback still restores the store after a read inside the transaction', async () => {
+    // Given one stored stock row with 2 packed
+    const fake = seeded()
+
+    // When a transaction reads it, writes, and then throws
+    await expect(
+      fake.client.$transaction(async (tx: typeof fake.client) => {
+        await tx.itemStock.findUnique({ where: { id: 'st_1' } })
+        await tx.itemStock.update({ where: { id: 'st_1' }, data: { packedQuantity: 7 } })
+        throw new Error('boom')
+      }),
+    ).rejects.toThrow('boom')
+
+    // Then the write is rolled back
+    expect(fake.state.itemStocks.find((s) => s.id === 'st_1')?.packedQuantity).toBe(2)
+  })
+})

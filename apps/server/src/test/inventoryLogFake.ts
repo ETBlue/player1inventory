@@ -133,6 +133,14 @@ export function makeInventoryLog(
   }
 }
 
+// Every read and write returns a COPY of the stored row (`structuredClone`, so
+// `occurredAt` and `logParams` are copied too), never the stored object.
+// Prisma returns a new object for every call. Until 2026-11-15 this fake
+// returned the live row, the same flaw `stockFake` had.
+function copy<T>(row: T): T {
+  return structuredClone(row)
+}
+
 export function createInventoryLogFake() {
   const state: { logs: FakeInventoryLog[] } = { logs: [] }
   let seq = 0
@@ -166,19 +174,18 @@ export function createInventoryLogFake() {
       return sortRows(
         state.logs.filter((l) => matchesLog(l, where)),
         orderBy,
-      )
+      ).map(copy)
     },
     findFirst: async ({
       where = {},
       orderBy,
     }: { where?: Where; orderBy?: { occurredAt?: 'asc' | 'desc' } } = {}) => {
       checkLogWhere(where)
-      return (
-        sortRows(
-          state.logs.filter((l) => matchesLog(l, where)),
-          orderBy,
-        )[0] ?? null
-      )
+      const row = sortRows(
+        state.logs.filter((l) => matchesLog(l, where)),
+        orderBy,
+      )[0]
+      return row ? copy(row) : null
     },
     count: async ({ where = {} }: { where?: Where } = {}) => {
       checkLogWhere(where)
@@ -186,9 +193,10 @@ export function createInventoryLogFake() {
     },
     findUnique: async ({ where = {} }: { where?: Where } = {}) => {
       checkLogWhere(where)
-      return state.logs.find((l) => matchesLog(l, where)) ?? null
+      const row = state.logs.find((l) => matchesLog(l, where))
+      return row ? copy(row) : null
     },
-    create: async ({ data }: { data: Record<string, unknown> }) => insert(data),
+    create: async ({ data }: { data: Record<string, unknown> }) => copy(insert(data)),
     upsert: async ({
       where = {},
       create,
@@ -200,7 +208,7 @@ export function createInventoryLogFake() {
     }) => {
       checkLogWhere(where)
       const existing = state.logs.find((l) => matchesLog(l, where))
-      if (!existing) return insert(create)
+      if (!existing) return copy(insert(create))
       // Only the keys `update` actually carries are applied — Prisma's own
       // semantics, and the reason a stray `locationId` in `update` shows up
       // here as a row that changed location.
@@ -208,7 +216,7 @@ export function createInventoryLogFake() {
         if (value === undefined) continue
         ;(existing as unknown as Record<string, unknown>)[key] = value
       }
-      return existing
+      return copy(existing)
     },
     // `removeItemFromLocation` deletes one item's logs at one location
     // (itemStock.resolver.ts). Returns the count, as Prisma does.
