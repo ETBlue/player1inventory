@@ -327,7 +327,10 @@ Collected from the task reports and commit messages, so the next plan does not r
   they now run first. The no-`amountPerPackage` case is a control: all three rules give 6
   there. The mutation it does catch is a division with no guard for a missing
   `amountPerPackage`: 2 red (`NaN` instead of 6, and `NaN` instead of 2 in the no-stock-row
-  case).
+  case). Those cases each hold one item, so a log using ANOTHER row's `amountPerPackage` was
+  not covered. A three-item test (bread no factor, butter 4, milk 6) was added on 2026-11-15.
+  The first loop row's factor for every row: 1 red (butter logs 4, not 2.5). The last loop
+  row's factor: 1 red (bread logs 4.333…, not 6). The cart's first row (`bought[0]`): 1 red.
 - The two new Traditional Chinese strings (`shopping.cartChanged`, `cooking.consumeFailed`) are
   not confirmed by the owner.
 - `addToCart` still takes the amount as sent, 0 and negative numbers too (unchanged by H3b).

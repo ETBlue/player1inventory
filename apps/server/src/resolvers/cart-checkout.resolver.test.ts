@@ -74,6 +74,9 @@ vi.mock('../lib/prisma.js', async () => {
       { id: 'item_milk', householdId: 'hh_home', userId: 'user_alice', amountPerPackage: 6 },
       { id: 'item_bread', householdId: 'hh_home', userId: 'user_bob', amountPerPackage: null },
       { id: 'item_eggs', householdId: 'hh_home', userId: 'user_bob', amountPerPackage: null },
+      // 4 to a pack: a second factor, so a checkout of several items can
+      // show which row's factor each log used.
+      { id: 'item_butter', householdId: 'hh_home', userId: 'user_alice', amountPerPackage: 4 },
     ],
   })
   world.extend(
@@ -558,6 +561,14 @@ describe('checkout is one transaction', () => {
 // | is set (wrong rule 2)                                |                                              |
 // | `packed + unpacked / app` with no guard, so a        | the control case (NaN, not 6) and the        |
 // | missing app divides by `undefined`                   | no-stock-row case below (NaN, not 2)         |
+// | the FIRST row's app for every row (loop order)       | the three-item case, on "first row's factor" |
+// | the LAST row's app for every row (loop order)        | the three-item case, on "last row's factor"  |
+//
+// | the cart's first row (`bought[0]`, milk) for every   | the three-item case, on "last row's factor", |
+// | row                                                  | because milk is also the loop's last row     |
+//
+// Every case above has ONE item in the cart, so it cannot see a log that used
+// another row's `amountPerPackage`. The three-item case below can.
 //
 // The two "wrong rule" checks run BEFORE the exact check. Until 2026-11-15
 // they ran after it and could never fail: a value equal to `total` is never
@@ -622,6 +633,65 @@ describe('checkout logs the on-hand total, computed on the server', () => {
       }
     })
   }
+
+  it('user checking out several items logs each total with that item\'s own amountPerPackage', async () => {
+    // Given three items at home, each with loose units, so a wrong factor
+    // changes every total. The loop runs in item id order: bread (no app),
+    // butter (app 4), milk (app 6). The cart holds them in another order.
+    const bread = stockAt('item_bread', LOC_HOME)
+    if (!bread) throw new Error('fixture: bread stock missing')
+    bread.unpackedQuantity = 2
+    world.stock.state.itemStocks.push(
+      makeStock({ id: 'st_butter_home', itemId: 'item_butter', locationId: LOC_HOME, packedQuantity: 1, unpackedQuantity: 2 }),
+    )
+    carts.reset({
+      carts: [cartRow(HOME_CART, LOC_HOME)],
+      cartItems: [
+        row('ci_milk', HOME_CART, 'item_milk', 1, ALICE),
+        row('ci_bread', HOME_CART, 'item_bread', 3, BOB),
+        row('ci_butter', HOME_CART, 'item_butter', 1, BOB),
+      ],
+    })
+
+    // When ALICE checks out all three
+    const res = await checkout(
+      [
+        { cartItemId: 'ci_milk', quantity: 1 },
+        { cartItemId: 'ci_bread', quantity: 3 },
+        { cartItemId: 'ci_butter', quantity: 1 },
+      ],
+      ALICE,
+    )
+    expect(res.errors).toBeUndefined()
+
+    // Then each log uses its own item's factor. Worked by hand:
+    //
+    // | Item   | stock after   | right (own app)    | first row's app (none) | last row's app (6)   |
+    // |--------|---------------|--------------------|------------------------|----------------------|
+    // | bread  | 4 packed, 2   | no app: 4 + 2 = 6  | 6 (same)               | 4 + 2/6 = 4.333…     |
+    // | butter | 2 packed, 2   | 2 + 2/4 = 2.5      | 2 + 2 = 4              | 2 + 2/6 = 2.333…     |
+    // | milk   | 3 packed, 3   | 3 + 3/6 = 3.5      | 3 + 3 = 6              | 3.5 (same)           |
+    //
+    // Each wrong version gets two of the three items wrong, and no item is
+    // right under both.
+    const EXPECTED = [
+      { itemId: 'item_bread', total: 6, firstRow: 6, lastRow: 4 + 2 / 6 },
+      { itemId: 'item_butter', total: 2.5, firstRow: 4, lastRow: 2 + 2 / 6 },
+      { itemId: 'item_milk', total: 3.5, firstRow: 6, lastRow: 3.5 },
+    ]
+    expect(logs.state.logs).toHaveLength(3)
+    for (const e of EXPECTED) {
+      const logged = logs.state.logs.find((l) => l.itemId === e.itemId)?.quantity
+      // The named wrong-rule checks run BEFORE the exact check (see above)
+      if (e.firstRow !== e.total) {
+        expect(logged, `${e.itemId}: first row's factor used for every row`).not.toBeCloseTo(e.firstRow, 5)
+      }
+      if (e.lastRow !== e.total) {
+        expect(logged, `${e.itemId}: last row's factor used for every row`).not.toBeCloseTo(e.lastRow, 5)
+      }
+      expect(logged, e.itemId).toBe(e.total)
+    }
+  })
 
   it('an item with no stock row at the location yet logs just the amount bought', async () => {
     // Given eggs are not stocked at home, and the cart buys 2
