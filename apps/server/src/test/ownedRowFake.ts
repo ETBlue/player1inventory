@@ -439,9 +439,13 @@ export function createOwnedRowFake<Row extends ScopedRow = OwnedRow>(
    * `select` never reaches here: it is ignored on purpose, and the file-head
    * comment says so.
    */
+  // Every row this returns is a COPY (`structuredClone`, so `Date` fields and
+  // included relation rows are copied too), never the stored object. Prisma
+  // returns a new object for every call. Until 2026-11-15 this returned the
+  // live row, the same flaw `stockFake` had.
   function project(row: Row | null, include?: Where): WithRelations<Row> | null {
     if (row === null) return null
-    if (include === undefined) return row as WithRelations<Row>
+    if (include === undefined) return structuredClone(row) as WithRelations<Row>
     const out = { ...row } as unknown as Record<string, unknown>
     const resolved = relations?.(row)
     for (const [name, wanted] of Object.entries(include)) {
@@ -463,7 +467,7 @@ export function createOwnedRowFake<Row extends ScopedRow = OwnedRow>(
       }
       out[name] = resolved[name]
     }
-    return out as WithRelations<Row>
+    return structuredClone(out) as WithRelations<Row>
   }
 
   /**
@@ -619,7 +623,7 @@ export function createOwnedRowFake<Row extends ScopedRow = OwnedRow>(
       const row = state.rows.find((r) => matches(r, args.where))
       if (!row) throw new OwnedRowNotFoundError(model, args.where)
       state.rows = state.rows.filter((r) => r !== row)
-      return row as WithRelations<Row>
+      return structuredClone(row) as WithRelations<Row>
     },
     deleteMany: async (args: { where?: Where } = {}) => {
       refuseUnknownOptions('deleteMany', args, ['where'])

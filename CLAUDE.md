@@ -409,9 +409,11 @@ skips half the work. Nothing else in the gate checks `e2e/` formatting: `pnpm li
 `apps/server`'s build already carries a second pass for `scripts/`.
 
 **`pnpm test` runs both workspaces.** The root script is `pnpm -r test`, which recurses into
-every workspace package that defines a `test` script — today `apps/web` (**2549 tests**
-across 277 files) and `apps/server` (**1244** across 51). Measured 2026-11-15 on
-`feature/households-h3b` (it said 2529 / 275 and 1161 / 47 on 2026-11-11, on H3a, and
+every workspace package that defines a `test` script — today `apps/web` (**2543 tests**
+across 276 files) and `apps/server` (**1274** across 52). Measured 2026-11-15 on
+`feature/households-h3b`, after `buildCheckoutLogQuantities` and its 6 web tests were
+deleted and 30 fake-copy tests were added (it said 2549 / 277 and 1244 / 51 earlier the same
+day, 2529 / 275 and 1161 / 47 on 2026-11-11, on H3a, and
 2321 / 251 and 522 / 32 on 2026-10-28, before households H3a), plus **70** in `scripts/spec` from `pnpm test:spec`.
 
 A short history of these numbers, because they move almost every week and briefs keep
@@ -1596,13 +1598,16 @@ with `structuredClone`, keeps the writes when the callback returns, and restores
 snapshot when it throws. Import it; do not write a second copy, because a second copy that
 silently does nothing would leave every atomicity test reporting as covered.
 
-**`stockFake`'s `findUnique` and `upsert` return the LIVE stored row, not a copy.** A later
-write changes that same object. So "the row read before the write", "the row the write
-returned" and "the row after another writer" can all be one object, and a value computed
-from the wrong one still comes out right. Prisma returns a new object for every call. Found
-in households H3b task B.6. Only `recipe-consume.resolver.test.ts` works around it (it wraps
-the store with `structuredClone` and a one-macrotask gap after each read); the shared fake
-is not fixed. A test that reads stock before and after a write should copy the row itself.
+**Every shared fake returns a COPY of the stored row, never the row itself** — since
+2026-11-15 (commit "test(server): make the shared Prisma fakes return copies"). Prisma
+returns a new object for every call. Before that date `stockFake`, `inventoryLogFake`,
+`shoppingFake` and `ownedRowFake` returned the LIVE row, so "the row read before a write"
+and "the row after it" could be one object, and a value computed from the wrong one still
+came out right (found in households H3b task B.6). They now use `structuredClone`, so `Date`
+fields are copied too. `cartFake`, `userFake` and `householdFake` already returned copies.
+Pinned in `stockFake.test.ts`, `ownedRowFake.test.ts` and `fakeCopies.test.ts`. A test that
+changes a returned row changes nothing in the store; to change the store, write to
+`fake.state` directly.
 
 Only the **interactive callback** form is modelled — `$transaction(async (tx) => …)`. The
 array form, `$transaction([p1, p2])`, throws a clear error on purpose: JavaScript evaluates

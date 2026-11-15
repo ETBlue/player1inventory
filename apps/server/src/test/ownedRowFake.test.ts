@@ -225,7 +225,9 @@ describe("ownedRowFake honours the payload's id and the primary key", () => {
     // Then the columns come back as handed over. The fake never invents a
     // timestamp — see the file-head note on `@updatedAt`.
     expect(row.name).toBe('Fruit')
-    expect(row.createdAt).toBe(created)
+    // `toEqual`, not `toBe`: the fake returns a copy, so the `Date` is a new
+    // object with the same time, as Prisma's is.
+    expect(row.createdAt).toEqual(created)
   })
 
   it('a create reusing an existing id throws P2002, the way the primary key does', async () => {
@@ -787,5 +789,61 @@ describe('ownedRowFake scope: householdId for the six catalog models (H3a)', () 
     // Then the row changed household. This is what makes a scope column left
     // in an update payload visible to a test.
     expect(fake.state.rows[0]?.householdId).toBe(OURS)
+  })
+})
+
+// Every read and write returns a COPY, never the stored row (since
+// 2026-11-15), as Prisma does. Each case changes the returned object, a
+// string AND the time inside a `Date`, then reads the store. A shallow copy
+// would keep the stored `Date`, so the check proves a deep copy.
+describe('ownedRowFake returns copies, not the stored rows', () => {
+  const T = new Date('2026-03-01T00:00:00.000Z')
+  type Fake = ReturnType<typeof tagFake>
+
+  const CASES: { name: string; call: (f: Fake) => Promise<FakeTag | null | undefined> }[] = [
+    { name: 'findUnique', call: (f) => f.client.findUnique({ where: { id: 'tag_a' } }) },
+    { name: 'findFirst', call: (f) => f.client.findFirst({ where: { id: 'tag_a' } }) },
+    { name: 'findMany', call: async (f) => (await f.client.findMany({ where: { id: 'tag_a' } }))[0] },
+    { name: 'findUniqueOrThrow', call: (f) => f.client.findUniqueOrThrow({ where: { id: 'tag_a' } }) },
+    { name: 'update', call: (f) => f.client.update({ where: { id: 'tag_a' }, data: { typeId: 't' } }) },
+    {
+      name: 'upsert (row exists)',
+      call: (f) =>
+        f.client.upsert({
+          where: { id: 'tag_a' },
+          update: { typeId: 't' },
+          create: { id: 'tag_a', userId: MINE, name: 'Fruit' },
+        }),
+    },
+  ]
+
+  for (const c of CASES) {
+    it(`${c.name}: changing the returned row leaves the stored row alone`, async () => {
+      // Given one stored tag named Fruit
+      const fake = tagFake([{ id: 'tag_a', userId: MINE, name: 'Fruit', createdAt: new Date(T) }])
+
+      // When the caller changes the row it got back
+      const row = await c.call(fake)
+      if (!row?.createdAt) throw new Error('expected a row with createdAt')
+      row.name = 'Changed'
+      row.createdAt.setTime(0)
+
+      // Then the stored row still holds the old values
+      const stored = fake.state.rows.find((r) => r.id === 'tag_a')
+      expect(stored?.name).toBe('Fruit')
+      expect(stored?.createdAt).toEqual(T)
+    })
+  }
+
+  it('create: the returned row is not the stored one', async () => {
+    // Given an empty store
+    const fake = tagFake()
+
+    // When a row is created and the caller changes what came back
+    const row = await fake.client.create({ data: { id: 'tag_a', userId: MINE, name: 'Fruit' } })
+    row.name = 'Changed'
+
+    // Then the stored row keeps its name
+    expect(fake.state.rows.find((r) => r.id === 'tag_a')?.name).toBe('Fruit')
   })
 })

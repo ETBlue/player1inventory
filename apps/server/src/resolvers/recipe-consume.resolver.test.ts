@@ -92,31 +92,24 @@ vi.mock('../lib/prisma.js', async () => {
         },
       },
       item: { findMany: items.client.findMany },
-      // Two changes to the stock store, both for this file only:
+      // One change to the stock store, for this file only: A GAP AFTER THE
+      // READ. The read waits one macrotask before it returns. Without it, the
+      // fake runs one cook's read and write with no other cook in between, so
+      // a resolver with no row lock still passes the concurrent test. With it,
+      // the other cook runs in that gap: it reads the same old numbers unless
+      // the lock makes it wait. That gap is what READ COMMITTED allows in
+      // Postgres.
       //
-      // 1. COPIES. `stockFake`'s `findUnique` and `upsert` return the LIVE
-      //    row, and a later write changes that same object. So in the plain
-      //    fake "the row read before the write", "the row the write returned"
-      //    and "the row after another cook's write" can all be one object,
-      //    and a log total computed from the wrong one still comes out right.
-      //    Prisma returns a new object for every call.
-      //
-      // 2. A GAP AFTER THE READ. The read waits one macrotask before it
-      //    returns. Without it, the fake runs one cook's read and write with
-      //    no other cook in between, so a resolver with no row lock still
-      //    passes the concurrent test. With it, the other cook runs in that
-      //    gap: it reads the same old numbers unless the lock makes it wait.
-      //    That gap is what READ COMMITTED allows in Postgres.
+      // (This wrapper also copied every row `findUnique` and `upsert`
+      // returned, because `stockFake` returned the LIVE row. Since 2026-11-15
+      // `stockFake` returns copies itself, so that part is gone.)
       itemStock: {
         ...stockClient,
         findUnique: async (args: Parameters<typeof stockClient.findUnique>[0]) => {
           const row = await stockClient.findUnique(args)
-          const copy = row ? structuredClone(row) : null
           await new Promise((resolve) => setTimeout(resolve, 0))
-          return copy
+          return row
         },
-        upsert: async (args: Parameters<typeof stockClient.upsert>[0]) =>
-          structuredClone(await stockClient.upsert(args)),
       },
       recipe: {
         updateMany: async (args: Parameters<typeof recipes.client.updateMany>[0]) => {
