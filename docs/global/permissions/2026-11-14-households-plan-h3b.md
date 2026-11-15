@@ -319,7 +319,15 @@ Collected from the task reports and commit messages, so the next plan does not r
   `recipe-consume.resolver.test.ts` no longer copies the rows itself.
 - ~~`buildCheckoutLogQuantities` is used by no production code.~~ Deleted on 2026-11-15, after
   the owner's decision, with its 6 web tests. The server checkout tests now pin the log totals
-  with hand-worked numbers.
+  with hand-worked numbers. Proved by mutation on 2026-11-15 in
+  `cart-checkout.resolver.test.ts`: wrong rule 1 (the raw sum, `amountPerPackage` dropped) gives
+  2 red tests, on the "wrong rule 1" check (6 and 5.5); wrong rule 2 (the bought amount added
+  to the unpacked units before converting) gives 2 red, on the "wrong rule 2" check (2.666…
+  and 2.583…). Those two checks used to sit after the exact check and so could never fail;
+  they now run first. The no-`amountPerPackage` case is a control: all three rules give 6
+  there. The mutation it does catch is a division with no guard for a missing
+  `amountPerPackage`: 2 red (`NaN` instead of 6, and `NaN` instead of 2 in the no-stock-row
+  case).
 - The two new Traditional Chinese strings (`shopping.cartChanged`, `cooking.consumeFailed`) are
   not confirmed by the owner.
 - `addToCart` still takes the amount as sent, 0 and negative numbers too (unchanged by H3b).

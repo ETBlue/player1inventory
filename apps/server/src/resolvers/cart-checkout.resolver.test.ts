@@ -540,10 +540,28 @@ describe('checkout is one transaction', () => {
 // |-------------------------|--------------------------|------------------------------|----------------------------|
 // | app 6, buy 1            | 3 + 0.5 = 3.5            | 6                            | 2 + 4/6 = 2.666…           |
 // | app 6, buy 0.5          | 2.5 + 0.5 = 3            | 5.5                          | 2 + 3.5/6 = 2.583…         |
-// | no app, buy 1           | 3 + 3 = 6                | 6                            | (no conversion)            |
+// | no app, buy 1           | 3 + 3 = 6                | 6                            | 2 + (3 + 1) = 6            |
 //
-// The last row cannot tell the rules apart. It checks that a missing
-// `amountPerPackage` means "no conversion", not a division by nothing.
+// The last row is a CONTROL. With no `amountPerPackage` there is nothing to
+// convert, so all three rules give 6 and this case cannot tell them apart. It
+// proves one thing only: a missing `amountPerPackage` means "no conversion",
+// not a division by nothing.
+//
+// Mutations run on 2026-11-15, each in `checkout` (cart.resolver.ts), each
+// restored after:
+//
+// | Mutation                                             | Red tests                                    |
+// |------------------------------------------------------|----------------------------------------------|
+// | drop `amountPerPackage` from the `getPackedTotal`    | the two app-6 cases, on "wrong rule 1"       |
+// | call (wrong rule 1)                                  |                                              |
+// | `(packed - buy) + (unpacked + buy) / app` when app   | the two app-6 cases, on "wrong rule 2"       |
+// | is set (wrong rule 2)                                |                                              |
+// | `packed + unpacked / app` with no guard, so a        | the control case (NaN, not 6) and the        |
+// | missing app divides by `undefined`                   | no-stock-row case below (NaN, not 2)         |
+//
+// The two "wrong rule" checks run BEFORE the exact check. Until 2026-11-15
+// they ran after it and could never fail: a value equal to `total` is never
+// equal to a wrong number, so the exact check always failed first.
 //
 // These cases came from `apps/web/src/lib/checkoutQuantities.test.ts`, which
 // tested the old client rule `buildCheckoutLogQuantities`. Both were deleted
@@ -561,7 +579,7 @@ describe('checkout logs the on-hand total, computed on the server', () => {
   const CASES = [
     { name: 'an item sold in packs logs the converted total, not the raw sum', amountPerPackage: 6, buy: 1, total: 3.5, rawSum: 6, deltaBeforeConvert: 2 + 4 / 6 },
     { name: 'a fractional pack is added in packs', amountPerPackage: 6, buy: 0.5, total: 3, rawSum: 5.5, deltaBeforeConvert: 2 + 3.5 / 6 },
-    { name: 'an item with no amountPerPackage logs the plain sum', amountPerPackage: null, buy: 1, total: 6, rawSum: 6, deltaBeforeConvert: null },
+    { name: 'an item with no amountPerPackage logs the plain sum, with no conversion (a control: all rules agree here)', amountPerPackage: null, buy: 1, total: 6, rawSum: 6, deltaBeforeConvert: null },
   ]
 
   for (const c of CASES) {
@@ -581,13 +599,21 @@ describe('checkout logs the on-hand total, computed on the server', () => {
         const res = await checkout([{ cartItemId: 'ci_milk', quantity: c.buy }], ALICE)
         expect(res.errors).toBeUndefined()
 
-        // Then the log total is the hand-worked number from the table above
-        expect(logs.state.logs.map((l) => l.quantity)).toEqual([c.total])
-        // And not the raw sum, where the two differ
-        if (c.rawSum !== c.total) expect(logs.state.logs[0]?.quantity).not.toBe(c.rawSum)
-        // And not the bought amount folded into the unpacked units before
-        // converting
-        if (c.deltaBeforeConvert !== null) expect(logs.state.logs[0]?.quantity).not.toBeCloseTo(c.deltaBeforeConvert, 5)
+        // Then exactly one log is written
+        expect(logs.state.logs).toHaveLength(1)
+        const logged = logs.state.logs[0]?.quantity
+        // And it is not the number either wrong rule gives. These two checks
+        // run BEFORE the exact check on purpose. After it they could never
+        // fail: a value equal to `total` is never equal to a wrong number.
+        // Here a wrong rule fails with a message that names it.
+        if (c.rawSum !== c.total) {
+          expect(logged, 'wrong rule 1: the raw sum packed + unpacked').not.toBe(c.rawSum)
+        }
+        if (c.deltaBeforeConvert !== null) {
+          expect(logged, 'wrong rule 2: the bought amount added to the unpacked units before converting').not.toBeCloseTo(c.deltaBeforeConvert, 5)
+        }
+        // And the log total is the hand-worked number from the table above
+        expect(logged).toBe(c.total)
         // And the stock moved by the amount in whole packs; the loose units
         // are not touched. The conversion changes what is LOGGED only.
         expect(stockAt('item_milk', LOC_HOME)).toMatchObject({ packedQuantity: 2 + c.buy, unpackedQuantity: 3 })
