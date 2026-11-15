@@ -321,7 +321,7 @@ deploys at the next checkpoint release, together with H3a, by
 
 | Section | The text says | What was built, and why |
 |---|---|---|
-| 3, step 4 | compute the log total "with the shared rule (section 6)", meaning `buildCheckoutLogQuantities` | `getPackedTotal` of the stock row as saved in the transaction. It gives the same number for the same row, and needs no separate rule. **`buildCheckoutLogQuantities` is now used by no production code**; it stays as a reference for its 6 web tests. Deleting it is the owner's call |
+| 3, step 4 | compute the log total "with the shared rule (section 6)", meaning `buildCheckoutLogQuantities` | `getPackedTotal` of the stock row as saved in the transaction. It gives the same number for the same row, and needs no separate rule. **`buildCheckoutLogQuantities` was used by no production code after this, so it was deleted** (owner decision, 2026-11-15), with its 6 web tests. The server checkout tests pin the same numbers by hand |
 | 3 | "the second transaction finds the rows gone (or the amounts different)" | at `READ COMMITTED` two checkouts can both read the rows before either commits, so a read alone does not stop a double purchase. Each row is claimed by a `deleteMany` that names its id AND its shown amount and must delete exactly 1 row; otherwise `CART_CHANGED` and a rollback. Rows are claimed in id order, stock rows written in item id order. Timeout 30 s |
 | 4 | read, apply `consumeItem`, write | the same, plus `SELECT … FOR UPDATE` on the `ItemStock` row first. `consumeItem` is not a sum, so without the lock two cooks of one item read the same old row. On real Postgres, without the lock, 4 of 5 runs lost a use. `delta >= 0` is refused with `BAD_USER_INPUT` |
 | 2 | `updateCartItem`, `removeFromCart`: find `{ id }`, then `participant` | find `{ id }`, then return "not found" when the caller holds **no** role at that location, before the role check. The order in the text would answer `FORBIDDEN` for a stranger's id and `NOT_FOUND` for a free id, which tells a stranger which ids exist (`findCartItemForWrite`) |
@@ -332,7 +332,7 @@ deploys at the next checkpoint release, together with H3a, by
 ### What is now wrong in this doc
 
 - *What the developer gets* says "The checkout total rule has one copy". True, but the rule the
-  server uses is `getPackedTotal`, not `buildCheckoutLogQuantities`.
+  server uses is `getPackedTotal`. `buildCheckoutLogQuantities` was deleted on 2026-11-15.
 - *Tests* says the cart fakes are built so they "raise `P2002`", which is true, but does not
   name the file: it is `cartFake.ts`, not `ownedRowFake` (the plan's first choice; see the
   file's header for why it does not fit).

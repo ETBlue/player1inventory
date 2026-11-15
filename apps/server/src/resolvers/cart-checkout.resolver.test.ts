@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApolloServer } from '@apollo/server'
-import { buildCheckoutLogQuantities } from '@p1i/types'
 import { typeDefs } from '../schema/index.js'
 import { resolvers } from '../resolvers/index.js'
 import type { Context } from '../context.js'
@@ -527,18 +526,31 @@ describe('checkout is one transaction', () => {
 
 // ─── the log total ───────────────────────────────────────────────────────────
 //
-// The server computes the log's `quantity` since task B.5. It must give the
-// same number the client used to send, which `buildCheckoutLogQuantities`
-// (`@p1i/types`) still computes, for the cases in
-// `apps/web/src/lib/checkoutQuantities.test.ts`. Every numeric case sets BOTH
-// `amountPerPackage` AND a non-zero `unpackedQuantity`, or no fixture could
-// tell the right rule from a raw sum.
+// The server computes the log's `quantity` since task B.5. The rule: the
+// on-hand total in PACKAGE units after the purchase. The unpacked remainder is
+// turned into a fraction of a pack; the bought amount is already in packs and
+// is NOT divided. Issue #336.
 //
-// | Web case                                   | Here                                         |
+// Every expected number below is worked out by hand from the fixture: milk at
+// home holds 2 packed and 3 unpacked. Every numeric case with packs sets BOTH
+// `amountPerPackage` AND a non-zero `unpackedQuantity`, so the right rule and
+// the two wrong ones give three different numbers:
+//
+// | Case                    | right: (2 + buy) + 3/app | wrong 1: raw sum 2 + 3 + buy | wrong 2: 2 + (3 + buy)/app |
+// |-------------------------|--------------------------|------------------------------|----------------------------|
+// | app 6, buy 1            | 3 + 0.5 = 3.5            | 6                            | 2 + 4/6 = 2.666…           |
+// | app 6, buy 0.5          | 2.5 + 0.5 = 3            | 5.5                          | 2 + 3.5/6 = 2.583…         |
+// | no app, buy 1           | 3 + 3 = 6                | 6                            | (no conversion)            |
+//
+// The last row cannot tell the rules apart. It checks that a missing
+// `amountPerPackage` means "no conversion", not a division by nothing.
+//
+// These cases came from `apps/web/src/lib/checkoutQuantities.test.ts`, which
+// tested the old client rule `buildCheckoutLogQuantities`. Both were deleted
+// after task B.5. Its other three cases are covered elsewhere here:
+//
+// | Old web case                               | Here                                         |
 // |--------------------------------------------|----------------------------------------------|
-// | packs, 2 + 3/6, buy 1 → 3.5                 | the same                                     |
-// | packs, buy 0.5 → 3                          | the same                                     |
-// | no amountPerPackage, 2 + 3 + 1 → 6          | the same                                     |
 // | a pinned row gets no entry                  | a pinned row gets no log (test above)        |
 // | an item missing from the page is skipped    | not possible on the server: the item is read |
 // |                                            | from `Item`. Nearest case: an item with no   |
@@ -547,9 +559,9 @@ describe('checkout is one transaction', () => {
 
 describe('checkout logs the on-hand total, computed on the server', () => {
   const CASES = [
-    { name: 'an item sold in packs logs the converted total, not the raw sum', amountPerPackage: 6, buy: 1, total: 3.5, rawSum: 6 },
-    { name: 'a fractional pack is added in packs', amountPerPackage: 6, buy: 0.5, total: 3, rawSum: 5.5 },
-    { name: 'an item with no amountPerPackage logs the plain sum', amountPerPackage: null, buy: 1, total: 6, rawSum: 6 },
+    { name: 'an item sold in packs logs the converted total, not the raw sum', amountPerPackage: 6, buy: 1, total: 3.5, rawSum: 6, deltaBeforeConvert: 2 + 4 / 6 },
+    { name: 'a fractional pack is added in packs', amountPerPackage: 6, buy: 0.5, total: 3, rawSum: 5.5, deltaBeforeConvert: 2 + 3.5 / 6 },
+    { name: 'an item with no amountPerPackage logs the plain sum', amountPerPackage: null, buy: 1, total: 6, rawSum: 6, deltaBeforeConvert: null },
   ]
 
   for (const c of CASES) {
@@ -569,15 +581,13 @@ describe('checkout logs the on-hand total, computed on the server', () => {
         const res = await checkout([{ cartItemId: 'ci_milk', quantity: c.buy }], ALICE)
         expect(res.errors).toBeUndefined()
 
-        // Then the log total is the old client rule's answer
-        const expected = buildCheckoutLogQuantities(
-          [{ itemId: 'item_milk', quantity: c.buy }],
-          [{ id: 'item_milk', packedQuantity: 2, unpackedQuantity: 3, amountPerPackage: c.amountPerPackage ?? undefined }],
-        )
-        expect(expected).toEqual([{ itemId: 'item_milk', quantity: c.total }])
+        // Then the log total is the hand-worked number from the table above
         expect(logs.state.logs.map((l) => l.quantity)).toEqual([c.total])
         // And not the raw sum, where the two differ
         if (c.rawSum !== c.total) expect(logs.state.logs[0]?.quantity).not.toBe(c.rawSum)
+        // And not the bought amount folded into the unpacked units before
+        // converting
+        if (c.deltaBeforeConvert !== null) expect(logs.state.logs[0]?.quantity).not.toBeCloseTo(c.deltaBeforeConvert, 5)
         // And the stock moved by the amount in whole packs; the loose units
         // are not touched. The conversion changes what is LOGGED only.
         expect(stockAt('item_milk', LOC_HOME)).toMatchObject({ packedQuantity: 2 + c.buy, unpackedQuantity: 3 })

@@ -319,8 +319,8 @@ function VendorCart() {
   // ALL of the cart's rows, not only the ones the vendor filter above keeps:
   // the server buys every row being bought and refuses with `CART_CHANGED`
   // when the list leaves one out. The server computes each log total itself
-  // (households H3b task B.5); the page used to send one per item, built by
-  // `buildCheckoutLogQuantities` (issue #336). Local `checkout` ignores this.
+  // (households H3b task B.5); before that the page sent one total per item
+  // (issue #336). Local `checkout` ignores this.
   const checkoutRows = cartItems
     .filter(isBeingBought)
     .map((ci) => ({ cartItemId: ci.id, quantity: ci.quantity }))

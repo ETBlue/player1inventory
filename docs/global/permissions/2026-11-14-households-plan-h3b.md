@@ -316,7 +316,9 @@ Collected from the task reports and commit messages, so the next plan does not r
 - `stockFake` returns LIVE row objects from `findUnique` and `upsert`, so a test can compute
   from the wrong read and still pass. Only `recipe-consume.resolver.test.ts` wraps it with
   copies. The shared fake is not fixed.
-- `buildCheckoutLogQuantities` is used by no production code. Keep or delete: the owner's call.
+- ~~`buildCheckoutLogQuantities` is used by no production code.~~ Deleted on 2026-11-15, after
+  the owner's decision, with its 6 web tests. The server checkout tests now pin the log totals
+  with hand-worked numbers.
 - The two new Traditional Chinese strings (`shopping.cartChanged`, `cooking.consumeFailed`) are
   not confirmed by the owner.
 - `addToCart` still takes the amount as sent, 0 and negative numbers too (unchanged by H3b).

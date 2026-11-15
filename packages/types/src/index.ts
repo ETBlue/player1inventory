@@ -200,7 +200,7 @@ export interface CartItem {
  *
  * | Side | Where | Form |
  * |---|---|---|
- * | web | the cloud shopping page, `checkoutRows` in `apps/web/src/routes/shopping/$vendorId.tsx` (also `buildCheckoutLogQuantities` in `./quantity.ts`) | this function |
+ * | web | the cloud shopping page, `checkoutRows` in `apps/web/src/routes/shopping/$vendorId.tsx` | this function |
  * | server | `checkout` in `apps/server/src/resolvers/cart.resolver.ts` | the SQL filter `quantity: { gt: 0 }` |
  *
  * ── WHY THEY MUST AGREE ──
@@ -282,7 +282,6 @@ export interface Location {
 }
 
 // The quantity rules shared by the web and the server (households H3b, task
-// B.1). `quantity.ts` imports `isBeingBought` and three types back from this
-// file. That import cycle is safe: `quantity.ts` only calls `isBeingBought`
-// inside a function body, never while the modules are loading.
+// B.1). `quantity.ts` imports two types back from this file. That import is
+// type-only, so it is erased at build time and makes no runtime cycle.
 export * from './quantity'

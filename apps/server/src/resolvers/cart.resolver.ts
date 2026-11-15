@@ -435,10 +435,11 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
             // pack. Issue #336: the raw `packed + unpacked` logged 6 where
             // local mode logged 3.5. `getPackedTotal` is the shared rule.
             //
-            // The same number as `buildCheckoutLogQuantities` (the old client
-            // rule): that adds the bought amount AFTER converting the
-            // pre-purchase stock, and here the amount is already in
-            // `after.packedQuantity`, which is never divided.
+            // The bought amount is already counted in packs and must not be
+            // divided by `amountPerPackage`. Here it is inside
+            // `after.packedQuantity`, which `getPackedTotal` never divides, so
+            // only the unpacked remainder is converted. Local `checkout`
+            // (apps/web/src/db/operations.ts) gives the same number.
             const total = getPackedTotal({
               packedQuantity: after.packedQuantity,
               unpackedQuantity: after.unpackedQuantity,
