@@ -468,8 +468,10 @@ function findPayloadDefaultLocationId(payload: ExportPayload): string | null {
 //
 // SINCE HOUSEHOLDS H4 TASK E.4 ONLY THE LOCAL SIDE CALLS THIS. The cloud side
 // uses `placeDefaultLocation` (the new id rule). The paragraphs below about
-// the cloud destination describe the cloud path before E.4; they are kept
-// until task E.5 reworks the local side.
+// the cloud destination describe the cloud path before E.4. They are kept as
+// history: task E.5 kept this function for the local side and only added the
+// `payloadDefaultLocationId` parameter, so the cloud -> local copy can name
+// the cloud ACTIVE location.
 //
 // `destinationLocationIds` is EVERY location id the destination holds now, not
 // only its default. When the payload's default is one of them, nothing is
@@ -518,10 +520,16 @@ export function buildLocationRemap(
   payload: ExportPayload,
   destinationDefaultLocationId: string | null,
   destinationLocationIds: ReadonlySet<string> = new Set(),
+  // The payload location to map onto the destination default. Left out, the
+  // file's own default (`findPayloadDefaultLocationId`). `importLocalData`
+  // passes the cloud ACTIVE location here for the cloud -> local copy
+  // (households H4 task E.5).
+  payloadDefaultLocationId: string | null = findPayloadDefaultLocationId(
+    payload,
+  ),
 ): Map<string, string> {
   const remap = new Map<string, string>()
   if (destinationDefaultLocationId === null) return remap
-  const payloadDefaultLocationId = findPayloadDefaultLocationId(payload)
   if (payloadDefaultLocationId === null) return remap
   if (payloadDefaultLocationId === destinationDefaultLocationId) return remap
   if (destinationLocationIds.has(payloadDefaultLocationId)) return remap
@@ -642,7 +650,10 @@ export function applyLocationRemap(
 // is, and its rows must always go somewhere the user chose.
 //
 // The local side (`importLocalData`) still uses PR 4b's remap rule
-// (`buildLocationRemap`). Task E.5 changes that side.
+// (`buildLocationRemap`), with one change since households H4 task E.5: the
+// cloud -> local copy names the payload location that becomes local "My Home"
+// (`homeLocationId`, the cloud active location, decision T18). A backup file
+// imported in local mode does not, and keeps the old rule (decision O4).
 // ---------------------------------------------------------------------------
 
 /**
@@ -2137,16 +2148,42 @@ async function bootstrapCartsForAllLocations(): Promise<void> {
   }
 }
 
+export interface ImportLocalOptions {
+  /**
+   * The LOCAL location a pre-v15 backup's inline stock and bare cart ids go
+   * into (`upgradeLegacyPayload`). The UI passes the local active location.
+   * A file with `itemStocks` (every cloud export since PR 4b task 2, every
+   * local export since v15) does not use it.
+   */
+  activeLocationId?: string
+  /**
+   * The PAYLOAD location that becomes local "My Home" (`'local'`). Households
+   * H4 task E.5, decision T18: the cloud -> local copy passes the cloud ACTIVE
+   * location, as the design's "Copying between local and cloud" says. Every
+   * other location keeps its id.
+   *
+   * Left out for a backup FILE imported in local mode: the file does not
+   * record which location was active, so the old rule picks it
+   * (`findPayloadDefaultLocationId`, decision O4). Also ignored when no
+   * location row of the payload has this id, for the same reason: the old
+   * rule is the best answer left.
+   */
+  homeLocationId?: string
+}
+
 export async function importLocalData(
   rawPayload: ExportPayload,
   strategy: ImportStrategy,
-  locationId: string = DEFAULT_LOCATION_ID,
+  {
+    activeLocationId = DEFAULT_LOCATION_ID,
+    homeLocationId,
+  }: ImportLocalOptions = {},
 ): Promise<void> {
   // Pre-v15 backups carry stock inline on the item and unscoped cart ids —
   // upgrade them to the split shape before writing, into the caller's target
   // location (the active one, for the UI paths). Since PR 4b task 2 a cloud
   // export is already split, so this is a no-op for one.
-  const upgraded = upgradeLegacyPayload(rawPayload, locationId)
+  const upgraded = upgradeLegacyPayload(rawPayload, activeLocationId)
 
   // THE REMAP RULE, cloud -> local direction (design §1): the payload's own
   // default location maps onto THIS database's default, and every other
@@ -2171,9 +2208,23 @@ export async function importLocalData(
   //
   // One call covers all three strategies, because each one hands the whole
   // payload to `importLocations` / `importItemStocks`.
+  //
+  // WHICH payload location is "its own default" (households H4 task E.5):
+  // `homeLocationId` when the caller names one AND the payload holds that
+  // location row (the cloud -> local copy names the cloud active location);
+  // otherwise the old rule in `findPayloadDefaultLocationId` (decision O4).
+  const payloadLocationIds = new Set(
+    ((upgraded.locations ?? []) as Array<Record<string, unknown>>).map(
+      (row) => row.id as string,
+    ),
+  )
+  const payloadHome =
+    homeLocationId !== undefined && payloadLocationIds.has(homeLocationId)
+      ? homeLocationId
+      : findPayloadDefaultLocationId(upgraded)
   const payload = applyLocationRemap(
     upgraded,
-    buildLocationRemap(upgraded, DEFAULT_LOCATION_ID),
+    buildLocationRemap(upgraded, DEFAULT_LOCATION_ID, new Set(), payloadHome),
   )
 
   if (strategy === 'clear') {

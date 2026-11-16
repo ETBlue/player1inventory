@@ -1395,7 +1395,7 @@ describe('importLocalData — item stock and locations (v15 split)', () => {
     })
 
     // When importing it with 'office' as the target location
-    await importLocalData(payload, 'skip', 'office')
+    await importLocalData(payload, 'skip', { activeLocationId: 'office' })
 
     // Then the synthesised stock lands in 'office', not 'local'
     const stocks = await db.itemStocks.toArray()
@@ -1609,7 +1609,7 @@ describe('importLocalData — item stock and locations (v15 split)', () => {
     })
 
     // When restoring it into 'local'
-    await importLocalData(payload, 'clear', 'local')
+    await importLocalData(payload, 'clear', { activeLocationId: 'local' })
 
     // Then it keeps exactly the one row it had
     expect(await db.itemStocks.count()).toBe(1)
@@ -4302,6 +4302,138 @@ describe('importLocalData — a cloud backup keeps every location (PR 4b task 5)
         .filter((l) => l.isDefault)
         .map((l) => l.id),
     ).toEqual([DEFAULT_LOCATION_ID])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// importLocalData — `homeLocationId` (households H4 task E.5, decision T18)
+//
+// The cloud -> local copy puts the cloud ACTIVE location into local "My Home"
+// (design, "Copying between local and cloud"). Every other location keeps its
+// id. A cloud backup FILE imported in local mode passes no `homeLocationId`
+// and keeps the old rule: the file's first location by `order` (decision O4).
+//
+// The fixture has the active location at order 1, not 0. With the active
+// location first, "the active one" and "the first by order" are the same
+// location, and a copy that ignored `homeLocationId` would pass.
+// ---------------------------------------------------------------------------
+describe('importLocalData — homeLocationId puts one location into My Home (H4 task E.5)', () => {
+  beforeEach(clearAllTables)
+  afterEach(clearAllTables)
+
+  const HOME = 'cloud_home_cuid'
+  const GARAGE = 'cloud_garage_cuid'
+
+  // A cloud export as households task 3.12 writes it: no `isDefault` key on
+  // any location row.
+  function cloudCopy(): ExportPayload {
+    const now = new Date()
+    const location = (id: string, name: string, order: number) => ({
+      id,
+      name,
+      order,
+      createdAt: now,
+      updatedAt: now,
+    })
+    const stock = (id: string, locationId: string, packedQuantity: number) => ({
+      id,
+      itemId: 'item-1',
+      locationId,
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity,
+      unpackedQuantity: 0,
+      createdAt: now,
+      updatedAt: now,
+    })
+    return emptyPayload({
+      items: [
+        {
+          id: 'item-1',
+          name: 'Milk',
+          tagIds: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      locations: [location(HOME, 'Home', 0), location(GARAGE, 'Garage', 1)],
+      itemStocks: [
+        stock('stock-home', HOME, 1),
+        stock('stock-garage', GARAGE, 7),
+      ],
+      shoppingCarts: [{ id: `${HOME}:vendor_1` }, { id: `${GARAGE}:vendor_1` }],
+      cartItems: [
+        makeCartItem('ci-home', `${HOME}:vendor_1`),
+        makeCartItem('ci-garage', `${GARAGE}:vendor_1`),
+      ],
+      inventoryLogs: [
+        { ...makeInventoryLog('log-home'), locationId: HOME },
+        { ...makeInventoryLog('log-garage'), locationId: GARAGE },
+      ],
+    })
+  }
+
+  it('user copying cloud data down gets the active location in My Home', async () => {
+    // Given a cloud payload with Home (order 0) and Garage (order 1), and
+    // Garage is the active cloud location
+    // When it is copied into local mode with Garage as the home location
+    await importLocalData(cloudCopy(), 'skip', { homeLocationId: GARAGE })
+
+    // Then Garage's rows are on 'local', in all five fields
+    expect(await db.locations.get(DEFAULT_LOCATION_ID)).toMatchObject({
+      name: 'Garage',
+      isDefault: true,
+    })
+    expect((await db.itemStocks.get('stock-garage'))?.locationId).toBe(
+      DEFAULT_LOCATION_ID,
+    )
+    expect((await db.inventoryLogs.get('log-garage'))?.locationId).toBe(
+      DEFAULT_LOCATION_ID,
+    )
+    expect(
+      await db.shoppingCarts.get(`${DEFAULT_LOCATION_ID}:vendor_1`),
+    ).toBeDefined()
+    expect((await db.cartItems.get('ci-garage'))?.cartId).toBe(
+      `${DEFAULT_LOCATION_ID}:vendor_1`,
+    )
+    // And Home keeps its own id, with its own rows
+    expect(await db.locations.get(HOME)).toMatchObject({ name: 'Home' })
+    expect((await db.itemStocks.get('stock-home'))?.locationId).toBe(HOME)
+    expect((await db.inventoryLogs.get('log-home'))?.locationId).toBe(HOME)
+    expect((await db.cartItems.get('ci-home'))?.cartId).toBe(`${HOME}:vendor_1`)
+    // And there is no third location
+    expect((await db.locations.toArray()).map((l) => l.id).sort()).toEqual(
+      [DEFAULT_LOCATION_ID, HOME].sort(),
+    )
+  })
+
+  it('user importing a cloud backup file keeps the first-by-order rule (O4)', async () => {
+    // Given the same payload, imported as a file: no home location given
+    // When it is imported in local mode
+    await importLocalData(cloudCopy(), 'skip')
+
+    // Then the first location by order, Home, goes into My Home
+    expect(await db.locations.get(DEFAULT_LOCATION_ID)).toMatchObject({
+      name: 'Home',
+    })
+    expect((await db.itemStocks.get('stock-home'))?.locationId).toBe(
+      DEFAULT_LOCATION_ID,
+    )
+    expect((await db.itemStocks.get('stock-garage'))?.locationId).toBe(GARAGE)
+  })
+
+  it('user copying with a home location the payload does not hold falls back to the first by order', async () => {
+    // Given a home location id that names no location row of the payload
+    // (the active location was deleted on another device just before)
+    // When it is copied down
+    await importLocalData(cloudCopy(), 'skip', { homeLocationId: 'gone' })
+
+    // Then the old rule applies: Home goes into My Home, Garage keeps its id
+    expect(await db.locations.get(DEFAULT_LOCATION_ID)).toMatchObject({
+      name: 'Home',
+    })
+    expect((await db.itemStocks.get('stock-garage'))?.locationId).toBe(GARAGE)
+    expect(await db.locations.count()).toBe(2)
   })
 })
 

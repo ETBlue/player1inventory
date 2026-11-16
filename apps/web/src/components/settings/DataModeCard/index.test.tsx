@@ -8,6 +8,8 @@ import {
   ActiveLocationProvider,
   activeLocationStorageKey,
 } from '@/hooks/useActiveLocation'
+import type { ExportPayload } from '@/lib/exportData'
+import { fetchCloudPayload } from '@/lib/exportData'
 import { importLocalData } from '@/lib/importData'
 import { callArgs } from '@/test/narrow'
 import { DataModeCard } from '.'
@@ -410,12 +412,13 @@ describe('DataModeCard — a copy to cloud carries every location', () => {
   })
 })
 
-// A cloud EXPORT still carries stock inline on the item (`fetchCloudPayload`
-// sends no `itemStocks`), so the copy down has to synthesise ItemStock rows and
-// place them in one local location. The target must be a LOCAL location id:
-// after the reload the app is in local mode, and the provider reads the
-// `active-location-id:local` slot — stock written under the cloud active id
-// (a cuid) belongs to no location the local pantry can show (PR D review I-4).
+// `activeLocationId` is where a PRE-v15 payload's inline stock would go. It
+// must be a LOCAL location id: after the reload the app is in local mode, and
+// the provider reads the `active-location-id:local` slot — stock written under
+// the cloud active id (a cuid) belongs to no location the local pantry can
+// show (PR D review I-4). A cloud export has carried `itemStocks` since PR 4b,
+// so for the copy this is only a safety net; `homeLocationId` (below) is what
+// places a cloud payload.
 describe('DataModeCard — cloud to local copy lands in the local active location', () => {
   afterEach(async () => {
     localStorage.clear()
@@ -476,7 +479,9 @@ describe('DataModeCard — cloud to local copy lands in the local active locatio
     // cloud cuid would write ItemStock rows under a location the local
     // database does not have, i.e. an empty pantry after the reload
     await waitFor(() => expect(importLocalData).toHaveBeenCalled())
-    expect(callArgs(vi.mocked(importLocalData).mock, 0)[2]).toBe('office')
+    expect(
+      callArgs(vi.mocked(importLocalData).mock, 0)[2]?.activeLocationId,
+    ).toBe('office')
   })
 
   it('user signing out with a copy also keeps their local active location', async () => {
@@ -496,7 +501,9 @@ describe('DataModeCard — cloud to local copy lands in the local active locatio
 
     // Then the copy lands in the local 'office' too
     await waitFor(() => expect(importLocalData).toHaveBeenCalled())
-    expect(callArgs(vi.mocked(importLocalData).mock, 0)[2]).toBe('office')
+    expect(
+      callArgs(vi.mocked(importLocalData).mock, 0)[2]?.activeLocationId,
+    ).toBe('office')
   })
 
   it('user whose stored local location was deleted gets the copy in their default one', async () => {
@@ -516,6 +523,134 @@ describe('DataModeCard — cloud to local copy lands in the local active locatio
 
     // Then it lands in the local `isDefault` location, not the dangling id
     await waitFor(() => expect(importLocalData).toHaveBeenCalled())
-    expect(callArgs(vi.mocked(importLocalData).mock, 0)[2]).toBe('local')
+    expect(
+      callArgs(vi.mocked(importLocalData).mock, 0)[2]?.activeLocationId,
+    ).toBe('local')
+  })
+})
+
+// Households H4 task E.5 (decision T18): the cloud -> local copy puts the
+// cloud ACTIVE location into local "My Home". Every other location keeps its
+// id. The active location here is Garage, at order 1, so "the active one" and
+// "the first by order" (the old rule, decision O4) are different locations.
+describe('DataModeCard — cloud to local copy puts the cloud active location into My Home', () => {
+  const HOME = 'clx_home_cuid'
+  const GARAGE = 'clx_garage_cuid'
+
+  afterEach(async () => {
+    localStorage.clear()
+    vi.mocked(importLocalData).mockReset()
+    vi.mocked(importLocalData).mockImplementation(async () => {})
+    vi.mocked(fetchCloudPayload).mockReset()
+    vi.mocked(fetchCloudPayload).mockImplementation(async () => CLOUD_PAYLOAD)
+    await db.transaction(
+      'rw',
+      [db.locations, db.items, db.itemStocks],
+      async () => {
+        await db.locations.clear()
+        await db.items.clear()
+        await db.itemStocks.clear()
+      },
+    )
+  })
+
+  function stubReload() {
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, reload: vi.fn() },
+      writable: true,
+    })
+  }
+
+  // A cloud export since households task 3.12: `locations` and `itemStocks`,
+  // and no `isDefault` key on any location row.
+  function cloudPayload() {
+    const now = new Date().toISOString()
+    const location = (id: string, name: string, order: number) => ({
+      id,
+      name,
+      order,
+      createdAt: now,
+      updatedAt: now,
+    })
+    const stock = (id: string, locationId: string) => ({
+      id,
+      itemId: 'item-1',
+      locationId,
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      createdAt: now,
+      updatedAt: now,
+    })
+    return {
+      ...CLOUD_PAYLOAD,
+      items: [
+        {
+          id: 'item-1',
+          name: 'Milk',
+          tagIds: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      locations: [location(HOME, 'Home', 0), location(GARAGE, 'Garage', 1)],
+      itemStocks: [stock('stock-home', HOME), stock('stock-garage', GARAGE)],
+    }
+  }
+
+  async function switchAndCopy(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+    await user.click(screen.getByRole('button', { name: 'Copy' }))
+    await user.click(screen.getByRole('button', { name: /append/i }))
+  }
+
+  it('user copying cloud data down gets the active cloud location as My Home', async () => {
+    // Given cloud mode on Garage, and the real local import
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem(activeLocationStorageKey('cloud'), GARAGE)
+    vi.mocked(fetchCloudPayload).mockImplementation(
+      async () => cloudPayload() as unknown as ExportPayload,
+    )
+    const actual =
+      await vi.importActual<typeof import('@/lib/importData')>(
+        '@/lib/importData',
+      )
+    vi.mocked(importLocalData).mockImplementation(actual.importLocalData)
+    stubReload()
+    const user = userEvent.setup()
+    renderCard()
+
+    // When the user copies their cloud data down
+    await switchAndCopy(user)
+
+    // Then Garage's stock is on 'local', and Home keeps its own id
+    await waitFor(async () =>
+      expect((await db.itemStocks.get('stock-garage'))?.locationId).toBe(
+        'local',
+      ),
+    )
+    expect(await db.locations.get('local')).toMatchObject({ name: 'Garage' })
+    expect((await db.itemStocks.get('stock-home'))?.locationId).toBe(HOME)
+  })
+
+  it('user signing out with a copy also gets the active cloud location as My Home', async () => {
+    // Given cloud mode on Garage
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem(activeLocationStorageKey('cloud'), GARAGE)
+    stubReload()
+    const user = userEvent.setup()
+    renderCard()
+
+    // When the user signs out, switches offline and copies their data
+    await user.click(screen.getByRole('button', { name: 'Sign Out' }))
+    await user.click(screen.getByRole('button', { name: /switch to offline/i }))
+    await user.click(screen.getByRole('button', { name: /copy/i }))
+
+    // Then the copy is told to put Garage into My Home
+    await waitFor(() => expect(importLocalData).toHaveBeenCalled())
+    expect(
+      callArgs(vi.mocked(importLocalData).mock, 0)[2]?.homeLocationId,
+    ).toBe(GARAGE)
   })
 })

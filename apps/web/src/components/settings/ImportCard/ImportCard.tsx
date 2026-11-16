@@ -190,7 +190,7 @@ export function ImportCard() {
         // A legacy/cloud payload's stock is synthesised into the location the
         // user is in — mirroring the outbound rule. Landing it in the default
         // location while they are elsewhere shows an empty pantry.
-        await importLocalData(payload, strategy, activeLocationId)
+        await importLocalData(payload, strategy, { activeLocationId })
         await queryClient.invalidateQueries()
         toast.success(t('settings.import.success'))
         setImportStatus({ phase: 'idle' })
