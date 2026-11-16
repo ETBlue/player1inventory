@@ -1,14 +1,19 @@
 import { expect, type Page, test } from '@playwright/test'
-import {
-  CLOUD_GRAPHQL_URL,
-  CLOUD_GRAPHQL_WS_URL,
-  CLOUD_WEB_URL,
-  E2E_SECOND_USER_ID,
-  E2E_USER_ID,
-} from '../constants'
+import { CLOUD_WEB_URL, E2E_SECOND_USER_ID, E2E_USER_ID } from '../constants'
 import { ensureCloudHomeLocation } from '../helpers/cloudSeed'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
 import { addHouseholdMember } from '../helpers/cloudUsers'
+import {
+  connects,
+  eventsAt,
+  type LiveSocket,
+  type LiveWindow,
+  markDocument,
+  operationResponse,
+  routeLiveSocket,
+  stillSameDocument,
+  warmUpLiveSocket,
+} from '../helpers/liveSocket'
 import { ShoppingPage } from '../pages/ShoppingPage'
 import { makeGql } from '../utils/cloud'
 
@@ -31,29 +36,16 @@ import { makeGql } from '../utils/cloud'
 // | MEMBER   | member of household A  | participant |
 // | STRANGER | owner of household B   | (B's own)   |
 //
-// ── THE SOCKET GOES THROUGH PLAYWRIGHT ───────────────────────────────────────
+// ── THE SOCKET AND THE WARM-UP ───────────────────────────────────────────────
 //
-// `routeLiveSocket` puts `page.routeWebSocket` between the page and the real
-// server. Every message is passed on unchanged. It does two things:
-//
-// 1. It counts `householdChanged` messages from the server, by location id.
-//    Test 2 needs this: an event that reaches the wrong household only makes
-//    the tab refetch its OWN cart, so the screen would not change at all. The
-//    message itself is the thing that must not arrive.
-// 2. It can refuse new sockets (`blocked`). Test 3 uses it, so the change is
-//    made while the page has no socket, for sure, and not while graphql-ws
-//    happens to be waiting before its retry.
-//
-// ── THE WARM-UP ──────────────────────────────────────────────────────────────
-//
-// `connects >= 1` means the server acknowledged the socket. The `subscribe`
-// message is handled after that, so an event published at that moment can
-// still be missed. `warmUp` changes a cart row as MEMBER, one change at a
-// time, until the event for a change arrives within 1 s. After that the
-// subscription is live. It then waits for the refetch that event started, so
-// the warm-up's own refetch cannot show a later test step.
-// It uses `updateCartItem`, not `addToCart`, so a test about `addToCart`
-// cannot pass or fail because of the warm-up.
+// `routeLiveSocket` and `warmUpLiveSocket` are in e2e/helpers/liveSocket.ts,
+// with their reasons. Test 2 needs the socket's message count: an event that
+// reaches the wrong household only makes the tab refetch its OWN cart, so the
+// screen would not change at all. Test 3 needs `blocked`: the change is made
+// while the page has no socket, for sure, and not while graphql-ws happens to
+// be waiting before its retry. The warm-up here uses `updateCartItem`, not
+// `addToCart`, so a test about `addToCart` cannot pass or fail because of the
+// warm-up. It waits for its own `CartItems` refetch.
 //
 // ── WHAT IT DOES NOT PROVE ───────────────────────────────────────────────────
 //
@@ -61,7 +53,8 @@ import { makeGql } from '../utils/cloud'
 //   sends `e2eUserId` instead.
 // - The 60-minute age close (code 1001). Only the unit tests in
 //   apps/server/src/lib/wsServer.test.ts reach it.
-// - Kinds other than `CART`. H3c-1 publishes only `CART`.
+// - Kinds other than `CART`. live-pantry.spec.ts covers `STOCK`, `CATALOG`,
+//   `LOCATION` and the checkout's `STOCK`.
 
 const MEMBER = `${E2E_SECOND_USER_ID}-live-member`
 const STRANGER = `${E2E_SECOND_USER_ID}-live-stranger`
@@ -158,107 +151,14 @@ async function seedHousehold(
   return { home, vendorId, cartId, milk, breadRowId }
 }
 
-type LiveSocket = {
-  /** `householdChanged` messages from the server, by location id. */
-  eventsAt: Map<string, number>
-  /** While true, every new socket is closed at once with 1013. */
-  blocked: boolean
-  /** Sockets closed because `blocked` was true. */
-  refused: number
-}
-
-function eventsAt(socket: LiveSocket, locationId: string): number {
-  return socket.eventsAt.get(locationId) ?? 0
-}
-
-/** See *The socket goes through Playwright* at the top. Call before `goto`. */
-async function routeLiveSocket(page: Page): Promise<LiveSocket> {
-  const socket: LiveSocket = { eventsAt: new Map(), blocked: false, refused: 0 }
-  await page.routeWebSocket(CLOUD_GRAPHQL_WS_URL, (ws) => {
-    if (socket.blocked) {
-      socket.refused += 1
-      // 1013 (Try Again Later) is a code graphql-ws 5 retries, the same
-      // answer the server gives when Clerk cannot be reached.
-      void ws.close({ code: 1013, reason: 'blocked by the test' })
-      return
-    }
-    const server = ws.connectToServer()
-    server.onMessage((message) => {
-      const text = typeof message === 'string' ? message : message.toString()
-      const parsed = JSON.parse(text) as {
-        type?: string
-        payload?: {
-          data?: { householdChanged?: { locationId: string | null } }
-        }
-      }
-      const event = parsed.payload?.data?.householdChanged
-      if (parsed.type === 'next' && event) {
-        const key = event.locationId ?? 'catalog'
-        socket.eventsAt.set(key, (socket.eventsAt.get(key) ?? 0) + 1)
-      }
-      ws.send(message)
-    })
-  })
-  return socket
-}
-
-/**
- * What the E2E build puts on `window` (`LiveUpdatesE2EHandle` in
- * apps/web/src/apollo/LiveUpdatesRunner.tsx). `e2e/` cannot import from
- * `apps/web`, so the shape is repeated here.
- */
-type LiveWindow = {
-  __p1iLiveUpdates?: { connects: number; terminate: () => void }
-}
-
-/** How many times the page's socket has been acknowledged. */
-async function connects(page: Page): Promise<number> {
-  return page.evaluate(
-    () => (window as LiveWindow).__p1iLiveUpdates?.connects ?? 0,
-  )
-}
-
-/** A finished `CartItems` request from the page (Apollo sends one POST per query). */
-function cartItemsResponse(page: Page, timeout: number) {
-  return page.waitForResponse(
-    (response) =>
-      response.url() === CLOUD_GRAPHQL_URL &&
-      (response.request().postData() ?? '').includes(
-        '"operationName":"CartItems"',
-      ),
-    { timeout },
-  )
-}
-
-/** See *The warm-up* at the top. */
+/** See *The socket and the warm-up* at the top. */
 async function warmUp(page: Page, member: Gql, seed: Seed, socket: LiveSocket) {
-  for (let attempt = 1; attempt <= 15; attempt++) {
-    const before = eventsAt(socket, seed.home)
-    // Started before the write, so the refetch cannot finish unseen
-    const refetched = cartItemsResponse(page, 10_000)
-    await member(UPDATE_CART_ITEM, {
-      id: seed.breadRowId,
-      quantity: attempt + 1,
-    })
-    try {
-      await expect
-        .poll(() => eventsAt(socket, seed.home), { timeout: 1_000 })
-        .toBeGreaterThan(before)
-    } catch {
-      // Missed: the subscription was not registered yet when this event
-      // was published. A missed event never arrives later, so try again.
-      refetched.catch(() => {})
-      continue
-    }
-    // Wait for the refetch this event started. Without this, a test step
-    // that comes right after could be shown by the WARM-UP's refetch,
-    // which would read the step's write too. That is not a guess: with
-    // `publishChange` removed from `addToCart`, test 1 still passed until
-    // this wait was added.
-    await refetched
-    return
-  }
-  throw new Error('warmUp: no live event arrived after 15 changes')
+  await warmUpLiveSocket(socket, {
+    key: seed.home,
+    change: (attempt) =>
+      member(UPDATE_CART_ITEM, { id: seed.breadRowId, quantity: attempt + 1 }),
+    refetch: () => operationResponse(page, 'CartItems', 10_000),
+  })
 }
 
 /**
@@ -274,18 +174,8 @@ async function openCart(page: Page, seed: Seed, member: Gql) {
   await expect.poll(() => connects(page), { timeout: 15_000 }).toBe(1)
   await warmUp(page, member, seed, socket)
   // A value only this document has. A reload or a navigation would lose it.
-  await page.evaluate(() => {
-    ;(window as { __liveCartMarker?: number }).__liveCartMarker = 1
-  })
+  await markDocument(page)
   return socket
-}
-
-async function stillSameDocument(page: Page) {
-  expect(
-    await page.evaluate(
-      () => (window as { __liveCartMarker?: number }).__liveCartMarker,
-    ),
-  ).toBe(1)
 }
 
 /**
