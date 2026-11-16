@@ -859,9 +859,15 @@ Existing specs:
   before `resetStore`. It returns a location id, and `CloudImportResult` carries it as
   `switchToLocationId`. The key is absent when there is no switch. `ImportCard` passes
   `activeLocationId` in and calls `setActiveLocationId` with the answer, AFTER its own
-  `client.resetStore()`. Before that, the provider's location list does not hold the new
-  location yet, and its validation effect would move the user to the first location of the
-  old list.
+  `client.resetStore()`. That order is the safe one, and it is kept. It is NOT proven that
+  the other order would break anything: `importCloudData` has already reset the store once
+  (`resetStoreAfterImport`), so the provider's list may already hold the new location. (The
+  first version of this note said the provider "would move the user to the first location
+  of the old list". Nobody checked that.) A card test pins the order, not its reason.
+- **The user's own choice wins (review fix, 2026-11-17).** If the user picks another
+  location in the sidebar while the import runs, the card does not switch. It reads the
+  provider's latest active id through a ref and compares it with the id the import started
+  with.
 - **The switch happens only when all of these are true:**
   - the strategy is `skip` or `replace` (`clear` keeps decision 6 and is never switched);
   - the file did not need "Import into which location?" (`needsImportLocation` is false);
@@ -926,6 +932,8 @@ Existing specs:
   | (card) `setActiveLocationId` not called | card test 1 | stored id stayed `cloud_home` |
   | (card) `activeLocationId` not passed | card test 1 | options had no `activeLocationId` |
   | (E2E) `setActiveLocationId` not called | the renamed E2E test | `Expected substring: "Fixture Home" / Received string: "Home"` |
+  | (card, review fix) switch even when the user picked another location during the import | "user who picks another location while the import runs keeps their choice" | `expected 'loc_kitchen' to be 'cloud_garage'` |
+  | (card, review fix) `setActiveLocationId` before `resetStore` | "the switch is made after the card refreshes the Apollo cache" | `expected [ 'loc_kitchen' ] to deeply equal [ 'cloud_home' ]` |
 
 ## Task E.7 — docs, runbook and the final gate
 
@@ -970,6 +978,22 @@ Existing specs:
   `clear`. **The owner decided to keep it (O9, 2026-11-17).** Since then the user is moved
   off it to the backup's first location, so the pantry no longer looks empty. The extra
   "Home" stays in the location list; the user can delete it on the locations page.
+- **A "no switch" has two causes that look the same (O9).** The empty-check reads
+  `itemStocks(locationId:)`. If the active id is stale (a location the user lost a role on,
+  or that was deleted), the read is refused with `FORBIDDEN`; that failure is treated as
+  "do not switch", the same answer as "the location holds stock". The code cannot tell the
+  two apart, and does not try.
+- **The O9 switch can land on an empty location.** The backup's first location by `order`
+  may itself hold no stock. That matches the decision (the rule names the first location,
+  not the first one with stock).
+- **The O9 switch also fires in a same-household restore** when the active location holds
+  no stock after the import: the user is moved to the backup's first location even though
+  no new household was made. Same rule, same reason.
+- **The card calls `resetStore` a second time without the `AbortError` guard.**
+  `importCloudData` resets the store through `resetStoreAfterImport`, which ignores an
+  `AbortError`; `ImportCard` then calls `client.resetStore()` itself, with no guard. This is
+  older than O9. If that second call rejects with `AbortError`, the card shows the error
+  state for an import that wrote every row.
 - **The O9 switch is per tab.** It is made in the tab that ran the import. Another open tab
   of the same user keeps its own active location (the live `LOCATION` event refetches its
   list, it does not move it).
@@ -1045,6 +1069,7 @@ Filled in from the task reports and reviews.
 | E.6 | Item 6: `data-mode-migration.spec.ts` "now has the dialog" | It does not: it uses `clear`, which never asks (O2), as E.4's own note says. Only a stale comment changed |
 | E.6 | Item 2 of the brief: "Any spec that checks the old 'another account' text" | None did. Only two test TITLES in `cart-id-cross-user-leak.spec.ts` said "another account"; both were rewritten |
 | O9 | *Known gaps* (E.6): "`import-export-cloud.spec.ts` pins today's behaviour, so a change will turn three tests red on purpose". The O9 brief repeated it: the three tests "pin today's behaviour (the active location staying on Home)" | None of the three asserted the active location. They assert four locations and the stock per location, and `verifyRelations` switches to the location it checks by itself. Option B deletes nothing, so all three stayed green with the new code. Only one of them turned red under a mutation, and only after this follow-up added the switch check to it. So no test had pinned "the user stays on Home" |
+| O9 review | My O9 *As built* note: the card must switch AFTER `resetStore`, or "the provider would move the user to the first location of the old list" | Not proven. `importCloudData` has already reset the store once, so the list may hold the new location already. The order is kept as the safe one; the note and the code comment now say only that. The review also found a race the O9 change brought: a location picked in the sidebar during the import was overwritten. Fixed |
 | O9 | The brief: "if the active location is empty, switch" | Not enough on its own. Read BEFORE the import, a same-household restore that puts rows back on the active location would move the user away from them. It is read after the last write |
 
 ## Status
