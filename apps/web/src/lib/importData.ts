@@ -3029,7 +3029,21 @@ function importCheckPairs(
   }
   ids('itemStocks', payload.itemStocks)
   ids('inventoryLogs', payload.inventoryLogs)
-  ids('carts', payload.shoppingCarts)
+  // A cart id whose prefix is an omitted location is not sent either. The
+  // cart is written under the real location's id later, so checking the
+  // placeholder id proves nothing; and if some cloud location had the id
+  // 'local' (possible before decision T12), the check would call the file
+  // "another household" (E.4 review finding 3). Its cart items are still
+  // sent by their own ids.
+  ids(
+    'carts',
+    payload.shoppingCarts.filter((row) => {
+      const id = stringField(row, 'id')
+      return !(
+        id?.includes(':') && omitLocationIds.has(parseCartId(id).locationId)
+      )
+    }),
+  )
   ids('cartItems', payload.cartItems)
   return pairs
 }

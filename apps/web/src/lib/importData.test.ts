@@ -5685,6 +5685,11 @@ describe('importCloudData — the check before the first write (households H4 ta
     expect(variables.forClear).toBe(true)
     expect(variables.ids.locations).toEqual(['loc_garage'])
     expect(variables.ids.locationRefs ?? []).not.toContain('local')
+    // And no cart id with the placeholder prefix is sent either: the cart is
+    // written under the new Home's id, so checking `local:…` proves nothing,
+    // and a cloud location with the id 'local' would make it "another
+    // household"
+    expect(variables.ids.carts).toEqual(['loc_garage:vendor_1'])
     // And the default's own rows are still checked by id
     expect(variables.ids.itemStocks).toEqual(['s-home', 's-garage'])
     expect(variables.ids.inventoryLogs).toEqual(['log-home', 'log-garage'])
@@ -5730,6 +5735,11 @@ describe('importCloudData — the check before the first write (households H4 ta
     )
     // And the session now holds its id, so a retry does not create another
     expect(session.target).toEqual({ locationId: 'cloud_new' })
+    // And the check was sent no cart id with the placeholder prefix
+    const check = client.calls.find((c) => c.op === 'ImportCheck')
+    expect(
+      (check?.variables as { ids: Record<string, string[]> }).ids.carts,
+    ).toEqual(['loc_garage:vendor_1'])
   })
 
   // Review finding 1 of task E.4 (older than E.4). A retry of a failed
