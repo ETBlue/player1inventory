@@ -10,6 +10,7 @@ import { tagResolvers } from './tag.resolver.js'
 import { vendorResolvers } from './vendor.resolver.js'
 import { shelfResolvers } from './shelf.resolver.js'
 import { householdResolvers } from './household.resolver.js'
+import { liveResolvers } from './live.resolver.js'
 
 const resolversObject: Resolvers = {
   Query: {
@@ -41,6 +42,7 @@ const resolversObject: Resolvers = {
   Recipe: recipeResolvers.Recipe,
   InventoryLog: inventoryLogResolvers.InventoryLog,
   Cart: cartResolvers.Cart,
+  Subscription: liveResolvers.Subscription,
 }
 
 export const resolvers = {
