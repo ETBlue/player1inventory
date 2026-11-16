@@ -219,6 +219,57 @@ that really set up that role.
 >
 > **Deploying it needs two steps outside the code:** set `CLERK_WEBHOOK_SIGNING_SECRET` on the server, and add the endpoint in the Clerk dashboard with the events `user.created`, `user.updated` and `user.deleted`. Until the secret is set, the webhook answers 500. Until the endpoint is added, Clerk sends nothing. In both cases the safety net still creates every row on the user's next request.
 
+## Live updates (cloud)
+
+> Design: `docs/global/permissions/2026-11-16-households-h3c-design.md`. Plan:
+> `docs/global/permissions/2026-11-16-households-plan-h3c-1.md`. Deploy:
+> `docs/global/backend/2026-11-16-deploy-runbook-households-h3c-1.md`.
+>
+> **Built in households H3c-1 (2026-11-16), for carts only.** Not merged or deployed. A
+> change in one tab reaches the other open tabs of the same household within about a second.
+> The event says only "this changed" (`kind`, `locationId`); the web refetches. H3c-2 adds
+> stock, logs, locations and the catalog.
+>
+> | Part | Where | Rule |
+> |---|---|---|
+> | Event bus | `apps/server/src/lib/liveEvents.ts` | in memory, **one process only**. Before a second Railway instance, the bus must move to a shared service (Redis or similar); Neon's pooled connection has no `LISTEN/NOTIFY`. A listener that throws does not stop the others (a `Set`, not `EventEmitter`) |
+> | Publishing | `publishChange(ctx, kind, locations)` in `lib/publishChange.ts` | call it AFTER the write or the `$transaction` has resolved, never inside the callback. It never throws. It uses the LOCATION's household and `ctx.clientId` |
+> | Tab id | `Context.clientId`, from `x-client-id` (HTTP) or `connectionParams.clientId` (socket) | the server never sends a tab its own change. A socket without one is refused |
+> | Delivery | `shouldDeliver` in `resolvers/live.resolver.ts` | checks the role again for EVERY event: `viewer` on the location through `requireLocationRole`, or `member` of the household for a catalog event |
+> | Socket | `lib/wsServer.ts`, same port and path as HTTP (`/graphql`) | sign-in through `identifyCaller`, shared with HTTP |
+> | Web runner | `LiveUpdatesRunner` (`apps/web/src/apollo/`), in cloud mode when signed in | 300 ms batch, then refetches the ACTIVE queries named in `QUERIES_BY_KIND` (`liveUpdates.ts`). A reconnect refetches every active query once |
+>
+> **Every `Mutation` field must be in one of three lists** in
+> `apps/server/src/resolvers/live-publish.guard.test.ts`: `publishes` (with its kind),
+> `publishesNothing` (with a reason) or `waitingForH3c2`. A new mutation in no list fails
+> the test. Today: 62 fields, 11 / 0 / 51. `waitingForH3c2` must be empty when H3c-2 ends.
+> The guard cannot see whether a resolver really calls `publishChange`; the per-mutation
+> tests in `cart-live-publish.resolver.test.ts` do. It does not see queries either:
+> `vendorCart` creates a missing cart and publishes nothing.
+>
+> **Close codes** (`lib/wsServer.ts`, `lib/tokenCheckError.ts`):
+>
+> | Code | When | The `graphql-ws` client |
+> |---|---|---|
+> | `4401` | no user, a token Clerk rejects, no valid `clientId` | does not retry. The runner subscribes again on `online` or when the tab becomes visible |
+> | `1013` | the token check failed for another reason (Clerk not reached) | retries, up to 5 times in a row |
+> | `1001` | the socket is 60 minutes old | retries after about 1.3 to 4 s with a fresh token |
+>
+> **E2E.** The E2E web client has its own socket with `{ e2eUserId, clientId }`, and the
+> E2E build puts `window.__p1iLiveUpdates` (`connects`, `terminate`) on the page.
+> `e2e/tests/live-cart.spec.ts` puts `page.routeWebSocket` between page and server to count
+> events and to refuse sockets. Two traps it found, both about absence:
+>
+> - **A wrongly delivered event changes nothing on screen.** It only makes the tab refetch
+>   its own cart. So "another household's change does not show" must count socket messages,
+>   not look at the page.
+> - **A warm-up refetch can show a later step.** Test 1 passed with `publishChange` removed
+>   from `addToCart`, because the warm-up's own refetch was still in flight and showed the
+>   item. The warm-up now waits for its own `CartItems` refetch.
+>
+> Test 2 uses an ORDER check, not a fixed wait: events for one socket are queued and checked
+> in order, so once a later event has arrived, an earlier one would have arrived first.
+
 ## Project Structure
 
 ```
@@ -409,10 +460,10 @@ skips half the work. Nothing else in the gate checks `e2e/` formatting: `pnpm li
 `apps/server`'s build already carries a second pass for `scripts/`.
 
 **`pnpm test` runs both workspaces.** The root script is `pnpm -r test`, which recurses into
-every workspace package that defines a `test` script — today `apps/web` (**2543 tests**
-across 276 files) and `apps/server` (**1274** across 52). Measured 2026-11-15 on
-`feature/households-h3b`, after `buildCheckoutLogQuantities` and its 6 web tests were
-deleted and 30 fake-copy tests were added (it said 2549 / 277 and 1244 / 51 earlier the same
+every workspace package that defines a `test` script — today `apps/web` (**2577 tests**
+across 281 files) and `apps/server` (**1412** across 61). Measured 2026-11-16 on
+`feature/households-h3c`, after households H3c-1 (it said 2543 / 276 and 1274 / 52 on
+2026-11-15 on `feature/households-h3b`, 2549 / 277 and 1244 / 51 earlier that
 day, 2529 / 275 and 1161 / 47 on 2026-11-11, on H3a, and
 2321 / 251 and 522 / 32 on 2026-10-28, before households H3a), plus **70** in `scripts/spec` from `pnpm test:spec`.
 
@@ -1626,8 +1677,9 @@ Note also that **no *unit* test executes the resolvers against real SQL** — ev
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
 Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
 branch), but only for the spec files listed in the `cloud` project's `testMatch` in
-`e2e/playwright.config.ts` — that list is opt-in and covers **30 of the 34 spec files in
-`e2e/tests/`** (measured 2026-11-15, after households H3b task B.9 added
+`e2e/playwright.config.ts` — that list is opt-in and covers **31 of the 35 spec files in
+`e2e/tests/`** (measured 2026-11-16, after households H3c-1 task C.6 added
+`live-cart.spec.ts`; 30 of 34 on 2026-11-15, after households H3b task B.9 added
 `shared-cart.spec.ts`; it was 29 of 33 on 2026-11-04, after households H3a task 3.11 added
 `cloud-roles.spec.ts` and `household-member-cleanup.spec.ts`).
 **Count it rather than quote it.** This line said "20 files today (of 27 spec files)" until
@@ -1798,6 +1850,15 @@ The `cloud` project went 125 → **130** collected and 27 → **29** files; `loc
   member, in both orders. The member's cleanup leaves the owner's household alone; the
   owner's cleanup removes the member's role rows too. After that the member gets
   `NO_HOUSEHOLD`, the first real-SQL test that reaches it.
+
+`live-cart.spec.ts` joined on 2026-11-16 (households H3c-1, task C.6) — 3 cloud test
+cases, with a browser, a real WebSocket and real Postgres. The `cloud` project now collects
+**146** tests in **31** files; `local` **184** in 23, `pwa` **73** in 2 (measured with
+`--list` on 2026-11-16). It is the first E2E test of a socket: a member's `addToCart`
+reaches the open cart page without a reload, another household's change never reaches the
+tab, and a change made while the socket is closed shows after the reconnect. It is in the
+`local` project's `testIgnore`. It does **not** use a real Clerk token on the socket; that
+is a manual check in the H3c-1 deploy runbook. See *Live updates (cloud)* above.
 
 The warning above still holds for everything else — most resolvers are named by no cloud
 spec.
