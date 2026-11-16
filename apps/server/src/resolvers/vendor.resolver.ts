@@ -6,6 +6,7 @@ import {
 } from '../lib/authz.js'
 import { cartIdFor, parseCartId } from '@p1i/types'
 import { prisma } from '../lib/prisma.js'
+import { type ChangedLocation, publishChange } from '../lib/publishChange.js'
 import { requireAuth } from '../context.js'
 import type { Resolvers, Vendor } from '../generated/graphql.js'
 
@@ -80,6 +81,7 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // A missing vendor returns false, as it did before.
       if ((await requireOwnRowOrUnclaimed(ctx, 'vendor', id)) === 'unclaimed') return false
       // ItemVendor rows cascade automatically (onDelete: Cascade on ItemVendor.vendor)
+      let cartsDeletedAt: ChangedLocation[] = []
       try {
         // A vendor has one cart PER LOCATION since PR 3b re-keyed Cart.id, so
         // there is no single `id` to delete any more. Before the re-key this
@@ -109,10 +111,16 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         })
         const carts = await prisma.cart.findMany({
           where: { locationId: { in: locations.map((l) => l.id) } },
-          select: { id: true },
+          select: { id: true, locationId: true },
         })
-        const cartIds = carts.filter((c) => parseCartId(c.id).vendorId === id).map((c) => c.id)
+        const vendorCarts = carts.filter((c) => parseCartId(c.id).vendorId === id)
+        const cartIds = vendorCarts.map((c) => c.id)
         if (cartIds.length > 0) {
+          // Set BEFORE the deletes. These writes are not one transaction, so
+          // when the second delete or the vendor delete fails, rows are
+          // already gone. An extra event costs other tabs one refetch; a
+          // missing one leaves them showing a cart that is gone.
+          cartsDeletedAt = vendorCarts.map((c) => ({ locationId: c.locationId, householdId }))
           await prisma.cartItem.deleteMany({ where: { cartId: { in: cartIds } } })
           await prisma.cart.deleteMany({ where: { id: { in: cartIds } } })
         }
@@ -120,6 +128,11 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         return true
       } catch {
         return false
+      } finally {
+        // `CART` for each location whose carts this deleted (households
+        // H3c-1, task C.4). The household is known: the carts were read
+        // from this household's locations. H3c-2 adds `CATALOG`.
+        await publishChange(ctx, 'CART', cartsDeletedAt)
       }
     },
   },

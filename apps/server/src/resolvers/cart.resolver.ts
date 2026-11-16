@@ -10,6 +10,7 @@ import {
 import { cartIdFor, getPackedTotal, parseCartId } from '@p1i/types'
 import { prisma } from '../lib/prisma.js'
 import { ensureStockAtLocation, writeStock } from '../lib/itemStockWrite.js'
+import { publishChange } from '../lib/publishChange.js'
 import { type Context, requireAuth } from '../context.js'
 import type { Cart, CartItem, Resolvers } from '../generated/graphql.js'
 
@@ -280,11 +281,14 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       // The amount is taken as sent, as before task B.4: no check for zero or
       // a negative number. Adding 0 to a new item makes a pinned row
       // (`quantity` 0); adding to a pinned row makes it a row being bought.
-      return prisma.cartItem.upsert({
+      const written = await prisma.cartItem.upsert({
         where: { cartId_itemId: { cartId, itemId } },
         create: { cartId, itemId, quantity, userId },
         update: { quantity: { increment: quantity } },
-      }) as unknown as Promise<CartItem>
+      })
+      // After the write (households H3c-1, task C.4). See `publishChange`.
+      await publishChange(ctx, 'CART', [{ locationId }])
+      return written as unknown as CartItem
     },
 
     // `id` here is a CartItem id, not a cart id, so the location has to be read
@@ -295,10 +299,12 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       const existing = await findCartItemForWrite(ctx, id, 'participant')
       // The same answer for an unknown id and for a stranger's row.
       if (!existing) throw new GraphQLError('CartItem not found', { extensions: { code: 'NOT_FOUND' } })
-      return prisma.cartItem.update({
+      const updated = await prisma.cartItem.update({
         where: { id },
         data: { quantity },
-      }) as unknown as Promise<CartItem>
+      })
+      await publishChange(ctx, 'CART', [{ locationId: parseCartId(existing.cartId).locationId }])
+      return updated as unknown as CartItem
     },
 
     removeFromCart: async (_, { id }, ctx) => {
@@ -307,6 +313,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       // `false` for an unknown id and for a stranger's row alike.
       if (!existing) return false
       await prisma.cartItem.delete({ where: { id } })
+      await publishChange(ctx, 'CART', [{ locationId: parseCartId(existing.cartId).locationId }])
       return true
     },
 
@@ -346,7 +353,10 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       // the transaction opens, because it reads only membership rows.
       const sourceLocationIds = await locationIdsWithRole(ctx)
 
-      return prisma.$transaction(
+      // `await`, so the event below is published only after the transaction
+      // has COMMITTED. A `CART_CHANGED` refusal, or any other throw, rolls
+      // back and leaves this function before the publish.
+      const purchased = await prisma.$transaction(
         async (tx) => {
           // Step 1. No `userId` filter (H3b rule 13): a co-member's rows are
           // bought too. `quantity: { gt: 0 }` is the SQL form of
@@ -479,6 +489,9 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
         // the whole checkout back, and the user gets an error and retries.
         { timeout: CHECKOUT_TIMEOUT_MS },
       )
+      // CART only in H3c-1. H3c-2 adds `STOCK` and `LOG` for the same location.
+      await publishChange(ctx, 'CART', [{ locationId: cartLocationId }])
+      return purchased
     },
 
     /**
@@ -501,8 +514,9 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       // H3a, task 3.8). Until then this read `where: { userId }`, so a
       // location got carts only for the vendors the caller had made, not for
       // a vendor another member added to the shared catalog.
+      const householdId = await householdOfLocation(locationId)
       const vendors = await prisma.vendor.findMany({
-        where: { householdId: await householdOfLocation(locationId) },
+        where: { householdId },
         select: { id: true },
       })
       // The no-vendor cart first, then one per vendor — the same set local
@@ -525,10 +539,13 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
         // running in parallel can insert one of these ids between the two
         // statements. Without the flag that race raises P2002 and the whole
         // bootstrap fails, taking the carts that were fine with it.
-        await prisma.cart.createMany({
+        const { count } = await prisma.cart.createMany({
           data: missing.map((id) => ({ id, locationId })),
           skipDuplicates: true,
         })
+        // Only when this call really made a cart. `count` is 0 when a
+        // parallel `vendorCart` made every missing one first.
+        if (count > 0) await publishChange(ctx, 'CART', [{ locationId, householdId }])
       }
 
       // Scoped by `locationId`, so the caller gets this location's carts only —
@@ -551,7 +568,9 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       if (!existing) throw new GraphQLError('Cart not found', { extensions: { code: 'NOT_FOUND' } })
       // Delete EVERY row of the cart: pinned rows too, and the rows a
       // co-member added (task B.4). The cart itself stays.
-      await prisma.cartItem.deleteMany({ where: { cartId } })
+      const { count } = await prisma.cartItem.deleteMany({ where: { cartId } })
+      // Nothing to tell other tabs when the cart was already empty.
+      if (count > 0) await publishChange(ctx, 'CART', [{ locationId: existing.locationId }])
       return existing as unknown as Cart
     },
   },

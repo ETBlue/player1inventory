@@ -13,6 +13,7 @@ import {
 import { parseCartId } from '@p1i/types'
 import { createFirstLocation, firstLocationName, lockHousehold } from '../lib/household.js'
 import { prisma } from '../lib/prisma.js'
+import { type ChangedLocation, publishChange } from '../lib/publishChange.js'
 import { type Context, requireAuth } from '../context.js'
 import { toGraphQL as locationToGraphQL } from './location.resolver.js'
 import { toGraphQL as itemStockToGraphQL } from './itemStock.resolver.js'
@@ -605,17 +606,27 @@ async function requireOwnItemStockRefs(
  * `requireOwnRowOrUnclaimed('cartItem')` before this runs.
  *
  * Each distinct cart, location and (household, item) pair is read once.
+ *
+ * Returns `usable` (may this row be written) and `locationOf` (the cart's
+ * location and its household, for the live event after the write, households
+ * H3c-1 task C.4). `locationOf` reads the `Cart.locationId` column, not the
+ * cart id: an imported cart with a bare pre-3b id lives at the fallback
+ * location, which its id does not name.
  */
 async function resolveCartItemParents(
   ctx: Context,
   cartItems: readonly { cartId: string; itemId: string }[],
-): Promise<(cartId: string, itemId: string) => boolean> {
+): Promise<{
+  usable: (cartId: string, itemId: string) => boolean
+  locationOf: (cartId: string) => ChangedLocation
+}> {
   requireAuth(ctx)
   const writable = await locationIdsWithRole(ctx, 'participant')
 
   // cart id → the household of its location, or null when the cart is at no
   // location where the caller is `participant` or higher.
   const cartHousehold = new Map<string, string | null>()
+  const cartLocation = new Map<string, string>()
   const locationHousehold = new Map<string, string>()
   for (const { cartId } of cartItems) {
     if (cartHousehold.has(cartId)) continue
@@ -637,6 +648,7 @@ async function resolveCartItemParents(
       locationHousehold.set(cart.locationId, householdId)
     }
     cartHousehold.set(cartId, householdId)
+    cartLocation.set(cartId, cart.locationId)
   }
 
   // `${householdId}\u0000${itemId}` of every item that is a row of that
@@ -660,9 +672,16 @@ async function resolveCartItemParents(
     for (const { id } of own) usable.add(`${householdId}\u0000${id}`)
   }
 
-  return (cartId, itemId) => {
-    const householdId = cartHousehold.get(cartId)
-    return !!householdId && usable.has(`${householdId}\u0000${itemId}`)
+  return {
+    usable: (cartId, itemId) => {
+      const householdId = cartHousehold.get(cartId)
+      return !!householdId && usable.has(`${householdId}\u0000${itemId}`)
+    },
+    // Called only for a cart `usable` let through, so both maps hold it.
+    locationOf: (cartId) => ({
+      locationId: cartLocation.get(cartId) ?? '',
+      householdId: cartHousehold.get(cartId) ?? undefined,
+    }),
   }
 }
 
@@ -1241,26 +1260,43 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // and SILENTLY DROPPED the caller's own cart — no error, no count.
       const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'cart', carts)
       const results: Cart[] = []
-      for (const cart of carts) {
-        const { id, lastPurchasedAt } = cart
-        // After the guard an id is one of exactly two things: a cart the
-        // caller already owns (skip it) or an id no row holds (free to
-        // write). The per-row read this replaces was unscoped, so it could
-        // not tell those two apart.
-        if (ownIds.has(id)) continue
-        const created = await prisma.cart.create({
-          data: {
-            id,
-            lastPurchasedAt: lastPurchasedAt ? new Date(lastPurchasedAt as string) : undefined,
-            // The location named by the cart's OWN id since PR 3b
-            // (`${locationId}:${vendorId}`), and the caller's fallback location when no
-            // `Location` row holds that id — a pre-3b bare id, or a cloud
-            // backup whose source locations `clearAllData` just deleted. All
-            // resolved and verified above.
-            locationId: locationIdFor(id),
-          },
-        })
-        results.push(created as unknown as Cart)
+      // ── THE LIVE EVENT (households H3c-1, task C.4) ──
+      //
+      // The locations of the rows written so far, published in `finally`.
+      // These four cart imports are NOT one transaction: each row commits on
+      // its own. So when row 5 of 10 throws, rows 1 to 4 are saved, and the
+      // other tabs must hear about their locations. `finally` publishes
+      // exactly the rows that were written, and the error still reaches the
+      // caller. A batch refused by a check before the loop has written
+      // nothing, so `touched` is empty and nothing is published.
+      // `publishChange` sends one event per distinct location and never
+      // throws, so it cannot hide the loop's error.
+      const touched: ChangedLocation[] = []
+      try {
+        for (const cart of carts) {
+          const { id, lastPurchasedAt } = cart
+          // After the guard an id is one of exactly two things: a cart the
+          // caller already owns (skip it) or an id no row holds (free to
+          // write). The per-row read this replaces was unscoped, so it could
+          // not tell those two apart.
+          if (ownIds.has(id)) continue
+          const created = await prisma.cart.create({
+            data: {
+              id,
+              lastPurchasedAt: lastPurchasedAt ? new Date(lastPurchasedAt as string) : undefined,
+              // The location named by the cart's OWN id since PR 3b
+              // (`${locationId}:${vendorId}`), and the caller's fallback location when no
+              // `Location` row holds that id — a pre-3b bare id, or a cloud
+              // backup whose source locations `clearAllData` just deleted. All
+              // resolved and verified above.
+              locationId: locationIdFor(id),
+            },
+          })
+          results.push(created as unknown as Cart)
+          touched.push({ locationId: created.locationId })
+        }
+      } finally {
+        await publishChange(ctx, 'CART', touched)
       }
       // NO CLOSING READ, on purpose. Each row returned is the row
       // `cart.create` itself wrote, and the guard above is what makes that row
@@ -1294,8 +1330,8 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // that does not exist. A partial backup legitimately names a parent
       // that is gone, and making "not yours" distinguishable from "not there"
       // would turn the mutation into a probe for another household's ids.
-      const parentsUsable = await resolveCartItemParents(ctx, cartItems)
-      const usable = cartItems.filter((ci) => parentsUsable(ci.cartId, ci.itemId))
+      const parents = await resolveCartItemParents(ctx, cartItems)
+      const usable = cartItems.filter((ci) => parents.usable(ci.cartId, ci.itemId))
 
       // ── The `skip` and `clear` strategies (households H3b decision P3) ──
       //
@@ -1319,16 +1355,23 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // import that adds to another member's row does not take it over.
       const taken = new Set(ownIds)
       const results: CartItem[] = []
-      for (const group of mergeCartItemRows(usable)) {
-        if (group.ids.some((id) => ownIds.has(id))) continue
-        const { cartId, itemId, quantity } = group
-        const id = takeNewCartItemId(group, taken)
-        const written = await prisma.cartItem.upsert({
-          where: { cartId_itemId: { cartId, itemId } },
-          create: { ...(id === undefined ? {} : { id }), cartId, itemId, quantity, userId },
-          update: { quantity: { increment: quantity } },
-        })
-        results.push(written as unknown as CartItem)
+      const touched: ChangedLocation[] = []
+      try {
+        for (const group of mergeCartItemRows(usable)) {
+          if (group.ids.some((id) => ownIds.has(id))) continue
+          const { cartId, itemId, quantity } = group
+          const id = takeNewCartItemId(group, taken)
+          const written = await prisma.cartItem.upsert({
+            where: { cartId_itemId: { cartId, itemId } },
+            create: { ...(id === undefined ? {} : { id }), cartId, itemId, quantity, userId },
+            update: { quantity: { increment: quantity } },
+          })
+          results.push(written as unknown as CartItem)
+          touched.push(parents.locationOf(cartId))
+        }
+      } finally {
+        // Why `finally`: see THE LIVE EVENT in `bulkCreateShoppingCarts`.
+        await publishChange(ctx, 'CART', touched)
       }
       // NO CLOSING READ — same reason as `bulkCreateShoppingCarts` above. The
       // returned row is the one the upsert wrote, at a cart the guard and
@@ -1661,27 +1704,34 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // ownership of it.
       await requireOwnRowIdsOrUnclaimed(ctx, 'cart', carts)
       const results: Cart[] = []
-      for (const cart of carts) {
-        const { id, lastPurchasedAt } = cart
-        // `data` is built field by field, never spread from the input, so
-        // neither `userId` nor `locationId` can reach the `update` payload by
-        // accident. Keep it that way: see the comment on `create` below.
-        const data = {
-          lastPurchasedAt: lastPurchasedAt ? new Date(lastPurchasedAt as string) : undefined,
+      const touched: ChangedLocation[] = []
+      try {
+        for (const cart of carts) {
+          const { id, lastPurchasedAt } = cart
+          // `data` is built field by field, never spread from the input, so
+          // neither `userId` nor `locationId` can reach the `update` payload by
+          // accident. Keep it that way: see the comment on `create` below.
+          const data = {
+            lastPurchasedAt: lastPurchasedAt ? new Date(lastPurchasedAt as string) : undefined,
+          }
+          const upserted = await prisma.cart.upsert({
+            where: { id },
+            // `locationId` lives in `create` only. (`Cart.userId` lived there
+            // too until households H3b task B.3 dropped the column.)
+            //
+            // `locationId`: the same reason as the log upsert above — a
+            // re-import must not MOVE an existing cart. The value comes from the
+            // cart's own id when a `Location` row holds that id, and the
+            // caller's fallback location when none does. Both resolved above.
+            create: { id, ...data, locationId: locationIdFor(id) },
+            update: data,
+          })
+          results.push(upserted as unknown as Cart)
+          // The row's own column: an existing cart keeps its location.
+          touched.push({ locationId: upserted.locationId })
         }
-        const upserted = await prisma.cart.upsert({
-          where: { id },
-          // `locationId` lives in `create` only. (`Cart.userId` lived there
-          // too until households H3b task B.3 dropped the column.)
-          //
-          // `locationId`: the same reason as the log upsert above — a
-          // re-import must not MOVE an existing cart. The value comes from the
-          // cart's own id when a `Location` row holds that id, and the
-          // caller's fallback location when none does. Both resolved above.
-          create: { id, ...data, locationId: locationIdFor(id) },
-          update: data,
-        })
-        results.push(upserted as unknown as Cart)
+      } finally {
+        await publishChange(ctx, 'CART', touched)
       }
       // NO CLOSING READ — same reason as the two creates above. The returned
       // row is the one `cart.upsert` wrote, and the guard is what makes it the
@@ -1701,8 +1751,8 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // so `replace` and `skip` give the same answer for a partial backup
       // whose cart or item is gone. New in plan task 8: this mutation had NO
       // check on either one, so `replace` could write into a STRANGER's cart.
-      const parentsUsable = await resolveCartItemParents(ctx, cartItems)
-      const usable = cartItems.filter((ci) => parentsUsable(ci.cartId, ci.itemId))
+      const parents = await resolveCartItemParents(ctx, cartItems)
+      const usable = cartItems.filter((ci) => parents.usable(ci.cartId, ci.itemId))
 
       // ── The `replace` strategy (households H3b decision P3, design D5) ──
       //
@@ -1736,17 +1786,23 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // `bulkCreateCartItems`: no P2002 from a concurrent add, no lost write.
       const taken = new Set(ownIds)
       const results: CartItem[] = []
-      for (const group of mergeCartItemRows(usable)) {
-        const { cartId, itemId, quantity } = group
-        // Never an id a row holds: in the move case that row is elsewhere,
-        // and creating under its id would raise P2002.
-        const id = takeNewCartItemId(group, taken)
-        const written = await prisma.cartItem.upsert({
-          where: { cartId_itemId: { cartId, itemId } },
-          create: { ...(id === undefined ? {} : { id }), cartId, itemId, quantity, userId },
-          update: { quantity },
-        })
-        results.push(written as unknown as CartItem)
+      const touched: ChangedLocation[] = []
+      try {
+        for (const group of mergeCartItemRows(usable)) {
+          const { cartId, itemId, quantity } = group
+          // Never an id a row holds: in the move case that row is elsewhere,
+          // and creating under its id would raise P2002.
+          const id = takeNewCartItemId(group, taken)
+          const written = await prisma.cartItem.upsert({
+            where: { cartId_itemId: { cartId, itemId } },
+            create: { ...(id === undefined ? {} : { id }), cartId, itemId, quantity, userId },
+            update: { quantity },
+          })
+          results.push(written as unknown as CartItem)
+          touched.push(parents.locationOf(cartId))
+        }
+      } finally {
+        await publishChange(ctx, 'CART', touched)
       }
       // NO CLOSING READ — same reason as the three above. Design decision 5.
       return results
