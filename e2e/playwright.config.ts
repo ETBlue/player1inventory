@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 import {
   CLOUD_GRAPHQL_URL,
+  CLOUD_GRAPHQL_WS_URL,
   CLOUD_SERVER_PORT,
   CLOUD_WEB_PORT,
   CLOUD_WEB_URL,
@@ -86,9 +87,13 @@ const CLOUD_WEB_SERVER = {
   // Cloud-mode web app — always start fresh with E2E env vars:
   //   VITE_E2E_TEST_USER_ID: skips Clerk, renders with a static userId
   //   VITE_GRAPHQL_HTTP_URL: points Apollo at the E2E backend (not the dev server)
+  //   VITE_GRAPHQL_WS_URL: the live-updates socket on the same E2E backend.
+  //     Without it the socket would go to the default ws://localhost:4000,
+  //     the normal dev server, and no live update would ever arrive
   command: [
     `VITE_E2E_TEST_USER_ID=${E2E_USER_ID}`,
     `VITE_GRAPHQL_HTTP_URL=${CLOUD_GRAPHQL_URL}`,
+    `VITE_GRAPHQL_WS_URL=${CLOUD_GRAPHQL_WS_URL}`,
     `pnpm --filter web dev --port ${CLOUD_WEB_PORT}`,
   ].join(' '),
   url: CLOUD_WEB_URL,
