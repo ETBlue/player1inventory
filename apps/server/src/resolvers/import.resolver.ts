@@ -418,26 +418,31 @@ async function createImportedLocation(
  * written. Returns the ids the caller ALREADY OWNS.
  *
  * This is the account-scoped twin of `requireOwnLocationIdsOrUnclaimed` above.
- * It serves the nine models in `OwnedModel` (lib/authz.ts) — the models that
- * belong to no location, so `requireLocationRole` cannot reach them. Six of
- * them (the catalog) belong to a household. `InventoryLog` and `CartItem`
- * still carry a `userId`; a `Cart` is checked by its location (households
- * H3b task B.3).
+ * It serves the nine models in `OwnedModel` (lib/authz.ts): the rows an
+ * import writes by the id in the file, so a check must tell a free id from a
+ * taken one, which `requireLocationRole` alone cannot do. Six of them (the
+ * catalog) belong to a household. `InventoryLog`, `Cart` and `CartItem` are
+ * checked by their location in the target household (households H4 task
+ * E.1); a cart id must also start with its location id.
+ *
+ * `targetHouseholdId` is the household the import writes into. Every call
+ * site passes `requireHousehold(ctx)` until H4 task E.3 replaces it with the
+ * id `requireCatalogRole(ctx, 'manager')` returns.
  *
  * Every `id` in an import payload is attacker-controlled, and each of these
- * primary keys is GLOBAL with no `userId` in it. So an id in the payload can
- * name a row belonging to somebody else. `requireOwnRowOrUnclaimed` sorts each
- * distinct id into one of three cases:
+ * primary keys is GLOBAL. So an id in the payload can name a row of another
+ * household. `requireOwnRowOrUnclaimed` sorts each distinct id into one of
+ * three cases:
  *
- *  - it exists and is the caller's → in the returned set, so `bulkCreate` skips
- *    it and `bulkUpsert` replaces it
- *  - it exists and is somebody else's → it THROWS `FORBIDDEN`, and nothing is
+ *  - it exists and the caller may write it in the target household → in the
+ *    returned set, so `bulkCreate` skips it and `bulkUpsert` replaces it
+ *  - it exists and is not that → it THROWS `FORBIDDEN`, and nothing is
  *    written at all
  *  - it exists nowhere → not in the set, free to create
  *
  * The AUTHORIZATION decision lives entirely in `requireOwnRowOrUnclaimed`.
- * Nothing here compares a row's `userId` to the caller's, which root CLAUDE.md
- * forbids.
+ * Nothing here compares a row's `userId` or `householdId` to the caller's,
+ * which root CLAUDE.md forbids.
  *
  * Three things about the shape, for the same reasons as the location helper
  * above:
@@ -460,13 +465,14 @@ async function requireOwnRowIdsOrUnclaimed(
   ctx: Context,
   model: OwnedModel,
   rows: readonly { id: string }[],
+  targetHouseholdId: string,
 ): Promise<Set<string>> {
   const own = new Set<string>()
   const checked = new Set<string>()
   for (const { id } of rows) {
     if (checked.has(id)) continue
     checked.add(id)
-    if ((await requireOwnRowOrUnclaimed(ctx, model, id)) === 'own') own.add(id)
+    if ((await requireOwnRowOrUnclaimed(ctx, model, id, targetHouseholdId)) === 'own') own.add(id)
   }
   return own
 }
@@ -945,7 +951,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // Authorizes every id the payload names BEFORE the first write, and
       // returns the ids the caller ALREADY OWNS. A payload naming another
       // account's item id fails the whole mutation with nothing written.
-      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'item', items)
+      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'item', items, householdId)
       return withCatalogEvent(ctx, householdId, async (changed) => {
         const results: Item[] = []
         for (const item of items) {
@@ -1066,7 +1072,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       requireAuth(ctx)
       if (tags.length === 0) return []
       const householdId = await requireHousehold(ctx)
-      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'tag', tags)
+      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'tag', tags, householdId)
       const ids = tags.map((t) => t.id)
       const docs = tags.map((tag): Record<string, unknown> & { id: string } => {
         const { id, userId: _u, familyId: _f, ...rest } = tag as unknown as Record<string, unknown>
@@ -1134,7 +1140,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // the skipping. After the guard `skipDuplicates` can only skip the
       // caller's OWN rows — before it, a stranger's id was skipped too, which
       // silently dropped the caller's row.
-      await requireOwnRowIdsOrUnclaimed(ctx, 'tagType', tagTypes)
+      await requireOwnRowIdsOrUnclaimed(ctx, 'tagType', tagTypes, householdId)
       const ids = tagTypes.map((t) => t.id)
       const docs = tagTypes.map((tt) => {
         const { id, userId: _u, familyId: _f, ...rest } = tt as unknown as Record<string, unknown>
@@ -1157,7 +1163,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // The guard is the only change, for the same reason as
       // `bulkCreateTagTypes` above: `skipDuplicates` can now only skip the
       // caller's OWN rows.
-      await requireOwnRowIdsOrUnclaimed(ctx, 'vendor', vendors)
+      await requireOwnRowIdsOrUnclaimed(ctx, 'vendor', vendors, householdId)
       const ids = vendors.map((v) => v.id)
       const docs = vendors.map((v) => {
         const { id, userId: _u, familyId: _f, ...rest } = v as unknown as Record<string, unknown>
@@ -1178,7 +1184,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       if (recipes.length === 0) return []
       const householdId = await requireHousehold(ctx)
       // Same guard, same position and same reason as `bulkCreateItems` above.
-      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'recipe', recipes)
+      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'recipe', recipes, householdId)
       return withCatalogEvent(ctx, householdId, async (changed) => {
         const results: Recipe[] = []
         for (const recipe of recipes) {
@@ -1239,7 +1245,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // location at all. Without it the UNSCOPED `findUnique` this replaces
       // read a stranger's log as "already exists" and SILENTLY DROPPED the
       // caller's own log — no error, no count.
-      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'inventoryLog', logs)
+      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'inventoryLog', logs, householdId)
       const results: InventoryLog[] = []
       // ── THE LIVE EVENT (households H3c-2 task D.2) ──
       //
@@ -1316,7 +1322,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // key, which is global and carries no `userId`. Without it the UNSCOPED
       // `findUnique` this replaces read a stranger's cart as "already exists"
       // and SILENTLY DROPPED the caller's own cart — no error, no count.
-      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'cart', carts)
+      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'cart', carts, await requireHousehold(ctx))
       const results: Cart[] = []
       // ── THE LIVE EVENT (households H3c-1, task C.4) ──
       //
@@ -1374,7 +1380,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // included, fails the whole mutation with nothing written. Without the
       // guard the UNSCOPED `findUnique` this replaces read a stranger's row as
       // "already exists" and silently dropped the caller's own cart item.
-      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'cartItem', cartItems)
+      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'cartItem', cartItems, await requireHousehold(ctx))
       // The cart and the item of every row, resolved before the first write.
       //
       // BOTH references are SCOPED: the cart by the locations where the
@@ -1447,7 +1453,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // Authorizes every id the payload names BEFORE the first write. Without
       // it an `upsert` on a bare `{ id }` with `userId` inside `update`
       // overwrote another account's item AND took ownership of it.
-      await requireOwnRowIdsOrUnclaimed(ctx, 'item', items)
+      await requireOwnRowIdsOrUnclaimed(ctx, 'item', items, householdId)
       return withCatalogEvent(ctx, householdId, async (changed) => {
         const results: Item[] = []
         for (const item of items) {
@@ -1537,7 +1543,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       requireAuth(ctx)
       if (tags.length === 0) return []
       const householdId = await requireHousehold(ctx)
-      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'tag', tags)
+      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'tag', tags, householdId)
       // The two ids a tag ATTACHES, checked against the household (households
       // H3a task 3.9). Before this, both went into the row as given, so a
       // tag of the caller's could point at another household's tag type, or
@@ -1605,7 +1611,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       requireAuth(ctx)
       if (tagTypes.length === 0) return []
       const householdId = await requireHousehold(ctx)
-      await requireOwnRowIdsOrUnclaimed(ctx, 'tagType', tagTypes)
+      await requireOwnRowIdsOrUnclaimed(ctx, 'tagType', tagTypes, householdId)
       return withCatalogEvent(ctx, householdId, async (changed) => {
         // Before the writes: they run in parallel, so when one fails others
         // may already be saved. The list is not empty (see the top).
@@ -1633,7 +1639,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       requireAuth(ctx)
       if (vendors.length === 0) return []
       const householdId = await requireHousehold(ctx)
-      await requireOwnRowIdsOrUnclaimed(ctx, 'vendor', vendors)
+      await requireOwnRowIdsOrUnclaimed(ctx, 'vendor', vendors, householdId)
       return withCatalogEvent(ctx, householdId, async (changed) => {
         // Before the writes, for the same reason as `bulkUpsertTagTypes`.
         changed()
@@ -1661,7 +1667,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       if (recipes.length === 0) return []
       const householdId = await requireHousehold(ctx)
       // Same guard, same position and same reason as `bulkUpsertItems` above.
-      await requireOwnRowIdsOrUnclaimed(ctx, 'recipe', recipes)
+      await requireOwnRowIdsOrUnclaimed(ctx, 'recipe', recipes, householdId)
       return withCatalogEvent(ctx, householdId, async (changed) => {
         const results: Recipe[] = []
         for (const recipe of recipes) {
@@ -1721,7 +1727,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // after the location check, so a forbidden location is still refused
       // first. Without it an `upsert` on a bare `{ id }` with `userId` inside
       // `update` OVERWROTE another account's log and took ownership of it.
-      await requireOwnRowIdsOrUnclaimed(ctx, 'inventoryLog', logs)
+      await requireOwnRowIdsOrUnclaimed(ctx, 'inventoryLog', logs, householdId)
       const results: InventoryLog[] = []
       // ── THE LIVE EVENT (households H3c-2 task D.2) ──
       //
@@ -1794,7 +1800,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // still refused first. Without it an `upsert` on a bare `{ id }` with
       // `userId` inside `update` OVERWROTE another account's cart and took
       // ownership of it.
-      await requireOwnRowIdsOrUnclaimed(ctx, 'cart', carts)
+      await requireOwnRowIdsOrUnclaimed(ctx, 'cart', carts, await requireHousehold(ctx))
       const results: Cart[] = []
       const touched: ChangedLocation[] = []
       try {
@@ -1837,7 +1843,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // Authorizes every cart-item id the payload names BEFORE the first
       // write — the same guard as `bulkCreateCartItems`. Without it an
       // `upsert` on a bare `{ id }` overwrote another account's cart item.
-      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'cartItem', cartItems)
+      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'cartItem', cartItems, await requireHousehold(ctx))
       // The cart and the item of every row, resolved before the first write,
       // and SKIPPED when they do not resolve — as in `bulkCreateCartItems`,
       // so `replace` and `skip` give the same answer for a partial backup
@@ -1904,7 +1910,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       requireAuth(ctx)
       if (shelves.length === 0) return []
       const householdId = await requireHousehold(ctx)
-      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'shelf', shelves)
+      const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'shelf', shelves, householdId)
       const ids = shelves.map((s) => s.id)
       // Rebuilt from the guard's result, not from a fresh read. The read this
       // replaces was UNSCOPED, so a stranger's row counted as "already
@@ -2097,7 +2103,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       requireAuth(ctx)
       if (shelves.length === 0) return []
       const householdId = await requireHousehold(ctx)
-      await requireOwnRowIdsOrUnclaimed(ctx, 'shelf', shelves)
+      await requireOwnRowIdsOrUnclaimed(ctx, 'shelf', shelves, householdId)
       // Only the household's ids reach the row. See `householdShelfRefs`.
       const refsOf = await householdShelfRefs(householdId, shelves)
       return withCatalogEvent(ctx, householdId, async (changed) => {

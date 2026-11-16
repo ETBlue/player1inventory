@@ -31,15 +31,21 @@ import { typeDefs } from '../schema/index.js'
 //   - `resolveCartLocations` guards the location a cart is written TO.
 //   - `requireOwnRowIdsOrUnclaimed` guards the cart's OWN primary key.
 //
-// Why the cart-id guard is reachable at all, given the location guard: a cart
-// id with NO colon names no location, so it falls back to the caller's default
-// and the location guard refuses nothing. That is the pre-PR-3b cart id shape,
-// and it is exactly the shape `cart-id-cross-user-leak.spec.ts` demonstrates
-// against real Postgres — two accounts each holding a cart with the bare id
-// `no-vendor`. So `CART_THEIRS` below is a BARE id. If it named the stranger's
-// location instead, `resolveCartLocations` would throw first and every test
-// here would pass with the new guard deleted. One test asserts that ordering
-// on purpose, by counting the guard's own lookup.
+// Why the cart-id guard is reachable at all, given the location guard: a
+// stored cart's `locationId` need not be the location its id names. The old
+// import fallback (decision H12) kept a cart's id but moved the cart to the
+// importer's fallback location. So `CART_THEIRS` below names the CALLER's
+// location `LOC_OTHER` in its id, and is stored at the STRANGER's location.
+// The location guard passes it (it reads the id), and only the cart-id guard
+// can refuse it: since households H4 task E.1, "own" means the cart is stored
+// AT the location its id names. If `CART_THEIRS` named the stranger's location
+// instead, `resolveCartLocations` would throw first and every test here would
+// pass with the cart-id guard deleted. One test asserts that ordering on
+// purpose, by counting the guard's own lookup.
+//
+// Until H4 task E.1, `CART_THEIRS` was the BARE id `no-vendor`, the shape
+// `cart-id-cross-user-leak.spec.ts` uses. A bare id is now refused with
+// `BAD_USER_INPUT` before any lookup (decision T6); a test below pins that.
 //
 // ─── Why this file is separate from import.resolver.test.ts ──────────────────
 //
@@ -245,13 +251,12 @@ const VENDOR = 'vendor_costco'
 
 const CART_MINE = `${LOC_OTHER}:${VENDOR}` // USER's, at the non-default location
 const CART_OTHER = `${LOC_DEFAULT}:${VENDOR}` // USER's second cart
-// The STRANGER's cart, under a BARE id — no colon, so it names no location and
-// `resolveCartLocations` lets it through to the caller's default. That is the
-// pre-PR-3b id shape, and the shape of the real collision
-// `cart-id-cross-user-leak.spec.ts` reproduces against Postgres. A composite
-// id naming `LOC_STRANGER` would be refused by the LOCATION guard instead, and
-// then these tests would pass with the cart-id guard deleted.
-const CART_THEIRS = 'no-vendor'
+// The STRANGER's cart, stored at LOC_STRANGER under an id that names the
+// caller's LOC_OTHER (see the header). `resolveCartLocations` reads the id and
+// lets it through. A cart id naming `LOC_STRANGER` would be refused by the
+// LOCATION guard instead, and then these tests would pass with the cart-id
+// guard deleted.
+const CART_THEIRS = `${LOC_OTHER}:vendor_theirs`
 const CART_FREE = `${LOC_OTHER}:vendor_new` // no cart row holds it
 const CART_NOROLE = `${LOC_NOROLE}:${VENDOR}` // in USER's household, no role for USER
 
@@ -422,9 +427,9 @@ const cartItemIn = (
 
 describe('Cart ownership', () => {
   it("user cannot import a cart under an id another account's row holds", async () => {
-    // Given a payload naming the STRANGER's cart id. The id is bare, so the
-    // LOCATION guard sends it to the caller's default and refuses nothing —
-    // only the cart-id guard can stop it.
+    // Given a payload naming the STRANGER's cart id. The id names the
+    // caller's LOC_OTHER, so the LOCATION guard refuses nothing; only the
+    // cart-id guard can stop it.
     const payload = [cartIn(CART_THEIRS, PAYLOAD_PURCHASED)]
 
     // When the create-path import runs
@@ -509,6 +514,21 @@ describe('Cart ownership', () => {
     // to refuse, which is why the guard is the only thing standing here.
     expect(result.errors).toBeUndefined()
     expect(storedCart(CART_THEIRS)?.locationId).toBe(LOC_STRANGER)
+  })
+
+  it('user importing a cart id with no location part is refused and nothing is written', async () => {
+    // Given an ALLOWED cart ahead of a bare id (the pre-PR-3b shape)
+    const payload = [cartIn(CART_FREE), cartIn('no-vendor')]
+
+    // When the create-path import runs
+    const result = await exec(CREATE_CARTS, { carts: payload })
+
+    // Then the whole batch is refused as bad input (households H4 task E.1,
+    // decision T6), and the allowed cart is not written either
+    expect(errorCode(result)).toBe('BAD_USER_INPUT')
+    expect(mockPrisma.$cart.state.rows.map((r) => r.id).sort()).toEqual(
+      [CART_MINE, CART_OTHER, CART_THEIRS, CART_NOROLE].sort(),
+    )
   })
 
   it("user importing a cart that names a stranger's location is refused before the cart-id guard runs", async () => {

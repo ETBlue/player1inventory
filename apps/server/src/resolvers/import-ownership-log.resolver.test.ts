@@ -85,10 +85,12 @@ import { typeDefs } from '../schema/index.js'
 //   3. `create` REQUIRES a `userId`. `inventoryLogFake` casts `data.userId` and
 //      would store `undefined` as the owner without a word.
 //
-// `ownedRowFake` models `where` on `id` and `userId` only, which is all these
-// two mutations ask of `inventoryLog`: `{ id }` and `{ id, userId }` from the
-// guard, and `upsert({ where: { id } })`. It stores every other column handed
-// to it, so `locationId` can still be read back.
+// `ownedRowFake` models `where` on `id` and `userId`, plus `locationId`
+// (named in `columns`). That is all these two mutations ask of
+// `inventoryLog`: `{ id }` and `{ id, locationId: { in } }` from the guard
+// (by location since households H4 task E.1; `{ id, userId }` before), and
+// `upsert({ where: { id } })`. It stores every other column handed to it, so
+// `locationId` can still be read back.
 //
 // `item` is here only because `bulkCreateInventoryLogs` checks that the
 // payload's `itemId` exists before it writes. That check is still UNSCOPED, and
@@ -109,7 +111,7 @@ vi.mock('../lib/prisma.js', async () => {
     quantity: number | null
     occurredAt: Date | null
     note: string | null
-  }>({ model: 'InventoryLog' })
+  }>({ model: 'InventoryLog', columns: ['locationId'] })
 
   // A catalog model, so scoped by `householdId` since households H3a task
   // 3.7 (and refusing a `userId` on a write since task 3.14). Each item

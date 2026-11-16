@@ -1,5 +1,6 @@
 import { GraphQLError } from 'graphql'
 import type { HouseholdRole, LocationRole } from '@prisma/client'
+import { parseCartId } from '@p1i/types'
 import { type Context, requireAuth } from '../context.js'
 import { ensureHousehold } from './household.js'
 import { prisma } from './prisma.js'
@@ -134,24 +135,64 @@ export async function requireLocationRole(
  *
  * The household role does NOT add locations here. An owner or manager sees a
  * location only through a `LocationMember` row, until H5.
+ *
+ * With `options.householdId`, only the locations of that household count
+ * (households H4 task E.1, decision T7). A person can be a member of two
+ * households, so "every location I have a role on" can hold another
+ * household's locations. An import into one household asks for that
+ * household only.
  */
 export async function locationIdsWithRole(
   ctx: Context,
   role: LocationRole = 'viewer',
+  options: { householdId?: string } = {},
 ): Promise<string[]> {
   const userId = requireAuth(ctx)
   const roles = (Object.keys(LOCATION_RANK) as LocationRole[]).filter(
     (r) => LOCATION_RANK[r] >= LOCATION_RANK[role],
   )
+  const counted = countedLocationRole(userId)
   const memberships = await prisma.locationMember.findMany({
     where: {
-      ...countedLocationRole(userId),
+      ...counted,
+      // The household filter goes INSIDE the same `location` object as the
+      // decision H18 filter. A second `location` key would replace the first
+      // one and drop H18.
+      ...(options.householdId === undefined
+        ? {}
+        : { location: { ...counted.location, householdId: options.householdId } }),
       // Left out for `viewer`, so the read every page makes is unchanged.
       ...(role === 'viewer' ? {} : { role: { in: roles } }),
     },
     select: { locationId: true },
   })
   return memberships.map((m) => m.locationId)
+}
+
+/**
+ * Refuse unless `locationId` is a location of `householdId` (households H4
+ * task E.1, decision T7).
+ *
+ * One SCOPED read: `location.findFirst({ where: { id, householdId } })`. The
+ * comparison happens in SQL, here, so no call site writes
+ * `row.householdId === …` (root CLAUDE.md, *Authorization*).
+ *
+ * It checks no role. Call it next to `requireLocationRole`, which is the role
+ * check. A person in two households holds roles in both, so
+ * `requireLocationRole` alone cannot say WHICH household a location is in.
+ * A missing location gets the same `FORBIDDEN` as another household's.
+ */
+export async function requireLocationInHousehold(
+  ctx: Context,
+  locationId: string,
+  householdId: string,
+): Promise<void> {
+  requireAuth(ctx)
+  const location = await prisma.location.findFirst({
+    where: { id: locationId, householdId },
+    select: { id: true },
+  })
+  if (!location) throw forbidden()
 }
 
 /**
@@ -232,15 +273,23 @@ export async function requireCatalogRole(ctx: Context, role: HouseholdRole): Pro
 export type CatalogModel = 'item' | 'tag' | 'tagType' | 'vendor' | 'recipe' | 'shelf'
 
 /**
- * The nine models that have `id` as their only unique key and belong to no
- * location. `ItemStock` is NOT here on purpose: it carries no `userId` at all
- * and is scoped through its location by `requireLocationRole`. `Location` is
- * not here either, for the same reason — it IS the location.
+ * The nine models an import writes by the id in the file. `requireLocationRole`
+ * alone cannot decide these, because an import must tell a free id from a
+ * taken one, and `requireLocationRole` refuses both the same way. (Until H4
+ * this said "the
+ * nine models that belong to no location". That was wrong: `Cart`,
+ * `CartItem`, through its cart, and `InventoryLog` all have a location.)
+ *
+ * `ItemStock` is NOT here: an import checks it by its location and item
+ * (`requireOwnItemStockRefs`). `Location` is not here either: it IS the
+ * location (`requireOwnLocationIdsOrUnclaimed`).
  *
  * Six of them are catalog models, scoped by household since H3a task 3.7.
- * `Cart` and `CartItem` are scoped by the cart's location since H3b task B.7
- * (`Cart.userId` was dropped in task B.3; `CartItem.userId` means "added by"
- * and is never a scope). `InventoryLog` is still scoped by `userId` until H4.
+ * `Cart`, `CartItem` and `InventoryLog` are scoped by location: the caller
+ * must be `participant` or higher at a location of the target household
+ * (H3b task B.7 for carts; H4 task E.1 for logs and for the household).
+ * `CartItem.userId` and `InventoryLog.userId` mean "added by" and "written
+ * by". They are never a scope.
  *
  * This is a hand-maintained list, and a wrong literal at a call site compiles.
  * Every call site therefore needs its own test, and deleting a guard must turn
@@ -262,25 +311,6 @@ interface CatalogDelegate {
     where: { id: { in: string[] }; householdId?: string }
     select: { id: true }
   }): Promise<{ id: string }[]>
-}
-
-/** The two reads the guard needs on a model still scoped by `userId`. */
-interface UserScopedDelegate {
-  findUnique(args: {
-    where: { id: string }
-    select: { id: true }
-  }): Promise<{ id: string } | null>
-  findFirst(args: {
-    where: { id: string; userId: string }
-    select: { id: true }
-  }): Promise<{ id: string } | null>
-}
-
-type CartModel = 'cart' | 'cartItem'
-type UserScopedModel = Exclude<OwnedModel, CatalogModel | CartModel>
-
-function isCartModel(model: OwnedModel): model is CartModel {
-  return model === 'cart' || model === 'cartItem'
 }
 
 function isCatalogModel(model: OwnedModel): model is CatalogModel {
@@ -315,133 +345,176 @@ function catalogDelegate(model: CatalogModel): CatalogDelegate {
   return delegates[model]
 }
 
-function userScopedDelegate(model: UserScopedModel): UserScopedDelegate {
-  const delegates = {
-    inventoryLog: prisma.inventoryLog,
-  } satisfies Record<UserScopedModel, UserScopedDelegate>
-  return delegates[model]
-}
-
 /**
- * The single authorization seam for the nine models in `OwnedModel`, which
- * belong to no location and so are outside `requireLocationRole`'s reach.
+ * The single authorization seam for the nine models in `OwnedModel`: the rows
+ * an import writes by the id in the file. `requireLocationRole` alone cannot
+ * decide these, because an import must tell a free id from a taken one.
  *
  * Three cases for one row id:
  *
  * | The id is | Result |
  * |---|---|
- * | held by a row the caller may write | returns `'own'` |
- * | held by somebody else's row | **throws** `FORBIDDEN` |
+ * | held by a row the caller may write in the target household | returns `'own'` |
+ * | held by any other row | **throws** `FORBIDDEN` |
  * | held by no row | returns `'unclaimed'` |
  *
- * "A row the caller may write" means, since H3a task 3.7:
+ * `targetHouseholdId` is the household the import writes INTO (households H4
+ * task E.1, decision T4). It is an explicit argument, not
+ * `requireHousehold(ctx)`, because a person can be a member of two
+ * households, and then "the caller's household" has no fixed answer. Every
+ * call site passes the id `requireCatalogRole` (or, for the import helpers
+ * until H4 task E.3, `requireHousehold`) returned. H7's household switch will
+ * fill it in.
+ *
+ * "A row the caller may write" means, since H4 task E.1 (decision T5), with
+ * `writable` = the locations of the target household where the caller is
+ * `participant` or higher:
  *
  * | Model | The row is "own" when |
  * |---|---|
- * | the six catalog models | it is in the caller's household (`requireHousehold`) |
- * | `Cart` | it is at a location where the caller is `participant` or higher, since H3b task B.7 |
- * | `CartItem` | its CART is at such a location, since H3b task B.7 |
- * | `InventoryLog` | its `userId` is the caller's (until H4) |
+ * | the six catalog models | it is in the target household |
+ * | `InventoryLog` | its location is in `writable` |
+ * | `CartItem` | its cart's location is in `writable` |
+ * | `Cart` | see below |
  *
- * So a cart or cart item at a location where the caller is only `viewer`
- * throws, like one at another household's location. A viewer may read a
- * cart, but an import WRITES the row it names, so it needs the write role.
+ * `InventoryLog.userId` and `CartItem.userId` mean "written by" and "added
+ * by". They are never a scope, so a row another member wrote is `'own'`.
  *
- * So a tag another member of the caller's household made is `'own'` here, and
- * a tag of another household throws.
+ * **`Cart` is checked in a fixed order (decision T6, issue #361).** A cart id
+ * is `${locationId}:${vendor}` (`cartIdFor`, `@p1i/types`):
+ *
+ * 1. An id with no colon is refused with `BAD_USER_INPUT`.
+ * 2. The prefix must be in `writable`, else `FORBIDDEN`. This runs BEFORE the
+ *    cart table is read at all. So a caller with no write role on that
+ *    location never learns whether a cart id there is free or taken.
+ * 3. Only then the unscoped "is this id taken" read.
+ * 4. "Own" means the stored cart is AT the location its id names
+ *    (`{ id, locationId: prefix }`). A stored cart whose `locationId` is not
+ *    its prefix is refused. The old import fallback could make such a row.
+ *
+ * A viewer may read a cart or a log, but an import WRITES the row it names,
+ * so it needs the write role.
  *
  * It does NOT check the caller's household ROLE. The catalog resolvers check
- * `manager` first, with `requireCatalogRole`. The import mutations do not
- * check a role yet: import role gating is H4.
+ * `manager` first, with `requireCatalogRole`. Import role gating is H4 task
+ * E.3.
  *
- * The "somebody else's" case throws rather than returning, so a call site
+ * The "any other row" case throws rather than returning, so a call site
  * cannot ignore it.
  *
- * Call sites never inspect `userId` or `householdId` themselves — root
- * CLAUDE.md forbids `row.userId === ctx.userId` as an authorization check.
- * They say "this id must be one I may write", and this body is what decides.
- * When the scope changes again (H4 moves it to the import's TARGET
- * household), the `where` below changes and no call site moves. That is the
- * same contract `requireLocationRole` above already carries.
+ * Call sites never inspect `userId`, `householdId` or `locationId`
+ * themselves (root CLAUDE.md forbids `row.userId === ctx.userId` as an
+ * authorization check). They say "this id must be one I may write", and this
+ * body is what decides. When the scope changes again, the `where` below
+ * changes and no call site moves.
  *
- * See docs/features/settings/2026-10-28-design-import-ownership-guard.md.
+ * See docs/features/settings/2026-10-28-design-import-ownership-guard.md and
+ * docs/global/permissions/2026-11-16-households-plan-h4.md.
  */
 export async function requireOwnRowOrUnclaimed(
   ctx: Context,
   model: OwnedModel,
   id: string,
+  targetHouseholdId: string,
 ): Promise<'own' | 'unclaimed'> {
-  const userId = requireAuth(ctx)
+  requireAuth(ctx)
+
+  if (model === 'cart') return cartVerdict(ctx, id, targetHouseholdId)
 
   // UNSCOPED on purpose, and only `id` is selected. "Is this primary key
   // taken" is not an authorization question and has no scope.
-  const delegate: Pick<UserScopedDelegate, 'findUnique'> =
-    model === 'cart'
-      ? prisma.cart
-      : model === 'cartItem'
-        ? prisma.cartItem
-        : isCatalogModel(model)
-          ? catalogDelegate(model)
-          : userScopedDelegate(model)
+  const delegate: Pick<CatalogDelegate, 'findUnique'> =
+    model === 'cartItem'
+      ? prisma.cartItem
+      : model === 'inventoryLog'
+        ? prisma.inventoryLog
+        : catalogDelegate(model)
   const taken = await delegate.findUnique({ where: { id }, select: { id: true } })
   if (!taken) return 'unclaimed'
 
   // The AUTHORIZATION decision, SCOPED IN SQL. Never a comparison of a fetched
-  // row's `userId`, `householdId` or `locationId` against the caller's.
-  //
-  // `Cart` and `CartItem` are scoped by the cart's location (H3b task B.7,
-  // decision D7): the caller must be `participant` or higher there. A cart
-  // has no `userId` since task B.3, and `CartItem.userId` means "added by",
-  // so a row another member added to a shared cart is `'own'` too. Keep both
-  // out of `userScopedDelegate`: `satisfies` there does NOT reject a delegate
-  // whose model lacks `userId` (see the note above it), and Prisma would then
-  // throw on the unknown `where` key at run time.
-  const own = isCartModel(model)
-    ? await cartRowAtWritableLocation(ctx, model, id)
-    : isCatalogModel(model)
-        ? await catalogDelegate(model).findFirst({
-            where: { id, householdId: await requireHousehold(ctx) },
+  // row's `householdId` or `locationId` against the caller's.
+  let own: { id: string } | null
+  if (isCatalogModel(model)) {
+    own = await catalogDelegate(model).findFirst({
+      where: { id, householdId: targetHouseholdId },
+      select: { id: true },
+    })
+  } else {
+    const writable = await writableLocationIds(ctx, targetHouseholdId)
+    own =
+      model === 'inventoryLog'
+        ? await prisma.inventoryLog.findFirst({
+            where: { id, locationId: { in: writable } },
             select: { id: true },
           })
-        : await userScopedDelegate(model).findFirst({
-            where: { id, userId },
+        : await prisma.cartItem.findFirst({
+            where: { id, cart: { locationId: { in: writable } } },
             select: { id: true },
           })
+  }
 
   // Same wording and code as `requireLocationRole`'s refusal above, so a
   // refusal reveals neither which model nor who owns the row.
   //
   // Note what this does NOT hide, because it cannot: a free id returns
-  // `'unclaimed'` and a stranger's id throws, so the caller can tell those two
-  // apart. An import has to be able to create new rows, so that difference is
-  // unavoidable. What protects the ids is that they are `cuid()` and cannot be
-  // guessed. `requireLocationRole` above is stricter — it refuses a missing id
-  // too — and the reason stated there does not carry over here unchanged.
+  // `'unclaimed'` and another household's id throws, so the caller can tell
+  // those two apart. An import has to be able to create new rows, so that
+  // difference cannot be avoided.
+  //
+  // What protects the ids: a row id made by the server (`cuid()`) or by local
+  // mode (`crypto.randomUUID()`) cannot be guessed. That is NOT true for two
+  // kinds of id. `Cart.id` is derived from a location id and a vendor id, so
+  // it can be worked out. And an id a hand-edited file chooses can be
+  // anything. For carts the protection is the location check that runs
+  // BEFORE the cart table is read (`cartVerdict` below). `requireLocationRole`
+  // above is stricter (it refuses a missing id too), and its stated reason
+  // does not carry over here unchanged.
   if (!own) throw forbidden()
 
   return 'own'
 }
 
 /**
- * The cart, or the cart item, with this id, when its cart is at a location
- * where the caller is `participant` or higher. `null` otherwise. One query
- * for the roles, one for the row.
+ * The locations of `householdId` where the caller is `participant` or
+ * higher: the lowest role that may write.
  */
-async function cartRowAtWritableLocation(
+function writableLocationIds(ctx: Context, householdId: string): Promise<string[]> {
+  return locationIdsWithRole(ctx, 'participant', { householdId })
+}
+
+/**
+ * The `Cart` branch of `requireOwnRowOrUnclaimed`, in the order of decision
+ * T6: id shape, then the location check, and only then the cart table.
+ * Moving the `findUnique` above the location check would let a caller with
+ * no role find out which cart ids are taken at another location.
+ */
+async function cartVerdict(
   ctx: Context,
-  model: CartModel,
   id: string,
-): Promise<{ id: string } | null> {
-  const writable = await locationIdsWithRole(ctx, 'participant')
-  return model === 'cart'
-    ? prisma.cart.findFirst({
-        where: { id, locationId: { in: writable } },
-        select: { id: true },
-      })
-    : prisma.cartItem.findFirst({
-        where: { id, cart: { locationId: { in: writable } } },
-        select: { id: true },
-      })
+  targetHouseholdId: string,
+): Promise<'own' | 'unclaimed'> {
+  if (!id.includes(':')) {
+    throw new GraphQLError('A cart id must start with its location id and a colon.', {
+      extensions: { code: 'BAD_USER_INPUT' },
+    })
+  }
+  const { locationId: prefix } = parseCartId(id)
+
+  const writable = await writableLocationIds(ctx, targetHouseholdId)
+  if (!writable.includes(prefix)) throw forbidden()
+
+  // UNSCOPED on purpose, as above. It runs only for a location the caller
+  // may write to.
+  const taken = await prisma.cart.findUnique({ where: { id }, select: { id: true } })
+  if (!taken) return 'unclaimed'
+
+  const own = await prisma.cart.findFirst({
+    where: { id, locationId: prefix },
+    select: { id: true },
+  })
+  if (!own) throw forbidden()
+  return 'own'
 }
 
 /**

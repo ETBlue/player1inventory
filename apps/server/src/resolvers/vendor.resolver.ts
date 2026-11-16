@@ -74,7 +74,7 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     // `where: { id }` alone — docs/global/bugs/2026-11-04-bug-unscoped-catalog-writes.md.
     updateVendor: async (_, { id, name }, ctx) => {
       const householdId = await requireCatalogRole(ctx, 'manager')
-      if ((await requireOwnRowOrUnclaimed(ctx, 'vendor', id)) === 'unclaimed') {
+      if ((await requireOwnRowOrUnclaimed(ctx, 'vendor', id, householdId)) === 'unclaimed') {
         throw new GraphQLError('Vendor not found', { extensions: { code: 'NOT_FOUND' } })
       }
       const data: Record<string, unknown> = {}
@@ -95,7 +95,7 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // nothing — not even the caller's own carts that name this vendor id —
       // and its FORBIDDEN must reach the client rather than become `false`.
       // A missing vendor returns false, as it did before.
-      if ((await requireOwnRowOrUnclaimed(ctx, 'vendor', id)) === 'unclaimed') return false
+      if ((await requireOwnRowOrUnclaimed(ctx, 'vendor', id, householdId)) === 'unclaimed') return false
       // ItemVendor rows cascade automatically (onDelete: Cascade on ItemVendor.vendor)
       let cartsDeletedAt: ChangedLocation[] = []
       let vendorDeleted = false

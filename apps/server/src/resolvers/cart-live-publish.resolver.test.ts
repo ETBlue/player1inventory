@@ -502,7 +502,9 @@ describe('the cart imports publish one CART per location touched', () => {
           { id: `${LOC_HOME}:ven_b` },
           { id: `${LOC_GARAGE}:ven_a` },
           // Already there: skipped, so it adds no location of its own.
-          { id: SECOND_CART },
+          // (This was SECOND_CART until households H4 task E.1. A cart of
+          // another household is now refused: see the test below.)
+          { id: GARAGE_CART },
         ],
       },
       ALICE,
@@ -515,12 +517,28 @@ describe('the cart imports publish one CART per location touched', () => {
   it('bulkUpsertShoppingCarts over two locations', async () => {
     const res = await run(
       BULK_UPSERT_CARTS,
-      { carts: [{ id: HOME_CART }, { id: HOME_VENDOR_CART }, { id: SECOND_CART }] },
+      { carts: [{ id: HOME_CART }, { id: HOME_VENDOR_CART }, { id: GARAGE_CART }] },
       ALICE,
     )
 
     expect(res.errors).toBeUndefined()
-    expect(eventsByLocation()).toEqual([cart(LOC_HOME, 'hh_home'), cart(LOC_SECOND, 'hh_second')])
+    expect(eventsByLocation()).toEqual([cart(LOC_GARAGE, 'hh_home'), cart(LOC_HOME, 'hh_home')])
+  })
+
+  it("a cart import naming a cart of the caller's other household is refused and publishes nothing", async () => {
+    // ALICE is a participant at LOC_SECOND, in hh_second, but the import
+    // writes into hh_home (`requireHousehold`). Since households H4 task E.1
+    // `requireOwnRowOrUnclaimed` checks the cart id's location against the
+    // TARGET household, so the whole batch is refused. HOME_CART is in the
+    // batch too, so "refused as a whole" differs from "refused row by row".
+    const res = await run(
+      BULK_UPSERT_CARTS,
+      { carts: [{ id: HOME_CART }, { id: SECOND_CART }] },
+      ALICE,
+    )
+
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(events()).toEqual([])
   })
 
   it('bulkCreateCartItems over two locations', async () => {
