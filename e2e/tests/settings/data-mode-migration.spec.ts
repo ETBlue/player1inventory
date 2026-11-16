@@ -346,12 +346,12 @@ test('user can switch from offline to cloud mode and clear & import their local 
   //
   // The default's expected name is the DESTINATION's, not the fixture's.
   // `clearAllData` deletes every `Location` row and creates a fresh "Home" in
-  // the same transaction (households H3a task 3.10). `fetchCloudDefaultLocationId`
-  // then reads the list and takes its FIRST location, that new "Home". The
-  // remap puts the payload's default row onto that id, and
-  // `bulkCreateLocations` skips a row whose id is already taken. So the
-  // backup's "Fixture Home" does not survive in cloud mode, which is PR 4b task
-  // 4's choice rather than a defect — see `helpers/backupAssertions.ts`.
+  // the same transaction (households H3a task 3.10). On `clear` the local
+  // default row (`'local'`) is put on that new "Home" with no question
+  // (households H4 decision O2), so it is not sent as a new location, and the
+  // backup's "Fixture Home" name does not survive in cloud mode. Since that
+  // "Home" now holds the default's rows, the empty-Home delete of decision 6
+  // leaves it alone.
   await expectFixtureStockPerLocation(
     page,
     request,
@@ -359,4 +359,116 @@ test('user can switch from offline to cloud mode and clear & import their local 
     ITEM_ID,
     destinationDefaultLocationName(baseURL),
   )
+})
+
+// THE OTHER DIRECTION: CLOUD → LOCAL (households H4 task E.5, decision T18).
+//
+// Settings → "Switch..." (cloud mode) → "Copy" → "Append" copies the cloud
+// household into local IndexedDB and reloads in local mode
+// (`DataModeCard.doSwitch`). The cloud ACTIVE location becomes local "My Home"
+// (id `'local'`), and every other cloud location keeps its own id. Before E.5
+// the cloud location FIRST by `order` went there, whichever one the user was
+// on.
+//
+// THE FIXTURE MUST MAKE THE TWO RULES DISAGREE. "Home" is first by order and
+// "Garage" is the active location. With the user on Home, "the active one" and
+// "the first one" would be the same location, and the test could not fail.
+// The two stock rows carry different quantities for the same reason.
+//
+// UNTIL TASK E.6 NO SPEC COULD DRIVE THIS. `DataModeCard` left its whole cloud
+// section out in E2E mode, because its Sign Out flow calls `useClerk()` and the
+// E2E build has no `ClerkProvider`. E.6 moved `useClerk()` into a wrapper, so
+// the E2E build now renders the Switch button and its copy flow, without Sign
+// Out. A production change made for a test, like `PostLoginMigrationDialog`'s
+// (e2e/CLAUDE.md).
+test('user switching from cloud to offline with a copy gets their current location as My Home', async ({
+  page,
+  request,
+}) => {
+  const gql = makeGql(request)
+
+  // Given a cloud household with "Home" (first by order) and "Garage", and one
+  // item with 2 packed at Home and 7 at Garage
+  const { locations } = await gql<{ locations: { id: string }[] }>(
+    `query { locations { id } }`,
+  )
+  const homeId = locations[0]?.id
+  if (!homeId) throw new Error('no location after first sign-in')
+  const { createLocation: garage } = await gql<{
+    createLocation: { id: string }
+  }>(`mutation ($name: String!) { createLocation(name: $name) { id } }`, {
+    name: 'Garage',
+  })
+  const { createItem: item } = await gql<{ createItem: { id: string } }>(
+    `mutation ($input: CreateItemInput!) { createItem(input: $input) { id } }`,
+    { input: { name: 'Copied Flour' } },
+  )
+  for (const [locationId, packedQuantity] of [
+    [homeId, 2],
+    [garage.id, 7],
+  ] as const) {
+    await gql(
+      `mutation ($itemId: ID!, $locationId: ID!, $input: ItemStockInput!) {
+        upsertItemStock(itemId: $itemId, locationId: $locationId, input: $input) { id }
+      }`,
+      {
+        itemId: item.id,
+        locationId,
+        input: { packedQuantity, unpackedQuantity: 0, targetQuantity: 10 },
+      },
+    )
+  }
+
+  // And the user is on Garage
+  await page.goto('/')
+  const switcher = page
+    .getByRole('navigation', { name: 'Sidebar navigation' })
+    .getByRole('button', { name: /switch location/i })
+  await switcher.click()
+  await page.getByRole('menuitem', { name: 'Garage' }).click()
+  await expect(switcher).toContainText('Garage')
+
+  // When they switch to offline mode and copy their cloud data
+  await new SettingsPage(page).openUserSidebar()
+  await page.getByRole('button', { name: 'Switch...' }).click()
+  const dialog = page.getByRole('alertdialog')
+  await expect(
+    dialog.getByText('Copy your cloud data to local storage?'),
+  ).toBeVisible()
+  await dialog.getByRole('button', { name: 'Copy', exact: true }).click()
+  await dialog.getByRole('button', { name: /Append — keep both/ }).click()
+
+  // Then the app reloads in local mode with both stock rows copied. Read with
+  // a poll: the page reloads under the reads, and a read during the reload
+  // throws.
+  const stockByLocation = async () => {
+    try {
+      const mode = await page.evaluate(() => localStorage.getItem('data-mode'))
+      if (mode !== 'local') return null
+      const rows = (await readRows(page, 'itemStocks')) as unknown as {
+        itemId: string
+        locationId: string
+        packedQuantity: number
+      }[]
+      return Object.fromEntries(
+        rows
+          .filter((row) => row.itemId === item.id)
+          .map((row) => [row.locationId, row.packedQuantity]),
+      )
+    } catch {
+      return null
+    }
+  }
+  // Garage's 7 is at local "My Home"; Home's 2 kept Home's cloud id
+  await expect
+    .poll(stockByLocation, { timeout: 30000 })
+    .toEqual({ local: 7, [homeId]: 2 })
+
+  // And no local location has Garage's cloud id: Garage BECAME "My Home"
+  const localLocationIds = (
+    (await readRows(page, 'locations')) as unknown as { id: string }[]
+  )
+    .map((row) => row.id)
+    .sort()
+  expect(localLocationIds).toEqual(['local', homeId].sort())
 })
