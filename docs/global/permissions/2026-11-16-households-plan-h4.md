@@ -287,35 +287,56 @@ all-or-nothing).
    prefix lookup for carts → the cart-prefix test goes red; ask `manager` when `forClear` is
    true → the clear test goes red.
 
-**As built (2026-11-16).**
+**As built (2026-11-16, with the review fixes the same day).**
 
 - Server: `apps/server/src/resolvers/importCheck.resolver.ts` (wired in `resolvers/index.ts`),
   the schema in `apps/server/src/schema/import.graphql`, tests in
-  `import-check.resolver.test.ts` (31 tests). Web: the `ImportCheck` document in
+  `import-check.resolver.test.ts` (44 tests). Web: the `ImportCheck` document in
   `apps/web/src/apollo/operations/import.graphql`, and `checkImportIds`,
-  `IMPORT_CHECK_CHUNK_SIZE` and `ImportIdCheck` in `apps/web/src/lib/importData.ts` (5 tests in
-  `importData.test.ts`). `checkImportIds` is not called by the import flow; E.4 wires it.
-- **Catalog ids: two reads, not one.** An unscoped `findMany({ id: { in } })` says which ids are
-  taken, a second one with `householdId: target` says which of them are in the target. More
-  taken than own means another household. The comparison is in SQL; see *What this plan got
-  wrong*.
-- **Locations: one set, the "touched" locations.** It holds the `locations` list, the prefix of
-  every cart id (a bare id is `BAD_USER_INPUT`), and the STORED location of every taken log,
-  stock row, cart and cart item (the cart item through its cart). A touched location that exists
-  and is not in the target household makes `anotherHousehold` true. One in the target where
-  `locationIdsWithRole(ctx, 'participant', { householdId: target })` does not include it is
-  blocked. A location id no row holds is neither: the import creates it.
-- **`forClear: true` gives `blockedLocationIds: []`.** `clearAllData` deletes every location of
-  the household before the first write, and the import then creates them again with the caller
-  as organizer. `anotherHousehold` is still checked.
-- **The web sends more location ids than the file's location rows.** `checkImportIds` adds the
-  `locationId` of every stock row and log, because `bulk*ItemStocks` and `bulk*InventoryLogs`
-  refuse a location of another household even when the file has no row for it. A cart item's
-  `cartId` is NOT sent: the cart item mutations skip such a row, they do not refuse it.
+  `IMPORT_CHECK_CHUNK_SIZE`, `ImportIdCheck` and `ImportCheckRowIds` in
+  `apps/web/src/lib/importData.ts` (6 tests in `importData.test.ts`). `checkImportIds` is not
+  called by the import flow; E.4 wires it.
+- **The answer is bigger than T1 says.** A review of the first version found three files that
+  `importCheck` called fine while a later bulk mutation refused them, after earlier batches were
+  written. So the answer is:
+
+  | Field | What it holds | What E.4 does with it |
+  |---|---|---|
+  | `anotherHousehold` | a catalog id, an `itemRefs` id, or a named or stored location is another household's | write nothing |
+  | `blockedLocationIds` | locations the file NAMES (rows, references, cart ids) in the target where the caller is below `participant` | drop every row the file puts there |
+  | `missingLocationIds` | `locationRefs` no location will hold when the import writes | drop every row that points at one |
+  | `missingItemIds` | `itemRefs` no item will hold | drop those stock rows |
+  | `blockedRows { inventoryLogs itemStocks carts cartItems }` | rows of the file that already exist at a blocked location; a cart stored away from the location its id names | drop exactly those rows |
+
+- **Two new input lists, `locationRefs` and `itemRefs`.** They hold ids the file's rows POINT
+  AT but that are not rows of the file: the `locationId` of stock rows and logs, the location
+  each cart id names, and the `itemId` of stock rows. The bulk stock, log and cart mutations
+  REFUSE such a reference when it names nothing in the target (`requireLocationRole`,
+  `cartVerdict`, `requireOwnItemStockRefs`). Only the web can tell a reference from a row,
+  because a row and a reference to it may go in two different calls. `locations` holds the
+  location ROWS only; a free one is never missing, because the import creates it. The `itemId`
+  of logs and cart items, and a cart item's `cartId`, are not sent: those mutations SKIP the
+  row, they do not refuse the batch.
+- **Catalog ids and locations: two reads each** (`splitByHousehold`). An unscoped
+  `findMany({ id: { in } })` says which ids are taken, a second one with `householdId: target`
+  says which are in the target. The comparison is in SQL.
+- **Stored rows.** The stored location of a log, stock row or cart item (through its cart) the
+  file holds is checked too: in another household it sets `anotherHousehold`; in the target and
+  not writable it puts the ROW in `blockedRows`. It is not added to `blockedLocationIds`: the
+  file does not name it, and the caller may have no role there, so the web has no name to show.
+- **Carts (decision T6).** The cart table is read only for cart ids whose prefix is a writable
+  location of the target, and not at all with `forClear`. The first version read every cart id
+  before any prefix check. A test spies on `prisma.cart.findMany`, `findUnique` and `findFirst`.
+- **`forClear: true`.** `clearAllData` deletes every row and location of the target first. So
+  nothing is blocked, no row is blocked, and an `itemRefs` or `locationRefs` id of the target is
+  MISSING unless the file holds that row too. `anotherHousehold` is still checked.
+- **The role check runs before any read and before the size check.** A member's call reads no
+  catalog row, and a member who sends 1001 ids gets `FORBIDDEN`, not `BAD_USER_INPUT`. Both are
+  tested.
 - **An empty file still makes one call.** The call is also the role check, and T17 needs the
   role refusal to come from `importCheck`.
 - `stockFake`'s `itemStock` `where` now takes `id` as a string or `{ in }` (pinned in
-  `stockFake.test.ts`). It took only a string.
+  `stockFake.test.ts`).
 - `live-publish.guard.test.ts` is unchanged and green: `importCheck` is a `Query` field.
 - Root `CLAUDE.md` does not mention `importCheck` yet. E.7 step 1 adds it.
 
@@ -391,11 +412,23 @@ the API changes); `ConflictDialog.tsx` (an `allowClear` prop, + stories);
    Order of work:
    1. `checkImportIds` (E.2) on the payload as it will be sent (after `placeDefaultLocation`).
       For `clear`, the default row is left out of the check (it goes to the new "Home") and
-      `forClear: true` is passed.
+      `forClear: true` is passed. **Since the E.2 review:** leave the rows that point at the
+      default location out of the check too (stock rows, logs, and carts whose id names it).
+      Otherwise `checkImportIds` sends the default id as a `locationRefs` reference with no row,
+      and the server reports it in `missingLocationIds`.
    2. `anotherHousehold` → throw a typed error the card shows as `importErrorForbidden`.
       Nothing has been sent.
    3. Drop `blockedLocationIds` and every stock row, log, cart and cart item at them. Return
-      the dropped location names for O5.
+      the dropped location names for O5. **Added by the E.2 review:** also drop
+      - every stock row, log and cart that points at a `missingLocationIds` id (a cart through
+        its id's prefix), and every cart item in such a cart;
+      - every stock row whose `itemId` is in `missingItemIds` (dropped, not refused, the same
+        way a log or cart item with a missing item is skipped by the server);
+      - exactly the rows named in `blockedRows`, by model.
+      The O5 line names the blocked locations the file has a row for. For a missing location,
+      or a blocked row stored at a location the file does not name, there is no name: say how
+      many rows were skipped instead. Do not ask the server for those names; the caller may
+      have no role there.
    4. Then the existing flow (`clear` → `clearAllData` → `placeDefaultLocation` onto the new
       "Home" (O2) → `bulkCreate`; `skip` / `replace` as today).
 3. `ImportLocationDialog`: shown when the file has a location with id `'local'`, or has no
@@ -548,7 +581,11 @@ Filled in from the task reports and reviews.
 | E.2 | Step 6: mutation "compare a location-scoped row's household to the CALLER's household (`requireHousehold`) instead of the target → the two-household test goes red" | The target IS `requireHousehold(ctx)`: `requireCatalogRole` returns it, and nothing else can choose a household until H7. So that mutation changes nothing. It was run: **31 of 31 green**. The mutation that does test the rule is "drop `householdId: target` from the read of the touched locations": 6 red. A test cannot tell "target" from "caller's household" before H7 |
 | E.2 | Step 2: "One unscoped query per model … selecting only `id` and the scope … A row is 'another household' when its household is not the target" | That is a `row.householdId !== target` comparison at a call site, which root `CLAUDE.md` forbids. Built as two reads per catalog model (taken, then scoped by `householdId: target` in SQL), and for locations two reads on the touched set |
 | E.2 | Step 2 says nothing about `forClear` beyond the role | A location of the target is not blocked on `clear`: `clearAllData` deletes it first. Returning it as blocked would make E.4 drop rows that the clear import can write. Built: `blockedLocationIds: []` when `forClear` is true |
-| E.2 | Step 4 and T1: "the file's ids per model" | Location ids are not only in the location rows. A stock row or log at a location of another household is refused by its mutation even when the file has no row for that location. `checkImportIds` sends their `locationId` in `locations` too, and the server adds the stored location of every taken row |
+| E.2 | Step 4 and T1: "the file's ids per model" | Location ids are not only in the location rows. A stock row or log at a location of another household is refused by its mutation even when the file has no row for that location. Since the review fixes they go in their own input list, `locationRefs` (see the next rows) |
+| E.2 review | T1: the answer is `{ anotherHousehold, blockedLocationIds }` | Not enough. Three files passed `importCheck` and were then refused by a bulk mutation after earlier batches were written: (1) a location only REFERENCED (cart prefix, log or stock `locationId`) that no row holds, or that `clear` deletes; (2) a stock row's `itemId` of another household, or one no item holds; (3) a row whose id is taken at a blocked location while the file names a writable one. Added `locationRefs` / `itemRefs` inputs and `missingLocationIds`, `missingItemIds` and `blockedRows` answers. E.4 step 2.3 now drops those rows |
+| E.2 review | My first As built note: "A location id no row holds is neither: the import will create it" | True only for the file's location ROWS. A reference to a free location is refused by `cartVerdict`, `resolveLogLocations` and `requireOwnItemStockRefs` |
+| E.2 review | T6 and step 2: "Cart ids also count their PREFIX location" | My first version read the stored cart for EVERY cart id before checking its prefix, the order T6 forbids, and so told a caller whether a cart id at a location they cannot write is taken. It now reads only cart ids whose prefix is writable in the target |
+| E.2 review | Step 5: "a household `member` → `FORBIDDEN`" | That test passes even when the role check runs after the reads. The reviewer moved it and 31 of 31 stayed green. Added: a member's call reads no item row, and a member with 1001 ids gets `FORBIDDEN` |
 
 ## Status
 
