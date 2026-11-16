@@ -650,6 +650,64 @@ describe('ImportCard — the import messages (households H4 decision T17)', () =
   })
 })
 
+// Owner decision of 2026-11-17 (option B). `importCloudData` decides whether
+// the active location is empty; the card passes the active location in and
+// makes the switch it names.
+describe('ImportCard — a restore shows the backup’s first location', () => {
+  afterEach(async () => {
+    localStorage.clear()
+    householdRole.current = undefined
+    vi.mocked(importCloudData).mockClear()
+  })
+
+  it('user restoring a cloud backup is moved to the location the import names', async () => {
+    // Given cloud mode, the active location is the fresh "Home", and the
+    // import says to show "loc_kitchen"
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem(activeLocationStorageKey('cloud'), 'cloud_home')
+    householdRole.current = 'owner'
+    vi.mocked(importCloudData).mockResolvedValueOnce({
+      skipped: { locationNames: [], rowCount: 0 },
+      switchToLocationId: 'loc_kitchen',
+    })
+    const { container } = renderCard()
+
+    // When the import finishes
+    await uploadPayload(container, v15Payload())
+
+    // Then the card passed the active location in
+    await waitFor(() => expect(importCloudData).toHaveBeenCalledTimes(1))
+    expect(callArgs(vi.mocked(importCloudData).mock, 0)[3]).toMatchObject({
+      activeLocationId: 'cloud_home',
+    })
+    // And the active location is now the one the import named
+    await waitFor(() =>
+      expect(localStorage.getItem(activeLocationStorageKey('cloud'))).toBe(
+        'loc_kitchen',
+      ),
+    )
+  })
+
+  it('user whose import names no location stays where they are', async () => {
+    // Given the same, but the import names no switch
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem(activeLocationStorageKey('cloud'), 'cloud_home')
+    householdRole.current = 'owner'
+    const { container } = renderCard()
+
+    // When the import finishes
+    await uploadPayload(container, v15Payload())
+
+    // Then the active location is unchanged
+    await waitFor(() => expect(importCloudData).toHaveBeenCalledTimes(1))
+    // (the card has reached its done phase, so the switch would have run)
+    expect(await screen.findByText('Import complete.')).toBeInTheDocument()
+    expect(localStorage.getItem(activeLocationStorageKey('cloud'))).toBe(
+      'cloud_home',
+    )
+  })
+})
+
 describe('ImportCard — Import into which location? (households H4 task E.4)', () => {
   afterEach(async () => {
     localStorage.clear()

@@ -5605,6 +5605,11 @@ describe('importCloudData — the check before the first write (households H4 ta
       locations?: Array<{ id: string; name: string; order: number }>
       // A mutation, by operation name, that rejects.
       failOn?: string
+      // How many stock rows each location holds AFTER the import, read by
+      // `ItemStockIdsAtLocation` (owner decision of 2026-11-17, option B).
+      stockAt?: Record<string, number>
+      // `ItemStockIdsAtLocation` rejects.
+      stockError?: unknown
     } = {},
   ) {
     const calls: Call[] = []
@@ -5621,6 +5626,18 @@ describe('importCloudData — the check before the first write (households H4 ta
         if (op === 'ImportCheck') {
           if (options.checkError !== undefined) throw options.checkError
           return { data: { importCheck: options.answer ?? CLEAN_IMPORT_CHECK } }
+        }
+        if (op === 'ItemStockIdsAtLocation') {
+          if (options.stockError !== undefined) throw options.stockError
+          const locationId = (variables as { locationId: string }).locationId
+          const count = options.stockAt?.[locationId] ?? 0
+          return {
+            data: {
+              itemStocks: Array.from({ length: count }, (_, i) => ({
+                id: `${locationId}-stock-${i}`,
+              })),
+            },
+          }
         }
         return {
           data: {
@@ -6100,6 +6117,172 @@ describe('importCloudData — the check before the first write (households H4 ta
       skipped: { locationNames: [], rowCount: 0 },
     })
     expect(mutations(client)).toContain('DeleteLocation')
+  })
+
+  // ── Owner decision of 2026-11-17 (option B): show the restored pantry ──
+  //
+  // A `skip` or `replace` restore of a cloud backup into a new household
+  // writes the backup's locations beside the household's fresh, empty "Home".
+  // The active location stays on that "Home", so the pantry looks empty. When
+  // the active location holds no stock row after the import, the import says
+  // which location to show instead: the backup's first by `order`. Nothing is
+  // deleted.
+
+  // The same cloud backup, with its rows listed in the OPPOSITE order to their
+  // `order` field. So "the first row of the file" (Garage) and "the first
+  // location by order" (Kitchen) are different answers.
+  function cloudBackupListedOutOfOrder(): ExportPayload {
+    const file = cloudBackup()
+    file.locations = [
+      { id: 'loc_b', name: 'Garage', order: 1 },
+      { id: 'loc_a', name: 'Kitchen', order: 0 },
+    ]
+    return file
+  }
+
+  const stockReads = (client: ReturnType<typeof makeClient>) =>
+    client.calls.filter((c) => c.op === 'ItemStockIdsAtLocation')
+
+  for (const strategy of ['skip', 'replace'] as const) {
+    it(`user restoring a cloud backup with ${strategy} while on an empty Home is moved to the backup's first location`, async () => {
+      // Given the active location is the household's fresh Home, with no
+      // stock row there after the import
+      const client = makeClient({ stockAt: { cloud_home: 0 } })
+
+      // When the user restores a cloud backup
+      const result = await importCloudData(
+        cloudBackupListedOutOfOrder(),
+        strategy,
+        client as never,
+        { activeLocationId: 'cloud_home' },
+      )
+
+      // Then the import names the backup's first location BY ORDER
+      expect(result.switchToLocationId).toBe('loc_a')
+      // And the Home was read AFTER the last write, not before
+      const ops = client.calls.map((c) => c.op)
+      expect(stockReads(client).map((c) => c.variables)).toEqual([
+        { locationId: 'cloud_home' },
+      ])
+      expect(ops.lastIndexOf('ItemStockIdsAtLocation')).toBeGreaterThan(
+        Math.max(
+          ops.lastIndexOf('BulkCreateItemStocks'),
+          ops.lastIndexOf('BulkUpsertItemStocks'),
+        ),
+      )
+      // And nothing is deleted
+      expect(mutations(client)).not.toContain('DeleteLocation')
+    })
+  }
+
+  it('user restoring a cloud backup while on a location that holds stock stays there', async () => {
+    // Given the active location holds one stock row after the import
+    const client = makeClient({ stockAt: { cloud_home: 1 } })
+
+    // When the user restores a cloud backup with skip
+    const result = await importCloudData(
+      cloudBackupListedOutOfOrder(),
+      'skip',
+      client as never,
+      { activeLocationId: 'cloud_home' },
+    )
+
+    // Then the import names no location to switch to
+    expect(Object.keys(result)).not.toContain('switchToLocationId')
+    // And it did look: the answer came from the stock read
+    expect(stockReads(client)).toHaveLength(1)
+  })
+
+  it('user restoring a backup with no locations stays where they are', async () => {
+    // Given a file with `locations: []` (it still has an `itemStocks` key, so
+    // no dialog is needed), and an empty active location
+    const client = makeClient({ stockAt: { cloud_home: 0 } })
+    const file = emptyPayload({ items: [makeItem('item-1', 'Milk')] })
+
+    // When the user imports it with skip
+    const result = await importCloudData(file, 'skip', client as never, {
+      activeLocationId: 'cloud_home',
+    })
+
+    // Then there is nowhere to switch to, and nothing was read for it
+    expect(Object.keys(result)).not.toContain('switchToLocationId')
+    expect(stockReads(client)).toEqual([])
+  })
+
+  it('user restoring a backup whose first location is the active one stays there', async () => {
+    // Given the backup's first location by order IS the active location (a
+    // same-household backup), and it is empty after the import
+    const client = makeClient({ stockAt: { loc_a: 0 } })
+
+    // When the user restores it with replace
+    const result = await importCloudData(
+      cloudBackupListedOutOfOrder(),
+      'replace',
+      client as never,
+      { activeLocationId: 'loc_a' },
+    )
+
+    // Then there is no switch: it would show the same location
+    expect(Object.keys(result)).not.toContain('switchToLocationId')
+  })
+
+  it('user restoring with clear is never switched: decision 6 handles the Home', async () => {
+    // Given an active location that would count as empty
+    const client = makeClient({ stockAt: { cloud_home: 0 } })
+
+    // When the user restores a cloud backup with clear
+    const result = await importCloudData(
+      cloudBackupListedOutOfOrder(),
+      'clear',
+      client as never,
+      { activeLocationId: 'cloud_home' },
+    )
+
+    // Then the empty fresh Home is deleted as before, and no switch is named
+    // or looked up. The provider moves off a deleted location by itself.
+    expect(
+      client.calls
+        .filter((c) => c.op === 'DeleteLocation')
+        .map((c) => c.variables),
+    ).toEqual([{ id: 'cloud_home' }])
+    expect(Object.keys(result)).not.toContain('switchToLocationId')
+    expect(stockReads(client)).toEqual([])
+  })
+
+  it('user importing a local file is not switched: they picked the location in the dialog', async () => {
+    // Given a local file (it needs "Import into which location?"), the user
+    // picked the Garage, and the active Home is empty after the import
+    const client = makeClient({ stockAt: { cloud_home: 0 } })
+
+    // When the user imports it with skip
+    const result = await importCloudData(localFile(), 'skip', client as never, {
+      target: { locationId: 'cloud_garage' },
+      activeLocationId: 'cloud_home',
+    })
+
+    // Then no switch is named, and the active location is not even read
+    expect(Object.keys(result)).not.toContain('switchToLocationId')
+    expect(stockReads(client)).toEqual([])
+  })
+
+  it('user whose empty-check fails is still told the import worked, and stays put', async () => {
+    // Given the stock read of the active location fails
+    const client = makeClient({ stockError: new Error('network down') })
+
+    // When the user restores a cloud backup with skip
+    const result = importCloudData(
+      cloudBackupListedOutOfOrder(),
+      'skip',
+      client as never,
+      { activeLocationId: 'cloud_home' },
+    )
+
+    // Then the import resolves without a switch: every row is written
+    await expect(result).resolves.toEqual({
+      skipped: { locationNames: [], rowCount: 0 },
+    })
+    expect(Object.keys(await result)).not.toContain('switchToLocationId')
+    expect(stockReads(client)).toHaveLength(1)
   })
 
   it('refuses a file that needs a location when none was picked, before any call', async () => {

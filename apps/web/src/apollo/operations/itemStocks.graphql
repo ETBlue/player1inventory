@@ -110,3 +110,14 @@ mutation ApplyUnitSwitch($input: ApplyUnitSwitchInput!) {
     updatedAt
   }
 }
+
+# Is one location empty? Only the ids of its stock rows. Read once, by
+# `importCloudData` after a `skip` or `replace` import, to decide whether to
+# show the backup's first location instead of an empty active one (households
+# H4, owner decision of 2026-11-17, option B). No component watches it, so it
+# is not in `QUERIES_BY_KIND` (apollo/liveUpdates.ts).
+query ItemStockIdsAtLocation($locationId: ID!) {
+  itemStocks(locationId: $locationId) {
+    id
+  }
+}

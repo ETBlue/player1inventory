@@ -52,6 +52,8 @@ import {
   InventoryLogsDocument,
   type InventoryLogsQuery,
   type ItemInput,
+  ItemStockIdsAtLocationDocument,
+  type ItemStockIdsAtLocationQuery,
   ShoppingCartsDocument,
   type ShoppingCartsQuery,
   UpdateRecipeDocument,
@@ -761,6 +763,10 @@ export interface ImportSkipped {
 /** The answer of a finished cloud import. */
 export interface CloudImportResult {
   skipped: ImportSkipped
+  // The location the caller should make active now (owner decision of
+  // 2026-11-17, option B; see `locationToShowAfterImport`). The key is
+  // absent when the active location should stay as it is.
+  switchToLocationId?: string
 }
 
 /**
@@ -1074,6 +1080,56 @@ async function deleteHomeIfUnused(
     })
   } catch {
     // See the comment above: the import itself finished.
+  }
+}
+
+// Owner decision of 2026-11-17 (option B). A `skip` or `replace` restore of
+// a cloud backup into a new household writes the backup's locations beside
+// the household's fresh "Home" (decision T16). The active location stays on
+// that "Home", which holds nothing, so the pantry looks empty. So after a
+// FINISHED `skip` or `replace` import, return the location to show instead:
+//
+// - only when the import did not ask "Import into which location?". There the
+//   user picked where the rows go, so the import does not move them
+//   somewhere else (the caller checks this);
+// - only when the file brought at least one location (after the refused ones
+//   were left out). Its first by `order` is the answer; a tie keeps the
+//   file's order;
+// - only when that is not already the active location;
+// - only when the active location is EMPTY: it holds no `ItemStock` row,
+//   read from the server AFTER the last write. The pantry lists stock rows
+//   only, so "no stock row" is exactly "the pantry shows nothing". It is read
+//   after the import, not before, so a same-household restore that put rows
+//   back on the active location keeps it. A location with only logs or carts
+//   still shows an empty pantry, so they do not count.
+//
+// Nothing is deleted (`clear` has decision 6 for that). A failed read does
+// NOT fail the import, for the same reason as `deleteHomeIfUnused`: every row
+// is written by then. The user stays where they are, as before this decision.
+async function locationToShowAfterImport(
+  client: ApolloClient,
+  payload: ExportPayload,
+  activeLocationId: string | undefined,
+): Promise<string | undefined> {
+  if (activeLocationId === undefined) return undefined
+  const locations = (payload.locations ?? []) as Array<Record<string, unknown>>
+  const first = [...locations].sort(
+    (a, b) => Number(a.order ?? 0) - Number(b.order ?? 0),
+  )[0]
+  const firstId = stringField(first, 'id')
+  if (firstId === undefined || firstId === activeLocationId) return undefined
+  try {
+    const result = await client.query<ItemStockIdsAtLocationQuery>({
+      query: ItemStockIdsAtLocationDocument,
+      variables: { locationId: activeLocationId },
+      fetchPolicy: 'no-cache',
+    })
+    const stocks = result.data?.itemStocks
+    if (stocks === undefined || stocks.length > 0) return undefined
+    return firstId
+  } catch {
+    // See the comment above: the import itself finished.
+    return undefined
   }
 }
 
@@ -3270,6 +3326,17 @@ export async function checkImportIds(
  * Only `AbortError` is ignored. Any other rejection is rethrown.
  * Bug doc: `docs/global/bugs/2026-10-31-bug-cloud-copy-aborted-on-pantry.md`.
  */
+// The result, with `switchToLocationId` only when there is one: a key set to
+// `undefined` would read as "switch" to a caller that checks `in`.
+function withSwitch(
+  skipped: ImportSkipped,
+  switchToLocationId: string | undefined,
+): CloudImportResult {
+  return switchToLocationId === undefined
+    ? { skipped }
+    : { skipped, switchToLocationId }
+}
+
 async function resetStoreAfterImport(client: ApolloClient): Promise<void> {
   try {
     await client.resetStore()
@@ -3292,6 +3359,10 @@ export async function importCloudData(
     // `clear`; ignored otherwise. A retry passes the session instead, which
     // holds it.
     target?: ImportTarget
+    // The cloud active location when the import starts. With it, a `skip` or
+    // `replace` import may return `switchToLocationId` (owner decision of
+    // 2026-11-17, `locationToShowAfterImport`). Without it, never.
+    activeLocationId?: string
   },
 ): Promise<CloudImportResult> {
   const onProgress = options?.onProgress ?? (() => undefined)
@@ -3403,6 +3474,13 @@ export async function importCloudData(
     // ── 4. Leave out the rows the check refused (step 2.3) ──
     const { payload, skipped } = withoutRefusedRows(placedFinal, check)
 
+    // Run after the last write of `skip` or `replace`. A file that asked
+    // "Import into which location?" never switches: the user chose there.
+    const showAfter = () =>
+      needsTarget
+        ? Promise.resolve(undefined)
+        : locationToShowAfterImport(client, payload, options?.activeLocationId)
+
     // `skip` and `replace` delete nothing.
     const existing = await fetchCloudExistingData(client)
     const conflicts = detectConflicts(payload, existing)
@@ -3492,8 +3570,9 @@ export async function importCloudData(
         })
       }
 
+      const switchTo = await showAfter()
       await resetStoreAfterImport(client)
-      return { skipped }
+      return withSwitch(skipped, switchTo)
     }
 
     // strategy === 'replace'
@@ -3521,8 +3600,9 @@ export async function importCloudData(
       startCompleted: afterCreate,
       totalBatches,
     })
+    const switchTo = await showAfter()
     await resetStoreAfterImport(client)
-    return { skipped }
+    return withSwitch(skipped, switchTo)
   } catch (err) {
     const error = err instanceof Error ? err : new Error(String(err))
     ;(error as Error & { session: ImportSession }).session = session

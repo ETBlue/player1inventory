@@ -111,7 +111,12 @@ export function ImportCard() {
   // Where a restored backup's stock lands on the way DOWN (local branch of
   // `runImport`). The cloud branch needs a local-format id instead — see
   // `handleCloudImport`.
-  const { activeLocationId } = useActiveLocation()
+  //
+  // In cloud mode the same hook gives the CLOUD active location. The cloud
+  // import reads it to decide whether to show the backup's first location
+  // after a `skip` or `replace` restore (owner decision of 2026-11-17,
+  // option B), and `setActiveLocationId` makes that switch.
+  const { activeLocationId, setActiveLocationId } = useActiveLocation()
   // The caller's household role, cloud only (households H4 task E.4). Only an
   // owner or a manager may import (decision O1); only the owner may `clear`
   // (decision O7 and the design's Decision 27). `undefined` while it loads,
@@ -241,8 +246,15 @@ export function ImportCard() {
           )
         },
         session,
+        activeLocationId,
       })
       await client.resetStore()
+      // After `resetStore`, so the refetched location list already holds the
+      // new location. Otherwise the provider would treat the id as stale and
+      // move to the first location of the old list.
+      if (result.switchToLocationId !== undefined) {
+        setActiveLocationId(result.switchToLocationId)
+      }
       setSkipped(result.skipped)
       setImportStatus({ phase: 'done' })
       setTimeout(() => setImportStatus({ phase: 'idle' }), 2000)
