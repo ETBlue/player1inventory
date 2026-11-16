@@ -206,6 +206,41 @@ call the helper; the fakes if a new `where` shape needs them (`ownedRowFake` `co
 7. Gate. No behaviour change is visible to a one-household user, so every existing test must
    stay green. Report any that did not.
 
+**As built (2026-11-16).**
+
+- `requireOwnRowOrUnclaimed` takes `targetHouseholdId`. The six tag / vendor call sites pass
+  the id `requireCatalogRole` returned. The import helper `requireOwnRowIdsOrUnclaimed` takes it
+  as a fourth argument too. The 14 catalog and log call sites pass the `householdId` they
+  already read from `requireHousehold(ctx)`; the 4 cart and cart item call sites pass
+  `await requireHousehold(ctx)` inline. Task E.3 replaces both with `requireCatalogRole`.
+- The `Cart` branch is its own function, `cartVerdict`, so the order of T6 is in one place.
+  The helper's other branches share `writableLocationIds(ctx, target)`.
+- `UserScopedDelegate`, `UserScopedModel`, `isCartModel` and `userScopedDelegate` are deleted:
+  no model is scoped by `userId` any more.
+- The `cuid` paragraph and the "belong to no location" wording are corrected in `lib/authz.ts`,
+  in `import.resolver.ts` (the helper's comment) and in root `CLAUDE.md`. Root `CLAUDE.md` also
+  lists `requireLocationInHousehold` and the new signatures.
+- **Existing tests that did not stay green: 20, in 4 files.** Step 7's "every existing test must
+  stay green" was wrong; see *What this plan got wrong*. What was changed:
+  - `import-ownership-log.resolver.test.ts` (6 red): its `ownedRowFake` store for
+    `InventoryLog` now accepts `locationId` in a `where` (`columns`). No assertion changed.
+  - `import-ownership-cart.resolver.test.ts` (4 red): `CART_THEIRS` was the bare id
+    `no-vendor`. It is now `loc_garage:vendor_theirs` stored at the stranger's location, so the
+    location guard still passes it and only the cart-id guard refuses it. One test added: a bare
+    id behind an allowed cart is `BAD_USER_INPUT` and nothing is written.
+  - `import-cart-location.resolver.test.ts` (8 red, 19 → 16 tests): 7 tests asserted that a
+    bare cart id, an id naming a deleted location, or `":vendor"` falls back to the first
+    location. They now assert the refusal and that nothing is written. The "does not move an
+    existing cart" test now seeds a cart stored away from its id's location and asserts the
+    re-import is refused and the row is unchanged.
+  - `cart-live-publish.resolver.test.ts` (2 red): the two cart import tests imported a cart of
+    ALICE's second household in a batch with her first household's carts. They now use her first
+    household only, and one test is added: that batch is refused and publishes nothing.
+- One more test than step 5 lists: `locationIdsWithRole(…, { householdId })` still drops a role
+  in a household the caller is not a member of (decision H18). Without it, writing
+  `{ location: { householdId } }` instead of `{ location: { ...counted.location, householdId } }`
+  passed every test.
+
 ## Task E.2 — the `importCheck` query, end to end
 
 **Files:** `apps/server/src/schema/import.graphql`; `import.resolver.ts` (a new `Query` part)
@@ -475,6 +510,9 @@ Filled in from the task reports and reviews.
 
 | Task | The plan said | What was true |
 |---|---|---|
+| E.1 | Step 7: "No behaviour change is visible to a one-household user, so every existing test must stay green." | T6 is a behaviour change for one household too. A bare cart id (`no-vendor`), an id naming a deleted location, and `":vendor"` were sent to `fallbackImportLocation` and written. Since E.1 the cart-id guard refuses them, so the batch fails. 20 server tests went red in 4 files and were changed (see *As built*). This is the T10 / T11 behaviour, which the plan puts in E.3; for carts it arrives in E.1. `e2e/tests/cart-id-cross-user-leak.spec.ts` test 1 imports the bare id `no-vendor` and will now get `BAD_USER_INPUT`; E.6 must change it. The web is not affected for a legacy file: `upgradeLegacyPayloadForCloud` gives its carts a location prefix before they are sent |
+| E.1 | Step 3: "Update `requireOwnRowIdsOrUnclaimed`", and T4: the call sites "pass the id `requireCatalogRole` returned" | No import mutation calls `requireCatalogRole` before E.3. The 4 cart and cart item import mutations read no household at all. They now pass `await requireHousehold(ctx)` inline; E.3 replaces it |
+| E.1 | *Facts*: `cart-live-publish.resolver.test.ts` is not named | That file already has one user (ALICE) in two households, and its two cart import tests imported both households' carts in one batch. They encoded the behaviour #381 calls a bug |
 
 ## Status
 
