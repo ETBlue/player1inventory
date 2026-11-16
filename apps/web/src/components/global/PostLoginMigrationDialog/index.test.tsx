@@ -9,7 +9,7 @@ import {
   ActiveLocationProvider,
   activeLocationStorageKey,
 } from '@/hooks/useActiveLocation'
-import { importCloudData } from '@/lib/importData'
+import { ImportRefusedError, importCloudData } from '@/lib/importData'
 import { callArgs } from '@/test/narrow'
 import type { Item } from '@/types'
 import { PostLoginMigrationDialog } from '.'
@@ -113,6 +113,14 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   }
 })
 
+// The locations "Import into which location?" offers (households H4 task E.4).
+vi.mock('@/hooks/useImportTargetLocations', () => ({
+  useImportTargetLocations: (enabled: boolean) => ({
+    data: enabled ? [{ id: 'cloud_home', name: 'Home' }] : undefined,
+    isError: false,
+  }),
+}))
+
 function renderDialog() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -156,6 +164,12 @@ function forbiddenError() {
 // and the dialog read the LOCAL locations table to build it. The copy keeps
 // every location now, so the warning stopped being true and the component was
 // deleted. These 3 its pin what is left.
+//
+// Since households H4 task E.4 the copy asks ONE question after the Import
+// press: "Import into which location?" (decision O3), because the local
+// default location `'local'` is the one id the copy does not keep. The mocked
+// `fetchLocalPayload` resolves to `{}`, a file with no locations, which asks
+// the same question.
 describe('PostLoginMigrationDialog — signing in copies the local pantry', () => {
   beforeEach(async () => {
     localStorage.removeItem('migration-prompted')
@@ -187,12 +201,23 @@ describe('PostLoginMigrationDialog — signing in copies the local pantry', () =
     // When the user accepts the import prompt
     await user.click(await screen.findByRole('button', { name: 'Import' }))
 
-    // Then the copy runs on that one press — no second confirmation, and the
-    // call names no location, so every location travels
+    // Then the copy asks where, with Home checked, and has not run yet
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Import into which location?',
+      }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Home' })).toBeChecked()
+    expect(importCloudData).not.toHaveBeenCalled()
+
+    // When the user confirms
+    await user.click(screen.getByRole('button', { name: 'Import' }))
+
+    // Then the copy runs into Home. Every other location keeps its id.
     await waitFor(() => expect(importCloudData).toHaveBeenCalled())
     const call = callArgs(vi.mocked(importCloudData).mock, 0)
     expect(call[1]).toBe('skip')
-    expect(call[3]).toBeUndefined()
+    expect(call[3]).toEqual({ target: { locationId: 'cloud_home' } })
   })
 
   it('user with a single location has their pantry copied', async () => {
@@ -201,8 +226,10 @@ describe('PostLoginMigrationDialog — signing in copies the local pantry', () =
     const user = userEvent.setup()
     renderDialog()
 
-    // When the user accepts the import prompt
+    // When the user accepts the import prompt and the location question
     await user.click(await screen.findByRole('button', { name: 'Import' }))
+    await screen.findByRole('heading', { name: 'Import into which location?' })
+    await user.click(screen.getByRole('button', { name: 'Import' }))
 
     // Then the copy runs
     await waitFor(() => expect(importCloudData).toHaveBeenCalled())
@@ -211,7 +238,9 @@ describe('PostLoginMigrationDialog — signing in copies the local pantry', () =
   // NEGATIVE CONTROL, named as one. Deleting a component cannot make its
   // heading appear, so this assertion passes trivially now. It is here to
   // catch a re-introduced confirmation step, not as evidence of anything.
-  it('user is not asked a second question before the copy', async () => {
+  // (Since households H4 task E.4 the one question is "Import into which
+  // location?"; this test checks no OTHER question comes before the copy.)
+  it('user is asked only where, not a second question, before the copy', async () => {
     // Given a multi-location local pantry in cloud mode, where the cloud
     // account holds a DIFFERENT single location — the old warning read one
     // list or the other, so the two stores are seeded to disagree
@@ -226,8 +255,10 @@ describe('PostLoginMigrationDialog — signing in copies the local pantry', () =
     const user = userEvent.setup()
     renderDialog()
 
-    // When the user accepts the import prompt
+    // When the user accepts the import prompt and the location question
     await user.click(await screen.findByRole('button', { name: 'Import' }))
+    await screen.findByRole('heading', { name: 'Import into which location?' })
+    await user.click(screen.getByRole('button', { name: 'Import' }))
 
     // Then no further dialog appears and the copy has already run
     await waitFor(() => expect(importCloudData).toHaveBeenCalled())
@@ -285,7 +316,7 @@ describe('PostLoginMigrationDialog — signing in copies the local pantry', () =
     // copy had worked or sitting on 'Copying…' for ever
     expect(
       await screen.findByText(
-        /belong to another cloud account, so the copy was refused/,
+        /belong to another household, so the copy was refused/,
       ),
     ).toBeInTheDocument()
 
@@ -295,6 +326,38 @@ describe('PostLoginMigrationDialog — signing in copies the local pantry', () =
     // And the progress dialog it replaced is gone, so two are never up at once
     expect(
       screen.queryByText('Copying local data to cloud…'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('user who is not an owner or manager of the household is told so', async () => {
+    // Given a stored `clear` copy that the import check refuses for the role
+    const now = new Date()
+    vi.mocked(getLocations).mockResolvedValue([
+      {
+        id: 'local',
+        name: 'My Home',
+        order: 0,
+        isDefault: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ])
+    localStorage.setItem('migration-strategy', 'clear')
+    vi.mocked(importCloudData).mockRejectedValueOnce(
+      new ImportRefusedError('role'),
+    )
+
+    // When the copy runs by itself after sign-in
+    renderDialog()
+
+    // Then the role sentence is shown, not the household one
+    expect(
+      await screen.findByText(
+        /Only the owner or a manager of your household can copy data into it/,
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(/belong to another household/),
     ).not.toBeInTheDocument()
   })
 })

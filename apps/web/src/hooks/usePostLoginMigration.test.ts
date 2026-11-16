@@ -126,9 +126,19 @@ function forbiddenError() {
   })
 }
 
+// What a cloud import that skipped nothing resolves to.
+const NOTHING_SKIPPED = { skipped: { locationNames: [], rowCount: 0 } }
+
+// A payload that needs NO "Import into which location?" answer: it has a
+// `locations` and an `itemStocks` key, and no `'local'` row. Most tests below
+// are about the error states and the one-shot, not the dialog, so they use it.
+// Real local data always has `'local'`; `localPayload` below is that shape,
+// and the dialog tests use it (households H4 task E.4).
 const emptyPayload = {
   version: 1 as const,
   exportedAt: new Date().toISOString(),
+  locations: [],
+  itemStocks: [],
   items: [],
   tags: [],
   tagTypes: [],
@@ -230,6 +240,7 @@ describe('usePostLoginMigration — auto-import path', () => {
     })
     expect(result.current.error).toEqual({
       forbidden: false,
+      role: false,
       message: 'resetStore failed: GraphQL error',
     })
   })
@@ -240,7 +251,7 @@ describe('usePostLoginMigration — auto-import path', () => {
 
     // And: both fetchLocalPayload and importCloudData resolve successfully
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
-    mockImportCloudData.mockResolvedValue(undefined)
+    mockImportCloudData.mockResolvedValue(NOTHING_SKIPPED)
 
     // When: the hook mounts
     const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
@@ -323,7 +334,7 @@ describe('usePostLoginMigration — the auth argument gates everything', () => {
     vi.mocked(getAllItems).mockResolvedValue([])
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
-    mockImportCloudData.mockResolvedValue(undefined)
+    mockImportCloudData.mockResolvedValue(NOTHING_SKIPPED)
 
     // When the hook mounts with that session
     const { result } = renderHook(
@@ -343,7 +354,7 @@ describe('usePostLoginMigration — the auth argument gates everything', () => {
     vi.mocked(getAllItems).mockResolvedValue([])
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
-    mockImportCloudData.mockResolvedValue(undefined)
+    mockImportCloudData.mockResolvedValue(NOTHING_SKIPPED)
 
     // When the hook mounts
     const { result } = renderHook(
@@ -378,7 +389,7 @@ describe('usePostLoginMigration — the copy names no location', () => {
     localStorage.setItem(activeLocationStorageKey('local'), 'office')
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
-    mockImportCloudData.mockResolvedValue(undefined)
+    mockImportCloudData.mockResolvedValue(NOTHING_SKIPPED)
 
     // When the hook mounts and runs the auto-import
     const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
@@ -401,7 +412,7 @@ describe('usePostLoginMigration — the copy names no location', () => {
     localStorage.setItem(activeLocationStorageKey('cloud'), CLOUD_OFFICE_ID)
     localStorage.setItem(activeLocationStorageKey('local'), 'office')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
-    mockImportCloudData.mockResolvedValue(undefined)
+    mockImportCloudData.mockResolvedValue(NOTHING_SKIPPED)
 
     const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
       wrapper,
@@ -434,7 +445,7 @@ describe('usePostLoginMigration — the auto-import waits for the location list'
     localStorage.setItem('data-mode', 'cloud')
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
-    mockImportCloudData.mockResolvedValue(undefined)
+    mockImportCloudData.mockResolvedValue(NOTHING_SKIPPED)
 
     // When the hook mounts
     const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
@@ -459,7 +470,7 @@ describe('usePostLoginMigration — the auto-import waits for the location list'
     localStorage.setItem('data-mode', 'cloud')
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
-    mockImportCloudData.mockResolvedValue(undefined)
+    mockImportCloudData.mockResolvedValue(NOTHING_SKIPPED)
     const { result, rerender } = renderHook(
       () => usePostLoginMigration(SIGNED_IN),
       {
@@ -643,5 +654,154 @@ describe('usePostLoginMigration — a failed copy stays failed', () => {
     // Then the state is still 'error', with its message
     expect(result.current.state).toBe('error')
     expect(result.current.error?.message).toBe('The operation was aborted.')
+  })
+})
+
+// ─── "Import into which location?" before the copy (households H4 task E.4) ──
+//
+// Local data always has its default location `'local'`. Decision O3: the copy
+// always asks where it goes, even with one cloud location. Decision O2: not
+// for `clear`.
+describe('usePostLoginMigration — the copy asks where the local default goes', () => {
+  const localPayload = {
+    ...emptyPayload,
+    locations: [
+      {
+        id: 'local',
+        name: 'My Home',
+        order: 0,
+        isDefault: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ],
+  }
+
+  function seed() {
+    vi.mocked(getAllItems).mockResolvedValue([
+      { id: 'item-1', name: 'Milk' },
+    ] as unknown as Awaited<ReturnType<typeof getAllItems>>)
+    mockCloudLocations([{ id: CLOUD_HOME_ID, name: 'Home', order: 0 }])
+    localStorage.setItem('data-mode', 'cloud')
+    mockFetchLocalPayload.mockResolvedValue(localPayload)
+    mockImportCloudData.mockResolvedValue({
+      skipped: { locationNames: [], rowCount: 0 },
+    })
+  }
+
+  it('user pressing Import is asked where before anything is copied, and the answer is used', async () => {
+    // Given a prompted user with local data
+    seed()
+    const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
+      wrapper,
+    })
+    await waitFor(() => expect(result.current.state).toBe('prompting'))
+
+    // When the user presses Import
+    await act(async () => {
+      await result.current.importData('append')
+    })
+
+    // Then the dialog is open, with the local data waiting, and nothing copied
+    expect(result.current.state).toBe('choosing-location')
+    expect(result.current.pendingPayload).toBe(localPayload)
+    expect(mockImportCloudData).not.toHaveBeenCalled()
+
+    // When the user picks Home
+    await act(async () => {
+      await result.current.chooseLocation({ locationId: CLOUD_HOME_ID })
+    })
+
+    // Then the copy ran into Home, and is done
+    expect(result.current.state).toBe('done')
+    const call = elementAt(mockImportCloudData.mock.calls)
+    expect(call[1]).toBe('skip')
+    expect(call[3]).toEqual({ target: { locationId: CLOUD_HOME_ID } })
+    expect(localStorage.getItem(MIGRATION_PROMPTED_KEY)).toBe('1')
+  })
+
+  it('user switching to cloud with a stored strategy is asked where too', async () => {
+    // Given a stored `replace` strategy
+    seed()
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'replace')
+
+    // When the hook mounts
+    const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
+      wrapper,
+    })
+
+    // Then it waits for the answer, and has copied nothing
+    await waitFor(() => expect(result.current.state).toBe('choosing-location'))
+    expect(mockImportCloudData).not.toHaveBeenCalled()
+
+    // When the user picks a new location
+    await act(async () => {
+      await result.current.chooseLocation({ newLocationName: 'My Home' })
+    })
+
+    // Then the copy ran with the stored strategy and that answer
+    const call = elementAt(mockImportCloudData.mock.calls)
+    expect(call[1]).toBe('replace')
+    expect(call[3]).toEqual({ target: { newLocationName: 'My Home' } })
+    expect(localStorage.getItem(MIGRATION_STRATEGY_KEY)).toBeNull()
+  })
+
+  it('user switching to cloud with clear is not asked (decision O2)', async () => {
+    // Given a stored `clear` strategy
+    seed()
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
+
+    // When the hook mounts
+    const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
+      wrapper,
+    })
+
+    // Then the copy runs at once, with no target
+    await waitFor(() => expect(result.current.state).toBe('done'))
+    const call = elementAt(mockImportCloudData.mock.calls)
+    expect(call[1]).toBe('clear')
+    expect(call[3]).toBeUndefined()
+  })
+
+  it('user cancelling the question is asked again whether to copy, and nothing is copied', async () => {
+    // Given a stored strategy and the question open
+    seed()
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
+    const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
+      wrapper,
+    })
+    await waitFor(() => expect(result.current.state).toBe('choosing-location'))
+
+    // When the user cancels
+    act(() => result.current.cancelLocation())
+
+    // Then the prompt is back, nothing was copied, and the stored strategy is
+    // gone so a reload does not start the copy by itself
+    expect(result.current.state).toBe('prompting')
+    expect(mockImportCloudData).not.toHaveBeenCalled()
+    expect(localStorage.getItem(MIGRATION_STRATEGY_KEY)).toBeNull()
+  })
+
+  it('user who is not an owner or manager is told so', async () => {
+    // Given the copy is refused for the household role
+    seed()
+    const { ImportRefusedError } = await import('@/lib/importData')
+    mockImportCloudData.mockRejectedValue(new ImportRefusedError('role'))
+    const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
+      wrapper,
+    })
+    await waitFor(() => expect(result.current.state).toBe('prompting'))
+
+    // When the user presses Import and picks Home
+    await act(async () => {
+      await result.current.importData('append')
+    })
+    await act(async () => {
+      await result.current.chooseLocation({ locationId: CLOUD_HOME_ID })
+    })
+
+    // Then the error is the role one
+    expect(result.current.state).toBe('error')
+    expect(result.current.error).toMatchObject({ role: true, forbidden: false })
   })
 })

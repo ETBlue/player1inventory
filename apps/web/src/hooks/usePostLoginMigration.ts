@@ -1,11 +1,13 @@
 import { useApolloClient } from '@apollo/client/react'
 import { useEffect, useRef, useState } from 'react'
 import { getAllItems } from '@/db/operations'
-import { fetchLocalPayload } from '@/lib/exportData'
+import { type ExportPayload, fetchLocalPayload } from '@/lib/exportData'
 import {
   type ImportStrategy,
+  type ImportTarget,
   importCloudData,
-  isForbiddenImportError,
+  importErrorKind,
+  needsImportLocation,
 } from '@/lib/importData'
 import { useLocations } from './useLocations'
 
@@ -18,33 +20,45 @@ export type MigrationState =
   | 'conflict'
   | 'importing'
   | 'auto-importing'
+  // "Import into which location?" is open (households H4 task E.4, decision
+  // O3). The copy waits for the user's answer.
+  | 'choosing-location'
   | 'done'
   | 'error'
 
 /**
- * Why the copy failed, in the two parts the dialog needs.
+ * Why the copy failed, in the parts the dialog needs.
  *
- * `forbidden` is the server refusing a row that belongs to another cloud
- * account. It decides WHICH sentence the user reads, and it is computed in the
- * `catch` rather than at render time, because only the thrown error carries the
- * `FORBIDDEN` extension. `message` is the raw text, interpolated by the generic
- * sentence alone — for a cross-account refusal it is the bare word `Forbidden`,
- * which tells the user nothing.
+ * `forbidden` is a refusal because a row belongs to another household.
+ * `role` is a refusal because the caller is not an owner or a manager of the
+ * household (households H4 decision T17). They decide WHICH sentence the user
+ * reads, and they are computed in the `catch` rather than at render time,
+ * because only the thrown error carries them. `message` is the raw text,
+ * interpolated by the generic sentence alone. For a refusal it is the bare
+ * word `Forbidden`, which tells the user nothing.
  */
 export type MigrationError = {
   forbidden: boolean
+  role: boolean
   message: string
 }
 
-// `isForbiddenImportError` reads `extensions.code`, not the message text. It is
-// the one detector for this refusal and `ImportCard` uses the same one — see
-// its doc comment in `lib/importData.ts`.
-function toMigrationError(err: unknown): MigrationError {
+// `importErrorKind` is the one detector for these refusals, and `ImportCard`
+// uses the same one; see its doc comment in `lib/importData.ts`.
+function toMigrationError(
+  err: unknown,
+  strategy: ImportStrategy,
+): MigrationError {
+  const kind = importErrorKind(err, strategy)
   return {
-    forbidden: isForbiddenImportError(err),
+    forbidden: kind === 'forbidden' || kind === 'forbiddenAfterClear',
+    role: kind === 'role',
     message: err instanceof Error ? err.message : String(err),
   }
 }
+
+/** A copy that waits for "Import into which location?". */
+type PendingCopy = { payload: ExportPayload; strategy: ImportStrategy }
 
 /**
  * Whether the session is signed in, as the caller sees it.
@@ -62,6 +76,7 @@ export type MigrationAuth = {
 export function usePostLoginMigration({ isLoaded, isSignedIn }: MigrationAuth) {
   const [state, setState] = useState<MigrationState>('idle')
   const [error, setError] = useState<MigrationError | null>(null)
+  const [pending, setPending] = useState<PendingCopy | null>(null)
   const apolloClient = useApolloClient()
   const { data: locations } = useLocations()
   // Hold the one-shot auto-import until this account's location list has
@@ -70,17 +85,16 @@ export function usePostLoginMigration({ isLoaded, isSignedIn }: MigrationAuth) {
   // PR 4b removed the other half of this gate. Until then the hook also picked
   // ONE local location and passed it to `importCloudData` as the single
   // location whose stock went up, because the cloud import surface was flat.
-  // The remap rule keeps every location now, so there is no id left to pick
-  // and none left to validate.
+  // Every location is kept now. Since households H4 task E.4 the one choice
+  // left, where the local default `'local'` goes, is asked in
+  // "Import into which location?" (`choosing-location` below).
   //
-  // Be careful about WHY this half survives. It is NOT what feeds the remap:
-  // `importCloudData` reads the destination's default itself, with its own
-  // `network-only` GetLocations query (`importData.ts`,
-  // `fetchCloudDefaultLocationId` → `prepareCloudPayload`), on every
-  // strategy. So the copy cannot map the payload's default onto nothing even
-  // with no gate at all. What this gate buys is ordering: the copy is one-shot
-  // and destructive on the cloud side, and `clear` deletes every Location row
-  // before the remap re-reads them, so starting it while this hook's own
+  // Be careful about WHY this half survives. It is NOT what lists the
+  // dialog's locations: `useImportTargetLocations` reads them itself, and on
+  // `clear` `importCloudData` reads the new "Home" after the clear
+  // (`fetchHomeAfterClear` in `importData.ts`). What this gate buys is
+  // ordering: the copy is one-shot and destructive on the cloud side, and
+  // `clear` deletes every Location row before that read, so starting it while this hook's own
   // GetLocations is still in flight lets a response that predates the clear
   // land in the Apollo cache after it. Waiting for one resolved list keeps the
   // session settled before the destructive write begins.
@@ -128,13 +142,24 @@ export function usePostLoginMigration({ isLoaded, isSignedIn }: MigrationAuth) {
       importStarted.current = true
       setState('auto-importing')
       fetchLocalPayload()
-        .then((payload) =>
-          importCloudData(payload, storedStrategy, apolloClient),
-        )
-        .then(() => {
-          localStorage.removeItem(MIGRATION_STRATEGY_KEY)
-          localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
-          setState('done')
+        .then((payload) => {
+          // Local data always has its default location `'local'`, so for
+          // `skip` and `replace` the copy asks where it goes first (decision
+          // O3: always, even with one location). `clear` does not ask
+          // (decision O2). The E2E specs answer the dialog in the page, the
+          // same way a person does; there is no key that skips it.
+          if (storedStrategy !== 'clear' && needsImportLocation(payload)) {
+            setPending({ payload, strategy: storedStrategy })
+            setState('choosing-location')
+            return
+          }
+          return importCloudData(payload, storedStrategy, apolloClient).then(
+            () => {
+              localStorage.removeItem(MIGRATION_STRATEGY_KEY)
+              localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
+              setState('done')
+            },
+          )
         })
         .catch((err) => {
           // The copy failed. The state is 'error', so the dialog tells the user
@@ -149,7 +174,7 @@ export function usePostLoginMigration({ isLoaded, isSignedIn }: MigrationAuth) {
           //   - MIGRATION_PROMPTED_KEY stays unset, so a refresh still offers
           //     the copy and the user can retry.
           localStorage.removeItem(MIGRATION_STRATEGY_KEY)
-          setError(toMigrationError(err))
+          setError(toMigrationError(err, storedStrategy))
           setState('error')
         })
       return
@@ -179,17 +204,59 @@ export function usePostLoginMigration({ isLoaded, isSignedIn }: MigrationAuth) {
   async function importData(conflictResolution: 'append' | 'replace') {
     importStarted.current = true
     setState('importing')
+    const strategy = conflictResolution === 'replace' ? 'replace' : 'skip'
     try {
       const payload = await fetchLocalPayload()
-      const strategy = conflictResolution === 'replace' ? 'replace' : 'skip'
+      if (needsImportLocation(payload)) {
+        setPending({ payload, strategy })
+        setState('choosing-location')
+        return
+      }
       await importCloudData(payload, strategy, apolloClient)
       localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
       setState('done')
     } catch (err) {
-      setError(toMigrationError(err))
+      setError(toMigrationError(err, strategy))
       setState('error')
     }
   }
 
-  return { state, error, dismiss, importData }
+  // The answer of "Import into which location?". Runs the copy that was
+  // waiting for it, from either path.
+  async function chooseLocation(target: ImportTarget) {
+    if (pending === null) return
+    const { payload, strategy } = pending
+    setPending(null)
+    setState('importing')
+    try {
+      await importCloudData(payload, strategy, apolloClient, { target })
+      localStorage.removeItem(MIGRATION_STRATEGY_KEY)
+      localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
+      setState('done')
+    } catch (err) {
+      localStorage.removeItem(MIGRATION_STRATEGY_KEY)
+      setError(toMigrationError(err, strategy))
+      setState('error')
+    }
+  }
+
+  // Cancel in "Import into which location?": nothing is copied, and the user
+  // is asked again whether to copy at all, with the Skip button the prompt
+  // already has. The stored strategy is removed, so a reload does not start
+  // the copy again by itself.
+  function cancelLocation() {
+    setPending(null)
+    localStorage.removeItem(MIGRATION_STRATEGY_KEY)
+    setState('prompting')
+  }
+
+  return {
+    state,
+    error,
+    dismiss,
+    importData,
+    chooseLocation,
+    cancelLocation,
+    pendingPayload: pending?.payload,
+  }
 }

@@ -12,12 +12,17 @@ import {
   checkImportIds,
   detectConflicts,
   type ExistingData,
+  fetchImportTargetLocations,
   hasConflicts,
+  ImportRefusedError,
   type ImportSession,
   importCloudData,
+  importErrorKind,
   importLocalData,
   isForbiddenImportError,
+  needsImportLocation,
   partitionPayload,
+  placeDefaultLocation,
   toCartItemInput,
   toInventoryLogInput,
   toItemInput,
@@ -29,6 +34,7 @@ import {
   toTagInput,
   toTagTypeInput,
   toVendorInput,
+  withoutRefusedRows,
 } from './importData'
 
 // --- Minimal fixture helpers ---
@@ -55,6 +61,23 @@ function rowAt<T>(rows: readonly T[], index = 0): T {
 function defined<T>(value: T | undefined, what: string): T {
   if (value === undefined) throw new Error(`expected ${what} to be defined`)
   return value
+}
+
+// What `importCheck` answers for a file with nothing to refuse. The cloud
+// import tests' clients return it for every query they do not name, so the
+// check that `importCloudData` makes before its first write passes.
+const CLEAN_IMPORT_CHECK = {
+  anotherHousehold: false,
+  blockedLocationIds: [] as string[],
+  renameBlockedLocationIds: [] as string[],
+  missingLocationIds: [] as string[],
+  missingItemIds: [] as string[],
+  blockedRows: {
+    inventoryLogs: [] as string[],
+    itemStocks: [] as string[],
+    carts: [] as string[],
+    cartItems: [] as string[],
+  },
 }
 
 // The GraphQL operation name of a document, so a test can say WHICH mutation
@@ -2176,6 +2199,7 @@ describe('importCloudData — locations and stock upload in dependency order', (
             inventoryLogs: [],
             shoppingCarts: [],
             allCartItems: [],
+            importCheck: CLEAN_IMPORT_CHECK,
             shelves: [],
           },
         })
@@ -2229,7 +2253,9 @@ describe('importCloudData — locations and stock upload in dependency order', (
       vendors: [makeVendor('vendor_1', 'Corner Shop')],
       locations: [
         {
-          id: 'loc_home',
+          // The local default location: its id is the one the new id rule
+          // moves (households H4 decision T16).
+          id: DEFAULT_LOCATION_ID,
           name: 'Home',
           order: 0,
           isDefault: true,
@@ -2255,7 +2281,7 @@ describe('importCloudData — locations and stock upload in dependency order', (
       ],
       items: [makeItem('item_1', 'Milk'), makeItem('item_2', 'Rice')],
       itemStocks: [
-        makeStock('stock_home', 'item_1', 'loc_home', 1),
+        makeStock('stock_home', 'item_1', DEFAULT_LOCATION_ID, 1),
         makeStock('stock_garage', 'item_1', 'loc_garage', 7),
         makeStock('stock_office', 'item_2', 'loc_office', 3),
       ],
@@ -2334,15 +2360,16 @@ describe('importCloudData — locations and stock upload in dependency order', (
   })
 
   it('user signing in keeps every location id except the payload default', async () => {
-    // Given a payload whose default is `loc_home` and whose other two
+    // Given a payload whose local default is `'local'` and whose other two
     // locations are `loc_garage` and `loc_office`
     const client = makeRecordingClient()
 
     // When it is uploaded to an account whose default is `cloud_default`
     await importCloudData(fullPayload(), 'clear', client as never)
 
-    // Then all three locations are uploaded in one batch: the payload default
-    // lands on the destination's default row, the other two keep their own ids
+    // Then all three locations are uploaded in one batch: the file's local
+    // default lands on the new "Home" the clear made (decision O2), the other
+    // two keep their own ids
     const uploaded = variablesOf(client, 'BulkCreateLocations')
       ?.locations as Array<{ id: string; name: string }>
     expect(uploaded.map((l) => l.id)).toEqual([
@@ -2374,7 +2401,7 @@ describe('importCloudData — locations and stock upload in dependency order', (
     }>
     expect(uploaded.map((s) => [s.id, s.locationId, s.packedQuantity])).toEqual(
       [
-        // the payload default, remapped onto the destination's default
+        // the file's local default, placed on the new "Home" after the clear
         ['stock_home', CLOUD_DEFAULT_ID, 1],
         ['stock_garage', 'loc_garage', 7],
         ['stock_office', 'loc_office', 3],
@@ -2413,13 +2440,16 @@ describe('importCloudData — locations and stock upload in dependency order', (
           inventoryLogs: [],
           shoppingCarts: [],
           allCartItems: [],
+          importCheck: CLEAN_IMPORT_CHECK,
           shelves: [],
         },
       })
     })
 
     // When the payload is imported with the replace strategy
-    await importCloudData(fullPayload(), 'replace', client as never)
+    await importCloudData(fullPayload(), 'replace', client as never, {
+      target: { locationId: CLOUD_DEFAULT_ID },
+    })
 
     // Then locations are CREATED, before the carts that name them, and stock
     // is UPSERTED on the second pass so the payload's quantities win
@@ -2509,10 +2539,14 @@ describe('importCloudData — locations and stock upload in dependency order', (
         )
 
       // When the whole payload is uploaded
-      const result = importCloudData(fullPayload(), strategy, client as never)
+      const result = importCloudData(fullPayload(), strategy, client as never, {
+        target: { locationId: CLOUD_DEFAULT_ID },
+      })
 
-      // Then the copy resolves
-      await expect(result).resolves.toBeUndefined()
+      // Then the copy resolves, with nothing skipped
+      await expect(result).resolves.toEqual({
+        skipped: { locationNames: [], rowCount: 0 },
+      })
       // And the refresh was really attempted, and the rows really sent
       expect(client.resetStore).toHaveBeenCalledTimes(1)
       expect(mutationOrder(client)).toContain('BulkCreateItems')
@@ -2551,6 +2585,7 @@ describe('importCloudData — batched cloud import', () => {
           inventoryLogs: [],
           shoppingCarts: [],
           allCartItems: [],
+          importCheck: CLEAN_IMPORT_CHECK,
           shelves: [],
         },
       }),
@@ -2686,6 +2721,7 @@ describe('importCloudData — batched cloud import', () => {
           inventoryLogs: [],
           shoppingCarts: [],
           allCartItems: [],
+          importCheck: CLEAN_IMPORT_CHECK,
           shelves: [],
         },
       }),
@@ -2757,6 +2793,7 @@ describe('importCloudData — batched cloud import', () => {
           inventoryLogs: [],
           shoppingCarts: [],
           allCartItems: [],
+          importCheck: CLEAN_IMPORT_CHECK,
           shelves: [existingShelf],
         },
       }),
@@ -2831,6 +2868,7 @@ describe('importCloudData — batched cloud import', () => {
           inventoryLogs: [],
           shoppingCarts: [],
           allCartItems: [],
+          importCheck: CLEAN_IMPORT_CHECK,
           shelves: [],
         },
       }),
@@ -3311,7 +3349,11 @@ describe('buildLocationRemap / applyLocationRemap — the remap rule', () => {
   })
 })
 
-describe('importCloudData — every location travels to cloud (PR 4b task 3)', () => {
+// Since households H4 task E.4 the cloud side uses the NEW id rule
+// (decision T16): keep every id, except the local default location `'local'`,
+// which goes to the location the user picked (`target`). PR 4b's remap onto
+// the household's first location is gone from this side.
+describe('importCloudData — every location travels to cloud (PR 4b task 3, new id rule since H4 E.4)', () => {
   const EMPTY_EXISTING = {
     items: [],
     tags: [],
@@ -3321,6 +3363,7 @@ describe('importCloudData — every location travels to cloud (PR 4b task 3)', (
     inventoryLogs: [],
     shoppingCarts: [],
     allCartItems: [],
+    importCheck: CLEAN_IMPORT_CHECK,
     shelves: [],
   }
 
@@ -3357,7 +3400,7 @@ describe('importCloudData — every location travels to cloud (PR 4b task 3)', (
     { id: 'loc_garage', name: 'my Garage', order: 1, isDefault: false },
   ]
 
-  it('user copying a pantry to cloud sends the default location’s carts under the destination’s default id', async () => {
+  it('user copying a pantry to cloud sends the default location’s carts under the location they picked', async () => {
     // Given one cart at the payload's default and one at the Garage
     const payload = emptyPayload({
       items: [makeItem('item-1', 'Milk')],
@@ -3370,11 +3413,13 @@ describe('importCloudData — every location travels to cloud (PR 4b task 3)', (
     })
     const client = makeCloudClient(DESTINATION)
 
-    // When the pantry is copied up
-    await importCloudData(payload, 'skip', client as never)
+    // When the pantry is copied up into the location they picked
+    await importCloudData(payload, 'skip', client as never, {
+      target: { locationId: 'cloud_default' },
+    })
 
-    // Then the default's cart arrives under the DESTINATION default's id,
-    // and the Garage's cart is untouched
+    // Then the default's cart arrives under the picked location's id, and
+    // the Garage's cart is untouched
     expect(sentOf(client, 'carts').map((c) => c.id)).toEqual([
       'cloud_default:vendor_1',
       'loc_garage:no-vendor',
@@ -3385,10 +3430,10 @@ describe('importCloudData — every location travels to cloud (PR 4b task 3)', (
     ])
   })
 
-  it('user copying a pantry to cloud lands the default location on the household’s first location', async () => {
-    // Given a household with TWO locations and no default (households task
-    // 3.12: cloud rows carry no `isDefault`). The server returns them by
-    // `order`, so the first row is the household's first location.
+  it('user copying a pantry to cloud lands the default location on the location they picked, not the first one', async () => {
+    // Given a household with TWO locations. The server returns them by
+    // `order`, so the first row is the household's first location. Before
+    // households H4 task E.4 the default always went there.
     const payload = emptyPayload({
       items: [makeItem('item-1', 'Milk')],
       locations: PAYLOAD_LOCATIONS,
@@ -3400,16 +3445,19 @@ describe('importCloudData — every location travels to cloud (PR 4b task 3)', (
       { id: 'cloud_second', name: 'Cabin', order: 1 },
     ])
 
-    // When the pantry is copied up
-    await importCloudData(payload, 'skip', client as never)
+    // When the pantry is copied up and the user picked the SECOND location
+    await importCloudData(payload, 'skip', client as never, {
+      target: { locationId: 'cloud_second' },
+    })
 
-    // Then the payload's default lands on the FIRST location, not the second
+    // Then the payload's default lands on the second location, not the first
     expect(sentOf(client, 'carts').map((c) => c.id)).toEqual([
-      'cloud_first:vendor_1',
+      'cloud_second:vendor_1',
     ])
-    expect(sentOf(client, 'locations').map((l) => l.id)).toContain(
-      'cloud_first',
-    )
+    expect(sentOf(client, 'locations').map((l) => l.id)).toEqual([
+      'cloud_second',
+      'loc_garage',
+    ])
   })
 
   // Households task 3.12 review, finding 1. The destination "default" is now
@@ -3493,7 +3541,7 @@ describe('importCloudData — every location travels to cloud (PR 4b task 3)', (
 
   // Replaces the deleted `inventory logs from other locations are not sent`.
   // That test pinned the filter 4b removes; this one pins its absence.
-  it('user copying a pantry to cloud keeps the logs of every location', async () => {
+  it('user copying a pantry to cloud keeps the logs of every location, and a log with no location goes where they picked', async () => {
     // Given logs recorded at two locations plus one pre-Location log
     const payload = emptyPayload({
       items: [makeItem('item-1', 'Milk')],
@@ -3506,14 +3554,18 @@ describe('importCloudData — every location travels to cloud (PR 4b task 3)', (
     })
     const client = makeCloudClient(DESTINATION)
 
-    // When the pantry is copied up
-    await importCloudData(payload, 'skip', client as never)
+    // When the pantry is copied up into the location they picked
+    await importCloudData(payload, 'skip', client as never, {
+      target: { locationId: 'cloud_default' },
+    })
 
-    // Then all three travel, each naming the location it belongs to
+    // Then all three travel, each naming the location it belongs to. The
+    // log with no location gets the picked one: the server refuses a log
+    // with none (IMPORT_NEEDS_LOCATION, households H4 task E.3).
     expect(sentOf(client, 'logs').map((l) => [l.id, l.locationId])).toEqual([
       ['log-home', 'cloud_default'],
       ['log-garage', 'loc_garage'],
-      ['log-legacy', undefined],
+      ['log-legacy', 'cloud_default'],
     ])
   })
 
@@ -3622,9 +3674,11 @@ describe('importCloudData — every location travels to cloud (PR 4b task 3)', (
     // When it is imported
     await importCloudData(payload, 'skip', client as never)
 
-    // Then no cart is dropped, and only the backup's own default is remapped
+    // Then no cart is dropped, and no id is rewritten: the new id rule moves
+    // only the local default `'local'`, and an `isDefault` flag on another
+    // row is ignored (households H4 decision T16)
     expect(sentOf(client, 'carts').map((c) => c.id)).toEqual([
-      'cloud_default:vendor_1',
+      'kitchen-a1b2:vendor_1',
       'garage-c3d4:no-vendor',
       'shed-e5f6:no-vendor',
     ])
@@ -3690,6 +3744,7 @@ describe('importCloudData — a cart id keeps its location prefix (PR 4b task 3)
           inventoryLogs: [],
           shoppingCarts: [],
           allCartItems: [],
+          importCheck: CLEAN_IMPORT_CHECK,
           shelves: [],
         },
       }),
@@ -3747,7 +3802,9 @@ describe('importCloudData — a cart id keeps its location prefix (PR 4b task 3)
     // failure show the STRIP rather than the drop. Task 7 removed that option
     // from `importCloudData`, so the argument is gone. Every assertion below
     // stands unchanged.
-    await importCloudData(payload, 'skip', client as never)
+    await importCloudData(payload, 'skip', client as never, {
+      target: { locationId: 'cloud_home' },
+    })
 
     // Then both ids are still prefixed with the location they belong to
     expect(sentOf(client, 'carts').map((c) => c.id)).toEqual([
@@ -3782,7 +3839,9 @@ describe('importCloudData — a cart id keeps its location prefix (PR 4b task 3)
     const client = makeCloudClient()
 
     // When the cloud upload payload is built, with no location named
-    await importCloudData(payload, 'skip', client as never)
+    await importCloudData(payload, 'skip', client as never, {
+      target: { locationId: 'cloud_home' },
+    })
 
     // Then neither location's cart has been thrown away
     expect(
@@ -4271,6 +4330,7 @@ describe('importCloudData — a pre-v15 backup keeps its stock (PR 4b task 8)', 
     inventoryLogs: [],
     shoppingCarts: [],
     allCartItems: [],
+    importCheck: CLEAN_IMPORT_CHECK,
     shelves: [],
   }
 
@@ -4320,11 +4380,13 @@ describe('importCloudData — a pre-v15 backup keeps its stock (PR 4b task 8)', 
     })
     const client = makeCloudClient()
 
-    // When it is imported into cloud mode
-    await importCloudData(payload, 'skip', client as never)
+    // When it is imported into cloud mode, into the location the user picked
+    await importCloudData(payload, 'skip', client as never, {
+      target: { locationId: 'cloud_default' },
+    })
 
-    // Then one stock row per item reaches the server, at the DESTINATION
-    // account's default location, carrying the inline quantities
+    // Then one stock row per item reaches the server, at the picked
+    // location, carrying the inline quantities
     expect(
       sentOf(client, 'itemStocks').map((s) => ({
         itemId: s.itemId,
@@ -4352,10 +4414,12 @@ describe('importCloudData — a pre-v15 backup keeps its stock (PR 4b task 8)', 
     })
     const client = makeCloudClient()
 
-    // When it is imported into cloud mode
-    await importCloudData(payload, 'skip', client as never)
+    // When it is imported into cloud mode, into the location the user picked
+    await importCloudData(payload, 'skip', client as never, {
+      target: { locationId: 'cloud_default' },
+    })
 
-    // Then every cart id names the destination's default location. A bare id
+    // Then every cart id names the picked location. A bare id
     // is the ownership leak of issue #327: `Cart.id` is a global primary key,
     // so two accounts cannot both hold `no-vendor`.
     expect(sentOf(client, 'carts').map((c) => c.id)).toEqual([
@@ -4675,6 +4739,7 @@ describe('importCloudData — replace sets cart items (H3b task B.8)', () => {
           allCartItems: [
             { id: 'ci-cloud', cartId: CART, itemId: 'milk', quantity: 4 },
           ],
+          importCheck: CLEAN_IMPORT_CHECK,
           shelves: [],
         },
       }),
@@ -4721,6 +4786,7 @@ describe('importCloudData — one cart pair never spans two batches (H3b task B.
           inventoryLogs: [],
           shoppingCarts: [],
           allCartItems: [],
+          importCheck: CLEAN_IMPORT_CHECK,
           shelves: [],
         },
       }),
@@ -4775,8 +4841,8 @@ describe('importCloudData — one cart pair never spans two batches (H3b task B.
 // ─── checkImportIds (households H4 task E.2) ────────────────────────────────
 //
 // The web half of the `importCheck` query. It sends the file's ids in calls of
-// at most 1000 ids and joins the answers. Not called by the import flow yet;
-// task E.4 wires it in.
+// at most 1000 ids and joins the answers. `importCloudData` calls it before
+// its first write since task E.4 (see the blocks after this one).
 describe('checkImportIds', () => {
   type CheckIds = Record<string, string[] | undefined>
   type Rows = {
@@ -5009,5 +5075,735 @@ describe('checkImportIds', () => {
         emptyPayload({ items: [makeItem('a', 'A')] }),
       ),
     ).rejects.toBe(refusal)
+  })
+})
+
+// ─── The new id rule and the checked import (households H4 task E.4) ────────
+//
+// `placeDefaultLocation` replaces PR 4b's remap on the cloud side (decision
+// T16): keep every id, except the local default `'local'`, which goes where
+// the user picked. `importCloudData` runs `checkImportIds` before its first
+// write, refuses the whole file when it holds another household's row, and
+// leaves out the rows the check refuses.
+
+describe('placeDefaultLocation (households H4 decision T16)', () => {
+  function stockAt(id: string, locationId: string, itemId = 'item-1') {
+    return {
+      id,
+      itemId,
+      locationId,
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+  }
+
+  // The local default plus TWO other locations, so "move only 'local'" and
+  // "move every location" give different answers.
+  function localFile(): ExportPayload {
+    return emptyPayload({
+      items: [makeItem('item-1', 'Milk')],
+      locations: [
+        { id: 'local', name: 'My Home', order: 0, isDefault: true },
+        { id: 'loc_garage', name: 'Garage', order: 1, isDefault: false },
+        { id: 'loc_office', name: 'Office', order: 2, isDefault: false },
+      ],
+      itemStocks: [
+        stockAt('s-home', 'local'),
+        stockAt('s-garage', 'loc_garage'),
+        stockAt('s-office', 'loc_office'),
+      ],
+      inventoryLogs: [
+        { ...makeInventoryLog('log-home'), locationId: 'local' },
+        { ...makeInventoryLog('log-garage'), locationId: 'loc_garage' },
+      ],
+      shoppingCarts: [
+        makeShoppingCart('local:vendor_1'),
+        makeShoppingCart('loc_garage:vendor_1'),
+      ],
+      cartItems: [
+        makeCartItem('ci-home', 'local:vendor_1', 'item-1'),
+        makeCartItem('ci-garage', 'loc_garage:vendor_1', 'item-1'),
+      ],
+    })
+  }
+
+  it("moves 'local' to the target in all five fields and keeps every other id", () => {
+    // Given a local file with three locations and rows at each
+    const payload = localFile()
+
+    // When its default location is put at the picked location
+    const result = placeDefaultLocation(payload, 'cloud_pick')
+
+    // Then the location row, the stock row, the log, the cart id and the
+    // cart item's cart id of 'local' all name the picked location
+    expect(
+      (result.locations as Array<{ id: string; name: string }>).map((l) => [
+        l.id,
+        l.name,
+      ]),
+    ).toEqual([
+      ['cloud_pick', 'My Home'],
+      ['loc_garage', 'Garage'],
+      ['loc_office', 'Office'],
+    ])
+    expect(
+      (result.itemStocks as Array<{ id: string; locationId: string }>).map(
+        (s) => [s.id, s.locationId],
+      ),
+    ).toEqual([
+      ['s-home', 'cloud_pick'],
+      ['s-garage', 'loc_garage'],
+      ['s-office', 'loc_office'],
+    ])
+    expect(
+      (result.inventoryLogs as Array<{ id: string; locationId: string }>).map(
+        (l) => [l.id, l.locationId],
+      ),
+    ).toEqual([
+      ['log-home', 'cloud_pick'],
+      ['log-garage', 'loc_garage'],
+    ])
+    expect(
+      (result.shoppingCarts as Array<{ id: string }>).map((c) => c.id),
+    ).toEqual(['cloud_pick:vendor_1', 'loc_garage:vendor_1'])
+    expect(
+      (result.cartItems as Array<{ id: string; cartId: string }>).map((c) => [
+        c.id,
+        c.cartId,
+      ]),
+    ).toEqual([
+      ['ci-home', 'cloud_pick:vendor_1'],
+      ['ci-garage', 'loc_garage:vendor_1'],
+    ])
+  })
+
+  it('stocks a pre-v15 backup at the target and prefixes its bare cart ids', () => {
+    // Given a backup with no `itemStocks` key: stock inline, bare cart ids
+    const payload = legacyPayload({
+      items: [{ ...makeItem('item-1', 'Milk'), packedQuantity: 5 }],
+      shoppingCarts: [makeShoppingCart('vendor_1')],
+      cartItems: [makeCartItem('ci-1', 'vendor_1', 'item-1')],
+    })
+
+    // When it is placed
+    const result = placeDefaultLocation(payload, 'cloud_pick')
+
+    // Then one stock row is made at the target, with the inline quantity
+    expect(
+      (
+        result.itemStocks as Array<{
+          itemId: string
+          locationId: string
+          packedQuantity: number
+        }>
+      ).map((s) => [s.itemId, s.locationId, s.packedQuantity]),
+    ).toEqual([['item-1', 'cloud_pick', 5]])
+    // And the cart ids name the target
+    expect(rowAt(result.shoppingCarts as Array<{ id: string }>).id).toBe(
+      'cloud_pick:vendor_1',
+    )
+    expect(rowAt(result.cartItems as Array<{ cartId: string }>).cartId).toBe(
+      'cloud_pick:vendor_1',
+    )
+  })
+
+  it('gives a log with no location the target', () => {
+    // Given a log written before logs had a location
+    const payload = emptyPayload({
+      locations: [{ id: 'loc_garage', name: 'Garage', order: 0 }],
+      inventoryLogs: [makeInventoryLog('log-legacy')],
+    })
+
+    // When the file is placed
+    const result = placeDefaultLocation(payload, 'cloud_pick')
+
+    // Then the log names the target
+    expect(
+      rowAt(result.inventoryLogs as Array<{ locationId?: string }>).locationId,
+    ).toBe('cloud_pick')
+  })
+
+  it("leaves a cloud backup with no 'local' location unchanged", () => {
+    // Given a cloud backup: every row names a cloud location id
+    const payload = emptyPayload({
+      locations: [
+        { id: 'cloud_home', name: 'Home', order: 0 },
+        { id: 'cloud_garage', name: 'Garage', order: 1 },
+      ],
+      itemStocks: [stockAt('s-1', 'cloud_home')],
+      inventoryLogs: [
+        { ...makeInventoryLog('log-1'), locationId: 'cloud_home' },
+      ],
+      shoppingCarts: [makeShoppingCart('cloud_home:vendor_1')],
+      cartItems: [makeCartItem('ci-1', 'cloud_home:vendor_1')],
+    })
+
+    // When it is placed onto another location
+    const result = placeDefaultLocation(payload, 'cloud_garage')
+
+    // Then no id changed: there is no 'local' to move
+    expect(result).toEqual(payload)
+  })
+
+  it("drops the 'local' row instead of making two rows with one id when the target is a row of the file", () => {
+    // Given a file that has the picked location as a row of its own
+    const payload = localFile()
+
+    // When 'local' is put at the Garage, which the file also holds
+    const result = placeDefaultLocation(payload, 'loc_garage')
+
+    // Then there is one Garage row, and My Home's rows moved there
+    expect(
+      (result.locations as Array<{ id: string }>).map((l) => l.id),
+    ).toEqual(['loc_garage', 'loc_office'])
+    expect(
+      (result.itemStocks as Array<{ locationId: string }>).map(
+        (s) => s.locationId,
+      ),
+    ).toEqual(['loc_garage', 'loc_garage', 'loc_office'])
+  })
+
+  it("placing at 'local' first and at the real id later gives the same rows and ids", () => {
+    // Given a pre-v15 backup, whose stock row ids are made by the upgrade
+    const payload = legacyPayload({
+      items: [{ ...makeItem('item-1', 'Milk'), packedQuantity: 5 }],
+    })
+
+    // When it is placed in two steps, the way `importCloudData` does on
+    // `clear` and for a new location
+    const first = placeDefaultLocation(payload, 'local')
+    const second = placeDefaultLocation(first, 'cloud_after')
+
+    // Then the stock row keeps the id the check saw, and moved
+    const before = rowAt(first.itemStocks as Array<{ id: string }>)
+    const after = rowAt(
+      second.itemStocks as Array<{ id: string; locationId: string }>,
+    )
+    expect(after.id).toBe(before.id)
+    expect(after.locationId).toBe('cloud_after')
+  })
+})
+
+describe('needsImportLocation (households design rule 3)', () => {
+  it("is true for a file with the local default location 'local'", () => {
+    expect(
+      needsImportLocation(
+        emptyPayload({ locations: [{ id: 'local', name: 'My Home' }] }),
+      ),
+    ).toBe(true)
+  })
+
+  it('is true for a file with no locations key', () => {
+    const { locations, ...noLocations } = emptyPayload()
+    void locations
+    expect(needsImportLocation(noLocations)).toBe(true)
+  })
+
+  it('is true for a pre-v15 file with no itemStocks key', () => {
+    expect(
+      needsImportLocation(
+        legacyPayload({ locations: [{ id: 'cloud_home', name: 'Home' }] }),
+      ),
+    ).toBe(true)
+  })
+
+  it('is true for a file with a log that has no location', () => {
+    expect(
+      needsImportLocation(
+        emptyPayload({
+          locations: [{ id: 'cloud_home', name: 'Home' }],
+          inventoryLogs: [makeInventoryLog('log-1')],
+        }),
+      ),
+    ).toBe(true)
+  })
+
+  it('is false for a cloud backup', () => {
+    expect(
+      needsImportLocation(
+        emptyPayload({
+          locations: [{ id: 'cloud_home', name: 'Home' }],
+          inventoryLogs: [
+            { ...makeInventoryLog('log-1'), locationId: 'cloud_home' },
+          ],
+        }),
+      ),
+    ).toBe(false)
+  })
+})
+
+describe('withoutRefusedRows (households H4 task E.4, step 2.3)', () => {
+  function check(
+    changes: Partial<Omit<ImportIdCheckShape, 'blockedRows'>> & {
+      blockedRows?: Partial<ImportIdCheckShape['blockedRows']>
+    } = {},
+  ): ImportIdCheckShape {
+    const { blockedRows, ...rest } = changes
+    return {
+      ...CLEAN_IMPORT_CHECK,
+      ...rest,
+      blockedRows: { ...CLEAN_IMPORT_CHECK.blockedRows, ...blockedRows },
+    }
+  }
+
+  // Rows at a writable location (Home), at a blocked one the file has a row
+  // for (Garage), and at a location the file does not name (Shed).
+  function payload(): ExportPayload {
+    return emptyPayload({
+      locations: [
+        { id: 'loc_home', name: 'Home', order: 0 },
+        { id: 'loc_garage', name: 'Garage', order: 1 },
+      ],
+      itemStocks: [
+        { id: 's-home', itemId: 'item-1', locationId: 'loc_home' },
+        { id: 's-garage', itemId: 'item-1', locationId: 'loc_garage' },
+        { id: 's-shed', itemId: 'item-1', locationId: 'loc_shed' },
+        { id: 's-gone-item', itemId: 'item-gone', locationId: 'loc_home' },
+      ],
+      inventoryLogs: [
+        { ...makeInventoryLog('log-home'), locationId: 'loc_home' },
+        { ...makeInventoryLog('log-garage'), locationId: 'loc_garage' },
+        { ...makeInventoryLog('log-stored'), locationId: 'loc_home' },
+      ],
+      shoppingCarts: [
+        makeShoppingCart('loc_home:vendor_1'),
+        makeShoppingCart('loc_garage:vendor_1'),
+        makeShoppingCart('loc_home:vendor_2'),
+      ],
+      cartItems: [
+        makeCartItem('ci-home', 'loc_home:vendor_1'),
+        makeCartItem('ci-garage', 'loc_garage:vendor_1'),
+        makeCartItem('ci-in-blocked-cart', 'loc_home:vendor_2'),
+      ],
+    })
+  }
+
+  const idsOf = (rows: unknown) =>
+    (rows as Array<{ id: string }>).map((r) => r.id)
+
+  it("drops a blocked location's rows, keeps the other location's rows, and names it", () => {
+    // Given the check says the caller cannot write the Garage
+    const result = withoutRefusedRows(
+      payload(),
+      check({ blockedLocationIds: ['loc_garage'] }),
+    )
+
+    // Then nothing at the Garage is left, and Home's rows are all there
+    expect(idsOf(result.payload.locations)).toEqual(['loc_home'])
+    expect(idsOf(result.payload.itemStocks)).toEqual([
+      's-home',
+      's-shed',
+      's-gone-item',
+    ])
+    expect(idsOf(result.payload.inventoryLogs)).toEqual([
+      'log-home',
+      'log-stored',
+    ])
+    expect(idsOf(result.payload.shoppingCarts)).toEqual([
+      'loc_home:vendor_1',
+      'loc_home:vendor_2',
+    ])
+    expect(idsOf(result.payload.cartItems)).toEqual([
+      'ci-home',
+      'ci-in-blocked-cart',
+    ])
+    // And the skipped line names the Garage, and counts no other row
+    expect(result.skipped).toEqual({ locationNames: ['Garage'], rowCount: 0 })
+  })
+
+  it('drops rows at a missing location, stock of a missing item and the rows the check names, and counts them', () => {
+    // Given a location no row will hold, an item no row will hold, a log
+    // stored at a blocked location, and a cart stored away from its id
+    const result = withoutRefusedRows(
+      payload(),
+      check({
+        missingLocationIds: ['loc_shed'],
+        missingItemIds: ['item-gone'],
+        blockedRows: {
+          inventoryLogs: ['log-stored'],
+          carts: ['loc_home:vendor_2'],
+        },
+      }),
+    )
+
+    // Then exactly those rows are gone, with the cart item in the dropped cart
+    expect(idsOf(result.payload.itemStocks)).toEqual(['s-home', 's-garage'])
+    expect(idsOf(result.payload.inventoryLogs)).toEqual([
+      'log-home',
+      'log-garage',
+    ])
+    expect(idsOf(result.payload.shoppingCarts)).toEqual([
+      'loc_home:vendor_1',
+      'loc_garage:vendor_1',
+    ])
+    expect(idsOf(result.payload.cartItems)).toEqual(['ci-home', 'ci-garage'])
+    // And no location is named: the file has no row for any of them. Five
+    // rows are counted: two stock rows, one log, one cart, one cart item.
+    expect(result.skipped).toEqual({ locationNames: [], rowCount: 5 })
+  })
+
+  it('leaves a clean file as it is', () => {
+    const result = withoutRefusedRows(payload(), check())
+    expect(result.payload).toEqual(payload())
+    expect(result.skipped).toEqual({ locationNames: [], rowCount: 0 })
+  })
+})
+
+type ImportIdCheckShape = typeof CLEAN_IMPORT_CHECK
+
+describe('importCloudData — the check before the first write (households H4 task E.4)', () => {
+  type Call = { kind: 'query' | 'mutate'; op: string; variables: unknown }
+
+  // A client that records every query and mutation IN ONE LIST, in order, so
+  // a test can say "nothing was written before the check", not only "the
+  // check was made".
+  function makeClient(
+    options: {
+      answer?: ImportIdCheckShape
+      checkError?: unknown
+      locations?: Array<{ id: string; name: string; order: number }>
+    } = {},
+  ) {
+    const calls: Call[] = []
+    const query = vi.fn(
+      async ({
+        query: doc,
+        variables,
+      }: {
+        query: unknown
+        variables?: unknown
+      }) => {
+        const op = opNameOf(doc)
+        calls.push({ kind: 'query', op, variables })
+        if (op === 'ImportCheck') {
+          if (options.checkError !== undefined) throw options.checkError
+          return { data: { importCheck: options.answer ?? CLEAN_IMPORT_CHECK } }
+        }
+        return {
+          data: {
+            items: [],
+            tags: [],
+            tagTypes: [],
+            vendors: [],
+            recipes: [],
+            inventoryLogs: [],
+            shoppingCarts: [],
+            allCartItems: [],
+            shelves: [],
+            locations: options.locations ?? [
+              { id: 'cloud_home', name: 'Home', order: 0 },
+            ],
+          },
+        }
+      },
+    )
+    const mutate = vi.fn(
+      async ({
+        mutation,
+        variables,
+      }: {
+        mutation: unknown
+        variables?: unknown
+      }) => {
+        const op = opNameOf(mutation)
+        calls.push({ kind: 'mutate', op, variables })
+        if (op === 'CreateLocation') {
+          return { data: { createLocation: { id: 'cloud_new', name: 'x' } } }
+        }
+        return {}
+      },
+    )
+    return {
+      calls,
+      query,
+      mutate,
+      resetStore: vi.fn().mockResolvedValue(undefined),
+    }
+  }
+
+  const mutations = (client: ReturnType<typeof makeClient>) =>
+    client.calls.filter((c) => c.kind === 'mutate').map((c) => c.op)
+
+  const sent = (client: ReturnType<typeof makeClient>, key: string) =>
+    client.calls
+      .filter((c) => c.kind === 'mutate')
+      .flatMap(
+        (c) =>
+          ((c.variables as Record<string, unknown> | undefined)?.[key] ??
+            []) as Array<Record<string, unknown>>,
+      )
+
+  // A local file: a NEW item and a NEW location beside the default, with
+  // rows at both. Rule 17: a refusal test needs rows that WOULD be written.
+  function localFile(): ExportPayload {
+    return emptyPayload({
+      items: [makeItem('item-new', 'Milk')],
+      locations: [
+        { id: 'local', name: 'My Home', order: 0, isDefault: true },
+        { id: 'loc_garage', name: 'Garage', order: 1, isDefault: false },
+      ],
+      itemStocks: [
+        { id: 's-home', itemId: 'item-new', locationId: 'local' },
+        { id: 's-garage', itemId: 'item-new', locationId: 'loc_garage' },
+      ],
+      inventoryLogs: [
+        { ...makeInventoryLog('log-home'), locationId: 'local' },
+        { ...makeInventoryLog('log-garage'), locationId: 'loc_garage' },
+      ],
+      shoppingCarts: [
+        makeShoppingCart('local:vendor_1'),
+        makeShoppingCart('loc_garage:vendor_1'),
+      ],
+      cartItems: [
+        makeCartItem('ci-home', 'local:vendor_1', 'item-new'),
+        makeCartItem('ci-garage', 'loc_garage:vendor_1', 'item-new'),
+      ],
+    })
+  }
+
+  for (const strategy of ['skip', 'replace', 'clear'] as const) {
+    it(`user importing a file with another household's row on ${strategy} has nothing written at all`, async () => {
+      // Given the check says one id of the file belongs to another household,
+      // and the file also holds a new item and a new location
+      const client = makeClient({
+        answer: { ...CLEAN_IMPORT_CHECK, anotherHousehold: true },
+      })
+
+      // When the user imports it
+      const result = importCloudData(localFile(), strategy, client as never, {
+        target: { locationId: 'cloud_home' },
+      })
+
+      // Then the import is refused as "another household"
+      await expect(result).rejects.toBeInstanceOf(ImportRefusedError)
+      await expect(result).rejects.toMatchObject({ reason: 'anotherHousehold' })
+      // And not one mutation was sent: no clear, no location, no bulk write
+      expect(mutations(client)).toEqual([])
+      // And the check was really made, so the refusal came from it
+      expect(client.calls.map((c) => c.op)).toContain('ImportCheck')
+    })
+  }
+
+  it('user importing sends the check before any write', async () => {
+    // Given a clean check
+    const client = makeClient()
+
+    // When the user imports a file with the clear strategy
+    await importCloudData(localFile(), 'clear', client as never)
+
+    // Then the check is the first call, before ClearAllData
+    const ops = client.calls.map((c) => c.op)
+    expect(ops.indexOf('ImportCheck')).toBe(0)
+    expect(ops.indexOf('ImportCheck')).toBeLessThan(ops.indexOf('ClearAllData'))
+  })
+
+  it('user who is not an owner or manager is told so, and nothing is written', async () => {
+    // Given the server refuses the check with FORBIDDEN (the role check)
+    const client = makeClient({
+      checkError: new CombinedGraphQLErrors({
+        errors: [{ message: 'Forbidden', extensions: { code: 'FORBIDDEN' } }],
+      }),
+    })
+
+    // When the user imports
+    const result = importCloudData(localFile(), 'skip', client as never, {
+      target: { locationId: 'cloud_home' },
+    })
+
+    // Then the error is the role refusal, and nothing was written
+    await expect(result).rejects.toMatchObject({ reason: 'role' })
+    expect(mutations(client)).toEqual([])
+  })
+
+  it("user importing into a location they cannot edit has that location's rows skipped and the rest written", async () => {
+    // Given the caller can write Home but is only a viewer of the Garage
+    const client = makeClient({
+      answer: { ...CLEAN_IMPORT_CHECK, blockedLocationIds: ['loc_garage'] },
+    })
+
+    // When the user imports the file into Home
+    const result = await importCloudData(localFile(), 'skip', client as never, {
+      target: { locationId: 'cloud_home' },
+    })
+
+    // Then no batch carries a Garage row: no location row, stock, log, cart
+    // or cart item
+    expect(sent(client, 'locations').map((l) => l.id)).toEqual(['cloud_home'])
+    expect(sent(client, 'itemStocks').map((s) => s.id)).toEqual(['s-home'])
+    expect(sent(client, 'logs').map((l) => l.id)).toEqual(['log-home'])
+    expect(sent(client, 'carts').map((c) => c.id)).toEqual([
+      'cloud_home:vendor_1',
+    ])
+    expect(sent(client, 'cartItems').map((c) => c.id)).toEqual(['ci-home'])
+    // And the import says which location it skipped
+    expect(result.skipped).toEqual({ locationNames: ['Garage'], rowCount: 0 })
+  })
+
+  it('user importing checks the file as it will be sent, with the picked location', async () => {
+    // Given a clean check
+    const client = makeClient()
+
+    // When the user imports a local file into Home
+    await importCloudData(localFile(), 'skip', client as never, {
+      target: { locationId: 'cloud_home' },
+    })
+
+    // Then the check saw Home, not 'local'
+    const check = client.calls.find((c) => c.op === 'ImportCheck')
+    const ids = (check?.variables as { ids: Record<string, string[]> }).ids
+    expect(ids.locations).toEqual(['cloud_home', 'loc_garage'])
+    expect(ids.carts).toEqual(['cloud_home:vendor_1', 'loc_garage:vendor_1'])
+  })
+
+  it("user clearing before an import has 'local' left out of the locations the check is sent, but every row id still checked", async () => {
+    // Given a clean check
+    const client = makeClient()
+
+    // When the user imports with clear (no dialog, decision O2)
+    await importCloudData(localFile(), 'clear', client as never)
+
+    // Then the check is asked for the clear, and names no 'local' location
+    // (the new "Home" does not exist yet; the server refuses the id 'local')
+    const check = client.calls.find((c) => c.op === 'ImportCheck')
+    const variables = check?.variables as {
+      ids: Record<string, string[]>
+      forClear: boolean
+    }
+    expect(variables.forClear).toBe(true)
+    expect(variables.ids.locations).toEqual(['loc_garage'])
+    expect(variables.ids.locationRefs ?? []).not.toContain('local')
+    // And the default's own rows are still checked by id
+    expect(variables.ids.itemStocks).toEqual(['s-home', 's-garage'])
+    expect(variables.ids.inventoryLogs).toEqual(['log-home', 'log-garage'])
+    // And after the clear its rows land on the new Home
+    expect(sent(client, 'itemStocks').map((s) => s.locationId)).toEqual([
+      'cloud_home',
+      'loc_garage',
+    ])
+  })
+
+  it('user importing into a new location has it created after the check and before the first write', async () => {
+    // Given a clean check
+    const client = makeClient()
+    const session: ImportSession = {
+      payload: localFile(),
+      strategy: 'skip',
+      completedBatchKeys: new Set(),
+      target: { newLocationName: 'Cabin' },
+    }
+
+    // When the user imports into "New location" named Cabin
+    await importCloudData(localFile(), 'skip', client as never, { session })
+
+    // Then createLocation is sent once, with that name, after the check and
+    // before any bulk write
+    const ops = client.calls.map((c) => c.op)
+    expect(ops.filter((op) => op === 'CreateLocation')).toHaveLength(1)
+    expect(
+      client.calls.find((c) => c.op === 'CreateLocation')?.variables,
+    ).toEqual({ name: 'Cabin' })
+    expect(ops.indexOf('ImportCheck')).toBeLessThan(
+      ops.indexOf('CreateLocation'),
+    )
+    expect(ops.indexOf('CreateLocation')).toBeLessThan(
+      ops.indexOf('BulkCreateLocations'),
+    )
+    // And My Home's rows land in it
+    expect(sent(client, 'itemStocks').map((s) => [s.id, s.locationId])).toEqual(
+      [
+        ['s-home', 'cloud_new'],
+        ['s-garage', 'loc_garage'],
+      ],
+    )
+    // And the session now holds its id, so a retry does not create another
+    expect(session.target).toEqual({ locationId: 'cloud_new' })
+  })
+
+  it('user importing into a new location gets no new location when the file is refused', async () => {
+    // Given the file holds another household's row
+    const client = makeClient({
+      answer: { ...CLEAN_IMPORT_CHECK, anotherHousehold: true },
+    })
+
+    // When the user imports into "New location"
+    const result = importCloudData(localFile(), 'skip', client as never, {
+      target: { newLocationName: 'Cabin' },
+    })
+
+    // Then nothing is created
+    await expect(result).rejects.toBeInstanceOf(ImportRefusedError)
+    expect(mutations(client)).toEqual([])
+  })
+
+  it('refuses a file that needs a location when none was picked, before any call', async () => {
+    const client = makeClient()
+    await expect(
+      importCloudData(localFile(), 'skip', client as never),
+    ).rejects.toThrow('needs a target location')
+    expect(client.calls).toEqual([])
+  })
+})
+
+describe('importErrorKind (households H4 decision T17)', () => {
+  const forbidden = () =>
+    new CombinedGraphQLErrors({
+      errors: [{ message: 'Forbidden', extensions: { code: 'FORBIDDEN' } }],
+    })
+
+  it('tells the four messages apart', () => {
+    expect(importErrorKind(new ImportRefusedError('role'), 'skip')).toBe('role')
+    expect(
+      importErrorKind(new ImportRefusedError('anotherHousehold'), 'clear'),
+    ).toBe('forbidden')
+    expect(importErrorKind(forbidden(), 'skip')).toBe('forbidden')
+    expect(importErrorKind(forbidden(), 'clear')).toBe('forbiddenAfterClear')
+    expect(importErrorKind(new Error('Failed to fetch'), 'skip')).toBe('other')
+  })
+})
+
+describe('fetchImportTargetLocations (households H4 task E.4, step 3)', () => {
+  it('lists the locations the caller can write, by order, and leaves out a viewer location', async () => {
+    // Given three locations, the caller only a viewer of the Garage, and the
+    // Shed deleted since the list was read
+    const query = vi.fn(
+      async ({ query: doc }: { query: unknown; variables?: unknown }) =>
+        opNameOf(doc) === 'ImportCheck'
+          ? {
+              data: {
+                importCheck: {
+                  ...CLEAN_IMPORT_CHECK,
+                  blockedLocationIds: ['cloud_garage'],
+                  missingLocationIds: ['cloud_shed'],
+                },
+              },
+            }
+          : {
+              data: {
+                locations: [
+                  { id: 'cloud_home', name: 'Home', order: 0 },
+                  { id: 'cloud_garage', name: 'Garage', order: 1 },
+                  { id: 'cloud_shed', name: 'Shed', order: 2 },
+                ],
+              },
+            },
+    )
+
+    // When the dialog's list is read
+    const result = await fetchImportTargetLocations({ query } as never)
+
+    // Then only Home is offered
+    expect(result).toEqual([{ id: 'cloud_home', name: 'Home' }])
+    // And every listed location was asked about, as a reference
+    const check = query.mock.calls.find(
+      (call) => opNameOf(rowAt(call).query) === 'ImportCheck',
+    )
+    expect(rowAt(defined(check, 'the ImportCheck call')).variables).toEqual({
+      ids: { locationRefs: ['cloud_home', 'cloud_garage', 'cloud_shed'] },
+      forClear: false,
+    })
   })
 })

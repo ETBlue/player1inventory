@@ -1,5 +1,6 @@
 import { useAuth } from '@clerk/react'
 import { useTranslation } from 'react-i18next'
+import { ImportLocationDialog } from '@/components/settings/ImportLocationDialog'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -10,10 +11,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { useImportTargetLocations } from '@/hooks/useImportTargetLocations'
 import {
   type MigrationAuth,
   usePostLoginMigration,
 } from '@/hooks/usePostLoginMigration'
+import { defaultImportLocationName } from '@/lib/importData'
 
 // E2E test mode. `VITE_E2E_TEST_USER_ID` makes `main.tsx` render the cloud tree
 // with NO `ClerkProvider`, so `useAuth()` throws there.
@@ -61,11 +64,21 @@ function PostLoginMigrationDialogE2E() {
 }
 
 function MigrationDialogs({ isLoaded, isSignedIn }: MigrationAuth) {
-  const { state, error, dismiss, importData } = usePostLoginMigration({
+  const {
+    state,
+    error,
+    dismiss,
+    importData,
+    chooseLocation,
+    cancelLocation,
+    pendingPayload,
+  } = usePostLoginMigration({
     isLoaded,
     isSignedIn,
   })
   const { t } = useTranslation()
+  const choosingLocation = state === 'choosing-location'
+  const targetLocations = useImportTargetLocations(choosingLocation)
 
   // `importData('append')` IS THE COPY. It used to be reached two ways: either
   // straight from the Import button for a single-location pantry, or through
@@ -91,6 +104,20 @@ function MigrationDialogs({ isLoaded, isSignedIn }: MigrationAuth) {
           </AlertDialogHeader>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* "Import into which location?" before the copy (households H4 task
+          E.4, decision O3). Mounted only while it is open, so its name field
+          starts with the local default location's name. */}
+      {choosingLocation && pendingPayload !== undefined && (
+        <ImportLocationDialog
+          open
+          locations={targetLocations.data}
+          loadError={targetLocations.isError}
+          defaultNewName={defaultImportLocationName(pendingPayload)}
+          onConfirm={chooseLocation}
+          onCancel={cancelLocation}
+        />
+      )}
 
       {/* Manual import prompt dialog */}
       <AlertDialog open={state === 'prompting' || state === 'importing'}>
@@ -137,11 +164,13 @@ function MigrationDialogs({ isLoaded, isSignedIn }: MigrationAuth) {
             </AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription>
-            {error?.forbidden
-              ? t('settings.postLoginMigration.errorForbidden')
-              : t('settings.postLoginMigration.errorOther', {
-                  message: error?.message ?? '',
-                })}
+            {error?.role
+              ? t('settings.postLoginMigration.errorRole')
+              : error?.forbidden
+                ? t('settings.postLoginMigration.errorForbidden')
+                : t('settings.postLoginMigration.errorOther', {
+                    message: error?.message ?? '',
+                  })}
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogAction onClick={dismiss}>

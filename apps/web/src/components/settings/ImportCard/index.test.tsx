@@ -1,15 +1,21 @@
 import { CombinedGraphQLErrors } from '@apollo/client/errors'
+import { useApolloClient } from '@apollo/client/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
+import type { HouseholdRole } from '@/generated/graphql'
 import {
   ActiveLocationProvider,
   activeLocationStorageKey,
 } from '@/hooks/useActiveLocation'
 import type { ExportPayload } from '@/lib/exportData'
-import { type ImportSession, importCloudData } from '@/lib/importData'
+import {
+  ImportRefusedError,
+  type ImportSession,
+  importCloudData,
+} from '@/lib/importData'
 import { callArgs, elementAt } from '@/test/narrow'
 import { ImportCard } from '.'
 
@@ -21,8 +27,43 @@ vi.mock('sonner', () => ({
 
 vi.mock('@/lib/importData', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/lib/importData')>()
-  return { ...original, importCloudData: vi.fn().mockResolvedValue(undefined) }
+  return {
+    ...original,
+    importCloudData: vi.fn().mockResolvedValue({
+      skipped: { locationNames: [], rowCount: 0 },
+    }),
+  }
 })
+
+// The caller's household role, read by the card through `useHousehold`
+// (households H4 task E.4). `undefined` is what the shared Apollo stub in
+// `src/test/setup.ts` gives: the role is not known yet.
+const householdRole: { current: HouseholdRole | undefined } = {
+  current: undefined,
+}
+vi.mock('@/hooks/useHousehold', () => ({
+  useHousehold: () => ({
+    data:
+      householdRole.current === undefined
+        ? undefined
+        : { id: 'hh-1', name: 'The Lins', role: householdRole.current },
+    isLoading: false,
+    isError: false,
+  }),
+}))
+
+// The locations the "Import into which location?" dialog offers.
+vi.mock('@/hooks/useImportTargetLocations', () => ({
+  useImportTargetLocations: (enabled: boolean) => ({
+    data: enabled
+      ? [
+          { id: 'cloud_home', name: 'Home' },
+          { id: 'cloud_garage', name: 'my Garage' },
+        ]
+      : undefined,
+    isError: false,
+  }),
+}))
 
 function renderCard() {
   const queryClient = new QueryClient({
@@ -107,9 +148,10 @@ async function seedLocations(...entries: Array<[string, string]>) {
 // the backup's locations and pass it as `importCloudData`'s `locationId`, and
 // had to REFUSE the import when the backup's locations were several and none
 // of them this device's. Both the function and the refusal are gone —
-// `importCloudData` carries every location through the remap rule (PR 4
-// design §1), so there is no choice to make and nothing to lose by making it
-// wrongly. The surviving rule is the inverse, and these two its assert it.
+// `importCloudData` keeps every location (since households H4 task E.4, the
+// new id rule: only the local default `'local'` needs a choice, and these
+// backups have no such row), so there is nothing to choose. The surviving
+// rule is the inverse, and these two its assert it.
 //
 // The plan's list of dying tests named 14 its, all in `lib/importData.test.ts`.
 // These three were not on it.
@@ -340,7 +382,7 @@ describe('ImportCard — a cross-account refusal says so in words', () => {
     // Then the refusal is explained, and nothing was imported
     expect(
       await screen.findByText(
-        'Some rows in this file belong to another account, so the import was refused. Nothing was imported.',
+        'Some rows in this file belong to another household, so the import was refused. Nothing was imported.',
       ),
     ).toBeInTheDocument()
 
@@ -369,15 +411,264 @@ describe('ImportCard — a cross-account refusal says so in words', () => {
     // Then the sentence says the cloud data is gone and the file is not
     expect(
       await screen.findByText(
-        'Some rows in this file belong to another account, so the import was refused. Your cloud data was already cleared before that happened. Your backup file is unchanged.',
+        'Some rows in this file belong to another household, so the import was refused. Your cloud data was already cleared before that happened. Your backup file is unchanged.',
       ),
     ).toBeInTheDocument()
 
     // And NOT the sentence that claims nothing happened
     expect(
       screen.queryByText(
-        'Some rows in this file belong to another account, so the import was refused. Nothing was imported.',
+        'Some rows in this file belong to another household, so the import was refused. Nothing was imported.',
       ),
+    ).not.toBeInTheDocument()
+  })
+})
+
+// ─── Households H4 task E.4: role-aware import, the location dialog ─────────
+
+// A local backup: its default location has the id 'local', so a cloud import
+// asks where its rows go.
+function localBackup() {
+  const iso = new Date().toISOString()
+  return {
+    ...v15Payload('local'),
+    locations: [
+      {
+        id: 'local',
+        name: 'My Home',
+        order: 0,
+        isDefault: true,
+        createdAt: iso,
+        updatedAt: iso,
+      },
+    ],
+  }
+}
+
+// A cloud client whose catalog already holds `item-1`, so a backup that has
+// it too stops at the conflict dialog.
+function cloudClientWithMilk() {
+  return {
+    cache: { evict: vi.fn(), gc: vi.fn() },
+    query: vi.fn().mockResolvedValue({
+      data: {
+        items: [{ id: 'item-1', name: 'Milk' }],
+        tags: [],
+        tagTypes: [],
+        vendors: [],
+        recipes: [],
+        inventoryLogs: [],
+        allCarts: [],
+        allCartItems: [],
+        shelves: [],
+      },
+    }),
+    mutate: vi.fn().mockResolvedValue({ data: {} }),
+    resetStore: vi.fn().mockResolvedValue(null),
+  }
+}
+
+describe('ImportCard — who can import (households H4 task E.4)', () => {
+  afterEach(async () => {
+    localStorage.clear()
+    householdRole.current = undefined
+    vi.mocked(importCloudData).mockClear()
+    vi.mocked(useApolloClient).mockRestore?.()
+    await db.locations.clear()
+  })
+
+  it('user who is a household member sees why they cannot import, and no file button', () => {
+    // Given cloud mode and the household role `member`
+    localStorage.setItem('data-mode', 'cloud')
+    householdRole.current = 'member'
+
+    // When the card renders
+    renderCard()
+
+    // Then the card is there, with the line instead of the button
+    expect(screen.getByText('Import data')).toBeInTheDocument()
+    expect(
+      screen.getByText('Only the owner or a manager can import data.'),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Import' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('user who is a manager can pick a file', () => {
+    // Given cloud mode and the household role `manager`
+    localStorage.setItem('data-mode', 'cloud')
+    householdRole.current = 'manager'
+
+    // When the card renders
+    renderCard()
+
+    // Then the file button is there and enabled, and the member line is not
+    expect(screen.getByRole('button', { name: 'Import' })).toBeEnabled()
+    expect(
+      screen.queryByText('Only the owner or a manager can import data.'),
+    ).not.toBeInTheDocument()
+  })
+
+  for (const [role, clearShown] of [
+    ['manager', false],
+    ['owner', true],
+  ] as const) {
+    it(`user who is ${role === 'owner' ? 'the owner' : 'a manager'} ${clearShown ? 'is' : 'is not'} offered Clear & import`, async () => {
+      // Given cloud mode, the role, and a backup whose item is already there
+      localStorage.setItem('data-mode', 'cloud')
+      householdRole.current = role
+      vi.mocked(useApolloClient).mockReturnValue(cloudClientWithMilk() as never)
+      const { container } = renderCard()
+
+      // When the user picks the backup
+      await uploadPayload(container, v15Payload())
+
+      // Then the conflict dialog offers skip and replace
+      expect(
+        await screen.findByRole('button', { name: 'Replace matches' }),
+      ).toBeInTheDocument()
+      // And Clear & import only to the owner
+      const clear = screen.queryByRole('button', { name: 'Clear & import' })
+      if (clearShown) expect(clear).toBeInTheDocument()
+      else expect(clear).not.toBeInTheDocument()
+    })
+  }
+})
+
+describe('ImportCard — the import messages (households H4 decision T17)', () => {
+  afterEach(async () => {
+    localStorage.clear()
+    householdRole.current = undefined
+    vi.mocked(importCloudData).mockClear()
+    await db.locations.clear()
+  })
+
+  it('user who is refused for their role is told so', async () => {
+    // Given the import check refuses the role
+    localStorage.setItem('data-mode', 'cloud')
+    householdRole.current = 'manager'
+    vi.mocked(importCloudData).mockRejectedValueOnce(
+      new ImportRefusedError('role'),
+    )
+    const { container } = renderCard()
+
+    // When the user imports a backup
+    await uploadPayload(container, v15Payload())
+
+    // Then the role sentence is shown, not the household one
+    expect(
+      await screen.findByText(
+        'Only the owner or a manager can import data, so the import was refused. Nothing was imported.',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(/belong to another household/),
+    ).not.toBeInTheDocument()
+  })
+
+  it('user importing a file with another household’s rows is told nothing was imported, even on clear', async () => {
+    // Given the import check finds another household's row, on `clear`. The
+    // check runs before the clear, so nothing was cleared.
+    localStorage.setItem('data-mode', 'cloud')
+    householdRole.current = 'owner'
+    const refusal = Object.assign(new ImportRefusedError('anotherHousehold'), {
+      session: {
+        payload: v15Payload() as unknown as ExportPayload,
+        strategy: 'clear',
+        completedBatchKeys: new Set(),
+      } satisfies ImportSession,
+    })
+    vi.mocked(importCloudData).mockRejectedValueOnce(refusal)
+    const { container } = renderCard()
+
+    // When the user imports
+    await uploadPayload(container, v15Payload())
+
+    // Then the sentence says nothing was imported, not that data was cleared
+    expect(
+      await screen.findByText(
+        'Some rows in this file belong to another household, so the import was refused. Nothing was imported.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/already cleared/)).not.toBeInTheDocument()
+  })
+
+  it('user sees which locations were skipped after the import', async () => {
+    // Given an import that skipped the Garage and two other rows
+    localStorage.setItem('data-mode', 'cloud')
+    householdRole.current = 'manager'
+    vi.mocked(importCloudData).mockResolvedValueOnce({
+      skipped: { locationNames: ['Garage', 'Attic'], rowCount: 2 },
+    })
+    const { container } = renderCard()
+
+    // When the import finishes
+    await uploadPayload(container, v15Payload())
+
+    // Then the card names the skipped locations and counts the other rows
+    expect(
+      await screen.findByText(
+        'Skipped, because you cannot edit them: Garage, Attic.',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        '2 rows were skipped, because they point at locations or items you cannot use.',
+      ),
+    ).toBeInTheDocument()
+  })
+})
+
+describe('ImportCard — Import into which location? (households H4 task E.4)', () => {
+  afterEach(async () => {
+    localStorage.clear()
+    householdRole.current = undefined
+    vi.mocked(importCloudData).mockClear()
+    await db.locations.clear()
+  })
+
+  it('user importing a local backup into cloud is asked where, with the first location checked', async () => {
+    // Given cloud mode, a manager, and a backup from local mode
+    localStorage.setItem('data-mode', 'cloud')
+    householdRole.current = 'manager'
+    const { container } = renderCard()
+
+    // When the user picks it
+    await uploadPayload(container, localBackup())
+
+    // Then the dialog asks, with Home checked, and nothing is imported yet
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Import into which location?',
+      }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Home' })).toBeChecked()
+    expect(importCloudData).not.toHaveBeenCalled()
+
+    // When the user picks my Garage and confirms
+    fireEvent.click(screen.getByRole('radio', { name: 'my Garage' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }))
+
+    // Then the import runs with that location in its session
+    await waitFor(() => expect(importCloudData).toHaveBeenCalledTimes(1))
+    const options = callArgs(vi.mocked(importCloudData).mock, 0)[3]
+    expect(options?.session?.target).toEqual({ locationId: 'cloud_garage' })
+  })
+
+  it('user importing a cloud backup is not asked where', async () => {
+    // Given a backup with no local default location
+    localStorage.setItem('data-mode', 'cloud')
+    householdRole.current = 'manager'
+    const { container } = renderCard()
+
+    // When the user picks it
+    await uploadPayload(container, v15Payload('cloud_home'))
+
+    // Then it is imported at once, with no location dialog
+    await waitFor(() => expect(importCloudData).toHaveBeenCalledTimes(1))
+    expect(
+      screen.queryByRole('heading', { name: 'Import into which location?' }),
     ).not.toBeInTheDocument()
   })
 })
