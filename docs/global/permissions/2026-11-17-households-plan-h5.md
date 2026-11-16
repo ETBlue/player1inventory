@@ -258,6 +258,27 @@ Each has a recommendation. **A** is the recommendation unless it says otherwise.
 | O11 | The texts. English first, then the `tw` first version (the owner corrects `tw` in the PR) | "View only" / 「僅檢視」 · "No access" / 「無權限」 · "No organizer" / 「沒有組織者」 · "You have no locations in this household yet." / 「你在這個家還沒有據點。」 · "Create a location" / 「建立據點」 · role names "Organizer" / 「組織者」, "Participant" / 「參與者」, "Viewer" / 「檢視者」, "Owner" / 「擁有者」, "Manager" / 「管理者」, "Member" / 「成員」 | Approve, or give the words you prefer | H5a (F.3, F.4, F.7) |
 | O12 | A person opens an invite link while the app is in local mode. What happens? | **A.** The join page says "Joining a household uses cloud sync" and offers **Sign in to join**. It switches to cloud and returns to the link after sign-in. Their local data stays in local mode; it is NOT copied into the household. **B.** Also offer to copy local data after joining | **A.** A new `member` cannot import (H4 decision O7), so a copy would be refused | H5b |
 
+### Owner answers (2026-11-17)
+
+The owner answered **A** to O1–O10 and O12.
+
+O11: the owner gave new `tw` names for the three location roles. The other texts were not
+changed, so they stand as proposed, with two follow-on edits made by the main session:
+
+| English | `tw` | Source |
+|---|---|---|
+| Organizer | 「據點王」 | owner |
+| Participant | 「搬運工」 | owner |
+| Viewer | 「圍觀的」 | owner |
+| No organizer | 「沒有據點王」 | follows the owner's "Organizer" |
+| You have no locations in this household yet. | 「你在這個家庭還沒有據點。」 | uses 「家庭」, as the existing household texts in `tw.json` do |
+| View only | 「僅檢視」 | as proposed |
+| No access | 「無權限」 | as proposed |
+| Create a location | 「建立據點」 | as proposed |
+| Owner / Manager / Member | 「擁有者」 / 「管理者」 / 「成員」 | as proposed |
+
+The owner can still correct any `tw` text in the PR.
+
 ---
 
 ## Task F.1 — server: `myRole`, `hasOrganizer`, `householdLocations`
@@ -704,7 +725,7 @@ and one test-only override in shipped code.
 - **A removed member's open tab is not told.** Live events stop reaching them
   (`shouldDeliver` checks membership), so their screen is stale until their next request fails.
   H5b's `NO_HOUSEHOLD` handler covers the next request; nothing pushes it sooner.
-- **The `tw` texts in O11 are a first version.**
+- **The `tw` texts in O11 are set by the owner's answers; the owner can still correct them in the PR.**
 
 ## What this plan got wrong
 
@@ -715,5 +736,5 @@ Filled in from the task reports and reviews.
 
 ## Status
 
-**Plan written 2026-11-17** on `feature/households-h5`. Owner decisions O1–O12 are open. No
-task started.
+**Plan written 2026-11-17** on `feature/households-h5`. Owner decisions O1–O12 answered
+2026-11-17 (see *Owner answers*). H5a task F.1 is next.
