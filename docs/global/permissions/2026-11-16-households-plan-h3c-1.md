@@ -388,5 +388,12 @@ Collected from the task reports and reviews, C.1 to C.6.
 
 **Done, 2026-11-16.** All seven tasks built on `feature/households-h3c`. Not merged into
 `develop`, not deployed. It deploys with H3a and H3b at the next checkpoint release; see the
-[runbook](../backend/2026-11-16-deploy-runbook-households-h3c-1.md). The final gate and
-`pnpm test:e2e:all` results are in the C.7 task report and the PR.
+[runbook](../backend/2026-11-16-deploy-runbook-households-h3c-1.md).
+
+Final gate on `25facd57` (code unchanged since; C.7 changed docs only), 2026-11-16:
+
+| Check | Result |
+|---|---|
+| `pnpm lint`, `pnpm build`, `build-storybook`, `pnpm check`, `TS6385` grep | all pass, 0 `TS6385` |
+| `pnpm test` | server **1412 / 61**, web **2577 / 281**, `scripts/spec` **70**, all pass |
+| `pnpm test:e2e:all` | `local` 178 passed / 6 skipped (3m27s); `cloud` 139 passed / 7 skipped (26m02s); `pwa` 73 passed (1m33s). All green, no re-run |
