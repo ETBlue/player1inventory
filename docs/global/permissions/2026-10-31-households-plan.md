@@ -43,7 +43,7 @@ force-push, and a merge breaks the repo's rebase-only rule.
 |---|---|---|
 | H1 Settings layout and route moves (both modes, no backend change) | **Full** — tasks 1.1–1.9 | 1 |
 | H2 `User` model, Clerk webhook, `lastSeenAt`, E2E user support | **Full** — tasks 2.1–2.7 | 2 |
-| H3 Households, roles, data migration, read scoping | Outline. Split into H3a, H3b and H3c; detailed plan for H3a: [2026-11-04-households-plan-h3a.md](2026-11-04-households-plan-h3a.md); design for H3b: [2026-11-14-households-h3b-design.md](2026-11-14-households-h3b-design.md), plan: [2026-11-14-households-plan-h3b.md](2026-11-14-households-plan-h3b.md) | 3 (now H3a ✅ merged into `develop` #375, `chore/build-shared-types` ✅ merged into `develop` #376, H3b built on its branch 2026-11-15, not merged, not deployed, H3c) |
+| H3 Households, roles, data migration, read scoping | Outline. Split into H3a, H3b and H3c; detailed plan for H3a: [2026-11-04-households-plan-h3a.md](2026-11-04-households-plan-h3a.md); design for H3b: [2026-11-14-households-h3b-design.md](2026-11-14-households-h3b-design.md), plan: [2026-11-14-households-plan-h3b.md](2026-11-14-households-plan-h3b.md) | 3 (now H3a ✅ merged into `develop` #375, `chore/build-shared-types` ✅ merged into `develop` #376, H3b ✅ merged into `develop` #377, H3c designed 2026-11-16: [design](2026-11-16-households-h3c-design.md)) |
 | H4 Import and export | Outline | 4 |
 | H5 Invites, join, members, read-only views | Outline | 5 |
 | H6 Transfer, hand-over, purges, activity | Outline | 6 |
@@ -710,6 +710,11 @@ The outline below is the first version. Each bullet is marked with where it went
   `renameHousehold` (decision H4)
 
 ### H3c — Live updates
+
+**Designed 2026-11-16:** [2026-11-16-households-h3c-design.md](2026-11-16-households-h3c-design.md)
+([brainstorming](2026-11-16-brainstorming-households-h3c.md)). Split into H3c-1 (the whole path,
+carts only) and H3c-2 (stock, logs, locations, catalog), both before H5. The notes below are
+the outline from before the design.
 
 Added 2026-11-13. The owner: "I would like to have live updates soon as it's a core
 functionality for household collaboration." Scope: everything shared. To decide in its own
