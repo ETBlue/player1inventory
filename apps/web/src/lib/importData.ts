@@ -30,6 +30,7 @@ import {
   ClearAllDataDocument,
   CreateLocationDocument,
   type CreateLocationMutation,
+  DeleteLocationDocument,
   GetItemsDocument,
   type GetItemsQuery,
   GetLocationsDocument,
@@ -1005,6 +1006,64 @@ async function fetchHomeAfterClear(client: ApolloClient): Promise<string> {
   const id = result.data?.locations[0]?.id
   if (id === undefined) throw new Error('No location after clearing the data')
   return id
+}
+
+/**
+ * Whether the import put anything into `locationId`: its location row, or a
+ * stock row, log or cart there. Cart items go with their cart.
+ */
+function payloadUsesLocation(
+  payload: ExportPayload,
+  locationId: string,
+): boolean {
+  const at = (rows: readonly unknown[] | undefined, key: string) =>
+    (rows ?? []).some((row) => stringField(row, key) === locationId)
+  return (
+    at(payload.locations, 'id') ||
+    at(payload.itemStocks, 'locationId') ||
+    at(payload.inventoryLogs, 'locationId') ||
+    payload.shoppingCarts.some((row) => {
+      const id = stringField(row, 'id')
+      return (
+        id?.includes(':') === true && parseCartId(id).locationId === locationId
+      )
+    })
+  )
+}
+
+// Owner decision 6 of task E.4 (2026-11-16, choice A). `clearAllData` makes
+// a fresh "Home". A cloud backup brings its own locations and puts nothing
+// there, which used to leave an extra, empty "Home". So after a FINISHED
+// `clear` import, delete it with the normal `deleteLocation` mutation (it
+// sends the household's LOCATION live event as usual), when:
+//
+// - the import put no location row, stock row, log or cart there, and
+// - the import created at least one location of its own, so the fresh Home
+//   is not the household's last location (the server refuses that with
+//   LAST_LOCATION).
+//
+// A local backup always puts "My Home" there (`placeDefaultLocation`), so it
+// is never deleted then.
+//
+// A failed delete does NOT fail the import: every row is written by then,
+// and saying "import failed" would make the user retry a `clear` for an
+// empty location. The extra "Home" stays, as before this decision, and the
+// user can delete it on the locations page.
+async function deleteHomeIfUnused(
+  client: ApolloClient,
+  payload: ExportPayload,
+  home: string,
+): Promise<void> {
+  if (payloadUsesLocation(payload, home)) return
+  if ((payload.locations ?? []).length === 0) return
+  try {
+    await client.mutate({
+      mutation: DeleteLocationDocument,
+      variables: { id: home },
+    })
+  } catch {
+    // See the comment above: the import itself finished.
+  }
 }
 
 // Create the location the user named in the dialog (decision O6), with the
@@ -3274,6 +3333,7 @@ export async function importCloudData(
         startCompleted: 0,
         totalBatches: computeTotalBatches(payload),
       })
+      await deleteHomeIfUnused(client, payload, home)
       await resetStoreAfterImport(client)
       return { skipped }
     }

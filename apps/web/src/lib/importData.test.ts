@@ -5828,6 +5828,148 @@ describe('importCloudData — the check before the first write (households H4 ta
     expect(mutations(client)).toEqual([])
   })
 
+  // ── Owner decision 6 (2026-11-16, choice A): no extra empty "Home" ──
+  //
+  // `clearAllData` makes a fresh "Home". When the file puts nothing there (a
+  // cloud backup, with its own locations), the import deletes it at the end.
+
+  // A cloud backup: two locations of its own, rows at both, no 'local'.
+  function cloudBackup(): ExportPayload {
+    return emptyPayload({
+      items: [makeItem('item-1', 'Milk')],
+      locations: [
+        { id: 'loc_a', name: 'Kitchen', order: 0 },
+        { id: 'loc_b', name: 'Garage', order: 1 },
+      ],
+      itemStocks: [
+        { id: 's-a', itemId: 'item-1', locationId: 'loc_a' },
+        { id: 's-b', itemId: 'item-1', locationId: 'loc_b' },
+      ],
+      inventoryLogs: [{ ...makeInventoryLog('log-a'), locationId: 'loc_a' }],
+      shoppingCarts: [makeShoppingCart('loc_a:vendor_1')],
+    })
+  }
+
+  it('user restoring a cloud backup with clear has the empty fresh Home deleted', async () => {
+    // Given a cloud backup, and the fresh Home after the clear is cloud_home
+    const client = makeClient()
+
+    // When the user imports it with clear
+    await importCloudData(cloudBackup(), 'clear', client as never)
+
+    // Then the fresh Home is deleted once, after every bulk write
+    const deletes = client.calls.filter((c) => c.op === 'DeleteLocation')
+    expect(deletes.map((c) => c.variables)).toEqual([{ id: 'cloud_home' }])
+    const ops = mutations(client)
+    expect(ops.indexOf('DeleteLocation')).toBe(ops.length - 1)
+  })
+
+  it('user clearing before importing a local backup keeps the fresh Home, where My Home went', async () => {
+    // Given a local file: its 'local' rows go to the fresh Home
+    const client = makeClient()
+
+    // When the user imports it with clear
+    await importCloudData(localFile(), 'clear', client as never)
+
+    // Then the Home that holds them is not deleted
+    expect(mutations(client)).not.toContain('DeleteLocation')
+    expect(sent(client, 'itemStocks').map((s) => s.locationId)).toContain(
+      'cloud_home',
+    )
+  })
+
+  it('user clearing before importing a file with no location rows keeps the fresh Home', async () => {
+    // Given a file with locations: [] and no rows anywhere. Deleting the
+    // fresh Home would remove the household's only location.
+    const client = makeClient()
+
+    // When the user imports it with clear
+    await importCloudData(emptyPayload(), 'clear', client as never)
+
+    // Then nothing is deleted
+    expect(mutations(client)).not.toContain('DeleteLocation')
+  })
+
+  it('user restoring a cloud backup with clear keeps the fresh Home when a row of the file went there', async () => {
+    // Given a cloud backup with one log that has no location: it goes to
+    // the fresh Home
+    const client = makeClient()
+    const file = cloudBackup()
+    file.inventoryLogs = [...file.inventoryLogs, makeInventoryLog('log-none')]
+
+    // When the user imports it with clear
+    await importCloudData(file, 'clear', client as never)
+
+    // Then the fresh Home is kept, because it holds that log
+    expect(
+      sent(client, 'logs').map((l) => [l.id, l.locationId]),
+    ).toContainEqual(['log-none', 'cloud_home'])
+    expect(mutations(client)).not.toContain('DeleteLocation')
+  })
+
+  // One row of each kind, alone at the fresh Home, keeps it. A row at
+  // 'local' with no 'local' location row is moved to the fresh Home too.
+  for (const [kind, addRow] of [
+    [
+      'a stock row',
+      (file: ExportPayload) => {
+        file.itemStocks = [
+          ...(file.itemStocks ?? []),
+          { id: 's-home', itemId: 'item-1', locationId: 'local' },
+        ]
+      },
+    ],
+    [
+      'a cart',
+      (file: ExportPayload) => {
+        file.shoppingCarts = [
+          ...file.shoppingCarts,
+          makeShoppingCart('local:vendor_9'),
+        ]
+      },
+    ],
+  ] as const) {
+    it(`user restoring a cloud backup with clear keeps the fresh Home when ${kind} went there`, async () => {
+      // Given a cloud backup with that one row at the default location
+      const client = makeClient()
+      const file = cloudBackup()
+      addRow(file)
+
+      // When the user imports it with clear
+      await importCloudData(file, 'clear', client as never)
+
+      // Then the fresh Home holds it and is kept
+      expect(mutations(client)).not.toContain('DeleteLocation')
+    })
+  }
+
+  it('user whose clear import fails part way has the fresh Home left alone', async () => {
+    // Given a cloud backup whose stock batch fails
+    const client = makeClient({ failOn: 'BulkCreateItemStocks' })
+
+    // When the user imports it with clear
+    await expect(
+      importCloudData(cloudBackup(), 'clear', client as never),
+    ).rejects.toThrow('BulkCreateItemStocks failed')
+
+    // Then the fresh Home is not deleted: the import did not finish
+    expect(mutations(client)).not.toContain('DeleteLocation')
+  })
+
+  it('user whose empty Home cannot be deleted is still told the import worked', async () => {
+    // Given the delete of the fresh Home fails
+    const client = makeClient({ failOn: 'DeleteLocation' })
+
+    // When the user imports a cloud backup with clear
+    const result = importCloudData(cloudBackup(), 'clear', client as never)
+
+    // Then the import resolves: every row was written. The empty Home stays.
+    await expect(result).resolves.toEqual({
+      skipped: { locationNames: [], rowCount: 0 },
+    })
+    expect(mutations(client)).toContain('DeleteLocation')
+  })
+
   it('refuses a file that needs a location when none was picked, before any call', async () => {
     const client = makeClient()
     await expect(
