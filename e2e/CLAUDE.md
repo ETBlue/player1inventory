@@ -431,15 +431,20 @@ deleted `ensureDefaultLocation` and `apps/server/src/lib/defaultLocation.ts`):
 | Case | Code | What it does |
 |---|---|---|
 | first sign-in | `ensureHousehold` in `apps/server/src/lib/household.ts`, reached through `requireHousehold` in `apps/server/src/lib/authz.ts` | a user with no household gets one, plus one location ("Home" in English) at `order: 0`, and an `organizer` row on it. There is no `isDefault` column since households H3a task 3.14. The `locations` query is the usual first caller. |
-| an import row that names no usable location | `fallbackImportLocation` in `apps/server/src/lib/authz.ts` | picks the caller's location with the lowest `order` (ties broken by id), in the caller's household, on which the caller is `participant` or `organizer`. It does not create one. If none qualifies, the import fails with `NO_LOCATION`. |
 
-`fallbackImportLocation` reads `LocationMember` rows. `createLocation` writes the
-creator's `organizer` row since H3a task 3.6. Until task 3.9, the bulk location imports
-write none, so a location made by them is never picked. And until task 3.10,
-`clearAllData` deleted every location without making a new one. Both could lead to
-`NO_LOCATION` in cloud E2E. Both are fixed: the imports write the `organizer` row since
-task 3.9, and `clearAllData` makes "Home" again, with an `organizer` row, in the same
-transaction since task 3.10 (decision H17).
+**No import row is put in a location the server picks** (since households H4 task E.3).
+Until then a fallback in `apps/server/src/lib/authz.ts` (decision H12) sent an import log
+with no `locationId`, and a cart whose id named no usable location, to the caller's first
+writable location. It is deleted. Now:
+
+| Import row | Server answer |
+|---|---|
+| a log with no `locationId` | `BAD_USER_INPUT`, `extensions.reason` `IMPORT_NEEDS_LOCATION`, nothing in the batch is written |
+| a cart id with no `:` (a bare id such as `no-vendor`) | `BAD_USER_INPUT`, nothing written |
+| a cart id or log naming a location that does not exist, or one in another household | `FORBIDDEN`, nothing written |
+
+A spec that imports into cloud must name a real location for every log and cart.
+`cart-id-cross-user-leak.spec.ts` imports a bare `no-vendor` cart id; task E.6 changes it.
 
 **`ensureCloudHomeLocation(request)` (`e2e/helpers/cloudSeed.ts`) is worth calling
 first.** It runs the `locations` query (which runs first sign-in) and returns the FIRST

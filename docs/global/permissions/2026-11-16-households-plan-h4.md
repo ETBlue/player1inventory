@@ -396,6 +396,66 @@ fixture used the fallback.
     - put the fallback back in `resolveLogLocations` (send a row with no location to any
       location) → the `IMPORT_NEEDS_LOCATION` test red.
 
+**As built (2026-11-16).**
+
+- **The role gate** is `const householdId = await requireCatalogRole(ctx, 'manager')` right
+  after `requireAuth` in all 22 mutations, BEFORE the empty-batch return. So a member is
+  refused even for an empty batch, with no other read. Every helper gets that `householdId`:
+  `requireOwnRowIdsOrUnclaimed` (the 4 inline `await requireHousehold(ctx)` from E.1 are
+  gone), `resolveLogLocations`, `resolveCartLocations`, `requireOwnLocationIdsOrUnclaimed`,
+  `requireOwnItemStockRefs` and `resolveCartItemParents`. The three guard greps still say
+  18 / 2 / 2. A block comment, *IMPORT ROLE GATE*, above the resolvers says why once.
+- **The helpers keep their names** (`resolveLogLocations`, `resolveCartLocations`). Renaming
+  them would have made comments in `apps/web/src/lib/importData.ts`, its test and two E2E
+  specs name functions that no longer exist.
+- **`IMPORT_NEEDS_LOCATION`** is `extensions: { code: 'BAD_USER_INPUT', reason:
+  'IMPORT_NEEDS_LOCATION' }`. T10 said "`BAD_USER_INPUT` (code `IMPORT_NEEDS_LOCATION`)",
+  which can be read two ways. E.4 must read `extensions.reason`.
+- **`resolveCartLocations`** refuses a bare id before any read, then runs
+  `requireLocationRole` and `requireLocationInHousehold` per distinct prefix. It reads no
+  location row before the role check (review note 2 of E.1: no `NO_LOCATION` for a bare id,
+  no existence oracle; both tested). Its household call is a SECOND copy of the check in
+  `cartVerdict`: removing it leaves every test green. Kept, and the comment says so.
+- **`requireOwnItemStockRefs`** also checks the location of a STORED stock row whose id the
+  file names (role and household). The plan did not ask for it: `bulkUpsertItemStocks`
+  updates a row in place and keeps its location, so without it an import into A could
+  overwrite a stock row of B.
+- **`resolveCartItemParents`** finds the cart among the target's writable locations only
+  (`locationIdsWithRole(ctx, 'participant', { householdId })`) and checks the item against
+  the target. `householdOfLocation` is no longer read there. This closes the E.1 review
+  note 5 case: a row in a cart of the caller's other household is SKIPPED (the reference
+  table's rule for `cartId`).
+- **`requireOwnLocationIdsOrUnclaimed`** refuses `'local'` and `:` for the whole batch
+  before any read, and an existing location of another household with `FORBIDDEN`. The
+  "viewer or no role → skipped" row of the design table stays a web job (E.4, through
+  `importCheck`'s `blockedLocationIds`); the server still refuses, as step 4 and T2 say.
+- **`createVendor`** calls `requireLocationInHousehold` after `requireLocationRole`.
+- **`fallbackImportLocation`** and its 5 tests are deleted, with the unused
+  `WRITE_LOCATION_ROLES`. `git grep -n fallbackImportLocation -- ':!docs'` returns nothing.
+- **Tests.** New file `import-role-gate.resolver.test.ts` (72 tests): the member / manager
+  pair for each of the 22 mutations, #381 gap 1 for stock and logs, the cart and log
+  fallback refusals, and T12. Gap 2 is in `vendor.resolver.test.ts` and
+  `catalog-live-publish.resolver.test.ts`. Existing tests changed, with the reason in each:
+
+  | File | Change |
+  |---|---|
+  | `import.resolver.test.ts` | its `householdMember` mock gains `findUnique` (role `owner`); 10 tests went red without it |
+  | `import-ownership-cart.resolver.test.ts` | MEMBER and VIEWER become household `manager`s (as `member`s the gate refused them first, so VIEWER's refusal test would pass with the location check removed); the second-household describe is rewritten with the target pinned, and its "item of the cart location's household" test now expects a skip into `hh_user` and a write into `hh_second` |
+  | `import-inventoryLog-location.resolver.test.ts` | the 2 "falls back to the default" tests now expect `IMPORT_NEEDS_LOCATION` with a good row in the batch |
+  | `authz.test.ts` | the `fallbackImportLocation` block (5 tests) is deleted |
+  | `cart-live-publish`, `stock-live-publish`, `location-live-publish`, `catalog-live-publish` | `run()` can pin the household (review note 4). 9 tests wrote into ALICE's other household and expected that write's event; they now use a location of the target, and new tests assert the refusal (or the skip, for cart items) and that nothing is published |
+
+- **Comments** fixed: `import.resolver.ts` (every fallback mention, `bulkCreateShoppingCarts`,
+  `resolveCartLocations`, review note 1), `schema/import.graphql`, `vendor.resolver.ts`,
+  four server test headers, `apps/web/src/lib/importData.ts` and its test (two comments
+  that said the server falls back), root `CLAUDE.md` (review note 3, a new *import role
+  gate* paragraph, the reference table) and `e2e/CLAUDE.md`.
+- **E2E specs this breaks (for E.6), found by reading, not by running:**
+  `shared-cart.spec.ts`, its two P3 import tests: the importer is a household `member`, so
+  the gate refuses them. `cart-id-cross-user-leak.spec.ts` test 1 (bare id; already broken
+  since E.1). `settings/import-export-cloud.spec.ts` line ~218 has a comment that says the
+  server falls back (the seed itself maps every location, so it should still pass).
+
 ## Task E.4 — the web: id rule, location dialog, role-aware import
 
 **Files:** `apps/web/src/lib/importData.ts` (+ tests); a new
@@ -586,6 +646,14 @@ Filled in from the task reports and reviews.
 | E.2 review | My first As built note: "A location id no row holds is neither: the import will create it" | True only for the file's location ROWS. A reference to a free location is refused by `cartVerdict`, `resolveLogLocations` and `requireOwnItemStockRefs` |
 | E.2 review | T6 and step 2: "Cart ids also count their PREFIX location" | My first version read the stored cart for EVERY cart id before checking its prefix, the order T6 forbids, and so told a caller whether a cart id at a location they cannot write is taken. It now reads only cart ids whose prefix is writable in the target |
 | E.2 review | Step 5: "a household `member` → `FORBIDDEN`" | That test passes even when the role check runs after the reads. The reviewer moved it and 31 of 31 stayed green. Added: a member's call reads no item row, and a member with 1001 ids gets `FORBIDDEN` |
+| E.3 | T10: "`BAD_USER_INPUT` (code `IMPORT_NEEDS_LOCATION`)" | Two codes in one place. Built as `extensions.code` `BAD_USER_INPUT` plus `extensions.reason` `IMPORT_NEEDS_LOCATION`. E.4 reads `reason` |
+| E.3 | T16 and E.4 step 1: `placeDefaultLocation` maps the id `'local'` in five fields | A backup made before locations existed has logs with NO `locationId`. `upgradeLegacyPayload` gives its carts a prefix but leaves its logs alone, and `applyLocationRemap` leaves them absent on purpose. Since E.3 the server refuses such a log, so a cloud import of an old backup with logs fails until E.4. E.4 must give every log with no location the location the user picked |
+| E.3 | Steps 1–6 name the stock, log, cart and location helpers, and T13 names "cart items" | No step names `resolveCartItemParents`, which looked a cart up across EVERY household the caller is in. That is the E.1 review note 5 case. Fixed in E.3: the cart must be at a writable location of the target |
+| E.3 | Step 5: "each location → role + `requireLocationInHousehold`; each item → the TARGET household" | Not enough. A stock id already stored at a location of another household passed: the stored row's location was checked by role only, and `bulkUpsertItemStocks` keeps the stored location. Built: the stored row's location gets the household check too |
+| E.3 | Step 3: the cart prefix gets "role + household check" in `resolveCartLocations` | `cartVerdict` (E.1) already checks the prefix against the target's writable locations for every cart id. So the household call in `resolveCartLocations` is a second copy: removing it leaves every test green. Kept and labelled |
+| E.3 | Files: the live-publish tests "where an import fixture used the fallback" | 9 tests in 4 live-publish files did not use the fallback. They imported rows into ALICE's OTHER household (stock, logs, a location update, a cart item, `createVendor`) and expected that write's event: they encoded the #381 behaviour. And 2 fixtures in `import-ownership-cart.resolver.test.ts` used household `member`s as importers, so the gate refused them before the location check under test |
+| E.3 | Step 9: "a stock row at a location of A with an item of B → `FORBIDDEN` (stock) / skipped (log)" | True, and a test can still not tell "target" from "caller's household" (the E.2 row says why). The two-household tests prove the location and the item must be in the same household as the target, which is what #381 asks |
+| E.3 | Step 7: `git grep -n fallbackImportLocation` must return nothing outside `docs/` | Its list of files to touch missed `e2e/CLAUDE.md`, four server test headers, and two web comments that described the fallback without naming it |
 
 ## Status
 
