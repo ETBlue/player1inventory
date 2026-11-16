@@ -44,7 +44,7 @@ force-push, and a merge breaks the repo's rebase-only rule.
 | H1 Settings layout and route moves (both modes, no backend change) | **Full** — tasks 1.1–1.9 | 1 |
 | H2 `User` model, Clerk webhook, `lastSeenAt`, E2E user support | **Full** — tasks 2.1–2.7 | 2 |
 | H3 Households, roles, data migration, read scoping | Outline. Split into H3a, H3b and H3c; detailed plan for H3a: [2026-11-04-households-plan-h3a.md](2026-11-04-households-plan-h3a.md); design for H3b: [2026-11-14-households-h3b-design.md](2026-11-14-households-h3b-design.md), plan: [2026-11-14-households-plan-h3b.md](2026-11-14-households-plan-h3b.md) | 3 (now H3a ✅ merged into `develop` #375, `chore/build-shared-types` ✅ merged into `develop` #376, H3b ✅ merged into `develop` #377, H3c designed 2026-11-16: [design](2026-11-16-households-h3c-design.md); H3c-1 ✅ merged into `develop` #379: [plan](2026-11-16-households-plan-h3c-1.md); H3c-2 ✅ merged into `develop` #380: [plan](2026-11-16-households-plan-h3c-2.md)) |
-| H4 Import and export | Outline | 4 |
+| H4 Import and export | Outline. Detailed plan: [2026-11-16-households-plan-h4.md](2026-11-16-households-plan-h4.md) 🔲 | 4 |
 | H5 Invites, join, members, read-only views | Outline | 5 |
 | H6 Transfer, hand-over, purges, activity | Outline | 6 |
 | H7 Personal location order, household switch and create | Outline | 7 |
@@ -733,6 +733,8 @@ brainstorming:
   passes events inside one server process. That works while Railway runs one instance.
 
 ### H4 — Import and export
+
+**Detailed plan (2026-11-16):** [2026-11-16-households-plan-h4.md](2026-11-16-households-plan-h4.md) 🔲 Not started. It also folds in issue #381 (two cross-household writes). The bullets below are the first outline.
 
 - Export: catalog, plus locations where the exporter has a role.
 - Import: owner and manager only; `clear` owner only. The new id rule; the "Import into which
