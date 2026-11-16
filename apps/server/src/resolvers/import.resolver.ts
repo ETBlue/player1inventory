@@ -1296,7 +1296,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           touched.push({ locationId: created.locationId })
         }
       } finally {
-        await publishChange(ctx, 'CART', touched)
+        await publishChange(ctx, ['CART'], touched)
       }
       // NO CLOSING READ, on purpose. Each row returned is the row
       // `cart.create` itself wrote, and the guard above is what makes that row
@@ -1371,7 +1371,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         }
       } finally {
         // Why `finally`: see THE LIVE EVENT in `bulkCreateShoppingCarts`.
-        await publishChange(ctx, 'CART', touched)
+        await publishChange(ctx, ['CART'], touched)
       }
       // NO CLOSING READ — same reason as `bulkCreateShoppingCarts` above. The
       // returned row is the one the upsert wrote, at a cart the guard and
@@ -1731,7 +1731,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           touched.push({ locationId: upserted.locationId })
         }
       } finally {
-        await publishChange(ctx, 'CART', touched)
+        await publishChange(ctx, ['CART'], touched)
       }
       // NO CLOSING READ — same reason as the two creates above. The returned
       // row is the one `cart.upsert` wrote, and the guard is what makes it the
@@ -1802,7 +1802,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           touched.push(parents.locationOf(cartId))
         }
       } finally {
-        await publishChange(ctx, 'CART', touched)
+        await publishChange(ctx, ['CART'], touched)
       }
       // NO CLOSING READ — same reason as the three above. Design decision 5.
       return results

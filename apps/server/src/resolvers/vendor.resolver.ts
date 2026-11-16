@@ -132,7 +132,7 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         // `CART` for each location whose carts this deleted (households
         // H3c-1, task C.4). The household is known: the carts were read
         // from this household's locations. H3c-2 adds `CATALOG`.
-        await publishChange(ctx, 'CART', cartsDeletedAt)
+        await publishChange(ctx, ['CART'], cartsDeletedAt)
       }
     },
   },

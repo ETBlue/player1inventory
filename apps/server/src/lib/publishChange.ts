@@ -1,5 +1,5 @@
 import type { Context } from '../context.js'
-import { type ChangeEvent, type LiveEvents, liveEvents } from './liveEvents.js'
+import { type ChangeKind, type LiveEvents, liveEvents } from './liveEvents.js'
 import { prisma } from './prisma.js'
 
 /**
@@ -11,8 +11,13 @@ import { prisma } from './prisma.js'
 export type ChangedLocation = { locationId: string; householdId?: string }
 
 /**
- * Publish one `ChangeEvent` per distinct location a mutation changed
- * (households H3c-1, task C.4).
+ * Publish one `ChangeEvent` per distinct (kind, location) a mutation changed
+ * (households H3c-1 task C.4; several kinds since H3c-2 task D.1).
+ *
+ * `kinds` lists every kind the mutation changed at these locations (decision
+ * Q1 of the H3c-2 plan: events stay honest). A kind named twice, or a
+ * location named twice, still gives one event. The events go out kind by
+ * kind, and inside one kind in the order the locations were first named.
  *
  * Call it AFTER the write has committed: after `await prisma.x.create(...)`,
  * or after `await prisma.$transaction(...)` has resolved. Never inside the
@@ -32,18 +37,24 @@ export type ChangedLocation = { locationId: string; householdId?: string }
  * other tabs miss this one event and catch up on their next refetch.
  *
  * A location whose row is gone when the household is read (deleted by
- * someone else in the meantime) is skipped. Its own delete event covers it
- * in H3c-2.
+ * someone else in the meantime) is skipped. Its own `LOCATION` event covers
+ * it (decision Q4 of the H3c-2 plan).
+ *
+ * For a household-level change (`LOCATION`, `CATALOG`), use
+ * `publishHouseholdChange` instead.
  *
  * `bus` is for tests that want their own bus. Resolvers use the default.
  */
 export async function publishChange(
   ctx: Context,
-  kind: ChangeEvent['kind'],
+  kinds: readonly ChangeKind[],
   locations: Iterable<ChangedLocation>,
   bus: LiveEvents = liveEvents,
 ): Promise<void> {
   try {
+    const distinctKinds = [...new Set(kinds)]
+    if (distinctKinds.length === 0) return
+
     // One entry per location. A known household wins over an unknown one.
     const byLocation = new Map<string, string | undefined>()
     for (const { locationId, householdId } of locations) {
@@ -62,19 +73,62 @@ export async function publishChange(
       for (const row of rows) byLocation.set(row.id, row.householdId)
     }
 
-    for (const [locationId, householdId] of byLocation) {
-      if (householdId === undefined) continue
+    for (const kind of distinctKinds) {
+      for (const [locationId, householdId] of byLocation) {
+        if (householdId === undefined) continue
+        bus.publish({
+          kind,
+          householdId,
+          locationId,
+          ...(ctx.clientId === undefined ? {} : { sourceClientId: ctx.clientId }),
+        })
+      }
+    }
+  } catch (err) {
+    logPublishError(err)
+  }
+}
+
+/**
+ * Publish one household-level `ChangeEvent` per distinct kind, with
+ * `locationId: null` (households H3c-2, decision Q2).
+ *
+ * For `LOCATION` and `CATALOG`. `shouldDeliver` checks household MEMBERSHIP
+ * for such an event, not a location role. That is why a `LOCATION` event
+ * about a deleted location still reaches the members: a deleted location
+ * can pass no `requireLocationRole` check.
+ *
+ * `householdId` is the household whose data changed. A resolver gets it from
+ * `requireCatalogRole` or from the location it wrote, never from the event
+ * reader.
+ *
+ * The same rules as `publishChange`: call it after the write has committed,
+ * it never throws, and it carries `ctx.clientId` as `sourceClientId` (left
+ * out when the request had none).
+ */
+export async function publishHouseholdChange(
+  ctx: Context,
+  kinds: readonly ChangeKind[],
+  householdId: string,
+  bus: LiveEvents = liveEvents,
+): Promise<void> {
+  try {
+    for (const kind of new Set(kinds)) {
       bus.publish({
         kind,
         householdId,
-        locationId,
+        locationId: null,
         ...(ctx.clientId === undefined ? {} : { sourceClientId: ctx.clientId }),
       })
     }
   } catch (err) {
-    console.error(
-      'publishChange: could not publish a change:',
-      err instanceof Error ? err.name : 'unknown error',
-    )
+    logPublishError(err)
   }
+}
+
+function logPublishError(err: unknown): void {
+  console.error(
+    'publishChange: could not publish a change:',
+    err instanceof Error ? err.name : 'unknown error',
+  )
 }
