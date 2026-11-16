@@ -94,8 +94,10 @@ function countedLocationRole(userId: string) {
  *
  * The household role does NOT count here. A household `owner` with no
  * `LocationMember` row on a location is refused (design, *Rules that cross
- * the two levels*). Until H5 that cannot happen: everyone organizes the
- * locations they made.
+ * the two levels*). That happens as soon as a second person in the
+ * household creates a location: only its creator gets a role (decision O4 of
+ * the H5 plan). The owner then sees it on `householdLocations` with
+ * `myRole: null`, and is refused here.
  *
  * Returns the location id and the role the caller holds.
  */
@@ -127,8 +129,11 @@ export async function requireLocationRole(
  * `role`, only that role or a stronger one counts. Imports ask for
  * `participant`, the lowest role that may write (H3b task B.7).
  *
- * The household role does NOT add locations here. An owner or manager sees a
- * location only through a `LocationMember` row, until H5.
+ * The household role does NOT add locations here. A location the caller has
+ * no `LocationMember` row on is never in this list, even for an owner or
+ * manager. The settings list of every location of the household is
+ * `householdLocations` (resolvers/location.resolver.ts, households H5 task
+ * F.1), which reads the `Location` table, not this.
  *
  * With `options.householdId`, only the locations of that household count
  * (households H4 task E.1, decision T7). A person can be a member of two

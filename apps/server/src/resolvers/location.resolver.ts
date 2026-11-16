@@ -46,9 +46,10 @@ export function toGraphQL(row: PrismaLocation): Location {
  * an export of one household would carry the other's locations, and the
  * import of that file would be refused as "another household".
  *
- * An owner or manager does NOT see a location they have no role on. That is
- * H5. Before H5 nobody can be in that state: whoever creates a location
- * organizes it.
+ * An owner or manager does NOT see a location they have no role on here,
+ * even though they may delete and reorder it. The settings list shows them
+ * every location of the household through `householdLocations` below
+ * (households H5 task F.1, decision T4).
  */
 async function visibleLocations(ctx: Context): Promise<Location[]> {
   const ids = await locationIdsWithRole(ctx, 'viewer', {
