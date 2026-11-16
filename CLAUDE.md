@@ -226,8 +226,8 @@ that really set up that role.
 > `2026-11-16-households-plan-h3c-2.md` (stock, logs, locations, catalog). Deploy:
 > `docs/global/backend/2026-11-16-deploy-runbook-households-h3c-1.md` (section 9 is H3c-2).
 >
-> **Built in households H3c-1 and H3c-2 (2026-11-16).** H3c-1 is merged into `develop`;
-> H3c-2 is on `feature/households-h3c-2`, not merged. Neither is deployed. A change in one
+> **Built in households H3c-1 and H3c-2 (2026-11-16).** H3c-1 is merged into `develop`
+> (#379), and so is H3c-2 (#380). Neither is deployed. A change in one
 > tab reaches the other open tabs of the same household within about a second. The event
 > says only "this changed" (`kind`, `locationId`); the web refetches.
 >
