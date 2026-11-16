@@ -4778,15 +4778,46 @@ describe('importCloudData — one cart pair never spans two batches (H3b task B.
 // task E.4 wires it in.
 describe('checkImportIds', () => {
   type CheckIds = Record<string, string[] | undefined>
-  type Answer = { anotherHousehold: boolean; blockedLocationIds: string[] }
+  type Rows = {
+    inventoryLogs: string[]
+    itemStocks: string[]
+    carts: string[]
+    cartItems: string[]
+  }
+  type Answer = {
+    anotherHousehold: boolean
+    blockedLocationIds: string[]
+    missingLocationIds: string[]
+    missingItemIds: string[]
+    blockedRows: Rows
+  }
+
+  function answerWith(
+    changes: Partial<Omit<Answer, 'blockedRows'>> & {
+      blockedRows?: Partial<Rows>
+    } = {},
+  ): Answer {
+    const { blockedRows, ...rest } = changes
+    return {
+      anotherHousehold: false,
+      blockedLocationIds: [],
+      missingLocationIds: [],
+      missingItemIds: [],
+      ...rest,
+      blockedRows: {
+        inventoryLogs: [],
+        itemStocks: [],
+        carts: [],
+        cartItems: [],
+        ...blockedRows,
+      },
+    }
+  }
 
   // A client whose `importCheck` answers with `answerFor(ids)`, and that
   // records the variables of every call.
   function makeCheckClient(
-    answerFor: (ids: CheckIds) => Answer = () => ({
-      anotherHousehold: false,
-      blockedLocationIds: [],
-    }),
+    answerFor: (ids: CheckIds) => Answer = () => answerWith(),
   ) {
     const query = vi.fn(
       ({
@@ -4804,9 +4835,11 @@ describe('checkImportIds', () => {
     return client.query.mock.calls.map((call) => rowAt(call).variables.ids)
   }
 
-  it('sends every id of the file, by model, and the locations its rows name', async () => {
-    // Given a file with one row of each model. The stock row and the log name
-    // a location that has no row in the file.
+  it('sends every id of the file, by model, and keeps rows apart from references', async () => {
+    // Given a file with one row of each model, and one location row (loc-1).
+    // A stock row points at loc-2 and at an item the file does not hold, a
+    // log at loc-3, a cart id at loc-4. Another stock row, a log and a cart
+    // point at loc-1 and item-1, which ARE rows of the file.
     const payload = emptyPayload({
       items: [makeItem('item-1', 'Milk')],
       tags: [{ id: 'tag-1' }],
@@ -4817,18 +4850,23 @@ describe('checkImportIds', () => {
       locations: [{ id: 'loc-1' }],
       itemStocks: [
         { id: 'stock-1', itemId: 'item-1', locationId: 'loc-1' },
-        { id: 'stock-2', itemId: 'item-1', locationId: 'loc-2' },
+        { id: 'stock-2', itemId: 'item-gone', locationId: 'loc-2' },
       ],
-      inventoryLogs: [{ id: 'log-1', itemId: 'item-1', locationId: 'loc-3' }],
-      shoppingCarts: [{ id: 'loc-1:vendor-1' }],
-      cartItems: [{ id: 'ci-1', cartId: 'loc-1:vendor-1', itemId: 'item-1' }],
+      inventoryLogs: [
+        { id: 'log-1', itemId: 'item-1', locationId: 'loc-3' },
+        { id: 'log-2', itemId: 'item-x', locationId: 'loc-1' },
+      ],
+      shoppingCarts: [{ id: 'loc-1:vendor-1' }, { id: 'loc-4:vendor-1' }],
+      cartItems: [{ id: 'ci-1', cartId: 'loc-9:vendor-1', itemId: 'item-y' }],
     })
     const client = makeCheckClient()
 
     // When the ids are checked
     await checkImportIds(client as never, payload, { forClear: true })
 
-    // Then one call carries every id, each location once
+    // Then one call carries every id. The references are only the ones the
+    // file holds no row for, each once. A log's or cart item's item, and a
+    // cart item's cart, are not sent.
     expect(client.query).toHaveBeenCalledTimes(1)
     const call = rowAt(client.query.mock.calls)
     expect(opNameOf(rowAt(call).query)).toBe('ImportCheck')
@@ -4841,13 +4879,38 @@ describe('checkImportIds', () => {
         vendors: ['vendor-1'],
         recipes: ['recipe-1'],
         shelves: ['shelf-1'],
-        locations: ['loc-1', 'loc-2', 'loc-3'],
+        locations: ['loc-1'],
+        locationRefs: ['loc-2', 'loc-3', 'loc-4'],
+        itemRefs: ['item-gone'],
         itemStocks: ['stock-1', 'stock-2'],
-        inventoryLogs: ['log-1'],
-        carts: ['loc-1:vendor-1'],
+        inventoryLogs: ['log-1', 'log-2'],
+        carts: ['loc-1:vendor-1', 'loc-4:vendor-1'],
         cartItems: ['ci-1'],
       },
     })
+  })
+
+  it('does not send a location row as a reference when the row and the reference go in different calls', async () => {
+    // Given 1200 items, so the location row goes in the second call, and a
+    // stock row and a log at that location
+    const items = Array.from({ length: 1200 }, (_, i) =>
+      makeItem(`item-${i}`, `n${i}`),
+    )
+    const client = makeCheckClient()
+    await checkImportIds(
+      client as never,
+      emptyPayload({
+        items,
+        locations: [{ id: 'loc-x' }],
+        itemStocks: [{ id: 's', itemId: 'item-0', locationId: 'loc-x' }],
+        inventoryLogs: [{ id: 'l', itemId: 'item-0', locationId: 'loc-x' }],
+      }),
+    )
+    const calls = sentIds(client)
+    expect(calls).toHaveLength(2)
+    expect(calls.flatMap((ids) => ids.locations ?? [])).toEqual(['loc-x'])
+    expect(calls.flatMap((ids) => ids.locationRefs ?? [])).toEqual([])
+    expect(calls.flatMap((ids) => ids.itemRefs ?? [])).toEqual([])
   })
 
   it('sends forClear: false when it is not given', async () => {
@@ -4863,7 +4926,7 @@ describe('checkImportIds', () => {
     const client = makeCheckClient()
     const result = await checkImportIds(client as never, emptyPayload())
     expect(client.query).toHaveBeenCalledTimes(1)
-    expect(result).toEqual({ anotherHousehold: false, blockedLocationIds: [] })
+    expect(result).toEqual(answerWith())
   })
 
   it('sends at most 1000 ids per call, sends every id once, and joins the answers', async () => {
@@ -4873,16 +4936,26 @@ describe('checkImportIds', () => {
     )
     const tags = Array.from({ length: 1000 }, (_, i) => ({ id: `tag-${i}` }))
     // And only the MIDDLE call (it holds `item-1200`) reports another
-    // household, so "the last answer wins" gives a different result. Two
-    // calls report blocked locations, one location twice.
-    const client = makeCheckClient((ids) => ({
-      anotherHousehold: (ids.items ?? []).includes('item-1200'),
-      blockedLocationIds: (ids.items ?? []).includes('item-0')
-        ? ['loc-z', 'loc-b']
-        : (ids.tags ?? []).length > 0
-          ? ['loc-b', 'loc-a']
-          : [],
-    }))
+    // household, so "the last answer wins" gives a different result. Every
+    // list comes back from two calls, with one id in both.
+    const client = makeCheckClient((ids) => {
+      const first = (ids.items ?? []).includes('item-0')
+      const middle = (ids.items ?? []).includes('item-1200')
+      if (!first && !middle) return answerWith()
+      const [one, two] = first ? ['z', 'b'] : ['b', 'a']
+      return answerWith({
+        anotherHousehold: middle,
+        blockedLocationIds: [`loc-${one}`, `loc-${two}`],
+        missingLocationIds: [`gone-${one}`, `gone-${two}`],
+        missingItemIds: [`item-${one}`, `item-${two}`],
+        blockedRows: {
+          inventoryLogs: [`log-${one}`, `log-${two}`],
+          itemStocks: [`stock-${one}`],
+          carts: [`cart-${two}`],
+          cartItems: [`ci-${one}`],
+        },
+      })
+    })
 
     const result = await checkImportIds(
       client as never,
@@ -4904,11 +4977,19 @@ describe('checkImportIds', () => {
     const sentTags = calls.flatMap((ids) => ids.tags ?? [])
     expect(sentItems).toEqual(items.map((i) => i.id))
     expect(sentTags).toEqual(tags.map((t) => t.id))
-    // And the answers are joined: one true is enough, the blocked lists are
-    // joined without repeats
+    // And the answers are joined: one true is enough, every list is joined
+    // without repeats and sorted
     expect(result).toEqual({
       anotherHousehold: true,
       blockedLocationIds: ['loc-a', 'loc-b', 'loc-z'],
+      missingLocationIds: ['gone-a', 'gone-b', 'gone-z'],
+      missingItemIds: ['item-a', 'item-b', 'item-z'],
+      blockedRows: {
+        inventoryLogs: ['log-a', 'log-b', 'log-z'],
+        itemStocks: ['stock-b', 'stock-z'],
+        carts: ['cart-a', 'cart-b'],
+        cartItems: ['ci-b', 'ci-z'],
+      },
     })
   })
 

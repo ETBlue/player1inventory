@@ -141,7 +141,11 @@ function seed(callerRoleInA: HouseholdRole = 'owner') {
       { id: 'loc-b', householdId: 'hh-b', name: 'Office', order: 0 },
       { id: 'loc-c', householdId: 'hh-c', name: 'Theirs', order: 0 },
     ],
-    [stockRow('stock-a', 'loc-a'), stockRow('stock-b', 'loc-b')],
+    [
+      stockRow('stock-a', 'loc-a'),
+      stockRow('stock-b', 'loc-b'),
+      stockRow('stock-view', 'loc-a-view'),
+    ],
   )
   const household = (id: string, ownerId: string) => ({
     id,
@@ -198,10 +202,15 @@ function seed(callerRoleInA: HouseholdRole = 'owner') {
       // Stored at loc-b although its id names loc-a. The old import fallback
       // could make such a row (plan H4, *Facts*).
       { id: 'loc-a:moved', locationId: 'loc-b', lastPurchasedAt: null },
+      // A cart at the viewer location, and one stored there although its id
+      // names loc-a, where the caller is organizer.
+      { id: 'loc-a-view:v1', locationId: 'loc-a-view', lastPurchasedAt: null },
+      { id: 'loc-a:at-view', locationId: 'loc-a-view', lastPurchasedAt: null },
     ],
     cartItems: [
       { id: 'ci-a', cartId: 'loc-a:v1', itemId: 'items-a', quantity: 1, userId: 'other' },
       { id: 'ci-b', cartId: 'loc-b:v1', itemId: 'items-b', quantity: 1, userId: 'caller' },
+      { id: 'ci-view', cartId: 'loc-a-view:v1', itemId: 'items-a', quantity: 1, userId: 'other' },
     ],
   })
 }
@@ -217,11 +226,52 @@ const QUERY = /* GraphQL */ `
     importCheck(ids: $ids, forClear: $forClear) {
       anotherHousehold
       blockedLocationIds
+      missingLocationIds
+      missingItemIds
+      blockedRows {
+        inventoryLogs
+        itemStocks
+        carts
+        cartItems
+      }
     }
   }
 `
 
-type Ids = Partial<Record<CatalogKey | 'locations' | 'inventoryLogs' | 'carts' | 'cartItems' | 'itemStocks', string[]>>
+type Answer = {
+  anotherHousehold: boolean
+  blockedLocationIds: string[]
+  missingLocationIds: string[]
+  missingItemIds: string[]
+  blockedRows: { inventoryLogs: string[]; itemStocks: string[]; carts: string[]; cartItems: string[] }
+}
+
+/** The answer for a file with nothing wrong, with `changes` on top. */
+function expected(changes: Partial<Omit<Answer, 'blockedRows'>> & { blockedRows?: Partial<Answer['blockedRows']> } = {}): Answer {
+  const { blockedRows, ...rest } = changes
+  return {
+    anotherHousehold: false,
+    blockedLocationIds: [],
+    missingLocationIds: [],
+    missingItemIds: [],
+    ...rest,
+    blockedRows: { inventoryLogs: [], itemStocks: [], carts: [], cartItems: [], ...blockedRows },
+  }
+}
+
+type Ids = Partial<
+  Record<
+    | CatalogKey
+    | 'locations'
+    | 'locationRefs'
+    | 'itemRefs'
+    | 'inventoryLogs'
+    | 'carts'
+    | 'cartItems'
+    | 'itemStocks',
+    string[]
+  >
+>
 
 async function check(ids: Ids, forClear?: boolean) {
   // A fresh context every call, so no cached answer leaks between calls.
@@ -239,8 +289,7 @@ async function check(ids: Ids, forClear?: boolean) {
 
 function answer(result: Awaited<ReturnType<typeof check>>) {
   if (result.errors) throw new Error(`unexpected errors: ${JSON.stringify(result.errors)}`)
-  return (result.data as { importCheck: { anotherHousehold: boolean; blockedLocationIds: string[] } })
-    .importCheck
+  return (result.data as { importCheck: Answer }).importCheck
 }
 
 function errorCode(result: Awaited<ReturnType<typeof check>>) {
@@ -260,7 +309,7 @@ describe('importCheck: rows of another household', () => {
       // the caller is a manager too
       const result = answer(await check({ [key]: [`${key}-a`, `${key}-free`, `${key}-b`] }))
       // Then the file is refused
-      expect(result).toEqual({ anotherHousehold: true, blockedLocationIds: [] })
+      expect(result).toEqual(expected({ anotherHousehold: true }))
     },
   )
 
@@ -268,7 +317,7 @@ describe('importCheck: rows of another household', () => {
     'a file with only rows of A and free ids is not refused (%s)',
     async (key) => {
       const result = answer(await check({ [key]: [`${key}-a`, `${key}-free`] }))
-      expect(result).toEqual({ anotherHousehold: false, blockedLocationIds: [] })
+      expect(result).toEqual(expected())
     },
   )
 
@@ -317,6 +366,7 @@ describe('importCheck: rows of another household', () => {
   })
 
   it("a stored cart whose id names A but which sits at household B's location is another household's", async () => {
+    // The prefix loc-a is writable, so the stored cart is read
     const result = answer(await check({ carts: ['loc-a:v1', 'loc-a:moved'] }))
     expect(result.anotherHousehold).toBe(true)
   })
@@ -326,41 +376,158 @@ describe('importCheck: rows of another household', () => {
   })
 
   it('an empty file passes', async () => {
-    expect(answer(await check({}))).toEqual({ anotherHousehold: false, blockedLocationIds: [] })
+    expect(answer(await check({}))).toEqual(expected())
   })
 })
 
 describe('importCheck: locations the caller cannot write', () => {
-  it('a log at a location where the caller is only viewer blocks that location', async () => {
-    // Given log-a-view is at loc-a-view, where the caller is viewer
-    const result = answer(await check({ inventoryLogs: ['log-a', 'log-a-view'] }))
-    // Then that location is blocked, and loc-a, where the caller is
-    // organizer, is not. It is not another household's.
-    expect(result).toEqual({ anotherHousehold: false, blockedLocationIds: ['loc-a-view'] })
-  })
-
-  it('a location of A where the caller has no role is blocked; a free location id is not', async () => {
+  it('a location row of A where the caller has no role or is viewer is blocked; a free one is not', async () => {
     const result = answer(
       await check({ locations: ['loc-a', 'loc-a-none', 'loc-a-view', 'loc-new'] }),
     )
-    expect(result).toEqual({
-      anotherHousehold: false,
-      blockedLocationIds: ['loc-a-none', 'loc-a-view'],
-    })
+    expect(result).toEqual(expected({ blockedLocationIds: ['loc-a-none', 'loc-a-view'] }))
   })
 
-  it('a cart id at a viewer location blocks it', async () => {
+  it('a location the file only points at is blocked the same way', async () => {
+    const result = answer(await check({ locationRefs: ['loc-a', 'loc-a-view'] }))
+    expect(result).toEqual(expected({ blockedLocationIds: ['loc-a-view'] }))
+  })
+
+  it('a cart id at a viewer location blocks that location', async () => {
     const result = answer(await check({ carts: ['loc-a-view:v1'] }))
-    expect(result).toEqual({ anotherHousehold: false, blockedLocationIds: ['loc-a-view'] })
+    expect(result).toEqual(expected({ blockedLocationIds: ['loc-a-view'] }))
   })
 
   it("on clear nothing is blocked, because clearAllData deletes the household's locations first", async () => {
     // Given the same file as above, by the owner, for clear. A row of hh-b
     // next to it is still another household's.
     const result = answer(
-      await check({ locations: ['loc-a', 'loc-a-none', 'loc-a-view'], items: ['items-b'] }, true),
+      await check(
+        {
+          locations: ['loc-a', 'loc-a-none', 'loc-a-view'],
+          items: ['items-b'],
+          inventoryLogs: ['log-a-view'],
+        },
+        true,
+      ),
     )
-    expect(result).toEqual({ anotherHousehold: true, blockedLocationIds: [] })
+    expect(result).toEqual(expected({ anotherHousehold: true }))
+  })
+})
+
+// Review finding 3: the import drops rows by the location the PAYLOAD names.
+// A row whose id is taken at a blocked location, but whose payload names a
+// writable one, is not dropped that way, and its mutation refuses the batch.
+// So the rows themselves are returned. The stored location is NOT added to
+// `blockedLocationIds`: the file does not name it, and the caller may have no
+// role there, so the web could not show its name.
+describe('importCheck: rows stored at a location the caller cannot write', () => {
+  it('a log, a stock row and a cart item stored at the viewer location are blocked rows, next to rows that pass', async () => {
+    const result = answer(
+      await check({
+        inventoryLogs: ['log-a', 'log-free', 'log-a-view'],
+        itemStocks: ['stock-a', 'stock-free', 'stock-view'],
+        cartItems: ['ci-a', 'ci-free', 'ci-view'],
+      }),
+    )
+    expect(result).toEqual(
+      expected({
+        blockedRows: {
+          inventoryLogs: ['log-a-view'],
+          itemStocks: ['stock-view'],
+          cartItems: ['ci-view'],
+        },
+      }),
+    )
+  })
+
+  it('a cart whose id names a writable location but which is stored at the viewer location is a blocked row', async () => {
+    // `cartVerdict` refuses it: "own" means stored at the location its id
+    // names. loc-a:v1 next to it passes.
+    const result = answer(await check({ carts: ['loc-a:v1', 'loc-a:v9', 'loc-a:at-view'] }))
+    expect(result).toEqual(expected({ blockedRows: { carts: ['loc-a:at-view'] } }))
+  })
+
+  it('on clear no row is blocked', async () => {
+    const result = answer(
+      await check({ inventoryLogs: ['log-a-view'], carts: ['loc-a:at-view'] }, true),
+    )
+    expect(result).toEqual(expected())
+  })
+})
+
+// Review finding 1: a location the file only points at (a stock row's or a
+// log's `locationId`, a cart id's prefix) is refused by its mutation when no
+// location will hold it. Only the file's location ROWS are created.
+describe('importCheck: references to locations that will not exist', () => {
+  it('a referenced location no row holds is missing; a free location ROW is not', async () => {
+    // Given `ghost` is only pointed at, `loc-new` is a row of the file, and
+    // loc-a is a writable location of A
+    const result = answer(
+      await check({
+        locations: ['loc-new'],
+        locationRefs: ['loc-a', 'ghost'],
+        carts: ['ghost:v1', 'loc-a:v1'],
+      }),
+    )
+    expect(result).toEqual(expected({ missingLocationIds: ['ghost'] }))
+  })
+
+  it("on clear a referenced location of A is missing, because the clear deletes it; one the file holds a row for is not", async () => {
+    const result = answer(
+      await check({ locations: ['loc-a'], locationRefs: ['loc-a-view'] }, true),
+    )
+    expect(result).toEqual(expected({ missingLocationIds: ['loc-a-view'] }))
+  })
+
+  it("a referenced location of household B is another household's, not missing", async () => {
+    const result = answer(await check({ locationRefs: ['loc-a', 'loc-b'] }))
+    expect(result).toEqual(expected({ anotherHousehold: true }))
+  })
+})
+
+// Review finding 2: `requireOwnItemStockRefs` REFUSES a stock row whose item
+// is not in the household. The file's own items are created first, so only a
+// stock `itemId` that is not an item of the file is a reference.
+describe('importCheck: items stock rows point at', () => {
+  it("a referenced item of household B is another household's", async () => {
+    const result = answer(await check({ itemRefs: ['items-a', 'items-b'] }))
+    expect(result).toEqual(expected({ anotherHousehold: true }))
+  })
+
+  it('a referenced item no row holds is missing; an item of A is not', async () => {
+    const result = answer(await check({ itemRefs: ['items-a', 'item-free'] }))
+    expect(result).toEqual(expected({ missingItemIds: ['item-free'] }))
+  })
+
+  it('on clear a referenced item of A is missing, because the clear deletes it', async () => {
+    const result = answer(await check({ itemRefs: ['items-a'] }, true))
+    expect(result).toEqual(expected({ missingItemIds: ['items-a'] }))
+  })
+})
+
+// Review finding 4, decision T6: the cart table is read only for cart ids
+// whose prefix is a writable location of the target. Otherwise a caller with
+// no role there would learn whether a cart id is taken.
+describe('importCheck: cart ids are read only at writable locations', () => {
+  it('reads no cart for a prefix of another household or of a viewer location', async () => {
+    const findMany = vi.spyOn(prisma.cart, 'findMany')
+    const findUnique = vi.spyOn(prisma.cart, 'findUnique')
+    const findFirst = vi.spyOn(prisma.cart, 'findFirst')
+    const result = answer(await check({ carts: ['loc-c:no-vendor', 'loc-b:v1', 'loc-a-view:v1'] }))
+    expect(result).toEqual(expected({ anotherHousehold: true, blockedLocationIds: ['loc-a-view'] }))
+    expect(findMany).not.toHaveBeenCalled()
+    expect(findUnique).not.toHaveBeenCalled()
+    expect(findFirst).not.toHaveBeenCalled()
+  })
+
+  it('reads only the cart ids whose prefix is writable', async () => {
+    const findMany = vi.spyOn(prisma.cart, 'findMany')
+    await check({ carts: ['loc-a:v1', 'loc-c:no-vendor', 'loc-a-view:v1'] })
+    const asked = findMany.mock.calls.flatMap(
+      (call) => (call[0] as { where: { id: { in: string[] } } }).where.id.in,
+    )
+    expect(asked).toEqual(['loc-a:v1'])
   })
 })
 
@@ -388,21 +555,35 @@ describe('importCheck: the household role', () => {
     seed('member')
     expect(errorCode(await check({}))).toBe('FORBIDDEN')
   })
+
+  // Review finding 5: the role check runs BEFORE any read and before the
+  // size check.
+  it("a member's call reads no catalog row", async () => {
+    seed('member')
+    const findMany = vi.spyOn(prisma.item, 'findMany')
+    expect(errorCode(await check({ items: ['items-a', 'items-b'] }))).toBe('FORBIDDEN')
+    expect(findMany).not.toHaveBeenCalled()
+  })
+
+  it('a member who sends 1001 ids is refused for the role, not for the size', async () => {
+    seed('member')
+    const ids = Array.from({ length: 1001 }, (_, i) => `i-${i}`)
+    expect(errorCode(await check({ items: ids }))).toBe('FORBIDDEN')
+  })
 })
 
 describe('importCheck: the size limit (decision T3)', () => {
   const ids = (prefix: string, n: number) => Array.from({ length: n }, (_, i) => `${prefix}-${i}`)
 
-  it('1001 ids in one call, across two lists, are refused as bad input', async () => {
-    expect(errorCode(await check({ items: ids('i', 600), tags: ids('t', 401) }))).toBe(
-      'BAD_USER_INPUT',
-    )
+  it('1001 ids in one call, across lists, are refused as bad input', async () => {
+    expect(
+      errorCode(
+        await check({ items: ids('i', 600), tags: ids('t', 200), locationRefs: ids('l', 100), itemRefs: ids('r', 101) }),
+      ),
+    ).toBe('BAD_USER_INPUT')
   })
 
   it('1000 ids in one call pass', async () => {
-    expect(answer(await check({ items: ids('i', 600), tags: ids('t', 400) }))).toEqual({
-      anotherHousehold: false,
-      blockedLocationIds: [],
-    })
+    expect(answer(await check({ items: ids('i', 600), tags: ids('t', 400) }))).toEqual(expected())
   })
 })

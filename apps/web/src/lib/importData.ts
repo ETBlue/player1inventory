@@ -2594,12 +2594,37 @@ export function isForbiddenImportError(err: unknown): boolean {
  */
 export const IMPORT_CHECK_CHUNK_SIZE = 1000
 
+/** Ids of rows the file holds that the import must leave out, by model. */
+export interface ImportCheckRowIds {
+  inventoryLogs: string[]
+  itemStocks: string[]
+  carts: string[]
+  cartItems: string[]
+}
+
 /** The answer of `checkImportIds`: the answers of every call, joined. */
 export interface ImportIdCheck {
   /** True when any call found a row or location of another household. */
   anotherHousehold: boolean
-  /** Locations of the target household the caller cannot write, sorted. */
+  /**
+   * Locations the file names (rows, references, cart ids) in the target
+   * household where the caller is below `participant`, sorted. Drop every row
+   * the file puts there.
+   */
   blockedLocationIds: string[]
+  /**
+   * Locations the file's rows point at that no location will hold when the
+   * import writes, sorted. Drop every row that points at one.
+   */
+  missingLocationIds: string[]
+  /** Items stock rows point at that no item will hold, sorted. Drop those stock rows. */
+  missingItemIds: string[]
+  /**
+   * Rows the file holds that already exist at a location the caller cannot
+   * write (or, for a cart, away from the location its id names). Drop exactly
+   * these rows.
+   */
+  blockedRows: ImportCheckRowIds
 }
 
 type ImportCheckKey = keyof ImportCheckInput
@@ -2614,12 +2639,22 @@ function stringField(row: unknown, key: string): string | undefined {
  * Every id of the payload, as `[model key, id]` pairs, in a fixed order, each
  * pair once.
  *
- * `locations` holds the file's location rows AND the `locationId` of its
- * stock rows and logs: a bulk stock or log mutation is refused for a location
- * of another household even when the file has no row for that location. The
- * location a cart id names is added by the server. A cart item's `cartId` is
- * not sent: the cart item mutations skip a row whose cart they cannot use,
- * they do not refuse it.
+ * Rows and references go in different lists, and only this function can tell
+ * them apart, because it sees the whole file and the server sees one chunk:
+ *
+ * - `locations`: the ids of the file's location ROWS. The import creates a
+ *   free one, so the server never reports it missing.
+ * - `locationRefs`: the `locationId` of stock rows and logs, and the location
+ *   each cart id names, when the file has no location row with that id. The
+ *   bulk stock, log and cart mutations refuse a location that does not exist,
+ *   so the server reports these as missing when no row holds them.
+ * - `itemRefs`: the `itemId` of stock rows that is not an item of the file.
+ *   `requireOwnItemStockRefs` refuses an item outside the household.
+ *
+ * Not sent: the `itemId` of logs and cart items, and a cart item's `cartId`.
+ * Those mutations SKIP a row whose item or cart they cannot use; they do not
+ * refuse the batch. A cart id with no colon names no location; it is sent in
+ * `carts`, and the server refuses it with `BAD_USER_INPUT`.
  */
 function importCheckPairs(payload: ExportPayload): [ImportCheckKey, string][] {
   const pairs: [ImportCheckKey, string][] = []
@@ -2634,6 +2669,14 @@ function importCheckPairs(payload: ExportPayload): [ImportCheckKey, string][] {
   const ids = (key: ImportCheckKey, rows: readonly unknown[] | undefined) => {
     for (const row of rows ?? []) add(key, stringField(row, 'id'))
   }
+  const rowIds = (rows: readonly unknown[] | undefined) =>
+    new Set((rows ?? []).map((row) => stringField(row, 'id')))
+
+  const locationRows = rowIds(payload.locations)
+  const locationRef = (id: string | undefined) => {
+    if (id !== undefined && !locationRows.has(id)) add('locationRefs', id)
+  }
+  const itemRows = rowIds(payload.items)
 
   ids('items', payload.items)
   ids('tags', payload.tags)
@@ -2642,10 +2685,18 @@ function importCheckPairs(payload: ExportPayload): [ImportCheckKey, string][] {
   ids('recipes', payload.recipes)
   ids('shelves', payload.shelves)
   ids('locations', payload.locations)
-  for (const row of payload.itemStocks ?? [])
-    add('locations', stringField(row, 'locationId'))
-  for (const row of payload.inventoryLogs)
-    add('locations', stringField(row, 'locationId'))
+  for (const row of payload.itemStocks ?? []) {
+    locationRef(stringField(row, 'locationId'))
+    const itemId = stringField(row, 'itemId')
+    if (itemId !== undefined && !itemRows.has(itemId)) add('itemRefs', itemId)
+  }
+  for (const row of payload.inventoryLogs) {
+    locationRef(stringField(row, 'locationId'))
+  }
+  for (const row of payload.shoppingCarts) {
+    const id = stringField(row, 'id')
+    if (id?.includes(':')) locationRef(parseCartId(id).locationId)
+  }
   ids('itemStocks', payload.itemStocks)
   ids('inventoryLogs', payload.inventoryLogs)
   ids('carts', payload.shoppingCarts)
@@ -2655,12 +2706,12 @@ function importCheckPairs(payload: ExportPayload): [ImportCheckKey, string][] {
 
 /**
  * Ask the server, before the first write of a cloud import, whether the file
- * holds rows of another household, and which of its locations the caller
- * cannot write (households H4 task E.2, decision T1).
+ * holds rows of another household, and which of its rows the import must
+ * leave out (households H4 task E.2, decision T1, and the E.2 review fixes).
  *
  * The ids go in calls of at most `IMPORT_CHECK_CHUNK_SIZE`, one after the
  * other. The answers are joined: `anotherHousehold` is true when any call
- * says so, and `blockedLocationIds` holds every blocked location once.
+ * says so, and every list holds each id once, sorted.
  *
  * An empty file still makes ONE call, because the call is also the household
  * role check (`manager`, or `owner` with `forClear`). A refusal is thrown as
@@ -2671,7 +2722,7 @@ function importCheckPairs(payload: ExportPayload): [ImportCheckKey, string][] {
  * E.4). Cloud mode only; local mode has no household.
  *
  * Not called by the import flow yet. Task E.4 wires it into
- * `importCloudData`.
+ * `importCloudData`, and drops the rows the answer names.
  */
 export async function checkImportIds(
   client: ApolloClient,
@@ -2686,7 +2737,18 @@ export async function checkImportIds(
   if (chunks.length === 0) chunks.push([])
 
   let anotherHousehold = false
-  const blocked = new Set<string>()
+  const joined = {
+    blockedLocationIds: new Set<string>(),
+    missingLocationIds: new Set<string>(),
+    missingItemIds: new Set<string>(),
+    inventoryLogs: new Set<string>(),
+    itemStocks: new Set<string>(),
+    carts: new Set<string>(),
+    cartItems: new Set<string>(),
+  }
+  const join = (into: Set<string>, ids: readonly string[]) => {
+    for (const id of ids) into.add(id)
+  }
   for (const chunk of chunks) {
     const ids: Partial<Record<ImportCheckKey, string[]>> = {}
     for (const [key, id] of chunk) {
@@ -2707,9 +2769,27 @@ export async function checkImportIds(
     const answer = result.data?.importCheck
     if (!answer) throw new Error('importCheck returned no data')
     if (answer.anotherHousehold) anotherHousehold = true
-    for (const id of answer.blockedLocationIds) blocked.add(id)
+    join(joined.blockedLocationIds, answer.blockedLocationIds)
+    join(joined.missingLocationIds, answer.missingLocationIds)
+    join(joined.missingItemIds, answer.missingItemIds)
+    join(joined.inventoryLogs, answer.blockedRows.inventoryLogs)
+    join(joined.itemStocks, answer.blockedRows.itemStocks)
+    join(joined.carts, answer.blockedRows.carts)
+    join(joined.cartItems, answer.blockedRows.cartItems)
   }
-  return { anotherHousehold, blockedLocationIds: [...blocked].sort() }
+  const sorted = (set: Set<string>) => [...set].sort()
+  return {
+    anotherHousehold,
+    blockedLocationIds: sorted(joined.blockedLocationIds),
+    missingLocationIds: sorted(joined.missingLocationIds),
+    missingItemIds: sorted(joined.missingItemIds),
+    blockedRows: {
+      inventoryLogs: sorted(joined.inventoryLogs),
+      itemStocks: sorted(joined.itemStocks),
+      carts: sorted(joined.carts),
+      cartItems: sorted(joined.cartItems),
+    },
+  }
 }
 
 /**

@@ -44,6 +44,8 @@ const CATALOG_KEYS: CatalogKey[] = ['items', 'tags', 'tagTypes', 'vendors', 'rec
 const ID_KEYS = [
   ...CATALOG_KEYS,
   'locations',
+  'locationRefs',
+  'itemRefs',
   'inventoryLogs',
   'carts',
   'cartItems',
@@ -59,118 +61,84 @@ function listOf(ids: ImportCheckInput, key: (typeof ID_KEYS)[number]): string[] 
   return [...new Set(ids[key] ?? [])]
 }
 
+/** Which ids are taken by any row, and which of those are in the target. */
+interface Split {
+  taken: Set<string>
+  own: Set<string>
+}
+
 /**
- * True when some id in `ids` is a row of a household other than `target`.
- *
  * Two reads, as in `requireOwnRowOrUnclaimed`: the UNSCOPED one says which
  * ids are taken, the SCOPED one says which of them are in the target
  * household. A taken id that is not in the target is another household's. The
  * comparison is in SQL (the `householdId` filter), never `row.householdId ===`
- * here (root CLAUDE.md, *Authorization*).
+ * here (root CLAUDE.md, *Authorization*). Works for the six catalog models
+ * and for `Location`.
  */
-async function catalogOutsideTarget(
-  key: CatalogKey,
+async function splitByHousehold(
+  reads: CatalogReads,
   ids: string[],
   target: string,
-): Promise<boolean> {
-  if (ids.length === 0) return false
-  const reads = catalogReads(key)
+): Promise<Split> {
+  if (ids.length === 0) return { taken: new Set(), own: new Set() }
   const taken = await reads.findMany({ where: { id: { in: ids } }, select: { id: true } })
-  if (taken.length === 0) return false
+  if (taken.length === 0) return { taken: new Set(), own: new Set() }
   const own = await reads.findMany({
     where: { id: { in: ids }, householdId: target },
     select: { id: true },
   })
-  return own.length < taken.length
+  return { taken: new Set(taken.map((r) => r.id)), own: new Set(own.map((r) => r.id)) }
 }
 
-/**
- * Every location the file's location-scoped rows touch:
- *
- * - the `locations` list itself (the web puts in the file's location rows and
- *   the `locationId` of its stock rows and logs);
- * - the location each cart id names (its prefix, issue #361), even when no
- *   cart row holds that id yet;
- * - the location where a TAKEN log, stock row, cart or cart item is stored.
- *   The import would write over that row, so its location counts too.
- *
- * A cart id with no colon is refused with `BAD_USER_INPUT`, as the bulk cart
- * mutations refuse it (`requireOwnRowOrUnclaimed`, `cartVerdict`).
- */
-async function touchedLocations(ids: ImportCheckInput): Promise<string[]> {
-  const touched = new Set(listOf(ids, 'locations'))
+function hasOutside(split: Split): boolean {
+  return split.taken.size > split.own.size
+}
 
-  const carts = listOf(ids, 'carts')
-  for (const id of carts) {
-    if (!id.includes(':')) {
-      throw badInput('A cart id must start with its location id and a colon.')
-    }
-    touched.add(parseCartId(id).locationId)
-  }
-
-  const add = (rows: { locationId: string }[]) => {
-    for (const row of rows) touched.add(row.locationId)
-  }
-
-  const logs = listOf(ids, 'inventoryLogs')
-  if (logs.length > 0) {
-    add(
-      await prisma.inventoryLog.findMany({
-        where: { id: { in: logs } },
-        select: { locationId: true },
-      }),
-    )
-  }
-
-  const stocks = listOf(ids, 'itemStocks')
-  if (stocks.length > 0) {
-    add(
-      await prisma.itemStock.findMany({
-        where: { id: { in: stocks } },
-        select: { locationId: true },
-      }),
-    )
-  }
-
-  const cartItems = listOf(ids, 'cartItems')
-  const cartIdsOfItems =
-    cartItems.length === 0
-      ? []
-      : (
-          await prisma.cartItem.findMany({
-            where: { id: { in: cartItems } },
-            select: { cartId: true },
-          })
-        ).map((row) => row.cartId)
-
-  // The carts of the file and the carts its cart items sit in, in one read.
-  const storedCarts = [...new Set([...carts, ...cartIdsOfItems])]
-  if (storedCarts.length > 0) {
-    add(
-      await prisma.cart.findMany({
-        where: { id: { in: storedCarts } },
-        select: { locationId: true },
-      }),
-    )
-  }
-
-  return [...touched]
+/** A row the file holds that already exists, and where it is stored. */
+interface StoredRow {
+  id: string
+  locationId: string
 }
 
 /**
  * The answer of `importCheck` for one call, after the role check and the size
- * check.
+ * check (households H4 task E.2, and the five review fixes recorded in the
+ * plan).
  *
- * - `anotherHousehold`: a catalog id is a row of another household, or a
- *   touched location (see `touchedLocations`) exists and is not in the
- *   target household.
- * - `blockedLocationIds`: the touched locations of the target household where
- *   the caller is below `participant` (`locationIdsWithRole` with the target
- *   household). Empty for `forClear`: `clearAllData` deletes every location
- *   of the household first, and the import then makes them again with the
- *   caller as organizer.
+ * The locations it looks at:
  *
- * A location id no row holds is neither: the import will create it.
+ * - NAMED by the file: its location rows (`locations`), the locations its
+ *   rows point at (`locationRefs`, sent by the web), and the location each
+ *   cart id names (its prefix).
+ * - STORED: where a log, stock row, cart item or cart the file holds already
+ *   is in the cloud. The import would write over that row, and its mutation
+ *   checks the stored location.
+ *
+ * The answers:
+ *
+ * - `anotherHousehold`: a catalog id or an `itemRefs` id is a row of another
+ *   household, or a named or stored location exists and is not in the target.
+ * - `blockedLocationIds`: NAMED locations of the target where the caller is
+ *   below `participant`. The web drops the rows the file puts there.
+ * - `blockedRows`: rows the file holds that are STORED at such a location (a
+ *   cart: stored anywhere but at the location its id names, `cartVerdict` in
+ *   lib/authz.ts). The web drops exactly these rows. A stored location is NOT
+ *   added to `blockedLocationIds`: the file does not name it, and the caller
+ *   may have no role there, so the web has no name to show.
+ * - `missingLocationIds` / `missingItemIds`: `locationRefs` / `itemRefs` that
+ *   no row will hold when the import writes. The bulk stock, log and cart
+ *   mutations refuse such a reference (`requireLocationRole`, `cartVerdict`,
+ *   `requireOwnItemStockRefs`). A location ROW of the file is never missing:
+ *   the import creates it.
+ *
+ * With `forClear`, `clearAllData` deletes every row and location of the
+ * target before the first write. So nothing is blocked, and a reference to a
+ * row of the target is missing unless the file holds that row too.
+ *
+ * The cart table is read only for cart ids whose prefix is a writable
+ * location of the target (decision T6), and not at all for `forClear`. A
+ * caller with no role at a location never learns whether a cart id there is
+ * taken.
  */
 async function answerImportCheck(
   ctx: Context,
@@ -180,34 +148,123 @@ async function answerImportCheck(
 ): Promise<ImportCheck> {
   let anotherHousehold = false
   for (const key of CATALOG_KEYS) {
-    if (await catalogOutsideTarget(key, listOf(ids, key), target)) {
+    if (hasOutside(await splitByHousehold(catalogReads(key), listOf(ids, key), target))) {
       anotherHousehold = true
       break
     }
   }
 
-  const touched = await touchedLocations(ids)
-  if (touched.length === 0) return { anotherHousehold, blockedLocationIds: [] }
+  const itemRefs = listOf(ids, 'itemRefs')
+  const referencedItems = await splitByHousehold(catalogReads('items'), itemRefs, target)
+  if (hasOutside(referencedItems)) anotherHousehold = true
+  const missingItemIds = itemRefs
+    .filter((id) => !referencedItems.taken.has(id) || (forClear && referencedItems.own.has(id)))
+    .sort()
 
-  const existing = await prisma.location.findMany({
-    where: { id: { in: touched } },
-    select: { id: true },
-  })
-  const inTarget = (
-    await prisma.location.findMany({
-      where: { id: { in: touched }, householdId: target },
-      select: { id: true },
-    })
-  ).map((row) => row.id)
-  if (existing.length > inTarget.length) anotherHousehold = true
+  const carts = listOf(ids, 'carts')
+  const prefixOf = new Map<string, string>()
+  for (const id of carts) {
+    if (!id.includes(':')) {
+      throw badInput('A cart id must start with its location id and a colon.')
+    }
+    prefixOf.set(id, parseCartId(id).locationId)
+  }
 
-  if (forClear) return { anotherHousehold, blockedLocationIds: [] }
+  const writable = forClear
+    ? new Set<string>()
+    : new Set(await locationIdsWithRole(ctx, 'participant', { householdId: target }))
 
-  const writable = new Set(
-    await locationIdsWithRole(ctx, 'participant', { householdId: target }),
+  const logIds = listOf(ids, 'inventoryLogs')
+  const storedLogs: StoredRow[] =
+    logIds.length === 0
+      ? []
+      : await prisma.inventoryLog.findMany({
+          where: { id: { in: logIds } },
+          select: { id: true, locationId: true },
+        })
+
+  const stockIds = listOf(ids, 'itemStocks')
+  const storedStocks: StoredRow[] =
+    stockIds.length === 0
+      ? []
+      : await prisma.itemStock.findMany({
+          where: { id: { in: stockIds } },
+          select: { id: true, locationId: true },
+        })
+
+  const cartItemIds = listOf(ids, 'cartItems')
+  const cartItemRows =
+    cartItemIds.length === 0
+      ? []
+      : await prisma.cartItem.findMany({
+          where: { id: { in: cartItemIds } },
+          select: { id: true, cartId: true },
+        })
+  const cartsOfItems = [...new Set(cartItemRows.map((row) => row.cartId))]
+  const cartLocation = new Map(
+    (cartsOfItems.length === 0
+      ? []
+      : await prisma.cart.findMany({
+          where: { id: { in: cartsOfItems } },
+          select: { id: true, locationId: true },
+        })
+    ).map((cart) => [cart.id, cart.locationId]),
   )
-  const blockedLocationIds = inTarget.filter((id) => !writable.has(id)).sort()
-  return { anotherHousehold, blockedLocationIds }
+  const storedCartItems: StoredRow[] = cartItemRows.flatMap((row) => {
+    const locationId = cartLocation.get(row.cartId)
+    return locationId === undefined ? [] : [{ id: row.id, locationId }]
+  })
+
+  // Decision T6: only cart ids whose prefix the caller may write in the target.
+  const readableCarts = carts.filter((id) => writable.has(prefixOf.get(id) ?? ''))
+  const storedCarts: StoredRow[] =
+    readableCarts.length === 0
+      ? []
+      : await prisma.cart.findMany({
+          where: { id: { in: readableCarts } },
+          select: { id: true, locationId: true },
+        })
+
+  const locationRefs = listOf(ids, 'locationRefs')
+  const named = new Set([...listOf(ids, 'locations'), ...locationRefs, ...prefixOf.values()])
+  const stored = [...storedLogs, ...storedStocks, ...storedCartItems, ...storedCarts].map(
+    (row) => row.locationId,
+  )
+  const locations = await splitByHousehold(
+    prisma.location,
+    [...new Set([...named, ...stored])],
+    target,
+  )
+  if (hasOutside(locations)) anotherHousehold = true
+
+  const blocked = (locationId: string) =>
+    !forClear && locations.own.has(locationId) && !writable.has(locationId)
+  const idsAt = (rows: StoredRow[]) =>
+    rows
+      .filter((row) => blocked(row.locationId))
+      .map((row) => row.id)
+      .sort()
+
+  return {
+    anotherHousehold,
+    blockedLocationIds: [...named].filter(blocked).sort(),
+    missingLocationIds: locationRefs
+      .filter((id) => !locations.taken.has(id) || (forClear && locations.own.has(id)))
+      .sort(),
+    missingItemIds,
+    blockedRows: {
+      inventoryLogs: idsAt(storedLogs),
+      itemStocks: idsAt(storedStocks),
+      cartItems: idsAt(storedCartItems),
+      // `cartVerdict` refuses a stored cart that is not at the location its
+      // id names. One stored outside the target already made
+      // `anotherHousehold` true above.
+      carts: storedCarts
+        .filter((cart) => cart.locationId !== prefixOf.get(cart.id) && locations.own.has(cart.locationId))
+        .map((cart) => cart.id)
+        .sort(),
+    },
+  }
 }
 
 export const importCheckResolvers: Pick<Resolvers, 'Query'> = {
