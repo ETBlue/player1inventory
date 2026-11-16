@@ -7,6 +7,7 @@ import {
   createApolloClientForE2E,
   resolveToken,
 } from './client'
+import { CLIENT_ID } from './clientId'
 import { createCache } from './cloudCache'
 
 // Mirrors the `itemStocks` selection of the PantryData operation
@@ -447,6 +448,48 @@ describe('both Apollo clients send the app language', () => {
       vi.unstubAllGlobals()
       await client.clearStore()
       await i18n.changeLanguage(before)
+    }
+  })
+})
+
+describe('both Apollo clients send the tab id', () => {
+  // Households H3c-1, decision P4: the server does not send a change back to
+  // the tab whose `x-client-id` made it.
+  const TAB_PROBE = gql`
+    query TabProbe {
+      tabProbe
+    }
+  `
+
+  it.each([
+    ['production', () => createApolloClient(async () => null)],
+    ['e2e', () => createApolloClientForE2E('e2e-user')],
+  ])('%s client sends x-client-id on every HTTP request', async (_name, makeClient) => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ data: { tabProbe: 'ok' } }), {
+          headers: { 'content-type': 'application/json' },
+        }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    setOnLine(true)
+    const client = makeClient()
+    try {
+      // When the client sends two queries
+      await client.query({ query: TAB_PROBE, fetchPolicy: 'network-only' })
+      await client.query({ query: TAB_PROBE, fetchPolicy: 'network-only' })
+
+      // Then both carry this page load's tab id
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      for (const call of fetchMock.mock.calls as unknown as [
+        string,
+        RequestInit,
+      ][]) {
+        expect(new Headers(call[1].headers).get('x-client-id')).toBe(CLIENT_ID)
+      }
+    } finally {
+      vi.unstubAllGlobals()
+      await client.clearStore()
     }
   })
 })
