@@ -2,7 +2,6 @@ import { GraphQLError } from 'graphql'
 import { type Context, requireAuth } from '../context.js'
 import {
   forbidden,
-  forgetLocationRoles,
   locationIdsWithOrganizer,
   locationIdsWithRole,
   locationRolesByLocation,
@@ -176,9 +175,6 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
         })
         return created
       })
-      // The organizer row is new, so a later field of this request must not
-      // read the cached roles (lib/authz.ts).
-      forgetLocationRoles(ctx)
       await publishHouseholdChange(ctx, ['LOCATION'], row.householdId)
       return toGraphQL(row as unknown as PrismaLocation)
     },
@@ -232,8 +228,6 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
         // (apps/web/src/db/operations.ts).
         await tx.location.delete({ where: { id } })
       })
-      // Its role rows went by cascade (lib/authz.ts, `forgetLocationRoles`).
-      forgetLocationRoles(ctx)
       // The location was found with `householdId` in its filter, so its
       // household is the caller's. Nothing moves to another location: the
       // rows of the deleted location are deleted, not reassigned.

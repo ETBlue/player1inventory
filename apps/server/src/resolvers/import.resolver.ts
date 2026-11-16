@@ -1,6 +1,5 @@
 import { GraphQLError } from 'graphql'
 import {
-  forgetLocationRoles,
   type LocationRole,
   locationIdsWithRole,
   type OwnedModel,
@@ -367,9 +366,6 @@ async function createImportedLocation(
     })
     return created
   })
-  // A role row was added, so a later field of this request must not read the
-  // cached roles (`forgetLocationRoles`, lib/authz.ts).
-  forgetLocationRoles(ctx)
   return created
 }
 
@@ -2340,9 +2336,6 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           name: firstLocationName(ctx.language ?? 'en'),
         })
       })
-      // Every location went with its role rows, and "Home" came with a new
-      // organizer row (`forgetLocationRoles`, lib/authz.ts).
-      forgetLocationRoles(ctx)
       // ── THE LIVE EVENT (households H3c-2 task D.3) ──
       //
       // After the commit. Both kinds are household-level (decision Q2):

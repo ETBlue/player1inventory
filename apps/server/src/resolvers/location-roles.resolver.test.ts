@@ -285,6 +285,43 @@ describe('the role cache inside one request', () => {
     expect(res.errors).toBeUndefined()
     expect(res.data?.b).toEqual([{ id: 'loc-new', myRole: 'organizer', hasOrganizer: true }])
   })
+
+  // Review of task F.2: no resolver forgets the cache any more. The wrapper
+  // around every root Mutation field does (lib/mutationRoleCache.ts). These
+  // tests go through the real resolver map, so they pin the wrapper.
+  it('household owner sees their roles read fresh after a reorder and a delete in the same request', async () => {
+    // Given the owner (organizer of loc-k, no role on loc-g) reorders and
+    // reads the roles, which fills the cache with loc-k only; then deletes
+    // loc-g; then creates a location
+    const res = await run(
+      `mutation {
+        a: reorderLocations(orderedIds: ["loc-g", "loc-k"]) { id myRole hasOrganizer }
+        b: deleteLocation(id: "loc-g")
+        c: createLocation(name: "C") { name myRole hasOrganizer }
+      }`,
+      'owner',
+    )
+
+    // Then the reorder showed the owner's one role, and the new location
+    // shows the owner as organizer. A cache kept from `a` gives `c` myRole
+    // null.
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.a).toEqual([{ id: 'loc-k', myRole: 'organizer', hasOrganizer: true }])
+    expect(res.data?.b).toBe(true)
+    expect(res.data?.c).toEqual({ name: 'C', myRole: 'organizer', hasOrganizer: true })
+  })
+
+  it('a refused mutation keeps its error code and writes nothing through the wrapper', async () => {
+    // A field that throws stops the whole document (every Mutation field is
+    // non-null), so no later field of the SAME document can show what the
+    // throw left behind. That case is pinned in lib/mutationRoleCache.test.ts
+    // ("forgets both role caches when the field throws"). Here: the error
+    // still reaches the client with its code, and nothing is deleted.
+    const refused = await run(`mutation { deleteLocation(id: "loc-x") }`, 'manager')
+    expect(refused.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(refused.data).toBeNull()
+    expect(world.stock.state.locations.map((l) => l.id).sort()).toEqual(['loc-g', 'loc-k', 'loc-x'])
+  })
 })
 
 // `householdIdOf` (location.resolver.ts) reads the household from the parent
