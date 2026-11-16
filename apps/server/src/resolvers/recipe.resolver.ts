@@ -9,6 +9,7 @@ import {
 } from '../lib/authz.js'
 import { prisma } from '../lib/prisma.js'
 import { writeStock } from '../lib/itemStockWrite.js'
+import { publishChange, publishHouseholdChange } from '../lib/publishChange.js'
 import { consumeItem, getPackedTotal } from '@p1i/types'
 import { requireAuth } from '../context.js'
 import type { Recipe, Resolvers } from '../generated/graphql.js'
@@ -142,7 +143,11 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
       // is. Until B.6 each item had its own try/catch and no transaction, so
       // one failing item left the others written and the cook half done, and
       // a failing recipe mark was ignored.
-      return prisma.$transaction(
+      //
+      // How many recipe rows the cook marked. Set inside the callback, read
+      // only after `$transaction` has resolved, for the live event below.
+      let recipesMarked = 0
+      const result = await prisma.$transaction(
         async (tx) => {
           // The unit settings `consumeItem` needs live on `Item`, not on
           // `ItemStock`. Read in the transaction, once for all items.
@@ -270,10 +275,11 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
           // a cook that took the stock but did not mark the recipe would be
           // half done.
           for (const recipeId of [...new Set(recipeIds)].sort()) {
-            await tx.recipe.updateMany({
+            const { count } = await tx.recipe.updateMany({
               where: { id: recipeId, householdId },
               data: { lastCookedAt: new Date() },
             })
+            recipesMarked += count
           }
 
           // Every entry succeeded: a failure threw above and rolled back.
@@ -290,6 +296,25 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
         // connection. Hitting it is safe: Prisma rolls everything back.
         { timeout: COOKING_TIMEOUT_MS },
       )
+
+      // ── THE LIVE EVENTS (households H3c-2 task D.2) ──
+      //
+      // After `$transaction` has resolved, so a cook that rolled back reaches
+      // no subscriber. `STOCK` and `LOG` at the cook's location, when it
+      // cooked at least one item (each item writes one stock row and one
+      // log). `CATALOG` for the household whose recipes it marked, when it
+      // marked one: `lastCookedAt` is shown on the recipe pages and the
+      // cooking page. That household is the CALLER's (`requireHousehold`
+      // above), because the recipes are filtered by it. It is not always the
+      // household of the cook's location: a person in two households can cook
+      // at a location of the second one and mark recipes of the first.
+      if (items.length > 0) {
+        await publishChange(ctx, ['STOCK', 'LOG'], [{ locationId: consumeLocationId }])
+      }
+      if (recipesMarked > 0) {
+        await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+      }
+      return result
     },
     deleteRecipe: async (_, { id }, ctx) => {
       const householdId = await requireCatalogRole(ctx, 'manager')

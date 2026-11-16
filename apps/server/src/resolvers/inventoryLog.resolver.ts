@@ -7,6 +7,7 @@ import {
   requireLocationRole,
 } from '../lib/authz.js'
 import { prisma } from '../lib/prisma.js'
+import { publishChange } from '../lib/publishChange.js'
 import { type Context, requireAuth } from '../context.js'
 import type { InventoryLog, Resolvers } from '../generated/graphql.js'
 
@@ -114,7 +115,7 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
       // The item must be an item of the location's household (households H3a,
       // task 3.8). Checked before the write, so a refusal writes nothing.
       await requireLocationItems(ctx, scopedLocationId, [itemId])
-      return prisma.inventoryLog.create({
+      const created = await prisma.inventoryLog.create({
         data: {
           itemId,
           delta,
@@ -128,7 +129,12 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
           ...(logKey ? { logKey } : {}),
           ...(logParams ? { logParams: logParams as Prisma.InputJsonValue } : {}),
         },
-      }) as unknown as Promise<InventoryLog>
+      })
+      // After the write (households H3c-2 task D.2). `LOG` only: this
+      // mutation writes one log row and no stock row. A stock change the
+      // client makes beside it is a separate mutation with its own event.
+      await publishChange(ctx, ['LOG'], [{ locationId: scopedLocationId }])
+      return created as unknown as InventoryLog
     },
   },
 

@@ -14,7 +14,8 @@ import { createExecutableSchema } from '../schema/executableSchema.js'
 //
 // What this test CANNOT see: whether a resolver in `publishes` really calls
 // `publishChange`. The per-mutation tests in
-// `cart-live-publish.resolver.test.ts` check that.
+// `cart-live-publish.resolver.test.ts` and
+// `stock-live-publish.resolver.test.ts` check that.
 //
 // `waitingForH3c2` must be EMPTY when H3c-2 ends (design, *Publishing*).
 // Each entry says what H3c-2 will make it publish.
@@ -27,19 +28,39 @@ import { createExecutableSchema } from '../schema/executableSchema.js'
 
 type Kind = ChangeEvent['kind']
 
-/** Fields that publish now. `kinds` is what they publish in H3c-1. */
+/**
+ * Fields that publish now, with every kind each can publish. Some send a kind
+ * only when it changed rows of that kind (see the resolver).
+ */
 const publishes: Record<string, { kinds: Kind[]; later?: string }> = {
   addToCart: { kinds: ['CART'] },
   updateCartItem: { kinds: ['CART'] },
   removeFromCart: { kinds: ['CART'] },
   abandonCart: { kinds: ['CART'] },
-  checkout: { kinds: ['CART'], later: 'H3c-2 adds STOCK and LOG for the same location' },
+  checkout: { kinds: ['CART', 'STOCK', 'LOG'] },
   bootstrapCarts: { kinds: ['CART'] },
   bulkCreateShoppingCarts: { kinds: ['CART'] },
   bulkUpsertShoppingCarts: { kinds: ['CART'] },
   bulkCreateCartItems: { kinds: ['CART'] },
   bulkUpsertCartItems: { kinds: ['CART'] },
   deleteVendor: { kinds: ['CART'], later: 'H3c-2 adds CATALOG' },
+
+  // ── Stock and logs (H3c-2 task D.2) ──
+  addInventoryLog: { kinds: ['LOG'] },
+  addItemToLocation: { kinds: ['STOCK'] },
+  upsertItemStock: { kinds: ['STOCK'] },
+  // It deletes the item's cart rows at that location too. The web does not
+  // refetch carts for STOCK or LOG, so it sends CART itself (decision Q1).
+  removeItemFromLocation: { kinds: ['STOCK', 'LOG', 'CART'] },
+  // No LOG: a unit switch writes no inventory log. CATALOG is
+  // household-level, for the item's settings and the recipe amounts.
+  applyUnitSwitch: { kinds: ['STOCK', 'CATALOG'] },
+  // CATALOG is household-level, for the recipes' `lastCookedAt`.
+  consumeRecipes: { kinds: ['STOCK', 'LOG', 'CATALOG'] },
+  bulkCreateItemStocks: { kinds: ['STOCK'] },
+  bulkUpsertItemStocks: { kinds: ['STOCK'] },
+  bulkCreateInventoryLogs: { kinds: ['LOG'] },
+  bulkUpsertInventoryLogs: { kinds: ['LOG'] },
 }
 
 /**
@@ -52,27 +73,17 @@ const publishesNothing: Record<string, string> = {}
 
 /** Fields that will publish in H3c-2, and what. */
 const waitingForH3c2: Record<string, string> = {
-  // ── They also delete cart rows ──
-  // P5 of the H3c-1 plan leaves these out of `publishes`. When H3c-2 adds
-  // their event, the web must refetch the cart queries for it too, or other
-  // tabs keep showing cart rows that are gone.
-  deleteItem: 'CATALOG; it also deletes cart rows (Prisma cascade), so its event must refetch carts too',
-  deleteLocation: 'LOCATION; it also deletes the carts of that location, so its event must refetch carts too',
-  clearAllData: 'LOCATION and CATALOG; it also deletes every cart of the household, so its events must refetch carts too',
-  removeItemFromLocation: 'STOCK and LOG; it also deletes the item\'s cart rows at that location, so its event must refetch carts too',
+  // ── They also delete or create cart rows ──
+  // The web does NOT refetch the cart queries for CATALOG, STOCK or LOG
+  // (decision Q1 of the H3c-2 plan). So each of these must publish CART
+  // itself, at each location where it changed cart rows, or other tabs keep
+  // showing cart rows that are gone. `deleteLocation` is the exception
+  // (decision Q4): its LOCATION event refetches every query.
+  deleteItem: 'CATALOG; and CART, STOCK and LOG at each location where it deleted rows (Prisma cascade)',
+  deleteLocation: 'LOCATION (household-level, refetches every query, so no CART for the deleted location)',
+  clearAllData: 'LOCATION and CATALOG (household-level; LOCATION refetches every query)',
   // It also CREATES one cart (the new vendor's, at the caller's location).
-  createVendor: 'CATALOG; it also creates the vendor\'s cart at one location, so its event must refetch carts too',
-
-  // ── Stock and logs at one location ──
-  addInventoryLog: 'LOG for the log\'s location',
-  addItemToLocation: 'STOCK for that location',
-  applyUnitSwitch: 'STOCK and LOG for that location',
-  upsertItemStock: 'STOCK for that location',
-  consumeRecipes: 'STOCK and LOG for that location, and CATALOG (recipe lastCookedAt)',
-  bulkCreateItemStocks: 'STOCK, one per location in the batch',
-  bulkUpsertItemStocks: 'STOCK, one per location in the batch',
-  bulkCreateInventoryLogs: 'LOG, one per location in the batch',
-  bulkUpsertInventoryLogs: 'LOG, one per location in the batch',
+  createVendor: 'CATALOG; and CART at the location of the cart it made',
 
   // ── Locations ──
   createLocation: 'LOCATION',

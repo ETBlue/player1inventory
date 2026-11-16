@@ -475,10 +475,11 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
             })
           }
 
-          return tx.cart.update({
+          const cart = (await tx.cart.update({
             where: { id: cartId },
             data: { lastPurchasedAt: now },
-          }) as unknown as Promise<Cart>
+          })) as unknown as Cart
+          return { cart, boughtCount: bought.length }
         },
         // Prisma's interactive transaction times out after 5 s by default.
         // A checkout makes about 4 queries per row (copy-on-add check, stock
@@ -489,9 +490,17 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
         // the whole checkout back, and the user gets an error and retries.
         { timeout: CHECKOUT_TIMEOUT_MS },
       )
-      // CART only in H3c-1. H3c-2 adds `STOCK` and `LOG` for the same location.
-      await publishChange(ctx, ['CART'], [{ locationId: cartLocationId }])
-      return purchased
+      // One call, every kind the checkout changed at the cart's location
+      // (households H3c-2 task D.2, decision Q1): the cart rows it claimed
+      // (`CART`), the stock it added to (`STOCK`) and the logs it wrote
+      // (`LOG`). An empty cart writes only `lastPurchasedAt`, so it changes
+      // no stock and no log, and sends `CART` alone.
+      await publishChange(
+        ctx,
+        purchased.boughtCount > 0 ? ['CART', 'STOCK', 'LOG'] : ['CART'],
+        [{ locationId: cartLocationId }],
+      )
+      return purchased.cart
     },
 
     /**

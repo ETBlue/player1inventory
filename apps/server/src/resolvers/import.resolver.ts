@@ -1195,43 +1195,55 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // caller's own log — no error, no count.
       const ownIds = await requireOwnRowIdsOrUnclaimed(ctx, 'inventoryLog', logs)
       const results: InventoryLog[] = []
-      for (const log of logs) {
-        // `locationId` is pulled OUT of `rest`: it is set explicitly below
-        // from the verified value, never passed straight through.
-        const { id, occurredAt, note, logParams, locationId, ...rest } = log
-        // After the guard an id is one of exactly two things: a log the caller
-        // already owns (skip it) or an id no row holds (free to write). The
-        // per-row read this replaces was unscoped, so it could not tell those
-        // two apart.
-        if (ownIds.has(id)) continue
-        // SCOPED since plan task 8 — a `findFirst`, because
-        // `{ id, householdId }` is not a unique key (by `householdId` since
-        // households H3a task 3.7; `userId` before). The read this replaces was a
-        // plain `findUnique({ where: { id } })`, so a log of the caller's
-        // could be attached to a STRANGER's item.
-        //
-        // The existing `continue` STAYS. A log whose item the caller may not
-        // use is skipped exactly like a log whose item no longer exists, which
-        // is what this check already did. Refusing instead would both break a
-        // partial backup and turn the mutation into a probe for another
-        // account's item ids. Same pattern as `requireOwnItemStockRefs:450`,
-        // which throws only because `ItemStock` has no other scope.
-        const itemExists = await prisma.item.findFirst({ where: { id: (rest as { itemId: string }).itemId, householdId }, select: { id: true } })
-        if (!itemExists) continue
-        const created = await prisma.inventoryLog.create({
-          data: {
-            id,
-            ...rest,
-            occurredAt: new Date(occurredAt),
-            note: note ?? undefined,
-            userId,
-            // The payload's own location when it names one, the caller's
-            // fallback location when it does not. Both already verified.
-            locationId: locationIdFor(locationId),
-            ...(logParams ? { logParams: logParams as Prisma.InputJsonValue } : {}),
-          },
-        })
-        results.push(created as unknown as InventoryLog)
+      // ── THE LIVE EVENT (households H3c-2 task D.2) ──
+      //
+      // `LOG` for the location of every row written, published in `finally`,
+      // the same way as the cart imports above: the rows are saved one by
+      // one, not in one transaction, so a batch that throws part-way has
+      // already saved some rows and other tabs must hear about them.
+      const touched: ChangedLocation[] = []
+      try {
+        for (const log of logs) {
+          // `locationId` is pulled OUT of `rest`: it is set explicitly below
+          // from the verified value, never passed straight through.
+          const { id, occurredAt, note, logParams, locationId, ...rest } = log
+          // After the guard an id is one of exactly two things: a log the caller
+          // already owns (skip it) or an id no row holds (free to write). The
+          // per-row read this replaces was unscoped, so it could not tell those
+          // two apart.
+          if (ownIds.has(id)) continue
+          // SCOPED since plan task 8 — a `findFirst`, because
+          // `{ id, householdId }` is not a unique key (by `householdId` since
+          // households H3a task 3.7; `userId` before). The read this replaces was a
+          // plain `findUnique({ where: { id } })`, so a log of the caller's
+          // could be attached to a STRANGER's item.
+          //
+          // The existing `continue` STAYS. A log whose item the caller may not
+          // use is skipped exactly like a log whose item no longer exists, which
+          // is what this check already did. Refusing instead would both break a
+          // partial backup and turn the mutation into a probe for another
+          // account's item ids. Same pattern as `requireOwnItemStockRefs:450`,
+          // which throws only because `ItemStock` has no other scope.
+          const itemExists = await prisma.item.findFirst({ where: { id: (rest as { itemId: string }).itemId, householdId }, select: { id: true } })
+          if (!itemExists) continue
+          const created = await prisma.inventoryLog.create({
+            data: {
+              id,
+              ...rest,
+              occurredAt: new Date(occurredAt),
+              note: note ?? undefined,
+              userId,
+              // The payload's own location when it names one, the caller's
+              // fallback location when it does not. Both already verified.
+              locationId: locationIdFor(locationId),
+              ...(logParams ? { logParams: logParams as Prisma.InputJsonValue } : {}),
+            },
+          })
+          results.push(created as unknown as InventoryLog)
+          touched.push({ locationId: created.locationId })
+        }
+      } finally {
+        await publishChange(ctx, ['LOG'], touched)
       }
       // NO CLOSING READ, on purpose. Each row returned is the row
       // `inventoryLog.create` itself wrote, and the guard above is what makes
@@ -1645,45 +1657,59 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // `update` OVERWROTE another account's log and took ownership of it.
       await requireOwnRowIdsOrUnclaimed(ctx, 'inventoryLog', logs)
       const results: InventoryLog[] = []
-      for (const log of logs) {
-        // `locationId` MUST come out of `rest` here. `data` below is the
-        // `update` payload, and a `locationId` left in `rest` would move an
-        // existing log to the payload's location on every re-import.
-        const { id, occurredAt, note, logParams, locationId, ...rest } = log
-        const data = {
-          ...rest,
-          occurredAt: new Date(occurredAt),
-          note: note ?? undefined,
-          ...(logParams ? { logParams: logParams as Prisma.InputJsonValue } : {}),
+      // ── THE LIVE EVENT (households H3c-2 task D.2) ──
+      //
+      // `LOG` for the location of every row written, published in `finally`,
+      // the same way as the cart imports above: the rows are saved one by
+      // one, not in one transaction, so a batch that throws part-way has
+      // already saved some rows and other tabs must hear about them.
+      // The location is the SAVED row's: an update keeps the stored log's
+      // location (see `update` below), which can differ from the payload's.
+      const touched: ChangedLocation[] = []
+      try {
+        for (const log of logs) {
+          // `locationId` MUST come out of `rest` here. `data` below is the
+          // `update` payload, and a `locationId` left in `rest` would move an
+          // existing log to the payload's location on every re-import.
+          const { id, occurredAt, note, logParams, locationId, ...rest } = log
+          const data = {
+            ...rest,
+            occurredAt: new Date(occurredAt),
+            note: note ?? undefined,
+            ...(logParams ? { logParams: logParams as Prisma.InputJsonValue } : {}),
+          }
+          // SCOPED (by `householdId` since households H3a task 3.7), and SKIPPED
+          // when it does not resolve. New in plan task 8: this mutation had NO item check at all, so a log of the
+          // caller's could be attached to a STRANGER's item, and an `itemId` no
+          // row held reached Postgres as an unhandled foreign-key `P2003`.
+          //
+          // The `continue` matches `bulkCreateInventoryLogs` above exactly, so
+          // the two siblings now agree on what an unusable `itemId` means: the
+          // log is dropped, not refused, and the rest of the batch still lands.
+          const itemExists = await prisma.item.findFirst({ where: { id: (rest as { itemId: string }).itemId, householdId }, select: { id: true } })
+          if (!itemExists) continue
+          const upserted = await prisma.inventoryLog.upsert({
+            where: { id },
+            // `userId` and `locationId` live in `create` only, each for its own
+            // reason.
+            //
+            // `userId`: a row's owner is not something an import may rewrite.
+            // Leaving it out means a future edit that drops the guard above
+            // still cannot hand another account's log to the importer. Same
+            // shape as `bulkUpsertLocations`.
+            //
+            // `locationId`: an upsert that carried it into `update` would MOVE an
+            // existing log on every re-import. The value is the payload's own
+            // when it names one, the caller's fallback location when it does not — both
+            // verified above.
+            create: { id, ...data, userId, locationId: locationIdFor(locationId) },
+            update: data,
+          })
+          results.push(upserted as unknown as InventoryLog)
+          touched.push({ locationId: upserted.locationId })
         }
-        // SCOPED (by `householdId` since households H3a task 3.7), and SKIPPED
-        // when it does not resolve. New in plan task 8: this mutation had NO item check at all, so a log of the
-        // caller's could be attached to a STRANGER's item, and an `itemId` no
-        // row held reached Postgres as an unhandled foreign-key `P2003`.
-        //
-        // The `continue` matches `bulkCreateInventoryLogs` above exactly, so
-        // the two siblings now agree on what an unusable `itemId` means: the
-        // log is dropped, not refused, and the rest of the batch still lands.
-        const itemExists = await prisma.item.findFirst({ where: { id: (rest as { itemId: string }).itemId, householdId }, select: { id: true } })
-        if (!itemExists) continue
-        const upserted = await prisma.inventoryLog.upsert({
-          where: { id },
-          // `userId` and `locationId` live in `create` only, each for its own
-          // reason.
-          //
-          // `userId`: a row's owner is not something an import may rewrite.
-          // Leaving it out means a future edit that drops the guard above
-          // still cannot hand another account's log to the importer. Same
-          // shape as `bulkUpsertLocations`.
-          //
-          // `locationId`: an upsert that carried it into `update` would MOVE an
-          // existing log on every re-import. The value is the payload's own
-          // when it names one, the caller's fallback location when it does not — both
-          // verified above.
-          create: { id, ...data, userId, locationId: locationIdFor(locationId) },
-          update: data,
-        })
-        results.push(upserted as unknown as InventoryLog)
+      } finally {
+        await publishChange(ctx, ['LOG'], touched)
       }
       // NO CLOSING READ — same reason as `bulkCreateInventoryLogs` above. The
       // returned row is the one `inventoryLog.upsert` wrote, and the guard is
@@ -1933,40 +1959,53 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       await requireOwnItemStockRefs(ctx, itemStocks)
       const results: ItemStock[] = []
       const seen = new Set<string>()
-      for (const stock of itemStocks) {
-        const { id, itemId, locationId, createdAt, updatedAt, dueDate, ...quantities } = stock
-        // NUL as the separator, not ':'. Neither id generator makes one
-        // (`crypto.randomUUID()` locally, `@default(cuid())` in cloud) but
-        // `ItemInput.id` is stored verbatim, so a hand-edited backup can
-        // supply any text — and a ':' separator would make ("a:b", "c") and
-        // ("a", "b:c") the same key. Task 4 hit the same hazard in cart ids.
-        const pair = `${itemId}\u0000${locationId}`
-        if (seen.has(pair)) continue
-        seen.add(pair)
-        const existingById = await prisma.itemStock.findUnique({ where: { id } })
-        if (existingById) {
-          results.push(itemStockToGraphQL(existingById))
-          continue
+      // ── THE LIVE EVENT (households H3c-2 task D.2) ──
+      //
+      // `STOCK` for the location of every row written, published in
+      // `finally`, the same way as the cart imports: the rows are saved one by
+      // one, not in one transaction, so a batch that throws part-way has
+      // already saved some rows and other tabs must hear about them.
+      // A row skipped as already there is not written, so it adds no location.
+      const touched: ChangedLocation[] = []
+      try {
+        for (const stock of itemStocks) {
+          const { id, itemId, locationId, createdAt, updatedAt, dueDate, ...quantities } = stock
+          // NUL as the separator, not ':'. Neither id generator makes one
+          // (`crypto.randomUUID()` locally, `@default(cuid())` in cloud) but
+          // `ItemInput.id` is stored verbatim, so a hand-edited backup can
+          // supply any text — and a ':' separator would make ("a:b", "c") and
+          // ("a", "b:c") the same key. Task 4 hit the same hazard in cart ids.
+          const pair = `${itemId}\u0000${locationId}`
+          if (seen.has(pair)) continue
+          seen.add(pair)
+          const existingById = await prisma.itemStock.findUnique({ where: { id } })
+          if (existingById) {
+            results.push(itemStockToGraphQL(existingById))
+            continue
+          }
+          const existingByPair = await prisma.itemStock.findFirst({
+            where: { itemId, locationId },
+          })
+          if (existingByPair) {
+            results.push(itemStockToGraphQL(existingByPair))
+            continue
+          }
+          const row = await prisma.itemStock.create({
+            data: {
+              id,
+              itemId,
+              locationId,
+              ...quantities,
+              dueDate: dueDate ? new Date(dueDate) : null,
+              createdAt: new Date(createdAt),
+              updatedAt: new Date(updatedAt),
+            },
+          })
+          results.push(itemStockToGraphQL(row))
+          touched.push({ locationId: row.locationId })
         }
-        const existingByPair = await prisma.itemStock.findFirst({
-          where: { itemId, locationId },
-        })
-        if (existingByPair) {
-          results.push(itemStockToGraphQL(existingByPair))
-          continue
-        }
-        const row = await prisma.itemStock.create({
-          data: {
-            id,
-            itemId,
-            locationId,
-            ...quantities,
-            dueDate: dueDate ? new Date(dueDate) : null,
-            createdAt: new Date(createdAt),
-            updatedAt: new Date(updatedAt),
-          },
-        })
-        results.push(itemStockToGraphQL(row))
+      } finally {
+        await publishChange(ctx, ['STOCK'], touched)
       }
       return results
     },
@@ -2104,24 +2143,40 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       if (itemStocks.length === 0) return []
       await requireOwnItemStockRefs(ctx, itemStocks)
       const results: ItemStock[] = []
-      for (const stock of itemStocks) {
-        const { id, itemId, locationId, createdAt, updatedAt, dueDate, ...quantities } = stock
-        const state = {
-          ...quantities,
-          dueDate: dueDate ? new Date(dueDate) : null,
-          createdAt: new Date(createdAt),
-          updatedAt: new Date(updatedAt),
+      // ── THE LIVE EVENT (households H3c-2 task D.2) ──
+      //
+      // `STOCK` for the location of every row written, published in
+      // `finally`, the same way as the cart imports: the rows are saved one by
+      // one, not in one transaction, so a batch that throws part-way has
+      // already saved some rows and other tabs must hear about them.
+      // Two locations can change for one row: the stale row deleted at the
+      // payload's pair, and the saved row, which keeps its stored location
+      // when the id already existed (`update` carries no `locationId`).
+      const touched: ChangedLocation[] = []
+      try {
+        for (const stock of itemStocks) {
+          const { id, itemId, locationId, createdAt, updatedAt, dueDate, ...quantities } = stock
+          const state = {
+            ...quantities,
+            dueDate: dueDate ? new Date(dueDate) : null,
+            createdAt: new Date(createdAt),
+            updatedAt: new Date(updatedAt),
+          }
+          const stale = await prisma.itemStock.findFirst({ where: { itemId, locationId } })
+          if (stale && stale.id !== id) {
+            await prisma.itemStock.delete({ where: { id: stale.id } })
+            touched.push({ locationId: stale.locationId })
+          }
+          const row = await prisma.itemStock.upsert({
+            where: { id },
+            create: { id, itemId, locationId, ...state },
+            update: state,
+          })
+          results.push(itemStockToGraphQL(row))
+          touched.push({ locationId: row.locationId })
         }
-        const stale = await prisma.itemStock.findFirst({ where: { itemId, locationId } })
-        if (stale && stale.id !== id) {
-          await prisma.itemStock.delete({ where: { id: stale.id } })
-        }
-        const row = await prisma.itemStock.upsert({
-          where: { id },
-          create: { id, itemId, locationId, ...state },
-          update: state,
-        })
-        results.push(itemStockToGraphQL(row))
+      } finally {
+        await publishChange(ctx, ['STOCK'], touched)
       }
       return results
     },
