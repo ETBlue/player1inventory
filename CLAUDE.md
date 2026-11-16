@@ -239,14 +239,16 @@ that really set up that role.
 > | Socket | `lib/wsServer.ts`, same port and path as HTTP (`/graphql`) | sign-in through `identifyCaller`, shared with HTTP |
 > | Web runner | `LiveUpdatesRunner` (`apps/web/src/apollo/`), in cloud mode when signed in | 300 ms batch, then refetches the ACTIVE queries named in `QUERIES_BY_KIND` (`liveUpdates.ts`). A reconnect refetches every active query once |
 >
-> **Every `Mutation` field must be in one of three lists** in
-> `apps/server/src/resolvers/live-publish.guard.test.ts`: `publishes` (with its kind),
-> `publishesNothing` (with a reason) or `waitingForH3c2`. A new mutation in no list fails
-> the test. Today: 62 fields, 28 / 0 / 34 (after H3c-2 task D.3). `waitingForH3c2` must be empty when H3c-2 ends.
-> The guard cannot see whether a resolver really calls `publishChange`; the per-mutation
-> tests in `cart-live-publish.resolver.test.ts`, `stock-live-publish.resolver.test.ts` and
-> `location-live-publish.resolver.test.ts` do. It does not see queries either:
-> `vendorCart` creates a missing cart and publishes nothing.
+> **Every `Mutation` field must be in one of two lists** in
+> `apps/server/src/resolvers/live-publish.guard.test.ts`: `publishes` (with its kinds) or
+> `publishesNothing` (with a reason). A new mutation in no list fails the test. Today: 62
+> fields, 62 / 0 (after H3c-2 task D.4, which deleted the third list, `waitingForH3c2`).
+> The guard cannot see whether a resolver really calls `publishChange` or
+> `publishHouseholdChange`; the per-mutation tests in `cart-live-publish.resolver.test.ts`,
+> `stock-live-publish.resolver.test.ts`, `location-live-publish.resolver.test.ts` and
+> `catalog-live-publish.resolver.test.ts` do. It does not see queries either:
+> `vendorCart` creates a missing, EMPTY cart and publishes nothing (the guard file's
+> "queries that write" note).
 >
 > **Close codes** (`lib/wsServer.ts`, `lib/tokenCheckError.ts`):
 >

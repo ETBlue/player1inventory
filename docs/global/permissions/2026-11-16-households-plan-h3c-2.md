@@ -84,7 +84,10 @@ Until H5 (invites), this shows only between one person's own tabs and devices.
 - **Q7 — `vendorCart` publishes nothing.** It creates an EMPTY cart, so no other screen shows
   different content. Recorded in the guard test file under a short "queries that write" note,
   because the guard reads only `Mutation` fields. D.4 confirms the cart is empty when created;
-  if not, it publishes `CART`.
+  if not, it publishes `CART`. **Checked in D.4:** `vendorCart` creates `{ id, locationId }`
+  and nothing else, so it publishes nothing. Note that `bootstrapCarts` (H3c-1) and
+  `createVendor` (D.4) DO send `CART` for the empty carts they make. That is harmless (one
+  refetch); the two choices were made at different times.
 - **Q8 — imports.** Each bulk mutation publishes once per (kind, location) for the rows it
   wrote, in `finally`, as the H3c-1 cart imports do (they are not one transaction).
 
@@ -105,11 +108,11 @@ otherwise.
 | `createLocation`, `updateLocation`, `reorderLocations`, `bulkCreate`/`bulkUpsert` `Locations` | `LOCATION`. Checked in D.3: the household is the SAVED row's (`updateLocation` and an upsert's update branch can write a location of a second household); the imports publish once per household written, in `finally`, and nothing for skipped rows; `reorderLocations` with an empty list publishes nothing |
 | `deleteLocation` | `LOCATION`. Checked in D.3: it moves no rows to another location (stock, carts, logs and roles go by cascade), so no surviving location needs its own kinds |
 | `clearAllData` | `LOCATION` and `CATALOG` |
-| `deleteItem` | `CATALOG`; `CART`, `STOCK`, `LOG` at each location where it deleted rows |
-| `createVendor` | `CATALOG`; `CART` at the location of the cart it made |
-| `deleteVendor` | `CART` (as now) and `CATALOG` |
-| `renameHousehold` | `CATALOG` |
-| every other catalog mutation (items, tags, tag types, vendors, recipes, shelves, their imports) | `CATALOG` |
+| `deleteItem` | `CATALOG`; `CART`, `STOCK`, `LOG` at each location where it deleted rows. Checked in D.4: the rows go by Prisma cascade (`ItemStock`, `InventoryLog`, `CartItem`), so their locations are read BEFORE the delete. Each kind is sent only at the locations where that kind had rows (three `publishChange` calls, not one). The household is the LOCATION's (`publishChange` reads it). `ItemTag`, `ItemVendor` and `RecipeItem` cascade too and are covered by `CATALOG` |
+| `createVendor` | `CATALOG`; `CART` at the location of the cart it made. Checked in D.4: the `CART` event carries the LOCATION's household. `requireLocationRole` does not check that `locationId` is in the catalog's household, so a person in two households can make a vendor of one with its cart at a location of the other |
+| `deleteVendor` | `CART` (as now) and `CATALOG`. Checked in D.4: `CATALOG` only when the vendor itself was deleted |
+| `renameHousehold` | `CATALOG`, for the SAVED row's household |
+| every other catalog mutation (items, tags, tag types, vendors, recipes, shelves, their imports) | `CATALOG`. Checked in D.4: every catalog write lands in the caller's household (`requireCatalogRole`, or `requireHousehold` for the imports), so the event says that household. A write that changes nothing sends nothing (a refusal, a missing row, an empty `reorderShelves`, an import that skips every row). The imports publish in `finally` through `withCatalogEvent` in `import.resolver.ts` |
 
 ## Task D.1 — the new kinds, end to end, with the web map
 
