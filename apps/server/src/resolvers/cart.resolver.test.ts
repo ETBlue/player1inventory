@@ -37,6 +37,13 @@ vi.mock('../lib/prisma.js', async () => {
       findMany: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      // Never used by the resolvers under test. Here so a test can assert
+      // that NO cart write happened, whichever method a change might use.
+      createMany: vi.fn(),
+      upsert: vi.fn(),
+      updateMany: vi.fn(),
+      delete: vi.fn(),
+      deleteMany: vi.fn(),
     },
     item: { findMany: items.client.findMany },
   }
@@ -66,6 +73,11 @@ const mockPrisma = prisma as unknown as {
     findMany: ReturnType<typeof vi.fn>
     create: ReturnType<typeof vi.fn>
     update: ReturnType<typeof vi.fn>
+    createMany: ReturnType<typeof vi.fn>
+    upsert: ReturnType<typeof vi.fn>
+    updateMany: ReturnType<typeof vi.fn>
+    delete: ReturnType<typeof vi.fn>
+    deleteMany: ReturnType<typeof vi.fn>
   }
   $world: HouseholdWorld
 }
@@ -360,7 +372,20 @@ describe('vendorCart reads for a viewer and creates for a participant', () => {
     // Then an empty cart with the right id comes back, and nothing is written
     expect(result?.errors).toBeUndefined()
     expect(result?.data?.vendorCart).toEqual({ id: `${LOC_DEFAULT}:vendor_1`, lastPurchasedAt: null })
-    expect(mockPrisma.cart.create).not.toHaveBeenCalled()
+    // Every cart write method, not only `create`
+    const { findUnique: _read, findMany: _list, ...writes } = mockPrisma.cart
+    expect(Object.keys(writes).sort()).toEqual([
+      'create',
+      'createMany',
+      'delete',
+      'deleteMany',
+      'update',
+      'updateMany',
+      'upsert',
+    ])
+    for (const [name, write] of Object.entries(writes)) {
+      expect(write, `cart.${name}`).not.toHaveBeenCalled()
+    }
   })
 
   it('location viewer gets an existing cart as it is', async () => {

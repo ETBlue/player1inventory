@@ -564,8 +564,10 @@ describe('reorderLocations', () => {
     expect(location('loc-garage')?.order).toBe(3)
   })
 
-  it('household manager with no role on a location still sends and orders every location', async () => {
-    // Given the caller manages hh-1 and has no role on loc-garage
+  it('household manager with no role on a location is refused a list that leaves that location out', async () => {
+    // Given the caller manages hh-1 and has no role on loc-garage. (The full
+    // list with loc-garage is accepted: "household manager can reorder every
+    // location of the household" above.)
     seed({ callerHouseholdRole: 'manager' })
 
     // When they leave loc-garage out
@@ -574,6 +576,21 @@ describe('reorderLocations', () => {
     // Then the batch is refused: the full set is needed, whatever the roles
     expect(errorCode(res)).toBe('BAD_USER_INPUT')
     expect(location('loc-kitchen')?.order).toBe(1)
+  })
+
+  it("a full-length list with another household's location is refused, and nothing is written", async () => {
+    // Given hh-1 holds three locations (loc-kitchen, loc-pantry, loc-garage)
+    // and hh-2 holds loc-theirs
+    // When the caller sends three ids, one of them hh-2's. The count matches
+    // hh-1's, so only the household filter on the id read can refuse it.
+    const res = await run(REORDER, { ids: ['loc-kitchen', 'loc-pantry', 'loc-theirs'] })
+
+    // Then FORBIDDEN, and no order moved in either household
+    expect(errorCode(res)).toBe('FORBIDDEN')
+    expect(location('loc-kitchen')?.order).toBe(1)
+    expect(location('loc-pantry')?.order).toBe(0)
+    expect(location('loc-garage')?.order).toBe(3)
+    expect(location('loc-theirs')?.order).toBe(9)
   })
 
   it('an empty list is refused while the household has locations', async () => {
