@@ -13,7 +13,7 @@ import {
 import { parseCartId } from '@p1i/types'
 import { createFirstLocation, firstLocationName, lockHousehold } from '../lib/household.js'
 import { prisma } from '../lib/prisma.js'
-import { type ChangedLocation, publishChange } from '../lib/publishChange.js'
+import { type ChangedLocation, publishChange, publishHouseholdChange } from '../lib/publishChange.js'
 import { type Context, requireAuth } from '../context.js'
 import { toGraphQL as locationToGraphQL } from './location.resolver.js'
 import { toGraphQL as itemStockToGraphQL } from './itemStock.resolver.js'
@@ -1901,21 +1901,35 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // things: a location the caller holds a role on, or free.
       const existing = await requireOwnLocationIdsOrUnclaimed(ctx, locations, 'participant')
       const results: Location[] = []
-      for (const location of locations) {
-        if (existing.has(location.id)) {
-          // "Skip conflicts": the stored row is returned unchanged, and no
-          // role row is added. UNSCOPED read: the pre-check above already
-          // proved the caller holds a role on this id. A `householdId` filter
-          // here would wrongly miss a location of another household the
-          // caller shares (H5).
-          const row = await prisma.location.findUnique({ where: { id: location.id } })
-          if (row) results.push(locationToGraphQL(row as unknown as PrismaLocation))
-          continue
+      // ── THE LIVE EVENT (households H3c-2 task D.3) ──
+      //
+      // One household-level `LOCATION` event per household a location was
+      // CREATED in, published in `finally`: the rows are saved one by one,
+      // not in one transaction, so a batch that throws part-way has already
+      // saved some. A skipped row writes nothing and adds no household.
+      const changed = new Set<string>()
+      try {
+        for (const location of locations) {
+          if (existing.has(location.id)) {
+            // "Skip conflicts": the stored row is returned unchanged, and no
+            // role row is added. UNSCOPED read: the pre-check above already
+            // proved the caller holds a role on this id. A `householdId` filter
+            // here would wrongly miss a location of another household the
+            // caller shares (H5).
+            const row = await prisma.location.findUnique({ where: { id: location.id } })
+            if (row) results.push(locationToGraphQL(row as unknown as PrismaLocation))
+            continue
+          }
+          const row = await createImportedLocation(userId, householdId, location)
+          changed.add(row.householdId)
+          // A second payload row with the same id is now a skip, not a P2002.
+          existing.add(location.id)
+          results.push(locationToGraphQL(row as unknown as PrismaLocation))
         }
-        const row = await createImportedLocation(userId, householdId, location)
-        // A second payload row with the same id is now a skip, not a P2002.
-        existing.add(location.id)
-        results.push(locationToGraphQL(row as unknown as PrismaLocation))
+      } finally {
+        for (const changedHousehold of changed) {
+          await publishHouseholdChange(ctx, ['LOCATION'], changedHousehold)
+        }
       }
       return results
     },
@@ -2072,38 +2086,53 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // same value again, so a test of that case passes either way.
       const existing = await requireOwnLocationIdsOrUnclaimed(ctx, locations, 'organizer')
       const results: Location[] = []
-      for (const location of locations) {
-        const { id, name, order, createdAt, updatedAt } = location
-        if (!existing.has(id)) {
-          // A new id: the location, its `householdId` and the caller's
-          // `organizer` row, in one transaction. Not an `upsert`: an upsert
-          // cannot write the role row for its create branch only.
-          const row = await createImportedLocation(userId, householdId, location)
-          // A second payload row with the same id is now an update.
-          existing.add(id)
+      // ── THE LIVE EVENT (households H3c-2 task D.3) ──
+      //
+      // One household-level `LOCATION` event per household of a location
+      // written, in `finally`, as in `bulkCreateLocations`. The household is
+      // read from the SAVED row: an updated location keeps its own household,
+      // which can be another household the caller organizes a location of.
+      const changed = new Set<string>()
+      try {
+        for (const location of locations) {
+          const { id, name, order, createdAt, updatedAt } = location
+          if (!existing.has(id)) {
+            // A new id: the location, its `householdId` and the caller's
+            // `organizer` row, in one transaction. Not an `upsert`: an upsert
+            // cannot write the role row for its create branch only.
+            const row = await createImportedLocation(userId, householdId, location)
+            changed.add(row.householdId)
+            // A second payload row with the same id is now an update.
+            existing.add(id)
+            results.push(locationToGraphQL(row as unknown as PrismaLocation))
+            continue
+          }
+          // An existing location the caller organizes. Only its own columns
+          // change, and NO role row is written or changed: the caller already
+          // holds `organizer` here, and an import must not grant or change
+          // anybody's role.
+          //
+          // `data` is NARROWER than the create, on purpose:
+          //
+          //  - no `householdId`: a location's household is not
+          //    something an import may move. Leaving them out means a future
+          //    edit that drops the pre-check cannot move a row by accident.
+          const row = await prisma.location.update({
+            where: { id },
+            data: {
+              name,
+              order,
+              createdAt: new Date(createdAt),
+              updatedAt: new Date(updatedAt),
+            },
+          })
+          changed.add(row.householdId)
           results.push(locationToGraphQL(row as unknown as PrismaLocation))
-          continue
         }
-        // An existing location the caller organizes. Only its own columns
-        // change, and NO role row is written or changed: the caller already
-        // holds `organizer` here, and an import must not grant or change
-        // anybody's role.
-        //
-        // `data` is NARROWER than the create, on purpose:
-        //
-        //  - no `householdId`: a location's household is not
-        //    something an import may move. Leaving them out means a future
-        //    edit that drops the pre-check cannot move a row by accident.
-        const row = await prisma.location.update({
-          where: { id },
-          data: {
-            name,
-            order,
-            createdAt: new Date(createdAt),
-            updatedAt: new Date(updatedAt),
-          },
-        })
-        results.push(locationToGraphQL(row as unknown as PrismaLocation))
+      } finally {
+        for (const changedHousehold of changed) {
+          await publishHouseholdChange(ctx, ['LOCATION'], changedHousehold)
+        }
       }
       return results
     },
@@ -2243,6 +2272,15 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           name: firstLocationName(ctx.language ?? 'en'),
         })
       })
+      // ── THE LIVE EVENT (households H3c-2 task D.3) ──
+      //
+      // After the commit. Both kinds are household-level (decision Q2):
+      // `LOCATION` because every location went and "Home" came back, and
+      // `CATALOG` because the catalog is empty now. `LOCATION` already makes
+      // the web refetch every query (decision Q3), but the event says what
+      // changed (decision Q1). No `CART`, `STOCK` or `LOG`: their locations
+      // are gone (decision Q4).
+      await publishHouseholdChange(ctx, ['LOCATION', 'CATALOG'], householdId)
       return true
     },
   },

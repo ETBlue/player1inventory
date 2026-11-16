@@ -14,8 +14,9 @@ import { createExecutableSchema } from '../schema/executableSchema.js'
 //
 // What this test CANNOT see: whether a resolver in `publishes` really calls
 // `publishChange`. The per-mutation tests in
-// `cart-live-publish.resolver.test.ts` and
-// `stock-live-publish.resolver.test.ts` check that.
+// `cart-live-publish.resolver.test.ts`,
+// `stock-live-publish.resolver.test.ts` and
+// `location-live-publish.resolver.test.ts` check that.
 //
 // `waitingForH3c2` must be EMPTY when H3c-2 ends (design, *Publishing*).
 // Each entry says what H3c-2 will make it publish.
@@ -61,6 +62,22 @@ const publishes: Record<string, { kinds: Kind[]; later?: string }> = {
   bulkUpsertItemStocks: { kinds: ['STOCK'] },
   bulkCreateInventoryLogs: { kinds: ['LOG'] },
   bulkUpsertInventoryLogs: { kinds: ['LOG'] },
+
+  // ── Locations and clear-all (H3c-2 task D.3) ──
+  // All household-level (`locationId: null`, decision Q2). On the web
+  // LOCATION refetches every active query (decision Q3).
+  createLocation: { kinds: ['LOCATION'] },
+  updateLocation: { kinds: ['LOCATION'] },
+  // Not for an empty list, which writes nothing.
+  reorderLocations: { kinds: ['LOCATION'] },
+  // No CART, STOCK or LOG for the deleted location's rows (decision Q4):
+  // nobody could pass the role check for them, and LOCATION refetches all.
+  deleteLocation: { kinds: ['LOCATION'] },
+  // Once per household a location was written in; nothing for skipped rows.
+  bulkCreateLocations: { kinds: ['LOCATION'] },
+  bulkUpsertLocations: { kinds: ['LOCATION'] },
+  // Every location and the whole catalog of the household go.
+  clearAllData: { kinds: ['LOCATION', 'CATALOG'] },
 }
 
 /**
@@ -77,20 +94,10 @@ const waitingForH3c2: Record<string, string> = {
   // The web does NOT refetch the cart queries for CATALOG, STOCK or LOG
   // (decision Q1 of the H3c-2 plan). So each of these must publish CART
   // itself, at each location where it changed cart rows, or other tabs keep
-  // showing cart rows that are gone. `deleteLocation` is the exception
-  // (decision Q4): its LOCATION event refetches every query.
+  // showing cart rows that are gone.
   deleteItem: 'CATALOG; and CART, STOCK and LOG at each location where it deleted rows (Prisma cascade)',
-  deleteLocation: 'LOCATION (household-level, refetches every query, so no CART for the deleted location)',
-  clearAllData: 'LOCATION and CATALOG (household-level; LOCATION refetches every query)',
   // It also CREATES one cart (the new vendor's, at the caller's location).
   createVendor: 'CATALOG; and CART at the location of the cart it made',
-
-  // ── Locations ──
-  createLocation: 'LOCATION',
-  updateLocation: 'LOCATION',
-  reorderLocations: 'LOCATION',
-  bulkCreateLocations: 'LOCATION',
-  bulkUpsertLocations: 'LOCATION',
 
   // ── The household ──
   // The household name is shown in every member's sidebar.
