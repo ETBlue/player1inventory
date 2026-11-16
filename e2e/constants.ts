@@ -13,6 +13,8 @@ export const LOCAL_WEB_URL = `http://localhost:${LOCAL_WEB_PORT}`
 export const CLOUD_WEB_URL = `http://localhost:${CLOUD_WEB_PORT}`
 export const CLOUD_SERVER_URL = `http://localhost:${CLOUD_SERVER_PORT}`
 export const CLOUD_GRAPHQL_URL = `${CLOUD_SERVER_URL}/graphql`
+// The live-updates socket (households H3c-1): same port and path as HTTP.
+export const CLOUD_GRAPHQL_WS_URL = `ws://localhost:${CLOUD_SERVER_PORT}/graphql`
 export const PWA_WEB_URL = `http://localhost:${PWA_WEB_PORT}`
 
 // E2E test identity — must match the x-e2e-user-id header and VITE_E2E_TEST_USER_ID

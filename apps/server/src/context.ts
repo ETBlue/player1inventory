@@ -19,6 +19,25 @@ export function appLanguageFrom(header: string | string[] | undefined): AppLangu
     : 'en'
 }
 
+/** The longest tab id the server accepts. See `clientIdFrom`. */
+export const CLIENT_ID_MAX_LENGTH = 64
+
+/**
+ * The tab id from the `x-client-id` header (HTTP) or, from task C.3,
+ * `connectionParams.clientId` (WebSocket). Households H3c-1, decision P4.
+ *
+ * The web client makes a random id per browser tab. The server uses it only
+ * to not send a tab's own change back to it, so it is never trusted for
+ * anything else. A value that is not a string, is empty, or is longer than
+ * `CLIENT_ID_MAX_LENGTH` is treated as missing. A header sent twice arrives
+ * as an array and is treated as missing too.
+ */
+export function clientIdFrom(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 && value.length <= CLIENT_ID_MAX_LENGTH
+    ? value
+    : undefined
+}
+
 /**
  * Values worked out once per request and then reused. The GraphQL context
  * function in `index.ts` creates a new, empty object for every request, so
@@ -34,6 +53,12 @@ export interface Context {
   userId: string | null
   /** From the `x-app-language` header. Missing means `en`. */
   language?: AppLanguage
+  /**
+   * The tab that sent this request (`clientIdFrom`). Missing when the request
+   * had no valid `x-client-id` header, for example `makeGql` in E2E or an old
+   * web bundle. A change published without it reaches every tab.
+   */
+  clientId?: string
   requestCache?: RequestCache
 }
 

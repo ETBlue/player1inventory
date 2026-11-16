@@ -9,7 +9,7 @@
 // Railway's build all run it.
 //
 // WHAT "STARTED" MEANS: the process prints `Server ready at` (index.ts, in
-// the `app.listen` callback). Before that line it has loaded every module,
+// the `httpServer.listen` callback). Before that line it has loaded every module,
 // read every `.graphql` file, and run `ApolloServer.start()`, which checks the
 // schema against the resolvers. Exiting first, or printing nothing within
 // TIMEOUT_MS, is a failure, and the child's output is printed.
@@ -29,6 +29,14 @@
 // - The working folder is a new empty temp folder, so `dotenv/config` finds
 //   no `.env`.
 //
+// THE WEBSOCKET ENDPOINT (households H3c-1, task C.3). After `Server ready
+// at`, the script reads the real port from that line, opens a WebSocket to
+// `/graphql` with the `graphql-transport-ws` protocol, and sends a
+// `connection_init` with no `clientId`. The server must close it with 4401
+// (lib/wsServer.ts). That proves the bundle mounts the socket endpoint on the
+// same port and path, with its sign-in handlers. It needs no Clerk call: a
+// socket without a `clientId` is refused before any token is checked.
+//
 // The child is always stopped before this script exits.
 
 import { spawn } from 'node:child_process'
@@ -36,9 +44,12 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import WebSocket from 'ws'
 
 const TIMEOUT_MS = 20_000
 const READY = 'Server ready at'
+const READY_URL = /Server ready at http:\/\/localhost:(\d+)(\/\S*)/
+const WS_REFUSED = 4401
 const CLOSED_PORT_URL = 'postgresql://start-check@127.0.0.1:9/start-check'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -70,7 +81,9 @@ function finish(ok, reason) {
   const done = () => {
     rmSync(cwd, { recursive: true, force: true })
     if (ok) {
-      console.log(`start check: dist/index.js started in ${Date.now() - started} ms`)
+      console.log(
+        `start check: dist/index.js started, and refused a socket with no clientId with ${WS_REFUSED}, in ${Date.now() - started} ms`,
+      )
       process.exit(0)
     }
     console.error(`start check FAILED: ${reason}`)
@@ -91,9 +104,27 @@ const timer = setTimeout(
   TIMEOUT_MS,
 )
 
+let probing = false
+
+/** Open a socket with no `clientId`; the server must close it with 4401. */
+function probeWebSocket(port, path) {
+  probing = true
+  const socket = new WebSocket(`ws://127.0.0.1:${port}${path}`, 'graphql-transport-ws')
+  socket.on('open', () => {
+    socket.send(JSON.stringify({ type: 'connection_init', payload: {} }))
+  })
+  socket.on('close', (code) => {
+    if (code === WS_REFUSED) finish(true)
+    else finish(false, `the WebSocket at ${path} closed with ${code}, expected ${WS_REFUSED}`)
+  })
+  socket.on('error', (err) => finish(false, `WebSocket error at ${path}: ${err.message}`))
+}
+
 function onData(chunk) {
   output += chunk
-  if (output.includes(READY)) finish(true)
+  if (probing) return
+  const ready = READY_URL.exec(output)
+  if (ready) probeWebSocket(Number(ready[1]), ready[2])
 }
 child.stdout.setEncoding('utf-8').on('data', onData)
 child.stderr.setEncoding('utf-8').on('data', onData)

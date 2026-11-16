@@ -1,7 +1,8 @@
 import 'dotenv/config'
+import { createServer } from 'node:http'
 import express from 'express'
 import cors from 'cors'
-import { clerkClient, clerkMiddleware, getAuth } from '@clerk/express'
+import { clerkClient, clerkMiddleware, getAuth, verifyToken } from '@clerk/express'
 import { ApolloServer } from '@apollo/server'
 import { expressMiddleware } from '@as-integrations/express5'
 import { DEFAULT_CLIENT_ORIGIN, DEFAULT_PORT, GRAPHQL_PATH } from './constants.js'
@@ -18,8 +19,8 @@ import { createGraphQLContext } from './lib/graphqlContext.js'
 import { prisma } from './lib/prisma.js'
 import type { UserSource } from './lib/userRow.js'
 import { ensureUserOrLog } from './lib/userRow.js'
-import { typeDefs } from './schema/index.js'
-import { resolvers } from './resolvers/index.js'
+import { attachWsServer } from './lib/wsServer.js'
+import { createExecutableSchema } from './schema/executableSchema.js'
 import type { Context } from './context.js'
 
 const E2E_TEST_MODE = process.env.E2E_TEST_MODE === 'true'
@@ -75,7 +76,11 @@ const USER_SOURCE: UserSource = E2E_TEST_MODE
   ? { kind: 'e2e' }
   : { kind: 'clerk', lookup: async (id) => (await clerkClient.users.getUser(id)).raw }
 
-const server = new ApolloServer<Context>({ typeDefs, resolvers })
+// One schema for HTTP and for the WebSocket (households H3c-1, decision P2).
+// See schema/executableSchema.ts for why it is built with makeExecutableSchema.
+const schema = createExecutableSchema()
+
+const server = new ApolloServer<Context>({ schema })
 await server.start()
 
 app.use(
@@ -104,6 +109,35 @@ process.on('beforeExit', async () => {
   await prisma.$disconnect()
 })
 
-app.listen(PORT, () => {
-  console.log(`Server ready at http://localhost:${PORT}${GRAPHQL_PATH}`)
+// One HTTP server for Express and for the WebSocket endpoint, so both use
+// the same port and the path GRAPHQL_PATH (lib/wsServer.ts).
+const httpServer = createServer(app)
+
+attachWsServer(httpServer, schema, {
+  e2eTestMode: E2E_TEST_MODE,
+  // The socket has no Express request, so it cannot use clerkMiddleware and
+  // getAuth. verifyToken (from @clerk/backend, re-exported by @clerk/express)
+  // checks the session token directly. It reads the same CLERK_SECRET_KEY
+  // as clerkMiddleware, and CLERK_JWT_KEY when it is set. No
+  // authorizedParties, the same as clerkMiddleware here. It throws on a bad
+  // token AND when it cannot fetch Clerk's JWKS (no CLERK_JWT_KEY). Both reach
+  // lib/wsServer.ts: a bad token closes the socket with 4401 (not retried),
+  // any other error with 1013 (retried). lib/tokenCheckError.ts tells them
+  // apart by Clerk's `reason`.
+  verifyClerkToken: async (token) =>
+    (
+      await verifyToken(token, {
+        secretKey: process.env.CLERK_SECRET_KEY,
+        jwtKey: process.env.CLERK_JWT_KEY || undefined,
+      })
+    ).sub,
+  ensureUser: (userId) => ensureUserOrLog(userId, USER_SOURCE),
+})
+
+httpServer.listen(PORT, () => {
+  // The port the server really listens on. With PORT=0 (scripts/check-start.mjs)
+  // the system picks one, and the start check reads it from this line.
+  const address = httpServer.address()
+  const port = typeof address === 'object' && address ? address.port : PORT
+  console.log(`Server ready at http://localhost:${port}${GRAPHQL_PATH}`)
 })

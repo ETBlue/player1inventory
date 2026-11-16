@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 import {
   CLOUD_GRAPHQL_URL,
+  CLOUD_GRAPHQL_WS_URL,
   CLOUD_SERVER_PORT,
   CLOUD_WEB_PORT,
   CLOUD_WEB_URL,
@@ -86,9 +87,13 @@ const CLOUD_WEB_SERVER = {
   // Cloud-mode web app — always start fresh with E2E env vars:
   //   VITE_E2E_TEST_USER_ID: skips Clerk, renders with a static userId
   //   VITE_GRAPHQL_HTTP_URL: points Apollo at the E2E backend (not the dev server)
+  //   VITE_GRAPHQL_WS_URL: the live-updates socket on the same E2E backend.
+  //     Without it the socket would go to the default ws://localhost:4000,
+  //     the normal dev server, and no live update would ever arrive
   command: [
     `VITE_E2E_TEST_USER_ID=${E2E_USER_ID}`,
     `VITE_GRAPHQL_HTTP_URL=${CLOUD_GRAPHQL_URL}`,
+    `VITE_GRAPHQL_WS_URL=${CLOUD_GRAPHQL_WS_URL}`,
     `pnpm --filter web dev --port ${CLOUD_WEB_PORT}`,
   ].join(' '),
   url: CLOUD_WEB_URL,
@@ -179,7 +184,8 @@ export default defineConfig({
       // purge-two-households.spec.ts, cloud-roles.spec.ts,
       // household-member-cleanup.spec.ts and shared-cart.spec.ts drive the
       // cloud backend directly and never open a page — none has a local-mode
-      // counterpart. The last six also act as users other than E2E_USER_ID,
+      // counterpart. live-cart.spec.ts opens a page but needs a second and a third
+      // user and the live socket, which only the cloud project has. The last six also act as users other than E2E_USER_ID,
       // which the web build cannot be (VITE_E2E_TEST_USER_ID below is one
       // value).
       testIgnore: [
@@ -194,6 +200,7 @@ export default defineConfig({
         '**/cloud-roles.spec.ts',
         '**/household-member-cleanup.spec.ts',
         '**/shared-cart.spec.ts',
+        '**/live-cart.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'], baseURL: LOCAL_WEB_URL },
     },
@@ -247,6 +254,7 @@ export default defineConfig({
         '**/cloud-roles.spec.ts',
         '**/household-member-cleanup.spec.ts',
         '**/shared-cart.spec.ts',
+        '**/live-cart.spec.ts',
       ],
     },
     {

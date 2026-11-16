@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { appLanguageFrom } from '../context.js'
+import { appLanguageFrom, CLIENT_ID_MAX_LENGTH, clientIdFrom } from '../context.js'
 import { createGraphQLContext, type GraphQLContextDeps } from './graphqlContext.js'
 
 // The context function of every GraphQL request (households H3a, task 3.5).
@@ -65,6 +65,32 @@ describe.each(BRANCHES)('createGraphQLContext — $name', (branch) => {
     expect(first.requestCache).toEqual({})
     expect(second.requestCache).not.toBe(first.requestCache)
   })
+
+  it('reads the tab id from x-client-id', async () => {
+    const ctx = await createGraphQLContext(branch.deps())({
+      req: { headers: { ...branch.headers, 'x-client-id': 'tab-123' } },
+    })
+
+    expect(ctx.clientId).toBe('tab-123')
+  })
+
+  it('a request with no x-client-id has no tab id', async () => {
+    const ctx = await createGraphQLContext(branch.deps())({
+      req: { headers: { ...branch.headers } },
+    })
+
+    expect(ctx.clientId).toBeUndefined()
+  })
+
+  it('drops an x-client-id longer than the limit', async () => {
+    const ctx = await createGraphQLContext(branch.deps())({
+      req: {
+        headers: { ...branch.headers, 'x-client-id': 'a'.repeat(CLIENT_ID_MAX_LENGTH + 1) },
+      },
+    })
+
+    expect(ctx.clientId).toBeUndefined()
+  })
 })
 
 describe('createGraphQLContext — no user', () => {
@@ -100,5 +126,31 @@ describe('appLanguageFrom', () => {
 
   it('a header sent twice gives en', () => {
     expect(appLanguageFrom(['tw', 'tw'])).toBe('en')
+  })
+})
+
+describe('clientIdFrom', () => {
+  it('keeps a plain string', () => {
+    expect(clientIdFrom('tab-1')).toBe('tab-1')
+  })
+
+  it('keeps a value of exactly the limit', () => {
+    const atLimit = 'a'.repeat(CLIENT_ID_MAX_LENGTH)
+    expect(clientIdFrom(atLimit)).toBe(atLimit)
+  })
+
+  it.each([
+    ['missing', undefined],
+    ['empty', ''],
+    ['one over the limit', 'a'.repeat(CLIENT_ID_MAX_LENGTH + 1)],
+    ['sent twice', ['tab-1', 'tab-1']],
+    ['a number', 42],
+    ['an object', { id: 'tab-1' }],
+  ] as const)('%s gives no tab id', (_label, value) => {
+    expect(clientIdFrom(value)).toBeUndefined()
+  })
+
+  it('the limit is 64 characters', () => {
+    expect(CLIENT_ID_MAX_LENGTH).toBe(64)
   })
 })

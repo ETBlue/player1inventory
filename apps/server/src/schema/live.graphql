@@ -1,0 +1,20 @@
+# Live updates (households H3c-1). A tab subscribes once; the server sends a
+# small event when data it may see has changed, and the tab refetches.
+# The event carries no data, only what changed and where.
+
+# H3c-2 adds STOCK, LOG, LOCATION and CATALOG.
+enum ChangeKind {
+  CART
+}
+
+type ChangeEvent {
+  kind: ChangeKind!
+  # The location the change is at. Null for a catalog change.
+  locationId: ID
+}
+
+type Subscription {
+  # Changes in the caller's household that the caller may see. A tab never
+  # gets back a change it made itself (the x-client-id / clientId tab id).
+  householdChanged: ChangeEvent!
+}

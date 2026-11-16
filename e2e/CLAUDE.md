@@ -15,6 +15,14 @@ checking whether the machine is free. Cloud specs additionally share one
 dev database under the same `E2E_USER_ID`, so a concurrent run cross-contaminates rows
 even when the ports happen to work out.
 
+**The cloud web app's live socket goes to port 4001 too** (since households H3c-1, task
+C.5). `e2e/playwright.config.ts` gives the cloud web server
+`VITE_GRAPHQL_WS_URL=ws://localhost:4001/graphql` (`CLOUD_GRAPHQL_WS_URL`). Without it the
+socket would go to the default `ws://localhost:4000`, which is the normal dev server. A
+running dev server is not in E2E mode, so it ignores `e2eUserId` and refuses the socket
+with `4401`; with no dev server the socket cannot open at all. Either way the live-update
+tests in `live-cart.spec.ts` fail as if the code were broken.
+
 **The symptom is not a port error.** Playwright starts, then dozens of specs fail with
 `net::ERR_CONNECTION_REFUSED at http://localhost:5175/` because the other run tore the
 vite server down mid-flight. That reads as a mass code regression; it is an environment
@@ -1052,11 +1060,11 @@ opposite requirement.
 
 Two independent reasons, both checked in source rather than assumed:
 
-- `createApolloClientForE2E` (`apps/web/src/apollo/client.ts:70-78`) builds its client with a
+- `createApolloClientForE2E` (`apps/web/src/apollo/client.ts`, line 143 on 2026-11-16) builds its client with a
   fresh `createCache()`. It never touches the module-level `cloudCache` that `restoreCache`
   writes into, so nothing a previous run persisted reaches an E2E client.
 - `localStorage['cloud-cache-user-id']` is never written in E2E. Its only writer is
-  `setLastSignedInUserId`, called from `ApolloWrapper.tsx` line 107 — and `main.tsx` renders
+  `setLastSignedInUserId`, called from `ApolloWrapper.tsx` (line 108 on 2026-11-16) — and `main.tsx` renders
   `ApolloWrapper` only on the non-E2E cloud branch.
 
 So a cloud spec does not need to clear the Apollo cache, and a failure that looks like stale
