@@ -561,6 +561,71 @@ the API changes); `ConflictDialog.tsx` (an `allowClear` prop, + stories);
    - pass `allowClear` as `true` for a manager → the manager test red.
    - map `'local'` in location rows but not in cart ids → the cart-id case red.
 
+**As built (2026-11-16).**
+
+- **`importCloudData(payload, strategy, client, { target, onProgress, session })`** now returns
+  `{ skipped: { locationNames, rowCount } }`. `target` is `{ locationId }` or
+  `{ newLocationName }` and is kept on the `ImportSession`, so a retry neither asks again nor
+  creates a second location. Order of work: `placeDefaultLocation` → `checkImportIds` →
+  (`anotherHousehold` → `ImportRefusedError('anotherHousehold')`; a `FORBIDDEN` from the check →
+  `ImportRefusedError('role')`) → `clearAllData` on `clear` → the new "Home" or the new location
+  → `withoutRefusedRows` → the bulk passes. Nothing is sent before the check resolves; a test
+  records queries and mutations in one list and asserts it.
+- **`placeDefaultLocation(payload, target)`** upgrades a file with no `itemStocks` key
+  (`upgradeLegacyPayload`), gives every log with no `locationId` the target, then maps `'local'`
+  in the five fields with `applyLocationRemap`. When the target is already a location row of
+  the file, the `'local'` row is dropped instead of making two rows with one id. Calling it
+  first with `'local'` and later with the real id gives the same rows and ids; `clear` and
+  "New location" use that.
+- **The check for `clear` and for "New location"** uses `checkImportIds(…, { omitLocationIds:
+  {'local'} })`: the id `'local'` is left out of `locations` and `locationRefs` only. Every ROW
+  at it is still sent by its own id, so a row id of another household is still found. (The
+  step 2.1 text said to leave the rows out; see *What this plan got wrong*.)
+- **"New location"** is created with `createLocation` AFTER the check passes and before the
+  first bulk write, so a refused file creates nothing.
+- **`needsImportLocation(payload)`** is true for a `'local'` row, no `locations` key, no
+  `itemStocks` key, or a log with no `locationId`. So a log always gets a location and never
+  reaches the server's `IMPORT_NEEDS_LOCATION`.
+- **`withoutRefusedRows(payload, check)`** drops: rows of `blockedLocationIds` (and those
+  location rows), rows pointing at `missingLocationIds`, stock of `missingItemIds`, exactly the
+  `blockedRows`, and every cart item in a dropped cart. The O5 line names the blocked locations
+  the file has a row for; every other dropped row is counted (`rowCount`). Nothing is done for
+  `renameBlockedLocationIds` (see *What this plan got wrong*).
+- **The dialog's list** comes from `fetchImportTargetLocations` (`GetLocations`, then
+  `importCheck` with every location as a `locationRefs` id, leaving out blocked and missing
+  ones), wrapped in `hooks/useImportTargetLocations.ts`. No new GraphQL field: a field on
+  `Location` would break `GetLocations`, and with it the whole app, during the T9 window.
+- **Deleted on the cloud side:** `fetchCloudDefaultLocationId`, `upgradeLegacyPayloadForCloud`,
+  `prepareCloudPayload`. **Kept:** `buildLocationRemap`, `applyLocationRemap` and
+  `findPayloadDefaultLocationId`, because `importLocalData` still uses them (E.5). The 15 old
+  remap tests stay as tests of the local side; 9 cloud tests were rewritten to the new rule
+  (they now pass a `target`, and a backup's `isDefault` row keeps its id in cloud).
+- **UI.** `ImportLocationDialog` (new: component, `index.ts`, 5 stories, 5 smoke tests, 5
+  tests). `ConflictDialog` gets `allowClear` (default `true`) and a `WithoutClear` story.
+  `ImportCard` reads `useHousehold()`: `member` → the O1 line, no button; `manager` → no Clear;
+  role still loading → button disabled. Errors through `importErrorKind` (T17). The O5 lines
+  stay until the next file is picked. Two new stories, `CloudMember` and `CloudManager`.
+- **Post-login copy.** `usePostLoginMigration` has a new state `'choosing-location'`, plus
+  `chooseLocation(target)`, `cancelLocation()` and `pendingPayload`. Both copy paths ask
+  (decision O3) except a stored `clear` (O2). Cancel copies nothing, removes
+  `migration-strategy`, and goes back to the prompt. **No `migration-target-location` key:** an
+  E2E spec answers the dialog in the page, the same way a person does. `MigrationError` gains
+  `role`, and the dialog shows a new key, `settings.postLoginMigration.errorRole`.
+- **i18n (O8 and T17),** en and tw: the three "another account" keys now say "household";
+  new `importErrorRole`, `memberNotice`, `skippedLocations`, `skippedRows_one/_other`,
+  `locationDialog.*` (9 keys) and `postLoginMigration.errorRole`.
+- **Tests:** web 2592 / 281 → **2648 / 283**. Server unchanged (1755 / 66).
+- **E2E specs this changes (for E.6), found by reading, not by running:**
+  `settings/import-export-cloud.spec.ts` (local → cloud now shows the dialog; the "first
+  location" assertions and the comments naming `fetchCloudDefaultLocationId` /
+  `buildLocationRemap`), `settings/import-strategies.spec.ts` (its backup's default row: a
+  cloud `replace` asks where), `cart-id-cross-user-leak.spec.ts` (a bare cart id: `importCheck`
+  now refuses it with `BAD_USER_INPUT` before any write), `shared-cart.spec.ts` (member
+  importers, E.3), and every spec that reads the old "another account" text. Comments in
+  `e2e/helpers/backupAssertions.ts`, `cloudSeed.ts`, `stockReadback.ts` and `e2e/CLAUDE.md`
+  still name `fetchCloudDefaultLocationId`. `data-mode-migration.spec.ts` uses `clear`, so it
+  gets no dialog.
+
 ## Task E.5 — export scope and the cloud → local copy
 
 **Files:** `location.resolver.ts`, `inventoryLog.resolver.ts`, `cart.resolver.ts`,
@@ -668,6 +733,11 @@ Existing specs:
   safe; the message is then `importErrorForbidden` or `…AfterClear`.
 - **Carts stored by the old fallback** may have an id whose prefix is not their location. The
   runbook counts them (E.7); no data fix is planned until the count is known.
+- **Retry of a failed `clear` import clears again** (found in E.4, from before H4, not fixed).
+  `importCloudData` on a resumed `clear` session sends `clearAllData` again, then skips every
+  batch the first attempt recorded as sent. So the rows of those batches are deleted and not
+  written again. Before H4 this needed a failure after the clear; since E.4 the check runs
+  first, so it needs a failure in a bulk batch (a network error, or a race).
 
 ## What this plan got wrong
 
@@ -698,6 +768,14 @@ Filled in from the task reports and reviews.
 | E.3 | Files: the live-publish tests "where an import fixture used the fallback" | 9 tests in 4 live-publish files did not use the fallback. They imported rows into ALICE's OTHER household (stock, logs, a location update, a cart item, `createVendor`) and expected that write's event: they encoded the #381 behaviour. And 2 fixtures in `import-ownership-cart.resolver.test.ts` used household `member`s as importers, so the gate refused them before the location check under test |
 | E.3 | Step 9: "a stock row at a location of A with an item of B → `FORBIDDEN` (stock) / skipped (log)" | True, and a test can still not tell "target" from "caller's household" (the E.2 row says why). The two-household tests prove the location and the item must be in the same household as the target, which is what #381 asks |
 | E.3 | Step 7: `git grep -n fallbackImportLocation` must return nothing outside `docs/` | Its list of files to touch missed `e2e/CLAUDE.md`, four server test headers, and two web comments that described the fallback without naming it |
+| E.4 | Step 2.3 (second E.2 review): "on `replace`, leave every location row in `renameBlockedLocationIds` out of the `bulkUpsertLocations` call" | The web never calls `bulkUpsertLocations`. `partitionPayload` puts every location on the CREATE pass and sends `locations: []` on the upsert pass (`importData.ts`, the `replace` branch), and `bulkCreateLocations` asks `participant` only. So nothing is needed; the comment on `withoutRefusedRows` says why. The E.2 row that says "the web sends every existing location row to `bulkUpsertLocations`" was not true either |
+| E.4 | Step 2.1: "leave the rows that point at the default location out of the check too" | Leaving the ROWS out would skip rule 2 for their ids: a stock row, log or cart item of another household at the default location would not be found. Built: only the id `'local'` is left out of `locations` and `locationRefs` (`omitLocationIds`); the rows are still sent by id |
+| E.4 | Step 1 and T16: delete `buildLocationRemap` and `findPayloadDefaultLocationId` | `importLocalData` still uses both, and `applyLocationRemap`. Only the cloud-side functions are deleted. E.5 owns the local side |
+| E.4 | Step 3: "Lists the household's locations where the caller is `participant` or higher" | The web does not know location roles; `GetLocations` lists every location with any role. Built through `importCheck` (`locationRefs`), with no schema change. A new `Location` field would have broken `GetLocations` during the T9 deploy window, not only the import |
+| E.4 | O6: "Created with the existing `createLocation` mutation before the import starts" | Created before the CHECK, a refused file would leave a new empty location behind, and "Nothing was imported" would not be true. Built: after the check, before the first write |
+| E.4 | Step 3: the dialog is shown for a `'local'` row or no `locations` key | Also needed for a file with no `itemStocks` key (its inline stock goes into the picked location) and for a log with no `locationId` (the E.3 row above). `needsImportLocation` covers all four |
+| E.4 | Step 5: the E2E auto-import path "needs a way to pick the location" | It does not. The auto-import now stops at the dialog, which a spec can answer in the page like a person. A key that skips the dialog would test a path no user takes |
+| E.4 | Step 2.4: `clear` → `placeDefaultLocation` onto the new "Home" | True for a local file. For a CLOUD backup restored with `clear`, the file has no `'local'`, so every location keeps its id and the new "Home" stays as an extra, empty location. Before E.4 the file's first location was mapped onto it. This follows rule 1; it is visible to a user |
 
 ## Status
 
