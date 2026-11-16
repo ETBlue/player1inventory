@@ -1,6 +1,7 @@
 import { GraphQLError } from 'graphql'
 import { requireAuth } from '../context.js'
 import {
+  householdOfLocation,
   locationIdsWithRole,
   requireCatalogIds,
   requireCatalogRole,
@@ -79,7 +80,14 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // Scoped THROUGH the location — ItemStock has no userId of its own.
       // Postgres gives no ordering guarantee for findMany without orderBy; a
       // stable order is genuinely better for the client, not just testable.
-      const locationIds = await locationIdsWithRole(ctx)
+      //
+      // One household: the caller's (households H5 task F.2, decision T5). A
+      // person in two households holds roles in both. Only a broken row could
+      // put this household's item at the other household's location, but
+      // nothing in the schema stops one.
+      const locationIds = await locationIdsWithRole(ctx, 'viewer', {
+        householdId: await requireHousehold(ctx),
+      })
       const rows = await prisma.itemStock.findMany({
         where: { itemId, locationId: { in: locationIds } },
         orderBy: { locationId: 'asc' },
@@ -169,10 +177,14 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     addItemToLocation: async (_, { itemId, locationId, sourceLocationId }, ctx) => {
       await requireLocationRole(ctx, locationId, 'participant')
       await requireLocationItems(ctx, locationId, [itemId])
+      // The copy-on-add reads the TARGET location's household only
+      // (households H5 task F.2, decision T5). Not the caller's
+      // (`requireHousehold`): the item is the location's household's
+      // (`requireLocationItems` above), so its settings are there.
       const row = await ensureStockAtLocation(
         itemId,
         locationId,
-        await locationIdsWithRole(ctx),
+        await locationIdsWithRole(ctx, 'viewer', { householdId: await householdOfLocation(locationId) }),
         sourceLocationId,
       )
       // After the write (households H3c-2 task D.2). Published even when the

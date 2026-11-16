@@ -54,7 +54,12 @@ input CheckoutItemInput {
 
 extend type Query {
   """
-  The permanent cart for one vendor at one location, created if it is missing.
+  The permanent cart for one vendor at one location.
+
+  Needs location role `viewer` (households H5 task F.2, decision T7). A
+  missing cart is created only for a `participant` or higher. A `viewer` gets
+  an empty cart with the id the row will have (`lastPurchasedAt` null), and
+  nothing is written: a read must not write for a role that may not write.
 
   `locationId` is REQUIRED (PR 3b Task 4). It was nullable for two tasks, with
   a fallback to the caller's default location, and that fallback is gone: an

@@ -7,6 +7,7 @@ import {
   requireHousehold,
   requireLocationItems,
   requireLocationRole,
+  roleAtLeast,
 } from '../lib/authz.js'
 import { cartIdFor, getPackedTotal, parseCartId } from '@p1i/types'
 import { prisma } from '../lib/prisma.js'
@@ -181,19 +182,27 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
     vendorCart: async (_, { vendorId = null, locationId }, ctx) => {
       requireAuth(ctx)
 
-      // `participant`, not `viewer`: this query CREATES the cart when it is missing.
-      await requireLocationRole(ctx, locationId, 'participant')
+      // `viewer`: this is a read (households H5 task F.2, decision T7). Until
+      // F.2 it asked `participant`, because it creates a missing cart, so a
+      // viewer who opened the Shopping page got FORBIDDEN.
+      const { role } = await requireLocationRole(ctx, locationId, 'viewer')
 
       const cartId = cartIdFor(locationId, vendorId ?? null)
-      let cart = await prisma.cart.findUnique({ where: { id: cartId } })
-      if (!cart) {
-        // No `userId` since households H3b: a cart belongs to its location
-        // and has no owner.
-        cart = await prisma.cart.create({
-          data: { id: cartId, locationId },
-        })
+      const cart = await prisma.cart.findUnique({ where: { id: cartId } })
+      if (cart) return cart as unknown as Cart
+      // A read must not write for a role that may not write. A viewer gets an
+      // empty cart with the id the row WILL have, and nothing is saved. When
+      // a participant opens it later, the row is made with that same id, so
+      // the viewer's cached cart stays right.
+      if (!roleAtLeast(role, 'participant')) {
+        return { id: cartId, lastPurchasedAt: null } as unknown as Cart
       }
-      return cart as unknown as Cart
+      // No `userId` since households H3b: a cart belongs to its location
+      // and has no owner.
+      const created = await prisma.cart.create({
+        data: { id: cartId, locationId },
+      })
+      return created as unknown as Cart
     },
 
     // Every location the caller has a role on, like `inventoryLogs`. The
@@ -248,7 +257,12 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
     cartItemCountByItem: async (_, { itemId, locationId }, ctx) => {
       requireAuth(ctx)
       if (!locationId) {
-        const locationIds = await locationIdsWithRole(ctx)
+        // One household: the caller's (households H5 task F.2, decision T5).
+        // A person in two households holds roles in both, and the item list
+        // asks about the household it shows.
+        const locationIds = await locationIdsWithRole(ctx, 'viewer', {
+          householdId: await requireHousehold(ctx),
+        })
         return prisma.cartItem.count({ where: { itemId, cart: { locationId: { in: locationIds } } } })
       }
       // The role check runs first, so a location the caller holds no role on
@@ -361,7 +375,13 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       // The locations a copy-on-add may copy stock settings from: the ones the
       // caller holds a role on (households H3a, task 3.8). Read once, before
       // the transaction opens, because it reads only membership rows.
-      const sourceLocationIds = await locationIdsWithRole(ctx)
+      //
+      // Only the CART's household (households H5 task F.2, decision T5). Not
+      // the caller's (`requireHousehold`): a person in two households can
+      // check out a cart of either, and the item is the cart's household's.
+      const sourceLocationIds = await locationIdsWithRole(ctx, 'viewer', {
+        householdId: await householdOfLocation(cartLocationId),
+      })
 
       // `await`, so the event below is published only after the transaction
       // has COMMITTED. A `CART_CHANGED` refusal, or any other throw, rolls

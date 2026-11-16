@@ -26,7 +26,9 @@ import { createExecutableSchema } from '../schema/executableSchema.js'
 //
 // This test reads only `Mutation` fields. One QUERY writes too:
 //
-// - `vendorCart` creates the cart when it is missing. It publishes nothing
+// - `vendorCart` creates the cart when it is missing, for a `participant` or
+//   higher only (a `viewer` gets an unsaved empty cart since households H5
+//   task F.2). It publishes nothing
 //   (decision Q7 of the H3c-2 plan): the cart it creates is EMPTY (only
 //   `id` and `locationId`, `cart.resolver.ts`), and the web shows an empty
 //   cart the same as a missing one, so no other tab shows anything

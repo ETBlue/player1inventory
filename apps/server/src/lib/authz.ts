@@ -123,6 +123,17 @@ export async function requireLocationRole(
 }
 
 /**
+ * True when `role` is `min` or stronger on the location ladder
+ * (`viewer` < `participant` < `organizer`). For a resolver that asks a low
+ * role to pass and then does more for a higher one, such as `vendorCart`
+ * (households H5 task F.2, decision T7). Use this rather than reading the
+ * rank map at a call site.
+ */
+export function roleAtLeast(role: LocationRole, min: LocationRole): boolean {
+  return LOCATION_RANK[role] >= LOCATION_RANK[min]
+}
+
+/**
  * The ids of every location on which the caller holds a location role that
  * still counts (decision H18). With no `role`, any role counts: this is the
  * list a person sees, and the `locations` query reads it (task 3.6). With a

@@ -46,7 +46,10 @@ extend type Mutation {
   # Household role `manager`. The household's last location is refused with
   # the error code LAST_LOCATION.
   deleteLocation(id: ID!): Boolean!
-  # Household role `manager`. Every id must be a location of the household.
+  # Household role `manager`. The list must hold EVERY location of the
+  # household, each once (households H5 task F.2, decision T6): a repeated id
+  # or a subset is BAD_USER_INPUT, an id of another household or of no
+  # location is FORBIDDEN, and nothing is written. Returns `locations`.
   reorderLocations(orderedIds: [ID!]!): [Location!]!
 }
 

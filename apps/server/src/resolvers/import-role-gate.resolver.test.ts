@@ -529,6 +529,10 @@ describe("a location id cannot be 'local' or contain ':'", () => {
       expect(errorOf(res)?.code).toBe('FORBIDDEN')
       expect(world.stock.state.locations.map((l) => l.id)).not.toContain('loc_new')
       expect(world.stock.state.locations.find((l) => l.id === LOC_B)?.name).not.toBe('Renamed')
+      // And LOC_B stays in hh_b. This is the test the H3a plan owed
+      // (`bulkUpsertLocations` does not move a location of another household);
+      // named by households H5 task F.2.
+      expect(world.stock.state.locations.find((l) => l.id === LOC_B)?.householdId).toBe(HH_B)
     })
   }
 })

@@ -361,8 +361,17 @@ describe('reorderLocations', () => {
   })
 
   it('an empty list writes nothing and publishes nothing', async () => {
+    // Refused since households H5 task F.2 (decision T6): the household has
+    // locations, so an empty list leaves them all out. It was accepted as a
+    // no-op before. Either way nothing is published.
     const res = await run(REORDER, { ids: [] }, ALICE)
-    expect(res.errors).toBeUndefined()
+    expect(code(res)).toBe('BAD_USER_INPUT')
+    expect(events()).toEqual([])
+  })
+
+  it('refused (a list that leaves out a location of the household) publishes nothing', async () => {
+    const res = await run(REORDER, { ids: [LOC_GARAGE] }, ALICE)
+    expect(code(res)).toBe('BAD_USER_INPUT')
     expect(events()).toEqual([])
   })
 

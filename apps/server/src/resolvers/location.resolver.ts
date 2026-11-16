@@ -242,7 +242,8 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
     },
 
     // Household role `manager`. Order is one list for the whole household
-    // until H7 brings each person their own (decision H5).
+    // until H7 brings each person their own (decision H5). The list must hold
+    // every location of the household (decision T6 of the H5 plan).
     reorderLocations: async (_, { orderedIds }, ctx) => {
       const householdId = await requireHousehold(ctx)
       await requireHouseholdRole(ctx, householdId, 'manager')
@@ -269,11 +270,27 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
         })
         if (found.length !== orderedIds.length) throw forbidden()
 
+        // Every location of the household, not a subset (households H5 task
+        // F.2, decision T6). The ids are distinct and all in the household
+        // (checked above), so the counts are equal only for the full set. A
+        // subset would write orders 0..n-1 and leave a location that was
+        // left out sharing one of them (the H3a duplicate-order gap). An
+        // owner or manager may hold no role on some locations, so the web's
+        // settings list must send `householdLocations`, not `locations`
+        // (task F.3).
+        const total = await tx.location.count({ where: { householdId } })
+        if (total !== orderedIds.length) {
+          throw new GraphQLError('Send every location of the household, in the new order.', {
+            extensions: { code: 'BAD_USER_INPUT' },
+          })
+        }
+
         for (const [index, id] of orderedIds.entries()) {
           await tx.location.update({ where: { id }, data: { order: index } })
         }
       })
-      // An empty list writes nothing, so it tells nobody.
+      // An empty list writes nothing, so it tells nobody. It passes the check
+      // above only for a household with no location (after task F.7).
       if (orderedIds.length > 0) {
         await publishHouseholdChange(ctx, ['LOCATION'], householdId)
       }

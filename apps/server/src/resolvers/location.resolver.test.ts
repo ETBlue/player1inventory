@@ -549,6 +549,38 @@ describe('reorderLocations', () => {
     expect(location('loc-garage')?.order).toBe(3)
   })
 
+  it('reorderLocations refuses a list that leaves out a location of the household', async () => {
+    // Given the caller owns hh-1, which holds loc-kitchen, loc-pantry and
+    // loc-garage (no role on the last). A second household, hh-2, holds
+    // loc-theirs. (households H5 task F.2, decision T6)
+    // When they send only the two locations they have a role on
+    const res = await run(REORDER, { ids: ['loc-pantry', 'loc-kitchen'] })
+
+    // Then the batch is refused as bad input, and no order moved. A subset
+    // would give two locations the same order as the one left out.
+    expect(errorCode(res)).toBe('BAD_USER_INPUT')
+    expect(location('loc-kitchen')?.order).toBe(1)
+    expect(location('loc-pantry')?.order).toBe(0)
+    expect(location('loc-garage')?.order).toBe(3)
+  })
+
+  it('household manager with no role on a location still sends and orders every location', async () => {
+    // Given the caller manages hh-1 and has no role on loc-garage
+    seed({ callerHouseholdRole: 'manager' })
+
+    // When they leave loc-garage out
+    const res = await run(REORDER, { ids: ['loc-kitchen', 'loc-pantry'] })
+
+    // Then the batch is refused: the full set is needed, whatever the roles
+    expect(errorCode(res)).toBe('BAD_USER_INPUT')
+    expect(location('loc-kitchen')?.order).toBe(1)
+  })
+
+  it('an empty list is refused while the household has locations', async () => {
+    const res = await run(REORDER, { ids: [] })
+    expect(errorCode(res)).toBe('BAD_USER_INPUT')
+  })
+
   it('a batch with an id that does not exist changes nothing', async () => {
     const res = await run(REORDER, { ids: ['loc-kitchen', 'loc-missing'] })
 
