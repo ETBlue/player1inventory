@@ -735,7 +735,9 @@ What the number has been, so you can see how fast it moves rather than reuse a f
 | 2026-10-31 | `feature/households-h2`, after `cloud-user-row.spec.ts` | 124 |
 | 2026-11-04 | `feature/households-h3a`, after `purge-two-households.spec.ts` | 125 |
 | 2026-11-04 | `feature/households-h3a`, after task 3.11's two specs | 130 |
-| 2026-11-11 | `feature/households-h3a`, after task 3.15 | **133** |
+| 2026-11-11 | `feature/households-h3a`, after task 3.15 | 133 |
+| 2026-11-16 | `feature/households-h3c-2`, after `live-pantry.spec.ts` | 151 |
+| 2026-11-17 | `feature/households-h4`, after task E.6 and the O9 follow-up | **160** |
 
 Task 3.15 added 3: the cloud last-location test in `settings/locations.spec.ts` (skipped
 in `local`, so `local` collects 184 and runs 178), and the same-household restore test in

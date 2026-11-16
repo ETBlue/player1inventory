@@ -108,7 +108,7 @@ that really set up that role.
 
 ## Authorization (cloud)
 
-> See `docs/global/permissions/2026-10-04-households-design.md` (which replaces the role table of `docs/global/permissions/2026-08-29-design-location-rbac.md`). Rights come from roles, not from having created the row. **Households are built in H3a** (merged into `develop` in #375, not deployed; deploy steps in `docs/global/backend/2026-11-11-deploy-runbook-households-h3a.md`). **Shared carts are built in H3b** (merged into `develop` in #377, not deployed; deploy steps in `docs/global/backend/2026-11-15-deploy-runbook-households-h3b.md`): a cart belongs to its location, every cart read and write is scoped by location role, `Cart.userId` is dropped, and `CartItem.userId` means only "added by". Each person still has exactly one household until H5, so nothing is shared yet.
+> See `docs/global/permissions/2026-10-04-households-design.md` (which replaces the role table of `docs/global/permissions/2026-08-29-design-location-rbac.md`). Rights come from roles, not from having created the row. **Households are built in H3a** (merged into `develop` in #375, not deployed; deploy steps in `docs/global/backend/2026-11-11-deploy-runbook-households-h3a.md`). **Shared carts are built in H3b** (merged into `develop` in #377, not deployed; deploy steps in `docs/global/backend/2026-11-15-deploy-runbook-households-h3b.md`): a cart belongs to its location, every cart read and write is scoped by location role, `Cart.userId` is dropped, and `CartItem.userId` means only "added by". **Import and export are built in H4** (branch `feature/households-h4`, going into `develop`, not merged, not deployed; deploy steps in `docs/global/backend/2026-11-17-deploy-runbook-households-h4.md`). H4 needs the **server before the web**, the opposite of H3a; that runbook says how the two rules fit in one release. Each person still has exactly one household until H5, so nothing is shared yet.
 >
 > | Role ladder | Names, weakest first | Governs |
 > |---|---|---|
@@ -165,12 +165,15 @@ that really set up that role.
 >
 > Tested in `apps/server/src/resolvers/import-role-gate.resolver.test.ts`, with one person in two households and the target pinned through `ctx.requestCache.householdId`. **A test cannot yet tell "the target household" from "the caller's household"**: until H7's household switch both are `requireHousehold(ctx)`. What the tests do prove is that the location and the item must be in the SAME household as the target.
 >
-> **22 bulk import mutations in `apps/server/src/resolvers/import.resolver.ts` are guarded.** Counted 2026-10-28, and the same on 2026-11-04 after households H3a task 3.9 and on 2026-11-15 after households H3b tasks B.7 and B.10: **18** through `requireOwnRowOrUnclaimed` (reached by the per-batch `requireOwnRowIdsOrUnclaimed` in that file), **2** through `requireOwnLocationIdsOrUnclaimed`, **2** through `requireOwnItemStockRefs`. Several task briefs said 18, which is only the first group. Count them rather than quoting this:
+> **The `importCheck` query (households H4 task E.2, decision T1).** A refused import used to be refused per batch of 50, so the batches sent before it stayed written and "Nothing was imported" was not true. Now the web asks first. `importCheck(ids: ImportCheckInput!, forClear: Boolean): ImportCheck!` (`apps/server/src/resolvers/importCheck.resolver.ts`) is read-only. It starts with `requireCatalogRole(ctx, forClear ? 'owner' : 'manager')`, takes the file's ids per model plus `locationRefs` and `itemRefs` (the location and item ids that rows POINT at), at most **1000** ids per call (the web sends chunks and joins the answers, `checkImportIds` in `apps/web/src/lib/importData.ts`). It answers `anotherHousehold`, `blockedLocationIds` (below `participant`), `renameBlockedLocationIds`, `missingLocationIds`, `missingItemIds` and `blockedRows`. When `anotherHousehold` is true the web stops before `clearAllData` and before the first batch, so nothing is written. Otherwise the web leaves out the blocked and missing rows and names the skipped locations after the import (decision O5). **It is a convenience, not a guard** (decision T2): a client can skip it, and the 22 mutations still check every row. It compares households in SQL, inside the resolver; no call site compares a `householdId`. Like the cart guard, it reads a cart id only when its prefix is a location the caller may write (or one the file creates). The web also uses it to list the locations "Import into which location?" offers (`fetchImportTargetLocations`), because the web does not know location roles. **A new web bundle against an older server cannot import at all**, because the query fails GraphQL validation; that is why H4 deploys the server first (decision T9).
+>
+> **22 bulk import mutations in `apps/server/src/resolvers/import.resolver.ts` are guarded.** Counted 2026-10-28, and the same on 2026-11-04 after households H3a task 3.9, on 2026-11-15 after households H3b tasks B.7 and B.10, and on 2026-11-17 after households H4: **18** through `requireOwnRowOrUnclaimed` (reached by the per-batch `requireOwnRowIdsOrUnclaimed` in that file), **2** through `requireOwnLocationIdsOrUnclaimed`, **2** through `requireOwnItemStockRefs`. Several task briefs said 18, which is only the first group. Count them rather than quoting this:
 >
 > ```bash
 > grep -c 'requireOwnRowIdsOrUnclaimed(ctx' apps/server/src/resolvers/import.resolver.ts      # 18
 > grep -c 'requireOwnLocationIdsOrUnclaimed(ctx' apps/server/src/resolvers/import.resolver.ts # 2
 > grep -c 'requireOwnItemStockRefs(ctx' apps/server/src/resolvers/import.resolver.ts          # 2
+> grep -c "await requireCatalogRole(ctx, 'manager')" apps/server/src/resolvers/import.resolver.ts  # 22, the role gate (H4)
 > ```
 >
 > **Six catalog mutations call it directly too — since 2026-11-04.** `updateVendor` and `deleteVendor` in `vendor.resolver.ts`; `updateTagType`, `deleteTagType`, `updateTag` and `deleteTag` in `tag.resolver.ts`. Before that date they wrote with `where: { id }` alone, so any signed-in user who knew another account's id could rename or delete the row. See `docs/global/bugs/2026-11-04-bug-unscoped-catalog-writes.md`. (This said seven until households H3a task 3.7, when `createTag` and `updateTag`'s `typeId` / `parentId` checks moved to `requireCatalogIds`, with the same three answers.) What each does with the three answers:
@@ -198,10 +201,10 @@ that really set up that role.
 >
 > | Id | Mutations | Checked against | An id that does not pass |
 > |---|---|---|---|
-> | `tagIds`, `vendorIds` | both item mutations | the caller's household | that edge is skipped |
-> | `typeId` | `bulkCreateTags`; `bulkUpsertTags` since 3.9 | the caller's household | the tag is skipped |
-> | `parentId` | `bulkUpsertTags` since 3.9 | the caller's household, or a tag of the same payload written first | the tag is skipped |
-> | recipe item ids | both recipe mutations | the caller's household | that ingredient is skipped |
+> | `tagIds`, `vendorIds` | both item mutations | the target household (the caller's household before H4 task E.3; the same household until H7) | that edge is skipped |
+> | `typeId` | `bulkCreateTags`; `bulkUpsertTags` since 3.9 | the target household (the caller's household before H4 task E.3; the same household until H7) | the tag is skipped |
+> | `parentId` | `bulkUpsertTags` since 3.9 | the target household (the caller's household before H4 task E.3), or a tag of the same payload written first | the tag is skipped |
+> | recipe item ids | both recipe mutations | the target household (the caller's household before H4 task E.3; the same household until H7) | that ingredient is skipped |
 > | `itemId` | both log mutations | the target household, which is also the log's location's household since H4 task E.3 (the caller's household, not the location's, before) | the log is skipped |
 > | `cartId` | both cart item mutations | the cart must be at a location of the TARGET household where the caller is `participant` or higher (the target only since H4 task E.3, any household before; by location role since H3b task B.7; by `Cart.userId` before task B.3) | the row is skipped, a viewer's included (until task B.7 a viewer got `FORBIDDEN` for the whole batch) |
 > | `itemId` | both cart item mutations | the target household, which is the cart's household since H4 task E.3 (the household of the CART's location since 3.9) | the row is skipped |
@@ -532,9 +535,10 @@ skips half the work. Nothing else in the gate checks `e2e/` formatting: `pnpm li
 `apps/server`'s build already carries a second pass for `scripts/`.
 
 **`pnpm test` runs both workspaces.** The root script is `pnpm -r test`, which recurses into
-every workspace package that defines a `test` script — today `apps/web` (**2586 tests**
-across 281 files) and `apps/server` (**1566** across 64). Measured 2026-11-16 on
-`feature/households-h3c-2`, after households H3c-2 (it said 2577 / 281 and 1412 / 61
+every workspace package that defines a `test` script — today `apps/web` (**2678 tests**
+across 283 files) and `apps/server` (**1765** across 67). Measured 2026-11-17 on
+`feature/households-h4`, after households H4 (it said 2586 / 281 and 1566 / 64 on
+2026-11-16 after households H3c-2, 2577 / 281 and 1412 / 61
 after H3c-1 the same day, 2543 / 276 and 1274 / 52 on
 2026-11-15 on `feature/households-h3b`, 2549 / 277 and 1244 / 51 earlier that
 day, 2529 / 275 and 1161 / 47 on 2026-11-11, on H3a, and
@@ -1750,8 +1754,9 @@ Note also that **no *unit* test executes the resolvers against real SQL** — ev
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
 Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
 branch), but only for the spec files listed in the `cloud` project's `testMatch` in
-`e2e/playwright.config.ts` — that list is opt-in and covers **32 of the 36 spec files in
-`e2e/tests/`** (measured 2026-11-16, after households H3c-2 task D.5 added
+`e2e/playwright.config.ts` — that list is opt-in and covers **33 of the 37 spec files in
+`e2e/tests/`** (measured 2026-11-17, after households H4 task E.6 added
+`settings/import-households.spec.ts`; 32 of 36 on 2026-11-16, after households H3c-2 task D.5 added
 `live-pantry.spec.ts`; 31 of 35 after H3c-1 task C.6 added `live-cart.spec.ts`; 30 of 34 on 2026-11-15, after households H3b task B.9 added
 `shared-cart.spec.ts`; it was 29 of 33 on 2026-11-04, after households H3a task 3.11 added
 `cloud-roles.spec.ts` and `household-member-cleanup.spec.ts`).
@@ -1946,6 +1951,14 @@ location list, a checkout and an item delete without a reload. Test 5 is the fir
 run of `deleteItem`'s `inventoryLog.findMany({ distinct: ['locationId'] })` read, which finds
 the locations to send `LOG` to before the cascade deletes the rows. See *Live updates
 (cloud)* above.
+
+`settings/import-households.spec.ts` joined on 2026-11-16 (households H4 task E.6) — cloud
+only, with a browser. The `cloud` project now collects **160** tests in **33** files; `local`
+**184** in 23, `pwa` **73** in 2 (measured with `--list` on 2026-11-17). It is the first real-SQL
+coverage of `importCheck`, the import role gate, "Import into which location?" and the
+skipped-location message, and the first spec where the BROWSER is a second person in someone
+else's household. One person in TWO households is still impossible there, so issue #381 has no
+real-SQL test until H5. See `e2e/CLAUDE.md` for its tests.
 
 The warning above still holds for everything else — most resolvers are named by no cloud
 spec.
