@@ -206,6 +206,56 @@ describe('Vendor resolvers', () => {
     })
   })
 
+  it("createVendor refuses a location of the caller's other household, and writes nothing (issue #381 gap 2)", async () => {
+    // Given the caller is ALSO a manager of hh_other and a participant at
+    // LOC_STRANGER, and the target household is pinned to hh_test (H4 plan
+    // rule 16). Without the second household, "the location's household"
+    // and "the caller's household" are the same answer.
+    const world = mockPrisma.$world
+    world.households.state.householdMembers.push({
+      householdId: 'hh_other',
+      userId: 'user_test123',
+      role: 'manager',
+      joinedAt: T,
+    })
+    world.households.state.locationMembers.push({
+      locationId: LOC_STRANGER,
+      userId: 'user_test123',
+      role: 'participant',
+      createdAt: T,
+    })
+    const pinned: Context = {
+      userId: 'user_test123',
+      requestCache: { householdId: Promise.resolve('hh_test') },
+    }
+    const CREATE = `mutation CreateVendor($name: String!, $locationId: ID!) {
+      createVendor(name: $name, locationId: $locationId) { id name }
+    }`
+    mockPrisma.vendor.create.mockResolvedValue({ id: 'v_9', name: 'Lidl', householdId: 'hh_test' })
+    mockPrisma.cart.upsert.mockResolvedValue({ id: 'x', locationId: LOC_DEFAULT, lastPurchasedAt: null })
+
+    // When the caller creates a vendor of hh_test with its cart at LOC_STRANGER
+    const refused = await server.executeOperation(
+      { query: CREATE, variables: { name: 'Lidl', locationId: LOC_STRANGER } },
+      { contextValue: pinned },
+    )
+
+    // Then it is FORBIDDEN, and no vendor and no cart was written
+    const body = refused.body.kind === 'single' ? refused.body.singleResult : null
+    expect(body?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(mockPrisma.vendor.create).not.toHaveBeenCalled()
+    expect(mockPrisma.cart.upsert).not.toHaveBeenCalled()
+
+    // And the same call with a location of hh_test passes, so the refusal
+    // above came from the household, not from something else in the call
+    const allowed = await server.executeOperation(
+      { query: CREATE, variables: { name: 'Lidl', locationId: LOC_DEFAULT } },
+      { contextValue: pinned },
+    )
+    expect(allowed.body.kind === 'single' ? allowed.body.singleResult.errors : 'not single').toBeUndefined()
+    expect(mockPrisma.vendor.create).toHaveBeenCalledTimes(1)
+  })
+
   it('user can list their vendors', async () => {
     // Given one vendor for this user
     mockPrisma.vendor.findMany.mockResolvedValue([

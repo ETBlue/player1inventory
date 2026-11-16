@@ -449,8 +449,22 @@ type Result = {
   errors?: ReadonlyArray<{ extensions?: Record<string, unknown> }>
 }
 
-async function run(query: string, userId: string, variables: Record<string, unknown> = {}): Promise<Result> {
-  const contextValue: Context = { userId, clientId: TAB }
+/**
+ * `householdId`, when given, pins the caller's household through
+ * `ctx.requestCache` (H4 plan rule 16), so a test about ALICE's two
+ * households does not depend on the order of the fake's rows.
+ */
+async function run(
+  query: string,
+  userId: string,
+  variables: Record<string, unknown> = {},
+  householdId?: string,
+): Promise<Result> {
+  const contextValue: Context = {
+    userId,
+    clientId: TAB,
+    ...(householdId === undefined ? {} : { requestCache: { householdId: Promise.resolve(householdId) } }),
+  }
   const res = await server.executeOperation({ query, variables }, { contextValue })
   if (res.body.kind !== 'single') throw new Error('expected a single result')
   return res.body.singleResult as Result
@@ -717,14 +731,25 @@ describe('createVendor', () => {
     expect(sortedEvents()).toEqual([change('CART', LOC_GARAGE, 'hh_home'), CATALOG_HOME])
   })
 
-  it('CART carries the location\'s household, CATALOG the catalog\'s', async () => {
+  it("a location of the caller's other household is refused and publishes nothing", async () => {
     // ALICE is organizer at LOC_SECOND (hh_second), and her catalog is
-    // hh_home. `createVendor` lets that through today: the vendor goes to
-    // hh_home, its cart to LOC_SECOND.
-    const res = await run(`mutation { createVendor(name: "Lidl", locationId: "${LOC_SECOND}") { id } }`, ALICE)
+    // hh_home (pinned). Until households H4 task E.3 `createVendor` let that
+    // through: the vendor went to hh_home and its cart to LOC_SECOND, with
+    // CART published for hh_second (issue #381, gap 2). Now
+    // `requireLocationInHousehold` refuses it before any write.
+    const vendorsBefore = S.vendors.state.rows.length
+    const cartsBefore = carts.state.carts.length
+    const res = await run(
+      `mutation { createVendor(name: "Lidl", locationId: "${LOC_SECOND}") { id } }`,
+      ALICE,
+      {},
+      'hh_home',
+    )
 
-    expect(res.errors).toBeUndefined()
-    expect(sortedEvents()).toEqual([change('CART', LOC_SECOND, 'hh_second'), CATALOG_HOME])
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(S.vendors.state.rows).toHaveLength(vendorsBefore)
+    expect(carts.state.carts).toHaveLength(cartsBefore)
+    expect(events()).toEqual([])
   })
 
   it('a location the caller holds no role on publishes nothing', async () => {
