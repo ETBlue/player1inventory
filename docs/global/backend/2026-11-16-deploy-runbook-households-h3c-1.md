@@ -94,7 +94,7 @@ works exactly as before**, with no live updates. Nothing else breaks.
 
 | Web | Server | What happens |
 |---|---|---|
-| old | new | The old web never opens a socket and sends no `x-client-id`. Every server event goes to every other tab, which is correct. Nothing changes for the old web |
+| old | new | The old web never opens a socket and sends no `x-client-id`. A change it makes is published with no tab id, so every new-web tab of the household gets it, which is correct. Nothing changes for the old web itself |
 | new | old | The socket gets no WebSocket answer from the old server. `graphql-ws` tries again up to 5 times with a wait, then stops. The app works as today, with no live updates |
 | new | new | Live updates work |
 
