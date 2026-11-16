@@ -102,8 +102,8 @@ otherwise.
 | `applyUnitSwitch` | `STOCK` at every converted location; `CATALOG` when it changes the item or a recipe. **No `LOG`**: checked in D.2, it writes no log |
 | `removeItemFromLocation` | `STOCK`, `LOG`, `CART` at that location, each only when it deleted rows of that kind |
 | `bulkCreate`/`bulkUpsert` `ItemStocks` / `InventoryLogs` | `STOCK` / `LOG` per location written, in `finally` |
-| `createLocation`, `updateLocation`, `reorderLocations`, `bulkCreate`/`bulkUpsert` `Locations` | `LOCATION` |
-| `deleteLocation` | `LOCATION` |
+| `createLocation`, `updateLocation`, `reorderLocations`, `bulkCreate`/`bulkUpsert` `Locations` | `LOCATION`. Checked in D.3: the household is the SAVED row's (`updateLocation` and an upsert's update branch can write a location of a second household); the imports publish once per household written, in `finally`, and nothing for skipped rows; `reorderLocations` with an empty list publishes nothing |
+| `deleteLocation` | `LOCATION`. Checked in D.3: it moves no rows to another location (stock, carts, logs and roles go by cascade), so no surviving location needs its own kinds |
 | `clearAllData` | `LOCATION` and `CATALOG` |
 | `deleteItem` | `CATALOG`; `CART`, `STOCK`, `LOG` at each location where it deleted rows |
 | `createVendor` | `CATALOG`; `CART` at the location of the cart it made |
