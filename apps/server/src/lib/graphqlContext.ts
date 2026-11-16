@@ -1,5 +1,5 @@
 import type { IncomingHttpHeaders } from 'node:http'
-import { appLanguageFrom, type Context } from '../context.js'
+import { appLanguageFrom, type Context, clientIdFrom } from '../context.js'
 
 /**
  * What the GraphQL context function needs from the outside. `index.ts` passes
@@ -27,9 +27,11 @@ export interface GraphQLContextDeps {
  *   Only active when the server is started with `E2E_TEST_MODE=true`.
  * - Otherwise: the Clerk session.
  *
- * Both branches call `ensureUser` and both read `x-app-language` (households
- * H3a, decision H3). The E2E branch returns early, so each branch needs its own
- * call and its own `language`. `graphqlContext.test.ts` checks both.
+ * Both branches call `ensureUser`, both read `x-app-language` (households
+ * H3a, decision H3) and both read the tab id from `x-client-id` (households
+ * H3c-1, decision P4). The E2E branch returns early, so each branch needs its
+ * own call, its own `language` and its own `clientId`.
+ * `graphqlContext.test.ts` checks both.
  *
  * Every request gets a new, empty `requestCache`, so a value worked out for
  * one request is never seen by another.
@@ -43,6 +45,7 @@ export function createGraphQLContext(deps: GraphQLContextDeps) {
         return {
           userId: testUserId,
           language: appLanguageFrom(req.headers['x-app-language']),
+          clientId: clientIdFrom(req.headers['x-client-id']),
           requestCache: {},
         }
       }
@@ -52,6 +55,7 @@ export function createGraphQLContext(deps: GraphQLContextDeps) {
     return {
       userId,
       language: appLanguageFrom(req.headers['x-app-language']),
+      clientId: clientIdFrom(req.headers['x-client-id']),
       requestCache: {},
     }
   }
