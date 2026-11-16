@@ -137,11 +137,41 @@ vi.mock('../lib/prisma.js', async () => {
   ] as unknown as Record<string, unknown>[]
   client.$transaction = (arg: unknown) => runInTransaction(stores, client, arg)
 
+  // Every READ of an import's data models is counted in `dataReads`, by
+  // model and method. The role gate reads only `householdMember` (and
+  // `user` / `household` on a first sign-in, which a pinned
+  // `requestCache` skips), so a call refused by the gate must leave this
+  // empty. A gate moved below another check would show up here as a read.
+  const dataReads: string[] = []
+  const DATA_MODELS = [
+    'item', 'recipe', 'tag', 'tagType', 'vendor', 'shelf', 'itemTag', 'itemVendor',
+    'recipeItem', 'cart', 'cartItem', 'inventoryLog', 'itemStock', 'location',
+  ]
+  const counted = (model: string, delegate: Record<string, unknown>) =>
+    Object.fromEntries(
+      Object.entries(delegate).map(([method, fn]) =>
+        typeof fn === 'function' && /^(find|count)/.test(method)
+          ? [method, (...args: unknown[]) => {
+              dataReads.push(`${model}.${method}`)
+              return (fn as (...a: unknown[]) => unknown)(...args)
+            }]
+          : [method, fn],
+      ),
+    )
+  const location = { ...world.client.location, findUnique: vi.fn(world.client.location.findUnique) }
+  const countedClient = Object.fromEntries(
+    Object.entries({ ...client, location }).map(([key, delegate]) =>
+      DATA_MODELS.includes(key) ? [key, counted(key, delegate as Record<string, unknown>)] : [key, delegate],
+    ),
+  )
+
   return {
     prisma: {
-      ...client,
-      // Wrapped so a test can see whether a location row was read at all.
-      location: { ...world.client.location, findUnique: vi.fn(world.client.location.findUnique) },
+      ...countedClient,
+      // `findUnique` is a `vi.fn`, so a test can also ask whether a location
+      // row was read at all; it is called through the counting wrapper.
+      $locationFindUnique: location.findUnique,
+      $dataReads: dataReads,
       $world: world,
       $carts: carts,
       $logs: logs,
@@ -161,7 +191,8 @@ const handles = prisma as unknown as {
   $logs: InventoryLogFake
   $stores: { items: Rows; recipes: Rows; tags: Rows; tagTypes: Rows; vendors: Rows; shelves: Rows }
   $all: Record<string, unknown>[]
-  location: { findUnique: ReturnType<typeof vi.fn> }
+  $locationFindUnique: ReturnType<typeof vi.fn>
+  $dataReads: string[]
 }
 const world = handles.$world
 const carts = handles.$carts
@@ -228,6 +259,7 @@ function seed() {
 beforeEach(() => {
   vi.clearAllMocks()
   seed()
+  handles.$dataReads.length = 0
 })
 
 /** Every store, as text, to tell "nothing was written" from "something was". */
@@ -313,9 +345,30 @@ describe('the import role gate (households H4 task E.3, decision T8)', () => {
       // When MIA imports it
       const res = await run(mutationText(field, arg, type), { rows: rows() }, MIA, HH_A)
 
-      // Then the role gate refuses her, and no store changed
+      // Then the role gate refuses her, before any read of the data, and
+      // no store changed
       expect(errorOf(res)?.code).toBe('FORBIDDEN')
+      expect(handles.$dataReads).toEqual([])
       expect(snapshot()).toBe(before)
+    })
+
+    it(`${field}: a household member is refused even for an empty batch, and nothing is read`, async () => {
+      // Given an EMPTY batch. The gate runs before the empty-batch return,
+      // so a member cannot use an empty call to find out anything, and a
+      // member never gets a success answer from an import.
+      const res = await run(mutationText(field, arg, type), { rows: [] }, MIA, HH_A)
+
+      expect(errorOf(res)?.code).toBe('FORBIDDEN')
+      expect(handles.$dataReads).toEqual([])
+    })
+
+    it(`${field}: a household manager's empty batch returns an empty list`, async () => {
+      // The positive control for the test above: the same empty call by a
+      // manager is not refused, so the refusal above comes from the role.
+      const res = await run(mutationText(field, arg, type), { rows: [] }, ALICE, HH_B)
+
+      expect(res.errors).toBeUndefined()
+      expect(res.data?.[field]).toEqual([])
     })
 
     it(`${field}: a household manager may import the same payload`, async () => {
@@ -338,13 +391,6 @@ describe('the import role gate (households H4 task E.3, decision T8)', () => {
       expect(snapshot()).not.toBe(before)
     })
   }
-
-  it('a member is refused even for an empty batch, before any read', async () => {
-    // The gate runs before the empty-batch return
-    const res = await run(mutationText('bulkCreateItems', 'items', 'ItemInput'), { rows: [] }, MIA, HH_A)
-
-    expect(errorOf(res)?.code).toBe('FORBIDDEN')
-  })
 })
 
 // ─── issue #381, gap 1: stock and log rows ────────────────────────────────────
@@ -429,14 +475,14 @@ describe('no fallback location', () => {
 
     it(`bulk${verb}ShoppingCarts: a bare cart id is BAD_USER_INPUT even when the caller has no location to write to, and no location row is read`, async () => {
       // Review note 2 of task E.1. Before E.3 the cart location check ran
-      // `fallbackImportLocation` for a bare id, so a caller with no writable
+      // the import fallback (decision H12) for a bare id, so a caller with no writable
       // location got NO_LOCATION; and it read `location.findUnique` for
       // every named prefix before any role check.
       world.households.state.locationMembers = world.households.state.locationMembers.filter((m) => m.userId !== ALICE)
       const res = await run(CARTS, { rows: [{ id: 'no-vendor' }] }, ALICE, HH_A)
 
       expect(errorOf(res)?.code).toBe('BAD_USER_INPUT')
-      expect(handles.location.findUnique).not.toHaveBeenCalled()
+      expect(handles.$locationFindUnique).not.toHaveBeenCalled()
     })
 
     it(`bulk${verb}ShoppingCarts: a cart id naming a location that does not exist is FORBIDDEN, and no location row is read`, async () => {
@@ -447,7 +493,7 @@ describe('no fallback location', () => {
 
       expect(errorOf(res)?.code).toBe('FORBIDDEN')
       expect(carts.state.carts.map((c) => c.id)).toEqual([CART_A])
-      expect(handles.location.findUnique).not.toHaveBeenCalled()
+      expect(handles.$locationFindUnique).not.toHaveBeenCalled()
     })
 
     it(`bulk${verb}InventoryLogs: a log with no location is IMPORT_NEEDS_LOCATION, and the other new log is not written`, async () => {
