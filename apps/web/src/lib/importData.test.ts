@@ -2498,27 +2498,32 @@ describe('importCloudData — locations and stock upload in dependency order', (
     expect(last.completedBatches).toBe(last.totalBatches)
   })
 
+  // Strategy `replace`, not `clear`. This test used `clear` until the E.4
+  // review: on `clear` a retry clears again, so skipping the batches already
+  // sent lost their rows. Since then a `clear` retry sends everything again
+  // ("user retrying a failed clear import gets every row written again").
   it('user retrying a failed import does not re-send the locations and stock already sent', async () => {
-    // Given a session that already recorded the locations and stock batches
+    // Given a replace session that already recorded the locations batch (on
+    // the create pass) and the stock batch (on the upsert pass)
     const client = makeRecordingClient()
     const payload = fullPayload()
     const session: ImportSession = {
       payload,
-      strategy: 'clear',
-      // `create:` prefix because `clear` runs the create pass only
+      strategy: 'replace',
       completedBatchKeys: new Set([
         'create:locations:0',
-        'create:itemStocks:0',
+        'upsert:itemStocks:0',
       ]),
+      target: { locationId: CLOUD_DEFAULT_ID },
     }
 
     // When the import is retried with that session
-    await importCloudData(payload, 'clear', client as never, { session })
+    await importCloudData(payload, 'replace', client as never, { session })
 
     // Then neither is uploaded again
     const order = mutationOrder(client)
     expect(order).not.toContain('BulkCreateLocations')
-    expect(order).not.toContain('BulkCreateItemStocks')
+    expect(order).not.toContain('BulkUpsertItemStocks')
     // And every other entity still is
     expect(order).toContain('BulkCreateItems')
     expect(order).toContain('BulkCreateShoppingCarts')
@@ -5466,6 +5471,8 @@ describe('importCloudData — the check before the first write (households H4 ta
       answer?: ImportIdCheckShape
       checkError?: unknown
       locations?: Array<{ id: string; name: string; order: number }>
+      // A mutation, by operation name, that rejects.
+      failOn?: string
     } = {},
   ) {
     const calls: Call[] = []
@@ -5511,9 +5518,11 @@ describe('importCloudData — the check before the first write (households H4 ta
       }) => {
         const op = opNameOf(mutation)
         calls.push({ kind: 'mutate', op, variables })
+        if (op === options.failOn) throw new Error(`${op} failed`)
         if (op === 'CreateLocation') {
           return { data: { createLocation: { id: 'cloud_new', name: 'x' } } }
         }
+        if (op === 'DeleteLocation') return { data: { deleteLocation: true } }
         return {}
       },
     )
@@ -5721,6 +5730,76 @@ describe('importCloudData — the check before the first write (households H4 ta
     )
     // And the session now holds its id, so a retry does not create another
     expect(session.target).toEqual({ locationId: 'cloud_new' })
+  })
+
+  // Review finding 1 of task E.4 (older than E.4). A retry of a failed
+  // `clear` import passes the same session. Its batch keys still name the
+  // batches the first attempt sent, but `clearAllData` runs again and
+  // deletes those rows, so they must be sent again.
+  it('user retrying a failed clear import gets every row written again', async () => {
+    // Given a clear session whose first attempt already sent the items
+    const client = makeClient()
+    const session: ImportSession = {
+      payload: localFile(),
+      strategy: 'clear',
+      completedBatchKeys: new Set(['create:items:0']),
+    }
+
+    // When the user retries
+    await importCloudData(localFile(), 'clear', client as never, { session })
+
+    // Then the items are sent again, after the clear
+    const ops = mutations(client)
+    expect(ops).toContain('BulkCreateItems')
+    expect(ops.indexOf('ClearAllData')).toBeLessThan(
+      ops.indexOf('BulkCreateItems'),
+    )
+    expect(sent(client, 'items').map((i) => i.id)).toEqual(['item-new'])
+  })
+
+  // Review finding 2 of task E.4: the row drop on the `clear` path had no
+  // test. On `clear` a missing item or location can be non-empty.
+  it("user clearing before an import has the check's missing item left out", async () => {
+    // Given the check says item-x will not exist when the stock is written
+    const client = makeClient({
+      answer: { ...CLEAN_IMPORT_CHECK, missingItemIds: ['item-x'] },
+    })
+    const file = localFile()
+    file.itemStocks = [
+      ...(file.itemStocks ?? []),
+      { id: 's-x', itemId: 'item-x', locationId: 'loc_garage' },
+    ]
+
+    // When the user imports with clear
+    const result = await importCloudData(file, 'clear', client as never)
+
+    // Then the stock row of item-x is in no batch, and the others are
+    expect(sent(client, 'itemStocks').map((s) => s.id)).toEqual([
+      's-home',
+      's-garage',
+    ])
+    expect(result.skipped.rowCount).toBe(1)
+  })
+
+  it("user replacing into a location they cannot edit has that location's rows left out", async () => {
+    // Given the caller is only a viewer of the Garage
+    const client = makeClient({
+      answer: { ...CLEAN_IMPORT_CHECK, blockedLocationIds: ['loc_garage'] },
+    })
+
+    // When the user imports with replace into Home
+    await importCloudData(localFile(), 'replace', client as never, {
+      target: { locationId: 'cloud_home' },
+    })
+
+    // Then no Garage row is in any batch, on either pass
+    expect(sent(client, 'locations').map((l) => l.id)).toEqual(['cloud_home'])
+    expect(sent(client, 'itemStocks').map((s) => s.id)).toEqual(['s-home'])
+    expect(sent(client, 'logs').map((l) => l.id)).toEqual(['log-home'])
+    expect(sent(client, 'carts').map((c) => c.id)).toEqual([
+      'cloud_home:vendor_1',
+    ])
+    expect(sent(client, 'cartItems').map((c) => c.id)).toEqual(['ci-home'])
   })
 
   it('user importing into a new location gets no new location when the file is refused', async () => {

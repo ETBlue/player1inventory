@@ -3240,6 +3240,11 @@ export async function importCloudData(
         totalBatches: computeTotalBatches(placed),
         currentEntity: '',
       })
+      // A retry of a failed `clear` passes the same session. Its batch keys
+      // name batches the first attempt sent, but the clear below deletes
+      // those rows again. So every batch must be sent again: forget the keys
+      // (E.4 review finding 1; the bug is older than H4).
+      session.completedBatchKeys.clear()
       await client.mutate({ mutation: ClearAllDataDocument })
       // AFTER the clear, never before: see `fetchHomeAfterClear`.
       const home = await fetchHomeAfterClear(client)
