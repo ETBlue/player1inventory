@@ -10,6 +10,7 @@ import { createRoot } from 'react-dom/client'
 import { ApolloWrapper } from './apollo/ApolloWrapper'
 import { createApolloClientForE2E } from './apollo/client'
 import { cloudCache } from './apollo/cloudCache'
+import { LiveUpdatesRunner } from './apollo/LiveUpdatesRunner'
 import { getLastSignedInUserId, restoreCache } from './apollo/persistence'
 import { bootstrapCloudMode } from './bootstrap'
 import { db } from './db'
@@ -69,6 +70,7 @@ function renderApp() {
     root.render(
       <StrictMode>
         <ApolloProvider client={createApolloClientForE2E(e2eTestUserId)}>
+          <LiveUpdatesRunner userId={e2eTestUserId} exposeForE2E />
           <QueryClientProvider client={queryClient}>
             <RouterProvider router={router} />
           </QueryClientProvider>

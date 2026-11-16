@@ -1,0 +1,9 @@
+# Live updates (households H3c-1). One subscription per tab, started by
+# `LiveUpdatesRunner` (apps/web/src/apollo/LiveUpdatesRunner.tsx). The event carries no
+# data: the tab refetches the queries `liveUpdates.ts` maps the kind to.
+subscription HouseholdChanged {
+  householdChanged {
+    kind
+    locationId
+  }
+}

@@ -4,6 +4,7 @@ import { useEffect, useMemo } from 'react'
 import { isOffline } from '@/hooks/useIsOffline'
 import { createApolloClient } from './client'
 import { cloudCache } from './cloudCache'
+import { LiveUpdatesRunner } from './LiveUpdatesRunner'
 import {
   clearCache,
   getLastSignedInUserId,
@@ -125,5 +126,13 @@ export function ApolloWrapper({ children }: { children: React.ReactNode }) {
     }
   }, [userId, client])
 
-  return <ApolloProvider client={client}>{children}</ApolloProvider>
+  // `LiveUpdatesRunner` stops when `userId` goes to null (sign-out) and when
+  // `client` is replaced. Stopping unsubscribes, and the lazy socket client
+  // then closes the socket. See `createLiveSocket` in `client.ts`.
+  return (
+    <ApolloProvider client={client}>
+      <LiveUpdatesRunner userId={userId} />
+      {children}
+    </ApolloProvider>
+  )
 }

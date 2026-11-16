@@ -1,0 +1,374 @@
+import {
+  ApolloClient,
+  ApolloLink,
+  gql,
+  InMemoryCache,
+  Observable,
+} from '@apollo/client'
+import { getMainDefinition } from '@apollo/client/utilities'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import * as generated from '@/generated/graphql'
+import {
+  LIVE_BATCH_MS,
+  type LiveSocket,
+  QUERIES_BY_KIND,
+  queriesFor,
+  startLiveUpdates,
+} from './liveUpdates'
+
+// Two cart queries and one query no cart change touches. The names are the
+// real operation names, so `QUERIES_BY_KIND` matches them.
+const VENDOR_CART = gql`
+  query VendorCart {
+    probeVendorCart
+  }
+`
+const ALL_CARTS = gql`
+  query AllCarts {
+    probeAllCarts
+  }
+`
+const GET_ITEMS = gql`
+  query GetItems {
+    probeItems
+  }
+`
+
+type Emitter = {
+  next: (value: ApolloLink.Result) => void
+  error: (e: unknown) => void
+  complete: () => void
+}
+
+/**
+ * A real ApolloClient over a link the test drives:
+ * - each query answers at once with a new value, and is counted by name;
+ * - each subscription stays open until the test pushes an event, ends it, or
+ *   the runner unsubscribes.
+ */
+function makeHarness() {
+  const sent: string[] = []
+  const subscriptions: { emit: Emitter; closed: boolean }[] = []
+  let answer = 0
+  const link = new ApolloLink((operation) => {
+    const def = getMainDefinition(operation.query)
+    if (
+      def.kind === 'OperationDefinition' &&
+      def.operation === 'subscription'
+    ) {
+      return new Observable<ApolloLink.Result>((observer) => {
+        const entry = { emit: observer as Emitter, closed: false }
+        subscriptions.push(entry)
+        return () => {
+          entry.closed = true
+        }
+      })
+    }
+    sent.push(operation.operationName ?? '?')
+    answer += 1
+    const field = (def.kind === 'OperationDefinition' &&
+      def.selectionSet.selections[0]?.kind === 'Field' &&
+      def.selectionSet.selections[0].name.value) as string
+    return new Observable<ApolloLink.Result>((observer) => {
+      observer.next({ data: { [field]: answer } })
+      observer.complete()
+    })
+  })
+  const client = new ApolloClient({ link, cache: new InMemoryCache() })
+
+  const connectedListeners = new Set<() => void>()
+  const socket: LiveSocket = {
+    on: (_event, listener) => {
+      connectedListeners.add(listener)
+      return () => connectedListeners.delete(listener)
+    },
+  }
+
+  return {
+    client,
+    socket,
+    sent,
+    subscriptions,
+    /** Count of requests sent for one operation name. */
+    count: (name: string) => sent.filter((n) => n === name).length,
+    connect: () => {
+      for (const l of connectedListeners) l()
+    },
+    listenerCount: () => connectedListeners.size,
+    /** The open subscription, the one the runner listens to now. */
+    live: () => {
+      const open = subscriptions.filter((s) => !s.closed)
+      if (open.length !== 1) {
+        throw new Error(`expected 1 open subscription, found ${open.length}`)
+      }
+      return open[0] as { emit: Emitter }
+    },
+  }
+}
+
+function cartEvent(kind: string = 'CART') {
+  return {
+    data: {
+      householdChanged: {
+        __typename: 'ChangeEvent',
+        kind,
+        locationId: 'loc-1',
+      },
+    },
+  }
+}
+
+/** Mounts three queries, as three components on a page would. */
+async function watchAll(h: ReturnType<typeof makeHarness>) {
+  const subs = [VENDOR_CART, ALL_CARTS, GET_ITEMS].map((query) =>
+    h.client.watchQuery({ query }).subscribe(() => {}),
+  )
+  await vi.advanceTimersByTimeAsync(0)
+  expect(h.sent.sort()).toEqual(['AllCarts', 'GetItems', 'VendorCart'])
+  h.sent.length = 0
+  return () => {
+    for (const s of subs) s.unsubscribe()
+  }
+}
+
+function setOnLine(value: boolean) {
+  vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(value)
+}
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  setOnLine(true)
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+})
+
+describe('QUERIES_BY_KIND', () => {
+  it('CART refetches the five cart queries', () => {
+    expect(QUERIES_BY_KIND.CART).toEqual([
+      'VendorCart',
+      'AllCarts',
+      'CartItems',
+      'AllCartItems',
+      'CartItemCountByItem',
+    ])
+  })
+
+  it('names only operations that exist in apollo/operations', () => {
+    // A renamed operation would silently stop being refetched. Every name
+    // must have a generated `<Name>Document`.
+    for (const names of Object.values(QUERIES_BY_KIND)) {
+      for (const name of names) {
+        expect(Object.keys(generated)).toContain(`${name}Document`)
+      }
+    }
+  })
+
+  it('a kind this bundle does not know refetches everything', () => {
+    // A newer server can send a kind an older web bundle has no entry for.
+    expect(queriesFor(['CART', 'FROM_THE_FUTURE'])).toBe('all')
+    expect(queriesFor(['CART'])).toEqual(new Set(QUERIES_BY_KIND.CART))
+  })
+})
+
+describe('startLiveUpdates — events', () => {
+  it('user sees one refetch of the cart queries for many changes in 300 ms', async () => {
+    // Given a page showing two cart queries and the item list
+    const h = makeHarness()
+    const unwatch = await watchAll(h)
+    const stop = startLiveUpdates({ client: h.client, socket: h.socket })
+
+    // When three cart events arrive within the batch window
+    h.live().emit.next(cartEvent())
+    await vi.advanceTimersByTimeAsync(100)
+    h.live().emit.next(cartEvent())
+    await vi.advanceTimersByTimeAsync(100)
+    h.live().emit.next(cartEvent())
+
+    // Then nothing is refetched before the window ends
+    await vi.advanceTimersByTimeAsync(LIVE_BATCH_MS - 201)
+    expect(h.sent).toEqual([])
+
+    // And when it ends, each cart query is refetched exactly once
+    await vi.advanceTimersByTimeAsync(1)
+    expect(h.count('VendorCart')).toBe(1)
+    expect(h.count('AllCarts')).toBe(1)
+    // And the item list, which no cart change touches, is not
+    expect(h.count('GetItems')).toBe(0)
+
+    stop()
+    unwatch()
+  })
+
+  it('refetches the union of the kinds in one window', async () => {
+    // Given a page with cart queries and the item list
+    const h = makeHarness()
+    const unwatch = await watchAll(h)
+    const stop = startLiveUpdates({ client: h.client, socket: h.socket })
+
+    // When a CART event and an unknown kind arrive in one window
+    h.live().emit.next(cartEvent())
+    h.live().emit.next(cartEvent('FROM_THE_FUTURE'))
+    await vi.advanceTimersByTimeAsync(LIVE_BATCH_MS)
+
+    // Then one refetch covers both: every active query, once each
+    expect(h.sent.sort()).toEqual(['AllCarts', 'GetItems', 'VendorCart'])
+
+    stop()
+    unwatch()
+  })
+
+  it('a second window after the first one refetches again', async () => {
+    // Given one batch already refetched
+    const h = makeHarness()
+    const unwatch = await watchAll(h)
+    const stop = startLiveUpdates({ client: h.client, socket: h.socket })
+    h.live().emit.next(cartEvent())
+    await vi.advanceTimersByTimeAsync(LIVE_BATCH_MS)
+    expect(h.count('VendorCart')).toBe(1)
+
+    // When another event comes later
+    h.live().emit.next(cartEvent())
+    await vi.advanceTimersByTimeAsync(LIVE_BATCH_MS)
+
+    // Then it refetches again
+    expect(h.count('VendorCart')).toBe(2)
+
+    stop()
+    unwatch()
+  })
+
+  it('stop drops a pending batch and unsubscribes', async () => {
+    // Given an event waiting in the batch window
+    const h = makeHarness()
+    const unwatch = await watchAll(h)
+    const stop = startLiveUpdates({ client: h.client, socket: h.socket })
+    h.live().emit.next(cartEvent())
+
+    // When live updates stop (sign-out)
+    stop()
+    await vi.advanceTimersByTimeAsync(LIVE_BATCH_MS * 2)
+
+    // Then nothing is refetched, the subscription is closed, and the
+    // `connected` listener is gone
+    expect(h.sent).toEqual([])
+    expect(h.subscriptions.every((s) => s.closed)).toBe(true)
+    expect(h.listenerCount()).toBe(0)
+
+    unwatch()
+  })
+})
+
+describe('startLiveUpdates — reconnect', () => {
+  it('first connect refetches nothing, the second refetches every active query once', async () => {
+    // Given a page with three active queries
+    const h = makeHarness()
+    const unwatch = await watchAll(h)
+    const stop = startLiveUpdates({ client: h.client, socket: h.socket })
+
+    // When the socket connects for the first time
+    h.connect()
+    await vi.advanceTimersByTimeAsync(0)
+
+    // Then nothing is refetched: the page just loaded
+    expect(h.sent).toEqual([])
+
+    // When it connects again (after a drop or the 60-minute limit)
+    h.connect()
+    await vi.advanceTimersByTimeAsync(0)
+
+    // Then every active query is refetched once, cart or not
+    expect(h.sent.sort()).toEqual(['AllCarts', 'GetItems', 'VendorCart'])
+
+    stop()
+    unwatch()
+  })
+})
+
+describe('startLiveUpdates — after the subscription ends', () => {
+  async function startAndEnd() {
+    const h = makeHarness()
+    const stop = startLiveUpdates({ client: h.client, socket: h.socket })
+    expect(h.subscriptions).toHaveLength(1)
+    // The socket was closed with 4401, or graphql-ws gave up after 5 tries.
+    // GraphQLWsLink errors the link observable; Apollo 4 turns that into
+    // `{ error }` and completes.
+    h.live().emit.error(new Error('4401: Unauthorized'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.subscriptions.filter((s) => !s.closed)).toHaveLength(0)
+    return { h, stop }
+  }
+
+  it('subscribes again when the browser comes back online', async () => {
+    const { h, stop } = await startAndEnd()
+
+    // When the browser reports it is online
+    window.dispatchEvent(new Event('online'))
+
+    // Then one new subscription is open
+    expect(h.subscriptions).toHaveLength(2)
+    expect(() => h.live()).not.toThrow()
+
+    stop()
+  })
+
+  it('subscribes again when the tab becomes visible', async () => {
+    const { h, stop } = await startAndEnd()
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+
+    document.dispatchEvent(new Event('visibilitychange'))
+
+    expect(h.subscriptions).toHaveLength(2)
+    stop()
+  })
+
+  it('does not subscribe again while offline, or on a timer', async () => {
+    const { h, stop } = await startAndEnd()
+
+    // When time passes with no browser event
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    // And a visibility change arrives while the device is offline
+    setOnLine(false)
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    document.dispatchEvent(new Event('visibilitychange'))
+
+    // Then no new subscription was opened
+    expect(h.subscriptions).toHaveLength(1)
+    stop()
+  })
+
+  it('does not open a second subscription while the first is still open', async () => {
+    // Given a subscription that has NOT ended
+    const h = makeHarness()
+    const subscribe = vi.spyOn(h.client, 'subscribe')
+    const stop = startLiveUpdates({ client: h.client, socket: h.socket })
+
+    // When the browser comes online and the tab becomes visible
+    window.dispatchEvent(new Event('online'))
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    document.dispatchEvent(new Event('visibilitychange'))
+
+    // Then the runner asked Apollo for one subscription only. Counting the
+    // link's subscriptions is not enough: Apollo shares one link
+    // subscription between identical `client.subscribe` calls, so a second
+    // call would not show there.
+    expect(subscribe).toHaveBeenCalledTimes(1)
+
+    // And stop leaves nothing open. A second Apollo subscriber the runner
+    // lost track of would keep the shared link subscription, and so the
+    // socket, open after sign-out.
+    stop()
+    expect(h.subscriptions.every((sub) => sub.closed)).toBe(true)
+  })
+
+  it('does not subscribe again after stop', async () => {
+    const { h, stop } = await startAndEnd()
+    stop()
+
+    window.dispatchEvent(new Event('online'))
+
+    expect(h.subscriptions).toHaveLength(1)
+  })
+})
