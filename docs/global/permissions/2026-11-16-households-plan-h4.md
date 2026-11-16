@@ -959,6 +959,38 @@ Existing specs:
 4. Close the loop on the issues in the PR text: #381 and #361 fixed, #330 kept.
 5. The full gate, then `pnpm test:e2e:all`.
 
+**As built (2026-11-17).**
+
+- **Runbook:** a new file, `docs/global/backend/2026-11-17-deploy-runbook-households-h4.md`,
+  not a section in another runbook. H4's order rule (server first) is the opposite of H3a's
+  (web first), and a separate file keeps that visible. It says which rule wins when both go
+  out in one release (H3a's: its failure makes cloud mode unusable, H4's only stops imports),
+  gives the three read-only SQL checks (H4-A carts not keyed by their location, H4-B location
+  ids `'local'` or with `:`, H4-C the `'local'` row) with a stop rule for each, a table of
+  old and new web and server together, and the checks after the deploy. **No SQL was run.**
+- **H4-A uses `left(…)`**, not the plan's `id NOT LIKE "locationId" || ':%'`: a location id
+  may hold `_` or `%`, which `LIKE` reads as wildcards. It is the same query as H3b-C.
+- **Root `CLAUDE.md`:** the households intro names H4 and its runbook; a new paragraph on
+  `importCheck`; the guard counts re-measured (18 / 2 / 2, and a fourth grep for the role
+  gate: 22); the attach-id table says "target household"; the cloud spec count (33 of 37)
+  and a paragraph for `import-households.spec.ts`. `apps/web/src/hooks/CLAUDE.md`: the
+  `usePostLoginMigration` paragraph no longer names the deleted `fetchCloudDefaultLocationId`
+  and `prepareCloudPayload`. `e2e/CLAUDE.md`: the cloud count table (160).
+- **Stale comments fixed:** `upgradeLegacyPayloadForCloud` (no such function; it is
+  `upgradeLegacyPayload`) in `import.resolver.ts` and one server test; "another account" in
+  the `clear` comment of `lib/importData.ts`.
+- **Design:** a *Result (H4)* section under *Import and export*; decision H12 marked closed
+  in two places and in *Known gaps*.
+- **Measured.** Unit, `pnpm test` from the root: web **2678 / 283** (2676 before the O9 review
+  fixes, which added 2 card tests), server **1765 / 67**, `scripts/spec` **70**. `pnpm lint`,
+  root `pnpm build` (0 `error TS`, no `TS6385`), `build-storybook` and `pnpm check` all exit 0.
+  `pnpm test:e2e:all`, **all three green**, 38m47s in all: local **178 passed / 6 skipped**
+  (3m52s), cloud **153 passed / 7 skipped** (33m21s), pwa **73 passed** (1m34s). No flaky test
+  and no retry. Load average: 35.4 at the start (a 1-minute spike left by the unit run just
+  before; the 15-minute figure was 9.1), 9–12 during `local`, 3.5–5.6 during `cloud`, 4.0 at
+  the end. Ports 4001, 5174, 5175 and 5176 were free before the run. Same counts as E.6's run
+  (178 / 6, 153 / 7, 73), which is right: O9 and E.7 added no E2E test.
+
 ## Out of scope
 
 - **The activity log.** The design says "every import is written to the activity log". That
@@ -1070,11 +1102,14 @@ Filled in from the task reports and reviews.
 | E.6 | Item 2 of the brief: "Any spec that checks the old 'another account' text" | None did. Only two test TITLES in `cart-id-cross-user-leak.spec.ts` said "another account"; both were rewritten |
 | O9 | *Known gaps* (E.6): "`import-export-cloud.spec.ts` pins today's behaviour, so a change will turn three tests red on purpose". The O9 brief repeated it: the three tests "pin today's behaviour (the active location staying on Home)" | None of the three asserted the active location. They assert four locations and the stock per location, and `verifyRelations` switches to the location it checks by itself. Option B deletes nothing, so all three stayed green with the new code. Only one of them turned red under a mutation, and only after this follow-up added the switch check to it. So no test had pinned "the user stays on Home" |
 | O9 review | My O9 *As built* note: the card must switch AFTER `resetStore`, or "the provider would move the user to the first location of the old list" | Not proven. `importCloudData` has already reset the store once, so the list may hold the new location already. The order is kept as the safe one; the note and the code comment now say only that. The review also found a race the O9 change brought: a location picked in the sidebar during the import was overwritten. Fixed |
+| E.7 | Step 2: `SELECT count(*) FROM "Cart" WHERE id NOT LIKE "locationId" \|\| ':%'` | `LIKE` reads `_` and `%` in a location id as wildcards, so the count could be wrong. The runbook uses `left(id, length("locationId") + 1) <> "locationId" \|\| ':'`, the same as H3b-C |
+| E.7 | Step 2: "A deploy section for H4 in the next checkpoint runbook" | There is no single checkpoint runbook; each phase has its own file. H4 got its own, because its order rule is the opposite of H3a's |
 | O9 | The brief: "if the active location is empty, switch" | Not enough on its own. Read BEFORE the import, a same-household restore that puts rows back on the active location would move the user away from them. It is read after the last write |
 
 ## Status
 
-**E.1–E.6 built** (all on 2026-11-16), and the O9 follow-up (2026-11-17); E.7 open. Plan
+**E.1–E.7 built** (E.1–E.6 on 2026-11-16; the O9 follow-up and E.7 on 2026-11-17). Not
+merged, not deployed. Plan
 written 2026-11-16 on `feature/households-h4`. The owner approved O1–O8 on 2026-11-16, and
 decided O9 and O10 on 2026-11-17 (the empty "Home" after a `skip` restore: keep it, move the
 user off it; the E.5 fallback: approved as built).
