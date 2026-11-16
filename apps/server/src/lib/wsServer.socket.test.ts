@@ -82,6 +82,9 @@ afterEach(async () => {
   for (const close of open.splice(0)) await close()
   expect(liveEvents.listenerCount()).toBe(0)
   vi.clearAllMocks()
+  // Puts back `console.error` after the tests that silence it. Since Vitest 3
+  // this restores `vi.spyOn` spies only; the `authz.js` mocks keep their stubs.
+  vi.restoreAllMocks()
 })
 
 describe('the WebSocket endpoint, with a real socket', () => {
@@ -176,6 +179,61 @@ describe('the WebSocket endpoint, with a real socket', () => {
     })
 
     expect(await closed).toBe(4401)
+  })
+
+  it('when Clerk cannot be reached, the client retries and connects once the check works', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    // The first check fails like a network outage, the second one works.
+    const verifyClerkToken = vi
+      .fn<WsServerDeps['verifyClerkToken']>()
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValue('clerk-user')
+    const { url } = await start({ e2eTestMode: false, verifyClerkToken })
+    const closeCodes: number[] = []
+    let connects = 0
+    const c = client(
+      url,
+      { authorization: 'Bearer some-token', clientId: 'tab-a' },
+      {
+        // No wait between tries. The DECISION to retry is still the client's
+        // default, which is what this test checks.
+        retryWait: async () => {},
+        on: {
+          connected: () => {
+            connects++
+          },
+          closed: (event: unknown) => {
+            closeCodes.push((event as { code: number }).code)
+          },
+        },
+      },
+    )
+    const sub = collect(c)
+
+    await vi.waitFor(() => expect(connects).toBe(1), { timeout: 3000 })
+    expect(closeCodes).toEqual([1013])
+    expect(verifyClerkToken).toHaveBeenCalledTimes(2)
+    expect(sub.errors).toEqual([])
+    await vi.waitFor(() => expect(liveEvents.listenerCount()).toBe(1))
+  })
+
+  it('when Clerk rejects the token, the client does not retry', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const verifyClerkToken = vi
+      .fn<WsServerDeps['verifyClerkToken']>()
+      .mockRejectedValue(Object.assign(new Error('JWT is expired'), { reason: 'token-expired' }))
+    const { url } = await start({ e2eTestMode: false, verifyClerkToken })
+    const c = client(
+      url,
+      { authorization: 'Bearer some-token', clientId: 'tab-a' },
+      { retryWait: async () => {} },
+    )
+    const sub = collect(c)
+
+    // The client reports the 4401 close to the subscriber and stops.
+    await vi.waitFor(() => expect(sub.errors).toHaveLength(1), { timeout: 3000 })
+    expect((sub.errors[0] as { code: number }).code).toBe(4401)
+    expect(verifyClerkToken).toHaveBeenCalledTimes(1)
   })
 
   it('after the age limit the graphql-ws client reconnects and subscribes again', async () => {

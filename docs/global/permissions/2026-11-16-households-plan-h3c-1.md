@@ -151,10 +151,30 @@ maybe `apps/server/scripts/check-start.mjs`.
   socket both call it, and it calls `ensureUser`.
 - Clerk on the socket: `verifyToken` (from `@clerk/backend`, re-exported by `@clerk/express`)
   with `CLERK_SECRET_KEY` and, when set, `CLERK_JWT_KEY`. No new env var.
-- Refused (no user, bad token, no valid `clientId`): the server closes with `4401` itself and
-  then returns `false`. Returning `false` alone gives `4403`, which the client retries.
+- Refused (no user, a token Clerk rejects, no valid `clientId`): the server closes with
+  `4401` itself and then returns `false`. Returning `false` alone gives `4403`, which the
+  client retries.
 - Age limit: close code `1001`. graphql-ws 5's client retries it after a random wait.
 - `check-start.mjs` now also opens a socket with no `clientId` and expects `4401`.
+- **Fix after review: the token check can fail without the token being bad.** Without
+  `CLERK_JWT_KEY`, `verifyToken` fetches Clerk's JWKS over the network. The first version
+  sent every thrown error to `4401`, so a short Clerk or network outage stopped live updates
+  in every tab that connected during it, until a reload. Now `classifyTokenCheckError`
+  (`lib/tokenCheckError.ts`) sorts the error by Clerk's `reason`, never by its message:
+
+  | Close code | When | graphql-ws 5.16.2 client |
+  |---|---|---|
+  | `4401` | no user; no valid `clientId`; Clerk threw a "token is bad" reason (`token-*`, `jwk-kid-mismatch`) | fatal, never retries |
+  | `1013` (Try Again Later, `CLOSE_TRY_AGAIN`) | any other error: a network `TypeError`, `jwk-remote-failed-to-load`, a `SyntaxError` from an HTML error page, a server key problem, anything unknown | retries after a random wait; gives up after 5 failed tries in a row |
+  | `1001` (`CLOSE_MAX_AGE`) | the socket is 60 minutes old | retries after a random wait; the try count goes back to 0 after each good connect |
+
+  The client's list was read in `graphql-ws/lib/client.js` (`isFatalInternalCloseCode`):
+  1000, 1001, 1005, 1006, 1012, 1013 and 1014 are retried, every other 1xxx is fatal, and so
+  is `4401`. `apps/server` does not depend on `@clerk/backend` directly, so the reason strings
+  are copied; `tokenCheckError.test.ts` loads the installed `@clerk/backend/errors` through
+  `@clerk/express` and fails if the copy and Clerk's list differ. Known overlap: a garbage
+  token with three dot-separated parts makes `decodeJwt` throw a plain `SyntaxError`, which
+  cannot be told apart from an HTML error page, so it is retried up to 5 times.
 
 ## Task C.4 — publish from the cart mutations, and the guard test
 

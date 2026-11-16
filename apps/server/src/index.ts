@@ -120,7 +120,10 @@ attachWsServer(httpServer, schema, {
   // checks the session token directly. It reads the same CLERK_SECRET_KEY
   // as clerkMiddleware, and CLERK_JWT_KEY when it is set. No
   // authorizedParties, the same as clerkMiddleware here. It throws on a bad
-  // token; lib/wsServer.ts catches that and closes the socket with 4401.
+  // token AND when it cannot fetch Clerk's JWKS (no CLERK_JWT_KEY). Both reach
+  // lib/wsServer.ts: a bad token closes the socket with 4401 (not retried),
+  // any other error with 1013 (retried). lib/tokenCheckError.ts tells them
+  // apart by Clerk's `reason`.
   verifyClerkToken: async (token) =>
     (
       await verifyToken(token, {

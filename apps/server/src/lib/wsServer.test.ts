@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   CLOSE_MAX_AGE,
+  CLOSE_TRY_AGAIN,
   CLOSE_UNAUTHORIZED,
   type Ctx,
   createWsHandlers,
@@ -67,17 +68,20 @@ describe('onConnect — refused sockets close with 4401', () => {
     expect(d.ensureUser).not.toHaveBeenCalled()
   })
 
-  it('a token the check throws on, and the token is never logged', async () => {
+  it('a token Clerk rejects (it throws with a "token is bad" reason), and the token is never logged', async () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const err = new Error(`JWT is expired: ${TOKEN}`)
-    err.name = 'TokenVerificationError'
+    // The shape of Clerk's TokenVerificationError: name `Error`, a `reason`.
+    const err = Object.assign(new Error(`JWT is expired: ${TOKEN}`), { reason: 'token-expired' })
     const d = deps({ verifyClerkToken: vi.fn(async () => Promise.reject(err)) })
     const { ctx, close } = fakeCtx(GOOD)
 
     expect(await createWsHandlers(d).onConnect(ctx)).toBe(false)
+    expect(close).toHaveBeenCalledTimes(1)
     expect(close).toHaveBeenCalledWith(4401, 'Unauthorized')
-    expect(log).toHaveBeenCalledWith('wsServer: token check failed:', 'TokenVerificationError')
+    expect(log).toHaveBeenCalledWith('wsServer: token check failed:', 'Error', 'token-expired')
     expect(JSON.stringify(log.mock.calls)).not.toContain(TOKEN)
+    expect(d.ensureUser).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it('an authorization that is not "Bearer <token>"', async () => {
@@ -112,6 +116,51 @@ describe('onConnect — refused sockets close with 4401', () => {
 
   it('the close code is graphql-ws Unauthorized, which its client does not retry', () => {
     expect(CLOSE_UNAUTHORIZED).toBe(4401)
+  })
+})
+
+describe('onConnect — the token check cannot be done, closes with 1013 (retried)', () => {
+  it.each([
+    ['a network failure', new TypeError('fetch failed')],
+    [
+      'the JWKS failed to load',
+      Object.assign(new Error('Error loading Clerk JWKS'), { reason: 'jwk-remote-failed-to-load' }),
+    ],
+    ['an HTML error page from Clerk', new SyntaxError('Unexpected token <')],
+  ])('%s', async (_label, err) => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const d = deps({ verifyClerkToken: vi.fn(async () => Promise.reject(err)) })
+    const handlers = createWsHandlers(d)
+    const { ctx, close } = fakeCtx(GOOD)
+
+    expect(await handlers.onConnect(ctx)).toBe(false)
+    expect(close).toHaveBeenCalledTimes(1)
+    expect(close).toHaveBeenCalledWith(1013, 'Token check unavailable')
+    expect(d.ensureUser).not.toHaveBeenCalled()
+    expect(handlers.context(ctx).userId).toBeNull()
+    // No age timer on this path either.
+    expect(vi.getTimerCount()).toBe(0)
+    expect(JSON.stringify(log.mock.calls)).not.toContain(TOKEN)
+  })
+
+  it('logs the error name and the Clerk reason, never the message', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const err = Object.assign(new Error(`JWKS failed for ${TOKEN}`), {
+      reason: 'jwk-remote-failed-to-load',
+    })
+    const { ctx } = fakeCtx(GOOD)
+    await createWsHandlers(deps({ verifyClerkToken: async () => Promise.reject(err) })).onConnect(ctx)
+
+    expect(log).toHaveBeenCalledWith(
+      'wsServer: token check failed:',
+      'Error',
+      'jwk-remote-failed-to-load',
+    )
+    expect(JSON.stringify(log.mock.calls)).not.toContain(TOKEN)
+  })
+
+  it('the close code is 1013 Try Again Later', () => {
+    expect(CLOSE_TRY_AGAIN).toBe(1013)
   })
 })
 

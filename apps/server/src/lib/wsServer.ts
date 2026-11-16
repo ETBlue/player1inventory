@@ -6,6 +6,7 @@ import { WebSocketServer } from 'ws'
 import { GRAPHQL_PATH } from '../constants.js'
 import { type AppLanguage, appLanguageFrom, type Context, clientIdFrom } from '../context.js'
 import { identifyCaller } from './graphqlContext.js'
+import { classifyTokenCheckError, loggableReason } from './tokenCheckError.js'
 
 // The WebSocket endpoint for live updates (households H3c-1, task C.3).
 //
@@ -26,8 +27,20 @@ import { identifyCaller } from './graphqlContext.js'
 //
 // | Code   | When                                          | graphql-ws 5 client   |
 // |--------|-----------------------------------------------|-----------------------|
-// | `4401` | no user, a bad token, or no valid `clientId`  | does NOT retry        |
+// | `4401` | no user, a token Clerk rejects, or no valid   | does NOT retry        |
+// |        | `clientId`                                    |                       |
+// | `1013` | the token check failed for another reason:    | retries, with a wait  |
+// |        | Clerk or the network could not be reached     |                       |
 // | `1001` | the socket is 60 minutes old                  | retries, with a wait  |
+//
+// Why 1013 (Try Again Later) when Clerk cannot be reached: without
+// `CLERK_JWT_KEY`, `verifyToken` fetches Clerk's JWKS over the network. If
+// that fails, the token is not known to be bad, so 4401 would be wrong: the
+// client would stop for good, and the tab would get no live updates until it
+// is reloaded. 1013 is on the client's retry list (below). Unlike 1001 after a
+// good connect, these retries are NOT reset to 0, because the socket never
+// connected, so the client gives up after 5 failed tries in a row. Which
+// errors count as "rejected" is decided in `lib/tokenCheckError.ts`.
 //
 // Why 1001 (Going Away) for the age limit: graphql-ws 5's client treats
 // `4401` and every 1xxx code except 1000, 1001, 1005, 1006, 1012, 1013 and
@@ -57,6 +70,12 @@ export const CLOSE_UNAUTHORIZED = CloseCode.Unauthorized
 export const CLOSE_MAX_AGE = 1001
 
 /**
+ * Close code for a socket whose token could not be checked (Clerk or the
+ * network failed). 1013 "Try Again Later". The client retries it.
+ */
+export const CLOSE_TRY_AGAIN = 1013
+
+/**
  * What the socket server needs from the outside. `index.ts` passes the real
  * ones; a test passes its own. Like `GraphQLContextDeps`.
  */
@@ -64,8 +83,11 @@ export interface WsServerDeps {
   /** True when the server runs with `E2E_TEST_MODE=true`. */
   e2eTestMode: boolean
   /**
-   * Check a Clerk session token and return its user id. May throw or return
-   * `null` for a bad token. Must never log the token.
+   * Check a Clerk session token and return its user id. Returns `null` or
+   * throws for a bad token. A thrown error is sorted by
+   * `classifyTokenCheckError`: a Clerk "token is bad" reason refuses the
+   * socket (4401), anything else closes it with 1013 so the client retries.
+   * Must never log the token.
    */
   verifyClerkToken: (token: string) => Promise<string | null>
   /** `ensureUserOrLog` in `index.ts`, which never throws (plan P11). */
@@ -112,13 +134,13 @@ export function createWsHandlers(deps: WsServerDeps) {
   // Keyed by the `extra` object, which graphql-ws makes once per socket.
   const sockets = new WeakMap<SocketExtra, SocketState>()
 
-  function refuse(ctx: Ctx, reason: string): false {
-    // Close with 4401 ourselves. Returning `false` alone would close with
+  function refuse(ctx: Ctx, reason: string, code: number = CLOSE_UNAUTHORIZED): false {
+    // Close with our own code. Returning `false` alone would close with
     // 4403 (Forbidden), which the client RETRIES. graphql-ws then also calls
     // `close(4403)`, but `ws` ignores a second close on a closing socket, so
     // the first code is the one the client sees (checked by the real-socket
-    // test in `wsServer.test.ts`).
-    ctx.extra.socket.close(CLOSE_UNAUTHORIZED, reason)
+    // tests in `wsServer.socket.test.ts`).
+    ctx.extra.socket.close(code, reason)
     return false
   }
 
@@ -143,12 +165,19 @@ export function createWsHandlers(deps: WsServerDeps) {
           ensureUser: deps.ensureUser,
         })
       } catch (err) {
-        // A bad or expired token. The error's name only: never the token,
-        // and never a message that may hold it.
+        // The error's name, and Clerk's `reason` when it is one of the fixed
+        // codes we know. Never the token, and never a message that may hold
+        // it. (Clerk's `TokenVerificationError` has the name `Error`.)
         console.error(
           'wsServer: token check failed:',
           err instanceof Error ? err.name : 'unknown error',
+          loggableReason(err),
         )
+        if (classifyTokenCheckError(err) === 'unavailable') {
+          // Clerk or the network failed. The token may be fine: let the
+          // client try again. No timer is started on this path.
+          return refuse(ctx, 'Token check unavailable', CLOSE_TRY_AGAIN)
+        }
         userId = null
       }
       if (!userId) return refuse(ctx, 'Unauthorized')
