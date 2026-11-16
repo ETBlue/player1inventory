@@ -469,11 +469,10 @@ The owner can still correct any `tw` text in the PR.
 
 **Review fixes for F.1 (2026-11-17, after the review).**
 
-- `forgetLocationRoles(ctx)` in `lib/authz.ts` clears both role caches. It is called by
-  `createLocation`, `deleteLocation`, `clearAllData` and `createImportedLocation` (so both
-  location imports). `role-cache.guard.test.ts` reads the source and fails on a resolver
-  field that writes a role row without it, and on a new file under `src/lib` that writes
-  role rows without a listed reason. Three tests run two mutations in one document.
+- `forgetLocationRoles(ctx)` in `lib/authz.ts` clears both role caches. It was first
+  called by `createLocation`, `deleteLocation`, `clearAllData` and `createImportedLocation`,
+  with a source-text guard, `role-cache.guard.test.ts`. **Replaced in the review of F.2**
+  (below): the guard missed too much. Three tests run two mutations in one document.
 - `CreateLocation`, `UpdateLocation` and `ReorderLocations` select `myRole hasOrganizer`.
   `apps/web/src/apollo/locationSelections.test.ts` compares the selections. Only one cache
   write targets either query (`useReorderLocations`' `writeQuery`).
@@ -481,6 +480,43 @@ The owner can still correct any `tw` text in the PR.
 - Three comments that said "until H5" are corrected.
 - `withoutRefusedRows` › "leaves a clean file as it is" builds its payload once.
 
+
+**Review fixes for F.1's fixes and F.2 (2026-11-17, `e094bfcc`, `736ffb0d`, `30a9cc28`).**
+
+- **The role caches are forgotten around EVERY root `Mutation` field**, in one place.
+  `forgetRolesAroundEach` (`apps/server/src/lib/mutationRoleCache.ts`) wraps the whole
+  `Mutation` map in `resolvers/index.ts`. It calls `forgetLocationRoles` before the field and,
+  in `finally`, after it, so the field's own `myRole` sub-fields read fresh rows and a field
+  that throws leaves nothing behind. The five calls by hand are gone, and so is
+  `role-cache.guard.test.ts`. The reviewer showed the guard stayed green for a write through
+  a helper in the same file, for a call replaced by a comment that named it (the whole suite,
+  1807 tests, stayed green), and could not see nested writes, `$executeRaw`, method-syntax
+  fields, sub-folders, `household.delete` or a `householdId` move.
+- **What checks it now:** `lib/mutationRoleCache.test.ts` (6 tests) calls every `Mutation`
+  field of the executable schema with no user and a filled cache, and fails if one leaves a
+  cache filled. `graphql-tools` binds each resolver, so an identity check
+  (`field.resolve === wrapped`) does not work; the check is by behaviour. Two new document
+  tests in `location-roles.resolver.test.ts`.
+- **Why a wrapper and not a better text guard:** it removes the thing to remember. H5b's join,
+  remove and leave are covered with no change. The cost is one role read per root field that
+  selects `myRole`, instead of one per request.
+- **`householdId` is still not forgotten.** Tests pin it on `requestCache`, and no mutation
+  moves the caller yet. H5b's join must decide this.
+- Stale comments fixed (`useVendorCart`, `itemStocksForItem`, `itemStockWrite.ts`, the scope
+  table in `cart.resolver.ts`). A test title that claimed more than it checked is renamed.
+- The `vendorCart` viewer test checks all seven cart write methods. A new reorder test sends
+  a full-length list with one id of another household; only the household filter refuses it.
+- Server suite **1807 / 70 → 1813 / 70**.
+- **Mutations, each copied aside and restored from the copy:**
+
+  | Mutation | Red |
+  |---|---|
+  | `Mutation` map not wrapped | 5: the 4 document tests of "the role cache inside one request" that run a later field, and the every-field test |
+  | location mutations spread outside the wrapper | 4 |
+  | no forget after the field | `forgets both role caches after the field …`, `… when the field throws …` |
+  | no forget before the field | `forgets both role caches before the field runs` |
+  | `householdId` dropped from `reorderLocations`' id read | the new full-length test, and `a batch with another household's location changes nothing` (it now gets `BAD_USER_INPUT` instead of `FORBIDDEN`) |
+  | `vendorCart` viewer branch calls `cart.upsert` | `location viewer can open a vendor cart that does not exist yet, and no cart is written` (green before this change: it watched only `create`) |
 
 ## Task F.3 — web: settings locations list for every role
 
@@ -860,6 +896,7 @@ Filled in from the task reports and reviews.
 | F.2 | `cartItemCountByItem` "counts only A's carts" | It counts ROWS (`cartItem.count`), not amounts. The first draft of the test expected a sum of amounts and passed against the unfiltered code by chance (3 rows) |
 | F.2 | (nothing about existing tests) | `cart.resolver.test.ts` had a block "a location viewer cannot use vendorCart" (2 tests) that T7 reverses; it is deleted. `location-live-publish.resolver.test.ts` expected an empty reorder list to pass; it is now `BAD_USER_INPUT` |
 | F.2 | Step 1: write the `bulkUpsertLocations` test unless one exists | It existed, but did not check `householdId`. One assertion was added |
+| F.1 review | `role-cache.guard.test.ts` "fails on a resolver field that writes a role row and does not call it" (this plan and root `CLAUDE.md`) | It read source text. A write through a helper and a call that was only a comment both passed it. Replaced by a wrapper around every `Mutation` field (review of F.2) |
 | F.2 | The settings list sends every location (F.3) | True only after F.3. Between F.2 and F.3 an owner or manager with no role on a location cannot reorder in the web |
 
 ## Status
