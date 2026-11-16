@@ -615,6 +615,45 @@ the API changes); `ConflictDialog.tsx` (an `allowClear` prop, + stories);
   new `importErrorRole`, `memberNotice`, `skippedLocations`, `skippedRows_one/_other`,
   `locationDialog.*` (9 keys) and `postLoginMigration.errorRole`.
 - **Tests:** web 2592 / 281 → **2648 / 283**. Server unchanged (1755 / 66).
+- **Product choices made in E.4, approved by the owner on 2026-11-16:**
+
+  | # | Choice |
+  |---|---|
+  | 1 | Cancel in the post-login "Import into which location?" goes back to "Import local data to cloud?" and removes the stored strategy |
+  | 2 | A file with no locations: the "New location" name starts empty, and Import stays disabled until a name is typed |
+  | 3 | While the household role is loading, the Import button is shown but disabled |
+  | 4 | The O5 skipped lines stay until the next file is picked |
+  | 5 | The new texts, en and tw, as written in E.4 |
+  | 6 | **Choice A:** no extra empty "Home" after a `clear` restore of a cloud backup (built in the review fixes below) |
+
+- **Review fixes (2026-11-16, after the E.4 review):**
+  - **A retried `clear` import no longer loses rows.** The bug is older than H4. A retry
+    passes the same session, `clearAllData` runs again and deletes the rows of the batches
+    already sent, and `runBulkBatches` then skipped those batches as sent. Now the `clear`
+    branch calls `session.completedBatchKeys.clear()` right before `ClearAllData`. The old
+    test "does not re-send the locations and stock already sent" pinned the bug on `clear`;
+    it now runs on `replace`, where skipping is right.
+  - **Decision 6 (choice A).** After a FINISHED `clear` import, `deleteHomeIfUnused` deletes
+    the fresh "Home" with the normal `deleteLocation` mutation when the import put no
+    location row, stock row, log or cart there, and the file brought at least one location
+    of its own (so the Home is not the last location; the server would refuse that with
+    `LAST_LOCATION`). A local backup puts "My Home" there, so nothing is deleted. The delete
+    runs after the last bulk batch and before `resetStore`, so a failed import never
+    deletes it. **A failed delete does not fail the import:** every row is written by then,
+    and "import failed" would make the user retry a `clear` for an empty location. The
+    extra "Home" then stays, and the user can delete it on the locations page. The delete
+    sends the household `LOCATION` live event as any delete does (`location.resolver.ts`,
+    tested in `location-live-publish.resolver.test.ts`). With the retry fix, a retry clears
+    again and makes another fresh Home; the first one is deleted by that clear, so no
+    location is deleted twice.
+  - **The row drop on the `clear` path is tested** (a `missingItemIds` stock row is in no
+    batch), and so is a blocked location on `replace`.
+  - **No placeholder cart id reaches the server.** `importCheckPairs` does not send a cart
+    id whose prefix is in `omitLocationIds`. Before, `local:vendor_1` was sent: checking it
+    proved nothing (the cart is written under the real id), and a cloud location with the
+    id `'local'` would have made the file "another household". E.7 adds a runbook check for
+    such a location.
+  - Tests: web **2648 / 283 → 2659 / 283** (11 new web tests).
 - **E2E specs this changes (for E.6), found by reading, not by running:**
   `settings/import-export-cloud.spec.ts` (local → cloud now shows the dialog; the "first
   location" assertions and the comments naming `fetchCloudDefaultLocationId` /
@@ -700,6 +739,7 @@ Existing specs:
      ```sql
      SELECT count(*) FROM "Cart" WHERE id NOT LIKE "locationId" || ':%';  -- carts T6 would refuse
      SELECT count(*) FROM "Location" WHERE id = 'local' OR id LIKE '%:%';  -- ids T12 refuses
+     SELECT id FROM "Location" WHERE id = 'local';  -- must return no rows (E.4 review)
      ```
      A non-zero first count means some existing carts (made by the old fallback, see Facts)
      would be refused on re-import. If so, stop and plan a data fix with the owner; do not
@@ -733,11 +773,14 @@ Existing specs:
   safe; the message is then `importErrorForbidden` or `…AfterClear`.
 - **Carts stored by the old fallback** may have an id whose prefix is not their location. The
   runbook counts them (E.7); no data fix is planned until the count is known.
-- **Retry of a failed `clear` import clears again** (found in E.4, from before H4, not fixed).
-  `importCloudData` on a resumed `clear` session sends `clearAllData` again, then skips every
-  batch the first attempt recorded as sent. So the rows of those batches are deleted and not
-  written again. Before H4 this needed a failure after the clear; since E.4 the check runs
-  first, so it needs a failure in a bulk batch (a network error, or a race).
+- **A failed post-login copy can make a second "New location".** The copy passes
+  `{ target }` to `importCloudData`, not a session. If it fails after `createLocation`, the
+  next try asks again and can create another location. `ImportCard` keeps the created id on
+  its session and does not have this problem.
+- **The empty "Home" delete (decision 6) can race another device.** It is decided from what
+  this import sent. If another device puts a row into the fresh Home between the import's
+  last batch and the delete, the delete removes that row with the location (the foreign
+  keys cascade). The window is one request long.
 
 ## What this plan got wrong
 
@@ -775,7 +818,10 @@ Filled in from the task reports and reviews.
 | E.4 | O6: "Created with the existing `createLocation` mutation before the import starts" | Created before the CHECK, a refused file would leave a new empty location behind, and "Nothing was imported" would not be true. Built: after the check, before the first write |
 | E.4 | Step 3: the dialog is shown for a `'local'` row or no `locations` key | Also needed for a file with no `itemStocks` key (its inline stock goes into the picked location) and for a log with no `locationId` (the E.3 row above). `needsImportLocation` covers all four |
 | E.4 | Step 5: the E2E auto-import path "needs a way to pick the location" | It does not. The auto-import now stops at the dialog, which a spec can answer in the page like a person. A key that skips the dialog would test a path no user takes |
-| E.4 | Step 2.4: `clear` → `placeDefaultLocation` onto the new "Home" | True for a local file. For a CLOUD backup restored with `clear`, the file has no `'local'`, so every location keeps its id and the new "Home" stays as an extra, empty location. Before E.4 the file's first location was mapped onto it. This follows rule 1; it is visible to a user |
+| E.4 | Step 2.4: `clear` → `placeDefaultLocation` onto the new "Home" | True for a local file. For a CLOUD backup restored with `clear`, the file has no `'local'`, so every location keeps its id and the new "Home" stays as an extra, empty location. Before E.4 the file's first location was mapped onto it. The owner chose to delete that empty Home after the import (decision 6, choice A); built in the review fixes |
+| E.4 review | The first E.4 version's `omitLocationIds` | It left `'local'` out of `locations` and `locationRefs`, but still sent cart ids such as `local:vendor_1` in `carts`. Fixed: a cart id with an omitted prefix is not sent |
+| E.4 review | My E.4 report: the clear-retry data loss is a known gap, "not fixed" | The owner wanted it fixed in H4. An existing test ("does not re-send the locations and stock already sent", on `clear`) pinned the bug as the expected behaviour; it now runs on `replace` |
+| E.4 review | My E.4 mutation list | No test covered the row drop on the `clear` path: the reviewer replaced it with the bare placed payload and 216 of 216 tests stayed green. Now tested |
 
 ## Status
 
