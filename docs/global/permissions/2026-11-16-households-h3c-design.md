@@ -3,7 +3,8 @@
 Brainstorming: [2026-11-16-brainstorming-households-h3c.md](2026-11-16-brainstorming-households-h3c.md).
 Outline: the H3c section of [2026-10-31-households-plan.md](2026-10-31-households-plan.md).
 Branch `feature/households-h3c`, from `develop` at `082e18e3` (after #377).
-Status: designed 2026-11-16, approved section by section by the owner. Not built.
+Status: designed 2026-11-16, approved section by section by the owner. **H3c-1 built 2026-11-16**
+on `feature/households-h3c`, not merged, not deployed (see *Result* at the end). H3c-2 not started.
 
 ## The problem
 
@@ -259,3 +260,77 @@ Merging deploys nothing. H3c goes out at a checkpoint release, with a runbook se
 - Events missed while disconnected are not replayed. The reconnect refetch replaces them.
 - No highlight of changed rows (#378).
 - E2E uses one browser. Two real devices are checked by hand.
+
+## Result (H3c-1, built 2026-11-16)
+
+Plan: [2026-11-16-households-plan-h3c-1.md](2026-11-16-households-plan-h3c-1.md). Deploy:
+[runbook](../backend/2026-11-16-deploy-runbook-households-h3c-1.md). Branch
+`feature/households-h3c`, not merged into `develop`, not deployed.
+
+### What was built
+
+| Part | Where | Commit |
+|---|---|---|
+| The event bus; the tab id in the context | `apps/server/src/lib/liveEvents.ts`, `Context.clientId` | `61e0dce6` |
+| `Subscription.householdChanged`; `shouldDeliver` | `apps/server/src/schema/live.graphql`, `resolvers/live.resolver.ts` | `03965a46` |
+| One executable schema for HTTP and the socket | `src/schema/executableSchema.ts` | `080a283d` |
+| The WebSocket endpoint, sign-in, the 60-minute close | `lib/wsServer.ts`, `identifyCaller` in `lib/graphqlContext.ts` | `5caa5203`, `49f02743` |
+| `publishChange` from 11 cart mutations; the guard test | `lib/publishChange.ts`, `resolvers/live-publish.guard.test.ts` | `a7f4e3e6`, `7805c636` |
+| Tab id and socket on both web clients | `apps/web/src/apollo/clientId.ts`, `client.ts`, `liveSocket.ts` | `0ef1937f` |
+| The web runner: batching, refetch, reconnect | `apps/web/src/apollo/liveUpdates.ts`, `LiveUpdatesRunner.tsx` | `7c997335` |
+| E2E: the cloud web server's socket URL; `live-cart.spec.ts` | `e2e/playwright.config.ts`, `e2e/tests/live-cart.spec.ts` | `01467796`, `25facd57` |
+
+### Where it differs from this design
+
+- **Close codes.** The design said "a missing or bad token closes with `4401`" and "a normal
+  close code that `graphql-ws` retries" for the age limit. Built: `4401` for no user, a token
+  Clerk rejects, or no `clientId` (not retried); **`1013`** when the token check fails for
+  another reason, such as Clerk's keys not being reachable (retried, up to 5 times in a row);
+  `1001` for the 60-minute close (retried). The design had no case for "Clerk could not be
+  reached". Without `1013`, a short Clerk outage would have stopped live updates until a
+  reload in every tab that connected during it.
+- **Before each delivery, step 2 (same household) is not a separate check.** A location
+  role counts only while the matching `HouseholdMember` row exists (decision H18), so
+  `requireLocationRole` already refuses a user of another household.
+- **Sign-out does not dispose the socket client.** Under React StrictMode a `dispose()` on
+  unmount would turn off retries for the client that stays. The runner unsubscribes, and
+  the socket closes when its last subscription ends.
+- **After a fatal close** (`4401`, or 5 failed tries), the web subscribes again when the
+  device comes back online or the tab becomes visible. The design did not say what happens
+  then.
+- **Refetch.** `refetchQueries({ include: 'active', onQueryUpdated })` filters by name. A
+  list of names as `include` warns in Apollo 4.1.6 and also includes standby queries.
+- **More mutations change carts than the design listed.** `removeItemFromLocation` deletes
+  cart rows and `createVendor` creates a cart. Both wait for H3c-2 in the guard test, with
+  `deleteItem`, `deleteLocation` and `clearAllData`. The `vendorCart` QUERY creates a missing
+  cart and publishes nothing; the guard test reads only `Mutation` fields, so it cannot see it.
+- **The guard test's `publishesNothing` list is empty.** The design's example,
+  `updateUserDisplayName`, does not exist. Every one of the 62 fields writes data another
+  member sees: 11 publish `CART`, 51 wait for H3c-2.
+- **E2E: an order check instead of a fixed wait.** The "nothing new appears" test waits for a
+  LATER event of the same socket. Events for one subscriber are queued and checked in order,
+  so the earlier, forbidden event would have arrived first. The test also counts socket
+  messages, because a wrongly delivered event only refetches the tab's own cart and changes
+  nothing on screen.
+- **E2E: the socket goes through `page.routeWebSocket`**, which counts events and can refuse
+  new sockets. The reconnect test closes the socket with `window.__p1iLiveUpdates.terminate()`
+  (E2E build only, close code `4499`), not with an E2E server route or `setOffline`.
+
+### Numbers
+
+| Measure | Before (`082e18e3`) | After |
+|---|---|---|
+| `apps/server` tests | 1274 / 52 files | **1412 / 61** |
+| `apps/web` tests | 2543 / 276 files | **2577 / 281** |
+| `cloud` E2E collected | 143 / 30 files | **146 / 31** |
+
+The "before" server and web numbers are those of root `CLAUDE.md` on 2026-11-15; the
+"before" cloud count is the "after" minus the 3 tests of `live-cart.spec.ts`.
+
+### Still owed
+
+- **A real Clerk token on the socket.** No test uses one. The runbook checks it by hand.
+- **Railway passing the WebSocket upgrade.** Never tested. The runbook checks it.
+- **The 60-minute close with a real browser.** Only unit tests with fake timers reach it.
+- **Two people on two devices.** Needs H5.
+- H3c-2: stock, logs, locations and the catalog, and an empty `waitingForH3c2`.

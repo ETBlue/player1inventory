@@ -261,6 +261,36 @@ maybe `apps/server/scripts/check-start.mjs`.
 11. This task changes no visible UI, so no story. If it adds a component that renders nothing,
     a story would prove nothing; say so in the report.
 
+**As built (2026-11-16):** `0ef1937f`, `7c997335`, `01467796`.
+
+- `clientId.ts`: one id per page load. It falls back to `getRandomValues` where
+  `crypto.randomUUID` does not exist (an `http` page that is not `localhost`).
+- Both clients send `x-client-id` on HTTP and `clientId` in `connectionParams`. The E2E
+  client got a `GraphQLWsLink` with `{ e2eUserId, clientId }`, behind the same split.
+  `liveSocket.ts` records which `graphql-ws` client belongs to which Apollo client, so the
+  runner can hear `connected`.
+- Refetch: `client.refetchQueries({ include: 'active', onQueryUpdated })`, where
+  `onQueryUpdated` keeps only the queries named in `QUERIES_BY_KIND`. Step 5's
+  `include: queriesFor(kinds)` was not used: a list of names warns in Apollo 4.1.6 for a name
+  with no mounted query, and it also includes standby queries. A kind this bundle does not
+  know refetches every active query.
+- The 300 ms window is fixed: it starts at the first event and does not restart, so a steady
+  stream of events still refetches every 300 ms.
+- Reconnect: every `connected` after the first refetches all active queries once.
+- After a fatal close (`4401`, or `graphql-ws` gave up after 5 tries) the runner subscribes
+  again on the next `online` event or when the tab becomes visible. Never on a timer.
+- Step 7, sign-out: the runner unsubscribes when `userId` goes to null, and the socket client
+  is lazy, so it closes the socket when the last subscription ends. **No `dispose()`**:
+  under React StrictMode an unmount/remount would dispose the client that stays, and turn
+  off its retries.
+- `LiveUpdatesRunner` runs in cloud mode with a signed-in user, inside `ApolloWrapper` and
+  inside the E2E provider in `main.tsx`. It renders nothing, so it has no story.
+- The E2E build only: `window.__p1iLiveUpdates` (`connects`, `terminate`).
+- `e2e/playwright.config.ts`: the cloud web server gets
+  `VITE_GRAPHQL_WS_URL=ws://localhost:4001/graphql` (`CLOUD_GRAPHQL_WS_URL`).
+- Production without `VITE_GRAPHQL_WS_URL`: the socket goes to `ws://localhost:4000`, which
+  fails; the app works as before with no live updates. The runbook sets it.
+
 ## Task C.6 — E2E: live cart updates against real Postgres
 
 **Files:** `e2e/tests/live-cart.spec.ts` (new); add it to the `cloud` project's `testMatch`
@@ -283,6 +313,34 @@ and to the `local` project's `testIgnore`.
    ignore reconnects → test 3 goes red.
 6. Run the spec alone first, then the whole `cloud` project.
 
+**As built (2026-11-16):** `25facd57`.
+
+- `e2e/tests/live-cart.spec.ts`, 3 tests, cloud only (in the `local` project's
+  `testIgnore`). Cloud spec names 30 → 31 of 35 files.
+- The socket goes through `page.routeWebSocket`. Every message passes unchanged; the route
+  counts `householdChanged` messages by location id and can refuse new sockets with `1013`.
+- Test 1: a member's `addToCart` through `makeGql` shows on the open cart page, with no
+  reload and no navigation.
+- Test 2: **no fixed wait.** A stranger in another household changes their own cart, then a
+  member changes Home's cart. The test waits for the member's event. Events for one
+  subscriber are queued and checked in order, so the stranger's event would have arrived
+  first. Then it checks 0 events for the stranger's location. It counts socket messages,
+  because a wrongly delivered event only refetches the tab's own cart and changes nothing on
+  screen.
+- Test 3: new sockets are refused, `window.__p1iLiveUpdates.terminate()` closes the current
+  one, a member adds an item, sockets are allowed again, and the reconnect refetch shows the
+  item. `terminate()` closes the socket at a known moment (close code `4499`), and
+  `graphql-ws` retries it. Not `setOffline`: when the browser then closes an open socket is up
+  to the browser, and the app's own offline handling (the offline banner) would run too.
+- **The warm-up.** A `connects >= 1` socket can still miss an event published before its
+  `subscribe` is handled. So the warm-up changes a cart row with `updateCartItem` until an
+  event arrives, then waits for the `CartItems` refetch that event started. Without that
+  last wait, test 1 passed with `publishChange` removed from `addToCart`: the warm-up's own
+  refetch was still in flight and showed the item.
+- Proved by mutation: `publishChange` removed from `addToCart` → test 1 red; the runner
+  ignoring reconnects → test 3 red; `shouldDeliver` skipping the role check → test 2 red.
+- Cloud project: 139 passed / 7 skipped in 26.2 min (load 2 to 3).
+
 ## Task C.7 — docs, runbook and the final gate
 
 1. Deploy runbook: a new `docs/global/backend/2026-11-16-deploy-runbook-households-h3c-1.md`,
@@ -297,6 +355,38 @@ and to the `local` project's `testIgnore`.
    `docs/INDEX.md`; the households plan's H3 table.
 4. The full gate, then `pnpm test:e2e:all`.
 
+**As built (2026-11-16):** this task wrote
+[the H3c-1 deploy runbook](../backend/2026-11-16-deploy-runbook-households-h3c-1.md) as its
+own file, not as a section in the H3b runbook. H3c-1 has no migration and no rehearsal; its
+risks are a Cloudflare build variable and Railway's WebSocket upgrade. A section in the H3b
+file would mix those into H3b's rehearsal record, and if H3c-1 misses the checkpoint the H3a
+and H3b files must still work alone. Root `CLAUDE.md` gained *Live updates (cloud)*; the
+design gained *Result*.
+
+## What this plan got wrong
+
+Collected from the task reports and reviews, C.1 to C.6.
+
+| Task | The plan said | What was true |
+|---|---|---|
+| C.1 (P1) | the bus is an `EventEmitter` | `EventEmitter.emit` stops at the first listener that throws. The bus is a `Set` of listeners, each called in its own `try` |
+| C.2 | a fresh `requestCache` per event, so a removed role is seen | nothing caches a role across events today, so the fresh cache only protects against a FUTURE cache |
+| C.2 (design step 2) | check the household, then the role | a location role counts only while the `HouseholdMember` row exists (H18), so the role check already covers the household |
+| C.3 | refuse with `return false` / close `4401` | `return false` makes `graphql-ws` close with `4403`, which the client retries. The server closes with `4401` itself first |
+| C.3 | a bad token → `4401` | a thrown token check is not always a bad token. Without `CLERK_JWT_KEY` Clerk's keys are fetched over the network. Fix `49f02743`: `1013` (retried) for anything that is not a known "token is bad" reason |
+| C.4 (P5) | the cart mutations are the eleven listed | `removeItemFromLocation` also deletes cart rows and `createVendor` creates a cart. Both wait for H3c-2. The `vendorCart` QUERY creates a cart and publishes nothing, and the guard test cannot see queries |
+| C.4 | `publishesNothing` gets entries such as a display-name mutation | no such mutation exists; the list is empty |
+| C.4 | the event's location for an imported cart item | the first version took it from the cart id. A bare pre-3b cart id lives at the fallback location, which its id does not name. Fixed in `a7f4e3e6`: it reads the `Cart.locationId` column |
+| C.5 step 5 | `refetchQueries({ include: queriesFor(kinds) })` | a list of names warns in Apollo 4.1.6 and includes standby queries. Built with `include: 'active'` plus `onQueryUpdated` |
+| C.5 step 7 | dispose the `graphql-ws` client on sign-out | under StrictMode that turns off retries for the client that stays. The runner unsubscribes and the lazy socket closes itself |
+| C.5 | (not covered) what happens after a fatal close | the runner subscribes again on `online` or when the tab becomes visible |
+| C.6 step 3 | a fixed wait for test 2 | an order check: wait for a later event of the same socket. No fixed wait in the file |
+| C.6 step 4 | an E2E server route or `setOffline` to close the socket | `page.routeWebSocket` to refuse new sockets, plus `window.__p1iLiveUpdates.terminate()` |
+| C.6 | (not covered) the warm-up's own refetch | without waiting for it, test 1 passed with `publishChange` removed. The warm-up now waits for its `CartItems` refetch |
+
 ## Status
 
-Not started.
+**Done, 2026-11-16.** All seven tasks built on `feature/households-h3c`. Not merged into
+`develop`, not deployed. It deploys with H3a and H3b at the next checkpoint release; see the
+[runbook](../backend/2026-11-16-deploy-runbook-households-h3c-1.md). The final gate and
+`pnpm test:e2e:all` results are in the C.7 task report and the PR.
