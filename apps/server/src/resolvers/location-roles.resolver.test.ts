@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApolloServer } from '@apollo/server'
 import { typeDefs } from '../schema/index.js'
 import { resolvers } from '../resolvers/index.js'
+import { locationResolvers } from './location.resolver.js'
 import type { Context } from '../context.js'
 import type { HouseholdWorld } from '../test/householdWorld.js'
 import type { FakeLocation } from '../test/stockFake.js'
@@ -283,5 +284,36 @@ describe('the role cache inside one request', () => {
     // Then the imported location shows the owner as its organizer
     expect(res.errors).toBeUndefined()
     expect(res.data?.b).toEqual([{ id: 'loc-new', myRole: 'organizer', hasOrganizer: true }])
+  })
+})
+
+// `householdIdOf` (location.resolver.ts) reads the household from the parent
+// row. Every path that returns a `Location` today builds it with `toGraphQL`,
+// which spreads the Prisma row, so the column is there and no GraphQL query
+// can reach the fallback. These tests call the field resolvers directly with
+// a parent that has NO `householdId`, as a future path might return, to pin
+// that the fallback reads the row instead of giving a wrong answer.
+describe('Location fields on a parent row with no householdId', () => {
+  const ctx = (): Context => ({ userId: 'manager', requestCache: { householdId: Promise.resolve('hh-1') } })
+  const bare = (id: string) => ({ id, name: `${id} name`, order: 0, createdAt: '', updatedAt: '' })
+  const fields = locationResolvers.Location as unknown as Record<
+    'myRole' | 'hasOrganizer',
+    (parent: unknown, args: unknown, ctx: Context) => Promise<unknown>
+  >
+
+  it("location viewer gets their role on a location read again from its row", async () => {
+    // Given a parent with no householdId; the manager is viewer of loc-k and
+    // has no role on loc-g
+    // When myRole and hasOrganizer are resolved
+    // Then the household is read from the row: viewer on loc-k, none on loc-g
+    expect(await fields.myRole(bare('loc-k'), {}, ctx())).toBe('viewer')
+    expect(await fields.hasOrganizer(bare('loc-k'), {}, ctx())).toBe(true)
+    expect(await fields.myRole(bare('loc-g'), {}, ctx())).toBeNull()
+    expect(await fields.hasOrganizer(bare('loc-g'), {}, ctx())).toBe(false)
+  })
+
+  it('a location id that has no row gives no role and no organizer', async () => {
+    expect(await fields.myRole(bare('loc-gone'), {}, ctx())).toBeNull()
+    expect(await fields.hasOrganizer(bare('loc-gone'), {}, ctx())).toBe(false)
   })
 })

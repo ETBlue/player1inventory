@@ -67,7 +67,9 @@ async function visibleLocations(ctx: Context): Promise<Location[]> {
  * a `Location` builds it with `toGraphQL`, which spreads the Prisma row, so
  * `householdId` is there. The GraphQL type does not declare it, so it is read
  * here with a check. If a future path returns a `Location` without it, the
- * row is read again rather than giving a wrong `myRole`.
+ * row is read again rather than giving a wrong `myRole`. No GraphQL query
+ * reaches that fallback today, so `location-roles.resolver.test.ts` calls the
+ * field resolvers directly with a parent that has no `householdId`.
  */
 async function householdIdOf(parent: Location): Promise<string | null> {
   const known = (parent as unknown as { householdId?: unknown }).householdId
