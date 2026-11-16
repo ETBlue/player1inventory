@@ -798,6 +798,15 @@ describe('stockFake itemStock.findMany orderBy', () => {
       }),
     ).rejects.toThrow(/orderBy 'updatedAt'/)
   })
+
+  // `importCheck` (households H4 task E.2) reads many stock ids in one call.
+  it('filters by id as a string or as { in }', async () => {
+    const fake = fakeWithRows()
+    const many = await fake.client.itemStock.findMany({ where: { id: { in: ['s-1', 's-3', 's-9'] } } })
+    expect(many.map((r) => r.id)).toEqual(['s-3', 's-1'])
+    const one = await fake.client.itemStock.findMany({ where: { id: 's-2' } })
+    expect(one.map((r) => r.id)).toEqual(['s-2'])
+  })
 })
 
 // Every read and write returns a COPY, never the stored row (since

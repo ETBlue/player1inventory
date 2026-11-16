@@ -135,7 +135,9 @@ const LOCATION_WHERE: WhereSpec = {
   householdId: 'equals',
 }
 const STOCK_WHERE: WhereSpec = {
-  id: 'equals',
+  // A string, or `{ in: [...] }` since households H4 task E.2: `importCheck`
+  // reads the stored location of many stock ids in one call.
+  id: 'in',
   itemId: 'equals',
   // A string, or `{ in: [...] }`. The whole-account stock reads
   // (`itemStocksForItem`, `allItemStocks`, `ensureStockAtLocation`'s source
@@ -286,7 +288,10 @@ function matchesLocation(row: FakeLocation, where: Where): boolean {
 }
 
 function matchesStock(row: FakeStock, where: Where, locations: FakeLocation[]): boolean {
-  if (where.id !== undefined && row.id !== where.id) return false
+  if (where.id !== undefined) {
+    const ids = typeof where.id === 'string' ? [where.id] : (where.id as { in: string[] }).in
+    if (!ids.includes(row.id)) return false
+  }
   if (where.itemId !== undefined && row.itemId !== where.itemId) return false
   if (where.locationId !== undefined) {
     // A string, or `{ in: [...] }`. `checkStockWhere` refused every other shape.
