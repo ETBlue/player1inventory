@@ -287,11 +287,11 @@ all-or-nothing).
    prefix lookup for carts → the cart-prefix test goes red; ask `manager` when `forClear` is
    true → the clear test goes red.
 
-**As built (2026-11-16, with the review fixes the same day).**
+**As built (2026-11-16, with two rounds of review fixes the same day).**
 
 - Server: `apps/server/src/resolvers/importCheck.resolver.ts` (wired in `resolvers/index.ts`),
   the schema in `apps/server/src/schema/import.graphql`, tests in
-  `import-check.resolver.test.ts` (44 tests). Web: the `ImportCheck` document in
+  `import-check.resolver.test.ts` (54 tests). Web: the `ImportCheck` document in
   `apps/web/src/apollo/operations/import.graphql`, and `checkImportIds`,
   `IMPORT_CHECK_CHUNK_SIZE`, `ImportIdCheck` and `ImportCheckRowIds` in
   `apps/web/src/lib/importData.ts` (6 tests in `importData.test.ts`). `checkImportIds` is not
@@ -304,6 +304,7 @@ all-or-nothing).
   |---|---|---|
   | `anotherHousehold` | a catalog id, an `itemRefs` id, or a named or stored location is another household's | write nothing |
   | `blockedLocationIds` | locations the file NAMES (rows, references, cart ids) in the target where the caller is below `participant` | drop every row the file puts there |
+  | `renameBlockedLocationIds` | location ROWS of the file that exist in the target where the caller is `participant` but not `organizer` | on `replace`, leave these rows out of `bulkUpsertLocations`; keep the rows at them |
   | `missingLocationIds` | `locationRefs` no location will hold when the import writes | drop every row that points at one |
   | `missingItemIds` | `itemRefs` no item will hold | drop those stock rows |
   | `blockedRows { inventoryLogs itemStocks carts cartItems }` | rows of the file that already exist at a blocked location; a cart stored away from the location its id names | drop exactly those rows |
@@ -324,12 +325,37 @@ all-or-nothing).
   file holds is checked too: in another household it sets `anotherHousehold`; in the target and
   not writable it puts the ROW in `blockedRows`. It is not added to `blockedLocationIds`: the
   file does not name it, and the caller may have no role there, so the web has no name to show.
-- **Carts (decision T6).** The cart table is read only for cart ids whose prefix is a writable
-  location of the target, and not at all with `forClear`. The first version read every cart id
-  before any prefix check. A test spies on `prisma.cart.findMany`, `findUnique` and `findFirst`.
+- **Carts (decision T6).** `cartVerdict` reads the cart table when the cart is WRITTEN: after
+  the file's locations exist, and with `forClear` after the clear. So `importCheck` reads a cart
+  id when its prefix will be writable then:
+
+  | Prefix | Without `forClear` | With `forClear` |
+  |---|---|---|
+  | a writable location of the target | read | read |
+  | another location of the target (viewer, no role) | not read | read |
+  | no location has that id | read | read |
+  | a location of another household | not read | not read |
+
+  A stored cart away from the location its id names is a blocked row when it is stored in the
+  target, and `anotherHousehold` when it is stored outside it. With `forClear` a cart stored in
+  the target is deleted by the clear and ignored, so reading a prefix the caller cannot write
+  today says nothing about that location's carts. "No location has that id" is a database fact,
+  so the web needs to send nothing more for this: the chunk a location row is in does not
+  matter. The first version read every cart id before any prefix check; the second read only
+  writable prefixes and so missed a stored cart whose prefix the file creates (second review).
+  Tests spy on `prisma.cart.findMany`, `findUnique` and `findFirst`.
+- **The carts of the file's existing cart items are read by id**, whatever their location, to
+  find where each cart item is stored. That read is about the cart id stored on the cart item,
+  not an id the file chose, so T6 does not cover it. (The first As built note said "the cart
+  table is read only for writable prefixes", which was not true of this read.)
+- **Location ids `'local'` and ids with `:`** in `locations` get `BAD_USER_INPUT`, as both
+  location imports refuse them since E.3 (decision T12).
 - **`forClear: true`.** `clearAllData` deletes every row and location of the target first. So
-  nothing is blocked, no row is blocked, and an `itemRefs` or `locationRefs` id of the target is
-  MISSING unless the file holds that row too. `anotherHousehold` is still checked.
+  nothing is blocked, no row is blocked, nothing needs `organizer`, and an `itemRefs` or
+  `locationRefs` id of the target is MISSING unless the file holds that row too.
+  `anotherHousehold` is still checked.
+- **What `importCheck` leaves to the web:** a log with no `locationId` (`IMPORT_NEEDS_LOCATION`
+  since E.3). The server check is given ids only, so it cannot see a missing field.
 - **The role check runs before any read and before the size check.** A member's call reads no
   catalog row, and a member who sends 1001 ids gets `FORBIDDEN`, not `BAD_USER_INPUT`. Both are
   tested.
@@ -489,6 +515,11 @@ the API changes); `ConflictDialog.tsx` (an `allowClear` prop, + stories);
       or a blocked row stored at a location the file does not name, there is no name: say how
       many rows were skipped instead. Do not ask the server for those names; the caller may
       have no role there.
+      **Added by the second E.2 review:** on `replace`, leave every location row in
+      `renameBlockedLocationIds` out of the `bulkUpsertLocations` call (it asks `organizer`);
+      send its stock rows, logs and carts as usual. And drop, or refuse with
+      `IMPORT_NEEDS_LOCATION`'s message, every log with no `locationId` before the check: the
+      server refuses such a log for the whole batch since E.3, and `importCheck` cannot see it.
    4. Then the existing flow (`clear` → `clearAllData` → `placeDefaultLocation` onto the new
       "Home" (O2) → `bulkCreate`; `skip` / `replace` as today).
 3. `ImportLocationDialog`: shown when the file has a location with id `'local'`, or has no
@@ -646,6 +677,10 @@ Filled in from the task reports and reviews.
 | E.2 review | My first As built note: "A location id no row holds is neither: the import will create it" | True only for the file's location ROWS. A reference to a free location is refused by `cartVerdict`, `resolveLogLocations` and `requireOwnItemStockRefs` |
 | E.2 review | T6 and step 2: "Cart ids also count their PREFIX location" | My first version read the stored cart for EVERY cart id before checking its prefix, the order T6 forbids, and so told a caller whether a cart id at a location they cannot write is taken. It now reads only cart ids whose prefix is writable in the target |
 | E.2 review | Step 5: "a household `member` → `FORBIDDEN`" | That test passes even when the role check runs after the reads. The reviewer moved it and 31 of 31 stayed green. Added: a member's call reads no item row, and a member with 1001 ids gets `FORBIDDEN` |
+| E.2 second review | My first review fix: "the cart table is read only for cart ids whose prefix is a writable location of the target, and not at all for `forClear`" | Too narrow. `cartVerdict` runs when the cart is written, after the file's locations are created and after `clearAllData`. A stored cart whose prefix is a location the file creates (case A), or with `forClear` a cart stored in household B under a prefix the file creates again (case B), was never read, so the check said clean and the mutation refused later. Now a free prefix is read always, and a target prefix is read with `forClear`. Prefixes of another household, and target locations the caller cannot write (without `forClear`), are still not read |
+| E.2 second review | The As built note: "The cart table is read only for writable prefixes" | Not true: the carts of the file's existing cart items are read by id, whatever their location. The wording now says so |
+| E.2 second review | T1 and T8 cover the location role only as `participant` | On `replace` the web sends every existing location row to `bulkUpsertLocations`, which asks `organizer` (H3a task 3.9). A row where the caller is `participant` refuses the whole batch. Added `renameBlockedLocationIds`; E.4 leaves those rows out of the upsert |
+| E.2 second review | (E.3 decision T12) | Both location imports refuse `'local'` and ids with `:` for the whole batch since E.3. `importCheck` now refuses them too, with `BAD_USER_INPUT` |
 | E.3 | T10: "`BAD_USER_INPUT` (code `IMPORT_NEEDS_LOCATION`)" | Two codes in one place. Built as `extensions.code` `BAD_USER_INPUT` plus `extensions.reason` `IMPORT_NEEDS_LOCATION`. E.4 reads `reason` |
 | E.3 | T16 and E.4 step 1: `placeDefaultLocation` maps the id `'local'` in five fields | A backup made before locations existed has logs with NO `locationId`. `upgradeLegacyPayload` gives its carts a prefix but leaves its logs alone, and `applyLocationRemap` leaves them absent on purpose. Since E.3 the server refuses such a log, so a cloud import of an old backup with logs fails until E.4. E.4 must give every log with no location the location the user picked |
 | E.3 | Steps 1–6 name the stock, log, cart and location helpers, and T13 names "cart items" | No step names `resolveCartItemParents`, which looked a cart up across EVERY household the caller is in. That is the E.1 review note 5 case. Fixed in E.3: the cart must be at a writable location of the target |
