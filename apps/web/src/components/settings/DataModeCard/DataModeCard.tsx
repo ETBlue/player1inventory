@@ -68,9 +68,28 @@ function CloudModeSectionE2E() {
 
 // ─── CloudModeSection ─────────────────────────────────────────────────────────
 
-function CloudModeSection() {
-  const apolloClient = useApolloClient()
+// Clerk's `signOut`, given only where a `ClerkProvider` exists. In E2E test
+// mode there is none (main.tsx), and `useClerk()` throws without one. So the
+// E2E build renders this section with NO `signOut`: the Switch button and its
+// copy flow work, and the Sign Out button and its dialogs are left out.
+//
+// A PRODUCTION CHANGE MADE FOR A TEST (households H4 task E.6). Until then the
+// whole section was left out in E2E mode, so no spec could drive the cloud →
+// local copy. The Switch flow calls nothing from Clerk: it keeps the Clerk
+// session alive on purpose. So only the Sign Out part needed Clerk. Same
+// shape as `PostLoginMigrationDialogWithClerk` / `PostLoginMigrationDialogE2E`
+// (e2e/CLAUDE.md, "PostLoginMigrationDialog mounts in E2E test mode").
+interface CloudModeSectionProps {
+  signOut?: () => Promise<void>
+}
+
+function CloudModeSectionWithClerk() {
   const clerk = useClerk()
+  return <CloudModeSection signOut={() => clerk.signOut()} />
+}
+
+function CloudModeSection({ signOut }: CloudModeSectionProps) {
+  const apolloClient = useApolloClient()
   const { t } = useTranslation()
   // This section only renders in cloud mode, so this is the CLOUD active
   // location.
@@ -142,7 +161,7 @@ function CloudModeSection() {
     // Remove the cached cloud data before signing out. On a shared device the
     // next person must not be able to see this account's pantry.
     await clearCache()
-    await clerk.signOut()
+    await signOut?.()
     if (switchToOffline) {
       localStorage.setItem('data-mode', 'local')
       window.location.reload()
@@ -155,12 +174,14 @@ function CloudModeSection() {
       <Button variant="neutral-outline" onClick={() => setSwitchFlow('copy')}>
         {t('settings.dataMode.cloud.switchButton')}
       </Button>
-      <Button
-        variant="neutral-outline"
-        onClick={() => setSignOutFlow('askOffline')}
-      >
-        {t('settings.dataMode.cloud.signOutButton')}
-      </Button>
+      {signOut && (
+        <Button
+          variant="neutral-outline"
+          onClick={() => setSignOutFlow('askOffline')}
+        >
+          {t('settings.dataMode.cloud.signOutButton')}
+        </Button>
+      )}
 
       {/* ── Switch flow dialogs ─────────────────────────────────────────── */}
 
@@ -356,12 +377,15 @@ export function DataModeCard({ compact = false }: DataModeCardProps) {
               {t('settings.dataMode.local.enableButton')}
             </Button>
           )}
-          {/* CloudModeSection calls useClerk(); in E2E test mode there is no
-              ClerkProvider (see main.tsx), so guard it like the header above and
-              the cloud guards in __root.tsx / settings/index.tsx. */}
-          {mode === 'cloud' && !import.meta.env.VITE_E2E_TEST_USER_ID && (
-            <CloudModeSection />
-          )}
+          {/* Sign Out calls useClerk(); in E2E test mode there is no
+              ClerkProvider (see main.tsx), so the E2E build gets the section
+              without it: Switch only. */}
+          {mode === 'cloud' &&
+            (import.meta.env.VITE_E2E_TEST_USER_ID ? (
+              <CloudModeSection />
+            ) : (
+              <CloudModeSectionWithClerk />
+            ))}
         </CardContent>
       </Card>
 

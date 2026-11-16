@@ -1,3 +1,4 @@
+import { useClerk } from '@clerk/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
@@ -239,6 +240,32 @@ describe('DataModeCard', () => {
 
     // Then "Sign Out" button is shown
     expect(screen.getByRole('button', { name: 'Sign Out' })).toBeInTheDocument()
+  })
+
+  // A PRODUCTION CHANGE MADE FOR A TEST (households H4 task E.6). The E2E
+  // build has no `ClerkProvider`, so `useClerk()` throws there. The cloud
+  // section used to be left out whole in E2E mode, and no spec could drive
+  // the cloud → local copy. Now only Sign Out, which needs Clerk, is left out.
+  it('shows Switch and no Sign Out in cloud mode in the E2E build, without calling Clerk', () => {
+    // Given cloud mode in the E2E build, where `useClerk()` would throw
+    localStorage.setItem('data-mode', 'cloud')
+    vi.stubEnv('VITE_E2E_TEST_USER_ID', 'e2e-test-user')
+    vi.mocked(useClerk).mockClear()
+    try {
+      // When DataModeCard is rendered
+      renderCard()
+
+      // Then "Switch..." is shown, "Sign Out" is not, and Clerk was not asked
+      expect(
+        screen.getByRole('button', { name: 'Switch...' }),
+      ).toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: 'Sign Out' }),
+      ).not.toBeInTheDocument()
+      expect(useClerk).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   it('shows sign out offline dialog when user clicks Sign Out', async () => {
