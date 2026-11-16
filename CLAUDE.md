@@ -123,7 +123,7 @@ that really set up that role.
 > | `requireHouseholdRole(ctx, householdId, role)` | refuses with `FORBIDDEN` unless the caller's household role is `role` or stronger |
 > | `requireCatalogRole(ctx, role)` | both of the above; returns the household id. Catalog reads ask `member`, writes `manager` |
 > | `requireLocationRole(ctx, locationId, role)` | refuses unless the caller has `role` or stronger on that location. A location role counts only while the matching `HouseholdMember` row exists (decision H18) |
-> | `locationIdsWithRole(ctx, role?, { householdId }?)` | every location the caller has a counted role on, optionally only in one household (since H4 task E.1). Use it for a read across locations; never write a new membership query |
+> | `locationIdsWithRole(ctx, role?, { householdId }?)` | every location the caller has a counted role on, optionally only in one household (since H4 task E.1). Use it for a read across locations; never write a new membership query. The five reads behind an export (`locations`, `inventoryLogs`, `allCarts`, `allCartItems`, `allItemStocks`) pass `{ householdId: await requireHousehold(ctx) }` since H4 task E.5, so they give one household only |
 > | `requireLocationInHousehold(ctx, locationId, householdId)` | the location is in that household (one scoped read, `FORBIDDEN` otherwise). Since H4 task E.1. A person in two households holds roles in both, so `requireLocationRole` alone cannot say which household a location is in |
 > | `requireLocationItems(ctx, locationId, itemIds)` | every item is in the location's household. Call it AFTER `requireLocationRole` |
 > | `requireCatalogIds(ctx, householdId, model, ids)` | every id a write attaches is in the household (#273) |

@@ -686,6 +686,52 @@ the API changes); `ConflictDialog.tsx` (an `allowClear` prop, + stories);
 5. Local mode: run the local import tests unchanged. Nothing in `apps/web/src/db/` changes
    (H3a rule 11).
 
+**As built (2026-11-16).**
+
+- **Server, the five reads.** `locations` (through `visibleLocations`), `inventoryLogs`,
+  `allCarts`, `allCartItems` and `allItemStocks` call
+  `locationIdsWithRole(ctx, 'viewer', { householdId: await requireHousehold(ctx) })`. Any role
+  still counts: an export is a read. The schema doc strings say "one household" now ("every
+  log the caller owns" and "whole-account" were wrong since H3a). No schema field changed, so
+  no web document changed.
+- **What else reads them.** These five are not only the export. `allCarts` feeds the shopping
+  page, `locations` is the switcher and the return of `reorderLocations`, and
+  `inventoryLogs` / `allItemStocks` / `allCarts` / `allCartItems` are read by `importData.ts`
+  to find conflicts. All of them now see one household, which is what the design asks.
+  Nobody can be in two households before H5, so no user sees a change yet.
+- **Four of the five now call `requireHousehold`** (`locations` already did). So a brand-new
+  person whose first request is one of them gets their household and "Home" there (first
+  sign-in). One existing test changed for this: `itemStock.resolver.test.ts`, "user with no
+  locations reads an empty list", now seeds the `User` row that `ensureUser` writes before any
+  resolver runs in the real server. Without it the read failed with
+  `ensureHousehold: no User row for this user`.
+- **New test file** `apps/server/src/resolvers/export-scope.resolver.test.ts`, 10 tests (2 per
+  read). ALICE is owner of hh_a and manager of hh_b. Locations: `loc_a` (hh_a, organizer),
+  `loc_a_view` (hh_a, viewer), `loc_a_none` (hh_a, no role), `loc_b` (hh_b, organizer). Each
+  location holds one stock row, log, cart and cart item. Target hh_a gives `loc_a` and
+  `loc_a_view` only; target hh_b gives `loc_b` only.
+- **Web.** `importLocalData(payload, strategy, { activeLocationId, homeLocationId })`
+  (`ImportLocalOptions`). `homeLocationId` is used only when the payload holds a location row
+  with that id; otherwise the old rule (`findPayloadDefaultLocationId`, decision O4).
+  `buildLocationRemap` got a fourth parameter, `payloadDefaultLocationId`, which defaults to
+  the old rule. `DataModeCard`'s `doSwitch` and `doSignOut` pass
+  `homeLocationId: useActiveLocation().activeLocationId` (the cloud id: that section renders
+  only in cloud mode) and still pass the LOCAL active location as `activeLocationId`.
+  `ImportCard` passes `{ activeLocationId }` and no `homeLocationId` (O4).
+- **The stale comment** at `DataModeCard.tsx` (a cloud export "still carries stock inline")
+  is rewritten, not deleted: it now says which id goes where and why, and that the old claim
+  stopped being true in PR 4b. Two comments in `importData.ts` that said "Task E.5 changes
+  that side" are updated.
+- **Web tests.** 3 in `importData.test.ts` (the copy: Home order 0, Garage order 1, home
+  Garage → every Garage row on `'local'` in all five fields, Home keeps its id, no third
+  location; a file with no home keeps O4; a home id the payload does not hold falls back to
+  O4). 2 in `DataModeCard/index.test.tsx`: the switch runs the REAL `importLocalData` and
+  reads Dexie back; the sign-out checks the argument. The 3 existing `DataModeCard` tests now
+  read `activeLocationId` from the options object.
+- **Nothing in `apps/web/src/db/` changed.**
+- **Tests:** server 1755 / 66 → **1765 / 67**; web 2659 / 283 → **2664 / 283**; `scripts/spec`
+  70, unchanged. Measured with root `pnpm test` before and after, Node 22.17.1.
+
 ## Task E.6 — E2E
 
 **Files:** a new `e2e/tests/settings/import-households.spec.ts` (cloud only: in `cloud`
@@ -822,6 +868,11 @@ Filled in from the task reports and reviews.
 | E.4 review | The first E.4 version's `omitLocationIds` | It left `'local'` out of `locations` and `locationRefs`, but still sent cart ids such as `local:vendor_1` in `carts`. Fixed: a cart id with an omitted prefix is not sent |
 | E.4 review | My E.4 report: the clear-retry data loss is a known gap, "not fixed" | The owner wanted it fixed in H4. An existing test ("does not re-send the locations and stock already sent", on `clear`) pinned the bug as the expected behaviour; it now runs on `replace` |
 | E.4 review | My E.4 mutation list | No test covered the row drop on the `clear` path: the reviewer replaced it with the bare placed payload and 216 of 216 tests stayed green. Now tested |
+| E.5 | T15 and the task title: "the five reads behind the export" | They are not only the export. `allCarts` is the shopping page's read, `locations` is the switcher and `reorderLocations`' return, and four of them are `importData.ts`'s conflict reads. All now give one household. That is right by the design, but it is wider than "export" |
+| E.5 | T15 shows the call with `await requireHousehold(ctx)` and says nothing more | Four of the five did not call `requireHousehold` before. Now they can run first sign-in, and a test whose caller had no `User` row failed with `ensureHousehold: no User row for this user` (`itemStock.resolver.test.ts`, fixed by seeding the row) |
+| E.5 | Step 2: "Delete the stale comment at `DataModeCard.tsx:78–88`" | Rewritten instead. The copy still passes the local active location as `activeLocationId`, for a payload with no `itemStocks` key, so the code needs a comment that says why |
+| E.5 | Step 2 does not say what happens when `homeLocationId` names no location of the payload | Built: the old rule (O4) applies. Without that, the rows of no location move and `ensureDefaultLocationRow` adds an empty "My Home" beside them. Tested, and the guard proved by mutation |
+| E.5 | E.6 item 7: "`import-export-local.spec.ts`: the cloud → local copy puts the active location into My Home" | That spec runs in the `local` project only and imports a backup FILE, which keeps O4. The copy runs from `DataModeCard` in CLOUD mode, and no E2E spec drives it today (`data-mode-migration.spec.ts` covers local → cloud only). E.6 needs a new cloud test, not a change to that spec |
 
 ## Status
 
