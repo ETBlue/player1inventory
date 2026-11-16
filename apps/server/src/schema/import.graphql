@@ -178,3 +178,42 @@ extend type Mutation {
   # transaction (households H3a task 3.10, decision H17).
   clearAllData: Boolean!
 }
+
+# The ids of an import file, per model, for `importCheck` (households H4 task
+# E.2, decision T1). Every list is optional. At most 1000 ids in one call, all
+# lists together (decision T3); the web sends more in several calls.
+#
+# `locations` holds every location id the file names: its location rows, and
+# the `locationId` of its stock rows and logs. The server adds the location
+# each cart id names (`${locationId}:...`) by itself.
+input ImportCheckInput {
+  items: [ID!]
+  tags: [ID!]
+  tagTypes: [ID!]
+  vendors: [ID!]
+  recipes: [ID!]
+  shelves: [ID!]
+  locations: [ID!]
+  inventoryLogs: [ID!]
+  carts: [ID!]
+  cartItems: [ID!]
+  itemStocks: [ID!]
+}
+
+type ImportCheck {
+  # True when at least one id is a row of another household, or a location of
+  # another household. The web then writes nothing.
+  anotherHousehold: Boolean!
+  # Locations of the target household where the caller is below
+  # `participant`. The web leaves out these locations and every row at them.
+  # Always empty when `forClear` is true: `clearAllData` deletes them first.
+  blockedLocationIds: [ID!]!
+}
+
+extend type Query {
+  # Read-only. Runs before the first write of an import (households H4 task
+  # E.2). Household role `manager` or higher; `owner` when `forClear` is true,
+  # the same role `clearAllData` asks. It is a help for the web, not a check
+  # the server trusts: every bulk mutation keeps its own guards (decision T2).
+  importCheck(ids: ImportCheckInput!, forClear: Boolean): ImportCheck!
+}

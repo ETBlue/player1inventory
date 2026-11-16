@@ -251,3 +251,13 @@ mutation BulkUpsertItemStocks($itemStocks: [ItemStockImportInput!]!) {
 mutation ClearAllData {
   clearAllData
 }
+
+# Asked before the first write of a cloud import (households H4 task E.2).
+# `checkImportIds` in lib/importData.ts sends the file's ids in chunks of at
+# most 1000.
+query ImportCheck($ids: ImportCheckInput!, $forClear: Boolean) {
+  importCheck(ids: $ids, forClear: $forClear) {
+    anotherHousehold
+    blockedLocationIds
+  }
+}

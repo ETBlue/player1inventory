@@ -9,6 +9,7 @@ import {
   applyLocationRemap,
   buildLocationRemap,
   type ConflictSummary,
+  checkImportIds,
   detectConflicts,
   type ExistingData,
   hasConflicts,
@@ -4767,5 +4768,160 @@ describe('importCloudData — one cart pair never spans two batches (H3b task B.
         .filter((ci) => ci.itemId === 'milk')
         .map((ci) => ci.id),
     ).toEqual(['ci-milk-a', 'ci-milk-b'])
+  })
+})
+
+// ─── checkImportIds (households H4 task E.2) ────────────────────────────────
+//
+// The web half of the `importCheck` query. It sends the file's ids in calls of
+// at most 1000 ids and joins the answers. Not called by the import flow yet;
+// task E.4 wires it in.
+describe('checkImportIds', () => {
+  type CheckIds = Record<string, string[] | undefined>
+  type Answer = { anotherHousehold: boolean; blockedLocationIds: string[] }
+
+  // A client whose `importCheck` answers with `answerFor(ids)`, and that
+  // records the variables of every call.
+  function makeCheckClient(
+    answerFor: (ids: CheckIds) => Answer = () => ({
+      anotherHousehold: false,
+      blockedLocationIds: [],
+    }),
+  ) {
+    const query = vi.fn(
+      ({
+        variables,
+      }: {
+        query: unknown
+        variables: { ids: CheckIds; forClear?: boolean }
+      }) =>
+        Promise.resolve({ data: { importCheck: answerFor(variables.ids) } }),
+    )
+    return { query }
+  }
+
+  function sentIds(client: ReturnType<typeof makeCheckClient>) {
+    return client.query.mock.calls.map((call) => rowAt(call).variables.ids)
+  }
+
+  it('sends every id of the file, by model, and the locations its rows name', async () => {
+    // Given a file with one row of each model. The stock row and the log name
+    // a location that has no row in the file.
+    const payload = emptyPayload({
+      items: [makeItem('item-1', 'Milk')],
+      tags: [{ id: 'tag-1' }],
+      tagTypes: [{ id: 'type-1' }],
+      vendors: [{ id: 'vendor-1' }],
+      recipes: [{ id: 'recipe-1' }],
+      shelves: [{ id: 'shelf-1' }],
+      locations: [{ id: 'loc-1' }],
+      itemStocks: [
+        { id: 'stock-1', itemId: 'item-1', locationId: 'loc-1' },
+        { id: 'stock-2', itemId: 'item-1', locationId: 'loc-2' },
+      ],
+      inventoryLogs: [{ id: 'log-1', itemId: 'item-1', locationId: 'loc-3' }],
+      shoppingCarts: [{ id: 'loc-1:vendor-1' }],
+      cartItems: [{ id: 'ci-1', cartId: 'loc-1:vendor-1', itemId: 'item-1' }],
+    })
+    const client = makeCheckClient()
+
+    // When the ids are checked
+    await checkImportIds(client as never, payload, { forClear: true })
+
+    // Then one call carries every id, each location once
+    expect(client.query).toHaveBeenCalledTimes(1)
+    const call = rowAt(client.query.mock.calls)
+    expect(opNameOf(rowAt(call).query)).toBe('ImportCheck')
+    expect(rowAt(call).variables).toEqual({
+      forClear: true,
+      ids: {
+        items: ['item-1'],
+        tags: ['tag-1'],
+        tagTypes: ['type-1'],
+        vendors: ['vendor-1'],
+        recipes: ['recipe-1'],
+        shelves: ['shelf-1'],
+        locations: ['loc-1', 'loc-2', 'loc-3'],
+        itemStocks: ['stock-1', 'stock-2'],
+        inventoryLogs: ['log-1'],
+        carts: ['loc-1:vendor-1'],
+        cartItems: ['ci-1'],
+      },
+    })
+  })
+
+  it('sends forClear: false when it is not given', async () => {
+    const client = makeCheckClient()
+    await checkImportIds(
+      client as never,
+      emptyPayload({ items: [makeItem('a', 'A')] }),
+    )
+    expect(rowAt(rowAt(client.query.mock.calls)).variables.forClear).toBe(false)
+  })
+
+  it('asks once for an empty file, so the role check still runs', async () => {
+    const client = makeCheckClient()
+    const result = await checkImportIds(client as never, emptyPayload())
+    expect(client.query).toHaveBeenCalledTimes(1)
+    expect(result).toEqual({ anotherHousehold: false, blockedLocationIds: [] })
+  })
+
+  it('sends at most 1000 ids per call, sends every id once, and joins the answers', async () => {
+    // Given 1500 items and 1000 tags: 2500 ids, so three calls
+    const items = Array.from({ length: 1500 }, (_, i) =>
+      makeItem(`item-${i}`, `n${i}`),
+    )
+    const tags = Array.from({ length: 1000 }, (_, i) => ({ id: `tag-${i}` }))
+    // And only the MIDDLE call (it holds `item-1200`) reports another
+    // household, so "the last answer wins" gives a different result. Two
+    // calls report blocked locations, one location twice.
+    const client = makeCheckClient((ids) => ({
+      anotherHousehold: (ids.items ?? []).includes('item-1200'),
+      blockedLocationIds: (ids.items ?? []).includes('item-0')
+        ? ['loc-z', 'loc-b']
+        : (ids.tags ?? []).length > 0
+          ? ['loc-b', 'loc-a']
+          : [],
+    }))
+
+    const result = await checkImportIds(
+      client as never,
+      emptyPayload({ items, tags }),
+    )
+
+    // Then three calls, none over 1000 ids
+    const calls = sentIds(client)
+    expect(calls).toHaveLength(3)
+    for (const ids of calls) {
+      const count = Object.values(ids).reduce(
+        (n, list) => n + (list?.length ?? 0),
+        0,
+      )
+      expect(count).toBeLessThanOrEqual(1000)
+    }
+    // And every id was sent exactly once
+    const sentItems = calls.flatMap((ids) => ids.items ?? [])
+    const sentTags = calls.flatMap((ids) => ids.tags ?? [])
+    expect(sentItems).toEqual(items.map((i) => i.id))
+    expect(sentTags).toEqual(tags.map((t) => t.id))
+    // And the answers are joined: one true is enough, the blocked lists are
+    // joined without repeats
+    expect(result).toEqual({
+      anotherHousehold: true,
+      blockedLocationIds: ['loc-a', 'loc-b', 'loc-z'],
+    })
+  })
+
+  it('throws the error of a refused call', async () => {
+    const refusal = new CombinedGraphQLErrors({
+      errors: [{ message: 'Forbidden', extensions: { code: 'FORBIDDEN' } }],
+    })
+    const client = { query: vi.fn().mockRejectedValue(refusal) }
+    await expect(
+      checkImportIds(
+        client as never,
+        emptyPayload({ items: [makeItem('a', 'A')] }),
+      ),
+    ).rejects.toBe(refusal)
   })
 })

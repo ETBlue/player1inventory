@@ -42,6 +42,10 @@ import {
   type GetTagTypesQuery,
   GetVendorsDocument,
   type GetVendorsQuery,
+  ImportCheckDocument,
+  type ImportCheckInput,
+  type ImportCheckQuery,
+  type ImportCheckQueryVariables,
   InventoryLogsDocument,
   type InventoryLogsQuery,
   type ItemInput,
@@ -2580,6 +2584,132 @@ export function isForbiddenImportError(err: unknown): boolean {
     CombinedGraphQLErrors.is(err) &&
     err.errors.some((e) => e.extensions?.code === 'FORBIDDEN')
   )
+}
+
+/**
+ * The most ids one `importCheck` call takes. The server refuses more with
+ * `BAD_USER_INPUT` (`IMPORT_CHECK_MAX_IDS` in
+ * apps/server/src/resolvers/importCheck.resolver.ts, households H4 decision
+ * T3).
+ */
+export const IMPORT_CHECK_CHUNK_SIZE = 1000
+
+/** The answer of `checkImportIds`: the answers of every call, joined. */
+export interface ImportIdCheck {
+  /** True when any call found a row or location of another household. */
+  anotherHousehold: boolean
+  /** Locations of the target household the caller cannot write, sorted. */
+  blockedLocationIds: string[]
+}
+
+type ImportCheckKey = keyof ImportCheckInput
+
+/** The `key` column of a payload row, when it is a string. */
+function stringField(row: unknown, key: string): string | undefined {
+  const value = (row as Record<string, unknown> | null | undefined)?.[key]
+  return typeof value === 'string' ? value : undefined
+}
+
+/**
+ * Every id of the payload, as `[model key, id]` pairs, in a fixed order, each
+ * pair once.
+ *
+ * `locations` holds the file's location rows AND the `locationId` of its
+ * stock rows and logs: a bulk stock or log mutation is refused for a location
+ * of another household even when the file has no row for that location. The
+ * location a cart id names is added by the server. A cart item's `cartId` is
+ * not sent: the cart item mutations skip a row whose cart they cannot use,
+ * they do not refuse it.
+ */
+function importCheckPairs(payload: ExportPayload): [ImportCheckKey, string][] {
+  const pairs: [ImportCheckKey, string][] = []
+  const seen = new Set<string>()
+  const add = (key: ImportCheckKey, id: string | undefined) => {
+    if (id === undefined) return
+    const mark = `${key}\u0000${id}`
+    if (seen.has(mark)) return
+    seen.add(mark)
+    pairs.push([key, id])
+  }
+  const ids = (key: ImportCheckKey, rows: readonly unknown[] | undefined) => {
+    for (const row of rows ?? []) add(key, stringField(row, 'id'))
+  }
+
+  ids('items', payload.items)
+  ids('tags', payload.tags)
+  ids('tagTypes', payload.tagTypes)
+  ids('vendors', payload.vendors)
+  ids('recipes', payload.recipes)
+  ids('shelves', payload.shelves)
+  ids('locations', payload.locations)
+  for (const row of payload.itemStocks ?? [])
+    add('locations', stringField(row, 'locationId'))
+  for (const row of payload.inventoryLogs)
+    add('locations', stringField(row, 'locationId'))
+  ids('itemStocks', payload.itemStocks)
+  ids('inventoryLogs', payload.inventoryLogs)
+  ids('carts', payload.shoppingCarts)
+  ids('cartItems', payload.cartItems)
+  return pairs
+}
+
+/**
+ * Ask the server, before the first write of a cloud import, whether the file
+ * holds rows of another household, and which of its locations the caller
+ * cannot write (households H4 task E.2, decision T1).
+ *
+ * The ids go in calls of at most `IMPORT_CHECK_CHUNK_SIZE`, one after the
+ * other. The answers are joined: `anotherHousehold` is true when any call
+ * says so, and `blockedLocationIds` holds every blocked location once.
+ *
+ * An empty file still makes ONE call, because the call is also the household
+ * role check (`manager`, or `owner` with `forClear`). A refusal is thrown as
+ * the client throws it (a `CombinedGraphQLErrors` with `FORBIDDEN` or
+ * `BAD_USER_INPUT`).
+ *
+ * Send the payload as it will be written: after `placeDefaultLocation` (task
+ * E.4). Cloud mode only; local mode has no household.
+ *
+ * Not called by the import flow yet. Task E.4 wires it into
+ * `importCloudData`.
+ */
+export async function checkImportIds(
+  client: ApolloClient,
+  payload: ExportPayload,
+  options: { forClear?: boolean } = {},
+): Promise<ImportIdCheck> {
+  const pairs = importCheckPairs(payload)
+  const chunks: [ImportCheckKey, string][][] = []
+  for (let i = 0; i < pairs.length; i += IMPORT_CHECK_CHUNK_SIZE) {
+    chunks.push(pairs.slice(i, i + IMPORT_CHECK_CHUNK_SIZE))
+  }
+  if (chunks.length === 0) chunks.push([])
+
+  let anotherHousehold = false
+  const blocked = new Set<string>()
+  for (const chunk of chunks) {
+    const ids: Partial<Record<ImportCheckKey, string[]>> = {}
+    for (const [key, id] of chunk) {
+      const list = ids[key] ?? []
+      list.push(id)
+      ids[key] = list
+    }
+    const result = await client.query<
+      ImportCheckQuery,
+      ImportCheckQueryVariables
+    >({
+      query: ImportCheckDocument,
+      variables: { ids, forClear: options.forClear ?? false },
+      // Never from the cache: the answer depends on rows that may have
+      // changed since the last call.
+      fetchPolicy: 'no-cache',
+    })
+    const answer = result.data?.importCheck
+    if (!answer) throw new Error('importCheck returned no data')
+    if (answer.anotherHousehold) anotherHousehold = true
+    for (const id of answer.blockedLocationIds) blocked.add(id)
+  }
+  return { anotherHousehold, blockedLocationIds: [...blocked].sort() }
 }
 
 /**
