@@ -95,13 +95,13 @@ otherwise.
 
 | Mutation | Kinds |
 |---|---|
-| `checkout` | `CART`, `STOCK`, `LOG` at the cart's location |
-| `consumeRecipes` | `STOCK`, `LOG` at the location; `CATALOG` (recipe `lastCookedAt`) |
-| `addInventoryLog` | `LOG` (and `STOCK` if it changes quantities: check) |
-| `addItemToLocation`, `upsertItemStock` | `STOCK` |
-| `applyUnitSwitch` | `STOCK`, `LOG`, and `CATALOG` if it changes the item's units |
-| `removeItemFromLocation` | `STOCK`, `LOG` (if it deletes logs), `CART` at that location |
-| `bulkCreate`/`bulkUpsert` `ItemStocks` / `InventoryLogs` | `STOCK` / `LOG` per location |
+| `checkout` | `CART`, `STOCK`, `LOG` at the cart's location (an empty cart: `CART` only) |
+| `consumeRecipes` | `STOCK`, `LOG` at the location; `CATALOG` for the CALLER's household (the recipes' household), only when it marked a recipe |
+| `addInventoryLog` | `LOG` only. Checked in D.2: it writes no stock |
+| `addItemToLocation`, `upsertItemStock` | `STOCK` (`addItemToLocation` also when the item was already stocked there) |
+| `applyUnitSwitch` | `STOCK` at every converted location; `CATALOG` when it changes the item or a recipe. **No `LOG`**: checked in D.2, it writes no log |
+| `removeItemFromLocation` | `STOCK`, `LOG`, `CART` at that location, each only when it deleted rows of that kind |
+| `bulkCreate`/`bulkUpsert` `ItemStocks` / `InventoryLogs` | `STOCK` / `LOG` per location written, in `finally` |
 | `createLocation`, `updateLocation`, `reorderLocations`, `bulkCreate`/`bulkUpsert` `Locations` | `LOCATION` |
 | `deleteLocation` | `LOCATION` |
 | `clearAllData` | `LOCATION` and `CATALOG` |

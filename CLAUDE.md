@@ -233,7 +233,7 @@ that really set up that role.
 > | Part | Where | Rule |
 > |---|---|---|
 > | Event bus | `apps/server/src/lib/liveEvents.ts` | in memory, **one process only**. Before a second Railway instance, the bus must move to a shared service (Redis or similar); Neon's pooled connection has no `LISTEN/NOTIFY`. A listener that throws does not stop the others (a `Set`, not `EventEmitter`) |
-> | Publishing | `publishChange(ctx, kind, locations)` in `lib/publishChange.ts` | call it AFTER the write or the `$transaction` has resolved, never inside the callback. It never throws. It uses the LOCATION's household and `ctx.clientId` |
+> | Publishing | `publishChange(ctx, kinds, locations)` and `publishHouseholdChange(ctx, kinds, householdId)` in `lib/publishChange.ts` | call it AFTER the write or the `$transaction` has resolved, never inside the callback. It never throws. It uses the LOCATION's household and `ctx.clientId` |
 > | Tab id | `Context.clientId`, from `x-client-id` (HTTP) or `connectionParams.clientId` (socket) | the server never sends a tab its own change. A socket without one is refused |
 > | Delivery | `shouldDeliver` in `resolvers/live.resolver.ts` | checks the role again for EVERY event: `viewer` on the location through `requireLocationRole`, or `member` of the household for a catalog event |
 > | Socket | `lib/wsServer.ts`, same port and path as HTTP (`/graphql`) | sign-in through `identifyCaller`, shared with HTTP |
@@ -242,9 +242,9 @@ that really set up that role.
 > **Every `Mutation` field must be in one of three lists** in
 > `apps/server/src/resolvers/live-publish.guard.test.ts`: `publishes` (with its kind),
 > `publishesNothing` (with a reason) or `waitingForH3c2`. A new mutation in no list fails
-> the test. Today: 62 fields, 11 / 0 / 51. `waitingForH3c2` must be empty when H3c-2 ends.
+> the test. Today: 62 fields, 21 / 0 / 41 (after H3c-2 task D.2). `waitingForH3c2` must be empty when H3c-2 ends.
 > The guard cannot see whether a resolver really calls `publishChange`; the per-mutation
-> tests in `cart-live-publish.resolver.test.ts` do. It does not see queries either:
+> tests in `cart-live-publish.resolver.test.ts` and `stock-live-publish.resolver.test.ts` do. It does not see queries either:
 > `vendorCart` creates a missing cart and publishes nothing.
 >
 > **Close codes** (`lib/wsServer.ts`, `lib/tokenCheckError.ts`):
