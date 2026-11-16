@@ -15,6 +15,7 @@ import {
   ImportRefusedError,
   type ImportSession,
   importCloudData,
+  importLocalData,
 } from '@/lib/importData'
 import { callArgs, elementAt } from '@/test/narrow'
 import { ImportCard } from '.'
@@ -32,6 +33,8 @@ vi.mock('@/lib/importData', async (importOriginal) => {
     importCloudData: vi.fn().mockResolvedValue({
       skipped: { locationNames: [], rowCount: 0 },
     }),
+    // The REAL local import, wrapped so a test can read its arguments.
+    importLocalData: vi.fn(original.importLocalData),
   }
 })
 
@@ -322,6 +325,33 @@ describe('ImportCard — local import lands in the active location', () => {
     })
     const stocks = await db.itemStocks.toArray()
     expect(elementAt(stocks, 0).locationId).toBe('office')
+  })
+
+  // DECISION O4 OF THE HOUSEHOLDS H4 PLAN, FOR A FILE. A backup FILE imported
+  // in local mode keeps the old rule: the file's own default location (or its
+  // first by `order`) becomes "My Home". Only the cloud → local COPY in
+  // `DataModeCard` passes `homeLocationId` (decision T18). So the card must
+  // pass the active location and nothing else. Passing
+  // `homeLocationId: activeLocationId` here kept every other web test green
+  // (572 of 572 in the import files, measured in the E.5 review).
+  it('user importing a backup file in local mode keeps the file’s own home location rule', async () => {
+    // Given local mode with 'office' as the active location
+    await seedLocations(['local', 'My Home'], ['office', 'Office'])
+    localStorage.setItem(activeLocationStorageKey('local'), 'office')
+    vi.mocked(importLocalData).mockClear()
+    const { container } = renderCard()
+
+    // When the user imports a backup file
+    await uploadPayload(container, legacyPayload())
+
+    // Then the card passes exactly the active location, and no
+    // `homeLocationId` key at all, not even one set to `undefined`
+    await waitFor(() => {
+      expect(importLocalData).toHaveBeenCalledTimes(1)
+    })
+    const options = callArgs(vi.mocked(importLocalData).mock, 0)[2]
+    expect(options).toStrictEqual({ activeLocationId: 'office' })
+    expect(Object.keys(options ?? {})).toEqual(['activeLocationId'])
   })
 })
 
