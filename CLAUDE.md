@@ -221,28 +221,64 @@ that really set up that role.
 
 ## Live updates (cloud)
 
-> Design: `docs/global/permissions/2026-11-16-households-h3c-design.md`. Plan:
-> `docs/global/permissions/2026-11-16-households-plan-h3c-1.md`. Deploy:
-> `docs/global/backend/2026-11-16-deploy-runbook-households-h3c-1.md`.
+> Design: `docs/global/permissions/2026-11-16-households-h3c-design.md`. Plans:
+> `docs/global/permissions/2026-11-16-households-plan-h3c-1.md` (carts) and
+> `2026-11-16-households-plan-h3c-2.md` (stock, logs, locations, catalog). Deploy:
+> `docs/global/backend/2026-11-16-deploy-runbook-households-h3c-1.md` (section 9 is H3c-2).
 >
-> **Built in households H3c-1 (2026-11-16), for carts only.** Not merged or deployed. A
-> change in one tab reaches the other open tabs of the same household within about a second.
-> The event says only "this changed" (`kind`, `locationId`); the web refetches. H3c-2 adds
-> stock, logs, locations and the catalog.
+> **Built in households H3c-1 and H3c-2 (2026-11-16).** H3c-1 is merged into `develop`;
+> H3c-2 is on `feature/households-h3c-2`, not merged. Neither is deployed. A change in one
+> tab reaches the other open tabs of the same household within about a second. The event
+> says only "this changed" (`kind`, `locationId`); the web refetches.
+>
+> **Five kinds** (`enum ChangeKind` in `apps/server/src/schema/live.graphql`):
+>
+> | Kind | Level | Sent by (examples) | The web refetches |
+> |---|---|---|---|
+> | `CART` | location | cart mutations, `checkout`, `removeItemFromLocation`, `deleteItem`, `createVendor`, `deleteVendor` | the 5 cart queries |
+> | `STOCK` | location | `upsertItemStock`, `addItemToLocation`, `checkout`, `consumeRecipes`, `applyUnitSwitch`, stock imports, `deleteItem` | `PantryData`, `ItemStocksForItem` |
+> | `LOG` | location | `addInventoryLog`, `checkout`, `consumeRecipes`, log imports, `deleteItem` | `ItemLogs`, `InventoryLogCountByItem`, `LastPurchaseDates` |
+> | `LOCATION` | household (`locationId: null`) | the location mutations and imports, `clearAllData` | **every active query** (`'all'`) |
+> | `CATALOG` | household (`locationId: null`) | every catalog mutation and import, `renameHousehold`, `clearAllData` | `PantryData` and the 15 catalog queries |
+>
+> **Why `LOCATION` and `CATALOG` are household-level:** a deleted location cannot pass
+> `requireLocationRole`, so a location-level event about a delete would never be delivered.
+> A household-level event is checked against household membership instead. **Why
+> `LOCATION` refetches everything:** a location change touches the switcher, the pantry,
+> carts and stock pages, and it is rare. A location deleted with its rows sends no
+> `CART`/`STOCK`/`LOG` for that location; the `LOCATION` event covers them.
+>
+> **One call per mutation, with all its kinds**, after the write has committed. A mutation
+> publishes every kind it changed, including side effects: a delete that cascades into
+> carts sends `CART` too. The exception is when the kinds sit at different locations:
+> `deleteItem` reads, BEFORE the delete, where it has stock, logs and cart rows, and makes
+> one `publishChange` call per kind with its own list of locations. A write that changes
+> nothing (a refusal, a missing row, an empty reorder, an import that skips every row)
+> sends nothing. Imports publish in `finally`, because they are not one transaction
+> (`withCatalogEvent` in `import.resolver.ts` for the catalog imports).
 >
 > | Part | Where | Rule |
 > |---|---|---|
 > | Event bus | `apps/server/src/lib/liveEvents.ts` | in memory, **one process only**. Before a second Railway instance, the bus must move to a shared service (Redis or similar); Neon's pooled connection has no `LISTEN/NOTIFY`. A listener that throws does not stop the others (a `Set`, not `EventEmitter`) |
-> | Publishing | `publishChange(ctx, kinds, locations)` and `publishHouseholdChange(ctx, kinds, householdId)` in `lib/publishChange.ts` | call it AFTER the write or the `$transaction` has resolved, never inside the callback. It never throws. It uses the LOCATION's household and `ctx.clientId` |
+> | Publishing | `publishChange(ctx, kinds, locations)` and `publishHouseholdChange(ctx, kinds, householdId)` in `lib/publishChange.ts` | call it AFTER the write or the `$transaction` has resolved, never inside the callback. It never throws. One event per (kind, location), no duplicates. `publishChange` uses the LOCATION's household; both send `ctx.clientId` |
 > | Tab id | `Context.clientId`, from `x-client-id` (HTTP) or `connectionParams.clientId` (socket) | the server never sends a tab its own change. A socket without one is refused |
-> | Delivery | `shouldDeliver` in `resolvers/live.resolver.ts` | checks the role again for EVERY event: `viewer` on the location through `requireLocationRole`, or `member` of the household for a catalog event |
+> | Delivery | `shouldDeliver` in `resolvers/live.resolver.ts` | checks the role again for EVERY event: `viewer` on the location through `requireLocationRole`, or `member` of the household for a household-level event (`locationId: null`, any kind) |
 > | Socket | `lib/wsServer.ts`, same port and path as HTTP (`/graphql`) | sign-in through `identifyCaller`, shared with HTTP |
-> | Web runner | `LiveUpdatesRunner` (`apps/web/src/apollo/`), in cloud mode when signed in | 300 ms batch, then refetches the ACTIVE queries named in `QUERIES_BY_KIND` (`liveUpdates.ts`). A reconnect refetches every active query once |
+> | Web runner | `LiveUpdatesRunner` (`apps/web/src/apollo/`), in cloud mode when signed in | 300 ms batch, then refetches the ACTIVE queries named in `QUERIES_BY_KIND` (`liveUpdates.ts`). A reconnect refetches every active query once. A kind the bundle does not know refetches every active query |
+>
+> **`QUERIES_BY_KIND` is kept by hand, and nothing catches a query missing from it.** It is
+> a `Record<ChangeKind, …>`, so `tsc` fails when a KIND has no entry. Its tests check that
+> every name it lists is a real query. No test checks the other direction: a new query that
+> shows catalog, stock or log data, and is not added to the map, simply does not update
+> live. The comment table above the map lists which kinds each query depends on; add a row
+> there when you add a query. Export queries (`InventoryLogs`, `ShoppingCarts`,
+> `AllItemStocks`) are left out on purpose: no mounted component watches them.
 >
 > **Every `Mutation` field must be in one of two lists** in
 > `apps/server/src/resolvers/live-publish.guard.test.ts`: `publishes` (with its kinds) or
 > `publishesNothing` (with a reason). A new mutation in no list fails the test. Today: 62
-> fields, 62 / 0 (after H3c-2 task D.4, which deleted the third list, `waitingForH3c2`).
+> fields, all 62 in `publishes` and 0 in `publishesNothing`. H3c-1 had a third list,
+> `waitingForH3c2` (51 fields); H3c-2 task D.4 emptied it and deleted it.
 > The guard cannot see whether a resolver really calls `publishChange` or
 > `publishHouseholdChange`; the per-mutation tests in `cart-live-publish.resolver.test.ts`,
 > `stock-live-publish.resolver.test.ts`, `location-live-publish.resolver.test.ts` and
@@ -259,9 +295,27 @@ that really set up that role.
 > | `1001` | the socket is 60 minutes old | retries after about 1.3 to 4 s with a fresh token |
 >
 > **E2E.** The E2E web client has its own socket with `{ e2eUserId, clientId }`, and the
-> E2E build puts `window.__p1iLiveUpdates` (`connects`, `terminate`) on the page.
-> `e2e/tests/live-cart.spec.ts` puts `page.routeWebSocket` between page and server to count
-> events and to refuse sockets. Two traps it found, both about absence:
+> E2E build puts `window.__p1iLiveUpdates` (`connects`, `terminate`) on the page. Two specs,
+> both `cloud` only (in the `local` project's `testIgnore`):
+>
+> | Spec | Tests | What it proves |
+> |---|---|---|
+> | `e2e/tests/live-cart.spec.ts` | 3 | a cart change shows; another household's change never arrives; a change made while the socket was closed shows after the reconnect |
+> | `e2e/tests/live-pantry.spec.ts` | 5 | on the pantry, with no reload: a quantity (`STOCK`), a rename (`CATALOG`), a new location in the switcher (`LOCATION`), a checkout's quantity, a deleted item leaving (it also checks the kinds on the socket) |
+>
+> Both use `e2e/helpers/liveSocket.ts`: `routeLiveSocket` puts `page.routeWebSocket` between
+> page and server to count events by kind and to refuse sockets; `warmUpLiveSocket` makes a
+> first change and waits for its own refetch; `markDocument` / `stillSameDocument` prove
+> there was no reload.
+>
+> **A new location shows only to people with a role on it.** `visibleLocations`
+> (`location.resolver.ts`) lists only locations where the caller holds a role, and
+> `createLocation` gives a role only to its creator. So `live-pantry.spec.ts` test 3 uses the
+> browser's own user on "another device", not a second member. That is location scoping,
+> not a live update bug. Test 2 and test 5 need the second person to be a household
+> `manager`: renaming and deleting an item need `requireCatalogRole`.
+>
+> Two traps `live-cart.spec.ts` found, both about absence:
 >
 > - **A wrongly delivered event changes nothing on screen.** It only makes the tab refetch
 >   its own cart. So "another household's change does not show" must count socket messages,
@@ -463,9 +517,10 @@ skips half the work. Nothing else in the gate checks `e2e/` formatting: `pnpm li
 `apps/server`'s build already carries a second pass for `scripts/`.
 
 **`pnpm test` runs both workspaces.** The root script is `pnpm -r test`, which recurses into
-every workspace package that defines a `test` script — today `apps/web` (**2577 tests**
-across 281 files) and `apps/server` (**1412** across 61). Measured 2026-11-16 on
-`feature/households-h3c`, after households H3c-1 (it said 2543 / 276 and 1274 / 52 on
+every workspace package that defines a `test` script — today `apps/web` (**2586 tests**
+across 281 files) and `apps/server` (**1566** across 64). Measured 2026-11-16 on
+`feature/households-h3c-2`, after households H3c-2 (it said 2577 / 281 and 1412 / 61
+after H3c-1 the same day, 2543 / 276 and 1274 / 52 on
 2026-11-15 on `feature/households-h3b`, 2549 / 277 and 1244 / 51 earlier that
 day, 2529 / 275 and 1161 / 47 on 2026-11-11, on H3a, and
 2321 / 251 and 522 / 32 on 2026-10-28, before households H3a), plus **70** in `scripts/spec` from `pnpm test:spec`.
@@ -1680,9 +1735,9 @@ Note also that **no *unit* test executes the resolvers against real SQL** — ev
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
 Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
 branch), but only for the spec files listed in the `cloud` project's `testMatch` in
-`e2e/playwright.config.ts` — that list is opt-in and covers **31 of the 35 spec files in
-`e2e/tests/`** (measured 2026-11-16, after households H3c-1 task C.6 added
-`live-cart.spec.ts`; 30 of 34 on 2026-11-15, after households H3b task B.9 added
+`e2e/playwright.config.ts` — that list is opt-in and covers **32 of the 36 spec files in
+`e2e/tests/`** (measured 2026-11-16, after households H3c-2 task D.5 added
+`live-pantry.spec.ts`; 31 of 35 after H3c-1 task C.6 added `live-cart.spec.ts`; 30 of 34 on 2026-11-15, after households H3b task B.9 added
 `shared-cart.spec.ts`; it was 29 of 33 on 2026-11-04, after households H3a task 3.11 added
 `cloud-roles.spec.ts` and `household-member-cleanup.spec.ts`).
 **Count it rather than quote it.** This line said "20 files today (of 27 spec files)" until
@@ -1862,6 +1917,15 @@ reaches the open cart page without a reload, another household's change never re
 tab, and a change made while the socket is closed shows after the reconnect. It is in the
 `local` project's `testIgnore`. It does **not** use a real Clerk token on the socket; that
 is a manual check in the H3c-1 deploy runbook. See *Live updates (cloud)* above.
+
+`live-pantry.spec.ts` joined on 2026-11-16 (households H3c-2, task D.5) — 5 cloud test
+cases, with a browser, a real WebSocket and real Postgres. The `cloud` project now collects
+**151** tests in **32** files; `local` **184** in 23, `pwa` **73** in 2 (measured with
+`--list` on 2026-11-16). It checks that the pantry shows a change to stock, an item name, the
+location list, a checkout and an item delete without a reload. Test 5 is the first real-SQL
+run of `deleteItem`'s `inventoryLog.findMany({ distinct: ['locationId'] })` read, which finds
+the locations to send `LOG` to before the cascade deletes the rows. See *Live updates
+(cloud)* above.
 
 The warning above still holds for everything else — most resolvers are named by no cloud
 spec.
