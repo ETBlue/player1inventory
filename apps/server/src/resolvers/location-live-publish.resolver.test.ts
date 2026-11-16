@@ -217,8 +217,18 @@ function household(kind: ChangeEvent['kind'], householdId: string): ChangeEvent 
 
 const server = new ApolloServer<Context>({ typeDefs, resolvers })
 
-async function run(query: string, variables: Record<string, unknown>, userId: string) {
-  const contextValue: Context = { userId, clientId: TAB }
+/**
+ * `householdId`, when given, pins the caller's household through
+ * `ctx.requestCache` (H4 plan rule 16). An import writes into that household.
+ * Without the pin, `ensureHousehold` picks one of ALICE's two households in
+ * no fixed order.
+ */
+async function run(query: string, variables: Record<string, unknown>, userId: string, householdId?: string) {
+  const contextValue: Context = {
+    userId,
+    clientId: TAB,
+    ...(householdId === undefined ? {} : { requestCache: { householdId: Promise.resolve(householdId) } }),
+  }
   const res = await server.executeOperation({ query, variables }, { contextValue })
   if (res.body.kind !== 'single') throw new Error('expected a single result')
   return res.body.singleResult
@@ -374,8 +384,20 @@ describe('bulkCreateLocations', () => {
   })
 
   it('publishes nothing when every row was skipped', async () => {
-    const res = await run(BULK_CREATE, { rows: [importRow(LOC_HOME), importRow(LOC_SECOND)] }, ALICE)
+    // (This named LOC_SECOND, of ALICE's other household, until households
+    // H4 task E.3. That location is now refused: see the next test.)
+    const res = await run(BULK_CREATE, { rows: [importRow(LOC_HOME), importRow(LOC_GARAGE)] }, ALICE, 'hh_home')
     expect(res.errors).toBeUndefined()
+    expect(events()).toEqual([])
+  })
+
+  it("refused (a location of the caller's other household) publishes nothing", async () => {
+    // ALICE organizes LOC_SECOND, in hh_second, but the import writes into
+    // hh_home (pinned). A new row is in the batch first, so "refused as a
+    // whole" differs from "refused row by row".
+    const res = await run(BULK_CREATE, { rows: [importRow('loc_new_1'), importRow(LOC_SECOND)] }, ALICE, 'hh_home')
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(world.stock.state.locations.map((l) => l.id)).not.toContain('loc_new_1')
     expect(events()).toEqual([])
   })
 
@@ -395,21 +417,27 @@ describe('bulkCreateLocations', () => {
 })
 
 describe('bulkUpsertLocations', () => {
-  it("publishes once per household written, the updated row's own household included", async () => {
-    // loc_new is created in hh_home (ALICE's household). LOC_SECOND is updated
-    // and stays in hh_second.
-    const res = await run(BULK_UPSERT, { rows: [importRow('loc_new'), importRow(LOC_SECOND, 'Shed')] }, ALICE)
+  it('publishes once for the household, for a create and an update together', async () => {
+    // loc_new is created in hh_home; LOC_GARAGE, in hh_home too, is updated.
+    // (Until households H4 task E.3 the update was LOC_SECOND, of ALICE's
+    // other household, and the test expected an event for hh_second too. An
+    // import can no longer write into a household it is not aimed at.)
+    const res = await run(BULK_UPSERT, { rows: [importRow('loc_new'), importRow(LOC_GARAGE, 'Shed')] }, ALICE, 'hh_home')
     expect(res.errors).toBeUndefined()
-    expect(sortedEvents()).toEqual([
-      household('LOCATION', 'hh_home'),
-      household('LOCATION', 'hh_second'),
-    ])
+    expect(events()).toEqual([household('LOCATION', 'hh_home')])
   })
 
-  it('an update alone publishes for the location household only', async () => {
-    const res = await run(BULK_UPSERT, { rows: [importRow(LOC_SECOND, 'Shed')] }, ALICE)
-    expect(res.errors).toBeUndefined()
-    expect(events()).toEqual([household('LOCATION', 'hh_second')])
+  it("refused (an update of a location in the caller's other household) publishes nothing and renames nothing", async () => {
+    // ALICE organizes LOC_SECOND (hh_second); the import writes into hh_home
+    // (pinned). This is the two-household test the comment in
+    // `bulkUpsertLocations` said H5 owed: a location of household B must not
+    // be renamed by an import into household A.
+    const before = world.stock.state.locations.find((l) => l.id === LOC_SECOND)?.name
+    const res = await run(BULK_UPSERT, { rows: [importRow('loc_new'), importRow(LOC_SECOND, 'Shed')] }, ALICE, 'hh_home')
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(world.stock.state.locations.find((l) => l.id === LOC_SECOND)?.name).toBe(before)
+    expect(world.stock.state.locations.map((l) => l.id)).not.toContain('loc_new')
+    expect(events()).toEqual([])
   })
 
   it('refused (no organizer role on an existing id) publishes nothing', async () => {

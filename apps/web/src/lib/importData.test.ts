@@ -2125,8 +2125,9 @@ describe('toShelfInput', () => {
 // EVERY TEST HERE ASSERTS THE SEQUENCE, NOT JUST THAT BOTH HAPPENED. A wrong
 // upload order produces no error at all:
 //
-//   - a cart uploaded before its location exists is written to the account's
-//     DEFAULT location by `resolveCartLocations`, silently;
+//   - a cart uploaded before its location exists is refused with
+//     `Forbidden` by `resolveCartLocations` (until households H4 task E.3
+//     it was written to the account's first location, silently);
 //   - stock uploaded before its item or location exists is refused with
 //     `Forbidden`, and on the `clear` strategy that lands after
 //     `clearAllData` has already emptied the account.

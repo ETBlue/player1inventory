@@ -62,7 +62,7 @@ import { typeDefs } from '../schema/index.js'
 //
 //   - `src/test/householdWorld.ts` for `location` (its `stockFake`) and the
 //     household and role rows, so `resolveLogLocations`,
-//     `requireLocationRole` and `fallbackImportLocation` run against real
+//     `requireLocationRole` and `requireLocationInHousehold` run against real
 //     rows. Every role is a row `beforeEach` seeds (`soloHouseholds`): the
 //     caller and the stranger are in two different households. (Households
 //     H3a task 3.9 removed `derivedRoles`, which invented those rows from each

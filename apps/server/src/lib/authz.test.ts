@@ -160,7 +160,6 @@ import type { HouseholdWorld } from '../test/householdWorld.js'
 import type { HouseholdRole, LocationRole } from './authz.js'
 
 const {
-  fallbackImportLocation,
   householdOfLocation,
   locationIdsWithRole,
   requireCatalogIds,
@@ -501,77 +500,6 @@ describe('locationIdsWithRole', () => {
     await expect(locationIdsWithRole(caller, 'organizer')).resolves.toEqual([])
   })
 })
-
-describe('fallbackImportLocation', () => {
-  it('picks the first location by order on which the caller may write', async () => {
-    // Given loc-2 comes first by order, but the caller has no role on it, and
-    // the caller is a participant on loc-1
-    seed({ callerLocationRole: 'participant' })
-
-    // Then loc-1 is picked
-    await expect(fallbackImportLocation(caller)).resolves.toBe('loc-1')
-  })
-
-  it('picks the lower order when the caller may write to both', async () => {
-    // Given the caller is also an organizer on loc-2, which comes first
-    seed({ callerLocationRole: 'participant' })
-    await world.households.client.locationMember.create({
-      data: { locationId: 'loc-2', userId: 'caller', role: 'organizer' },
-    })
-
-    await expect(fallbackImportLocation(caller)).resolves.toBe('loc-2')
-  })
-
-  it('skips a location where the caller is only a viewer', async () => {
-    // Given the caller views loc-1 and has no other role
-    seed({ callerLocationRole: 'viewer' })
-
-    // Then there is nowhere to import into
-    const error = await fallbackImportLocation(caller).catch((e: GraphQLError) => e)
-    expect((error as GraphQLError).extensions.code).toBe('NO_LOCATION')
-  })
-
-  it('skips a location whose household the caller has left', async () => {
-    // Given the caller left hh-1 but kept the organizer row on loc-1, and
-    // has a new household of their own with no location
-    seed({ callerHouseholdRole: null, callerLocationRole: 'organizer' })
-    await world.households.client.household.create({
-      data: { id: 'hh-new', name: 'New', ownerId: 'caller' },
-    })
-    await world.households.client.householdMember.create({
-      data: { householdId: 'hh-new', userId: 'caller', role: 'owner' },
-    })
-
-    const error = await fallbackImportLocation(caller).catch((e: GraphQLError) => e)
-    expect((error as GraphQLError).extensions.code).toBe('NO_LOCATION')
-  })
-
-  it('user importing for the first time gets Home and the import goes there', async () => {
-    // Given a new person with no household
-    world.reset()
-    world.users.reset([
-      {
-        id: 'new-user',
-        displayName: 'Ann',
-        email: null,
-        lastSeenAt: null,
-        deletedAt: null,
-        householdSetupAt: null,
-        createdAt: T,
-        updatedAt: T,
-      },
-    ])
-
-    // When an import needs a fallback location
-    const locationId = await fallbackImportLocation({ userId: 'new-user' })
-
-    // Then it is the new "Home"
-    expect(world.stock.state.locations).toEqual([
-      expect.objectContaining({ id: locationId, name: 'Home' }),
-    ])
-  })
-})
-
 
 // The catalog rows the next three blocks share. Three people (plan H3a rule
 // 10): `caller` and `other` share hh-1, `stranger` is in hh-2. `tag-others`

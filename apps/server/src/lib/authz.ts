@@ -16,12 +16,6 @@ const HOUSEHOLD_RANK: Record<HouseholdRole, number> = { member: 1, manager: 2, o
 const LOCATION_RANK: Record<LocationRole, number> = { viewer: 1, participant: 2, organizer: 3 }
 
 /**
- * The location roles that may write: `participant` and up. Written out, not
- * worked out from `LOCATION_RANK`, so a reader can see the list.
- */
-const WRITE_LOCATION_ROLES: LocationRole[] = ['organizer', 'participant']
-
-/**
  * The one refusal every role check uses. "Not a member", "role too low", "no
  * such row" and "another household's row" all give this same error, so a
  * caller cannot use it to find out which ids exist.
@@ -193,61 +187,6 @@ export async function requireLocationInHousehold(
     select: { id: true },
   })
   if (!location) throw forbidden()
-}
-
-/**
- * Where an import puts a log or a cart that names no location it can use
- * (decision H12): the caller's first location by `order`, in the caller's
- * household, on which the caller is `participant` or higher.
- *
- * A stopgap until H4, whose "Import into which location?" dialog replaces it.
- * It replaces `ensureDefaultLocation`, which went with `isDefault`.
- *
- * `requireHousehold` runs first, so a new person gets "Home" here exactly as
- * they did from `ensureDefaultLocation` before. If the caller still has no
- * location they may write to, the import is refused with `NO_LOCATION`.
- *
- * Before H5 that cannot happen: deleting the last location is refused
- * (decision H13), the creator of a location organizes it, and
- * `clearAllData` makes "Home" again, with an `organizer` row, in the same
- * transaction as its deletes (decision H17, task 3.10).
- *
- * There were two ways in before. Until task 3.10, `clearAllData` deleted
- * every location and nothing made a new one, so a "clear" import followed by
- * a log or cart that names no location got `NO_LOCATION`. Until task 3.9,
- * `bulkCreateLocations` / `bulkUpsertLocations` wrote no `organizer` row, so
- * a location they made did not count here.
- */
-export async function fallbackImportLocation(ctx: Context): Promise<string> {
-  const userId = requireAuth(ctx)
-  const householdId = await requireHousehold(ctx)
-
-  const counted = countedLocationRole(userId)
-  const memberships = await prisma.locationMember.findMany({
-    where: {
-      ...counted,
-      role: { in: WRITE_LOCATION_ROLES },
-      location: { ...counted.location, householdId },
-    },
-    select: { locationId: true },
-  })
-
-  const locations =
-    memberships.length === 0
-      ? []
-      : await prisma.location.findMany({
-          where: { id: { in: memberships.map((m) => m.locationId) } },
-          select: { id: true, order: true },
-        })
-  // Sorted here, not with `orderBy`, so ties are broken the same way every
-  // time: by id.
-  const first = [...locations].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))[0]
-  if (!first) {
-    throw new GraphQLError('You have no location to import into.', {
-      extensions: { code: 'NO_LOCATION' },
-    })
-  }
-  return first.id
 }
 
 /**

@@ -24,8 +24,8 @@ import { typeDefs } from '../schema/index.js'
 //   - `src/test/householdWorld.ts` for `location` (its `stockFake`) and the
 //     household and role rows. Every role is a row `beforeEach` seeds: each
 //     person owns one household and organizes its own locations
-//     (`soloHouseholds`). So `fallbackImportLocation` and
-//     `requireLocationRole` run against real rows, and a stranger's location
+//     (`soloHouseholds`). So `requireLocationRole` and
+//     `requireLocationInHousehold` run against real rows, and a stranger's location
 //     is refused because the caller has no role on it. (Households H3a task
 //     3.9 removed `derivedRoles`, which invented those rows from each
 //     location's `userId`.)
@@ -343,8 +343,7 @@ describe('bulkCreateShoppingCarts — the location comes from the cart id', () =
     expect(storedLocationOf(`${LOC_OTHER}:v1`)).toBe(LOC_OTHER)
     expect(storedLocationOf(`${LOC_DEFAULT}:v2`)).toBe(LOC_DEFAULT)
     // And the ownership check ran twice — once per DISTINCT location, not five
-    // times. `fallbackImportLocation` is not called at all, because no id was
-    // bare.
+    // times.
     expect(locationFindFirst).toHaveBeenCalledTimes(2)
   })
 })

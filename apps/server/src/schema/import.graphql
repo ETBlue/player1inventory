@@ -60,15 +60,17 @@ input InventoryLogInput {
   note: String
   logKey: String
   logParams: JSON
-  # OPTIONAL, not `ID!`, on purpose. A client built before cloud locations
-  # sends no such field, and making it required would reject every import
-  # that client issues. When it is absent the resolver falls back to the
-  # caller's first location they may write to (`fallbackImportLocation`,
-  # lib/authz.ts, households decision H12).
+  # OPTIONAL in the schema, but every row must send it since households H4
+  # task E.3 (decision T10). A row without it refuses the whole batch with
+  # BAD_USER_INPUT, `extensions.reason` IMPORT_NEEDS_LOCATION, and nothing is
+  # written. Until E.3 such a row went to the caller's first location. The
+  # field stays optional so a cached old web bundle gets that one clear error
+  # instead of failing GraphQL validation for the whole document.
   #
   # Attacker-controlled. The resolvers verify it through
-  # `requireLocationRole(ctx, locationId, 'participant')` before any row is
-  # written — a log in someone else's location would be a cross-user write.
+  # `requireLocationRole(ctx, locationId, 'participant')` and
+  # `requireLocationInHousehold` (the target household) before any row is
+  # written.
   locationId: ID
 }
 

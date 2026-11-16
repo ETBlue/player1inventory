@@ -591,8 +591,11 @@ export function applyLocationRemap(
           })),
         }
       : {}),
-    // A pre-Location log carries no `locationId`. Leave it absent rather than
-    // inventing one — the server falls back to the caller's default for it.
+    // A pre-Location log carries no `locationId`, and it is left absent here.
+    // Since households H4 task E.3 the server REFUSES such a log with
+    // IMPORT_NEEDS_LOCATION (it used to send it to the caller's first
+    // location). H4 task E.4 replaces this function and must give such a
+    // log the location the user picks.
     inventoryLogs: (
       payload.inventoryLogs as Array<Record<string, unknown>>
     ).map((log) =>
@@ -2142,11 +2145,11 @@ async function fetchCloudExistingData(
 // THE ORDER MATTERS, AND A WRONG ORDER PRODUCES NO ERROR AT ALL:
 //
 //   - `locations` must come BEFORE `items` and before `shoppingCarts`.
-//     `resolveCartLocations` (apps/server/src/resolvers/import.resolver.ts:205)
-//     sends a cart to the CALLER'S DEFAULT location when the cart id names a
-//     location that no row holds. A cart uploaded before its location exists
-//     therefore lands in the wrong location, with no error and nothing in the
-//     response to show it. `resolveLogLocations` does the same for logs.
+//     `resolveCartLocations` (apps/server/src/resolvers/import.resolver.ts)
+//     refuses a cart whose id names a location that no row holds, with
+//     `Forbidden`, and `resolveLogLocations` does the same for logs. Until
+//     households H4 task E.3 both sent such a row to the caller's first
+//     location instead, silently.
 //   - `itemStocks` must come AFTER `items` and after `locations`. It is a
 //     child of both, and `requireOwnItemStockRefs` (import.resolver.ts:434)
 //     refuses an unknown item or location with `Forbidden`.

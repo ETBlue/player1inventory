@@ -270,13 +270,25 @@ function change(
 
 const server = new ApolloServer<Context>({ typeDefs, resolvers })
 
+/**
+ * Run one operation as `userId`. `householdId`, when given, pins the
+ * caller's household through `ctx.requestCache` (H4 plan rule 16). An import
+ * writes into that household. Without the pin, `ensureHousehold` picks one of
+ * ALICE's two households in no fixed order, so a test about "the other
+ * household" would depend on the order of the fake's rows.
+ */
 async function run(
   query: string,
   variables: Record<string, unknown>,
   userId: string,
   clientId: string | null = TAB,
+  householdId?: string,
 ) {
-  const contextValue: Context = { userId, ...(clientId === null ? {} : { clientId }) }
+  const contextValue: Context = {
+    userId,
+    ...(clientId === null ? {} : { clientId }),
+    ...(householdId === undefined ? {} : { requestCache: { householdId: Promise.resolve(householdId) } }),
+  }
   const res = await server.executeOperation({ query, variables }, { contextValue })
   if (res.body.kind !== 'single') throw new Error('expected a single result')
   return res.body.singleResult
@@ -508,6 +520,8 @@ describe('the cart imports publish one CART per location touched', () => {
         ],
       },
       ALICE,
+      TAB,
+      'hh_home',
     )
 
     expect(res.errors).toBeUndefined()
@@ -519,6 +533,8 @@ describe('the cart imports publish one CART per location touched', () => {
       BULK_UPSERT_CARTS,
       { carts: [{ id: HOME_CART }, { id: HOME_VENDOR_CART }, { id: GARAGE_CART }] },
       ALICE,
+      TAB,
+      'hh_home',
     )
 
     expect(res.errors).toBeUndefined()
@@ -527,14 +543,17 @@ describe('the cart imports publish one CART per location touched', () => {
 
   it("a cart import naming a cart of the caller's other household is refused and publishes nothing", async () => {
     // ALICE is a participant at LOC_SECOND, in hh_second, but the import
-    // writes into hh_home (`requireHousehold`). Since households H4 task E.1
-    // `requireOwnRowOrUnclaimed` checks the cart id's location against the
-    // TARGET household, so the whole batch is refused. HOME_CART is in the
-    // batch too, so "refused as a whole" differs from "refused row by row".
+    // writes into hh_home (pinned). Since households H4 task E.1 the cart
+    // id's location is checked against the TARGET household, and since task
+    // E.3 `resolveCartLocations` checks it first, so the whole batch is
+    // refused. HOME_CART is in the batch too, so "refused as a whole" differs
+    // from "refused row by row".
     const res = await run(
       BULK_UPSERT_CARTS,
       { carts: [{ id: HOME_CART }, { id: SECOND_CART }] },
       ALICE,
+      TAB,
+      'hh_home',
     )
 
     expect(code(res)).toBe('FORBIDDEN')
@@ -548,15 +567,52 @@ describe('the cart imports publish one CART per location touched', () => {
         rows: [
           { id: 'new_1', cartId: HOME_CART, itemId: 'item_bread', quantity: 1 },
           { id: 'new_2', cartId: HOME_VENDOR_CART, itemId: 'item_milk', quantity: 1 },
-          { id: 'new_3', cartId: SECOND_CART, itemId: 'item_tea', quantity: 2 },
+          // (This was a row in SECOND_CART until households H4 task E.3. A
+          // cart of another household is now skipped: see the test below.)
+          { id: 'new_3', cartId: GARAGE_VENDOR_CART, itemId: 'item_bread', quantity: 2 },
         ],
       },
       ALICE,
+      TAB,
+      'hh_home',
     )
 
     expect(res.errors).toBeUndefined()
-    expect(eventsByLocation()).toEqual([cart(LOC_HOME, 'hh_home'), cart(LOC_SECOND, 'hh_second')])
+    expect(eventsByLocation()).toEqual([cart(LOC_GARAGE, 'hh_home'), cart(LOC_HOME, 'hh_home')])
   })
+
+  for (const [label, query] of [
+    ['bulkCreateCartItems', BULK_CREATE_ITEMS],
+    ['bulkUpsertCartItems', BULK_UPSERT_ITEMS],
+  ] as const) {
+    it(`${label}: a row in a cart of the caller's other household is skipped and publishes nothing`, async () => {
+      // ALICE is a participant at LOC_SECOND (hh_second), and item_tea is an
+      // item of hh_second, so until households H4 task E.3 this row was
+      // WRITTEN into hh_second by an import aimed at hh_home. Now the cart
+      // must be at a writable location of the TARGET household, so the row is
+      // skipped like a cart that is gone. The HOME_CART row is in the batch
+      // too, so "skipped" differs from "the whole batch refused".
+      const res = await run(
+        query,
+        {
+          rows: [
+            { id: 'new_7', cartId: HOME_CART, itemId: 'item_bread', quantity: 1 },
+            { id: 'new_8', cartId: SECOND_CART, itemId: 'item_tea', quantity: 2 },
+          ],
+        },
+        ALICE,
+        TAB,
+        'hh_home',
+      )
+
+      expect(res.errors).toBeUndefined()
+      expect(carts.state.cartItems.find((r) => r.id === 'new_7')).toBeDefined()
+      expect(carts.state.cartItems.filter((r) => r.cartId === SECOND_CART)).toEqual([
+        row('ci_second_tea', SECOND_CART, 'item_tea', 1, CAROL),
+      ])
+      expect(events()).toEqual([cart(LOC_HOME, 'hh_home')])
+    })
+  }
 
   it('bulkUpsertCartItems over two locations', async () => {
     const res = await run(
@@ -568,6 +624,8 @@ describe('the cart imports publish one CART per location touched', () => {
         ],
       },
       ALICE,
+      TAB,
+      'hh_home',
     )
 
     expect(res.errors).toBeUndefined()
@@ -580,6 +638,8 @@ describe('the cart imports publish one CART per location touched', () => {
       BULK_CREATE_ITEMS,
       { rows: [{ id: 'new_5', cartId: HOME_CART, itemId: 'item_theirs', quantity: 1 }] },
       ALICE,
+      TAB,
+      'hh_home',
     )
 
     expect(res.data?.bulkCreateCartItems).toEqual([])
@@ -588,7 +648,7 @@ describe('the cart imports publish one CART per location touched', () => {
 
   it('a batch refused before its first write publishes nothing', async () => {
     // A stranger's live location: the whole batch is FORBIDDEN.
-    const res = await run(BULK_CREATE_CARTS, { carts: [{ id: `${LOC_STRANGER}:ven_z` }] }, ALICE)
+    const res = await run(BULK_CREATE_CARTS, { carts: [{ id: `${LOC_STRANGER}:ven_z` }] }, ALICE, TAB, 'hh_home')
 
     expect(code(res)).toBe('FORBIDDEN')
     expect(events()).toEqual([])
@@ -608,6 +668,8 @@ describe('the cart imports publish one CART per location touched', () => {
         ],
       },
       ALICE,
+      TAB,
+      'hh_home',
     )
 
     expect(res.errors).toBeDefined()
