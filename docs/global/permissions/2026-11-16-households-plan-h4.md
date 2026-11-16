@@ -772,6 +772,77 @@ Existing specs:
 10. Run the new spec alone several times, then the whole `cloud` project. Copy `test-results/`
     aside before any re-run.
 
+**As built (2026-11-16).**
+
+- **New spec `e2e/tests/settings/import-households.spec.ts`**, cloud only (in `cloud`
+  `testMatch` and `local` `testIgnore`), 7 tests, WITH a browser. The plan expected the
+  role tests to go through `makeGql` because "the browser user is fixed". It is fixed, but
+  `addHouseholdMember` can add the browser's own user (`E2E_USER_ID`) to another person's
+  household, as long as it runs before the page's first GraphQL request. So every test
+  drives the real import card:
+
+  | Test | What it proves | Plan item |
+  |---|---|---|
+  | member | O1 line shown, no file button; `bulkCreateItems` and `importCheck` refused with `FORBIDDEN`; nothing written. The member ORGANIZES Home (O7) | 1 |
+  | manager | `importCheck(forClear: true)` refused, `forClear: false` answered; conflict dialog has Skip and Replace and no Clear; Replace writes the file | 1, and "a manager does not see Clear & import" |
+  | another household | the "another household" message; the user's household has no item AND no vendor; the stranger's item keeps its name | 2 |
+  | dialog, pick second | dialog opens with "Home" checked; the backup's default rows land in "Second Pantry", none in Home | 3 |
+  | dialog, new location | the name field starts with "Fixture Home" (O6); "Imported Pantry" is created and holds the rows | 3 |
+  | blocked location | "Skipped, because you cannot edit them: Garage."; Home's row written, Garage's not (read as the owner) | 4 |
+  | clear restore | after "Clear & import" of a cloud backup, the locations are exactly the backup's two; no empty "Home" (decision 6) | decision 6 |
+
+- **Rule 17 in test "another household" needed a VENDOR, not only a new item.** The new
+  item travels in the same `bulkCreateItems` call as the foreign item, so that call is
+  refused as a whole even without `importCheck`. Vendors go out before items, in their own
+  call, so only the vendor can show a write that `importCheck` should have stopped.
+- **The cloud → local copy (plan item 7) is a new test in `data-mode-migration.spec.ts`**,
+  not in `import-export-local.spec.ts` (the E.5 row below says why). Home is first by
+  order, the user is on "Garage", and the two stock rows differ (2 and 7), so "active" and
+  "first" give different answers.
+- **A production change made for a test.** `DataModeCard` left its whole cloud section out
+  in E2E mode, because Sign Out calls `useClerk()` and the E2E build has no
+  `ClerkProvider`. So no spec could press Switch. `useClerk()` moved into
+  `CloudModeSectionWithClerk`; the E2E build renders `CloudModeSection` with no `signOut`,
+  which shows Switch and hides Sign Out. A unit test pins it (`DataModeCard/index.test.tsx`,
+  "shows Switch and no Sign Out in cloud mode in the E2E build, without calling Clerk").
+- **Existing specs changed:**
+
+  | Spec | Change |
+  |---|---|
+  | `shared-cart.spec.ts` | a fourth person, `IMPORTER` (household `manager`, `participant` on Home), runs the two P3 imports. Importing as the owner would lose "a person other than the adder merges into the shared cart" |
+  | `cart-id-cross-user-leak.spec.ts` | test 1 now pins the bare-id refusal (`BAD_USER_INPUT`) for BOTH households, with a prefixed cart in the same batch (rule 17) and a positive control. The old leak test moved to a new test 2 with a PREFIXED id: B names A's cart id → `FORBIDDEN`, B's cart item skipped. Test 3 unchanged. The header no longer calls it a negative control |
+  | `settings/import-export-cloud.spec.ts` | the two local → cloud tests answer "Import into which location?" (one asserts Home is checked). The three restore-into-a-new-household tests now expect the backup's three locations under their OWN ids plus the household's fresh, empty "Home"; "gains no stray default" is renamed and asserts the restored ids equal the file's ids. The default is looked up by NAME |
+  | `settings/import-strategies.spec.ts` | the cloud `replace` answers the dialog (asserts Home checked, keeps it). The colliding item, the new item and the #330 name assertion are unchanged |
+  | `settings/data-mode-migration.spec.ts` | stale comment; the new copy test |
+  | helpers | `backupAssertions.ts`: `expectFixtureLocations` / `expectFixtureStockPerLocation` take `extraLocationNames` and find the default by name; stale remap comments in it, `cloudSeed.ts`, `stockReadback.ts`. `SettingsPage`: `getImportLocationDialog`, `chooseImportLocation` |
+
+- **One unit test** in `ImportCard/index.test.tsx`: a local file import passes exactly
+  `{ activeLocationId: 'office' }` (`toStrictEqual`, and the key list), so O4 is pinned for
+  files.
+- **No spec checked the old "another account" text**; `git grep "another account" e2e`
+  finds only test titles of the leak spec, which are renamed.
+- **One user in two households is still impossible in E2E** (409). The #381 cases stay
+  tested on the fake only.
+- **Measured.** Before E.6, on the unchanged tree, the 5 affected cloud specs: **8 failed /
+  13 passed** (8.6m). After: those 5 plus the new spec, **30 passed** (11.8m). Unit: web
+  2664 / 283 → **2666 / 283**, server **1765 / 67** unchanged, `scripts/spec` **70**.
+  `pnpm test:e2e:all`, load average 2.3–3.5: local **178 passed / 6 skipped** (3m37s),
+  cloud **153 passed / 7 skipped** (30m45s), pwa **73 passed** (1m33s).
+- **Mutation checks**, each run against `--project=cloud`, restored from a copy:
+
+  | Mutation | Red test | Failure |
+  |---|---|---|
+  | `bulkCreateItems` asks `requireCatalogRole(ctx, 'member')` | member | `Received promise resolved instead of rejected` |
+  | `importCloudData` ignores `check.anotherHousehold` | another household | `vendors` received `[{ id: "h4e6-new-vendor" … }]` |
+  | the dialog checks nothing at first | dialog, pick second | `toBeChecked … Received: unchecked` |
+  | the dialog confirms the first location whatever is picked | dialog, pick second | `Expected: 2 / Received: undefined` |
+  | the O5 line is not rendered | blocked location | `getByText('Skipped, because you cannot edit them: Garage.')` not found |
+  | `allowClear` is true for a manager | manager | `toHaveCount … Expected: 0 / Received: 1` |
+  | `deleteHomeIfUnused` not called | clear restore | received names include `"Home"` |
+  | `doSwitch` passes no `homeLocationId` | cloud → local copy | `{ local: 2, <garage>: 7 }` where `{ local: 7, <home>: 2 }` was expected |
+  | (unit) ImportCard passes `homeLocationId: activeLocationId` | O4 unit test | `+ "homeLocationId": "office"` |
+  | (unit) the E2E build mounts the Clerk wrapper | DataModeCard E2E-build unit test | "Sign Out" button found |
+
 ## Task E.7 — docs, runbook and the final gate
 
 1. Root `CLAUDE.md`, *Authorization (cloud)*: the new body of `requireOwnRowOrUnclaimed`, the
@@ -809,6 +880,12 @@ Existing specs:
 
 ## Known gaps (expected after this plan)
 
+- **A `skip` restore of a cloud backup into a new household keeps an empty "Home"** (found in
+  task E.6). First sign-in makes "Home"; the backup's locations come back under their own
+  ids beside it (T16); decision 6 deletes the empty "Home" only after `clear`. That "Home" is
+  also the active location, so the pantry looks empty until the user switches. Waiting for
+  the owner: delete it on `skip` too, or keep it. `import-export-cloud.spec.ts` pins today's
+  behaviour, so a change will turn three tests red on purpose.
 - **One user in two households is tested only with fakes.** The E2E route refuses a user who is
   already in a household, so no real-SQL test of #381 exists until H5 adds invites.
 - **`importCheck` tells a manager whether an id belongs to another household.** That is the
@@ -873,8 +950,16 @@ Filled in from the task reports and reviews.
 | E.5 | Step 2: "Delete the stale comment at `DataModeCard.tsx:78–88`" | Rewritten instead. The copy still passes the local active location as `activeLocationId`, for a payload with no `itemStocks` key, so the code needs a comment that says why |
 | E.5 | Step 2 does not say what happens when `homeLocationId` names no location of the payload | Built: the old rule (O4) applies. Without that, the rows of no location move and `ensureDefaultLocationRow` adds an empty "My Home" beside them. Tested, and the guard proved by mutation |
 | E.5 | E.6 item 7: "`import-export-local.spec.ts`: the cloud → local copy puts the active location into My Home" | That spec runs in the `local` project only and imports a backup FILE, which keeps O4. The copy runs from `DataModeCard` in CLOUD mode, and no E2E spec drives it today (`data-mode-migration.spec.ts` covers local → cloud only). E.6 needs a new cloud test, not a change to that spec |
+| E.6 | Items 1 and 4: "through `makeGql` where no browser is needed"; "if the browser cannot run as M … do it through `makeGql` + the web function" | The browser CAN be a member or manager of another person's household. `addHouseholdMember` accepts `E2E_USER_ID` as the member, if it runs before the page's first GraphQL request (`cleanupCloudData` is REST, so it does not count). All seven new tests drive the real import card |
+| E.6 | Item 2: "a file that holds user A's item id AND a new item" | A new ITEM cannot show a write that `importCheck` should have stopped: it is in the same `bulkCreateItems` call as A's item, and that call is refused as a whole anyway. The file needs a new row of an EARLIER entity type. Built with a new vendor, which is sent first, in its own call |
+| E.4, E.5 | "E2E specs this changes": only the local → cloud dialog in `import-export-cloud.spec.ts` | Three more tests of that spec broke: the cloud backup restored into a NEW household (export, `/e2e/cleanup`, import). Since T16 the backup's locations come back under their own ids, so the household's fresh "Home" stays as a FOURTH, empty location, and it is the ACTIVE location, so the pantry shows nothing until the user switches. Decision 6 deletes that "Home" only on `clear`; a restore with no conflict runs `skip`. The tests now expect four locations and switch to "Fixture Home". **Open question for the owner:** should the empty fresh "Home" also be deleted after a `skip` restore? (Known gaps) |
+| E.6 | Item 7: the cloud → local copy can be tested | `DataModeCard` rendered no cloud section at all in E2E mode (`useClerk()` has no provider there), so no spec could press Switch. A production change was needed: `useClerk()` moved into `CloudModeSectionWithClerk`, and the E2E build gets Switch without Sign Out |
+| E.6 | Item 8: test 1 of `cart-id-cross-user-leak.spec.ts` "is refused for BOTH users … it is no longer a negative control" | True, but then the file no longer tested the cross-household cart guard at all: the bare id is refused before that guard runs. The leak test was kept as a new test 2 with a location-prefixed id of the other household (`FORBIDDEN` before the cart table is read; B's cart item skipped) |
+| E.6 | Item 6: `data-mode-migration.spec.ts` "now has the dialog" | It does not: it uses `clear`, which never asks (O2), as E.4's own note says. Only a stale comment changed |
+| E.6 | Item 2 of the brief: "Any spec that checks the old 'another account' text" | None did. Only two test TITLES in `cart-id-cross-user-leak.spec.ts` said "another account"; both were rewritten |
 
 ## Status
 
-🔲 **Not started.** Plan written 2026-11-16 on `feature/households-h4`. The owner decisions
-O1–O8 are open.
+**E.1–E.6 built** (all on 2026-11-16); E.7 open. Plan written 2026-11-16 on
+`feature/households-h4`. The owner approved O1–O8 on 2026-11-16. One new owner question from
+E.6: the empty "Home" after a `skip` restore (Known gaps).

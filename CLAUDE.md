@@ -1835,6 +1835,11 @@ and the spec is green either way — the proof of 4b's client-side fix is a unit
 `apps/web/src/lib/importData.test.ts`. It is the **first cloud spec to use two users**:
 `makeGql(request, userId)` and `cleanupCloudData(request, userId)` now take an optional user
 id, defaulting to `E2E_USER_ID`, so the 18 existing call sites are untouched.
+**That paragraph is history.** The import ownership guard (#327) made the spec real coverage,
+and since households H4 task E.6 it holds 3 tests: a bare cart id is refused with
+`BAD_USER_INPUT` for both households (#361), another household's location-prefixed cart id
+is refused with `FORBIDDEN` and its cart items are skipped, and each household's own
+prefixed id is written. See the header of the spec.
 
 `settings/import-export-cloud.spec.ts` grew from **2 to 6** cloud test cases in PR 4b task
 8, and `settings/import-export-local.spec.ts` from 3 to 4. Before that, **neither

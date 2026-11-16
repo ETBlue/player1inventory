@@ -444,7 +444,13 @@ writable location. It is deleted. Now:
 | a cart id or log naming a location that does not exist, or one in another household | `FORBIDDEN`, nothing written |
 
 A spec that imports into cloud must name a real location for every log and cart.
-`cart-id-cross-user-leak.spec.ts` imports a bare `no-vendor` cart id; task E.6 changes it.
+`cart-id-cross-user-leak.spec.ts` test 1 pins the bare-id refusal for two households, and
+its test 2 is the old leak test moved onto a location-prefixed id (households H4 task E.6).
+
+**Every bulk import mutation also asks the household role `manager` first** (households H4
+task E.3, the import role gate). A spec that imports as a second person must make that
+person a household `manager`, not a `member`. `shared-cart.spec.ts` imports as `IMPORTER`
+(a `manager` with `participant` on Home) for this reason.
 
 **`ensureCloudHomeLocation(request)` (`e2e/helpers/cloudSeed.ts`) is worth calling
 first.** It runs the `locations` query (which runs first sign-in) and returns the FIRST
@@ -462,8 +468,10 @@ selected `isDefault` failed GraphQL validation (`Cannot query field "isDefault" 
 
 **A cloud location is never "the default" any more.** "First" means first in the server's
 answer, which is sorted by `order`, then by `id`. The web app uses the same rule for its
-fallback location (`useActiveLocation`, and `fetchCloudDefaultLocationId` in
-`apps/web/src/lib/importData.ts`).
+fallback active location (`useActiveLocation`). The cloud import picks no location by
+itself any more: since households H4 task E.4 a cloud backup keeps every location id, and
+a local backup's `'local'` row goes where the user picks in "Import into which location?"
+(`fetchCloudDefaultLocationId` is deleted).
 
 ## A seed that writes an item must also write its stock — in BOTH modes
 
@@ -687,6 +695,25 @@ Proved by mutation on 2026-11-04, each against `--project=cloud` and undone from
 | `requireHouseholdRole` ignores `role` | the tag test, the same message |
 | `/e2e/cleanup` reads the user's member rows without `role: 'owner'` | member-first cleanup, 8 counts differ |
 | `/e2e/cleanup` deletes member rows by `{ userId }` only | owner-first cleanup, `householdMembers` 1 where 2 was expected |
+
+**`settings/import-households.spec.ts` joined on 2026-11-16 (households H4 task E.6).**
+Cloud only, with a browser, in `local`'s `testIgnore`. It is the first spec where the
+BROWSER is a second person in someone else's household: `E2E_USER_ID` is added to an
+owner's household with `addHouseholdMember` before the page sends its first request. Its
+tests: a household `member` sees "Only the owner or a manager can import data." and no file
+button, and the server refuses them; a `manager` gets no "Clear & import"; a file naming
+another household's item writes nothing (its new VENDOR is what makes that able to fail,
+because vendors go out before items); "Import into which location?" puts a local backup's
+default rows into the picked location, or into a "New location"; a location the importer
+only views is skipped and named; and a "Clear & import" of a cloud backup leaves no empty
+"Home" (decision 6). One person in TWO households is still impossible here (409).
+
+**`DataModeCard`'s Switch flow renders in E2E mode — since households H4 task E.6.** A
+production change made for a test, like `PostLoginMigrationDialog`'s below. The cloud
+section used to be left out in E2E mode because its Sign Out flow calls `useClerk()`.
+`useClerk()` moved into `CloudModeSectionWithClerk`, so the E2E build renders the Switch
+button and the cloud → local copy, without Sign Out. `settings/data-mode-migration.spec.ts`
+uses it to check that the copy puts the cloud ACTIVE location into local "My Home".
 
 **Cloud test counts, measured, not quoted. Measure your own — do not subtract any number
 below.** The one-line command:
@@ -920,9 +947,16 @@ one the destination holds.
 
 Each row carries `isHome`, not `isDefault` (since households H3a task 3.15). Local: the row
 Dexie flags `isDefault`. Cloud: the FIRST row of the `locations` answer, because cloud has
-no default location and the web's import remap lands the payload's default on the first
-location. So in cloud "exactly one home" is always true; what a cloud assertion can still
-check is that the first location has the expected name.
+no default location. So in cloud "exactly one home" is always true; what a cloud assertion
+can still check is that the first location has the expected name.
+
+**Since households H4 the cloud import has no remap** (task E.4, decision T16). A cloud
+backup keeps every location id, and a local backup's `'local'` row goes where the user
+picks in "Import into which location?" (`SettingsPage.chooseImportLocation`). So after a
+cloud backup is restored into a NEW household, the household's own fresh "Home" and the
+backup's first location both sit at `order` 0, and which one is "first" is decided by
+`id`. **Look such a location up by name**, and pass the fresh "Home" to
+`expectFixtureLocations` / `expectFixtureStockPerLocation` as an extra location.
 
 ### `e2e/helpers/backupAssertions.ts` — the import/export location checks, written once
 
@@ -938,26 +972,29 @@ The new checks therefore live in **one** module, not a third copy:
 
 | Export | What it asserts |
 |---|---|
-| `expectFixtureLocations` | three locations, and the home location's name (local: the `isDefault` row; cloud: the first location) |
+| `expectFixtureLocations` | three locations (plus any `extraLocationNames`), and which one holds the backup's default rows, found by name. With no extra location it also checks that the home row (local: the `isDefault` row; cloud: the first location) has that name |
 | `expectFixtureStockPerLocation` | one stock row per location, each with its own quantities |
 | `expectStockNotCollapsedOntoDefault` | the two non-default rows are not sitting on the home location |
 
 **Both fixtures describe the same three locations under the same names, with the same three
 different quantities.** `e2e/fixtures/local-backup.json`'s default id is the `'local'`
 sentinel; `cloud-backup.json`'s is `aaaaaa000000000000000010`. Only the ids differ, so a
-fixture resolves a location by name and each direction exercises the remap.
+fixture resolves a location by name. A local backup's `'local'` goes where the user picks;
+a cloud backup keeps its own ids (households H4, decision T16).
 
 **Do not make those quantities equal, and do not drop to one location.** With one location,
 "the location the payload named" and "the caller's default" are the same id; with equal
 numbers, "each row kept its own location" and "every row landed on the default" give the
 same answer. Either way no assertion in this module can fail.
 
-**The backup's default-location NAME does not survive a `skip` import, in either
-mode.** `ImportCard.tsx` line 111 runs the **`skip`** strategy whenever the payload raises no
+**A LOCAL backup's default-location NAME does not survive a `skip` import, in either
+mode.** `ImportCard` runs the **`skip`** strategy whenever the payload raises no
 conflict, and `skip` means "add what is missing, change nothing that is already there". The
-remap has put the backup's default row on the id the destination already holds, so that row
-is always the one `skip` leaves alone: local filters it out by `existingIds`, cloud's
-`bulkCreateLocations` skips a taken id. Measured 2026-10-04 — a backup whose default was
+backup's default row (`'local'`) is put on a location the destination already holds (in
+cloud, the one picked in "Import into which location?"), so that row is always the one
+`skip` leaves alone: local filters it out by `existingIds`, cloud does not send it as a new
+location. A CLOUD backup restored into a new household keeps its default's name, because
+since households H4 its location comes back under its own id. Measured 2026-10-04 — a backup whose default was
 called "Fixture Home" came back as `[ "Fixture Cabin", "My Home", "Fixture Office" ]` in
 both projects. That is why `destinationDefaultLocationName(baseURL)` exists and why the
 default's expected name is a parameter rather than a constant in the fixture.
