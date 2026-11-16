@@ -241,7 +241,7 @@ describe('bulkCreateShoppingCarts — the location comes from the cart id', () =
     // the bare id fell back to the caller's first location. Since then
     // `requireOwnRowOrUnclaimed` refuses an id with no location part
     // (decision T6). The web upgrades a legacy file before it sends it
-    // (`upgradeLegacyPayloadForCloud`), so only a hand-edited file gets here.
+    // (`upgradeLegacyPayload`), so only a hand-edited file gets here.
     const good = `${LOC_OTHER}:${VENDOR}`
 
     // When the import runs

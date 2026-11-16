@@ -2644,12 +2644,13 @@ async function fetchCloudExistingData(
 // client-side mitigation, in design decision 6 of
 // docs/features/settings/2026-10-28-design-import-ownership-guard.md: the
 // window is narrow, because after the clear the caller owns no rows, so a
-// `Forbidden` on `clear` means the file really does carry another account's
-// row ids and cannot be triggered by the user's own data.
+// `Forbidden` on `clear` means the file really does carry another household's
+// row ids and cannot be triggered by the user's own data. (This said "another
+// account" until households H4 decision O8.)
 //
 // What the user is told, instead of the old bare word `Forbidden`:
 // `settings.import.importErrorForbiddenAfterClear` — some rows in this file
-// belong to another account, so the import was refused; the cloud data was
+// belong to another household, so the import was refused; the cloud data was
 // already cleared before that happened; the backup file is unchanged.
 // `ImportCard` picks that key over `settings.import.importErrorForbidden` from
 // the session's own strategy, and `isForbiddenImportError` below is what tells

@@ -144,7 +144,8 @@ async function resolveLogLocations(
  *  1. Every id must contain a colon. A bare id (a pre-3b backup, keyed by
  *     vendor id alone) refuses the whole batch with `BAD_USER_INPUT`. This
  *     runs before any read. The web gives a legacy file's carts a location
- *     prefix before it sends them (`upgradeLegacyPayloadForCloud`).
+ *     prefix before it sends them (`upgradeLegacyPayload` in
+ *     `apps/web/src/lib/importData.ts`).
  *  2. Each DISTINCT prefix gets `requireLocationRole(…, 'participant')`, then
  *     `requireLocationInHousehold(…, householdId)`. A prefix naming a location
  *     that does not exist, a location where the caller is below
