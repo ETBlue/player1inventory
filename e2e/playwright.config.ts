@@ -184,8 +184,8 @@ export default defineConfig({
       // purge-two-households.spec.ts, cloud-roles.spec.ts,
       // household-member-cleanup.spec.ts and shared-cart.spec.ts drive the
       // cloud backend directly and never open a page — none has a local-mode
-      // counterpart. live-cart.spec.ts opens a page but needs a second and a third
-      // user and the live socket, which only the cloud project has. The last six also act as users other than E2E_USER_ID,
+      // counterpart. live-cart.spec.ts and live-pantry.spec.ts open a page but need a second
+      // (and live-cart a third) user and the live socket, which only the cloud project has. The last six also act as users other than E2E_USER_ID,
       // which the web build cannot be (VITE_E2E_TEST_USER_ID below is one
       // value).
       testIgnore: [
@@ -201,6 +201,7 @@ export default defineConfig({
         '**/household-member-cleanup.spec.ts',
         '**/shared-cart.spec.ts',
         '**/live-cart.spec.ts',
+        '**/live-pantry.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'], baseURL: LOCAL_WEB_URL },
     },
@@ -255,6 +256,7 @@ export default defineConfig({
         '**/household-member-cleanup.spec.ts',
         '**/shared-cart.spec.ts',
         '**/live-cart.spec.ts',
+        '**/live-pantry.spec.ts',
       ],
     },
     {
