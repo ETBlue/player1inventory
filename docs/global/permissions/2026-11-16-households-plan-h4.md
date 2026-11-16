@@ -145,6 +145,13 @@ The design leaves these open. The owner approved all eight defaults on 2026-11-1
 | O7 | A household **member** who is the organizer of a location: may they import into that location? | No, as the design says ("owner and manager only"). Recorded here because it may surprise |
 | O8 | The new message texts | en: "Some rows in this file belong to another household, so the import was refused. Nothing was imported." (design text). tw: "檔案裡有些資料屬於別的家庭，所以匯入被拒絕了，沒有匯入任何資料". The other two keys change "account" → "household" (帳號 → 家庭) the same way |
 
+Two more, decided on 2026-11-17 after task E.6:
+
+| # | Question | Decision (2026-11-17) |
+|---|---|---|
+| O9 | A `skip` or `replace` restore of a cloud backup into a new household leaves the user on the household's fresh, empty "Home" (task E.6, *Known gaps*). Delete that "Home" too, or keep it? | **Option B.** Keep it, and move the user off it. After a FINISHED `skip` or `replace` import that brought locations, when the active location holds **no `ItemStock` row**, the active location becomes the backup's first location by `order`. Nothing is deleted. When the active location holds stock, nothing changes. A local file (the "Import into which location?" dialog, O3) never switches: the user already picked where the rows go. `clear` is unchanged (decision 6). See *Follow-up O9 — As built* after task E.6 |
+| O10 | The E.5 fallback: on the cloud → local copy, when the cloud active location is not in the payload, the payload's first location by `order` becomes local "My Home" (decision O4's rule) | **Approved as built.** No code change |
+
 ## Rules every task brief must pass down
 
 The eight rules in the phase plan apply: plain English, the report structure with "what did
@@ -843,6 +850,83 @@ Existing specs:
   | (unit) ImportCard passes `homeLocationId: activeLocationId` | O4 unit test | `+ "homeLocationId": "office"` |
   | (unit) the E2E build mounts the Clerk wrapper | DataModeCard E2E-build unit test | "Sign Out" button found |
 
+## Follow-up O9 — show the restored pantry (owner decision of 2026-11-17)
+
+**As built (2026-11-17).**
+
+- **The rule lives in `importCloudData`**, in a new function `locationToShowAfterImport`
+  (`apps/web/src/lib/importData.ts`). It runs after the last write of `skip` and `replace`,
+  before `resetStore`. It returns a location id, and `CloudImportResult` carries it as
+  `switchToLocationId`. The key is absent when there is no switch. `ImportCard` passes
+  `activeLocationId` in and calls `setActiveLocationId` with the answer, AFTER its own
+  `client.resetStore()`. Before that, the provider's location list does not hold the new
+  location yet, and its validation effect would move the user to the first location of the
+  old list.
+- **The switch happens only when all of these are true:**
+  - the strategy is `skip` or `replace` (`clear` keeps decision 6 and is never switched);
+  - the file did not need "Import into which location?" (`needsImportLocation` is false);
+  - the caller passed `activeLocationId` (`usePostLoginMigration` does not; its files are
+    local and always need the dialog anyway);
+  - the file still has a location after `withoutRefusedRows` left out the refused ones;
+  - its first location by `order` (a tie keeps the file's order) is not already the active
+    one;
+  - the active location holds **no `ItemStock` row**, read from the server.
+- **Why "empty" means "no `ItemStock` row".** The pantry lists stock rows only, so no stock
+  row is exactly "the pantry shows nothing". Logs and carts do not count: a location with
+  only those still shows an empty pantry. A stock row with quantity 0 DOES count: the user
+  put the item there, and moving them away from it would be a surprise.
+- **Why it is read AFTER the import, not before.** A same-household restore can put rows
+  back on the active location (the "same-household backup" tests in
+  `import-export-cloud.spec.ts` do exactly that). Read before, that location would look
+  empty and the user would be moved away from the rows just restored.
+- **How it is read.** A new query document, `ItemStockIdsAtLocation`
+  (`apollo/operations/itemStocks.graphql`): the existing `itemStocks(locationId:)` field,
+  ids only, `fetchPolicy: 'no-cache'`. No schema change, so no deploy-order rule. The field
+  asks `viewer` on the location, which the user has on the location they are looking at. It
+  is not in `QUERIES_BY_KIND`: no component watches it.
+- **A failed read does not fail the import.** Every row is written by then, the same reason
+  as `deleteHomeIfUnused`. The user stays where they are.
+- **A local file imported into cloud never switches** (the brief asked to confirm this by
+  reading the code). The file needs the dialog (its `'local'` row), the user picks where the
+  default rows go, and moving them to another location afterwards would undo that choice.
+  If they pick "Home", "Home" then holds stock, so the rule would not switch anyway. If they
+  pick another location or a new one, they stay on "Home" and know where the rows went.
+- **Tests.** 8 in `importData.test.ts` (`skip` and `replace` switch to the first by ORDER,
+  with the file's rows listed in the opposite order; active location with stock → no
+  switch; a file with no locations → no switch and no read; the file's first location is
+  the active one → no switch; `clear` → Home deleted as before, no switch, no read; a local
+  file with a picked target → no switch, no read; a failed read → import resolves, no
+  switch). 2 in `ImportCard/index.test.tsx` (the card passes `activeLocationId` and stores
+  the named location as the cloud active location; no name → unchanged).
+- **E2E.** `import-export-cloud.spec.ts`, the test renamed "user re-importing a cloud
+  backup into a new household gets every location back under its own id and is shown the
+  first one". It now puts the user on "Home" before the import, and after it checks, with
+  no switch by the user, that the switcher says "Fixture Home" and the pantry shows
+  "Fixture Item". The precondition is needed: the browser still remembers the OLD
+  household's Home id, and the seed renamed that row to "Fixture Home", so the restore
+  brings that id back. Without the precondition the page could still hold that id when the
+  import starts, and the test would pass with no switch at all. Comments in the same file
+  that said the user stays on the empty Home are rewritten.
+- **Measured.** Unit: web 2666 / 283 → **2676 / 283**, server **1765 / 67** unchanged,
+  `scripts/spec` **70**. `pnpm test:e2e --project=cloud` on `import-export-cloud.spec.ts`
+  and `import-households.spec.ts`: **15 passed** (6.8m), load average 3.0–3.7.
+- **Mutation checks**, each restored from a copy:
+
+  | Mutation | Red test | Failure |
+  |---|---|---|
+  | take `locations[0]` instead of sorting by `order` | skip, replace, "first location is the active one" | `loc_b` where `loc_a` was expected |
+  | treat any stock read as empty (drop `stocks.length > 0`) | "location that holds stock stays there" | key `switchToLocationId` present |
+  | read the active location BEFORE the `skip` writes | skip | the read came before `BulkCreateItemStocks` |
+  | drop the `needsTarget` guard | "local file is not switched" | a stock read was made |
+  | drop the "same as active" check | "first location is the active one" | `switchToLocationId: 'loc_a'` |
+  | rethrow a failed read | "empty-check fails" | the import rejected |
+  | read the stock before checking the file has locations | 5 tests, including "no locations" | an extra read |
+  | `clear` also runs the rule | "clear is never switched" | key present, a read made |
+  | `replace` never runs the rule | replace | `undefined` |
+  | (card) `setActiveLocationId` not called | card test 1 | stored id stayed `cloud_home` |
+  | (card) `activeLocationId` not passed | card test 1 | options had no `activeLocationId` |
+  | (E2E) `setActiveLocationId` not called | the renamed E2E test | `Expected substring: "Fixture Home" / Received string: "Home"` |
+
 ## Task E.7 — docs, runbook and the final gate
 
 1. Root `CLAUDE.md`, *Authorization (cloud)*: the new body of `requireOwnRowOrUnclaimed`, the
@@ -880,12 +964,15 @@ Existing specs:
 
 ## Known gaps (expected after this plan)
 
-- **A `skip` restore of a cloud backup into a new household keeps an empty "Home"** (found in
-  task E.6). First sign-in makes "Home"; the backup's locations come back under their own
-  ids beside it (T16); decision 6 deletes the empty "Home" only after `clear`. That "Home" is
-  also the active location, so the pantry looks empty until the user switches. Waiting for
-  the owner: delete it on `skip` too, or keep it. `import-export-cloud.spec.ts` pins today's
-  behaviour, so a change will turn three tests red on purpose.
+- **A `skip` or `replace` restore of a cloud backup into a new household keeps an empty
+  "Home"** (found in task E.6). First sign-in makes "Home"; the backup's locations come back
+  under their own ids beside it (T16); decision 6 deletes the empty "Home" only after
+  `clear`. **The owner decided to keep it (O9, 2026-11-17).** Since then the user is moved
+  off it to the backup's first location, so the pantry no longer looks empty. The extra
+  "Home" stays in the location list; the user can delete it on the locations page.
+- **The O9 switch is per tab.** It is made in the tab that ran the import. Another open tab
+  of the same user keeps its own active location (the live `LOCATION` event refetches its
+  list, it does not move it).
 - **One user in two households is tested only with fakes.** The E2E route refuses a user who is
   already in a household, so no real-SQL test of #381 exists until H5 adds invites.
 - **`importCheck` tells a manager whether an id belongs to another household.** That is the
@@ -957,9 +1044,12 @@ Filled in from the task reports and reviews.
 | E.6 | Item 8: test 1 of `cart-id-cross-user-leak.spec.ts` "is refused for BOTH users … it is no longer a negative control" | True, but then the file no longer tested the cross-household cart guard at all: the bare id is refused before that guard runs. The leak test was kept as a new test 2 with a location-prefixed id of the other household (`FORBIDDEN` before the cart table is read; B's cart item skipped) |
 | E.6 | Item 6: `data-mode-migration.spec.ts` "now has the dialog" | It does not: it uses `clear`, which never asks (O2), as E.4's own note says. Only a stale comment changed |
 | E.6 | Item 2 of the brief: "Any spec that checks the old 'another account' text" | None did. Only two test TITLES in `cart-id-cross-user-leak.spec.ts` said "another account"; both were rewritten |
+| O9 | *Known gaps* (E.6): "`import-export-cloud.spec.ts` pins today's behaviour, so a change will turn three tests red on purpose". The O9 brief repeated it: the three tests "pin today's behaviour (the active location staying on Home)" | None of the three asserted the active location. They assert four locations and the stock per location, and `verifyRelations` switches to the location it checks by itself. Option B deletes nothing, so all three stayed green with the new code. Only one of them turned red under a mutation, and only after this follow-up added the switch check to it. So no test had pinned "the user stays on Home" |
+| O9 | The brief: "if the active location is empty, switch" | Not enough on its own. Read BEFORE the import, a same-household restore that puts rows back on the active location would move the user away from them. It is read after the last write |
 
 ## Status
 
-**E.1–E.6 built** (all on 2026-11-16); E.7 open. Plan written 2026-11-16 on
-`feature/households-h4`. The owner approved O1–O8 on 2026-11-16. One new owner question from
-E.6: the empty "Home" after a `skip` restore (Known gaps).
+**E.1–E.6 built** (all on 2026-11-16), and the O9 follow-up (2026-11-17); E.7 open. Plan
+written 2026-11-16 on `feature/households-h4`. The owner approved O1–O8 on 2026-11-16, and
+decided O9 and O10 on 2026-11-17 (the empty "Home" after a `skip` restore: keep it, move the
+user off it; the E.5 fallback: approved as built).
