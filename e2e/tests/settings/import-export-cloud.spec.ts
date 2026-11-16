@@ -265,8 +265,10 @@ async function seedCloudFixture(
 // (households H4, decision T16). `extraLocationNames` are locations the
 // destination holds besides the fixture's three, which must stay empty. The
 // test switches to `homeName` first, because the pantry lists the active
-// location only, and after a restore into a new household the active location
-// is that household's own empty "Home".
+// location only. Since the owner decision of 2026-11-17 (option B) a restore
+// into a new household already moves the user off its empty "Home" onto the
+// backup's first location, so for a cloud backup this switch changes nothing;
+// the test "every location back under its own id" proves that without it.
 async function verifyRelations(
   page: import('@playwright/test').Page,
   request: import('@playwright/test').APIRequestContext,
@@ -446,7 +448,8 @@ test('user can export and re-import cloud data (cloud → cloud)', async ({
   // The backup's three locations came back under their own ids (households
   // H4, decision T16), so its default is "Fixture Home" again. The new
   // household's own "Home" (first sign-in, after the cleanup) stays beside
-  // them, empty: see the next test.
+  // them, empty, and the user is moved off it: see the test "every location
+  // back under its own id".
   await verifyRelations(
     page,
     request,
@@ -510,10 +513,17 @@ const REIMPORT_TIMEOUT_MS = 60000
 // that on purpose.
 //
 // Decision 6 (choice A) deletes that empty "Home" only after a `clear`
-// import. A restore with no conflict runs `skip`, so the "Home" stays. Whether
-// it should go on `skip` too is an open question for the owner, recorded in
-// the H4 plan (task E.6, *What this plan got wrong*).
-test('user re-importing a cloud backup into a new household gets every location back under its own id', async ({
+// import. A restore with no conflict runs `skip`, so the "Home" stays. The
+// owner decided on 2026-11-17 (option B) to keep it, and to move the user OFF
+// it instead: after a `skip` or `replace` import, an active location with no
+// stock row is swapped for the backup's first location by `order`
+// (`locationToShowAfterImport` in apps/web/src/lib/importData.ts). This test
+// pins that too. The user is put on "Home" BEFORE the import, on purpose: the
+// browser still remembers the OLD household's "Home" id, and that id comes
+// back as "Fixture Home" (the seed renamed it). Left alone, the page could
+// still hold that id when the import starts, and "Fixture Home" would show
+// with no switch at all.
+test('user re-importing a cloud backup into a new household gets every location back under its own id and is shown the first one', async ({
   page,
   request,
   baseURL,
@@ -535,11 +545,26 @@ test('user re-importing a cloud backup into a new household gets every location 
     locations: { id: string; name: string }[]
   }
   await cleanupCloudData(request)
+  // And: the user is on the new household's own "Home", which is empty
+  await page.goto('/')
+  await switchToLocation(page, CLOUD_HOME_LOCATION_NAME)
   await settings.navigateTo()
   await settings.triggerImport(downloadPath)
   await settings.waitForImportDone('cloud')
 
-  // Then: the backup's three locations, each holding its own numbers, plus
+  // Then: with no switch by the user, the pantry shows the backup's first
+  // location, "Fixture Home", and its item. Without the switch it would show
+  // "Home" and no item.
+  const pantry = new PantryPage(page)
+  await pantry.navigateTo()
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Sidebar navigation' })
+      .getByRole('button', { name: /switch location/i }),
+  ).toContainText(FIXTURE_DEFAULT_LOCATION_NAME)
+  await expect(pantry.getItemCard('Fixture Item')).toBeVisible()
+
+  // And: the backup's three locations, each holding its own numbers, plus
   // the new household's empty "Home"
   await expectFixtureStockPerLocation(
     page,
