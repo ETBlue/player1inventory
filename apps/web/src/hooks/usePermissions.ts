@@ -1,0 +1,91 @@
+import type { LocationRole } from '@/generated/graphql'
+import { useDataMode } from './useDataMode'
+import { useHousehold } from './useHousehold'
+import { useLocations } from './useLocations'
+
+/**
+ * What the caller may do, for the web to hide the controls it cannot use
+ * (households H5, decision T9). The server checks every write anyway; this
+ * only keeps a button from showing that would fail.
+ *
+ * The one place to change when the read-only rules change (the design says
+ * the member rules "may change after user feedback").
+ */
+export interface Permissions {
+  isLoading: boolean
+  /** Cloud: household role `owner` or `manager`. */
+  canEditCatalog: boolean
+  /** Cloud: household role `owner` or `manager`. Delete and reorder locations. */
+  canManageLocations: boolean
+  /** The caller's location role, or `null` for no role (or an unknown id). */
+  roleAt(locationId: string): LocationRole | null
+  /** `participant` or higher at that location. */
+  canEditLocation(locationId: string): boolean
+  /** `organizer` at that location. Rename it, remove an item from it. */
+  isOrganizerAt(locationId: string): boolean
+}
+
+const LOCATION_RANK: Record<LocationRole, number> = {
+  viewer: 0,
+  participant: 1,
+  organizer: 2,
+}
+
+const LOCAL: Permissions = {
+  isLoading: false,
+  canEditCatalog: true,
+  canManageLocations: true,
+  roleAt: () => 'organizer',
+  canEditLocation: () => true,
+  isOrganizerAt: () => true,
+}
+
+/**
+ * Local mode: everything is allowed (one person, no roles).
+ *
+ * Cloud: the household role comes from `useHousehold()`, the location roles
+ * from `useLocations()` (`myRole`, households H5 task F.1). While either is
+ * loading every `can…` is `false`, so a control appears late rather than
+ * disappearing after a click. The household role and the location role are
+ * two separate checks: a manager can edit the catalog and still be only a
+ * viewer of a location (Review Focus 4 of the H5 plan).
+ *
+ * `roleAt` reads the SWITCHER list, which holds only locations with a role.
+ * A location the caller has no role on gives `null`.
+ *
+ * Added in task F.3 (the plan put it in F.4), because the settings
+ * locations list needs `canManageLocations` and `isOrganizerAt`.
+ */
+export function usePermissions(): Permissions {
+  const { mode } = useDataMode()
+  const household = useHousehold()
+  const locations = useLocations()
+
+  if (mode !== 'cloud') return LOCAL
+
+  const isLoading = household.isLoading || locations.isLoading
+  const householdRole = isLoading ? undefined : household.data?.role
+  const canManage = householdRole === 'owner' || householdRole === 'manager'
+
+  const roles = new Map<string, LocationRole>()
+  if (!isLoading) {
+    for (const l of locations.data ?? []) {
+      const role = (l as { myRole?: LocationRole | null }).myRole
+      if (role) roles.set(l.id, role)
+    }
+  }
+  const roleAt = (locationId: string) => roles.get(locationId) ?? null
+  const atLeast = (locationId: string, min: LocationRole) => {
+    const role = roleAt(locationId)
+    return role !== null && LOCATION_RANK[role] >= LOCATION_RANK[min]
+  }
+
+  return {
+    isLoading,
+    canEditCatalog: canManage,
+    canManageLocations: canManage,
+    roleAt,
+    canEditLocation: (id) => atLeast(id, 'participant'),
+    isOrganizerAt: (id) => atLeast(id, 'organizer'),
+  }
+}

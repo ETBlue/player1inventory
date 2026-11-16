@@ -14,6 +14,32 @@ Location CRUD at `/settings/household/locations`. A **Location** is a place the 
 
 `LocationList` locks a row only when `location.isDefault === true`. Never read the flag as a plain boolean: it is `undefined` on every cloud row.
 
+**The list shows every role's view (households H5 task F.3).** The page reads
+`useHouseholdLocations()`, not `useLocations()`. In cloud that is the
+`householdLocations` query: an owner or manager gets EVERY location of the
+household, with `myRole: null` where they have no role; a household member gets the
+same list as the switcher. The switcher keeps `useLocations()` (only locations with a
+role). What each row shows and allows:
+
+| | Who | Source |
+|---|---|---|
+| role text ("Organizer", "Participant", "Viewer"; `roles.location.*`) | cloud only (`showRoles`) | the row's `myRole` |
+| "No access" (`settings.locations.noAccess`) | cloud, a row with `myRole: null` | the row |
+| "No organizer" (`settings.locations.noOrganizer`) | cloud, a row with `hasOrganizer: false` | the row |
+| drag handle and Delete | household `owner` or `manager` (`canManageLocations`) | `usePermissions()` |
+| Rename | `organizer` of THAT location (`isOrganizerAt`) | `usePermissions()` |
+| Add | everyone (the server asks household `member`) | — |
+
+**A reorder sends every row of this list.** Since H5 task F.2 the server refuses a list
+that leaves out a location of the household (`BAD_USER_INPUT`), so an owner or manager
+with a "No access" row could not reorder until this page moved to `householdLocations`.
+`useReorderLocations` writes the server's answer into `GetLocations` and puts the
+cached `GetHouseholdLocations` rows in the order that was sent, because the answer holds
+only the caller's own locations. Create, rename and delete refetch
+`GetHouseholdLocations` by name.
+
+Rows are not links, so a "No access" row opens nothing. Location names render as stored.
+
 **A failed delete shows a toast** (`handleDelete` in `index.tsx`). It reads the error code with `hasGraphQLErrorCode` (`src/lib/graphqlErrorCode.ts`), never the message text:
 
 | Error | Toast (`settings.locations.*`) |

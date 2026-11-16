@@ -345,6 +345,11 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       loading: false,
       error: undefined,
     }),
+    useGetHouseholdLocationsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
     useCreateLocationMutation: () => [
       vi.fn().mockResolvedValue({ data: undefined }),
       {},

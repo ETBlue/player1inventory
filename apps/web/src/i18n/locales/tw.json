@@ -596,7 +596,9 @@
       "dragToReorder": "拖曳以重新排序 {{name}}",
       "dragInstructions": "按空白鍵或 Enter 拿起據點，使用方向鍵移動，再按一次空白鍵或 Enter 放下。",
       "emptyTitle": "尚無據點",
-      "emptyDescription": "使用上方按鈕新增據點。"
+      "emptyDescription": "使用上方按鈕新增據點。",
+      "noAccess": "無權限",
+      "noOrganizer": "沒有據點王"
     },
     "shelves": {
       "label": "貨架",
@@ -887,6 +889,13 @@
   "locationSwitcher": {
     "triggerLabel": "切換據點（目前：{{name}}）",
     "manage": "管理據點"
+  },
+  "roles": {
+    "location": {
+      "organizer": "據點王",
+      "participant": "搬運工",
+      "viewer": "圍觀的"
+    }
   },
   "pwa": {
     "updateAvailable": "有新版本可以使用。",

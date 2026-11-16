@@ -596,7 +596,9 @@
       "dragToReorder": "Drag to reorder {{name}}",
       "dragInstructions": "Press Space or Enter to pick up a location, use arrow keys to move it, and press Space or Enter again to drop it.",
       "emptyTitle": "No locations yet",
-      "emptyDescription": "Add a location using the button above."
+      "emptyDescription": "Add a location using the button above.",
+      "noAccess": "No access",
+      "noOrganizer": "No organizer"
     },
     "shelves": {
       "label": "Shelves",
@@ -887,6 +889,13 @@
   "locationSwitcher": {
     "triggerLabel": "Switch location (current: {{name}})",
     "manage": "Manage locations"
+  },
+  "roles": {
+    "location": {
+      "organizer": "Organizer",
+      "participant": "Participant",
+      "viewer": "Viewer"
+    }
   },
   "pwa": {
     "updateAvailable": "A new version is available.",

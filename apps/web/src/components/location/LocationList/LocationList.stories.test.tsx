@@ -9,8 +9,11 @@ const {
   CloudLastLocation,
   CloudLocations,
   DefaultOnly,
+  ManagerWithNoAccessRow,
+  MemberReadOnly,
   MixedCaseNames,
   MultipleLocations,
+  NoOrganizer,
 } = composeStories(stories)
 
 describe('LocationList stories smoke tests', () => {
@@ -98,5 +101,46 @@ describe('LocationList name casing', () => {
     expect(overlayLabel).toBeDefined()
     expect(labels).toHaveLength(2)
     expect(overlayLabel.className).not.toMatch(/capitalize/)
+  })
+})
+
+describe('LocationList roles (households H5 task F.3)', () => {
+  it('ManagerWithNoAccessRow shows No access and lets the manager delete that row', () => {
+    render(<ManagerWithNoAccessRow />)
+    expect(screen.getByText('No access')).toBeInTheDocument()
+    expect(screen.getByText('Viewer')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Delete Shed' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Rename Shed' }),
+    ).not.toBeInTheDocument()
+    // The Garage, which the manager organizes, can be renamed
+    expect(
+      screen.getByRole('button', { name: 'Rename Garage' }),
+    ).toBeInTheDocument()
+  })
+
+  it('MemberReadOnly shows the role and no Delete or drag handle', () => {
+    render(<MemberReadOnly />)
+    expect(screen.getByText('Participant')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Delete / })).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: /^Drag to reorder / }),
+    ).toBeNull()
+    expect(
+      screen.getByRole('button', { name: 'Rename Kitchen' }),
+    ).toBeInTheDocument()
+  })
+
+  it('NoOrganizer warns on the row with no organizer only', () => {
+    render(<NoOrganizer />)
+    expect(screen.getAllByText('No organizer')).toHaveLength(1)
+  })
+
+  it('a list without showRoles shows no role text', () => {
+    render(<CloudLocations />)
+    expect(screen.queryByText('Organizer')).not.toBeInTheDocument()
+    expect(screen.queryByText('No access')).not.toBeInTheDocument()
   })
 })

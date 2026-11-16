@@ -116,3 +116,67 @@ export const MixedCaseNames: Story = {
     ],
   },
 }
+
+// ── Households H5 task F.3: roles (cloud) ──
+//
+// The settings page passes `showRoles`, `canManage` (household owner or
+// manager) and `canRename` (organizer of that row). These stories pass the
+// same props the page would for each person.
+
+const cloudRow = (
+  id: string,
+  name: string,
+  order: number,
+  myRole: 'organizer' | 'participant' | 'viewer' | null,
+  hasOrganizer = true,
+) => ({ id, name, order, myRole, hasOrganizer, createdAt: now, updatedAt: now })
+
+/**
+ * A household manager. They are a viewer of the Kitchen and have no role on
+ * the Shed, so the Shed says "No access": they may move or delete it, but
+ * not rename it, and its data stays closed to them.
+ */
+export const ManagerWithNoAccessRow: Story = {
+  args: {
+    showRoles: true,
+    canManage: true,
+    canRename: (location) => location.myRole === 'organizer',
+    locations: [
+      cloudRow('cloud-kitchen', 'Kitchen', 0, 'viewer'),
+      cloudRow('cloud-shed', 'Shed', 1, null),
+      cloudRow('cloud-garage', 'Garage', 2, 'organizer'),
+    ],
+  },
+}
+
+/**
+ * A household member. They see only their own locations, with their role.
+ * No drag handles and no Delete; Rename only where they organize.
+ */
+export const MemberReadOnly: Story = {
+  args: {
+    showRoles: true,
+    canManage: false,
+    canRename: (location) => location.myRole === 'organizer',
+    locations: [
+      cloudRow('cloud-kitchen', 'Kitchen', 0, 'organizer'),
+      cloudRow('cloud-garage', 'Garage', 1, 'participant'),
+    ],
+  },
+}
+
+/**
+ * The Shed's only organizer left the household. The row warns "No
+ * organizer", so an owner knows someone must be given that role.
+ */
+export const NoOrganizer: Story = {
+  args: {
+    showRoles: true,
+    canManage: true,
+    canRename: (location) => location.myRole === 'organizer',
+    locations: [
+      cloudRow('cloud-kitchen', 'Kitchen', 0, 'organizer'),
+      cloudRow('cloud-shed', 'Shed', 1, null, false),
+    ],
+  },
+}

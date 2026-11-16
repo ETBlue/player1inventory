@@ -10,13 +10,15 @@ import { EmptyState } from '@/components/shared/EmptyState'
 import { Toolbar } from '@/components/shared/Toolbar'
 import { Button } from '@/components/ui/button'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
+import { useDataMode } from '@/hooks/useDataMode'
 import {
   useCreateLocation,
   useDeleteLocation,
-  useLocations,
+  useHouseholdLocations,
   useReorderLocations,
   useUpdateLocation,
 } from '@/hooks/useLocations'
+import { usePermissions } from '@/hooks/usePermissions'
 import { hasGraphQLErrorCode } from '@/lib/graphqlErrorCode'
 import type { Location } from '@/types'
 
@@ -27,7 +29,13 @@ export const Route = createFileRoute('/settings/household/locations/')({
 export function LocationSettingsPage() {
   const { t } = useTranslation()
   const { goBack } = useAppNavigation('/settings')
-  const { data: locations = [] } = useLocations()
+  const { mode } = useDataMode()
+  // Every location of the household for an owner or manager, "No access"
+  // rows included, so a reorder sends the full list the server asks for
+  // (households H5 tasks F.2 and F.3). Not `useLocations()`, the switcher's
+  // list, which leaves out a location the caller has no role on.
+  const { data: locations = [] } = useHouseholdLocations()
+  const { canManageLocations, isOrganizerAt } = usePermissions()
   const createLocation = useCreateLocation()
   const updateLocation = useUpdateLocation()
   const deleteLocation = useDeleteLocation()
@@ -128,6 +136,9 @@ export function LocationSettingsPage() {
           <LocationList
             locations={locations}
             onReorder={(orderedIds) => reorderLocations.mutate(orderedIds)}
+            canManage={canManageLocations}
+            canRename={(location) => isOrganizerAt(location.id)}
+            showRoles={mode === 'cloud'}
             onRename={openRename}
             onDelete={handleDelete}
           />

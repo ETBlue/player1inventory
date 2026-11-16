@@ -18,6 +18,7 @@ import { db } from '@/db'
 import {
   CreateLocationDocument,
   DeleteLocationDocument,
+  GetHouseholdLocationsDocument,
   GetLocationsDocument,
   ReorderLocationsDocument,
   UpdateLocationDocument,
@@ -29,6 +30,7 @@ import {
   CLOUD_LOCATION_ORDER_NOT_UPDATABLE,
   useCreateLocation,
   useDeleteLocation,
+  useHouseholdLocations,
   useLocations,
   useReorderLocations,
   useUpdateLocation,
@@ -365,6 +367,120 @@ describe('cloud location mutations', () => {
         'Cloud Warehouse',
       ]),
     )
+  })
+})
+
+// ── Households H5 task F.3: the settings list ──
+//
+// Three locations. The caller organizes the Warehouse and the Office and has
+// NO role on the Shed, so the Shed is on `householdLocations` and not on
+// `locations`. A hook that read the switcher's list would never show it.
+const CLOUD_SHED_ID = 'clw3k1q2c0002s9f8h7g6d5e6'
+const settingsRow = (
+  id: string,
+  name: string,
+  order: number,
+  myRole: 'organizer' | null,
+  hasOrganizer = true,
+) => ({
+  __typename: 'Location' as const,
+  id,
+  name,
+  order,
+  myRole,
+  hasOrganizer,
+})
+const SETTINGS_ROWS = [
+  settingsRow(CLOUD_FIRST_ID, 'Cloud Warehouse', 0, 'organizer'),
+  settingsRow(CLOUD_SHED_ID, 'Cloud Shed', 1, null, false),
+  settingsRow(CLOUD_OTHER_ID, 'Cloud Office', 2, 'organizer'),
+]
+const getHouseholdLocationsMock = {
+  request: { query: GetHouseholdLocationsDocument },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+  result: { data: { householdLocations: SETTINGS_ROWS } },
+}
+
+describe('useHouseholdLocations', () => {
+  beforeEach(async () => {
+    await seedLocalLocations()
+  })
+
+  it('household owner sees every location in cloud mode, with No access where they have no role', async () => {
+    mockMode('cloud')
+    const { result } = renderHook(() => useHouseholdLocations(), {
+      wrapper: makeWrapper([getLocationsMock, getHouseholdLocationsMock]),
+    })
+
+    await waitFor(() => expect(result.current.data).toHaveLength(3))
+    expect(
+      result.current.data?.map((l) => [l.name, l.myRole, l.hasOrganizer]),
+    ).toEqual([
+      ['Cloud Warehouse', 'organizer', true],
+      ['Cloud Shed', null, false],
+      ['Cloud Office', 'organizer', true],
+    ])
+  })
+
+  it('local mode lists the local locations, each as organizer', async () => {
+    mockMode('local')
+    const { result } = renderHook(() => useHouseholdLocations(), {
+      wrapper: makeWrapper([]),
+    })
+
+    await waitFor(() => expect(result.current.data).toHaveLength(2))
+    expect(
+      result.current.data?.map((l) => [l.name, l.myRole, l.hasOrganizer]),
+    ).toEqual([
+      ['Local Kitchen', 'organizer', true],
+      ['Local Garage', 'organizer', true],
+    ])
+  })
+
+  it('household owner sees the settings list in the new order after a reorder, the No access row included', async () => {
+    // Given the settings list is loaded. The server answers a reorder with
+    // the locations the caller has a role on ONLY, so its answer cannot
+    // replace the settings list.
+    mockMode('cloud')
+    const orderedIds = [CLOUD_OTHER_ID, CLOUD_SHED_ID, CLOUD_FIRST_ID]
+    const wrapper = makeWrapper([
+      getLocationsMock,
+      getHouseholdLocationsMock,
+      {
+        request: { query: ReorderLocationsDocument, variables: { orderedIds } },
+        result: {
+          data: {
+            reorderLocations: [
+              { ...CLOUD_OFFICE, order: 0, hasOrganizer: true },
+              { ...CLOUD_WAREHOUSE, order: 2, hasOrganizer: true },
+            ],
+          },
+        },
+      },
+    ])
+    const { result } = renderHook(
+      () => ({
+        settings: useHouseholdLocations(),
+        reorder: useReorderLocations(),
+      }),
+      { wrapper },
+    )
+    await waitFor(() => expect(result.current.settings.data).toHaveLength(3))
+
+    // When the owner moves the Office to the top
+    await act(async () => {
+      await result.current.reorder.mutateAsync(orderedIds)
+    })
+
+    // Then the settings list shows the order that was sent, with no refetch
+    await waitFor(() =>
+      expect(result.current.settings.data?.map((l) => l.name)).toEqual([
+        'Cloud Office',
+        'Cloud Shed',
+        'Cloud Warehouse',
+      ]),
+    )
+    expect(result.current.settings.data?.map((l) => l.order)).toEqual([0, 1, 2])
   })
 })
 

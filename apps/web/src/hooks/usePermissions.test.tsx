@@ -1,0 +1,154 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { renderHook } from '@testing-library/react'
+import type { ReactNode } from 'react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { usePermissions } from './usePermissions'
+
+// `usePermissions` (households H5, decision T9) over stubbed generated hooks.
+//
+// Two people's worth of roles, so a check that reads the wrong one fails:
+// the household role decides the catalog and the locations list, the
+// location role decides one location. K and G are two locations; X is an id
+// the caller has no role on, so it is not in the switcher's list at all.
+
+type Query = { data?: unknown; loading: boolean; error?: unknown }
+
+const mockHousehold = vi.fn<() => Query>()
+const mockLocations = vi.fn<() => Query>()
+
+vi.mock('@/generated/graphql', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/generated/graphql')>()
+  return {
+    ...original,
+    useGetHouseholdQuery: (o: { skip?: boolean }) =>
+      o.skip ? { data: undefined, loading: false } : mockHousehold(),
+    useGetLocationsQuery: (o: { skip?: boolean }) =>
+      o.skip ? { data: undefined, loading: false } : mockLocations(),
+  }
+})
+
+function household(role: 'owner' | 'manager' | 'member'): Query {
+  return {
+    data: { household: { __typename: 'Household', id: 'hh', name: 'H', role } },
+    loading: false,
+  }
+}
+
+function locations(
+  rows: { id: string; myRole: 'organizer' | 'participant' | 'viewer' }[],
+): Query {
+  return {
+    data: {
+      locations: rows.map((r, i) => ({
+        __typename: 'Location',
+        ...r,
+        name: r.id,
+        order: i,
+        createdAt: '2026-11-01T00:00:00.000Z',
+        updatedAt: '2026-11-01T00:00:00.000Z',
+      })),
+    },
+    loading: false,
+  }
+}
+
+function wrapper({ children }: { children: ReactNode }) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+}
+
+function render() {
+  return renderHook(() => usePermissions(), { wrapper }).result.current
+}
+
+beforeEach(() => {
+  localStorage.setItem('data-mode', 'cloud')
+})
+
+afterEach(() => {
+  localStorage.removeItem('data-mode')
+  vi.resetAllMocks()
+})
+
+describe('usePermissions', () => {
+  it('local mode allows everything and reports organizer everywhere', () => {
+    localStorage.setItem('data-mode', 'local')
+    const p = render()
+    expect(p.isLoading).toBe(false)
+    expect(p.canEditCatalog).toBe(true)
+    expect(p.canManageLocations).toBe(true)
+    expect(p.roleAt('x')).toBe('organizer')
+    expect(p.canEditLocation('x')).toBe(true)
+    expect(p.isOrganizerAt('x')).toBe(true)
+  })
+
+  it('cloud allows nothing while the household role is loading', () => {
+    // Given the location list is there, but the household is still loading
+    mockHousehold.mockReturnValue({ data: undefined, loading: true })
+    mockLocations.mockReturnValue(locations([{ id: 'K', myRole: 'organizer' }]))
+
+    const p = render()
+
+    expect(p.isLoading).toBe(true)
+    expect(p.canEditCatalog).toBe(false)
+    expect(p.canManageLocations).toBe(false)
+    expect(p.canEditLocation('K')).toBe(false)
+    expect(p.isOrganizerAt('K')).toBe(false)
+  })
+
+  it('cloud allows nothing while the location list is loading', () => {
+    mockHousehold.mockReturnValue(household('owner'))
+    mockLocations.mockReturnValue({ data: undefined, loading: true })
+
+    const p = render()
+
+    expect(p.isLoading).toBe(true)
+    expect(p.canEditCatalog).toBe(false)
+    expect(p.canManageLocations).toBe(false)
+  })
+
+  it('household manager who is only a viewer of a location can edit the catalog but not that location', () => {
+    // Review Focus 4: the two checks are not one flag
+    mockHousehold.mockReturnValue(household('manager'))
+    mockLocations.mockReturnValue(locations([{ id: 'K', myRole: 'viewer' }]))
+
+    const p = render()
+
+    expect(p.canEditCatalog).toBe(true)
+    expect(p.canManageLocations).toBe(true)
+    expect(p.roleAt('K')).toBe('viewer')
+    expect(p.canEditLocation('K')).toBe(false)
+    expect(p.isOrganizerAt('K')).toBe(false)
+  })
+
+  it('household member who is a participant can edit that location but not the catalog', () => {
+    mockHousehold.mockReturnValue(household('member'))
+    mockLocations.mockReturnValue(
+      locations([
+        { id: 'K', myRole: 'organizer' },
+        { id: 'G', myRole: 'participant' },
+      ]),
+    )
+
+    const p = render()
+
+    expect(p.canEditCatalog).toBe(false)
+    expect(p.canManageLocations).toBe(false)
+    expect(p.canEditLocation('G')).toBe(true)
+    expect(p.isOrganizerAt('G')).toBe(false)
+    expect(p.isOrganizerAt('K')).toBe(true)
+  })
+
+  it('a location the caller has no role on gives null and false', () => {
+    mockHousehold.mockReturnValue(household('owner'))
+    mockLocations.mockReturnValue(locations([{ id: 'K', myRole: 'organizer' }]))
+
+    const p = render()
+
+    expect(p.roleAt('X')).toBeNull()
+    expect(p.canEditLocation('X')).toBe(false)
+    expect(p.isOrganizerAt('X')).toBe(false)
+  })
+})
