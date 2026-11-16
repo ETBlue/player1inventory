@@ -72,10 +72,10 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       return (rows as unknown as PrismaItemStock[]).map(toGraphQL)
     },
 
-    // Every location the caller holds a role on, any role (households H3a,
-    // task 3.8). Until then it was `location: { userId }`, "the locations I
-    // made", which misses a location another member made and shares, and keeps
-    // one the caller made but no longer holds a role on.
+    // Every location of the caller's household where the caller holds a role,
+    // any role. Households H3a task 3.8 moved it off `location: { userId }`
+    // ("the locations I made"); H5 task F.2 limited it to one household (see
+    // below).
     itemStocksForItem: async (_, { itemId }, ctx) => {
       // Scoped THROUGH the location — ItemStock has no userId of its own.
       // Postgres gives no ordering guarantee for findMany without orderBy; a

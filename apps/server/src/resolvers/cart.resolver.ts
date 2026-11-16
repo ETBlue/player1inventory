@@ -146,7 +146,8 @@ function matchCheckoutInput(
  * | Resolver              | Scope                                          | Role         |
  * |-----------------------|------------------------------------------------|--------------|
  * | `cartItems`           | `{ cartId }`                                   | `viewer`     |
- * | `cartItemCountByItem` | carts at `locationIdsWithRole`, or at the one  | `viewer`     |
+ * | `cartItemCountByItem` | carts at `locationIdsWithRole` in the caller's | `viewer`     |
+ * |                       | household (H5 task F.2), or at the one         |              |
  * |                       | `locationId` given                             |              |
  * | `allCartItems`        | carts at `locationIdsWithRole`, one household  | any role     |
  * | `addToCart`           | one row per `(cartId, itemId)`, `increment`    | `participant`|

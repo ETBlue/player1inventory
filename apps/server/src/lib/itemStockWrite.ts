@@ -206,8 +206,11 @@ export async function writeStock(
  *
  * `sourceLocationIds` is NOT an authorization check either — it scopes the
  * SOURCE search to the locations the caller may read, so a row the caller
- * cannot see never seeds a location. Callers pass `locationIdsWithRole(ctx)`
- * (lib/authz.ts). Until households H3a task 3.8 this was a `userId` and the
+ * cannot see never seeds a location. Callers pass
+ * `locationIdsWithRole(ctx, 'viewer', { householdId })` (lib/authz.ts), where
+ * `householdId` is the TARGET location's household (`householdOfLocation`,
+ * households H5 task F.2), so a source in another household never seeds a
+ * location. Until households H3a task 3.8 this was a `userId` and the
  * relation filter `location: { userId }`, "the locations I made", which
  * missed a location another member made and shares with the caller.
  *
