@@ -25,6 +25,12 @@ query GetHouseholdLocations {
   }
 }
 
+# The three location mutations below select every field of GetLocations AND
+# of GetHouseholdLocations. Their result is merged into the cached `Location`
+# entity, and `useReorderLocations` writes its list straight into
+# GetLocations. A field the query selects but the result lacks makes the
+# cached query incomplete, so Apollo reads it as missing. Checked by
+# `src/apollo/locationSelections.test.ts`.
 mutation CreateLocation($name: String!) {
   createLocation(name: $name) {
     id
@@ -32,6 +38,8 @@ mutation CreateLocation($name: String!) {
     order
     createdAt
     updatedAt
+    myRole
+    hasOrganizer
   }
 }
 
@@ -42,6 +50,8 @@ mutation UpdateLocation($id: ID!, $input: UpdateLocationInput!) {
     order
     createdAt
     updatedAt
+    myRole
+    hasOrganizer
   }
 }
 
@@ -56,5 +66,7 @@ mutation ReorderLocations($orderedIds: [ID!]!) {
     order
     createdAt
     updatedAt
+    myRole
+    hasOrganizer
   }
 }

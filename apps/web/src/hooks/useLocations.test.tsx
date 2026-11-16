@@ -212,7 +212,12 @@ describe('cloud location mutations', () => {
 
   it('user can create a location in cloud mode', async () => {
     // Given a cloud CreateLocation mock expecting the typed name
-    const created = cloudLocation('clw3k1q2c0002s9f8h7g6d5e6', 'Cloud Shed', 2)
+    // The mutation result also selects `hasOrganizer`, so it covers
+    // GetHouseholdLocations too (src/apollo/locationSelections.test.ts).
+    const created = {
+      ...cloudLocation('clw3k1q2c0002s9f8h7g6d5e6', 'Cloud Shed', 2),
+      hasOrganizer: true,
+    }
     const { result } = renderHook(() => useCreateLocation(), {
       wrapper: makeWrapper([
         getLocationsMock,
@@ -242,7 +247,11 @@ describe('cloud location mutations', () => {
 
   it('user can rename a location in cloud mode', async () => {
     // Given a cloud UpdateLocation mock expecting a name-only input
-    const renamed = { ...CLOUD_OFFICE, name: 'Cloud Studio' }
+    const renamed = {
+      ...CLOUD_OFFICE,
+      name: 'Cloud Studio',
+      hasOrganizer: true,
+    }
     const { result } = renderHook(() => useUpdateLocation(), {
       wrapper: makeWrapper([
         getLocationsMock,
@@ -319,8 +328,8 @@ describe('cloud location mutations', () => {
     // Given a cloud ReorderLocations mock returning the reordered list
     // (`reorderLocations` returns [Location!]!, unlike reorderShelves' Boolean)
     const reordered = [
-      { ...CLOUD_OFFICE, order: 0 },
-      { ...CLOUD_WAREHOUSE, order: 1 },
+      { ...CLOUD_OFFICE, order: 0, hasOrganizer: true },
+      { ...CLOUD_WAREHOUSE, order: 1, hasOrganizer: true },
     ]
     const wrapper = makeWrapper([
       getLocationsMock,
