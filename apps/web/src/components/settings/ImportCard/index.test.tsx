@@ -1,7 +1,7 @@
 import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { useApolloClient } from '@apollo/client/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
@@ -9,6 +9,7 @@ import type { HouseholdRole } from '@/generated/graphql'
 import {
   ActiveLocationProvider,
   activeLocationStorageKey,
+  useActiveLocation,
 } from '@/hooks/useActiveLocation'
 import type { ExportPayload } from '@/lib/exportData'
 import {
@@ -498,6 +499,25 @@ function cloudClientWithMilk() {
   }
 }
 
+// A cloud client whose cloud data is empty, so no backup has a conflict.
+function emptyCloudClient() {
+  const client = cloudClientWithMilk()
+  client.query = vi.fn().mockResolvedValue({
+    data: {
+      items: [],
+      tags: [],
+      tagTypes: [],
+      vendors: [],
+      recipes: [],
+      inventoryLogs: [],
+      allCarts: [],
+      allCartItems: [],
+      shelves: [],
+    },
+  })
+  return client
+}
+
 describe('ImportCard — who can import (households H4 task E.4)', () => {
   afterEach(async () => {
     localStorage.clear()
@@ -658,6 +678,7 @@ describe('ImportCard — a restore shows the backup’s first location', () => {
     localStorage.clear()
     householdRole.current = undefined
     vi.mocked(importCloudData).mockClear()
+    vi.mocked(useApolloClient).mockRestore?.()
   })
 
   it('user restoring a cloud backup is moved to the location the import names', async () => {
@@ -705,6 +726,83 @@ describe('ImportCard — a restore shows the backup’s first location', () => {
     expect(localStorage.getItem(activeLocationStorageKey('cloud'))).toBe(
       'cloud_home',
     )
+  })
+
+  it('user who picks another location while the import runs keeps their choice', async () => {
+    // Given cloud mode on "Home", and a way to switch location the way the
+    // sidebar does, through the same provider the card reads
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem(activeLocationStorageKey('cloud'), 'cloud_home')
+    householdRole.current = 'owner'
+    const switcher: { set?: (id: string) => void } = {}
+    function SidebarSwitcher() {
+      switcher.set = useActiveLocation().setActiveLocationId
+      return null
+    }
+    // And an import that, while it runs, sees the user pick "my Garage",
+    // and then names "loc_kitchen" to show
+    vi.mocked(importCloudData).mockImplementationOnce(async () => {
+      act(() => switcher.set?.('cloud_garage'))
+      return {
+        skipped: { locationNames: [], rowCount: 0 },
+        switchToLocationId: 'loc_kitchen',
+      }
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <ActiveLocationProvider>
+          <SidebarSwitcher />
+          <ImportCard />
+        </ActiveLocationProvider>
+      </QueryClientProvider>,
+    )
+
+    // When the import finishes
+    await uploadPayload(container, v15Payload())
+    expect(await screen.findByText('Import complete.')).toBeInTheDocument()
+
+    // Then the location the user picked stays active
+    expect(localStorage.getItem(activeLocationStorageKey('cloud'))).toBe(
+      'cloud_garage',
+    )
+  })
+
+  it('the switch is made after the card refreshes the Apollo cache', async () => {
+    // Given cloud mode on "Home", a client that records the active location
+    // when `resetStore` is called, and an import that names "loc_kitchen"
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem(activeLocationStorageKey('cloud'), 'cloud_home')
+    householdRole.current = 'owner'
+    const activeAtReset: Array<string | null> = []
+    const client = {
+      ...emptyCloudClient(),
+      resetStore: vi.fn(async () => {
+        activeAtReset.push(
+          localStorage.getItem(activeLocationStorageKey('cloud')),
+        )
+        return null
+      }),
+    }
+    vi.mocked(useApolloClient).mockReturnValue(client as never)
+    vi.mocked(importCloudData).mockResolvedValueOnce({
+      skipped: { locationNames: [], rowCount: 0 },
+      switchToLocationId: 'loc_kitchen',
+    })
+    const { container } = renderCard()
+
+    // When the import finishes
+    await uploadPayload(container, v15Payload())
+    await waitFor(() =>
+      expect(localStorage.getItem(activeLocationStorageKey('cloud'))).toBe(
+        'loc_kitchen',
+      ),
+    )
+
+    // Then `resetStore` ran while "Home" was still active
+    expect(activeAtReset).toEqual(['cloud_home'])
   })
 })
 

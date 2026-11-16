@@ -117,6 +117,12 @@ export function ImportCard() {
   // after a `skip` or `replace` restore (owner decision of 2026-11-17,
   // option B), and `setActiveLocationId` makes that switch.
   const { activeLocationId, setActiveLocationId } = useActiveLocation()
+  // The active location as of the LATEST render. `handleCloudImport` reads
+  // `activeLocationId` from the render it started in; after the import it
+  // compares that with this ref, so a location the user picked in the
+  // sidebar while the import ran is not overwritten by the switch.
+  const latestActiveLocationId = useRef(activeLocationId)
+  latestActiveLocationId.current = activeLocationId
   // The caller's household role, cloud only (households H4 task E.4). Only an
   // owner or a manager may import (decision O1); only the owner may `clear`
   // (decision O7 and the design's Decision 27). `undefined` while it loads,
@@ -249,10 +255,20 @@ export function ImportCard() {
         activeLocationId,
       })
       await client.resetStore()
-      // After `resetStore`, so the refetched location list already holds the
-      // new location. Otherwise the provider would treat the id as stale and
-      // move to the first location of the old list.
-      if (result.switchToLocationId !== undefined) {
+      // The switch runs after this `resetStore`, on purpose, so the location
+      // list is refetched before the provider sees the new id. Whether the
+      // other order would break anything is NOT known: `importCloudData` has
+      // already reset the store once (`resetStoreAfterImport`), so the list
+      // may well hold the new location by then. This order is kept because it
+      // is the safe one. `index.test.tsx` pins the order, not its reason.
+      //
+      // No switch when the user picked another location while the import ran
+      // (the ref differs from the id this import started with): their choice
+      // wins.
+      if (
+        result.switchToLocationId !== undefined &&
+        latestActiveLocationId.current === activeLocationId
+      ) {
         setActiveLocationId(result.switchToLocationId)
       }
       setSkipped(result.skipped)
