@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client'
 import {
   type LocationRole,
   locationIdsWithRole,
+  requireHousehold,
   requireLocationItems,
   requireLocationRole,
 } from '../lib/authz.js'
@@ -50,7 +51,7 @@ async function requireLocation(
  * | Query | Scope |
  * |---|---|
  * | `itemLogs`, `inventoryLogCountByItem`, `lastPurchaseDates` | the one location named, after `requireLocationRole(…, 'viewer')` |
- * | `inventoryLogs` | every location the caller holds a role on (`locationIdsWithRole`) |
+ * | `inventoryLogs` | every location of the caller's household the caller holds a role on (`locationIdsWithRole` with `{ householdId }`, since H4 task E.5) |
  *
  * Until task 3.8 all four also filtered by `userId`. In a shared location
  * that hid every log a co-member wrote, and `inventoryLogs` (export) missed
@@ -76,9 +77,13 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
 
     // No location argument, and that is the intended behaviour — see the
     // schema doc string. Export and import both need every location: every
-    // location the caller holds a role on, any role.
+    // location of the caller's household the caller holds a role on, any
+    // role. One household only since households H4 task E.5 (decision T15),
+    // so an export never holds a second household's logs.
     inventoryLogs: async (_, __, ctx) => {
-      const locationIds = await locationIdsWithRole(ctx)
+      const locationIds = await locationIdsWithRole(ctx, 'viewer', {
+        householdId: await requireHousehold(ctx),
+      })
       return prisma.inventoryLog.findMany({
         where: { locationId: { in: locationIds } },
         orderBy: { occurredAt: 'asc' },

@@ -318,7 +318,25 @@ describe('itemStock resolvers', () => {
 
   it('user with no locations reads an empty list', async () => {
     // Given user-c owns no location, so none of the three fixture rows is
-    // reachable through a location of theirs
+    // reachable through a location of theirs.
+    //
+    // Since households H4 task E.5 this query reads the caller's household
+    // (`requireHousehold`), so a caller with no household gets one on first
+    // sign-in, as every real person does. That needs their `User` row, which
+    // `ensureUser` writes before any resolver runs in the real server.
+    const T = new Date('2026-01-01T00:00:00.000Z')
+    world.users.reset([
+      {
+        id: 'user-c',
+        displayName: 'C',
+        email: null,
+        lastSeenAt: null,
+        deletedAt: null,
+        householdSetupAt: null,
+        createdAt: T,
+        updatedAt: T,
+      },
+    ])
     const res = await run(ALL, {}, 'user-c')
 
     // Then an empty array, not null and not an error — the field is

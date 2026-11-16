@@ -33,16 +33,24 @@ export function toGraphQL(row: PrismaLocation): Location {
 }
 
 /**
- * The locations the caller sees, by `order`: every location on which they
- * hold a location role that still counts (decision H18). Ties are broken by
- * id, so the answer is the same every time.
+ * The locations the caller sees, by `order`: every location of the caller's
+ * household on which they hold a location role that still counts (decision
+ * H18). Ties are broken by id, so the answer is the same every time.
+ *
+ * Only ONE household since households H4 task E.5 (decision T15). This is the
+ * location switcher and the export's location list. A person in two
+ * households (after H5) holds roles in both; without the household filter
+ * an export of one household would carry the other's locations, and the
+ * import of that file would be refused as "another household".
  *
  * An owner or manager does NOT see a location they have no role on. That is
  * H5. Before H5 nobody can be in that state: whoever creates a location
  * organizes it.
  */
 async function visibleLocations(ctx: Context): Promise<Location[]> {
-  const ids = await locationIdsWithRole(ctx)
+  const ids = await locationIdsWithRole(ctx, 'viewer', {
+    householdId: await requireHousehold(ctx),
+  })
   if (ids.length === 0) return []
   const rows = await prisma.location.findMany({
     where: { id: { in: ids } },

@@ -68,9 +68,10 @@ extend type Query {
   vendorCart(vendorId: ID, locationId: ID!): Cart!
 
   """
-  Every cart the caller owns, across every location.
+  Every cart at every location of the caller's household where the caller has
+  a location role (any role). One household only since households H4 task E.5.
 
-  Whole-account on purpose, like `inventoryLogs`. The shopping page shows each
+  Whole-household on purpose, like `inventoryLogs`. The shopping page shows each
   vendor's "last purchased" and the export path needs every location's carts or
   the backup loses rows. Each row's location is recoverable from its id.
   """
@@ -90,7 +91,7 @@ extend type Query {
   """
   cartItemCountByItem(itemId: ID!, locationId: ID): Int!
 
-  "Every cart item the caller owns, across every location. The snapshot path, not a screen."
+  "Every cart item in the carts `allCarts` returns. The snapshot path, not a screen."
   allCartItems: [CartItem!]!
 }
 
