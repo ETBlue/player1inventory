@@ -4,8 +4,8 @@ import { createExecutableSchema } from '../schema/executableSchema.js'
 
 // ── THE LIVE-EVENT GUARD (households H3c-1, task C.4) ──
 //
-// Every field of the `Mutation` type must be in EXACTLY ONE of the three
-// lists below. The test fails when:
+// Every field of the `Mutation` type must be in EXACTLY ONE of the two
+// lists below: `publishes` or `publishesNothing`. The test fails when:
 //
 //   - a field is in no list (a new mutation was added and nobody decided
 //     whether other tabs must hear about it);
@@ -19,8 +19,8 @@ import { createExecutableSchema } from '../schema/executableSchema.js'
 // `location-live-publish.resolver.test.ts` and
 // `catalog-live-publish.resolver.test.ts` check that.
 //
-// `waitingForH3c2` is EMPTY since households H3c-2 task D.4. The next
-// commit deletes it.
+// Until households H3c-2 task D.4 there was a third list, `waitingForH3c2`,
+// for the fields that did not publish yet. D.4 emptied it and deleted it.
 //
 // ── QUERIES THAT WRITE ──
 //
@@ -155,13 +155,9 @@ const publishes: Record<string, { kinds: Kind[] }> = {
  */
 const publishesNothing: Record<string, string> = {}
 
-/** Fields that will publish in H3c-2. Empty since task D.4. */
-const waitingForH3c2: Record<string, string> = {}
-
 type Lists = {
   publishes: Record<string, unknown>
   publishesNothing: Record<string, unknown>
-  waitingForH3c2: Record<string, unknown>
 }
 
 /**
@@ -194,7 +190,7 @@ function mutationFields(): string[] {
   return Object.keys(type.getFields()).sort()
 }
 
-const lists = { publishes, publishesNothing, waitingForH3c2 }
+const lists = { publishes, publishesNothing }
 
 describe('every Mutation field has a live-event decision', () => {
   it('every field is in exactly one list, and every listed name is a field', () => {
@@ -205,24 +201,21 @@ describe('every Mutation field has a live-event decision', () => {
     for (const [name, { kinds }] of Object.entries(publishes)) {
       expect(kinds.length, name).toBeGreaterThan(0)
     }
-    for (const [name, reason] of Object.entries({ ...publishesNothing, ...waitingForH3c2 })) {
+    for (const [name, reason] of Object.entries(publishesNothing)) {
       expect(reason.trim().length, name).toBeGreaterThan(0)
     }
   })
 
-  it('the schema has as many fields as the three lists hold', () => {
+  it('the schema has as many fields as the two lists hold', () => {
     // A second, plainer check of the same rule. If this fails and the first
     // passes, `guardProblems` itself is wrong.
-    const listed =
-      Object.keys(publishes).length +
-      Object.keys(publishesNothing).length +
-      Object.keys(waitingForH3c2).length
+    const listed = Object.keys(publishes).length + Object.keys(publishesNothing).length
     expect(listed).toBe(mutationFields().length)
   })
 })
 
 describe('guardProblems', () => {
-  const empty = { publishes: {}, publishesNothing: {}, waitingForH3c2: {} }
+  const empty = { publishes: {}, publishesNothing: {} }
 
   it('names a field that is in no list', () => {
     expect(guardProblems(['a', 'b'], { ...empty, publishes: { a: 1 } })).toEqual([
