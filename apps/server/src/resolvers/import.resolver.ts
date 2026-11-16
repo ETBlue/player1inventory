@@ -1,5 +1,6 @@
 import { GraphQLError } from 'graphql'
 import {
+  forgetLocationRoles,
   type LocationRole,
   locationIdsWithRole,
   type OwnedModel,
@@ -345,11 +346,12 @@ async function requireOwnLocationIdsOrUnclaimed(
  * `organizer` row is what ties them to it.
  */
 async function createImportedLocation(
+  ctx: Context,
   userId: string,
   householdId: string,
   input: { id: string; name: string; order: number; createdAt: string; updatedAt: string },
 ): Promise<PrismaLocation> {
-  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+  const created = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const created = await tx.location.create({
       data: {
         id: input.id,
@@ -365,6 +367,10 @@ async function createImportedLocation(
     })
     return created
   })
+  // A role row was added, so a later field of this request must not read the
+  // cached roles (`forgetLocationRoles`, lib/authz.ts).
+  forgetLocationRoles(ctx)
+  return created
 }
 
 /**
@@ -1970,7 +1976,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             if (row) results.push(locationToGraphQL(row as unknown as PrismaLocation))
             continue
           }
-          const row = await createImportedLocation(userId, householdId, location)
+          const row = await createImportedLocation(ctx, userId, householdId, location)
           changed.add(row.householdId)
           // A second payload row with the same id is now a skip, not a P2002.
           existing.add(location.id)
@@ -2160,7 +2166,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             // A new id: the location, its `householdId` and the caller's
             // `organizer` row, in one transaction. Not an `upsert`: an upsert
             // cannot write the role row for its create branch only.
-            const row = await createImportedLocation(userId, householdId, location)
+            const row = await createImportedLocation(ctx, userId, householdId, location)
             changed.add(row.householdId)
             // A second payload row with the same id is now an update.
             existing.add(id)
@@ -2334,6 +2340,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           name: firstLocationName(ctx.language ?? 'en'),
         })
       })
+      // Every location went with its role rows, and "Home" came with a new
+      // organizer row (`forgetLocationRoles`, lib/authz.ts).
+      forgetLocationRoles(ctx)
       // ── THE LIVE EVENT (households H3c-2 task D.3) ──
       //
       // After the commit. Both kinds are household-level (decision Q2):

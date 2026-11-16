@@ -223,3 +223,65 @@ describe('Location fields on a location of a second household', () => {
     })
   })
 })
+
+// Review of task F.1: `locationRolesByLocation` and `locationIdsWithOrganizer`
+// keep their answer for the whole request. The root fields of a mutation run
+// one after another, and the cache is shared, so a write that adds or removes
+// a role row must forget the cached answer, or a later field reads it stale.
+describe('the role cache inside one request', () => {
+  it('household owner sees their organizer role on a second location created in the same request', async () => {
+    // When the owner creates two locations in ONE document
+    const res = await run(
+      `mutation {
+        a: createLocation(name: "A") { name myRole hasOrganizer }
+        b: createLocation(name: "B") { name myRole hasOrganizer }
+      }`,
+      'owner',
+    )
+
+    // Then both show the owner as organizer. With a stale cache, b read the
+    // map that a built before b's role row existed: myRole null, no organizer.
+    expect(res.errors).toBeUndefined()
+    expect(res.data).toEqual({
+      a: { name: 'A', myRole: 'organizer', hasOrganizer: true },
+      b: { name: 'B', myRole: 'organizer', hasOrganizer: true },
+    })
+  })
+
+  it('household manager with a viewer role sees the organizer role on a location they create after reading a list', async () => {
+    // Given the manager (viewer of loc-k, no role on loc-g) first reorders
+    // the locations and reads their fields, which fills the cache, and then
+    // creates a location in the same document
+    const res = await run(
+      `mutation {
+        a: reorderLocations(orderedIds: ["loc-k", "loc-g"]) { id myRole hasOrganizer }
+        b: createLocation(name: "B") { name myRole hasOrganizer }
+      }`,
+      'manager',
+    )
+
+    // Then the new location shows the manager as its organizer
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.b).toEqual({ name: 'B', myRole: 'organizer', hasOrganizer: true })
+  })
+
+  it('household owner sees their organizer role on a location imported after creating one in the same request', async () => {
+    // When the owner creates a location, then imports a new one, in ONE
+    // document. The import adds an organizer row through
+    // `createImportedLocation`.
+    const res = await run(
+      `mutation {
+        a: createLocation(name: "A") { myRole }
+        b: bulkCreateLocations(locations: [{
+          id: "loc-new", name: "New", order: 5,
+          createdAt: "2026-11-01T00:00:00.000Z", updatedAt: "2026-11-01T00:00:00.000Z"
+        }]) { id myRole hasOrganizer }
+      }`,
+      'owner',
+    )
+
+    // Then the imported location shows the owner as its organizer
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.b).toEqual([{ id: 'loc-new', myRole: 'organizer', hasOrganizer: true }])
+  })
+})

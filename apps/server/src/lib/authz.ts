@@ -204,6 +204,34 @@ export function locationRolesByLocation(
 }
 
 /**
+ * Forget the two role caches of this request: `locationRoles`
+ * (`locationRolesByLocation`) and `organizedLocations`
+ * (`locationIdsWithOrganizer`).
+ *
+ * CALL IT AFTER EVERY WRITE THAT ADDS OR REMOVES A `LocationMember` OR
+ * `HouseholdMember` ROW, including a row that goes by ON DELETE CASCADE with
+ * its location. The root fields of a mutation run one after another in ONE
+ * request, so they share the cache. Without this,
+ * `mutation { a: createLocation(…) { myRole } b: createLocation(…) { myRole } }`
+ * gives `b` the map `a` read before `b`'s organizer row existed: `myRole: null`
+ * and `hasOrganizer: false` (found in the review of H5 task F.1).
+ *
+ * Today the callers are `createLocation`, `deleteLocation`,
+ * `bulkCreateLocations`, `bulkUpsertLocations` and `clearAllData`.
+ * `role-cache.guard.test.ts` fails when a resolver file writes one of those
+ * tables and never calls this.
+ *
+ * `householdId` is NOT forgotten: no resolver moves the caller to another
+ * household yet (H5b's join will, and must call this AND clear that too).
+ */
+export function forgetLocationRoles(ctx: Context): void {
+  const cache = ctx.requestCache
+  if (!cache) return
+  delete cache.locationRoles
+  delete cache.organizedLocations
+}
+
+/**
  * The `where` for "an organizer row whose OWN person is still a member of
  * `householdId`", on the locations of that household.
  *

@@ -51,11 +51,15 @@ export interface RequestCache {
   /**
    * The caller's counted location roles, one entry per household asked for.
    * Set by `locationRolesByLocation` (lib/authz.ts, households H5 task F.1).
+   * A write that adds or removes a role row must clear it with
+   * `forgetLocationRoles` (lib/authz.ts), or a later field of the same
+   * mutation reads a stale role.
    */
   locationRoles?: Map<string, Promise<Map<string, LocationRole>>>
   /**
    * The locations with an organizer that still counts, one entry per
    * household asked for. Set by `locationIdsWithOrganizer` (lib/authz.ts).
+   * Cleared by `forgetLocationRoles`, for the same reason.
    */
   organizedLocations?: Map<string, Promise<Set<string>>>
 }

@@ -160,6 +160,7 @@ import type { HouseholdWorld } from '../test/householdWorld.js'
 import type { HouseholdRole, LocationRole } from './authz.js'
 
 const {
+  forgetLocationRoles,
   householdOfLocation,
   locationIdsWithOrganizer,
   locationIdsWithRole,
@@ -900,6 +901,37 @@ describe('locationIdsWithOrganizer (H5 task F.1)', () => {
     await locationIdsWithOrganizer(ctx, 'hh-a')
     await locationIdsWithOrganizer(ctx, 'hh-a')
     expect(spy).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('forgetLocationRoles (review of H5 task F.1)', () => {
+  beforeEach(() => seedTwoHouseholds())
+
+  it('makes both role caches read again', async () => {
+    // Given both caches are filled for hh-a in one request
+    const ctx = callerIn('hh-a')
+    await locationRolesByLocation(ctx, 'hh-a')
+    await locationIdsWithOrganizer(ctx, 'hh-a')
+    const spy = vi.spyOn(prisma.locationMember, 'findMany')
+
+    // When a write forgets them, and both are asked again
+    forgetLocationRoles(ctx)
+    await locationRolesByLocation(ctx, 'hh-a')
+    await locationIdsWithOrganizer(ctx, 'hh-a')
+
+    // Then each reads the table again: two reads, not zero
+    expect(spy).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not forget the household id', async () => {
+    const ctx = callerIn('hh-a')
+    const pinned = ctx.requestCache?.householdId
+    forgetLocationRoles(ctx)
+    expect(ctx.requestCache?.householdId).toBe(pinned)
+  })
+
+  it('does nothing on a context with no cache', () => {
+    expect(() => forgetLocationRoles({ userId: 'caller' })).not.toThrow()
   })
 })
 
