@@ -241,6 +241,58 @@ describe('shouldDeliver for a catalog event (locationId null)', () => {
   })
 })
 
+// ─── shouldDeliver, household-level events of every kind (H3c-2) ──────────
+
+describe('shouldDeliver for a household-level LOCATION event (households H3c-2)', () => {
+  // MAYA is a household `member` with NO role at any location. A delivery
+  // that went through `requireLocationRole` could never reach her.
+  const MAYA = 'user_maya'
+
+  function addMaya() {
+    world.households.state.householdMembers.push(householdMemberRow(HH_HOME, MAYA, 'member'))
+  }
+
+  function locationEvent(householdId: string): ChangeEvent {
+    return { kind: 'LOCATION', householdId, locationId: null }
+  }
+
+  it('household member with no location role gets a LOCATION event about a deleted location', async () => {
+    // Given MAYA is a member of hh_home with no location role
+    addMaya()
+    // And LOC_B was deleted, with its role rows
+    world.stock.state.locations = world.stock.state.locations.filter((l) => l.id !== LOC_B)
+    world.households.state.locationMembers = world.households.state.locationMembers.filter(
+      (m) => m.locationId !== LOC_B,
+    )
+
+    // When the LOCATION event of that delete is checked for her
+    // Then it is delivered
+    expect(await shouldDeliver(ctx(MAYA, 't'), locationEvent(HH_HOME))).toBe(true)
+  })
+
+  it('a user of another household does not get the LOCATION event', async () => {
+    expect(await shouldDeliver(ctx(STRANGER, 't'), locationEvent(HH_HOME))).toBe(false)
+  })
+
+  it('household member gets every household-level kind through the iterator, in order', async () => {
+    // Given MAYA is subscribed, with no location role
+    addMaya()
+    const maya = subscriber(ctx(MAYA, 'tab_maya'))
+
+    // When a cart change at LOC_A (needs a location role), then a LOCATION
+    // and a CATALOG change are published
+    bus.publish(cartAt(HH_HOME, LOC_A))
+    bus.publish(locationEvent(HH_HOME))
+    bus.publish({ kind: 'CATALOG', householdId: HH_HOME, locationId: null })
+
+    // Then she gets the two household-level events, and not the cart one
+    const first = await maya.next()
+    const second = await maya.next()
+    expect(first.value?.householdChanged).toEqual({ kind: 'LOCATION', locationId: null })
+    expect(second.value?.householdChanged).toEqual({ kind: 'CATALOG', locationId: null })
+  })
+})
+
 // ─── Order ───────────────────────────────────────────────────────────────────
 
 describe('householdChanged keeps the order of events', () => {

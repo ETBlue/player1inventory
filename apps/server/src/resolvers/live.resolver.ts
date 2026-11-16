@@ -22,7 +22,8 @@ import { type ChangeEvent, type LiveEvents, liveEvents } from '../lib/liveEvents
 // `viewer` on the location through `requireLocationRole`, and a location role
 // counts only while the person is a member of the LOCATION's household
 // (decision H18). So a person outside that household is refused there. For
-// a catalog event, step 3 asks for membership of `event.householdId` itself.
+// a household-level event (`locationId: null`, kinds `LOCATION` and
+// `CATALOG`), step 3 asks for membership of `event.householdId` itself.
 // What step 3 does not check is that `event.householdId` matches the
 // location's household: that is the publisher's job (task C.4), and the
 // event sends no household id to the tab anyway.
@@ -61,9 +62,13 @@ export async function shouldDeliver(ctx: Context, event: ChangeEvent): Promise<b
       // 2 and 3 for a location event. See the file comment.
       await requireLocationRole(fresh, event.locationId, 'viewer')
     } else {
-      // 2 and 3 for a catalog event (none is published in H3c-1). Membership
-      // of the event's own household, which also works once a person can be
-      // in two households (H5).
+      // 2 and 3 for a household-level event, of ANY kind (`LOCATION` and
+      // `CATALOG` since H3c-2, `publishHouseholdChange`). Membership of the
+      // event's own household, which also works once a person can be in two
+      // households (H5). Not `requireLocationRole`: a `LOCATION` event about
+      // a deleted location has no location left to hold a role on, and a
+      // member with no role at any location still sees the locations list
+      // and the catalog (decision Q2 of the H3c-2 plan).
       await requireHouseholdRole(fresh, event.householdId, 'member')
     }
     return true
