@@ -1941,9 +1941,11 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // The role gate and the target household. See IMPORT ROLE GATE above.
       const householdId = await requireCatalogRole(ctx, 'manager')
       if (locations.length === 0) return []
-      // Refuses every id held by a location the caller has no role on, and
+      // Refuses every id held by a location the caller has no role on, or by
+      // a location of another household (households H4 task E.3), and
       // returns the ids that already exist. After it an id is one of two
-      // things: a location the caller holds a role on, or free.
+      // things: a location of the target household the caller holds a role
+      // on, or free.
       const existing = await requireOwnLocationIdsOrUnclaimed(ctx, locations, 'participant', householdId)
       const results: Location[] = []
       // ── THE LIVE EVENT (households H3c-2 task D.3) ──
@@ -1958,9 +1960,11 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           if (existing.has(location.id)) {
             // "Skip conflicts": the stored row is returned unchanged, and no
             // role row is added. UNSCOPED read: the pre-check above already
-            // proved the caller holds a role on this id. A `householdId` filter
-            // here would wrongly miss a location of another household the
-            // caller shares (H5).
+            // proved the caller holds a role on this id AND that it is in the
+            // target household, so a `householdId` filter here would change
+            // nothing. (Until households H4 task E.3 the pre-check did not
+            // check the household, and such a filter would have missed a
+            // location of another household the caller shares.)
             const row = await prisma.location.findUnique({ where: { id: location.id } })
             if (row) results.push(locationToGraphQL(row as unknown as PrismaLocation))
             continue
@@ -2130,19 +2134,23 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // and `importData.test.ts` (about line 2416) asserts
       // `BulkUpsertLocations` is not called on `replace`.
       //
-      // Keep `householdId` OUT of the `update` below. H5 owes a
-      // two-household test for that: a caller who organizes a location of
-      // household B while importing into household A. When the location is
-      // in the caller's own household, a `householdId` in `update` writes the
-      // same value again, so a test of that case passes either way.
+      // Keep `householdId` OUT of the `update` below, for defence in depth:
+      // a location's household is not something an import may move. Since
+      // households H4 task E.3 the pre-check refuses an existing location of
+      // another household (tested in `import-role-gate.resolver.test.ts` and
+      // `location-live-publish.resolver.test.ts`), so every row updated here
+      // is already in the target and a `householdId` in `update` would
+      // write the same value again. If the pre-check is ever weakened, the
+      // missing column is what stops an import from moving a location.
       const existing = await requireOwnLocationIdsOrUnclaimed(ctx, locations, 'organizer', householdId)
       const results: Location[] = []
       // ── THE LIVE EVENT (households H3c-2 task D.3) ──
       //
       // One household-level `LOCATION` event per household of a location
       // written, in `finally`, as in `bulkCreateLocations`. The household is
-      // read from the SAVED row: an updated location keeps its own household,
-      // which can be another household the caller organizes a location of.
+      // read from the SAVED row. Since households H4 task E.3 every row
+      // written is in the target household (the pre-check refuses any
+      // other), so this is one event for that household.
       const changed = new Set<string>()
       try {
         for (const location of locations) {
