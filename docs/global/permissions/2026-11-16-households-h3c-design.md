@@ -333,4 +333,112 @@ The "before" server and web numbers are those of root `CLAUDE.md` on 2026-11-15;
 - **Railway passing the WebSocket upgrade.** Never tested. The runbook checks it.
 - **The 60-minute close with a real browser.** Only unit tests with fake timers reach it.
 - **Two people on two devices.** Needs H5.
-- H3c-2: stock, logs, locations and the catalog, and an empty `waitingForH3c2`.
+- H3c-2: stock, logs, locations and the catalog, and an empty `waitingForH3c2`. Built; see *Result (H3c-2)* below.
+
+## Result (H3c-2, built 2026-11-16)
+
+Plan: [2026-11-16-households-plan-h3c-2.md](2026-11-16-households-plan-h3c-2.md) (its *What
+this plan got wrong* table has every correction). Deploy: section 9 of the
+[runbook](../backend/2026-11-16-deploy-runbook-households-h3c-1.md). Branch
+`feature/households-h3c-2`, not merged into `develop`, not deployed.
+
+### What the user gets
+
+Once merged **and deployed**: the pantry, item pages, logs, the location switcher, the
+settings lists (tags, vendors, recipes, shelves) and the household name update by themselves
+when another tab or device of the same household changes them. A checkout or a cooked recipe
+updates the pantry quantities in other tabs, not only the cart. A deleted item, location or
+"clear all data" removes the rows in other tabs too. Until H5 this shows only between one
+person's own tabs and devices.
+
+### What the developer gets
+
+- **The guard test is complete.** All 62 `Mutation` fields are in `publishes`;
+  `publishesNothing` is empty; `waitingForH3c2` is deleted. A new mutation must pick one of
+  the two lists.
+- **One web map for five kinds**, typed by the enum, with a comment table of what each query
+  selects.
+- **Shared E2E helpers** in `e2e/helpers/liveSocket.ts`.
+- **Costs:** about 50 more publish calls, each with a test; more refetches (a catalog change
+  refetches the catalog queries in every open tab of the household); the web map is kept by
+  hand, and nothing catches a query missing from it; `cloud` E2E grows by 5 tests. The
+  `cloud` run took 26m02s at the end of H3c-1 and 31m11s at the end of H3c-2; the two runs
+  were at different machine load, so not all of the 5 minutes is the new spec.
+
+### What was built
+
+| Part | Where | Commit |
+|---|---|---|
+| Five kinds; the web map `QUERIES_BY_KIND`; `shouldDeliver` tests for household-level events | `schema/live.graphql`, `lib/liveEvents.ts`, `apps/web/src/apollo/liveUpdates.ts`, `resolvers/live.resolver.ts` | `1706705c` |
+| `publishChange(ctx, kinds, locations)`, `publishHouseholdChange(ctx, kinds, householdId)` | `lib/publishChange.ts` | `4fb17b8e` |
+| `STOCK` and `LOG` from 10 mutations; `checkout` adds both | `itemStock`, `inventoryLog`, `recipe`, `cart`, `import` resolvers | `c7f63338` |
+| `LOCATION` from the location mutations and imports; `clearAllData` | `location.resolver.ts`, `import.resolver.ts` | `e39d384c` |
+| `CATALOG` from every catalog mutation and import; `deleteItem`, `createVendor`, `deleteVendor` side-effect kinds | item, tag, vendor, recipe, shelf, household, import resolvers | `602df3e1` |
+| `waitingForH3c2` deleted; guard 62 / 0 | `resolvers/live-publish.guard.test.ts` | `016cb9b7` |
+| E2E helpers; `live-pantry.spec.ts` (5 tests) | `e2e/helpers/liveSocket.ts`, `e2e/tests/live-pantry.spec.ts` | `4fedcd6e`, `6ec4570e` |
+
+### Kinds
+
+| Kind | Level | The web refetches |
+|---|---|---|
+| `CART` | location | the 5 cart queries |
+| `STOCK` | location | `PantryData`, `ItemStocksForItem` |
+| `LOG` | location | `ItemLogs`, `InventoryLogCountByItem`, `LastPurchaseDates` |
+| `LOCATION` | household (`locationId: null`) | every active query |
+| `CATALOG` | household (`locationId: null`) | `PantryData` and 15 catalog queries |
+
+`LOCATION` and `CATALOG` are household-level because a deleted location cannot pass
+`requireLocationRole`. A location deleted with its rows sends no `CART`, `STOCK` or `LOG`
+for itself; its `LOCATION` event refetches everything.
+
+### Where it differs from this design
+
+- **`shouldDeliver` did not change.** It already checked household membership for any event
+  with no location.
+- **A mutation publishes every kind it changed, including side effects** (decision Q1 of the
+  plan). `deleteItem` sends `CATALOG`, plus `STOCK`, `LOG` and `CART` at the locations where
+  the cascade deleted rows. It reads those locations BEFORE the delete and makes one call per
+  kind. `createVendor` sends `CART` for the cart it makes.
+- **A write that changes nothing sends nothing**: a refusal, a missing row, an empty reorder,
+  an import that skips every row. Imports publish in `finally`, so a batch that fails half-way
+  still announces the rows it saved.
+- **`reorderShelves` changed behaviour slightly.** It now waits for all its writes
+  (`Promise.allSettled`), so it can tell whether any row moved.
+- **The export queries are not in the web map.** They are never active.
+
+### Two cross-household gaps found (for H5)
+
+Neither can happen today, because nobody can be in two households before H5. Both were found
+while checking which household an event names.
+
+| Gap | Where |
+|---|---|
+| The stock and log imports check the ITEM against the caller's household, not against the household of the location the row is written to | `requireOwnItemStockRefs` and the log import in `apps/server/src/resolvers/import.resolver.ts` |
+| `createVendor` checks the caller's role on the cart's location, but not that the location is in the catalog's household. A vendor of one household could get a cart at a location of another | `apps/server/src/resolvers/vendor.resolver.ts` |
+
+### The location-visibility limit
+
+A new location shows only to people who hold a role on it. `visibleLocations`
+(`location.resolver.ts`) lists only those, and `createLocation` gives a role only to its
+creator. So the `LOCATION` event reaches every member, and their switcher refetches, but
+another member's list does not change. The E2E test for a new location uses the same user on
+another device for this reason. Whether a new location should give roles to others is a
+question for H5.
+
+### Numbers
+
+| Measure | Before (H3c-1, `25facd57`) | After |
+|---|---|---|
+| `apps/server` tests | 1412 / 61 files | **1566 / 64** |
+| `apps/web` tests | 2577 / 281 files | **2586 / 281** |
+| `cloud` E2E collected | 146 / 31 files | **151 / 32** |
+| guard lists `publishes` / `publishesNothing` / `waitingForH3c2` | 11 / 0 / 51 | **62 / 0 / —** |
+
+### Still owed
+
+- **Two people on two devices.** Needs H5. Every live test so far is one household with a
+  second account added by an E2E route.
+- **The two cross-household gaps** above, before H5 lets a person join a second household.
+- **A query missing from `QUERIES_BY_KIND`** is not caught by any test.
+- Everything under *Still owed* for H3c-1 (a real Clerk token, Railway's upgrade, the
+  60-minute close in a browser) still holds.

@@ -138,6 +138,22 @@ otherwise.
 6. Mutation checks: drop `PantryData` from `CATALOG` → a test red; make household-level events
    use `requireLocationRole` → the deleted-location test red.
 
+**As built (2026-11-16):** `1706705c`, `4fb17b8e`.
+
+- `enum ChangeKind { CART STOCK LOG LOCATION CATALOG }` and the server `ChangeEvent['kind']`
+  union, with the web map, in one commit (`1706705c`).
+- `shouldDeliver` needed no code change. It already sent every event with
+  `locationId: null` through `requireHouseholdRole(…, 'member')`. Only its comment changed,
+  and new tests prove it for `LOCATION`: a member with no location role gets the event,
+  also after the location was deleted; a user of another household does not.
+- `QUERIES_BY_KIND` is built from a table, in a comment above it, of what each query in
+  `apollo/operations/*.graphql` selects. `PantryData` is in `STOCK` and `CATALOG`. The cart
+  queries select only ids and amounts, so `CATALOG` does not refetch them. The export queries
+  (`InventoryLogs`, `ShoppingCarts`, `AllItemStocks`) are left out: no mounted component
+  watches them. `LOCATION` → `'all'`.
+- `publishChange(ctx, kinds, locations)` and `publishHouseholdChange(ctx, kinds,
+  householdId)` (`4fb17b8e`). The 11 H3c-1 call sites pass `['CART']`.
+
 ## Task D.2 — stock and logs
 
 **Files:** `itemStock.resolver.ts`, `inventoryLog.resolver.ts`, `recipe.resolver.ts`
@@ -153,6 +169,18 @@ imports); a new `stock-live-publish.resolver.test.ts`; the guard test.
 4. Mutation checks: remove `STOCK` from `checkout` → red; publish `consumeRecipes` inside its
    transaction → red; give a stock import's event the caller's household → red.
 
+**As built (2026-11-16):** `c7f63338`, `6f72eb31`.
+
+- Ten mutations publish; `checkout` adds `STOCK` and `LOG`. Guard lists 11 / 0 / 51 →
+  **21 / 0 / 41**.
+- New `stock-live-publish.resolver.test.ts`, 26 tests.
+- Four rows of the kinds table were wrong and were corrected (see *What this plan got
+  wrong*).
+- **Found, not fixed (H5):** the stock and log imports check the ITEM against the caller's
+  household, not against the household of the location the row is written to. A person in
+  two households could attach an item of one to a location of the other. Today nobody can be
+  in two households, so it cannot happen yet.
+
 ## Task D.3 — locations and clear-all
 
 **Files:** `location.resolver.ts`, `import.resolver.ts` (`clearAllData`, location imports);
@@ -164,6 +192,16 @@ imports); a new `stock-live-publish.resolver.test.ts`; the guard test.
    `LOCATION` event; a user of another household does not.
 3. Mutation checks: publish `deleteLocation` before its transaction commits → red; publish its
    event with the deleted `locationId` instead of `null` → the delivery test red.
+
+**As built (2026-11-16):** `e39d384c`, `fbc0fe75`.
+
+- `LOCATION` from the four location mutations and the two location imports; `clearAllData`
+  sends `LOCATION` and `CATALOG`. Guard lists **28 / 0 / 34**.
+- `updateLocation` and `bulkUpsertLocations` take the household from the SAVED row. The
+  imports publish once per household written, in `finally`.
+- `deleteLocation` moves no rows to another location (all go by cascade), so it needs no
+  other kind. An empty `reorderLocations` sends nothing.
+- New `location-live-publish.resolver.test.ts`, 25 tests.
 
 ## Task D.4 — the catalog
 
@@ -183,6 +221,22 @@ imports); a new `stock-live-publish.resolver.test.ts`; the guard test.
 5. Mutation checks: remove `publishChange` from `updateTag` → red; drop `CART` from
    `deleteItem` → red; put a field back in no list → the guard red.
 
+**As built (2026-11-16):** `602df3e1`, `016cb9b7`, `d8fb7f31`.
+
+- `CATALOG` from every catalog mutation and the twelve catalog imports (`withCatalogEvent` in
+  `import.resolver.ts`, in `finally`).
+- `deleteItem` reads, BEFORE the delete, the locations where the item has stock, logs and
+  cart rows. It makes one `publishChange` call per kind, each with its own locations.
+- `createVendor` sends `CATALOG` and `CART`; `deleteVendor` adds `CATALOG` when the vendor
+  itself was deleted.
+- `reorderShelves` now uses `Promise.allSettled` and publishes only when a row moved.
+- `vendorCart` publishes nothing (Q7), noted in the guard test file.
+- `waitingForH3c2` deleted. Guard: **62 / 0**.
+- New `catalog-live-publish.resolver.test.ts`, 91 tests (three `it.each` tables).
+- **Found, not fixed (H5):** `createVendor` checks `requireLocationRole` on the cart's
+  location, but not that the location is in the catalog's household. A person in two
+  households could make a vendor in one with its cart at a location of the other.
+
 ## Task D.5 — E2E
 
 **Files:** a new `e2e/tests/live-pantry.spec.ts` (or one spec per area, the task decides);
@@ -200,6 +254,25 @@ Reuse the `live-cart.spec.ts` helpers (warm-up that waits for its own refetch,
    from `CATALOG` in the web map → test 2 red.
 6. Run the new spec alone several times, then the whole `cloud` project.
 
+**As built (2026-11-16):** `4fedcd6e`, `6ec4570e`.
+
+- The helpers moved from `live-cart.spec.ts` to `e2e/helpers/liveSocket.ts`. The socket now
+  records each event's kind, and the warm-up takes the change to make as an argument.
+  `live-cart.spec.ts` still passes 3 of 3, and its mutation check still goes red.
+- New `e2e/tests/live-pantry.spec.ts`, 5 tests: quantity (`STOCK`), rename (`CATALOG`), new
+  location (`LOCATION`), checkout, item delete (it also checks the kinds on the socket).
+  `cloud` only; in `local`'s `testIgnore`. Cloud spec files 31 → **32** of 36; `cloud`
+  collects **151**.
+- The warm-up writes an inventory log (`LOG`). On the pantry a `LOG` event refetches no query
+  that shows a quantity, a name or a location, so the warm-up cannot show a later step.
+- The second person is a household `manager`, not a `member`: renaming and deleting an item
+  need `requireCatalogRole`.
+- Test 3 is made by the browser's own user from another device. See *What this plan got
+  wrong*.
+- Test 5 is the first real-SQL run of `deleteItem`'s
+  `inventoryLog.findMany({ distinct: ['locationId'] })`. It works.
+- The whole `cloud` project: 144 passed / 7 skipped, 28.2 min.
+
 ## Task D.6 — docs, runbook and the final gate
 
 1. The H3c-1 runbook: add a short H3c-2 section (no migration, no new setting; the smoke test
@@ -210,6 +283,46 @@ Reuse the `live-cart.spec.ts` helpers (warm-up that waits for its own refetch,
    plan got wrong* and *Status*; `docs/INDEX.md`; the households plan's H3 table.
 4. The full gate, then `pnpm test:e2e:all`.
 
+**As built (2026-11-16):** the H3c-2 part is
+[section 9 of the H3c-1 runbook](../backend/2026-11-16-deploy-runbook-households-h3c-1.md), not
+a new file. H3c-2 has no migration, no new setting and no new deploy step, so a new file would
+only repeat sections 1 to 7. Root `CLAUDE.md` (*Live updates (cloud)*), `e2e/CLAUDE.md`, the
+design's *Result* section, `docs/INDEX.md` and the households plan's H3 table are updated.
+
+## What this plan got wrong
+
+Collected from the task reports and reviews, D.1 to D.5.
+
+| Task | The plan said | What was true |
+|---|---|---|
+| D.1 step 3 | `shouldDeliver` may need a change | it already sent every `locationId: null` event through household membership. Only its comment and tests changed |
+| Facts table | `AllItemStocks` and `InventoryLogs` are web query names to map | they are export queries (`export.graphql`) that no mounted component watches, so they are never ACTIVE. Left out of the map |
+| D.2 table | `addInventoryLog`: `LOG`, maybe `STOCK` | it writes no stock: `LOG` only |
+| D.2 table | `applyUnitSwitch`: `STOCK`, `LOG`, maybe `CATALOG` | it writes no log: `STOCK` at each converted location, `CATALOG` when it changed the item or a recipe |
+| D.2 table | `consumeRecipes`: `CATALOG` | for the CALLER's household (the recipes' household), and only when it marked a recipe |
+| D.2 table | `checkout`: `CART`, `STOCK`, `LOG` | an empty cart sends `CART` only |
+| D.2 table | `removeItemFromLocation`: `STOCK`, `LOG` if it deletes logs, `CART` | each kind only when rows of that kind were deleted |
+| D.2 (not covered) | — | the stock and log imports check the item against the caller's household, not the location's. A cross-household gap for H5 |
+| D.3 table | `deleteLocation`: `LOCATION` | correct, and it also moves no rows to another location, so no surviving location needs a kind. `reorderLocations` with an empty list sends nothing |
+| D.4 table | `deleteItem` publishes its kinds "at each location" | one `publishChange` call per kind, with that kind's own locations, read BEFORE the cascade |
+| D.4 (not covered) | — | `reorderShelves` did not wait for its writes. It now uses `Promise.allSettled`, so it knows whether a row moved |
+| D.4 (not covered) | — | `createVendor` can put its cart at a location of another household: `requireLocationRole` does not check the location is in the catalog's household. A cross-household gap for H5 |
+| Q7 | `vendorCart` publishes nothing because the cart is empty | true, but `bootstrapCarts` (H3c-1) and `createVendor` (D.4) DO send `CART` for the empty carts they make. Harmless (one refetch); not the same choice |
+| D.5 step 3 | "another member creates a location; the location switcher shows it" | it cannot pass. `visibleLocations` lists only locations where the caller holds a role, and `createLocation` gives a role only to its creator. The test uses the browser's own user from another device |
+| D.5 (not covered) | — | the second person must be a household `manager`: `updateItem` and `deleteItem` need `requireCatalogRole` |
+| D.6 step 1 | a runbook section "or a new file" | a section. There is no new deploy step |
+
 ## Status
 
-Not started.
+**Done, 2026-11-16.** All six tasks built on `feature/households-h3c-2`. Not merged into
+`develop`, not deployed. It deploys with H3a, H3b and H3c-1 at the next checkpoint release,
+or at the release after; see
+[section 9 of the runbook](../backend/2026-11-16-deploy-runbook-households-h3c-1.md).
+
+Final gate on `6ec4570e` (D.6 changed docs only), 2026-11-16:
+
+| Check | Result |
+|---|---|
+| `pnpm lint`, `pnpm build`, `build-storybook`, `pnpm check`, `TS6385` grep | all pass, 0 `TS6385` |
+| `pnpm test` | server **1566 / 64**, web **2586 / 281**, `scripts/spec` **70**, all pass |
+| `pnpm test:e2e:all` | `local` 178 passed / 6 skipped (3m28s); `cloud` 144 passed / 7 skipped (31m11s); `pwa` 73 passed (1m32s). All green, no re-run. Load average 13.2 at the start (falling, from the unit tests just before), 2.6 at the end |
