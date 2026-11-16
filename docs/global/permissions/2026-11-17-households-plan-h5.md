@@ -304,7 +304,7 @@ The owner can still correct any `tw` text in the PR.
 - Produces (server): `locationRolesByLocation(ctx: Context, householdId: string): Promise<Map<string, LocationRole>>` in `lib/authz.ts`, built on `countedLocationRole`, cached on `ctx.requestCache.locationRoles`.
 - Produces (web): `GetLocations` selects `myRole`; new document `GetHouseholdLocations` selects `id name order myRole hasOrganizer`.
 
-- [ ] **Step 1: Write the failing tests** in `location-roles.resolver.test.ts`, with the
+- [x] **Step 1: Write the failing tests** in `location-roles.resolver.test.ts`, with the
   shared fakes (`householdFake`, `stockFake`) and THREE people: owner O (organizer of K,
   no role on G), manager M (viewer of K), member B (participant of G). Locations K and G in
   household H; location X in another household where O is organizer.
@@ -313,8 +313,8 @@ The owner can still correct any `tw` text in the PR.
   - `locations still lists only locations with a role` → O gets `[K]`.
   - `hasOrganizer is false for a location whose only organizer left the household` → remove O's `HouseholdMember` row (H18): K's `hasOrganizer` is `false`, and O's `myRole` on K is not counted.
   - `myRole and hasOrganizer cost one membership read per request` → spy on `locationMember.findMany`: 2 calls at most for a list of 2 locations (one for roles, one for organizers), not 4.
-- [ ] **Step 2: Run** `pnpm --filter server exec vitest run src/resolvers/location-roles.resolver.test.ts` — expected FAIL (`householdLocations` not in schema).
-- [ ] **Step 3: Implement.** Schema and web document in one commit. `householdLocations`:
+- [x] **Step 2: Run** `pnpm --filter server exec vitest run src/resolvers/location-roles.resolver.test.ts` — expected FAIL (`householdLocations` not in schema).
+- [x] **Step 3: Implement.** Schema and web document in one commit. `householdLocations`:
   `requireHousehold`, then `requireHouseholdRole(ctx, h, 'member')`; for `member` return
   `visibleLocations(ctx)`; for `manager`/`owner` read `location.findMany({ where:
   { householdId }, orderBy: [{ order: 'asc' }, { id: 'asc' }] })`. The comparison is in SQL;
@@ -324,18 +324,63 @@ The owner can still correct any `tw` text in the PR.
   the ORGANIZER's own membership, not the caller's: an organizer who left the household does
   not count. Put that `where` in a named builder in `authz.ts` beside
   `countedLocationRole`, with a comment saying why it differs.
-- [ ] **Step 4: Run** the file and `pnpm test:server` — PASS. Add a row for
+- [x] **Step 4: Run** the file and `pnpm test:server` — PASS. Add a row for
   `HouseholdLocations` to the comment table above `QUERIES_BY_KIND` in
   `apps/web/src/apollo/liveUpdates.ts` (kind `LOCATION`, which already refetches every active
   query; no map entry is needed). A role change (H5b, H5c) publishes `LOCATION`, so `myRole`
   refreshes the same way.
-- [ ] **Step 5: Mutation checks** (copy the file aside first; never `git checkout --`):
+- [x] **Step 5: Mutation checks** (copy the file aside first; never `git checkout --`):
   - `householdLocations` returns `visibleLocations` for everyone → the owner test goes red.
   - drop the H18 part of the organizer builder → the `hasOrganizer` test goes red.
   - drop `householdId` from the manager read → add a location of another household where O
     is organizer to the fixture (already there: X) → red.
-- [ ] **Step 6: Gate** (root `CLAUDE.md`, *Verification Gate*), then commit
+- [x] **Step 6: Gate** (root `CLAUDE.md`, *Verification Gate*), then commit
   `feat(households): location role fields and householdLocations`.
+
+**As built (2026-11-17, commit `a59cfcb8`).**
+
+- **Schema.** `Location.myRole: LocationRole` (nullable), `Location.hasOrganizer: Boolean!`,
+  a new GraphQL `enum LocationRole`, and `householdLocations: [Location!]!`. No mutation, so
+  `live-publish.guard.test.ts` is unchanged (it lists only `Mutation` fields; checked).
+- **Helpers in `lib/authz.ts`.**
+  `locationRolesByLocation(ctx, householdId): Promise<Map<string, LocationRole>>` is built on
+  `countedLocationRole`. `locationIdsWithOrganizer(ctx, householdId): Promise<Set<string>>`
+  uses a new named builder, `countedOrganizerIn(householdId)`, beside it:
+  `{ role: 'organizer', location: { householdId }, user: { householdMemberships: { some: { householdId } } } }`.
+  Both cache one promise PER HOUSEHOLD on `ctx.requestCache` (`locationRoles`,
+  `organizedLocations`, two `Map`s added to `RequestCache` in `context.ts`).
+- **The household is the LOCATION's own**, read from the parent row (`householdIdOf` in
+  `location.resolver.ts`; every path that returns a `Location` goes through `toGraphQL`,
+  which spreads the Prisma row). Not the caller's: `updateLocation` can return a location of
+  a second household the caller belongs to. A test pins this; without it the "caller's
+  household" mutation stayed green.
+- **The organizer read is per household, not per id list.** The plan's
+  `locationId: { in: ids }` needs the list of ids first, which a field resolver does not have.
+  One read of every counted organizer row of the household is cached instead.
+- `Location` is registered in `resolvers/index.ts`.
+- **Web.** `GetLocations` selects `myRole`; `GetHouseholdLocations` selects
+  `id name order myRole hasOrganizer`. The comment table above `QUERIES_BY_KIND` has the new
+  row. Seven fixture files gained `myRole: 'organizer'` (see *What this plan got wrong*). The
+  export test now asserts a backup never carries `myRole` (`toLocationInput` is an
+  allow-list).
+- **The fake.** `householdFake` now models `user: { householdMemberships: { some: { householdId, role } } }`
+  on `LocationMember`, pinned by three contract tests in `householdFake.test.ts`.
+- **Tests.** `location-roles.resolver.test.ts`: 9 tests. `authz.test.ts`: 6 new tests.
+  Server suite **1765 / 67 → 1783 / 68**. Web suite unchanged at **2678 / 283**.
+- **Mutations, each copied aside and restored from the copy:**
+
+  | Mutation | Red |
+  |---|---|
+  | `householdLocations` returns `visibleLocations` for everyone | 4 resolver tests, incl. the owner test |
+  | the `user` (H18) part of `countedOrganizerIn` removed | the authz H18 test and `hasOrganizer is false …` |
+  | `countedOrganizerIn` checks "anyone is in the household" instead | the same 2 |
+  | `householdId` removed from the manager read | 4 resolver tests (loc-x appears) |
+  | `orderBy` removed from the manager read | 3 resolver tests |
+  | household filter removed from `locationRolesByLocation` | 3 authz tests |
+  | H18 removed from `locationRolesByLocation` | `leaves out a role that does not count` |
+  | the request cache removed from `locationRolesByLocation` | 2 (`reads once …`, `cost one membership read …`) |
+  | `myRole` / `hasOrganizer` read the caller's household | `… read the LOCATION's household …` (green before that test was added) |
+  | `toLocationInput` forwards `myRole` | `user can export every location, not only the first one` |
 
 ## Task F.2 — server: viewer reads carts; household filter on four reads; reorder needs the full set
 
@@ -733,8 +778,14 @@ Filled in from the task reports and reviews.
 
 | Task | The plan said | What was true |
 |---|---|---|
+| F.1 | Add `myRole` to `GetLocations`; nothing about web fixtures | 15 web tests failed in 2 files (`cloudFetchPolicy.cloud.test.tsx` 13, `useLocations.test.tsx` 2). A cache write or `MockedProvider` result without a field the document selects reads back as incomplete. Seven fixture files now carry `myRole` |
+| F.1 | `hasOrganizer` reads `locationMember.findMany({ where: { locationId: { in: ids }, … } })` | A field resolver does not know the other ids. One read per HOUSEHOLD (`location: { householdId }`), cached, gives the same answer |
+| F.1 | `locationRolesByLocation(ctx, householdId)` cached on `ctx.requestCache.locationRoles` (one value) | The cache must be per household: a `Location` can be of a second household (`updateLocation`), and its role must be read there. Both caches are `Map`s keyed by household id |
+| F.1 | Which household the field resolvers use was not said | The LOCATION's own, from the parent row. The caller's household gives `myRole: null` for a second household's location, and no test caught that until one was added |
+| F.1 | The `hasOrganizer` test: remove O's membership, then check O's `myRole` on K too | After the removal O is in no household of K and `householdLocations` refuses O. The test lists as the manager; the H18 part of `myRole` is tested in `authz.test.ts` instead |
+| F.1 | Use `householdFake` as it is | It did not model the `user` relation filter on `LocationMember`. Added, with three contract tests |
 
 ## Status
 
 **Plan written 2026-11-17** on `feature/households-h5`. Owner decisions O1–O12 answered
-2026-11-17 (see *Owner answers*). H5a task F.1 is next.
+2026-11-17 (see *Owner answers*). H5a task F.1 is done (`a59cfcb8`). Task F.2 is next.
