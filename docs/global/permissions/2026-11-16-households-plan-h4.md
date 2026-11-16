@@ -130,12 +130,11 @@ Line numbers drift. Each task re-reads the code before it trusts a line here.
 | T17 | **Errors on the web:** a `FORBIDDEN` from `importCheck` means the role gate (new key `settings.import.importErrorRole`); `anotherHousehold: true` and a `FORBIDDEN` from a bulk mutation mean "another household" (`importErrorForbidden`); `importErrorForbiddenAfterClear` stays for the race where the refusal comes after the clear | The role refusal and the id refusal share the code `FORBIDDEN`. The web can tell them apart only by which call failed |
 | T18 | Local mode: no role checks, no `importCheck`, nothing in `apps/web/src/db/` changes. `importLocalData` gets an option `homeLocationId`: the payload location that becomes local "My Home". The cloud → local copy passes the cloud ACTIVE location. A cloud backup FILE imported in local mode keeps today's rule (O4) | Design, *Copying between local and cloud* and *Local mode* |
 
-### Decisions that need the owner's OK
+### Decisions the owner approved
 
-The design leaves these open. Each is a default the plan will build unless the owner says
-otherwise. They are also listed in the report.
+The design leaves these open. The owner approved all eight defaults on 2026-11-16 ("agree").
 
-| # | Question | Recommended default **(needs owner OK)** |
+| # | Question | Decision (approved 2026-11-16) |
 |---|---|---|
 | O1 | What does a household **member** see on `/settings/household`? | `ExportCard` as today. `ImportCard` shows its title and the line "Only the owner or a manager can import data." with no file button |
 | O2 | `clear` with a file that holds the local "My Home": where does it go? | No dialog. `clearAllData` leaves one location, the new "Home"; "My Home"'s rows go there. A dialog would offer only that one location anyway |
