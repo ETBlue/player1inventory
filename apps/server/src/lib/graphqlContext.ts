@@ -20,38 +20,55 @@ export interface GraphQLContextDeps {
 }
 
 /**
+ * Who sent this request or opened this socket? The one rule for HTTP and for
+ * the WebSocket (households H3c-1, decision P3), so the two cannot drift.
+ *
+ * - In E2E test mode, a non-empty `e2eUserId` is the user. It comes from the
+ *   `x-e2e-user-id` header (HTTP) or `connectionParams.e2eUserId` (socket).
+ * - Otherwise, or when there is no such id: the Clerk user, from `clerkUserId`.
+ *   Outside E2E mode `e2eUserId` is never read.
+ *
+ * A found user goes through `ensureUser` once. `clerkUserId` may be async
+ * (the socket checks a token) and may throw (a bad token); a throw is passed
+ * on to the caller, and then `ensureUser` is not called.
+ */
+export async function identifyCaller(input: {
+  e2eTestMode: boolean
+  e2eUserId: unknown
+  clerkUserId: () => string | null | Promise<string | null>
+  ensureUser: (userId: string) => Promise<void>
+}): Promise<string | null> {
+  const testUserId =
+    input.e2eTestMode && typeof input.e2eUserId === 'string' && input.e2eUserId.length > 0
+      ? input.e2eUserId
+      : null
+  const userId = testUserId ?? (await input.clerkUserId())
+  if (userId) await input.ensureUser(userId)
+  return userId
+}
+
+/**
  * Build the context of one GraphQL request.
  *
- * Two branches:
- * - E2E test mode with an `x-e2e-user-id` header: that header is the user.
- *   Only active when the server is started with `E2E_TEST_MODE=true`.
- * - Otherwise: the Clerk session.
+ * Who the user is comes from `identifyCaller`: the `x-e2e-user-id` header in
+ * E2E test mode, otherwise the Clerk session. The socket uses the same
+ * function (`lib/wsServer.ts`).
  *
- * Both branches call `ensureUser`, both read `x-app-language` (households
- * H3a, decision H3) and both read the tab id from `x-client-id` (households
- * H3c-1, decision P4). The E2E branch returns early, so each branch needs its
- * own call, its own `language` and its own `clientId`.
- * `graphqlContext.test.ts` checks both.
+ * The context also carries `x-app-language` (households H3a, decision H3)
+ * and the tab id from `x-client-id` (households H3c-1, decision P4).
+ * `graphqlContext.test.ts` checks both, in E2E mode and in Clerk mode.
  *
  * Every request gets a new, empty `requestCache`, so a value worked out for
  * one request is never seen by another.
  */
 export function createGraphQLContext(deps: GraphQLContextDeps) {
   return async ({ req }: { req: { headers: IncomingHttpHeaders } }): Promise<Context> => {
-    if (deps.e2eTestMode) {
-      const testUserId = req.headers['x-e2e-user-id'] as string | undefined
-      if (testUserId) {
-        await deps.ensureUser(testUserId)
-        return {
-          userId: testUserId,
-          language: appLanguageFrom(req.headers['x-app-language']),
-          clientId: clientIdFrom(req.headers['x-client-id']),
-          requestCache: {},
-        }
-      }
-    }
-    const userId = deps.clerkUserId(req)
-    if (userId) await deps.ensureUser(userId)
+    const userId = await identifyCaller({
+      e2eTestMode: deps.e2eTestMode,
+      e2eUserId: req.headers['x-e2e-user-id'],
+      clerkUserId: () => deps.clerkUserId(req),
+      ensureUser: deps.ensureUser,
+    })
     return {
       userId,
       language: appLanguageFrom(req.headers['x-app-language']),

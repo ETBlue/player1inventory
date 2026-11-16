@@ -142,6 +142,20 @@ maybe `apps/server/scripts/check-start.mjs`.
    clear → the "no timer left" test goes red.
 8. `pnpm --filter server build` still passes its start check.
 
+**As built (2026-11-16):**
+
+- P2: `makeExecutableSchema` from `@graphql-tools/schema` **9.0.19**, the same copy Apollo 4
+  already used for `typeDefs` + `resolvers` (`src/schema/executableSchema.ts`). Lockfile diff:
+  3 lines, the importer entry only.
+- P3: `identifyCaller` in `lib/graphqlContext.ts` is the one "who is this" rule. HTTP and the
+  socket both call it, and it calls `ensureUser`.
+- Clerk on the socket: `verifyToken` (from `@clerk/backend`, re-exported by `@clerk/express`)
+  with `CLERK_SECRET_KEY` and, when set, `CLERK_JWT_KEY`. No new env var.
+- Refused (no user, bad token, no valid `clientId`): the server closes with `4401` itself and
+  then returns `false`. Returning `false` alone gives `4403`, which the client retries.
+- Age limit: close code `1001`. graphql-ws 5's client retries it after a random wait.
+- `check-start.mjs` now also opens a socket with no `clientId` and expects `4401`.
+
 ## Task C.4 — publish from the cart mutations, and the guard test
 
 **Files:** `cart.resolver.ts`, `import.resolver.ts`, `vendor.resolver.ts`; a new

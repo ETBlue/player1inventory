@@ -850,11 +850,14 @@ each file is checked once.
   holds the 46 `*.test.js` files the old `tsc` emit shipped.
 - **`scripts/check-start.mjs`** runs `node --enable-source-maps dist/index.js` with
   `PORT=0`, a database URL that points at a closed local port, `E2E_TEST_MODE=false`, in an
-  empty temp folder. It passes when the server prints `Server ready at` within 20s, and it
-  always stops the server. It needs no secrets.
+  empty temp folder. It waits for `Server ready at` within 20s, reads the real port from
+  that line, then opens a WebSocket to `/graphql` with no `clientId` and passes only when the
+  server closes it with **4401** (since households H3c-1 task C.3, `lib/wsServer.ts`). It
+  always stops the server. It needs no secrets and makes no Clerk call.
 - **Proved by mutation:** leaving `@p1i/types` external fails it with
   `ERR_UNKNOWN_FILE_EXTENSION`, exit 1; copying the `.graphql` files into `dist/schema/`
-  fails it with `ENOENT … dist/schema.graphql`.
+  fails it with `ENOENT … dist/schema.graphql`; removing the `attachWsServer(…)` call from
+  `index.ts` fails it with `WebSocket error at /graphql: Unexpected server response: 400`.
 - **It runs inside `pnpm --filter server build`**, so the root `pnpm build`, the gate and
   Railway's build all run it. The `cloud` E2E project starts the server from source with
   `tsx`, so E2E does not prove the bundle; this check does.
