@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './index.stories'
 
-const { FewConflicts, ManyConflicts, MixedMatchReasons } =
+const { FewConflicts, ManyConflicts, MixedMatchReasons, WithoutClear } =
   composeStories(stories)
 
 describe('ConflictDialog stories smoke tests', () => {
@@ -32,5 +32,29 @@ describe('ConflictDialog stories smoke tests', () => {
   it('MixedMatchReasons renders match reason labels', () => {
     render(<MixedMatchReasons />)
     expect(screen.getAllByText(/ID \+ name/).length).toBeGreaterThan(0)
+  })
+
+  it('FewConflicts offers all three strategies', () => {
+    render(<FewConflicts />)
+    expect(
+      screen.getByRole('button', { name: 'Replace matches' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Clear & import' }),
+    ).toBeInTheDocument()
+  })
+
+  it('WithoutClear offers skip and replace but no Clear button', () => {
+    render(<WithoutClear />)
+    // Something present first, so the absence below is not the empty state
+    expect(
+      screen.getByRole('button', { name: 'Skip conflicts' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Replace matches' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Clear & import' }),
+    ).not.toBeInTheDocument()
   })
 })
