@@ -1,6 +1,7 @@
 import type { Resolvers } from '../generated/graphql.js'
 import { cartResolvers } from './cart.resolver.js'
 import { importResolvers } from './import.resolver.js'
+import { importCheckResolvers } from './importCheck.resolver.js'
 import { inventoryLogResolvers, JSONScalar } from './inventoryLog.resolver.js'
 import { itemResolvers } from './item.resolver.js'
 import { itemStockResolvers } from './itemStock.resolver.js'
@@ -25,6 +26,7 @@ const resolversObject: Resolvers = {
     ...locationResolvers.Query,
     ...itemStockResolvers.Query,
     ...householdResolvers.Query,
+    ...importCheckResolvers.Query,
   },
   Mutation: {
     ...itemResolvers.Mutation,

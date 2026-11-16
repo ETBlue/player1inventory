@@ -394,6 +394,9 @@ the two migration comments saying the index is gone.
 stop falling back to a default, and ask the user instead (rule 3 of *The new id rule*). That
 dialog is H4. Until H4, a log or cart row with no known location goes to the caller's **first
 location by `order`** on which they are participant or higher (`fallbackImportLocation`).
+**Closed in H4** (task E.3, decisions T10 and T11): `fallbackImportLocation` is deleted. A log
+with no location and a bare cart id are refused with `BAD_USER_INPUT`, and the web asks
+"Import into which location?" before it sends them.
 
 **The first version, replaced.** "Steps 1 and 2 run in one transaction, and the `User`
 primary key is the race guard (issue #360). The transaction starts with `user.create`. A second
@@ -772,7 +775,7 @@ Copying rows from one household into another is postponed (see *Postponed*).
 
 These still read or write `isDefault` on `main` at `d63bd81f` and go in H3a. (One change since
 this table was written: the import fallback does not go away in H3a. It moves to
-`fallbackImportLocation` until H4, decision H12. See *First sign-in*.)
+`fallbackImportLocation` until H4, decision H12. See *First sign-in*. H4 task E.3 deleted it.)
 
 | Code | What it does today |
 |---|---|
@@ -790,6 +793,35 @@ this table was written: the import fallback does not go away in H3a. It moves to
 | Cloud → local | What the user can read in the **active** household. The **active** location becomes local "My Home"; every other location keeps its id |
 
 Every import is written to the activity log.
+
+### Result (H4, built 2026-11-16 and 2026-11-17)
+
+Plan: [2026-11-16-households-plan-h4.md](2026-11-16-households-plan-h4.md). Deploy:
+[`../backend/2026-11-17-deploy-runbook-households-h4.md`](../backend/2026-11-17-deploy-runbook-households-h4.md).
+What was built, and where it differs from the text above:
+
+- **Rule 2's "Nothing is written" is now true.** Before H4 the server refused per batch of 50,
+  so earlier batches stayed written. A new read-only query, `importCheck`, runs before
+  `clearAllData` and before the first write. When the file holds another household's id the
+  web stops there. The per-mutation guards stay; `importCheck` is not trusted by the server.
+- **The guard scope is the TARGET household** (`requireOwnRowOrUnclaimed`'s fourth argument).
+  `InventoryLog` and `CartItem` are checked through their location, `Cart` through its id's
+  location prefix, BEFORE the cart table is read (#361). A location, a stored row and an item
+  must all be in the target household (#381).
+- **Owner and manager only, `clear` owner only**, as designed. A `member` sees a line instead
+  of the file button.
+- **Skipped locations** are named in the card after the import, not in a dialog (decision O5).
+- **Rule 3** is built as designed. "Home" is not special: the dialog selects the household's
+  FIRST location. `clear` never asks (decision O2): the local default goes to the new "Home".
+- **One addition:** a `clear` restore of a CLOUD backup keeps every location's id, so the new
+  "Home" would stay as an extra empty location. It is deleted after the import (owner
+  decision 6). A `skip` or `replace` restore keeps it, and moves the user to the backup's
+  first location when the active location holds no stock (decision O9).
+- **Export:** the five reads behind it give the active household only. Cloud → local puts the
+  active location into "My Home", as designed; when the file does not hold it, the file's
+  first location by `order` does (decision O10).
+- **Not built:** the activity log of imports (H6). One person in two households is tested
+  with fakes only, because no E2E route can make one before H5.
 
 ## Clerk integration
 
@@ -926,8 +958,10 @@ The root `CLAUDE.md` rules apply. Points special to this design:
 - **Existing households get an English name** (decision H3). The data migration cannot
   translate, so a `tw` user who signed up before H3a sees "<name>'s Household" until they
   rename it. Only first sign-in translates.
-- **H3a's import fallback is a stopgap** (decision H12). A log or cart row with no known
-  location goes to the caller's first location by `order`. H4's dialog replaces it.
+- **H3a's import fallback was a stopgap** (decision H12). A log or cart row with no known
+  location went to the caller's first location by `order`. **Closed in H4:** the fallback is
+  deleted and the dialog replaces it. Carts it stored may still have an id whose prefix is not
+  their location; the H4 runbook counts them before the release.
 - **The last location cannot be deleted until H5** (decision H13).
 - **The read-only member rules are a first version** and may change after feedback.
 - **Hand-over needs a deleted Clerk account.** If nobody deletes it, the family cannot take over.

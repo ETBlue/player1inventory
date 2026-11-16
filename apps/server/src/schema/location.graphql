@@ -7,7 +7,9 @@ type Location {
 }
 
 extend type Query {
-  # The locations the caller has a location role on, by `order`. A new person
+  # The locations of the caller's household that the caller has a location
+  # role on, by `order` (one household only since households H4 task E.5).
+  # A new person
   # gets their household and its first location, "Home", on their first call
   # (first sign-in, lib/household.ts).
   locations: [Location!]!

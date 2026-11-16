@@ -4,6 +4,7 @@ import {
   locationIdsWithRole,
   requireCatalogIds,
   requireCatalogRole,
+  requireHousehold,
   requireLocationItems,
   requireLocationRole,
 } from '../lib/authz.js'
@@ -97,8 +98,15 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     // household does not count. ItemStock has no userId of its own, by
     // design (root CLAUDE.md, Authorization). Until households H3a task 3.8
     // the scope was `location: { userId }`.
+    //
+    // One household only since households H4 task E.5 (decision T15): the
+    // caller's household, `requireHousehold`. A person in two households
+    // holds roles in both, so without the filter an export would carry the
+    // other household's stock.
     allItemStocks: async (_, __, ctx) => {
-      const locationIds = await locationIdsWithRole(ctx)
+      const locationIds = await locationIdsWithRole(ctx, 'viewer', {
+        householdId: await requireHousehold(ctx),
+      })
       // Postgres gives no ordering guarantee for findMany without orderBy, and
       // an export that reorders its rows on every run produces a different
       // file each time. `locationId` alone is not enough here: unlike

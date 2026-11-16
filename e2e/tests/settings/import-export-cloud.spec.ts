@@ -5,10 +5,12 @@ import { fileURLToPath } from 'node:url'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 import { expect, test } from '@playwright/test'
+import { CLOUD_HOME_LOCATION_NAME } from '../../constants'
 import {
   destinationDefaultLocationName,
   expectFixtureStockPerLocation,
   expectStockNotCollapsedOntoDefault,
+  FIXTURE_DEFAULT_LOCATION_NAME,
   FIXTURE_STOCK_BY_LOCATION,
 } from '../../helpers/backupAssertions'
 import { ensureCloudHomeLocation } from '../../helpers/cloudSeed'
@@ -42,9 +44,11 @@ const CLOUD_ITEM_ID: string = cloudFixture.items[0].id
 const LOCAL_ITEM_ID: string = localFixture.items[0].id
 const CLOUD_VENDOR_ID: string = cloudFixture.vendors[0].id
 const LOCAL_VENDOR_ID: string = localFixture.vendors[0].id
-// The fixtures' NON-default locations keep their own ids through every import:
-// the remap rewrites only the payload's default. So these two can be asserted
-// verbatim after a round trip, and the default's id cannot.
+// The fixtures' NON-default locations keep their own ids through every import.
+// Since households H4 (decision T16) a CLOUD backup keeps EVERY location id,
+// its default included; only a LOCAL backup's default, `'local'`, goes where
+// the user picks in "Import into which location?". So these two can always be
+// asserted verbatim after a round trip.
 const CLOUD_OFFICE_ID: string = cloudFixture.locations[1].id
 const LOCAL_OFFICE_ID: string = localFixture.locations[1].id
 
@@ -86,15 +90,14 @@ async function seedCloudFixture(
   // The fixture's default location is not created: first sign-in already
   // made the household's "Home" with a cuid id, at `order` 0. So the
   // fixture's default id is MAPPED onto that row's id and the row is renamed,
-  // the same thing `helpers/cloudSeed.ts` does, and the same rule the import
-  // remap applies (the payload's default lands on the destination's FIRST
-  // location). Cloud has had no `isDefault` column since households H3a task
-  // 3.14; the `isDefault` keys read below are the backup FILE's own keys.
+  // the same thing `helpers/cloudSeed.ts` does. Cloud has had no `isDefault`
+  // column since households H3a task 3.14; the `isDefault` keys read below are
+  // the backup FILE's own keys.
   //
   // Every NON-default location is created with the fixture's OWN id, through
   // `bulkCreateLocations` (`LocationInput.id` is required, PR 4a). That is what
   // lets a test assert a cart id or a log's location verbatim after a round
-  // trip: the remap rewrites only the default.
+  // trip.
   const fixtureLocations = cloudFixture.locations as Array<
     Record<string, unknown>
   >
@@ -161,7 +164,7 @@ async function seedCloudFixture(
       //
       // The fixture is a backup PAYLOAD and carrying them is correct: a real
       // pre-v15 export has them inline on each item, and that is the shape
-      // `upgradeLegacyPayloadForCloud` has to be able to read. What is not
+      // `upgradeLegacyPayload` has to be able to read. What is not
       // correct is forwarding them into `ItemInput`, which has declared none of
       // the five since cloud locations PR 5 — the server answers `Field
       // "targetQuantity" is not defined by type "ItemInput". Did you mean
@@ -214,11 +217,11 @@ async function seedCloudFixture(
     `mutation BulkCreateInventoryLogs($logs: [InventoryLogInput!]!) { bulkCreateInventoryLogs(logs: $logs) { id } }`,
     {
       // Each log's own `locationId`, mapped through the same table. A log
-      // naming a location the account does not hold is NOT an error:
-      // `resolveLogLocations` (apps/server/src/resolvers/import.resolver.ts)
-      // falls back to the caller's default, silently. So the fixture's default
-      // log has to be mapped here, or the seed would be asserting a fallback
-      // rather than a placement.
+      // naming a location the household does not hold is refused with
+      // `FORBIDDEN`, for the whole batch, by `resolveLogLocations`
+      // (apps/server/src/resolvers/import.resolver.ts). Until households H4
+      // task E.3 it fell back to the caller's first location, silently. So the
+      // fixture's default log has to be mapped here either way.
       logs: (cloudFixture.inventoryLogs as Array<Record<string, unknown>>).map(
         (log) => ({ ...log, locationId: resolveLocation(log.locationId) }),
       ),
@@ -255,11 +258,24 @@ async function seedCloudFixture(
 // `itemId` is a parameter because the two fixtures use different id formats —
 // `cloud-backup.json` has ObjectId-shaped ids, `local-backup.json` has UUIDs —
 // and the stock readback has to name the item.
+//
+// `homeName` is the location the backup's default rows are on: "Home" when a
+// LOCAL backup was put there through "Import into which location?", the
+// backup's own "Fixture Home" when a CLOUD backup came back under its own ids
+// (households H4, decision T16). `extraLocationNames` are locations the
+// destination holds besides the fixture's three, which must stay empty. The
+// test switches to `homeName` first, because the pantry lists the active
+// location only. Since the owner decision of 2026-11-17 (option B) a restore
+// into a new household already moves the user off its empty "Home" onto the
+// backup's first location, so for a cloud backup this switch changes nothing;
+// the test "every location back under its own id" proves that without it.
 async function verifyRelations(
   page: import('@playwright/test').Page,
   request: import('@playwright/test').APIRequestContext,
   baseURL: string | undefined,
   itemId: string,
+  homeName: string = destinationDefaultLocationName(baseURL),
+  extraLocationNames: string[] = [],
 ) {
   const pantry = new PantryPage(page)
   const item = new ItemPage(page)
@@ -267,8 +283,9 @@ async function verifyRelations(
   const recipes = new RecipesPage(page)
   const recipeDetail = new RecipeDetailPage(page)
 
-  // 1. Item in pantry
+  // 1. Item in pantry, at the location the backup's default rows are on
   await pantry.navigateTo()
+  await switchToLocation(page, homeName)
   await expect(pantry.getItemCard('Fixture Item')).toBeVisible()
 
   // 2. Tag assigned to item
@@ -307,25 +324,41 @@ async function verifyRelations(
   await shopping.clickVendorCartCard('Fixture Vendor')
   await expect(shopping.getItemCard('Fixture Item')).toBeVisible()
 
-  // 7. Every location came back, exactly one of them is the default, and each
-  //    one holds its OWN quantities. Until PR 4b task 8 this file asserted no
-  //    location and no quantity at all, so an imported item could land in the
-  //    wrong location — or in none — and every check above still passed.
-  // The default location answers to the DESTINATION's name, not the backup's.
-  // `ImportCard` runs the `skip` strategy when there is no conflict, and the
-  // remap puts the backup's default row on the id the account already holds —
-  // so that one row is the one `skip` leaves alone. See
-  // `destinationDefaultLocationName`.
+  // 7. Every location came back, and each one holds its OWN quantities.
+  //    Until PR 4b task 8 this file asserted no location and no quantity at
+  //    all, so an imported item could land in the wrong location — or in
+  //    none — and every check above still passed.
   await expectFixtureStockPerLocation(
     page,
     request,
     baseURL,
     itemId,
-    destinationDefaultLocationName(baseURL),
+    homeName,
+    extraLocationNames,
   )
 
-  // 8. And the two non-default locations' stock is not sitting on the default.
-  await expectStockNotCollapsedOntoDefault(page, request, baseURL, itemId)
+  // 8. And the two non-default locations' stock is not sitting on the
+  //    default. `expectStockNotCollapsedOntoDefault` reads the default as the
+  //    FIRST location, which is a tie on `order` when an extra "Home" is
+  //    there, so it runs only without one.
+  if (extraLocationNames.length === 0) {
+    await expectStockNotCollapsedOntoDefault(page, request, baseURL, itemId)
+  }
+}
+
+// Make `name` the active location through the desktop sidebar switcher
+// (`LocationSwitcher`, `variant="full"`). Playwright's default viewport is
+// desktop width, so the sidebar copy is the visible one.
+async function switchToLocation(
+  page: import('@playwright/test').Page,
+  name: string,
+) {
+  const switcher = page
+    .getByRole('navigation', { name: 'Sidebar navigation' })
+    .getByRole('button', { name: /switch location/i })
+  await switcher.click()
+  await page.getByRole('menuitem', { name, exact: true }).click()
+  await expect(switcher).toContainText(name)
 }
 
 // How many of the caller's carts AT ONE LOCATION hold this item.
@@ -411,8 +444,20 @@ test('user can export and re-import cloud data (cloud → cloud)', async ({
   await settings.triggerImport(downloadPath)
   await settings.waitForImportDone('cloud')
 
-  // Then: verify all relations, including each location's own quantities
-  await verifyRelations(page, request, baseURL, CLOUD_ITEM_ID)
+  // Then: verify all relations, including each location's own quantities.
+  // The backup's three locations came back under their own ids (households
+  // H4, decision T16), so its default is "Fixture Home" again. The new
+  // household's own "Home" (first sign-in, after the cleanup) stays beside
+  // them, empty, and the user is moved off it: see the test "every location
+  // back under its own id".
+  await verifyRelations(
+    page,
+    request,
+    baseURL,
+    CLOUD_ITEM_ID,
+    FIXTURE_DEFAULT_LOCATION_NAME,
+    [CLOUD_HOME_LOCATION_NAME],
+  )
 })
 
 test('user can import a local backup into cloud mode (local → cloud)', async ({
@@ -426,6 +471,9 @@ test('user can import a local backup into cloud mode (local → cloud)', async (
   // When: import local fixture (UUID IDs — regression test for the UUID→ObjectId bug)
   await settings.navigateTo()
   await settings.triggerImport(LOCAL_FIXTURE_PATH)
+  // And: "Import into which location?" asks where the backup's default goes
+  // (households H4 decision O3); the user keeps the household's "Home"
+  await settings.chooseImportLocation(CLOUD_HOME_LOCATION_NAME)
   await settings.waitForImportDone('cloud')
 
   // Then: verify all relations, including each location's own quantities
@@ -453,7 +501,29 @@ test('user can import a local backup into cloud mode (local → cloud)', async (
 // `docs/global/bugs/2026-11-15-bug-reimport-tests-over-time-budget.md`.
 const REIMPORT_TIMEOUT_MS = 60000
 
-test('user re-importing a cloud backup keeps every location and gains no stray default', async ({
+// SINCE HOUSEHOLDS H4 A CLOUD BACKUP KEEPS EVERY LOCATION ID (decision T16).
+//
+// This test was "keeps every location and gains no stray default". It said
+// that a backup restored into a new household must give exactly three
+// locations: the web's remap put the backup's default onto the household's
+// own first location. Task E.4 deleted that remap. The backup's three
+// locations now come back under their OWN ids, and the new household's own
+// "Home" (first sign-in, after `/e2e/cleanup` deleted the household) stays
+// beside them, empty. So the answer is now FOUR locations, and the test pins
+// that on purpose.
+//
+// Decision 6 (choice A) deletes that empty "Home" only after a `clear`
+// import. A restore with no conflict runs `skip`, so the "Home" stays. The
+// owner decided on 2026-11-17 (option B) to keep it, and to move the user OFF
+// it instead: after a `skip` or `replace` import, an active location with no
+// stock row is swapped for the backup's first location by `order`
+// (`locationToShowAfterImport` in apps/web/src/lib/importData.ts). This test
+// pins that too. The user is put on "Home" BEFORE the import, on purpose: the
+// browser still remembers the OLD household's "Home" id, and that id comes
+// back as "Fixture Home" (the seed renamed it). Left alone, the page could
+// still hold that id when the import starts, and "Fixture Home" would show
+// with no switch at all.
+test('user re-importing a cloud backup into a new household gets every location back under its own id and is shown the first one', async ({
   page,
   request,
   baseURL,
@@ -471,29 +541,51 @@ test('user re-importing a cloud backup keeps every location and gains no stray d
   const download = await settings.triggerExport()
   const downloadPath = await download.path()
   if (!downloadPath) throw new Error('Download path is null')
+  const backup = JSON.parse(fs.readFileSync(downloadPath, 'utf-8')) as {
+    locations: { id: string; name: string }[]
+  }
   await cleanupCloudData(request)
+  // And: the user is on the new household's own "Home", which is empty
+  await page.goto('/')
+  await switchToLocation(page, CLOUD_HOME_LOCATION_NAME)
   await settings.navigateTo()
   await settings.triggerImport(downloadPath)
   await settings.waitForImportDone('cloud')
 
-  // Then: three locations, one default, each holding its own numbers
+  // Then: with no switch by the user, the pantry shows the backup's first
+  // location, "Fixture Home", and its item. Without the switch it would show
+  // "Home" and no item.
+  const pantry = new PantryPage(page)
+  await pantry.navigateTo()
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Sidebar navigation' })
+      .getByRole('button', { name: /switch location/i }),
+  ).toContainText(FIXTURE_DEFAULT_LOCATION_NAME)
+  await expect(pantry.getItemCard('Fixture Item')).toBeVisible()
+
+  // And: the backup's three locations, each holding its own numbers, plus
+  // the new household's empty "Home"
   await expectFixtureStockPerLocation(
     page,
     request,
     baseURL,
     CLOUD_ITEM_ID,
-    destinationDefaultLocationName(baseURL),
+    FIXTURE_DEFAULT_LOCATION_NAME,
+    [CLOUD_HOME_LOCATION_NAME],
   )
 
-  // And no FOURTH location beside the restored default. `/e2e/cleanup`
-  // deletes the household, and the next `locations` read runs first sign-in,
-  // which makes a fresh "Home" with a new cuid, so the backup's own default id
-  // no longer exists. Leave `locations[].id` out of the remap and the backup
-  // writes that dead id as a new row, giving four locations: the stray
-  // default. (`expectFixtureStockPerLocation` above already checks the three
-  // names; this restates the count on its own.)
-  const locations = await readLocations(page, request, baseURL)
-  expect(locations).toHaveLength(3)
+  // And: each of the backup's locations has its OWN id from the file. A remap
+  // that put "Fixture Home" onto the new "Home" would fail here, and so would
+  // an import that gave any location a new id.
+  const restored = await readLocations(page, request, baseURL)
+  expect(backup.locations).toHaveLength(3)
+  for (const location of backup.locations) {
+    expect(restored.find((l) => l.id === location.id)?.name).toBe(location.name)
+  }
+  // And: the "Home" is a different location from all three
+  const home = restored.find((l) => l.name === CLOUD_HOME_LOCATION_NAME)
+  expect(backup.locations.map((l) => l.id)).not.toContain(home?.id)
 })
 
 test('user re-importing a cloud backup keeps each cart at its own location', async ({
@@ -528,17 +620,19 @@ test('user re-importing a cloud backup keeps each cart at its own location', asy
   // client SENDS, and nothing until now confirmed which column Postgres wrote.
   expect(await cartCountAt(request, CLOUD_ITEM_ID, CLOUD_OFFICE_ID)).toBe(1)
 
-  // And the default location holds no cart for it. Upload `shoppingCarts`
-  // before `locations` and `resolveCartLocations` cannot claim the Office id,
-  // so it falls back to the caller's default — silently. Then these two
-  // numbers swap.
+  // And the backup's default location ("Fixture Home", back under its own id
+  // since households H4) holds no cart for it. Until H4 task E.3 a cart whose
+  // location was not there yet fell back to the caller's first location,
+  // silently, and these two numbers swapped. Now such a cart is refused.
+  // Looked up by NAME: the new household's own "Home" shares `order` 0 with
+  // it, so "first location" is a tie broken by id.
   const defaultLocation = (await readLocations(page, request, baseURL)).find(
-    (l) => l.isHome,
+    (l) => l.name === FIXTURE_DEFAULT_LOCATION_NAME,
   )
-  if (!defaultLocation) throw new Error('no default location after the import')
-  // That row really is Home: it holds Home's stock. Without this, a lookup that
-  // picked a location holding nothing (Fixture Cabin has no cart either) would
-  // pass the zero count below too.
+  if (!defaultLocation) throw new Error('no "Fixture Home" after the import')
+  // That row really is the default: it holds the default's stock. Without
+  // this, a lookup that picked a location holding nothing (Fixture Cabin has
+  // no cart either) would pass the zero count below too.
   expect(
     (await readStocksForItem(page, request, baseURL, CLOUD_ITEM_ID))
       .filter((row) => row.locationId === defaultLocation.id)
@@ -573,11 +667,12 @@ test('user re-importing a cloud backup keeps each log’s location and message',
   await settings.triggerImport(downloadPath)
   await settings.waitForImportDone('cloud')
 
-  // Then: both logs are back, one at each location, with their messages
+  // Then: both logs are back, one at each location, with their messages. The
+  // default is looked up by NAME, for the reason given in the cart test above.
   const defaultLocation = (await readLocations(page, request, baseURL)).find(
-    (l) => l.isHome,
+    (l) => l.name === FIXTURE_DEFAULT_LOCATION_NAME,
   )
-  if (!defaultLocation) throw new Error('no default location after the import')
+  if (!defaultLocation) throw new Error('no "Fixture Home" after the import')
   const logs = await readLogs(request)
 
   expect(
@@ -611,21 +706,30 @@ test('user copying a local pantry to cloud keeps every location’s stock', asyn
   const settings = new SettingsPage(page)
 
   // Given: a LOCAL backup whose default location is the `'local'` sentinel and
-  // whose other two locations carry UUID ids. The remap must rewrite the first
-  // and keep the other two.
+  // whose other two locations carry UUID ids. The `'local'` rows must go to
+  // the location the user picks, and the other two keep their ids.
   expect(localFixture.locations[0].id).toBe('local')
   expect(localFixture.shoppingCarts[0].id).toBe(
     `${LOCAL_OFFICE_ID}:${LOCAL_VENDOR_ID}`,
   )
 
-  // When: it is imported into cloud mode (beforeEach left the account empty)
+  // When: it is imported into cloud mode (beforeEach left the account empty),
+  // and the user keeps "Home" in "Import into which location?". The dialog
+  // opens with the first location checked (households H4 decision O3)
   await settings.navigateTo()
   await settings.triggerImport(LOCAL_FIXTURE_PATH)
+  await expect(
+    settings
+      .getImportLocationDialog()
+      .getByRole('radio', { name: CLOUD_HOME_LOCATION_NAME }),
+  ).toBeChecked()
+  await settings.chooseImportLocation(CLOUD_HOME_LOCATION_NAME)
   await settings.waitForImportDone('cloud')
 
-  // Then: three locations, one default, each holding its own numbers. A
-  // single-location fixture could not fail this: "the location the payload
-  // named" and "the caller's default" would be the same id.
+  // Then: three locations, each holding its own numbers, with the backup's
+  // default rows on "Home". A single-location fixture could not fail this:
+  // "the location the payload named" and "the picked location" would be the
+  // same id.
   await expectFixtureStockPerLocation(
     page,
     request,
@@ -651,30 +755,31 @@ test('user copying a local pantry to cloud keeps every location’s stock', asyn
 
 // A RESTORE INTO THE SAME HOUSEHOLD, AFTER A NEW LOCATION WAS MOVED TO THE TOP.
 //
-// Owed by the review of households H3a task 3.12. Cloud has no default
-// location since that task, so the web app's import remap treats the
-// destination's FIRST location (by `order`) as the place the payload's default
-// lands (`fetchCloudDefaultLocationId` in apps/web/src/lib/importData.ts). A
-// cloud backup made since then names its default the same way: its location
-// with the lowest `order`.
+// Owed by the review of households H3a task 3.12. Then the web app's import
+// remap put a cloud backup's default (its first location by `order`) onto the
+// destination's FIRST location, and a same-household check in
+// `buildLocationRemap` (commit 79c92fec) kept Home's rows on Home. Since
+// households H4 task E.4 a cloud backup keeps EVERY location id (decision
+// T16) and the cloud remap is gone, so no check is needed. This test now
+// guards that rule: a backup's rows go back to the location they came from,
+// whichever location is first.
 //
 // So: back up a household whose first location is Home, add "Attic" and move
-// it to the top, then restore the backup. Without the same-household check in
-// `buildLocationRemap` (`destinationLocationIds.has(payloadDefaultLocationId)`,
-// commit 79c92fec) the remap is Home -> Attic, and Home's stock, carts and logs
-// are written under Attic. The unit tests in importData.test.ts prove the
-// payload the web SENDS; only this proves where the server WRITES it.
+// it to the top, then restore the backup. A rule that put the backup's
+// default onto the first location would write Home's stock, carts and logs
+// under Attic. The unit tests in importData.test.ts prove the payload the web
+// SENDS; only this proves where the server WRITES it.
 //
 // Home holds one stock row, one log (from the fixture) and one cart item (added
 // below), each with an id of its own. After the export, the item is REMOVED
 // from Home, which deletes all three. So the restore has to CREATE them again,
-// and a created row takes whatever location the remap gave it.
+// and a created row takes whatever location the import gives it.
 //
 // Why the removal: a row that still EXISTS mostly stays where it is, whatever
-// the remap says. `bulkUpsertItemStocks` updates the quantities only, and
+// the import says. `bulkUpsertItemStocks` updates the quantities only, and
 // `bulkUpsertInventoryLogs` writes `locationId` in `create` only
 // (apps/server/src/resolvers/import.resolver.ts). Before the removal was added,
-// only the cart item under "Replace matches" could see a wrong remap, because
+// only the cart item under "Replace matches" could see a wrong location, because
 // `bulkUpsertCartItems` writes `cartId` in `update` too.
 //
 // What each strategy re-creates:
@@ -734,7 +839,7 @@ for (const strategy of ['Skip conflicts', 'Replace matches'] as const) {
     )
     // Precondition: Home holds no stock, cart item or log for the item now.
     // Without this, a removal that did nothing would leave the old rows in
-    // place, and the checks below would pass against a wrong remap too.
+    // place, and the checks below would pass against a wrong location rule too.
     const stocksAfterRemoval = await readStocksForItem(
       page,
       request,
@@ -769,7 +874,7 @@ for (const strategy of ['Skip conflicts', 'Replace matches'] as const) {
     )
     // Precondition: Attic really is the first location now. Without this, a
     // reorder that silently did nothing would leave Home first, and every
-    // assertion below would pass against the old, broken remap too.
+    // assertion below would pass against a "first location" rule too.
     const reordered = await readLocations(page, request, baseURL)
     expect(reordered.find((l) => l.isHome)?.id).toBe(attic.id)
 

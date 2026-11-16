@@ -60,15 +60,17 @@ input InventoryLogInput {
   note: String
   logKey: String
   logParams: JSON
-  # OPTIONAL, not `ID!`, on purpose. A client built before cloud locations
-  # sends no such field, and making it required would reject every import
-  # that client issues. When it is absent the resolver falls back to the
-  # caller's first location they may write to (`fallbackImportLocation`,
-  # lib/authz.ts, households decision H12).
+  # OPTIONAL in the schema, but every row must send it since households H4
+  # task E.3 (decision T10). A row without it refuses the whole batch with
+  # BAD_USER_INPUT, `extensions.reason` IMPORT_NEEDS_LOCATION, and nothing is
+  # written. Until E.3 such a row went to the caller's first location. The
+  # field stays optional so a cached old web bundle gets that one clear error
+  # instead of failing GraphQL validation for the whole document.
   #
   # Attacker-controlled. The resolvers verify it through
-  # `requireLocationRole(ctx, locationId, 'participant')` before any row is
-  # written — a log in someone else's location would be a cross-user write.
+  # `requireLocationRole(ctx, locationId, 'participant')` and
+  # `requireLocationInHousehold` (the target household) before any row is
+  # written.
   locationId: ID
 }
 
@@ -177,4 +179,80 @@ extend type Mutation {
   # one new location, "Home", with the caller as organizer, in the same
   # transaction (households H3a task 3.10, decision H17).
   clearAllData: Boolean!
+}
+
+# The ids of an import file, per model, for `importCheck` (households H4 task
+# E.2, decision T1). Every list is optional. At most 1000 ids in one call, all
+# lists together (decision T3); the web sends more in several calls.
+#
+# `locations` holds the ids of the file's location ROWS only. The import
+# creates a free one, so it is never "missing".
+#
+# `locationRefs` and `itemRefs` hold ids the file's rows POINT AT but that are
+# not rows of the file: `locationRefs` the `locationId` of stock rows and logs
+# and the location named by each cart id; `itemRefs` the `itemId` of stock
+# rows. The bulk stock, log and cart mutations REFUSE such a reference when it
+# names nothing in the target household, so the server reports those ids as
+# missing. Only the web can tell a reference from a row, because a row and a
+# reference to it may go in two different calls.
+input ImportCheckInput {
+  items: [ID!]
+  tags: [ID!]
+  tagTypes: [ID!]
+  vendors: [ID!]
+  recipes: [ID!]
+  shelves: [ID!]
+  locations: [ID!]
+  locationRefs: [ID!]
+  itemRefs: [ID!]
+  inventoryLogs: [ID!]
+  carts: [ID!]
+  cartItems: [ID!]
+  itemStocks: [ID!]
+}
+
+# Ids of rows the file holds that already exist in the cloud, at a location of
+# the target household where the caller is below `participant` (or, for a
+# cart, stored at a location other than the one its id names). The bulk
+# mutation would refuse the whole batch, so the web leaves these rows out.
+type ImportCheckRows {
+  inventoryLogs: [ID!]!
+  itemStocks: [ID!]!
+  carts: [ID!]!
+  cartItems: [ID!]!
+}
+
+type ImportCheck {
+  # True when at least one id is a row of another household, or a location of
+  # another household. The web then writes nothing.
+  anotherHousehold: Boolean!
+  # Locations the file names (rows, references, cart ids) that are in the
+  # target household and where the caller is below `participant`. The web
+  # leaves out these locations and every row at them. Always empty when
+  # `forClear` is true: `clearAllData` deletes them first.
+  blockedLocationIds: [ID!]!
+  # Location ROWS of the file that exist in the target household where the
+  # caller is `participant` but not `organizer`. On `replace` the web sends an
+  # existing location row to `bulkUpsertLocations`, which asks `organizer` (a
+  # rename) and refuses the whole batch. Leave these rows out of that call;
+  # the stock, logs and carts at them can still be written. Always empty when
+  # `forClear` is true.
+  renameBlockedLocationIds: [ID!]!
+  # `locationRefs` that no location will hold when the import writes: no row
+  # has the id, or (with `forClear`) the clear deletes it. The web leaves out
+  # every row that points at one.
+  missingLocationIds: [ID!]!
+  # `itemRefs` that no item will hold when the import writes, the same way.
+  missingItemIds: [ID!]!
+  # See `ImportCheckRows`. Always empty when `forClear` is true.
+  blockedRows: ImportCheckRows!
+}
+
+extend type Query {
+  # Read-only. Runs before the first write of an import (households H4 task
+  # E.2). Household role `manager` or higher; `owner` when `forClear` is true,
+  # the same role `clearAllData` asks. The role check runs before any read.
+  # It is a help for the web, not a check the server trusts: every bulk
+  # mutation keeps its own guards (decision T2).
+  importCheck(ids: ImportCheckInput!, forClear: Boolean): ImportCheck!
 }

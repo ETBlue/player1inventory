@@ -187,7 +187,8 @@ export default defineConfig({
       // counterpart. live-cart.spec.ts and live-pantry.spec.ts open a page but need a second
       // (and live-cart a third) user and the live socket, which only the cloud project has. The last six also act as users other than E2E_USER_ID,
       // which the web build cannot be (VITE_E2E_TEST_USER_ID below is one
-      // value).
+      // value). settings/import-households.spec.ts tests the household import
+      // roles, which local mode does not have (households H4 decision T18).
       testIgnore: [
         '**/settings/import-export-cloud.spec.ts',
         '**/pwa-offline.spec.ts',
@@ -202,6 +203,7 @@ export default defineConfig({
         '**/shared-cart.spec.ts',
         '**/live-cart.spec.ts',
         '**/live-pantry.spec.ts',
+        '**/settings/import-households.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'], baseURL: LOCAL_WEB_URL },
     },
@@ -257,6 +259,7 @@ export default defineConfig({
         '**/shared-cart.spec.ts',
         '**/live-cart.spec.ts',
         '**/live-pantry.spec.ts',
+        '**/settings/import-households.spec.ts',
       ],
     },
     {

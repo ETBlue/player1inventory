@@ -94,7 +94,9 @@ beforeEach(() => {
   vi.mocked(fetchLocalPayload).mockResolvedValue(
     PAYLOAD as unknown as Awaited<ReturnType<typeof fetchLocalPayload>>,
   )
-  vi.mocked(importCloudData).mockResolvedValue(undefined)
+  vi.mocked(importCloudData).mockResolvedValue({
+    skipped: { locationNames: [], rowCount: 0 },
+  })
 })
 
 afterEach(async () => {

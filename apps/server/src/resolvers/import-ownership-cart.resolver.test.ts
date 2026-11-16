@@ -31,15 +31,22 @@ import { typeDefs } from '../schema/index.js'
 //   - `resolveCartLocations` guards the location a cart is written TO.
 //   - `requireOwnRowIdsOrUnclaimed` guards the cart's OWN primary key.
 //
-// Why the cart-id guard is reachable at all, given the location guard: a cart
-// id with NO colon names no location, so it falls back to the caller's default
-// and the location guard refuses nothing. That is the pre-PR-3b cart id shape,
-// and it is exactly the shape `cart-id-cross-user-leak.spec.ts` demonstrates
-// against real Postgres — two accounts each holding a cart with the bare id
-// `no-vendor`. So `CART_THEIRS` below is a BARE id. If it named the stranger's
-// location instead, `resolveCartLocations` would throw first and every test
-// here would pass with the new guard deleted. One test asserts that ordering
-// on purpose, by counting the guard's own lookup.
+// Why the cart-id guard is reachable at all, given the location guard: a
+// stored cart's `locationId` need not be the location its id names. The old
+// import fallback (decision H12, deleted in households H4 task E.3) kept a
+// cart's id but moved the cart to the importer's fallback location, and such
+// rows may still be in the database. So `CART_THEIRS` below names the CALLER's
+// location `LOC_OTHER` in its id, and is stored at the STRANGER's location.
+// The location guard passes it (it reads the id), and only the cart-id guard
+// can refuse it: since households H4 task E.1, "own" means the cart is stored
+// AT the location its id names. If `CART_THEIRS` named the stranger's location
+// instead, `resolveCartLocations` would throw first and every test here would
+// pass with the cart-id guard deleted. One test asserts that ordering on
+// purpose, by counting the guard's own lookup.
+//
+// Until H4 task E.1, `CART_THEIRS` was the BARE id `no-vendor`, the shape
+// `cart-id-cross-user-leak.spec.ts` uses. A bare id is now refused with
+// `BAD_USER_INPUT` before any lookup (decision T6); a test below pins that.
 //
 // ─── Why this file is separate from import.resolver.test.ts ──────────────────
 //
@@ -60,8 +67,8 @@ import { typeDefs } from '../schema/index.js'
 //
 //   - `src/test/householdWorld.ts` for `location` (its `stockFake`) and the
 //     household and role rows, so `resolveCartLocations`,
-//     `requireLocationRole`, `fallbackImportLocation` and
-//     `householdOfLocation` run against real rows. Every role is a row
+//     `requireLocationRole`, `requireLocationInHousehold` and
+//     `locationIdsWithRole` run against real rows. Every role is a row
 //     `beforeEach` seeds (`soloHouseholds`): the caller and the stranger are
 //     in two different households. (Households H3a task 3.9 removed
 //     `derivedRoles`, which invented those rows from each location's
@@ -238,20 +245,22 @@ const LOC_STRANGER = 'loc_theirs' // STRANGER's — must be refused
 // instead of by role would wrongly let through.
 const LOC_NOROLE = 'loc_attic'
 // A second member of USER's household (H3b rule 14). MEMBER organizes
-// LOC_DEFAULT with USER, and LOC_NOROLE alone.
+// LOC_DEFAULT with USER, and LOC_NOROLE alone. MEMBER is a household
+// `manager`, because only an owner or a manager may import (households H4
+// task E.3). As a plain `member`, every import MEMBER sends would be refused
+// by that role gate, before the location checks these tests are about.
 const MEMBER = 'user_member'
 
 const VENDOR = 'vendor_costco'
 
 const CART_MINE = `${LOC_OTHER}:${VENDOR}` // USER's, at the non-default location
 const CART_OTHER = `${LOC_DEFAULT}:${VENDOR}` // USER's second cart
-// The STRANGER's cart, under a BARE id — no colon, so it names no location and
-// `resolveCartLocations` lets it through to the caller's default. That is the
-// pre-PR-3b id shape, and the shape of the real collision
-// `cart-id-cross-user-leak.spec.ts` reproduces against Postgres. A composite
-// id naming `LOC_STRANGER` would be refused by the LOCATION guard instead, and
-// then these tests would pass with the cart-id guard deleted.
-const CART_THEIRS = 'no-vendor'
+// The STRANGER's cart, stored at LOC_STRANGER under an id that names the
+// caller's LOC_OTHER (see the header). `resolveCartLocations` reads the id and
+// lets it through. A cart id naming `LOC_STRANGER` would be refused by the
+// LOCATION guard instead, and then these tests would pass with the cart-id
+// guard deleted.
+const CART_THEIRS = `${LOC_OTHER}:vendor_theirs`
 const CART_FREE = `${LOC_OTHER}:vendor_new` // no cart row holds it
 const CART_NOROLE = `${LOC_NOROLE}:${VENDOR}` // in USER's household, no role for USER
 
@@ -306,7 +315,7 @@ beforeEach(() => {
   ])
   mockPrisma.$world.seedHouseholds({
     households: solo.households,
-    householdMembers: [...solo.householdMembers, householdMemberRow(HH_USER, MEMBER, 'member')],
+    householdMembers: [...solo.householdMembers, householdMemberRow(HH_USER, MEMBER, 'manager')],
     locationMembers: [
       ...solo.locationMembers,
       locationMemberRow(LOC_DEFAULT, MEMBER, 'organizer'),
@@ -422,9 +431,9 @@ const cartItemIn = (
 
 describe('Cart ownership', () => {
   it("user cannot import a cart under an id another account's row holds", async () => {
-    // Given a payload naming the STRANGER's cart id. The id is bare, so the
-    // LOCATION guard sends it to the caller's default and refuses nothing —
-    // only the cart-id guard can stop it.
+    // Given a payload naming the STRANGER's cart id. The id names the
+    // caller's LOC_OTHER, so the LOCATION guard refuses nothing; only the
+    // cart-id guard can stop it.
     const payload = [cartIn(CART_THEIRS, PAYLOAD_PURCHASED)]
 
     // When the create-path import runs
@@ -509,6 +518,21 @@ describe('Cart ownership', () => {
     // to refuse, which is why the guard is the only thing standing here.
     expect(result.errors).toBeUndefined()
     expect(storedCart(CART_THEIRS)?.locationId).toBe(LOC_STRANGER)
+  })
+
+  it('user importing a cart id with no location part is refused and nothing is written', async () => {
+    // Given an ALLOWED cart ahead of a bare id (the pre-PR-3b shape)
+    const payload = [cartIn(CART_FREE), cartIn('no-vendor')]
+
+    // When the create-path import runs
+    const result = await exec(CREATE_CARTS, { carts: payload })
+
+    // Then the whole batch is refused as bad input (households H4 task E.1,
+    // decision T6), and the allowed cart is not written either
+    expect(errorCode(result)).toBe('BAD_USER_INPUT')
+    expect(mockPrisma.$cart.state.rows.map((r) => r.id).sort()).toEqual(
+      [CART_MINE, CART_OTHER, CART_THEIRS, CART_NOROLE].sort(),
+    )
   })
 
   it("user importing a cart that names a stranger's location is refused before the cart-id guard runs", async () => {
@@ -905,34 +929,47 @@ describe('CartItem → Cart is reached through a location role', () => {
   }
 })
 
-// ─── The item is checked against the CART's household ─────────────────────────
+// ─── The cart and the item are checked against the TARGET household ──────────
 //
-// Households H3a task 3.9. Until then both cart-item mutations checked the
-// item against the CALLER's household (`requireHousehold`). With one household
-// per person that is the same household as the cart's location, so a test can
-// only tell the two apart when the caller is in TWO households. Nothing in the
-// schema stops that, and H5 makes it real.
+// Households H3a task 3.9 checked the item against the household of the
+// CART's location, not the caller's. Households H4 task E.3 goes one step
+// further: the cart itself must be at a location of the TARGET household (the
+// one the import writes into), so the cart's household and the target are the
+// same, and the item is checked against that one household. Until E.3 a
+// person in two households, importing into hh_user, could still add a row to
+// a cart of hh_second.
+//
+// A test can only see this when the caller is in TWO households. Nothing in
+// the schema stops that, and H5 makes it real. The target is pinned through
+// `ctx.requestCache.householdId` (H4 plan rule 16), because `ensureHousehold`
+// picks one of two households in no fixed order.
 //
 // | Person | Household | Household role | Location roles        |
 // |--------|-----------|----------------|-----------------------|
 // | USER   | hh_user   | owner          | LOC_OTHER, LOC_DEFAULT: organizer |
-// | USER   | hh_second | member         | LOC_SECOND: participant |
-// | OWNER2 | hh_second | owner          | LOC_SECOND: organizer |
+// | USER   | hh_second | manager        | LOC_SECOND, LOC_SECOND_B: participant |
+// | OWNER2 | hh_second | owner          | LOC_SECOND, LOC_SECOND_B: organizer |
 //
-// USER's `hh_user` row is seeded FIRST, so `requireHousehold` (the first
-// membership it finds) answers `hh_user`. USER has a cart at LOC_SECOND.
+// USER is a `manager` of hh_second, so an import targeted at hh_second
+// passes the role gate.
 
-describe('CartItem → Item is checked against the household of the cart location', () => {
+describe('CartItem → the cart and the item must be in the target household', () => {
   const OWNER2 = 'user_second_owner'
   const HH_SECOND = 'hh_second'
   const LOC_SECOND = 'loc_second'
-  const CART_SECOND = `${LOC_SECOND}:${VENDOR}` // USER's cart at hh_second's location
+  const LOC_SECOND_B = 'loc_second_b'
+  const CART_SECOND = `${LOC_SECOND}:${VENDOR}` // a cart at hh_second's location
+  const CART_SECOND_B = `${LOC_SECOND_B}:${VENDOR}` // a second one, for the rows that pass
   const ITEM_SECOND = 'item_second' // an item of hh_second
+
+  const intoUser: Context = { userId: USER, requestCache: { householdId: Promise.resolve(HH_USER) } }
+  const intoSecond: Context = { userId: USER, requestCache: { householdId: Promise.resolve(HH_SECOND) } }
 
   beforeEach(() => {
     mockPrisma.$stockFake.reset([
       ...mockPrisma.$stockFake.state.locations,
       { id: LOC_SECOND, householdId: HH_SECOND, name: 'Second', order: 0, createdAt: TS, updatedAt: TS },
+      { id: LOC_SECOND_B, householdId: HH_SECOND, name: 'Second B', order: 1, createdAt: TS, updatedAt: TS },
     ])
     const solo = soloHouseholds([
       { userId: USER, householdId: HH_USER, locationIds: [LOC_OTHER, LOC_DEFAULT] },
@@ -943,17 +980,20 @@ describe('CartItem → Item is checked against the household of the cart locatio
       householdMembers: [
         ...solo.householdMembers,
         householdMemberRow(HH_SECOND, OWNER2, 'owner'),
-        householdMemberRow(HH_SECOND, USER, 'member'),
+        householdMemberRow(HH_SECOND, USER, 'manager'),
       ],
       locationMembers: [
         ...solo.locationMembers,
         locationMemberRow(LOC_SECOND, OWNER2, 'organizer'),
+        locationMemberRow(LOC_SECOND_B, OWNER2, 'organizer'),
         locationMemberRow(LOC_SECOND, USER, 'participant'),
+        locationMemberRow(LOC_SECOND_B, USER, 'participant'),
       ],
     })
     mockPrisma.$cart.reset([
       ...mockPrisma.$cart.state.rows,
       { id: CART_SECOND, locationId: LOC_SECOND, lastPurchasedAt: null },
+      { id: CART_SECOND_B, locationId: LOC_SECOND_B, lastPurchasedAt: null },
     ])
     mockPrisma.$item.reset([
       ...mockPrisma.$item.state.rows,
@@ -961,69 +1001,81 @@ describe('CartItem → Item is checked against the household of the cart locatio
     ])
   })
 
-  for (const [label, query, field] of [
-    ['bulkCreateCartItems', CREATE_CART_ITEMS, 'bulkCreateCartItems'],
-    ['bulkUpsertCartItems', UPSERT_CART_ITEMS, 'bulkUpsertCartItems'],
+  for (const [label, query] of [
+    ['bulkCreateCartItems', CREATE_CART_ITEMS],
+    ['bulkUpsertCartItems', UPSERT_CART_ITEMS],
   ] as const) {
-    it(`${label}: user cannot put an item of their own household into a cart at another household's location`, async () => {
-      // Given a cart item in USER's cart at LOC_SECOND (hh_second), naming
-      // ITEM_MINE, an item of hh_user — the CALLER's household
-      const payload = [cartItemIn(CI_FREE, { cartId: CART_SECOND, itemId: ITEM_MINE })]
+    it(`${label}: an import into hh_user skips a row in a cart of the caller's other household, whatever its item`, async () => {
+      // Given a row for USER's own cart in hh_user FIRST, then two rows in a
+      // cart at LOC_SECOND (hh_second), where USER is a participant: one
+      // with an item of hh_second, one with an item of hh_user
+      const payload = [
+        cartItemIn(CI_FREE, { cartId: CART_MINE, itemId: ITEM_OTHER }),
+        cartItemIn('ci_free_2', { cartId: CART_SECOND, itemId: ITEM_SECOND }),
+        cartItemIn('ci_free_3', { cartId: CART_SECOND, itemId: ITEM_MINE }),
+      ]
 
-      // When the import runs
-      const result = await exec(query, { cartItems: payload })
+      // When USER imports it into hh_user
+      const result = await exec(query, { cartItems: payload }, intoUser)
 
-      // Then the row is SKIPPED, as for any item that is not usable here.
-      // Checked against the caller's household, ITEM_MINE would pass and
-      // `checkout` would later buy it into hh_second's stock.
+      // Then only the hh_user row is written. The two rows at LOC_SECOND are
+      // SKIPPED, like a cart that is gone: the import is not aimed at
+      // hh_second. Until E.3 the first of them was written, because the cart
+      // was looked up across every household USER is in.
       expect(result.errors).toBeUndefined()
-      expect(result.data?.[field]).toEqual([])
-      expect(storedCartItem(CI_FREE)).toBeUndefined()
+      expect(storedCartItem(CI_FREE)).toMatchObject({ cartId: CART_MINE, itemId: ITEM_OTHER })
+      expect(storedCartItem('ci_free_2')).toBeUndefined()
+      expect(storedCartItem('ci_free_3')).toBeUndefined()
+      expect(mockPrisma.$cartItem.state.rows.filter((r) => r.cartId === CART_SECOND)).toEqual([])
     })
 
-    it(`${label}: user can put an item of the cart location's household into that cart`, async () => {
-      // Given the same cart, naming ITEM_SECOND, an item of hh_second. This
-      // is the positive half: a check against the CALLER's household skips it.
-      const payload = [cartItemIn(CI_FREE, { cartId: CART_SECOND, itemId: ITEM_SECOND })]
+    it(`${label}: an import into hh_second writes an item of hh_second and skips an item of hh_user`, async () => {
+      // Given two rows in carts of hh_second: one naming ITEM_SECOND, one
+      // naming ITEM_MINE, an item of hh_user (USER's OTHER household)
+      const payload = [
+        cartItemIn(CI_FREE, { cartId: CART_SECOND, itemId: ITEM_SECOND }),
+        cartItemIn('ci_free_2', { cartId: CART_SECOND_B, itemId: ITEM_MINE }),
+      ]
 
-      // When the import runs
-      const result = await exec(query, { cartItems: payload })
+      // When USER imports it into hh_second
+      const result = await exec(query, { cartItems: payload }, intoSecond)
 
-      // Then it is written
+      // Then the hh_second item is written and the hh_user item is SKIPPED.
+      // Checked against any household USER is in, ITEM_MINE would pass and
+      // `checkout` would later buy it into hh_second's stock.
       expect(result.errors).toBeUndefined()
       expect(storedCartItem(CI_FREE)).toMatchObject({
         userId: USER,
         cartId: CART_SECOND,
         itemId: ITEM_SECOND,
       })
+      expect(storedCartItem('ci_free_2')).toBeUndefined()
     })
 
     it(`${label}: user who is only a viewer at the cart's location has that row skipped`, async () => {
       // Given USER's role at LOC_SECOND lowered to viewer, and an allowed row
-      // FIRST, at a pair that has no row yet.
+      // FIRST, at LOC_SECOND_B.
       //
       // Households H3b task B.7 (decision D7): a cart is usable for an import
       // only where the caller is `participant` or higher, and a cart that is
       // not usable is a reference that does not resolve, so the row is
-      // SKIPPED, like a cart that is gone. Until task B.7 a viewer got
-      // FORBIDDEN for the whole batch (and until task B.3 that was a cart of
-      // USER's found by `Cart.userId`). What still REFUSES a viewer is the
+      // SKIPPED, like a cart that is gone. What still REFUSES a viewer is the
       // row's own id: see "a viewer at the shared location is refused" below.
       mockPrisma.$world.households.state.locationMembers =
         mockPrisma.$world.households.state.locationMembers.map((m) =>
           m.locationId === LOC_SECOND && m.userId === USER ? { ...m, role: 'viewer' as const } : m,
         )
       const payload = [
-        cartItemIn(CI_FREE, { cartId: CART_MINE, itemId: ITEM_OTHER }),
+        cartItemIn(CI_FREE, { cartId: CART_SECOND_B, itemId: ITEM_SECOND }),
         cartItemIn('ci_free_2', { cartId: CART_SECOND, itemId: ITEM_SECOND }),
       ]
 
-      // When the import runs
-      const result = await exec(query, { cartItems: payload })
+      // When USER imports it into hh_second
+      const result = await exec(query, { cartItems: payload }, intoSecond)
 
       // Then the viewer's row is skipped and the other one is written
       expect(result.errors).toBeUndefined()
-      expect(storedCartItem(CI_FREE)).toMatchObject({ cartId: CART_MINE, itemId: ITEM_OTHER })
+      expect(storedCartItem(CI_FREE)).toMatchObject({ cartId: CART_SECOND_B, itemId: ITEM_SECOND })
       expect(storedCartItem('ci_free_2')).toBeUndefined()
     })
 
@@ -1036,16 +1088,16 @@ describe('CartItem → Item is checked against the household of the cart locatio
           (m) => !(m.locationId === LOC_SECOND && m.userId === USER),
         )
       const payload = [
-        cartItemIn(CI_FREE, { cartId: CART_MINE, itemId: ITEM_OTHER }),
+        cartItemIn(CI_FREE, { cartId: CART_SECOND_B, itemId: ITEM_SECOND }),
         cartItemIn('ci_free_2', { cartId: CART_SECOND, itemId: ITEM_SECOND }),
       ]
 
-      // When the import runs
-      const result = await exec(query, { cartItems: payload })
+      // When USER imports it into hh_second
+      const result = await exec(query, { cartItems: payload }, intoSecond)
 
       // Then the row for LOC_SECOND is skipped and the other one is written
       expect(result.errors).toBeUndefined()
-      expect(storedCartItem(CI_FREE)).toMatchObject({ cartId: CART_MINE, itemId: ITEM_OTHER })
+      expect(storedCartItem(CI_FREE)).toMatchObject({ cartId: CART_SECOND_B, itemId: ITEM_SECOND })
       expect(storedCartItem('ci_free_2')).toBeUndefined()
     })
   }
@@ -1089,7 +1141,11 @@ describe('A shared cart, and the import rules for cart rows (households H3b task
   beforeEach(() => {
     mockPrisma.$world.households.state.householdMembers = [
       ...mockPrisma.$world.households.state.householdMembers,
-      householdMemberRow(HH_USER, VIEWER, 'member'),
+      // A household `manager`, so the import role gate (households H4 task
+      // E.3) lets VIEWER through, and the refusals below come from the
+      // location role. As a plain `member` VIEWER would be refused by the
+      // gate, and these tests would pass with the location check removed.
+      householdMemberRow(HH_USER, VIEWER, 'manager'),
     ]
     mockPrisma.$world.households.state.locationMembers = [
       ...mockPrisma.$world.households.state.locationMembers,
@@ -1131,7 +1187,7 @@ describe('A shared cart, and the import rules for cart rows (households H3b task
       // Given the same backup, with a new row for USER's own cart FIRST
       const payload = [cartItemIn(CI_FREE, { cartId: CART_MINE, itemId: ITEM_OTHER }), ...sharedBackup()]
 
-      // When VIEWER, a household member who may only read LOC_DEFAULT,
+      // When VIEWER, a household manager who may only read LOC_DEFAULT,
       // imports it
       const result = await exec(query, { cartItems: payload }, { userId: VIEWER })
 

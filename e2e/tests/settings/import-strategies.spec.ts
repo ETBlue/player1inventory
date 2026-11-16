@@ -115,7 +115,8 @@ const SEED_ONLY_STOCK = {
  * ONE LOCATION ONLY, named like the destination's own home location ("My Home"
  * in local, "Home" in cloud), so `seedCloudFixture` does not rename it. The
  * backup brings
- * three locations of its own: its default is remapped onto this one, and
+ * three locations of its own: its default (`'local'`) lands on this one (in
+ * cloud the user picks it in "Import into which location?"), and
  * "Fixture Office" / "Fixture Cabin" are created with the backup's own ids. That
  * is the shape `helpers/backupAssertions.ts` was written for, and it is also the
  * only shape a static backup file can assert in cloud mode — `seedCloudFixture`
@@ -150,12 +151,11 @@ const isCloud = (baseURL: string | undefined) => baseURL === CLOUD_WEB_URL
  * It is NOT the same in the two modes, and both answers are correct.
  *
  * `importLocations` (importData.ts) `bulkPut`s the whole location list for any
- * strategy that is not `skip`, so the LOCAL default row — remapped onto the
- * `'local'` sentinel — takes the backup's name, "Fixture Home". In CLOUD,
- * `bulkCreateLocations` (apps/server/src/resolvers/import.resolver.ts) skips a
- * row whose id is already taken, so the server's home location keeps "Home". That
- * difference was PR 4b task 4's choice, made so `locations` stays on the create
- * pass ahead of the carts and logs that name them.
+ * strategy that is not `skip`, so the LOCAL default row — the `'local'`
+ * sentinel — takes the backup's name, "Fixture Home". In CLOUD the backup's
+ * `'local'` row is put on an existing location: the new "Home" on `clear`
+ * (households H4 decision O2), the location picked in "Import into which
+ * location?" on `replace`. That location keeps its own name, "Home".
  */
 function expectedDefaultLocationName(baseURL: string | undefined): string {
   return isCloud(baseURL)
@@ -388,6 +388,21 @@ test('user can replace the matching rows and keep everything else', async ({
   // passes — the colliding one on upsert, "Backup New Item" on create.
   await expect(dialog).toContainText('Items (1):')
   await settings.chooseConflictStrategy('Replace matches')
+
+  // And, in CLOUD only, the backup's default location (`'local'`) needs a
+  // place: "Import into which location?" opens with the destination's home
+  // location checked, and the user keeps it (households H4 decisions O3 and
+  // T16). `clear` does not ask (O2), and local mode has no such dialog: there
+  // `'local'` is local "My Home" already. Picking the seeded home keeps every
+  // assertion below about `defaultLocationId` true.
+  if (isCloud(baseURL)) {
+    await expect(
+      settings
+        .getImportLocationDialog()
+        .getByRole('radio', { name: destinationDefaultLocationName(baseURL) }),
+    ).toBeChecked()
+    await settings.chooseImportLocation(destinationDefaultLocationName(baseURL))
+  }
   await settings.waitForImportDone(mode)
 
   const names = await readItemNamesById(page, request, baseURL)

@@ -4,6 +4,7 @@ import {
   householdOfLocation,
   type LocationRole,
   locationIdsWithRole,
+  requireHousehold,
   requireLocationItems,
   requireLocationRole,
 } from '../lib/authz.js'
@@ -146,7 +147,7 @@ function matchCheckoutInput(
  * | `cartItems`           | `{ cartId }`                                   | `viewer`     |
  * | `cartItemCountByItem` | carts at `locationIdsWithRole`, or at the one  | `viewer`     |
  * |                       | `locationId` given                             |              |
- * | `allCartItems`        | carts at `locationIdsWithRole`                 | any role     |
+ * | `allCartItems`        | carts at `locationIdsWithRole`, one household  | any role     |
  * | `addToCart`           | one row per `(cartId, itemId)`, `increment`    | `participant`|
  * | `updateCartItem`,     | the row by `id`, then its cart's location      | `participant`|
  * | `removeFromCart`      |                                                |              |
@@ -203,9 +204,15 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
     // Scoped by location role since households H3b task B.3, when
     // `Cart.userId` was dropped. Any role counts, `viewer` included, because
     // this is a read. `allCartItems` below uses the same scope (task B.4).
+    //
+    // One household only since households H4 task E.5 (decision T15): the
+    // caller's household. A person in two households must not export, or see
+    // on the shopping page, the carts of the other one.
     allCarts: async (_, __, ctx) => {
       requireAuth(ctx)
-      const locationIds = await locationIdsWithRole(ctx)
+      const locationIds = await locationIdsWithRole(ctx, 'viewer', {
+        householdId: await requireHousehold(ctx),
+      })
       return prisma.cart.findMany({
         where: { locationId: { in: locationIds } },
         orderBy: [{ id: 'asc' }],
@@ -253,9 +260,12 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
     // Every row in the carts at every location the caller holds a role on,
     // whoever added it. The export reads this, so a backup keeps the rows a
     // co-member added. Any role counts, `viewer` included: it is a read.
+    // One household only since households H4 task E.5, like `allCarts`.
     allCartItems: async (_, __, ctx) => {
       requireAuth(ctx)
-      const locationIds = await locationIdsWithRole(ctx)
+      const locationIds = await locationIdsWithRole(ctx, 'viewer', {
+        householdId: await requireHousehold(ctx),
+      })
       return prisma.cartItem.findMany({
         where: { cart: { locationId: { in: locationIds } } },
       }) as unknown as Promise<CartItem[]>

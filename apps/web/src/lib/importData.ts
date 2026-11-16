@@ -28,6 +28,9 @@ import {
   BulkUpsertTagTypesDocument,
   BulkUpsertVendorsDocument,
   ClearAllDataDocument,
+  CreateLocationDocument,
+  type CreateLocationMutation,
+  DeleteLocationDocument,
   GetItemsDocument,
   type GetItemsQuery,
   GetLocationsDocument,
@@ -42,9 +45,15 @@ import {
   type GetTagTypesQuery,
   GetVendorsDocument,
   type GetVendorsQuery,
+  ImportCheckDocument,
+  type ImportCheckInput,
+  type ImportCheckQuery,
+  type ImportCheckQueryVariables,
   InventoryLogsDocument,
   type InventoryLogsQuery,
   type ItemInput,
+  ItemStockIdsAtLocationDocument,
+  type ItemStockIdsAtLocationQuery,
   ShoppingCartsDocument,
   type ShoppingCartsQuery,
   UpdateRecipeDocument,
@@ -428,7 +437,7 @@ function upgradeUnsplitItems(
 //      `isDefault` key at all. That is the shape of a cloud backup made since
 //      task 3.12. A household has no default location, so cloud rows carry no
 //      flag, and the cloud side treats the FIRST location as the fallback
-//      everywhere else (`fetchCloudDefaultLocationId`, `useActiveLocation`).
+//      everywhere else (`useActiveLocation`).
 //      Without this answer, a cloud backup restored into local mode would keep
 //      its "Home" as an extra location next to "My Home", and the
 //      cloud -> local copy would do the same.
@@ -458,6 +467,13 @@ function findPayloadDefaultLocationId(payload: ExportPayload): string | null {
 
 // Build the payload-id -> destination-id map. It holds AT MOST ONE
 // non-identity entry, by design; any id absent from the map is kept verbatim.
+//
+// SINCE HOUSEHOLDS H4 TASK E.4 ONLY THE LOCAL SIDE CALLS THIS. The cloud side
+// uses `placeDefaultLocation` (the new id rule). The paragraphs below about
+// the cloud destination describe the cloud path before E.4. They are kept as
+// history: task E.5 kept this function for the local side and only added the
+// `payloadDefaultLocationId` parameter, so the cloud -> local copy can name
+// the cloud ACTIVE location.
 //
 // `destinationLocationIds` is EVERY location id the destination holds now, not
 // only its default. When the payload's default is one of them, nothing is
@@ -506,10 +522,16 @@ export function buildLocationRemap(
   payload: ExportPayload,
   destinationDefaultLocationId: string | null,
   destinationLocationIds: ReadonlySet<string> = new Set(),
+  // The payload location to map onto the destination default. Left out, the
+  // file's own default (`findPayloadDefaultLocationId`). `importLocalData`
+  // passes the cloud ACTIVE location here for the cloud -> local copy
+  // (households H4 task E.5).
+  payloadDefaultLocationId: string | null = findPayloadDefaultLocationId(
+    payload,
+  ),
 ): Map<string, string> {
   const remap = new Map<string, string>()
   if (destinationDefaultLocationId === null) return remap
-  const payloadDefaultLocationId = findPayloadDefaultLocationId(payload)
   if (payloadDefaultLocationId === null) return remap
   if (payloadDefaultLocationId === destinationDefaultLocationId) return remap
   if (destinationLocationIds.has(payloadDefaultLocationId)) return remap
@@ -587,8 +609,11 @@ export function applyLocationRemap(
           })),
         }
       : {}),
-    // A pre-Location log carries no `locationId`. Leave it absent rather than
-    // inventing one — the server falls back to the caller's default for it.
+    // A pre-Location log carries no `locationId`, and it is left absent here.
+    // Since households H4 task E.3 the server REFUSES such a log with
+    // IMPORT_NEEDS_LOCATION (it used to send it to the caller's first
+    // location). H4 task E.4 replaces this function and must give such a
+    // log the location the user picks.
     inventoryLogs: (
       payload.inventoryLogs as Array<Record<string, unknown>>
     ).map((log) =>
@@ -608,108 +633,520 @@ export function applyLocationRemap(
   }
 }
 
-// The destination household's first location id, or `null` when it has none.
-// This is where the payload's default location lands.
+// ---------------------------------------------------------------------------
+// THE ID RULE FOR A CLOUD IMPORT (households design, "The new id rule";
+// households H4 decision T16). It replaced PR 4b's remap rule on the cloud
+// side in task E.4.
+//
+//   1. Keep every id of the file.
+//   2. Except the local default location, id `'local'`
+//      (DEFAULT_LOCATION_ID). Its rows go to the location the user picks in
+//      the "Import into which location?" dialog, or, on `clear`, to the new
+//      "Home" that `clearAllData` creates (decision O2).
+//   3. A file with no locations, or with no stock rows (a backup made before
+//      locations or before the v15 split), is upgraded into that location
+//      too.
+//
+// The cloud never has a location with the id `'local'`: both location imports
+// refuse it (decision T12). So the `'local'` row can never be uploaded as it
+// is, and its rows must always go somewhere the user chose.
+//
+// The local side (`importLocalData`) still uses PR 4b's remap rule
+// (`buildLocationRemap`), with one change since households H4 task E.5: the
+// cloud -> local copy names the payload location that becomes local "My Home"
+// (`homeLocationId`, the cloud active location, decision T18). A backup file
+// imported in local mode does not, and keeps the old rule (decision O4).
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether a cloud import of this file needs the user to pick a location
+ * (households design rule 3). True when the file has:
+ *
+ * - the local default location (`'local'`), or
+ * - no `locations` key (a backup made before locations), or
+ * - no `itemStocks` key (a backup made before the v15 split: its stock is
+ *   inline on the items and is put into the picked location), or
+ * - a log with no `locationId` (the server refuses such a log with
+ *   `IMPORT_NEEDS_LOCATION` since households H4 task E.3).
+ *
+ * The `clear` strategy never asks (decision O2): after the clear the
+ * household has one location, the new "Home".
+ */
+export function needsImportLocation(payload: ExportPayload): boolean {
+  if (payload.locations === undefined) return true
+  if (payload.itemStocks === undefined) return true
+  const locations = payload.locations as Array<Record<string, unknown>>
+  if (locations.some((row) => row.id === DEFAULT_LOCATION_ID)) return true
+  const logs = payload.inventoryLogs as Array<Record<string, unknown>>
+  return logs.some((log) => log.locationId == null)
+}
+
+/**
+ * Put the file's local default location (`'local'`) at `targetLocationId`
+ * (households H4 decision T16). Every other id is kept.
+ *
+ * In this order:
+ *
+ * 1. A backup with no `itemStocks` key (made before the v15 split) is
+ *    upgraded: one stock row per item at `targetLocationId`, and its bare
+ *    cart ids get the `${targetLocationId}:` prefix (`upgradeLegacyPayload`).
+ *    A payload that HAS `itemStocks` is not touched by this step, on purpose:
+ *    `upgradeUnsplitItems` would make a second stock row for an item whose
+ *    real rows are already in the file.
+ * 2. Every log with no `locationId` gets `targetLocationId`. The server
+ *    refuses such a log (`IMPORT_NEEDS_LOCATION`, households H4 task E.3).
+ * 3. The id `'local'` becomes `targetLocationId` in five fields: the location
+ *    row, stock rows, logs, cart ids and the cart ids of cart items
+ *    (`applyLocationRemap`). When the file already has a location row with
+ *    the id `targetLocationId`, the `'local'` row is dropped instead, so no
+ *    two rows share one id. Its rows still move there.
+ *
+ * When the `'local'` row lands on a location the household already has,
+ * `bulkCreateLocations` skips it, so that location keeps its own name.
+ *
+ * Calling it a second time with another target moves `'local'` only if it is
+ * still there. So `placeDefaultLocation(placeDefaultLocation(p, 'local'), id)`
+ * gives the same rows as `placeDefaultLocation(p, id)`, with the same ids.
+ * `importCloudData` uses that on `clear` and for a new location, where the
+ * real id is known only after the check.
+ */
+export function placeDefaultLocation(
+  payload: ExportPayload,
+  targetLocationId: string,
+): ExportPayload {
+  const upgraded =
+    payload.itemStocks === undefined
+      ? upgradeLegacyPayload(payload, targetLocationId)
+      : payload
+  const withLogLocations: ExportPayload = {
+    ...upgraded,
+    inventoryLogs: (
+      upgraded.inventoryLogs as Array<Record<string, unknown>>
+    ).map((log) =>
+      log.locationId == null ? { ...log, locationId: targetLocationId } : log,
+    ),
+  }
+  if (targetLocationId === DEFAULT_LOCATION_ID) return withLogLocations
+  const locations = withLogLocations.locations as
+    | Array<Record<string, unknown>>
+    | undefined
+  const deduped =
+    locations?.some((row) => row.id === targetLocationId) === true
+      ? {
+          ...withLogLocations,
+          locations: locations.filter((row) => row.id !== DEFAULT_LOCATION_ID),
+        }
+      : withLogLocations
+  return applyLocationRemap(
+    deduped,
+    new Map([[DEFAULT_LOCATION_ID, targetLocationId]]),
+  )
+}
+
+/** What a cloud import left out, for the line the import card shows (decision O5). */
+export interface ImportSkipped {
+  /**
+   * Names of the locations the file has a row for, where the caller cannot
+   * write. Every row the file puts there was left out. In file order.
+   */
+  locationNames: string[]
+  /**
+   * How many other rows were left out: rows at a location the file has no
+   * row for, rows at a location that does not exist, stock rows of an item
+   * that does not exist, and rows stored at a location the caller cannot
+   * write. The web does not ask the server for those location names: the
+   * caller may have no role there.
+   */
+  rowCount: number
+}
+
+/** The answer of a finished cloud import. */
+export interface CloudImportResult {
+  skipped: ImportSkipped
+  // The location the caller should make active now (owner decision of
+  // 2026-11-17, option B; see `locationToShowAfterImport`). The key is
+  // absent when the active location should stay as it is.
+  switchToLocationId?: string
+}
+
+/**
+ * Leave out every row `checkImportIds` says the import cannot write
+ * (households H4 task E.4, step 2.3). Without this, the mutation that sends
+ * such a row refuses its whole batch, after the batches before it were
+ * written.
+ *
+ * - a location the caller cannot write (`blockedLocationIds`): its location
+ *   row, and every stock row, log and cart at it;
+ * - a location no row will hold (`missingLocationIds`): every stock row, log
+ *   and cart that points at it;
+ * - an item no row will hold (`missingItemIds`): its stock rows;
+ * - exactly the rows in `blockedRows`;
+ * - every cart item in a cart that is left out, or whose cart id names a
+ *   left-out location.
+ *
+ * `renameBlockedLocationIds` needs nothing here: the web never sends a
+ * location to `bulkUpsertLocations` (`partitionPayload` puts every location
+ * on the create pass, which asks `participant` only).
+ */
+export function withoutRefusedRows(
+  payload: ExportPayload,
+  check: ImportIdCheck,
+): { payload: ExportPayload; skipped: ImportSkipped } {
+  const blocked = new Set(check.blockedLocationIds)
+  const refused = new Set([
+    ...check.blockedLocationIds,
+    ...check.missingLocationIds,
+  ])
+  const missingItems = new Set(check.missingItemIds)
+  const blockedRows = {
+    inventoryLogs: new Set(check.blockedRows.inventoryLogs),
+    itemStocks: new Set(check.blockedRows.itemStocks),
+    carts: new Set(check.blockedRows.carts),
+    cartItems: new Set(check.blockedRows.cartItems),
+  }
+  const locationRows = (payload.locations ?? []) as Array<
+    Record<string, unknown>
+  >
+  const namedBlocked = new Set(
+    locationRows.map((row) => row.id as string).filter((id) => blocked.has(id)),
+  )
+  let rowCount = 0
+  // A row left out because its location is a blocked location the file has
+  // a row for is counted under that location's name, not in `rowCount`.
+  const leaveOut = (locationId: string | undefined, other: boolean) => {
+    const atNamed = locationId !== undefined && namedBlocked.has(locationId)
+    const out = (locationId !== undefined && refused.has(locationId)) || other
+    if (out && !atNamed) rowCount++
+    return out
+  }
+  const prefixOf = (cartId: unknown) =>
+    typeof cartId === 'string' && cartId.includes(':')
+      ? parseCartId(cartId).locationId
+      : undefined
+
+  const itemStocks = (
+    (payload.itemStocks ?? []) as Array<Record<string, unknown>>
+  ).filter(
+    (row) =>
+      !leaveOut(
+        row.locationId as string,
+        missingItems.has(row.itemId as string) ||
+          blockedRows.itemStocks.has(row.id as string),
+      ),
+  )
+  const inventoryLogs = (
+    payload.inventoryLogs as Array<Record<string, unknown>>
+  ).filter(
+    (row) =>
+      !leaveOut(
+        row.locationId as string | undefined,
+        blockedRows.inventoryLogs.has(row.id as string),
+      ),
+  )
+  const droppedCarts = new Set<string>()
+  const shoppingCarts = (
+    payload.shoppingCarts as Array<Record<string, unknown>>
+  ).filter((row) => {
+    const out = leaveOut(
+      prefixOf(row.id),
+      blockedRows.carts.has(row.id as string),
+    )
+    if (out) droppedCarts.add(row.id as string)
+    return !out
+  })
+  const cartItems = (
+    payload.cartItems as Array<Record<string, unknown>>
+  ).filter(
+    (row) =>
+      !leaveOut(
+        prefixOf(row.cartId),
+        droppedCarts.has(row.cartId as string) ||
+          blockedRows.cartItems.has(row.id as string),
+      ),
+  )
+
+  return {
+    payload: {
+      ...payload,
+      ...(payload.locations !== undefined
+        ? {
+            locations: locationRows.filter(
+              (row) => !blocked.has(row.id as string),
+            ),
+          }
+        : {}),
+      ...(payload.itemStocks !== undefined ? { itemStocks } : {}),
+      inventoryLogs,
+      shoppingCarts,
+      cartItems,
+    },
+    skipped: {
+      locationNames: locationRows
+        .filter((row) => namedBlocked.has(row.id as string))
+        .map((row) => row.name as string),
+      rowCount,
+    },
+  }
+}
+
+/** A location the import may put the file's default location into. */
+export interface ImportTargetLocation {
+  id: string
+  name: string
+}
+
+/**
+ * The locations the "Import into which location?" dialog offers: the
+ * household's locations where the caller is `participant` or higher, by
+ * `order` (households H4 task E.4, step 3).
+ *
+ * The web does not know location roles (`GetLocations` lists every location
+ * the caller has ANY role on). So it asks `importCheck` with every listed
+ * location as a `locationRefs` id, and leaves out the ones it reports in
+ * `blockedLocationIds` (viewer) or `missingLocationIds` (deleted since the
+ * list was read). This adds no new GraphQL field, so a new web bundle
+ * against an old server breaks only the import, which needs `importCheck`
+ * anyway (decision T9). A field on `Location` would break `GetLocations`,
+ * and with it the whole app, in that window.
+ *
+ * Needs the household role `manager`, the same as the import.
+ */
+export async function fetchImportTargetLocations(
+  client: ApolloClient,
+): Promise<ImportTargetLocation[]> {
+  const result = await client.query<GetLocationsQuery>({
+    query: GetLocationsDocument,
+    fetchPolicy: 'network-only',
+  })
+  const locations = result.data?.locations ?? []
+  if (locations.length === 0) return []
+  const check = await client.query<ImportCheckQuery, ImportCheckQueryVariables>(
+    {
+      query: ImportCheckDocument,
+      variables: {
+        ids: { locationRefs: locations.map((location) => location.id) },
+        forClear: false,
+      },
+      fetchPolicy: 'no-cache',
+    },
+  )
+  const answer = check.data?.importCheck
+  if (!answer) throw new Error('importCheck returned no data')
+  const unusable = new Set([
+    ...answer.blockedLocationIds,
+    ...answer.missingLocationIds,
+  ])
+  return locations
+    .filter((location) => !unusable.has(location.id))
+    .map((location) => ({ id: location.id, name: location.name }))
+}
+
+/**
+ * The name the dialog's "New location" field starts with (decision O6): the
+ * name of the file's local default location, or `''` when the file has none.
+ */
+export function defaultImportLocationName(payload: ExportPayload): string {
+  const row = (
+    (payload.locations ?? []) as Array<Record<string, unknown>>
+  ).find((location) => location.id === DEFAULT_LOCATION_ID)
+  return typeof row?.name === 'string' ? row.name : ''
+}
+
+/** Where `importCloudData` puts the file's local default location. */
+export type ImportTarget = { locationId: string } | { newLocationName: string }
+
+/**
+ * A cloud import refused before anything was written, by `importCheck`
+ * (households H4 decision T17):
+ *
+ * - `anotherHousehold`: the file holds a row or location of another
+ *   household. The card says `settings.import.importErrorForbidden`.
+ * - `role`: the caller is not an owner or a manager (or not the owner, for
+ *   `clear`). The card says `settings.import.importErrorRole`.
+ *
+ * A `FORBIDDEN` from a BULK mutation is not this error. It comes after some
+ * batches were written (a race with another import or a role change), and
+ * `isForbiddenImportError` reports it.
+ */
+export class ImportRefusedError extends Error {
+  readonly reason: 'anotherHousehold' | 'role'
+  constructor(reason: 'anotherHousehold' | 'role') {
+    super(
+      reason === 'role'
+        ? 'Only the owner or a manager can import data.'
+        : 'Some rows in this file belong to another household.',
+    )
+    this.name = 'ImportRefusedError'
+    this.reason = reason
+  }
+}
+
+/**
+ * Which message a failed cloud import shows (households H4 decision T17).
+ * `strategy` matters only for a `FORBIDDEN` from a bulk mutation: on `clear`
+ * that refusal came after the household was cleared.
+ */
+export type ImportErrorKind =
+  | 'role'
+  | 'forbidden'
+  | 'forbiddenAfterClear'
+  | 'other'
+
+export function importErrorKind(
+  err: unknown,
+  strategy: ImportStrategy,
+): ImportErrorKind {
+  if (err instanceof ImportRefusedError) {
+    return err.reason === 'role' ? 'role' : 'forbidden'
+  }
+  if (isForbiddenImportError(err)) {
+    return strategy === 'clear' ? 'forbiddenAfterClear' : 'forbidden'
+  }
+  return 'other'
+}
+
+// The household's first location id, after `clearAllData`. The server returns
+// the list by `order`; after a clear the only location is the new "Home".
 //
 // ── READ THIS AFTER `clearAllData`, NEVER BEFORE ──
 //
 // `clearAllData` deletes every `Location` row of the household, then creates
 // a new "Home" location in the same transaction, with a NEW id. So an id read
-// before the clear names a row that no longer exists by the time the remap
-// uses it. PR 4a shipped exactly that bug — a location id that was valid when
-// read and gone when used — and it cost a full E2E gate run to find, because
-// no test fake models the deletion.
-//
-// It also returns EVERY location id the household holds, for the
-// same-household check in `buildLocationRemap`.
-async function fetchCloudDefaultLocationId(
-  client: ApolloClient,
-): Promise<{ firstId: string | null; ids: Set<string> }> {
+// before the clear names a row that no longer exists by the time it is used.
+// PR 4a shipped exactly that bug, and it cost a full E2E gate run to find,
+// because no test fake models the deletion.
+async function fetchHomeAfterClear(client: ApolloClient): Promise<string> {
   const result = await client.query<GetLocationsQuery>({
     query: GetLocationsDocument,
     fetchPolicy: 'network-only',
   })
-  // A household has no default location (households task 3.12), so the
-  // "destination default" is the FIRST location. The server returns the list
-  // by `order`. After a clear that is the new "Home", the only location left.
-  const locations = result.data?.locations ?? []
-  return {
-    firstId: locations[0]?.id ?? null,
-    ids: new Set(locations.map((location) => location.id)),
+  const id = result.data?.locations[0]?.id
+  if (id === undefined) throw new Error('No location after clearing the data')
+  return id
+}
+
+/**
+ * Whether the import put anything into `locationId`: its location row, or a
+ * stock row, log or cart there. Cart items go with their cart.
+ */
+function payloadUsesLocation(
+  payload: ExportPayload,
+  locationId: string,
+): boolean {
+  const at = (rows: readonly unknown[] | undefined, key: string) =>
+    (rows ?? []).some((row) => stringField(row, key) === locationId)
+  return (
+    at(payload.locations, 'id') ||
+    at(payload.itemStocks, 'locationId') ||
+    at(payload.inventoryLogs, 'locationId') ||
+    payload.shoppingCarts.some((row) => {
+      const id = stringField(row, 'id')
+      return (
+        id?.includes(':') === true && parseCartId(id).locationId === locationId
+      )
+    })
+  )
+}
+
+// Owner decision 6 of task E.4 (2026-11-16, choice A). `clearAllData` makes
+// a fresh "Home". A cloud backup brings its own locations and puts nothing
+// there, which used to leave an extra, empty "Home". So after a FINISHED
+// `clear` import, delete it with the normal `deleteLocation` mutation (it
+// sends the household's LOCATION live event as usual), when:
+//
+// - the import put no location row, stock row, log or cart there, and
+// - the import created at least one location of its own, so the fresh Home
+//   is not the household's last location (the server refuses that with
+//   LAST_LOCATION).
+//
+// A local backup always puts "My Home" there (`placeDefaultLocation`), so it
+// is never deleted then.
+//
+// A failed delete does NOT fail the import: every row is written by then,
+// and saying "import failed" would make the user retry a `clear` for an
+// empty location. The extra "Home" stays, as before this decision, and the
+// user can delete it on the locations page.
+async function deleteHomeIfUnused(
+  client: ApolloClient,
+  payload: ExportPayload,
+  home: string,
+): Promise<void> {
+  if (payloadUsesLocation(payload, home)) return
+  if ((payload.locations ?? []).length === 0) return
+  try {
+    await client.mutate({
+      mutation: DeleteLocationDocument,
+      variables: { id: home },
+    })
+  } catch {
+    // See the comment above: the import itself finished.
   }
 }
 
-// A PRE-v15 backup carries its stock INLINE on each item, has no `itemStocks`
-// key at all, and uses BARE cart ids. `importLocalData` has always upgraded
-// such a payload (`upgradeLegacyPayload`). The cloud path never did, because
-// two now-deleted pieces covered for it:
+// Owner decision of 2026-11-17 (option B). A `skip` or `replace` restore of
+// a cloud backup into a new household writes the backup's locations beside
+// the household's fresh "Home" (decision T16). The active location stays on
+// that "Home", which holds nothing, so the pantry looks empty. So after a
+// FINISHED `skip` or `replace` import, return the location to show instead:
 //
-//   - `flattenPayloadForCloud` (deleted in PR 4b task 3) returned early on a
-//     payload with no `itemStocks`, sending the items up with their inline
-//     stock columns intact;
-//   - `mirrorStockToDefaultLocation` (deleted server-side in PR 4b task 6)
-//     then wrote one `ItemStock` row per imported item at the caller's default
-//     location, which is what made the item visible in the cloud pantry.
+// - only when the import did not ask "Import into which location?". There the
+//   user picked where the rows go, so the import does not move them
+//   somewhere else (the caller checks this);
+// - only when the file brought at least one location (after the refused ones
+//   were left out). Its first by `order` is the answer; a tie keeps the
+//   file's order;
+// - only when that is not already the active location;
+// - only when the active location is EMPTY: it holds no `ItemStock` row,
+//   read from the server AFTER the last write. The pantry lists stock rows
+//   only, so "no stock row" is exactly "the pantry shows nothing". It is read
+//   after the import, not before, so a same-household restore that put rows
+//   back on the active location keeps it. A location with only logs or carts
+//   still shows an empty pantry, so they do not count.
 //
-// With both gone and nothing put in their place, a pre-v15 file imported into
-// cloud mode would land every item in the catalog stocked NOWHERE — invisible
-// in the pantry, with no error anywhere — and would keep writing bare cart
-// ids, the ownership leak of issue #327 that task 3 closed for every other
-// payload shape.
-//
-// Measured on this branch before this function existed: a pre-v15 payload sent
-// `["BulkCreateItems", "BulkCreateShoppingCarts"]` and nothing else — no
-// `itemStocks` variable in any mutation — with the cart id still `vendor_1`.
-//
-// THE GUARD IS THE ABSENT KEY AND NOTHING ELSE, on purpose. A payload that
-// already carries `itemStocks` must reach the server exactly as it does today.
-// Running the whole of `upgradeLegacyPayload` on a post-v15 payload would also
-// run `upgradeUnsplitItems`, which reads the payload's items for inline stock
-// and invents an `itemStocks` row from whatever it finds. On a post-v15 payload
-// that is wrong whatever the item rows happen to hold: the real per-location
-// rows are already in `payload.itemStocks`, so a second, synthesised set at the
-// default location would collide with them. That is a different bug, not a fix.
-//
-// (Until cloud locations PR 5 this paragraph gave a narrower reason — a cloud
-// export's items carried the legacy stock columns as 0 rather than null, so
-// `hasInlineStock` answered true for every catalog-only cloud item. PR 5
-// removed those columns from the cloud `Item`, so that particular symptom is
-// gone. The guard is still right, for the reason above.)
-//
-// `null` means the destination household has no location at all. The server
-// makes that rare: first sign-in and `clearAllData` both create "Home", and
-// `deleteLocation` refuses the last location. There is no location to
-// synthesise stock into then, so the payload is left alone.
-function upgradeLegacyPayloadForCloud(
+// Nothing is deleted (`clear` has decision 6 for that). A failed read does
+// NOT fail the import, for the same reason as `deleteHomeIfUnused`: every row
+// is written by then. The user stays where they are, as before this decision.
+async function locationToShowAfterImport(
+  client: ApolloClient,
   payload: ExportPayload,
-  destinationDefaultLocationId: string | null,
-): ExportPayload {
-  if (payload.itemStocks !== undefined) return payload
-  if (destinationDefaultLocationId === null) return payload
-  return upgradeLegacyPayload(payload, destinationDefaultLocationId)
+  activeLocationId: string | undefined,
+): Promise<string | undefined> {
+  if (activeLocationId === undefined) return undefined
+  const locations = (payload.locations ?? []) as Array<Record<string, unknown>>
+  const first = [...locations].sort(
+    (a, b) => Number(a.order ?? 0) - Number(b.order ?? 0),
+  )[0]
+  const firstId = stringField(first, 'id')
+  if (firstId === undefined || firstId === activeLocationId) return undefined
+  try {
+    const result = await client.query<ItemStockIdsAtLocationQuery>({
+      query: ItemStockIdsAtLocationDocument,
+      variables: { locationId: activeLocationId },
+      fetchPolicy: 'no-cache',
+    })
+    const stocks = result.data?.itemStocks
+    if (stocks === undefined || stocks.length > 0) return undefined
+    return firstId
+  } catch {
+    // See the comment above: the import itself finished.
+    return undefined
+  }
 }
 
-// Read the destination's default, upgrade a legacy payload onto it, then apply
-// the remap rule — in that order. Every caller is in `importCloudData`, and the
-// ORDER of this call matters on the `clear` strategy — see
-// `fetchCloudDefaultLocationId`.
-//
-// The upgrade runs BEFORE the remap, exactly as it does in `importLocalData`:
-// it can invent location ids of its own, and remapping afterwards is what keeps
-// an id it created inside the rule. In practice the remap is a no-op for a
-// pre-v15 payload — such a file names no default location, so
-// `findPayloadDefaultLocationId` returns null — and the upgrade has already
-// placed its rows on the destination's own default id.
-async function prepareCloudPayload(
-  payload: ExportPayload,
+// Create the location the user named in the dialog (decision O6), with the
+// same `createLocation` mutation the locations page uses. The caller becomes
+// its organizer.
+async function createImportLocation(
   client: ApolloClient,
-): Promise<ExportPayload> {
-  const destination = await fetchCloudDefaultLocationId(client)
-  const upgraded = upgradeLegacyPayloadForCloud(payload, destination.firstId)
-  return applyLocationRemap(
-    upgraded,
-    buildLocationRemap(upgraded, destination.firstId, destination.ids),
-  )
+  name: string,
+): Promise<string> {
+  const result = await client.mutate<CreateLocationMutation>({
+    mutation: CreateLocationDocument,
+    variables: { name },
+  })
+  const id = result.data?.createLocation.id
+  if (id === undefined) throw new Error('createLocation returned no data')
+  return id
 }
 
 // Normalize an imported permanent cart to the v13+ schema shape: keep only
@@ -796,6 +1233,11 @@ export interface ImportSession {
   // `create` or `upsert`. The `mode` term is required — see `runBulkBatches`
   // and issue #330.
   completedBatchKeys: Set<string>
+  // Where the file's local default location goes (households H4 task E.4).
+  // Kept on the session so a retry does not ask again, and does not create a
+  // second "New location": once that location is created, `importCloudData`
+  // replaces `{ newLocationName }` here with its `{ locationId }`.
+  target?: ImportTarget
 }
 
 // ---------------------------------------------------------------------------
@@ -839,7 +1281,7 @@ export interface ImportSession {
 // cannot silently go missing. For an optional key that is wrong.
 //
 // Dropping them loses nothing. A pre-v15 payload carries the five inline on its
-// items, and `upgradeLegacyPayloadForCloud` has already turned them into real
+// items, and `placeDefaultLocation` has already turned them into real
 // `itemStocks` rows before any mutation runs, each row naming a location. A
 // post-v15 payload carries its own `itemStocks` array. Either way the stock
 // travels in `ItemStockImportInput`, never here.
@@ -1028,9 +1470,9 @@ export function toShelfInput(shelf: Record<string, unknown>) {
 
 // `LocationInput` (schema/import.graphql) has NO `isDefault` FIELD, so this
 // mapper must drop it: GraphQL validation refuses an unknown input field. A
-// household has no default location (households task 3.12). The payload's
-// default location is never uploaded as a row: the client rewrites its id onto
-// the destination household's FIRST location (`buildLocationRemap`).
+// household has no default location (households task 3.12). The file's local
+// default location (`'local'`) is never uploaded with that id: the client
+// rewrites it onto the location the user picked (`placeDefaultLocation`).
 export function toLocationInput(location: Record<string, unknown>) {
   const createdAt =
     location.createdAt instanceof Date
@@ -1096,9 +1538,9 @@ export interface ConflictEntry {
 // NINE entities, not the eleven an `ExportPayload` carries. `locations` and
 // `itemStocks` are deliberately absent, for two different reasons:
 //
-//   - A LOCATION would conflict on EVERY cloud import. The remap rewrites the
-//     payload's default location id to the destination household's first
-//     location (`applyLocationRemap`), and that row always exists, so an id check here
+//   - A LOCATION would conflict on many cloud imports. The file's local
+//     default location is put onto a location the household already has
+//     (`placeDefaultLocation`), so an id check here
 //     would always match and `hasConflicts` would always be true — every
 //     import, including a clean one, would stop at the conflict dialog. A
 //     location row also holds no destructible content: only a name and an
@@ -1762,16 +2204,42 @@ async function bootstrapCartsForAllLocations(): Promise<void> {
   }
 }
 
+export interface ImportLocalOptions {
+  /**
+   * The LOCAL location a pre-v15 backup's inline stock and bare cart ids go
+   * into (`upgradeLegacyPayload`). The UI passes the local active location.
+   * A file with `itemStocks` (every cloud export since PR 4b task 2, every
+   * local export since v15) does not use it.
+   */
+  activeLocationId?: string
+  /**
+   * The PAYLOAD location that becomes local "My Home" (`'local'`). Households
+   * H4 task E.5, decision T18: the cloud -> local copy passes the cloud ACTIVE
+   * location, as the design's "Copying between local and cloud" says. Every
+   * other location keeps its id.
+   *
+   * Left out for a backup FILE imported in local mode: the file does not
+   * record which location was active, so the old rule picks it
+   * (`findPayloadDefaultLocationId`, decision O4). Also ignored when no
+   * location row of the payload has this id, for the same reason: the old
+   * rule is the best answer left.
+   */
+  homeLocationId?: string
+}
+
 export async function importLocalData(
   rawPayload: ExportPayload,
   strategy: ImportStrategy,
-  locationId: string = DEFAULT_LOCATION_ID,
+  {
+    activeLocationId = DEFAULT_LOCATION_ID,
+    homeLocationId,
+  }: ImportLocalOptions = {},
 ): Promise<void> {
   // Pre-v15 backups carry stock inline on the item and unscoped cart ids —
   // upgrade them to the split shape before writing, into the caller's target
   // location (the active one, for the UI paths). Since PR 4b task 2 a cloud
   // export is already split, so this is a no-op for one.
-  const upgraded = upgradeLegacyPayload(rawPayload, locationId)
+  const upgraded = upgradeLegacyPayload(rawPayload, activeLocationId)
 
   // THE REMAP RULE, cloud -> local direction (design §1): the payload's own
   // default location maps onto THIS database's default, and every other
@@ -1780,9 +2248,9 @@ export async function importLocalData(
   // `ensureDefaultLocationRow` adds a stray empty "local" default beside the
   // restored ones.
   //
-  // NO ORDERING HAZARD ON THIS SIDE, unlike `prepareCloudPayload`. There the
-  // destination's default has to be read over the network, and reading it
-  // before `clearAllData` returns an id that no longer exists. Here the
+  // NO ORDERING HAZARD ON THIS SIDE, unlike the cloud `clear` path. There the
+  // new "Home" has to be read over the network, and reading it before
+  // `clearAllData` returns an id that no longer exists (`fetchHomeAfterClear`). Here the
   // destination's default is the module constant DEFAULT_LOCATION_ID: the v18
   // upgrade fn and `ensureDefaultLocation` (db/index.ts) between them
   // guarantee the local default is always that id. So nothing is read from the
@@ -1796,9 +2264,23 @@ export async function importLocalData(
   //
   // One call covers all three strategies, because each one hands the whole
   // payload to `importLocations` / `importItemStocks`.
+  //
+  // WHICH payload location is "its own default" (households H4 task E.5):
+  // `homeLocationId` when the caller names one AND the payload holds that
+  // location row (the cloud -> local copy names the cloud active location);
+  // otherwise the old rule in `findPayloadDefaultLocationId` (decision O4).
+  const payloadLocationIds = new Set(
+    ((upgraded.locations ?? []) as Array<Record<string, unknown>>).map(
+      (row) => row.id as string,
+    ),
+  )
+  const payloadHome =
+    homeLocationId !== undefined && payloadLocationIds.has(homeLocationId)
+      ? homeLocationId
+      : findPayloadDefaultLocationId(upgraded)
   const payload = applyLocationRemap(
     upgraded,
-    buildLocationRemap(upgraded, DEFAULT_LOCATION_ID),
+    buildLocationRemap(upgraded, DEFAULT_LOCATION_ID, new Set(), payloadHome),
   )
 
   if (strategy === 'clear') {
@@ -2138,11 +2620,11 @@ async function fetchCloudExistingData(
 // THE ORDER MATTERS, AND A WRONG ORDER PRODUCES NO ERROR AT ALL:
 //
 //   - `locations` must come BEFORE `items` and before `shoppingCarts`.
-//     `resolveCartLocations` (apps/server/src/resolvers/import.resolver.ts:205)
-//     sends a cart to the CALLER'S DEFAULT location when the cart id names a
-//     location that no row holds. A cart uploaded before its location exists
-//     therefore lands in the wrong location, with no error and nothing in the
-//     response to show it. `resolveLogLocations` does the same for logs.
+//     `resolveCartLocations` (apps/server/src/resolvers/import.resolver.ts)
+//     refuses a cart whose id names a location that no row holds, with
+//     `Forbidden`, and `resolveLogLocations` does the same for logs. Until
+//     households H4 task E.3 both sent such a row to the caller's first
+//     location instead, silently.
 //   - `itemStocks` must come AFTER `items` and after `locations`. It is a
 //     child of both, and `requireOwnItemStockRefs` (import.resolver.ts:434)
 //     refuses an unknown item or location with `Forbidden`.
@@ -2162,22 +2644,25 @@ async function fetchCloudExistingData(
 // client-side mitigation, in design decision 6 of
 // docs/features/settings/2026-10-28-design-import-ownership-guard.md: the
 // window is narrow, because after the clear the caller owns no rows, so a
-// `Forbidden` on `clear` means the file really does carry another account's
-// row ids and cannot be triggered by the user's own data.
+// `Forbidden` on `clear` means the file really does carry another household's
+// row ids and cannot be triggered by the user's own data. (This said "another
+// account" until households H4 decision O8.)
 //
 // What the user is told, instead of the old bare word `Forbidden`:
 // `settings.import.importErrorForbiddenAfterClear` — some rows in this file
-// belong to another account, so the import was refused; the cloud data was
+// belong to another household, so the import was refused; the cloud data was
 // already cleared before that happened; the backup file is unchanged.
 // `ImportCard` picks that key over `settings.import.importErrorForbidden` from
 // the session's own strategy, and `isForbiddenImportError` below is what tells
 // the two sentences apart from every other failure.
 //
-// The follow-up that would remove the problem rather than explain it:
-// validate every payload id before `clearAllData` runs. It needs a new
-// GraphQL query, so it is a separate PR — `pnpm codegen` is all-or-nothing
-// across both outputs, so a schema change and its web documents cannot be
-// split.
+// SINCE HOUSEHOLDS H4 TASK E.4 THIS IS RARE. `importCloudData` runs
+// `checkImportIds` before `clearAllData` and before the first batch. A file
+// with another household's id is refused there, before anything is written
+// (`ImportRefusedError`, `importErrorForbidden`). A `Forbidden` from a bulk
+// mutation can still happen when something changes between the check and the
+// write (another import, a role change). Then the message above is still the
+// right one.
 // ---------------------------------------------------------------------------
 
 interface EntitySpec {
@@ -2559,7 +3044,7 @@ function computeTotalBatches(data: ExportPayload): number {
 
 /**
  * Whether an import error is the server refusing a row that belongs to another
- * account — `FORBIDDEN`, raised by `requireOwnRowOrUnclaimed`,
+ * household — `FORBIDDEN`, raised by `requireOwnRowOrUnclaimed`,
  * `requireLocationRole` or `requireOwnItemStockRefs`.
  *
  * READS `extensions.code`, NOT the message text, and must keep doing so.
@@ -2580,6 +3065,262 @@ export function isForbiddenImportError(err: unknown): boolean {
     CombinedGraphQLErrors.is(err) &&
     err.errors.some((e) => e.extensions?.code === 'FORBIDDEN')
   )
+}
+
+/**
+ * The most ids one `importCheck` call takes. The server refuses more with
+ * `BAD_USER_INPUT` (`IMPORT_CHECK_MAX_IDS` in
+ * apps/server/src/resolvers/importCheck.resolver.ts, households H4 decision
+ * T3).
+ */
+export const IMPORT_CHECK_CHUNK_SIZE = 1000
+
+/** Ids of rows the file holds that the import must leave out, by model. */
+export interface ImportCheckRowIds {
+  inventoryLogs: string[]
+  itemStocks: string[]
+  carts: string[]
+  cartItems: string[]
+}
+
+/** The answer of `checkImportIds`: the answers of every call, joined. */
+export interface ImportIdCheck {
+  /** True when any call found a row or location of another household. */
+  anotherHousehold: boolean
+  /**
+   * Locations the file names (rows, references, cart ids) in the target
+   * household where the caller is below `participant`, sorted. Drop every row
+   * the file puts there.
+   */
+  blockedLocationIds: string[]
+  /**
+   * Location ROWS of the file that already exist, where the caller may write
+   * but not rename (`participant`, not `organizer`), sorted. On `replace`,
+   * leave them out of `bulkUpsertLocations`, which asks `organizer`; keep the
+   * rows at them.
+   */
+  renameBlockedLocationIds: string[]
+  /**
+   * Locations the file's rows point at that no location will hold when the
+   * import writes, sorted. Drop every row that points at one.
+   */
+  missingLocationIds: string[]
+  /** Items stock rows point at that no item will hold, sorted. Drop those stock rows. */
+  missingItemIds: string[]
+  /**
+   * Rows the file holds that already exist at a location the caller cannot
+   * write (or, for a cart, away from the location its id names). Drop exactly
+   * these rows.
+   */
+  blockedRows: ImportCheckRowIds
+}
+
+type ImportCheckKey = keyof ImportCheckInput
+
+/** The `key` column of a payload row, when it is a string. */
+function stringField(row: unknown, key: string): string | undefined {
+  const value = (row as Record<string, unknown> | null | undefined)?.[key]
+  return typeof value === 'string' ? value : undefined
+}
+
+/**
+ * Every id of the payload, as `[model key, id]` pairs, in a fixed order, each
+ * pair once.
+ *
+ * Rows and references go in different lists, and only this function can tell
+ * them apart, because it sees the whole file and the server sees one chunk:
+ *
+ * - `locations`: the ids of the file's location ROWS. The import creates a
+ *   free one, so the server never reports it missing.
+ * - `locationRefs`: the `locationId` of stock rows and logs, and the location
+ *   each cart id names, when the file has no location row with that id. The
+ *   bulk stock, log and cart mutations refuse a location that does not exist,
+ *   so the server reports these as missing when no row holds them.
+ * - `itemRefs`: the `itemId` of stock rows that is not an item of the file.
+ *   `requireOwnItemStockRefs` refuses an item outside the household.
+ *
+ * Not sent: the `itemId` of logs and cart items, and a cart item's `cartId`.
+ * Those mutations SKIP a row whose item or cart they cannot use; they do not
+ * refuse the batch. A cart id with no colon names no location; it is sent in
+ * `carts`, and the server refuses it with `BAD_USER_INPUT`.
+ */
+function importCheckPairs(
+  payload: ExportPayload,
+  omitLocationIds: ReadonlySet<string> = new Set(),
+): [ImportCheckKey, string][] {
+  const pairs: [ImportCheckKey, string][] = []
+  const seen = new Set<string>()
+  const add = (key: ImportCheckKey, id: string | undefined) => {
+    if (id === undefined) return
+    const mark = `${key}\u0000${id}`
+    if (seen.has(mark)) return
+    seen.add(mark)
+    pairs.push([key, id])
+  }
+  const ids = (key: ImportCheckKey, rows: readonly unknown[] | undefined) => {
+    for (const row of rows ?? []) add(key, stringField(row, 'id'))
+  }
+  const rowIds = (rows: readonly unknown[] | undefined) =>
+    new Set((rows ?? []).map((row) => stringField(row, 'id')))
+
+  const locationRows = rowIds(payload.locations)
+  const locationRef = (id: string | undefined) => {
+    if (id === undefined || omitLocationIds.has(id)) return
+    if (!locationRows.has(id)) add('locationRefs', id)
+  }
+  const itemRows = rowIds(payload.items)
+
+  ids('items', payload.items)
+  ids('tags', payload.tags)
+  ids('tagTypes', payload.tagTypes)
+  ids('vendors', payload.vendors)
+  ids('recipes', payload.recipes)
+  ids('shelves', payload.shelves)
+  ids(
+    'locations',
+    (payload.locations ?? []).filter(
+      (row) => !omitLocationIds.has(stringField(row, 'id') ?? ''),
+    ),
+  )
+  for (const row of payload.itemStocks ?? []) {
+    locationRef(stringField(row, 'locationId'))
+    const itemId = stringField(row, 'itemId')
+    if (itemId !== undefined && !itemRows.has(itemId)) add('itemRefs', itemId)
+  }
+  for (const row of payload.inventoryLogs) {
+    locationRef(stringField(row, 'locationId'))
+  }
+  for (const row of payload.shoppingCarts) {
+    const id = stringField(row, 'id')
+    if (id?.includes(':')) locationRef(parseCartId(id).locationId)
+  }
+  ids('itemStocks', payload.itemStocks)
+  ids('inventoryLogs', payload.inventoryLogs)
+  // A cart id whose prefix is an omitted location is not sent either. The
+  // cart is written under the real location's id later, so checking the
+  // placeholder id proves nothing; and if some cloud location had the id
+  // 'local' (possible before decision T12), the check would call the file
+  // "another household" (E.4 review finding 3). Its cart items are still
+  // sent by their own ids.
+  ids(
+    'carts',
+    payload.shoppingCarts.filter((row) => {
+      const id = stringField(row, 'id')
+      return !(
+        id?.includes(':') && omitLocationIds.has(parseCartId(id).locationId)
+      )
+    }),
+  )
+  ids('cartItems', payload.cartItems)
+  return pairs
+}
+
+/**
+ * Ask the server, before the first write of a cloud import, whether the file
+ * holds rows of another household, and which of its rows the import must
+ * leave out (households H4 task E.2, decision T1, and the E.2 review fixes).
+ *
+ * The ids go in calls of at most `IMPORT_CHECK_CHUNK_SIZE`, one after the
+ * other. The answers are joined: `anotherHousehold` is true when any call
+ * says so, and every list holds each id once, sorted.
+ *
+ * An empty file still makes ONE call, because the call is also the household
+ * role check (`manager`, or `owner` with `forClear`). A refusal is thrown as
+ * the client throws it (a `CombinedGraphQLErrors` with `FORBIDDEN` or
+ * `BAD_USER_INPUT`).
+ *
+ * Send the payload as it will be written: after `placeDefaultLocation` (task
+ * E.4). Cloud mode only; local mode has no household.
+ *
+ * `omitLocationIds` are locations whose real id is not known yet: the
+ * `'local'` placeholder on `clear` (the new "Home" is made by the clear) and
+ * for a "New location" (made after the check). They are left out of
+ * `locations` and `locationRefs`; every ROW at them is still sent by its own
+ * id, so a row id of another household is still found.
+ *
+ * `importCloudData` calls it before its first write and drops the rows the
+ * answer names (`withoutRefusedRows`).
+ */
+export async function checkImportIds(
+  client: ApolloClient,
+  payload: ExportPayload,
+  options: { forClear?: boolean; omitLocationIds?: ReadonlySet<string> } = {},
+): Promise<ImportIdCheck> {
+  const pairs = importCheckPairs(payload, options.omitLocationIds)
+  const chunks: [ImportCheckKey, string][][] = []
+  for (let i = 0; i < pairs.length; i += IMPORT_CHECK_CHUNK_SIZE) {
+    chunks.push(pairs.slice(i, i + IMPORT_CHECK_CHUNK_SIZE))
+  }
+  if (chunks.length === 0) chunks.push([])
+
+  let anotherHousehold = false
+  const joined = {
+    blockedLocationIds: new Set<string>(),
+    renameBlockedLocationIds: new Set<string>(),
+    missingLocationIds: new Set<string>(),
+    missingItemIds: new Set<string>(),
+    inventoryLogs: new Set<string>(),
+    itemStocks: new Set<string>(),
+    carts: new Set<string>(),
+    cartItems: new Set<string>(),
+  }
+  const join = (into: Set<string>, ids: readonly string[]) => {
+    for (const id of ids) into.add(id)
+  }
+  for (const chunk of chunks) {
+    const ids: Partial<Record<ImportCheckKey, string[]>> = {}
+    for (const [key, id] of chunk) {
+      const list = ids[key] ?? []
+      list.push(id)
+      ids[key] = list
+    }
+    const result = await client.query<
+      ImportCheckQuery,
+      ImportCheckQueryVariables
+    >({
+      query: ImportCheckDocument,
+      variables: { ids, forClear: options.forClear ?? false },
+      // Never from the cache: the answer depends on rows that may have
+      // changed since the last call.
+      fetchPolicy: 'no-cache',
+    })
+    const answer = result.data?.importCheck
+    if (!answer) throw new Error('importCheck returned no data')
+    if (answer.anotherHousehold) anotherHousehold = true
+    join(joined.blockedLocationIds, answer.blockedLocationIds)
+    join(joined.renameBlockedLocationIds, answer.renameBlockedLocationIds)
+    join(joined.missingLocationIds, answer.missingLocationIds)
+    join(joined.missingItemIds, answer.missingItemIds)
+    join(joined.inventoryLogs, answer.blockedRows.inventoryLogs)
+    join(joined.itemStocks, answer.blockedRows.itemStocks)
+    join(joined.carts, answer.blockedRows.carts)
+    join(joined.cartItems, answer.blockedRows.cartItems)
+  }
+  const sorted = (set: Set<string>) => [...set].sort()
+  return {
+    anotherHousehold,
+    blockedLocationIds: sorted(joined.blockedLocationIds),
+    renameBlockedLocationIds: sorted(joined.renameBlockedLocationIds),
+    missingLocationIds: sorted(joined.missingLocationIds),
+    missingItemIds: sorted(joined.missingItemIds),
+    blockedRows: {
+      inventoryLogs: sorted(joined.inventoryLogs),
+      itemStocks: sorted(joined.itemStocks),
+      carts: sorted(joined.carts),
+      cartItems: sorted(joined.cartItems),
+    },
+  }
+}
+
+// The result, with `switchToLocationId` only when there is one: a key set to
+// `undefined` would read as "switch" to a caller that checks `in`.
+function withSwitch(
+  skipped: ImportSkipped,
+  switchToLocationId: string | undefined,
+): CloudImportResult {
+  return switchToLocationId === undefined
+    ? { skipped }
+    : { skipped, switchToLocationId }
 }
 
 /**
@@ -2613,50 +3354,100 @@ export async function importCloudData(
   options?: {
     onProgress?: (p: ImportProgress) => void
     session?: ImportSession
-    // NO `locationId` HERE, AND NONE IS COMING BACK. Until PR 4b this option
-    // picked the one location whose stock went up, because the cloud import
-    // surface was flat. The remap rule (PR 4 design §1) keeps every location
-    // now, so there is nothing to pick: the destination's default is read
-    // inside this function by `prepareCloudPayload`.
+    // Where the file's local default location goes: the answer of the
+    // "Import into which location?" dialog (households H4 task E.4). Needed
+    // when `needsImportLocation(rawPayload)` is true and the strategy is not
+    // `clear`; ignored otherwise. A retry passes the session instead, which
+    // holds it.
+    target?: ImportTarget
+    // The cloud active location when the import starts. With it, a `skip` or
+    // `replace` import may return `switchToLocationId` (owner decision of
+    // 2026-11-17, `locationToShowAfterImport`). Without it, never.
+    activeLocationId?: string
   },
-): Promise<void> {
+): Promise<CloudImportResult> {
   const onProgress = options?.onProgress ?? (() => undefined)
-  // The session records the payload AS GIVEN, because on the `clear` path
-  // `prepareCloudPayload` cannot run until the clear has. A resumed import
-  // re-derives its batch keys by running `prepareCloudPayload` again. The keys
-  // are `${mode}:${entityType}:${i}`, so what has to match the first attempt is
-  // the row COUNT and ORDER per entity, and both are fixed: the remap rewrites ids
-  // only, and the legacy upgrade synthesises exactly one stock row per item,
-  // in item order. (Those synthesised rows get fresh `crypto.randomUUID()`
-  // ids on a resume. That is harmless — a batch with a new id is one that was
-  // never sent, since every sent batch is skipped by key.)
+  // The session records the payload AS GIVEN. A resumed import runs
+  // `placeDefaultLocation` again. The batch keys are
+  // `${mode}:${entityType}:${i}`, so what has to match the first attempt is
+  // the row COUNT and ORDER per entity, and both are fixed: the placement
+  // rewrites ids only, and the legacy upgrade makes exactly one stock row per
+  // item, in item order. (Those rows get fresh `crypto.randomUUID()` ids on a
+  // resume. That is harmless: a batch with a new id is one that was never
+  // sent, since every sent batch is skipped by key.)
   const session: ImportSession = options?.session ?? {
     payload: rawPayload,
     strategy,
     completedBatchKeys: new Set(),
+    ...(options?.target !== undefined ? { target: options.target } : {}),
   }
 
   try {
+    // ── 1. Place the default location, as far as it is known now ──
+    //
+    // On `clear` the new "Home" does not exist until the clear has run, and a
+    // "New location" is created only after the check has passed (so a
+    // refused import creates nothing). In both cases the rows stay at the
+    // placeholder `'local'` for the check, and are moved after.
+    const needsTarget = strategy !== 'clear' && needsImportLocation(rawPayload)
+    const target = session.target
+    if (needsTarget && target === undefined) {
+      throw new Error(
+        'importCloudData: this file needs a target location (ImportLocationDialog)',
+      )
+    }
+    const knownTarget =
+      needsTarget && target !== undefined && 'locationId' in target
+        ? target.locationId
+        : undefined
+    const placed = placeDefaultLocation(
+      rawPayload,
+      knownTarget ?? DEFAULT_LOCATION_ID,
+    )
+
+    // ── 2. Check every id BEFORE the first write (decision T1) ──
+    //
+    // This must stay before `clearAllData` and before every bulk mutation.
+    // It is what makes "Nothing was imported" true: the bulk mutations
+    // check one batch at a time, so a refusal there comes after the earlier
+    // batches were written.
+    let check: ImportIdCheck
+    try {
+      check = await checkImportIds(client, placed, {
+        forClear: strategy === 'clear',
+        ...(knownTarget === undefined
+          ? { omitLocationIds: new Set([DEFAULT_LOCATION_ID]) }
+          : {}),
+      })
+    } catch (err) {
+      // A FORBIDDEN from `importCheck` is the household role check: it runs
+      // before any read (decision T17).
+      if (isForbiddenImportError(err)) throw new ImportRefusedError('role')
+      throw err
+    }
+    if (check.anotherHousehold) throw new ImportRefusedError('anotherHousehold')
+
     if (strategy === 'clear') {
-      // The FIRST total is the raw payload's, because the destination's
-      // default location cannot be read until the clear has run. The remap
-      // changes no array's length, but `upgradeLegacyPayloadForCloud` does: a
-      // pre-v15 file has no `itemStocks` key and gains one row per item. So
-      // the total is recomputed from the prepared payload below, and this one
-      // only opens the progress bar.
+      // The FIRST total is the placed payload's; the rows dropped below can
+      // only make it smaller. It only opens the progress bar, and the real
+      // total is computed again from what is sent.
       onProgress({
         completedBatches: 0,
-        totalBatches: computeTotalBatches(rawPayload),
+        totalBatches: computeTotalBatches(placed),
         currentEntity: '',
       })
+      // A retry of a failed `clear` passes the same session. Its batch keys
+      // name batches the first attempt sent, but the clear below deletes
+      // those rows again. So every batch must be sent again: forget the keys
+      // (E.4 review finding 1; the bug is older than H4).
+      session.completedBatchKeys.clear()
       await client.mutate({ mutation: ClearAllDataDocument })
-      // AFTER the clear, never before. `clearAllData` deletes every Location
-      // row and creates a new "Home" with a NEW id in the same transaction, so
-      // an id read first names a row that is gone by the time the remap uses
-      // it. After the clear, "Home" is the only location, so it is the first
-      // one `fetchCloudDefaultLocationId` reads. PR 4a shipped the read-first
-      // bug and it cost a full E2E gate run to find.
-      const payload = await prepareCloudPayload(rawPayload, client)
+      // AFTER the clear, never before: see `fetchHomeAfterClear`.
+      const home = await fetchHomeAfterClear(client)
+      const { payload, skipped } = withoutRefusedRows(
+        placeDefaultLocation(placed, home),
+        check,
+      )
       await bulkCreate({
         client,
         data: payload,
@@ -2665,14 +3456,33 @@ export async function importCloudData(
         startCompleted: 0,
         totalBatches: computeTotalBatches(payload),
       })
+      await deleteHomeIfUnused(client, payload, home)
       await resetStoreAfterImport(client)
-      return
+      return { skipped }
     }
 
-    // `skip` and `replace` delete nothing, so the destination's locations are
-    // the same before and after. Remapping first is required all the same:
-    // conflict detection, partitioning and batching all read the payload.
-    const payload = await prepareCloudPayload(rawPayload, client)
+    // ── 3. A "New location": create it now that the check has passed ──
+    let finalTarget = knownTarget
+    if (needsTarget && target !== undefined && 'newLocationName' in target) {
+      finalTarget = await createImportLocation(client, target.newLocationName)
+      session.target = { locationId: finalTarget }
+    }
+    const placedFinal =
+      finalTarget === undefined || finalTarget === knownTarget
+        ? placed
+        : placeDefaultLocation(placed, finalTarget)
+
+    // ── 4. Leave out the rows the check refused (step 2.3) ──
+    const { payload, skipped } = withoutRefusedRows(placedFinal, check)
+
+    // Run after the last write of `skip` or `replace`. A file that asked
+    // "Import into which location?" never switches: the user chose there.
+    const showAfter = () =>
+      needsTarget
+        ? Promise.resolve(undefined)
+        : locationToShowAfterImport(client, payload, options?.activeLocationId)
+
+    // `skip` and `replace` delete nothing.
     const existing = await fetchCloudExistingData(client)
     const conflicts = detectConflicts(payload, existing)
 
@@ -2761,8 +3571,9 @@ export async function importCloudData(
         })
       }
 
+      const switchTo = await showAfter()
       await resetStoreAfterImport(client)
-      return
+      return withSwitch(skipped, switchTo)
     }
 
     // strategy === 'replace'
@@ -2790,7 +3601,9 @@ export async function importCloudData(
       startCompleted: afterCreate,
       totalBatches,
     })
+    const switchTo = await showAfter()
     await resetStoreAfterImport(client)
+    return withSwitch(skipped, switchTo)
   } catch (err) {
     const error = err instanceof Error ? err : new Error(String(err))
     ;(error as Error & { session: ImportSession }).session = session

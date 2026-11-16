@@ -18,6 +18,13 @@ interface ConflictDialogProps {
   onReplace: () => void
   onClear: () => void
   onClose: () => void
+  /**
+   * Show "Clear & import". `false` for a household `manager`: `clear` is for
+   * the owner only (households design, *Import: owner and manager only*,
+   * Decision 27; H4 decision O7). Defaults to `true` (local mode, and the
+   * owner).
+   */
+  allowClear?: boolean
 }
 
 type EntityKey = keyof ConflictSummary
@@ -62,6 +69,7 @@ export function ConflictDialog({
   onReplace,
   onClear,
   onClose,
+  allowClear = true,
 }: ConflictDialogProps) {
   const { t } = useTranslation()
 
@@ -107,9 +115,11 @@ export function ConflictDialog({
           <Button onClick={onReplace}>
             {t('settings.import.conflictDialog.replace')}
           </Button>
-          <Button variant="destructive" onClick={onClear}>
-            {t('settings.import.conflictDialog.clear')}
-          </Button>
+          {allowClear && (
+            <Button variant="destructive" onClick={onClear}>
+              {t('settings.import.conflictDialog.clear')}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

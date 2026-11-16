@@ -324,8 +324,18 @@ function change(kind: ChangeEvent['kind'], locationId: string | null, householdI
 
 const server = new ApolloServer<Context>({ typeDefs, resolvers })
 
-async function run(query: string, variables: Record<string, unknown>, userId: string) {
-  const contextValue: Context = { userId, clientId: TAB }
+/**
+ * `householdId`, when given, pins the caller's household through
+ * `ctx.requestCache` (H4 plan rule 16). An import writes into that household.
+ * Without the pin, `ensureHousehold` picks one of ALICE's two households in
+ * no fixed order.
+ */
+async function run(query: string, variables: Record<string, unknown>, userId: string, householdId?: string) {
+  const contextValue: Context = {
+    userId,
+    clientId: TAB,
+    ...(householdId === undefined ? {} : { requestCache: { householdId: Promise.resolve(householdId) } }),
+  }
   const res = await server.executeOperation({ query, variables }, { contextValue })
   if (res.body.kind !== 'single') throw new Error('expected a single result')
   return res.body.singleResult
@@ -592,22 +602,28 @@ describe('applyUnitSwitch', () => {
 // ─── the four imports ────────────────────────────────────────────────────────
 
 describe('the stock and log imports publish one event per location written', () => {
-  it('bulkCreateItemStocks over two locations, one in another household', async () => {
+  // Every import here is pinned to hh_home. Until households H4 task E.3 the
+  // "over two locations" tests wrote a row at LOC_SECOND, of ALICE's OTHER
+  // household, with an item of hh_home: the cross-household write issue #381
+  // (gap 1) is about. That is now refused; see the two "other household"
+  // tests below.
+  it('bulkCreateItemStocks over two locations', async () => {
     const res = await run(
       BULK_CREATE_STOCKS,
       {
         rows: [
           stockImport('st_new_1', 'item_bread', LOC_HOME),
-          stockImport('st_new_2', 'item_bread', LOC_SECOND),
+          stockImport('st_new_2', 'item_bread', LOC_GARAGE),
           // The pair is already stocked: skipped, so it adds no location.
           stockImport('st_new_3', 'item_milk', LOC_GARAGE),
         ],
       },
       ALICE,
+      'hh_home',
     )
 
     expect(res.errors).toBeUndefined()
-    expect(sortedEvents()).toEqual([change('STOCK', LOC_HOME, 'hh_home'), change('STOCK', LOC_SECOND, 'hh_second')])
+    expect(sortedEvents()).toEqual([change('STOCK', LOC_GARAGE, 'hh_home'), change('STOCK', LOC_HOME, 'hh_home')])
   })
 
   it('bulkUpsertItemStocks over two locations, one event per location', async () => {
@@ -617,22 +633,44 @@ describe('the stock and log imports publish one event per location written', () 
         rows: [
           stockImport('st_milk_home', 'item_milk', LOC_HOME, 7),
           stockImport('st_bread_home', 'item_bread', LOC_HOME),
-          stockImport('st_bread_second', 'item_bread', LOC_SECOND),
+          stockImport('st_bread_garage', 'item_bread', LOC_GARAGE),
         ],
       },
       ALICE,
+      'hh_home',
     )
 
     expect(res.errors).toBeUndefined()
-    expect(sortedEvents()).toEqual([change('STOCK', LOC_HOME, 'hh_home'), change('STOCK', LOC_SECOND, 'hh_second')])
+    expect(sortedEvents()).toEqual([change('STOCK', LOC_GARAGE, 'hh_home'), change('STOCK', LOC_HOME, 'hh_home')])
   })
 
   it('a stock import refused before its first write publishes nothing', async () => {
-    const res = await run(BULK_UPSERT_STOCKS, { rows: [stockImport('st_x', 'item_milk', LOC_STRANGER)] }, ALICE)
+    const res = await run(BULK_UPSERT_STOCKS, { rows: [stockImport('st_x', 'item_milk', LOC_STRANGER)] }, ALICE, 'hh_home')
 
     expect(code(res)).toBe('FORBIDDEN')
     expect(events()).toEqual([])
   })
+
+  for (const [label, query] of [
+    ['bulkCreateItemStocks', BULK_CREATE_STOCKS],
+    ['bulkUpsertItemStocks', BULK_UPSERT_STOCKS],
+  ] as const) {
+    it(`${label}: a row at a location of the caller's other household is refused and publishes nothing`, async () => {
+      // ALICE organizes LOC_SECOND (hh_second). The import is aimed at
+      // hh_home, and its first row is a good one.
+      const res = await run(
+        query,
+        { rows: [stockImport('st_ok', 'item_bread', LOC_HOME), stockImport('st_x', 'item_bread', LOC_SECOND)] },
+        ALICE,
+        'hh_home',
+      )
+
+      expect(code(res)).toBe('FORBIDDEN')
+      expect(world.stock.state.itemStocks.map((r) => r.id)).not.toContain('st_ok')
+      expect(world.stock.state.itemStocks.map((r) => r.id)).not.toContain('st_x')
+      expect(events()).toEqual([])
+    })
+  }
 
   it('bulkCreateInventoryLogs over two locations', async () => {
     const res = await run(
@@ -641,28 +679,49 @@ describe('the stock and log imports publish one event per location written', () 
         rows: [
           logImport('log_new_1', 'item_milk', LOC_HOME),
           logImport('log_new_2', 'item_bread', LOC_HOME),
-          logImport('log_new_3', 'item_milk', LOC_SECOND),
+          logImport('log_new_3', 'item_milk', LOC_GARAGE),
           // Already there: skipped.
           logImport('log_milk_garage', 'item_milk', LOC_GARAGE),
         ],
       },
       ALICE,
+      'hh_home',
     )
 
     expect(res.errors).toBeUndefined()
-    expect(sortedEvents()).toEqual([change('LOG', LOC_HOME, 'hh_home'), change('LOG', LOC_SECOND, 'hh_second')])
+    expect(sortedEvents()).toEqual([change('LOG', LOC_GARAGE, 'hh_home'), change('LOG', LOC_HOME, 'hh_home')])
   })
 
   it('bulkUpsertInventoryLogs over two locations', async () => {
     const res = await run(
       BULK_UPSERT_LOGS,
-      { rows: [logImport('log_milk_garage', 'item_milk', LOC_GARAGE), logImport('log_new_4', 'item_milk', LOC_SECOND)] },
+      { rows: [logImport('log_milk_garage', 'item_milk', LOC_GARAGE), logImport('log_new_4', 'item_milk', LOC_HOME)] },
       ALICE,
+      'hh_home',
     )
 
     expect(res.errors).toBeUndefined()
-    expect(sortedEvents()).toEqual([change('LOG', LOC_GARAGE, 'hh_home'), change('LOG', LOC_SECOND, 'hh_second')])
+    expect(sortedEvents()).toEqual([change('LOG', LOC_GARAGE, 'hh_home'), change('LOG', LOC_HOME, 'hh_home')])
   })
+
+  for (const [label, query] of [
+    ['bulkCreateInventoryLogs', BULK_CREATE_LOGS],
+    ['bulkUpsertInventoryLogs', BULK_UPSERT_LOGS],
+  ] as const) {
+    it(`${label}: a row at a location of the caller's other household is refused and publishes nothing`, async () => {
+      const res = await run(
+        query,
+        { rows: [logImport('log_ok', 'item_milk', LOC_HOME), logImport('log_x', 'item_milk', LOC_SECOND)] },
+        ALICE,
+        'hh_home',
+      )
+
+      expect(code(res)).toBe('FORBIDDEN')
+      expect(logs.state.logs.map((l) => l.id)).not.toContain('log_ok')
+      expect(logs.state.logs.map((l) => l.id)).not.toContain('log_x')
+      expect(events()).toEqual([])
+    })
+  }
 
   it('a log import whose every row is skipped publishes nothing', async () => {
     // Another household's item: the row is skipped, nothing is written.

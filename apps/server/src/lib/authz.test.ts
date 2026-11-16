@@ -20,12 +20,14 @@ interface ScopedRow {
 //   counter. `tag` and `item` are catalog models, scoped by `householdId`
 //   since households H3a task 3.7. `cart` is scoped by `locationId` since
 //   households H3b task B.3, which dropped `Cart.userId`, and `cartItem`
-//   through its cart's location since task B.7.
+//   through its cart's location since task B.7. `inventoryLog` is scoped by
+//   `locationId` since households H4 task E.1.
 const { state, client } = vi.hoisted(() => {
   const state = {
     tags: [] as ScopedRow[],
     items: [] as ScopedRow[],
     carts: [] as ScopedRow[],
+    inventoryLogs: [] as ScopedRow[],
     cartItems: [] as { id: string; cartId: string; userId: string }[],
     // Counts every read the stores serve, so "refused before any lookup" can
     // be asserted as a fact rather than inferred from the error message.
@@ -36,7 +38,7 @@ const { state, client } = vi.hoisted(() => {
     id?: string | { in: string[] }
     householdId?: string
     userId?: string
-    locationId?: { in: string[] }
+    locationId?: string | { in: string[] }
   }
 
   // Filters only on keys actually present in `where`, exactly as real Prisma
@@ -59,7 +61,10 @@ const { state, client } = vi.hoisted(() => {
       (where.householdId === undefined || row.householdId === where.householdId) &&
       (where.userId === undefined || row.userId === where.userId) &&
       (where.locationId === undefined ||
-        (row.locationId !== undefined && where.locationId.in.includes(row.locationId)))
+        (row.locationId !== undefined &&
+          (typeof where.locationId === 'string'
+            ? row.locationId === where.locationId
+            : where.locationId.in.includes(row.locationId))))
     )
   }
 
@@ -135,6 +140,10 @@ const { state, client } = vi.hoisted(() => {
     tag: store(() => state.tags, 'householdId'),
     item: store(() => state.items, 'householdId'),
     cart: store(() => state.carts, 'locationId'),
+    // `InventoryLog` is scoped by its location since households H4 task E.1.
+    // Its `userId` means "written by" and is never a scope, so this store
+    // refuses a `userId` filter.
+    inventoryLog: store(() => state.inventoryLogs, 'locationId'),
     cartItem,
   }
   return { state, client }
@@ -151,7 +160,6 @@ import type { HouseholdWorld } from '../test/householdWorld.js'
 import type { HouseholdRole, LocationRole } from './authz.js'
 
 const {
-  fallbackImportLocation,
   householdOfLocation,
   locationIdsWithRole,
   requireCatalogIds,
@@ -160,6 +168,7 @@ const {
   requireHouseholdRole,
   requireLocationItems,
   requireLocationRole,
+  requireLocationInHousehold,
   requireOwnRowOrUnclaimed,
 } = await import('./authz.js')
 
@@ -492,77 +501,6 @@ describe('locationIdsWithRole', () => {
   })
 })
 
-describe('fallbackImportLocation', () => {
-  it('picks the first location by order on which the caller may write', async () => {
-    // Given loc-2 comes first by order, but the caller has no role on it, and
-    // the caller is a participant on loc-1
-    seed({ callerLocationRole: 'participant' })
-
-    // Then loc-1 is picked
-    await expect(fallbackImportLocation(caller)).resolves.toBe('loc-1')
-  })
-
-  it('picks the lower order when the caller may write to both', async () => {
-    // Given the caller is also an organizer on loc-2, which comes first
-    seed({ callerLocationRole: 'participant' })
-    await world.households.client.locationMember.create({
-      data: { locationId: 'loc-2', userId: 'caller', role: 'organizer' },
-    })
-
-    await expect(fallbackImportLocation(caller)).resolves.toBe('loc-2')
-  })
-
-  it('skips a location where the caller is only a viewer', async () => {
-    // Given the caller views loc-1 and has no other role
-    seed({ callerLocationRole: 'viewer' })
-
-    // Then there is nowhere to import into
-    const error = await fallbackImportLocation(caller).catch((e: GraphQLError) => e)
-    expect((error as GraphQLError).extensions.code).toBe('NO_LOCATION')
-  })
-
-  it('skips a location whose household the caller has left', async () => {
-    // Given the caller left hh-1 but kept the organizer row on loc-1, and
-    // has a new household of their own with no location
-    seed({ callerHouseholdRole: null, callerLocationRole: 'organizer' })
-    await world.households.client.household.create({
-      data: { id: 'hh-new', name: 'New', ownerId: 'caller' },
-    })
-    await world.households.client.householdMember.create({
-      data: { householdId: 'hh-new', userId: 'caller', role: 'owner' },
-    })
-
-    const error = await fallbackImportLocation(caller).catch((e: GraphQLError) => e)
-    expect((error as GraphQLError).extensions.code).toBe('NO_LOCATION')
-  })
-
-  it('user importing for the first time gets Home and the import goes there', async () => {
-    // Given a new person with no household
-    world.reset()
-    world.users.reset([
-      {
-        id: 'new-user',
-        displayName: 'Ann',
-        email: null,
-        lastSeenAt: null,
-        deletedAt: null,
-        householdSetupAt: null,
-        createdAt: T,
-        updatedAt: T,
-      },
-    ])
-
-    // When an import needs a fallback location
-    const locationId = await fallbackImportLocation({ userId: 'new-user' })
-
-    // Then it is the new "Home"
-    expect(world.stock.state.locations).toEqual([
-      expect.objectContaining({ id: locationId, name: 'Home' }),
-    ])
-  })
-})
-
-
 // The catalog rows the next three blocks share. Three people (plan H3a rule
 // 10): `caller` and `other` share hh-1, `stranger` is in hh-2. `tag-others`
 // was made by `other`, so its `userId` is NOT the caller's: a check by
@@ -582,18 +520,22 @@ function seedCatalog() {
   // loc-1, where the caller has a role (`other` organizes it too); `cart-loc2`
   // is in the caller's OWN household but at loc-2, where the caller has no
   // role; `cart-theirs` is at another household's location.
+  //
+  // Every cart id starts with its location id and a colon (`cartIdFor`), since
+  // households H4 task E.1 checks that prefix first (issue #361).
   state.carts = [
-    { id: 'cart-here', locationId: 'loc-1' },
-    { id: 'cart-loc2', locationId: 'loc-2' },
-    { id: 'cart-theirs', locationId: 'loc-s' },
+    { id: 'loc-1:v', locationId: 'loc-1' },
+    { id: 'loc-2:v', locationId: 'loc-2' },
+    { id: 'loc-s:v', locationId: 'loc-s' },
   ]
   // One row per cart. `ci-here-other` is in the cart at loc-1 and was added
   // by `other`, so a guard that scoped by `CartItem.userId` would refuse it.
   state.cartItems = [
-    { id: 'ci-here-other', cartId: 'cart-here', userId: 'other' },
-    { id: 'ci-loc2', cartId: 'cart-loc2', userId: 'other' },
-    { id: 'ci-theirs', cartId: 'cart-theirs', userId: 'stranger' },
+    { id: 'ci-here-other', cartId: 'loc-1:v', userId: 'other' },
+    { id: 'ci-loc2', cartId: 'loc-2:v', userId: 'other' },
+    { id: 'ci-theirs', cartId: 'loc-s:v', userId: 'stranger' },
   ]
+  state.inventoryLogs = []
   state.lookups = 0
 }
 
@@ -605,7 +547,7 @@ describe('requireOwnRowOrUnclaimed', () => {
 
   it('user can import under an id their own row already holds', async () => {
     // When the guard is asked about the caller's own tag
-    const verdict = await requireOwnRowOrUnclaimed(caller, 'tag', 'tag-mine')
+    const verdict = await requireOwnRowOrUnclaimed(caller, 'tag', 'tag-mine', 'hh-1')
 
     // Then the call site is told the row is the caller's, so it may replace it
     expect(verdict).toBe('own')
@@ -614,7 +556,7 @@ describe('requireOwnRowOrUnclaimed', () => {
   it("user can write a catalog row another member of their household made", async () => {
     // Given a tag `other` made in hh-1, the caller's household
     // When the guard is asked about it
-    const verdict = await requireOwnRowOrUnclaimed(caller, 'tag', 'tag-others')
+    const verdict = await requireOwnRowOrUnclaimed(caller, 'tag', 'tag-others', 'hh-1')
 
     // Then it is the household's, so it is "own" (households H3a task 3.7).
     // A body that still scoped by `userId` throws FORBIDDEN here.
@@ -623,7 +565,7 @@ describe('requireOwnRowOrUnclaimed', () => {
 
   it('user can import under an id no row holds', async () => {
     // Given an id held by no row in any household
-    const verdict = await requireOwnRowOrUnclaimed(caller, 'tag', 'tag-free')
+    const verdict = await requireOwnRowOrUnclaimed(caller, 'tag', 'tag-free', 'hh-1')
 
     // Then the call site is told it is free, so it may create it
     expect(verdict).toBe('unclaimed')
@@ -633,7 +575,7 @@ describe('requireOwnRowOrUnclaimed', () => {
     // Given a tag of hh-2
     // When the guard is asked about it
     // Then it throws, so no call site can carry on and overwrite that row
-    await expect(requireOwnRowOrUnclaimed(caller, 'tag', 'tag-theirs')).rejects.toThrow(/Forbidden/)
+    await expect(requireOwnRowOrUnclaimed(caller, 'tag', 'tag-theirs', 'hh-1')).rejects.toThrow(/Forbidden/)
   })
 
   it('a cart is checked by its location: participant or higher there makes it own (H3b task B.7)', async () => {
@@ -642,15 +584,15 @@ describe('requireOwnRowOrUnclaimed', () => {
     // When the guard is asked about each
     // Then only the cart at loc-1 is "own". The cart at loc-2 is refused,
     // which a check by household would let through
-    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'cart-here')).resolves.toBe('own')
-    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'cart-loc2')).rejects.toThrow(
+    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'loc-1:v', 'hh-1')).resolves.toBe('own')
+    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'loc-2:v', 'hh-1')).rejects.toThrow(
       /Forbidden/,
     )
-    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'cart-theirs')).rejects.toThrow(
+    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'loc-s:v', 'hh-1')).rejects.toThrow(
       /Forbidden/,
     )
     // And an id no cart holds is still unclaimed
-    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'cart-free')).resolves.toBe('unclaimed')
+    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'loc-1:free', 'hh-1')).resolves.toBe('unclaimed')
   })
 
   it('a cart is refused once the caller has no role left on its location', async () => {
@@ -661,7 +603,7 @@ describe('requireOwnRowOrUnclaimed', () => {
 
     // When the guard is asked about the cart at loc-1
     // Then it is refused: the role is what counts, not the household
-    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'cart-here')).rejects.toThrow(
+    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'loc-1:v', 'hh-1')).rejects.toThrow(
       /Forbidden/,
     )
   })
@@ -671,18 +613,18 @@ describe('requireOwnRowOrUnclaimed', () => {
     // but an import WRITES the row it names (decision D7).
     seed({ callerHouseholdRole: 'member', callerLocationRole: 'viewer' })
     seedCatalog()
-    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'cart-here')).rejects.toThrow(
+    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'loc-1:v', 'hh-1')).rejects.toThrow(
       /Forbidden/,
     )
-    await expect(requireOwnRowOrUnclaimed(caller, 'cartItem', 'ci-here-other')).rejects.toThrow(
+    await expect(requireOwnRowOrUnclaimed(caller, 'cartItem', 'ci-here-other', 'hh-1')).rejects.toThrow(
       /Forbidden/,
     )
 
     // And as a participant, the lowest role that writes, both are "own"
     seed({ callerHouseholdRole: 'member', callerLocationRole: 'participant' })
     seedCatalog()
-    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'cart-here')).resolves.toBe('own')
-    await expect(requireOwnRowOrUnclaimed(caller, 'cartItem', 'ci-here-other')).resolves.toBe('own')
+    await expect(requireOwnRowOrUnclaimed(caller, 'cart', 'loc-1:v', 'hh-1')).resolves.toBe('own')
+    await expect(requireOwnRowOrUnclaimed(caller, 'cartItem', 'ci-here-other', 'hh-1')).resolves.toBe('own')
   })
 
   it("a cart item is checked by its cart's location, not by who added it (H3b task B.7)", async () => {
@@ -692,15 +634,15 @@ describe('requireOwnRowOrUnclaimed', () => {
     // When the guard is asked about each
     // Then the row at loc-1 is "own" although `other` added it, and the two
     // others are refused
-    await expect(requireOwnRowOrUnclaimed(caller, 'cartItem', 'ci-here-other')).resolves.toBe('own')
-    await expect(requireOwnRowOrUnclaimed(caller, 'cartItem', 'ci-loc2')).rejects.toThrow(
+    await expect(requireOwnRowOrUnclaimed(caller, 'cartItem', 'ci-here-other', 'hh-1')).resolves.toBe('own')
+    await expect(requireOwnRowOrUnclaimed(caller, 'cartItem', 'ci-loc2', 'hh-1')).rejects.toThrow(
       /Forbidden/,
     )
-    await expect(requireOwnRowOrUnclaimed(caller, 'cartItem', 'ci-theirs')).rejects.toThrow(
+    await expect(requireOwnRowOrUnclaimed(caller, 'cartItem', 'ci-theirs', 'hh-1')).rejects.toThrow(
       /Forbidden/,
     )
     // And an id no cart item holds is unclaimed
-    await expect(requireOwnRowOrUnclaimed(caller, 'cartItem', 'ci-free')).resolves.toBe('unclaimed')
+    await expect(requireOwnRowOrUnclaimed(caller, 'cartItem', 'ci-free', 'hh-1')).resolves.toBe('unclaimed')
   })
 
   it("user sees the same refusal for another household's row as for a missing location", async () => {
@@ -714,7 +656,7 @@ describe('requireOwnRowOrUnclaimed', () => {
     // helper has no missing-id refusal of its own to compare against. The
     // nearest one is `requireLocationRole`'s, which does refuse a missing id.
     const refusals: GraphQLError[] = []
-    await requireOwnRowOrUnclaimed(caller, 'tag', 'tag-theirs').catch((e) => refusals.push(e))
+    await requireOwnRowOrUnclaimed(caller, 'tag', 'tag-theirs', 'hh-1').catch((e) => refusals.push(e))
     await requireLocationRole(caller, 'loc-missing', 'viewer').catch((e) => refusals.push(e))
 
     expect(refusals).toHaveLength(2)
@@ -728,7 +670,7 @@ describe('requireOwnRowOrUnclaimed', () => {
     // Given no authenticated user
     // When the guard is called
     // Then it refuses as Unauthorized
-    await expect(requireOwnRowOrUnclaimed({ userId: null }, 'tag', 'tag-mine')).rejects.toThrow(
+    await expect(requireOwnRowOrUnclaimed({ userId: null }, 'tag', 'tag-mine', 'hh-1')).rejects.toThrow(
       /Unauthorized/,
     )
 
@@ -740,11 +682,292 @@ describe('requireOwnRowOrUnclaimed', () => {
   it('user importing an item is checked against the item model, not tag', async () => {
     // Given an id held only in the tag store, by the caller's own tag
     // When the guard is asked about that id for the ITEM model
-    const verdict = await requireOwnRowOrUnclaimed(caller, 'item', 'tag-mine')
+    const verdict = await requireOwnRowOrUnclaimed(caller, 'item', 'tag-mine', 'hh-1')
 
     // Then no item holds it, so it is unclaimed. A delegate lookup that
     // ignored the model and always returned prisma.tag would answer 'own'.
     expect(verdict).toBe('unclaimed')
+  })
+})
+
+// ── One person in two households (plan H4 rule 16) ──
+//
+// | Person   | Household role       | Location roles                                  |
+// |----------|----------------------|-------------------------------------------------|
+// | caller   | hh-a owner, hh-b manager | loc-a organizer, loc-a-view viewer, loc-b organizer |
+// | other    | hh-a member          | loc-a participant                               |
+// | stranger | hh-c owner           | loc-c organizer                                 |
+//
+// The caller is a member of TWO households, so "the caller's household" has
+// two answers. Each test pins the caller's household to hh-b through
+// `requestCache`, and asks about target hh-a. So a body that reads
+// `requireHousehold(ctx)` instead of the target gets hh-b, and a body that
+// asks for every location the caller has a role on gets loc-b too. Both give
+// a different answer from the correct one.
+function seedTwoHouseholds() {
+  world.reset()
+  world.stock.reset(
+    [
+      { id: 'loc-a', householdId: 'hh-a', name: 'Kitchen', order: 0 },
+      { id: 'loc-a-view', householdId: 'hh-a', name: 'Garage', order: 1 },
+      { id: 'loc-b', householdId: 'hh-b', name: 'Office', order: 0 },
+      { id: 'loc-c', householdId: 'hh-c', name: 'Theirs', order: 0 },
+    ],
+    [],
+  )
+  const household = (id: string, ownerId: string) => ({
+    id,
+    name: `${id} name`,
+    ownerId,
+    ownerGoneAt: null,
+    createdAt: T,
+    updatedAt: T,
+  })
+  world.seedHouseholds({
+    households: [
+      household('hh-a', 'caller'),
+      household('hh-b', 'other-b'),
+      household('hh-c', 'stranger'),
+    ],
+    householdMembers: [
+      { householdId: 'hh-a', userId: 'caller', role: 'owner' as const, joinedAt: T },
+      { householdId: 'hh-b', userId: 'caller', role: 'manager' as const, joinedAt: T },
+      { householdId: 'hh-a', userId: 'other', role: 'member' as const, joinedAt: T },
+      { householdId: 'hh-c', userId: 'stranger', role: 'owner' as const, joinedAt: T },
+    ],
+    locationMembers: [
+      { locationId: 'loc-a', userId: 'caller', role: 'organizer' as const, createdAt: T },
+      { locationId: 'loc-a-view', userId: 'caller', role: 'viewer' as const, createdAt: T },
+      { locationId: 'loc-b', userId: 'caller', role: 'organizer' as const, createdAt: T },
+      { locationId: 'loc-a', userId: 'other', role: 'participant' as const, createdAt: T },
+      { locationId: 'loc-c', userId: 'stranger', role: 'organizer' as const, createdAt: T },
+    ],
+  })
+  state.tags = [
+    { id: 'tag-a', householdId: 'hh-a' },
+    { id: 'tag-b', householdId: 'hh-b' },
+    { id: 'tag-c', householdId: 'hh-c' },
+  ]
+  state.items = []
+  // `userId` on a log is its AUTHOR, never a scope.
+  state.inventoryLogs = [
+    { id: 'log-a', locationId: 'loc-a', userId: 'caller' },
+    { id: 'log-a-other', locationId: 'loc-a', userId: 'other' },
+    { id: 'log-a-view', locationId: 'loc-a-view', userId: 'caller' },
+    { id: 'log-b', locationId: 'loc-b', userId: 'caller' },
+    { id: 'log-c', locationId: 'loc-c', userId: 'stranger' },
+  ]
+  // `loc-a:moved` is a cart stored at loc-b although its id names loc-a. The
+  // old import fallback could make such a row (plan H4, *Facts*). The caller
+  // organizes both locations, so only the prefix rule refuses it.
+  state.carts = [
+    { id: 'loc-a:no-vendor', locationId: 'loc-a' },
+    { id: 'loc-a:moved', locationId: 'loc-b' },
+    { id: 'loc-b:no-vendor', locationId: 'loc-b' },
+    { id: 'loc-c:no-vendor', locationId: 'loc-c' },
+  ]
+  state.cartItems = [
+    { id: 'ci-a', cartId: 'loc-a:no-vendor', userId: 'other' },
+    { id: 'ci-b', cartId: 'loc-b:no-vendor', userId: 'caller' },
+  ]
+  state.lookups = 0
+}
+
+/** The caller, with "the caller's household" pinned to `householdId`. */
+function callerIn(householdId: string): Context {
+  return { userId: 'caller', requestCache: { householdId: Promise.resolve(householdId) } }
+}
+
+async function codeOf(promise: Promise<unknown>): Promise<unknown> {
+  const error = await promise.then(
+    () => null,
+    (e: GraphQLError) => e,
+  )
+  return error ? (error as GraphQLError).extensions.code : 'resolved'
+}
+
+describe('locationIdsWithRole with a household (H4 task E.1)', () => {
+  beforeEach(() => seedTwoHouseholds())
+
+  it("keeps only the locations of that household", async () => {
+    // Given the caller has roles at loc-a and loc-a-view (hh-a) and loc-b (hh-b)
+    // Then asking for hh-a leaves loc-b out
+    const ids = await locationIdsWithRole(callerIn('hh-b'), 'viewer', { householdId: 'hh-a' })
+    expect([...ids].sort()).toEqual(['loc-a', 'loc-a-view'])
+
+    // And the role filter still applies: a viewer location is left out for
+    // participant
+    await expect(
+      locationIdsWithRole(callerIn('hh-b'), 'participant', { householdId: 'hh-a' }),
+    ).resolves.toEqual(['loc-a'])
+  })
+
+  it('still drops a role in a household the caller is not a member of (decision H18)', async () => {
+    // Given the caller has an organizer row on loc-c, in hh-c, but is not a
+    // member of hh-c. Asking for hh-c must not bring it back: the household
+    // filter goes next to the H18 filter, it does not replace it.
+    await world.households.client.locationMember.create({
+      data: { locationId: 'loc-c', userId: 'caller', role: 'organizer' },
+    })
+
+    await expect(
+      locationIdsWithRole(callerIn('hh-b'), 'viewer', { householdId: 'hh-c' }),
+    ).resolves.toEqual([])
+  })
+
+  it('with no household, keeps every household (unchanged)', async () => {
+    const ids = await locationIdsWithRole(callerIn('hh-b'))
+    expect([...ids].sort()).toEqual(['loc-a', 'loc-a-view', 'loc-b'])
+  })
+})
+
+describe('requireLocationInHousehold (H4 task E.1)', () => {
+  beforeEach(() => seedTwoHouseholds())
+
+  it('passes a location of that household', async () => {
+    await expect(
+      requireLocationInHousehold(callerIn('hh-b'), 'loc-a', 'hh-a'),
+    ).resolves.toBeUndefined()
+  })
+
+  it("refuses a location of another household, even one the caller organizes", async () => {
+    // Given the caller organizes loc-b, in hh-b, and is a member of hh-a too
+    // Then loc-b is refused for hh-a
+    expect(await codeOf(requireLocationInHousehold(callerIn('hh-b'), 'loc-b', 'hh-a'))).toBe(
+      'FORBIDDEN',
+    )
+  })
+
+  it('refuses a missing location with the same error', async () => {
+    expect(await codeOf(requireLocationInHousehold(callerIn('hh-b'), 'loc-gone', 'hh-a'))).toBe(
+      'FORBIDDEN',
+    )
+  })
+
+  it('refuses a caller who is not signed in', async () => {
+    await expect(
+      requireLocationInHousehold({ userId: null }, 'loc-a', 'hh-a'),
+    ).rejects.toThrow(/Unauthorized/)
+  })
+})
+
+describe('requireOwnRowOrUnclaimed with a target household (H4 task E.1)', () => {
+  beforeEach(() => seedTwoHouseholds())
+
+  it("a catalog row of household B is refused when the target is A", async () => {
+    // Given the caller's household is pinned to hh-b, and the caller is a
+    // member of hh-a too
+    // Then a tag of hh-b is refused for target hh-a, and own for target hh-b
+    expect(await codeOf(requireOwnRowOrUnclaimed(callerIn('hh-b'), 'tag', 'tag-b', 'hh-a'))).toBe(
+      'FORBIDDEN',
+    )
+    await expect(requireOwnRowOrUnclaimed(callerIn('hh-b'), 'tag', 'tag-b', 'hh-b')).resolves.toBe(
+      'own',
+    )
+    // And a tag of hh-a is own for target hh-a, a stranger's tag is refused
+    await expect(requireOwnRowOrUnclaimed(callerIn('hh-b'), 'tag', 'tag-a', 'hh-a')).resolves.toBe(
+      'own',
+    )
+    expect(await codeOf(requireOwnRowOrUnclaimed(callerIn('hh-b'), 'tag', 'tag-c', 'hh-a'))).toBe(
+      'FORBIDDEN',
+    )
+  })
+
+  it('a log at a location where the caller is only viewer is refused', async () => {
+    expect(
+      await codeOf(requireOwnRowOrUnclaimed(callerIn('hh-b'), 'inventoryLog', 'log-a-view', 'hh-a')),
+    ).toBe('FORBIDDEN')
+  })
+
+  it("a log at household B's location is refused when the target is A, and own when it is B", async () => {
+    // Given the caller organizes loc-b, in hh-b
+    expect(
+      await codeOf(requireOwnRowOrUnclaimed(callerIn('hh-b'), 'inventoryLog', 'log-b', 'hh-a')),
+    ).toBe('FORBIDDEN')
+    await expect(
+      requireOwnRowOrUnclaimed(callerIn('hh-b'), 'inventoryLog', 'log-b', 'hh-b'),
+    ).resolves.toBe('own')
+  })
+
+  it('a log another member wrote at a writable location is own', async () => {
+    // Given `other` wrote log-a-other at loc-a, where the caller is organizer.
+    // A check by `userId` would refuse it.
+    await expect(
+      requireOwnRowOrUnclaimed(callerIn('hh-b'), 'inventoryLog', 'log-a-other', 'hh-a'),
+    ).resolves.toBe('own')
+    // And a stranger's log is refused, a free id is unclaimed
+    expect(
+      await codeOf(requireOwnRowOrUnclaimed(callerIn('hh-b'), 'inventoryLog', 'log-c', 'hh-a')),
+    ).toBe('FORBIDDEN')
+    await expect(
+      requireOwnRowOrUnclaimed(callerIn('hh-b'), 'inventoryLog', 'log-free', 'hh-a'),
+    ).resolves.toBe('unclaimed')
+  })
+
+  it('a cart id with no location prefix is refused as bad input, before any lookup', async () => {
+    expect(
+      await codeOf(requireOwnRowOrUnclaimed(callerIn('hh-b'), 'cart', 'no-vendor', 'hh-a')),
+    ).toBe('BAD_USER_INPUT')
+    expect(state.lookups).toBe(0)
+  })
+
+  it("a cart id with another household's location prefix is refused, and the cart table is not read", async () => {
+    // Given a cart id whose prefix is loc-c, in the stranger's household. One
+    // id is taken (`loc-c:no-vendor`), one is free.
+    const findUnique = vi.spyOn(prisma.cart, 'findUnique')
+    const findFirst = vi.spyOn(prisma.cart, 'findFirst')
+
+    // Then both get the same refusal, so the caller cannot tell a taken id
+    // from a free one
+    expect(
+      await codeOf(requireOwnRowOrUnclaimed(callerIn('hh-b'), 'cart', 'loc-c:no-vendor', 'hh-a')),
+    ).toBe('FORBIDDEN')
+    expect(
+      await codeOf(requireOwnRowOrUnclaimed(callerIn('hh-b'), 'cart', 'loc-c:free', 'hh-a')),
+    ).toBe('FORBIDDEN')
+    // And the cart table was not read at all
+    expect(findUnique).not.toHaveBeenCalled()
+    expect(findFirst).not.toHaveBeenCalled()
+  })
+
+  it("a cart id with household B's location prefix is refused when the target is A", async () => {
+    // The caller organizes loc-b, so only the target household refuses it
+    expect(
+      await codeOf(requireOwnRowOrUnclaimed(callerIn('hh-b'), 'cart', 'loc-b:no-vendor', 'hh-a')),
+    ).toBe('FORBIDDEN')
+    await expect(
+      requireOwnRowOrUnclaimed(callerIn('hh-b'), 'cart', 'loc-b:no-vendor', 'hh-b'),
+    ).resolves.toBe('own')
+  })
+
+  it('a cart at a writable location is own, and a free id there is unclaimed', async () => {
+    await expect(
+      requireOwnRowOrUnclaimed(callerIn('hh-b'), 'cart', 'loc-a:no-vendor', 'hh-a'),
+    ).resolves.toBe('own')
+    await expect(
+      requireOwnRowOrUnclaimed(callerIn('hh-b'), 'cart', 'loc-a:v9', 'hh-a'),
+    ).resolves.toBe('unclaimed')
+  })
+
+  it('a stored cart whose location is not the one its id names is refused', async () => {
+    // Given `loc-a:moved` is stored at loc-b. The caller organizes loc-b too,
+    // so a check by "any writable location" would pass it.
+    expect(
+      await codeOf(requireOwnRowOrUnclaimed(callerIn('hh-b'), 'cart', 'loc-a:moved', 'hh-a')),
+    ).toBe('FORBIDDEN')
+  })
+
+  it("a cart item in a cart at household B's location is refused when the target is A", async () => {
+    expect(
+      await codeOf(requireOwnRowOrUnclaimed(callerIn('hh-b'), 'cartItem', 'ci-b', 'hh-a')),
+    ).toBe('FORBIDDEN')
+    await expect(
+      requireOwnRowOrUnclaimed(callerIn('hh-b'), 'cartItem', 'ci-b', 'hh-b'),
+    ).resolves.toBe('own')
+    // And a row another member added at a writable location of A is own
+    await expect(
+      requireOwnRowOrUnclaimed(callerIn('hh-b'), 'cartItem', 'ci-a', 'hh-a'),
+    ).resolves.toBe('own')
   })
 })
 

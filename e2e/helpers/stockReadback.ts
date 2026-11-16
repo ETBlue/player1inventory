@@ -78,10 +78,13 @@ export type LocationRow = {
    * default location since households H3a task 3.12, and the server dropped
    * the `isDefault` column in task 3.14. The server returns the list by
    * `order`, then by `id`, and the web app treats the first one as the
-   * fallback everywhere (`fetchCloudDefaultLocationId` in
-   * apps/web/src/lib/importData.ts, and `useActiveLocation`). This helper
-   * follows the same rule, so an import assertion checks the location the
-   * web's remap really wrote to.
+   * fallback active location (`useActiveLocation`). It is also the location
+   * "Import into which location?" checks first when it opens (households H4
+   * decision O3). The cloud import has no remap of its own any more:
+   * `fetchCloudDefaultLocationId` was deleted in households H4 task E.4. Two
+   * locations can share `order` 0 (a household's fresh "Home" and a restored
+   * backup's first location), and then `id` decides; look such a location up
+   * by NAME.
    */
   isHome: boolean
 }

@@ -8,11 +8,15 @@ import type { Context } from '../context.js'
 
 // `householdMember` answers `requireHousehold` (lib/authz.ts): the caller is a
 // member of `hh_test`. The catalog mutations read and write by household
-// since households H3a task 3.7.
+// since households H3a task 3.7. `findUnique` answers the import role gate
+// (`requireCatalogRole(ctx, 'manager')`, households H4 task E.3): the caller
+// is the `owner`. The role gate itself is tested with real role rows in
+// `import-role-gate.resolver.test.ts`.
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
     householdMember: {
       findFirst: vi.fn(async () => ({ householdId: 'hh_test' })),
+      findUnique: vi.fn(async () => ({ role: 'owner' })),
     },
     item: {
       findUnique: vi.fn(),
@@ -228,8 +232,8 @@ afterAll(async () => {
 // "expected not to be called" instead of crashing on an undefined result.
 //
 // No location ROLE is checked in this file. Since households H3a task 3.5,
-// `requireLocationRole` and `fallbackImportLocation` (lib/authz.ts) read
-// `locationMember`, which this mock does not have, so a test that reached
+// `requireLocationRole` (lib/authz.ts) reads `locationMember`, which this
+// mock does not have, so a test that reached
 // either would fail with "Cannot read properties of undefined". So NO
 // ownership or which-location assertion can fail in this file. Those live in
 // `import-itemStock.resolver.test.ts`,

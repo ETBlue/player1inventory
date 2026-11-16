@@ -30,6 +30,7 @@ import { makeGql } from '../utils/cloud'
 // | OWNER       | owner          | organizer   |
 // | PARTICIPANT | member         | participant |
 // | VIEWER      | member         | viewer      |
+// | IMPORTER    | manager        | participant | (the two import tests only)
 //
 // With ONE person, "the rows in this cart" and "the rows I added" are the same
 // set, so no test here could fail against a server that still scoped carts by
@@ -67,6 +68,13 @@ import { makeGql } from '../utils/cloud'
 const OWNER = `${E2E_SECOND_USER_ID}-cart-owner`
 const PARTICIPANT = `${E2E_SECOND_USER_ID}-cart-participant`
 const VIEWER = `${E2E_SECOND_USER_ID}-cart-viewer`
+/**
+ * The person who imports in the two P3 tests: a household MANAGER who is a
+ * `participant` on Home. Since households H4 task E.3 every bulk import
+ * mutation asks the household role `manager` first, so a `member` (the other
+ * two above) is refused before the cart rules are reached (decision O1).
+ */
+const IMPORTER = `${E2E_SECOND_USER_ID}-cart-importer`
 
 type Gql = ReturnType<typeof makeGql>
 type Row = { id: string }
@@ -166,6 +174,23 @@ async function seedHousehold(
   return { home, cartId, milk, eggs }
 }
 
+/**
+ * Add `IMPORTER` to the owner's household as a `manager` with `participant`
+ * on Home. Called after `seedHousehold`, and before the importer sends any
+ * request (`addHouseholdMember` answers 409 otherwise).
+ */
+async function addImporter(
+  request: Parameters<typeof makeGql>[0],
+  seed: Seed,
+): Promise<void> {
+  await addHouseholdMember(request, {
+    ownerUserId: OWNER,
+    memberUserId: IMPORTER,
+    householdRole: 'manager',
+    locations: [{ locationId: seed.home, role: 'participant' }],
+  })
+}
+
 async function cartRows(gql: Gql, cartId: string): Promise<CartItemRow[]> {
   const { cartItems } = await gql<{ cartItems: CartItemRow[] }>(CART_ITEMS, {
     cartId,
@@ -194,6 +219,7 @@ async function cleanupAll(request: Parameters<typeof makeGql>[0]) {
   // household, its carts and every cart row in them.
   await cleanupCloudData(request, PARTICIPANT)
   await cleanupCloudData(request, VIEWER)
+  await cleanupCloudData(request, IMPORTER)
   await cleanupCloudData(request, OWNER)
 }
 
@@ -502,9 +528,18 @@ test.describe('cart item imports into a shared cart', () => {
   // to the pair's row, `bulkUpsert…` SETS it, and every write is one upsert on
   // the pair. Until now this was proved only on the Prisma fake.
   //
-  // Both tests import as the PARTICIPANT into a cart where the OWNER already
+  // Both tests import as a second person into a cart where the OWNER already
   // has a Milk row. Cart imports go by location role (`participant`+), not by
-  // who added a row, so the participant may write the shared cart's rows.
+  // who added a row, so that person may write the shared cart's rows.
+  //
+  // THE IMPORTER IS A HOUSEHOLD MANAGER, NOT THE PARTICIPANT, since households
+  // H4 task E.3. Every bulk import mutation now asks `manager` first (the
+  // import role gate, decision O1), and the PARTICIPANT is a household
+  // `member`, so the gate refused both tests with `FORBIDDEN` before the P3
+  // rules ran. The importer still holds only `participant` on Home, and is
+  // still not the person who added the owner's row, so each test proves what
+  // it proved before: a person other than the adder merges into the shared
+  // cart's rows. Importing as the OWNER would lose that second half.
   //
   // The payload ids carry a `shared-cart-` prefix: `CartItem.id` is a global
   // primary key, so they must not meet another spec's ids.
@@ -513,9 +548,11 @@ test.describe('cart item imports into a shared cart', () => {
     request,
   }) => {
     const owner = makeGql(request, OWNER)
-    const participant = makeGql(request, PARTICIPANT)
+    const importer = makeGql(request, IMPORTER)
     // Given the owner's 2 Milk in the shared cart
     const seed = await seedHousehold(request, owner)
+    // And a household manager who is a participant on Home
+    await addImporter(request, seed)
     const milkRow = (
       await owner<{ addToCart: CartItemRow }>(ADD_TO_CART, {
         cartId: seed.cartId,
@@ -524,9 +561,9 @@ test.describe('cart item imports into a shared cart', () => {
       })
     ).addToCart
 
-    // When the participant imports, with `bulkCreateCartItems`, a backup with
+    // When the importer imports, with `bulkCreateCartItems`, a backup with
     // two rows for Eggs and a NEW id for Milk
-    await participant(BULK_CREATE_CART_ITEMS, {
+    await importer(BULK_CREATE_CART_ITEMS, {
       cartItems: [
         {
           id: 'shared-cart-eggs-b',
@@ -575,9 +612,11 @@ test.describe('cart item imports into a shared cart', () => {
     request,
   }) => {
     const owner = makeGql(request, OWNER)
-    const participant = makeGql(request, PARTICIPANT)
+    const importer = makeGql(request, IMPORTER)
     // Given the owner's 2 Milk in the shared cart
     const seed = await seedHousehold(request, owner)
+    // And a household manager who is a participant on Home
+    await addImporter(request, seed)
     const milkRow = (
       await owner<{ addToCart: CartItemRow }>(ADD_TO_CART, {
         cartId: seed.cartId,
@@ -586,9 +625,9 @@ test.describe('cart item imports into a shared cart', () => {
       })
     ).addToCart
 
-    // When the participant imports, with `bulkUpsertCartItems`, a backup with
+    // When the importer imports, with `bulkUpsertCartItems`, a backup with
     // two NEW ids for Milk (3 and 4) and two rows for Eggs
-    await participant(BULK_UPSERT_CART_ITEMS, {
+    await importer(BULK_UPSERT_CART_ITEMS, {
       cartItems: [
         {
           id: 'shared-cart-milk-a',

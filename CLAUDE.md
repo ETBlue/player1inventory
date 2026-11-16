@@ -108,7 +108,7 @@ that really set up that role.
 
 ## Authorization (cloud)
 
-> See `docs/global/permissions/2026-10-04-households-design.md` (which replaces the role table of `docs/global/permissions/2026-08-29-design-location-rbac.md`). Rights come from roles, not from having created the row. **Households are built in H3a** (merged into `develop` in #375, not deployed; deploy steps in `docs/global/backend/2026-11-11-deploy-runbook-households-h3a.md`). **Shared carts are built in H3b** (merged into `develop` in #377, not deployed; deploy steps in `docs/global/backend/2026-11-15-deploy-runbook-households-h3b.md`): a cart belongs to its location, every cart read and write is scoped by location role, `Cart.userId` is dropped, and `CartItem.userId` means only "added by". Each person still has exactly one household until H5, so nothing is shared yet.
+> See `docs/global/permissions/2026-10-04-households-design.md` (which replaces the role table of `docs/global/permissions/2026-08-29-design-location-rbac.md`). Rights come from roles, not from having created the row. **Households are built in H3a** (merged into `develop` in #375, not deployed; deploy steps in `docs/global/backend/2026-11-11-deploy-runbook-households-h3a.md`). **Shared carts are built in H3b** (merged into `develop` in #377, not deployed; deploy steps in `docs/global/backend/2026-11-15-deploy-runbook-households-h3b.md`): a cart belongs to its location, every cart read and write is scoped by location role, `Cart.userId` is dropped, and `CartItem.userId` means only "added by". **Import and export are built in H4** (branch `feature/households-h4`, going into `develop`, not merged, not deployed; deploy steps in `docs/global/backend/2026-11-17-deploy-runbook-households-h4.md`). H4 needs the **server before the web**, the opposite of H3a; that runbook says how the two rules fit in one release. Each person still has exactly one household until H5, so nothing is shared yet.
 >
 > | Role ladder | Names, weakest first | Governs |
 > |---|---|---|
@@ -123,10 +123,11 @@ that really set up that role.
 > | `requireHouseholdRole(ctx, householdId, role)` | refuses with `FORBIDDEN` unless the caller's household role is `role` or stronger |
 > | `requireCatalogRole(ctx, role)` | both of the above; returns the household id. Catalog reads ask `member`, writes `manager` |
 > | `requireLocationRole(ctx, locationId, role)` | refuses unless the caller has `role` or stronger on that location. A location role counts only while the matching `HouseholdMember` row exists (decision H18) |
-> | `locationIdsWithRole(ctx)` | every location the caller has a counted role on. Use it for a read across locations; never write a new membership query |
+> | `locationIdsWithRole(ctx, role?, { householdId }?)` | every location the caller has a counted role on, optionally only in one household (since H4 task E.1). Use it for a read across locations; never write a new membership query. The five reads behind an export (`locations`, `inventoryLogs`, `allCarts`, `allCartItems`, `allItemStocks`) pass `{ householdId: await requireHousehold(ctx) }` since H4 task E.5, so they give one household only |
+> | `requireLocationInHousehold(ctx, locationId, householdId)` | the location is in that household (one scoped read, `FORBIDDEN` otherwise). Since H4 task E.1. A person in two households holds roles in both, so `requireLocationRole` alone cannot say which household a location is in |
 > | `requireLocationItems(ctx, locationId, itemIds)` | every item is in the location's household. Call it AFTER `requireLocationRole` |
 > | `requireCatalogIds(ctx, householdId, model, ids)` | every id a write attaches is in the household (#273) |
-> | `requireOwnRowOrUnclaimed(ctx, model, id)` | see the next paragraphs |
+> | `requireOwnRowOrUnclaimed(ctx, model, id, targetHouseholdId)` | see the next paragraphs. The fourth argument is the household the write goes INTO, since H4 task E.1 |
 >
 > **`removeItemFromLocation` needs `organizer`, not `participant`** (owner decision 2026-11-11, `f4d993db`). It deletes every log of the item at that location, including other members' logs.
 >
@@ -136,26 +137,43 @@ that really set up that role.
 >
 > **Never write `row.userId === ctx.userId` or `row.householdId === …` as an authorization check.** It denies a legitimate `member` editing a shared location's data, which is the point of the feature. Every check goes through a helper in `lib/authz.ts`. A `where` filter on a read is fine. Local mode is single-user IndexedDB and is out of scope: no role check belongs in `apps/web/src/db/`.
 >
-> **There is a second seam: `requireOwnRowOrUnclaimed` in `apps/server/src/lib/authz.ts`.** Added 2026-10-28 (issue #327). It decides account ownership for the **nine models that belong to no location**, so `requireLocationRole` cannot reach them: `Item`, `Tag`, `TagType`, `Vendor`, `Recipe`, `InventoryLog`, `Cart`, `CartItem`, `Shelf`. One row id gets one of three answers — the caller's own row returns `'own'`, somebody else's row **throws** `FORBIDDEN`, an id no row holds returns `'unclaimed'`. The "somebody else's" case throws instead of returning, so a call site cannot ignore it. No call site compares a `userId`.
+> **There is a second seam: `requireOwnRowOrUnclaimed` in `apps/server/src/lib/authz.ts`.** Added 2026-10-28 (issue #327). It decides ownership for the **nine models an import writes by the id in the file**. `requireLocationRole` alone cannot decide these, because an import must tell a free id from a taken one. (This said "the nine models that belong to no location" until H4 task E.1. That was wrong: `Cart`, `CartItem`, through its cart, and `InventoryLog` all have a location.) The nine: `Item`, `Tag`, `TagType`, `Vendor`, `Recipe`, `InventoryLog`, `Cart`, `CartItem`, `Shelf`. One row id gets one of three answers — the caller's own row returns `'own'`, somebody else's row **throws** `FORBIDDEN`, an id no row holds returns `'unclaimed'`. The "somebody else's" case throws instead of returning, so a call site cannot ignore it. No call site compares a `userId`.
 >
 > **Its body is what changes when the scope changes**, and no call site moves. That is why the model is passed as a string literal (`OwnedModel`) rather than a delegate. It was `where: { id, userId }` for all nine until H3a.
 >
-> **Since households H3a task 3.7 the body has two scopes.** For the six catalog models (`Item`, `Tag`, `TagType`, `Vendor`, `Recipe`, `Shelf` — the `CatalogModel` type) "own" means **in the caller's household** (`where: { id, householdId: await requireHousehold(ctx) }`), so a row another member of the household made is `'own'`. `InventoryLog` still uses `where: { id, userId }` until H4. The helper checks no household ROLE; the catalog resolvers check it first, and import role gating is H4. No call site moved, including the 22 import mutations.
+> **Since households H3a task 3.7 the body has two scopes.** For the six catalog models (`Item`, `Tag`, `TagType`, `Vendor`, `Recipe`, `Shelf` — the `CatalogModel` type) "own" means **in the caller's household** (`where: { id, householdId: await requireHousehold(ctx) }`), so a row another member of the household made is `'own'`. `InventoryLog` used `where: { id, userId }` until H4. The helper checks no household ROLE; the catalog resolvers check it first, and since H4 task E.3 so do the 22 import mutations (see *The import role gate* below). No call site moved, including the 22 import mutations.
 >
-> **Since households H3b task B.7, `Cart` and `CartItem` are scoped by location role, not by account.** A cart is `'own'` when the caller is `participant` or higher on its location; a cart item is `'own'` when its CART is. A row at a location where the caller is only `viewer`, has no role, or that belongs to another household throws `FORBIDDEN`. An unused id is `'unclaimed'`. `CartItem.userId` means "added by" and is never a scope, so a row another member added to a shared cart is `'own'`. The participant list comes from `locationIdsWithRole(ctx, 'participant')`; with no role argument that helper still returns every location with any role.
+> **Since households H4 task E.1 the scope is the TARGET household, passed as a fourth argument** (decisions T4–T6 in `docs/global/permissions/2026-11-16-households-plan-h4.md`). The six tag / vendor call sites pass the id `requireCatalogRole` returned, and since task E.3 so do the 22 import mutations (`requireCatalogRole(ctx, 'manager')`). (Between E.1 and E.3 the import helper passed `requireHousehold(ctx)`.) With `writable` = the target household's locations where the caller is `participant` or higher: catalog rows `{ id, householdId: target }`; `InventoryLog` `{ id, locationId: { in: writable } }`; `CartItem` `{ id, cart: { locationId: { in: writable } } }`. `InventoryLog.userId` means "written by" and is never a scope. **`Cart` is checked in a fixed order (issue #361):** an id with no colon is `BAD_USER_INPUT`; a prefix not in `writable` is `FORBIDDEN` BEFORE the cart table is read; only then the unscoped "is it taken" read; and "own" means the stored cart is at the location its id names (`{ id, locationId: prefix }`). So a bare cart id, or a cart id naming a deleted location, no longer falls back to the caller's first location: the batch is refused. Since task E.3 the fallback itself (the import fallback location of decision H12) is deleted, for logs too.
+>
+> **Since households H3b task B.7, `Cart` and `CartItem` are scoped by location role, not by account.** A cart is `'own'` when the caller is `participant` or higher on its location; a cart item is `'own'` when its CART is. A row at a location where the caller is only `viewer`, has no role, or that belongs to another household throws `FORBIDDEN`. An unused id is `'unclaimed'`. `CartItem.userId` means "added by" and is never a scope, so a row another member added to a shared cart is `'own'`. Inside `requireOwnRowOrUnclaimed` the participant list is `locationIdsWithRole(ctx, 'participant', { householdId })`, the TARGET household's locations only, since H4 task E.1 (it was `locationIdsWithRole(ctx, 'participant')`, every household, until then). So a cart or cart item of the caller's OTHER household is refused too. With no role argument `locationIdsWithRole` still returns every location with any role.
 >
 > **The two cart item imports follow decision P3 of the H3b plan** (`docs/global/permissions/2026-11-14-households-plan-h3b.md`). Rows of one `(cartId, itemId)` pair are summed first. Every write is ONE `upsert` on `cartId_itemId`, never a write by the payload's id, so no path raises `P2002`. `bulkCreateCartItems` (`skip` and `clear`) skips a pair whose ids include one already in the cloud, and otherwise ADDS (`increment`). `bulkUpsertCartItems` (`replace`) SETS the pair's amount. Neither moves a row: a payload that names an existing id under another pair writes that pair and leaves the stored row where it is. A new row takes the lowest unused id of its pair. Since H3b task B.8 the web sends EVERY cart item to `bulkUpsertCartItems` on `replace`, so a new id whose pair already has a row SETS it (before B.8 it went to `bulkCreateCartItems` and ADDED). On `skip` the web drops a whole pair when any of its ids is already in the cloud, the same rule the server applies (`partitionPayload` in `apps/web/src/lib/importData.ts`). Local mode follows the same rules (`importLocalCartItems`, and Dexie versions 19 and 20; see `apps/web/src/db/CLAUDE.md`).
 >
 > **The catalog (task 3.7).** Every catalog resolver starts with `requireCatalogRole(ctx, role)` (`lib/authz.ts`), which returns the caller's household id: reads ask for `member`, writes for `manager` (design, *Household roles*). The one exception is marking a recipe as cooked (`updateRecipeLastCookedAt`, and the `lastCookedAt` write in `consumeRecipes`), which needs only `member`, because it is a cooking right. Every id a write ATTACHES — an item's `tagIds` / `vendorIds`, a recipe's item ids, a shelf's `itemIds` and `filterConfig` ids, a tag's `typeId` / `parentId`, `applyShelfFilterPicks`' picks — goes through `requireCatalogIds(ctx, householdId, model, ids)` (issue #273): another household's id is `FORBIDDEN`, an id no row holds is `BAD_USER_INPUT`, except on the shelf arrays (`{ missing: 'allow' }`), which are not foreign keys and may name a deleted item. The three `itemCountBy*` queries filter the junction row by `item: { householdId }`. Tested with three people in `apps/server/src/resolvers/catalog-household.resolver.test.ts`.
 >
-> **One thing it does NOT share with `requireLocationRole`: a free id is distinguishable from a stranger's id.** `requireLocationRole` refuses "not found" and "not yours" with the same error on purpose. `requireOwnRowOrUnclaimed` cannot: an import has to create new rows, so an unclaimed id must return `'unclaimed'` and let the write proceed. What protects the ids is that they are `cuid()` and cannot be guessed, and that the refusal names neither the model nor the owner. Do not copy `requireLocationRole`'s stated reason onto this helper — the first version of its comment and of the design doc both did, and both were wrong.
+> **One thing it does NOT share with `requireLocationRole`: a free id is distinguishable from a stranger's id.** `requireLocationRole` refuses "not found" and "not yours" with the same error on purpose. `requireOwnRowOrUnclaimed` cannot: an import has to create new rows, so an unclaimed id must return `'unclaimed'` and let the write proceed. What protects the ids: an id made by the server (`cuid()`) or by local mode (`crypto.randomUUID()`) cannot be guessed, and the refusal names neither the model nor the owner. That is NOT true for `Cart.id`, which is derived from a location id and a vendor id, nor for an id a hand-edited file chooses. For carts the protection is the location check that runs before the cart table is read (since H4 task E.1). Do not copy `requireLocationRole`'s stated reason onto this helper — the first version of its comment and of the design doc both did, and both were wrong.
 >
-> **22 bulk import mutations in `apps/server/src/resolvers/import.resolver.ts` are guarded.** Counted 2026-10-28, and the same on 2026-11-04 after households H3a task 3.9 and on 2026-11-15 after households H3b tasks B.7 and B.10: **18** through `requireOwnRowOrUnclaimed` (reached by the per-batch `requireOwnRowIdsOrUnclaimed` in that file), **2** through `requireOwnLocationIdsOrUnclaimed`, **2** through `requireOwnItemStockRefs`. Several task briefs said 18, which is only the first group. Count them rather than quoting this:
+> **The import role gate (households H4 task E.3).** Every one of the 22 bulk import mutations starts with `requireCatalogRole(ctx, 'manager')`, right after `requireAuth` and before the empty-batch return. So only a household owner or manager may import, and a `member` is refused with `FORBIDDEN` before any other read, even a member who organizes a location (decision O7). `clearAllData`, which the `clear` strategy runs first, asks `owner`. The id `requireCatalogRole` returns is the TARGET household, and every check in the mutation gets it: the row-id guard, `resolveLogLocations`, `resolveCartLocations`, `requireOwnLocationIdsOrUnclaimed`, `requireOwnItemStockRefs` and `resolveCartItemParents`. So a location, a stored row and an item must all be in that one household (issue #381, gap 1). `createVendor` also checks its location with `requireLocationInHousehold` (gap 2). Nothing goes to a fallback location any more:
+>
+> | Import row | Answer |
+> |---|---|
+> | a log with no `locationId` | `BAD_USER_INPUT`, `extensions.reason` `IMPORT_NEEDS_LOCATION`, nothing in the batch written |
+> | a cart id with no `:` | `BAD_USER_INPUT`, before any read |
+> | a log, stock row or cart at a location that does not exist, where the caller is below `participant`, or of another household | `FORBIDDEN`, nothing written |
+> | a location id `'local'` or containing `:` | `BAD_USER_INPUT`, before any read |
+> | an existing location of another household | `FORBIDDEN` (it was skipped, or renamed by `bulkUpsertLocations`, when the caller held a role there) |
+>
+> Tested in `apps/server/src/resolvers/import-role-gate.resolver.test.ts`, with one person in two households and the target pinned through `ctx.requestCache.householdId`. **A test cannot yet tell "the target household" from "the caller's household"**: until H7's household switch both are `requireHousehold(ctx)`. What the tests do prove is that the location and the item must be in the SAME household as the target.
+>
+> **The `importCheck` query (households H4 task E.2, decision T1).** A refused import used to be refused per batch of 50, so the batches sent before it stayed written and "Nothing was imported" was not true. Now the web asks first. `importCheck(ids: ImportCheckInput!, forClear: Boolean): ImportCheck!` (`apps/server/src/resolvers/importCheck.resolver.ts`) is read-only. It starts with `requireCatalogRole(ctx, forClear ? 'owner' : 'manager')`, takes the file's ids per model plus `locationRefs` and `itemRefs` (the location and item ids that rows POINT at), at most **1000** ids per call (the web sends chunks and joins the answers, `checkImportIds` in `apps/web/src/lib/importData.ts`). It answers `anotherHousehold`, `blockedLocationIds` (below `participant`), `renameBlockedLocationIds`, `missingLocationIds`, `missingItemIds` and `blockedRows`. When `anotherHousehold` is true the web stops before `clearAllData` and before the first batch, so nothing is written. Otherwise the web leaves out the blocked and missing rows and names the skipped locations after the import (decision O5). **It is a convenience, not a guard** (decision T2): a client can skip it, and the 22 mutations still check every row. It compares households in SQL, inside the resolver; no call site compares a `householdId`. Like the cart guard, it reads a cart id only when its prefix is a location the caller may write (or one the file creates). The web also uses it to list the locations "Import into which location?" offers (`fetchImportTargetLocations`), because the web does not know location roles. **A new web bundle against an older server cannot import at all**, because the query fails GraphQL validation; that is why H4 deploys the server first (decision T9).
+>
+> **22 bulk import mutations in `apps/server/src/resolvers/import.resolver.ts` are guarded.** Counted 2026-10-28, and the same on 2026-11-04 after households H3a task 3.9, on 2026-11-15 after households H3b tasks B.7 and B.10, and on 2026-11-17 after households H4: **18** through `requireOwnRowOrUnclaimed` (reached by the per-batch `requireOwnRowIdsOrUnclaimed` in that file), **2** through `requireOwnLocationIdsOrUnclaimed`, **2** through `requireOwnItemStockRefs`. Several task briefs said 18, which is only the first group. Count them rather than quoting this:
 >
 > ```bash
 > grep -c 'requireOwnRowIdsOrUnclaimed(ctx' apps/server/src/resolvers/import.resolver.ts      # 18
 > grep -c 'requireOwnLocationIdsOrUnclaimed(ctx' apps/server/src/resolvers/import.resolver.ts # 2
 > grep -c 'requireOwnItemStockRefs(ctx' apps/server/src/resolvers/import.resolver.ts          # 2
+> grep -c "await requireCatalogRole(ctx, 'manager')" apps/server/src/resolvers/import.resolver.ts  # 22, the role gate (H4)
 > ```
 >
 > **Six catalog mutations call it directly too — since 2026-11-04.** `updateVendor` and `deleteVendor` in `vendor.resolver.ts`; `updateTagType`, `deleteTagType`, `updateTag` and `deleteTag` in `tag.resolver.ts`. Before that date they wrote with `where: { id }` alone, so any signed-in user who knew another account's id could rename or delete the row. See `docs/global/bugs/2026-11-04-bug-unscoped-catalog-writes.md`. (This said seven until households H3a task 3.7, when `createTag` and `updateTag`'s `typeId` / `parentId` checks moved to `requireCatalogIds`, with the same three answers.) What each does with the three answers:
@@ -183,24 +201,24 @@ that really set up that role.
 >
 > | Id | Mutations | Checked against | An id that does not pass |
 > |---|---|---|---|
-> | `tagIds`, `vendorIds` | both item mutations | the caller's household | that edge is skipped |
-> | `typeId` | `bulkCreateTags`; `bulkUpsertTags` since 3.9 | the caller's household | the tag is skipped |
-> | `parentId` | `bulkUpsertTags` since 3.9 | the caller's household, or a tag of the same payload written first | the tag is skipped |
-> | recipe item ids | both recipe mutations | the caller's household | that ingredient is skipped |
-> | `itemId` | both log mutations | the caller's household (not the household of the log's location) | the log is skipped |
-> | `cartId` | both cart item mutations | the cart must be at a location where the caller is `participant` or higher (since H3b task B.7; by `Cart.userId` before task B.3) | the row is skipped, a viewer's included (until task B.7 a viewer got `FORBIDDEN` for the whole batch) |
-> | `itemId` | both cart item mutations | the household of the CART's location, since 3.9 | the row is skipped |
+> | `tagIds`, `vendorIds` | both item mutations | the target household (the caller's household before H4 task E.3; the same household until H7) | that edge is skipped |
+> | `typeId` | `bulkCreateTags`; `bulkUpsertTags` since 3.9 | the target household (the caller's household before H4 task E.3; the same household until H7) | the tag is skipped |
+> | `parentId` | `bulkUpsertTags` since 3.9 | the target household (the caller's household before H4 task E.3), or a tag of the same payload written first | the tag is skipped |
+> | recipe item ids | both recipe mutations | the target household (the caller's household before H4 task E.3; the same household until H7) | that ingredient is skipped |
+> | `itemId` | both log mutations | the target household, which is also the log's location's household since H4 task E.3 (the caller's household, not the location's, before) | the log is skipped |
+> | `cartId` | both cart item mutations | the cart must be at a location of the TARGET household where the caller is `participant` or higher (the target only since H4 task E.3, any household before; by location role since H3b task B.7; by `Cart.userId` before task B.3) | the row is skipped, a viewer's included (until task B.7 a viewer got `FORBIDDEN` for the whole batch) |
+> | `itemId` | both cart item mutations | the target household, which is the cart's household since H4 task E.3 (the household of the CART's location since 3.9) | the row is skipped |
 > | `itemIds` and the tag, vendor and recipe ids in `filterConfig` | both shelf mutations, since 3.9 | see below | that id is dropped; the shelf lands |
 >
-> **The shelf rule is different from the others.** Only an id that is a row of ANOTHER household is dropped. An id no row holds is KEPT, the same as `createShelf`'s `missing: 'allow'`. The reason: on `replace` the web client writes new shelves in its first pass, and rows that conflict with a cloud row by name only in its second pass, so a shelf names rows that do not exist yet. Task 3.9 first dropped those ids too; `03e32094` fixed it. So for shelves a stranger's id and a free id give different answers, which `requireOwnRowOrUnclaimed` also does; the ids are `cuid()`.
+> **The shelf rule is different from the others.** Only an id that is a row of ANOTHER household is dropped. An id no row holds is KEPT, the same as `createShelf`'s `missing: 'allow'`. The reason: on `replace` the web client writes new shelves in its first pass, and rows that conflict with a cloud row by name only in its second pass, so a shelf names rows that do not exist yet. Task 3.9 first dropped those ids too; `03e32094` fixed it. So for shelves a stranger's id and a free id give different answers, which `requireOwnRowOrUnclaimed` also does; the ids are `cuid()` or `crypto.randomUUID()`, unless a hand-edited file chose them.
 >
 > For every other row above, an id that does not resolve is SKIPPED, not refused: a partial backup legitimately names a parent the user has since deleted, and "not yours" looks the same as "not there". See `docs/features/settings/2026-10-28-design-import-ownership-guard.md`.
 >
 > **Three things in the import helpers changed in households H3a task 3.9.**
 >
-> - `requireOwnLocationIdsOrUnclaimed(ctx, locations, role)` now takes the location role to ask for and returns the ids that already exist. `bulkCreateLocations` asks `participant` (it only skips an existing row); `bulkUpsertLocations` asks `organizer` (it renames one, and `updateLocation` asks `organizer` for a rename). Membership is read by `requireLocationRole`, so a location the caller holds no counted role on is refused, never "unclaimed", even in the caller's own household.
+> - `requireOwnLocationIdsOrUnclaimed(ctx, locations, role)` now takes the location role to ask for and returns the ids that already exist. (Since H4 task E.3 it also takes the target household, refuses `'local'` and ids with `:`, and refuses an existing location of another household.) `bulkCreateLocations` asks `participant` (it only skips an existing row); `bulkUpsertLocations` asks `organizer` (it renames one, and `updateLocation` asks `organizer` for a rename). Membership is read by `requireLocationRole`, so a location the caller holds no counted role on is refused, never "unclaimed", even in the caller's own household.
 > - A created location gets `householdId` and an `organizer` row for the caller, in one transaction (`createImportedLocation`). An update writes and changes no role row. `order` is the payload's own value, not `max + 1`.
-> - The cart item imports check the item against the household of the **cart's location** (`resolveCartItemParents`: the cart by `userId`, then `requireLocationRole` on its location, then `householdOfLocation`), not the caller's household. Since H3b task B.7 the cart is found by `locationIdsWithRole(ctx, 'participant')`, and `householdOfLocation` follows.
+> - The cart item imports check the item against the household of the **cart's location** (`resolveCartItemParents`: the cart by `userId`, then `requireLocationRole` on its location, then `householdOfLocation`), not the caller's household. Since H3b task B.7 the cart is found by `locationIdsWithRole(ctx, 'participant')`, and `householdOfLocation` follows. Since H4 task E.3 the cart is found among the TARGET household's writable locations only (`{ householdId }`), so the item is checked against the target and `householdOfLocation` is not read.
 
 > **The `User` row — households H2, built 2026-10-31.** `model User` (`apps/server/prisma/schema.prisma`) is one row per Clerk account: `id` is the Clerk user id, plus `displayName`, an optional `email`, `lastSeenAt` and `deletedAt`. Since H3a it also has `householdSetupAt` (the first sign-in claim, decision H1), and `HouseholdMember` and `LocationMember` point at it. (This said "Nothing relates to it yet" until H3a.) Two paths write it:
 >
@@ -226,8 +244,8 @@ that really set up that role.
 > `2026-11-16-households-plan-h3c-2.md` (stock, logs, locations, catalog). Deploy:
 > `docs/global/backend/2026-11-16-deploy-runbook-households-h3c-1.md` (section 9 is H3c-2).
 >
-> **Built in households H3c-1 and H3c-2 (2026-11-16).** H3c-1 is merged into `develop`;
-> H3c-2 is on `feature/households-h3c-2`, not merged. Neither is deployed. A change in one
+> **Built in households H3c-1 and H3c-2 (2026-11-16).** H3c-1 is merged into `develop`
+> (#379), and so is H3c-2 (#380). Neither is deployed. A change in one
 > tab reaches the other open tabs of the same household within about a second. The event
 > says only "this changed" (`kind`, `locationId`); the web refetches.
 >
@@ -517,9 +535,10 @@ skips half the work. Nothing else in the gate checks `e2e/` formatting: `pnpm li
 `apps/server`'s build already carries a second pass for `scripts/`.
 
 **`pnpm test` runs both workspaces.** The root script is `pnpm -r test`, which recurses into
-every workspace package that defines a `test` script — today `apps/web` (**2586 tests**
-across 281 files) and `apps/server` (**1566** across 64). Measured 2026-11-16 on
-`feature/households-h3c-2`, after households H3c-2 (it said 2577 / 281 and 1412 / 61
+every workspace package that defines a `test` script — today `apps/web` (**2678 tests**
+across 283 files) and `apps/server` (**1765** across 67). Measured 2026-11-17 on
+`feature/households-h4`, after households H4 (it said 2586 / 281 and 1566 / 64 on
+2026-11-16 after households H3c-2, 2577 / 281 and 1412 / 61
 after H3c-1 the same day, 2543 / 276 and 1274 / 52 on
 2026-11-15 on `feature/households-h3b`, 2549 / 277 and 1244 / 51 earlier that
 day, 2529 / 275 and 1161 / 47 on 2026-11-11, on H3a, and
@@ -1735,8 +1754,9 @@ Note also that **no *unit* test executes the resolvers against real SQL** — ev
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
 Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
 branch), but only for the spec files listed in the `cloud` project's `testMatch` in
-`e2e/playwright.config.ts` — that list is opt-in and covers **32 of the 36 spec files in
-`e2e/tests/`** (measured 2026-11-16, after households H3c-2 task D.5 added
+`e2e/playwright.config.ts` — that list is opt-in and covers **33 of the 37 spec files in
+`e2e/tests/`** (measured 2026-11-17, after households H4 task E.6 added
+`settings/import-households.spec.ts`; 32 of 36 on 2026-11-16, after households H3c-2 task D.5 added
 `live-pantry.spec.ts`; 31 of 35 after H3c-1 task C.6 added `live-cart.spec.ts`; 30 of 34 on 2026-11-15, after households H3b task B.9 added
 `shared-cart.spec.ts`; it was 29 of 33 on 2026-11-04, after households H3a task 3.11 added
 `cloud-roles.spec.ts` and `household-member-cleanup.spec.ts`).
@@ -1820,6 +1840,11 @@ and the spec is green either way — the proof of 4b's client-side fix is a unit
 `apps/web/src/lib/importData.test.ts`. It is the **first cloud spec to use two users**:
 `makeGql(request, userId)` and `cleanupCloudData(request, userId)` now take an optional user
 id, defaulting to `E2E_USER_ID`, so the 18 existing call sites are untouched.
+**That paragraph is history.** The import ownership guard (#327) made the spec real coverage,
+and since households H4 task E.6 it holds 3 tests: a bare cart id is refused with
+`BAD_USER_INPUT` for both households (#361), another household's location-prefixed cart id
+is refused with `FORBIDDEN` and its cart items are skipped, and each household's own
+prefixed id is written. See the header of the spec.
 
 `settings/import-export-cloud.spec.ts` grew from **2 to 6** cloud test cases in PR 4b task
 8, and `settings/import-export-local.spec.ts` from 3 to 4. Before that, **neither
@@ -1926,6 +1951,14 @@ location list, a checkout and an item delete without a reload. Test 5 is the fir
 run of `deleteItem`'s `inventoryLog.findMany({ distinct: ['locationId'] })` read, which finds
 the locations to send `LOG` to before the cascade deletes the rows. See *Live updates
 (cloud)* above.
+
+`settings/import-households.spec.ts` joined on 2026-11-16 (households H4 task E.6) — cloud
+only, with a browser. The `cloud` project now collects **160** tests in **33** files; `local`
+**184** in 23, `pwa` **73** in 2 (measured with `--list` on 2026-11-17). It is the first real-SQL
+coverage of `importCheck`, the import role gate, "Import into which location?" and the
+skipped-location message, and the first spec where the BROWSER is a second person in someone
+else's household. One person in TWO households is still impossible there, so issue #381 has no
+real-SQL test until H5. See `e2e/CLAUDE.md` for its tests.
 
 The warning above still holds for everything else — most resolvers are named by no cloud
 spec.

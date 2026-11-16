@@ -22,8 +22,8 @@ import { typeDefs } from '../schema/index.js'
 //   - `src/test/householdWorld.ts` for `location` (its `stockFake`) and the
 //     household and role rows. Every role is a row `beforeEach` seeds: each
 //     person owns one household and organizes its own locations
-//     (`soloHouseholds`). So `fallbackImportLocation` and
-//     `requireLocationRole` run against real rows, and a stranger's location
+//     (`soloHouseholds`). So the import role gate, `requireLocationRole`
+//     and `requireLocationInHousehold` run against real rows, and a stranger's location
 //     is refused because the caller has no role on it. (Households H3a task
 //     3.9 removed `derivedRoles`, which invented those rows from each
 //     location's `userId`.)
@@ -238,16 +238,23 @@ describe('bulkCreateInventoryLogs — the location comes from the payload', () =
     expect(returned).toEqual([{ id: 'log_1', itemId: ITEM, locationId: LOC_OTHER }])
   })
 
-  it('user importing a log with no location gets it stored in their default location', async () => {
-    // Given a payload from an older client, with no locationId at all
-    const logs = [makeLogInput({ id: 'log_2' })]
+  it('user importing a log with no location is refused and nothing is written', async () => {
+    // Given a payload with a good row FIRST, then a row from an older client
+    // with no locationId at all. Until households H4 task E.3 the second row
+    // went to the caller's first location (the deleted fallback, decision H12).
+    const logs = [
+      makeLogInput({ id: 'log_ok', locationId: LOC_OTHER }),
+      makeLogInput({ id: 'log_2' }),
+    ]
 
     // When the import runs
     const result = await exec(BULK_CREATE_LOGS, logs)
 
-    // Then it falls back to the caller's default location
-    expect(result.errors).toBeUndefined()
-    expect(storedLocationOf('log_2')).toBe(LOC_DEFAULT)
+    // Then the whole batch is refused with IMPORT_NEEDS_LOCATION, and the
+    // good row was not written either
+    expect(result.errors?.[0]?.extensions?.code).toBe('BAD_USER_INPUT')
+    expect(result.errors?.[0]?.extensions?.reason).toBe('IMPORT_NEEDS_LOCATION')
+    expect(mockPrisma.$logFake.state.logs).toHaveLength(0)
   })
 
   it('user importing a log that names someone else is refused and nothing is written', async () => {
@@ -300,8 +307,7 @@ describe('bulkCreateInventoryLogs — the location comes from the payload', () =
     expect(storedLocationOf('log_a')).toBe(LOC_OTHER)
     expect(storedLocationOf('log_c')).toBe(LOC_DEFAULT)
     // And the ownership check ran twice — once per DISTINCT location, not five
-    // times. `fallbackImportLocation` is not called at all, because no row
-    // omitted a location.
+    // times.
     const locationFindFirst = (prisma as unknown as { locationMember: { findFirst: ReturnType<typeof vi.fn> } }).locationMember.findFirst
     expect(locationFindFirst).toHaveBeenCalledTimes(2)
   })
@@ -322,16 +328,20 @@ describe('bulkUpsertInventoryLogs — the location comes from the payload', () =
     expect(storedLocationOf('log_u1')).not.toBe(LOC_DEFAULT)
   })
 
-  it('user re-importing a log with no location gets it stored in their default location', async () => {
-    // Given a payload from an older client, with no locationId
-    const logs = [makeLogInput({ id: 'log_u2' })]
+  it('user re-importing a log with no location is refused and nothing is written', async () => {
+    // Given a good row FIRST, then a row with no locationId
+    const logs = [
+      makeLogInput({ id: 'log_u_ok', locationId: LOC_OTHER }),
+      makeLogInput({ id: 'log_u2' }),
+    ]
 
     // When the upsert import runs
     const result = await exec(BULK_UPSERT_LOGS, logs)
 
-    // Then it falls back to the caller's default location
-    expect(result.errors).toBeUndefined()
-    expect(storedLocationOf('log_u2')).toBe(LOC_DEFAULT)
+    // Then the whole batch is refused and nothing is written
+    expect(result.errors?.[0]?.extensions?.code).toBe('BAD_USER_INPUT')
+    expect(result.errors?.[0]?.extensions?.reason).toBe('IMPORT_NEEDS_LOCATION')
+    expect(mockPrisma.$logFake.state.logs).toHaveLength(0)
   })
 
   it('user re-importing a log that names someone else is refused and nothing is written', async () => {

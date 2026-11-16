@@ -1,6 +1,10 @@
-import { MockedProvider } from '@apollo/client/testing/react'
+import {
+  MockedProvider,
+  type MockedProviderProps,
+} from '@apollo/client/testing/react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { GetHouseholdDocument } from '@/generated/graphql'
 import { ImportCard } from '.'
 
 // ImportCard uses:
@@ -78,3 +82,63 @@ export const Loading: Story = {
 // `index.test.tsx` — "user retrying a failed cloud import resumes the session
 // the failure carried", which mocks `importCloudData` with `vi.mock`.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Cloud mode is role-aware since households H4 task E.4. `GetHousehold` is
+// mocked through `MockedProvider`. Fixtures stay module-local: CSF turns every
+// named export into a story.
+// ---------------------------------------------------------------------------
+
+function householdMocks(role: 'owner' | 'manager' | 'member') {
+  const mocks: NonNullable<MockedProviderProps['mocks']> = [
+    {
+      request: { query: GetHouseholdDocument },
+      result: {
+        data: {
+          household: {
+            __typename: 'Household',
+            id: 'household-1',
+            name: 'The Lins',
+            role,
+          },
+        },
+      },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+    },
+  ]
+  return mocks
+}
+
+function cloudMode() {
+  localStorage.setItem('data-mode', 'cloud')
+  return () => localStorage.removeItem('data-mode')
+}
+
+/** A household member: the line "Only the owner or a manager…", no button. */
+export const CloudMember: Story = {
+  name: 'Cloud — household member',
+  decorators: [
+    (Story) => (
+      <MockedProvider mocks={householdMocks('member')}>
+        <Story />
+      </MockedProvider>
+    ),
+  ],
+  beforeEach: cloudMode,
+}
+
+/**
+ * A household manager: the file button. Its conflict dialog has no "Clear &
+ * import"; see the `WithoutClear` story of `ConflictDialog`.
+ */
+export const CloudManager: Story = {
+  name: 'Cloud — household manager',
+  decorators: [
+    (Story) => (
+      <MockedProvider mocks={householdMocks('manager')}>
+        <Story />
+      </MockedProvider>
+    ),
+  ],
+  beforeEach: cloudMode,
+}

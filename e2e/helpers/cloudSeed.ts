@@ -52,9 +52,11 @@ const UPSERT_STOCK = `mutation ($itemId: ID!, $locationId: ID!, $input: ItemStoc
  * sign-in, so after this call the household and "Home" exist.
  *
  * "First" means first in the server's answer, which is sorted by `order`, then
- * by `id`. That is the same rule the web app uses for its fallback location
- * (`fetchCloudDefaultLocationId` in apps/web/src/lib/importData.ts, and
- * `useActiveLocation`), so a seed written here lands where the app looks first.
+ * by `id`. That is the same rule the web app uses for its fallback active
+ * location (`useActiveLocation`), so a seed written here lands where the app
+ * looks first. (This also named `fetchCloudDefaultLocationId` until households
+ * H4 task E.4 deleted it: the cloud import no longer picks a location by
+ * itself.)
  * Every spec calls this on a clean account (`cleanupCloudData` runs in
  * `beforeEach`), where "Home" is the only location.
  *

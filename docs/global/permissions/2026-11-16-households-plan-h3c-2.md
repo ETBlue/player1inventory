@@ -314,6 +314,8 @@ Collected from the task reports and reviews, D.1 to D.5.
 
 ## Status
 
+**Merged into `develop` (#380), 2026-11-16. Not deployed.**
+
 **Done, 2026-11-16.** All six tasks built on `feature/households-h3c-2`. Not merged into
 `develop`, not deployed. It deploys with H3a, H3b and H3c-1 at the next checkpoint release,
 or at the release after; see

@@ -1,6 +1,7 @@
 import { GraphQLError } from 'graphql'
 import {
   requireCatalogRole,
+  requireLocationInHousehold,
   requireLocationRole,
   requireOwnRowOrUnclaimed,
 } from '../lib/authz.js'
@@ -35,13 +36,22 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     createVendor: async (_, { name, locationId }, ctx) => {
       requireAuth(ctx)
 
-      // Two checks, because this mutation writes at two levels: a Vendor in
+      // Three checks, because this mutation writes at two levels: a Vendor in
       // the household's catalog needs household role `manager`, and a Cart
       // row at the location needs location role `participant` (not `viewer`).
-      // The location id arrives from the client, so it goes through the one
+      // The location id arrives from the client, so it goes through the
       // authorization seam (lib/authz.ts) before it reaches any query.
+      //
+      // The third check: the location must be in the SAME household as the
+      // vendor (households H4 task E.3, decision T14, issue #381 gap 2). A
+      // person in households A and B holds roles in both, so the role check
+      // alone would let them make a vendor of A with its cart at a location of
+      // B. The role check runs first, so a caller with no role learns nothing
+      // about which household a location is in. Both refuse with FORBIDDEN,
+      // and both run before any write.
       const householdId = await requireCatalogRole(ctx, 'manager')
       await requireLocationRole(ctx, locationId, 'participant')
+      await requireLocationInHousehold(ctx, locationId, householdId)
 
       const vendor = await prisma.vendor.create({ data: { name, householdId } })
 
@@ -62,8 +72,8 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // The cart is empty, but `bootstrapCarts` sends `CART` for the empty
       // carts it makes too, so both behave the same. The location is passed
       // without a household, so `publishChange` reads the LOCATION's
-      // household: `requireLocationRole` above does not check that
-      // `locationId` is in the catalog's household.
+      // household. Since households H4 task E.3 that is always `householdId`,
+      // because `requireLocationInHousehold` above refuses any other.
       await publishHouseholdChange(ctx, ['CATALOG'], householdId)
       await publishChange(ctx, ['CART'], [{ locationId }])
       return vendor as unknown as Vendor
@@ -74,7 +84,7 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     // `where: { id }` alone — docs/global/bugs/2026-11-04-bug-unscoped-catalog-writes.md.
     updateVendor: async (_, { id, name }, ctx) => {
       const householdId = await requireCatalogRole(ctx, 'manager')
-      if ((await requireOwnRowOrUnclaimed(ctx, 'vendor', id)) === 'unclaimed') {
+      if ((await requireOwnRowOrUnclaimed(ctx, 'vendor', id, householdId)) === 'unclaimed') {
         throw new GraphQLError('Vendor not found', { extensions: { code: 'NOT_FOUND' } })
       }
       const data: Record<string, unknown> = {}
@@ -95,7 +105,7 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // nothing — not even the caller's own carts that name this vendor id —
       // and its FORBIDDEN must reach the client rather than become `false`.
       // A missing vendor returns false, as it did before.
-      if ((await requireOwnRowOrUnclaimed(ctx, 'vendor', id)) === 'unclaimed') return false
+      if ((await requireOwnRowOrUnclaimed(ctx, 'vendor', id, householdId)) === 'unclaimed') return false
       // ItemVendor rows cascade automatically (onDelete: Cascade on ItemVendor.vendor)
       let cartsDeletedAt: ChangedLocation[] = []
       let vendorDeleted = false

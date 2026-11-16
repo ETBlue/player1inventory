@@ -104,3 +104,17 @@ export const MixedMatchReasons: Story = {
     },
   },
 }
+
+/**
+ * What a household `manager` sees: no "Clear & import", because `clear` is
+ * for the owner only (households H4 task E.4).
+ */
+export const WithoutClear: Story = {
+  args: {
+    allowClear: false,
+    conflicts: {
+      ...emptyConflicts,
+      items: [{ id: 'item-1', name: 'Milk', matchReasons: ['id'] }],
+    },
+  },
+}

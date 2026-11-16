@@ -65,7 +65,7 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     },
     updateTagType: async (_, { id, name, color }, ctx) => {
       const householdId = await requireCatalogRole(ctx, 'manager')
-      if ((await requireOwnRowOrUnclaimed(ctx, 'tagType', id)) === 'unclaimed') {
+      if ((await requireOwnRowOrUnclaimed(ctx, 'tagType', id, householdId)) === 'unclaimed') {
         throw new GraphQLError('TagType not found', { extensions: { code: 'NOT_FOUND' } })
       }
       const data: Record<string, unknown> = {}
@@ -84,7 +84,7 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       const householdId = await requireCatalogRole(ctx, 'manager')
       // The row check FIRST, so a refused call deletes none of the
       // household's own tags either. A missing type returns false, as before.
-      if ((await requireOwnRowOrUnclaimed(ctx, 'tagType', id)) === 'unclaimed') return false
+      if ((await requireOwnRowOrUnclaimed(ctx, 'tagType', id, householdId)) === 'unclaimed') return false
       // Cascade: delete all tags of this type (and their ItemTag rows via DB cascade), then delete the type.
       // Only the household's tags. Tag_typeId_fkey is ON DELETE NO ACTION (it
       // was RESTRICT before the add_households migration; both refuse here),
@@ -125,7 +125,7 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     },
     updateTag: async (_, { id, name, typeId, parentId }, ctx) => {
       const householdId = await requireCatalogRole(ctx, 'manager')
-      if ((await requireOwnRowOrUnclaimed(ctx, 'tag', id)) === 'unclaimed') {
+      if ((await requireOwnRowOrUnclaimed(ctx, 'tag', id, householdId)) === 'unclaimed') {
         throw new GraphQLError('Tag not found', { extensions: { code: 'NOT_FOUND' } })
       }
       // `typeId: null` cannot be written (the column is NOT NULL), so it is
@@ -149,7 +149,7 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     deleteTag: async (_, { id, deleteChildren }, ctx) => {
       const householdId = await requireCatalogRole(ctx, 'manager')
       // The ROOT is checked first, so a refused call changes nothing.
-      const scope = await requireOwnRowOrUnclaimed(ctx, 'tag', id)
+      const scope = await requireOwnRowOrUnclaimed(ctx, 'tag', id, householdId)
       // A missing tag keeps the results it had before: true with
       // deleteChildren (an empty bulk delete), false without (a failed delete).
       // Nothing was deleted either way, so no event.

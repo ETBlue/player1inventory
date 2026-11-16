@@ -21,15 +21,23 @@ import { readLocations, readStocksForItem } from './stockReadback'
 // BOTH FIXTURES (e2e/fixtures/local-backup.json and cloud-backup.json) DESCRIBE
 // THE SAME THREE LOCATIONS, with the same quantities. Only the ids differ,
 // which is the point: the local default is the `'local'` sentinel, the cloud
-// home location is a server-generated cuid, and the import remap rewrites the
-// payload's default onto whichever one the destination holds.
+// one is an id of its own. A local backup's `'local'` goes where the user
+// picks; a cloud backup keeps every id (see the next paragraph).
 //
 // "HOME" BELOW MEANS: in local, the `isDefault` row; in cloud, the household's
 // FIRST location by `order`. Cloud has no default location since households
-// H3a (the server dropped `Location.isDefault` in task 3.14). The web app's
-// cloud import remap puts the payload's default onto that first location
-// (`fetchCloudDefaultLocationId` in apps/web/src/lib/importData.ts), and
-// `readLocations` marks the same row `isHome`.
+// H3a (the server dropped `Location.isDefault` in task 3.14).
+//
+// SINCE HOUSEHOLDS H4 THE CLOUD IMPORT KEEPS EVERY LOCATION ID (task E.4,
+// decision T16). There is no remap onto "the destination's first location" any
+// more (`fetchCloudDefaultLocationId` is deleted). Only a LOCAL backup's
+// default location, id `'local'`, needs a place, and the user picks it in
+// "Import into which location?" (`SettingsPage.chooseImportLocation`); the
+// first location is checked when the dialog opens (decision O3). A CLOUD
+// backup brings its locations back under their own ids. Restored into a NEW
+// household, that is the household's own fresh "Home" PLUS the backup's
+// locations, so those specs pass the fresh "Home" as an extra location (see
+// `expectFixtureLocations`).
 
 /** The two locations whose NAME survives an import in both modes. */
 export const FIXTURE_NON_DEFAULT_LOCATION_NAMES = [
@@ -60,18 +68,19 @@ export const FIXTURE_DEFAULT_LOCATION_NAME = 'Fixture Home'
  * It is the right expected value for EVERY cloud import, and for a LOCAL import
  * that runs `skip`. The table further down says which case is which.
  *
- * THE BACKUP'S DEFAULT-LOCATION NAME DOES NOT SURVIVE A `skip` IMPORT, in either
- * mode, and that is correct rather than a defect. `ImportCard`
- * (apps/web/src/components/settings/ImportCard/ImportCard.tsx line 111) runs
- * the `skip` strategy whenever the payload raises no conflict, and `skip`
- * means "add what is missing, change nothing that is already there". The remap
- * has rewritten the backup's default row onto the id the destination already
- * holds, so that row is always the one `skip` leaves alone:
+ * THE BACKUP'S DEFAULT-LOCATION NAME DOES NOT SURVIVE A `skip` IMPORT OF A
+ * LOCAL BACKUP, in either mode, and that is correct rather than a defect.
+ * `ImportCard` runs the `skip` strategy whenever the payload raises no
+ * conflict, and `skip` means "add what is missing, change nothing that is
+ * already there". The backup's default row (`'local'`) is put on a location
+ * the destination already holds, so that row is always the one `skip` leaves
+ * alone:
  *
  *   - local: `importLocations` filters it out by `existingIds`
  *     (apps/web/src/lib/importData.ts) and the live row keeps its own name;
- *   - cloud: `bulkCreateLocations` skips a row whose id is taken
- *     (apps/server/src/resolvers/import.resolver.ts), same outcome.
+ *   - cloud: the row is put on the location picked in "Import into which
+ *     location?" (`placeDefaultLocation`), which already exists, so it is not
+ *     sent as a new row and the location keeps its own name.
  *
  * Measured 2026-10-04: restoring a backup whose default was called "Fixture
  * Home" gave `[ "Fixture Cabin", "My Home", "Fixture Office" ]` in BOTH
@@ -132,11 +141,10 @@ export function destinationDefaultLocationName(
 /**
  * What each location holds after the round trip.
  *
- * `DEFAULT` is keyed by the HOME location (`isHome` from `readLocations`: the
- * `isDefault` row in local, the first location in cloud), not by a name,
- * because the strategies disagree about that name (see
- * `destinationDefaultLocationName`) and both answers are correct for their
- * strategy.
+ * `DEFAULT` is keyed by the location the backup's default rows landed on,
+ * found by the `defaultLocationName` the caller passes, because the
+ * strategies disagree about that name (see `destinationDefaultLocationName`)
+ * and both answers are correct for their strategy.
  *
  * THE THREE ROWS CARRY THREE DIFFERENT QUANTITIES ON PURPOSE. With one
  * location, or with equal numbers, "each row kept its own location" and "every
@@ -157,19 +165,21 @@ export const FIXTURE_STOCK_BY_LOCATION: Record<
 }
 
 /**
- * Every fixture location survived the round trip, and the HOME location is
- * called `defaultLocationName`.
+ * Every fixture location survived the round trip, and the backup's default
+ * rows are on the location called `defaultLocationName`.
  *
- * "Exactly three locations" is what catches a stray extra location. A payload
- * whose default row kept its own id lands BESIDE the destination's home
- * instead of on it, which gives four locations. In local mode that is also
- * two `isDefault` rows. In cloud mode there is no flag: "exactly one home" is
- * always true there, because `isHome` marks the first row. What the cloud
- * half checks is that the FIRST location by `order` has the expected name, so
- * a payload whose rows landed in the wrong order, or whose default landed on
- * the wrong row, still fails. (Before households H3a task 3.14 a stray cloud
- * default failed with a `P2002` on `Location_one_default_per_user_key`. That
- * index is gone.)
+ * "Exactly these names" is what catches a stray extra location. In local mode
+ * a payload whose default row kept its own id would also give two `isDefault`
+ * rows.
+ *
+ * `extraLocationNames` are locations that are EXPECTED besides the fixture's
+ * three and must hold none of the item's stock. A cloud backup restored into
+ * a new household brings its own three locations back under their own ids
+ * (households H4, decision T16), next to the household's fresh "Home". Pass
+ * `['Home']` there. With no extra location, the HOME row must also be the one
+ * called `defaultLocationName` (local: the `isDefault` row; cloud: the first
+ * location by `order`). With an extra one the first row is decided by the
+ * tie-break on `id` (both are at `order` 0), so that check is skipped.
  *
  * Returns `Record<locationName, id>` with the default's id also under the key
  * `DEFAULT`.
@@ -179,15 +189,22 @@ export async function expectFixtureLocations(
   request: APIRequestContext,
   baseURL: string | undefined,
   defaultLocationName: string,
+  extraLocationNames: string[] = [],
 ): Promise<Record<string, string>> {
   const locations = await readLocations(page, request, baseURL)
 
   expect(locations.map((l) => l.name).sort()).toEqual(
-    [defaultLocationName, ...FIXTURE_NON_DEFAULT_LOCATION_NAMES].sort(),
+    [
+      defaultLocationName,
+      ...FIXTURE_NON_DEFAULT_LOCATION_NAMES,
+      ...extraLocationNames,
+    ].sort(),
   )
-  expect(locations.filter((l) => l.isHome).map((l) => l.name)).toEqual([
-    defaultLocationName,
-  ])
+  if (extraLocationNames.length === 0) {
+    expect(locations.filter((l) => l.isHome).map((l) => l.name)).toEqual([
+      defaultLocationName,
+    ])
+  }
 
   const ids: Record<string, string> = {}
   for (const location of locations) {
@@ -197,8 +214,12 @@ export async function expectFixtureLocations(
       )
     }
     ids[location.name] = location.id
-    if (location.isHome) ids.DEFAULT = location.id
   }
+  const defaultId = ids[defaultLocationName]
+  if (defaultId === undefined) {
+    throw new Error(`no location called "${defaultLocationName}"`)
+  }
+  ids.DEFAULT = defaultId
   return ids
 }
 
@@ -219,17 +240,20 @@ export async function expectFixtureStockPerLocation(
   baseURL: string | undefined,
   itemId: string,
   defaultLocationName: string,
+  extraLocationNames: string[] = [],
 ): Promise<void> {
   const locationIds = await expectFixtureLocations(
     page,
     request,
     baseURL,
     defaultLocationName,
+    extraLocationNames,
   )
   const rows = await readStocksForItem(page, request, baseURL, itemId)
   const roles = ['DEFAULT', ...FIXTURE_NON_DEFAULT_LOCATION_NAMES]
 
-  // 1. One row per location, and no row anywhere else.
+  // 1. One row per location, and no row anywhere else: a row at an extra
+  //    location shows up as its raw id and fails the comparison.
   const roleOf = (locationId: string) =>
     roles.find((role) => locationIds[role] === locationId) ?? locationId
   expect(rows.map((row) => roleOf(row.locationId)).sort()).toEqual(

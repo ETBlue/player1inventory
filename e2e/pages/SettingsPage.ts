@@ -113,6 +113,31 @@ export class SettingsPage {
       .click()
   }
 
+  /**
+   * "Import into which location?" (`ImportLocationDialog`,
+   * src/components/settings/ImportLocationDialog, households H4 task E.4).
+   * Cloud mode only. It opens before the import of a LOCAL backup (a location
+   * with the id `'local'`) or of a file with no locations, except on
+   * "Clear & import". Its accessible name is its title,
+   * t('settings.import.locationDialog.title').
+   */
+  getImportLocationDialog(): Locator {
+    return this.page.getByRole('dialog', {
+      name: 'Import into which location?',
+    })
+  }
+
+  /**
+   * Pick a location in "Import into which location?" and press Import.
+   * `name` is a location name as stored, or "New location".
+   */
+  async chooseImportLocation(name: string): Promise<void> {
+    const dialog = this.getImportLocationDialog()
+    await dialog.getByRole('radio', { name, exact: true }).click()
+    // t('settings.import.locationDialog.confirm') = "Import"
+    await dialog.getByRole('button', { name: 'Import', exact: true }).click()
+  }
+
   async waitForImportDone(mode: 'local' | 'cloud'): Promise<void> {
     if (mode === 'local') {
       // Local import fires toast.success then resets to idle — no inline text shown
