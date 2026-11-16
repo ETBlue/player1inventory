@@ -55,12 +55,19 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
       // Checked BEFORE the recipe is created, so a refused call writes nothing.
       await requireCatalogIds(ctx, householdId, 'item', (items ?? []).map((i) => i.itemId))
       const recipe = await prisma.recipe.create({ data: { name, householdId } })
-      if (items?.length) {
-        await prisma.recipeItem.createMany({
-          data: items.map(i => ({ recipeId: recipe.id, itemId: i.itemId, defaultAmount: i.defaultAmount })),
-        })
+      // `CATALOG` in `finally` (households H3c-2 task D.4): the recipe and
+      // its ingredient rows are separate writes, so once the recipe is saved
+      // other tabs must hear about it even if a later write fails.
+      try {
+        if (items?.length) {
+          await prisma.recipeItem.createMany({
+            data: items.map(i => ({ recipeId: recipe.id, itemId: i.itemId, defaultAmount: i.defaultAmount })),
+          })
+        }
+        return await (prisma.recipe.findUniqueOrThrow({ where: { id: recipe.id }, include: { items: true } }) as unknown as Promise<Recipe>)
+      } finally {
+        await publishHouseholdChange(ctx, ['CATALOG'], householdId)
       }
-      return prisma.recipe.findUniqueOrThrow({ where: { id: recipe.id }, include: { items: true } }) as unknown as Promise<Recipe>
     },
     updateRecipe: async (_, { id, name, items }, ctx) => {
       const householdId = await requireCatalogRole(ctx, 'manager')
@@ -71,26 +78,35 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
       const data: { name?: string } = {}
       if (name != null) data.name = name
       await prisma.recipe.update({ where: { id }, data })
-      if (items != null) {
-        await prisma.recipeItem.deleteMany({ where: { recipeId: id } })
-        if (items.length) {
-          await prisma.recipeItem.createMany({
-            data: items.map(i => ({ recipeId: id, itemId: i.itemId, defaultAmount: i.defaultAmount })),
-          })
+      // `CATALOG` in `finally`, for the same reason as `createRecipe`.
+      try {
+        if (items != null) {
+          await prisma.recipeItem.deleteMany({ where: { recipeId: id } })
+          if (items.length) {
+            await prisma.recipeItem.createMany({
+              data: items.map(i => ({ recipeId: id, itemId: i.itemId, defaultAmount: i.defaultAmount })),
+            })
+          }
         }
+        return await (prisma.recipe.findUniqueOrThrow({ where: { id }, include: { items: true } }) as unknown as Promise<Recipe>)
+      } finally {
+        await publishHouseholdChange(ctx, ['CATALOG'], householdId)
       }
-      return prisma.recipe.findUniqueOrThrow({ where: { id }, include: { items: true } }) as unknown as Promise<Recipe>
     },
     updateRecipeLastCookedAt: async (_, { id }, ctx) => {
       // `member`, not `manager`: see the comment at the top of this file.
       const householdId = await requireCatalogRole(ctx, 'member')
       const existing = await prisma.recipe.findFirst({ where: { id, householdId } })
       if (!existing) throw new GraphQLError('Recipe not found', { extensions: { code: 'NOT_FOUND' } })
-      return prisma.recipe.update({
+      const saved = await prisma.recipe.update({
         where: { id },
         data: { lastCookedAt: new Date() },
         include: { items: true },
-      }) as unknown as Promise<Recipe>
+      })
+      // `CATALOG` (households H3c-2 task D.4): the recipe list shows when
+      // each recipe was last cooked.
+      await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+      return saved as unknown as Recipe
     },
     consumeRecipes: async (_, { input }, ctx) => {
       const userId = requireAuth(ctx)
@@ -322,6 +338,7 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
       if (!existing) return false
       // RecipeItem rows cascade-delete via DB constraint
       await prisma.recipe.delete({ where: { id } })
+      await publishHouseholdChange(ctx, ['CATALOG'], householdId)
       return true
     },
   },

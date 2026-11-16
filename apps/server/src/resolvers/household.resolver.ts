@@ -2,6 +2,7 @@ import { GraphQLError } from 'graphql'
 import { requireHousehold, requireHouseholdRole } from '../lib/authz.js'
 import { HOUSEHOLD_NAME_MAX_LENGTH } from '../lib/household.js'
 import { prisma } from '../lib/prisma.js'
+import { publishHouseholdChange } from '../lib/publishChange.js'
 import type { Resolvers } from '../generated/graphql.js'
 
 // The caller's household: its name, and the caller's role in it (households
@@ -67,6 +68,10 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         data: { name: clean },
         select: { id: true, name: true },
       })
+      // `CATALOG` (households H3c-2 task D.4): the name is in every member's
+      // sidebar, and on the web `GetHousehold` is refetched for `CATALOG`.
+      // For the SAVED row's household.
+      await publishHouseholdChange(ctx, ['CATALOG'], row.id)
       return { id: row.id, name: row.name, role }
     },
   },

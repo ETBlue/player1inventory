@@ -207,6 +207,12 @@ vi.mock('../lib/prisma.js', async () => {
   }>({ model: 'Shelf', ...catalog })
   const { createCartFake } = await import('../test/cartFake.js')
   const carts = createCartFake()
+  // `deleteItem` reads the locations of the item's logs before it deletes
+  // the item, for its live events (households H3c-2 task D.4). Empty here:
+  // this file tests roles; `catalog-live-publish.resolver.test.ts` tests
+  // the events.
+  const { createInventoryLogFake } = await import('../test/inventoryLogFake.js')
+  const logs = createInventoryLogFake()
   // The `Store` shape the tests below use (`state.rows`, `reset(rows)`), over
   // the cart fake's own state, which is what the rollback snapshots.
   const cartStore = {
@@ -284,6 +290,7 @@ vi.mock('../lib/prisma.js', async () => {
     recipeItem: recipeItem.client,
     cart: carts.client.cart,
     cartItem: carts.client.cartItem,
+    inventoryLog: logs.client,
   }
   const stores = [
     world.users.state,

@@ -5,6 +5,7 @@ import {
   requireOwnRowOrUnclaimed,
 } from '../lib/authz.js'
 import { prisma } from '../lib/prisma.js'
+import { publishHouseholdChange } from '../lib/publishChange.js'
 import { requireAuth } from '../context.js'
 import type { Resolvers, Tag, TagType } from '../generated/graphql.js'
 import type { TagColor } from '@prisma/client'
@@ -25,6 +26,13 @@ import type { TagColor } from '@prisma/client'
 // a `householdId`: root CLAUDE.md forbids that as an authorization check.
 // Before 2026-11-04 these writes used `where: { id }` alone — see
 // docs/global/bugs/2026-11-04-bug-unscoped-catalog-writes.md.
+//
+// ── Live events (households H3c-2 task D.4) ──
+//
+// Every write sends one household-level `CATALOG` event AFTER it has
+// saved, for the household `requireCatalogRole` returned: every row here is
+// written in that household. A call that is refused, finds nothing, or fails
+// sends nothing, because nothing changed.
 
 export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
   Query: {
@@ -49,26 +57,28 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     createTagType: async (_, { name, color }, ctx) => {
       requireAuth(ctx)
       const householdId = await requireCatalogRole(ctx, 'manager')
-      return prisma.tagType.create({
+      const created = await prisma.tagType.create({
         data: { name, color: color as TagColor, householdId },
-      }) as unknown as Promise<TagType>
+      })
+      await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+      return created as unknown as TagType
     },
     updateTagType: async (_, { id, name, color }, ctx) => {
-      await requireCatalogRole(ctx, 'manager')
+      const householdId = await requireCatalogRole(ctx, 'manager')
       if ((await requireOwnRowOrUnclaimed(ctx, 'tagType', id)) === 'unclaimed') {
         throw new GraphQLError('TagType not found', { extensions: { code: 'NOT_FOUND' } })
       }
       const data: Record<string, unknown> = {}
       if (name !== undefined) data.name = name
       if (color !== undefined) data.color = color as TagColor
+      let saved: unknown
       try {
-        return await prisma.tagType.update({
-          where: { id },
-          data,
-        }) as unknown as TagType
+        saved = await prisma.tagType.update({ where: { id }, data })
       } catch {
         throw new GraphQLError('TagType not found', { extensions: { code: 'NOT_FOUND' } })
       }
+      await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+      return saved as TagType
     },
     deleteTagType: async (_, { id }, ctx) => {
       const householdId = await requireCatalogRole(ctx, 'manager')
@@ -94,10 +104,12 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           await tx.tag.deleteMany({ where: { typeId: id, householdId } })
           await tx.tagType.delete({ where: { id } })
         })
-        return true
       } catch {
         return false
       }
+      // After the transaction has committed, never inside it.
+      await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+      return true
     },
     createTag: async (_, { name, typeId, parentId }, ctx) => {
       requireAuth(ctx)
@@ -105,9 +117,11 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       await requireCatalogIds(ctx, householdId, 'tagType', [typeId])
       // `parentId: null` (or omitted) means a top-level tag, and is allowed.
       if (parentId != null) await requireCatalogIds(ctx, householdId, 'tag', [parentId])
-      return prisma.tag.create({
+      const created = await prisma.tag.create({
         data: { name, typeId, householdId, parentId: parentId ?? null },
-      }) as unknown as Promise<Tag>
+      })
+      await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+      return created as unknown as Tag
     },
     updateTag: async (_, { id, name, typeId, parentId }, ctx) => {
       const householdId = await requireCatalogRole(ctx, 'manager')
@@ -123,11 +137,14 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       if (typeId !== undefined) data.typeId = typeId
       // parentId: null means "unset parent"; undefined means "no change"
       if (parentId !== undefined) data.parentId = parentId ?? null
+      let saved: unknown
       try {
-        return await prisma.tag.update({ where: { id }, data }) as unknown as Tag
+        saved = await prisma.tag.update({ where: { id }, data })
       } catch {
         throw new GraphQLError('Tag not found', { extensions: { code: 'NOT_FOUND' } })
       }
+      await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+      return saved as Tag
     },
     deleteTag: async (_, { id, deleteChildren }, ctx) => {
       const householdId = await requireCatalogRole(ctx, 'manager')
@@ -135,6 +152,7 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       const scope = await requireOwnRowOrUnclaimed(ctx, 'tag', id)
       // A missing tag keeps the results it had before: true with
       // deleteChildren (an empty bulk delete), false without (a failed delete).
+      // Nothing was deleted either way, so no event.
       if (scope === 'unclaimed') return Boolean(deleteChildren)
 
       // The descendant walk and the orphaning step below are scoped to the
@@ -161,18 +179,26 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         const allIds = [id, ...descendantIds]
         // ItemTag rows are deleted by DB cascade (onDelete: Cascade on ItemTag.tag)
         await prisma.tag.deleteMany({ where: { id: { in: allIds } } })
+        await publishHouseholdChange(ctx, ['CATALOG'], householdId)
         return true
       }
 
       // Orphan children: clear their parentId so they become top-level
-      await prisma.tag.updateMany({ where: { parentId: id, householdId }, data: { parentId: null } })
+      const orphaned = await prisma.tag.updateMany({
+        where: { parentId: id, householdId },
+        data: { parentId: null },
+      })
       // ItemTag rows for this tag are deleted by DB cascade
       try {
         await prisma.tag.delete({ where: { id } })
-        return true
       } catch {
+        // The children were already moved to the top level. Other tabs
+        // must see that, even though the tag itself is still there.
+        if (orphaned.count > 0) await publishHouseholdChange(ctx, ['CATALOG'], householdId)
         return false
       }
+      await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+      return true
     },
   },
 }

@@ -6,7 +6,7 @@ import {
 } from '../lib/authz.js'
 import { cartIdFor, parseCartId } from '@p1i/types'
 import { prisma } from '../lib/prisma.js'
-import { type ChangedLocation, publishChange } from '../lib/publishChange.js'
+import { type ChangedLocation, publishChange, publishHouseholdChange } from '../lib/publishChange.js'
 import { requireAuth } from '../context.js'
 import type { Resolvers, Vendor } from '../generated/graphql.js'
 
@@ -16,6 +16,11 @@ import type { Resolvers, Vendor } from '../generated/graphql.js'
 // (design, *Household roles*), through `requireCatalogRole` (lib/authz.ts).
 // `Cart.userId` was dropped in households H3b task B.3; carts are scoped by
 // their location.
+//
+// Live events (households H3c-2 task D.4): every write sends a
+// household-level `CATALOG` event after it has saved, for the household
+// `requireCatalogRole` returned. `createVendor` and `deleteVendor` also send
+// `CART`, because they make or delete carts.
 export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
   Query: {
     vendors: async (_, __, ctx) => {
@@ -53,6 +58,14 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         },
         update: {},
       })
+      // `CATALOG` for the new vendor; `CART` for the cart at `locationId`.
+      // The cart is empty, but `bootstrapCarts` sends `CART` for the empty
+      // carts it makes too, so both behave the same. The location is passed
+      // without a household, so `publishChange` reads the LOCATION's
+      // household: `requireLocationRole` above does not check that
+      // `locationId` is in the catalog's household.
+      await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+      await publishChange(ctx, ['CART'], [{ locationId }])
       return vendor as unknown as Vendor
     },
     // The row is checked by `requireOwnRowOrUnclaimed` (lib/authz.ts), which
@@ -60,17 +73,20 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     // `userId` or a `householdId`. Before 2026-11-04 both writes below used
     // `where: { id }` alone — docs/global/bugs/2026-11-04-bug-unscoped-catalog-writes.md.
     updateVendor: async (_, { id, name }, ctx) => {
-      await requireCatalogRole(ctx, 'manager')
+      const householdId = await requireCatalogRole(ctx, 'manager')
       if ((await requireOwnRowOrUnclaimed(ctx, 'vendor', id)) === 'unclaimed') {
         throw new GraphQLError('Vendor not found', { extensions: { code: 'NOT_FOUND' } })
       }
       const data: Record<string, unknown> = {}
       if (name !== undefined) data.name = name
+      let saved: unknown
       try {
-        return await prisma.vendor.update({ where: { id }, data }) as unknown as Vendor
+        saved = await prisma.vendor.update({ where: { id }, data })
       } catch {
         throw new GraphQLError('Vendor not found', { extensions: { code: 'NOT_FOUND' } })
       }
+      await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+      return saved as Vendor
     },
     deleteVendor: async (_, { id }, ctx) => {
       requireAuth(ctx)
@@ -82,6 +98,7 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       if ((await requireOwnRowOrUnclaimed(ctx, 'vendor', id)) === 'unclaimed') return false
       // ItemVendor rows cascade automatically (onDelete: Cascade on ItemVendor.vendor)
       let cartsDeletedAt: ChangedLocation[] = []
+      let vendorDeleted = false
       try {
         // A vendor has one cart PER LOCATION since PR 3b re-keyed Cart.id, so
         // there is no single `id` to delete any more. Before the re-key this
@@ -125,14 +142,17 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           await prisma.cart.deleteMany({ where: { id: { in: cartIds } } })
         }
         await prisma.vendor.delete({ where: { id } })
+        vendorDeleted = true
         return true
       } catch {
         return false
       } finally {
         // `CART` for each location whose carts this deleted (households
         // H3c-1, task C.4). The household is known: the carts were read
-        // from this household's locations. H3c-2 adds `CATALOG`.
+        // from this household's locations. `CATALOG` only when the vendor
+        // itself is gone (households H3c-2 task D.4).
         await publishChange(ctx, ['CART'], cartsDeletedAt)
+        if (vendorDeleted) await publishHouseholdChange(ctx, ['CATALOG'], householdId)
       }
     },
   },

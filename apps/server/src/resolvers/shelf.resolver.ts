@@ -2,6 +2,7 @@ import { GraphQLError } from 'graphql'
 import type { Prisma } from '@prisma/client'
 import { requireCatalogIds, requireCatalogRole } from '../lib/authz.js'
 import { prisma } from '../lib/prisma.js'
+import { publishHouseholdChange } from '../lib/publishChange.js'
 import { requireAuth, type Context } from '../context.js'
 import type { FilterConfigInput, Resolvers, Shelf } from '../generated/graphql.js'
 import { toGraphQL as itemToGraphQL } from './item.resolver.js'
@@ -11,6 +12,11 @@ import { toGraphQL as itemToGraphQL } from './item.resolver.js'
 // Reading shelves needs household role `member`; every write needs `manager`
 // (design, *Household roles*), through `requireCatalogRole` (lib/authz.ts).
 // Every read and every `updateMany` is filtered by the household.
+//
+// Live events (households H3c-2 task D.4): every write sends one
+// household-level `CATALOG` event AFTER it has saved, for the household
+// `requireCatalogRole` returned. A refused call, or one that finds nothing,
+// sends nothing.
 
 /**
  * A shelf's `itemIds` and the ids inside its `filterConfig` must be the
@@ -58,7 +64,7 @@ export const shelfResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       const householdId = await requireCatalogRole(ctx, 'manager')
       await requireShelfIds(ctx, householdId, itemIds, filterConfig)
       const count = await prisma.shelf.count({ where: { householdId } })
-      return prisma.shelf.create({
+      const created = await prisma.shelf.create({
         data: {
           name,
           type,
@@ -67,7 +73,9 @@ export const shelfResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           itemIds: itemIds ?? [],
           householdId,
         },
-      }) as unknown as Promise<Shelf>
+      })
+      await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+      return created as unknown as Shelf
     },
     updateShelf: async (_, { id, name, type, order, filterConfig, itemIds }, ctx) => {
       const householdId = await requireCatalogRole(ctx, 'manager')
@@ -81,18 +89,24 @@ export const shelfResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       if (order != null) data.order = order
       if (filterConfig != null) data.filterConfig = filterConfig
       if (itemIds != null) data.itemIds = itemIds
-      return prisma.shelf.update({ where: { id }, data }) as unknown as Promise<Shelf>
+      const saved = await prisma.shelf.update({ where: { id }, data })
+      await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+      return saved as unknown as Shelf
     },
     deleteShelf: async (_, { id }, ctx) => {
       const householdId = await requireCatalogRole(ctx, 'manager')
       const existing = await prisma.shelf.findFirst({ where: { id, householdId } })
       if (!existing) return false
       await prisma.shelf.delete({ where: { id } })
+      await publishHouseholdChange(ctx, ['CATALOG'], householdId)
       return true
     },
     reorderShelves: async (_, { orderedIds }, ctx) => {
       const householdId = await requireCatalogRole(ctx, 'manager')
-      await Promise.all(
+      // `allSettled`, so the event below knows how many rows really moved,
+      // even when one write fails. An empty list, or ids that are not the
+      // household's, move nothing and send nothing.
+      const results = await Promise.allSettled(
         orderedIds.map((shelfId, index) =>
           prisma.shelf.updateMany({
             where: { id: shelfId, householdId },
@@ -100,6 +114,10 @@ export const shelfResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           })
         )
       )
+      const moved = results.reduce((n, r) => n + (r.status === 'fulfilled' ? r.value.count : 0), 0)
+      if (moved > 0) await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+      const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
+      if (failed) throw failed.reason
       return true
     },
     reorderShelfItems: async (_, { shelfId, orderedItemIds }, ctx) => {
@@ -112,6 +130,7 @@ export const shelfResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         where: { id: shelfId },
         data: { itemIds: orderedItemIds },
       })
+      await publishHouseholdChange(ctx, ['CATALOG'], householdId)
       return true
     },
     // Joins an item to a filter shelf's picks: adds tag/vendor ids onto the
@@ -203,6 +222,9 @@ export const shelfResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         })
       })
 
+      // After the transaction has committed, never inside it. A transaction
+      // that throws (for example a recipe not found) sends nothing.
+      await publishHouseholdChange(ctx, ['CATALOG'], householdId)
       return itemToGraphQL(updated)
     },
   },

@@ -460,18 +460,25 @@ describe('bootstrapCarts', () => {
 // ─── deleteVendor ────────────────────────────────────────────────────────────
 
 describe('deleteVendor', () => {
+  // Since households H3c-2 task D.4 it also sends a household-level
+  // `CATALOG` event (`locationId: null`, so it sorts first below).
+  // `catalog-live-publish.resolver.test.ts` tests that part.
   it('publishes CART for each location whose carts it deleted', async () => {
     const res = await run(DELETE_VENDOR, { id: 'ven_1' }, ALICE)
 
     expect(res.data?.deleteVendor).toBe(true)
-    expect(eventsByLocation()).toEqual([cart(LOC_GARAGE, 'hh_home'), cart(LOC_HOME, 'hh_home')])
+    expect(eventsByLocation()).toEqual([
+      { kind: 'CATALOG', householdId: 'hh_home', locationId: null, sourceClientId: TAB },
+      cart(LOC_GARAGE, 'hh_home'),
+      cart(LOC_HOME, 'hh_home'),
+    ])
   })
 
-  it('publishes nothing for a vendor with no carts', async () => {
+  it('publishes no CART for a vendor with no carts', async () => {
     const res = await run(DELETE_VENDOR, { id: 'ven_empty' }, ALICE)
 
     expect(res.data?.deleteVendor).toBe(true)
-    expect(events()).toEqual([])
+    expect(events().filter((e) => e.kind === 'CART')).toEqual([])
   })
 
   it('publishes nothing when the household role check refuses it', async () => {
