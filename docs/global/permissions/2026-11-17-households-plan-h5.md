@@ -395,24 +395,92 @@ The owner can still correct any `tw` text in the PR.
 
 **Interfaces:** none new. `vendorCart` keeps its signature (`Cart!`).
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `location viewer can open a vendor cart that does not exist yet, and no cart is written` → viewer V at K; `vendorCart(vendorId: v1, locationId: K)` returns `{ id: 'K:v1', lastPurchasedAt: null }`; `cartFake.state.carts` is unchanged.
   - `location participant still gets the missing cart created` → the row exists after the call.
   - `a person with no role on the location cannot open its vendor cart` → `FORBIDDEN`.
   - In `two-households-reads.resolver.test.ts`: user U is in households A and B, with a role in both; the target pinned through `ctx.requestCache.householdId = A`. Stock of item `iA` at a location of B is put straight into the fake state (it cannot be made through the API — that is the invariant this guards). `cartItemCountByItem(itemId: iA)` with no `locationId` counts only A's carts; `itemStocksForItem(iA)` returns only A's rows; `addItemToLocation` with no `sourceLocationId` copies settings only from A; `checkout`'s copy-on-add reads only A.
   - `reorderLocations refuses a list that leaves out a location of the household` → `BAD_USER_INPUT`, no `order` changed.
   - The H3a owed test: `bulkUpsertLocations does not move a location of another household` — first `git grep -n "another household" apps/server/src/resolvers/import-role-gate.resolver.test.ts`; if a test already asserts that an existing location of household B, named in an import into A, is refused and keeps `householdId: B`, name it in the commit message and write nothing new.
-- [ ] **Step 2: Run** the four files — the new tests FAIL.
-- [ ] **Step 3: Implement** T5, T6 and T7. In `vendorCart`, call
+- [x] **Step 2: Run** the four files — the new tests FAIL.
+- [x] **Step 3: Implement** T5, T6 and T7. In `vendorCart`, call
   `requireLocationRole(ctx, locationId, 'viewer')`, keep its returned `role`, and create only
   when `LOCATION_RANK[role] >= LOCATION_RANK.participant` (export the rank check as
   `roleAtLeast(role, min)` from `authz.ts` rather than reading the rank map at the call site).
   Update the comment in `cart.graphql` above `vendorCart`.
-- [ ] **Step 4: Run** the files and `pnpm test:server` — PASS.
-- [ ] **Step 5: Mutation checks:** remove `householdId` from each of the four reads, one at a
+- [x] **Step 4: Run** the files and `pnpm test:server` — PASS.
+- [x] **Step 5: Mutation checks:** remove `householdId` from each of the four reads, one at a
   time → each two-household test goes red; make `vendorCart` create for every role → the
   viewer test goes red on "no cart is written"; allow a subset in `reorderLocations` → red.
-- [ ] **Step 6: Gate**, commit `fix(households): viewer cart reads and one-household reads`.
+- [x] **Step 6: Gate**, commit `fix(households): viewer cart reads and one-household reads`.
+
+**As built (2026-11-17).**
+
+- **`vendorCart` asks `viewer`** (T7). It keeps the role `requireLocationRole` returns.
+  A missing cart is created only when `roleAtLeast(role, 'participant')`; a viewer gets
+  `{ id: cartIdFor(locationId, vendorId), lastPurchasedAt: null }` and nothing is written.
+  `roleAtLeast(role, min)` is new in `lib/authz.ts`. `bootstrapCarts` is unchanged
+  (`participant`). The `cart.graphql` comment and the "queries that write" note in
+  `live-publish.guard.test.ts` say so.
+- **The four reads (T5).** Two use the CALLER's household, two the LOCATION's:
+
+  | Read | Household |
+  |---|---|
+  | `cartItemCountByItem` with no `locationId` | `requireHousehold(ctx)` |
+  | `itemStocksForItem` | `requireHousehold(ctx)` |
+  | `addItemToLocation`'s copy-on-add sources | `householdOfLocation(locationId)` |
+  | `checkout`'s copy-on-add sources | `householdOfLocation(cartLocationId)` |
+
+  The plan said `requireHousehold` for all four. For the two writes that is wrong (see
+  *What this plan got wrong*). It costs one more location read in each.
+- **`reorderLocations` needs the full set (T6).** After the repeat check (`BAD_USER_INPUT`)
+  and the foreign-id check (`FORBIDDEN`), it counts the household's locations; a different
+  count is `BAD_USER_INPUT`, before any write. An empty list is now refused while the
+  household has a location. Comment in `location.graphql`.
+- **Until F.3, an owner or manager with no role on a location cannot reorder in the web.**
+  The settings list still sends `useLocations()` (the switcher's list), which leaves that
+  location out, so the server refuses it. F.3 moves the list to `householdLocations`.
+- **The H3a owed test** already existed: `import-role-gate.resolver.test.ts`,
+  `bulkUpsertLocations: an existing location of the caller's other household is refused`.
+  It checked the refusal and the name, not `householdId`, so one assertion was added
+  (`householdId` stays `hh_b`).
+- **Tests.** `two-households-reads.resolver.test.ts` (new, 7 tests: one person in two
+  households, a second person with a viewer role, a location the caller has no role on,
+  broken rows written straight into the fakes). `cart.resolver.test.ts`: 4 new
+  `vendorCart` tests; the old block "a location viewer cannot use vendorCart" (2 tests) is
+  deleted, because T7 reverses it. `location.resolver.test.ts`: 3 new reorder tests.
+  `location-live-publish.resolver.test.ts`: the empty-list test now expects
+  `BAD_USER_INPUT`, plus 1 new test. Server suite **1794 / 69 → 1807 / 70**.
+- **Mutations, each copied aside and restored from the copy:**
+
+  | Mutation | Red |
+  |---|---|
+  | `cartItemCountByItem` without the household filter | `user in two households counts only the carts of the pinned household` |
+  | `itemStocksForItem` without the filter | `… sees only the pinned household's stock rows of an item` |
+  | `addItemToLocation` without the filter | `… adding an item copies settings from the location's household only` |
+  | `addItemToLocation` with the caller's household (the plan's form) | `user pinned to one household, adding the other household's item …` |
+  | `checkout` without the filter | `… checking out copies settings from the cart's household only` |
+  | `checkout` with the caller's household | `user pinned to one household, checking out the other household's cart …` |
+  | `vendorCart` creates for every role | `location viewer can open a vendor cart that does not exist yet, and no cart is written` |
+  | `vendorCart` asks `participant` again | both viewer tests |
+  | `reorderLocations` accepts a subset | 5 tests (3 in `location.resolver.test.ts`, 2 in `location-live-publish.resolver.test.ts`) |
+
+  Negative control, green either way: VERA's count test (she is in one household).
+
+**Review fixes for F.1 (2026-11-17, after the review).**
+
+- `forgetLocationRoles(ctx)` in `lib/authz.ts` clears both role caches. It is called by
+  `createLocation`, `deleteLocation`, `clearAllData` and `createImportedLocation` (so both
+  location imports). `role-cache.guard.test.ts` reads the source and fails on a resolver
+  field that writes a role row without it, and on a new file under `src/lib` that writes
+  role rows without a listed reason. Three tests run two mutations in one document.
+- `CreateLocation`, `UpdateLocation` and `ReorderLocations` select `myRole hasOrganizer`.
+  `apps/web/src/apollo/locationSelections.test.ts` compares the selections. Only one cache
+  write targets either query (`useReorderLocations`' `writeQuery`).
+- The `householdIdOf` fallback is kept and tested by calling the field resolvers directly.
+- Three comments that said "until H5" are corrected.
+- `withoutRefusedRows` › "leaves a clean file as it is" builds its payload once.
+
 
 ## Task F.3 — web: settings locations list for every role
 
@@ -784,8 +852,17 @@ Filled in from the task reports and reviews.
 | F.1 | Which household the field resolvers use was not said | The LOCATION's own, from the parent row. The caller's household gives `myRole: null` for a second household's location, and no test caught that until one was added |
 | F.1 | The `hasOrganizer` test: remove O's membership, then check O's `myRole` on K too | After the removal O is in no household of K and `householdLocations` refuses O. The test lists as the manager; the H18 part of `myRole` is tested in `authz.test.ts` instead |
 | F.1 | Use `householdFake` as it is | It did not model the `user` relation filter on `LocationMember`. Added, with three contract tests |
+| F.1 | Step 4 refreshes `myRole` through the `LOCATION` live event, in OTHER tabs | Nothing covered the SAME request. The role caches lived for the whole request and no write cleared them, so `a: createLocation … b: createLocation …` gave `b` `myRole: null`. Fixed with `forgetLocationRoles` after the review |
+| F.1 | Add `myRole` to `GetLocations`; no step for the mutations | `ReorderLocations`' result is written into `GetLocations` with `writeQuery`, and it did not select `myRole`, so the cached list read back as incomplete. `CreateLocation` and `UpdateLocation` lacked it too. Fixed after the review, with a selection test |
+| F.1 | (nothing) | The `householdIdOf` fallback was reached by no test, and three comments still said "until H5". Fixed after the review |
+| F.2 | The four reads get `{ householdId: await requireHousehold(ctx) }` | Right for the two reads. Wrong for the two writes: `addItemToLocation` and `checkout` act on a location of EITHER household, and the item is that location's household's (`requireLocationItems`). With the caller's household the copy-on-add finds no source and writes target 0. They use `householdOfLocation` |
+| F.2 | `cartFake.state.carts` is unchanged (viewer test) | `cart.resolver.test.ts`, where `vendorCart` is tested, uses a `vi.fn()` recorder for `cart`, not `cartFake`. The test checks that `cart.create` is not called |
+| F.2 | `cartItemCountByItem` "counts only A's carts" | It counts ROWS (`cartItem.count`), not amounts. The first draft of the test expected a sum of amounts and passed against the unfiltered code by chance (3 rows) |
+| F.2 | (nothing about existing tests) | `cart.resolver.test.ts` had a block "a location viewer cannot use vendorCart" (2 tests) that T7 reverses; it is deleted. `location-live-publish.resolver.test.ts` expected an empty reorder list to pass; it is now `BAD_USER_INPUT` |
+| F.2 | Step 1: write the `bulkUpsertLocations` test unless one exists | It existed, but did not check `householdId`. One assertion was added |
+| F.2 | The settings list sends every location (F.3) | True only after F.3. Between F.2 and F.3 an owner or manager with no role on a location cannot reorder in the web |
 
 ## Status
 
 **Plan written 2026-11-17** on `feature/households-h5`. Owner decisions O1–O12 answered
-2026-11-17 (see *Owner answers*). H5a task F.1 is done (`a59cfcb8`). Task F.2 is next.
+2026-11-17 (see *Owner answers*). H5a task F.1 is done (`a59cfcb8`), with review fixes. Task F.2 is done. Task F.3 is next.
