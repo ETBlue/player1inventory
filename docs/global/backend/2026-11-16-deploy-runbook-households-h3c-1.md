@@ -6,6 +6,7 @@
 **Plan:** [`../permissions/2026-11-16-households-plan-h3c-1.md`](../permissions/2026-11-16-households-plan-h3c-1.md) (task C.7)
 **Design:** [`../permissions/2026-11-16-households-h3c-design.md`](../permissions/2026-11-16-households-h3c-design.md), section *4. Deploy*
 **Runs together with:** [`2026-11-11-deploy-runbook-households-h3a.md`](2026-11-11-deploy-runbook-households-h3a.md) and [`2026-11-15-deploy-runbook-households-h3b.md`](2026-11-15-deploy-runbook-households-h3b.md)
+**H3c-2 (stock, logs, locations, catalog):** added to this file as [section 9](#9-h3c-2-additions-live-updates-for-the-pantry-logs-locations-and-the-catalog). No migration and no new setting
 
 ## Why this is a third file
 
@@ -308,8 +309,9 @@ use `clerkMiddleware`, not `verifyToken`, so HTTP can work while the socket refu
 
 1. In tab A's WS tab, does a `next` message arrive when tab B changes the cart?
    - **No:** the server did not send it. Check that both tabs are the same user, and that the
-     change was a cart change. In H3c-1 only carts send events (stock, logs, locations and the
-     catalog are H3c-2).
+     change was a cart change. In H3c-1 only carts send events. With H3c-2 merged, stock,
+     logs, locations and the catalog send events too (section 9). A new location is a special
+     case: see 9.3.
    - **Yes, but the screen does not change:** the web did not refetch. Report it as a bug with
      the browser console output.
 
@@ -329,8 +331,91 @@ is needed.
 | Railway's proxy and WebSocket upgrades | Never tested before this deploy. Section 4 is the first check |
 | Idle sockets on Railway | The client sends no keep-alive ping. Whether Railway closes an idle socket before 60 minutes is not measured. If it does, the browser reconnects and refetches; it costs a request, not a missed change |
 | A second Railway instance | The event bus lives in one process (`apps/server/src/lib/liveEvents.ts`). With two instances, a change on one would not reach sockets on the other. Do not scale out before the bus moves to a shared service |
-| Stock, logs, locations and the catalog | H3c-2 |
+| Stock, logs, locations and the catalog | Built in H3c-2. See section 9 |
 | Two people on two devices | Needs H5 (invites). Until then, two tabs or devices of one person is the whole test |
+
+---
+
+## 9. H3c-2 additions: live updates for the pantry, logs, locations and the catalog
+
+**Added 2026-11-16** (H3c-2 plan task D.6). Branch `feature/households-h3c-2`, going into
+`develop`. Not merged, not deployed.
+
+### 9.1 Why a section here and not a new file
+
+H3c-2 changes nothing that a deploy step touches:
+
+| Part | H3c-2 changes |
+|---|---|
+| Database | nothing. **No migration** |
+| Server env | nothing |
+| Web build env | nothing. It uses the same `VITE_GRAPHQL_WS_URL` as H3c-1 (section 2.1) |
+| Socket, sign-in, close codes | nothing |
+| What the server sends | four more event kinds: `STOCK`, `LOG`, `LOCATION`, `CATALOG` |
+
+So every step in sections 0 to 8 stays as it is. The only addition is more checks in the
+smoke test. A new file would repeat sections 1 to 7 with no change. If H3c-1 and H3c-2 go out
+at the same release, do sections 2 to 6 once, then add 9.3.
+
+If H3c-2 merges into `develop` after the release that carries H3c-1, it needs no setup at
+all at its own release: merge, let Cloudflare and Railway deploy, then do 9.3.
+
+### 9.2 Old and new versions together
+
+| Web | Server | What happens |
+|---|---|---|
+| H3c-1 web | H3c-2 server | The old bundle does not know the four new kinds. `queriesFor` in `apps/web/src/apollo/liveUpdates.ts` refetches **every** active query for a kind it does not know. Slower, never wrong |
+| H3c-2 web | H3c-1 server | The server sends only `CART`. The pantry, logs, locations and the catalog do not update live. Everything else works |
+| H3c-2 web | H3c-2 server | Everything updates live |
+
+The order of web and server still does not matter.
+
+### 9.3 The smoke test (add to section 6)
+
+**Owner**, cloud mode, signed in as the same user in two tabs (or on two devices), after a
+hard reload on both.
+
+| # | Action in tab B | What tab A must show, within about a second, with no reload |
+|---|---|---|
+| P1 | Open an item, change its quantity at the active location | tab A, on the pantry, shows the new quantity |
+| P2 | Rename an item | tab A, on the pantry, shows the new name |
+| P3 | Check out a cart that holds an item stocked here | tab A, on the pantry, shows the item's quantity go up |
+| P4 | Delete an item | the item leaves tab A's pantry |
+| P5 | Create a location | tab A's location switcher lists it |
+| P6 | Rename a tag, a vendor or a recipe | tab A, on that settings list, shows the new name |
+
+**P5 works only because both tabs are the same user.** A new location is shown only to
+people who hold a role on it, and `createLocation` gives a role only to the person who
+created it. So another household member does not see the new location, live or after a
+reload. That is how locations are scoped (`visibleLocations` in
+`apps/server/src/resolvers/location.resolver.ts`), not a live update bug. Before H5 (invites)
+nobody else is in the household anyway.
+
+Results: `TBD on deploy day`.
+
+### 9.4 If something is wrong
+
+Use 7.3 first: does a `next` message arrive in tab A's WS tab?
+
+- **No message:** check both tabs are the same user and the same household. A write that
+  changed nothing sends nothing (a refused call, an empty reorder, an import that skipped
+  every row).
+- **A message, but the screen does not change:** the web map `QUERIES_BY_KIND` in
+  `apps/web/src/apollo/liveUpdates.ts` may be missing the query that screen uses. The map is
+  kept by hand, and no test checks that every query is in it. Report it as a bug and name the
+  screen.
+
+### 9.5 What the user gets
+
+Once H3c-2 is merged **and deployed**: the pantry, item pages, logs, the location switcher,
+the settings lists (tags, vendors, recipes, shelves) and the household name update by
+themselves when another tab or device of the same household changes them. A checkout or a
+cooked recipe updates the pantry quantities in other tabs, not only the cart.
+
+### 9.6 What the developer gets
+
+No new deploy step and no new setting to check. The cost is in the smoke test: six more
+checks (P1 to P6), about five minutes.
 
 ---
 
