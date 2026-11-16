@@ -200,6 +200,35 @@ maybe `apps/server/scripts/check-start.mjs`.
    checkout publishes nothing" test goes red; add a fake field to the schema in no list →
    the guard test goes red.
 
+**As built (2026-11-16):**
+
+- Helper: `publishChange(ctx, kind, locations, bus?)` in `apps/server/src/lib/publishChange.ts`.
+  It takes `{ locationId, householdId? }`. A household the resolver already has
+  (`bootstrapCarts`, `deleteVendor`, the cart item imports) is used as is; the others are read
+  with ONE `location.findMany` after the write. One event per distinct location. It never
+  throws: the write has already committed, so a failure is logged by name only.
+- `householdId` is the LOCATION's household. `HouseholdMember` allows a person in two
+  households, so the tests use a caller whose `requireHousehold` answer differs from the
+  location's.
+- The four cart imports are not one transaction, so each publishes in `finally` the locations
+  of the rows it really wrote. A batch that fails at row 5 still reports rows 1 to 4. A batch
+  refused before its first write publishes nothing.
+- `abandonCart` publishes only when it deleted a row; `bootstrapCarts` only when
+  `createMany` returned `count > 0`; `deleteVendor` only when it deleted carts (set before the
+  deletes, because they are not one transaction).
+- The guard test (`resolvers/live-publish.guard.test.ts`) counts **62** `Mutation` fields:
+  11 `publishes`, 0 `publishesNothing`, 51 `waitingForH3c2`. `publishesNothing` is empty:
+  there is no display-name or language mutation, and every field writes data another member
+  sees.
+- **Cart rows that change outside P5.** `deleteItem`, `deleteLocation`, `clearAllData`,
+  `removeItemFromLocation` (deletes the item's cart rows at that location) and `createVendor`
+  (creates one cart) all wait for H3c-2, and their guard reason says their event must refetch
+  the cart queries too. `vendorCart` is a QUERY that creates a missing cart; the guard does not
+  see queries, and it publishes nothing.
+- Tests: `resolvers/cart-live-publish.resolver.test.ts` (24) and `lib/publishChange.test.ts`
+  (4). The resolver tests watch the default bus with a recording listener; the helper tests
+  pass their own bus.
+
 ## Task C.5 — the web: tab id, subscription, batching, refetch
 
 **Files:** `apps/web/src/apollo/client.ts`; a new `apps/web/src/apollo/clientId.ts`; a new
