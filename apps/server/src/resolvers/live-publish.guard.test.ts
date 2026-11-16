@@ -4,8 +4,8 @@ import { createExecutableSchema } from '../schema/executableSchema.js'
 
 // ── THE LIVE-EVENT GUARD (households H3c-1, task C.4) ──
 //
-// Every field of the `Mutation` type must be in EXACTLY ONE of the three
-// lists below. The test fails when:
+// Every field of the `Mutation` type must be in EXACTLY ONE of the two
+// lists below: `publishes` or `publishesNothing`. The test fails when:
 //
 //   - a field is in no list (a new mutation was added and nobody decided
 //     whether other tabs must hear about it);
@@ -13,11 +13,29 @@ import { createExecutableSchema } from '../schema/executableSchema.js'
 //   - a listed field no longer exists in the schema.
 //
 // What this test CANNOT see: whether a resolver in `publishes` really calls
-// `publishChange`. The per-mutation tests in
-// `cart-live-publish.resolver.test.ts` check that.
+// `publishChange` or `publishHouseholdChange`. The per-mutation tests in
+// `cart-live-publish.resolver.test.ts`,
+// `stock-live-publish.resolver.test.ts`,
+// `location-live-publish.resolver.test.ts` and
+// `catalog-live-publish.resolver.test.ts` check that.
 //
-// `waitingForH3c2` must be EMPTY when H3c-2 ends (design, *Publishing*).
-// Each entry says what H3c-2 will make it publish.
+// Until households H3c-2 task D.4 there was a third list, `waitingForH3c2`,
+// for the fields that did not publish yet. D.4 emptied it and deleted it.
+//
+// ── QUERIES THAT WRITE ──
+//
+// This test reads only `Mutation` fields. One QUERY writes too:
+//
+// - `vendorCart` creates the cart when it is missing. It publishes nothing
+//   (decision Q7 of the H3c-2 plan): the cart it creates is EMPTY (only
+//   `id` and `locationId`, `cart.resolver.ts`), and the web shows an empty
+//   cart the same as a missing one, so no other tab shows anything
+//   different. Checked in task D.4. If it ever creates a cart WITH rows,
+//   it must publish `CART`.
+//
+// `bootstrapCarts` (a mutation) also creates empty carts, and it does
+// publish `CART` (households H3c-1). That costs other tabs one refetch and
+// is harmless; the two were decided at different times.
 //
 // The field list is read from the BUILT schema (`createExecutableSchema`),
 // the one object Apollo and the socket both use. Not with `instanceof` or
@@ -27,19 +45,106 @@ import { createExecutableSchema } from '../schema/executableSchema.js'
 
 type Kind = ChangeEvent['kind']
 
-/** Fields that publish now. `kinds` is what they publish in H3c-1. */
-const publishes: Record<string, { kinds: Kind[]; later?: string }> = {
+/**
+ * Fields that publish now, with every kind each can publish. Some send a kind
+ * only when it changed rows of that kind (see the resolver).
+ */
+const publishes: Record<string, { kinds: Kind[] }> = {
   addToCart: { kinds: ['CART'] },
   updateCartItem: { kinds: ['CART'] },
   removeFromCart: { kinds: ['CART'] },
   abandonCart: { kinds: ['CART'] },
-  checkout: { kinds: ['CART'], later: 'H3c-2 adds STOCK and LOG for the same location' },
+  checkout: { kinds: ['CART', 'STOCK', 'LOG'] },
   bootstrapCarts: { kinds: ['CART'] },
   bulkCreateShoppingCarts: { kinds: ['CART'] },
   bulkUpsertShoppingCarts: { kinds: ['CART'] },
   bulkCreateCartItems: { kinds: ['CART'] },
   bulkUpsertCartItems: { kinds: ['CART'] },
-  deleteVendor: { kinds: ['CART'], later: 'H3c-2 adds CATALOG' },
+
+  // ── Stock and logs (H3c-2 task D.2) ──
+  addInventoryLog: { kinds: ['LOG'] },
+  addItemToLocation: { kinds: ['STOCK'] },
+  upsertItemStock: { kinds: ['STOCK'] },
+  // It deletes the item's cart rows at that location too. The web does not
+  // refetch carts for STOCK or LOG, so it sends CART itself (decision Q1).
+  removeItemFromLocation: { kinds: ['STOCK', 'LOG', 'CART'] },
+  // No LOG: a unit switch writes no inventory log. CATALOG is
+  // household-level, for the item's settings and the recipe amounts.
+  applyUnitSwitch: { kinds: ['STOCK', 'CATALOG'] },
+  // CATALOG is household-level, for the recipes' `lastCookedAt`.
+  consumeRecipes: { kinds: ['STOCK', 'LOG', 'CATALOG'] },
+  bulkCreateItemStocks: { kinds: ['STOCK'] },
+  bulkUpsertItemStocks: { kinds: ['STOCK'] },
+  bulkCreateInventoryLogs: { kinds: ['LOG'] },
+  bulkUpsertInventoryLogs: { kinds: ['LOG'] },
+
+  // ── Locations and clear-all (H3c-2 task D.3) ──
+  // All household-level (`locationId: null`, decision Q2). On the web
+  // LOCATION refetches every active query (decision Q3).
+  createLocation: { kinds: ['LOCATION'] },
+  updateLocation: { kinds: ['LOCATION'] },
+  // Not for an empty list, which writes nothing.
+  reorderLocations: { kinds: ['LOCATION'] },
+  // No CART, STOCK or LOG for the deleted location's rows (decision Q4):
+  // nobody could pass the role check for them, and LOCATION refetches all.
+  deleteLocation: { kinds: ['LOCATION'] },
+  // Once per household a location was written in; nothing for skipped rows.
+  bulkCreateLocations: { kinds: ['LOCATION'] },
+  bulkUpsertLocations: { kinds: ['LOCATION'] },
+  // Every location and the whole catalog of the household go.
+  clearAllData: { kinds: ['LOCATION', 'CATALOG'] },
+
+  // ── The catalog (H3c-2 task D.4) ──
+  // `CATALOG` is household-level, for the caller's household: every catalog
+  // write lands there (`requireCatalogRole`, or `requireHousehold` for the
+  // imports). A write that changes nothing sends nothing.
+  //
+  // These three also change rows the web shows by LOCATION, and the web
+  // does NOT refetch stock, logs or carts for `CATALOG` (decision Q1). So
+  // each sends those kinds itself, at the locations it changed.
+  // The Prisma cascade deletes its stock, logs and cart rows. Each kind only
+  // at the locations where it had rows, read BEFORE the delete.
+  deleteItem: { kinds: ['CATALOG', 'STOCK', 'LOG', 'CART'] },
+  // It also creates the new vendor's cart at the caller's location.
+  createVendor: { kinds: ['CATALOG', 'CART'] },
+  // It deletes the vendor's carts at every location of the household.
+  deleteVendor: { kinds: ['CATALOG', 'CART'] },
+  // The household name is in every member's sidebar.
+  renameHousehold: { kinds: ['CATALOG'] },
+  createItem: { kinds: ['CATALOG'] },
+  updateItem: { kinds: ['CATALOG'] },
+  createTag: { kinds: ['CATALOG'] },
+  updateTag: { kinds: ['CATALOG'] },
+  deleteTag: { kinds: ['CATALOG'] },
+  createTagType: { kinds: ['CATALOG'] },
+  updateTagType: { kinds: ['CATALOG'] },
+  deleteTagType: { kinds: ['CATALOG'] },
+  updateVendor: { kinds: ['CATALOG'] },
+  createRecipe: { kinds: ['CATALOG'] },
+  updateRecipe: { kinds: ['CATALOG'] },
+  deleteRecipe: { kinds: ['CATALOG'] },
+  updateRecipeLastCookedAt: { kinds: ['CATALOG'] },
+  createShelf: { kinds: ['CATALOG'] },
+  updateShelf: { kinds: ['CATALOG'] },
+  deleteShelf: { kinds: ['CATALOG'] },
+  // Not for an empty list, or ids that are not the household's.
+  reorderShelves: { kinds: ['CATALOG'] },
+  reorderShelfItems: { kinds: ['CATALOG'] },
+  applyShelfFilterPicks: { kinds: ['CATALOG'] },
+  // The imports publish once, in `finally`, when they saved at least one
+  // row (`withCatalogEvent` in import.resolver.ts).
+  bulkCreateItems: { kinds: ['CATALOG'] },
+  bulkUpsertItems: { kinds: ['CATALOG'] },
+  bulkCreateTags: { kinds: ['CATALOG'] },
+  bulkUpsertTags: { kinds: ['CATALOG'] },
+  bulkCreateTagTypes: { kinds: ['CATALOG'] },
+  bulkUpsertTagTypes: { kinds: ['CATALOG'] },
+  bulkCreateVendors: { kinds: ['CATALOG'] },
+  bulkUpsertVendors: { kinds: ['CATALOG'] },
+  bulkCreateRecipes: { kinds: ['CATALOG'] },
+  bulkUpsertRecipes: { kinds: ['CATALOG'] },
+  bulkCreateShelves: { kinds: ['CATALOG'] },
+  bulkUpsertShelves: { kinds: ['CATALOG'] },
 }
 
 /**
@@ -50,79 +155,9 @@ const publishes: Record<string, { kinds: Kind[]; later?: string }> = {
  */
 const publishesNothing: Record<string, string> = {}
 
-/** Fields that will publish in H3c-2, and what. */
-const waitingForH3c2: Record<string, string> = {
-  // ── They also delete cart rows ──
-  // P5 of the H3c-1 plan leaves these out of `publishes`. When H3c-2 adds
-  // their event, the web must refetch the cart queries for it too, or other
-  // tabs keep showing cart rows that are gone.
-  deleteItem: 'CATALOG; it also deletes cart rows (Prisma cascade), so its event must refetch carts too',
-  deleteLocation: 'LOCATION; it also deletes the carts of that location, so its event must refetch carts too',
-  clearAllData: 'LOCATION and CATALOG; it also deletes every cart of the household, so its events must refetch carts too',
-  removeItemFromLocation: 'STOCK and LOG; it also deletes the item\'s cart rows at that location, so its event must refetch carts too',
-  // It also CREATES one cart (the new vendor's, at the caller's location).
-  createVendor: 'CATALOG; it also creates the vendor\'s cart at one location, so its event must refetch carts too',
-
-  // ── Stock and logs at one location ──
-  addInventoryLog: 'LOG for the log\'s location',
-  addItemToLocation: 'STOCK for that location',
-  applyUnitSwitch: 'STOCK and LOG for that location',
-  upsertItemStock: 'STOCK for that location',
-  consumeRecipes: 'STOCK and LOG for that location, and CATALOG (recipe lastCookedAt)',
-  bulkCreateItemStocks: 'STOCK, one per location in the batch',
-  bulkUpsertItemStocks: 'STOCK, one per location in the batch',
-  bulkCreateInventoryLogs: 'LOG, one per location in the batch',
-  bulkUpsertInventoryLogs: 'LOG, one per location in the batch',
-
-  // ── Locations ──
-  createLocation: 'LOCATION',
-  updateLocation: 'LOCATION',
-  reorderLocations: 'LOCATION',
-  bulkCreateLocations: 'LOCATION',
-  bulkUpsertLocations: 'LOCATION',
-
-  // ── The household ──
-  // The household name is shown in every member's sidebar.
-  renameHousehold: 'CATALOG (the household name; no location)',
-
-  // ── The catalog: items, tags, vendors, recipes, shelves ──
-  createItem: 'CATALOG',
-  updateItem: 'CATALOG',
-  createTag: 'CATALOG',
-  updateTag: 'CATALOG',
-  deleteTag: 'CATALOG',
-  createTagType: 'CATALOG',
-  updateTagType: 'CATALOG',
-  deleteTagType: 'CATALOG',
-  updateVendor: 'CATALOG',
-  createRecipe: 'CATALOG',
-  updateRecipe: 'CATALOG',
-  deleteRecipe: 'CATALOG',
-  updateRecipeLastCookedAt: 'CATALOG',
-  createShelf: 'CATALOG',
-  updateShelf: 'CATALOG',
-  deleteShelf: 'CATALOG',
-  reorderShelves: 'CATALOG',
-  reorderShelfItems: 'CATALOG',
-  applyShelfFilterPicks: 'CATALOG',
-  bulkCreateItems: 'CATALOG',
-  bulkUpsertItems: 'CATALOG',
-  bulkCreateTags: 'CATALOG',
-  bulkUpsertTags: 'CATALOG',
-  bulkCreateTagTypes: 'CATALOG',
-  bulkUpsertTagTypes: 'CATALOG',
-  bulkCreateVendors: 'CATALOG',
-  bulkUpsertVendors: 'CATALOG',
-  bulkCreateRecipes: 'CATALOG',
-  bulkUpsertRecipes: 'CATALOG',
-  bulkCreateShelves: 'CATALOG',
-  bulkUpsertShelves: 'CATALOG',
-}
-
 type Lists = {
   publishes: Record<string, unknown>
   publishesNothing: Record<string, unknown>
-  waitingForH3c2: Record<string, unknown>
 }
 
 /**
@@ -155,7 +190,7 @@ function mutationFields(): string[] {
   return Object.keys(type.getFields()).sort()
 }
 
-const lists = { publishes, publishesNothing, waitingForH3c2 }
+const lists = { publishes, publishesNothing }
 
 describe('every Mutation field has a live-event decision', () => {
   it('every field is in exactly one list, and every listed name is a field', () => {
@@ -166,24 +201,21 @@ describe('every Mutation field has a live-event decision', () => {
     for (const [name, { kinds }] of Object.entries(publishes)) {
       expect(kinds.length, name).toBeGreaterThan(0)
     }
-    for (const [name, reason] of Object.entries({ ...publishesNothing, ...waitingForH3c2 })) {
+    for (const [name, reason] of Object.entries(publishesNothing)) {
       expect(reason.trim().length, name).toBeGreaterThan(0)
     }
   })
 
-  it('the schema has as many fields as the three lists hold', () => {
+  it('the schema has as many fields as the two lists hold', () => {
     // A second, plainer check of the same rule. If this fails and the first
     // passes, `guardProblems` itself is wrong.
-    const listed =
-      Object.keys(publishes).length +
-      Object.keys(publishesNothing).length +
-      Object.keys(waitingForH3c2).length
+    const listed = Object.keys(publishes).length + Object.keys(publishesNothing).length
     expect(listed).toBe(mutationFields().length)
   })
 })
 
 describe('guardProblems', () => {
-  const empty = { publishes: {}, publishesNothing: {}, waitingForH3c2: {} }
+  const empty = { publishes: {}, publishesNothing: {} }
 
   it('names a field that is in no list', () => {
     expect(guardProblems(['a', 'b'], { ...empty, publishes: { a: 1 } })).toEqual([
@@ -193,8 +225,8 @@ describe('guardProblems', () => {
 
   it('names a field that is in two lists', () => {
     expect(
-      guardProblems(['a'], { ...empty, publishes: { a: 1 }, waitingForH3c2: { a: 1 } }),
-    ).toEqual(['a: in 2 lists (publishes, waitingForH3c2)'])
+      guardProblems(['a'], { ...empty, publishes: { a: 1 }, publishesNothing: { a: 'x' } }),
+    ).toEqual(['a: in 2 lists (publishes, publishesNothing)'])
   })
 
   it('names a listed field the schema no longer has', () => {

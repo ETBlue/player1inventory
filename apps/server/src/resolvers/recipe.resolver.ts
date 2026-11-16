@@ -9,6 +9,7 @@ import {
 } from '../lib/authz.js'
 import { prisma } from '../lib/prisma.js'
 import { writeStock } from '../lib/itemStockWrite.js'
+import { publishChange, publishHouseholdChange } from '../lib/publishChange.js'
 import { consumeItem, getPackedTotal } from '@p1i/types'
 import { requireAuth } from '../context.js'
 import type { Recipe, Resolvers } from '../generated/graphql.js'
@@ -54,12 +55,19 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
       // Checked BEFORE the recipe is created, so a refused call writes nothing.
       await requireCatalogIds(ctx, householdId, 'item', (items ?? []).map((i) => i.itemId))
       const recipe = await prisma.recipe.create({ data: { name, householdId } })
-      if (items?.length) {
-        await prisma.recipeItem.createMany({
-          data: items.map(i => ({ recipeId: recipe.id, itemId: i.itemId, defaultAmount: i.defaultAmount })),
-        })
+      // `CATALOG` in `finally` (households H3c-2 task D.4): the recipe and
+      // its ingredient rows are separate writes, so once the recipe is saved
+      // other tabs must hear about it even if a later write fails.
+      try {
+        if (items?.length) {
+          await prisma.recipeItem.createMany({
+            data: items.map(i => ({ recipeId: recipe.id, itemId: i.itemId, defaultAmount: i.defaultAmount })),
+          })
+        }
+        return await (prisma.recipe.findUniqueOrThrow({ where: { id: recipe.id }, include: { items: true } }) as unknown as Promise<Recipe>)
+      } finally {
+        await publishHouseholdChange(ctx, ['CATALOG'], householdId)
       }
-      return prisma.recipe.findUniqueOrThrow({ where: { id: recipe.id }, include: { items: true } }) as unknown as Promise<Recipe>
     },
     updateRecipe: async (_, { id, name, items }, ctx) => {
       const householdId = await requireCatalogRole(ctx, 'manager')
@@ -70,26 +78,35 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
       const data: { name?: string } = {}
       if (name != null) data.name = name
       await prisma.recipe.update({ where: { id }, data })
-      if (items != null) {
-        await prisma.recipeItem.deleteMany({ where: { recipeId: id } })
-        if (items.length) {
-          await prisma.recipeItem.createMany({
-            data: items.map(i => ({ recipeId: id, itemId: i.itemId, defaultAmount: i.defaultAmount })),
-          })
+      // `CATALOG` in `finally`, for the same reason as `createRecipe`.
+      try {
+        if (items != null) {
+          await prisma.recipeItem.deleteMany({ where: { recipeId: id } })
+          if (items.length) {
+            await prisma.recipeItem.createMany({
+              data: items.map(i => ({ recipeId: id, itemId: i.itemId, defaultAmount: i.defaultAmount })),
+            })
+          }
         }
+        return await (prisma.recipe.findUniqueOrThrow({ where: { id }, include: { items: true } }) as unknown as Promise<Recipe>)
+      } finally {
+        await publishHouseholdChange(ctx, ['CATALOG'], householdId)
       }
-      return prisma.recipe.findUniqueOrThrow({ where: { id }, include: { items: true } }) as unknown as Promise<Recipe>
     },
     updateRecipeLastCookedAt: async (_, { id }, ctx) => {
       // `member`, not `manager`: see the comment at the top of this file.
       const householdId = await requireCatalogRole(ctx, 'member')
       const existing = await prisma.recipe.findFirst({ where: { id, householdId } })
       if (!existing) throw new GraphQLError('Recipe not found', { extensions: { code: 'NOT_FOUND' } })
-      return prisma.recipe.update({
+      const saved = await prisma.recipe.update({
         where: { id },
         data: { lastCookedAt: new Date() },
         include: { items: true },
-      }) as unknown as Promise<Recipe>
+      })
+      // `CATALOG` (households H3c-2 task D.4): the recipe list shows when
+      // each recipe was last cooked.
+      await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+      return saved as unknown as Recipe
     },
     consumeRecipes: async (_, { input }, ctx) => {
       const userId = requireAuth(ctx)
@@ -142,7 +159,11 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
       // is. Until B.6 each item had its own try/catch and no transaction, so
       // one failing item left the others written and the cook half done, and
       // a failing recipe mark was ignored.
-      return prisma.$transaction(
+      //
+      // How many recipe rows the cook marked. Set inside the callback, read
+      // only after `$transaction` has resolved, for the live event below.
+      let recipesMarked = 0
+      const result = await prisma.$transaction(
         async (tx) => {
           // The unit settings `consumeItem` needs live on `Item`, not on
           // `ItemStock`. Read in the transaction, once for all items.
@@ -270,10 +291,11 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
           // a cook that took the stock but did not mark the recipe would be
           // half done.
           for (const recipeId of [...new Set(recipeIds)].sort()) {
-            await tx.recipe.updateMany({
+            const { count } = await tx.recipe.updateMany({
               where: { id: recipeId, householdId },
               data: { lastCookedAt: new Date() },
             })
+            recipesMarked += count
           }
 
           // Every entry succeeded: a failure threw above and rolled back.
@@ -290,6 +312,25 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
         // connection. Hitting it is safe: Prisma rolls everything back.
         { timeout: COOKING_TIMEOUT_MS },
       )
+
+      // ── THE LIVE EVENTS (households H3c-2 task D.2) ──
+      //
+      // After `$transaction` has resolved, so a cook that rolled back reaches
+      // no subscriber. `STOCK` and `LOG` at the cook's location, when it
+      // cooked at least one item (each item writes one stock row and one
+      // log). `CATALOG` for the household whose recipes it marked, when it
+      // marked one: `lastCookedAt` is shown on the recipe pages and the
+      // cooking page. That household is the CALLER's (`requireHousehold`
+      // above), because the recipes are filtered by it. It is not always the
+      // household of the cook's location: a person in two households can cook
+      // at a location of the second one and mark recipes of the first.
+      if (items.length > 0) {
+        await publishChange(ctx, ['STOCK', 'LOG'], [{ locationId: consumeLocationId }])
+      }
+      if (recipesMarked > 0) {
+        await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+      }
+      return result
     },
     deleteRecipe: async (_, { id }, ctx) => {
       const householdId = await requireCatalogRole(ctx, 'manager')
@@ -297,6 +338,7 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
       if (!existing) return false
       // RecipeItem rows cascade-delete via DB constraint
       await prisma.recipe.delete({ where: { id } })
+      await publishHouseholdChange(ctx, ['CATALOG'], householdId)
       return true
     },
   },

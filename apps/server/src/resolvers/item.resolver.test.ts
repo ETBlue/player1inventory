@@ -21,6 +21,13 @@ import type { Context } from '../context.js'
 //
 // `tag.findMany` and `vendor.findMany` answer `requireCatalogIds`: they echo
 // back every id asked for, so every tag and vendor id here is the household's.
+//
+// `itemStock`, `inventoryLog` and `cartItem` have a `findMany` and nothing
+// else: `deleteItem` reads the locations of the rows its delete cascades
+// into, for its live events (households H3c-2 task D.4). They answer `[]`;
+// the events are tested in `catalog-live-publish.resolver.test.ts`. A
+// reinstated stock mirror in `updateItem` would write, not read, so it still
+// throws here.
 vi.mock('../lib/prisma.js', async () => {
   const echoIds = async ({ where }: { where: { id: { in: string[] } } }) =>
     where.id.in.map((id) => ({ id }))
@@ -53,6 +60,9 @@ vi.mock('../lib/prisma.js', async () => {
       recipeItem: {
         count: vi.fn(),
       },
+      itemStock: { findMany: vi.fn(async () => []) },
+      inventoryLog: { findMany: vi.fn(async () => []) },
+      cartItem: { findMany: vi.fn(async () => []) },
     },
   }
 })

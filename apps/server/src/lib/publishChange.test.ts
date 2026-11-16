@@ -6,7 +6,7 @@ vi.mock('./prisma.js', () => ({
 
 import { prisma } from './prisma.js'
 import { type ChangeEvent, createLiveEvents } from './liveEvents.js'
-import { publishChange } from './publishChange.js'
+import { publishChange, publishHouseholdChange } from './publishChange.js'
 
 const findMany = prisma.location.findMany as unknown as ReturnType<typeof vi.fn>
 
@@ -31,7 +31,7 @@ describe('publishChange', () => {
 
     await publishChange(
       { userId: 'u', clientId: 'tab' },
-      'CART',
+      ['CART'],
       [
         { locationId: 'a', householdId: 'h1' },
         { locationId: 'b', householdId: 'h2' },
@@ -52,7 +52,7 @@ describe('publishChange', () => {
     findMany.mockResolvedValue([{ id: 'a', householdId: 'h1' }])
     const { bus, seen } = recordingBus()
 
-    await publishChange({ userId: 'u' }, 'CART', [{ locationId: 'a' }, { locationId: 'gone' }], bus)
+    await publishChange({ userId: 'u' }, ['CART'], [{ locationId: 'a' }, { locationId: 'gone' }], bus)
 
     expect(findMany).toHaveBeenCalledTimes(1)
     expect(findMany).toHaveBeenCalledWith({
@@ -65,7 +65,7 @@ describe('publishChange', () => {
   it('sends nothing, and reads nothing, for an empty list', async () => {
     const { bus, seen } = recordingBus()
 
-    await publishChange({ userId: 'u' }, 'CART', [], bus)
+    await publishChange({ userId: 'u' }, ['CART'], [], bus)
 
     expect(seen).toEqual([])
     expect(findMany).not.toHaveBeenCalled()
@@ -76,11 +76,113 @@ describe('publishChange', () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const { bus, seen } = recordingBus()
 
-    await expect(publishChange({ userId: 'u' }, 'CART', [{ locationId: 'a' }], bus)).resolves.toBeUndefined()
+    await expect(publishChange({ userId: 'u' }, ['CART'], [{ locationId: 'a' }], bus)).resolves.toBeUndefined()
 
     expect(seen).toEqual([])
     // The error's name only, never its message.
     expect(log).toHaveBeenCalledWith('publishChange: could not publish a change:', 'Error')
+    log.mockRestore()
+  })
+})
+
+describe('publishChange with several kinds (households H3c-2)', () => {
+  it('sends one event per (kind, location), kind by kind', async () => {
+    const { bus, seen } = recordingBus()
+
+    await publishChange(
+      { userId: 'u', clientId: 'tab' },
+      ['CART', 'STOCK', 'LOG'],
+      [
+        { locationId: 'a', householdId: 'h1' },
+        { locationId: 'b', householdId: 'h1' },
+      ],
+      bus,
+    )
+
+    expect(seen).toStrictEqual([
+      { kind: 'CART', householdId: 'h1', locationId: 'a', sourceClientId: 'tab' },
+      { kind: 'CART', householdId: 'h1', locationId: 'b', sourceClientId: 'tab' },
+      { kind: 'STOCK', householdId: 'h1', locationId: 'a', sourceClientId: 'tab' },
+      { kind: 'STOCK', householdId: 'h1', locationId: 'b', sourceClientId: 'tab' },
+      { kind: 'LOG', householdId: 'h1', locationId: 'a', sourceClientId: 'tab' },
+      { kind: 'LOG', householdId: 'h1', locationId: 'b', sourceClientId: 'tab' },
+    ])
+  })
+
+  it('sends no duplicate when a kind or a location is named twice', async () => {
+    const { bus, seen } = recordingBus()
+
+    await publishChange(
+      { userId: 'u' },
+      ['STOCK', 'LOG', 'STOCK'],
+      [
+        { locationId: 'a', householdId: 'h1' },
+        { locationId: 'a', householdId: 'h1' },
+      ],
+      bus,
+    )
+
+    expect(seen).toStrictEqual([
+      { kind: 'STOCK', householdId: 'h1', locationId: 'a' },
+      { kind: 'LOG', householdId: 'h1', locationId: 'a' },
+    ])
+  })
+
+  it('reads the missing households once for all kinds', async () => {
+    findMany.mockResolvedValue([{ id: 'a', householdId: 'h1' }])
+    const { bus, seen } = recordingBus()
+
+    await publishChange({ userId: 'u' }, ['STOCK', 'LOG'], [{ locationId: 'a' }], bus)
+
+    expect(findMany).toHaveBeenCalledTimes(1)
+    expect(seen).toStrictEqual([
+      { kind: 'STOCK', householdId: 'h1', locationId: 'a' },
+      { kind: 'LOG', householdId: 'h1', locationId: 'a' },
+    ])
+  })
+
+  it('sends nothing, and reads nothing, for an empty list of kinds', async () => {
+    const { bus, seen } = recordingBus()
+
+    await publishChange({ userId: 'u' }, [], [{ locationId: 'a' }], bus)
+
+    expect(seen).toEqual([])
+    expect(findMany).not.toHaveBeenCalled()
+  })
+})
+
+describe('publishHouseholdChange (households H3c-2)', () => {
+  it('sends one household-level event per kind, with locationId null and the tab id', async () => {
+    const { bus, seen } = recordingBus()
+
+    await publishHouseholdChange({ userId: 'u', clientId: 'tab' }, ['LOCATION', 'CATALOG'], 'h1', bus)
+
+    expect(seen).toStrictEqual([
+      { kind: 'LOCATION', householdId: 'h1', locationId: null, sourceClientId: 'tab' },
+      { kind: 'CATALOG', householdId: 'h1', locationId: null, sourceClientId: 'tab' },
+    ])
+    // It needs no lookup: the household is given.
+    expect(findMany).not.toHaveBeenCalled()
+  })
+
+  it('sends no duplicate when a kind is named twice, and no sourceClientId without a tab id', async () => {
+    const { bus, seen } = recordingBus()
+
+    await publishHouseholdChange({ userId: 'u' }, ['CATALOG', 'CATALOG'], 'h1', bus)
+
+    expect(seen).toStrictEqual([{ kind: 'CATALOG', householdId: 'h1', locationId: null }])
+  })
+
+  it('never throws, even when publishing fails', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const bus = createLiveEvents()
+    vi.spyOn(bus, 'publish').mockImplementation(() => {
+      throw new TypeError('bus broken')
+    })
+
+    await expect(publishHouseholdChange({ userId: 'u' }, ['CATALOG'], 'h1', bus)).resolves.toBeUndefined()
+
+    expect(log).toHaveBeenCalledWith('publishChange: could not publish a change:', 'TypeError')
     log.mockRestore()
   })
 })

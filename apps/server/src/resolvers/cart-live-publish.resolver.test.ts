@@ -8,7 +8,8 @@ import type { HouseholdWorld } from '../test/householdWorld.js'
 import { type ChangeEvent, liveEvents } from '../lib/liveEvents.js'
 
 // The `CART` events of the cart mutations (households H3c-1, task C.4,
-// decision P5 of the plan).
+// decision P5 of the plan), and `checkout`'s `STOCK` and `LOG` events
+// (households H3c-2, task D.2).
 //
 // ── HOW THE BUS IS WATCHED ──
 //
@@ -248,8 +249,17 @@ function eventsByLocation(): ChangeEvent[] {
 
 /** `null` means "no tab id". Not `undefined`, which would take the default. */
 function cart(locationId: string, householdId: string, sourceClientId: string | null = TAB): ChangeEvent {
+  return change('CART', locationId, householdId, sourceClientId)
+}
+
+function change(
+  kind: ChangeEvent['kind'],
+  locationId: string,
+  householdId: string,
+  sourceClientId: string | null = TAB,
+): ChangeEvent {
   return {
-    kind: 'CART',
+    kind,
     householdId,
     locationId,
     ...(sourceClientId === null ? {} : { sourceClientId }),
@@ -365,15 +375,42 @@ describe('a call that changes nothing publishes nothing', () => {
 // ─── checkout ────────────────────────────────────────────────────────────────
 
 describe('checkout', () => {
-  it('publishes CART once, after the transaction has committed', async () => {
+  it('publishes CART, STOCK and LOG once each, after the transaction has committed', async () => {
     const res = await run(CHECKOUT, { c: HOME_CART, items: [{ cartItemId: 'ci_home_milk', quantity: 1 }] }, BOB)
 
     expect(res.errors).toBeUndefined()
-    expect(events()).toEqual([cart(LOC_HOME, 'hh_home')])
+    // One event per kind, in the order `publishChange` was given them. The
+    // web does not refetch carts for STOCK or LOG, nor stock for CART, so
+    // each kind must be there (H3c-2 decision Q1).
+    expect(events()).toEqual([
+      change('CART', LOC_HOME, 'hh_home'),
+      change('STOCK', LOC_HOME, 'hh_home'),
+      change('LOG', LOC_HOME, 'hh_home'),
+    ])
     // No transaction was open when the listener ran, and the claimed row was
     // already gone from the store.
-    expect(seen[0]?.inTransaction).toBe(false)
+    expect(seen.map((s) => s.inTransaction)).toEqual([false, false, false])
     expect(seen[0]?.cartItemIds).not.toContain('ci_home_milk')
+  })
+
+  it('a checkout at a location of the caller\'s second household carries that household', async () => {
+    // ALICE's household by `requireHousehold` is hh_home; LOC_SECOND is hh_second's.
+    const res = await run(CHECKOUT, { c: SECOND_CART, items: [{ cartItemId: 'ci_second_tea', quantity: 1 }] }, ALICE)
+
+    expect(res.errors).toBeUndefined()
+    expect(events()).toEqual([
+      change('CART', LOC_SECOND, 'hh_second'),
+      change('STOCK', LOC_SECOND, 'hh_second'),
+      change('LOG', LOC_SECOND, 'hh_second'),
+    ])
+  })
+
+  it('a checkout of an empty cart publishes CART only', async () => {
+    // It writes `lastPurchasedAt` and no stock row and no log.
+    const res = await run(CHECKOUT, { c: HOME_VENDOR_CART, items: [] }, BOB)
+
+    expect(res.errors).toBeUndefined()
+    expect(events()).toEqual([cart(LOC_HOME, 'hh_home')])
   })
 
   it('a checkout refused with CART_CHANGED publishes nothing', async () => {
@@ -423,18 +460,25 @@ describe('bootstrapCarts', () => {
 // ─── deleteVendor ────────────────────────────────────────────────────────────
 
 describe('deleteVendor', () => {
+  // Since households H3c-2 task D.4 it also sends a household-level
+  // `CATALOG` event (`locationId: null`, so it sorts first below).
+  // `catalog-live-publish.resolver.test.ts` tests that part.
   it('publishes CART for each location whose carts it deleted', async () => {
     const res = await run(DELETE_VENDOR, { id: 'ven_1' }, ALICE)
 
     expect(res.data?.deleteVendor).toBe(true)
-    expect(eventsByLocation()).toEqual([cart(LOC_GARAGE, 'hh_home'), cart(LOC_HOME, 'hh_home')])
+    expect(eventsByLocation()).toEqual([
+      { kind: 'CATALOG', householdId: 'hh_home', locationId: null, sourceClientId: TAB },
+      cart(LOC_GARAGE, 'hh_home'),
+      cart(LOC_HOME, 'hh_home'),
+    ])
   })
 
-  it('publishes nothing for a vendor with no carts', async () => {
+  it('publishes no CART for a vendor with no carts', async () => {
     const res = await run(DELETE_VENDOR, { id: 'ven_empty' }, ALICE)
 
     expect(res.data?.deleteVendor).toBe(true)
-    expect(events()).toEqual([])
+    expect(events().filter((e) => e.kind === 'CART')).toEqual([])
   })
 
   it('publishes nothing when the household role check refuses it', async () => {

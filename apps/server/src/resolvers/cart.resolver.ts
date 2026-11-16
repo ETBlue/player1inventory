@@ -287,7 +287,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
         update: { quantity: { increment: quantity } },
       })
       // After the write (households H3c-1, task C.4). See `publishChange`.
-      await publishChange(ctx, 'CART', [{ locationId }])
+      await publishChange(ctx, ['CART'], [{ locationId }])
       return written as unknown as CartItem
     },
 
@@ -303,7 +303,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
         where: { id },
         data: { quantity },
       })
-      await publishChange(ctx, 'CART', [{ locationId: parseCartId(existing.cartId).locationId }])
+      await publishChange(ctx, ['CART'], [{ locationId: parseCartId(existing.cartId).locationId }])
       return updated as unknown as CartItem
     },
 
@@ -313,7 +313,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       // `false` for an unknown id and for a stranger's row alike.
       if (!existing) return false
       await prisma.cartItem.delete({ where: { id } })
-      await publishChange(ctx, 'CART', [{ locationId: parseCartId(existing.cartId).locationId }])
+      await publishChange(ctx, ['CART'], [{ locationId: parseCartId(existing.cartId).locationId }])
       return true
     },
 
@@ -475,10 +475,11 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
             })
           }
 
-          return tx.cart.update({
+          const cart = (await tx.cart.update({
             where: { id: cartId },
             data: { lastPurchasedAt: now },
-          }) as unknown as Promise<Cart>
+          })) as unknown as Cart
+          return { cart, boughtCount: bought.length }
         },
         // Prisma's interactive transaction times out after 5 s by default.
         // A checkout makes about 4 queries per row (copy-on-add check, stock
@@ -489,9 +490,17 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
         // the whole checkout back, and the user gets an error and retries.
         { timeout: CHECKOUT_TIMEOUT_MS },
       )
-      // CART only in H3c-1. H3c-2 adds `STOCK` and `LOG` for the same location.
-      await publishChange(ctx, 'CART', [{ locationId: cartLocationId }])
-      return purchased
+      // One call, every kind the checkout changed at the cart's location
+      // (households H3c-2 task D.2, decision Q1): the cart rows it claimed
+      // (`CART`), the stock it added to (`STOCK`) and the logs it wrote
+      // (`LOG`). An empty cart writes only `lastPurchasedAt`, so it changes
+      // no stock and no log, and sends `CART` alone.
+      await publishChange(
+        ctx,
+        purchased.boughtCount > 0 ? ['CART', 'STOCK', 'LOG'] : ['CART'],
+        [{ locationId: cartLocationId }],
+      )
+      return purchased.cart
     },
 
     /**
@@ -545,7 +554,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
         })
         // Only when this call really made a cart. `count` is 0 when a
         // parallel `vendorCart` made every missing one first.
-        if (count > 0) await publishChange(ctx, 'CART', [{ locationId, householdId }])
+        if (count > 0) await publishChange(ctx, ['CART'], [{ locationId, householdId }])
       }
 
       // Scoped by `locationId`, so the caller gets this location's carts only —
@@ -570,7 +579,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       // co-member added (task B.4). The cart itself stays.
       const { count } = await prisma.cartItem.deleteMany({ where: { cartId } })
       // Nothing to tell other tabs when the cart was already empty.
-      if (count > 0) await publishChange(ctx, 'CART', [{ locationId: existing.locationId }])
+      if (count > 0) await publishChange(ctx, ['CART'], [{ locationId: existing.locationId }])
       return existing as unknown as Cart
     },
   },

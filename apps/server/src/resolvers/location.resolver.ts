@@ -9,6 +9,7 @@ import {
 } from '../lib/authz.js'
 import { lockHousehold } from '../lib/household.js'
 import { prisma } from '../lib/prisma.js'
+import { publishHouseholdChange } from '../lib/publishChange.js'
 import type { Location, Resolvers } from '../generated/graphql.js'
 import type { Prisma, Location as PrismaLocation } from '@prisma/client'
 
@@ -50,6 +51,22 @@ async function visibleLocations(ctx: Context): Promise<Location[]> {
   return (rows as unknown as PrismaLocation[]).map(toGraphQL)
 }
 
+// ── LIVE EVENTS (households H3c-2 task D.3) ──
+//
+// Every mutation here publishes one household-level `LOCATION` event
+// (`publishHouseholdChange`, `locationId: null`), AFTER its write has
+// committed. Household-level, not per location (decision Q2 of the H3c-2
+// plan): a deleted location can pass no `requireLocationRole` check, so an
+// event that named it would reach nobody. On the web `LOCATION` refetches
+// every active query (decision Q3). So `deleteLocation` sends no `CART`,
+// `STOCK` or `LOG` for the rows its cascade removed (decision Q4).
+//
+// The household in the event is the household of the location WRITTEN, read
+// from the saved row. For `createLocation`, `deleteLocation` and
+// `reorderLocations` that is always the caller's household. `updateLocation`
+// checks a location role only, so it can rename a location of a second
+// household the caller belongs to.
+
 export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
   Query: {
     locations: async (_, __, ctx) => {
@@ -89,6 +106,7 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         })
         return created
       })
+      await publishHouseholdChange(ctx, ['LOCATION'], row.householdId)
       return toGraphQL(row as unknown as PrismaLocation)
     },
 
@@ -99,6 +117,7 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       const data: { name?: string } = {}
       if (typeof input.name === 'string') data.name = input.name.trim()
       const row = await prisma.location.update({ where: { id }, data })
+      await publishHouseholdChange(ctx, ['LOCATION'], row.householdId)
       return toGraphQL(row as unknown as PrismaLocation)
     },
 
@@ -140,6 +159,10 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         // (apps/web/src/db/operations.ts).
         await tx.location.delete({ where: { id } })
       })
+      // The location was found with `householdId` in its filter, so its
+      // household is the caller's. Nothing moves to another location: the
+      // rows of the deleted location are deleted, not reassigned.
+      await publishHouseholdChange(ctx, ['LOCATION'], householdId)
       return true
     },
 
@@ -175,6 +198,10 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           await tx.location.update({ where: { id }, data: { order: index } })
         }
       })
+      // An empty list writes nothing, so it tells nobody.
+      if (orderedIds.length > 0) {
+        await publishHouseholdChange(ctx, ['LOCATION'], householdId)
+      }
       return visibleLocations(ctx)
     },
   },

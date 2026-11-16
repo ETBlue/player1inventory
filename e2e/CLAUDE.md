@@ -21,7 +21,7 @@ C.5). `e2e/playwright.config.ts` gives the cloud web server
 socket would go to the default `ws://localhost:4000`, which is the normal dev server. A
 running dev server is not in E2E mode, so it ignores `e2eUserId` and refuses the socket
 with `4401`; with no dev server the socket cannot open at all. Either way the live-update
-tests in `live-cart.spec.ts` fail as if the code were broken.
+tests in `live-cart.spec.ts` and `live-pantry.spec.ts` fail as if the code were broken.
 
 **The symptom is not a port error.** Playwright starts, then dozens of specs fail with
 `net::ERR_CONNECTION_REFUSED at http://localhost:5175/` because the other run tore the

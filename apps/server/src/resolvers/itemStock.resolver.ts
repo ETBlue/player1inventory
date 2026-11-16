@@ -9,9 +9,11 @@ import {
 } from '../lib/authz.js'
 import { ensureStockAtLocation, writeStock } from '../lib/itemStockWrite.js'
 import { prisma } from '../lib/prisma.js'
+import { publishChange, publishHouseholdChange } from '../lib/publishChange.js'
 import { buildItemUpdateData, toGraphQL as itemToGraphQL } from './item.resolver.js'
 import type { Item, ItemStock, Resolvers } from '../generated/graphql.js'
 import type { Prisma, ItemStock as PrismaItemStock } from '@prisma/client'
+import type { ChangeKind } from '../lib/liveEvents.js'
 
 // The five state fields, all optional on input. A key absent from `input` is
 // left untouched on an existing row — this is a merge, not a replace.
@@ -135,6 +137,9 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // and there is nothing to mirror it onto. That is also why this resolver
       // no longer reads `isDefault` off the authorized row.
       const saved = await writeStock(itemId, locationId, data)
+      // After the write (households H3c-2 task D.2). `writeStock` always
+      // writes a row, so there is always something to tell other tabs.
+      await publishChange(ctx, ['STOCK'], [{ locationId }])
       return toGraphQL(saved)
     },
 
@@ -162,6 +167,12 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         await locationIdsWithRole(ctx),
         sourceLocationId,
       )
+      // After the write (households H3c-2 task D.2). Published even when the
+      // item was already stocked here and nothing was written: knowing that
+      // would need a second read or a new return shape for
+      // `ensureStockAtLocation`, and the web only offers "add" for an item
+      // not stocked here. A spare event costs the other tabs one refetch.
+      await publishChange(ctx, ['STOCK'], [{ locationId }])
       return toGraphQL(row as unknown as PrismaItemStock)
     },
 
@@ -201,15 +212,15 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // deleted while its logs survive leaves the location's history pointing
       // at an item that is no longer stocked there, and a cart entry that
       // outlives its stock row is bought into a location the item has left.
-      await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        await tx.itemStock.deleteMany({ where: { itemId, locationId } })
+      const deleted = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const stock = await tx.itemStock.deleteMany({ where: { itemId, locationId } })
 
         // `locationId` alone, with NO `?? DEFAULT_LOCATION_ID` fallback. Local
         // needs one because Dexie logs written before the Location feature
         // carry none; cloud's `InventoryLog.locationId` is NOT NULL since PR
         // 3a, so a fallback here would tell the next reader that NULLs are
         // possible when they are not.
-        await tx.inventoryLog.deleteMany({ where: { itemId, locationId } })
+        const logs = await tx.inventoryLog.deleteMany({ where: { itemId, locationId } })
 
         // `cart: { locationId }` is a relation filter on `Cart.locationId`,
         // the real column PR 3a added. `CartItem` itself has no `locationId`,
@@ -227,8 +238,22 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         // whoever added it (households H3b task B.4). `CartItem.userId` means
         // "added by" and is never a scope. The log delete above has none
         // either: logs are scoped by their location.
-        await tx.cartItem.deleteMany({ where: { itemId, cart: { locationId } } })
+        const cartItems = await tx.cartItem.deleteMany({ where: { itemId, cart: { locationId } } })
+        return { stock: stock.count, logs: logs.count, cartItems: cartItems.count }
       })
+
+      // ── THE LIVE EVENT (households H3c-2 task D.2) ──
+      //
+      // After the transaction has committed. One call, with each kind whose
+      // rows the transaction really deleted (decision Q1: events stay
+      // honest). `CART` matters most: the web does NOT refetch the cart
+      // queries for `STOCK` or `LOG`, so without it other tabs keep showing
+      // the deleted cart rows.
+      const kinds: ChangeKind[] = []
+      if (deleted.stock > 0) kinds.push('STOCK')
+      if (deleted.logs > 0) kinds.push('LOG')
+      if (deleted.cartItems > 0) kinds.push('CART')
+      await publishChange(ctx, kinds, [{ locationId }])
       return true
     },
 
@@ -308,6 +333,10 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         }
       }
 
+      // Whether the switch changed the catalog (the item's own settings, or a
+      // recipe's item list). Set inside the callback, read only after
+      // `$transaction` has resolved, for the live event below.
+      let catalogChanged = recipeUpdates.length > 0
       await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         // The Item's own configuration — `targetUnit`, `amountPerPackage`,
         // `consumeAmount` and the rest — through the SAME mapping `updateItem`
@@ -323,6 +352,7 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         const itemData = buildItemUpdateData(updates)
         if (Object.keys(itemData).length > 0) {
           await tx.item.update({ where: { id: itemId }, data: itemData })
+          catalogChanged = true
         }
 
         // EVERY named location, not just the default one. The conversion
@@ -360,6 +390,19 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           }
         }
       })
+
+      // ── THE LIVE EVENTS (households H3c-2 task D.2) ──
+      //
+      // After the transaction has committed. `STOCK` at every location the
+      // switch converted. `CATALOG` for the household when it changed the
+      // item's settings or a recipe. No `LOG`: a unit switch writes no
+      // inventory log (the H3c-2 plan's table said it did).
+      await publishChange(
+        ctx,
+        ['STOCK'],
+        stockConversions.map((c) => ({ locationId: c.locationId })),
+      )
+      if (catalogChanged) await publishHouseholdChange(ctx, ['CATALOG'], householdId)
 
       const full = await prisma.item.findUniqueOrThrow({
         where: { id: itemId },

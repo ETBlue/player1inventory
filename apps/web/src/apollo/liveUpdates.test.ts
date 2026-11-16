@@ -33,6 +33,16 @@ const GET_ITEMS = gql`
     probeItems
   }
 `
+const ITEM_STOCKS_FOR_ITEM = gql`
+  query ItemStocksForItem {
+    probeItemStocksForItem
+  }
+`
+const ITEM_LOGS = gql`
+  query ItemLogs {
+    probeItemLogs
+  }
+`
 
 type Emitter = {
   next: (value: ApolloLink.Result) => void
@@ -156,12 +166,95 @@ describe('QUERIES_BY_KIND', () => {
     ])
   })
 
+  it('STOCK refetches the two stock queries', () => {
+    expect(QUERIES_BY_KIND.STOCK).toEqual(['PantryData', 'ItemStocksForItem'])
+  })
+
+  it('LOG refetches the three log queries', () => {
+    expect(QUERIES_BY_KIND.LOG).toEqual([
+      'ItemLogs',
+      'InventoryLogCountByItem',
+      'LastPurchaseDates',
+    ])
+  })
+
+  it('LOCATION refetches every active query', () => {
+    expect(QUERIES_BY_KIND.LOCATION).toBe('all')
+    expect(queriesFor(['LOCATION'])).toBe('all')
+  })
+
+  it('CATALOG refetches every query that selects a catalog field, the pantry included', () => {
+    // `PantryData` selects `items { name … }`, so an item rename must
+    // refetch it. The household name (`GetHousehold`) is catalog too.
+    expect([...(QUERIES_BY_KIND.CATALOG as readonly string[])].sort()).toEqual(
+      [
+        'GetHousehold',
+        'GetItem',
+        'GetItems',
+        'GetRecipe',
+        'GetRecipes',
+        'GetShelf',
+        'GetShelves',
+        'GetTagTypes',
+        'GetTags',
+        'GetTagsByType',
+        'GetVendors',
+        'ItemCountByRecipe',
+        'ItemCountByTag',
+        'ItemCountByVendor',
+        'PantryData',
+        'TagCountByType',
+      ].sort(),
+    )
+  })
+
+  it('CATALOG does not refetch the cart, stock-only or log queries', () => {
+    // The cart queries select only ids and amounts. A mutation that also
+    // changes carts sends CART itself (decision Q1 of the H3c-2 plan).
+    const names = queriesFor(['CATALOG'])
+    if (names === 'all') throw new Error('CATALOG must not refetch everything')
+    for (const name of [
+      ...(QUERIES_BY_KIND.CART as readonly string[]),
+      'ItemStocksForItem',
+      ...(QUERIES_BY_KIND.LOG as readonly string[]),
+    ]) {
+      expect(names.has(name)).toBe(false)
+    }
+  })
+
+  it('STOCK and CATALOG together give the union, with PantryData once', () => {
+    expect(queriesFor(['STOCK', 'CATALOG'])).toEqual(
+      new Set([
+        ...(QUERIES_BY_KIND.STOCK as readonly string[]),
+        ...(QUERIES_BY_KIND.CATALOG as readonly string[]),
+      ]),
+    )
+  })
+
   it('names only operations that exist in apollo/operations', () => {
     // A renamed operation would silently stop being refetched. Every name
     // must have a generated `<Name>Document`.
     for (const names of Object.values(QUERIES_BY_KIND)) {
+      if (names === 'all') continue
       for (const name of names) {
         expect(Object.keys(generated)).toContain(`${name}Document`)
+      }
+    }
+  })
+
+  it('names only queries, not mutations or subscriptions', () => {
+    // A mutation name would never match an active query, so it would refetch
+    // nothing, silently.
+    for (const names of Object.values(QUERIES_BY_KIND)) {
+      if (names === 'all') continue
+      for (const name of names) {
+        const doc = (generated as Record<string, unknown>)[
+          `${name}Document`
+        ] as {
+          definitions: { kind: string; operation?: string }[]
+        }
+        const op = doc.definitions.find((d) => d.kind === 'OperationDefinition')
+        expect(op?.operation).toBe('query')
       }
     }
   })
@@ -169,7 +262,9 @@ describe('QUERIES_BY_KIND', () => {
   it('a kind this bundle does not know refetches everything', () => {
     // A newer server can send a kind an older web bundle has no entry for.
     expect(queriesFor(['CART', 'FROM_THE_FUTURE'])).toBe('all')
-    expect(queriesFor(['CART'])).toEqual(new Set(QUERIES_BY_KIND.CART))
+    expect(queriesFor(['CART'])).toEqual(
+      new Set(QUERIES_BY_KIND.CART as readonly string[]),
+    )
   })
 })
 
@@ -257,6 +352,68 @@ describe('startLiveUpdates — events', () => {
     expect(h.subscriptions.every((s) => s.closed)).toBe(true)
     expect(h.listenerCount()).toBe(0)
 
+    unwatch()
+  })
+})
+
+describe('startLiveUpdates — the H3c-2 kinds', () => {
+  /** Mounts the pantry-like set: carts, items, stock and logs. */
+  async function watchMany(h: ReturnType<typeof makeHarness>) {
+    const subs = [
+      VENDOR_CART,
+      ALL_CARTS,
+      GET_ITEMS,
+      ITEM_STOCKS_FOR_ITEM,
+      ITEM_LOGS,
+    ].map((query) => h.client.watchQuery({ query }).subscribe(() => {}))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.sent).toHaveLength(5)
+    h.sent.length = 0
+    return () => {
+      for (const s of subs) s.unsubscribe()
+    }
+  }
+
+  it('user sees stock and catalog refetched together for a STOCK and a CATALOG change in one window', async () => {
+    // Given a page with cart, item, stock and log queries
+    const h = makeHarness()
+    const unwatch = await watchMany(h)
+    const stop = startLiveUpdates({ client: h.client, socket: h.socket })
+
+    // When a STOCK event and a CATALOG event arrive in one window
+    h.live().emit.next(cartEvent('STOCK'))
+    h.live().emit.next(cartEvent('CATALOG'))
+    await vi.advanceTimersByTimeAsync(LIVE_BATCH_MS)
+
+    // Then the stock query and the item list are refetched once each, and
+    // the cart and log queries are not
+    expect(h.sent.sort()).toEqual(['GetItems', 'ItemStocksForItem'])
+
+    stop()
+    unwatch()
+  })
+
+  it('user sees every query refetched when a LOCATION change is in the window', async () => {
+    // Given a page with cart, item, stock and log queries
+    const h = makeHarness()
+    const unwatch = await watchMany(h)
+    const stop = startLiveUpdates({ client: h.client, socket: h.socket })
+
+    // When a LOG event and a LOCATION event arrive in one window
+    h.live().emit.next(cartEvent('LOG'))
+    h.live().emit.next(cartEvent('LOCATION'))
+    await vi.advanceTimersByTimeAsync(LIVE_BATCH_MS)
+
+    // Then every active query is refetched, once each
+    expect(h.sent.sort()).toEqual([
+      'AllCarts',
+      'GetItems',
+      'ItemLogs',
+      'ItemStocksForItem',
+      'VendorCart',
+    ])
+
+    stop()
     unwatch()
   })
 })

@@ -1,6 +1,7 @@
 import { GraphQLError } from 'graphql'
 import { requireCatalogIds, requireCatalogRole } from '../lib/authz.js'
 import { prisma } from '../lib/prisma.js'
+import { publishChange, publishHouseholdChange } from '../lib/publishChange.js'
 import { requireAuth } from '../context.js'
 import type { Item, Resolvers, UpdateItemInput } from '../generated/graphql.js'
 import type { ExpirationMode, Prisma, TargetUnit } from '@prisma/client'
@@ -190,22 +191,30 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         },
       })
 
-      if (tagIds?.length) {
-        await prisma.itemTag.createMany({
-          data: tagIds.map((tagId) => ({ itemId: item.id, tagId })),
-        })
-      }
-      if (vendorIds?.length) {
-        await prisma.itemVendor.createMany({
-          data: vendorIds.map((vendorId) => ({ itemId: item.id, vendorId })),
-        })
-      }
+      // `CATALOG` for the household (households H3c-2 task D.4), in
+      // `finally`: the item and its tag and vendor rows are separate writes,
+      // not one transaction, so once the item is saved other tabs must hear
+      // about it even if a later write fails.
+      try {
+        if (tagIds?.length) {
+          await prisma.itemTag.createMany({
+            data: tagIds.map((tagId) => ({ itemId: item.id, tagId })),
+          })
+        }
+        if (vendorIds?.length) {
+          await prisma.itemVendor.createMany({
+            data: vendorIds.map((vendorId) => ({ itemId: item.id, vendorId })),
+          })
+        }
 
-      const full = await prisma.item.findUniqueOrThrow({
-        where: { id: item.id },
-        include: { tags: true, vendors: true },
-      })
-      return toGraphQL(full)
+        const full = await prisma.item.findUniqueOrThrow({
+          where: { id: item.id },
+          include: { tags: true, vendors: true },
+        })
+        return toGraphQL(full)
+      } finally {
+        await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+      }
     },
 
     updateItem: async (_, { id, input }, ctx) => {
@@ -233,30 +242,36 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // by `upsertItemStock(itemId, locationId)` and nothing else.
       await prisma.item.update({ where: { id }, data: buildItemUpdateData(input) })
 
-      // Replace junction rows wholesale when the field is explicitly provided
-      if (tagIds !== undefined && tagIds !== null) {
-        await prisma.itemTag.deleteMany({ where: { itemId: id } })
-        if (tagIds.length) {
-          await prisma.itemTag.createMany({
-            data: tagIds.map((tagId) => ({ itemId: id, tagId })),
-          })
+      // `CATALOG` in `finally`, for the same reason as `createItem`: the
+      // writes below are not one transaction with the update above.
+      try {
+        // Replace junction rows wholesale when the field is explicitly provided
+        if (tagIds !== undefined && tagIds !== null) {
+          await prisma.itemTag.deleteMany({ where: { itemId: id } })
+          if (tagIds.length) {
+            await prisma.itemTag.createMany({
+              data: tagIds.map((tagId) => ({ itemId: id, tagId })),
+            })
+          }
         }
-      }
 
-      if (vendorIds !== undefined && vendorIds !== null) {
-        await prisma.itemVendor.deleteMany({ where: { itemId: id } })
-        if (vendorIds.length) {
-          await prisma.itemVendor.createMany({
-            data: vendorIds.map((vendorId) => ({ itemId: id, vendorId })),
-          })
+        if (vendorIds !== undefined && vendorIds !== null) {
+          await prisma.itemVendor.deleteMany({ where: { itemId: id } })
+          if (vendorIds.length) {
+            await prisma.itemVendor.createMany({
+              data: vendorIds.map((vendorId) => ({ itemId: id, vendorId })),
+            })
+          }
         }
-      }
 
-      const full = await prisma.item.findUniqueOrThrow({
-        where: { id },
-        include: { tags: true, vendors: true },
-      })
-      return toGraphQL(full)
+        const full = await prisma.item.findUniqueOrThrow({
+          where: { id },
+          include: { tags: true, vendors: true },
+        })
+        return toGraphQL(full)
+      } finally {
+        await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+      }
     },
 
     deleteItem: async (_, { id }, ctx) => {
@@ -264,8 +279,54 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // The item must be the household's before it is deleted
       const existing = await prisma.item.findFirst({ where: { id, householdId } })
       if (!existing) return false
-      // Cascade handles InventoryLog, RecipeItem, CartItem, ItemTag, ItemVendor via onDelete: Cascade
+
+      // ── THE LIVE EVENTS (households H3c-2 task D.4) ──
+      //
+      // The delete cascades (onDelete: Cascade in schema.prisma) into rows
+      // other screens show by LOCATION: `ItemStock`, `InventoryLog` and
+      // `CartItem`. The web does not refetch stock, logs or carts for
+      // `CATALOG` (decision Q1 of the H3c-2 plan), so this sends `STOCK`,
+      // `LOG` and `CART` itself, each only at the locations where it had
+      // rows. After the delete those rows are gone, so their locations are
+      // read BEFORE it. `ItemTag`, `ItemVendor` and `RecipeItem` cascade too;
+      // they are catalog rows, covered by `CATALOG`.
+      //
+      // The locations are passed without a household, so `publishChange`
+      // reads each LOCATION's household. That is the rule for location-level
+      // events, even though today an item's rows are only at locations of
+      // its own household.
+      //
+      // Not one transaction with the delete: a row added between the reads
+      // and the delete is deleted with no event for its location. That tab
+      // catches up on its next refetch.
+      const stockRows = await prisma.itemStock.findMany({
+        where: { itemId: id },
+        select: { locationId: true },
+      })
+      const logRows = await prisma.inventoryLog.findMany({
+        where: { itemId: id },
+        select: { locationId: true },
+        distinct: ['locationId'],
+      })
+      const cartItemRows = await prisma.cartItem.findMany({
+        where: { itemId: id },
+        select: { cartId: true },
+      })
+      const cartRows =
+        cartItemRows.length === 0
+          ? []
+          : await prisma.cart.findMany({
+              where: { id: { in: [...new Set(cartItemRows.map((r) => r.cartId))] } },
+              select: { locationId: true },
+            })
+      const at = (rows: { locationId: string }[]) => rows.map((r) => ({ locationId: r.locationId }))
+
       await prisma.item.delete({ where: { id } })
+
+      await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+      await publishChange(ctx, ['STOCK'], at(stockRows))
+      await publishChange(ctx, ['LOG'], at(logRows))
+      await publishChange(ctx, ['CART'], at(cartRows))
       return true
     },
   },

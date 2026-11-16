@@ -18,11 +18,22 @@
  * one visible place.
  */
 
-/** One change. H3c-2 adds the kinds `STOCK`, `LOG`, `LOCATION` and `CATALOG`. */
+/**
+ * What changed. The same five values as the `ChangeKind` enum in
+ * `schema/live.graphql`. `CART`, `STOCK` and `LOG` are at one location;
+ * `LOCATION` and `CATALOG` are household-level (`locationId: null`).
+ */
+export type ChangeKind = 'CART' | 'STOCK' | 'LOG' | 'LOCATION' | 'CATALOG'
+
+/** One change. */
 export type ChangeEvent = {
-  kind: 'CART'
+  kind: ChangeKind
   householdId: string
-  /** The location the change is at. `null` for a catalog change. */
+  /**
+   * The location the change is at. `null` for a household-level change
+   * (`publishHouseholdChange`): the delivery check is then household
+   * membership, not a location role.
+   */
   locationId: string | null
   /**
    * The tab that made the change (`Context.clientId`). That tab already

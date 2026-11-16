@@ -33,17 +33,55 @@ export const LIVE_BATCH_MS = 300
 /**
  * The queries each kind of change can make stale, by operation name.
  *
- * A `Record` over `ChangeKind`, so when H3c-2 adds a kind to the server's
- * `ChangeKind` enum, codegen widens the type and `tsc` fails here until the
- * kind has an entry. H3c-2 also sends events from `deleteItem`,
- * `deleteLocation`, `clearAllData`, `removeItemFromLocation` and
- * `createVendor`, which change cart rows too: their KIND's entry must then
- * list the cart queries as well (or those events must carry `CART`).
+ * A `Record` over `ChangeKind`, so when the server's `ChangeKind` enum gains
+ * a kind, codegen widens the type and `tsc` fails here until the kind has an
+ * entry.
  *
- * `ShoppingCarts` (`export.graphql`) is left out on purpose: export runs it
- * once with `client.query`, so it is never an active query.
+ * `'all'` means "refetch every active query". `LOCATION` uses it (decision
+ * Q3 of the H3c-2 plan): a location change touches the switcher, the pantry,
+ * carts and stock pages, and it is rare.
+ *
+ * Built from what each QUERY in `apollo/operations/*.graphql` selects, not
+ * from file names (decision Q6). Read on 2026-11-16, households H3c-2 task
+ * D.1:
+ *
+ * | Query                  | Selects                                    | Kinds            |
+ * |------------------------|--------------------------------------------|------------------|
+ * | `PantryData`           | `items { name … }` and `itemStocks`        | CATALOG, STOCK   |
+ * | `ItemStocksForItem`    | `itemStocksForItem` (stock rows only)      | STOCK            |
+ * | `ItemLogs`             | `itemLogs`                                 | LOG              |
+ * | `InventoryLogCountByItem` | a count of logs                         | LOG              |
+ * | `LastPurchaseDates`    | dates read from purchase logs              | LOG              |
+ * | `GetLocations`         | `locations`                                | LOCATION         |
+ * | `GetItem`, `GetItems`  | items                                      | CATALOG          |
+ * | `ItemCountByTag` / `ByVendor` / `ByRecipe` | counts of item links   | CATALOG          |
+ * | `GetRecipes`, `GetRecipe` | recipes, incl. `lastCookedAt`           | CATALOG          |
+ * | `GetShelves`, `GetShelf` | shelves                                  | CATALOG          |
+ * | `GetTagTypes`, `GetTags`, `GetTagsByType`, `TagCountByType` | tags  | CATALOG          |
+ * | `GetVendors`           | vendors                                    | CATALOG          |
+ * | `GetHousehold`         | the household `name` (and the caller's `role`) | CATALOG      |
+ * | `VendorCart`, `AllCarts` | cart `id`, `lastPurchasedAt`             | CART             |
+ * | `CartItems`, `AllCartItems` | `cartId`, `itemId`, `quantity`        | CART             |
+ * | `CartItemCountByItem`  | a count of cart rows                       | CART             |
+ *
+ * Every `LOCATION` row above is covered by `'all'` anyway.
+ *
+ * The cart queries select only ids and amounts, no item or vendor field, so
+ * `CATALOG` does not refetch them. A mutation that deletes cart rows as a
+ * side effect (`deleteItem`, `deleteVendor`, `removeItemFromLocation`) must
+ * send `CART` as well (decision Q1), so the map stays one kind → its own
+ * queries.
+ *
+ * Left out on purpose, because they are never ACTIVE (no mounted component
+ * watches them; `lib/exportData.ts` and `lib/importData.ts` run them once
+ * with `client.query`): `InventoryLogs`, `ShoppingCarts` and `AllItemStocks`
+ * (`export.graphql`). `AllCartItems` is in `export.graphql` too, but
+ * `useShoppingCart` also watches it, so it is in `CART`.
+ *
+ * `GetHousehold`'s `role` changes with role mutations, which do not exist
+ * yet (H4/H5 decide their kind).
  */
-export const QUERIES_BY_KIND: Record<ChangeKind, readonly string[]> = {
+export const QUERIES_BY_KIND: Record<ChangeKind, readonly string[] | 'all'> = {
   CART: [
     'VendorCart',
     'AllCarts',
@@ -51,21 +89,45 @@ export const QUERIES_BY_KIND: Record<ChangeKind, readonly string[]> = {
     'AllCartItems',
     'CartItemCountByItem',
   ],
+  STOCK: ['PantryData', 'ItemStocksForItem'],
+  LOG: ['ItemLogs', 'InventoryLogCountByItem', 'LastPurchaseDates'],
+  LOCATION: 'all',
+  CATALOG: [
+    'PantryData',
+    'GetItem',
+    'GetItems',
+    'ItemCountByTag',
+    'ItemCountByVendor',
+    'ItemCountByRecipe',
+    'GetRecipes',
+    'GetRecipe',
+    'GetShelves',
+    'GetShelf',
+    'GetTagTypes',
+    'GetTags',
+    'GetTagsByType',
+    'TagCountByType',
+    'GetVendors',
+    'GetHousehold',
+  ],
 }
 
 /**
  * The operation names to refetch for a set of kinds, or `'all'`.
  *
- * `'all'` when a kind is not in the map. That happens when the server is
- * newer than this bundle (a new kind deployed before the web). Refetching
- * everything is slower but never wrong; refetching nothing would leave the
- * screen stale with no sign of it.
+ * `'all'` when one kind maps to `'all'` (`LOCATION`), or when a kind is not
+ * in the map. The second happens when the server is newer than this bundle
+ * (a new kind deployed before the web). Refetching everything is slower but
+ * never wrong; refetching nothing would leave the screen stale with no sign
+ * of it.
  */
 export function queriesFor(kinds: Iterable<string>): Set<string> | 'all' {
   const names = new Set<string>()
   for (const kind of kinds) {
-    const list = (QUERIES_BY_KIND as Record<string, readonly string[]>)[kind]
-    if (!list) return 'all'
+    const list = (
+      QUERIES_BY_KIND as Record<string, readonly string[] | 'all' | undefined>
+    )[kind]
+    if (list === undefined || list === 'all') return 'all'
     for (const name of list) names.add(name)
   }
   return names
