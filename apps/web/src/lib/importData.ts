@@ -3311,6 +3311,17 @@ export async function checkImportIds(
   }
 }
 
+// The result, with `switchToLocationId` only when there is one: a key set to
+// `undefined` would read as "switch" to a caller that checks `in`.
+function withSwitch(
+  skipped: ImportSkipped,
+  switchToLocationId: string | undefined,
+): CloudImportResult {
+  return switchToLocationId === undefined
+    ? { skipped }
+    : { skipped, switchToLocationId }
+}
+
 /**
  * Refresh the Apollo cache after a cloud import, and ignore an `AbortError`.
  *
@@ -3326,17 +3337,6 @@ export async function checkImportIds(
  * Only `AbortError` is ignored. Any other rejection is rethrown.
  * Bug doc: `docs/global/bugs/2026-10-31-bug-cloud-copy-aborted-on-pantry.md`.
  */
-// The result, with `switchToLocationId` only when there is one: a key set to
-// `undefined` would read as "switch" to a caller that checks `in`.
-function withSwitch(
-  skipped: ImportSkipped,
-  switchToLocationId: string | undefined,
-): CloudImportResult {
-  return switchToLocationId === undefined
-    ? { skipped }
-    : { skipped, switchToLocationId }
-}
-
 async function resetStoreAfterImport(client: ApolloClient): Promise<void> {
   try {
     await client.resetStore()

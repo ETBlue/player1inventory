@@ -77,6 +77,9 @@ export const LIVE_BATCH_MS = 300
  * with `client.query`): `InventoryLogs`, `ShoppingCarts` and `AllItemStocks`
  * (`export.graphql`). `AllCartItems` is in `export.graphql` too, but
  * `useShoppingCart` also watches it, so it is in `CART`.
+ * `ItemStockIdsAtLocation` (`itemStocks.graphql`) is left out for the same
+ * reason: `lib/importData.ts` runs it once, with `fetchPolicy: 'no-cache'`,
+ * after a cloud import (decision O9), and no component watches it.
  *
  * `GetHousehold`'s `role` changes with role mutations, which do not exist
  * yet (H4/H5 decide their kind).
