@@ -287,6 +287,38 @@ all-or-nothing).
    prefix lookup for carts → the cart-prefix test goes red; ask `manager` when `forClear` is
    true → the clear test goes red.
 
+**As built (2026-11-16).**
+
+- Server: `apps/server/src/resolvers/importCheck.resolver.ts` (wired in `resolvers/index.ts`),
+  the schema in `apps/server/src/schema/import.graphql`, tests in
+  `import-check.resolver.test.ts` (31 tests). Web: the `ImportCheck` document in
+  `apps/web/src/apollo/operations/import.graphql`, and `checkImportIds`,
+  `IMPORT_CHECK_CHUNK_SIZE` and `ImportIdCheck` in `apps/web/src/lib/importData.ts` (5 tests in
+  `importData.test.ts`). `checkImportIds` is not called by the import flow; E.4 wires it.
+- **Catalog ids: two reads, not one.** An unscoped `findMany({ id: { in } })` says which ids are
+  taken, a second one with `householdId: target` says which of them are in the target. More
+  taken than own means another household. The comparison is in SQL; see *What this plan got
+  wrong*.
+- **Locations: one set, the "touched" locations.** It holds the `locations` list, the prefix of
+  every cart id (a bare id is `BAD_USER_INPUT`), and the STORED location of every taken log,
+  stock row, cart and cart item (the cart item through its cart). A touched location that exists
+  and is not in the target household makes `anotherHousehold` true. One in the target where
+  `locationIdsWithRole(ctx, 'participant', { householdId: target })` does not include it is
+  blocked. A location id no row holds is neither: the import creates it.
+- **`forClear: true` gives `blockedLocationIds: []`.** `clearAllData` deletes every location of
+  the household before the first write, and the import then creates them again with the caller
+  as organizer. `anotherHousehold` is still checked.
+- **The web sends more location ids than the file's location rows.** `checkImportIds` adds the
+  `locationId` of every stock row and log, because `bulk*ItemStocks` and `bulk*InventoryLogs`
+  refuse a location of another household even when the file has no row for it. A cart item's
+  `cartId` is NOT sent: the cart item mutations skip such a row, they do not refuse it.
+- **An empty file still makes one call.** The call is also the role check, and T17 needs the
+  role refusal to come from `importCheck`.
+- `stockFake`'s `itemStock` `where` now takes `id` as a string or `{ in }` (pinned in
+  `stockFake.test.ts`). It took only a string.
+- `live-publish.guard.test.ts` is unchanged and green: `importCheck` is a `Query` field.
+- Root `CLAUDE.md` does not mention `importCheck` yet. E.7 step 1 adds it.
+
 ## Task E.3 — the server import rules: role gate, no fallback, #381
 
 **Files:** `import.resolver.ts`; `vendor.resolver.ts`; `authz.ts` (delete
@@ -513,6 +545,10 @@ Filled in from the task reports and reviews.
 | E.1 | Step 7: "No behaviour change is visible to a one-household user, so every existing test must stay green." | T6 is a behaviour change for one household too. A bare cart id (`no-vendor`), an id naming a deleted location, and `":vendor"` were sent to `fallbackImportLocation` and written. Since E.1 the cart-id guard refuses them, so the batch fails. 20 server tests went red in 4 files and were changed (see *As built*). This is the T10 / T11 behaviour, which the plan puts in E.3; for carts it arrives in E.1. `e2e/tests/cart-id-cross-user-leak.spec.ts` test 1 imports the bare id `no-vendor` and will now get `BAD_USER_INPUT`; E.6 must change it. The web is not affected for a legacy file: `upgradeLegacyPayloadForCloud` gives its carts a location prefix before they are sent |
 | E.1 | Step 3: "Update `requireOwnRowIdsOrUnclaimed`", and T4: the call sites "pass the id `requireCatalogRole` returned" | No import mutation calls `requireCatalogRole` before E.3. The 4 cart and cart item import mutations read no household at all. They now pass `await requireHousehold(ctx)` inline; E.3 replaces it |
 | E.1 | *Facts*: `cart-live-publish.resolver.test.ts` is not named | That file already has one user (ALICE) in two households, and its two cart import tests imported both households' carts in one batch. They encoded the behaviour #381 calls a bug |
+| E.2 | Step 6: mutation "compare a location-scoped row's household to the CALLER's household (`requireHousehold`) instead of the target → the two-household test goes red" | The target IS `requireHousehold(ctx)`: `requireCatalogRole` returns it, and nothing else can choose a household until H7. So that mutation changes nothing. It was run: **31 of 31 green**. The mutation that does test the rule is "drop `householdId: target` from the read of the touched locations": 6 red. A test cannot tell "target" from "caller's household" before H7 |
+| E.2 | Step 2: "One unscoped query per model … selecting only `id` and the scope … A row is 'another household' when its household is not the target" | That is a `row.householdId !== target` comparison at a call site, which root `CLAUDE.md` forbids. Built as two reads per catalog model (taken, then scoped by `householdId: target` in SQL), and for locations two reads on the touched set |
+| E.2 | Step 2 says nothing about `forClear` beyond the role | A location of the target is not blocked on `clear`: `clearAllData` deletes it first. Returning it as blocked would make E.4 drop rows that the clear import can write. Built: `blockedLocationIds: []` when `forClear` is true |
+| E.2 | Step 4 and T1: "the file's ids per model" | Location ids are not only in the location rows. A stock row or log at a location of another household is refused by its mutation even when the file has no row for that location. `checkImportIds` sends their `locationId` in `locations` too, and the server adds the stored location of every taken row |
 
 ## Status
 
