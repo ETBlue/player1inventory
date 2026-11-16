@@ -2616,6 +2616,13 @@ export interface ImportIdCheck {
    */
   blockedLocationIds: string[]
   /**
+   * Location ROWS of the file that already exist, where the caller may write
+   * but not rename (`participant`, not `organizer`), sorted. On `replace`,
+   * leave them out of `bulkUpsertLocations`, which asks `organizer`; keep the
+   * rows at them.
+   */
+  renameBlockedLocationIds: string[]
+  /**
    * Locations the file's rows point at that no location will hold when the
    * import writes, sorted. Drop every row that points at one.
    */
@@ -2742,6 +2749,7 @@ export async function checkImportIds(
   let anotherHousehold = false
   const joined = {
     blockedLocationIds: new Set<string>(),
+    renameBlockedLocationIds: new Set<string>(),
     missingLocationIds: new Set<string>(),
     missingItemIds: new Set<string>(),
     inventoryLogs: new Set<string>(),
@@ -2773,6 +2781,7 @@ export async function checkImportIds(
     if (!answer) throw new Error('importCheck returned no data')
     if (answer.anotherHousehold) anotherHousehold = true
     join(joined.blockedLocationIds, answer.blockedLocationIds)
+    join(joined.renameBlockedLocationIds, answer.renameBlockedLocationIds)
     join(joined.missingLocationIds, answer.missingLocationIds)
     join(joined.missingItemIds, answer.missingItemIds)
     join(joined.inventoryLogs, answer.blockedRows.inventoryLogs)
@@ -2784,6 +2793,7 @@ export async function checkImportIds(
   return {
     anotherHousehold,
     blockedLocationIds: sorted(joined.blockedLocationIds),
+    renameBlockedLocationIds: sorted(joined.renameBlockedLocationIds),
     missingLocationIds: sorted(joined.missingLocationIds),
     missingItemIds: sorted(joined.missingItemIds),
     blockedRows: {

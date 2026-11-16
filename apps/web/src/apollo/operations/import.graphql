@@ -259,6 +259,7 @@ query ImportCheck($ids: ImportCheckInput!, $forClear: Boolean) {
   importCheck(ids: $ids, forClear: $forClear) {
     anotherHousehold
     blockedLocationIds
+    renameBlockedLocationIds
     missingLocationIds
     missingItemIds
     blockedRows {

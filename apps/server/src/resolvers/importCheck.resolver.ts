@@ -102,8 +102,7 @@ interface StoredRow {
 
 /**
  * The answer of `importCheck` for one call, after the role check and the size
- * check (households H4 task E.2, and the five review fixes recorded in the
- * plan).
+ * check (households H4 task E.2, and the review fixes recorded in the plan).
  *
  * The locations it looks at:
  *
@@ -120,11 +119,15 @@ interface StoredRow {
  *   household, or a named or stored location exists and is not in the target.
  * - `blockedLocationIds`: NAMED locations of the target where the caller is
  *   below `participant`. The web drops the rows the file puts there.
- * - `blockedRows`: rows the file holds that are STORED at such a location (a
- *   cart: stored anywhere but at the location its id names, `cartVerdict` in
- *   lib/authz.ts). The web drops exactly these rows. A stored location is NOT
- *   added to `blockedLocationIds`: the file does not name it, and the caller
- *   may have no role there, so the web has no name to show.
+ * - `renameBlockedLocationIds`: location ROWS of the file that exist in the
+ *   target where the caller is `participant` but not `organizer`.
+ *   `bulkUpsertLocations` (the `replace` strategy) asks `organizer`.
+ * - `blockedRows`: rows the file holds that are STORED at a blocked location.
+ *   For a cart: stored anywhere but at the location its id names
+ *   (`cartVerdict` in lib/authz.ts). The web drops exactly these rows. A
+ *   stored location is NOT added to `blockedLocationIds`: the file does not
+ *   name it, and the caller may have no role there, so the web has no name to
+ *   show.
  * - `missingLocationIds` / `missingItemIds`: `locationRefs` / `itemRefs` that
  *   no row will hold when the import writes. The bulk stock, log and cart
  *   mutations refuse such a reference (`requireLocationRole`, `cartVerdict`,
@@ -132,13 +135,34 @@ interface StoredRow {
  *   the import creates it.
  *
  * With `forClear`, `clearAllData` deletes every row and location of the
- * target before the first write. So nothing is blocked, and a reference to a
- * row of the target is missing unless the file holds that row too.
+ * target before the first write, and the file then creates its locations
+ * again with the caller as organizer. So nothing is blocked, nothing needs
+ * `organizer`, a stored row of the target is no conflict, and a reference to
+ * a row of the target is missing unless the file holds that row too.
  *
- * The cart table is read only for cart ids whose prefix is a writable
- * location of the target (decision T6), and not at all for `forClear`. A
- * caller with no role at a location never learns whether a cart id there is
- * taken.
+ * **Which cart ids are read (decision T6).** `cartVerdict` reads the cart
+ * table when the cart is WRITTEN: after the file's locations exist, and with
+ * `forClear` after the clear. So a cart id is read here when its prefix will
+ * be writable then, as far as the server can tell from this call:
+ *
+ * | Prefix | Without `forClear` | With `forClear` |
+ * |---|---|---|
+ * | a writable location of the target | read | read |
+ * | another location of the target (viewer, no role) | not read | read |
+ * | no location has that id | read | read |
+ * | a location of another household | not read | not read |
+ *
+ * "No location has that id" is a database fact, so it does not depend on
+ * which call holds the file's location row. With `forClear`, a stored cart at
+ * a location of the target is deleted by the clear and ignored, so reading a
+ * prefix the caller cannot write today tells them nothing about that
+ * location's carts. Only a cart stored OUTSIDE the target changes the answer
+ * (`anotherHousehold`), and that is another household's row the file names
+ * by its id, like any catalog id.
+ *
+ * The carts of the file's existing CART ITEMS are read too, by the cart id
+ * stored on the cart item, whatever their location, to find where each cart
+ * item is. That read is not about an id the file chose.
  */
 async function answerImportCheck(
   ctx: Context,
@@ -161,6 +185,15 @@ async function answerImportCheck(
     .filter((id) => !referencedItems.taken.has(id) || (forClear && referencedItems.own.has(id)))
     .sort()
 
+  // Task E.3, decision T12: both location imports refuse these ids for the
+  // whole batch, before any read.
+  const locationRows = listOf(ids, 'locations')
+  for (const id of locationRows) {
+    if (id === 'local' || id.includes(':')) {
+      throw badInput("A location id cannot be 'local' and cannot contain a colon.")
+    }
+  }
+
   const carts = listOf(ids, 'carts')
   const prefixOf = new Map<string, string>()
   for (const id of carts) {
@@ -170,9 +203,18 @@ async function answerImportCheck(
     prefixOf.set(id, parseCartId(id).locationId)
   }
 
+  const locationRefs = listOf(ids, 'locationRefs')
+  const named = new Set([...locationRows, ...locationRefs, ...prefixOf.values()])
+  const namedSplit = await splitByHousehold(prisma.location, [...named], target)
+
+  // Both empty with `forClear`: after the clear the file creates its
+  // locations again, with the caller as organizer.
   const writable = forClear
     ? new Set<string>()
     : new Set(await locationIdsWithRole(ctx, 'participant', { householdId: target }))
+  const organizes = forClear
+    ? new Set<string>()
+    : new Set(await locationIdsWithRole(ctx, 'organizer', { householdId: target }))
 
   const logIds = listOf(ids, 'inventoryLogs')
   const storedLogs: StoredRow[] =
@@ -215,8 +257,10 @@ async function answerImportCheck(
     return locationId === undefined ? [] : [{ id: row.id, locationId }]
   })
 
-  // Decision T6: only cart ids whose prefix the caller may write in the target.
-  const readableCarts = carts.filter((id) => writable.has(prefixOf.get(id) ?? ''))
+  // Decision T6: see the table above.
+  const willBeWritable = (prefix: string) =>
+    !namedSplit.taken.has(prefix) || (forClear ? namedSplit.own.has(prefix) : writable.has(prefix))
+  const readableCarts = carts.filter((id) => willBeWritable(prefixOf.get(id) ?? ''))
   const storedCarts: StoredRow[] =
     readableCarts.length === 0
       ? []
@@ -225,20 +269,20 @@ async function answerImportCheck(
           select: { id: true, locationId: true },
         })
 
-  const locationRefs = listOf(ids, 'locationRefs')
-  const named = new Set([...listOf(ids, 'locations'), ...locationRefs, ...prefixOf.values()])
-  const stored = [...storedLogs, ...storedStocks, ...storedCartItems, ...storedCarts].map(
-    (row) => row.locationId,
-  )
-  const locations = await splitByHousehold(
-    prisma.location,
-    [...new Set([...named, ...stored])],
-    target,
-  )
-  if (hasOutside(locations)) anotherHousehold = true
+  const storedOnly = [
+    ...new Set(
+      [...storedLogs, ...storedStocks, ...storedCartItems, ...storedCarts]
+        .map((row) => row.locationId)
+        .filter((id) => !named.has(id)),
+    ),
+  ]
+  const storedSplit = await splitByHousehold(prisma.location, storedOnly, target)
+  if (hasOutside(namedSplit) || hasOutside(storedSplit)) anotherHousehold = true
 
+  const inTarget = (locationId: string) =>
+    namedSplit.own.has(locationId) || storedSplit.own.has(locationId)
   const blocked = (locationId: string) =>
-    !forClear && locations.own.has(locationId) && !writable.has(locationId)
+    !forClear && inTarget(locationId) && !writable.has(locationId)
   const idsAt = (rows: StoredRow[]) =>
     rows
       .filter((row) => blocked(row.locationId))
@@ -248,8 +292,12 @@ async function answerImportCheck(
   return {
     anotherHousehold,
     blockedLocationIds: [...named].filter(blocked).sort(),
+    // Empty with `forClear`: both role sets are empty then.
+    renameBlockedLocationIds: locationRows
+      .filter((id) => namedSplit.own.has(id) && writable.has(id) && !organizes.has(id))
+      .sort(),
     missingLocationIds: locationRefs
-      .filter((id) => !locations.taken.has(id) || (forClear && locations.own.has(id)))
+      .filter((id) => !namedSplit.taken.has(id) || (forClear && namedSplit.own.has(id)))
       .sort(),
     missingItemIds,
     blockedRows: {
@@ -258,11 +306,14 @@ async function answerImportCheck(
       cartItems: idsAt(storedCartItems),
       // `cartVerdict` refuses a stored cart that is not at the location its
       // id names. One stored outside the target already made
-      // `anotherHousehold` true above.
-      carts: storedCarts
-        .filter((cart) => cart.locationId !== prefixOf.get(cart.id) && locations.own.has(cart.locationId))
-        .map((cart) => cart.id)
-        .sort(),
+      // `anotherHousehold` true above. With `forClear` one stored in the
+      // target is deleted by the clear.
+      carts: forClear
+        ? []
+        : storedCarts
+            .filter((cart) => cart.locationId !== prefixOf.get(cart.id) && inTarget(cart.locationId))
+            .map((cart) => cart.id)
+            .sort(),
     },
   }
 }

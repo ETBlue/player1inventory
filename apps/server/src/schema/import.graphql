@@ -231,6 +231,13 @@ type ImportCheck {
   # leaves out these locations and every row at them. Always empty when
   # `forClear` is true: `clearAllData` deletes them first.
   blockedLocationIds: [ID!]!
+  # Location ROWS of the file that exist in the target household where the
+  # caller is `participant` but not `organizer`. On `replace` the web sends an
+  # existing location row to `bulkUpsertLocations`, which asks `organizer` (a
+  # rename) and refuses the whole batch. Leave these rows out of that call;
+  # the stock, logs and carts at them can still be written. Always empty when
+  # `forClear` is true.
+  renameBlockedLocationIds: [ID!]!
   # `locationRefs` that no location will hold when the import writes: no row
   # has the id, or (with `forClear`) the clear deletes it. The web leaves out
   # every row that points at one.

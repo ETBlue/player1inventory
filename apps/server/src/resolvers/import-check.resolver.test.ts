@@ -138,6 +138,7 @@ function seed(callerRoleInA: HouseholdRole = 'owner') {
       { id: 'loc-a', householdId: 'hh-a', name: 'Kitchen', order: 0 },
       { id: 'loc-a-view', householdId: 'hh-a', name: 'Garage', order: 1 },
       { id: 'loc-a-none', householdId: 'hh-a', name: 'Attic', order: 2 },
+      { id: 'loc-a-part', householdId: 'hh-a', name: 'Shed', order: 3 },
       { id: 'loc-b', householdId: 'hh-b', name: 'Office', order: 0 },
       { id: 'loc-c', householdId: 'hh-c', name: 'Theirs', order: 0 },
     ],
@@ -175,6 +176,7 @@ function seed(callerRoleInA: HouseholdRole = 'owner') {
     locationMembers: [
       { locationId: 'loc-a', userId: 'caller', role: 'organizer' as const, createdAt: T },
       { locationId: 'loc-a-view', userId: 'caller', role: 'viewer' as const, createdAt: T },
+      { locationId: 'loc-a-part', userId: 'caller', role: 'participant' as const, createdAt: T },
       { locationId: 'loc-a-none', userId: 'other', role: 'organizer' as const, createdAt: T },
       { locationId: 'loc-b', userId: 'caller', role: 'organizer' as const, createdAt: T },
       { locationId: 'loc-c', userId: 'stranger', role: 'organizer' as const, createdAt: T },
@@ -206,6 +208,10 @@ function seed(callerRoleInA: HouseholdRole = 'owner') {
       // names loc-a, where the caller is organizer.
       { id: 'loc-a-view:v1', locationId: 'loc-a-view', lastPurchasedAt: null },
       { id: 'loc-a:at-view', locationId: 'loc-a-view', lastPurchasedAt: null },
+      // Old fallback rows whose id names a location that does not exist
+      // (yet): one stored at loc-a (hh-a), one at loc-b (hh-b).
+      { id: 'loc-new:v1', locationId: 'loc-a', lastPurchasedAt: null },
+      { id: 'ghost:v1', locationId: 'loc-b', lastPurchasedAt: null },
     ],
     cartItems: [
       { id: 'ci-a', cartId: 'loc-a:v1', itemId: 'items-a', quantity: 1, userId: 'other' },
@@ -226,6 +232,7 @@ const QUERY = /* GraphQL */ `
     importCheck(ids: $ids, forClear: $forClear) {
       anotherHousehold
       blockedLocationIds
+      renameBlockedLocationIds
       missingLocationIds
       missingItemIds
       blockedRows {
@@ -241,6 +248,7 @@ const QUERY = /* GraphQL */ `
 type Answer = {
   anotherHousehold: boolean
   blockedLocationIds: string[]
+  renameBlockedLocationIds: string[]
   missingLocationIds: string[]
   missingItemIds: string[]
   blockedRows: { inventoryLogs: string[]; itemStocks: string[]; carts: string[]; cartItems: string[] }
@@ -252,6 +260,7 @@ function expected(changes: Partial<Omit<Answer, 'blockedRows'>> & { blockedRows?
   return {
     anotherHousehold: false,
     blockedLocationIds: [],
+    renameBlockedLocationIds: [],
     missingLocationIds: [],
     missingItemIds: [],
     ...rest,
@@ -461,16 +470,16 @@ describe('importCheck: rows stored at a location the caller cannot write', () =>
 // location will hold it. Only the file's location ROWS are created.
 describe('importCheck: references to locations that will not exist', () => {
   it('a referenced location no row holds is missing; a free location ROW is not', async () => {
-    // Given `ghost` is only pointed at, `loc-new` is a row of the file, and
-    // loc-a is a writable location of A
+    // Given `phantom` is only pointed at, `loc-new` is a row of the file, and
+    // loc-a is a writable location of A. No cart row holds `phantom:v1`.
     const result = answer(
       await check({
         locations: ['loc-new'],
-        locationRefs: ['loc-a', 'ghost'],
-        carts: ['ghost:v1', 'loc-a:v1'],
+        locationRefs: ['loc-a', 'phantom'],
+        carts: ['phantom:v1', 'loc-a:v1'],
       }),
     )
-    expect(result).toEqual(expected({ missingLocationIds: ['ghost'] }))
+    expect(result).toEqual(expected({ missingLocationIds: ['phantom'] }))
   })
 
   it("on clear a referenced location of A is missing, because the clear deletes it; one the file holds a row for is not", async () => {
@@ -506,10 +515,17 @@ describe('importCheck: items stock rows point at', () => {
   })
 })
 
-// Review finding 4, decision T6: the cart table is read only for cart ids
-// whose prefix is a writable location of the target. Otherwise a caller with
-// no role there would learn whether a cart id is taken.
-describe('importCheck: cart ids are read only at writable locations', () => {
+// Decision T6: the cart table is read for a cart id only when the location
+// its id names will be writable when the cart is written. A caller never
+// learns whether a cart id is taken at an EXISTING location they cannot
+// write. (Review finding 4 of E.2.)
+describe('importCheck: which cart ids are read', () => {
+  function askedCartIds(findMany: { mock: { calls: unknown[][] } }) {
+    return findMany.mock.calls.flatMap(
+      (call) => (call[0] as { where: { id: { in: string[] } } }).where.id.in,
+    )
+  }
+
   it('reads no cart for a prefix of another household or of a viewer location', async () => {
     const findMany = vi.spyOn(prisma.cart, 'findMany')
     const findUnique = vi.spyOn(prisma.cart, 'findUnique')
@@ -521,13 +537,82 @@ describe('importCheck: cart ids are read only at writable locations', () => {
     expect(findFirst).not.toHaveBeenCalled()
   })
 
-  it('reads only the cart ids whose prefix is writable', async () => {
+  it('reads the cart ids whose prefix is writable or names no location yet, and no other', async () => {
     const findMany = vi.spyOn(prisma.cart, 'findMany')
-    await check({ carts: ['loc-a:v1', 'loc-c:no-vendor', 'loc-a-view:v1'] })
-    const asked = findMany.mock.calls.flatMap(
-      (call) => (call[0] as { where: { id: { in: string[] } } }).where.id.in,
+    await check({ carts: ['loc-a:v1', 'loc-c:no-vendor', 'loc-a-view:v1', 'loc-new:v1'] })
+    expect(askedCartIds(findMany).sort()).toEqual(['loc-a:v1', 'loc-new:v1'])
+  })
+
+  it('on clear reads the cart ids whose prefix is in the target or names no location, not another household', async () => {
+    const findMany = vi.spyOn(prisma.cart, 'findMany')
+    await check({ carts: ['loc-a-view:v1', 'loc-c:no-vendor', 'loc-new:v1'] }, true)
+    expect(askedCartIds(findMany).sort()).toEqual(['loc-a-view:v1', 'loc-new:v1'])
+  })
+})
+
+// Second review of E.2. `cartVerdict` runs when the cart is WRITTEN: after
+// the file's locations are created, and with `forClear` after `clearAllData`.
+// So a prefix that is free now can be writable then, and a stored cart with
+// that id is refused because it is not at the location its id names.
+describe('importCheck: a stored cart whose prefix becomes writable during the import', () => {
+  it('a cart id naming a location the file creates, stored at a location of A, is a blocked row', async () => {
+    // Given the file creates loc-new and holds loc-new:v1. The cloud already
+    // holds loc-new:v1, stored at loc-a. loc-a:v1 next to it passes.
+    const result = answer(
+      await check({ locations: ['loc-new'], carts: ['loc-new:v1', 'loc-a:v1'] }),
     )
-    expect(asked).toEqual(['loc-a:v1'])
+    expect(result).toEqual(expected({ blockedRows: { carts: ['loc-new:v1'] } }))
+  })
+
+  it("a cart id naming a free location, stored in household B, is another household's", async () => {
+    const result = answer(await check({ locations: ['ghost'], carts: ['ghost:v1', 'loc-a:v1'] }))
+    expect(result).toEqual(expected({ anotherHousehold: true }))
+  })
+
+  it("on clear a cart the file writes again, stored in household B, is another household's", async () => {
+    // Given the file holds location loc-a and cart loc-a:moved. The cloud
+    // cart loc-a:moved is stored at loc-b, in hh-b, so the clear keeps it,
+    // and `cartVerdict` refuses it after the file creates loc-a again.
+    const result = answer(
+      await check({ locations: ['loc-a'], carts: ['loc-a:v1', 'loc-a:moved'] }, true),
+    )
+    expect(result).toEqual(expected({ anotherHousehold: true }))
+  })
+
+  it('on clear a cart stored at a location of A is fine: the clear deletes it', async () => {
+    const result = answer(
+      await check({ locations: ['loc-a', 'loc-new'], carts: ['loc-a:at-view', 'loc-new:v1'] }, true),
+    )
+    expect(result).toEqual(expected())
+  })
+})
+
+// Found while checking E.3: on `replace` the web sends every location row that
+// already exists to `bulkUpsertLocations`, which asks `organizer` (a rename).
+// A location where the caller is only `participant` is refused for the whole
+// batch.
+describe('importCheck: location rows the caller may not rename', () => {
+  it('a location row where the caller is participant is reported; organizer and free rows are not', async () => {
+    const result = answer(
+      await check({ locations: ['loc-a', 'loc-a-part', 'loc-new'], locationRefs: ['loc-a-part'] }),
+    )
+    expect(result).toEqual(expected({ renameBlockedLocationIds: ['loc-a-part'] }))
+  })
+
+  it('a location the file only points at is not reported: nothing renames it', async () => {
+    expect(answer(await check({ locationRefs: ['loc-a-part'] }))).toEqual(expected())
+  })
+
+  it('on clear nothing is reported: the file creates every location again', async () => {
+    expect(answer(await check({ locations: ['loc-a-part'] }, true))).toEqual(expected())
+  })
+})
+
+// Task E.3, decision T12: both location imports refuse such an id for the
+// whole batch.
+describe('importCheck: location ids the import refuses', () => {
+  it.each(['local', 'a:b'])('a location row with the id %s is bad input', async (id) => {
+    expect(errorCode(await check({ locations: ['loc-a', id] }))).toBe('BAD_USER_INPUT')
   })
 })
 

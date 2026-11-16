@@ -4788,6 +4788,7 @@ describe('checkImportIds', () => {
   type Answer = {
     anotherHousehold: boolean
     blockedLocationIds: string[]
+    renameBlockedLocationIds: string[]
     missingLocationIds: string[]
     missingItemIds: string[]
     blockedRows: Rows
@@ -4802,6 +4803,7 @@ describe('checkImportIds', () => {
     return {
       anotherHousehold: false,
       blockedLocationIds: [],
+      renameBlockedLocationIds: [],
       missingLocationIds: [],
       missingItemIds: [],
       ...rest,
@@ -4947,6 +4949,7 @@ describe('checkImportIds', () => {
       return answerWith({
         anotherHousehold: middle,
         blockedLocationIds: [`loc-${one}`, `loc-${two}`],
+        renameBlockedLocationIds: [`shed-${two}`],
         missingLocationIds: [`gone-${one}`, `gone-${two}`],
         missingItemIds: [`item-${one}`, `item-${two}`],
         blockedRows: {
@@ -4983,6 +4986,7 @@ describe('checkImportIds', () => {
     expect(result).toEqual({
       anotherHousehold: true,
       blockedLocationIds: ['loc-a', 'loc-b', 'loc-z'],
+      renameBlockedLocationIds: ['shed-a', 'shed-b'],
       missingLocationIds: ['gone-a', 'gone-b', 'gone-z'],
       missingItemIds: ['item-a', 'item-b', 'item-z'],
       blockedRows: {
