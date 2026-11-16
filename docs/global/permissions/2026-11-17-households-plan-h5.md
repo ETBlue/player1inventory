@@ -534,26 +534,82 @@ The owner can still correct any `tw` text in the PR.
 - Produces: `useHouseholdLocations(): { data: CloudLocation[] | undefined, isLoading }`; in
   local mode it returns `useLocations()`'s data with `myRole: 'organizer'`, `hasOrganizer: true`.
 
-- [ ] **Step 1: Write the failing tests** (cloud, mocked hooks):
+- [x] **Step 1: Write the failing tests** (cloud, mocked hooks):
   - `household manager sees a location they have no role on, marked No access` → row "Garage" shows "No access", has no link into its data, has Delete.
   - `household manager sees No organizer on a location without one`.
   - `household member does not see Delete or drag handles` and `sees their role on each row` ("Participant").
   - `location organizer who is a household member can rename that location and not the others`.
   - `user sees the role on each row` for an owner: "Organizer".
   - The reorder sends every id of the list, including the No access one.
-- [ ] **Step 2: Run** — FAIL.
-- [ ] **Step 3: Implement.** Rows show name, the role label, and the two marks (texts from
+- [x] **Step 2: Run** — FAIL.
+- [x] **Step 3: Implement.** Rows show name, the role label, and the two marks (texts from
   O11). Delete and drag only when `canManageLocations`; rename only when `isOrganizerAt(id)`.
   A No access row is not a link. Remove the H3a `LAST_LOCATION` handling only in F.7, not here.
   Stories: add `ManagerWithNoAccessRow`, `MemberReadOnly`, `NoOrganizer`, each rendering the
   real `LocationList`.
-- [ ] **Step 4: Run** — PASS.
-- [ ] **Step 5: Mutation checks:** show Delete for every role → the member test goes red;
+- [x] **Step 4: Run** — PASS.
+- [x] **Step 5: Mutation checks:** show Delete for every role → the member test goes red;
   build the list from `useLocations` instead of `useHouseholdLocations` → the No access test
   goes red.
-- [ ] **Step 6: Gate**, commit `feat(households): locations list shows every location to managers`.
+- [x] **Step 6: Gate**, commit `feat(households): locations list shows every location to managers`.
+
+**As built (2026-11-17, `5b88bee7`).**
+
+- **The list.** `useHouseholdLocations()` (new, in `hooks/useLocations.ts`) reads
+  `householdLocations` in cloud, with `cache-and-network` and the usual `isLoading` /
+  `isError` rules. It returns `SettingsLocation[]` (`Location` plus `myRole`, `hasOrganizer`).
+  Local: `useLocations()`'s rows, each `organizer` with an organizer, as the plan said. The
+  page passes `showRoles={mode === 'cloud'}`, so local mode shows no role text.
+- **`usePermissions` is built here, not in F.4.** The plan let the executor choose. It has
+  T9's exact shape and the hook tests F.4 Step 1 lists (6 tests). F.4 still owes the View only
+  badge on the switcher and its tests.
+- **`LocationList`** takes three new optional props: `canManage` (drag and Delete; default
+  `true`), `canRename(location)` (default every row) and `showRoles`. A row shows the role text
+  (`roles.location.*`), "No access" for `myRole: null`, and "No organizer" for
+  `hasOrganizer: false` (in `text-importance-destructive-foreground`). Rows are now `<ul>` /
+  `<li>` (Biome's `useSemanticElements` refused `role="list"` on a `div`). Location names
+  still render as stored.
+- **Who sees what.** Drag and Delete: `canManageLocations` (household owner or manager).
+  Rename: `isOrganizerAt(id)`. Add: everyone, unchanged (the server asks household `member`).
+- **The reorder cache.** `useReorderLocations` writes the server's answer into
+  `GetLocations` as before. The answer holds only the caller's own locations, so it cannot
+  replace `GetHouseholdLocations`; the hook puts the cached settings rows in the order that
+  was SENT, with `order` 0..n-1, and only when every cached row is in the list. Create, rename
+  and delete refetch `GetHouseholdLocations` by name, so only a mounted list asks.
+- **i18n** (en and tw, owner's texts): `roles.location.organizer` 「據點王」,
+  `participant` 「搬運工」, `viewer` 「圍觀的」, `settings.locations.noAccess` 「無權限」,
+  `settings.locations.noOrganizer` 「沒有據點王」. The household role names are not added yet:
+  nothing shows them.
+- **Stories:** `ManagerWithNoAccessRow`, `MemberReadOnly`, `NoOrganizer`, each rendering the
+  real `LocationList`, with 4 smoke tests. Checked in `storybook-static/index.json`.
+- **Tests.** `index.cloud.test.tsx`: 8 new role tests on the real page (three locations; a
+  "No access" row; a manager who is a viewer; a member who organizes one location and helps
+  in another). `useLocations.test.tsx`: 3 for `useHouseholdLocations` and the reorder cache.
+  `usePermissions.test.tsx`: 6. Web suite **2685 / 284 → 2706 / 285** (baseline measured on
+  the unmodified tree). Server unchanged at **1813 / 70**.
+- **The keyboard drag test needed a layout.** jsdom measures every row as 0 x 0, so dnd-kit's
+  keyboard sensor had nowhere to move and the reorder was never sent. The test stubs
+  `getBoundingClientRect` to give each `<li>` a 40px slot, and restores it after.
+- **E2E:** `settings/locations.spec.ts` cloud 5 passed / 1 skipped (load average 29 at the
+  start, from other sessions), local 5 passed / 1 skipped, `a11y.spec.ts` local 68 passed /
+  2 skipped. None of these sets up a second role; F.8 does.
+- **Mutations, each copied aside and restored from the copy (`diff -q` clean):**
+
+  | Mutation | Red |
+  |---|---|
+  | `canManage={true}` (Delete for every role) | `household member does not see Delete or drag handles`, `user sees no Delete while the household role is not known` |
+  | the page reads `useLocations()` | 4: `… marked No access`, `… No organizer …`, `user sees the role on each row`, `household owner reorders every location …, the No access one included` |
+  | `canRename={() => true}` | `… marked No access` (Rename on the Shed), `location organizer who is a household member can rename that location and not the others` |
+  | the settings-list reorder cache write skipped | `household owner sees the settings list in the new order after a reorder, the No access row included` |
+  | `usePermissions` gives `owner` while loading | both loading tests, and the page's "not known" test |
+  | `canEditLocation` reads the household role | 3 `usePermissions` tests, incl. Review Focus 4 |
 
 ## Task F.4 — web: `usePermissions` and the View only badge
+
+> **Note (2026-11-17, after F.3):** `usePermissions.ts` and `usePermissions.test.tsx` were
+> made in F.3, with the shape below and the five hook tests of Step 1 (plus one for a loading
+> location list). F.4 adds the switcher badge and its tests, and its two mutation checks can
+> be re-run against the existing hook.
 
 **Files:**
 - Create: `apps/web/src/hooks/usePermissions.ts`, `apps/web/src/hooks/usePermissions.test.tsx`
@@ -898,8 +954,17 @@ Filled in from the task reports and reviews.
 | F.2 | Step 1: write the `bulkUpsertLocations` test unless one exists | It existed, but did not check `householdId`. One assertion was added |
 | F.1 review | `role-cache.guard.test.ts` "fails on a resolver field that writes a role row and does not call it" (this plan and root `CLAUDE.md`) | It read source text. A write through a helper and a call that was only a comment both passed it. Replaced by a wrapper around every `Mutation` field (review of F.2) |
 | F.2 | The settings list sends every location (F.3) | True only after F.3. Between F.2 and F.3 an owner or manager with no role on a location cannot reorder in the web |
+| F.3 | Consumes `usePermissions` "from F.4 — do F.4 first if the executor prefers" | Built in F.3 with T9's full shape and its hook tests. F.4 keeps the switcher badge only |
+| F.3 | Test file `LocationList.test.tsx` | It does not exist; the component's tests live in `LocationList.stories.test.tsx`. The role tests went there and into the page's `index.cloud.test.tsx` |
+| F.3 | "A No access row is not a link" | No row of this list was ever a link. Nothing to remove; a test checks there is still none |
+| F.3 | (nothing about the reorder cache) | `useReorderLocations` wrote only into `GetLocations`. The answer holds only the caller's own locations, so the settings list (`GetHouseholdLocations`) would have stayed in the old order. The hook now reorders the cached settings rows by the ids it sent |
+| F.3 | Local `useHouseholdLocations` returns `myRole: 'organizer'` | Kept, but the page passes `showRoles` only in cloud. Otherwise local mode would say "Organizer" on every row |
+| F.3 | (nothing about the Add button) | Kept for everyone: the server asks household `member` to create a location |
+| F.3 | The reorder test "sends every id of the list" | jsdom has no layout, so a keyboard drag never moves. The test stubs `getBoundingClientRect`. Without it, the test fails for a reason unrelated to the code |
+| F.3 | (nothing) | Codegen types `ReorderLocations`' `orderedIds` variable as `string \| string[]` (list coercion). `tsc` caught `.flatMap` on it; the hook narrows it |
 
 ## Status
 
 **Plan written 2026-11-17** on `feature/households-h5`. Owner decisions O1–O12 answered
-2026-11-17 (see *Owner answers*). H5a task F.1 is done (`a59cfcb8`), with review fixes. Task F.2 is done. Task F.3 is next.
+2026-11-17 (see *Owner answers*). H5a task F.1 is done (`a59cfcb8`), with review fixes. Task F.2 is done, with review fixes. Task F.3 is done (`5b88bee7`), and it built
+`usePermissions`. Task F.4 (the View only badge) is next.
