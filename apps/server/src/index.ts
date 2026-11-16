@@ -18,8 +18,7 @@ import { createGraphQLContext } from './lib/graphqlContext.js'
 import { prisma } from './lib/prisma.js'
 import type { UserSource } from './lib/userRow.js'
 import { ensureUserOrLog } from './lib/userRow.js'
-import { typeDefs } from './schema/index.js'
-import { resolvers } from './resolvers/index.js'
+import { createExecutableSchema } from './schema/executableSchema.js'
 import type { Context } from './context.js'
 
 const E2E_TEST_MODE = process.env.E2E_TEST_MODE === 'true'
@@ -75,7 +74,11 @@ const USER_SOURCE: UserSource = E2E_TEST_MODE
   ? { kind: 'e2e' }
   : { kind: 'clerk', lookup: async (id) => (await clerkClient.users.getUser(id)).raw }
 
-const server = new ApolloServer<Context>({ typeDefs, resolvers })
+// One schema for HTTP and for the WebSocket (households H3c-1, decision P2).
+// See schema/executableSchema.ts for why it is built with makeExecutableSchema.
+const schema = createExecutableSchema()
+
+const server = new ApolloServer<Context>({ schema })
 await server.start()
 
 app.use(
