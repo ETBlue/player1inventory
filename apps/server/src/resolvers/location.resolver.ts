@@ -2,7 +2,9 @@ import { GraphQLError } from 'graphql'
 import { type Context, requireAuth } from '../context.js'
 import {
   forbidden,
+  locationIdsWithOrganizer,
   locationIdsWithRole,
+  locationRolesByLocation,
   requireHousehold,
   requireHouseholdRole,
   requireLocationRole,
@@ -59,6 +61,23 @@ async function visibleLocations(ctx: Context): Promise<Location[]> {
   return (rows as unknown as PrismaLocation[]).map(toGraphQL)
 }
 
+/**
+ * The household of a `Location` the resolvers return. Every path that returns
+ * a `Location` builds it with `toGraphQL`, which spreads the Prisma row, so
+ * `householdId` is there. The GraphQL type does not declare it, so it is read
+ * here with a check. If a future path returns a `Location` without it, the
+ * row is read again rather than giving a wrong `myRole`.
+ */
+async function householdIdOf(parent: Location): Promise<string | null> {
+  const known = (parent as unknown as { householdId?: unknown }).householdId
+  if (typeof known === 'string') return known
+  const row = await prisma.location.findUnique({
+    where: { id: parent.id },
+    select: { householdId: true },
+  })
+  return row?.householdId ?? null
+}
+
 // ── LIVE EVENTS (households H3c-2 task D.3) ──
 //
 // Every mutation here publishes one household-level `LOCATION` event
@@ -75,7 +94,7 @@ async function visibleLocations(ctx: Context): Promise<Location[]> {
 // checks a location role only, so it can rename a location of a second
 // household the caller belongs to.
 
-export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
+export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location'> = {
   Query: {
     locations: async (_, __, ctx) => {
       // First sign-in happens here for most people: a new person gets their
@@ -83,6 +102,45 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // (lib/household.ts). So it must run before the role rows are read.
       await requireHousehold(ctx)
       return visibleLocations(ctx)
+    },
+
+    // The settings list (households H5 task F.1, decision T4). An owner or
+    // manager gets every location of the household, including the ones they
+    // have no role on: they may reorder and delete every
+    // location, so they must see each one. They get its NAME only. Its stock,
+    // carts and logs still need a location role (design, *Rules that cross
+    // the two levels*). A `member` gets the switcher's list.
+    householdLocations: async (_, __, ctx) => {
+      const householdId = await requireHousehold(ctx)
+      const role = await requireHouseholdRole(ctx, householdId, 'member')
+      if (role === 'member') return visibleLocations(ctx)
+      // The household is compared in SQL, here. No call site compares a
+      // `householdId`.
+      const rows = await prisma.location.findMany({
+        where: { householdId },
+        orderBy: [{ order: 'asc' }, { id: 'asc' }],
+      })
+      return (rows as unknown as PrismaLocation[]).map(toGraphQL)
+    },
+  },
+
+  // Two field resolvers (households H5 task F.1, decision T3). Each reads a
+  // map built ONCE per household per request (lib/authz.ts), so a list of N
+  // locations costs two reads in all, not 2N. The household is the
+  // LOCATION's own, not the caller's: `updateLocation` can return a location
+  // of a second household the caller belongs to.
+  Location: {
+    myRole: async (parent, _, ctx) => {
+      const householdId = await householdIdOf(parent)
+      if (!householdId) return null
+      const roles = await locationRolesByLocation(ctx, householdId)
+      return roles.get(parent.id) ?? null
+    },
+    hasOrganizer: async (parent, _, ctx) => {
+      const householdId = await householdIdOf(parent)
+      if (!householdId) return false
+      const organized = await locationIdsWithOrganizer(ctx, householdId)
+      return organized.has(parent.id)
     },
   },
 

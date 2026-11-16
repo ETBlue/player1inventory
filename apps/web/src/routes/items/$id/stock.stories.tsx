@@ -291,6 +291,7 @@ const CLOUD_LOCATIONS = [
     order: 0,
     createdAt: '2026-08-01T10:00:00.000Z',
     updatedAt: '2026-08-01T10:00:00.000Z',
+    myRole: 'organizer' as const,
   },
   {
     id: 'cloud-garage',
@@ -298,6 +299,7 @@ const CLOUD_LOCATIONS = [
     order: 1,
     createdAt: '2026-08-01T10:00:00.000Z',
     updatedAt: '2026-08-01T10:00:00.000Z',
+    myRole: 'organizer' as const,
   },
 ]
 

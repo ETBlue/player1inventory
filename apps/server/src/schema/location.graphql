@@ -4,6 +4,23 @@ type Location {
   order: Int!
   createdAt: String!
   updatedAt: String!
+  # The CALLER's location role here, or null for "no access" (households H5
+  # task F.1). Only a role that counts: the caller must also be a member of
+  # the location's household (decision H18). The household role never adds a
+  # location role.
+  myRole: LocationRole
+  # True when at least one organizer of this location is still a member of
+  # its household (decision H18 applied to the ORGANIZER). The settings list
+  # shows "No organizer" when it is false.
+  hasOrganizer: Boolean!
+}
+
+# The three location roles (decision H14). `organizer` > `participant` >
+# `viewer`.
+enum LocationRole {
+  organizer
+  participant
+  viewer
 }
 
 extend type Query {
@@ -13,6 +30,12 @@ extend type Query {
   # gets their household and its first location, "Home", on their first call
   # (first sign-in, lib/household.ts).
   locations: [Location!]!
+  # The settings list (households H5 task F.1, decision T4). For a household
+  # owner or manager: EVERY location of the caller's household, by `order`,
+  # then `id`, with `myRole` null where they have no role. For a household
+  # `member`: exactly what `locations` returns. Reading the list gives no
+  # access to a location's stock, carts or logs.
+  householdLocations: [Location!]!
 }
 
 extend type Mutation {

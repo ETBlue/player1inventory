@@ -44,6 +44,7 @@ const resolversObject: Resolvers = {
   Recipe: recipeResolvers.Recipe,
   InventoryLog: inventoryLogResolvers.InventoryLog,
   Cart: cartResolvers.Cart,
+  Location: locationResolvers.Location,
   Subscription: liveResolvers.Subscription,
 }
 

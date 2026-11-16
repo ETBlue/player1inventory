@@ -63,6 +63,8 @@ const cloudLocation = (id: string, name: string, order: number) => ({
   order,
   createdAt: '2026-08-01T10:00:00.000Z',
   updatedAt: '2026-08-02T11:00:00.000Z',
+  // `GetLocations` selects the caller's role (households H5 task F.1).
+  myRole: 'organizer' as const,
 })
 
 // Named rather than read back out of the array. `noUncheckedIndexedAccess` is

@@ -164,6 +164,93 @@ export async function locationIdsWithRole(
 }
 
 /**
+ * The caller's counted location role on every location of `householdId`, as
+ * a map from location id to role (households H5 task F.1, decision T3). A
+ * location the caller has no counted role on is not in the map. This is what
+ * `Location.myRole` reads.
+ *
+ * ONE read per household per request: the promise is kept on
+ * `ctx.requestCache.locationRoles`, so a list of N locations costs one query,
+ * not N. A context with no cache (most tests) reads again on every call.
+ *
+ * Built on `countedLocationRole`, so decision H18 holds: a role row of a
+ * household the caller is no longer in does not count.
+ */
+export function locationRolesByLocation(
+  ctx: Context,
+  householdId: string,
+): Promise<Map<string, LocationRole>> {
+  const userId = requireAuth(ctx)
+  const cache = ctx.requestCache
+  const known = cache?.locationRoles?.get(householdId)
+  if (known) return known
+  const counted = countedLocationRole(userId)
+  const lookup = prisma.locationMember
+    .findMany({
+      where: {
+        ...counted,
+        // Inside the same `location` object as the H18 filter, as in
+        // `locationIdsWithRole`: a second `location` key would replace it.
+        location: { ...counted.location, householdId },
+      },
+      select: { locationId: true, role: true },
+    })
+    .then((rows) => new Map(rows.map((r) => [r.locationId, r.role])))
+  if (cache) {
+    cache.locationRoles ??= new Map()
+    cache.locationRoles.set(householdId, lookup)
+  }
+  return lookup
+}
+
+/**
+ * The `where` for "an organizer row whose OWN person is still a member of
+ * `householdId`", on the locations of that household.
+ *
+ * This is decision H18 applied to the ORGANIZER, not to the caller, so it is
+ * NOT `countedLocationRole`. `countedLocationRole(userId)` asks "does THIS
+ * caller still count?" and names the caller twice. Here the person is
+ * whoever is on each row, so the membership check goes through the row's own
+ * `user` relation. Asking `location.household.members.some` with no `userId`
+ * would be wrong: it is true whenever ANYONE is still in the household, so an
+ * organizer who left would still count.
+ */
+function countedOrganizerIn(householdId: string) {
+  return {
+    role: 'organizer' as const,
+    location: { householdId },
+    user: { householdMemberships: { some: { householdId } } },
+  }
+}
+
+/**
+ * The ids of the locations of `householdId` that have at least one organizer
+ * who still counts (`countedOrganizerIn`). `Location.hasOrganizer` reads it
+ * (households H5 task F.1). The settings list warns "No organizer" for a
+ * location that is not in the set.
+ *
+ * It checks no role of the caller. The caller only learns whether a location
+ * of their own household has an organizer, which every member may know.
+ *
+ * ONE read per household per request, kept on
+ * `ctx.requestCache.organizedLocations`.
+ */
+export function locationIdsWithOrganizer(ctx: Context, householdId: string): Promise<Set<string>> {
+  requireAuth(ctx)
+  const cache = ctx.requestCache
+  const known = cache?.organizedLocations?.get(householdId)
+  if (known) return known
+  const lookup = prisma.locationMember
+    .findMany({ where: countedOrganizerIn(householdId), select: { locationId: true } })
+    .then((rows) => new Set(rows.map((r) => r.locationId)))
+  if (cache) {
+    cache.organizedLocations ??= new Map()
+    cache.organizedLocations.set(householdId, lookup)
+  }
+  return lookup
+}
+
+/**
  * Refuse unless `locationId` is a location of `householdId` (households H4
  * task E.1, decision T7).
  *

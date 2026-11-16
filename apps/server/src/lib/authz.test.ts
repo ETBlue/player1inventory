@@ -161,7 +161,9 @@ import type { HouseholdRole, LocationRole } from './authz.js'
 
 const {
   householdOfLocation,
+  locationIdsWithOrganizer,
   locationIdsWithRole,
+  locationRolesByLocation,
   requireCatalogIds,
   requireCatalogRole,
   requireHousehold,
@@ -818,6 +820,86 @@ describe('locationIdsWithRole with a household (H4 task E.1)', () => {
   it('with no household, keeps every household (unchanged)', async () => {
     const ids = await locationIdsWithRole(callerIn('hh-b'))
     expect([...ids].sort()).toEqual(['loc-a', 'loc-a-view', 'loc-b'])
+  })
+})
+
+describe('locationRolesByLocation (H5 task F.1)', () => {
+  beforeEach(() => seedTwoHouseholds())
+
+  it("maps each location of ONE household to the caller's role there", async () => {
+    // Given the caller organizes loc-a and views loc-a-view (hh-a), and
+    // organizes loc-b (hh-b). `other` is a participant of loc-a.
+    // When the roles in hh-a are read
+    const roles = await locationRolesByLocation(callerIn('hh-a'), 'hh-a')
+
+    // Then only hh-a's two locations, with the CALLER's roles, not other's
+    expect(Object.fromEntries(roles)).toEqual({ 'loc-a': 'organizer', 'loc-a-view': 'viewer' })
+  })
+
+  it('leaves out a role that does not count (decision H18)', async () => {
+    // Given the caller has an organizer row on loc-c (hh-c) but is not a
+    // member of hh-c
+    await world.households.client.locationMember.create({
+      data: { locationId: 'loc-c', userId: 'caller', role: 'organizer' },
+    })
+
+    // Then asking for hh-c gives no role
+    const roles = await locationRolesByLocation(callerIn('hh-a'), 'hh-c')
+    expect(roles.size).toBe(0)
+  })
+
+  it('reads once per household per request', async () => {
+    // Given one request context
+    const ctx = callerIn('hh-a')
+    const spy = vi.spyOn(prisma.locationMember, 'findMany')
+
+    // When hh-a is asked three times and hh-b once
+    await locationRolesByLocation(ctx, 'hh-a')
+    await locationRolesByLocation(ctx, 'hh-a')
+    await locationRolesByLocation(ctx, 'hh-a')
+    const b = await locationRolesByLocation(ctx, 'hh-b')
+
+    // Then there are two reads, one per household, and hh-b's answer is its own
+    expect(spy).toHaveBeenCalledTimes(2)
+    expect(Object.fromEntries(b)).toEqual({ 'loc-b': 'organizer' })
+  })
+})
+
+describe('locationIdsWithOrganizer (H5 task F.1)', () => {
+  beforeEach(() => seedTwoHouseholds())
+
+  it('lists the locations of one household that have an organizer still in it', async () => {
+    // Given hh-a: loc-a has the caller as organizer; loc-a-view has none.
+    // hh-c: loc-c has the stranger as organizer.
+    const ids = await locationIdsWithOrganizer(callerIn('hh-a'), 'hh-a')
+
+    // Then only loc-a. loc-c is another household's.
+    expect([...ids]).toEqual(['loc-a'])
+  })
+
+  it('does not count an organizer who left the household (decision H18)', async () => {
+    // Given other is made organizer of loc-a-view, then removed from hh-a.
+    // The caller is still in hh-a, so a filter that checked the CALLER's
+    // membership instead of the organizer's would still count loc-a-view.
+    await world.households.client.locationMember.create({
+      data: { locationId: 'loc-a-view', userId: 'other', role: 'organizer' },
+    })
+    await world.households.client.householdMember.delete({
+      where: { householdId_userId: { householdId: 'hh-a', userId: 'other' } },
+    })
+
+    const ids = await locationIdsWithOrganizer(callerIn('hh-a'), 'hh-a')
+
+    // Then loc-a-view has no counted organizer
+    expect([...ids]).toEqual(['loc-a'])
+  })
+
+  it('reads once per household per request', async () => {
+    const ctx = callerIn('hh-a')
+    const spy = vi.spyOn(prisma.locationMember, 'findMany')
+    await locationIdsWithOrganizer(ctx, 'hh-a')
+    await locationIdsWithOrganizer(ctx, 'hh-a')
+    expect(spy).toHaveBeenCalledTimes(1)
   })
 })
 

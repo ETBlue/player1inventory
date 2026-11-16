@@ -185,6 +185,7 @@ function CloudDialogHarness({ initialName }: { initialName?: string }) {
     order,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
+    myRole: 'organizer' as const,
   })
 
   const mocks = [

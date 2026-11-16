@@ -52,7 +52,8 @@ export const LIVE_BATCH_MS = 300
  * | `ItemLogs`             | `itemLogs`                                 | LOG              |
  * | `InventoryLogCountByItem` | a count of logs                         | LOG              |
  * | `LastPurchaseDates`    | dates read from purchase logs              | LOG              |
- * | `GetLocations`         | `locations`                                | LOCATION         |
+ * | `GetLocations`         | `locations`, incl. the caller's `myRole`   | LOCATION         |
+ * | `GetHouseholdLocations` | `householdLocations`, `myRole`, `hasOrganizer` | LOCATION     |
  * | `GetItem`, `GetItems`  | items                                      | CATALOG          |
  * | `ItemCountByTag` / `ByVendor` / `ByRecipe` | counts of item links   | CATALOG          |
  * | `GetRecipes`, `GetRecipe` | recipes, incl. `lastCookedAt`           | CATALOG          |
@@ -64,7 +65,9 @@ export const LIVE_BATCH_MS = 300
  * | `CartItems`, `AllCartItems` | `cartId`, `itemId`, `quantity`        | CART             |
  * | `CartItemCountByItem`  | a count of cart rows                       | CART             |
  *
- * Every `LOCATION` row above is covered by `'all'` anyway.
+ * Every `LOCATION` row above is covered by `'all'` anyway. A role change
+ * (households H5b, H5c) must publish `LOCATION`, so `myRole` and
+ * `hasOrganizer` refresh the same way (H5 task F.1).
  *
  * The cart queries select only ids and amounts, no item or vendor field, so
  * `CATALOG` does not refetch them. A mutation that deletes cart rows as a

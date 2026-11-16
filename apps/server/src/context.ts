@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql'
+import type { LocationRole } from '@prisma/client'
 
 /**
  * The app languages the server knows. The web client sends its current
@@ -47,6 +48,16 @@ export function clientIdFrom(value: unknown): string | undefined {
 export interface RequestCache {
   /** The caller's household id. Set by `requireHousehold` (lib/authz.ts). */
   householdId?: Promise<string>
+  /**
+   * The caller's counted location roles, one entry per household asked for.
+   * Set by `locationRolesByLocation` (lib/authz.ts, households H5 task F.1).
+   */
+  locationRoles?: Map<string, Promise<Map<string, LocationRole>>>
+  /**
+   * The locations with an organizer that still counts, one entry per
+   * household asked for. Set by `locationIdsWithOrganizer` (lib/authz.ts).
+   */
+  organizedLocations?: Map<string, Promise<Set<string>>>
 }
 
 export interface Context {
