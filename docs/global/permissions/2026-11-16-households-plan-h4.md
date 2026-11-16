@@ -1108,8 +1108,9 @@ Filled in from the task reports and reviews.
 
 ## Status
 
-**E.1–E.7 built** (E.1–E.6 on 2026-11-16; the O9 follow-up and E.7 on 2026-11-17). Not
-merged, not deployed. Plan
+**E.1–E.7 built** (E.1–E.6 on 2026-11-16; the O9 follow-up and E.7 on 2026-11-17).
+**Merged into `develop` 2026-11-17 (#382, merge `bf87e839`). Not deployed**: it deploys at
+the checkpoint release with H3a–H3c. Plan
 written 2026-11-16 on `feature/households-h4`. The owner approved O1–O8 on 2026-11-16, and
 decided O9 and O10 on 2026-11-17 (the empty "Home" after a `skip` restore: keep it, move the
 user off it; the E.5 fallback: approved as built).

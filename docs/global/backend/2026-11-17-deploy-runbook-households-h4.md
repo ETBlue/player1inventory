@@ -2,7 +2,7 @@
 
 **Date written:** 2026-11-17
 **Migration:** none
-**Branch:** `feature/households-h4`, going into `develop`. Not merged, not deployed
+**Branch:** `feature/households-h4`. Merged into `develop` 2026-11-17 (#382, merge `bf87e839`). Not deployed
 **Plan:** [`../permissions/2026-11-16-households-plan-h4.md`](../permissions/2026-11-16-households-plan-h4.md) (task E.7, decision T9)
 **Design:** [`../permissions/2026-10-04-households-design.md`](../permissions/2026-10-04-households-design.md), section *Import and export*
 **Runs with:** the H3a, H3b and H3c-1 runbooks in this folder, when H4 goes out at the same checkpoint release
