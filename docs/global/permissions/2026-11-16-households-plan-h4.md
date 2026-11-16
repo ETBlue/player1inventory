@@ -458,6 +458,15 @@ fixture used the fallback.
 - **`createVendor`** calls `requireLocationInHousehold` after `requireLocationRole`.
 - **`fallbackImportLocation`** and its 5 tests are deleted, with the unused
   `WRITE_LOCATION_ROLES`. `git grep -n fallbackImportLocation -- ':!docs'` returns nothing.
+  (It did not when this note was first written: root `CLAUDE.md` and one test comment still
+  named it in history notes. The E.3 review found them; both now describe the fallback
+  without the function name.)
+- **Review fixes (same day).** The empty-batch member test covers all 22 mutations, each
+  with a manager control. The test file counts every read of an import's data models
+  (`$dataReads`), and both member tests assert it stays empty, so a gate moved below any
+  read turns red. Stale comments in `bulkCreateLocations` and `bulkUpsertLocations` said a
+  location of another household could still be skipped, renamed or published for; E.3
+  refuses it.
 - **Tests.** New file `import-role-gate.resolver.test.ts` (72 tests): the member / manager
   pair for each of the 22 mutations, #381 gap 1 for stock and logs, the cart and log
   fallback refusals, and T12. Gap 2 is in `vendor.resolver.test.ts` and
