@@ -970,3 +970,269 @@ describe('householdFake: rules pinned after review', () => {
     ).rejects.toThrow(/no 'householdId_userId'/)
   })
 })
+
+// ── Households H5b, task G.1: the HouseholdInvite store ──
+//
+// G.3 and G.4 test invites and the join on top of this store. The claim of
+// decision T17 is one conditional updateMany:
+//   where: { id, usedAt: null, revokedAt: null, expiresAt: { gt: now } }
+// so each of those keys must really filter.
+
+const NOW = new Date('2026-11-18T12:00:00.000Z')
+const LATER = new Date('2026-11-25T12:00:00.000Z')
+
+function inviteData(over: Record<string, unknown> = {}) {
+  return {
+    id: 'inv_1',
+    householdId: OURS,
+    token: 'token_1',
+    householdRole: 'member',
+    locationRoles: [{ locationId: KITCHEN, role: 'viewer' }],
+    createdById: CALLER,
+    expiresAt: LATER,
+    ...over,
+  }
+}
+
+const CLAIM_WHERE = { id: 'inv_1', usedAt: null, revokedAt: null, expiresAt: { gt: NOW } }
+const CLAIM_DATA = { usedAt: NOW, usedById: SECOND }
+
+describe('householdFake models HouseholdInvite (households H5b, decision T26)', () => {
+  it('create fills the defaults and keeps the columns it was given', async () => {
+    // Given the fixture
+    const fake = fixture()
+
+    // When an invite is created
+    const invite = await fake.client.householdInvite.create({ data: inviteData() })
+
+    // Then it is stored with null used and revoked columns and its location roles
+    expect(invite).toMatchObject({
+      id: 'inv_1',
+      householdId: OURS,
+      token: 'token_1',
+      householdRole: 'member',
+      createdById: CALLER,
+      expiresAt: LATER,
+      usedAt: null,
+      usedById: null,
+      revokedAt: null,
+      locationRoles: [{ locationId: KITCHEN, role: 'viewer' }],
+    })
+    expect(invite.createdAt).toBeInstanceOf(Date)
+    expect(fake.state.householdInvites).toHaveLength(1)
+  })
+
+  it('a second invite with the same token raises P2002, after a new token was accepted', async () => {
+    // Given one invite, and a second with a NEW token accepted
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+    await fake.client.householdInvite.create({ data: inviteData({ id: 'inv_2', token: 'token_2' }) })
+
+    // When a third reuses the first token
+    // Then it is refused on the token's unique index, and nothing is added
+    await expect(
+      fake.client.householdInvite.create({ data: inviteData({ id: 'inv_3', token: 'token_1' }) }),
+    ).rejects.toMatchObject({ code: 'P2002', constraint: 'HouseholdInvite_token_key' })
+    expect(fake.state.householdInvites).toHaveLength(2)
+  })
+
+  it('a taken id raises P2002, a missing household P2003, a bad role and a missing column throw', async () => {
+    // Given one invite
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+
+    // Then each broken write is refused
+    await expect(
+      fake.client.householdInvite.create({ data: inviteData({ token: 'token_9' }) }),
+    ).rejects.toMatchObject({ code: 'P2002', constraint: 'HouseholdInvite_pkey' })
+    await expect(
+      fake.client.householdInvite.create({
+        data: inviteData({ id: 'inv_9', token: 'token_9', householdId: 'household_none' }),
+      }),
+    ).rejects.toBeInstanceOf(HouseholdFakeForeignKeyError)
+    await expect(
+      fake.client.householdInvite.create({
+        data: inviteData({ id: 'inv_9', token: 'token_9', householdRole: 'organizer' }),
+      }),
+    ).rejects.toBeInstanceOf(InvalidRoleError)
+    await expect(
+      fake.client.householdInvite.create({
+        data: inviteData({ id: 'inv_9', token: 'token_9', expiresAt: undefined }),
+      }),
+    ).rejects.toBeInstanceOf(HouseholdFakeMissingColumnError)
+  })
+
+  it('findUnique finds by id and by token, and needs exactly one of them', async () => {
+    // Given two invites
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+    await fake.client.householdInvite.create({ data: inviteData({ id: 'inv_2', token: 'token_2' }) })
+
+    // When each is read by one unique key
+    const byId = await fake.client.householdInvite.findUnique({ where: { id: 'inv_2' } })
+    const byToken = await fake.client.householdInvite.findUnique({ where: { token: 'token_1' } })
+    const none = await fake.client.householdInvite.findUnique({ where: { token: 'token_none' } })
+
+    // Then the right row comes back, and nothing for a token no row holds
+    expect(byId?.token).toBe('token_2')
+    expect(byToken?.id).toBe('inv_1')
+    expect(none).toBeNull()
+
+    // And a where with no unique key, or both, throws
+    await expect(
+      fake.client.householdInvite.findUnique({ where: { householdId: OURS } }),
+    ).rejects.toBeInstanceOf(HouseholdFakeUnsupportedError)
+    await expect(
+      fake.client.householdInvite.findUnique({ where: { id: 'inv_1', token: 'token_1' } }),
+    ).rejects.toBeInstanceOf(HouseholdFakeUnsupportedError)
+  })
+
+  it('findMany filters by householdId, usedAt null and revokedAt null', async () => {
+    // Given an open invite of ours, a used one, a revoked one, and one of theirs
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+    await fake.client.householdInvite.create({
+      data: inviteData({ id: 'inv_used', token: 't_used', usedAt: NOW, usedById: SECOND }),
+    })
+    await fake.client.householdInvite.create({
+      data: inviteData({ id: 'inv_revoked', token: 't_revoked', revokedAt: NOW }),
+    })
+    await fake.client.householdInvite.create({
+      data: inviteData({ id: 'inv_theirs', token: 't_theirs', householdId: THEIRS }),
+    })
+
+    // When the open invites of our household are listed
+    const open = await fake.client.householdInvite.findMany({
+      where: { householdId: OURS, usedAt: null, revokedAt: null },
+    })
+
+    // Then only the open one of ours comes back
+    expect(open.map((i) => i.id)).toEqual(['inv_1'])
+  })
+
+  it('the claim matches an open invite once, and its count says so', async () => {
+    // Given one open invite
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+
+    // When the claim runs twice
+    const first = await fake.client.householdInvite.updateMany({ where: CLAIM_WHERE, data: CLAIM_DATA })
+    const second = await fake.client.householdInvite.updateMany({ where: CLAIM_WHERE, data: CLAIM_DATA })
+
+    // Then the first claims it and the second finds it used
+    expect(first).toEqual({ count: 1 })
+    expect(second).toEqual({ count: 0 })
+    expect(fake.state.householdInvites[0]).toMatchObject({ usedAt: NOW, usedById: SECOND })
+  })
+
+  it('the claim does not match an expired invite, nor one that expires exactly now', async () => {
+    // Given an invite that expired, one that expires now, and one still open
+    const fake = fixture()
+    await fake.client.householdInvite.create({
+      data: inviteData({ id: 'inv_old', token: 't_old', expiresAt: new Date(NOW.getTime() - 1) }),
+    })
+    await fake.client.householdInvite.create({
+      data: inviteData({ id: 'inv_edge', token: 't_edge', expiresAt: NOW }),
+    })
+    await fake.client.householdInvite.create({ data: inviteData() })
+
+    // When each is claimed
+    const counts = []
+    for (const id of ['inv_old', 'inv_edge', 'inv_1']) {
+      counts.push(
+        (
+          await fake.client.householdInvite.updateMany({
+            where: { ...CLAIM_WHERE, id },
+            data: CLAIM_DATA,
+          })
+        ).count,
+      )
+    }
+
+    // Then only the open one is claimed: `gt` is strict, as in SQL
+    expect(counts).toEqual([0, 0, 1])
+  })
+
+  it('the claim does not match a revoked invite', async () => {
+    // Given a revoked invite
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData({ revokedAt: NOW }) })
+
+    // When it is claimed
+    const result = await fake.client.householdInvite.updateMany({
+      where: CLAIM_WHERE,
+      data: CLAIM_DATA,
+    })
+
+    // Then nothing is claimed and the invite is unchanged
+    expect(result).toEqual({ count: 0 })
+    expect(fake.state.householdInvites[0]?.usedAt).toBeNull()
+  })
+
+  it('throws on a where key or filter shape it does not model, even on an empty store', async () => {
+    // Given an EMPTY invite store
+    const fake = fixture()
+
+    // Then an unknown key, and expiresAt with an operator it does not model, each throw
+    await expect(
+      fake.client.householdInvite.findMany({ where: { createdById: CALLER } }),
+    ).rejects.toBeInstanceOf(UnknownWhereKeyError)
+    await expect(
+      fake.client.householdInvite.updateMany({
+        where: { id: 'inv_1', expiresAt: { gte: NOW } },
+        data: CLAIM_DATA,
+      }),
+    ).rejects.toBeInstanceOf(UnsupportedWhereFilterError)
+    await expect(
+      fake.client.householdInvite.findMany({ where: { usedAt: { not: null } } }),
+    ).rejects.toBeInstanceOf(UnsupportedWhereFilterError)
+  })
+
+  it('returns copies, locationRoles included', async () => {
+    // Given one invite
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+
+    // When a returned row and its location roles are changed
+    const read = await fake.client.householdInvite.findUnique({ where: { id: 'inv_1' } })
+    if (!read) throw new Error('the invite was not found')
+    read.token = 'changed'
+    ;(read.locationRoles as Array<{ role: string }>)[0]!.role = 'organizer'
+
+    // Then the store is unchanged
+    expect(fake.state.householdInvites[0]?.token).toBe('token_1')
+    expect(fake.state.householdInvites[0]?.locationRoles).toEqual([
+      { locationId: KITCHEN, role: 'viewer' },
+    ])
+  })
+
+  it('a claim inside a transaction that throws is rolled back', async () => {
+    // Given one open invite, and the fake's state registered with runInTransaction
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+
+    // When a transaction claims it and then throws
+    await expect(
+      runInTransaction([fake.state as unknown as Record<string, unknown>], fake.client, async () => {
+        await fake.client.householdInvite.updateMany({ where: CLAIM_WHERE, data: CLAIM_DATA })
+        throw new Error('later step failed')
+      }),
+    ).rejects.toThrow('later step failed')
+
+    // Then the invite is open again
+    expect(fake.state.householdInvites[0]?.usedAt).toBeNull()
+    expect(fake.state.householdInvites[0]?.usedById).toBeNull()
+  })
+
+  it('reset empties the invite store', async () => {
+    // Given one invite
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+
+    // When the fake is reset
+    fake.reset()
+
+    // Then no invite is left
+    expect(fake.state.householdInvites).toHaveLength(0)
+  })
+})

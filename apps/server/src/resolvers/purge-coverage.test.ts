@@ -266,7 +266,10 @@ const PURGE_PATHS: readonly PurgePath[] = [
     // roles (design *Purge*), and the caller's account. `locationMember` has
     // no delete of its own: its rows go with their location (ON DELETE
     // CASCADE), and the caller gets a new one on the new "Home".
-    kept: ['household', 'householdMember', 'locationMember', 'user'],
+    // `householdInvite` (H5b) is kept too: an invite is about who may JOIN the
+    // household, not about its data, and clearing the data keeps the
+    // household and its members.
+    kept: ['household', 'householdInvite', 'householdMember', 'locationMember', 'user'],
     scope: '{ householdId }',
     exceptions: [],
   },
@@ -278,7 +281,14 @@ const PURGE_PATHS: readonly PurgePath[] = [
     purgeSource: cleanupSource,
     client: 'prisma',
     models: [...DATA_MODELS, 'household', 'householdMember', 'locationMember', 'user'].sort(),
-    kept: [],
+    // `householdInvite` (H5b task G.1) is kept FOR NOW. Task G.6 of
+    // docs/global/permissions/2026-11-18-households-plan-h5b.md adds its
+    // deleteMany and takes it off this list. Until G.3 nothing writes an
+    // invite, and an owned household's invites already go with it (ON DELETE
+    // CASCADE). After G.3, an invite the user made in ANOTHER household would
+    // block the `user` delete (createdById is RESTRICT), so G.6 must land
+    // before any cloud spec makes invites.
+    kept: ['householdInvite'],
     scope: OWNED_SCOPE,
     exceptions: CLEANUP_EXCEPTIONS,
   },
@@ -300,6 +310,7 @@ describe('purge coverage against prisma/schema.prisma', () => {
         'cart',
         'cartItem',
         'household',
+        'householdInvite',
         'householdMember',
         'inventoryLog',
         'item',

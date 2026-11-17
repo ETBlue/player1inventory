@@ -1,6 +1,8 @@
 // A stateful Prisma double for the three household models of H3a:
 // `Household`, `HouseholdMember` and `LocationMember` (households plan H3a,
-// task 3.4: docs/global/permissions/2026-11-04-households-plan-h3a.md).
+// task 3.4: docs/global/permissions/2026-11-04-households-plan-h3a.md), and
+// `HouseholdInvite` (households H5b, task G.1:
+// docs/global/permissions/2026-11-18-households-plan-h5b.md).
 //
 // Task 3.5's helpers (`ensureHousehold`, `requireHousehold`,
 // `requireHouseholdRole`, `requireLocationRole`) are tested on top of it. If
@@ -43,6 +45,26 @@
 //     (`@updatedAt`, also moved on every update).
 //   - Rows are returned as COPIES, as with a real database.
 //
+// ── HouseholdInvite (H5b) ──
+//
+//   - `create` honours `data.id` (else it makes one) and raises P2002 on a
+//     taken id, and on a taken `token` (`HouseholdInvite_token_key`). The
+//     unique token is what makes one link name one invite.
+//   - `create` needs `householdId`, `token`, `householdRole`, `locationRoles`,
+//     `createdById` and `expiresAt` (all NOT NULL with no default), checks
+//     `householdRole` against the enum, and raises P2003 for a household this
+//     fake does not hold. `usedAt`, `usedById` and `revokedAt` start null.
+//   - `findUnique` must name exactly ONE unique key, `id` or `token`, as a
+//     plain string.
+//   - `findMany` and `updateMany` take `id`, `householdId` (a string or
+//     `{ in }`), `usedAt: null`, `revokedAt: null` and `expiresAt: { gt }`.
+//     These are the keys of the invite claim (decision T17). Any other key
+//     throws. `{ gt }` is strict, as in SQL: an invite that expires at exactly
+//     `now` does not match. `updateMany` returns a count, so the claim can see
+//     `count === 0`.
+//   - `locationRoles` is stored as given and returned as a copy. It is not
+//     parsed: the server's checked parser does that (decision T26).
+//
 // ── THE RELATION FILTERS IT SUPPORTS, AND NO OTHER ──
 //
 // Chosen with task 3.5's helpers in mind. Every other nested key throws.
@@ -73,8 +95,12 @@
 //   - Nested writes, such as `household.create({ data: { members: { create }
 //     } })`, and update operators such as `{ set }`. A `data` value that is a
 //     plain object throws. Write each row with its own call.
-//   - The foreign key from `userId` to `User`, and from `Household.ownerId` to
+//   - The foreign key from `userId` to `User`, from `Household.ownerId` to
+//     `User`, and from `HouseholdInvite.createdById` and `.usedById` to
 //     `User`. `User` lives in `userFake`.
+//   - Cascades and SetNull for `HouseholdInvite` (a deleted household's
+//     invites, a deleted user's `usedById`). Only real SQL proves those:
+//     `assertHouseholdInvites` in `scripts/verify-migration.ts`.
 //   - That `Household.ownerId` mirrors the owner's `HouseholdMember` row
 //     (decision H15). That is the job of the code that writes both rows in one
 //     transaction; a test of that code must assert both.
@@ -84,13 +110,14 @@
 //     this fake's `state` as a store. `state` holds plain data and `Date`s,
 //     which `structuredClone` copies.
 
-import type { Household, HouseholdMember, LocationMember } from '@prisma/client'
+import type { Household, HouseholdInvite, HouseholdMember, LocationMember } from '@prisma/client'
 import { OwnedRowNotFoundError } from './ownedRowFake.js'
 import { checkWhere, type WhereSpec } from './whereKeys.js'
 
 export type HouseholdRow = Household
 export type HouseholdMemberRow = HouseholdMember
 export type LocationMemberRow = LocationMember
+export type HouseholdInviteRow = HouseholdInvite
 
 /** What the fake needs to know about a location: its id and its household. */
 export interface LocationRef {
@@ -203,6 +230,16 @@ const LOCATION_MEMBER_WHERE: WhereSpec = {
   },
 }
 
+// The keys of the invite claim (decision T17) and of the invite lists.
+const INVITE_WHERE: WhereSpec = {
+  id: 'in',
+  token: 'in',
+  householdId: 'in',
+  usedAt: 'null',
+  revokedAt: 'null',
+  expiresAt: 'dateGt',
+}
+
 // ── Small helpers ──
 
 /** A plain value or `{ in: [...] }`, or `null`. The shape was checked already. */
@@ -274,12 +311,14 @@ export interface HouseholdFakeState {
   households: HouseholdRow[]
   householdMembers: HouseholdMemberRow[]
   locationMembers: LocationMemberRow[]
+  householdInvites: HouseholdInviteRow[]
 }
 
 export interface HouseholdFakeOptions {
   households?: HouseholdRow[]
   householdMembers?: HouseholdMemberRow[]
   locationMembers?: LocationMemberRow[]
+  householdInvites?: HouseholdInviteRow[]
   /**
    * The location rows, read on every call that needs one: the foreign key of
    * a `LocationMember` write, and the `location` relation filter. Pass a
@@ -297,6 +336,7 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     households: (options.households ?? []).map(copy),
     householdMembers: (options.householdMembers ?? []).map(copy),
     locationMembers: (options.locationMembers ?? []).map(copy),
+    householdInvites: (options.householdInvites ?? []).map(copy),
   }
   let seq = 0
 
@@ -400,7 +440,25 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     return true
   }
 
+  /** `HouseholdInvite`: plain keys, plus `expiresAt: { gt }`. The shape was checked already. */
+  function inviteMatches(row: HouseholdInviteRow, where: Where): boolean {
+    for (const [key, filter] of Object.entries(where)) {
+      if (filter === undefined) continue
+      if (key === 'expiresAt') {
+        // Strict, as in SQL: `expiresAt > now`.
+        if (row.expiresAt.getTime() <= (filter as { gt: Date }).gt.getTime()) return false
+        continue
+      }
+      if (!matchesScalar((row as unknown as Where)[key], filter)) return false
+    }
+    return true
+  }
+
   // ── Once-per-call checks ──
+
+  function checkInviteWhere(where: Where | undefined) {
+    checkWhere('householdFake(HouseholdInvite)', where, INVITE_WHERE)
+  }
 
   function checkHouseholdWhere(where: Where | undefined) {
     checkWhere('householdFake(Household)', where, HOUSEHOLD_WHERE)
@@ -503,6 +561,32 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     }
   }
 
+  function checkInviteRow(row: HouseholdInviteRow, others: HouseholdInviteRow[]) {
+    const model = 'HouseholdInvite'
+    for (const column of ['householdId', 'token', 'householdRole', 'createdById'] as const) {
+      if (typeof row[column] !== 'string') throw new HouseholdFakeMissingColumnError(model, column)
+    }
+    if (row.locationRoles === undefined || row.locationRoles === null) {
+      throw new HouseholdFakeMissingColumnError(model, 'locationRoles')
+    }
+    if (!(row.expiresAt instanceof Date)) {
+      throw new HouseholdFakeMissingColumnError(model, 'expiresAt')
+    }
+    if (!HOUSEHOLD_ROLES.includes(row.householdRole)) {
+      throw new InvalidRoleError(model, row.householdRole, HOUSEHOLD_ROLES)
+    }
+    if (!state.households.some((h) => h.id === row.householdId)) {
+      throw new HouseholdFakeForeignKeyError(model, 'householdId', row.householdId)
+    }
+    if (others.some((i) => i.id === row.id)) {
+      throw new HouseholdFakeUniqueError(model, 'HouseholdInvite_pkey', row.id)
+    }
+    if (others.some((i) => i.token === row.token)) {
+      // The token is secret, so the error does not print it.
+      throw new HouseholdFakeUniqueError(model, 'HouseholdInvite_token_key', 'token')
+    }
+  }
+
   // ── Inserts ──
 
   function insertHousehold(data: Data): HouseholdRow {
@@ -543,6 +627,24 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     return row
   }
 
+  function insertInvite(data: Data): HouseholdInviteRow {
+    // `locationRoles` is a JSON list, so it is not refused as a nested write.
+    const { locationRoles, ...rest } = data
+    refuseNestedData('HouseholdInvite', rest)
+    const row = {
+      usedAt: null,
+      usedById: null,
+      revokedAt: null,
+      createdAt: new Date(),
+      ...stripUndefined(rest),
+      id: (data.id as string | undefined) ?? `invite-${++seq}`,
+      locationRoles: copy(locationRoles),
+    } as HouseholdInviteRow
+    checkInviteRow(row, state.householdInvites)
+    state.householdInvites.push(row)
+    return row
+  }
+
   // ── Updates. Each builds the new row, checks it, then writes it. ──
 
   function updateHouseholdRow(row: HouseholdRow, data: Data): HouseholdRow {
@@ -578,6 +680,22 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     checkLocationMemberRow(
       next,
       state.locationMembers.filter((m) => m !== row),
+    )
+    Object.assign(row, next)
+    return row
+  }
+
+  function updateInviteRow(row: HouseholdInviteRow, data: Data): HouseholdInviteRow {
+    const { locationRoles, ...rest } = data
+    refuseNestedData('HouseholdInvite', rest)
+    if (rest.id !== undefined && rest.id !== row.id) {
+      throw new HouseholdFakeUnsupportedError('HouseholdInvite', 'an update that changes the id')
+    }
+    const next = { ...row, ...stripUndefined(rest) } as HouseholdInviteRow
+    if (locationRoles !== undefined) next.locationRoles = copy(locationRoles) as typeof next.locationRoles
+    checkInviteRow(
+      next,
+      state.householdInvites.filter((i) => i !== row),
     )
     Object.assign(row, next)
     return row
@@ -761,13 +879,51 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     },
   }
 
-  const client = { household, householdMember, locationMember }
+  const householdInvite = {
+    findUnique: async (args: { where: Where; select?: Where }) => {
+      refuseUnknownOptions('HouseholdInvite', 'findUnique', args, READ)
+      checkInviteWhere(args.where)
+      // Prisma: a unique where names exactly one unique key, as a plain value.
+      const keys = (['id', 'token'] as const).filter((k) => args.where[k] !== undefined)
+      if (keys.length !== 1 || typeof args.where[keys[0] as string] !== 'string') {
+        throw new HouseholdFakeUnsupportedError(
+          'HouseholdInvite',
+          "a findUnique that does not name exactly one of 'id' or 'token' as a plain string",
+        )
+      }
+      const row = state.householdInvites.find((i) => inviteMatches(i, args.where))
+      return row ? copy(row) : null
+    },
+    findMany: async (args: { where?: Where; select?: Where } = {}) => {
+      refuseUnknownOptions('HouseholdInvite', 'findMany', args, READ)
+      checkInviteWhere(args.where)
+      return state.householdInvites.filter((i) => inviteMatches(i, args.where ?? {})).map(copy)
+    },
+    create: async (args: { data: Data; select?: Where }) => {
+      refuseUnknownOptions('HouseholdInvite', 'create', args, ['data', 'select'])
+      return copy(insertInvite(args.data))
+    },
+    updateMany: async (args: { where?: Where; data: Data }) => {
+      refuseUnknownOptions('HouseholdInvite', 'updateMany', args, ['where', 'data'])
+      checkInviteWhere(args.where)
+      let count = 0
+      for (const row of state.householdInvites) {
+        if (!inviteMatches(row, args.where ?? {})) continue
+        updateInviteRow(row, args.data)
+        count++
+      }
+      return { count }
+    },
+  }
+
+  const client = { household, householdMember, locationMember, householdInvite }
 
   /** Replace the store's contents. The rows are copied. */
   function reset(next: Omit<HouseholdFakeOptions, 'locations'> = {}) {
     state.households = (next.households ?? []).map(copy)
     state.householdMembers = (next.householdMembers ?? []).map(copy)
     state.locationMembers = (next.locationMembers ?? []).map(copy)
+    state.householdInvites = (next.householdInvites ?? []).map(copy)
     seq = 0
   }
 

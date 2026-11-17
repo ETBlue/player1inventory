@@ -437,6 +437,7 @@ describe('requireHousehold', () => {
         lastSeenAt: null,
         deletedAt: null,
         householdSetupAt: null,
+        activeHouseholdId: null,
         createdAt: T,
         updatedAt: T,
       },

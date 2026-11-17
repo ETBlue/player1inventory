@@ -28,6 +28,7 @@ function userRow(id: string, extra: Partial<UserRow> = {}): UserRow {
     lastSeenAt: null,
     deletedAt: null,
     householdSetupAt: null,
+    activeHouseholdId: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     ...extra,
@@ -457,5 +458,176 @@ describe('userFake works with the shared helpers', () => {
     // Then the call is counted and the store is still written
     expect(updateMany).toHaveBeenCalledTimes(1)
     expect(fake.state.rows[0]?.lastSeenAt).toEqual(TODAY)
+  })
+})
+
+// ── Households H5b, task G.1: activeHouseholdId and the T14 read ──
+//
+// G.2's "which household" rule reads one person with
+//   findUnique({ where: { id }, select: { activeHouseholdId: true,
+//     householdMemberships: { orderBy: [{ joinedAt: 'asc' }, { householdId: 'asc' }],
+//       select: { householdId: true } } } })
+// These tests pin what the fake does with that read.
+
+const JAN = new Date('2026-01-01T00:00:00.000Z')
+const FEB = new Date('2026-02-01T00:00:00.000Z')
+
+function membership(householdId: string, userId: string, joinedAt: Date) {
+  return { householdId, userId, role: 'member' as const, joinedAt }
+}
+
+// The stored order is NOT the sorted order on purpose: the oldest (h_b) is
+// stored second, and h_a / h_c tie on joinedAt and are stored c before a. A
+// fake that returned rows in stored order would fail every order test below.
+const MEMBERS = [
+  membership('h_c', 'user_a', FEB),
+  membership('h_b', 'user_a', JAN),
+  membership('h_a', 'user_a', FEB),
+  membership('h_x', 'user_other', JAN),
+]
+
+const T14_SELECT = {
+  activeHouseholdId: true,
+  householdMemberships: {
+    orderBy: [{ joinedAt: 'asc' }, { householdId: 'asc' }],
+    select: { householdId: true },
+  },
+}
+
+describe('userFake models activeHouseholdId (households H5b, decision T14)', () => {
+  it('a created row starts with activeHouseholdId null', async () => {
+    // Given an empty store
+    const fake = createUserFake()
+
+    // When a row is created without the column
+    const row = await fake.client.create({ data: { id: 'user_a', displayName: 'A' } })
+
+    // Then the column is null, in the result and in the store
+    expect(row.activeHouseholdId).toBeNull()
+    expect(fake.state.rows[0]?.activeHouseholdId).toBeNull()
+  })
+
+  it('updateMany writes activeHouseholdId', async () => {
+    // Given one user
+    const fake = createUserFake([userRow('user_a')])
+
+    // When the column is written
+    await fake.client.updateMany({ where: { id: 'user_a' }, data: { activeHouseholdId: 'h_b' } })
+
+    // Then it is stored
+    expect(fake.state.rows[0]?.activeHouseholdId).toBe('h_b')
+  })
+})
+
+describe('userFake findUnique applies select (households H5b, decision T14)', () => {
+  it('returns only the selected keys', async () => {
+    // Given a user with an active household
+    const fake = createUserFake([userRow('user_a', { activeHouseholdId: 'h_b' })])
+
+    // When one column is selected
+    const row = await fake.client.findUnique({
+      where: { id: 'user_a' },
+      select: { activeHouseholdId: true },
+    })
+
+    // Then only that key comes back, so code cannot read a column it did not select
+    expect(row).toEqual({ activeHouseholdId: 'h_b' })
+  })
+
+  it('orders householdMemberships by joinedAt, then householdId, and returns only this person', async () => {
+    // Given a person in three households, one older, two joined at the same time
+    const fake = createUserFake([userRow('user_a')], { householdMembers: () => MEMBERS })
+
+    // When the T14 read runs
+    const row = await fake.client.findUnique({ where: { id: 'user_a' }, select: T14_SELECT })
+
+    // Then the oldest comes first, the tie is broken by householdId, and the
+    // other person's membership is not there
+    expect(row).toEqual({
+      activeHouseholdId: null,
+      householdMemberships: [{ householdId: 'h_b' }, { householdId: 'h_a' }, { householdId: 'h_c' }],
+    })
+  })
+
+  it('applies the direction, so the order is modelled and not fixed', async () => {
+    // Given the same memberships
+    const fake = createUserFake([userRow('user_a')], { householdMembers: () => MEMBERS })
+
+    // When the order is reversed on both keys
+    const row = await fake.client.findUnique({
+      where: { id: 'user_a' },
+      select: {
+        householdMemberships: {
+          orderBy: [{ joinedAt: 'desc' }, { householdId: 'desc' }],
+          select: { householdId: true },
+        },
+      },
+    })
+
+    // Then the list comes back reversed
+    expect(row).toEqual({
+      householdMemberships: [{ householdId: 'h_c' }, { householdId: 'h_a' }, { householdId: 'h_b' }],
+    })
+  })
+
+  it('reads the householdMembers option on every call', async () => {
+    // Given a person with no membership yet
+    const members: ReturnType<typeof membership>[] = []
+    const fake = createUserFake([userRow('user_a')], { householdMembers: () => members })
+
+    // When a membership is added after the fake was built
+    members.push(membership('h_new', 'user_a', JAN))
+    const row = await fake.client.findUnique({ where: { id: 'user_a' }, select: T14_SELECT })
+
+    // Then the read sees it
+    expect(row?.householdMemberships).toEqual([{ householdId: 'h_new' }])
+  })
+
+  it('returns copies: changing the result changes nothing in the store', async () => {
+    // Given a person with one membership
+    const members = [membership('h_a', 'user_a', JAN)]
+    const fake = createUserFake([userRow('user_a')], { householdMembers: () => members })
+
+    // When a returned membership row is changed
+    const row = await fake.client.findUnique({
+      where: { id: 'user_a' },
+      select: { householdMemberships: true },
+    })
+    row.householdMemberships[0].householdId = 'changed'
+
+    // Then the stored row is unchanged
+    expect(members[0]?.householdId).toBe('h_a')
+  })
+
+  it('throws on a select key, an orderBy key or a relation option it does not model', async () => {
+    // Given a person with memberships
+    const fake = createUserFake([userRow('user_a')], { householdMembers: () => MEMBERS })
+
+    // Then an unknown scalar, an unknown orderBy key and an unknown option each throw
+    await expect(
+      fake.client.findUnique({ where: { id: 'user_a' }, select: { notAColumn: true } }),
+    ).rejects.toThrow(/select key 'notAColumn/)
+    await expect(
+      fake.client.findUnique({
+        where: { id: 'user_a' },
+        select: { householdMemberships: { orderBy: [{ role: 'asc' }] } },
+      }),
+    ).rejects.toThrow(/orderBy/)
+    await expect(
+      fake.client.findUnique({
+        where: { id: 'user_a' },
+        select: { householdMemberships: { take: 1 } },
+      }),
+    ).rejects.toThrow(/'take'/)
+  })
+
+  it('a householdMemberships select with no householdMembers option throws', async () => {
+    // Given a fake built with no householdMembers option
+    const fake = createUserFake([userRow('user_a')])
+
+    // Then the T14 read throws instead of answering "no memberships"
+    await expect(
+      fake.client.findUnique({ where: { id: 'user_a' }, select: T14_SELECT }),
+    ).rejects.toThrow(/no `householdMembers` option/)
   })
 })

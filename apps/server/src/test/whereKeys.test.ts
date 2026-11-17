@@ -16,7 +16,7 @@ import {
 } from './ownedRowFake.js'
 import { createShoppingFake } from './shoppingFake.js'
 import { createStockFake, makeStock } from './stockFake.js'
-import { UnknownWhereKeyError, UnsupportedWhereFilterError } from './whereKeys.js'
+import { checkWhere, UnknownWhereKeyError, UnsupportedWhereFilterError } from './whereKeys.js'
 
 const UNKNOWN = { householdId: 'h-1' }
 // `Location` gained `householdId` in households H3a (task 3.5), so stockFake's
@@ -443,5 +443,17 @@ describe('one error class per purpose', () => {
     // So one `instanceof` catches an unknown key from any of the five fakes
     expect(OwnedKeyError).toBe(UnknownWhereKeyError)
     expect(OwnedFilterError).toBe(UnsupportedWhereFilterError)
+  })
+})
+
+describe('checkWhere models dateGt (households H5b, the invite claim)', () => {
+  const spec = { expiresAt: 'dateGt' } as const
+  const now = new Date('2026-11-18T12:00:00.000Z')
+
+  it('accepts { gt: Date } and nothing else', () => {
+    expect(() => checkWhere('probe', { expiresAt: { gt: now } }, spec)).not.toThrow()
+    for (const value of [now, null, { gte: now }, { gt: now, lt: now }, { gt: '2026-11-18' }]) {
+      expect(() => checkWhere('probe', { expiresAt: value }, spec)).toThrow(UnsupportedWhereFilterError)
+    }
   })
 })

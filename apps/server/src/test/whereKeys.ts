@@ -69,6 +69,8 @@ export class UnsupportedWhereFilterError extends Error {
  * - `null` — only `null`. For a column a caller may only ask "is it unset?",
  *   such as `User.householdSetupAt` in the first sign-in claim.
  * - `nullableDateLt` — `null`, or `{ lt: Date }` and nothing else.
+ * - `dateGt` — `{ gt: Date }` and nothing else. For "not expired yet", such as
+ *   `HouseholdInvite.expiresAt` in the invite claim (households H5b, T17).
  * - `{ nested }` — a relation filter or a compound unique key: an object whose
  *   own keys are checked against `nested`.
  * - `{ or }` — Prisma's `OR`: an array of `where` objects, each checked
@@ -81,6 +83,7 @@ export type WhereKeyKind =
   | 'number'
   | 'null'
   | 'nullableDateLt'
+  | 'dateGt'
   | { nested: WhereSpec }
   | { or: WhereSpec }
 
@@ -143,6 +146,14 @@ function checkValue(label: string, key: string, value: unknown, kind: WhereKeyKi
         Object.keys(value).length === 1 &&
         value.lt instanceof Date
       if (!ok) refuse('null or { lt: Date }')
+      return
+    }
+    case 'dateGt': {
+      const ok =
+        isPlainObject(value) &&
+        Object.keys(value).length === 1 &&
+        value.gt instanceof Date
+      if (!ok) refuse('{ gt: Date }')
       return
     }
     case 'number': {

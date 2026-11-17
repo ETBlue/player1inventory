@@ -36,6 +36,7 @@ function userRow(id: string, extra: Partial<UserRow> = {}): UserRow {
     lastSeenAt: null,
     deletedAt: null,
     householdSetupAt: null,
+    activeHouseholdId: null,
     createdAt: T,
     updatedAt: T,
     ...extra,

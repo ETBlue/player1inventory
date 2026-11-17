@@ -106,6 +106,7 @@ describe('household', () => {
         lastSeenAt: null,
         deletedAt: null,
         householdSetupAt: null,
+        activeHouseholdId: null,
         createdAt: T,
         updatedAt: T,
       },

@@ -664,6 +664,7 @@ describe('consumeRecipes for a brand-new account', () => {
         lastSeenAt: null,
         deletedAt: null,
         householdSetupAt: null,
+        activeHouseholdId: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       },

@@ -2,7 +2,7 @@
 // resolver test suite runs entirely against a hand-written Prisma fake and
 // cannot exercise SQL at all.
 //
-// Eight migrations are under test, applied in order:
+// Ten migrations are under test, applied in order:
 //   1. 20260830000000_add_location_and_item_stock      (PR 1)  — Location, ItemStock
 //   2. 20260916000000_add_location_to_log_and_cart     (PR 3a) — InventoryLog.locationId,
 //      Cart.locationId
@@ -24,8 +24,12 @@
 //   9. 20261114000000_shared_carts                     (households H3b, task B.3) —
 //      merges CartItem rows with the same (cartId, itemId), adds the unique
 //      index on that pair, drops CartItem_cartId_idx, and drops Cart.userId
-// Nine migrations, then. This count and the MIGRATIONS array below must agree.
-// (It said "Eight" until H3b task B.3.) The comment said "Four"
+//  10. 20261118000000_add_household_invites            (households H5b, task G.1) —
+//      a new, empty "HouseholdInvite" table and a nullable
+//      "User"."activeHouseholdId". Additive only
+// Ten migrations, then. This count and the MIGRATIONS array below must agree.
+// (It said "Eight" until H3b task B.3, and "Nine" until H5b task G.1, while
+// the line above it already said "Eight" again.) The comment said "Four"
 // for a while after entry 5 was added, so check the array rather than trusting
 // this line.
 // Migration 7 reads the "User" table that 6 creates. So it is applied in a
@@ -38,6 +42,11 @@
 // Migration 9 is applied in a FOURTH `migrate deploy`, after
 // seedSharedCartDuplicates writes duplicate cart rows. Those rows cannot be
 // written once 9 has run: its unique index refuses them.
+// Migration 10 is applied by that same fourth deploy. It needs no seed step
+// of its own: it only adds, and its one data claim ("every existing person
+// reads NULL") is about the rows the earlier steps wrote. Because it is the
+// last to run, every "User" read before the fourth deploy needs an explicit
+// `select` (the Prisma client is generated from the final schema).
 // Migration 6 is not a location migration and depends on none of the others.
 // It is parked with them anyway. Left unparked, `migrate reset` would apply it
 // BEFORE migrations 1-5, which is not the order production applies them in.
@@ -489,7 +498,14 @@ async function assertHouseholdsBackfill(): Promise<void> {
   const allUserIds = [...EXPECTED_USER_IDS, NO_DATA_USER_ID]
 
   // ── Step 2: a "User" row for every userId in the data ──
-  const users = await prisma.user.findMany()
+  //
+  // An explicit `select` on every "User" read that runs before the LAST
+  // deploy. The Prisma client is generated from the FINAL schema, so a read
+  // with no `select` asks for "activeHouseholdId", which add_household_invites
+  // adds, and Postgres refuses it (P2022) at this point.
+  const users = await prisma.user.findMany({
+    select: { id: true, displayName: true, householdSetupAt: true },
+  })
   assert(
     users.length === allUserIds.length && allUserIds.every((id) => users.some((u) => u.id === id)),
     `there is one "User" row for each of the ${allUserIds.length} users and no other (read: ${users.length})`,
@@ -1446,17 +1462,23 @@ async function assertDropUserScope(): Promise<void> {
       `${userId} gets exactly one household, "${name}", and is its only member, as owner (read: ${own.length} household(s), ${own.map((h) => `${h.name}: ${h.members.map((m) => `${m.userId}/${m.role}`).join(', ')}`).join('; ')})`,
     )
   }
-  const ghost = await prisma.user.findUnique({ where: { id: GHOST_USER } })
+  // Every "User" read here has an explicit `select`: this runs before
+  // add_household_invites, and a read with no `select` would ask for
+  // "activeHouseholdId" (see assertHouseholdsBackfill).
+  const ghost = await prisma.user.findUnique({ where: { id: GHOST_USER }, select: { displayName: true } })
   assert(
     ghost?.displayName === 'User',
     `${GHOST_USER}, found only in the data, gets a "User" row named 'User' (read: ${ghost?.displayName})`,
   )
-  const setUp = await prisma.user.findMany({ where: { id: { in: [LATE_USER, WEBHOOK_USER, GHOST_USER] } } })
+  const setUp = await prisma.user.findMany({
+    where: { id: { in: [LATE_USER, WEBHOOK_USER, GHOST_USER] } },
+    select: { householdSetupAt: true },
+  })
   assert(
     setUp.length === 3 && setUp.every((u) => u.householdSetupAt !== null),
     'the three new people are marked as set up, so first sign-in makes no second household',
   )
-  const removed = await prisma.user.findUnique({ where: { id: REMOVED_USER } })
+  const removed = await prisma.user.findUnique({ where: { id: REMOVED_USER }, select: { householdSetupAt: true } })
   assert(
     householdOf(REMOVED_USER).length === 0 &&
       (await prisma.householdMember.count({ where: { userId: REMOVED_USER } })) === 0 &&
@@ -2020,6 +2042,7 @@ const MIGRATIONS = [
   '20261104000000_add_households',
   '20261111000000_drop_user_scope',
   '20261114000000_shared_carts',
+  '20261118000000_add_household_invites',
 ] as const
 
 // Applied on its own, in a second `migrate deploy`, after
@@ -2030,9 +2053,18 @@ const HOUSEHOLDS_MIGRATION = '20261104000000_add_households'
 // Applied on its own, in a third `migrate deploy`, after seedBetweenDeploys.
 const DROP_USER_SCOPE_MIGRATION = '20261111000000_drop_user_scope'
 
-// Applied on its own, in a fourth `migrate deploy`, after
-// seedSharedCartDuplicates. It must be the LAST entry above.
+// Applied in a fourth `migrate deploy`, after seedSharedCartDuplicates.
+// It must be the last entry above that runs BEFORE that fourth deploy: the
+// fourth deploy happens after the `finally` in main(), where restoreIfParked
+// puts back EVERY parked migration, so it applies shared_carts and every entry
+// after it at once. Today the only entry after it is add_household_invites,
+// which needs nothing seeded before it. A later entry that needs a seed step
+// between the two must get its own deploy inside the `try`.
+// (It said "It must be the LAST entry above" until H5b task G.1.)
 const SHARED_CARTS_MIGRATION = '20261114000000_shared_carts'
+
+// Applied by the same fourth `migrate deploy` as shared_carts, after it.
+const HOUSEHOLD_INVITES_MIGRATION = '20261118000000_add_household_invites'
 
 const PARKED_ROOT = join(SERVER_DIR, '.migration-under-test')
 const migrationDir = (name: string) => join(SERVER_DIR, 'prisma/migrations', name)
@@ -2290,6 +2322,221 @@ async function assertSharedCarts(): Promise<void> {
   )
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// 20261118000000 — add_household_invites (households H5b, task G.1)
+// ══════════════════════════════════════════════════════════════════════
+//
+// Additive only: a new, empty "HouseholdInvite" table and a nullable
+// "User"."activeHouseholdId" (decisions T14 and T26 of
+// docs/global/permissions/2026-11-18-households-plan-h5b.md). What is checked:
+//
+//   1. the table has the design's eleven columns, with the right type and
+//      nullability for each;
+//   2. "token" is unique: a second row with a NEW token is accepted first,
+//      then a row with a token already used fails with 23505;
+//   3. "User"."activeHouseholdId" is nullable text, every "User" row that
+//      existed before reads NULL, and the column refuses a household id that
+//      does not exist (so the foreign key is really there);
+//   4. the column is NOT on "HouseholdMember" (the "two halves" rule in
+//      apps/server/prisma/CLAUDE.md: a migration aimed at the wrong table must
+//      fail here);
+//   5. deleting a household sets "activeHouseholdId" to NULL (SetNull) and
+//      deletes its invites (Cascade), while another household's person and
+//      invite are untouched;
+//   6. deleting a "User" that "usedById" names sets it to NULL and keeps the
+//      invite; deleting a "User" that "createdById" names FAILS with 23503.
+//
+// Raw SQL for the writes, so a refused write reports the Postgres code. Every
+// row this block writes has an id starting with "hi-", and the block deletes
+// them all at the end.
+
+// The Postgres error code of a failed write, or undefined when it did not
+// fail. Prisma reports a failed raw query as P2010 with the Postgres code in
+// `meta.code`. If that shape ever changes, the code is looked for in the
+// message, so the FAIL line still says what happened.
+async function postgresCodeOf(write: () => Promise<unknown>): Promise<string | undefined> {
+  try {
+    await write()
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      const metaCode = (err.meta as { code?: unknown } | undefined)?.code
+      if (typeof metaCode === 'string') return metaCode
+    }
+    const message = err instanceof Error ? err.message : String(err)
+    return /\b(23\d{3})\b/.exec(message)?.[1] ?? `unexpected error: ${message.slice(0, 200)}`
+  }
+  return undefined
+}
+
+async function insertInvite(
+  id: string,
+  householdId: string,
+  token: string,
+  createdById: string,
+  usedById: string | null,
+): Promise<void> {
+  await prisma.$executeRaw`
+    INSERT INTO "HouseholdInvite"
+      ("id","householdId","token","householdRole","locationRoles","createdById","expiresAt","usedAt","usedById")
+    VALUES (${id}, ${householdId}, ${token}, 'member'::"HouseholdRole",
+            '[{"locationId":"hi-loc","role":"viewer"}]'::jsonb, ${createdById},
+            NOW() + INTERVAL '7 days',
+            CASE WHEN ${usedById}::text IS NULL THEN NULL ELSE NOW() END, ${usedById})
+  `
+}
+
+async function assertHouseholdInvites(): Promise<void> {
+  console.log('add_household_invites — the shape:')
+
+  // ── 1. The table and its columns ──
+  const expected: Record<string, { type: string; nullable: 'YES' | 'NO' }> = {
+    id: { type: 'text', nullable: 'NO' },
+    householdId: { type: 'text', nullable: 'NO' },
+    token: { type: 'text', nullable: 'NO' },
+    householdRole: { type: 'USER-DEFINED', nullable: 'NO' },
+    locationRoles: { type: 'jsonb', nullable: 'NO' },
+    createdById: { type: 'text', nullable: 'NO' },
+    createdAt: { type: 'timestamp without time zone', nullable: 'NO' },
+    expiresAt: { type: 'timestamp without time zone', nullable: 'NO' },
+    usedAt: { type: 'timestamp without time zone', nullable: 'YES' },
+    usedById: { type: 'text', nullable: 'YES' },
+    revokedAt: { type: 'timestamp without time zone', nullable: 'YES' },
+  }
+  const inviteColumns = await columnNamesOf('HouseholdInvite')
+  assert(
+    inviteColumns.size === Object.keys(expected).length,
+    `"HouseholdInvite" has exactly ${Object.keys(expected).length} columns (read: ${[...inviteColumns].sort().join(', ') || 'no table'})`,
+  )
+  for (const [column, want] of Object.entries(expected)) {
+    const meta = await columnMetaOf('HouseholdInvite', column)
+    assert(
+      meta?.dataType === want.type && meta.isNullable === want.nullable,
+      `"HouseholdInvite"."${column}" is ${want.type}, nullable=${want.nullable} (read: ${meta ? `${meta.dataType}, nullable=${meta.isNullable}` : 'column missing'})`,
+    )
+  }
+
+  // ── 3 (first half). Every existing person reads NULL ──
+  //
+  // Runs before this block writes anything. The earlier blocks left many
+  // "User" rows, so a count of 0 cannot pass on an empty table.
+  const userRows = await prisma.user.count()
+  const withActive = await prisma.user.count({ where: { activeHouseholdId: { not: null } } })
+  assert(
+    userRows > 0 && withActive === 0,
+    `every "User" row that existed before reads "activeHouseholdId" NULL — no backfill, the server falls back to the oldest membership (read: ${withActive} of ${userRows} set)`,
+  )
+  const activeMeta = await columnMetaOf('User', 'activeHouseholdId')
+  assert(
+    activeMeta?.dataType === 'text' && activeMeta.isNullable === 'YES',
+    `"User"."activeHouseholdId" is nullable text (read: ${activeMeta ? `${activeMeta.dataType}, nullable=${activeMeta.isNullable}` : 'column missing'})`,
+  )
+
+  // ── 4. Not on the other table ──
+  assert(
+    !(await columnNamesOf('HouseholdMember')).has('activeHouseholdId'),
+    '"activeHouseholdId" is NOT on "HouseholdMember" — it belongs to the person, not to one membership',
+  )
+
+  // ── Fixture: two households, four people ──
+  await prisma.$executeRaw`
+    INSERT INTO "Household" ("id","name","createdAt","updatedAt") VALUES
+      ('hi-house-1','Invites One',NOW(),NOW()),
+      ('hi-house-2','Invites Two',NOW(),NOW())
+  `
+  await prisma.$executeRaw`
+    INSERT INTO "User" ("id","displayName","createdAt","updatedAt") VALUES
+      ('hi-creator','Creator',NOW(),NOW()),
+      ('hi-joiner','Joiner',NOW(),NOW()),
+      ('hi-other','Other',NOW(),NOW()),
+      ('hi-gone','Gone',NOW(),NOW())
+  `
+
+  // ── 3 (second half). The foreign key on "activeHouseholdId" ──
+  //
+  // A real household first, so the refusal below cannot pass because every
+  // write fails.
+  await prisma.$executeRaw`UPDATE "User" SET "activeHouseholdId" = 'hi-house-1' WHERE "id" = 'hi-joiner'`
+  await prisma.$executeRaw`UPDATE "User" SET "activeHouseholdId" = 'hi-house-2' WHERE "id" = 'hi-other'`
+  const unknownHousehold = await postgresCodeOf(
+    () => prisma.$executeRaw`UPDATE "User" SET "activeHouseholdId" = 'hi-no-such-house' WHERE "id" = 'hi-gone'`,
+  )
+  assert(
+    unknownHousehold === '23503',
+    `"activeHouseholdId" accepts a real household and refuses one that does not exist with 23503 (read: ${unknownHousehold ?? 'no error'})`,
+  )
+
+  // ── 2. "token" is unique ──
+  await insertInvite('hi-inv-1', 'hi-house-1', 'hi-token-1', 'hi-creator', null)
+  await insertInvite('hi-inv-2', 'hi-house-1', 'hi-token-2', 'hi-creator', null)
+  await insertInvite('hi-inv-3', 'hi-house-2', 'hi-token-3', 'hi-creator', 'hi-gone')
+  const duplicateToken = await postgresCodeOf(() =>
+    insertInvite('hi-inv-dup', 'hi-house-2', 'hi-token-1', 'hi-creator', null),
+  )
+  assert(
+    duplicateToken === '23505',
+    `a second invite with the token of another is refused with 23505, after two invites with new tokens were accepted (read: ${duplicateToken ?? 'no error'})`,
+  )
+  const roles = await prisma.$queryRaw<{ locationRoles: unknown }[]>`
+    SELECT "locationRoles" FROM "HouseholdInvite" WHERE "id" = 'hi-inv-1'
+  `
+  assert(
+    JSON.stringify(roles[0]?.locationRoles) === '[{"role":"viewer","locationId":"hi-loc"}]' ||
+      JSON.stringify(roles[0]?.locationRoles) === '[{"locationId":"hi-loc","role":"viewer"}]',
+    `"locationRoles" stores and returns a JSON list (read: ${JSON.stringify(roles[0]?.locationRoles)})`,
+  )
+
+  console.log('add_household_invites — the deletes:')
+
+  // ── 5. Deleting a household: SetNull on the person, Cascade on invites ──
+  await prisma.$executeRaw`DELETE FROM "Household" WHERE "id" = 'hi-house-1'`
+  const people = await prisma.$queryRaw<{ id: string; activeHouseholdId: string | null }[]>`
+    SELECT "id", "activeHouseholdId" FROM "User" WHERE "id" IN ('hi-joiner','hi-other')
+  `
+  const joiner = people.find((p) => p.id === 'hi-joiner')
+  const other = people.find((p) => p.id === 'hi-other')
+  assert(
+    joiner !== undefined && joiner.activeHouseholdId === null,
+    `deleting a household sets "activeHouseholdId" to NULL and keeps the person (read: ${JSON.stringify(joiner)})`,
+  )
+  assert(
+    other?.activeHouseholdId === 'hi-house-2',
+    `a person whose active household is ANOTHER household is untouched (read: ${JSON.stringify(other)})`,
+  )
+  const invitesLeft = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT "id" FROM "HouseholdInvite" WHERE "id" LIKE 'hi-%' ORDER BY "id"
+  `
+  assert(
+    invitesLeft.map((r) => r.id).join(',') === 'hi-inv-3',
+    `deleting a household deletes its invites and keeps another household's (read: ${invitesLeft.map((r) => r.id).join(', ') || 'none'})`,
+  )
+
+  // ── 6. Deleting a "User": SetNull on usedById, Restrict on createdById ──
+  await prisma.$executeRaw`DELETE FROM "User" WHERE "id" = 'hi-gone'`
+  const used = await prisma.$queryRaw<{ usedById: string | null; createdById: string }[]>`
+    SELECT "usedById", "createdById" FROM "HouseholdInvite" WHERE "id" = 'hi-inv-3'
+  `
+  assert(
+    used.length === 1 && used[0]?.usedById === null && used[0]?.createdById === 'hi-creator',
+    `deleting the person who used an invite sets "usedById" to NULL and keeps the invite (read: ${JSON.stringify(used)})`,
+  )
+  const creatorDelete = await postgresCodeOf(
+    () => prisma.$executeRaw`DELETE FROM "User" WHERE "id" = 'hi-creator'`,
+  )
+  const creatorLeft = await prisma.$queryRaw<{ n: bigint }[]>`
+    SELECT count(*) AS n FROM "User" WHERE "id" = 'hi-creator'
+  `
+  assert(
+    creatorDelete === '23503' && Number(creatorLeft[0]?.n) === 1,
+    `deleting a person who created an invite fails with 23503 and the person stays (read: ${creatorDelete ?? 'no error'}, rows left: ${creatorLeft[0]?.n})`,
+  )
+
+  // ── Clean up every row this block wrote ──
+  await prisma.$executeRaw`DELETE FROM "HouseholdInvite" WHERE "id" LIKE 'hi-%'`
+  await prisma.$executeRaw`UPDATE "User" SET "activeHouseholdId" = NULL WHERE "id" LIKE 'hi-%'`
+  await prisma.$executeRaw`DELETE FROM "Household" WHERE "id" LIKE 'hi-%'`
+  await prisma.$executeRaw`DELETE FROM "User" WHERE "id" LIKE 'hi-%'`
+}
+
 async function main(): Promise<void> {
   // Self-heal: if a previous run was killed between parking and restoring,
   // recover instead of throwing on the renameSync below.
@@ -2373,11 +2620,16 @@ async function main(): Promise<void> {
     parked = false
   }
 
-  console.log(`Applying ${SHARED_CARTS_MIGRATION}...`)
+  console.log(`Applying ${SHARED_CARTS_MIGRATION} and ${HOUSEHOLD_INVITES_MIGRATION}...`)
   execSync('pnpm exec prisma migrate deploy', { cwd: SERVER_DIR, env, stdio: 'inherit' })
 
   console.log(`Asserting, after ${SHARED_CARTS_MIGRATION}...`)
   await assertSharedCarts()
+
+  // Before every later block: its check that every existing "User" row reads
+  // NULL must run before anything writes "activeHouseholdId".
+  console.log(`Asserting, after ${HOUSEHOLD_INVITES_MIGRATION}...`)
+  await assertHouseholdInvites()
 
   // ══════════════════════════════════════════════════════════════════════
   // PR 5 — Item's five stock state columns are gone, ItemStock's are not
