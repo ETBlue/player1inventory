@@ -28,6 +28,19 @@ export interface Permissions {
   canEditCatalog: boolean
   /** Cloud: household role `owner` or `manager`. Delete and reorder locations. */
   canManageLocations: boolean
+  /**
+   * Cloud: household role `owner` or `manager`. Invite people, see open
+   * invites, remove a `member` (households H5b, task G.9). Which ROW an owner
+   * or manager may act on is decided by the row's role (`memberActions` in
+   * `components/household/MemberList`). Local: `false`, local mode has no
+   * members.
+   */
+  canManageMembers: boolean
+  /**
+   * Cloud: household role `owner`. Change a person's household role, invite a
+   * `manager`, revoke any invite (households H5b, task G.9). Local: `false`.
+   */
+  isHouseholdOwner: boolean
   /** The caller's location role, or `null` for no role (or an unknown id). */
   roleAt(locationId: string): LocationRole | null
   /** `participant` or higher at that location. */
@@ -41,6 +54,9 @@ const LOCAL: Permissions = {
   roleKnown: true,
   canEditCatalog: true,
   canManageLocations: true,
+  // Local mode has one person and no members page.
+  canManageMembers: false,
+  isHouseholdOwner: false,
   roleAt: () => 'organizer',
   canEditLocation: () => true,
   isOrganizerAt: () => true,
@@ -138,6 +154,8 @@ export function permissionsFor({
     roleKnown: !isLoading && householdRole != null,
     canEditCatalog: canManage,
     canManageLocations: canManage,
+    canManageMembers: canManage,
+    isHouseholdOwner: !isLoading && householdRole === 'owner',
     roleAt,
     canEditLocation: (id) => atLeast(id, 'participant'),
     isOrganizerAt: (id) => atLeast(id, 'organizer'),

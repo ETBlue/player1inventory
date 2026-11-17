@@ -41,6 +41,12 @@ export function createCache() {
           inventoryLogCountByItem: { keyArgs: ['itemId', 'locationId'] },
           lastPurchaseDates: { keyArgs: ['itemIds', 'locationId'] },
           vendorCart: { keyArgs: ['vendorId', 'locationId'] },
+          // `HouseholdPerson` has no `id`, so its rows are not normalised.
+          // A refetch after a removal brings a SHORTER list, and without a
+          // policy Apollo warns that cache data may be lost. The new list is
+          // always the whole answer, so it simply replaces the old one
+          // (households H5b, task G.9).
+          householdMembers: { merge: false },
         },
       },
     },

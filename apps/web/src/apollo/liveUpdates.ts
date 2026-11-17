@@ -61,6 +61,8 @@ export const LIVE_BATCH_MS = 300
  * | `GetTagTypes`, `GetTags`, `GetTagsByType`, `TagCountByType` | tags  | CATALOG          |
  * | `GetVendors`           | vendors                                    | CATALOG          |
  * | `GetHousehold`         | the household `name` (and the caller's `role`) | CATALOG      |
+ * | `HouseholdMembers`     | every person and their household role      | LOCATION         |
+ * | `HouseholdInvites`     | the open invites                           | LOCATION         |
  * | `VendorCart`, `AllCarts` | cart `id`, `lastPurchasedAt`             | CART             |
  * | `CartItems`, `AllCartItems` | `cartId`, `itemId`, `quantity`        | CART             |
  * | `CartItemCountByItem`  | a count of cart rows                       | CART             |
@@ -87,6 +89,11 @@ export const LIVE_BATCH_MS = 300
  * `GetHousehold`'s `role` changes with `setHouseholdRole` (households H5b
  * task G.5). It publishes `LOCATION`, which is `'all'`, so `GetHousehold`
  * is refetched with every other active query.
+ *
+ * `HouseholdMembers` and `HouseholdInvites` (the Members page, households H5b
+ * task G.9) need no entry for the same reason: every member and invite
+ * mutation publishes household-level `LOCATION` (decision T19), and
+ * `LOCATION` refetches every active query.
  */
 export const QUERIES_BY_KIND: Record<ChangeKind, readonly string[] | 'all'> = {
   CART: [

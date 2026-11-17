@@ -8,6 +8,7 @@ import {
   Store,
   Tags,
   User,
+  Users,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { HouseholdLabel } from '@/components/settings/HouseholdLabel'
@@ -23,6 +24,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion'
+import { useDataMode } from '@/hooks/useDataMode'
 import { useIsDesktop } from '@/hooks/useIsDesktop'
 
 export const Route = createFileRoute('/settings/')({
@@ -40,6 +42,7 @@ function Settings() {
 
 function SettingsAccordion() {
   const { t } = useTranslation()
+  const { mode } = useDataMode()
 
   return (
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
@@ -68,6 +71,16 @@ function SettingsAccordion() {
                 description={t('settings.household.general.description')}
                 to="/settings/household"
               />
+              {/* Second, as the design numbers it. Cloud only: local mode
+                  has no members (households H5b task G.9). */}
+              {mode === 'cloud' && (
+                <SettingsNavCard
+                  icon={Users}
+                  label={t('settings.household.members.title')}
+                  description={t('settings.household.members.description')}
+                  to="/settings/household/members"
+                />
+              )}
               <SettingsNavCard
                 icon={MapPin}
                 label={t('settings.locations.label')}

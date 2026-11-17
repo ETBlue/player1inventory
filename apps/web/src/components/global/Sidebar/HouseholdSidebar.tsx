@@ -7,17 +7,20 @@ import {
   SlidersHorizontal,
   Store,
   Tags,
+  Users,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { HouseholdLabel } from '@/components/settings/HouseholdLabel'
 import { Button } from '@/components/ui/button'
+import { useDataMode } from '@/hooks/useDataMode'
 import { lastAppPage } from '@/lib/layoutRules'
 import { loadNavigationHistory } from '@/lib/sessionStorage'
 
-// The household items, in the order the design lists them. Members (H5),
-// Activity (H6) and "Switch to" (H7) are added by the phase that builds their
-// pages (plan decision P4). The icons match the cards on the mobile /settings
-// accordion.
+// The household items, in the order the design lists them. Members (H5b task
+// G.9) is second, and cloud only: local mode has no members (design, *Local
+// mode*). Activity (H6) and "Switch to" (H7) are added by the phase that
+// builds their pages (plan decision P4). The icons match the cards on the
+// mobile /settings accordion.
 //
 // `exact` decides when an item is marked active. General is active only on
 // `/settings/household` itself; a section is active on its list path (detail
@@ -28,36 +31,49 @@ const householdLinks = [
     labelKey: 'settings.household.general.label',
     icon: SlidersHorizontal,
     exact: true,
+    cloudOnly: false,
+  },
+  {
+    to: '/settings/household/members',
+    labelKey: 'settings.household.members.title',
+    icon: Users,
+    exact: false,
+    cloudOnly: true,
   },
   {
     to: '/settings/household/locations',
     labelKey: 'settings.locations.label',
     icon: MapPin,
     exact: false,
+    cloudOnly: false,
   },
   {
     to: '/settings/household/shelves',
     labelKey: 'settings.shelves.label',
     icon: ShelvingUnit,
     exact: false,
+    cloudOnly: false,
   },
   {
     to: '/settings/household/vendors',
     labelKey: 'settings.vendors.label',
     icon: Store,
     exact: false,
+    cloudOnly: false,
   },
   {
     to: '/settings/household/recipes',
     labelKey: 'settings.recipes.label',
     icon: ChefHat,
     exact: false,
+    cloudOnly: false,
   },
   {
     to: '/settings/household/tags',
     labelKey: 'settings.tags.label',
     icon: Tags,
     exact: false,
+    cloudOnly: false,
   },
 ] as const
 
@@ -71,6 +87,10 @@ const householdLinks = [
 export function HouseholdSidebar() {
   const router = useRouter()
   const { t } = useTranslation()
+  const { mode } = useDataMode()
+  const links = householdLinks.filter(
+    (link) => mode === 'cloud' || !link.cloudOnly,
+  )
 
   const goBack = () => {
     // A full URL string, so the search string is kept. useAppNavigation's
@@ -92,7 +112,7 @@ export function HouseholdSidebar() {
         <HouseholdLabel />
       </h2>
       <div className="flex flex-col gap-1 px-2">
-        {householdLinks.map(({ to, labelKey, icon: Icon, exact }) => (
+        {links.map(({ to, labelKey, icon: Icon, exact }) => (
           <Link
             key={to}
             to={to}
