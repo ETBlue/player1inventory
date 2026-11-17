@@ -599,6 +599,33 @@ describe('joinHousehold refuses', () => {
     expect(row.usedAt).toBeNull()
   })
 
+  it('a household deleted between the invite read and its lock gives INVITE_INVALID', async () => {
+    // Given the household lock finds no row (P2025): the household, and with
+    // it the invite, was deleted after the invite was read
+    const households = world.client.household
+    vi.spyOn(households, 'update').mockImplementationOnce(async () => {
+      throw Object.assign(new Error('No Household found'), { code: 'P2025' })
+    })
+    const before = snapshot()
+
+    const res = await join(MAIN, PAT)
+
+    expect(res.errors?.[0]?.extensions?.code).toBe('BAD_USER_INPUT')
+    expect(reason(res)).toBe('INVITE_INVALID')
+    expect(snapshot()).toEqual(before)
+  })
+
+  it('any other failure of the household lock is not turned into INVITE_INVALID', async () => {
+    vi.spyOn(world.client.household, 'update').mockImplementationOnce(async () => {
+      throw Object.assign(new Error('connection lost'), { code: 'P1001' })
+    })
+
+    const res = await join(MAIN, PAT)
+
+    expect(res.errors).toBeDefined()
+    expect(reason(res)).toBeUndefined()
+  })
+
   it('the second of two joins on one link is refused (T17)', async () => {
     // Given another join claims the invite between this join's read and its
     // claim. The claim's `where` must see `usedAt` set and match nothing.
