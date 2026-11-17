@@ -20,8 +20,8 @@ import {
  * tab, or a leave or a removal when the person has a second household to
  * fall back to. What does NOT reach it: a leave or a removal that leaves the
  * person in no household. Then `GetHousehold` fails with `NO_HOUSEHOLD`,
- * there is no id, and this guard does nothing. The no-household screen
- * (task G.8) must clear the cache itself. The join page calls
+ * there is no id, and this guard does nothing. `NoHouseholdGate` (task G.8)
+ * clears the cache then (`forgetHousehold`). The join page calls
  * `switchToHousehold` directly.
  *
  * Only an answer from the server counts (`networkStatus === ready`).

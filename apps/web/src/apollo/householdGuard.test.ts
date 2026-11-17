@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { LAST_HOUSEHOLD_ID_KEY, switchToHousehold } from './householdGuard'
+import {
+  forgetHousehold,
+  LAST_HOUSEHOLD_ID_KEY,
+  switchToHousehold,
+} from './householdGuard'
 
 const clearCacheMock = vi.hoisted(() => vi.fn(async () => {}))
 vi.mock('./persistence', async (importOriginal) => {
@@ -57,5 +61,20 @@ describe('switchToHousehold', () => {
     expect(localStorage.getItem(LAST_HOUSEHOLD_ID_KEY)).toBe('h-new')
     expect(replaceMock).toHaveBeenCalledWith('/')
     expect(reloadMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('forgetHousehold (households H5b, task G.8)', () => {
+  it('clears the cache and both keys, and stays on the page', async () => {
+    // When the person is in no household any more
+    await forgetHousehold()
+
+    // Then the old household's data is gone, no id is stored, and the page
+    // does not change: the no-household screen is what they should see
+    expect(clearCacheMock).toHaveBeenCalledOnce()
+    expect(localStorage.getItem(ACTIVE_KEY)).toBeNull()
+    expect(localStorage.getItem(LAST_HOUSEHOLD_ID_KEY)).toBeNull()
+    expect(reloadMock).not.toHaveBeenCalled()
+    expect(replaceMock).not.toHaveBeenCalled()
   })
 })

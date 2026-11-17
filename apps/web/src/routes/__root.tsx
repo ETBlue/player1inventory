@@ -10,6 +10,7 @@ import { HouseholdChangeGuard } from '@/apollo/HouseholdChangeGuard'
 import { Layout } from '@/components/global/Layout'
 import { OfflineBanner } from '@/components/global/OfflineBanner'
 import { PostLoginMigrationDialog } from '@/components/global/PostLoginMigrationDialog'
+import { NoHouseholdGate } from '@/components/household/NoHouseholdGate'
 import { Toaster } from '@/components/ui/sonner'
 import { ActiveLocationProvider } from '@/hooks/useActiveLocation'
 import { useDataMode } from '@/hooks/useDataMode'
@@ -134,7 +135,15 @@ function RootComponent() {
       {mode === 'cloud' && <HouseholdChangeGuard />}
       <Layout>
         {mode === 'cloud' && <OfflineBanner />}
-        <Outlet />
+        {/*
+          In cloud mode, a person in NO household (after a leave or a
+          removal) sees the no-household screen instead of the page
+          (households H5b, task G.8). Not on `/join/…` or `/sign-in`. The
+          gate does nothing in local mode.
+        */}
+        <NoHouseholdGate>
+          <Outlet />
+        </NoHouseholdGate>
       </Layout>
       <Toaster />
       {/* <TanStackRouterDevtools /> */}

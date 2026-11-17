@@ -940,5 +940,12 @@
     "signIn": "Sign in to join",
     "error": "Could not join. Try again.",
     "loadError": "Could not load this invite. Try again."
+  },
+  "noHousehold": {
+    "title": "You are not in any household.",
+    "create": "Create a household",
+    "nameLabel": "Household name",
+    "nameHint": "Leave it empty to use the default name.",
+    "error": "Could not create the household. Try again."
   }
 }

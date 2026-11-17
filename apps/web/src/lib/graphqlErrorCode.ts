@@ -33,3 +33,20 @@ export function hasGraphQLErrorReason(err: unknown, reason: string): boolean {
     err.errors.some((e) => e.extensions?.reason === reason)
   )
 }
+
+/**
+ * The `extensions.code` of a rejected Apollo call or a failed query, or
+ * `undefined`. The first GraphQL error that carries a code wins.
+ *
+ * A value that is not a GraphQL error (a network error, offline) has no
+ * code, on purpose: only an answer from the server can say, for example,
+ * `NO_HOUSEHOLD` (households H5b, task G.8).
+ */
+export function graphQLErrorCode(err: unknown): string | undefined {
+  if (!CombinedGraphQLErrors.is(err)) return undefined
+  for (const e of err.errors) {
+    const code = e.extensions?.code
+    if (typeof code === 'string') return code
+  }
+  return undefined
+}

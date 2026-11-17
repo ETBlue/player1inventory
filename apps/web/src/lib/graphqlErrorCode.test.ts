@@ -1,6 +1,10 @@
 import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { describe, expect, it } from 'vitest'
-import { hasGraphQLErrorCode, hasGraphQLErrorReason } from './graphqlErrorCode'
+import {
+  graphQLErrorCode,
+  hasGraphQLErrorCode,
+  hasGraphQLErrorReason,
+} from './graphqlErrorCode'
 
 function apolloError(code: string, message: string) {
   return new CombinedGraphQLErrors({
@@ -72,5 +76,31 @@ describe('hasGraphQLErrorReason', () => {
     Object.assign(plain, { extensions: { reason: 'INVITE_INVALID' } })
     expect(hasGraphQLErrorReason(plain, 'INVITE_INVALID')).toBe(false)
     expect(hasGraphQLErrorReason(undefined, 'INVITE_INVALID')).toBe(false)
+  })
+})
+
+describe('graphQLErrorCode', () => {
+  it('returns the first code in extensions', () => {
+    expect(graphQLErrorCode(apolloError('NO_HOUSEHOLD', 'no household'))).toBe(
+      'NO_HOUSEHOLD',
+    )
+  })
+
+  it('skips an error with no code', () => {
+    const err = new CombinedGraphQLErrors({
+      errors: [
+        { message: 'no code' },
+        { message: 'refused', extensions: { code: 'FORBIDDEN' } },
+      ],
+    })
+    expect(graphQLErrorCode(err)).toBe('FORBIDDEN')
+  })
+
+  it('returns undefined for an error that is not a GraphQL error', () => {
+    // A network failure must never look like a server answer
+    const plain = new Error('NO_HOUSEHOLD')
+    Object.assign(plain, { extensions: { code: 'NO_HOUSEHOLD' } })
+    expect(graphQLErrorCode(plain)).toBeUndefined()
+    expect(graphQLErrorCode(undefined)).toBeUndefined()
   })
 })

@@ -40,3 +40,15 @@ mutation JoinHousehold($token: String!) {
     role
   }
 }
+
+# The no-household screen (households H5b, task G.8). Only for a person in NO
+# household (owner decision O16-A). Anyone else gets BAD_USER_INPUT with
+# extensions.reason ALREADY_IN_HOUSEHOLD. Send `name: null` for the default
+# name, never "": an empty string is a blank name and is refused.
+mutation CreateHousehold($name: String) {
+  createHousehold(name: $name) {
+    id
+    name
+    role
+  }
+}

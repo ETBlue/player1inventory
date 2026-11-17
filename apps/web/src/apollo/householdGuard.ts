@@ -53,3 +53,24 @@ export async function switchToHousehold(
   if (options.to === undefined) window.location.reload()
   else window.location.replace(options.to)
 }
+
+/**
+ * Forget the old household on this device, and stay on the page (households
+ * H5b, task G.8, Step 3b). `NoHouseholdGate` calls it once when it shows the
+ * no-household screen.
+ *
+ * A leave or a removal that leaves the person in NO household does not reach
+ * `HouseholdChangeGuard`: `GetHousehold` fails with `NO_HOUSEHOLD`, so there
+ * is no new id to compare. Without this step the old household's rows would
+ * stay in memory and in `Player1InventoryCloudCache`.
+ *
+ * Like `switchToHousehold` it keeps `LAST_USER_ID_KEY` (see `clearCache`).
+ * Unlike it, it stores NO id and does not reload: the person has no
+ * household, and the screen they see is the right one. With no stored id,
+ * `HouseholdChangeGuard` simply stores the next household it sees.
+ */
+export async function forgetHousehold(): Promise<void> {
+  await clearCache()
+  localStorage.removeItem(activeLocationStorageKey('cloud'))
+  localStorage.removeItem(LAST_HOUSEHOLD_ID_KEY)
+}
