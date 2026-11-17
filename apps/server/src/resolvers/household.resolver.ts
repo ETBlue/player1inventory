@@ -8,7 +8,7 @@ import {
   firstLocationName,
   firstSignInNames,
   HOUSEHOLD_NAME_MAX_LENGTH,
-  lockHousehold,
+  lockHouseholds,
   lockUser,
 } from '../lib/household.js'
 import { prisma } from '../lib/prisma.js'
@@ -74,6 +74,23 @@ async function displayNames(userIds: string[]): Promise<Map<string, string>> {
     select: { id: true, displayName: true },
   })
   return new Map(rows.map((row) => [row.id, row.displayName]))
+}
+
+/**
+ * Take the household's row lock, FIRST in the transaction, for
+ * `setHouseholdRole`, `removeMember` and `leaveHousehold`. The household
+ * can be deleted after `requireHousehold` found it (for example the owner
+ * joined another household in another tab, and the join deleted this one as
+ * empty). `lockHousehold` would then throw Prisma's P2025, which reaches the
+ * person as an internal error. `lockHouseholds` gives a count instead, and a
+ * missing household is FORBIDDEN: the caller holds no role in it any more.
+ */
+async function lockOrForbid(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  householdId: string,
+): Promise<void> {
+  const locked = await lockHouseholds(tx, [householdId])
+  if (!locked.has(householdId)) throw forbidden()
 }
 
 /**
@@ -167,10 +184,12 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     //
     // The same shape for all three. One transaction:
     //
-    //   1. `lockHousehold` FIRST. Two of these writes on one household run
-    //      one after the other, so a check never reads a role that another
-    //      write is changing at the same moment (for example a manager who
-    //      removes a member while the owner demotes that manager).
+    //   1. The household lock FIRST (`lockOrForbid`, the same `UPDATE` as
+    //      `lockHousehold`). Two of these writes on one household run one
+    //      after the other, so a check never reads a role that another write
+    //      is changing at the same moment (for example a manager who removes
+    //      a member while the owner demotes that manager). A household
+    //      deleted since `requireHousehold` found it → FORBIDDEN.
     //   2. The caller's role, with `requireHouseholdRole`, read through `tx`
     //      (the transaction's own connection, not a second one from the
     //      pool). It is a new statement after the lock, so under READ
@@ -193,7 +212,7 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       const callerId = requireAuth(ctx)
       const householdId = await requireHousehold(ctx)
       const result = await prisma.$transaction(async (tx) => {
-        await lockHousehold(tx, householdId)
+        await lockOrForbid(tx, householdId)
         await requireHouseholdRole(ctx, householdId, 'owner', tx)
         if (role === 'owner') {
           throw badInput('Handing over the household is not possible yet.')
@@ -204,7 +223,10 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           select: { userId: true, role: true, joinedAt: true },
         })
         if (!row) throw forbidden()
-        // A write that changes nothing sends nothing (the live-update rule).
+        // The same role again: no member row changes and nothing is sent (the
+        // live-update rule). The lock's `UPDATE` above has still run, so
+        // `Household.updatedAt` moves. Skipping the lock here would mean
+        // reading the role before the lock, which the order above forbids.
         if (row.role === role) return { row, changed: false }
         const saved = await tx.householdMember.update({
           where: { householdId_userId: { householdId, userId: target } },
@@ -226,7 +248,7 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       const callerId = requireAuth(ctx)
       const householdId = await requireHousehold(ctx)
       await prisma.$transaction(async (tx) => {
-        await lockHousehold(tx, householdId)
+        await lockOrForbid(tx, householdId)
         const callerRole = await requireHouseholdRole(ctx, householdId, 'manager', tx)
         if (target === callerId) {
           throw badInput('You cannot remove yourself. A manager or member can leave instead.')
@@ -249,7 +271,7 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       const callerId = requireAuth(ctx)
       const householdId = await requireHousehold(ctx)
       await prisma.$transaction(async (tx) => {
-        await lockHousehold(tx, householdId)
+        await lockOrForbid(tx, householdId)
         const role = await requireHouseholdRole(ctx, householdId, 'member', tx)
         if (role === 'owner') {
           throw badInput('The owner cannot leave. Handing over the household comes later.')

@@ -278,7 +278,7 @@ export function alreadyInHousehold(): GraphQLError {
  * `createHouseholdFor` above) and `clearAllData`
  * (resolvers/import.resolver.ts), which makes "Home" again
  * after it deletes every location of the household (decision H17). One
- * function, so the two cannot drift apart.
+ * function, so the three cannot drift apart.
  *
  * A location carries no `userId` and no `isDefault` since task 3.14 (the
  * drop_user_scope migration). The caller's `organizer` row is what ties them
@@ -406,7 +406,10 @@ export async function lockUser(tx: Prisma.TransactionClient, userId: string): Pr
  * that join waits, and then finds the household gone.
  *
  * `updateMany`, not `update`, so a missing row gives a count of 0 instead of
- * P2025. The same `UPDATE` as `lockHousehold`; the Prisma fake has no row
+ * P2025. `setHouseholdRole`, `removeMember` and `leaveHousehold` (task G.5)
+ * lock their one household through this too (`lockOrForbid` in
+ * resolvers/household.resolver.ts), so a household deleted since
+ * `requireHousehold` found it gives FORBIDDEN, not an internal error. The same `UPDATE` as `lockHousehold`; the Prisma fake has no row
  * lock, so the unit tests prove only the order.
  */
 export async function lockHouseholds(

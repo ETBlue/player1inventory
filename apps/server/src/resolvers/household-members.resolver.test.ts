@@ -47,10 +47,22 @@ vi.mock('../lib/household.js', async (importOriginal) => {
   return { ...real, ensureHousehold: vi.fn(real.ensureHousehold) }
 })
 
+// The global `prisma` gets its OWN copy of each model object, over the same
+// stores. A `$transaction` callback receives `world.client` as its `tx`, so a
+// spy on `prisma.<model>` sees only the reads made OUTSIDE a transaction, and
+// a spy on `world.client.<model>` only the ones made through `tx`. That is what
+// lets a test see whether a resolver passes `tx` to `requireHouseholdRole`
+// (review of G.5). It works because no fake method uses `this`.
 vi.mock('../lib/prisma.js', async () => {
   const { createHouseholdWorld } = await import('../test/householdWorld.js')
   const world = createHouseholdWorld()
-  return { prisma: { ...world.client, $world: world } }
+  const copy = Object.fromEntries(
+    Object.entries(world.client).map(([key, value]) => [
+      key,
+      value && typeof value === 'object' ? { ...value } : value,
+    ]),
+  )
+  return { prisma: { ...copy, $world: world } }
 })
 
 import { prisma } from '../lib/prisma.js'
@@ -276,18 +288,23 @@ function locationEvent(householdId: string): ChangeEvent {
   return { kind: 'LOCATION', householdId, locationId: null, sourceClientId: TAB }
 }
 
-/** Spy on every write to `User` rows. Returns the user ids each one named. */
+/**
+ * Spy on every write to `User` rows, through `tx` AND through the global
+ * client. Returns the user ids each one named.
+ */
 function spyOnUserWrites() {
-  const users = prisma.user as unknown as Record<string, (...args: unknown[]) => unknown>
   const named: unknown[] = []
-  for (const method of ['update', 'updateMany', 'upsert', 'create']) {
-    if (typeof users[method] !== 'function') continue
-    const real = users[method].bind(users)
-    vi.spyOn(users, method).mockImplementation(async (...args: unknown[]) => {
-      const a = args[0] as { where?: { id?: unknown }; data?: { id?: unknown } }
-      named.push(a.where?.id ?? a.data?.id)
-      return real(...args)
-    })
+  for (const client of [world.client.user, prisma.user]) {
+    const users = client as unknown as Record<string, (...args: unknown[]) => unknown>
+    for (const method of ['update', 'updateMany', 'upsert', 'create']) {
+      if (typeof users[method] !== 'function') continue
+      const real = users[method].bind(users)
+      vi.spyOn(users, method).mockImplementation(async (...args: unknown[]) => {
+        const a = args[0] as { where?: { id?: unknown }; data?: { id?: unknown } }
+        named.push(a.where?.id ?? a.data?.id)
+        return real(...args)
+      })
+    }
   }
   return named
 }
@@ -412,6 +429,12 @@ describe('setHouseholdRole', () => {
     expect(snapshot()).toEqual(before)
   })
 
+  it('a person in no household gets NO_HOUSEHOLD', async () => {
+    const res = await setRole(PIA, BOB, 'manager')
+    expect(code(res)).toBe('NO_HOUSEHOLD')
+    expect(members()).toContain(`hh_h:${BOB}:member`)
+  })
+
   it('the role is changed in the household the owner acts in, not in their other one', async () => {
     // MIA is a manager in BOTH hh_h and hh_x. OWEN acts in hh_h.
     await setRole(OWEN, MIA, 'member')
@@ -427,8 +450,9 @@ describe('setHouseholdRole', () => {
     )
   })
 
-  it('the same role again writes nothing and publishes nothing', async () => {
-    const update = vi.spyOn(prisma.householdMember, 'update')
+  it('the same role again changes no member row and publishes nothing', async () => {
+    // `world.client`: the update runs through `tx`.
+    const update = vi.spyOn(world.client.householdMember, 'update')
     const res = await setRole(OWEN, MIA, 'manager')
     expect(res.errors).toBeUndefined()
     expect(res.data?.setHouseholdRole).toMatchObject({ userId: MIA, role: 'manager' })
@@ -473,6 +497,20 @@ describe('removeMember', () => {
     const before = snapshot()
     const res = await remove(OWEN, OWEN)
     expect(code(res)).toBe('BAD_USER_INPUT')
+    expect(snapshot()).toEqual(before)
+  })
+
+  it('household manager cannot remove themself; they leave instead', async () => {
+    const before = snapshot()
+    const res = await remove(MIA, MIA)
+    expect(code(res)).toBe('BAD_USER_INPUT')
+    expect(snapshot()).toEqual(before)
+  })
+
+  it('a person in no household gets NO_HOUSEHOLD', async () => {
+    const before = snapshot()
+    const res = await remove(PIA, BOB)
+    expect(code(res)).toBe('NO_HOUSEHOLD')
     expect(snapshot()).toEqual(before)
   })
 
@@ -646,6 +684,16 @@ describe('createHousehold', () => {
     expect(snapshot()).toEqual(before)
   })
 
+  it('a name over the limit is refused and nothing is written', async () => {
+    const before = snapshot()
+    const res = await create(PIA, 'x'.repeat(101))
+    expect(code(res)).toBe('BAD_USER_INPUT')
+    expect(snapshot()).toEqual(before)
+    // 100 is still allowed
+    const ok = await create(PIA, 'y'.repeat(100))
+    expect(ok.errors).toBeUndefined()
+  })
+
   it('two creates at once make one household', async () => {
     // The User row lock runs them one after the other on Postgres; the
     // queue does that here. The second must see the first one's membership.
@@ -693,10 +741,10 @@ describe('setHouseholdRole, removeMember and leaveHousehold lock the household f
   /** Record the lock of hh_h and every member row read, in call order. */
   function recordOrder() {
     const order: string[] = []
-    const update = world.client.household.update
-    vi.spyOn(world.client.household, 'update').mockImplementation(async (args) => {
-      order.push(`lock:${String((args.where as { id?: unknown }).id)}`)
-      return update(args)
+    const updateMany = world.client.household.updateMany
+    vi.spyOn(world.client.household, 'updateMany').mockImplementation(async (args) => {
+      order.push(`lock:${String((args.where as { id?: unknown } | undefined)?.id)}`)
+      return updateMany(args)
     })
     const findUnique = world.client.householdMember.findUnique
     vi.spyOn(world.client.householdMember, 'findUnique').mockImplementation(async (args) => {
@@ -718,6 +766,45 @@ describe('setHouseholdRole, removeMember and leaveHousehold lock the household f
     expect(order[0]).toBe('lock:hh_h')
     expect(order.filter((x) => x.startsWith('lock:'))).toEqual(['lock:hh_h'])
     expect(order.length).toBeGreaterThan(1)
+  })
+
+  it.each([
+    ['setHouseholdRole', () => setRole(OWEN, BOB, 'manager')],
+    ['removeMember', () => remove(OWEN, BOB)],
+    ['leaveHousehold', () => leave(BEA)],
+  ])('%s: every member row is read through tx, never through the global client', async (_name, act) => {
+    // The global client is a second pool connection on Postgres. Inside the
+    // transaction every read must use `tx` (see `requireHouseholdRole`).
+    const outside = vi.spyOn(prisma.householdMember, 'findUnique')
+    const inside = vi.spyOn(world.client.householdMember, 'findUnique')
+    const res = await act()
+    expect(res.errors).toBeUndefined()
+    expect(inside).toHaveBeenCalled()
+    expect(outside).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['setHouseholdRole', () => setRole(OWEN, BOB, 'manager')],
+    ['removeMember', () => remove(OWEN, BOB)],
+    ['leaveHousehold', () => leave(BEA)],
+  ])('%s: a household deleted after it was looked up gives FORBIDDEN, not an internal error', async (_name, act) => {
+    // Given hh_h is deleted (for example by the owner's join in another tab)
+    // between `requireHousehold` and the lock: the lock finds no row
+    const updateMany = world.client.household.updateMany
+    vi.spyOn(world.client.household, 'updateMany').mockImplementation(async (args) => {
+      if ((args.where as { id?: unknown } | undefined)?.id === 'hh_h') return { count: 0 }
+      return updateMany(args)
+    })
+    vi.spyOn(world.client.household, 'update').mockRejectedValue(
+      Object.assign(new Error('Record to update not found.'), { code: 'P2025' }),
+    )
+    const before = snapshot()
+
+    const res = await act()
+
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(snapshot()).toEqual(before)
+    expect(seen).toEqual([])
   })
 })
 
