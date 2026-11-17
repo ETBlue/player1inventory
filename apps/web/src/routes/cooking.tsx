@@ -29,6 +29,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox'
 import { useItems, useTags, useTagTypes } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useConsumeRecipes, useRecipes } from '@/hooks/useRecipes'
 import {
   getCurrentQuantity,
@@ -68,6 +69,9 @@ export const Route = createFileRoute('/cooking')({
 
 function CookingPage() {
   const { t } = useTranslation()
+  // Creating a recipe is a catalog write: not for a household member
+  // (households H5 task F.5). Cooking itself is a location right (F.6).
+  const { canEditCatalog, isLoading: rolesLoading } = usePermissions()
   const navigate = useNavigate()
   const { sort, dir, q, expanded } = Route.useSearch()
   const { data: recipes = [] } = useRecipes()
@@ -756,10 +760,14 @@ function CookingPage() {
               replace: true,
             })
           }
-          onCreateRecipe={(name) => {
-            setNewRecipeInitialName(name)
-            setNewRecipeDialogOpen(true)
-          }}
+          onCreateRecipe={
+            canEditCatalog
+              ? (name) => {
+                  setNewRecipeInitialName(name)
+                  setNewRecipeDialogOpen(true)
+                }
+              : undefined
+          }
         />
         <div className="h-px bg-accessory-default" />
       </div>
@@ -768,16 +776,22 @@ function CookingPage() {
           <div className="text-center py-16 text-foreground-muted flex flex-col items-center gap-6">
             <div>
               <p>{t('cooking.empty.title')}</p>
-              <p className="text-sm mt-1">{t('cooking.empty.description')}</p>
+              <p className="text-sm mt-1">
+                {!rolesLoading && !canEditCatalog
+                  ? t('settings.catalogReadOnly')
+                  : t('cooking.empty.description')}
+              </p>
             </div>
-            <Button
-              size="lg"
-              className="px-8"
-              onClick={() => setNewRecipeDialogOpen(true)}
-            >
-              <Plus />
-              {t('cooking.empty.createButton')}
-            </Button>
+            {canEditCatalog && (
+              <Button
+                size="lg"
+                className="px-8"
+                onClick={() => setNewRecipeDialogOpen(true)}
+              >
+                <Plus />
+                {t('cooking.empty.createButton')}
+              </Button>
+            )}
           </div>
         ) : (
           <div className="space-y-px mb-4">

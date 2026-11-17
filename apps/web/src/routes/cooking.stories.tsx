@@ -9,8 +9,10 @@ import {
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
 import { createItem, createRecipe } from '@/db/operations'
+import { GetRecipesDocument } from '@/generated/graphql'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
+import { CloudRolePage, cloudRoleStorySetup } from '@/test/cloudRoleStory'
 import { setupOfflineStory } from '@/test/offlineStoryHelpers'
 import type { Item } from '@/types'
 
@@ -652,4 +654,26 @@ function NotStockedHereSplitStory() {
 
 export const NotStockedHereSplit: Story = {
   render: () => <NotStockedHereSplitStory />,
+}
+
+// Households H5 task F.5. A household `member` in cloud mode, with no
+// recipes: the empty state says only an owner or manager can add recipes,
+// and there is no "Create recipe" button.
+const memberNoRecipeMocks = [
+  {
+    request: { query: GetRecipesDocument },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: { data: { recipes: [] } },
+  },
+]
+
+export const MemberReadOnly: Story = {
+  beforeEach: cloudRoleStorySetup,
+  render: () => (
+    <CloudRolePage
+      path="/cooking"
+      householdRole="member"
+      mocks={memberNoRecipeMocks}
+    />
+  ),
 }

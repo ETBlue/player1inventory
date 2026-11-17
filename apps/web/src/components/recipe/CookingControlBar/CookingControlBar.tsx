@@ -25,7 +25,11 @@ interface CookingControlBarProps {
   allExpanded: boolean
   onExpandAll: () => void
   onCollapseAll: () => void
-  onCreateRecipe?: (name: string) => void
+  /**
+   * Left out for a household member (households H5 task F.5): then there
+   * is no Create button, and Enter creates nothing.
+   */
+  onCreateRecipe?: ((name: string) => void) | undefined
 }
 
 export function CookingControlBar({
@@ -212,7 +216,7 @@ export function CookingControlBar({
               >
                 <X />
               </Button>
-              {!hasExactTitleMatch && (
+              {!hasExactTitleMatch && onCreateRecipe && (
                 <Button
                   variant="primary"
                   size="sm"
