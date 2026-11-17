@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/shared/EmptyState'
 import { useInnerPageScrollRef } from '@/components/shared/LayoutInnerPages'
 import { useCreateItem, useItems, useTagTypes, useUpdateItem } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
 import { useSortFilter } from '@/hooks/useSortFilter'
@@ -36,6 +37,10 @@ function VendorItemsTab() {
   // item goes into the catalog and is stocked in no location (D3). This tab
   // creates directly rather than through a dialog, so it opts in here.
   const createItem = useCreateItem({ catalogOnly: true })
+  // A household member sees the assignments read only (households H5 task
+  // F.5): the checkboxes show what is assigned but are disabled, and there
+  // is no "Create item" from search.
+  const { canEditCatalog, roleKnown } = usePermissions()
   const { data: vendors = [] } = useVendors()
   const { data: recipes = [] } = useRecipes()
 
@@ -233,7 +238,10 @@ function VendorItemsTab() {
         items={items}
         vendors={vendors}
         recipes={recipes}
-        onCreateFromSearch={handleCreateFromSearch}
+        onCreateFromSearch={canEditCatalog ? handleCreateFromSearch : undefined}
+        createReadOnlyNote={
+          roleKnown && !canEditCatalog ? t('items.createReadOnly') : undefined
+        }
         hasExactMatch={hasExactMatch}
         isCreating={createItem.isPending || updateItem.isPending}
         className="bg-transparent border-none"
@@ -294,7 +302,7 @@ function VendorItemsTab() {
                       handleToggle(item.id, item.vendorIds)
                     }
                     isPending={savingItemIds.has(item.id)}
-                    disabled={savingItemIds.has(item.id)}
+                    disabled={!canEditCatalog || savingItemIds.has(item.id)}
                   />
                 </div>
               )

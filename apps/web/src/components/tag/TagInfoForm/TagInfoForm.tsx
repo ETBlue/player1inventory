@@ -25,6 +25,12 @@ interface TagInfoFormProps {
   onDirtyChange?: (isDirty: boolean) => void
   /** When true, the type Select is disabled — used in dialogs where the type is pre-set. */
   typeReadonly?: boolean
+  /**
+   * For a household member (households H5 task F.5): the inputs are
+   * `readOnly` (the text can still be selected), selects are disabled, and
+   * there is no Save button.
+   */
+  readOnly?: boolean
 }
 
 export function TagInfoForm({
@@ -35,6 +41,7 @@ export function TagInfoForm({
   isPending,
   onDirtyChange,
   typeReadonly,
+  readOnly = false,
 }: TagInfoFormProps) {
   const { t } = useTranslation()
 
@@ -63,7 +70,7 @@ export function TagInfoForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (nameError || !isDirty || isPending) return
+    if (readOnly || nameError || !isDirty || isPending) return
     const trimmedName = name.trim()
     const resolvedParentId = parentId === NO_PARENT ? undefined : parentId
     onSave({
@@ -82,7 +89,8 @@ export function TagInfoForm({
         <Label htmlFor="tag-name">{t('settings.tags.tag.nameLabel')}</Label>
         <Input
           id="tag-name"
-          autoFocus
+          autoFocus={!readOnly}
+          readOnly={readOnly}
           value={name}
           onChange={(e) => setName(e.target.value)}
           className="capitalize"
@@ -100,7 +108,7 @@ export function TagInfoForm({
             // so reset to no parent
             setParentId(NO_PARENT)
           }}
-          disabled={typeReadonly ?? false}
+          disabled={readOnly || (typeReadonly ?? false)}
         >
           <SelectTrigger id="tag-type" className="capitalize">
             <SelectValue />
@@ -127,7 +135,11 @@ export function TagInfoForm({
 
       <div className="space-y-2">
         <Label htmlFor="tag-parent">{t('settings.tags.tag.parentLabel')}</Label>
-        <Select value={parentId} onValueChange={setParentId}>
+        <Select
+          value={parentId}
+          onValueChange={setParentId}
+          disabled={readOnly}
+        >
           <SelectTrigger id="tag-parent" className="capitalize">
             <SelectValue />
           </SelectTrigger>
@@ -149,14 +161,16 @@ export function TagInfoForm({
         </Select>
       </div>
 
-      <Button
-        type="submit"
-        className="w-full"
-        disabled={!!nameError || !isDirty || !!isPending}
-        isLoading={!!isPending}
-      >
-        {t('common.save')}
-      </Button>
+      {!readOnly && (
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={!!nameError || !isDirty || !!isPending}
+          isLoading={!!isPending}
+        >
+          {t('common.save')}
+        </Button>
+      )}
     </form>
   )
 }

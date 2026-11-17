@@ -1,0 +1,76 @@
+# OLD-BUNDLE FIXTURE. Do not edit by hand. Delete with the shim fields.
+#
+# A copy of `apps/web/src/apollo/operations/recipes.graphql` from `origin/main` at 351d22ad, taken 2026-11-17.
+# That is the web bundle in production before the households release.
+# `src/test/oldBundleCompat.test.ts` checks that the current server schema
+# still accepts it, so the server can be deployed before the web.
+# Delete this folder in the release after households, together with the
+# deprecated shim fields (see that test file).
+
+query GetRecipes {
+  recipes {
+    id
+    name
+    items {
+      itemId
+      defaultAmount
+    }
+    lastCookedAt
+  }
+}
+
+query GetRecipe($id: ID!) {
+  recipe(id: $id) {
+    id
+    name
+    items {
+      itemId
+      defaultAmount
+    }
+    lastCookedAt
+  }
+}
+
+mutation CreateRecipe($name: String!, $items: [RecipeItemInput!]) {
+  createRecipe(name: $name, items: $items) {
+    id
+    name
+    items {
+      itemId
+      defaultAmount
+    }
+  }
+}
+
+mutation UpdateRecipe($id: ID!, $name: String, $items: [RecipeItemInput!]) {
+  updateRecipe(id: $id, name: $name, items: $items) {
+    id
+    name
+    items {
+      itemId
+      defaultAmount
+    }
+  }
+}
+
+mutation UpdateRecipeLastCookedAt($id: ID!) {
+  updateRecipeLastCookedAt(id: $id) {
+    id
+    lastCookedAt
+  }
+}
+
+mutation DeleteRecipe($id: ID!) {
+  deleteRecipe(id: $id)
+}
+
+mutation ConsumeRecipes($input: ConsumeRecipesInput!) {
+  consumeRecipes(input: $input) {
+    itemResults {
+      itemId
+      success
+      error
+    }
+    allSucceeded
+  }
+}

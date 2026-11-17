@@ -4,15 +4,17 @@ import {
   useRouterState,
 } from '@tanstack/react-router'
 import { ArrowLeft, ArrowUpFromLine, Check, Loader2, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { ItemSearchTail } from '@/components/item/ItemSearchTail'
+import { NoLocationsGate } from '@/components/location/NoLocationsGate'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
+import { ReadOnlyNote } from '@/components/shared/ReadOnlyNote'
 import { Toolbar } from '@/components/shared/Toolbar'
 import {
   AlertDialog,
@@ -39,6 +41,10 @@ import {
   useVendorCart,
   useVendors,
 } from '@/hooks'
+import {
+  useActiveLocationRights,
+  useCreateHere,
+} from '@/hooks/useActiveLocationRights'
 import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
@@ -53,11 +59,29 @@ import { sortItems } from '@/lib/sortUtils'
 import { isBeingBought, type PantryItem } from '@/types'
 
 export const Route = createFileRoute('/shopping/$vendorId')({
-  component: VendorCart,
+  component: VendorCartRoute,
 })
+
+// Households H5 task F.7: with no location, the page is not rendered at all
+// (`NoLocationsGate`), so none of its location-scoped reads run.
+function VendorCartRoute() {
+  return (
+    <NoLocationsGate>
+      <VendorCart />
+    </NoLocationsGate>
+  )
+}
 
 function VendorCart() {
   const { t } = useTranslation()
+  // Households H5: creating from search needs the catalog AND the location
+  // right; quick update and the cart need the location right (task F.6).
+  const { canCreate, createReadOnlyNote } = useCreateHere()
+  const { canEditHere, isViewerHere } = useActiveLocationRights()
+  // The disabled cart controls name the view-only note in
+  // `aria-describedby`. Only for a KNOWN viewer: the note renders only then,
+  // and an id that names nothing tells a screen reader nothing.
+  const viewOnlyNoteId = useId()
   const navigate = useNavigate()
   const { vendorId: vendorIdParam } = Route.useParams()
   const cartVendorId: string | null =
@@ -380,7 +404,11 @@ function VendorCart() {
           showTags={false}
           showTagSummary={false}
           isChecked={!!ci}
-          disabled={pendingItemIds.has(item.id) || !cart}
+          // A location viewer sees what is in the cart and how much, but
+          // cannot change it (households H5 task F.6)
+          disabled={pendingItemIds.has(item.id) || !cart || !canEditHere}
+          // and is told why: the controls point at the view-only note
+          controlsDescribedBy={isViewerHere ? viewOnlyNoteId : undefined}
           isPending={pendingItemIds.has(item.id)}
           {...(ci ? { controlAmount: ci.quantity } : {})}
           onCheckboxToggle={() => handleToggleCart(item)}
@@ -429,7 +457,8 @@ function VendorCart() {
           >
             {t('shopping.toolbar.cartCount', { count: cartTotal })}
           </span>
-          {cartItems.length > 0 && (
+          {/* No abandon and no checkout for a location viewer (H5 task F.6) */}
+          {canEditHere && cartItems.length > 0 && (
             <>
               <Button
                 size="icon"
@@ -457,6 +486,13 @@ function VendorCart() {
           )}
         </Toolbar>
 
+        {isViewerHere && (
+          <ReadOnlyNote
+            id={viewOnlyNoteId}
+            text={t('common.locationViewOnly')}
+          />
+        )}
+
         <ItemListToolbar
           className="bg-transparent border-none"
           sortBy={sortBy}
@@ -467,7 +503,16 @@ function VendorCart() {
           }}
           items={vendorScopedItems}
           recipes={recipes}
-          onCreateFromSearch={handleCreateFromSearch}
+          onCreateFromSearch={
+            // Creating here also stocks the item here: a catalog right AND a
+            // location right (households H5 tasks F.5 and F.6). No button,
+            // no Enter, and a note that says why.
+            canCreate ? handleCreateFromSearch : undefined
+          }
+          createReadOnlyNote={
+            // A viewer already sees the same reason above the list
+            isViewerHere ? undefined : createReadOnlyNote
+          }
           hasExactMatch={hasExactGlobalMatch}
           isCreating={createItem.isPending}
         />

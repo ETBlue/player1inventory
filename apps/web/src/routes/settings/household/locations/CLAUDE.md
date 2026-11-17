@@ -9,18 +9,71 @@ Location CRUD at `/settings/household/locations`. A **Location** is a place the 
 | | Local | Cloud |
 |---|---|---|
 | Default location | "My Home", `isDefault: true`, id `DEFAULT_LOCATION_ID = 'local'` | none. Rows carry no `isDefault`: the `GetLocations` document stopped selecting it. The server still declares the field until task 3.14 |
-| Can a row be deleted? | every row except the default. `LocationList` shows a `Lock` icon instead of the drag handle and a spacer instead of Delete, and `deleteLocation` (Dexie) throws if called anyway | every row. The server refuses to delete the household's **last** location with the error code `LAST_LOCATION` (decision H13) |
+| Can a row be deleted? | every row except the default. `LocationList` shows a `Lock` icon instead of the drag handle and a spacer instead of Delete, and `deleteLocation` (Dexie) throws if called anyway | every row, the household's **last** location too (since households H5 task F.7, owner answer O8). Until then the server refused the last one with the error code `LAST_LOCATION` (decision H13). With no location, Pantry, Shopping and Cooking show the empty screen (`NoLocationsGate`, see `routes/CLAUDE.md`) |
 | Fallback when the active id names no location | the `isDefault` row, then the first row | the **first** location. The server returns the list by `order` |
 
 `LocationList` locks a row only when `location.isDefault === true`. Never read the flag as a plain boolean: it is `undefined` on every cloud row.
+
+**The list shows every role's view (households H5 task F.3).** The page reads
+`useHouseholdLocations()`, not `useLocations()`. In cloud that is the
+`householdLocations` query: an owner or manager gets EVERY location of the
+household, with `myRole: null` where they have no role; a household member gets the
+same list as the switcher. The switcher keeps `useLocations()` (only locations with a
+role). What each row shows and allows:
+
+| | Who | Source |
+|---|---|---|
+| role text ("Organizer", "Participant", "Viewer"; `roles.location.*`) | cloud only (`showRoles`) | the row's `myRole` |
+| "No access" (`settings.locations.noAccess`) | cloud, a row with `myRole: null` | the row |
+| "No organizer" (`settings.locations.noOrganizer`) | cloud, a row with `hasOrganizer: false` | the row |
+| drag handle and Delete | household `owner` or `manager` (`canManageLocations`) | `usePermissions()` |
+| Rename | `organizer` of THAT location (`isOrganizerAt`) | `usePermissions()` |
+| Add | everyone (the server asks household `member`) | — |
+
+**A reorder sends every row of this list.** Since H5 task F.2 the server refuses a list
+that leaves out a location of the household (`BAD_USER_INPUT`), so an owner or manager
+with a "No access" row could not reorder until this page moved to `householdLocations`.
+`useReorderLocations` writes the server's answer into `GetLocations` and puts the
+cached `GetHouseholdLocations` rows in the order that was sent, because the answer holds
+only the caller's own locations. Create, rename and delete refetch
+`GetHouseholdLocations` by name.
+
+Rows are not links, so a "No access" row opens nothing. Location names render as stored.
+The role text has a visually hidden prefix, `settings.locations.yourRole` ("Your role:"), so
+a screen reader says "Kitchen, Your role: Viewer", not "Kitchen Viewer". The `<ul>` has no
+`role="list"`: Biome refuses it (`noRedundantRoles`), so Safari with VoiceOver may not
+announce it as a list.
+
+**A refused reorder shows a toast** (`handleReorder`), chosen by the error code. The hook
+(`useReorderLocations`) decides what to reload by the same code:
+
+| Error | Toast (`settings.locations.*`) | The hook reloads |
+|---|---|---|
+| `BAD_USER_INPUT` (the list was not the household's full set) | `reorderError`: "The location list changed. Reloading it now. Try again." | `GetHouseholdLocations` and `GetLocations` |
+| `FORBIDDEN` (no longer an owner or manager) | `reorderFailed`: "Could not save the new order. Please try again." | `GetHousehold`, so the drag handles go away |
+| `OfflineWriteError` | none from the page (the same rule as delete) | nothing |
+| anything else (a network error) | `reorderFailed` | nothing |
+
+No toast once the page has unmounted (a `mounted` ref): it would talk about a list the user
+no longer sees. The reload still runs. Until the review of H5 task F.4, every refusal except
+offline showed "… It has been reloaded …" and reloaded both lists, which was untrue for a
+network error or `FORBIDDEN`, and too early even for `BAD_USER_INPUT` (the reload had only
+started).
+
+**While the first cloud load runs, the page shows `LoadingSpinner`**, not the empty state.
+Before the review of H5 task F.3 it showed "No locations yet" until the list answered.
 
 **A failed delete shows a toast** (`handleDelete` in `index.tsx`). It reads the error code with `hasGraphQLErrorCode` (`src/lib/graphqlErrorCode.ts`), never the message text:
 
 | Error | Toast (`settings.locations.*`) |
 |---|---|
-| `LAST_LOCATION` | `deleteLastError`: "You cannot delete your last location. Add another location first." |
 | `OfflineWriteError` (cloud, no network) | none from the page. `offlineWriteLink` (`src/apollo/offlineWriteLink.ts`) has already shown `pwa.writeBlocked` before it rejects, so the page returns early instead of adding a second toast |
 | anything else (another code such as `FORBIDDEN`, a Dexie error) | `deleteError`: "Could not delete this location. Please try again." |
+
+Until households H5 task F.7 the table had a `LAST_LOCATION` row with its own text
+(`deleteLastError`, "You cannot delete your last location. Add another location first.").
+F.7 deleted the row and the key. An older server that still answers `LAST_LOCATION` (the
+deploy window) gets the general `deleteError`.
 
 Before task 3.12 the page called `deleteLocation.mutate(location.id)` with no `onError`, so a refused delete showed nothing.
 
@@ -36,11 +89,11 @@ Before task 3.12 the page called `deleteLocation.mutate(location.id)` with no `o
 
 Global `Item`s are **not** touched — an item stocked only in the deleted location survives as an orphan (see below). If the deleted location was the active one, `useActiveLocation` falls back to the **`isDefault`** location (local) because the stored id no longer matches any location.
 
-**Delete cascade (cloud).** Postgres `ON DELETE CASCADE` removes the location's `ItemStock` rows and — since PR 3a gave both tables a `locationId` with the same rule — its `Cart` rows (and their `CartItem`s, which cascade from `Cart`) and its `InventoryLog` rows. That matches what local mode deletes. What does NOT match is the client cache: the cloud mutation refetches only `GetLocations`, so `AllCarts` / `AllCartItems` / `ItemLogs` observers can still hold deleted rows. **No reader can reach those rows**, which is why they are not refetched — each of the three is narrowed by location before anything renders it (checked 2026-10-07; this had been recorded as an open gap). That narrowing is by LOCATION and so does not cover a household switch. See the comment on `useDeleteLocation` for why `PantryData` / `ItemStocksForItem` are deliberately left off that list.
+**Delete cascade (cloud).** Postgres `ON DELETE CASCADE` removes the location's `ItemStock` rows and — since PR 3a gave both tables a `locationId` with the same rule — its `Cart` rows (and their `CartItem`s, which cascade from `Cart`) and its `InventoryLog` rows. That matches what local mode deletes. What does NOT match is the client cache: the cloud mutation refetches only the two location lists (`GetLocations`, and `GetHouseholdLocations` by name since H5 task F.3), so `AllCarts` / `AllCartItems` / `ItemLogs` observers can still hold deleted rows. **No reader can reach those rows**, which is why they are not refetched — each of the three is narrowed by location before anything renders it (checked 2026-10-07; this had been recorded as an open gap). That narrowing is by LOCATION and so does not cover a household switch. See the comment on `useDeleteLocation` for why `PantryData` / `ItemStocksForItem` are deliberately left off that list.
 
 **Un-stocking one item** is the narrower counterpart, `removeItemFromLocation(itemId, locationId)` — see the "Orphan items" section below and `src/routes/items/CLAUDE.md` for the Stock-tab UI that calls it.
 
-**Hooks** (`src/hooks/useLocations.ts`): `useLocations`, `useCreateLocation`, `useUpdateLocation` (takes `{ id, updates }`), `useDeleteLocation`, `useReorderLocations`. **Dual-mode** — local reads/writes Dexie, cloud runs the `GetLocations` / `CreateLocation` / `UpdateLocation` / `DeleteLocation` / `ReorderLocations` operations. Two cloud-contract details are easy to get wrong: `UpdateLocationInput` is **name-only** (reordering must go through `useReorderLocations`, and the cloud branch throws on an `order` update rather than dropping it), and `reorderLocations` returns `[Location!]!`, whose result the cloud branch writes straight into the `GetLocations` cache entry. See `src/hooks/CLAUDE.md`.
+**Hooks** (`src/hooks/useLocations.ts`): `useLocations` (the switcher's list), `useHouseholdLocations` (this page's list, H5 task F.3), `useCreateLocation`, `useUpdateLocation` (takes `{ id, updates }`), `useDeleteLocation`, `useReorderLocations`; and `usePermissions` (`src/hooks/usePermissions.ts`) for who may drag, delete and rename. **Dual-mode** — local reads/writes Dexie, cloud runs the `GetLocations` / `GetHouseholdLocations` / `CreateLocation` / `UpdateLocation` / `DeleteLocation` / `ReorderLocations` operations. Two cloud-contract details are easy to get wrong: `UpdateLocationInput` is **name-only** (reordering must go through `useReorderLocations`, and the cloud branch throws on an `order` update rather than dropping it), and `reorderLocations` returns `[Location!]!`, whose result the cloud branch writes straight into the `GetLocations` cache entry. A refused reorder refetches both lists by name. See `src/hooks/CLAUDE.md`.
 
 **Active location** (`src/hooks/useActiveLocation.tsx`): a React Context exposing `{ activeLocationId, setActiveLocationId, activeLocation }`, persisted in localStorage under the per-mode key `active-location-id:<mode>`, falling back, when the stored id names none of the loaded ones, to the `isDefault` location in local mode and to the first location in cloud mode. `ActiveLocationProvider` is mounted in `__root.tsx`. It also bootstraps the location's shopping carts (`bootstrapCarts`) whenever the active id changes. See `src/hooks/CLAUDE.md` for the full list of hooks that thread it.
 
@@ -54,4 +107,4 @@ Global `Item`s are **not** touched — an item stocked only in the deleted locat
 
 **i18n**: `settings.locations.*` in `src/i18n/locales/{en,tw}.json`.
 
-**Tests**: `src/routes/settings/household/locations/index.test.tsx` (route, local), `index.cloud.test.tsx` (route, cloud: the `LAST_LOCATION` toast, the general one, and no second toast when offline), `index.stories.tsx` + `index.stories.test.tsx` (stories + smoke), location operations/cascade in `src/db/operations.test.ts`, E2E in `e2e/tests/location-switcher.spec.ts` and `e2e/tests/settings/locations.spec.ts`.
+**Tests**: `src/routes/settings/household/locations/index.test.tsx` (route, local, incl. no role text in local mode), `index.cloud.test.tsx` (route, cloud: deleting the last location, an older server's `LAST_LOCATION` getting the general toast, the general one, no second toast when offline, the roles of H5 task F.3, the reorder refusal and the loading state), `index.stories.tsx` + `index.stories.test.tsx` (stories + smoke), location operations/cascade in `src/db/operations.test.ts`, E2E in `e2e/tests/location-switcher.spec.ts` and `e2e/tests/settings/locations.spec.ts`.

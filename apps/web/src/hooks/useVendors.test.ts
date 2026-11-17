@@ -3,7 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_LOCATION_ID } from '@/types'
+import { callArgs } from '@/test/narrow'
 import {
   useCreateVendor,
   useDeleteVendor,
@@ -109,7 +109,7 @@ describe('useVendors (cloud mode)', () => {
 // ─── useCreateVendor ──────────────────────────────────────────────────────────
 
 describe('useCreateVendor (cloud mode)', () => {
-  it('user can create a vendor via Apollo in cloud mode', async () => {
+  it('user can create a vendor in a household with no location, and no location is sent', async () => {
     // Given cloud mode and Apollo mutation resolves
     localStorage.setItem('data-mode', 'cloud')
     mockCloudCreateVendor.mockResolvedValue({
@@ -127,17 +127,26 @@ describe('useCreateVendor (cloud mode)', () => {
     })
     const created = await result.current.mutateAsync('Costco')
 
-    // Then it delegates to cloudCreate, naming a location.
+    // Then it delegates to cloudCreate with NO `locationId`.
     //
-    // `createVendor(locationId:)` is `ID!` since PR 3b Task 4. The id here is
-    // the `'local'` sentinel, because no provider is mounted and setup.ts's
-    // `useApolloClient` stub returns no locations, so `useCloudLocationId`
-    // takes its documented degraded path. That makes this assertion a SHAPE
-    // check only — it cannot tell a call-time resolution from a render-time
-    // one. The fresh-session proof is in `useShoppingCart.cloud.test.tsx`.
+    // No provider is mounted, so the active id is the `'local'` sentinel, and
+    // setup.ts's `useApolloClient` stub returns no locations: the same answer
+    // as a household with no location (households H5 task F.7). Until the
+    // review of F.7 this sent `locationId: 'local'`, and the server refused
+    // the owner with FORBIDDEN. `createVendor(locationId:)` is optional since
+    // then. The resolver's own rules are pinned in `useCloudLocationId.test.tsx`;
+    // the fresh-session proof with a location is in
+    // `useShoppingCart.cloud.test.tsx`.
     expect(mockCloudCreateVendor).toHaveBeenCalledWith({
-      variables: { name: 'Costco', locationId: DEFAULT_LOCATION_ID },
+      variables: { name: 'Costco' },
     })
+    // `toHaveBeenCalledWith` treats `{ locationId: undefined }` as equal to
+    // no key at all, so the line above passes either way. This line checks
+    // that the KEY is absent, which is what the hook does. Measured: with
+    // `variables: { name, locationId }` the line above stays green and this
+    // one goes red. Review of task F.8, finding N2.
+    const [options] = callArgs(mockCloudCreateVendor.mock)
+    expect(Object.keys(options.variables)).toEqual(['name'])
     expect((created as { name: string } | undefined)?.name).toBe('Costco')
   })
 })

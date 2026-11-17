@@ -56,6 +56,10 @@
 //     reads this fake's own `Household` and `HouseholdMember` stores.
 //   - `location: { householdId }` on `LocationMember` — "the location rows of
 //     one household".
+//   - `user: { householdMemberships: { some: { householdId, role } } }` on
+//     `LocationMember` — "the person on this row is in that household"
+//     (households H5 task F.1, `hasOrganizer`). Read from this fake's own
+//     `HouseholdMember` store.
 //
 // Note that Prisma's `some` matches when AT LEAST ONE related row passes. So
 // `members: { some: { userId: X } }` is true for a household with X in it,
@@ -185,6 +189,16 @@ const LOCATION_MEMBER_WHERE: WhereSpec = {
     nested: {
       householdId: 'in',
       household: { nested: { members: MEMBERS_RELATION } },
+    },
+  },
+  // "The person on this row is a member of household X" (households H5 task
+  // F.1). `hasOrganizer` uses it: an organizer who left the household does
+  // not count (decision H18, about the ORGANIZER, not the caller).
+  user: {
+    nested: {
+      householdMemberships: {
+        nested: { some: { nested: { householdId: 'in', role: 'in' } } },
+      },
     },
   },
 }
@@ -351,6 +365,20 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     return true
   }
 
+  /**
+   * The `user` relation filter on a `LocationMember`:
+   * `user: { householdMemberships: { some: {...} } }`. True when at least one
+   * `HouseholdMember` row of THIS row's person passes `some`. The `User` row
+   * itself is not read: it lives in `userFake`, and the foreign key means it
+   * exists.
+   */
+  function userMatches(userId: string, where: Where): boolean {
+    const memberships = where.householdMemberships as Where | undefined
+    const some = memberships?.some as Where | undefined
+    if (some === undefined) return true
+    return state.householdMembers.some((m) => m.userId === userId && memberMatches(m, some))
+  }
+
   function locationMemberMatches(row: LocationMemberRow, where: Where): boolean {
     for (const [key, filter] of Object.entries(where)) {
       if (filter === undefined) continue
@@ -361,6 +389,10 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
       }
       if (key === 'location') {
         if (!locationMatches(row.locationId, filter as Where)) return false
+        continue
+      }
+      if (key === 'user') {
+        if (!userMatches(row.userId, filter as Where)) return false
         continue
       }
       if (!matchesScalar((row as unknown as Where)[key], filter)) return false
@@ -393,6 +425,9 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     const some = (household?.members as Where | undefined)?.some as Where | undefined
     // The members of a household carry HOUSEHOLD roles, not location roles.
     checkRoleFilter('LocationMember', some?.role, HOUSEHOLD_ROLES)
+    const user = where.user as Where | undefined
+    const userSome = (user?.householdMemberships as Where | undefined)?.some as Where | undefined
+    checkRoleFilter('LocationMember', userSome?.role, HOUSEHOLD_ROLES)
     // Fail now, not only when a row reaches the matcher.
     if (location !== undefined) locations('LocationMember')
   }

@@ -7,6 +7,7 @@ import { ThemeCard } from '@/components/settings/ThemeCard'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useDataMode } from '@/hooks/useDataMode'
 import { useLanguage } from '@/hooks/useLanguage'
+import { getE2ETestUserId } from '@/lib/e2eUser'
 import { formatDate } from '@/lib/formatDate'
 import { cn } from '@/lib/utils'
 
@@ -121,7 +122,9 @@ function AccountCardE2E({ compact }: { compact: boolean }) {
       rows={[
         {
           labelKey: 'settings.user.account.testUserId',
-          value: import.meta.env.VITE_E2E_TEST_USER_ID,
+          // The id this context really sends, so a two-browser spec sees
+          // each person's own id (households H5 task F.8).
+          value: getE2ETestUserId(),
         },
       ]}
     />

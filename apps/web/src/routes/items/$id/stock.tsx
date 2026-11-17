@@ -1,12 +1,16 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
+import { OfflineWriteError } from '@/apollo/offlineWriteLink'
 import type { ItemFormValues } from '@/components/item/ItemForm'
 import { ItemForm } from '@/components/item/ItemForm'
 import { LocationPager } from '@/components/item/LocationPager'
+import { NoLocationsGate } from '@/components/location/NoLocationsGate'
 import { DeleteButton } from '@/components/shared/DeleteButton'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
+import { ReadOnlyNote } from '@/components/shared/ReadOnlyNote'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,6 +36,8 @@ import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useItemLayout } from '@/hooks/useItemLayout'
 import { useItemStocks } from '@/hooks/useItemStocks'
 import { useLocations } from '@/hooks/useLocations'
+import { usePermissions } from '@/hooks/usePermissions'
+import { hasGraphQLErrorCode } from '@/lib/graphqlErrorCode'
 import type { ItemStock, Location, PantryItem, StockFields } from '@/types'
 
 export const Route = createFileRoute('/items/$id/stock')({
@@ -142,9 +148,12 @@ function buildStockUpdates(values: ItemFormValues): ItemUpdatePayload {
 function StockFormPanel({
   item,
   locationId,
+  readOnly,
 }: {
   item: PantryItem
   locationId?: string
+  /** A location `viewer` of this page's location (households H5 task F.6). */
+  readOnly: boolean
 }) {
   const updateItem = useUpdateItem()
   const { registerDirtyState } = useItemLayout()
@@ -175,6 +184,7 @@ function StockFormPanel({
       onDirtyChange={registerDirtyState}
       savedAt={savedAt}
       isPending={updateItem.isPending}
+      readOnly={readOnly}
     />
   )
 }
@@ -261,6 +271,11 @@ function StockTab({ itemId }: { itemId: string }) {
   const { isDirty, registerDirtyState } = useItemLayout()
   const addItemToLocation = useAddItemToLocation()
   const removeItemFromLocation = useRemoveItemFromLocation()
+  // Each page follows the caller's role at THAT page's location, not at the
+  // active one (households H5 task F.6). Saving stock and adding the item to
+  // a location ask `participant`; removing it asks `organizer`, because the
+  // removal deletes other people's logs (H3a). Local mode allows everything.
+  const { canEditLocation, isOrganizerAt, roleAt } = usePermissions()
 
   const panelId = useId()
   const tabIdPrefix = useId()
@@ -322,8 +337,28 @@ function StockTab({ itemId }: { itemId: string }) {
     // form left dirty would otherwise keep the tab guard armed for edits that
     // no longer exist anywhere.
     registerDirtyState(false)
-    await removeItemFromLocation.mutateAsync({ itemId, locationId: viewed.id })
+    try {
+      await removeItemFromLocation.mutateAsync({
+        itemId,
+        locationId: viewed.id,
+      })
+    } catch (err) {
+      // Caught so a refusal is not an unhandled rejection. The confirmation
+      // closes; the stock is unchanged, and the toast says why.
+      // Offline: `offlineWriteLink` has already shown its own toast.
+      if (err instanceof OfflineWriteError) return
+      toast.error(
+        t(
+          hasGraphQLErrorCode(err, 'FORBIDDEN')
+            ? 'items.detail.locationPager.removeForbidden'
+            : 'items.detail.locationPager.removeFailed',
+          { name: item.name, location: viewed.name },
+        ),
+      )
+    }
   }
+
+  const canEditHere = canEditLocation(viewed.id)
 
   return (
     <div className="p-4 pb-16 bg-background-elevated min-h-[100cqh]">
@@ -347,21 +382,31 @@ function StockTab({ itemId }: { itemId: string }) {
             }
           : {})}
       >
+        {/* A viewer sees the numbers, and why they cannot change them */}
+        {roleAt(viewed.id) === 'viewer' && (
+          <ReadOnlyNote
+            className="px-0 max-w-2xl mx-auto"
+            text={t('common.locationViewOnly')}
+          />
+        )}
         {stock ? (
           <>
             <StockFormPanel
               key={viewed.id}
               item={withLocationStock(item, stock)}
               locationId={viewed.id}
+              readOnly={!canEditHere}
             />
-            <div className="max-w-2xl mx-auto">
-              <RemoveFromLocationButton
-                itemId={itemId}
-                itemName={item.name}
-                location={viewed}
-                onRemove={handleRemove}
-              />
-            </div>
+            {isOrganizerAt(viewed.id) && (
+              <div className="max-w-2xl mx-auto">
+                <RemoveFromLocationButton
+                  itemId={itemId}
+                  itemName={item.name}
+                  location={viewed}
+                  onRemove={handleRemove}
+                />
+              </div>
+            )}
           </>
         ) : (
           <div className="max-w-2xl mx-auto">
@@ -373,13 +418,15 @@ function StockTab({ itemId }: { itemId: string }) {
               )}
             />
             <div className="flex flex-col items-center gap-2">
-              <Button
-                type="button"
-                onClick={handleAdd}
-                disabled={addItemToLocation.isPending}
-              >
-                {t('items.detail.locationPager.addToLocation')}
-              </Button>
+              {canEditHere && (
+                <Button
+                  type="button"
+                  onClick={handleAdd}
+                  disabled={addItemToLocation.isPending}
+                >
+                  {t('items.detail.locationPager.addToLocation')}
+                </Button>
+              )}
               {addFailed && (
                 <p
                   role="alert"
@@ -423,7 +470,14 @@ function StockTab({ itemId }: { itemId: string }) {
   )
 }
 
+// Households H5, review of task F.7: with no location the tab shows the
+// empty locations screen. Before, `viewed` was undefined and the tab rendered
+// nothing at all.
 function ItemStockTab() {
   const { id } = Route.useParams()
-  return <StockTab itemId={id} />
+  return (
+    <NoLocationsGate>
+      <StockTab itemId={id} />
+    </NoLocationsGate>
+  )
 }

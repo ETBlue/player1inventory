@@ -114,6 +114,17 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   ]
   return {
     ...original,
+    // `useItems` reads the catalog from `GetItems` in a household with no
+    // location (households H5, review of task F.7). This factory replaces
+    // setup.ts's, so it must stub that hook too: the real one needs an
+    // ApolloProvider even when skipped.
+    useGetItemsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+      networkStatus: 7,
+      refetch: () => Promise.resolve(),
+    }),
     // `useLocations` is dual-mode, so it calls `useGetLocationsQuery` in BOTH
     // modes (skipped in local). This per-file factory REPLACES the one in
     // `src/test/setup.ts` rather than layering on it, so the location stubs
@@ -121,6 +132,10 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     // provider. Placed right after `...original` so this file's own overrides
     // below still win.
     useGetLocationsQuery: () => mockUseGetLocationsQuery(),
+    // `usePermissions` (households H5 task F.6) reads the household role. In
+    // local mode the hook skips it; in cloud mode no role arrives, so the
+    // location roles from `GetLocations` decide alone.
+    useGetHouseholdQuery: queryStub,
     useCreateLocationMutation: () => [
       vi.fn().mockResolvedValue({ data: undefined }),
       {},

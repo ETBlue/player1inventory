@@ -9,8 +9,10 @@ import {
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
 import { createRecipe } from '@/db/operations'
+import { GetRecipesDocument } from '@/generated/graphql'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
+import { CloudRolePage, cloudRoleStorySetup } from '@/test/cloudRoleStory'
 
 const meta = {
   title: 'Pages/Settings/Recipe',
@@ -107,4 +109,36 @@ export const Default: Story = {
 
 export const WithRecipes: Story = {
   render: () => <WithRecipesStory />,
+}
+
+// Households H5 task F.5. A household `member` in cloud mode: the recipes are listed, with no "New Recipe" and no Delete.
+const memberRecipeMocks = [
+  {
+    request: { query: GetRecipesDocument },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: {
+      data: {
+        recipes: [
+          {
+            __typename: 'Recipe',
+            id: 'recipe-story-pancakes',
+            name: 'Pancakes',
+            items: [],
+            lastCookedAt: null,
+          },
+        ],
+      },
+    },
+  },
+]
+
+export const MemberReadOnly: Story = {
+  beforeEach: cloudRoleStorySetup,
+  render: () => (
+    <CloudRolePage
+      path="/settings/household/recipes"
+      householdRole="member"
+      mocks={memberRecipeMocks}
+    />
+  ),
 }

@@ -3,11 +3,13 @@ import { ArrowLeft, Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { ReadOnlyNote } from '@/components/shared/ReadOnlyNote'
 import { Toolbar } from '@/components/shared/Toolbar'
 import { Button } from '@/components/ui/button'
 import { NewVendorDialog } from '@/components/vendor/NewVendorDialog'
 import { VendorCard } from '@/components/vendor/VendorCard'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
 import { useVendorItemCounts } from '@/hooks/useVendorItemCounts'
 import { useDeleteVendor, useVendors } from '@/hooks/useVendors'
@@ -23,6 +25,12 @@ function VendorSettings() {
   const { data: vendors = [], isLoading } = useVendors()
   const deleteVendor = useDeleteVendor()
   const vendorCounts = useVendorItemCounts()
+  // A household member sees the vendors read-only (households H5 task F.5).
+  const { canEditCatalog, roleKnown } = usePermissions()
+  // Only once the role is known (`roleKnown`): while it loads, or when
+  // `GetHousehold` failed, `canEditCatalog` is false for every role, and the
+  // note would tell an owner they cannot edit.
+  const showReadOnlyNote = roleKnown && !canEditCatalog
 
   // Scroll restoration: save on unmount, restore after data loads
   const currentUrl = useRouterState({
@@ -54,20 +62,28 @@ function VendorSettings() {
           </Button>
           <h1>{t('settings.vendors.label')}</h1>
         </div>
-        <Button onClick={() => setOpen(true)}>
-          <Plus className="h-4 w-4" />
-          {t('settings.vendors.newButton')}
-        </Button>
+        {canEditCatalog && (
+          <Button onClick={() => setOpen(true)}>
+            <Plus className="h-4 w-4" />
+            {t('settings.vendors.newButton')}
+          </Button>
+        )}
       </Toolbar>
 
       <div
         ref={scrollRef}
         className="overflow-y-auto [container-type:size] space-y-px pb-4"
       >
+        {/* Why there is no add, edit or delete (H5 task F.5) */}
+        {showReadOnlyNote && sortedVendors.length > 0 && <ReadOnlyNote />}
         {sortedVendors.length === 0 ? (
           <EmptyState
             title={t('settings.vendors.empty.title')}
-            description={t('settings.vendors.empty.description')}
+            description={
+              !showReadOnlyNote
+                ? t('settings.vendors.empty.description')
+                : t('settings.catalogReadOnly')
+            }
           />
         ) : (
           sortedVendors.map((vendor) => (
@@ -75,7 +91,9 @@ function VendorSettings() {
               key={vendor.id}
               vendor={vendor}
               itemCount={vendorCounts.get(vendor.id) ?? 0}
-              onDelete={() => deleteVendor.mutate(vendor.id)}
+              {...(canEditCatalog && {
+                onDelete: () => deleteVendor.mutate(vendor.id),
+              })}
             />
           ))
         )}

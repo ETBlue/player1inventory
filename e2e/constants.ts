@@ -29,9 +29,13 @@ export const E2E_USER_ID = 'e2e-test-user'
  * value needs no registration anywhere — it only has to differ from
  * `E2E_USER_ID`.
  *
- * **The browser can never be this user.** `VITE_E2E_TEST_USER_ID` is baked
- * into the web build as a single value (`playwright.config.ts`), so a spec
- * using this constant must drive GraphQL directly and open no page.
+ * **The project's own `page` is always `E2E_USER_ID`.** `VITE_E2E_TEST_USER_ID`
+ * is baked into the web build as one value (`playwright.config.ts`). Since
+ * households H5 task F.8 a spec can still open a browser as another user:
+ * `newUserContext(browser, userId)` (`helpers/userContext.ts`) makes a new
+ * context that sets `localStorage['e2e-user-id']`, which only the E2E build
+ * reads (`getE2ETestUserId` in apps/web/src/lib/e2eUser.ts). Ids built from
+ * this constant (`${E2E_SECOND_USER_ID}-…`) work the same way.
  *
  * Any spec that writes as this user MUST also tear it down —
  * `cleanupCloudData(request, E2E_SECOND_USER_ID)` in both `beforeEach` and

@@ -8,7 +8,11 @@ import type { Vendor } from '@/types'
 interface VendorCardProps {
   vendor: Vendor
   itemCount?: number
-  onDelete: () => void
+  /**
+   * Left out for a household member, who may not delete vendors (households
+   * H5 task F.5). The card then has no Delete button.
+   */
+  onDelete?: () => void
 }
 
 export function VendorCard({ vendor, itemCount, onDelete }: VendorCardProps) {
@@ -31,24 +35,26 @@ export function VendorCard({ vendor, itemCount, onDelete }: VendorCardProps) {
           {t('settings.vendors.itemCount', { count: itemCount })}
         </CardMetadata>
       )}
-      <DeleteButton
-        trigger={<Trash2 className="h-4 w-4" />}
-        buttonVariant="destructive-ghost"
-        buttonSize="icon"
-        buttonAriaLabel={t('settings.vendors.deleteAriaLabel', {
-          name: vendor.name,
-        })}
-        dialogTitle={t('settings.vendors.deleteTitle')}
-        dialogDescription={
-          (itemCount ?? 0) > 0
-            ? t('settings.vendors.deleteWithItems', {
-                name: vendor.name,
-                count: itemCount ?? 0,
-              })
-            : t('settings.vendors.deleteNoItems', { name: vendor.name })
-        }
-        onDelete={onDelete}
-      />
+      {onDelete && (
+        <DeleteButton
+          trigger={<Trash2 className="h-4 w-4" />}
+          buttonVariant="destructive-ghost"
+          buttonSize="icon"
+          buttonAriaLabel={t('settings.vendors.deleteAriaLabel', {
+            name: vendor.name,
+          })}
+          dialogTitle={t('settings.vendors.deleteTitle')}
+          dialogDescription={
+            (itemCount ?? 0) > 0
+              ? t('settings.vendors.deleteWithItems', {
+                  name: vendor.name,
+                  count: itemCount ?? 0,
+                })
+              : t('settings.vendors.deleteNoItems', { name: vendor.name })
+          }
+          onDelete={onDelete}
+        />
+      )}
     </Card>
   )
 }

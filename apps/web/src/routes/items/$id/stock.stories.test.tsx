@@ -30,6 +30,8 @@ const { CLOUD_ITEM, CLOUD_LOCATIONS, CLOUD_STOCKS } = vi.hoisted(() => ({
       order: 0,
       createdAt: '2026-08-01T10:00:00.000Z',
       updatedAt: '2026-08-01T10:00:00.000Z',
+      // The Stock tab follows the location role (households H5 task F.6)
+      myRole: 'organizer',
     },
     {
       id: 'cloud-garage',
@@ -37,6 +39,8 @@ const { CLOUD_ITEM, CLOUD_LOCATIONS, CLOUD_STOCKS } = vi.hoisted(() => ({
       order: 1,
       createdAt: '2026-08-01T10:00:00.000Z',
       updatedAt: '2026-08-01T10:00:00.000Z',
+      // The Stock tab follows the location role (households H5 task F.6)
+      myRole: 'organizer',
     },
   ],
   CLOUD_STOCKS: [

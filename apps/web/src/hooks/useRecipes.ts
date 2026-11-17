@@ -25,7 +25,7 @@ import { deserializeRecipe } from '@/lib/deserialization'
 import { consumeItem, getPackedTotal } from '@/lib/quantityUtils'
 import type { Recipe, RecipeItem } from '@/types'
 import { useActiveLocation } from './useActiveLocation'
-import { useCloudLocationId } from './useCloudLocationId'
+import { useRequiredCloudLocationId } from './useCloudLocationId'
 import { useDataMode } from './useDataMode'
 
 export function useRecipes() {
@@ -362,7 +362,7 @@ export function useConsumeRecipes() {
   // is `ID!` since PR 3b Task 4 and the server asks for the `participant` location role on it,
   // so the `'local'` sentinel of a fresh cloud session would lose the whole
   // cook to FORBIDDEN. See `useCloudLocationId`.
-  const resolveCloudLocationId = useCloudLocationId()
+  const resolveCloudLocationId = useRequiredCloudLocationId()
 
   return useMutation({
     mutationFn: async (input: ConsumeRecipesArgs) => {

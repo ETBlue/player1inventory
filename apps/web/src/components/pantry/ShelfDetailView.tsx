@@ -12,6 +12,10 @@ import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { ShelfFilterPicksDialog } from '@/components/shelf/ShelfFilterPicksDialog'
 import { Button } from '@/components/ui/button'
 import { useCreateItem, useStockedItems, useUpdateItem } from '@/hooks'
+import {
+  useActiveLocationRights,
+  useCreateHere,
+} from '@/hooks/useActiveLocationRights'
 import { useApplyShelfFilterPicks } from '@/hooks/useApplyShelfFilterPicks'
 import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
@@ -47,6 +51,10 @@ interface ShelfDetailViewProps {
 
 export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
   const { t } = useTranslation()
+  // Households H5: creating from search needs the catalog AND the location
+  // right; quick update and the cart need the location right (task F.6).
+  const { canCreate, createReadOnlyNote } = useCreateHere()
+  const { canEditHere } = useActiveLocationRights()
   const navigate = useNavigate()
   const isUnsorted = shelfId === 'unsorted'
 
@@ -434,7 +442,13 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
           items={inShelfItems}
           vendors={vendors}
           recipes={recipes}
-          onCreateFromSearch={handleCreateFromSearch}
+          onCreateFromSearch={
+            // Creating here also stocks the item here: a catalog right AND a
+            // location right (households H5 tasks F.5 and F.6). No button,
+            // no Enter, and a note that says why.
+            canCreate ? handleCreateFromSearch : undefined
+          }
+          createReadOnlyNote={createReadOnlyNote}
           hasExactMatch={hasExactGlobalMatch}
           isCreating={createItem.isPending}
           leading={
@@ -502,7 +516,10 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
                 showTags={isTagsVisible}
                 disabled={pendingItemIds.has(item.id)}
                 isPending={pendingItemIds.has(item.id)}
-                onQuickUpdate={() => setQuickUpdateItemId(item.id)}
+                // A location viewer may not change the stock (households H5 task F.6)
+                {...(canEditHere && {
+                  onQuickUpdate: () => setQuickUpdateItemId(item.id),
+                })}
               />
             )
 

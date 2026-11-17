@@ -12,6 +12,7 @@ import { vendorResolvers } from './vendor.resolver.js'
 import { shelfResolvers } from './shelf.resolver.js'
 import { householdResolvers } from './household.resolver.js'
 import { liveResolvers } from './live.resolver.js'
+import { forgetRolesAroundEach } from '../lib/mutationRoleCache.js'
 
 const resolversObject: Resolvers = {
   Query: {
@@ -28,7 +29,9 @@ const resolversObject: Resolvers = {
     ...householdResolvers.Query,
     ...importCheckResolvers.Query,
   },
-  Mutation: {
+  // Every root mutation field forgets the role caches before and after it
+  // runs (lib/mutationRoleCache.ts), so no resolver has to remember to.
+  Mutation: forgetRolesAroundEach({
     ...itemResolvers.Mutation,
     ...tagResolvers.Mutation,
     ...vendorResolvers.Mutation,
@@ -40,10 +43,11 @@ const resolversObject: Resolvers = {
     ...locationResolvers.Mutation,
     ...itemStockResolvers.Mutation,
     ...householdResolvers.Mutation,
-  },
+  }),
   Recipe: recipeResolvers.Recipe,
   InventoryLog: inventoryLogResolvers.InventoryLog,
   Cart: cartResolvers.Cart,
+  Location: locationResolvers.Location,
   Subscription: liveResolvers.Subscription,
 }
 

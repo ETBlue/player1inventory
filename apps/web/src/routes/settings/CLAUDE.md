@@ -143,6 +143,10 @@ untouched. Plurals follow the surrounding style: `filterCount === 1 ? 'filter' :
 The pantry `ShelfList` / `GroupCard` surface is unrelated and unchanged — the
 filter count lives only on the settings page row.
 
+### Shelves for a household member (cloud, households H5 task F.5)
+
+There is no shelves `CLAUDE.md`, so the member rules are here. A household `member` gets no Add shelf, no delete and no drag handles on `/settings/household/shelves`, with the `settings.catalogReadOnly` note above the list. The shelf Info tab is read only with the `settings.catalogReadOnlyItem` note. The Items tab checkboxes are disabled. On a filter shelf's Filters tab every badge (tag, vendor, recipe) shows what is selected, is `aria-disabled`, and a press writes nothing. No note shows while `usePermissions().roleKnown` is `false`. Tests: `routes/settings/household/catalogReadOnly.test.tsx`, `catalogDetailReadOnly.test.tsx`, `catalogItemsReadOnly.test.tsx`.
+
 ### Shelf filters tab shows global counts
 
 `settings/household/shelves/$shelfId/filters.tsx` renders ` (N)` after every tag, vendor
@@ -169,7 +173,7 @@ Deleting a tag, tag type, or vendor automatically cleans up all item references:
 - **Delete tag** → removes tag from all item `tagIds` arrays (+ bumps `updatedAt`)
 - **Delete tag type** → deletes all child tags (which cascade to items), then deletes the type
 - **Delete vendor** → removes vendor from all item `vendorIds` arrays (+ bumps `updatedAt`)
-- **Delete location** → deletes that location's `ItemStock` rows, its `inventoryLogs`, and its carts + cart items; in local mode the location flagged `isDefault` cannot be deleted. Cloud has no default location (households task 3.12): any location can be deleted except the household's last one, which the server refuses with `LAST_LOCATION`. Global `Item`s survive — see `settings/household/locations/CLAUDE.md`
+- **Delete location** → deletes that location's `ItemStock` rows, its `inventoryLogs`, and its carts + cart items; in local mode the location flagged `isDefault` cannot be deleted. Cloud has no default location (households task 3.12): any location can be deleted, the household's last one too since households H5 task F.7 (before, the server refused it with `LAST_LOCATION`). Global `Item`s survive — see `settings/household/locations/CLAUDE.md`
 
 **Local mode:** Cascade logic lives in `src/db/operations.ts` (`deleteTag`, `deleteTagType`, `deleteVendor`). The hooks (`useDeleteTag`, `useDeleteTagType`, `useDeleteVendor`) also invalidate the `['items']` query cache after deletion.
 

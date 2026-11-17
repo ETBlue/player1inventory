@@ -178,10 +178,10 @@ model Cart {
   // local mode: deleteLocation in apps/web/src/db/operations.ts:1215 deletes
   // the location's carts and their cart items. CartItem already cascades from
   // Cart, so one cascade removes both. Restrict was the alternative and is
-  // worse here: deleteLocation refuses only the household's last location
-  // (it refused only the default one until households H3a), so Restrict would
-  // turn deleting any location with a cart into a raw P2003
-  // foreign-key error the resolver does not handle.
+  // worse here: deleteLocation refuses no location since households H5 task
+  // F.7 (it refused the household's last one from H3a, and only the default
+  // one before that), so Restrict would turn deleting any location with a
+  // cart into a raw P2003 foreign-key error the resolver does not handle.
   locationId      String
   lastPurchasedAt DateTime?
 

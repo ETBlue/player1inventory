@@ -5,6 +5,18 @@ import * as useTagsModule from '@/hooks/useTags'
 import { TagColor } from '@/types'
 
 // Mock modules that require router/db context not available in unit tests
+// This file renders the page with no QueryClient and a mocked
+// `@/db/operations`, so the real `usePermissions` (which reads the location
+// list) cannot run here. Local mode allows everything; the role rules are
+// tested in `routes/settings/household/catalogReadOnly.test.tsx`.
+vi.mock('@/hooks/usePermissions', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/hooks/usePermissions')>()
+  return {
+    ...real,
+    usePermissions: () => real.permissionsFor({ mode: 'local' }),
+  }
+})
+
 vi.mock('@/hooks/useAppNavigation', () => ({
   useAppNavigation: () => ({ goBack: vi.fn() }),
 }))

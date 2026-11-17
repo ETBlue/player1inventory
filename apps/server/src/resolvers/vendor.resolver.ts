@@ -4,6 +4,8 @@ import {
   requireLocationInHousehold,
   requireLocationRole,
   requireOwnRowOrUnclaimed,
+  roleAtLeast,
+  type LocationRole,
 } from '../lib/authz.js'
 import { cartIdFor, parseCartId } from '@p1i/types'
 import { prisma } from '../lib/prisma.js'
@@ -21,7 +23,8 @@ import type { Resolvers, Vendor } from '../generated/graphql.js'
 // Live events (households H3c-2 task D.4): every write sends a
 // household-level `CATALOG` event after it has saved, for the household
 // `requireCatalogRole` returned. `createVendor` and `deleteVendor` also send
-// `CART`, because they make or delete carts.
+// `CART`, because they make or delete carts (`createVendor` only when it
+// made one: not for a location viewer, since households H5).
 export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
   Query: {
     vendors: async (_, __, ctx) => {
@@ -30,28 +33,51 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     },
   },
   Mutation: {
-    // `locationId` is REQUIRED since PR 3b Task 4. There is no default-location
-    // fallback any more: the web client sends the active location, so a vendor
-    // created while viewing the Garage gets its cart in the Garage.
+    // `locationId` is OPTIONAL since households H5 (review of task F.7). It
+    // was required from PR 3b Task 4. There is still no default-location
+    // fallback: when the web knows a location it sends the active one, so a
+    // vendor created while viewing the Garage gets its cart in the Garage.
+    // When the household has NO location (an empty household is real since
+    // F.7), the web sends none, and the vendor is written with no cart.
     createVendor: async (_, { name, locationId }, ctx) => {
       requireAuth(ctx)
 
-      // Three checks, because this mutation writes at two levels: a Vendor in
-      // the household's catalog needs household role `manager`, and a Cart
-      // row at the location needs location role `participant` (not `viewer`).
-      // The location id arrives from the client, so it goes through the
-      // authorization seam (lib/authz.ts) before it reaches any query.
+      // This mutation writes at two levels. The Vendor is a catalog row and
+      // needs household role `manager`. The Cart it pre-creates is a location
+      // row and needs location role `participant`.
       //
-      // The third check: the location must be in the SAME household as the
-      // vendor (households H4 task E.3, decision T14, issue #381 gap 2). A
-      // person in households A and B holds roles in both, so the role check
-      // alone would let them make a vendor of A with its cart at a location of
-      // B. The role check runs first, so a caller with no role learns nothing
-      // about which household a location is in. Both refuse with FORBIDDEN,
-      // and both run before any write.
+      // Since households H5 (review of task F.6) the location role decides
+      // only the CART, not the vendor. A household manager who is a `viewer`
+      // of the active location gets the vendor and no cart. Before that the
+      // whole mutation asked `participant` and was refused, so the vendor
+      // dialog stayed open with no message.
+      //
+      // When a location is named, the location check still asks `viewer`,
+      // not nothing:
+      // - it reads the caller's role there in the same query, which decides
+      //   the cart below;
+      // - it runs BEFORE `requireLocationInHousehold`, so a caller with no
+      //   role on a location learns nothing about which household it is in;
+      // - a location the caller has no role on is refused, the same as
+      //   before. The web sends only a location from the switcher, which
+      //   lists only locations with a role.
+      //
+      // When no location is named, only the household role is checked, no
+      // cart is written, and only `CATALOG` is sent. Before this the web sent
+      // the `'local'` sentinel in an empty household, and an owner was told
+      // "Only a household owner or manager can add a vendor."
+      //
+      // `requireLocationInHousehold` (households H4 task E.3, decision T14,
+      // issue #381 gap 2): a person in households A and B holds roles in
+      // both, so the role check alone would let them make a vendor of A with
+      // its cart at a location of B. All three checks refuse with FORBIDDEN,
+      // and all run before any write.
       const householdId = await requireCatalogRole(ctx, 'manager')
-      await requireLocationRole(ctx, locationId, 'participant')
-      await requireLocationInHousehold(ctx, locationId, householdId)
+      let role: LocationRole | null = null
+      if (locationId != null) {
+        role = (await requireLocationRole(ctx, locationId, 'viewer')).role
+        await requireLocationInHousehold(ctx, locationId, householdId)
+      }
 
       const vendor = await prisma.vendor.create({ data: { name, householdId } })
 
@@ -60,22 +86,31 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // other locations get this vendor's cart from the `bootstrapCarts`
       // mutation (cart.resolver.ts) when they become active. It is NOT done
       // lazily from a read path; local mode's comment says why.
-      await prisma.cart.upsert({
-        where: { id: cartIdFor(locationId, vendor.id) },
-        create: {
-          id: cartIdFor(locationId, vendor.id),
-          locationId,
-        },
-        update: {},
-      })
-      // `CATALOG` for the new vendor; `CART` for the cart at `locationId`.
-      // The cart is empty, but `bootstrapCarts` sends `CART` for the empty
-      // carts it makes too, so both behave the same. The location is passed
-      // without a household, so `publishChange` reads the LOCATION's
-      // household. Since households H4 task E.3 that is always `householdId`,
-      // because `requireLocationInHousehold` above refuses any other.
+      //
+      // Only for `participant` or higher. For a viewer no cart is written:
+      // `vendorCart` returns an unsaved empty cart for a viewer, and
+      // `bootstrapCarts` makes the row when a participant opens the location.
+      const cartLocationId =
+        locationId != null && role !== null && roleAtLeast(role, 'participant') ? locationId : null
+      if (cartLocationId !== null) {
+        await prisma.cart.upsert({
+          where: { id: cartIdFor(cartLocationId, vendor.id) },
+          create: {
+            id: cartIdFor(cartLocationId, vendor.id),
+            locationId: cartLocationId,
+          },
+          update: {},
+        })
+      }
+      // `CATALOG` for the new vendor. `CART` only when a cart was written
+      // at `locationId` (never when no location was named). The cart is empty, but `bootstrapCarts` sends `CART`
+      // for the empty carts it makes too, so both behave the same. The
+      // location is passed without a household, so `publishChange` reads the
+      // LOCATION's household. Since households H4 task E.3 that is always
+      // `householdId`, because `requireLocationInHousehold` above refuses any
+      // other.
       await publishHouseholdChange(ctx, ['CATALOG'], householdId)
-      await publishChange(ctx, ['CART'], [{ locationId }])
+      if (cartLocationId !== null) await publishChange(ctx, ['CART'], [{ locationId: cartLocationId }])
       return vendor as unknown as Vendor
     },
     // The row is checked by `requireOwnRowOrUnclaimed` (lib/authz.ts), which

@@ -1,4 +1,4 @@
-import type { Locator, Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 import { withSteps } from './step'
 
 // The per-location stock form on the item-detail Stock tab
@@ -14,6 +14,18 @@ export class StockFormPage {
 
   async navigateTo(itemId: string) {
     await this.page.goto(`/items/${itemId}/stock`)
+    // Wait until the form can be edited. Since households H5 task F.6 the
+    // stock form is `readonly` until the caller's location role is known.
+    // Keys typed in that moment are lost. Found 2026-11-17 in task F.7's
+    // cloud run: the decimal test typed into a `readonly` Unpacked field and
+    // read "0" (it passed when run alone).
+    //
+    // Since the review of F.7 the location right waits only for
+    // `GetLocations`, not for `GetHousehold` too, so the window is shorter.
+    // It is not gone: every E2E test starts with a cold Apollo cache, and the
+    // form stays `readonly` until `GetLocations` answers. So the wait stays.
+    // Every test that uses this page object is a person who may edit.
+    await expect(this.getPackedInput()).toBeEditable()
   }
 
   getPackedInput(): Locator {

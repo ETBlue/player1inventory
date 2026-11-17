@@ -1,3 +1,6 @@
+# The location switcher's list: only locations where the caller has a role.
+# `myRole` is the caller's role there (households H5 task F.1). An export
+# never writes it: `toLocationInput` in lib/importData.ts is an allow-list.
 query GetLocations {
   locations {
     id
@@ -5,9 +8,29 @@ query GetLocations {
     order
     createdAt
     updatedAt
+    myRole
   }
 }
 
+# The settings list (households H5 task F.1). An owner or manager gets every
+# location of the household, with `myRole` null where they have no role. A
+# household member gets the same list as GetLocations.
+query GetHouseholdLocations {
+  householdLocations {
+    id
+    name
+    order
+    myRole
+    hasOrganizer
+  }
+}
+
+# The three location mutations below select every field of GetLocations AND
+# of GetHouseholdLocations. Their result is merged into the cached `Location`
+# entity, and `useReorderLocations` writes its list straight into
+# GetLocations. A field the query selects but the result lacks makes the
+# cached query incomplete, so Apollo reads it as missing. Checked by
+# `src/apollo/locationSelections.test.ts`.
 mutation CreateLocation($name: String!) {
   createLocation(name: $name) {
     id
@@ -15,6 +38,8 @@ mutation CreateLocation($name: String!) {
     order
     createdAt
     updatedAt
+    myRole
+    hasOrganizer
   }
 }
 
@@ -25,6 +50,8 @@ mutation UpdateLocation($id: ID!, $input: UpdateLocationInput!) {
     order
     createdAt
     updatedAt
+    myRole
+    hasOrganizer
   }
 }
 
@@ -39,5 +66,7 @@ mutation ReorderLocations($orderedIds: [ID!]!) {
     order
     createdAt
     updatedAt
+    myRole
+    hasOrganizer
   }
 }

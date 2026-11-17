@@ -17,6 +17,7 @@ import { db } from './db'
 import { bootstrapCarts } from './db/operations'
 import type { DataMode } from './lib/dataMode'
 import { DATA_MODE_STORAGE_KEY, DEFAULT_DATA_MODE } from './lib/dataMode'
+import { getE2ETestUserId } from './lib/e2eUser'
 import { unregisterAllServiceWorkers } from './lib/unregisterServiceWorker'
 import { routeTree } from './routeTree.gen'
 
@@ -60,9 +61,12 @@ if (!rootElement) throw new Error('Root element not found')
 const root = createRoot(rootElement)
 
 function renderApp() {
-  const e2eTestUserId = import.meta.env.VITE_E2E_TEST_USER_ID as
-    | string
-    | undefined
+  // The build-time E2E user, or the per-context override a two-browser spec
+  // sets in `localStorage` (households H5 task F.8). `undefined` in every
+  // production build, whatever `localStorage` holds (`lib/e2eUser.ts`).
+  // Read once here and passed down, so the header, the socket and the
+  // Account card all use one id.
+  const e2eTestUserId = getE2ETestUserId()
 
   if (mode === 'cloud' && e2eTestUserId) {
     // E2E test mode: bypass Clerk, send a static user ID header to the server.

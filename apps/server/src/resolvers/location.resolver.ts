@@ -2,7 +2,9 @@ import { GraphQLError } from 'graphql'
 import { type Context, requireAuth } from '../context.js'
 import {
   forbidden,
+  locationIdsWithOrganizer,
   locationIdsWithRole,
+  locationRolesByLocation,
   requireHousehold,
   requireHouseholdRole,
   requireLocationRole,
@@ -43,9 +45,10 @@ export function toGraphQL(row: PrismaLocation): Location {
  * an export of one household would carry the other's locations, and the
  * import of that file would be refused as "another household".
  *
- * An owner or manager does NOT see a location they have no role on. That is
- * H5. Before H5 nobody can be in that state: whoever creates a location
- * organizes it.
+ * An owner or manager does NOT see a location they have no role on here,
+ * even though they may delete and reorder it. The settings list shows them
+ * every location of the household through `householdLocations` below
+ * (households H5 task F.1, decision T4).
  */
 async function visibleLocations(ctx: Context): Promise<Location[]> {
   const ids = await locationIdsWithRole(ctx, 'viewer', {
@@ -57,6 +60,57 @@ async function visibleLocations(ctx: Context): Promise<Location[]> {
     orderBy: [{ order: 'asc' }, { id: 'asc' }],
   })
   return (rows as unknown as PrismaLocation[]).map(toGraphQL)
+}
+
+/**
+ * The household of a `Location` the resolvers return. Every path that returns
+ * a `Location` builds it with `toGraphQL`, which spreads the Prisma row, so
+ * `householdId` is there. The GraphQL type does not declare it, so it is read
+ * here with a check. If a future path returns a `Location` without it, the
+ * row is read again rather than giving a wrong `myRole`. No GraphQL query
+ * reaches that fallback today, so `location-roles.resolver.test.ts` calls the
+ * field resolvers directly with a parent that has no `householdId`.
+ */
+async function householdIdOf(parent: Location): Promise<string | null> {
+  const known = (parent as unknown as { householdId?: unknown }).householdId
+  if (typeof known === 'string') return known
+  const row = await prisma.location.findUnique({
+    where: { id: parent.id },
+    select: { householdId: true },
+  })
+  return row?.householdId ?? null
+}
+
+/**
+ * OLD-BUNDLE SHIM. Remove with `Location.isDefault`, in the release after
+ * households.
+ *
+ * The id of the first location, by `order` then `id`, among the locations of
+ * `householdId` on which the caller holds a counted role. `null` when there
+ * is none. Kept on `ctx.requestCache.firstLocationIds`, one entry per
+ * household, so `Location.isDefault` on a list of N locations reads it once.
+ * `forgetLocationRoles` (lib/authz.ts) clears it with the role caches, so a
+ * create, delete or reorder in the same request is seen.
+ */
+function firstLocationIdOf(ctx: Context, householdId: string): Promise<string | null> {
+  const cache = ctx.requestCache
+  const known = cache?.firstLocationIds?.get(householdId)
+  if (known) return known
+  const lookup = locationRolesByLocation(ctx, householdId).then(async (roles) => {
+    if (roles.size === 0) return null
+    const [first] = await prisma.location.findMany({
+      where: { id: { in: [...roles.keys()] } },
+      orderBy: [{ order: 'asc' }, { id: 'asc' }],
+      select: { id: true },
+      take: 1,
+    })
+    return first?.id ?? null
+  })
+  if (cache) {
+    cache.firstLocationIds ??= new Map()
+    cache.firstLocationIds.set(householdId, lookup)
+  }
+  return lookup
 }
 
 // ── LIVE EVENTS (households H3c-2 task D.3) ──
@@ -75,7 +129,7 @@ async function visibleLocations(ctx: Context): Promise<Location[]> {
 // checks a location role only, so it can rename a location of a second
 // household the caller belongs to.
 
-export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
+export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location'> = {
   Query: {
     locations: async (_, __, ctx) => {
       // First sign-in happens here for most people: a new person gets their
@@ -83,6 +137,76 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // (lib/household.ts). So it must run before the role rows are read.
       await requireHousehold(ctx)
       return visibleLocations(ctx)
+    },
+
+    // The settings list (households H5 task F.1, decision T4). An owner or
+    // manager gets every location of the household, including the ones they
+    // have no role on: they may reorder and delete every
+    // location, so they must see each one. They get its NAME only. Its stock,
+    // carts and logs still need a location role (design, *Rules that cross
+    // the two levels*). A `member` gets the switcher's list.
+    householdLocations: async (_, __, ctx) => {
+      const householdId = await requireHousehold(ctx)
+      const role = await requireHouseholdRole(ctx, householdId, 'member')
+      if (role === 'member') return visibleLocations(ctx)
+      // The household is compared in SQL, here. No call site compares a
+      // `householdId`.
+      const rows = await prisma.location.findMany({
+        where: { householdId },
+        orderBy: [{ order: 'asc' }, { id: 'asc' }],
+      })
+      return (rows as unknown as PrismaLocation[]).map(toGraphQL)
+    },
+  },
+
+  // Two field resolvers (households H5 task F.1, decision T3). Each reads a
+  // map built ONCE per household per request (lib/authz.ts), so a list of N
+  // locations costs two reads in all, not 2N. The household is the
+  // LOCATION's own, not the caller's: `updateLocation` can return a location
+  // of a second household the caller belongs to.
+  Location: {
+    myRole: async (parent, _, ctx) => {
+      const householdId = await householdIdOf(parent)
+      if (!householdId) return null
+      const roles = await locationRolesByLocation(ctx, householdId)
+      return roles.get(parent.id) ?? null
+    },
+    hasOrganizer: async (parent, _, ctx) => {
+      const householdId = await householdIdOf(parent)
+      if (!householdId) return false
+      const organized = await locationIdsWithOrganizer(ctx, householdId)
+      return organized.has(parent.id)
+    },
+    // OLD-BUNDLE SHIM. Remove in the release after households, with the
+    // field in `location.graphql` (see the comment there for why it exists).
+    //
+    // True only for the first location the caller can see in this location's
+    // household, by `order` and then `id`: the first row of `locations`. The
+    // old bundle reads it in three places:
+    //
+    // | Old bundle code                              | Uses `isDefault` to          |
+    // |----------------------------------------------|------------------------------|
+    // | `useActiveLocation`, `useCloudLocationId`    | pick the active location     |
+    // | `fetchCloudDefaultLocationId` (importData)   | map a backup's default onto  |
+    // | `LocationList`                               | hide Delete, lock the drag   |
+    //
+    // This keeps each of the three working: exactly one location of the
+    // caller's list is the default. It is not always the SAME location that
+    // `main` marked. On `main` the default was a stored flag, not the first
+    // by `order`, so a row could sit above it. Then the old bundle locks a
+    // different row, shows Delete on its old default, and picks a different
+    // import target and active location. No data is lost. See runbook 8.3.
+    //
+    // `false` for every location would leave the import with no target, and
+    // would let the old bundle delete the household's last location, which
+    // it cannot show an empty screen for.
+    //
+    // The first id is read ONCE per household per request
+    // (`firstLocationIdOf`), so a list of N locations costs one read, not N.
+    isDefault: async (parent, _, ctx) => {
+      const householdId = await householdIdOf(parent)
+      if (!householdId) return false
+      return (await firstLocationIdOf(ctx, householdId)) === parent.id
     },
   },
 
@@ -137,8 +261,12 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       await requireHouseholdRole(ctx, householdId, 'manager')
 
       await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        // FIRST, before the read and the count below, so two deletes at once
-        // cannot both count 2 (lib/household.ts explains how).
+        // FIRST, before the read below. Until H5 task F.7 this stopped two
+        // deletes at once from both counting 2 and leaving no location. That
+        // count is gone (the last location may go now), but the lock stays:
+        // `deleteLocation` and `clearAllData` take it in the same order, and
+        // H6's purges will need it (decision T8 of the H5 plan). A second
+        // delete in the same household waits here for the first to commit.
         await lockHousehold(tx, householdId)
 
         // The location must be in the caller's household. A `where` filter,
@@ -150,15 +278,11 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         })
         if (!location) throw forbidden()
 
-        // Decision H13: a household always keeps one location, because
-        // there is no screen for a household with none until H5. `isDefault`
-        // is no longer read: any location may go, except the last one.
-        const count = await tx.location.count({ where: { householdId } })
-        if (count <= 1) {
-          throw new GraphQLError("The household's last location cannot be deleted.", {
-            extensions: { code: 'LAST_LOCATION' },
-          })
-        }
+        // Any location may go, the last one too. Decision H13 refused the
+        // last location (error code LAST_LOCATION) while there was no screen
+        // for a household with none. H5 task F.7 lifted it (owner answer O8):
+        // Pantry, Shopping and Cooking now show "You have no locations in
+        // this household yet." with Create a location.
 
         // ItemStock, Cart, InventoryLog and LocationMember all cascade via
         // their foreign keys, so this one delete removes the location's stock
@@ -175,7 +299,8 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     },
 
     // Household role `manager`. Order is one list for the whole household
-    // until H7 brings each person their own (decision H5).
+    // until H7 brings each person their own (decision H5). The list must hold
+    // every location of the household (decision T6 of the H5 plan).
     reorderLocations: async (_, { orderedIds }, ctx) => {
       const householdId = await requireHousehold(ctx)
       await requireHouseholdRole(ctx, householdId, 'manager')
@@ -202,11 +327,27 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         })
         if (found.length !== orderedIds.length) throw forbidden()
 
+        // Every location of the household, not a subset (households H5 task
+        // F.2, decision T6). The ids are distinct and all in the household
+        // (checked above), so the counts are equal only for the full set. A
+        // subset would write orders 0..n-1 and leave a location that was
+        // left out sharing one of them (the H3a duplicate-order gap). An
+        // owner or manager may hold no role on some locations, so the web's
+        // settings list must send `householdLocations`, not `locations`
+        // (task F.3).
+        const total = await tx.location.count({ where: { householdId } })
+        if (total !== orderedIds.length) {
+          throw new GraphQLError('Send every location of the household, in the new order.', {
+            extensions: { code: 'BAD_USER_INPUT' },
+          })
+        }
+
         for (const [index, id] of orderedIds.entries()) {
           await tx.location.update({ where: { id }, data: { order: index } })
         }
       })
-      // An empty list writes nothing, so it tells nobody.
+      // An empty list writes nothing, so it tells nobody. It passes the check
+      // above only for a household with no location (after task F.7).
       if (orderedIds.length > 0) {
         await publishHouseholdChange(ctx, ['LOCATION'], householdId)
       }

@@ -345,11 +345,12 @@ async function requireOwnLocationIdsOrUnclaimed(
  * `organizer` row is what ties them to it.
  */
 async function createImportedLocation(
+  ctx: Context,
   userId: string,
   householdId: string,
   input: { id: string; name: string; order: number; createdAt: string; updatedAt: string },
 ): Promise<PrismaLocation> {
-  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+  const created = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const created = await tx.location.create({
       data: {
         id: input.id,
@@ -365,6 +366,7 @@ async function createImportedLocation(
     })
     return created
   })
+  return created
 }
 
 /**
@@ -1970,7 +1972,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             if (row) results.push(locationToGraphQL(row as unknown as PrismaLocation))
             continue
           }
-          const row = await createImportedLocation(userId, householdId, location)
+          const row = await createImportedLocation(ctx, userId, householdId, location)
           changed.add(row.householdId)
           // A second payload row with the same id is now a skip, not a P2002.
           existing.add(location.id)
@@ -2160,7 +2162,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             // A new id: the location, its `householdId` and the caller's
             // `organizer` row, in one transaction. Not an `upsert`: an upsert
             // cannot write the role row for its create branch only.
-            const row = await createImportedLocation(userId, householdId, location)
+            const row = await createImportedLocation(ctx, userId, householdId, location)
             changed.add(row.householdId)
             // A second payload row with the same id is now an update.
             existing.add(id)
@@ -2289,9 +2291,12 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     // - The household lock comes FIRST, before any delete. `deleteLocation`
     //   also takes it first. If this took it later, after the location delete
     //   had locked location rows, the two could wait on each other.
-    // - "Home" is made in the SAME transaction, so the household is never
-    //   left with no location: there is no screen for that before H5
-    //   (decision H13). If making it fails, every delete is rolled back.
+    // - "Home" is made in the SAME transaction, so a cleared household starts
+    //   with one location (decision H13). Since H5 task F.7 a household MAY
+    //   have no location (the last one can be deleted, and the web shows an
+    //   empty screen), but *Clear household* still makes "Home", so the
+    //   person can start again at once. If making it fails, every delete is
+    //   rolled back.
     //
     // The order of the deletes is children before parents, as before.
     // `ItemStock`, `Cart`, `InventoryLog` and `LocationMember` would also go

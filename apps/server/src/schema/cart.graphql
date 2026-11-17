@@ -44,17 +44,46 @@ resolver did not read `amountPerPackage`. The resolver now reads `Item` and the
 `getPackedTotal` from `@p1i/types`, the rule local mode uses. A total computed
 by the client could also be out of date by the time it arrived.
 
-An old web bundle still sends `itemId` and fails GraphQL validation. The owner
-accepted that on 2026-11-15 (H3b design, *Deploy*).
+── OLD-BUNDLE SHIM (remove in the release after households) ──
+
+An old web bundle (`main` before the households release) still sends
+`{ itemId, quantity }`, where `quantity` is its own stock total. On 2026-11-15
+the owner accepted that such a bundle fails. On 2026-11-17 the owner chose to
+deploy the server BEFORE the web for the households release (option 4 in
+section 8.3 of docs/global/backend/2026-11-17-deploy-runbook-households-h4.md),
+so for ONE release the server accepts the old shape too:
+
+- `cartItemId` is optional in the schema. The resolver still needs, in every
+  entry, exactly one of `cartItemId` and `itemId`, and the same one in every
+  entry. Anything else is `BAD_USER_INPUT`.
+- An old-shape entry names the cart row by its item (a cart has at most one row
+  per item). The server reads that row's stored amount and buys it, as the old
+  server did. The old `quantity` (a stock total) is ignored.
+- An `itemId` with no row being bought is skipped, as the old server did.
+- NOT every `CART_CHANGED` rule applies. The amount rule cannot fire: the
+  amount is copied from the same read it would be compared with, so a change
+  that committed before the read is bought at the new amount (as on the old
+  server). Still `CART_CHANGED`: the same `itemId` twice, a row being bought
+  that the input leaves out, and a row changed or deleted between the read and
+  the claim. The claim still stops a double buy.
+
+When the shim goes, make `cartItemId` `ID!` again and delete `itemId`.
 """
 input CheckoutItemInput {
-  cartItemId: ID!
+  cartItemId: ID
+  itemId: ID
+    @deprecated(reason: "Old web bundles only. Remove in the release after households.")
   quantity: Float!
 }
 
 extend type Query {
   """
-  The permanent cart for one vendor at one location, created if it is missing.
+  The permanent cart for one vendor at one location.
+
+  Needs location role `viewer` (households H5 task F.2, decision T7). A
+  missing cart is created only for a `participant` or higher. A `viewer` gets
+  an empty cart with the id the row will have (`lastPurchasedAt` null), and
+  nothing is written: a read must not write for a role that may not write.
 
   `locationId` is REQUIRED (PR 3b Task 4). It was nullable for two tasks, with
   a fallback to the caller's default location, and that fallback is gone: an

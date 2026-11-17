@@ -84,3 +84,12 @@ export const WithNoItems: Story = {
     onDelete: () => console.log('Delete Pasta Dinner'),
   },
 }
+
+// A household member (households H5 task F.5): no `onDelete`, so no Delete
+// button. The name still links to the recipe page.
+export const ReadOnly: Story = {
+  args: {
+    recipe,
+    itemCount: 3,
+  },
+}

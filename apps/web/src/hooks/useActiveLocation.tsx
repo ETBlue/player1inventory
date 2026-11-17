@@ -10,9 +10,13 @@ import {
   useState,
 } from 'react'
 import { bootstrapCarts, getLocations } from '@/db/operations'
-import { useBootstrapCartsMutation } from '@/generated/graphql'
+import {
+  type LocationRole,
+  useBootstrapCartsMutation,
+} from '@/generated/graphql'
 import { useLocations } from '@/hooks/useLocations'
 import type { DataMode } from '@/lib/dataMode'
+import { locationRoleAtLeast } from '@/lib/locationRole'
 import { DEFAULT_LOCATION_ID, type Location } from '@/types'
 import { useDataMode } from './useDataMode'
 
@@ -162,14 +166,36 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
   //     the list by `order`, so "first" is the top row of the locations page.
   // Never the `'local'` literal: in cloud it names nothing.
   //
-  // A list that has loaded but is EMPTY leaves the active id untouched: there
-  // is nothing to point at, and blanking it would discard the user's choice for
-  // the moment the list does arrive. An empty list is far more often transient
-  // (a refetch in flight, a failed cloud read) than a genuine "no locations" —
-  // local seeds a default on populate, the server creates "Home" at first
-  // sign-in, and it refuses to delete a household's last location.
+  // A CLOUD list that has loaded but is EMPTY clears the active id: the
+  // stored id is removed and the state goes back to the `'local'` sentinel,
+  // which names no cloud location. Since households H5 task F.7 an empty
+  // household is real (its last location was deleted, or a member was added
+  // with no location role), so the old id names a location that is gone or
+  // was never visible. `NoLocationsGate` shows the empty screen; when a
+  // location is created, the fallback below picks it.
+  //
+  // Until F.7 an empty list left the id untouched, with the reason "an empty
+  // list is usually transient". That is not true here: a refetch in flight
+  // and a failed read both keep `locations` as it was (or `undefined`), they
+  // do not give `[]`. `[]` is the server saying "no location".
+  //
+  // LOCAL mode keeps the old rule: local seeds a default location on
+  // populate and refuses to delete it, so an empty local list is not a real
+  // state, and nothing changes there.
   useEffect(() => {
     if (!locations) return
+    if (locations.length === 0) {
+      if (mode !== 'cloud') return
+      try {
+        localStorage.removeItem(activeLocationStorageKey(mode))
+      } catch {
+        // ignore write failures (e.g. private mode)
+      }
+      if (activeLocationId !== DEFAULT_LOCATION_ID) {
+        setActiveLocationIdState(DEFAULT_LOCATION_ID)
+      }
+      return
+    }
     if (locations.some((loc) => loc.id === activeLocationId)) return
     const fallbackId =
       mode === 'cloud'
@@ -245,6 +271,21 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
   const activeLocationIsKnown = !!locations?.some(
     (loc) => loc.id === activeLocationId,
   )
+  // `bootstrapCarts` creates rows, so the server asks `participant` for it. A
+  // location `viewer` would be refused with FORBIDDEN on every switch, so the
+  // call is made only where the caller may write (households H5 task F.6,
+  // decision T7). A viewer still READS the carts: `vendorCart` answers a
+  // viewer with an unsaved empty cart, and `allCarts` lists what exists.
+  // Read from the same list as `activeLocationIsKnown`, which carries
+  // `myRole`; a boolean again, for the same reason (see below).
+  const activeLocationIsWritable = locationRoleAtLeast(
+    (
+      locations?.find((loc) => loc.id === activeLocationId) as
+        | { myRole?: LocationRole | null }
+        | undefined
+    )?.myRole,
+    'participant',
+  )
   const bootstrappedRef = useRef<string | null>(null)
   useEffect(() => {
     if (mode !== 'cloud') return
@@ -255,6 +296,18 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
     // again with a real one.
     if (!activeLocationIsKnown) return
     const key = `${mode}:${activeLocationId}`
+    // Not for a viewer. The ref still MOVES, to a viewer marker that is not
+    // `key`, with no call. So:
+    // - a switch back to the location before (participant, then viewer,
+    //   then the first again) bootstraps again, like any other switch. Until
+    //   the review of H5 task F.6 the ref stayed at the first location and
+    //   the second bootstrap never came;
+    // - if the role here rises to participant later, `key` is not the marker,
+    //   so the effect bootstraps then.
+    if (!activeLocationIsWritable) {
+      bootstrappedRef.current = `viewer:${key}`
+      return
+    }
     if (bootstrappedRef.current === key) return
     bootstrappedRef.current = key
     cloudBootstrapCarts({
@@ -263,7 +316,13 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
     }).catch((err) => {
       console.error('cloud bootstrapCarts failed', err)
     })
-  }, [mode, activeLocationId, activeLocationIsKnown, cloudBootstrapCarts])
+  }, [
+    mode,
+    activeLocationId,
+    activeLocationIsKnown,
+    activeLocationIsWritable,
+    cloudBootstrapCarts,
+  ])
 
   const activeLocation = useMemo(
     () => locations?.find((loc) => loc.id === activeLocationId),

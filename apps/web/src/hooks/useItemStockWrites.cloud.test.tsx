@@ -7,8 +7,11 @@ import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  ApplyUnitSwitchDocument,
   CreateItemDocument,
   GetItemsDocument,
+  GetLocationsDocument,
+  GetRecipesDocument,
   ItemStocksForItemDocument,
   PantryDataDocument,
   UpdateItemDocument,
@@ -28,9 +31,15 @@ import {
   ActiveLocationProvider,
   activeLocationStorageKey,
 } from './useActiveLocation'
+import { NoCloudLocationError } from './useCloudLocationId'
 import * as dataModeHooks from './useDataMode'
 import { useItemStocks } from './useItemStocks'
-import { useCreateItem, useStockedItems, useUpdateItem } from './useItems'
+import {
+  useApplyUnitSwitch,
+  useCreateItem,
+  useStockedItems,
+  useUpdateItem,
+} from './useItems'
 
 // The REAL generated hooks, driven through `MockedProvider` with the real
 // documents. `src/test/setup.ts` stubs every generated hook, and a stubbed
@@ -470,5 +479,159 @@ describe('cloud stock writes go to one location', () => {
       expect(rowAt('item-milk', LOC_B)?.packedQuantity).toBe(6)
       expect(rowAt('item-milk', DEFAULT_LOCATION_ID)).toBeUndefined()
     })
+  })
+})
+
+// ── A household with NO location ──────────────────────────────────────────────
+//
+// Real since households H5 task F.7: the last location can be deleted, and a
+// member can be added with no location role. `useCloudLocationId` then answers
+// `undefined`. Review of task F.8, finding N1: the three hooks below each
+// handle that answer, and no test reached any of the three branches.
+describe('cloud writes in a household with no location', () => {
+  const emptyLocations = {
+    request: { query: GetLocationsDocument },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: { data: { locations: [] } },
+  }
+  // Every UpsertItemStock is answered and counted, WHATEVER its location
+  // (`undefined` included). A mock that matched only a real location would
+  // turn a stray write into a link error, which looks like any other failure.
+  const anyUpsert = {
+    request: { query: UpsertItemStockDocument, variables: () => true },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: (vars: Record<string, unknown>) => {
+      count('UpsertItemStock')
+      return {
+        data: {
+          upsertItemStock: cloudStock(
+            'stock-stray',
+            vars.itemId as string,
+            String(vars.locationId),
+            {
+              targetQuantity: 0,
+              refillThreshold: 0,
+              packedQuantity: 0,
+              unpackedQuantity: 0,
+            },
+          ),
+        },
+      }
+    },
+  }
+  // Every PantryData request is counted, whatever its variables, so "no
+  // pantry refetch was sent" can be checked.
+  const anyPantry = {
+    request: { query: PantryDataDocument, variables: () => true },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: () => {
+      count('PantryData')
+      return { data: { items: catalog, itemStocks: [] } }
+    },
+  }
+  const getRecipesMock = {
+    request: { query: GetRecipesDocument },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: () => {
+      count('GetRecipes')
+      return { data: { recipes: [] } }
+    },
+  }
+  const applyUnitSwitchMock = {
+    request: { query: ApplyUnitSwitchDocument, variables: () => true },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: () => {
+      count('ApplyUnitSwitch')
+      return { data: { applyUnitSwitch: pick(MILK, ['createdAt']) } }
+    },
+  }
+  const NO_LOCATION_MOCKS = [
+    emptyLocations,
+    getItemsMock,
+    anyPantry,
+    anyUpsert,
+    updateItemMock,
+    createItemMock,
+    getRecipesMock,
+    applyUnitSwitchMock,
+  ]
+
+  beforeEach(() => {
+    vi.mocked(dataModeHooks.useDataMode).mockReturnValue({
+      mode: 'cloud',
+      setMode: vi.fn(),
+    })
+    localStorage.clear()
+    catalog = [MILK, RICE]
+    stocks = []
+    served = {}
+  })
+
+  it('user creating an item with no location gets it in the catalog only', async () => {
+    // Given a household whose location list has loaded and is empty
+    const { result } = renderHook(() => useCreateItem(), {
+      wrapper: makeWrapper(NO_LOCATION_MOCKS),
+    })
+
+    // When the user creates an item (not catalogOnly: a page that would
+    // normally stock it here)
+    const created = await result.current.mutateAsync({
+      name: 'Oat milk',
+      tagIds: [],
+      vendorIds: [],
+      targetUnit: 'package',
+      targetQuantity: 3,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+    })
+
+    // Then the item is in the catalog, and no stock write was sent at all
+    expect(served.CreateItem).toBe(1)
+    expect(catalog.map((i) => i.name)).toContain('Oat milk')
+    expect(served.UpsertItemStock).toBeUndefined()
+    expect(created?.name).toBe('Oat milk')
+    expect(created?.stockId).toBeUndefined()
+  })
+
+  it('user saving a name and a quantity with no location sends nothing', async () => {
+    // Given the same empty household
+    const { result } = renderHook(() => useUpdateItem(), {
+      wrapper: makeWrapper(NO_LOCATION_MOCKS),
+    })
+
+    // When one save carries a configuration change AND a stock field
+    const save = result.current.mutateAsync({
+      id: 'item-milk',
+      updates: { name: 'Whole milk', packedQuantity: 9 },
+    })
+
+    // Then it fails with NoCloudLocationError, and the location was resolved
+    // BEFORE the configuration write: the rename was not sent either
+    await expect(save).rejects.toBeInstanceOf(NoCloudLocationError)
+    expect(served.UpdateItem).toBeUndefined()
+    expect(served.UpsertItemStock).toBeUndefined()
+    expect(catalog.find((i) => i.id === 'item-milk')?.name).toBe('Milk')
+  })
+
+  it('user switching units with no location skips only the pantry refetch', async () => {
+    // Given the same empty household
+    const { result } = renderHook(() => useApplyUnitSwitch(), {
+      wrapper: makeWrapper(NO_LOCATION_MOCKS),
+    })
+
+    // When a unit switch with no stock rows is saved
+    await result.current.mutateAsync({
+      itemId: 'item-milk',
+      updates: { targetUnit: 'measurement' },
+      stockConversions: [],
+      recipeUpdates: [],
+    })
+
+    // Then the switch was sent, the catalog and recipes were refetched, and
+    // no PantryData request was sent (there is no location to name)
+    expect(served.ApplyUnitSwitch).toBe(1)
+    expect(served.GetRecipes).toBeGreaterThanOrEqual(1)
+    expect(served.PantryData).toBeUndefined()
   })
 })

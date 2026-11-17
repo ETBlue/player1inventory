@@ -75,8 +75,9 @@ const location = (id: string) => world.stock.state.locations.find((l) => l.id ==
 //   is loc-garage's 3, on a location the caller cannot see, and loc-theirs in hh-2 has
 //   9.
 //
-// `onlyOneLocation` leaves hh-1 with loc-kitchen alone (decision H13 tests). hh-2
-// still has loc-theirs, so a count that is not scoped to the household sees 2.
+// `onlyOneLocation` leaves hh-1 with loc-kitchen alone (the last-location test;
+// decision H13, lifted in H5 task F.7). hh-2 still has loc-theirs, so a count
+// that is not scoped to the household sees 2.
 function seed(
   options: {
     callerHouseholdRole?: HouseholdRole | null
@@ -451,24 +452,32 @@ describe('deleteLocation', () => {
     expect(errorCode(res)).toBe('FORBIDDEN')
   })
 
-  it("user cannot delete the household's last location (decision H13)", async () => {
-    // Given hh-1 has only loc-kitchen, while hh-2 still has loc-theirs
-    seed({ onlyOneLocation: true })
+  it("household manager can delete the household's last location (H13 lifted in H5 task F.7)", async () => {
+    // Given hh-1 has only loc-kitchen, while hh-2 still has loc-theirs. The
+    // caller is a household manager; `other` is a member who organizes
+    // nothing here, and the stranger organizes loc-theirs.
+    seed({ callerHouseholdRole: 'manager', onlyOneLocation: true })
 
+    // When the caller deletes it
     const res = await run(DELETE, { id: 'loc-kitchen' })
 
-    expect(errorCode(res)).toBe('LAST_LOCATION')
-    expect(location('loc-kitchen')).toBeDefined()
+    // Then it is gone, with its role rows, and hh-1 has no location left.
+    // Another household's location is untouched.
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.deleteLocation).toBe(true)
+    expect(location('loc-kitchen')).toBeUndefined()
+    expect(world.stock.state.locations.filter((l) => l.householdId === 'hh-1')).toEqual([])
+    expect(world.households.state.locationMembers.filter((m) => m.locationId === 'loc-kitchen')).toEqual([])
+    expect(location('loc-theirs')).toBeDefined()
   })
 
-  it('locks the household row first, before it reads or counts the locations', async () => {
-    // Given spies on the three statements. `vi.spyOn` calls through, so the
+  it('locks the household row first, before it reads the location', async () => {
+    // Given spies on the two statements. `vi.spyOn` calls through, so the
     // delete still runs. `world.client.location` is its own object (a spread
     // of stockFake's, plus the cascading delete), so the spies go on it, not
     // on `world.stock.client.location`.
     const lock = vi.spyOn(world.client.household, 'update')
     const read = vi.spyOn(world.client.location, 'findFirst')
-    const count = vi.spyOn(world.client.location, 'count')
 
     // When the caller deletes a location
     const res = await run(DELETE, { id: 'loc-pantry' })
@@ -477,21 +486,20 @@ describe('deleteLocation', () => {
     // Then the lock is an update of THIS household's row
     expect(lock).toHaveBeenCalledTimes(1)
     expect(lock).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'hh-1' } }))
-    // And it runs before the read and the count. In Postgres, a count that
-    // ran before the lock could see a location that a second delete is about
-    // to remove (lib/household.ts, `lockHousehold`).
+    // And it runs before the read. Since H5 task F.7 there is no count (the
+    // last location may go), but the lock stays: `deleteLocation` and
+    // `clearAllData` take the household lock in the same order, and H6's
+    // purges need it (decision T8 of the H5 plan).
     const lockedAt = lock.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY
     expect(read).toHaveBeenCalledTimes(1)
-    expect(count).toHaveBeenCalledTimes(1)
     expect(lockedAt).toBeLessThan(read.mock.invocationCallOrder[0] ?? 0)
-    expect(lockedAt).toBeLessThan(count.mock.invocationCallOrder[0] ?? 0)
   })
 
   it('the first location by order can be deleted while another location is left', async () => {
     // Given loc-kitchen was the old default, and hh-1 has two more locations
     const res = await run(DELETE, { id: 'loc-kitchen' })
 
-    // Then nothing protects it but the "last location" rule
+    // Then nothing protects it: no location is the default
     expect(res.errors).toBeUndefined()
     expect(location('loc-kitchen')).toBeUndefined()
   })
@@ -547,6 +555,55 @@ describe('reorderLocations', () => {
     expect(location('loc-kitchen')?.order).toBe(1)
     expect(location('loc-pantry')?.order).toBe(0)
     expect(location('loc-garage')?.order).toBe(3)
+  })
+
+  it('reorderLocations refuses a list that leaves out a location of the household', async () => {
+    // Given the caller owns hh-1, which holds loc-kitchen, loc-pantry and
+    // loc-garage (no role on the last). A second household, hh-2, holds
+    // loc-theirs. (households H5 task F.2, decision T6)
+    // When they send only the two locations they have a role on
+    const res = await run(REORDER, { ids: ['loc-pantry', 'loc-kitchen'] })
+
+    // Then the batch is refused as bad input, and no order moved. A subset
+    // would give two locations the same order as the one left out.
+    expect(errorCode(res)).toBe('BAD_USER_INPUT')
+    expect(location('loc-kitchen')?.order).toBe(1)
+    expect(location('loc-pantry')?.order).toBe(0)
+    expect(location('loc-garage')?.order).toBe(3)
+  })
+
+  it('household manager with no role on a location is refused a list that leaves that location out', async () => {
+    // Given the caller manages hh-1 and has no role on loc-garage. (The full
+    // list with loc-garage is accepted: "household manager can reorder every
+    // location of the household" above.)
+    seed({ callerHouseholdRole: 'manager' })
+
+    // When they leave loc-garage out
+    const res = await run(REORDER, { ids: ['loc-kitchen', 'loc-pantry'] })
+
+    // Then the batch is refused: the full set is needed, whatever the roles
+    expect(errorCode(res)).toBe('BAD_USER_INPUT')
+    expect(location('loc-kitchen')?.order).toBe(1)
+  })
+
+  it("a full-length list with another household's location is refused, and nothing is written", async () => {
+    // Given hh-1 holds three locations (loc-kitchen, loc-pantry, loc-garage)
+    // and hh-2 holds loc-theirs
+    // When the caller sends three ids, one of them hh-2's. The count matches
+    // hh-1's, so only the household filter on the id read can refuse it.
+    const res = await run(REORDER, { ids: ['loc-kitchen', 'loc-pantry', 'loc-theirs'] })
+
+    // Then FORBIDDEN, and no order moved in either household
+    expect(errorCode(res)).toBe('FORBIDDEN')
+    expect(location('loc-kitchen')?.order).toBe(1)
+    expect(location('loc-pantry')?.order).toBe(0)
+    expect(location('loc-garage')?.order).toBe(3)
+    expect(location('loc-theirs')?.order).toBe(9)
+  })
+
+  it('an empty list is refused while the household has locations', async () => {
+    const res = await run(REORDER, { ids: [] })
+    expect(errorCode(res)).toBe('BAD_USER_INPUT')
   })
 
   it('a batch with an id that does not exist changes nothing', async () => {

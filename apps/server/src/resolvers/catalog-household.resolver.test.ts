@@ -365,6 +365,8 @@ function seed(callerRole: HouseholdRole, callerLocationRole: LocationRole = 'org
   world.stock.reset(
     [
       { id: 'loc-1', householdId: 'hh-1', name: 'Kitchen', order: 0 },
+      // loc-2 is in the caller's household, but only `other` has a role there.
+      { id: 'loc-2', householdId: 'hh-1', name: 'Garage', order: 1 },
       { id: 'loc-s', householdId: 'hh-2', name: 'Theirs', order: 0 },
     ],
     [],
@@ -388,8 +390,10 @@ function seed(callerRole: HouseholdRole, callerLocationRole: LocationRole = 'org
     locationMembers: [
       // The caller organizes loc-1 whatever their household role, so
       // `createVendor`'s location check passes and only the household role
-      // decides. One test lowers it, to pin that location check.
+      // decides. The createVendor tests below lower it, to pin which role
+      // writes the cart.
       { locationId: 'loc-1', userId: 'caller', role: callerLocationRole, createdAt: T },
+      { locationId: 'loc-2', userId: 'other', role: 'organizer', createdAt: T },
       { locationId: 'loc-s', userId: 'stranger', role: 'organizer', createdAt: T },
     ],
   })
@@ -462,8 +466,12 @@ afterAll(async () => {
   await server.stop()
 })
 
-async function exec(query: string, variables: Record<string, unknown> = {}) {
-  const r = await server.executeOperation({ query, variables }, { contextValue: { userId: 'caller' } })
+async function exec(
+  query: string,
+  variables: Record<string, unknown> = {},
+  contextValue: Context = { userId: 'caller' },
+) {
+  const r = await server.executeOperation({ query, variables }, { contextValue })
   if (r.body.kind !== 'single') throw new Error('expected a single result')
   return r.body.singleResult
 }
@@ -731,27 +739,30 @@ describe('a household manager can write the catalog', () => {
   })
 })
 
-describe('createVendor also needs location role participant', () => {
-  // `createVendor` writes a Cart row at the location, so it needs location
-  // role `participant` as well as household role `manager`. Every other
-  // createVendor test runs as the location's `organizer`, so a check lowered
-  // to `viewer` would pass them all. This test is the one that goes red then.
-  it('user who is a household manager but only a location viewer cannot create a vendor', async () => {
+describe('createVendor: the location role decides the cart, not the vendor', () => {
+  // `createVendor` writes at two levels. The vendor is a catalog row and needs
+  // household role `manager`. The cart it pre-creates is a location row and
+  // needs `participant`. Since households H5 (review of task F.6) a household
+  // manager who is only a `viewer` of the location still gets the vendor, and
+  // no cart: `bootstrapCarts` makes it later for a participant. Before that the
+  // whole mutation was refused, so the vendor dialog stayed open with no message.
+  //
+  // People: `other` is in hh-1 with the opposite household role and organizes
+  // loc-2, where the caller has no role. loc-s is another household's.
+  it('location viewer who is a household manager gets the vendor and no cart', async () => {
     // Given the caller is a household manager, and only a viewer at loc-1
     seed('manager', 'viewer')
-    const before = handles.$snapshot()
 
     // When they create a vendor there
     const result = await exec('mutation { createVendor(name: "Lidl", locationId: "loc-1") { id } }')
 
-    // Then it is refused, and no vendor and no cart were written
-    expect(codeOf(result)).toBe('FORBIDDEN')
-    expect(S.vendor.state.rows.find((r) => r.name === 'Lidl')).toBeUndefined()
+    // Then the vendor is written, and no cart is
+    expect(result.errors).toBeUndefined()
+    expect(S.vendor.state.rows.find((r) => r.name === 'Lidl')).toMatchObject({ householdId: 'hh-1' })
     expect(S.cart.state.rows).toEqual([])
-    expect(handles.$snapshot()).toEqual(before)
   })
 
-  it('user who is a household manager and a location participant can create a vendor', async () => {
+  it('location participant who is a household manager gets the vendor and its cart', async () => {
     // Given the caller is a household manager and a participant at loc-1
     seed('manager', 'participant')
 
@@ -762,7 +773,102 @@ describe('createVendor also needs location role participant', () => {
     expect(result.errors).toBeUndefined()
     const vendor = S.vendor.state.rows.find((r) => r.name === 'Lidl')
     expect(vendor).toMatchObject({ householdId: 'hh-1' })
-    expect(S.cart.state.rows).toEqual([expect.objectContaining({ locationId: 'loc-1' })])
+    expect(S.cart.state.rows).toEqual([expect.objectContaining({ id: `loc-1:${vendor?.id}`, locationId: 'loc-1' })])
+  })
+
+  it('a household manager with no role on a location of the household is refused, and nothing is written', async () => {
+    // Given the caller is a household manager with no role at loc-2
+    // (only `other` organizes it)
+    seed('manager', 'participant')
+    const before = handles.$snapshot()
+
+    // When they create a vendor there
+    const result = await exec('mutation { createVendor(name: "Lidl", locationId: "loc-2") { id } }')
+
+    // Then it is refused before any write
+    expect(codeOf(result)).toBe('FORBIDDEN')
+    expect(handles.$snapshot()).toEqual(before)
+  })
+
+  it('a location of another household is refused by the household check, and nothing is written', async () => {
+    // Given the caller is a household manager of hh-1 AND a member of hh-2
+    // who organizes loc-s there (a person in two households). The target
+    // household is pinned to hh-1, the H4 pattern. With a role at loc-s,
+    // `requireLocationRole` passes, so only `requireLocationInHousehold`
+    // can refuse. Without the role, the role check refused first and the
+    // household check was never reached.
+    seed('manager', 'organizer')
+    world.households.state.householdMembers.push({ householdId: 'hh-2', userId: 'caller', role: 'member', joinedAt: T })
+    world.households.state.locationMembers.push({ locationId: 'loc-s', userId: 'caller', role: 'organizer', createdAt: T })
+    const pinned: Context = { userId: 'caller', requestCache: { householdId: Promise.resolve('hh-1') } }
+    const before = handles.$snapshot()
+
+    // When they name loc-s
+    const result = await exec('mutation { createVendor(name: "Lidl", locationId: "loc-s") { id } }', {}, pinned)
+
+    // Then it is refused before any write
+    expect(codeOf(result)).toBe('FORBIDDEN')
+    expect(handles.$snapshot()).toEqual(before)
+
+    // And the same person naming loc-1 of hh-1 is not refused, so the
+    // refusal above came from the household check
+    const control = await exec('mutation { createVendor(name: "Lidl", locationId: "loc-1") { id } }', {}, pinned)
+    expect(control.errors).toBeUndefined()
+  })
+})
+
+describe('createVendor in a household with no location', () => {
+  // Since households H5 (review of task F.7) a household can have no
+  // location, and the web then sends no `locationId`. Before that the web
+  // sent the `'local'` sentinel, and the owner got FORBIDDEN.
+  //
+  // People: `other` holds the opposite household role; loc-2 is a location
+  // of hh-1 where the caller has no role (the fixture keeps it; the rule
+  // under test is "no location named", not "no location exists").
+  it('household manager can create a vendor with no location, and no cart is written', async () => {
+    // Given the caller is a household manager
+    seed('manager')
+    const cartsBefore = S.cart.state.rows.length
+
+    // When they create a vendor and name no location
+    const result = await exec('mutation { createVendor(name: "Lidl") { id } }')
+
+    // Then the vendor is in hh-1, and no cart was written
+    expect(result.errors).toBeUndefined()
+    expect(S.vendor.state.rows.find((r) => r.name === 'Lidl')).toMatchObject({ householdId: 'hh-1' })
+    expect(S.cart.state.rows).toHaveLength(cartsBefore)
+  })
+
+  it('household member cannot create a vendor with no location, and nothing is written', async () => {
+    // Given the caller is a household member (`other` is the manager)
+    seed('member')
+    const before = handles.$snapshot()
+
+    // When they create a vendor and name no location
+    const result = await exec('mutation { createVendor(name: "Lidl") { id } }')
+
+    // Then the household role still refuses it
+    expect(codeOf(result)).toBe('FORBIDDEN')
+    expect(handles.$snapshot()).toEqual(before)
+  })
+
+  it('an empty-string locationId is a bad id, not "no location": FORBIDDEN and nothing is written', async () => {
+    // Review of task F.8. The resolver tests `locationId != null`, so only
+    // an absent key or `null` means "no location". `""` is a location id
+    // that no location holds, and `requireLocationRole` refuses it the same
+    // way as any other id the caller has no role on. This pins that
+    // behaviour, so a change to "treat '' as none" is a choice someone makes
+    // on purpose. The web never sends `""` (`useCreateVendor` leaves the key
+    // out).
+    seed('manager')
+    const before = handles.$snapshot()
+
+    // When a household manager names the location ""
+    const result = await exec('mutation { createVendor(name: "Lidl", locationId: "") { id } }')
+
+    // Then it is refused, and no vendor and no cart was written
+    expect(codeOf(result)).toBe('FORBIDDEN')
+    expect(handles.$snapshot()).toEqual(before)
   })
 })
 

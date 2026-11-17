@@ -44,8 +44,8 @@ force-push, and a merge breaks the repo's rebase-only rule.
 | H1 Settings layout and route moves (both modes, no backend change) | **Full** — tasks 1.1–1.9 | 1 |
 | H2 `User` model, Clerk webhook, `lastSeenAt`, E2E user support | **Full** — tasks 2.1–2.7 | 2 |
 | H3 Households, roles, data migration, read scoping | Outline. Split into H3a, H3b and H3c; detailed plan for H3a: [2026-11-04-households-plan-h3a.md](2026-11-04-households-plan-h3a.md); design for H3b: [2026-11-14-households-h3b-design.md](2026-11-14-households-h3b-design.md), plan: [2026-11-14-households-plan-h3b.md](2026-11-14-households-plan-h3b.md) | 3 (now H3a ✅ merged into `develop` #375, `chore/build-shared-types` ✅ merged into `develop` #376, H3b ✅ merged into `develop` #377, H3c designed 2026-11-16: [design](2026-11-16-households-h3c-design.md); H3c-1 ✅ merged into `develop` #379: [plan](2026-11-16-households-plan-h3c-1.md); H3c-2 ✅ merged into `develop` #380: [plan](2026-11-16-households-plan-h3c-2.md)) |
-| H4 Import and export | Outline. Detailed plan: [2026-11-16-households-plan-h4.md](2026-11-16-households-plan-h4.md) ✅ built on `feature/households-h4` (not merged, not deployed); deploy: [runbook](../backend/2026-11-17-deploy-runbook-households-h4.md) | 4 |
-| H5 Invites, join, members, read-only views | Outline | 5 |
+| H4 Import and export | Outline. Detailed plan: [2026-11-16-households-plan-h4.md](2026-11-16-households-plan-h4.md) ✅ merged into `develop` (#382, merge `bf87e839`), not deployed; deploy: [runbook](../backend/2026-11-17-deploy-runbook-households-h4.md) | 4 |
+| H5 Invites, join, members, read-only views | Outline. Split into H5a, H5b and H5c; detailed plan for H5a: [2026-11-17-households-plan-h5.md](2026-11-17-households-plan-h5.md) (H5a ✅ built 2026-11-17 on `feature/households-h5`, awaiting PR, not merged, not deployed; H5b and H5c outlined) | 5 |
 | H6 Transfer, hand-over, purges, activity | Outline | 6 |
 | H7 Personal location order, household switch and create | Outline | 7 |
 
@@ -734,7 +734,7 @@ brainstorming:
 
 ### H4 — Import and export
 
-**Detailed plan (2026-11-16):** [2026-11-16-households-plan-h4.md](2026-11-16-households-plan-h4.md) ✅ Built (tasks E.1–E.7 and the O9 follow-up, 2026-11-16 and 2026-11-17) on `feature/households-h4`, not merged, not deployed. Deploy: [runbook](../backend/2026-11-17-deploy-runbook-households-h4.md); the server must go first (decision T9). It also folds in issue #381 (two cross-household writes). The bullets below are the first outline.
+**Detailed plan (2026-11-16):** [2026-11-16-households-plan-h4.md](2026-11-16-households-plan-h4.md) ✅ Built (tasks E.1–E.7 and the O9 follow-up, 2026-11-16 and 2026-11-17) on `feature/households-h4`. ✅ **Merged into `develop` 2026-11-17 (#382, merge `bf87e839`), not deployed.** Deploy: [runbook](../backend/2026-11-17-deploy-runbook-households-h4.md); the server must go first (decision T9). It also folds in issue #381 (two cross-household writes). The bullets below are the first outline.
 
 - Export: catalog, plus locations where the exporter has a role.
 - Import: owner and manager only; `clear` owner only. The new id rule; the "Import into which
@@ -753,6 +753,15 @@ brainstorming:
   read-only views for members and viewers, the empty "no locations" screens.
 - Two-user cloud E2E with one browser context per user.
 
+**Split in three (H5 decision O1).** **H5a ✅ built 2026-11-17, awaiting PR:** the web
+learns each person's roles (`Location.myRole`, `Location.hasOrganizer`,
+`householdLocations`, `usePermissions`), read-only views for a household `member` and a
+location `viewer`, the **View only** badge, the empty "no locations" screens (decision H13
+lifted), and a browser context per test user in E2E. **H5b** (invites, `/join/$token`, the
+Members page) and **H5c** (the location people page) are outlined in the
+[H5 plan](2026-11-17-households-plan-h5.md). "Switcher filtering" needed no work: the
+switcher already listed only locations with a role (H3a task 3.6).
+
 ### H6 — Transfer, hand-over, purges, activity
 
 - `OwnershipOffer`, the banner, transfer, the `user.deleted` hand-over branch in
@@ -760,6 +769,14 @@ brainstorming:
 - Real-SQL test with two households: a purge of one leaves the other's rows. **Moved to H3a**
   (decision H10, `e2e/tests/purge-two-households.spec.ts`), because H3a changes the filters.
   H6 still owes the same kind of test for its new purges.
+- **Owed, must be fixed (owner decision 2026-11-17): a deleted organizer still counts for
+  `Location.hasOrganizer`.** The count is made by `countedOrganizerIn` and read by
+  `locationIdsWithOrganizer`, both in `apps/server/src/lib/authz.ts`. It checks only that
+  the organizer is still a member of the household. It does not check `User.deletedAt`,
+  the column that marks a deleted account (set by the `user.deleted` webhook since H2). So
+  a location whose only organizer deleted their account shows no "No organizer" warning.
+  The fix belongs with the `user.deleted` hand-over branch above. Recorded in the H5 plan's
+  *Known gaps* (`2026-11-17-households-plan-h5.md`).
 
 ### H7 — Personal order, household switch and create
 

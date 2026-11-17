@@ -26,7 +26,9 @@ import { createExecutableSchema } from '../schema/executableSchema.js'
 //
 // This test reads only `Mutation` fields. One QUERY writes too:
 //
-// - `vendorCart` creates the cart when it is missing. It publishes nothing
+// - `vendorCart` creates the cart when it is missing, for a `participant` or
+//   higher only (a `viewer` gets an unsaved empty cart since households H5
+//   task F.2). It publishes nothing
 //   (decision Q7 of the H3c-2 plan): the cart it creates is EMPTY (only
 //   `id` and `locationId`, `cart.resolver.ts`), and the web shows an empty
 //   cart the same as a missing one, so no other tab shows anything
@@ -105,7 +107,8 @@ const publishes: Record<string, { kinds: Kind[] }> = {
   // The Prisma cascade deletes its stock, logs and cart rows. Each kind only
   // at the locations where it had rows, read BEFORE the delete.
   deleteItem: { kinds: ['CATALOG', 'STOCK', 'LOG', 'CART'] },
-  // It also creates the new vendor's cart at the caller's location.
+  // It also creates the new vendor's cart at the caller's location, when the
+  // caller is `participant` or higher there (not for a viewer, since H5).
   createVendor: { kinds: ['CATALOG', 'CART'] },
   // It deletes the vendor's carts at every location of the household.
   deleteVendor: { kinds: ['CATALOG', 'CART'] },

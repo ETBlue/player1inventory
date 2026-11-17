@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/shared/EmptyState'
 import { useInnerPageScrollRef } from '@/components/shared/LayoutInnerPages'
 import { useCreateItem, useItems, useTags, useTagTypes } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useRecipe, useRecipes, useUpdateRecipe } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
 import { useSortFilter } from '@/hooks/useSortFilter'
@@ -35,6 +36,10 @@ function RecipeItemsTab() {
   // item goes into the catalog and is stocked in no location (D3). This tab
   // creates directly rather than through a dialog, so it opts in here.
   const createItem = useCreateItem({ catalogOnly: true })
+  // A household member sees the assignments read only (households H5 task
+  // F.5): the checkboxes show what is assigned but are disabled, and there
+  // is no "Create item" from search.
+  const { canEditCatalog, roleKnown } = usePermissions()
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
   const { data: vendors = [] } = useVendors()
@@ -288,7 +293,10 @@ function RecipeItemsTab() {
         items={items}
         vendors={vendors}
         recipes={allRecipes}
-        onCreateFromSearch={handleCreateFromSearch}
+        onCreateFromSearch={canEditCatalog ? handleCreateFromSearch : undefined}
+        createReadOnlyNote={
+          roleKnown && !canEditCatalog ? t('items.createReadOnly') : undefined
+        }
         hasExactMatch={hasExactMatch}
         isCreating={createItem.isPending || updateRecipe.isPending}
         className="bg-transparent border-none"
@@ -356,7 +364,7 @@ function RecipeItemsTab() {
                     onAmountChange={(delta) =>
                       handleAdjustDefaultAmount(item.id, delta)
                     }
-                    disabled={savingItemIds.has(item.id)}
+                    disabled={!canEditCatalog || savingItemIds.has(item.id)}
                     isPending={savingItemIds.has(item.id)}
                   />
                 </div>

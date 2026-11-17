@@ -37,6 +37,13 @@ vi.mock('../lib/prisma.js', async () => {
       findMany: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      // Never used by the resolvers under test. Here so a test can assert
+      // that NO cart write happened, whichever method a change might use.
+      createMany: vi.fn(),
+      upsert: vi.fn(),
+      updateMany: vi.fn(),
+      delete: vi.fn(),
+      deleteMany: vi.fn(),
     },
     item: { findMany: items.client.findMany },
   }
@@ -66,6 +73,11 @@ const mockPrisma = prisma as unknown as {
     findMany: ReturnType<typeof vi.fn>
     create: ReturnType<typeof vi.fn>
     update: ReturnType<typeof vi.fn>
+    createMany: ReturnType<typeof vi.fn>
+    upsert: ReturnType<typeof vi.fn>
+    updateMany: ReturnType<typeof vi.fn>
+    delete: ReturnType<typeof vi.fn>
+    deleteMany: ReturnType<typeof vi.fn>
   }
   $world: HouseholdWorld
 }
@@ -341,6 +353,80 @@ describe('vendorCart', () => {
   })
 })
 
+// ─── vendorCart for a viewer (households H5 task F.2, decision T7) ─────────
+
+describe('vendorCart reads for a viewer and creates for a participant', () => {
+  const VENDOR_CART = `query VendorCart($vendorId: ID, $locationId: ID!) {
+    vendorCart(vendorId: $vendorId, locationId: $locationId) { id lastPurchasedAt }
+  }`
+
+  it('location viewer can open a vendor cart that does not exist yet, and no cart is written', async () => {
+    // Given the caller is only a viewer of LOC_DEFAULT (user_member is a
+    // participant there), and no cart exists for vendor_1
+    seedLocations({ callerRole: 'viewer' })
+    mockPrisma.cart.findUnique.mockResolvedValue(null)
+
+    // When the viewer opens the Shopping page for vendor_1
+    const result = await execOp(VENDOR_CART, { vendorId: 'vendor_1', locationId: LOC_DEFAULT })
+
+    // Then an empty cart with the right id comes back, and nothing is written
+    expect(result?.errors).toBeUndefined()
+    expect(result?.data?.vendorCart).toEqual({ id: `${LOC_DEFAULT}:vendor_1`, lastPurchasedAt: null })
+    // Every cart write method, not only `create`
+    const { findUnique: _read, findMany: _list, ...writes } = mockPrisma.cart
+    expect(Object.keys(writes).sort()).toEqual([
+      'create',
+      'createMany',
+      'delete',
+      'deleteMany',
+      'update',
+      'updateMany',
+      'upsert',
+    ])
+    for (const [name, write] of Object.entries(writes)) {
+      expect(write, `cart.${name}`).not.toHaveBeenCalled()
+    }
+  })
+
+  it('location viewer gets an existing cart as it is', async () => {
+    seedLocations({ callerRole: 'viewer' })
+    const cart = makeCart({ id: `${LOC_DEFAULT}:vendor_1`, lastPurchasedAt: now })
+    mockPrisma.cart.findUnique.mockResolvedValue(cart)
+
+    const result = await execOp(VENDOR_CART, { vendorId: 'vendor_1', locationId: LOC_DEFAULT })
+
+    expect(result?.errors).toBeUndefined()
+    expect(result?.data?.vendorCart).toEqual({ id: `${LOC_DEFAULT}:vendor_1`, lastPurchasedAt: now.toISOString() })
+    expect(mockPrisma.cart.create).not.toHaveBeenCalled()
+  })
+
+  it('location participant still gets the missing cart created', async () => {
+    // Given the caller is a participant of LOC_DEFAULT (user_member organizes it)
+    seedLocations({ callerRole: 'participant' })
+    mockPrisma.cart.findUnique.mockResolvedValue(null)
+    mockPrisma.cart.create.mockResolvedValue(makeCart({ id: `${LOC_DEFAULT}:vendor_1` }))
+
+    const result = await execOp(VENDOR_CART, { vendorId: 'vendor_1', locationId: LOC_DEFAULT })
+
+    // Then the cart row is created at that location
+    expect(result?.errors).toBeUndefined()
+    expect(mockPrisma.cart.create).toHaveBeenCalledWith({
+      data: { id: `${LOC_DEFAULT}:vendor_1`, locationId: LOC_DEFAULT },
+    })
+  })
+
+  it('a person with no role on the location cannot open its vendor cart', async () => {
+    // Given LOC_NOROLE is in the caller's own household, but only
+    // user_member has a role there
+    const result = await execOp(VENDOR_CART, { vendorId: 'vendor_1', locationId: LOC_NOROLE })
+
+    // Then FORBIDDEN, before any cart is read or written
+    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(mockPrisma.cart.findUnique).not.toHaveBeenCalled()
+    expect(mockPrisma.cart.create).not.toHaveBeenCalled()
+  })
+})
+
 // ─── allCarts ────────────────────────────────────────────────────────────────
 
 describe('allCarts', () => {
@@ -424,61 +510,12 @@ describe('allCarts', () => {
 // `cart-checkout.resolver.test.ts` (task B.5). Both run on the stateful
 // `cartFake`, with two members in one cart.
 
-// ─── Households H3a task 3.8: location roles and the household's items ───────
+// ─── Households H3a task 3.8: location roles ────────────────────────────────
 //
-// Every cart write needs location role `participant`; a read needs `viewer`.
-// Only `vendorCart` is tested here; the other writes and the reads are in
-// `cart-shared.resolver.test.ts` (task B.4) and
+// Until households H5 task F.2 a block here checked that a location viewer
+// could not use `vendorCart`, because it creates a missing cart. F.2 made it
+// a read (decision T7): a viewer gets an empty cart and nothing is written,
+// and a participant still gets the cart created. Those tests are in
+// 'vendorCart reads for a viewer and creates for a participant' above. The
+// other cart writes are in `cart-shared.resolver.test.ts` (task B.4) and
 // `cart-checkout.resolver.test.ts` (task B.5).
-// Until task 3.8 every caller in this file was an `organizer` (the old
-// `derivedRoles` adapter), so a call site that asked for `organizer` by
-// mistake, or for `viewer`, passed every test here.
-
-const CART_ID = `${LOC_DEFAULT}:no-vendor`
-
-// Each write, with the mocks it needs to succeed. `wrote` names the recorder
-// that holds its write, so a refusal can be shown to write nothing.
-const WRITES: Array<{
-  name: string
-  query: string
-  variables: Record<string, unknown>
-  arrange: () => void
-  wrote: () => ReturnType<typeof vi.fn>
-}> = [
-  {
-    name: 'vendorCart (creates the cart when it is missing)',
-    query: `query Q($l: ID!) { vendorCart(vendorId: null, locationId: $l) { id } }`,
-    variables: { l: LOC_DEFAULT },
-    arrange: () => {
-      mockPrisma.cart.findUnique.mockResolvedValue(null)
-      mockPrisma.cart.create.mockResolvedValue(makeCart({ id: CART_ID }))
-    },
-    wrote: () => mockPrisma.cart.create,
-  },
-]
-
-describe('cart writes need location role participant', () => {
-  for (const op of WRITES) {
-    it(`a location viewer cannot use ${op.name}, and nothing is written`, async () => {
-      // Given the caller is only a viewer at LOC_DEFAULT, and user_member is a
-      // participant there
-      seedLocations({ callerRole: 'viewer' })
-      op.arrange()
-
-      const result = await execOp(op.query, op.variables)
-
-      expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
-      expect(op.wrote()).not.toHaveBeenCalled()
-    })
-
-    it(`a location participant can use ${op.name}`, async () => {
-      seedLocations({ callerRole: 'participant' })
-      op.arrange()
-
-      const result = await execOp(op.query, op.variables)
-
-      expect(result?.errors).toBeUndefined()
-      expect(op.wrote()).toHaveBeenCalled()
-    })
-  }
-})

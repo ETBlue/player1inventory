@@ -3,7 +3,8 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './VendorCard.stories'
 
-const { Default, WithItemCount, WithNoItems } = composeStories(stories)
+const { Default, WithItemCount, WithNoItems, ReadOnly } =
+  composeStories(stories)
 
 describe('VendorCard stories smoke tests', () => {
   it('Default renders without error', () => {
@@ -20,5 +21,16 @@ describe('VendorCard stories smoke tests', () => {
   it('WithNoItems renders without error', () => {
     render(<WithNoItems />)
     expect(screen.getByText(/0 items/)).toBeInTheDocument()
+  })
+
+  it('ReadOnly shows the vendor with no Delete button', () => {
+    render(<ReadOnly />)
+    expect(screen.getByText(/3 items/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /delete/i })).toBeNull()
+  })
+
+  it('Default still has its Delete button (the control for ReadOnly)', () => {
+    render(<Default />)
+    expect(screen.getByRole('button', { name: /delete/i })).toBeInTheDocument()
   })
 })

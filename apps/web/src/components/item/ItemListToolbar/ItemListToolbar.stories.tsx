@@ -25,19 +25,30 @@ import { ItemListToolbar } from '.'
 
 const queryClient = new QueryClient()
 
-const createStoryRouter = (storyComponent: React.ComponentType) => {
+const createStoryRouter = (
+  storyComponent: React.ComponentType,
+  initialUrl = '/',
+) => {
   const rootRoute = createRootRoute({
     component: storyComponent as () => React.ReactNode,
   })
 
   return createRouter({
     routeTree: rootRoute,
-    history: createMemoryHistory({ initialEntries: ['/'] }),
+    history: createMemoryHistory({ initialEntries: [initialUrl] }),
   })
 }
 
-function RouterWrapper({ children }: { children: React.ReactNode }) {
-  const [router] = useState(() => createStoryRouter(() => <>{children}</>))
+function RouterWrapper({
+  children,
+  initialUrl,
+}: {
+  children: React.ReactNode
+  initialUrl?: string
+}) {
+  const [router] = useState(() =>
+    createStoryRouter(() => <>{children}</>, initialUrl),
+  )
   return <RouterProvider router={router} />
 }
 
@@ -45,10 +56,11 @@ const meta: Meta<typeof ItemListToolbar> = {
   title: 'Components/Item/ItemListToolbar',
   component: ItemListToolbar,
   decorators: [
-    (Story) => (
+    (Story, context) => (
       <ApolloProvider client={noopApolloClient}>
         <QueryClientProvider client={queryClient}>
-          <RouterWrapper>
+          {/* A story may open with a search already typed (`?q=`) */}
+          <RouterWrapper initialUrl={context.parameters.initialUrl}>
             <Story />
           </RouterWrapper>
         </QueryClientProvider>
@@ -273,6 +285,19 @@ export const CreateButtonLoading: Story = {
       onCreateFromSearch={() => {}}
       hasExactMatch={false}
       isCreating
+    />
+  ),
+}
+
+// A household member searched for a new name (households H5): no Create
+// button, and a note under the search row says why.
+export const CreateReadOnlyNote: Story = {
+  parameters: { initialUrl: '/?q=Butter' },
+  render: () => (
+    <Controlled
+      items={mockItems}
+      hasExactMatch={false}
+      createReadOnlyNote="Only a household owner or manager can create a new item."
     />
   ),
 }

@@ -5,6 +5,7 @@
     "positiveNumber": "必須大於 0。"
   },
   "common": {
+    "locationViewOnly": "你只能檢視這個據點，不能修改。",
     "cancel": "取消",
     "delete": "刪除",
     "deleting": "刪除中...",
@@ -127,6 +128,7 @@
     }
   },
   "cookingControlBar": {
+    "createReadOnly": "只有家庭擁有者或管理者可以建立新的食譜。",
     "sort": {
       "name": "名稱",
       "recent": "最近做過",
@@ -231,6 +233,7 @@
     "back": "返回"
   },
   "items": {
+    "createReadOnly": "只有家庭擁有者或管理者可以建立新的品項。",
     "newButton": "新增品項",
     "addDialog": {
       "title": "新增品項",
@@ -251,6 +254,7 @@
       "addToRecipe": "加入食譜",
       "inRecipes": "屬於 {{recipes}}",
       "addToShelf": "加入層架",
+      "catalogReadOnly": "只有擁有者或管理者可以加到這裡。",
       "notMatchingShelf": "不符合此層架的篩選條件",
       "filterPicks": {
         "title": "將「{{name}}」加入「{{shelf}}」",
@@ -432,7 +436,9 @@
         "notStockedDescription": "{{name}} 尚未在 {{location}} 建立庫存。",
         "addToLocation": "加入這個據點",
         "addFailed": "無法將 {{name}} 加入 {{location}}，請再試一次。",
-        "removeFromLocation": "從這個據點移除"
+        "removeFromLocation": "從這個據點移除",
+        "removeForbidden": "只有{{location}}的據點王可以把{{name}}移出這個據點。",
+        "removeFailed": "無法把{{name}}移出{{location}}，請再試一次。"
       },
       "removeLocationDialog": {
         "title": "將 {{name}} 從 {{location}} 移除？",
@@ -469,6 +475,8 @@
     "createItem": "新增品項"
   },
   "settings": {
+    "catalogReadOnly": "只有家庭擁有者或管理者可以新增或修改這些項目。",
+    "catalogReadOnlyItem": "只有家庭擁有者或管理者可以修改這個項目。",
     "title": "設定",
     "household": {
       "title": "我的資料",
@@ -576,7 +584,9 @@
           "title": "尚未建立物資清單",
           "description": "可以透過搜尋功能新增可套用此供應商的品項喔"
         }
-      }
+      },
+      "createForbidden": "只有家庭擁有者或管理者可以新增供應商。",
+      "createFailed": "無法新增{{name}}，請再試一次。"
     },
     "locations": {
       "label": "據點",
@@ -590,13 +600,17 @@
       "deleteLabel": "刪除 {{name}}",
       "deleteTitle": "刪除「{{name}}」？",
       "deleteDescription": "將會移除這個據點。",
-      "deleteLastError": "無法刪除最後一個據點。請先新增另一個據點。",
       "deleteError": "無法刪除這個據點，請再試一次。",
+      "reorderError": "據點清單有變動，正在重新載入，請再試一次。",
+      "reorderFailed": "無法儲存新的順序，請再試一次。",
       "defaultHint": "預設",
       "dragToReorder": "拖曳以重新排序 {{name}}",
       "dragInstructions": "按空白鍵或 Enter 拿起據點，使用方向鍵移動，再按一次空白鍵或 Enter 放下。",
       "emptyTitle": "尚無據點",
-      "emptyDescription": "使用上方按鈕新增據點。"
+      "emptyDescription": "使用上方按鈕新增據點。",
+      "noAccess": "無權限",
+      "noOrganizer": "沒有據點王",
+      "yourRole": "你的角色："
     },
     "shelves": {
       "label": "貨架",
@@ -886,7 +900,16 @@
   },
   "locationSwitcher": {
     "triggerLabel": "切換據點（目前：{{name}}）",
-    "manage": "管理據點"
+    "manage": "管理據點",
+    "triggerLabelViewOnly": "切換據點（目前：{{name}} 僅檢視）",
+    "viewOnly": "僅檢視"
+  },
+  "roles": {
+    "location": {
+      "organizer": "據點王",
+      "participant": "搬運工",
+      "viewer": "圍觀的"
+    }
   },
   "pwa": {
     "updateAvailable": "有新版本可以使用。",
@@ -895,5 +918,9 @@
     "offlineSyncedAt": "顯示 {{time}} 的資料",
     "offlineNeverSynced": "目前沒有資料可顯示，請連線後再讀取。",
     "writeBlocked": "目前離線中，暫時無法儲存變更。"
+  },
+  "noLocations": {
+    "title": "你在這個家庭還沒有據點。",
+    "create": "建立據點"
   }
 }

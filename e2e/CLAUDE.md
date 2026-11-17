@@ -708,6 +708,51 @@ default rows into the picked location, or into a "New location"; a location the 
 only views is skipped and named; and a "Clear & import" of a cloud backup leaves no empty
 "Home" (decision 6). One person in TWO households is still impossible here (409).
 
+**A browser context can be any user — since households H5 task F.8.** The project's own
+`page` is still `E2E_USER_ID`, because `VITE_E2E_TEST_USER_ID` is one value in the web
+build. A spec that needs a page as someone else calls
+`newUserContext(browser, userId, extraLocalStorage?)` (`e2e/helpers/userContext.ts`). It
+makes a new context with `data-mode: cloud`, `e2e-skip-onboarding: true` and
+`e2e-user-id: <userId>` in `localStorage`, and `baseURL: CLOUD_WEB_URL`: a context made
+with `browser.newContext` does not inherit the project's `use` settings. The caller closes
+it.
+
+| Part | Where | What it does |
+|---|---|---|
+| `getE2ETestUserId()` | `apps/web/src/lib/e2eUser.ts` | the key's value when the build-time flag is set and the key is not empty; else the build-time id; `undefined` with no flag |
+| readers | `main.tsx` (once, then passed to `createApolloClientForE2E` and `LiveUpdatesRunner`), the Account card in `UserSettingsPanel` | the HTTP header, the socket and the screen use one id |
+| production guard | `getE2ETestUserId` returns before it reads `localStorage` when the flag is empty | pinned by `e2eUser.test.ts`; a production build has no `"e2e-user-id"` string at all (grep `apps/web/dist/assets/*.js`, measured 2026-11-17: 0 files; the same build with the flag set: 1 file) |
+
+**Grep the production bundle for the QUOTED key, `"e2e-user-id"`, quotes included.**
+Without the quotes the text `e2e-user-id` also matches the header name `x-e2e-user-id`,
+which sits in code the production build keeps but never runs. Then the grep finds 1 file
+and looks like a failed guard. The command:
+
+```bash
+grep -l '"e2e-user-id"' apps/web/dist/assets/*.js | wc -l   # 0 in a production build
+```
+
+**The 409 order still applies.** Add the person to a household BEFORE their context
+opens a page: the first page load is their first GraphQL request.
+
+**Clean up the build-time user too.** If the override ever stops working, every context
+falls back to `E2E_USER_ID` and writes rows as that user. `shared-household.spec.ts`
+calls `cleanupCloudData(request)` for that reason, after its own two users.
+
+`shared-household.spec.ts` is the first spec that uses it: 3 tests, cloud only (in
+`local`'s `testIgnore`). A household `member` sees the tags page read-only while the owner
+sees New Tag Type; a location `viewer` sees a cart row the owner adds in the owner's
+browser, live, and gets no Done; a location a member creates shows to the owner on the
+settings list as No access with Delete, and never in the switcher. Proved by mutation
+2026-11-17, each in `cloud`:
+
+| Mutation | Red test |
+|---|---|
+| `permissionsFor` gives `canEditCatalog: true` | test 1, the read-only note not found |
+| the cart page shows Done without `canEditHere` | test 2, `toHaveCount(0)` received 1 |
+| `householdLocations` returns `visibleLocations` for every role | test 3, the Shed row not found |
+| `getE2ETestUserId` ignores the key | all 3 |
+
 **`DataModeCard`'s Switch flow renders in E2E mode — since households H4 task E.6.** A
 production change made for a test, like `PostLoginMigrationDialog`'s below. The cloud
 section used to be left out in E2E mode because its Sign Out flow calls `useClerk()`.
@@ -737,7 +782,14 @@ What the number has been, so you can see how fast it moves rather than reuse a f
 | 2026-11-04 | `feature/households-h3a`, after task 3.11's two specs | 130 |
 | 2026-11-11 | `feature/households-h3a`, after task 3.15 | 133 |
 | 2026-11-16 | `feature/households-h3c-2`, after `live-pantry.spec.ts` | 151 |
-| 2026-11-17 | `feature/households-h4`, after task E.6 and the O9 follow-up | **160** |
+| 2026-11-17 | `feature/households-h4`, after task E.6 and the O9 follow-up | 160 |
+| 2026-11-17 | `feature/households-h5`, after task F.8 | **168** |
+
+H5a added 9 tests and removed 1. All of them RUN only in `cloud`; the six in the two
+shared spec files are also collected (and skipped) in `local`, which went 184 → 189: 3 in `location-switcher.spec.ts` (task
+F.4, the View only badge and two axe scans), 3 in `settings/locations.spec.ts` (task F.7,
+delete the last location and two axe scans of the empty screen) replacing the old
+"last location is refused" test, and 3 in `shared-household.spec.ts` (task F.8).
 
 Task 3.15 added 3: the cloud last-location test in `settings/locations.spec.ts` (skipped
 in `local`, so `local` collects 184 and runs 178), and the same-household restore test in

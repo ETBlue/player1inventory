@@ -5,6 +5,7 @@
     "positiveNumber": "Must be greater than 0."
   },
   "common": {
+    "locationViewOnly": "You can view this location, but not change it.",
     "cancel": "Cancel",
     "delete": "Delete",
     "deleting": "Deleting...",
@@ -127,6 +128,7 @@
     }
   },
   "cookingControlBar": {
+    "createReadOnly": "Only a household owner or manager can create a new recipe.",
     "sort": {
       "name": "Name",
       "recent": "Last Cooked",
@@ -231,6 +233,7 @@
     "back": "Back"
   },
   "items": {
+    "createReadOnly": "Only a household owner or manager can create a new item.",
     "newButton": "New Item",
     "addDialog": {
       "title": "Add Item",
@@ -251,6 +254,7 @@
       "addToRecipe": "Add to recipe",
       "inRecipes": "In {{recipes}}",
       "addToShelf": "Add to shelf",
+      "catalogReadOnly": "Only an owner or manager can add it here.",
       "notMatchingShelf": "Doesn't match this shelf's filters",
       "filterPicks": {
         "title": "Add {{name}} to {{shelf}}",
@@ -432,7 +436,9 @@
         "notStockedDescription": "{{name}} has no stock in {{location}} yet.",
         "addToLocation": "Add to location",
         "addFailed": "Could not add {{name}} to {{location}}. Please try again.",
-        "removeFromLocation": "Remove from location"
+        "removeFromLocation": "Remove from location",
+        "removeForbidden": "Only an organizer of {{location}} can remove {{name}} from it.",
+        "removeFailed": "Could not remove {{name}} from {{location}}. Please try again."
       },
       "removeLocationDialog": {
         "title": "Remove {{name}} from {{location}}?",
@@ -469,6 +475,8 @@
     "createItem": "Create item"
   },
   "settings": {
+    "catalogReadOnly": "Only a household owner or manager can add or change these.",
+    "catalogReadOnlyItem": "Only a household owner or manager can change this.",
     "title": "Settings",
     "household": {
       "title": "My data",
@@ -576,7 +584,9 @@
           "title": "No items yet",
           "description": "Use search to add items from this vendor"
         }
-      }
+      },
+      "createForbidden": "Only a household owner or manager can add a vendor.",
+      "createFailed": "Could not add {{name}}. Please try again."
     },
     "locations": {
       "label": "Locations",
@@ -590,13 +600,17 @@
       "deleteLabel": "Delete {{name}}",
       "deleteTitle": "Delete \"{{name}}\"?",
       "deleteDescription": "This location will be removed.",
-      "deleteLastError": "You cannot delete your last location. Add another location first.",
       "deleteError": "Could not delete this location. Please try again.",
+      "reorderError": "The location list changed. Reloading it now. Try again.",
+      "reorderFailed": "Could not save the new order. Please try again.",
       "defaultHint": "Default",
       "dragToReorder": "Drag to reorder {{name}}",
       "dragInstructions": "Press Space or Enter to pick up a location, use arrow keys to move it, and press Space or Enter again to drop it.",
       "emptyTitle": "No locations yet",
-      "emptyDescription": "Add a location using the button above."
+      "emptyDescription": "Add a location using the button above.",
+      "noAccess": "No access",
+      "noOrganizer": "No organizer",
+      "yourRole": "Your role:"
     },
     "shelves": {
       "label": "Shelves",
@@ -886,7 +900,16 @@
   },
   "locationSwitcher": {
     "triggerLabel": "Switch location (current: {{name}})",
-    "manage": "Manage locations"
+    "manage": "Manage locations",
+    "triggerLabelViewOnly": "Switch location (current: {{name}} View only)",
+    "viewOnly": "View only"
+  },
+  "roles": {
+    "location": {
+      "organizer": "Organizer",
+      "participant": "Participant",
+      "viewer": "Viewer"
+    }
   },
   "pwa": {
     "updateAvailable": "A new version is available.",
@@ -895,5 +918,9 @@
     "offlineSyncedAt": "Showing data from {{time}}",
     "offlineNeverSynced": "Showing no data. Connect to load your items.",
     "writeBlocked": "You are offline. Changes cannot be saved right now."
+  },
+  "noLocations": {
+    "title": "You have no locations in this household yet.",
+    "create": "Create a location"
   }
 }

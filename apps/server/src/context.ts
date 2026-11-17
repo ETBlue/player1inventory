@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql'
+import type { LocationRole } from '@prisma/client'
 
 /**
  * The app languages the server knows. The web client sends its current
@@ -47,6 +48,29 @@ export function clientIdFrom(value: unknown): string | undefined {
 export interface RequestCache {
   /** The caller's household id. Set by `requireHousehold` (lib/authz.ts). */
   householdId?: Promise<string>
+  /**
+   * The caller's counted location roles, one entry per household asked for.
+   * Set by `locationRolesByLocation` (lib/authz.ts, households H5 task F.1).
+   * Forgotten before and after every root `Mutation` field
+   * (`forgetRolesAroundEach`, lib/mutationRoleCache.ts), so a later field of
+   * the same mutation never reads a stale role.
+   */
+  locationRoles?: Map<string, Promise<Map<string, LocationRole>>>
+  /**
+   * The locations with an organizer that still counts, one entry per
+   * household asked for. Set by `locationIdsWithOrganizer` (lib/authz.ts).
+   * Cleared by `forgetLocationRoles`, for the same reason.
+   */
+  organizedLocations?: Map<string, Promise<Set<string>>>
+  /**
+   * OLD-BUNDLE SHIM. Remove with `Location.isDefault`, in the release after
+   * households. The id of the caller's first location, by `order` then `id`,
+   * one entry per household asked for (`null` when the caller has none). Set
+   * by `firstLocationIdOf` (resolvers/location.resolver.ts), so a list of N
+   * locations reads it once, not N times. Cleared by `forgetLocationRoles`,
+   * because a create, delete or reorder changes which location is first.
+   */
+  firstLocationIds?: Map<string, Promise<string | null>>
 }
 
 export interface Context {

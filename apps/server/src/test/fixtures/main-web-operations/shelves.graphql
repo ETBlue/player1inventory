@@ -1,0 +1,86 @@
+# OLD-BUNDLE FIXTURE. Do not edit by hand. Delete with the shim fields.
+#
+# A copy of `apps/web/src/apollo/operations/shelves.graphql` from `origin/main` at 351d22ad, taken 2026-11-17.
+# That is the web bundle in production before the households release.
+# `src/test/oldBundleCompat.test.ts` checks that the current server schema
+# still accepts it, so the server can be deployed before the web.
+# Delete this folder in the release after households, together with the
+# deprecated shim fields (see that test file).
+
+query GetShelves {
+  shelves {
+    id
+    name
+    type
+    order
+    filterConfig {
+      tagIds
+      vendorIds
+      recipeIds
+    }
+    itemIds
+  }
+}
+
+query GetShelf($id: ID!) {
+  shelf(id: $id) {
+    id
+    name
+    type
+    order
+    filterConfig {
+      tagIds
+      vendorIds
+      recipeIds
+    }
+    itemIds
+  }
+}
+
+mutation CreateShelf($name: String!, $type: String!, $filterConfig: FilterConfigInput, $itemIds: [String!]) {
+  createShelf(name: $name, type: $type, filterConfig: $filterConfig, itemIds: $itemIds) {
+    id
+    name
+    type
+    order
+    filterConfig {
+      tagIds
+      vendorIds
+      recipeIds
+    }
+    itemIds
+  }
+}
+
+mutation UpdateShelf($id: ID!, $name: String, $type: String, $order: Int, $filterConfig: FilterConfigInput, $itemIds: [String!]) {
+  updateShelf(id: $id, name: $name, type: $type, order: $order, filterConfig: $filterConfig, itemIds: $itemIds) {
+    id
+    name
+    type
+    order
+    filterConfig {
+      tagIds
+      vendorIds
+      recipeIds
+    }
+    itemIds
+  }
+}
+
+mutation DeleteShelf($id: ID!) {
+  deleteShelf(id: $id)
+}
+
+mutation ReorderShelves($orderedIds: [String!]!) {
+  reorderShelves(orderedIds: $orderedIds)
+}
+
+mutation ReorderShelfItems($shelfId: ID!, $orderedItemIds: [String!]!) {
+  reorderShelfItems(shelfId: $shelfId, orderedItemIds: $orderedItemIds)
+}
+
+mutation ApplyShelfFilterPicks($input: ApplyShelfFilterPicksInput!) {
+  applyShelfFilterPicks(input: $input) {
+    id
+  }
+}

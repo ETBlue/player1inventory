@@ -26,6 +26,73 @@ assignment tabs create items stocked in **no** location, via
 No new GraphQL affordance was needed: the cloud branch runs `createItem` and simply omits
 the follow-up `upsertItemStock` the pantry's Add flow performs. See `settings/CLAUDE.md`.
 
+### No locations (cloud, households H5 task F.7)
+
+**A cloud person can have no location at all** since F.7: the household's last location
+can be deleted (decision H13 lifted, owner answer O8), and a member can be added with no
+location role. Then Pantry (`/`), Shopping (`/shopping`), a cart (`/shopping/$vendorId`)
+and Cooking (`/cooking`) show `NoLocationsEmptyState`: "You have no locations in this
+household yet." / 「你在這個家庭還沒有據點。」 and **Create a location** / 「建立據點」, which
+opens the same Add Location dialog as the settings page.
+
+- **`NoLocationsGate`** (`components/location/NoLocationsGate/`) wraps each of the four
+  route components (`PantryRoute`, `ShoppingIndexRoute`, `VendorCartRoute`,
+  `CookingRoute`), and since the review of F.7 the item page's Stock tab (`ItemStockTab`)
+  and log tab (`ItemHistoryRoute`). The page is its CHILD, so none of the page's hooks run
+  while the empty screen shows. Tested in `routes/noLocations.cloud.test.tsx` (including
+  that a still-loading list does not show it) and `routes/items/$id/noLocations.cloud.test.tsx`.
+- **The settings Items tabs need no gate.** `useItems()` reads the catalog from `GetItems`
+  when the household has no location (review of F.7), so those tabs list every item, with
+  no stock.
+- It shows the screen only when `mode === 'cloud'` and `useLocations().data` is a loaded,
+  EMPTY array. While loading, or after a failed read with nothing cached, `data` is
+  `undefined` and the page renders as before. **Known gap:** "as before" for the item Stock
+  tab after a failed read means a blank tab (`stock.tsx`, `if (!viewed) return null`), with
+  no error and no retry. Older than H5; recorded in the H5 plan's *Known gaps*.
+- **Before F.7 these pages showed a spinner forever** with an empty list: every
+  location-scoped read waits for `useCloudLocationKnown`, which never became true (Review
+  Focus case 3).
+- `ActiveLocationProvider` clears the stale active id when the cloud list is empty (see
+  `hooks/CLAUDE.md`).
+- Local mode never gets here: its default location cannot be deleted.
+- Tested in `routes/noLocations.cloud.test.tsx` (all four pages, the dialog, and a
+  one-location control), E2E in `e2e/tests/settings/locations.spec.ts` (cloud: delete the
+  last location, see the empty pantry, create one; and axe scans of the empty screen, light
+  and dark, because `a11y.spec.ts` does not run in cloud).
+
+### Read-only views by role (cloud, households H5)
+
+Local mode has no roles, so none of this applies there. Every check reads `usePermissions()` (`src/hooks/usePermissions.ts`). It only hides what the server would refuse; the server checks every write.
+
+**A household `member` (task F.5) may not change the catalog.** On these pages:
+
+| Page | What a member does not get | What says why |
+| --- | --- | --- |
+| Pantry list, shelf view, cart page (`ItemListToolbar` search) | `Create item` from search, and Enter does not create | a line under the search row, `items.createReadOnly` ("Only a household owner or manager can create a new item."), passed as `createReadOnlyNote` |
+| Pantry Add dialog (`NewItemDialog`) | the `Create "<name>"` option and button, and the package unit field | the same text, under the list of matches |
+| The search tail on all five surfaces | the group action (Apply vendor, Add to recipe, Add to shelf) | `items.searchTail.catalogReadOnly` on the row ("Only an owner or manager can add it here.") |
+| Cooking (`CookingControlBar` search) | `Create` from search, and Enter does not create | `cookingControlBar.createReadOnly` ("Only a household owner or manager can create a new recipe.") under the search row |
+| Cooking empty state | `Create recipe` | `settings.catalogReadOnly` instead of "Create your first recipe" |
+
+The search notes show with the same trigger as the button they replace: a search with no exact match. Picking an existing item in the Add dialog, `Add to {location}` in the tail, and cooking itself are NOT catalog writes, so a member keeps them. Marking a recipe as cooked needs only household `member` (H5 decision O10); a guard test (`routes/cooking.readOnly.test.tsx`) checks that a member who is a participant can check a recipe, change an amount and press Done.
+
+**No note while the role is unknown.** `roleKnown` is `false` while `GetHousehold` loads and when it failed with nothing cached. The write controls stay hidden (the safe default), but none of the notes above shows: for an owner it would be untrue.
+
+**A location `viewer` (task F.6) may not change the ACTIVE location's stock, carts or cooking.** Read through `useActiveLocationRights()` (`canEditHere`, `isViewerHere`) and `useCreateHere()`:
+
+| Page | What a viewer does not get | What stays |
+| --- | --- | --- |
+| Pantry list, shelf, vendor and recipe views | the quick-update button; the Add button; the empty pantry's Create item; `Create item` from search; the search tail's `Add to {location}` | every row and its numbers; a search still lists the items stocked only at another location, in the "not stocked here" section, with no action (owner decision 2026-11-17) |
+| Cart page (`/shopping/$vendorId`) | Cancel and Done; the checkboxes and amount buttons are DISABLED, not hidden, so they still show what is in the cart and how much; `Create item` and `Add to {location}` from search | the rows, the amounts, a catalog group action such as Apply vendor for a household manager, the "not stocked here" rows with no action |
+| Cooking | Cancel and Done (the cook button, H5 decision O10); the recipe and item checkboxes are disabled | the list, the stock status, Create recipe for a household manager |
+| Item Stock tab | see `items/CLAUDE.md` | |
+
+The cart page, the cooking page and the empty pantry say why: `common.locationViewOnly` ("You can view this location, but not change it."). On the pantry list and shelf view the same text shows under the search row where Create would have been. The `LocationSwitcher` badge "View only" (task F.4) is on every one of these pages too.
+
+`ActiveLocationProvider` sends `bootstrapCarts` only where the caller is `participant` or higher (Review Focus 2). A viewer still reads the carts: `vendorCart` gives a viewer an unsaved empty cart (task F.2).
+
+The location role and the household role are two checks (Review Focus 4): a household manager who is a viewer here keeps every catalog action (Apply vendor, Add to recipe, Create recipe) and loses every stock action. Tests: `routes/locationViewer.test.tsx` (a viewer and a participant who differ only in the role at the active location, plus a household member who is a viewer).
+
 ### Pantry Page (`/`)
 
 The pantry home page (`src/routes/index.tsx`) supports two display modes and three group-by views, all controlled by URL search params.
@@ -182,7 +249,7 @@ Two-level route structure (mirrors `items/` pattern):
 
 **`'no-vendor'` sentinel:** The URL segment `no-vendor` maps to `vendorId: null` in the database. Items with no vendors assigned appear exclusively in the no-vendor cart.
 
-**Active-location scoping (PR D, and cloud since PR 3b):** carts are per **(location × vendor)** in BOTH modes, keyed `${locationId}:${vendorId | 'no-vendor'}` (parsed by `parseCartId` — never by string prefix, so a vendor id containing `:` can't be mistaken for a location). Every cart hook (`useVendorCart`, `useAllActiveCarts`, `useLastPurchasedByVendor`) threads `activeLocationId`: local carries it in the query key, cloud sends it as a `vendorCart` variable or filters `allCarts` by the parsed id. Checkout consumes from the **cart's own** location's `ItemStock` and stamps that `locationId` on the `InventoryLog` rows it writes. The URL carries only the vendor — the location comes from the global active-location state, so a `/shopping/$vendorId` URL means a different cart under a different active location. Carts are **bootstrapped up front** by `ActiveLocationProvider` whenever the active location changes — `bootstrapCarts(locationId)` in Dexie for local, the `bootstrapCarts(locationId: ID!)` mutation for cloud; `getCart` is a pure read.
+**Active-location scoping (PR D, and cloud since PR 3b):** carts are per **(location × vendor)** in BOTH modes, keyed `${locationId}:${vendorId | 'no-vendor'}` (parsed by `parseCartId` — never by string prefix, so a vendor id containing `:` can't be mistaken for a location). Every cart hook (`useVendorCart`, `useAllActiveCarts`, `useLastPurchasedByVendor`) threads `activeLocationId`: local carries it in the query key, cloud sends it as a `vendorCart` variable or filters `allCarts` by the parsed id. Checkout consumes from the **cart's own** location's `ItemStock` and stamps that `locationId` on the `InventoryLog` rows it writes. The URL carries only the vendor — the location comes from the global active-location state, so a `/shopping/$vendorId` URL means a different cart under a different active location. Carts are **bootstrapped up front** by `ActiveLocationProvider` whenever the active location changes — `bootstrapCarts(locationId)` in Dexie for local, the `bootstrapCarts(locationId: ID!)` mutation for cloud (since households H5 task F.6 only where the caller is `participant` or higher); `getCart` is a pure read.
 
 ---
 

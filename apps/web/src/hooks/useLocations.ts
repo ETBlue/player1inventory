@@ -7,15 +7,20 @@ import {
   updateLocation,
 } from '@/db/operations'
 import {
+  GetHouseholdLocationsDocument,
+  type GetHouseholdLocationsQuery,
   GetLocationsDocument,
   type GetLocationsQuery,
+  type LocationRole,
   useCreateLocationMutation as useCreateLocationMutationGql,
   useDeleteLocationMutation as useDeleteLocationMutationGql,
+  useGetHouseholdLocationsQuery,
   useGetLocationsQuery,
   useReorderLocationsMutation as useReorderLocationsMutationGql,
   useUpdateLocationMutation as useUpdateLocationMutationGql,
 } from '@/generated/graphql'
 import { deserializeLocation } from '@/lib/deserialization'
+import { hasGraphQLErrorCode } from '@/lib/graphqlErrorCode'
 import type { Location } from '@/types'
 import { useDataMode } from './useDataMode'
 
@@ -78,6 +83,87 @@ export function useLocations() {
   }
 }
 
+/**
+ * A row of the settings locations list (households H5 task F.3).
+ *
+ * `myRole` is the caller's location role there; `null` means "No access".
+ * `hasOrganizer` is false when nobody who still counts organizes it. Both are
+ * cloud data; local mode fills them with `'organizer'` and `true`, and the
+ * list shows no role there.
+ */
+export type SettingsLocation = Location & {
+  myRole: LocationRole | null
+  hasOrganizer: boolean
+}
+
+/**
+ * The settings locations list (households H5 task F.3).
+ *
+ * Cloud: `householdLocations`. An owner or manager gets EVERY location of the
+ * household, `myRole: null` where they have no role, so the list can show
+ * "No access" and send every id to `reorderLocations` (the server refuses a
+ * subset since task F.2). A household member gets the same list as
+ * `useLocations()`. The switcher keeps `useLocations()`: it lists only
+ * locations with a role.
+ *
+ * Local: `useLocations()`'s rows, each `'organizer'` with an organizer.
+ *
+ * The same fetch policy and `isLoading` / `isError` rules as `useLocations`.
+ */
+export function useHouseholdLocations(): {
+  data: SettingsLocation[] | undefined
+  isLoading: boolean
+  isError: boolean
+} {
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
+  const local = useLocations()
+
+  const cloud = useGetHouseholdLocationsQuery({
+    skip: !isCloud,
+    fetchPolicy: 'cache-and-network',
+  })
+
+  if (isCloud) {
+    return {
+      data: cloud.data?.householdLocations.map((l) => ({
+        // The query selects no dates; the list does not show them.
+        ...deserializeLocation(l as Record<string, unknown>),
+        myRole: l.myRole ?? null,
+        hasOrganizer: l.hasOrganizer,
+      })),
+      isLoading: cloud.loading && !cloud.data,
+      isError: !!cloud.error && !cloud.data,
+    }
+  }
+
+  return {
+    data: local.data?.map((l) => ({
+      ...l,
+      myRole: 'organizer' as const,
+      hasOrganizer: true,
+    })),
+    isLoading: local.isLoading,
+    isError: local.isError,
+  }
+}
+
+/**
+ * The settings list (`GetHouseholdLocations`) is refetched after a create,
+ * a rename and a delete, by NAME, so only a mounted list asks the server.
+ * These mutations run from the settings page, where it is mounted.
+ */
+const HOUSEHOLD_LOCATIONS_REFETCH = 'GetHouseholdLocations'
+
+/** The two lists a refused reorder reloads, by name (only mounted ones ask). */
+const LOCATION_LISTS_AFTER_REFUSAL = [
+  HOUSEHOLD_LOCATIONS_REFETCH,
+  'GetLocations',
+] as const
+
+/** The caller's household role, reloaded after a `FORBIDDEN` reorder. */
+const HOUSEHOLD_ROLE_REFETCH = 'GetHousehold'
+
 export function useCreateLocation() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
@@ -95,7 +181,10 @@ export function useCreateLocation() {
   // equivalent of the local `invalidateQueries(['locations'])`.
   const [cloudCreate, { loading: cloudCreateLoading }] =
     useCreateLocationMutationGql({
-      refetchQueries: [{ query: GetLocationsDocument }],
+      refetchQueries: [
+        { query: GetLocationsDocument },
+        HOUSEHOLD_LOCATIONS_REFETCH,
+      ],
     })
 
   if (mode === 'cloud') {
@@ -161,7 +250,10 @@ export function useUpdateLocation() {
   // normalization holding for every field the type may grow.
   const [cloudUpdate, { loading: cloudUpdateLoading }] =
     useUpdateLocationMutationGql({
-      refetchQueries: [{ query: GetLocationsDocument }],
+      refetchQueries: [
+        { query: GetLocationsDocument },
+        HOUSEHOLD_LOCATIONS_REFETCH,
+      ],
     })
 
   if (mode === 'cloud') {
@@ -220,7 +312,8 @@ export function useDeleteLocation() {
 
   // The server cascade matches the local one, but Apollo has no prefix-keyed
   // invalidation to mirror those five keys with — it refetches named queries.
-  // Only `GetLocations` is refetched. The server cascade DOES take the
+  // Only the two location lists are refetched: `GetLocations`, and
+  // `GetHouseholdLocations` by name (H5 task F.3). The server cascade DOES take the
   // location's carts and inventory logs — `Cart.locationId` and
   // `InventoryLog.locationId` both carry `onDelete: Cascade` since PR 3a — so
   // `AllCarts`, `AllCartItems` and `ItemLogs` observers can hold rows that are
@@ -278,7 +371,10 @@ export function useDeleteLocation() {
   // belongs here.
   const [cloudDelete, { loading: cloudDeleteLoading }] =
     useDeleteLocationMutationGql({
-      refetchQueries: [{ query: GetLocationsDocument }],
+      refetchQueries: [
+        { query: GetLocationsDocument },
+        HOUSEHOLD_LOCATIONS_REFETCH,
+      ],
     })
 
   if (mode === 'cloud') {
@@ -319,16 +415,68 @@ export function useReorderLocations() {
   // refetch to re-read what the mutation just returned. This is the cloud
   // equivalent of the local `invalidateQueries(['locations'])`; a drag settles
   // in one round trip, which is what keeps reordering feeling immediate.
-  const [cloudReorder, { loading: cloudReorderLoading }] =
+  const [cloudReorder, { loading: cloudReorderLoading, client }] =
     useReorderLocationsMutationGql({
-      update: (cache, { data }) => {
+      update: (cache, { data }, { variables }) => {
         if (!data?.reorderLocations) return
         cache.writeQuery<GetLocationsQuery>({
           query: GetLocationsDocument,
           data: { locations: data.reorderLocations },
         })
+        // The answer holds only the locations the caller has a role on, so it
+        // cannot replace the settings list (`householdLocations`), which also
+        // holds the "No access" rows. That list is put in the order that was
+        // sent instead. The server accepts only the FULL list (task F.2), so
+        // every cached row has its place.
+        const settings = cache.readQuery<GetHouseholdLocationsQuery>({
+          query: GetHouseholdLocationsDocument,
+        })
+        // `orderedIds` is `[ID!]!`, but the generated variables type allows
+        // a single id too (GraphQL list coercion), so it is narrowed here.
+        const sent = variables?.orderedIds
+        const orderedIds = typeof sent === 'string' ? [sent] : sent
+        if (!settings || !orderedIds) return
+        const byId = new Map(settings.householdLocations.map((l) => [l.id, l]))
+        const reordered = orderedIds.flatMap((id, order) => {
+          const row = byId.get(id)
+          return row ? [{ ...row, order }] : []
+        })
+        if (reordered.length !== settings.householdLocations.length) return
+        cache.writeQuery<GetHouseholdLocationsQuery>({
+          query: GetHouseholdLocationsDocument,
+          data: { householdLocations: reordered },
+        })
       },
     })
+
+  // A refused reorder reloads only what can explain the refusal:
+  //
+  // - `BAD_USER_INPUT`: both location lists. Since H5 task F.2 the server
+  //   refuses a list that is not the household's full set. Another member
+  //   created or deleted a location while this tab's list was out of date.
+  //   The reload gives the next drag the right set.
+  // - `FORBIDDEN`: the household role (`GetHousehold`). The caller is no
+  //   longer an owner or manager. Once the role says so, `usePermissions`
+  //   hides the drag handles.
+  // - offline (`OfflineWriteError`), a network error, anything else: nothing.
+  //   The lists are not wrong, and offline there is nothing to reload from.
+  //   An `OfflineWriteError` carries no GraphQL code, so it needs no check of
+  //   its own here.
+  //
+  // `mutate` and `mutateAsync` both use it. Only the settings page calls the
+  // hook today, through `mutate`; the hook tests call `mutateAsync`.
+  const reloadAfterRefusal = (err: unknown) => {
+    const include = hasGraphQLErrorCode(err, 'BAD_USER_INPUT')
+      ? [...LOCATION_LISTS_AFTER_REFUSAL]
+      : hasGraphQLErrorCode(err, 'FORBIDDEN')
+        ? [HOUSEHOLD_ROLE_REFETCH]
+        : null
+    if (!include) return
+    client
+      ?.refetchQueries({ include })
+      // A failed reload leaves the old data; the next refusal tries again.
+      .catch(() => {})
+  }
 
   if (mode === 'cloud') {
     return {
@@ -339,12 +487,17 @@ export function useReorderLocations() {
         cloudReorder({ variables: { orderedIds } }).then(
           () => options?.onSuccess?.(),
           (err) => {
+            reloadAfterRefusal(err)
             options?.onError?.(err)
           },
         ),
       mutateAsync: (orderedIds: string[]) =>
         cloudReorder({ variables: { orderedIds } }).then(
           (r) => r.data?.reorderLocations,
+          (err) => {
+            reloadAfterRefusal(err)
+            throw err
+          },
         ),
       isPending: cloudReorderLoading,
     }

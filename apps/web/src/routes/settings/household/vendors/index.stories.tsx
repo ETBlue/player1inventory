@@ -9,8 +9,10 @@ import {
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
 import { createVendor } from '@/db/operations'
+import { GetVendorsDocument } from '@/generated/graphql'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
+import { CloudRolePage, cloudRoleStorySetup } from '@/test/cloudRoleStory'
 
 const meta = {
   title: 'Pages/Settings/Vendor',
@@ -107,4 +109,32 @@ export const Default: Story = {
 
 export const WithVendors: Story = {
   render: () => <WithVendorsStory />,
+}
+
+// Households H5 task F.5. A household `member` in cloud mode: the vendors
+// are listed (names as stored), with no "New Vendor" and no Delete.
+const memberVendorMocks = [
+  {
+    request: { query: GetVendorsDocument },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: {
+      data: {
+        vendors: [
+          { __typename: 'Vendor', id: 'vendor-story-iherb', name: 'iHerb' },
+          { __typename: 'Vendor', id: 'vendor-story-costco', name: 'Costco' },
+        ],
+      },
+    },
+  },
+]
+
+export const MemberReadOnly: Story = {
+  beforeEach: cloudRoleStorySetup,
+  render: () => (
+    <CloudRolePage
+      path="/settings/household/vendors"
+      householdRole="member"
+      mocks={memberVendorMocks}
+    />
+  ),
 }

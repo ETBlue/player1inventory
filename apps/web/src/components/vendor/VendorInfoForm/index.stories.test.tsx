@@ -3,7 +3,8 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './index.stories'
 
-const { Default, WithValidationError, Dirty, Saving } = composeStories(stories)
+const { Default, WithValidationError, Dirty, Saving, ReadOnly } =
+  composeStories(stories)
 
 describe('VendorInfoForm stories smoke tests', () => {
   it('Default renders name input with vendor name', () => {
@@ -24,5 +25,11 @@ describe('VendorInfoForm stories smoke tests', () => {
   it('Saving renders disabled save button', () => {
     render(<Saving />)
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+  })
+
+  it('ReadOnly shows a readOnly name and no Save button', () => {
+    render(<ReadOnly />)
+    expect(screen.getByLabelText('Name')).toHaveAttribute('readonly')
+    expect(screen.queryByRole('button', { name: /save/i })).toBeNull()
   })
 })

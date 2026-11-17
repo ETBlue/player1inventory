@@ -409,17 +409,24 @@ describe('consumeRecipes computes the new stock on the server', () => {
     expect(logs.state.logs.map((l) => l.quantity).sort()).toEqual([1, 2])
   })
 
-  it('an old client that sends final numbers is refused, and nothing is written', async () => {
-    // Given the pre-B.6 input shape, with the final numbers and the log total
-    const before = writable()
+  // OLD-BUNDLE SHIM. Remove with the three deprecated fields of
+  // `ConsumeRecipesItemInput`, in the release after households (see
+  // `recipe.graphql` and `src/test/oldBundleCompat.test.ts`). Until the owner
+  // chose to deploy the server first (2026-11-17), this test said the old
+  // shape is refused.
+  it('user on an old bundle can cook: the final numbers it sends are ignored, delta is used', async () => {
+    // Given 3 packs of milk, and the pre-B.6 input shape with final numbers
+    // that are wrong on purpose (a stale screen would send such numbers)
     const res = await cook(
-      [{ itemId: 'item_milk', delta: -1, packedQuantity: 2, unpackedQuantity: 0, quantity: 2 } as ItemInput],
+      [{ itemId: 'item_milk', delta: -1, packedQuantity: 50, unpackedQuantity: 7, quantity: 51 } as ItemInput],
       ALICE,
     )
 
-    // Then GraphQL refuses the unknown fields before any resolver runs
-    expect(code(res)).toBe('BAD_USER_INPUT')
-    expect(writable()).toEqual(before)
+    // Then the cook works, and the stock and the log follow delta (-1) only
+    expect(res.errors).toBeUndefined()
+    expect(stockAt('item_milk')).toMatchObject({ packedQuantity: 2, unpackedQuantity: 0 })
+    expect(logs.state.logs).toHaveLength(1)
+    expect(logs.state.logs[0]).toMatchObject({ itemId: 'item_milk', delta: -1, quantity: 2 })
   })
 
   it.each([0, 1])('a delta of %d is refused with BAD_USER_INPUT, and nothing is written', async (delta) => {

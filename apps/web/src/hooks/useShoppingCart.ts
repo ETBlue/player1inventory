@@ -491,10 +491,12 @@ export function useVendorCart(vendorId: string | null) {
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
   const { activeLocationId } = useActiveLocation()
-  // `vendorCart` CREATES the cart when it is missing, so the server asks for
-  // the `participant` location role on `locationId`. Sending the `'local'` sentinel of a
-  // fresh cloud session would be refused with FORBIDDEN and Apollo would keep
-  // that request as a live observer — see `useCloudLocationKnown`.
+  // `vendorCart` asks the `viewer` location role on `locationId` (households
+  // H5 task F.2). It creates a missing cart only for `participant` or higher;
+  // a viewer gets an empty cart and nothing is saved. Sending the `'local'`
+  // sentinel of a fresh cloud session would still be refused with FORBIDDEN
+  // and Apollo would keep that request as a live observer — see
+  // `useCloudLocationKnown`.
   const locationKnown = useCloudLocationKnown(activeLocationId, isCloud)
 
   const local = useQuery({

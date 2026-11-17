@@ -15,6 +15,7 @@ const {
   WithVendorsAndRecipes,
   HideVendorFilter,
   HideRecipeFilter,
+  CreateReadOnlyNote,
 } = composeStories(stories)
 
 describe('ItemListToolbar stories smoke tests', () => {
@@ -89,5 +90,15 @@ describe('ItemListToolbar stories smoke tests', () => {
     expect(
       await screen.findByRole('button', { name: /sort by criteria/i }),
     ).toBeInTheDocument()
+  })
+
+  it('CreateReadOnlyNote shows the note and no Create button', async () => {
+    render(<CreateReadOnlyNote />)
+    expect(
+      await screen.findByText(
+        'Only a household owner or manager can create a new item.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /create item/i })).toBeNull()
   })
 })

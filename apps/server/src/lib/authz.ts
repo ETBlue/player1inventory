@@ -94,8 +94,10 @@ function countedLocationRole(userId: string) {
  *
  * The household role does NOT count here. A household `owner` with no
  * `LocationMember` row on a location is refused (design, *Rules that cross
- * the two levels*). Until H5 that cannot happen: everyone organizes the
- * locations they made.
+ * the two levels*). That happens as soon as a second person in the
+ * household creates a location: only its creator gets a role (decision O4 of
+ * the H5 plan). The owner then sees it on `householdLocations` with
+ * `myRole: null`, and is refused here.
  *
  * Returns the location id and the role the caller holds.
  */
@@ -121,14 +123,28 @@ export async function requireLocationRole(
 }
 
 /**
+ * True when `role` is `min` or stronger on the location ladder
+ * (`viewer` < `participant` < `organizer`). For a resolver that asks a low
+ * role to pass and then does more for a higher one, such as `vendorCart`
+ * (households H5 task F.2, decision T7). Use this rather than reading the
+ * rank map at a call site.
+ */
+export function roleAtLeast(role: LocationRole, min: LocationRole): boolean {
+  return LOCATION_RANK[role] >= LOCATION_RANK[min]
+}
+
+/**
  * The ids of every location on which the caller holds a location role that
  * still counts (decision H18). With no `role`, any role counts: this is the
  * list a person sees, and the `locations` query reads it (task 3.6). With a
  * `role`, only that role or a stronger one counts. Imports ask for
  * `participant`, the lowest role that may write (H3b task B.7).
  *
- * The household role does NOT add locations here. An owner or manager sees a
- * location only through a `LocationMember` row, until H5.
+ * The household role does NOT add locations here. A location the caller has
+ * no `LocationMember` row on is never in this list, even for an owner or
+ * manager. The settings list of every location of the household is
+ * `householdLocations` (resolvers/location.resolver.ts, households H5 task
+ * F.1), which reads the `Location` table, not this.
  *
  * With `options.householdId`, only the locations of that household count
  * (households H4 task E.1, decision T7). A person can be a member of two
@@ -161,6 +177,123 @@ export async function locationIdsWithRole(
     select: { locationId: true },
   })
   return memberships.map((m) => m.locationId)
+}
+
+/**
+ * The caller's counted location role on every location of `householdId`, as
+ * a map from location id to role (households H5 task F.1, decision T3). A
+ * location the caller has no counted role on is not in the map. This is what
+ * `Location.myRole` reads.
+ *
+ * ONE read per household per request: the promise is kept on
+ * `ctx.requestCache.locationRoles`, so a list of N locations costs one query,
+ * not N. A context with no cache (most tests) reads again on every call.
+ *
+ * Built on `countedLocationRole`, so decision H18 holds: a role row of a
+ * household the caller is no longer in does not count.
+ */
+export function locationRolesByLocation(
+  ctx: Context,
+  householdId: string,
+): Promise<Map<string, LocationRole>> {
+  const userId = requireAuth(ctx)
+  const cache = ctx.requestCache
+  const known = cache?.locationRoles?.get(householdId)
+  if (known) return known
+  const counted = countedLocationRole(userId)
+  const lookup = prisma.locationMember
+    .findMany({
+      where: {
+        ...counted,
+        // Inside the same `location` object as the H18 filter, as in
+        // `locationIdsWithRole`: a second `location` key would replace it.
+        location: { ...counted.location, householdId },
+      },
+      select: { locationId: true, role: true },
+    })
+    .then((rows) => new Map(rows.map((r) => [r.locationId, r.role])))
+  if (cache) {
+    cache.locationRoles ??= new Map()
+    cache.locationRoles.set(householdId, lookup)
+  }
+  return lookup
+}
+
+/**
+ * Forget the role caches of this request: `locationRoles`
+ * (`locationRolesByLocation`), `organizedLocations`
+ * (`locationIdsWithOrganizer`) and, until the old-bundle shim goes,
+ * `firstLocationIds` (`firstLocationIdOf` in resolvers/location.resolver.ts).
+ * A create, delete or reorder changes which location is first, so the old
+ * bundle's `isDefault` must be read again after one.
+ *
+ * The root fields of a mutation run one after another in ONE request, so
+ * they share the cache. Without a forget,
+ * `mutation { a: createLocation(…) { myRole } b: createLocation(…) { myRole } }`
+ * gives `b` the map `a` read before `b`'s organizer row existed: `myRole: null`
+ * and `hasOrganizer: false` (found in the review of H5 task F.1).
+ *
+ * No resolver calls this. `forgetRolesAroundEach` (lib/mutationRoleCache.ts)
+ * calls it before and after EVERY root `Mutation` field, so a new writer of a
+ * role row is covered without remembering to (review of H5 task F.2).
+ *
+ * `householdId` is NOT forgotten: no resolver moves the caller to another
+ * household yet (H5b's join will, and must decide then).
+ */
+export function forgetLocationRoles(ctx: Context): void {
+  const cache = ctx.requestCache
+  if (!cache) return
+  delete cache.locationRoles
+  delete cache.organizedLocations
+  // OLD-BUNDLE SHIM. Remove with `Location.isDefault`.
+  delete cache.firstLocationIds
+}
+
+/**
+ * The `where` for "an organizer row whose OWN person is still a member of
+ * `householdId`", on the locations of that household.
+ *
+ * This is decision H18 applied to the ORGANIZER, not to the caller, so it is
+ * NOT `countedLocationRole`. `countedLocationRole(userId)` asks "does THIS
+ * caller still count?" and names the caller twice. Here the person is
+ * whoever is on each row, so the membership check goes through the row's own
+ * `user` relation. Asking `location.household.members.some` with no `userId`
+ * would be wrong: it is true whenever ANYONE is still in the household, so an
+ * organizer who left would still count.
+ */
+function countedOrganizerIn(householdId: string) {
+  return {
+    role: 'organizer' as const,
+    location: { householdId },
+    user: { householdMemberships: { some: { householdId } } },
+  }
+}
+
+/**
+ * The ids of the locations of `householdId` that have at least one organizer
+ * who still counts (`countedOrganizerIn`). `Location.hasOrganizer` reads it
+ * (households H5 task F.1). The settings list warns "No organizer" for a
+ * location that is not in the set.
+ *
+ * It checks no role of the caller. The caller only learns whether a location
+ * of their own household has an organizer, which every member may know.
+ *
+ * ONE read per household per request, kept on
+ * `ctx.requestCache.organizedLocations`.
+ */
+export function locationIdsWithOrganizer(ctx: Context, householdId: string): Promise<Set<string>> {
+  requireAuth(ctx)
+  const cache = ctx.requestCache
+  const known = cache?.organizedLocations?.get(householdId)
+  if (known) return known
+  const lookup = prisma.locationMember
+    .findMany({ where: countedOrganizerIn(householdId), select: { locationId: true } })
+    .then((rows) => new Set(rows.map((r) => r.locationId)))
+  if (cache) {
+    cache.organizedLocations ??= new Map()
+    cache.organizedLocations.set(householdId, lookup)
+  }
+  return lookup
 }
 
 /**

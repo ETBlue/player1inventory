@@ -108,7 +108,23 @@ that really set up that role.
 
 ## Authorization (cloud)
 
-> See `docs/global/permissions/2026-10-04-households-design.md` (which replaces the role table of `docs/global/permissions/2026-08-29-design-location-rbac.md`). Rights come from roles, not from having created the row. **Households are built in H3a** (merged into `develop` in #375, not deployed; deploy steps in `docs/global/backend/2026-11-11-deploy-runbook-households-h3a.md`). **Shared carts are built in H3b** (merged into `develop` in #377, not deployed; deploy steps in `docs/global/backend/2026-11-15-deploy-runbook-households-h3b.md`): a cart belongs to its location, every cart read and write is scoped by location role, `Cart.userId` is dropped, and `CartItem.userId` means only "added by". **Import and export are built in H4** (branch `feature/households-h4`, going into `develop`, not merged, not deployed; deploy steps in `docs/global/backend/2026-11-17-deploy-runbook-households-h4.md`). H4 needs the **server before the web**, the opposite of H3a; that runbook says how the two rules fit in one release. Each person still has exactly one household until H5, so nothing is shared yet.
+> See `docs/global/permissions/2026-10-04-households-design.md` (which replaces the role table of `docs/global/permissions/2026-08-29-design-location-rbac.md`). Rights come from roles, not from having created the row. **Households are built in H3a** (merged into `develop` in #375, not deployed; deploy steps in `docs/global/backend/2026-11-11-deploy-runbook-households-h3a.md`). **Shared carts are built in H3b** (merged into `develop` in #377, not deployed; deploy steps in `docs/global/backend/2026-11-15-deploy-runbook-households-h3b.md`): a cart belongs to its location, every cart read and write is scoped by location role, `Cart.userId` is dropped, and `CartItem.userId` means only "added by". **Import and export are built in H4** (merged into `develop` in #382, merge `bf87e839`, not deployed; deploy steps in `docs/global/backend/2026-11-17-deploy-runbook-households-h4.md`). H4 needs the **server before the web**, the opposite of H3a; that runbook says how the two rules fit in one release. Each person still has exactly one household until H5b (invites), so nothing is shared yet in production.
+>
+> **Roles in the web, read-only views and empty households are built in H5a** (`feature/households-h5`, built 2026-11-17, awaiting PR; not merged, not deployed; plan `docs/global/permissions/2026-11-17-households-plan-h5.md`; deploy notes in section 8 of the H4 runbook). **The households release deploys the SERVER first, then the web** (owner decision 2026-11-17, option 4; runbook section 8.3). For that, the server keeps a one-release shim: see *Old-bundle shim* below. What H5a adds:
+>
+> | Part | What |
+> |---|---|
+> | `Location.myRole` | the caller's counted location role there, or `null`. `GetLocations` and the three location mutations select it, so the web knows every location role (task F.1) |
+> | `Location.hasOrganizer` | `false` when no organizer of the location is still in the household (task F.1) |
+> | `householdLocations` | the settings list: every location of the household for an owner or manager (`myRole: null` = "No access"), the switcher's list for a member (tasks F.1, F.3) |
+> | `vendorCart` for a `viewer` | an unsaved empty cart instead of `FORBIDDEN`; it creates the cart only for `participant` (task F.2) |
+> | `reorderLocations` | refuses a list that is not the household's full set (`BAD_USER_INPUT`, task F.2) |
+> | `deleteLocation` | the LAST location can be deleted. `LAST_LOCATION` is gone (decision H13 lifted, task F.7). `lockHousehold` is still taken first |
+> | `createVendor(locationId:)` | optional. With no location the vendor is written with no cart. `""` is not "no location": it is refused like any unknown id |
+> | web: `usePermissions()` | one hook for "may I edit the catalog" and "may I edit this location" (`apps/web/src/hooks/CLAUDE.md`). It hides controls only; the server checks every write |
+> | web: read-only views | a household `member` sees the catalog read-only; a location `viewer` sees that location's stock, carts and cooking read-only; the switcher shows **View only** (`apps/web/src/routes/CLAUDE.md`, *Read-only views by role*) |
+> | web: no locations | `NoLocationsGate` shows "You have no locations in this household yet" on Pantry, Shopping, a cart, Cooking and the item Stock and log tabs. A cloud write that needs a location throws `NoCloudLocationError` before anything is sent (`useRequiredCloudLocationId`) |
+> | E2E: a browser per user | `newUserContext(browser, userId)` (`e2e/helpers/userContext.ts`) makes a context that acts as `userId`; see *E2E* below and `e2e/CLAUDE.md` |
 >
 > | Role ladder | Names, weakest first | Governs |
 > |---|---|---|
@@ -123,7 +139,11 @@ that really set up that role.
 > | `requireHouseholdRole(ctx, householdId, role)` | refuses with `FORBIDDEN` unless the caller's household role is `role` or stronger |
 > | `requireCatalogRole(ctx, role)` | both of the above; returns the household id. Catalog reads ask `member`, writes `manager` |
 > | `requireLocationRole(ctx, locationId, role)` | refuses unless the caller has `role` or stronger on that location. A location role counts only while the matching `HouseholdMember` row exists (decision H18) |
-> | `locationIdsWithRole(ctx, role?, { householdId }?)` | every location the caller has a counted role on, optionally only in one household (since H4 task E.1). Use it for a read across locations; never write a new membership query. The five reads behind an export (`locations`, `inventoryLogs`, `allCarts`, `allCartItems`, `allItemStocks`) pass `{ householdId: await requireHousehold(ctx) }` since H4 task E.5, so they give one household only |
+> | `locationIdsWithRole(ctx, role?, { householdId }?)` | every location the caller has a counted role on, optionally only in one household (since H4 task E.1). Use it for a read across locations; never write a new membership query. The five reads behind an export (`locations`, `inventoryLogs`, `allCarts`, `allCartItems`, `allItemStocks`) pass `{ householdId: await requireHousehold(ctx) }` since H4 task E.5, so they give one household only. Since H5 task F.2 so do `cartItemCountByItem` (with no `locationId`) and `itemStocksForItem`; the copy-on-add of `addItemToLocation` and `checkout` passes the TARGET location's household (`householdOfLocation`), not the caller's |
+> | `locationRolesByLocation(ctx, householdId)` | the caller's counted role on each location of ONE household, as a `Map`. Read once per household per request (`ctx.requestCache.locationRoles`). `Location.myRole` reads it (since H5 task F.1) |
+> | `locationIdsWithOrganizer(ctx, householdId)` | the locations of one household with an organizer who is still in it (decision H18 applied to the ORGANIZER, through `countedOrganizerIn`). Cached the same way. `Location.hasOrganizer` reads it (since H5 task F.1) |
+> | `forgetLocationRoles(ctx)` | clears both role caches above. **No resolver calls it.** `forgetRolesAroundEach` (`lib/mutationRoleCache.ts`) wraps the whole `Mutation` map in `resolvers/index.ts` and calls it before and after EVERY root mutation field, also when the field throws. The root fields of one mutation share the cache, so without it `a: createLocation … b: createLocation …` gives `b` `myRole: null`. A new writer of a `LocationMember` or `HouseholdMember` row (H5b's join, remove, leave) needs nothing extra. `lib/mutationRoleCache.test.ts` calls every `Mutation` field of the executable schema with no user and fails if one leaves a cache filled. That proves only that at least one forget runs for each field (every field is wrapped): with no user a field throws before it reads anything, so the forget before OR the one after is enough. The before half, the after half and the throw case are pinned by their own unit tests of `forgetRolesAroundEach` in the same file. (Between the review of H5 task F.1 and the review of F.2, five resolvers called it by hand and a SOURCE-TEXT guard, `role-cache.guard.test.ts`, checked them. The guard missed a write through a helper, a call that was only a comment, and more, so it was replaced.) `householdId` is NOT forgotten |
+> | `roleAtLeast(role, min)` | `true` when a location role is `min` or stronger. For a resolver that asks a low role and does more for a higher one: `vendorCart` asks `viewer` and creates a missing cart only for `participant` (since H5 task F.2) |
 > | `requireLocationInHousehold(ctx, locationId, householdId)` | the location is in that household (one scoped read, `FORBIDDEN` otherwise). Since H4 task E.1. A person in two households holds roles in both, so `requireLocationRole` alone cannot say which household a location is in |
 > | `requireLocationItems(ctx, locationId, itemIds)` | every item is in the location's household. Call it AFTER `requireLocationRole` |
 > | `requireCatalogIds(ctx, householdId, model, ids)` | every id a write attaches is in the household (#273) |
@@ -165,7 +185,7 @@ that really set up that role.
 >
 > Tested in `apps/server/src/resolvers/import-role-gate.resolver.test.ts`, with one person in two households and the target pinned through `ctx.requestCache.householdId`. **A test cannot yet tell "the target household" from "the caller's household"**: until H7's household switch both are `requireHousehold(ctx)`. What the tests do prove is that the location and the item must be in the SAME household as the target.
 >
-> **The `importCheck` query (households H4 task E.2, decision T1).** A refused import used to be refused per batch of 50, so the batches sent before it stayed written and "Nothing was imported" was not true. Now the web asks first. `importCheck(ids: ImportCheckInput!, forClear: Boolean): ImportCheck!` (`apps/server/src/resolvers/importCheck.resolver.ts`) is read-only. It starts with `requireCatalogRole(ctx, forClear ? 'owner' : 'manager')`, takes the file's ids per model plus `locationRefs` and `itemRefs` (the location and item ids that rows POINT at), at most **1000** ids per call (the web sends chunks and joins the answers, `checkImportIds` in `apps/web/src/lib/importData.ts`). It answers `anotherHousehold`, `blockedLocationIds` (below `participant`), `renameBlockedLocationIds`, `missingLocationIds`, `missingItemIds` and `blockedRows`. When `anotherHousehold` is true the web stops before `clearAllData` and before the first batch, so nothing is written. Otherwise the web leaves out the blocked and missing rows and names the skipped locations after the import (decision O5). **It is a convenience, not a guard** (decision T2): a client can skip it, and the 22 mutations still check every row. It compares households in SQL, inside the resolver; no call site compares a `householdId`. Like the cart guard, it reads a cart id only when its prefix is a location the caller may write (or one the file creates). The web also uses it to list the locations "Import into which location?" offers (`fetchImportTargetLocations`), because the web does not know location roles. **A new web bundle against an older server cannot import at all**, because the query fails GraphQL validation; that is why H4 deploys the server first (decision T9).
+> **The `importCheck` query (households H4 task E.2, decision T1).** A refused import used to be refused per batch of 50, so the batches sent before it stayed written and "Nothing was imported" was not true. Now the web asks first. `importCheck(ids: ImportCheckInput!, forClear: Boolean): ImportCheck!` (`apps/server/src/resolvers/importCheck.resolver.ts`) is read-only. It starts with `requireCatalogRole(ctx, forClear ? 'owner' : 'manager')`, takes the file's ids per model plus `locationRefs` and `itemRefs` (the location and item ids that rows POINT at), at most **1000** ids per call (the web sends chunks and joins the answers, `checkImportIds` in `apps/web/src/lib/importData.ts`). It answers `anotherHousehold`, `blockedLocationIds` (below `participant`), `renameBlockedLocationIds`, `missingLocationIds`, `missingItemIds` and `blockedRows`. When `anotherHousehold` is true the web stops before `clearAllData` and before the first batch, so nothing is written. Otherwise the web leaves out the blocked and missing rows and names the skipped locations after the import (decision O5). **It is a convenience, not a guard** (decision T2): a client can skip it, and the 22 mutations still check every row. It compares households in SQL, inside the resolver; no call site compares a `householdId`. Like the cart guard, it reads a cart id only when its prefix is a location the caller may write (or one the file creates). The web also uses it to list the locations "Import into which location?" offers (`fetchImportTargetLocations`). It did this because the web did not know location roles in H4. Since H5 task F.1 `GetLocations` carries `myRole`, but the dialog still asks `importCheck`: its answer also leaves out a location deleted since the list was read. **A new web bundle against an older server cannot import at all**, because the query fails GraphQL validation; that is why H4 deploys the server first (decision T9).
 >
 > **22 bulk import mutations in `apps/server/src/resolvers/import.resolver.ts` are guarded.** Counted 2026-10-28, and the same on 2026-11-04 after households H3a task 3.9, on 2026-11-15 after households H3b tasks B.7 and B.10, and on 2026-11-17 after households H4: **18** through `requireOwnRowOrUnclaimed` (reached by the per-batch `requireOwnRowIdsOrUnclaimed` in that file), **2** through `requireOwnLocationIdsOrUnclaimed`, **2** through `requireOwnItemStockRefs`. Several task briefs said 18, which is only the first group. Count them rather than quoting this:
 >
@@ -193,7 +213,9 @@ that really set up that role.
 > git grep -c "userId: String!" -- apps/server/src/schema/        # must return nothing since 2312707a
 > ```
 >
-> Why the two steps were split: dropping a field a deployed bundle still selects fails GraphQL **validation**, so the whole query errors rather than one field going null. The Cloudflare deploy and the server deploy are separate steps, so there is always a window where the two disagree. Removing the selections first closed that window for `userId`. **`Location.isDefault` did NOT get a step one**: `main`'s web bundle still selects it, so the H3a runbook deploys the web before the server.
+> Why the two steps were split: dropping a field a deployed bundle still selects fails GraphQL **validation**, so the whole query errors rather than one field going null. The Cloudflare deploy and the server deploy are separate steps, so there is always a window where the two disagree. Removing the selections first closed that window for `userId`. **`Location.isDefault` did NOT get a step one**: `main`'s web bundle still selects it. The H3a runbook first solved that by deploying the web before the server; since 2026-11-17 the server keeps the field instead (next paragraph).
+>
+> **Old-bundle shim — read this before you remove or change any GraphQL field or input field** (built 2026-11-17, H4 runbook section 8.3). Until every device has the households bundle, the server must accept everything `main`'s old web bundle sends. Five schema fields exist only for that, all `@deprecated(reason: "Old web bundles only. … Remove in the release after households.")`: `Location.isDefault` (`true` for the first location of the caller's list), `CheckoutItemInput.itemId` (with `cartItemId` made optional; the stored amount is bought), and `ConsumeRecipesItemInput.packedQuantity` / `.unpackedQuantity` / `.quantity` (ignored). `apps/server/src/test/oldBundleCompat.test.ts` guards it in four ways: (1) it validates a COPY of `main`'s documents (`apps/server/src/test/fixtures/main-web-operations/`) against the schema; (2) it checks the old `Checkout` and `ConsumeRecipes` variables; (3) it compares a COPY of `main`'s server schema (`apps/server/src/test/fixtures/main-server-schema.graphql`) with the current one, and `findBreakingChanges` must return exactly the six `userId` fields, `Mutation.purgeUserData` and `PurgeResult`, and `findDangerousChanges` only the optional `CheckoutItemInput.cartItemId`; (4) it fails if a current web document selects a deprecated field. Document validation alone does NOT look inside an input type sent as a variable, and the variable test covers only two operations. Check (3) is what catches a change to any other input type the old bundle sends, for example `ItemInput` or `TagInput` from `main`'s import (proved by mutation: `ItemInput.estimatedDueDays` made `Int!` and `TagInput.parentId` deleted turn it red). If you change a type on purpose, check that no old document or variable uses it before you add it to the list. The old checkout shape buys the STORED amount and SKIPS an `itemId` with no row being bought, as `main`'s server did; its amount rule of `CART_CHANGED` cannot fire. `isDefault` reads the first id once per household per request (`RequestCache.firstLocationIds`, cleared by `forgetLocationRoles`). Remove together, in the release after households: the five fields, `firstLocationIdOf` and the `firstLocationIds` cache entry, both fixtures and the test.
 >
 > **The `userId` still named in `exportData.ts` and `importData.ts` tests is deliberate.** Those mappers are allow-lists — each names the keys it forwards, so anything else is dropped by omission. The tests feed `userId` in by hand, so they now prove the general rule that an unexpected key never reaches a backup file, not that one real field is stripped. No live Apollo result carries it any more.
 
@@ -535,9 +557,10 @@ skips half the work. Nothing else in the gate checks `e2e/` formatting: `pnpm li
 `apps/server`'s build already carries a second pass for `scripts/`.
 
 **`pnpm test` runs both workspaces.** The root script is `pnpm -r test`, which recurses into
-every workspace package that defines a `test` script — today `apps/web` (**2678 tests**
-across 283 files) and `apps/server` (**1765** across 67). Measured 2026-11-17 on
-`feature/households-h4`, after households H4 (it said 2586 / 281 and 1566 / 64 on
+every workspace package that defines a `test` script — today `apps/web` (**2922 tests**
+across 305 files) and `apps/server` (**1820** across 70). Measured 2026-11-17 on
+`feature/households-h5`, after households H5a task F.9 (it said 2678 / 283 and 1765 / 67
+earlier that day on `feature/households-h4`, after households H4, 2586 / 281 and 1566 / 64 on
 2026-11-16 after households H3c-2, 2577 / 281 and 1412 / 61
 after H3c-1 the same day, 2543 / 276 and 1274 / 52 on
 2026-11-15 on `feature/households-h3b`, 2549 / 277 and 1244 / 51 earlier that
@@ -1754,8 +1777,9 @@ Note also that **no *unit* test executes the resolvers against real SQL** — ev
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
 Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
 branch), but only for the spec files listed in the `cloud` project's `testMatch` in
-`e2e/playwright.config.ts` — that list is opt-in and covers **33 of the 37 spec files in
-`e2e/tests/`** (measured 2026-11-17, after households H4 task E.6 added
+`e2e/playwright.config.ts` — that list is opt-in and covers **34 of the 38 spec files in
+`e2e/tests/`** (measured 2026-11-17, after households H5 task F.8 added
+`shared-household.spec.ts`; 33 of 37 earlier that day, after households H4 task E.6 added
 `settings/import-households.spec.ts`; 32 of 36 on 2026-11-16, after households H3c-2 task D.5 added
 `live-pantry.spec.ts`; 31 of 35 after H3c-1 task C.6 added `live-cart.spec.ts`; 30 of 34 on 2026-11-15, after households H3b task B.9 added
 `shared-cart.spec.ts`; it was 29 of 33 on 2026-11-04, after households H3a task 3.11 added
@@ -1960,6 +1984,21 @@ skipped-location message, and the first spec where the BROWSER is a second perso
 else's household. One person in TWO households is still impossible there, so issue #381 has no
 real-SQL test until H5. See `e2e/CLAUDE.md` for its tests.
 
+`shared-household.spec.ts` joined on 2026-11-17 (households H5 task F.8) — 3 cloud test
+cases, with a browser, cloud only (in `local`'s `testIgnore`). The `cloud` project now
+collects **168** tests in **34** files; `local` **189** in 23, `pwa` **73** in 2 (measured
+with `--list` on 2026-11-17, task F.9). **It is the first spec with two BROWSERS that are
+two different people.** The project's own `page` is still `E2E_USER_ID`, because
+`VITE_E2E_TEST_USER_ID` is one value in the web build. Since F.8 the E2E build also reads
+`localStorage['e2e-user-id']` (`getE2ETestUserId` in `apps/web/src/lib/e2eUser.ts`; a
+production build never reads it), and `newUserContext(browser, userId, extraLocalStorage?)`
+in `e2e/helpers/userContext.ts` makes a context that sets it. Its three tests: a household
+`member` sees the catalog read-only; a location `viewer` sees a cart row the owner adds in the
+owner's browser, live, and gets no Done; a location a member creates shows to the owner as
+**No access** and never in the switcher. The 409 order of `addHouseholdMember` still
+applies: add a person to the household BEFORE their context opens a page. See
+`e2e/CLAUDE.md` for the mutation table.
+
 The warning above still holds for everything else — most resolvers are named by no cloud
 spec.
 
@@ -2094,7 +2133,7 @@ so naming `wcag22aa` turns it on. It passed all 130 scans. A comment in the spec
 `target-size` "still polices" the known-bad destructive confirm button; that was false until
 this fix, because the rule was not running at all.
 
-**To widen the gate again, add `'best-practice'` to `WCAG_AA_TAGS` in the spec file.**
+**To widen the gate again, add `'best-practice'` to `WCAG_AA_TAGS` in `e2e/helpers/axe.ts`.** (It sat in `a11y.spec.ts` until households H5 task F.4 moved it into that helper, so the cloud-only scans of the View only switcher in `location-switcher.spec.ts` use the same rules. `a11y.spec.ts` does not run in the `cloud` project.)
 Nothing else needs to change. That is the one line to edit, recorded here so the narrowing
 is reversible rather than forgotten.
 

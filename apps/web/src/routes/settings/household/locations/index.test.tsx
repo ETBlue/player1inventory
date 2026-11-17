@@ -141,4 +141,27 @@ describe('Settings locations page', () => {
       screen.getByRole('button', { name: /drag to reorder office/i }),
     ).toBeInTheDocument()
   })
+
+  it('user sees no role text on the locations list in local mode', async () => {
+    // Given the default location and one other. Local mode has one person
+    // and no roles; `useHouseholdLocations()` still gives every local row
+    // `myRole: 'organizer'`, so only the page's `showRoles` keeps the text
+    // off the screen.
+    await createLocation('Office')
+    renderPage()
+    await waitFor(() =>
+      expect(inMain().getByText('Office')).toBeInTheDocument(),
+    )
+
+    // Then no row names a role, a missing role or a missing organizer
+    for (const text of [
+      'Organizer',
+      'Participant',
+      'Viewer',
+      'No access',
+      'No organizer',
+    ]) {
+      expect(inMain().queryByText(text)).not.toBeInTheDocument()
+    }
+  })
 })

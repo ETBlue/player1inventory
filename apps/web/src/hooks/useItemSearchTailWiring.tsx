@@ -11,6 +11,7 @@ import type { PantryItem } from '@/types'
 import { useActiveLocation } from './useActiveLocation'
 import { useItemSearchTail } from './useItemSearchTail'
 import { useAddItemToLocation } from './useItems'
+import { usePermissions } from './usePermissions'
 
 export interface ItemSearchTailGroupAction {
   /** Already-translated button label, e.g. "Apply Costco". */
@@ -52,7 +53,8 @@ export interface ItemSearchTailWiring {
 // The shared wiring behind every location-scoped item search's two-section
 // tail: derives the buckets via useItemSearchTail, owns the one-mutation-at-a-
 // time pending id, gates bucket 3's "Add to <location>" action on a resolved
-// active location, and assembles a complete, spreadable ItemSearchTailProps.
+// active location and the location role (a viewer gets the rows with no
+// action), and assembles a complete, spreadable ItemSearchTailProps.
 export function useItemSearchTailWiring({
   inGroupIds,
   query,
@@ -64,6 +66,19 @@ export function useItemSearchTailWiring({
   const { t } = useTranslation()
   const { activeLocation } = useActiveLocation()
   const addItemToLocation = useAddItemToLocation()
+  // Every bucket-2 action (Apply vendor, Add to recipe, Add to shelf) writes
+  // the CATALOG, which a household member may not do (households H5 task
+  // F.5). For a member the action becomes a note that says why, so the row
+  // still shows instead of vanishing. A caller's own `groupNote` is kept.
+  // While the role is unknown (loading, or `GetHousehold` failed) there is
+  // neither the action nor the member note: the note could be untrue.
+  const { canEditCatalog, roleKnown, canEditLocation, roleAt } =
+    usePermissions()
+  const catalogNote = () => <span>{t('items.searchTail.catalogReadOnly')}</span>
+  const effectiveAction = canEditCatalog ? groupAction : undefined
+  const effectiveNote =
+    groupNote ??
+    (groupAction && roleKnown && !canEditCatalog ? catalogNote : undefined)
   // One tail mutation at a time — see ItemSearchTailAction.pendingItemId.
   const [pendingItemId, setPendingItemId] = useState<string | null>(null)
 
@@ -104,19 +119,29 @@ export function useItemSearchTailWiring({
     },
   })
 
-  // Gated on the active location resolving, and on nothing else: its name is in
-  // the button label — the same guard NewItemDialog applies for the same
-  // reason. When false, omit addToLocationAction entirely rather than passing a
-  // disabled one. Both modes stock through `useAddItemToLocation`; the cloud
-  // exclusion here dated from when that mutation threw.
-  const canAddToLocation = !!activeLocation
+  // Gated on the active location resolving (its name is in the button label,
+  // the same guard NewItemDialog applies) and, since households H5 task F.6,
+  // on the caller being `participant` or higher there: stocking an item is a
+  // location write, and the server refuses it for a viewer. When false, omit
+  // addToLocationAction entirely rather than passing a disabled one. Both
+  // modes stock through `useAddItemToLocation`; local mode allows it always.
+  const canAddToLocation =
+    !!activeLocation && canEditLocation(activeLocation.id)
+  // A KNOWN viewer of the active location still sees bucket 3, with no
+  // action (owner decision 2026-11-17): the household's items are readable,
+  // only stocking one here is not. While the role loads, or for no role,
+  // bucket 3 stays hidden, as before.
+  const listNotStockedHereReadOnly =
+    !canAddToLocation &&
+    !!activeLocation &&
+    roleAt(activeLocation.id) === 'viewer'
 
   const tailProps: ItemSearchTailProps = {
     inLocationItems,
     notStockedHereItems,
     renderItem,
-    ...(groupAction ? { groupAction: wrapAction(groupAction) } : {}),
-    ...(groupNote ? { groupNote } : {}),
+    ...(effectiveAction ? { groupAction: wrapAction(effectiveAction) } : {}),
+    ...(effectiveNote ? { groupNote: effectiveNote } : {}),
     ...(canAddToLocation
       ? {
           addToLocationAction: wrapAction({
@@ -130,6 +155,7 @@ export function useItemSearchTailWiring({
           }),
         }
       : {}),
+    ...(listNotStockedHereReadOnly ? { notStockedHereReadOnly: true } : {}),
   }
 
   return {

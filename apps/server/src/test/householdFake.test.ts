@@ -580,6 +580,56 @@ describe('householdFake resolves the relation filters task 3.5 uses', () => {
     // Then nothing matches, as an inner join on a null key gives nothing
     expect(row).toBeNull()
   })
+
+  it("user.householdMemberships matches the row's OWN person, not the caller", async () => {
+    // Given the caller organizes the kitchen and the shed. The caller is in
+    // ours only. The stranger also organizes the shed and is in theirs.
+    const fake = fixture()
+    await fake.client.locationMember.create({
+      data: { locationId: SHED, userId: CALLER, role: 'organizer' },
+    })
+
+    // When the organizer rows are read whose person is in theirs
+    const rows = await fake.client.locationMember.findMany({
+      where: {
+        role: 'organizer',
+        user: { householdMemberships: { some: { householdId: THEIRS } } },
+      },
+    })
+
+    // Then only the stranger's shed row comes back. The caller's shed row is
+    // left out: the caller is not in theirs, and the filter reads each row's
+    // own person.
+    expect(rows.map((r) => `${r.locationId}:${r.userId}`)).toEqual([`${SHED}:${STRANGER}`])
+  })
+
+  it('user.householdMemberships drops a person who left the household', async () => {
+    // Given the second person (viewer of the kitchen) is removed from ours
+    const fake = fixture()
+    await fake.client.householdMember.delete({
+      where: { householdId_userId: { householdId: OURS, userId: SECOND } },
+    })
+
+    // When the kitchen rows are read whose person is still in ours
+    const rows = await fake.client.locationMember.findMany({
+      where: { locationId: KITCHEN, user: { householdMemberships: { some: { householdId: OURS } } } },
+    })
+
+    // Then the second person's stale row is left out
+    expect(rows.map((r) => r.userId)).toEqual([CALLER])
+  })
+
+  it('user.householdMemberships refuses a key it does not model', async () => {
+    const fake = fixture()
+    await expect(
+      fake.client.locationMember.findMany({
+        where: { user: { householdMemberships: { some: { joinedAt: T0 } } } },
+      }),
+    ).rejects.toBeInstanceOf(UnknownWhereKeyError)
+    await expect(
+      fake.client.locationMember.findMany({ where: { user: { email: 'x' } } }),
+    ).rejects.toBeInstanceOf(UnknownWhereKeyError)
+  })
 })
 
 describe('householdFake writes: defaults, update, upsert, delete', () => {

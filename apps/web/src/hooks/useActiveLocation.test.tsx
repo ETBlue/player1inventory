@@ -1,3 +1,4 @@
+import { getApolloContext } from '@apollo/client/react'
 import {
   MockedProvider,
   type MockedProviderProps,
@@ -5,9 +6,13 @@ import {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
+import { useContext } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
-import { GetLocationsDocument } from '@/generated/graphql'
+import {
+  BootstrapCartsDocument,
+  GetLocationsDocument,
+} from '@/generated/graphql'
 import { cartIdFor, DEFAULT_LOCATION_ID } from '@/types'
 import {
   ACTIVE_LOCATION_STORAGE_KEY,
@@ -50,6 +55,8 @@ const cloudLocation = (id: string, name: string, order: number) => ({
   order,
   createdAt: '2026-08-01T10:00:00.000Z',
   updatedAt: '2026-08-02T11:00:00.000Z',
+  // `GetLocations` selects the caller's role (households H5 task F.1).
+  myRole: 'organizer' as const,
 })
 
 const CLOUD_LOCATIONS = [
@@ -75,9 +82,18 @@ function clearStoredActiveLocationIds() {
   localStorage.removeItem(activeLocationStorageKey('cloud'))
 }
 
-function Consumer({ switchTo }: { switchTo: string }) {
+function Consumer({
+  switchTo,
+  switchBackTo,
+}: {
+  switchTo: string
+  switchBackTo?: string | undefined
+}) {
   const { activeLocationId, setActiveLocationId, activeLocation } =
     useActiveLocation()
+  // The real client from MockedProvider. `useApolloClient` is a stub in
+  // src/test/setup.ts, so it cannot refetch.
+  const client = useContext(getApolloContext()).client
   return (
     <div>
       <span data-testid="active-location-id">{activeLocationId}</span>
@@ -87,6 +103,17 @@ function Consumer({ switchTo }: { switchTo: string }) {
       <button type="button" onClick={() => setActiveLocationId(switchTo)}>
         switch
       </button>
+      <button
+        type="button"
+        onClick={() => client?.refetchQueries({ include: 'active' })}
+      >
+        refetch
+      </button>
+      {switchBackTo && (
+        <button type="button" onClick={() => setActiveLocationId(switchBackTo)}>
+          switch back
+        </button>
+      )}
     </div>
   )
 }
@@ -94,6 +121,7 @@ function Consumer({ switchTo }: { switchTo: string }) {
 function renderProvider(
   mocks: MockedProviderProps['mocks'] = [],
   switchTo = 'loc-2',
+  switchBackTo?: string,
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -105,7 +133,7 @@ function renderProvider(
     <MockedProvider mocks={mocks} mockLinkDefaultOptions={{ delay: 0 }}>
       <QueryClientProvider client={queryClient}>
         <ActiveLocationProvider>
-          <Consumer switchTo={switchTo} />
+          <Consumer switchTo={switchTo} switchBackTo={switchBackTo} />
         </ActiveLocationProvider>
       </QueryClientProvider>
     </MockedProvider>
@@ -227,6 +255,173 @@ describe('ActiveLocationProvider — cart bootstrap effect', () => {
   })
 })
 
+describe('ActiveLocationProvider — cloud cart bootstrap follows the location role (households H5 task F.6)', () => {
+  // `bootstrapCarts` creates rows, so the server asks `participant` for it. A
+  // location viewer would get FORBIDDEN on every switch. The provider now
+  // sends it only where the caller's `myRole` is participant or higher.
+  //
+  // Three locations: a viewer one (first, so the app falls back to it), a
+  // participant one, and a stored id with NO role at all (it is not in the
+  // switcher list, which holds only locations with a role).
+  const VIEWER_ID = 'clw3k1q2v0000s9f8h7g6d5v1'
+  const PARTICIPANT_ID = 'clw3k1q2p0001s9f8h7g6d5p2'
+  const NO_ROLE_ID = 'clw3k1q2n0002s9f8h7g6d5n3'
+
+  const roleLocationsMock = {
+    request: { query: GetLocationsDocument },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: {
+      data: {
+        locations: [
+          { ...cloudLocation(VIEWER_ID, 'Shed', 0), myRole: 'viewer' as const },
+          {
+            ...cloudLocation(PARTICIPANT_ID, 'Kitchen', 1),
+            myRole: 'participant' as const,
+          },
+        ],
+      },
+    },
+  }
+
+  function bootstrapMock(
+    locationId: string,
+    result: () => { data: { bootstrapCarts: never[] } },
+  ) {
+    return {
+      request: { query: BootstrapCartsDocument, variables: { locationId } },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+      result,
+    }
+  }
+
+  beforeEach(() => {
+    mockMode('cloud')
+    clearStoredActiveLocationIds()
+  })
+
+  afterEach(() => {
+    clearStoredActiveLocationIds()
+    vi.restoreAllMocks()
+  })
+
+  it('location viewer switching to a location sends no bootstrapCarts, and logs no error', async () => {
+    // Given the stored active id names a location with no role, so the app
+    // falls back to the first one, where the caller is a viewer
+    localStorage.setItem(activeLocationStorageKey('cloud'), NO_ROLE_ID)
+    const toViewer = vi.fn(() => ({ data: { bootstrapCarts: [] } }))
+    const toParticipant = vi.fn(() => ({ data: { bootstrapCarts: [] } }))
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const user = userEvent.setup()
+
+    renderProvider(
+      [
+        roleLocationsMock,
+        bootstrapMock(VIEWER_ID, toViewer),
+        bootstrapMock(PARTICIPANT_ID, toParticipant),
+      ],
+      PARTICIPANT_ID,
+    )
+    await waitFor(() => expect(activeId()).toBe(VIEWER_ID))
+
+    // When the caller switches to the participant location
+    await user.click(screen.getByRole('button', { name: 'switch' }))
+    await waitFor(() => expect(activeId()).toBe(PARTICIPANT_ID))
+
+    // Then only the participant location was bootstrapped. The order makes
+    // the absence trustworthy: the viewer location came first, so a call for
+    // it would have been made before this one.
+    await waitFor(() => expect(toParticipant).toHaveBeenCalledTimes(1))
+    expect(toViewer).not.toHaveBeenCalled()
+    // And nothing went wrong on the way
+    expect(errors).not.toHaveBeenCalledWith(
+      'cloud bootstrapCarts failed',
+      expect.anything(),
+    )
+  })
+
+  it('location participant who passes through a viewer location gets a second bootstrap on the way back', async () => {
+    // Given the app opens at the participant location (one bootstrap)
+    localStorage.setItem(activeLocationStorageKey('cloud'), PARTICIPANT_ID)
+    const toViewer = vi.fn(() => ({ data: { bootstrapCarts: [] } }))
+    const toParticipant = vi.fn(() => ({ data: { bootstrapCarts: [] } }))
+    const user = userEvent.setup()
+    renderProvider(
+      [
+        roleLocationsMock,
+        bootstrapMock(VIEWER_ID, toViewer),
+        bootstrapMock(PARTICIPANT_ID, toParticipant),
+      ],
+      VIEWER_ID,
+      PARTICIPANT_ID,
+    )
+    await waitFor(() => expect(toParticipant).toHaveBeenCalledTimes(1))
+
+    // When they switch to the viewer location, and back
+    await user.click(screen.getByRole('button', { name: 'switch' }))
+    await waitFor(() => expect(activeId()).toBe(VIEWER_ID))
+    await user.click(screen.getByRole('button', { name: 'switch back' }))
+    await waitFor(() => expect(activeId()).toBe(PARTICIPANT_ID))
+
+    // Then the participant location is bootstrapped again, the same as after
+    // any other switch, and the viewer location never is. Before the fix the
+    // ref still said "participant location done", so the second call never
+    // came: a vendor made at another location meanwhile had no cart here.
+    await waitFor(() => expect(toParticipant).toHaveBeenCalledTimes(2))
+    expect(toViewer).not.toHaveBeenCalled()
+  })
+
+  it('location viewer whose role rises to participant gets the carts bootstrapped then', async () => {
+    // Given the caller is a viewer of the only location, and the next read of
+    // the list says participant (someone raised the role meanwhile)
+    localStorage.setItem(activeLocationStorageKey('cloud'), VIEWER_ID)
+    let reads = 0
+    const risingMock = {
+      request: { query: GetLocationsDocument },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+      result: () => {
+        reads++
+        return {
+          data: {
+            locations: [
+              {
+                ...cloudLocation(VIEWER_ID, 'Shed', 0),
+                myRole: (reads === 1 ? 'viewer' : 'participant') as
+                  | 'viewer'
+                  | 'participant',
+              },
+            ],
+          },
+        }
+      },
+    }
+    const toShed = vi.fn(() => ({ data: { bootstrapCarts: [] } }))
+    const user = userEvent.setup()
+    renderProvider([risingMock, bootstrapMock(VIEWER_ID, toShed)])
+    await waitFor(() => expect(activeId()).toBe(VIEWER_ID))
+    expect(toShed).not.toHaveBeenCalled()
+
+    // When the list is read again
+    await user.click(screen.getByRole('button', { name: 'refetch' }))
+
+    // Then the location is bootstrapped, now that the caller may write there
+    await waitFor(() => expect(toShed).toHaveBeenCalledTimes(1))
+  })
+
+  it('location participant opening the app gets the carts bootstrapped', async () => {
+    // The control for the test above: the same list, starting at the
+    // participant location
+    localStorage.setItem(activeLocationStorageKey('cloud'), PARTICIPANT_ID)
+    const toParticipant = vi.fn(() => ({ data: { bootstrapCarts: [] } }))
+
+    renderProvider([
+      roleLocationsMock,
+      bootstrapMock(PARTICIPANT_ID, toParticipant),
+    ])
+
+    await waitFor(() => expect(toParticipant).toHaveBeenCalledTimes(1))
+  })
+})
+
 describe('ActiveLocationProvider — the active id is validated against the real list', () => {
   beforeEach(async () => {
     clearStoredActiveLocationIds()
@@ -314,25 +509,64 @@ describe('ActiveLocationProvider — the active id is validated against the real
     )
   })
 
-  it('user whose cloud list comes back empty keeps the location they had', async () => {
-    // Given cloud mode with a stored id and a list that loads but is empty
+  it('user whose cloud list comes back empty has the stale active location cleared, and no bootstrapCarts is sent', async () => {
+    // Given cloud mode with a stored id, and a list that loads but is empty.
+    // Since households H5 task F.7 an empty household is real: its last
+    // location was deleted, or a member was added with no location role.
     mockMode('cloud')
     localStorage.setItem(activeLocationStorageKey('cloud'), 'ghost')
+    const toGhost = vi.fn(() => ({ data: { bootstrapCarts: [] } }))
+    const toSentinel = vi.fn(() => ({ data: { bootstrapCarts: [] } }))
+    renderProvider([
+      emptyLocationsMock,
+      {
+        request: {
+          query: BootstrapCartsDocument,
+          variables: { locationId: 'ghost' },
+        },
+        maxUsageCount: Number.POSITIVE_INFINITY,
+        result: toGhost,
+      },
+      {
+        request: {
+          query: BootstrapCartsDocument,
+          variables: { locationId: DEFAULT_LOCATION_ID },
+        },
+        maxUsageCount: Number.POSITIVE_INFINITY,
+        result: toSentinel,
+      },
+    ])
 
-    // When the provider mounts and the empty list resolves
-    renderProvider([emptyLocationsMock])
+    // When the empty list resolves
+    // Then the stored id is removed, and the active id is the sentinel again,
+    // which names no cloud location. A location created later is picked up by
+    // the fallback above (the first location).
+    await waitFor(() =>
+      expect(
+        localStorage.getItem(activeLocationStorageKey('cloud')),
+      ).toBeNull(),
+    )
+    expect(activeId()).toBe(DEFAULT_LOCATION_ID)
+    expect(screen.getByTestId('active-location-name')).toHaveTextContent('—')
+    // And nothing was bootstrapped: there is no location to bootstrap
+    expect(toGhost).not.toHaveBeenCalled()
+    expect(toSentinel).not.toHaveBeenCalled()
+  })
+
+  it('user in local mode whose list is empty keeps the stored id (local mode is unchanged)', async () => {
+    // Local mode always has its default location, so an empty local list is
+    // not a real state. The rule above is cloud only.
+    mockMode('local')
+    await db.locations.clear()
+    localStorage.setItem(activeLocationStorageKey('local'), 'loc-garage')
+    renderProvider()
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
-
-    // Then the id is left alone: there is no location to fall back TO, and
-    // clobbering it would discard the user's choice for the moment a real list
-    // arrives. Rendering is unaffected — `activeLocation` is simply undefined.
-    expect(activeId()).toBe('ghost')
-    expect(localStorage.getItem(activeLocationStorageKey('cloud'))).toBe(
-      'ghost',
+    expect(activeId()).toBe('loc-garage')
+    expect(localStorage.getItem(activeLocationStorageKey('local'))).toBe(
+      'loc-garage',
     )
-    expect(screen.getByTestId('active-location-name')).toHaveTextContent('—')
   })
 })
 

@@ -16,14 +16,18 @@ extend type Mutation {
   writes one cart for the active location and leaves the other locations to
   `bootstrapCarts`.
 
-  `locationId` is REQUIRED (PR 3b Task 4). It was nullable for two tasks, with
-  a fallback to the caller's default location, so a vendor created while
-  viewing the Garage got its cart in the Kitchen. That fallback is gone: an
-  omitted argument writes the wrong location quietly, while a missing required
-  argument fails loudly at codegen time. That is the hazard PR 3a recorded on
-  `itemLogs`.
+  `locationId` was REQUIRED from PR 3b Task 4. It was nullable for two tasks
+  before that, with a fallback to the caller's default location, so a vendor
+  created while viewing the Garage got its cart in the Kitchen. That fallback
+  is still gone.
+
+  Since households H5 (review of task F.7) it is OPTIONAL again, for one case
+  only: a household with no location. Then the web sends no `locationId`,
+  only the household role is checked, and no cart is written. A named
+  location must still be one the caller has a role on. An old web bundle
+  always sends it, so the change is backwards compatible.
   """
-  createVendor(name: String!, locationId: ID!): Vendor!
+  createVendor(name: String!, locationId: ID): Vendor!
   updateVendor(id: ID!, name: String): Vendor!
   deleteVendor(id: ID!): Boolean!
 }

@@ -5,7 +5,7 @@ import {
   useItemLogsQuery,
 } from '@/generated/graphql'
 import { useActiveLocation } from '@/hooks/useActiveLocation'
-import { useCloudLocationId } from '@/hooks/useCloudLocationId'
+import { useRequiredCloudLocationId } from '@/hooks/useCloudLocationId'
 import { useCloudLocationKnown } from '@/hooks/useCloudLocationKnown'
 import { useDataMode } from '@/hooks/useDataMode'
 import type { InventoryLog } from '@/types'
@@ -78,7 +78,7 @@ export function useAddInventoryLog() {
   const isCloud = mode === 'cloud'
   const queryClient = useQueryClient()
   const { activeLocationId } = useActiveLocation()
-  const resolveCloudLocationId = useCloudLocationId()
+  const resolveCloudLocationId = useRequiredCloudLocationId()
   const [cloudMutate] = useAddInventoryLogMutation()
 
   return useMutation({

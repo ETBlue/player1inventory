@@ -169,11 +169,14 @@ describe('createVendor pre-creates the cart at ONE location', () => {
     })
   })
 
-  it('omitting locationId is refused — the default-location fallback is gone', async () => {
+  it('omitting locationId writes no cart anywhere — the default-location fallback is still gone', async () => {
     // Given no locationId is sent. Until PR 3b Task 4 the server fell back to
     // the caller's DEFAULT location, so a vendor created while viewing the
-    // Garage got its cart in the Kitchen. The argument is `ID!` now — see
-    // src/schema/vendor.graphql.
+    // Garage got its cart in the Kitchen. From PR 3b Task 4 the argument was
+    // `ID!` and an omitted one failed validation. Since households H5 (review
+    // of task F.7) it is optional again, for a household with no location:
+    // the vendor is written and NO cart, not a cart at some location the
+    // caller did not name. See src/schema/vendor.graphql.
     const result = await execOp(
       `mutation CreateVendorNoLocation($name: String!) {
         createVendor(name: $name) { id name }
@@ -181,11 +184,10 @@ describe('createVendor pre-creates the cart at ONE location', () => {
       { name: 'Costco' },
     )
 
-    // Then the request fails at validation, and neither a vendor nor a cart is
-    // written. Loud, at the schema layer, rather than a quiet write to a
-    // location the caller did not name.
-    expect(result?.errors?.[0]?.extensions?.code).toBe('GRAPHQL_VALIDATION_FAILED')
-    expect(shoppingFake.state.vendors).toHaveLength(0)
+    // Then the vendor is written, and no cart at all: neither the caller's
+    // location nor any other.
+    expect(result?.errors).toBeUndefined()
+    expect(shoppingFake.state.vendors).toHaveLength(1)
     expect(cartIds()).toEqual([])
   })
 

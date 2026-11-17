@@ -27,6 +27,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { DeleteButton } from '@/components/shared/DeleteButton'
+import { ReadOnlyNote } from '@/components/shared/ReadOnlyNote'
 import { Toolbar } from '@/components/shared/Toolbar'
 import { EditTagTypeDialog } from '@/components/tag/EditTagTypeDialog'
 import { TagBadge } from '@/components/tag/TagBadge'
@@ -43,6 +44,7 @@ import {
 } from '@/components/ui/dialog'
 import { migrateTagColorsToTypes, migrateTagColorTints } from '@/db/operations'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
 import {
   useCreateTag,
@@ -100,7 +102,8 @@ function DraggableTagBadge({
   tag: Tag
   tagType: TagType
   depth: number
-  onDelete: () => void
+  /** Left out for a read-only household member: no delete, and no drag. */
+  onDelete?: (() => void) | undefined
 }) {
   const { t } = useTranslation()
   const { data: itemCount = 0 } = useItemCountByTag(tag.id)
@@ -108,7 +111,9 @@ function DraggableTagBadge({
   // TODO: Limit drag-and-drop to same-parent groups in a future iteration.
   // For now, drag-and-drop is disabled for child tags (depth >= 1) to avoid
   // ambiguous re-parenting behavior when dragging across type cards.
-  const isDragDisabled = depth >= 1
+  // A read-only household member (no `onDelete`, H5 task F.5) cannot move a
+  // tag to another type either.
+  const isDragDisabled = depth >= 1 || !onDelete
 
   const {
     attributes,
@@ -178,25 +183,27 @@ function DraggableTagBadge({
           }}
         />
       </div>
-      <DeleteButton
-        trigger={<X />}
-        buttonVariant="neutral-outline"
-        buttonSize="icon-xs"
-        buttonAriaLabel={t('settings.tags.tag.deleteAriaLabel', {
-          name: tag.name,
-        })}
-        buttonClassName={`h-5 rounded-full rounded-tl-none rounded-bl-none -ml-px ${TAG_COLOR_BORDER[tagType.color ?? TagColor.blue]} ${TAG_COLOR_TEXT[tagType.color ?? TagColor.blue]}`}
-        dialogTitle={t('settings.tags.tag.deleteTitle')}
-        dialogDescription={
-          itemCount > 0
-            ? t('settings.tags.tag.deleteWithItems', {
-                name: tag.name,
-                count: itemCount,
-              })
-            : t('settings.tags.tag.deleteNoItems', { name: tag.name })
-        }
-        onDelete={onDelete}
-      />
+      {onDelete && (
+        <DeleteButton
+          trigger={<X />}
+          buttonVariant="neutral-outline"
+          buttonSize="icon-xs"
+          buttonAriaLabel={t('settings.tags.tag.deleteAriaLabel', {
+            name: tag.name,
+          })}
+          buttonClassName={`h-5 rounded-full rounded-tl-none rounded-bl-none -ml-px ${TAG_COLOR_BORDER[tagType.color ?? TagColor.blue]} ${TAG_COLOR_TEXT[tagType.color ?? TagColor.blue]}`}
+          dialogTitle={t('settings.tags.tag.deleteTitle')}
+          dialogDescription={
+            itemCount > 0
+              ? t('settings.tags.tag.deleteWithItems', {
+                  name: tag.name,
+                  count: itemCount,
+                })
+              : t('settings.tags.tag.deleteNoItems', { name: tag.name })
+          }
+          onDelete={onDelete}
+        />
+      )}
     </div>
   )
 }
@@ -213,10 +220,15 @@ function DroppableTagTypeCard({
   tagType: TagType
   sortedTypeTags: TagWithDepth[]
   tagCount: number
-  onEdit: () => void
-  onDelete: () => void
-  onAddTag: () => void
-  onDeleteTag: (tagId: string) => void
+  /**
+   * The four handlers are left out together for a read-only household member
+   * (households H5 task F.5): the card then shows no edit, delete or "New
+   * tag" control, and its tags cannot be deleted or dragged.
+   */
+  onEdit?: () => void
+  onDelete?: () => void
+  onAddTag?: () => void
+  onDeleteTag?: (tagId: string) => void
 }) {
   const { t } = useTranslation()
   const { setNodeRef } = useDroppable({
@@ -237,33 +249,37 @@ function DroppableTagTypeCard({
             <h2>{tagType.name}</h2>
           </CardTitle>
           <div className="flex-1" />
-          <Button
-            variant="neutral-ghost"
-            size="icon"
-            className="lg:w-auto lg:px-3"
-            onClick={onEdit}
-          >
-            <Pencil />
-            <span className="hidden lg:inline">{t('common.edit')}</span>
-          </Button>
-          <DeleteButton
-            trigger={<Trash2 />}
-            buttonVariant="destructive-ghost"
-            buttonSize="icon"
-            buttonAriaLabel={`Delete ${tagType.name}`}
-            dialogTitle={t('settings.tags.tagType.deleteTitle')}
-            dialogDescription={
-              tagCount > 0
-                ? t('settings.tags.tagType.deleteWithTags', {
-                    name: tagType.name,
-                    count: tagCount,
-                  })
-                : t('settings.tags.tagType.deleteNoTags', {
-                    name: tagType.name,
-                  })
-            }
-            onDelete={onDelete}
-          />
+          {onEdit && (
+            <Button
+              variant="neutral-ghost"
+              size="icon"
+              className="lg:w-auto lg:px-3"
+              onClick={onEdit}
+            >
+              <Pencil />
+              <span className="hidden lg:inline">{t('common.edit')}</span>
+            </Button>
+          )}
+          {onDelete && (
+            <DeleteButton
+              trigger={<Trash2 />}
+              buttonVariant="destructive-ghost"
+              buttonSize="icon"
+              buttonAriaLabel={`Delete ${tagType.name}`}
+              dialogTitle={t('settings.tags.tagType.deleteTitle')}
+              dialogDescription={
+                tagCount > 0
+                  ? t('settings.tags.tagType.deleteWithTags', {
+                      name: tagType.name,
+                      count: tagCount,
+                    })
+                  : t('settings.tags.tagType.deleteNoTags', {
+                      name: tagType.name,
+                    })
+              }
+              onDelete={onDelete}
+            />
+          )}
         </div>
       </CardHeader>
       <CardContent ref={setNodeRef} className="pl-6">
@@ -282,18 +298,20 @@ function DroppableTagTypeCard({
                 tag={tag}
                 tagType={tagType}
                 depth={tag.depth}
-                onDelete={() => onDeleteTag(tag.id)}
+                onDelete={onDeleteTag ? () => onDeleteTag(tag.id) : undefined}
               />
             ))}
-            <Button
-              variant="neutral-ghost"
-              size="xs"
-              onClick={onAddTag}
-              className="self-start"
-            >
-              <Plus className="h-3 w-3" />
-              {t('settings.tags.tag.newButton')}
-            </Button>
+            {onAddTag && (
+              <Button
+                variant="neutral-ghost"
+                size="xs"
+                onClick={onAddTag}
+                className="self-start"
+              >
+                <Plus className="h-3 w-3" />
+                {t('settings.tags.tag.newButton')}
+              </Button>
+            )}
           </div>
         </SortableContext>
       </CardContent>
@@ -307,6 +325,12 @@ export function TagSettings() {
   const { data: tagTypes = [] } = useTagTypes()
   const { data: tags = [], isLoading } = useTags()
   const { data: tagsWithDepth = [] } = useTagsWithDepth()
+  // A household member sees the tags read-only (households H5 task F.5).
+  const { canEditCatalog, roleKnown } = usePermissions()
+  // Only once the role is known (`roleKnown`): while it loads, or when
+  // `GetHousehold` failed, `canEditCatalog` is false for every role, and the
+  // note would tell an owner they cannot edit.
+  const showReadOnlyNote = roleKnown && !canEditCatalog
 
   // Scroll restoration: save on unmount, restore after data loads
   const currentUrl = useRouterState({
@@ -455,15 +479,21 @@ export function TagSettings() {
           </Button>
           <h1 className="">{t('settings.tags.label')}</h1>
           <div className="flex-1" />
-          <Button onClick={() => setNewTagTypeDialog(true)}>
-            <Plus className="h-4 w-4" />
-            {t('settings.tags.newTagType')}
-          </Button>
+          {canEditCatalog && (
+            <Button onClick={() => setNewTagTypeDialog(true)}>
+              <Plus className="h-4 w-4" />
+              {t('settings.tags.newTagType')}
+            </Button>
+          )}
         </Toolbar>
         <div
           ref={scrollRef}
           className="overflow-y-auto [container-type:size] space-y-px pb-4"
         >
+          {/* Why there is no add, edit or delete (H5 task F.5) */}
+          {/* Also on an empty page: a member has no New Tag Type button, so
+              the note is the only thing that says why */}
+          {showReadOnlyNote && <ReadOnlyNote />}
           {[...tagTypes]
             .sort((a, b) =>
               a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
@@ -489,12 +519,12 @@ export function TagSettings() {
                   tagType={tagType}
                   sortedTypeTags={sortedTypeTags}
                   tagCount={typeTags.length}
-                  onEdit={() => {
-                    setEditTagType(tagType)
-                  }}
-                  onDelete={() => deleteTagType.mutate(tagType.id)}
-                  onAddTag={() => setAddTagDialog(tagType.id)}
-                  onDeleteTag={handleDeleteTag}
+                  {...(canEditCatalog && {
+                    onEdit: () => setEditTagType(tagType),
+                    onDelete: () => deleteTagType.mutate(tagType.id),
+                    onAddTag: () => setAddTagDialog(tagType.id),
+                    onDeleteTag: handleDeleteTag,
+                  })}
                 />
               )
             })}

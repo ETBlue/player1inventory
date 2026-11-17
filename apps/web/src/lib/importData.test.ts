@@ -5584,8 +5584,14 @@ describe('withoutRefusedRows (households H4 task E.4, step 2.3)', () => {
   })
 
   it('leaves a clean file as it is', () => {
-    const result = withoutRefusedRows(payload(), check())
-    expect(result.payload).toEqual(payload())
+    // Built ONCE. Each `payload()` call makes new `Date`s, so two calls can
+    // differ by a millisecond and fail this test now and then. The copy is
+    // taken before the call, so a function that changed its input in place
+    // would still fail here.
+    const input = payload()
+    const before = structuredClone(input)
+    const result = withoutRefusedRows(input, check())
+    expect(result.payload).toEqual(before)
     expect(result.skipped).toEqual({ locationNames: [], rowCount: 0 })
   })
 })

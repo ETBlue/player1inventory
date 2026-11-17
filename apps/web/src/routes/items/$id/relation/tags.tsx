@@ -14,6 +14,7 @@ import {
   useUpdateItem,
 } from '@/hooks'
 import { useAddTagType } from '@/hooks/useAddTagType'
+import { usePermissions } from '@/hooks/usePermissions'
 import type { TagColor } from '@/types'
 
 export const Route = createFileRoute('/items/$id/relation/tags')({
@@ -26,12 +27,16 @@ function TagTypeSection({
   onToggle,
   onAddTag,
   loadingTagId,
+  readOnly = false,
 }: {
   tagType: { id: string; name: string; color: TagColor }
   item: { tagIds: string[] }
   onToggle: (tagId: string) => void
-  onAddTag: (typeId: string) => void
+  /** Left out for a household member: no "New Tag" button. */
+  onAddTag?: ((typeId: string) => void) | undefined
   loadingTagId?: string | null
+  /** A household member cannot toggle: the badges are aria-disabled. */
+  readOnly?: boolean
 }) {
   const { t } = useTranslation()
   const { data: tagsWithDepth = [] } = useTagsWithDepth(tagType.id)
@@ -76,10 +81,11 @@ function TagTypeSection({
                 role="button"
                 aria-pressed={isSelected}
                 aria-busy={isLoading}
+                aria-disabled={readOnly || undefined}
                 variant={
                   isSelected ? tagType.color : `${tagType.color}-inverse`
                 }
-                className={`cursor-pointer z-10 relative${isLoading ? ' pointer-events-none' : ''}`}
+                className={`${readOnly ? 'cursor-default' : 'cursor-pointer'} z-10 relative${isLoading ? ' pointer-events-none' : ''}`}
                 onClick={() => onToggle(tag.id)}
               >
                 {tag.name}
@@ -92,15 +98,17 @@ function TagTypeSection({
             </div>
           )
         })}
-        <Button
-          variant="neutral-ghost"
-          size="sm"
-          className="px-0 py-0 gap-1 text-xs -my-1"
-          onClick={() => onAddTag(tagType.id)}
-        >
-          <Plus />
-          {t('items.tags.newTag.button')}
-        </Button>
+        {onAddTag && (
+          <Button
+            variant="neutral-ghost"
+            size="sm"
+            className="px-0 py-0 gap-1 text-xs -my-1"
+            onClick={() => onAddTag(tagType.id)}
+          >
+            <Plus />
+            {t('items.tags.newTag.button')}
+          </Button>
+        )}
       </div>
     </div>
   )
@@ -111,6 +119,10 @@ function TagsTab() {
   const { id } = Route.useParams()
   const { data: item } = useItem(id)
   const updateItem = useUpdateItem()
+  // A household member sees what is assigned and cannot change it
+  // (households H5 task F.5): presses write nothing, the badges are
+  // aria-disabled, and there is no "New …" button.
+  const { canEditCatalog } = usePermissions()
   const { data: tagTypes = [] } = useTagTypes()
   const [addTagDialog, setAddTagDialog] = useState<string | null>(null)
   const [newTagName, setNewTagName] = useState('')
@@ -139,7 +151,7 @@ function TagsTab() {
   }
 
   const toggleTag = async (tagId: string) => {
-    if (!item || loadingTagId !== null) return
+    if (!item || !canEditCatalog || loadingTagId !== null) return
 
     const newTagIds = item.tagIds.includes(tagId)
       ? item.tagIds.filter((id) => id !== tagId)
@@ -163,12 +175,14 @@ function TagsTab() {
             title={t('items.tags.empty.title')}
             description={t('items.tags.empty.description')}
           />
-          <Button
-            variant="neutral-outline"
-            onClick={() => setNewTagTypeOpen(true)}
-          >
-            {t('items.tags.newTagType.button')}
-          </Button>
+          {canEditCatalog && (
+            <Button
+              variant="neutral-outline"
+              onClick={() => setNewTagTypeOpen(true)}
+            >
+              {t('items.tags.newTagType.button')}
+            </Button>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
@@ -184,7 +198,8 @@ function TagsTab() {
                 tagType={tagType}
                 item={item}
                 onToggle={toggleTag}
-                onAddTag={setAddTagDialog}
+                onAddTag={canEditCatalog ? setAddTagDialog : undefined}
+                readOnly={!canEditCatalog}
                 loadingTagId={loadingTagId}
               />
             ))}

@@ -34,6 +34,8 @@ import {
   useCreateItemMutation,
   useDeleteItemMutation,
   useGetItemQuery,
+  useGetItemsQuery,
+  useGetLocationsQuery,
   useInventoryLogCountByItemQuery,
   useItemStocksForItemQuery,
   usePantryDataQuery,
@@ -50,7 +52,10 @@ import {
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import type { Item, ItemStock, PantryItem, StockFields } from '@/types'
 import { useActiveLocation } from './useActiveLocation'
-import { useCloudLocationId } from './useCloudLocationId'
+import {
+  useCloudLocationId,
+  useRequiredCloudLocationId,
+} from './useCloudLocationId'
 import { useCloudLocationKnown } from './useCloudLocationKnown'
 import { useDataMode } from './useDataMode'
 
@@ -405,6 +410,49 @@ export function useItems() {
     [cloud.data, activeLocationId],
   )
 
+  // A household with NO location (real since households H5 task F.7). The
+  // catalog does not depend on a location; only the stock join does, and
+  // `PantryData` needs a `locationId: ID!`. So with no location `PantryData`
+  // stays skipped, and the catalog comes from `GetItems` with no stock: every
+  // item zeroed, `stockId` undefined, the same as an item not stocked here.
+  // Before the review of F.7 this hook stayed `isLoading` with no data, so the
+  // four Settings Items tabs showed "no items" and offered Create for an item
+  // that already exists.
+  //
+  // "No location" means the list has LOADED and is empty. While `GetLocations`
+  // loads, `data` is undefined and this stays false. `cache-first`, like
+  // `useCloudLocationKnown`: it shares `useLocations()`'s cache entry and costs
+  // no request of its own.
+  const { data: locationList } = useGetLocationsQuery({ skip: !isCloud })
+  const noLocations = isCloud && locationList?.locations.length === 0
+  const catalog = useGetItemsQuery({
+    skip: !noLocations,
+    fetchPolicy: 'cache-and-network',
+  })
+  const catalogData = useMemo(
+    () =>
+      catalog.data?.items.map((item) =>
+        joinItemStock(
+          deserializeItem(item as Record<string, unknown>),
+          undefined,
+          activeLocationId,
+        ),
+      ),
+    [catalog.data, activeLocationId],
+  )
+
+  if (noLocations) {
+    // The same pair of rules as the branch below: "nothing to show yet" and
+    // "an error only when there is nothing to show".
+    return {
+      data: catalogData,
+      isLoading: catalog.loading && !catalog.data,
+      isFetching: catalog.networkStatus < 7,
+      isError: !!catalog.error && !catalog.data,
+      refetch: catalog.refetch,
+    }
+  }
+
   if (isCloud) {
     return {
       data: cloudData,
@@ -647,6 +695,13 @@ export function useCreateItem(options?: { catalogOnly?: boolean }) {
       // `requireLocationRole` — the item lands in the catalog, stocked nowhere,
       // and the dialog hangs. See `useCloudLocationId`.
       const locationId = await resolveCloudLocationId()
+      // A household with no location (households H5 task F.7): the item stays
+      // in the catalog and is stocked nowhere. The `'local'` sentinel is never
+      // sent. The pantry's Add dialog cannot get here (`NoLocationsGate`), but
+      // a create from another page can.
+      if (locationId === undefined) {
+        return joinItemStock(item, undefined, activeLocationId)
+      }
 
       const stockRow = (
         await cloudStockNewItem({
@@ -781,7 +836,7 @@ export function useAddItemToLocation() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
   const { activeLocationId } = useActiveLocation()
-  const resolveCloudLocationId = useCloudLocationId()
+  const resolveCloudLocationId = useRequiredCloudLocationId()
 
   const localMutation = useMutation({
     mutationFn: ({ itemId, locationId }: AddToLocationVars) =>
@@ -882,7 +937,7 @@ export function useRemoveItemFromLocation() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
   const { activeLocationId } = useActiveLocation()
-  const resolveCloudLocationId = useCloudLocationId()
+  const resolveCloudLocationId = useRequiredCloudLocationId()
 
   const localMutation = useMutation({
     mutationFn: ({ itemId, locationId }: RemoveFromLocationVars) =>
@@ -959,7 +1014,7 @@ export function useUpdateItem() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
   const { activeLocationId } = useActiveLocation()
-  const resolveCloudLocationId = useCloudLocationId()
+  const resolveCloudLocationId = useRequiredCloudLocationId()
 
   const localMutation = useMutation({
     mutationFn: ({ id, updates, locationId }: ItemUpdateVars) =>
@@ -1017,6 +1072,12 @@ export function useUpdateItem() {
       locationId,
     }: ItemUpdateVars) => {
       const config = toConfigInput(updates)
+      // Resolved at CALL time — see `useCloudLocationId`. And BEFORE the
+      // configuration write: in a household with no location it throws
+      // `NoCloudLocationError`, and then nothing at all has been sent.
+      const target = touchesStock(updates)
+        ? await resolveCloudLocationId(locationId)
+        : undefined
       // A pure stock edit (the quantity buttons, the Stock tab) sends no
       // `updateItem` at all, and a pure configuration edit (a rename, a tag
       // change) creates no ItemStock row where none existed.
@@ -1024,9 +1085,7 @@ export function useUpdateItem() {
         Object.keys(config).length > 0
           ? await cloudUpdate({ variables: { id, input: config } })
           : undefined
-      if (touchesStock(updates)) {
-        // Resolved at CALL time — see `useCloudLocationId`.
-        const target = await resolveCloudLocationId(locationId)
+      if (target !== undefined) {
         await cloudUpsertStock({
           variables: {
             itemId: id,
@@ -1139,7 +1198,10 @@ export function useApplyUnitSwitch() {
         refetchQueries: [
           { query: GetItemsDocument },
           { query: GetRecipesDocument },
-          ...stockListRefetches(pantryLocationId),
+          // No pantry to refetch in a household with no location.
+          ...(pantryLocationId === undefined
+            ? []
+            : stockListRefetches(pantryLocationId)),
         ],
         awaitRefetchQueries: true,
       })

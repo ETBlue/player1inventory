@@ -12,8 +12,8 @@ describe('hasGraphQLErrorCode', () => {
   it('finds the code in extensions', () => {
     expect(
       hasGraphQLErrorCode(
-        apolloError('LAST_LOCATION', 'cannot delete'),
-        'LAST_LOCATION',
+        apolloError('CART_CHANGED', 'the cart changed'),
+        'CART_CHANGED',
       ),
     ).toBe(true)
   })
@@ -22,17 +22,17 @@ describe('hasGraphQLErrorCode', () => {
     // The message names the code, but the code is a different one
     expect(
       hasGraphQLErrorCode(
-        apolloError('FORBIDDEN', 'LAST_LOCATION'),
-        'LAST_LOCATION',
+        apolloError('FORBIDDEN', 'CART_CHANGED'),
+        'CART_CHANGED',
       ),
     ).toBe(false)
   })
 
   it('returns false for an error that is not a GraphQL error', () => {
     // A network failure, or a Dexie error from local mode
-    const plain = new Error('LAST_LOCATION')
-    Object.assign(plain, { extensions: { code: 'LAST_LOCATION' } })
-    expect(hasGraphQLErrorCode(plain, 'LAST_LOCATION')).toBe(false)
-    expect(hasGraphQLErrorCode(undefined, 'LAST_LOCATION')).toBe(false)
+    const plain = new Error('CART_CHANGED')
+    Object.assign(plain, { extensions: { code: 'CART_CHANGED' } })
+    expect(hasGraphQLErrorCode(plain, 'CART_CHANGED')).toBe(false)
+    expect(hasGraphQLErrorCode(undefined, 'CART_CHANGED')).toBe(false)
   })
 })

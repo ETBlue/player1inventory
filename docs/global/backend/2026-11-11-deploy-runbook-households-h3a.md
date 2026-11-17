@@ -46,6 +46,13 @@ owner or the main session on the day.
 | 8 | The manual smoke test | owner | 6 |
 | 9 | Turn Railway's automatic deploy back on | owner | 4.5 |
 
+> **Changed on 2026-11-17 (owner decision, option 4): for the households release the
+> SERVER goes first.** The server now keeps, for one release, every field `main`'s old web
+> bundle sends (`Location.isDefault`, the old checkout and cooking inputs), so an old bundle
+> works on the new server. Follow section 8.3 of
+> [`2026-11-17-deploy-runbook-households-h4.md`](2026-11-17-deploy-runbook-households-h4.md)
+> for the order. The text below is the reasoning before that decision.
+
 **The web goes first, the server second.** Section 1.3 says why. That is the reason for
 step 4.
 

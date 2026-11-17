@@ -16,8 +16,10 @@ import {
   createTagType,
   createVendor,
 } from '@/db/operations'
+import { GetShelvesDocument } from '@/generated/graphql'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
+import { CloudRolePage, cloudRoleStorySetup } from '@/test/cloudRoleStory'
 
 const meta = {
   title: 'Pages/Settings/Shelf',
@@ -166,4 +168,38 @@ export const Empty: Story = {
 
 export const WithShelves: Story = {
   render: () => <WithShelvesStory />,
+}
+
+// Households H5 task F.5. A household `member` in cloud mode: the shelves are listed, with no Add, no Delete and no drag handle.
+const memberShelfMocks = [
+  {
+    request: { query: GetShelvesDocument },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: {
+      data: {
+        shelves: [
+          {
+            __typename: 'Shelf',
+            id: 'shelf-story-fridge',
+            name: 'Fridge',
+            type: 'selection',
+            order: 0,
+            filterConfig: null,
+            itemIds: [],
+          },
+        ],
+      },
+    },
+  },
+]
+
+export const MemberReadOnly: Story = {
+  beforeEach: cloudRoleStorySetup,
+  render: () => (
+    <CloudRolePage
+      path="/settings/household/shelves"
+      householdRole="member"
+      mocks={memberShelfMocks}
+    />
+  ),
 }

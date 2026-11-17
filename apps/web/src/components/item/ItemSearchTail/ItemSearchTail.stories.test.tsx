@@ -3,8 +3,14 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import * as stories from './ItemSearchTail.stories'
 
-const { BothSections, GroupNote, InLocationOnly, NotStockedHereOnly, Pending } =
-  composeStories(stories)
+const {
+  BothSections,
+  GroupNote,
+  InLocationOnly,
+  NotStockedHereOnly,
+  NotStockedHereReadOnly,
+  Pending,
+} = composeStories(stories)
 
 describe('ItemSearchTail stories smoke tests', () => {
   it('BothSections renders both dividers and one action button per row', () => {
@@ -29,6 +35,25 @@ describe('ItemSearchTail stories smoke tests', () => {
     render(<NotStockedHereOnly />)
     expect(screen.getByText('2 not stocked here')).toBeInTheDocument()
     expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+  })
+
+  it('NotStockedHereReadOnly lists the rows with no action button', () => {
+    render(<NotStockedHereReadOnly />)
+    expect(screen.getByText('2 not stocked here')).toBeInTheDocument()
+    expect(screen.getByText('Milk Powder')).toBeInTheDocument()
+    expect(screen.getByText('Oat Milk')).toBeInTheDocument()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('an Add to location action wins over notStockedHereReadOnly', () => {
+    render(
+      <NotStockedHereReadOnly
+        addToLocationAction={{ label: 'Add to My Home', onAction: () => {} }}
+      />,
+    )
+    expect(
+      screen.getByRole('button', { name: 'Add to My Home: Milk Powder' }),
+    ).toBeInTheDocument()
   })
 
   it('GroupNote renders the section with explanatory text and no group button', () => {

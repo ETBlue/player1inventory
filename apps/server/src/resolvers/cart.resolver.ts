@@ -7,6 +7,7 @@ import {
   requireHousehold,
   requireLocationItems,
   requireLocationRole,
+  roleAtLeast,
 } from '../lib/authz.js'
 import { cartIdFor, getPackedTotal, parseCartId } from '@p1i/types'
 import { prisma } from '../lib/prisma.js'
@@ -127,6 +128,68 @@ function matchCheckoutInput(
   return stored
 }
 
+type CheckoutEntry = { cartItemId?: string | null; itemId?: string | null; quantity: number }
+
+/**
+ * OLD-BUNDLE SHIM. Remove in the release after households, with
+ * `CheckoutItemInput.itemId` (see `cart.graphql`).
+ *
+ * Checks the input's shape, before anything is read. Returns `'new'` when every
+ * entry names a `cartItemId`, `'old'` when every entry names an `itemId` (the
+ * shape of `main`'s web bundle before households). An entry with both, with
+ * neither, or a list that mixes the two is `BAD_USER_INPUT`. An empty list is
+ * `'new'`.
+ */
+function checkoutInputShape(items: ReadonlyArray<CheckoutEntry>): 'new' | 'old' {
+  const isNew = (e: CheckoutEntry) => e.cartItemId != null && e.itemId == null
+  const isOld = (e: CheckoutEntry) => e.itemId != null && e.cartItemId == null
+  if (items.every(isNew)) return 'new'
+  if (items.every(isOld)) return 'old'
+  throw new GraphQLError(
+    'Every checkout entry must name exactly one of cartItemId and itemId, the same one in every entry.',
+    { extensions: { code: 'BAD_USER_INPUT' } },
+  )
+}
+
+/**
+ * OLD-BUNDLE SHIM. Turns old-shape entries (`{ itemId, quantity }`, where
+ * `quantity` was the client's stock total) into new-shape entries. A cart has
+ * at most one row per item (H3b), so the item names the row. The amount is the
+ * STORED amount: `main`'s server bought what the cart held, and so does this.
+ * The old `quantity` is ignored.
+ *
+ * An `itemId` with no row being bought is SKIPPED, as `main`'s server did
+ * (it looked each cart row up in the input and never the other way round).
+ * Refusing it would leave an old device failing on every retry until a
+ * reload, because its stale entry would come back each time.
+ *
+ * What still refuses an old-shape checkout:
+ *
+ * | Case                                               | Refused by                          |
+ * |----------------------------------------------------|-------------------------------------|
+ * | the same `itemId` twice                            | `matchCheckoutInput` (same row twice) |
+ * | a row being bought that the input leaves out       | `matchCheckoutInput`                |
+ * | the row deleted or changed between the read and the claim | the claim's `deleteMany` count |
+ *
+ * The amount rule of `matchCheckoutInput` CANNOT fire here: the amount is
+ * copied from the same read it is compared with. So a co-member's change
+ * that committed BEFORE the read is bought silently, at the new amount. That
+ * is what `main`'s server did too. A change that commits between the read and
+ * the claim still gives `CART_CHANGED`, and the claim still stops a double
+ * buy.
+ */
+function fromOldCheckoutInput(
+  stored: StoredRow[],
+  items: ReadonlyArray<CheckoutEntry>,
+): Array<{ cartItemId: string; quantity: number }> {
+  const byItem = new Map(stored.map((r) => [r.itemId, r]))
+  return items.flatMap((e) => {
+    const row = byItem.get(e.itemId as string)
+    if (!row) return []
+    return [{ cartItemId: row.id, quantity: row.quantity }]
+  })
+}
+
 /**
  * ── HOW CART DATA IS SCOPED (households H3b) ──
  *
@@ -145,7 +208,8 @@ function matchCheckoutInput(
  * | Resolver              | Scope                                          | Role         |
  * |-----------------------|------------------------------------------------|--------------|
  * | `cartItems`           | `{ cartId }`                                   | `viewer`     |
- * | `cartItemCountByItem` | carts at `locationIdsWithRole`, or at the one  | `viewer`     |
+ * | `cartItemCountByItem` | carts at `locationIdsWithRole` in the caller's | `viewer`     |
+ * |                       | household (H5 task F.2), or at the one         |              |
  * |                       | `locationId` given                             |              |
  * | `allCartItems`        | carts at `locationIdsWithRole`, one household  | any role     |
  * | `addToCart`           | one row per `(cartId, itemId)`, `increment`    | `participant`|
@@ -181,19 +245,27 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
     vendorCart: async (_, { vendorId = null, locationId }, ctx) => {
       requireAuth(ctx)
 
-      // `participant`, not `viewer`: this query CREATES the cart when it is missing.
-      await requireLocationRole(ctx, locationId, 'participant')
+      // `viewer`: this is a read (households H5 task F.2, decision T7). Until
+      // F.2 it asked `participant`, because it creates a missing cart, so a
+      // viewer who opened the Shopping page got FORBIDDEN.
+      const { role } = await requireLocationRole(ctx, locationId, 'viewer')
 
       const cartId = cartIdFor(locationId, vendorId ?? null)
-      let cart = await prisma.cart.findUnique({ where: { id: cartId } })
-      if (!cart) {
-        // No `userId` since households H3b: a cart belongs to its location
-        // and has no owner.
-        cart = await prisma.cart.create({
-          data: { id: cartId, locationId },
-        })
+      const cart = await prisma.cart.findUnique({ where: { id: cartId } })
+      if (cart) return cart as unknown as Cart
+      // A read must not write for a role that may not write. A viewer gets an
+      // empty cart with the id the row WILL have, and nothing is saved. When
+      // a participant opens it later, the row is made with that same id, so
+      // the viewer's cached cart stays right.
+      if (!roleAtLeast(role, 'participant')) {
+        return { id: cartId, lastPurchasedAt: null } as unknown as Cart
       }
-      return cart as unknown as Cart
+      // No `userId` since households H3b: a cart belongs to its location
+      // and has no owner.
+      const created = await prisma.cart.create({
+        data: { id: cartId, locationId },
+      })
+      return created as unknown as Cart
     },
 
     // Every location the caller has a role on, like `inventoryLogs`. The
@@ -248,7 +320,12 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
     cartItemCountByItem: async (_, { itemId, locationId }, ctx) => {
       requireAuth(ctx)
       if (!locationId) {
-        const locationIds = await locationIdsWithRole(ctx)
+        // One household: the caller's (households H5 task F.2, decision T5).
+        // A person in two households holds roles in both, and the item list
+        // asks about the household it shows.
+        const locationIds = await locationIdsWithRole(ctx, 'viewer', {
+          householdId: await requireHousehold(ctx),
+        })
         return prisma.cartItem.count({ where: { itemId, cart: { locationId: { in: locationIds } } } })
       }
       // The role check runs first, so a location the caller holds no role on
@@ -358,10 +435,20 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       // and a cart id at a location that does not exist, both get the same
       // `FORBIDDEN` from `requireLocationRole`.
       const cartLocationId = await requireCartLocation(ctx, cartId, 'participant')
+      // OLD-BUNDLE SHIM: which input shape this is. Refused before any cart
+      // read when the entries mix the two shapes. (The role check above has
+      // already read.)
+      const shape = checkoutInputShape(items)
       // The locations a copy-on-add may copy stock settings from: the ones the
       // caller holds a role on (households H3a, task 3.8). Read once, before
       // the transaction opens, because it reads only membership rows.
-      const sourceLocationIds = await locationIdsWithRole(ctx)
+      //
+      // Only the CART's household (households H5 task F.2, decision T5). Not
+      // the caller's (`requireHousehold`): a person in two households can
+      // check out a cart of either, and the item is the cart's household's.
+      const sourceLocationIds = await locationIdsWithRole(ctx, 'viewer', {
+        householdId: await householdOfLocation(cartLocationId),
+      })
 
       // `await`, so the event below is published only after the transaction
       // has COMMITTED. A `CART_CHANGED` refusal, or any other throw, rolls
@@ -376,7 +463,12 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
           })
 
           // Step 2. Throws `CART_CHANGED` before anything is written.
-          const bought = matchCheckoutInput(stored, items)
+          const bought = matchCheckoutInput(
+            stored,
+            shape === 'old'
+              ? fromOldCheckoutInput(stored, items)
+              : (items as Array<{ cartItemId: string; quantity: number }>),
+          )
 
           // Step 3. ── WHY THE CLAIM, AND WHY IT NAMES THE AMOUNT ──
           //
