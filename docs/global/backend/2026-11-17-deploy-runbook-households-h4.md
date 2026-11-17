@@ -215,6 +215,75 @@ out with H3a, use the H3a runbook's rollback, which covers both.
 - **The activity log of imports** is H6.
 - **One person in two households** has no real-SQL test until H5 (invites).
 
+## 8. Households H5a (roles in the web, read-only views, empty households)
+
+Added 2026-11-17 by H5 task F.9. **H5a is built on `feature/households-h5` and waits for its
+PR. It is not merged and not deployed.** Plan:
+[`../permissions/2026-11-17-households-plan-h5.md`](../permissions/2026-11-17-households-plan-h5.md),
+*Deploy notes*.
+
+### 8.1 What changes
+
+| Part | What is new |
+|---|---|
+| Database | nothing. **No migration** |
+| Server env, web build env | nothing |
+| GraphQL schema | two new fields on `Location`, `myRole: LocationRole` and `hasOrganizer: Boolean!`; one new query, `householdLocations`; `createVendor(locationId:)` goes from `ID!` to `ID` (optional). No field is removed |
+| Server behaviour | the last location of a household can be deleted (`LAST_LOCATION` is gone, decision H13 lifted). A location `viewer` can read a cart (`vendorCart` gives an unsaved empty cart instead of `FORBIDDEN`). `reorderLocations` refuses a list that is not the household's full set. `createVendor` with no location writes the vendor and no cart |
+| Web behaviour | `GetLocations`, `CreateLocation`, `UpdateLocation` and `ReorderLocations` select `myRole`. The settings list reads `householdLocations`. Read-only views for a household `member` and a location `viewer`. The empty "no locations" screen |
+
+### 8.2 H5a alone (a checkpoint release after the one that carries H3a to H4)
+
+**The server goes first, then the web** (the same rule as H4, decision T9).
+
+| Gap | Effect |
+|---|---|
+| **old web, new server** (server first) | **works.** The old bundle selects no new field. Two small things: an old bundle can delete the household's last location, because the server no longer refuses it, and then Pantry, Shopping and Cooking show a spinner that never ends (the old bundle has no empty screen). No data is lost; adding a location from the settings page ends it. |
+| **new web, old server** (web first) | **cloud mode is unusable.** `GetLocations` selects `myRole`, which the old server does not have, so the query fails GraphQL validation and no page can load its location. Also, **no vendor can be created at all**: the new `CreateVendor` document declares `$locationId: ID`, and the old argument is `ID!`, so every call fails with `Variable "$locationId" of type "ID" used in position expecting type "ID!"`, with or without a location |
+
+### 8.3 H5a in the same checkpoint release as H3a — NO safe order
+
+**This is a problem the H5 plan did not see, and it needs an owner decision before that
+release.** The plan said "H5a adds no new conflict with the H3a rule (web before server)".
+That is not true:
+
+| Order | What is live in the gap | Effect |
+|---|---|---|
+| server first | `main`'s old bundle on the new server | the old bundle selects `Location.isDefault`, which H3a removes: **every location query fails** (H3a runbook, section 2) |
+| web first | the new bundle on `main`'s old server | the new bundle selects `Location.myRole`, which the old server does not have: **every location query fails** too |
+
+H3a's "web first" rule works only because H3a's bundle "selects no field the old server
+lacks, except in the new `GetHousehold` query" (H3a runbook, section 2). H5a's bundle breaks
+that: `myRole` is in `GetLocations`, which every page needs.
+
+**Web first is still the less bad order**, for the PWA reason in the H3a runbook: a device
+keeps its old bundle until the person accepts the update prompt, and the old bundle works on
+the old server. So in a web-first gap only the devices that took the update are broken; in a
+server-first gap every device is broken until it updates. But neither order is safe.
+
+Options for the owner (not decided here):
+
+1. **Two checkpoint releases**: the first carries H3a to H4 (web first, the H3a rule), the
+   second carries H5 (server first, section 8.2). Each gap is then safe or nearly safe. The
+   plan's decision T13 ("H5a, H5b and H5c must all be in `develop` before that release")
+   would change.
+2. **One release, gap as short as possible**: web first, then the server at once, and ask
+   people not to accept the update prompt until the server is live.
+3. A web change so a missing `myRole` does not fail the query. Not built, and not simple:
+   GraphQL validation fails the whole document, not one field.
+
+Not checked here: whether H3b, H3c-1, H3c-2 or H4 already added a field to a query that
+every page needs. The H4 runbook (section 2.2) says H4's new query is only used by import.
+
+### 8.4 Checks after the deploy
+
+1. As the owner, open **Settings → Household → Locations**. Every location shows a role
+   text ("Organizer").
+2. Delete a location that holds nothing, until one is left; delete the last one too (on a
+   test household, not a real one). Pantry shows "You have no locations in this household
+   yet" and **Create a location**. Create one; the pantry comes back.
+3. Create a vendor. It must work, with a location and in an empty household.
+
 ## Where this file lives, and why
 
 In `docs/global/backend/`, beside the H3a, H3b and H3c-1 runbooks. A person who opens a
