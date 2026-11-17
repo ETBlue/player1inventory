@@ -2098,7 +2098,7 @@ so naming `wcag22aa` turns it on. It passed all 130 scans. A comment in the spec
 `target-size` "still polices" the known-bad destructive confirm button; that was false until
 this fix, because the rule was not running at all.
 
-**To widen the gate again, add `'best-practice'` to `WCAG_AA_TAGS` in the spec file.**
+**To widen the gate again, add `'best-practice'` to `WCAG_AA_TAGS` in `e2e/helpers/axe.ts`.** (It sat in `a11y.spec.ts` until households H5 task F.4 moved it into that helper, so the cloud-only scans of the View only switcher in `location-switcher.spec.ts` use the same rules. `a11y.spec.ts` does not run in the `cloud` project.)
 Nothing else needs to change. That is the one line to edit, recorded here so the narrowing
 is reversible rather than forgotten.
 

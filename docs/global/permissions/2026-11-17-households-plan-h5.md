@@ -698,16 +698,83 @@ The owner can still correct any `tw` text in the PR.
   ```
 - Consumes: `useDataMode`, `useHousehold`, `useLocations` (with `myRole` from F.1).
 
-- [ ] **Step 1: Write the failing tests:** local mode → all `true`, `roleAt('x')` is
+- [x] **Step 1: Write the failing tests:** local mode → all `true`, `roleAt('x')` is
   `'organizer'`; cloud loading → all `false`; cloud manager + viewer at K →
   `canEditCatalog` true, `canEditLocation('K')` false (Review Focus 4); member + participant at
   G → `canEditCatalog` false, `canEditLocation('G')` true; an id not in the list → `null` and
   `false`. Switcher: `location viewer sees View only next to that location` (button and
   dropdown both); an organizer's row has no badge.
-- [ ] **Step 2: Run** — FAIL. **Step 3: Implement.** **Step 4: Run** — PASS.
-- [ ] **Step 5: Mutation checks:** return `true` while loading → the loading test goes red;
+- [x] **Step 2: Run** — FAIL. **Step 3: Implement.** **Step 4: Run** — PASS.
+- [x] **Step 5: Mutation checks:** return `true` while loading → the loading test goes red;
   make `canEditLocation` read the household role → the Review Focus 4 test goes red.
-- [ ] **Step 6: Gate**, commit `feat(households): usePermissions and the View only badge`.
+- [x] **Step 6: Gate**, commit `feat(households): usePermissions and the View only badge`.
+
+**As built (2026-11-17, `e5669669`).**
+
+- **The hook was already there.** `usePermissions` and its 6 tests came in F.3. F.4 adds
+  no hook code. The switcher reads `usePermissions().roleAt(id)`.
+- **The badge.** `LocationSwitcher` shows "View only" (`locationSwitcher.viewOnly`) where
+  `roleAt(id)` is `viewer`:
+
+  | Place | What shows |
+  |---|---|
+  | menu row of a viewer location | the badge, after the name. A `{' '}` text node before it, so the row's name is "Kitchen View only" |
+  | `full` trigger (sidebar), while that location is active | the badge, after the name |
+  | `compact` trigger (toolbars), while that location is active | a small `Eye` mark on the corner; there is no room for the word |
+  | both triggers | the accessible name `locationSwitcher.triggerLabelViewOnly` |
+
+  The badge is `Badge` `neutral-outline` with `normal-case` and `bg-background-surface`.
+  No badge in local mode (`roleAt` is `organizer`) or while the roles load (`roleAt` is
+  `null`, so the badge appears late and never on the wrong row). It follows the LOCATION
+  role only: a household manager who views a location sees it (Review Focus 4). A
+  participant sees no badge.
+- **New texts (owner answer O11 for the badge; the label is new):**
+
+  | Key | English | `tw` |
+  |---|---|---|
+  | `locationSwitcher.viewOnly` | View only | 僅檢視 |
+  | `locationSwitcher.triggerLabelViewOnly` | Switch location (current: {{name}}, view only) | 切換據點（目前：{{name}}，僅檢視） |
+
+- **Tests.** `LocationSwitcher.cloud.test.tsx` (new, 8): three locations with three roles
+  (viewer, organizer, participant), a fourth on the settings list only (no role), and the
+  same roles under a household `member` and a `manager`. `LocationSwitcher.test.tsx`: 1
+  (no badge in local mode). Stories `CloudViewOnly` and `CloudViewOnlyCompact`, each
+  rendering the real switcher in a `MockedProvider`, with 2 smoke tests (checked in
+  `storybook-static/index.json`). Web suite **2715 / 285 → 2726 / 286** (after Part 1 of
+  this session took it from 2706 to 2715).
+- **E2E and a11y.** `a11y.spec.ts` does not run in the `cloud` project, and only cloud has
+  roles. So the badge's scans live in `location-switcher.spec.ts`, as 3 cloud-only tests: a
+  viewer sees the badge on Home, not on Garage (participant), and the Shed (no role) is not
+  listed; and two axe scans, light and dark. Each scan checks the page with the menu
+  closed, then only `[role="menu"]` with it open. The axe rules moved from `a11y.spec.ts`
+  into `e2e/helpers/axe.ts`, so both files scan with the same rules.
+- **What the first scan found.** Two violations, in both themes:
+  - `aria-hidden-focus` on the app root, `.h-dvh`. Radix's modal menu marks the rest of
+    the app `aria-hidden`. Every dropdown in the app does this; `a11y.spec.ts` already
+    avoids scanning with a menu open for this reason. Not fixed here.
+  - `color-contrast` on the menu badge: axe measured `#5e584a` on `#787062`, 1.44:1. The
+    row really is `oklch(0.98 …)` (read with `getComputedStyle`), so the eye saw a pass.
+    The badge had no background of its own, and axe took one from further down the stack.
+    Giving it `bg-background-surface` fixed the measurement.
+- **Mutations, each copied aside and restored from the copy (`diff -q` clean):**
+
+  | Mutation | Red |
+  |---|---|
+  | badge for every role | 10, incl. every cloud test that expects no badge, and 3 local tests |
+  | badge for every role below organizer | 4, incl. `location participant sees no View only badge` |
+  | badge only when the household role is not owner or manager | `household manager who is only a viewer of the active location still sees View only` |
+  | no badge on the `full` trigger | 3, incl. the viewer test and the manager test |
+  | the accessible name ignores view only | 4, incl. `location viewer sees the eye mark on the compact trigger, and it is named` |
+  | no badge in the menu | 3, incl. `location organizer sees no View only badge on the trigger` (its menu check) |
+  | no space before the menu badge | only the story smoke test, by `textContent`. jsdom's accessible-name check passed without the space |
+  | `usePermissions` gives `true` while loading (plan Step 5) | both loading tests of `usePermissions.test.tsx` |
+  | `canEditLocation` reads the household role (plan Step 5) | the Review Focus 4 test and the member + participant test |
+  | `usePermissions` fills the roles while the household loads | its loading test, and `user sees no View only badge while the household role is loading` |
+  | the badge without `bg-background-surface` (E2E, `cloud`) | both axe tests, `color-contrast` on 1 node |
+
+- **Order of work.** The implementation was written before the tests, in this task and in
+  the F.3 review fixes. Every test was then checked by a mutation above, so each one is
+  known to fail without the behaviour it names.
 
 ## Task F.5 — web: a household `member` sees the catalog read-only
 
@@ -1029,9 +1096,17 @@ Filled in from the task reports and reviews.
 | F.3 | (nothing about the Add button) | Kept for everyone: the server asks household `member` to create a location |
 | F.3 | The reorder test "sends every id of the list" | jsdom has no layout, so a keyboard drag never moves. The test stubs `getBoundingClientRect`. Without it, the test fails for a reason unrelated to the code |
 | F.3 | (nothing) | Codegen types `ReorderLocations`' `orderedIds` variable as `string \| string[]` (list coercion). `tsc` caught `.flatMap` on it; the hook narrows it |
+| F.3 review | (nothing about a refused reorder) | Since F.2 the server refuses a stale list, and the page showed nothing. `useReorderLocations` now reloads both lists and the page says why |
+| F.3 review | (nothing about the first load) | The page showed "No locations yet" while `householdLocations` loaded. It now shows a spinner |
+| F.3 review | (the reviewer) add `role="list"` on the `<ul>` if Biome allows | Biome refuses it (`noRedundantRoles`, an error here), and lint-staged's `--unsafe` would delete it. Not added |
+| F.4 | Create `usePermissions.ts` and its test; consumes `useLocations` "with `myRole`" | Both existed since F.3. F.4 is the switcher only |
+| F.4 | Modify the switcher, its stories and smoke test, and `hooks/CLAUDE.md` | Also: a new `LocationSwitcher.cloud.test.tsx` (the stories run in local mode, and a story cannot `vi.mock`), two new i18n keys (the accessible name had to say "view only" too), `components/CLAUDE.md`, and `e2e/helpers/axe.ts` |
+| F.4 | (nothing about where the badge goes on the compact trigger) | The compact trigger is one letter in an icon-size button. It shows an `Eye` mark instead of the word, and both triggers say "view only" in their name |
+| F.4 | (nothing about a11y) | `a11y.spec.ts` runs in `local` and `pwa` only, and roles exist only in cloud. The scans went into `location-switcher.spec.ts` (cloud). The first scan failed `color-contrast` on the transparent badge (an axe stack reading, 1.44:1) and `aria-hidden-focus` (Radix, every dropdown) |
 
 ## Status
 
 **Plan written 2026-11-17** on `feature/households-h5`. Owner decisions O1–O12 answered
 2026-11-17 (see *Owner answers*). H5a task F.1 is done (`a59cfcb8`), with review fixes. Task F.2 is done, with review fixes. Task F.3 is done (`5b88bee7`), and it built
-`usePermissions`. Task F.4 (the View only badge) is next.
+`usePermissions`, with review fixes. Task F.4 (the View only badge) is done (`e5669669`).
+Task F.5 is next.
