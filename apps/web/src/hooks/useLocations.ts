@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { OfflineWriteError } from '@/apollo/offlineWriteLink'
 import {
   createLocation,
   deleteLocation,
@@ -21,6 +20,7 @@ import {
   useUpdateLocationMutation as useUpdateLocationMutationGql,
 } from '@/generated/graphql'
 import { deserializeLocation } from '@/lib/deserialization'
+import { hasGraphQLErrorCode } from '@/lib/graphqlErrorCode'
 import type { Location } from '@/types'
 import { useDataMode } from './useDataMode'
 
@@ -160,6 +160,9 @@ const LOCATION_LISTS_AFTER_REFUSAL = [
   HOUSEHOLD_LOCATIONS_REFETCH,
   'GetLocations',
 ] as const
+
+/** The caller's household role, reloaded after a `FORBIDDEN` reorder. */
+const HOUSEHOLD_ROLE_REFETCH = 'GetHousehold'
 
 export function useCreateLocation() {
   const queryClient = useQueryClient()
@@ -446,16 +449,32 @@ export function useReorderLocations() {
       },
     })
 
-  // A refused reorder reloads both lists. Since H5 task F.2 the server refuses
-  // any list that is not exactly the household's full set. So when another
-  // member created or deleted a location while this tab's list was out of
-  // date, the next drag would be refused again. The reload gives the next drag
-  // the right set. Offline there is nothing to reload from, so it is skipped.
+  // A refused reorder reloads only what can explain the refusal:
+  //
+  // - `BAD_USER_INPUT`: both location lists. Since H5 task F.2 the server
+  //   refuses a list that is not the household's full set. Another member
+  //   created or deleted a location while this tab's list was out of date.
+  //   The reload gives the next drag the right set.
+  // - `FORBIDDEN`: the household role (`GetHousehold`). The caller is no
+  //   longer an owner or manager. Once the role says so, `usePermissions`
+  //   hides the drag handles.
+  // - offline (`OfflineWriteError`), a network error, anything else: nothing.
+  //   The lists are not wrong, and offline there is nothing to reload from.
+  //   An `OfflineWriteError` carries no GraphQL code, so it needs no check of
+  //   its own here.
+  //
+  // `mutate` and `mutateAsync` both use it. Only the settings page calls the
+  // hook today, through `mutate`; the hook tests call `mutateAsync`.
   const reloadAfterRefusal = (err: unknown) => {
-    if (err instanceof OfflineWriteError) return
+    const include = hasGraphQLErrorCode(err, 'BAD_USER_INPUT')
+      ? [...LOCATION_LISTS_AFTER_REFUSAL]
+      : hasGraphQLErrorCode(err, 'FORBIDDEN')
+        ? [HOUSEHOLD_ROLE_REFETCH]
+        : null
+    if (!include) return
     client
-      ?.refetchQueries({ include: [...LOCATION_LISTS_AFTER_REFUSAL] })
-      // A failed reload leaves the old list; the next refusal tries again.
+      ?.refetchQueries({ include })
+      // A failed reload leaves the old data; the next refusal tries again.
       .catch(() => {})
   }
 

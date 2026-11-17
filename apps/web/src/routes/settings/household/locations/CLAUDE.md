@@ -44,9 +44,21 @@ a screen reader says "Kitchen, Your role: Viewer", not "Kitchen Viewer". The `<u
 `role="list"`: Biome refuses it (`noRedundantRoles`), so Safari with VoiceOver may not
 announce it as a list.
 
-**A refused reorder shows a toast** (`handleReorder`): `settings.locations.reorderError`,
-"The location list changed. It has been reloaded. Try again." The hook has already started
-the refetch of both lists. Offline, no toast from the page (the same rule as delete).
+**A refused reorder shows a toast** (`handleReorder`), chosen by the error code. The hook
+(`useReorderLocations`) decides what to reload by the same code:
+
+| Error | Toast (`settings.locations.*`) | The hook reloads |
+|---|---|---|
+| `BAD_USER_INPUT` (the list was not the household's full set) | `reorderError`: "The location list changed. Reloading it now. Try again." | `GetHouseholdLocations` and `GetLocations` |
+| `FORBIDDEN` (no longer an owner or manager) | `reorderFailed`: "Could not save the new order. Please try again." | `GetHousehold`, so the drag handles go away |
+| `OfflineWriteError` | none from the page (the same rule as delete) | nothing |
+| anything else (a network error) | `reorderFailed` | nothing |
+
+No toast once the page has unmounted (a `mounted` ref): it would talk about a list the user
+no longer sees. The reload still runs. Until the review of H5 task F.4, every refusal except
+offline showed "… It has been reloaded …" and reloaded both lists, which was untrue for a
+network error or `FORBIDDEN`, and too early even for `BAD_USER_INPUT` (the reload had only
+started).
 
 **While the first cloud load runs, the page shows `LoadingSpinner`**, not the empty state.
 Before the review of H5 task F.3 it showed "No locations yet" until the list answered.

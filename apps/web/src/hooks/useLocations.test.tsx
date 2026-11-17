@@ -1,3 +1,4 @@
+import { ApolloClient } from '@apollo/client'
 import {
   MockedProvider,
   type MockedProviderProps,
@@ -11,13 +12,15 @@ import {
   waitFor,
 } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { createCache } from '@/apollo/cloudCache'
+import { OfflineWriteError } from '@/apollo/offlineWriteLink'
 import { LocationList } from '@/components/location/LocationList'
 import { db } from '@/db'
 import {
   CreateLocationDocument,
   DeleteLocationDocument,
+  GetHouseholdDocument,
   GetHouseholdLocationsDocument,
   GetLocationsDocument,
   ReorderLocationsDocument,
@@ -26,6 +29,7 @@ import {
 import { DEFAULT_LOCATION_ID } from '@/types'
 import { useCloudLocationKnown } from './useCloudLocationKnown'
 import * as dataModeHooks from './useDataMode'
+import { useHousehold } from './useHousehold'
 import {
   CLOUD_LOCATION_ORDER_NOT_UPDATABLE,
   useCreateLocation,
@@ -696,6 +700,185 @@ describe('the settings list is fetched again after a write', () => {
     // Then both lists hold the Attic, so the next drag sends all four ids
     await waitFor(() => expect(result.current.settings.data).toHaveLength(4))
     await waitFor(() => expect(result.current.switcher.data).toHaveLength(3))
+  })
+
+  // ── Which refusal reloads what (review of H5 task F.4, items 1 to 3) ──
+  //
+  // A refused reorder reloads only what can explain the refusal:
+  //
+  // | Refusal | Reloads |
+  // |---|---|
+  // | `BAD_USER_INPUT` (the list was not the household's full set) | both location lists |
+  // | `FORBIDDEN` (the caller is no longer an owner or manager) | the household role |
+  // | offline, or a network error | nothing |
+  //
+  // `refetchQueries` is watched on the real client the `MockedProvider` makes,
+  // so each test can say exactly which names were asked for.
+
+  /** A household that answers `owner` first and `member` on every later ask. */
+  const householdAnswers = [
+    {
+      request: { query: GetHouseholdDocument },
+      result: {
+        data: {
+          household: {
+            __typename: 'Household' as const,
+            id: 'hh-1',
+            name: 'Home',
+            role: 'owner' as const,
+          },
+        },
+      },
+    },
+    {
+      request: { query: GetHouseholdDocument },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+      result: {
+        data: {
+          household: {
+            __typename: 'Household' as const,
+            id: 'hh-1',
+            name: 'Home',
+            role: 'member' as const,
+          },
+        },
+      },
+    },
+  ]
+
+  function renderReorderHarness(reorderAnswer: Record<string, unknown>) {
+    const orderedIds = [CLOUD_OTHER_ID, CLOUD_SHED_ID, CLOUD_FIRST_ID]
+    const refetchSpy = vi.spyOn(ApolloClient.prototype, 'refetchQueries')
+    onTestFinished(() => refetchSpy.mockRestore())
+    const rendered = renderHook(
+      () => ({
+        settings: useHouseholdLocations(),
+        household: useHousehold(),
+        reorder: useReorderLocations(),
+      }),
+      {
+        wrapper: makeWrapper([
+          getLocationsMock,
+          ...settingsListAnswers(SETTINGS_ROWS, [...SETTINGS_ROWS, ATTIC_ROW]),
+          ...householdAnswers,
+          {
+            request: {
+              query: ReorderLocationsDocument,
+              variables: { orderedIds },
+            },
+            ...reorderAnswer,
+          },
+        ]),
+      },
+    )
+    return { ...rendered, orderedIds, refetchSpy }
+  }
+
+  /** The names each `refetchQueries` call asked for, in call order. */
+  function refetchedNames(spy: { mock: { calls: unknown[][] } }) {
+    return spy.mock.calls.map(
+      (call) => (call[0] as { include?: unknown }).include,
+    )
+  }
+
+  it('household manager who lost the role gets the household role again after a FORBIDDEN reorder, and the lists are not reloaded', async () => {
+    // Given an owner whose role was lowered to member in another tab, so the
+    // server refuses the reorder with FORBIDDEN
+    const { result, orderedIds, refetchSpy } = renderReorderHarness({
+      result: {
+        errors: [
+          {
+            message: 'You do not have the household role this needs.',
+            extensions: { code: 'FORBIDDEN' },
+          },
+        ],
+      },
+    })
+    await waitFor(() => expect(result.current.settings.data).toHaveLength(3))
+    await waitFor(() =>
+      expect(result.current.household.data?.role).toBe('owner'),
+    )
+
+    // When the reorder is refused
+    const onError = vi.fn()
+    await act(async () => {
+      await result.current.reorder.mutate(orderedIds, { onError })
+    })
+    expect(onError).toHaveBeenCalledTimes(1)
+
+    // Then only the household role is asked for again, and it now says member
+    expect(refetchedNames(refetchSpy)).toEqual([['GetHousehold']])
+    await waitFor(() =>
+      expect(result.current.household.data?.role).toBe('member'),
+    )
+    // And the settings list was not reloaded: it still has its three rows
+    expect(result.current.settings.data).toHaveLength(3)
+  })
+
+  it('user whose reorder fails with a network error gets no reload', async () => {
+    // Given a server that cannot be reached
+    const { result, orderedIds, refetchSpy } = renderReorderHarness({
+      error: new Error('Failed to fetch'),
+    })
+    await waitFor(() => expect(result.current.settings.data).toHaveLength(3))
+
+    // When the reorder fails
+    const onError = vi.fn()
+    await act(async () => {
+      await result.current.reorder.mutate(orderedIds, { onError })
+    })
+
+    // Then the caller hears about it, and nothing is reloaded
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(refetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('user who reorders while offline gets no reload', async () => {
+    // Given no network: `offlineWriteLink` rejects with `OfflineWriteError`
+    const { result, orderedIds, refetchSpy } = renderReorderHarness({
+      error: new OfflineWriteError(),
+    })
+    await waitFor(() => expect(result.current.settings.data).toHaveLength(3))
+
+    // When the reorder fails
+    const onError = vi.fn()
+    await act(async () => {
+      await result.current.reorder.mutate(orderedIds, { onError })
+    })
+
+    // Then the caller gets the offline error itself, and nothing is reloaded
+    expect(onError).toHaveBeenCalledWith(expect.any(OfflineWriteError))
+    expect(refetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('household owner gets both location lists again after a refused reorder through mutateAsync too', async () => {
+    // Given the same stale list as above, refused with BAD_USER_INPUT
+    const { result, orderedIds, refetchSpy } = renderReorderHarness({
+      result: {
+        errors: [
+          {
+            message: 'Send every location of the household.',
+            extensions: { code: 'BAD_USER_INPUT' },
+          },
+        ],
+      },
+    })
+    await waitFor(() => expect(result.current.settings.data).toHaveLength(3))
+
+    // When the reorder is sent through `mutateAsync`, it rejects
+    let rejected: unknown
+    await act(async () => {
+      await result.current.reorder.mutateAsync(orderedIds).catch((err) => {
+        rejected = err
+      })
+    })
+    expect(rejected).toBeDefined()
+
+    // Then both lists are asked for again, and the settings list has the Attic
+    expect(refetchedNames(refetchSpy)).toEqual([
+      ['GetHouseholdLocations', 'GetLocations'],
+    ])
+    await waitFor(() => expect(result.current.settings.data).toHaveLength(4))
   })
 })
 

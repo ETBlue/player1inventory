@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -127,7 +127,8 @@ const LAST_LOCATION_MESSAGE =
 const GENERAL_MESSAGE = 'Could not delete this location. Please try again.'
 const OFFLINE_MESSAGE = 'You are offline. Changes cannot be saved right now.'
 const REORDER_MESSAGE =
-  'The location list changed. It has been reloaded. Try again.'
+  'The location list changed. Reloading it now. Try again.'
+const REORDER_FAILED_MESSAGE = 'Could not save the new order. Please try again.'
 
 describe('Settings locations page — cloud mode', () => {
   let queryClient: QueryClient
@@ -305,6 +306,7 @@ describe('Settings locations page — cloud roles (households H5 task F.3)', () 
         <RouterProvider router={router} />
       </QueryClientProvider>,
     )
+    return router
   }
 
   // jsdom has no layout, so every row measures 0 x 0 and the keyboard sensor
@@ -528,10 +530,133 @@ describe('Settings locations page — cloud roles (households H5 task F.3)', () 
     expect(mockReorderLocations).toHaveBeenCalledWith({
       variables: { orderedIds: [LOC_C, LOC_A, LOC_B] },
     })
-    // And both location lists are fetched again, by name
+    // And both location lists are fetched again, by name, and nothing else
+    expect(mockRefetchQueries.mock.calls).toEqual([
+      [{ include: ['GetHouseholdLocations', 'GetLocations'] }],
+    ])
+    // And it is not the general message
+    expect(screen.queryByText(REORDER_FAILED_MESSAGE)).not.toBeInTheDocument()
+  })
+
+  it('household member whose manager role was taken away sees a general message, and the household role reloads', async () => {
+    // Given a person the page still believes is a manager. Their role was
+    // lowered in another tab, so the server refuses with FORBIDDEN. They
+    // organize the Kitchen, view the Garage and have no role on the Shed.
+    given('manager', [
+      row(LOC_A, 'Cloud Kitchen', 0, 'organizer'),
+      row(LOC_C, 'Cloud Shed', 1, null),
+      row(LOC_B, 'Cloud Garage', 2, 'viewer'),
+    ])
+    mockReorderLocations.mockRejectedValue(
+      serverRefusal('FORBIDDEN', 'You do not have the household role.'),
+    )
+    stubRowLayout()
+    renderPage()
+
+    // When they move the Kitchen down one place
+    await moveDownOne('Cloud Kitchen')
+
+    // Then the page shows the general message, not "the list changed"
+    expect(await screen.findByText(REORDER_FAILED_MESSAGE)).toBeInTheDocument()
+    expect(screen.queryByText(REORDER_MESSAGE)).not.toBeInTheDocument()
+    // And only the household role is fetched again, so the drag handles go
+    // away once it says member. The lists are not reloaded.
+    expect(mockRefetchQueries.mock.calls).toEqual([
+      [{ include: ['GetHousehold'] }],
+    ])
+  })
+
+  it('household owner whose reorder fails with a network error sees a general message, and nothing reloads', async () => {
+    // Given an owner, with a viewer row and a No access row, and a server
+    // that cannot be reached
+    given('owner', [
+      row(LOC_A, 'Cloud Kitchen', 0, 'organizer'),
+      row(LOC_C, 'Cloud Shed', 1, null),
+      row(LOC_B, 'Cloud Garage', 2, 'viewer'),
+    ])
+    mockReorderLocations.mockRejectedValue(new Error('Failed to fetch'))
+    stubRowLayout()
+    renderPage()
+
+    // When the owner moves the Kitchen down one place
+    await moveDownOne('Cloud Kitchen')
+
+    // Then the general message shows, and nothing is fetched again
+    expect(await screen.findByText(REORDER_FAILED_MESSAGE)).toBeInTheDocument()
+    expect(screen.queryByText(REORDER_MESSAGE)).not.toBeInTheDocument()
+    expect(mockRefetchQueries).not.toHaveBeenCalled()
+  })
+
+  it('household owner reordering while offline sees only the offline message', async () => {
+    // Given no network. The mock does what `offlineWriteLink` does: it shows
+    // its own toast, then rejects with `OfflineWriteError`.
+    given('owner', [
+      row(LOC_A, 'Cloud Kitchen', 0, 'organizer'),
+      row(LOC_C, 'Cloud Shed', 1, null),
+      row(LOC_B, 'Cloud Garage', 2, 'viewer'),
+    ])
+    mockReorderLocations.mockImplementation(async () => {
+      toast.error(OFFLINE_MESSAGE)
+      throw new OfflineWriteError()
+    })
+    stubRowLayout()
+    renderPage()
+
+    // When the owner moves the Kitchen down one place
+    await moveDownOne('Cloud Kitchen')
+
+    // Then the offline message is shown
+    expect(await screen.findByText(OFFLINE_MESSAGE)).toBeInTheDocument()
+    expect(mockReorderLocations).toHaveBeenCalledTimes(1)
+    // And the page adds no second toast, and nothing is fetched again
+    expect(screen.queryByText(REORDER_MESSAGE)).not.toBeInTheDocument()
+    expect(screen.queryByText(REORDER_FAILED_MESSAGE)).not.toBeInTheDocument()
+    expect(mockRefetchQueries).not.toHaveBeenCalled()
+  })
+
+  it('user who leaves the page before a reorder is refused sees no message about it', async () => {
+    // Given an owner whose reorder answer is still on its way
+    given('owner', [
+      row(LOC_A, 'Cloud Kitchen', 0, 'organizer'),
+      row(LOC_C, 'Cloud Shed', 1, null),
+      row(LOC_B, 'Cloud Garage', 2, 'viewer'),
+    ])
+    let refuse: (err: unknown) => void = () => {}
+    mockReorderLocations.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          refuse = reject
+        }),
+    )
+    stubRowLayout()
+    const router = renderPage()
+    await moveDownOne('Cloud Kitchen')
+    expect(mockReorderLocations).toHaveBeenCalledTimes(1)
+
+    // When the user goes to another settings page, and only then the server
+    // refuses the list
+    await act(async () => {
+      await router.navigate({ to: '/settings' })
+    })
+    expect(router.state.location.pathname).toBe('/settings')
+    await act(async () => {
+      refuse(
+        serverRefusal(
+          'BAD_USER_INPUT',
+          'Send every location of the household.',
+        ),
+      )
+    })
+
+    // Then the lists still reload (another page may show them)
     expect(mockRefetchQueries).toHaveBeenCalledWith({
       include: ['GetHouseholdLocations', 'GetLocations'],
     })
+    // But no toast at all talks about a list the user is no longer looking
+    // at. Counted by sonner's own attribute, so the test does not depend on
+    // the wording.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(document.querySelectorAll('[data-sonner-toast]')).toHaveLength(0)
   })
 
   it('user sees no empty state while the cloud locations list is loading', async () => {

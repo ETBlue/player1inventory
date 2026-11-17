@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { ArrowLeft, Plus } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { OfflineWriteError } from '@/apollo/offlineWriteLink'
@@ -85,18 +85,33 @@ export function LocationSettingsPage() {
     })
   }
 
-  // A refused reorder must say so. Since H5 task F.2 the server refuses any
-  // list that is not exactly the household's full set, so a drag fails when
-  // another member created or deleted a location while this list was out of
-  // date. The row then goes back to its place. `useReorderLocations` reloads
-  // both location lists, so the next drag sends the right set; this message
-  // tells the user why the row went back. Offline, `offlineWriteLink` has
-  // already shown its own toast (see `handleDelete`).
+  // A refused reorder must say so, and the row then goes back to its place.
+  // Since H5 task F.2 the server refuses any list that is not exactly the
+  // household's full set (`BAD_USER_INPUT`): another member created or
+  // deleted a location while this list was out of date. `useReorderLocations`
+  // then reloads both location lists, and this message says so. Any other
+  // failure (`FORBIDDEN`, a network error) gets the general message: the list
+  // was not the problem, so "the list changed" would not be true. Offline,
+  // `offlineWriteLink` has already shown its own toast (see `handleDelete`).
+  //
+  // No message once the user has left the page: it would talk about a list
+  // they no longer see. The reload still runs.
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
   const handleReorder = (orderedIds: string[]) => {
     reorderLocations.mutate(orderedIds, {
       onError: (err: unknown) => {
-        if (err instanceof OfflineWriteError) return
-        toast.error(t('settings.locations.reorderError'))
+        if (err instanceof OfflineWriteError || !mounted.current) return
+        toast.error(
+          hasGraphQLErrorCode(err, 'BAD_USER_INPUT')
+            ? t('settings.locations.reorderError')
+            : t('settings.locations.reorderFailed'),
+        )
       },
     })
   }
