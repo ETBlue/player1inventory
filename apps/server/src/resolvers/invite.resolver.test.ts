@@ -9,6 +9,7 @@ import type { HouseholdInviteRow } from '../test/householdFake.js'
 import type { FakeLocation } from '../test/stockFake.js'
 import type { UserRow } from '../test/userFake.js'
 import { type ChangeEvent, liveEvents } from '../lib/liveEvents.js'
+import { INVITE_TOKEN_LENGTH } from '../lib/invite.js'
 
 // Create, list, preview and revoke household invites (households H5b, task
 // G.3; plan docs/global/permissions/2026-11-18-households-plan-h5b.md).
@@ -82,6 +83,14 @@ function user(id: string, displayName: string, activeHouseholdId: string | null)
   }
 }
 
+/**
+ * A test token of the length every real token has. `invitePreview` answers
+ * INVALID, with no read, for a token of any other length.
+ */
+function tok(name: string): string {
+  return name.padEnd(INVITE_TOKEN_LENGTH, '0')
+}
+
 let inviteSeq = 0
 /** An open invite of `householdId`, made by `createdById`, unless `extra` says otherwise. */
 function invite(
@@ -94,7 +103,7 @@ function invite(
   return {
     id: `inv_${inviteSeq}`,
     householdId,
-    token: `token_${inviteSeq}`,
+    token: tok(`token_${inviteSeq}`),
     householdRole,
     locationRoles: [],
     createdById,
@@ -317,16 +326,18 @@ function listed(res: Result) {
 describe('householdInvites', () => {
   it('lists only open invites of the household, oldest first', async () => {
     // Given hh_h has two open invites, and one used, one revoked and one
-    // expired; and hh_x has an open invite of its own
+    // expired; and hh_x has an open invite of its own. The OLDER open invite
+    // has the id that sorts LATER (inv_open_b), so "oldest first" and "by id"
+    // give different orders.
     seed([
-      invite('hh_h', OWEN, 'member', { id: 'inv_open_b', createdAt: new Date('2026-11-10T00:00:00.000Z') }),
+      invite('hh_h', OWEN, 'member', { id: 'inv_open_a', createdAt: new Date('2026-11-10T00:00:00.000Z') }),
       invite('hh_h', OWEN, 'member', { id: 'inv_used', usedAt: T0, usedById: BAO }),
       invite('hh_h', OWEN, 'member', { id: 'inv_revoked', revokedAt: T0 }),
       // Expires exactly now: no longer open (`expiresAt > now` is strict).
       invite('hh_h', OWEN, 'member', { id: 'inv_expired', expiresAt: NOW }),
       invite('hh_x', YUKI, 'member', { id: 'inv_other' }),
       invite('hh_h', MIA, 'manager', {
-        id: 'inv_open_a',
+        id: 'inv_open_b',
         createdAt: new Date('2026-11-01T00:00:00.000Z'),
         locationRoles: [{ locationId: LOC_G, role: 'participant' }],
       }),
@@ -335,26 +346,40 @@ describe('householdInvites', () => {
     // When OWEN lists them
     const res = await run(LIST, {}, OWEN)
 
-    // Then only the two open ones of hh_h come back, oldest first
+    // Then only the two open ones of hh_h come back, oldest first (not by id)
     expect(res.errors).toBeUndefined()
     expect(listed(res)).toEqual([
       {
-        id: 'inv_open_a',
-        token: 'token_6',
+        id: 'inv_open_b',
+        token: tok('token_6'),
         householdRole: 'manager',
         createdByName: 'Mia',
         expiresAt: '2026-11-20T00:00:00.000Z',
         locationRoles: [{ locationId: LOC_G, locationName: `${LOC_G} name`, role: 'participant' }],
       },
       {
-        id: 'inv_open_b',
-        token: 'token_1',
+        id: 'inv_open_a',
+        token: tok('token_1'),
         householdRole: 'member',
         createdByName: 'Owen',
         expiresAt: '2026-11-20T00:00:00.000Z',
         locationRoles: [],
       },
     ])
+  })
+
+  it('two invites made at the same time are listed by id', async () => {
+    // Given two open invites with the same createdAt, stored in the order
+    // that is NOT the id order
+    const same = new Date('2026-11-05T00:00:00.000Z')
+    seed([
+      invite('hh_h', OWEN, 'member', { id: 'inv_2', createdAt: same }),
+      invite('hh_h', OWEN, 'member', { id: 'inv_1', createdAt: same }),
+    ])
+
+    // Then the id breaks the tie
+    const res = await run(LIST, {}, OWEN)
+    expect(listed(res).map((i) => i.id)).toEqual(['inv_1', 'inv_2'])
   })
 
   it('household manager sees only member invites (O15-A, T27)', async () => {
@@ -431,18 +456,18 @@ describe('invitePreview', () => {
   beforeEach(() => {
     seed([
       invite('hh_h', OWEN, 'manager', {
-        token: 'tok_open',
+        token: tok('tok_open'),
         locationRoles: [{ locationId: LOC_K, role: 'organizer' }],
       }),
-      invite('hh_h', OWEN, 'member', { token: 'tok_used', usedAt: T0, usedById: BAO }),
-      invite('hh_h', OWEN, 'member', { token: 'tok_revoked', revokedAt: T0 }),
-      invite('hh_h', OWEN, 'member', { token: 'tok_expired', expiresAt: NOW }),
+      invite('hh_h', OWEN, 'member', { token: tok('tok_used'), usedAt: T0, usedById: BAO }),
+      invite('hh_h', OWEN, 'member', { token: tok('tok_revoked'), revokedAt: T0 }),
+      invite('hh_h', OWEN, 'member', { token: tok('tok_expired'), expiresAt: NOW }),
     ])
   })
 
   it('VALID for a person in another household: names and roles', async () => {
     // YUKI is in hh_x only
-    const res = await run(PREVIEW, { token: 'tok_open' }, YUKI)
+    const res = await run(PREVIEW, { token: tok('tok_open') }, YUKI)
     expect(res.errors).toBeUndefined()
     expect(preview(res)).toEqual({
       status: 'VALID',
@@ -454,17 +479,17 @@ describe('invitePreview', () => {
   })
 
   it('ALREADY_MEMBER for a member of the household', async () => {
-    const res = await run(PREVIEW, { token: 'tok_open' }, BAO)
+    const res = await run(PREVIEW, { token: tok('tok_open') }, BAO)
     expect(preview(res)).toMatchObject({ status: 'ALREADY_MEMBER', householdName: 'hh_h name' })
     // And the link is not used up
     expect(world.households.state.householdInvites[0]?.usedAt).toBeNull()
   })
 
   it.each([
-    ['an unknown token', 'tok_none'],
-    ['a used invite', 'tok_used'],
-    ['a revoked invite', 'tok_revoked'],
-    ['an expired invite', 'tok_expired'],
+    ['an unknown token', tok('tok_none')],
+    ['a used invite', tok('tok_used')],
+    ['a revoked invite', tok('tok_revoked')],
+    ['an expired invite', tok('tok_expired')],
   ])('INVALID, with no household name, for %s', async (_, token) => {
     const res = await run(PREVIEW, { token }, YUKI)
     expect(res.errors).toBeUndefined()
@@ -472,13 +497,46 @@ describe('invitePreview', () => {
   })
 
   it('INVALID for a used invite even for a member of its household', async () => {
-    const res = await run(PREVIEW, { token: 'tok_used' }, BAO)
+    const res = await run(PREVIEW, { token: tok('tok_used') }, BAO)
     expect(preview(res)).toEqual(INVALID)
+  })
+
+  it.each([
+    ['one character short', -1],
+    ['one character long', 1],
+  ])('INVALID with no read for a token %s', async (_, extra) => {
+    // Given an OPEN invite whose stored token has the wrong length. No real
+    // token looks like this, so without the length check it would be VALID.
+    const odd =
+      extra < 0 ? tok('tok_odd').slice(0, INVITE_TOKEN_LENGTH - 1) : `${tok('tok_odd')}0`
+    seed([invite('hh_h', OWEN, 'member', { token: odd })])
+    const read = vi.spyOn(prisma.householdInvite, 'findUnique')
+    try {
+      // When YUKI previews it
+      const res = await run(PREVIEW, { token: odd }, YUKI)
+
+      // Then it is INVALID, and the invite table was not read
+      expect(preview(res)).toEqual(INVALID)
+      expect(read).not.toHaveBeenCalled()
+    } finally {
+      read.mockRestore()
+    }
+  })
+
+  it('a token of the right length is read', async () => {
+    // A control for the test above: the spy does see a read.
+    const read = vi.spyOn(prisma.householdInvite, 'findUnique')
+    try {
+      await run(PREVIEW, { token: tok('tok_open') }, YUKI)
+      expect(read).toHaveBeenCalledTimes(1)
+    } finally {
+      read.mockRestore()
+    }
   })
 
   it('invitePreview works for a person with no household (T22)', async () => {
     // Given PIA: set up once (the claim is set), and in no household now
-    const res = await run(PREVIEW, { token: 'tok_open' }, PIA)
+    const res = await run(PREVIEW, { token: tok('tok_open') }, PIA)
 
     // Then she sees the invite, and her household was never asked for
     expect(res.errors).toBeUndefined()
@@ -488,7 +546,7 @@ describe('invitePreview', () => {
 
   it('needs a signed-in caller', async () => {
     const res = await server.executeOperation(
-      { query: PREVIEW, variables: { token: 'tok_open' } },
+      { query: PREVIEW, variables: { token: tok('tok_open') } },
       { contextValue: { userId: null } as unknown as Context },
     )
     if (res.body.kind !== 'single') throw new Error('expected a single result')
@@ -548,6 +606,21 @@ describe('revokeInvite', () => {
     expect(revokedIds()).toEqual([])
   })
 
+  it('an expired invite that was never used can be revoked, and publishes', async () => {
+    // Given an invite of hh_h that expired an hour ago and was never used.
+    // Expiry is not in revoke's `where` on purpose (see the resolver): the
+    // invite could not be used anyway, and the list leaves it out either way.
+    seed([invite('hh_h', OWEN, 'member', { id: 'inv_old', expiresAt: new Date(NOW.getTime() - 3_600_000) })])
+
+    // When OWEN revokes it
+    const res = await run(REVOKE, { id: 'inv_old' }, OWEN)
+
+    // Then it is revoked, and the household hears of it
+    expect(res.data).toEqual({ revokeInvite: true })
+    expect(revokedIds()).toEqual(['inv_old'])
+    expect(seen).toEqual([locationEvent('hh_h')])
+  })
+
   it('a used invite cannot be revoked', async () => {
     const res = await run(REVOKE, { id: 'inv_used' }, OWEN)
     expect(res.data).toEqual({ revokeInvite: false })
@@ -575,6 +648,22 @@ describe('createInvite and revokeInvite publish household-level LOCATION', () =>
     expect(seen).toEqual([locationEvent('hh_h')])
   })
 
+  it('createInvite publishes even when a read after the write fails', async () => {
+    // Given the name read after the write throws
+    const names = vi.spyOn(prisma.user, 'findMany').mockRejectedValueOnce(new Error('read failed'))
+    try {
+      // When OWEN creates an invite
+      const res = await run(CREATE, { role: 'member', roles: [] }, OWEN)
+
+      // Then the call fails, but the row is written and the household hears of it
+      expect(res.errors).toBeDefined()
+      expect(world.households.state.householdInvites).toHaveLength(1)
+      expect(seen).toEqual([locationEvent('hh_h')])
+    } finally {
+      names.mockRestore()
+    }
+  })
+
   it('a refused createInvite publishes nothing', async () => {
     await run(CREATE, { role: 'manager', roles: [] }, MIA)
     await run(CREATE, { role: 'member', roles: roles([LOC_Z, 'viewer']) }, OWEN)
@@ -599,9 +688,9 @@ describe('createInvite and revokeInvite publish household-level LOCATION', () =>
   })
 
   it('the queries publish nothing', async () => {
-    seed([invite('hh_h', OWEN, 'member', { token: 'tok' })])
+    seed([invite('hh_h', OWEN, 'member', { token: tok('tok') })])
     await run(LIST, {}, OWEN)
-    await run(PREVIEW, { token: 'tok' }, YUKI)
+    await run(PREVIEW, { token: tok('tok') }, YUKI)
     expect(seen).toEqual([])
   })
 })

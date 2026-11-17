@@ -13,12 +13,31 @@ export function inviteExpiresAt(now: Date): Date {
   return new Date(now.getTime() + INVITE_LIFETIME_DAYS * 24 * 60 * 60 * 1000)
 }
 
+/** How many random bytes make one invite token (decision T12). */
+const INVITE_TOKEN_BYTES = 32
+
+/**
+ * The length of every token `newInviteToken` makes. base64url writes 4
+ * characters for every 3 bytes and adds no padding, so 32 bytes give 43.
+ */
+export const INVITE_TOKEN_LENGTH = Math.ceil((INVITE_TOKEN_BYTES * 4) / 3)
+
 /**
  * A new invite token: 32 random bytes as base64url, so 43 characters
  * (decision T12). It is a secret. Never log it.
  */
 export function newInviteToken(): string {
-  return randomBytes(32).toString('base64url')
+  return randomBytes(INVITE_TOKEN_BYTES).toString('base64url')
+}
+
+/**
+ * True when `token` has the length every stored token has. A token of any
+ * other length cannot name an invite, so `invitePreview` answers INVALID
+ * without a database read (and G.4's join should do the same). It is a cheap
+ * filter only: a token of the right length still needs the read.
+ */
+export function hasInviteTokenLength(token: string): boolean {
+  return token.length === INVITE_TOKEN_LENGTH
 }
 
 /** One location role an invite gives. */

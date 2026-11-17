@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { GraphQLError } from 'graphql'
 import {
   alreadyMember,
+  hasInviteTokenLength,
+  INVITE_TOKEN_LENGTH,
   INVITE_LIFETIME_DAYS,
   inviteExpiresAt,
   inviteInvalid,
@@ -20,6 +22,18 @@ describe('newInviteToken (decision T12)', () => {
 
   it('two calls give two different tokens', () => {
     expect(newInviteToken()).not.toBe(newInviteToken())
+  })
+
+  it('INVITE_TOKEN_LENGTH is the length the generator makes', () => {
+    expect(INVITE_TOKEN_LENGTH).toBe(43)
+    for (let i = 0; i < 20; i++) expect(newInviteToken()).toHaveLength(INVITE_TOKEN_LENGTH)
+  })
+
+  it('hasInviteTokenLength accepts that length only', () => {
+    expect(hasInviteTokenLength(newInviteToken())).toBe(true)
+    expect(hasInviteTokenLength('a'.repeat(42))).toBe(false)
+    expect(hasInviteTokenLength('a'.repeat(44))).toBe(false)
+    expect(hasInviteTokenLength('')).toBe(false)
   })
 })
 

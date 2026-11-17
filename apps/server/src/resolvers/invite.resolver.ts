@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client'
 import { requireAuth } from '../context.js'
 import { forbidden, requireHousehold, requireHouseholdRole } from '../lib/authz.js'
 import {
+  hasInviteTokenLength,
   type InviteLocationRoleEntry,
   inviteExpiresAt,
   newInviteToken,
@@ -57,8 +58,8 @@ function namedRoles(json: unknown, names: Map<string, string>): NamedLocationRol
 
 /**
  * The display names of some people, by id. One read, names only (no e-mail).
- * `User.createdById` is a foreign key, so every creator has a row; `''` is a
- * fallback that should never show.
+ * `HouseholdInvite.createdById` is a foreign key, so every creator has a
+ * row; `''` is a fallback that should never show.
  */
 async function displayNames(userIds: string[]): Promise<Map<string, string>> {
   if (userIds.length === 0) return new Map()
@@ -128,10 +129,24 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     // `requireHousehold`: a person with no household would get NO_HOUSEHOLD,
     // and a brand-new person would get a household made for them just by
     // looking at a link. It never throws for a token, and it never returns
-    // one. INVALID carries no name at all (decision T18).
+    // one. INVALID carries no name at all (decision T18). A token of the wrong
+    // length cannot name an invite, so it is INVALID with no read at all. The
+    // read selects every column but the token.
     invitePreview: async (_, { token }, ctx) => {
       const userId = requireAuth(ctx)
-      const row = await prisma.householdInvite.findUnique({ where: { token } })
+      if (!hasInviteTokenLength(token)) return INVALID_PREVIEW
+      const row = await prisma.householdInvite.findUnique({
+        where: { token },
+        select: {
+          householdId: true,
+          householdRole: true,
+          locationRoles: true,
+          createdById: true,
+          expiresAt: true,
+          usedAt: true,
+          revokedAt: true,
+        },
+      })
       if (!row || !isOpen(row, new Date())) return INVALID_PREVIEW
       const [membership, household, people, names] = await Promise.all([
         prisma.householdMember.findUnique({
@@ -197,13 +212,16 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           expiresAt: inviteExpiresAt(now),
         },
       })
+      // Household-level `LOCATION` (decision T19): every open tab of the
+      // household refetches, so the Members page shows the new invite. Sent
+      // right after the write, BEFORE the two reads below: if one of them
+      // throws, the row is still written and the other tabs must still hear
+      // of it.
+      await publishHouseholdChange(ctx, ['LOCATION'], householdId)
       const [names, people] = await Promise.all([
         locationNames(householdId),
         displayNames([userId]),
       ])
-      // Household-level `LOCATION` (decision T19): every open tab of the
-      // household refetches, so the Members page shows the new invite.
-      await publishHouseholdChange(ctx, ['LOCATION'], householdId)
       return {
         id: row.id,
         token: row.token,
@@ -219,8 +237,11 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     // open. A manager revokes only `member` invites (O15-A). Everything that
     // is not revocable for this caller gives `false`, the same answer as an
     // unknown id, so the answer says nothing about another household's ids.
-    // Expiry is not in the `where`: revoking an expired invite is harmless,
-    // and it is no longer listed anyway.
+    // Expiry is not in the `where`, on purpose: revoking an expired, unused
+    // invite answers `true` and publishes. That is harmless: the invite could
+    // not be used anyway (G.4's claim also needs `expiresAt > now`), the list
+    // leaves it out either way, and one extra refetch costs little. Keeping
+    // the `where` short keeps it the same as the claim's other half.
     revokeInvite: async (_, { id }, ctx) => {
       const householdId = await requireHousehold(ctx)
       const callerRole = await requireHouseholdRole(ctx, householdId, 'manager')

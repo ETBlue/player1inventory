@@ -50,8 +50,10 @@ type InviteLocationRole {
 # An open invite: not used, not revoked, not expired.
 type HouseholdInvite {
   id: ID!
-  # The secret part of the link. Only in `householdInvites`, for the owner and
-  # a manager, so they can copy an open link again (owner decision O7-A).
+  # The secret part of the link. Only the owner and a manager ever get it:
+  # from `createInvite`, which they made, and from `householdInvites`, so they
+  # can copy an open link again (owner decision O7-A). `invitePreview` never
+  # returns it.
   token: String!
   householdRole: HouseholdRole!
   # Only the locations that still exist in the household. An invite whose
