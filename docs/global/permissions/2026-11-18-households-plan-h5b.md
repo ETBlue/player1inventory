@@ -1213,6 +1213,26 @@ it, every cloud spec fails at the first request. Read `e2e/CLAUDE.md` first: por
 - **Add an axe scan of the no-household screen and of its Create dialog, light and dark**,
   in a cloud spec (`a11y.spec.ts` does not run in cloud), reached by a leave or a removal.
 
+**Notes from the review of G.9 (the Members page):**
+- **Duplicate button names.** Each row's **Leave household** button and the confirm's
+  button have the same name, and so do **Revoke** and **Remove**'s. Click the confirm
+  inside `getByRole('alertdialog')`. **Copy link** is on every invite row: scope it to the
+  row (`listitem`).
+- **Radix Select.** The role pickers are Radix `Select`, not `<select>`: click the
+  combobox (named "Household role", "Household role of <name>", or the location's name),
+  then the option in the open `listbox`. `selectOption` does not work.
+- **The invite link.** Read the token from the dialog's read-only **Invite link** field,
+  not from the clipboard. If a spec does use the clipboard, it needs
+  `clipboard-read`/`clipboard-write` permissions on the context.
+- **Leave is a full page load** (`switchToHousehold(id, { to: '/' })`, or
+  `location.replace('/')`). Wait for the URL `/` and a fresh document; a locator held
+  across it is gone. While it runs the row shows "Leaving…".
+- **A removed or leaving person's other tabs get no event.** Reload them before asserting.
+- **Absence checks need present-first:** for example, see a member row before asserting a
+  manager row has no Remove.
+- **Axe scans** of the Members page, the invite dialog (form and link) and the remove /
+  leave confirm, light and dark, in a cloud spec.
+
 **The brief must pass down:** the 409 order for the E2E route still applies where it is
 used; assert something PRESENT before an absence (root `CLAUDE.md`, *An absence … can be
 satisfied by the loading state*); `expect.poll` for a backend read after a click; the three
@@ -1242,7 +1262,11 @@ plan's *What this plan got wrong* and *Status*.
   never `verify:migration` there); server before web (already the release order); Clerk:
   check in the production instance that `forceRedirectUrl` to `/join/<token>` on the same
   origin is accepted, after sign-in AND after sign-up (Clerk Dashboard › Paths, and any
-  allowed redirect list); a manual check on two real devices (invite, join, leave). The
+  allowed redirect list); a manual check on two real devices (invite, join, leave); a
+  manual check that **Copy link works where the Clipboard API does not** (the review of G.9:
+  open the app over plain `http://` on a phone in the local network, or block the
+  clipboard permission, then use Copy link in the invite dialog AND on an open-invite row,
+  and paste: jsdom cannot show what a browser really copies). The
   old `main` bundle never calls the new fields; a person removed while on the old bundle sees
   failing requests and no screen until the web deploys (same window as H5a's).
 - [ ] **Step 2: Docs.** Re-measure every count (test totals with `pnpm test`; E2E with
@@ -1424,6 +1448,13 @@ Filled in from the task reports and reviews.
 | G.9 | Files | Also needed: `hooks/useHouseholdMembers.ts` (the seven hooks), `lib/copyText.ts` (Clipboard API and fallback), `components/household/inviteLink.ts`, and `apollo/cloudCache.ts`: `householdMembers: { merge: false }`. `HouseholdPerson` has no `id`, and without a policy Apollo warns "Cache data may be lost" when a refetch brings a shorter list (after a removal). Proved by mutation in `apollo/client.test.ts` |
 | G.9 | O17: a key `…members.noAccess` | Not added: `settings.locations.noAccess` already holds the O11 text ("No access" / 「無權限」), so the invite form reuses it |
 | G.9 | Step 2: "the invite form lists every location with No access selected" | A test that only checks the starting value passes against a form that SENDS the No access rows, because a row the person never touched is not in the form state. The create test now sets the Garage to Viewer and back to No access, and expects the exact variables. The mutation "send the No access rows" stayed green before this and is red after |
+| G.9 (review) | Nothing about pressing a confirm twice | `DeleteButton`'s confirm closes at once, and a leave takes several steps (the mutation, a `GetHousehold` read, clearing the cache, a page load). A person in households A and B could confirm Leave again in that time; the second `leaveHousehold` is answered for the household they are in NOW, so they would leave B too. Fixed twice over: `useLeaveHousehold` keeps one leave per module (a second call shares the running promise), and the page replaces the Leave button with "Leaving…" in an `<output>`. Remove got the same per-row guard ("Removing…"), because a second `removeMember` got `FORBIDDEN` and a false error toast |
+| G.9 (review) | The page reads `invites.isLoading` only | A failed `HouseholdInvites` read showed "No open invites.". It now shows `invitesLoadError` |
+| G.9 (review) | Copy link on an invite ROW | When copying failed, the toast said to select the link, but the row never showed it. The row now shows the link in a read-only field, focused and selected |
+| G.9 (review) | `copyText`'s fallback adds a text area to `document.body` | Inside a Radix dialog `FocusScope` keeps focus inside the dialog. In jsdom the copy command then ran with focus on the dialog's button, not on the text area (mutation R13). The dialog now copies from its own visible link field (`copyText(text, { from })`). What a real browser copies is a manual check for G.11 |
+| G.9 (review) | `useRemoveMember` refetched `GetHouseholdLocations`; `useSetHouseholdRole` refetched `GetHousehold` | Neither did anything useful: the location list is mounted on this page only while the invite dialog is open, and the caller's own role (the owner's) cannot change. Both dropped. Measured on Apollo 4.1.6: with `awaitRefetchQueries: true`, a FAILED refetch does not reject the mutation, so a write that worked never shows "Could not save the change" (test "a remove that worked shows no error when the list cannot be read again") |
+| G.9 (review) | Nothing about focus | After Remove or Revoke the button that had focus goes away with the refetch, and focus fell to the page body. It now moves to the page heading (Remove) or the **Open invites** heading (Revoke) |
+| G.9 (review) | The invite form with no location list | A failed read left Create disabled with no reason; a household with no location showed only the "Location roles" heading. Now `locationsLoadError` and `noLocations` |
 
 ## Status
 
@@ -1544,3 +1575,17 @@ Not built, on purpose: a "this location now has no organizer" note after a remov
 invite with no location roles (the server sends the same empty list for "made with none" and
 "its locations were deleted since"). **For G.10:** the axe scans of this page and its dialogs,
 light and dark, in a cloud spec.
+
+**The review of G.9** found that Leave (and Remove) could be confirmed twice while the first
+one ran, and four smaller points (a failed invites read looked empty, a failed row copy
+gave no link, the copy fallback inside a dialog, focus after Remove or Revoke). All fixed;
+see the "G.9 (review)" rows. Web tests: 3102 passed / 325 files (15 more tests, 2 new files). Five more texts not in
+the O17 table, for the owner's review:
+
+| Key (`settings.household.members.*`) | English | `tw` |
+|---|---|---|
+| `leaving` | Leaving… | 離開中… |
+| `removing` | Removing… | 移除中… |
+| `invitesLoadError` | Could not load the open invites. Try again. | 無法讀取尚未使用的邀請，請再試一次。 |
+| `locationsLoadError` | Could not load the locations. Try again. | 無法讀取據點，請再試一次。 |
+| `noLocations` | This household has no locations yet. | 這個家庭還沒有任何據點。 |

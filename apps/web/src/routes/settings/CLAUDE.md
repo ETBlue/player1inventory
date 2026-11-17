@@ -41,6 +41,8 @@ Plan: `docs/global/permissions/2026-11-18-households-plan-h5b.md`, Task G.9. Ser
 - An owner who is the only person sees the `alone` note: joining another household through an invite deletes this one when it holds no data (decision T21). The page cannot see whether the household holds data.
 - Errors: one toast, `settings.household.members.error`; none for an `OfflineWriteError`.
 - A revoke that answers `false` refetches the list and shows no message.
+- Leave and Remove cannot be confirmed twice while one runs: "Leaving…" / "Removing…" replace the button (review of G.9). After a Remove focus moves to the page heading, after a Revoke to the **Open invites** heading, because the button that had focus goes away.
+- A failed invites read shows `invitesLoadError`, not "No open invites.".
 - Leave: see `useLeaveHousehold` in `hooks/CLAUDE.md`.
 - Mobile: not full-screen, like Locations; the page has its own Back button (`lg:hidden`).
 - Tests: `members.cloud.test.tsx` (the real route tree, real Apollo hooks, `MockedProvider`; every fixture holds all three roles), `members.test.tsx` (local mode), `components/household/MemberList/MemberList.test.tsx` (every caller × row pair), `lib/copyText.test.ts`. Stories: `Owner`, `Manager`, `Member`, `WithOpenInvites`, `InviteDialogOpen`. The axe scans (light and dark) belong to G.10's cloud spec, because `a11y.spec.ts` does not run in cloud.
