@@ -1199,5 +1199,18 @@ Filled in from the task reports and reviews.
 ## Status
 
 **Plan written 2026-11-18** on `feature/households-h5b`, based on `develop` at `4307d30a`
-(HEAD `770a75e8`). Owner decisions O13–O17 are open. No task has started. G.1 Step 7 needs
-the owner's consent for a database command.
+(HEAD `770a75e8`). Owner decisions O13–O16 answered 2026-11-18 (all A); O17 texts are
+reviewed by the owner in the PR.
+
+**Task G.1 is done** (`aa596f4d`, `4c01a450`), with review fixes (`75a16ca6`, `2c91f68c`).
+The review found that the first restore loop of `verify-migration.ts` would have applied
+`add_household_invites` in the FIRST deploy, before `add_households`; the deploy groups now
+live in `scripts/migrationDeploys.ts` and are unit-tested. **Step 7 ran on 2026-11-18
+against the TEST database, with the owner's consent:**
+
+| Run | Result |
+|---|---|
+| 1 | exit 1. All four deploys in the right order; 163 `ok —`, then `FAIL:` on the token index check. The check looked for `("token")`, but Postgres writes an all-lower-case column with no quotes: `USING btree (token)`. The index was right; the check was wrong. Fixed in `5c5ad7d5` |
+| 2 | **exit 0, 213 `ok —` lines, 0 `FAIL:`**, `Migration verified.` That is 186 before H5b plus **27** new invite lines (14 shape, 13 deletes and FKs). The test database is now fully migrated |
+
+The plan's optional Step 7 mutation (CASCADE in place of SET NULL) was not run.
