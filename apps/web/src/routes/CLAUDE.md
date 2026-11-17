@@ -82,8 +82,8 @@ The search notes show with the same trigger as the button they replace: a search
 
 | Page | What a viewer does not get | What stays |
 | --- | --- | --- |
-| Pantry list, shelf, vendor and recipe views | the quick-update button; the Add button; the empty pantry's Create item; `Create item` from search; the search tail's `Add to {location}` (and so its whole "not stocked here" section, which shows only with that action) | every row and its numbers |
-| Cart page (`/shopping/$vendorId`) | Cancel and Done; the checkboxes and amount buttons are DISABLED, not hidden, so they still show what is in the cart and how much; `Create item` and `Add to {location}` from search | the rows, the amounts, a catalog group action such as Apply vendor for a household manager |
+| Pantry list, shelf, vendor and recipe views | the quick-update button; the Add button; the empty pantry's Create item; `Create item` from search; the search tail's `Add to {location}` | every row and its numbers; a search still lists the items stocked only at another location, in the "not stocked here" section, with no action (owner decision 2026-11-17) |
+| Cart page (`/shopping/$vendorId`) | Cancel and Done; the checkboxes and amount buttons are DISABLED, not hidden, so they still show what is in the cart and how much; `Create item` and `Add to {location}` from search | the rows, the amounts, a catalog group action such as Apply vendor for a household manager, the "not stocked here" rows with no action |
 | Cooking | Cancel and Done (the cook button, H5 decision O10); the recipe and item checkboxes are disabled | the list, the stock status, Create recipe for a household manager |
 | Item Stock tab | see `items/CLAUDE.md` | |
 

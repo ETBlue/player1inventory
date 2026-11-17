@@ -24,8 +24,10 @@ import { cartIdFor, DEFAULT_LOCATION_ID } from '@/types'
 // Households H5 task F.6: a location `viewer` sees the ACTIVE location read
 // only. Stock, carts and cooking are location rights, so a viewer gets no
 // quick update, no Add, no "Add to {location}", no cart changes, no checkout
-// and no cooking. The server refuses all of them for a viewer anyway; the page
-// only hides what would fail.
+// and no cooking. The server refuses all of them for a viewer anyway; the
+// page only hides what would fail. A viewer's search still lists the items
+// stocked only at another location, with no action (owner decision
+// 2026-11-17).
 //
 // Every test runs twice: a viewer and a participant of the active location.
 // The two differ ONLY in that role (`asLocationRole` in
@@ -153,21 +155,16 @@ describe.each(people)('$who on the pantry', (person) => {
       screen.queryByRole('button', { name: 'Add item' }),
     )
 
-    // And a search for Bread, which is stocked only elsewhere. The "not
-    // stocked here" section exists only with its action (`hasVisibleTail`),
-    // so a viewer gets no row and no Add to location button
+    // And a search for Bread, which is stocked only elsewhere. Both people
+    // see the row in the "not stocked here" section (owner decision
+    // 2026-11-17), but only a participant gets Add to location
     await search('Bread')
-    expect(
-      await screen.findByRole('button', { name: /clear search/i }),
-    ).toBeInTheDocument()
-    if (person.canEdit) {
-      expect(await screen.findByText('Bread')).toBeInTheDocument()
-    }
+    expect(await screen.findByText('Bread')).toBeInTheDocument()
+    expect(screen.getByText('1 not stocked here')).toBeInTheDocument()
     expectFor(
       person.canEdit,
       screen.queryByRole('button', { name: /^Add to .*: Bread$/ }),
     )
-    expectFor(person.canEdit, screen.queryByText('Bread'))
   })
 
   it(`${person.who} ${verb} Create item from a pantry search`, async () => {
@@ -320,8 +317,9 @@ describe.each(people)('$who on a cart', (person) => {
     expect(
       await screen.findByRole('button', { name: 'Apply iHerb: Brie' }),
     ).toBeInTheDocument()
-    // Bread, stocked only elsewhere, is in the tail only with its Add to
-    // location action
+    // Bread, stocked only elsewhere, is listed for both people, with Add to
+    // location only for a participant
+    expect(screen.getByText('Bread')).toBeInTheDocument()
     expectFor(
       person.canEdit,
       screen.queryByRole('button', { name: /^Add to .*: Bread$/ }),
@@ -419,7 +417,9 @@ describe('household role and location role are two checks', () => {
     expect(
       screen.queryByRole('button', { name: 'Apply iHerb: Bread' }),
     ).toBeNull()
-    // And Butter, stocked only elsewhere, gets no Add to location
+    // And Butter, stocked only elsewhere, is listed but gets no Add to
+    // location
+    expect(screen.getByText('Butter')).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: /^Add to .*: Butter$/ }),
     ).toBeNull()

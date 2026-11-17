@@ -53,7 +53,8 @@ export interface ItemSearchTailWiring {
 // The shared wiring behind every location-scoped item search's two-section
 // tail: derives the buckets via useItemSearchTail, owns the one-mutation-at-a-
 // time pending id, gates bucket 3's "Add to <location>" action on a resolved
-// active location, and assembles a complete, spreadable ItemSearchTailProps.
+// active location and the location role (a viewer gets the rows with no
+// action), and assembles a complete, spreadable ItemSearchTailProps.
 export function useItemSearchTailWiring({
   inGroupIds,
   query,
@@ -71,7 +72,8 @@ export function useItemSearchTailWiring({
   // still shows instead of vanishing. A caller's own `groupNote` is kept.
   // While the role is unknown (loading, or `GetHousehold` failed) there is
   // neither the action nor the member note: the note could be untrue.
-  const { canEditCatalog, roleKnown, canEditLocation } = usePermissions()
+  const { canEditCatalog, roleKnown, canEditLocation, roleAt } =
+    usePermissions()
   const catalogNote = () => <span>{t('items.searchTail.catalogReadOnly')}</span>
   const effectiveAction = canEditCatalog ? groupAction : undefined
   const effectiveNote =
@@ -125,6 +127,14 @@ export function useItemSearchTailWiring({
   // modes stock through `useAddItemToLocation`; local mode allows it always.
   const canAddToLocation =
     !!activeLocation && canEditLocation(activeLocation.id)
+  // A KNOWN viewer of the active location still sees bucket 3, with no
+  // action (owner decision 2026-11-17): the household's items are readable,
+  // only stocking one here is not. While the role loads, or for no role,
+  // bucket 3 stays hidden, as before.
+  const listNotStockedHereReadOnly =
+    !canAddToLocation &&
+    !!activeLocation &&
+    roleAt(activeLocation.id) === 'viewer'
 
   const tailProps: ItemSearchTailProps = {
     inLocationItems,
@@ -145,6 +155,7 @@ export function useItemSearchTailWiring({
           }),
         }
       : {}),
+    ...(listNotStockedHereReadOnly ? { notStockedHereReadOnly: true } : {}),
   }
 
   return {

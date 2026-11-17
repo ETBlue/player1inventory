@@ -364,4 +364,80 @@ describe('useItemSearchTailWiring', () => {
       expect(result.current.tailProps.groupNote).toBe(ownNote)
     })
   })
+
+  describe('the location role (owner decision 2026-11-17)', () => {
+    afterEach(() => {
+      household = null
+    })
+
+    // The household mock above gives every cloud caller the same location
+    // roles: `viewer` at `loc-viewer`, `participant` at `home`, none at any
+    // other. So the ACTIVE location alone decides each case below.
+    it.each([
+      {
+        who: 'viewer',
+        location: { id: 'loc-viewer', name: 'Cabin' },
+        hasAction: false,
+        readOnly: true,
+      },
+      {
+        who: 'participant',
+        location: homeLocation,
+        hasAction: true,
+        readOnly: false,
+      },
+      {
+        who: 'person with no role',
+        location: { id: 'loc-none', name: 'Garage' },
+        hasAction: false,
+        readOnly: false,
+      },
+    ] as const)('location $who: Add to location $hasAction, read-only rows $readOnly', ({
+      location,
+      hasAction,
+      readOnly,
+    }) => {
+      // Given Bread, stocked only at another location, and a household
+      // manager, so only the location role differs between the cases
+      household = 'manager'
+      mockMode('cloud')
+      mockActiveLocation(location)
+      mockSearchTail({ inLocation: [], notStockedHere: [bread] })
+      mockAddItemToLocation()
+
+      const { result } = renderHook(() =>
+        useItemSearchTailWiring({
+          inGroupIds: new Set(),
+          query: 'bre',
+          renderItem: () => null,
+        }),
+      )
+
+      // Then a participant gets the action, a viewer gets the rows with no
+      // action, and a person with no role here gets neither
+      expect(result.current.tailProps.addToLocationAction !== undefined).toBe(
+        hasAction,
+      )
+      expect(!!result.current.tailProps.notStockedHereReadOnly).toBe(readOnly)
+      expect(result.current.hasTail).toBe(hasAction || readOnly)
+    })
+
+    it('user in local mode gets Add to location, not read-only rows', () => {
+      mockMode('local')
+      mockActiveLocation(homeLocation)
+      mockSearchTail({ inLocation: [], notStockedHere: [bread] })
+      mockAddItemToLocation()
+
+      const { result } = renderHook(() =>
+        useItemSearchTailWiring({
+          inGroupIds: new Set(),
+          query: 'bre',
+          renderItem: () => null,
+        }),
+      )
+
+      expect(result.current.tailProps.addToLocationAction).toBeDefined()
+      expect(result.current.tailProps.notStockedHereReadOnly).toBeUndefined()
+    })
+  })
 })
