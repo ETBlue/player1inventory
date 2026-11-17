@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAddItemToLocation, useCreateItem, useItems } from '@/hooks'
 import { useActiveLocation } from '@/hooks/useActiveLocation'
+import { usePermissions } from '@/hooks/usePermissions'
 import { cn } from '@/lib/utils'
 import type { PantryItem } from '@/types'
 
@@ -91,7 +92,11 @@ export function NewItemDialog({
 
   // The "Create" option is offered only when there's a query with no exact name
   // collision in the catalog.
-  const showCreate = trimmed.length > 0 && !hasExactMatch
+  // Creating a new item is a catalog write: not for a household member
+  // (households H5 task F.5). Picking an existing item stocks it here, which
+  // is a location right, so that stays.
+  const { canEditCatalog } = usePermissions()
+  const showCreate = canEditCatalog && trimmed.length > 0 && !hasExactMatch
 
   // When the query exactly matches an item already stocked in the active
   // location, the sole matching option renders disabled and no Create

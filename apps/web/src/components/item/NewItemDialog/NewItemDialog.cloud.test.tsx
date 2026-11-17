@@ -109,6 +109,20 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       loading: false,
       error: undefined,
     }),
+    // The household role (`usePermissions`). A manager may create items;
+    // since H5 task F.5 a member gets no Create path in this dialog.
+    useGetHouseholdQuery: () => ({
+      data: {
+        household: {
+          __typename: 'Household',
+          id: 'household-1',
+          name: 'Home',
+          role: 'manager',
+        },
+      },
+      loading: false,
+      error: undefined,
+    }),
     useCreateLocationMutation: () => [
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
