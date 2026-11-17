@@ -1508,3 +1508,31 @@ describe('householdFake: household.deleteMany and the "is it empty" where (house
     expect(fake.state.householdMembers).toHaveLength(3)
   })
 })
+
+describe('householdFake: household.updateMany (households H5b, task G.4)', () => {
+  it('updates the matching households only, moves updatedAt, and returns a count', async () => {
+    const fake = fixture()
+    const result = await fake.client.household.updateMany({
+      where: { id: OURS },
+      data: { updatedAt: new Date('2026-11-18T00:00:00.000Z') },
+    })
+    expect(result).toEqual({ count: 1 })
+    const [ours, theirs] = fake.state.households
+    expect(ours?.updatedAt.getTime()).not.toBe(T0.getTime())
+    expect(theirs?.updatedAt).toEqual(T0)
+  })
+
+  it('returns count 0, and throws nothing, when no row matches', async () => {
+    const fake = fixture()
+    await expect(
+      fake.client.household.updateMany({ where: { id: 'nobody' }, data: { updatedAt: T0 } }),
+    ).resolves.toEqual({ count: 0 })
+  })
+
+  it('throws on a where key it does not model, even on an EMPTY store', async () => {
+    const fake = createHouseholdFake()
+    await expect(
+      fake.client.household.updateMany({ where: { name: 'x' }, data: { updatedAt: T0 } }),
+    ).rejects.toBeInstanceOf(UnknownWhereKeyError)
+  })
+})

@@ -937,6 +937,20 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
       if (!row) throw new OwnedRowNotFoundError('Household', args.where)
       return copy(updateHouseholdRow(row, args.data))
     },
+    // Households H5b, task G.4 (`lockHouseholds` in lib/household.ts): one
+    // `UPDATE` per household, and a count instead of P2025 when no row
+    // matches.
+    updateMany: async (args: { where?: Where; data: Data }) => {
+      refuseUnknownOptions('Household', 'updateMany', args, ['where', 'data'])
+      checkHouseholdWhere(args.where)
+      let count = 0
+      for (const row of state.households) {
+        if (!householdMatches(row, args.where ?? {})) continue
+        updateHouseholdRow(row, args.data)
+        count++
+      }
+      return { count }
+    },
     // Households H5b, task G.4 (decision T21). Cascades only inside this
     // fake: member rows, invites, and the location role rows of the
     // household's locations. See the file head.
