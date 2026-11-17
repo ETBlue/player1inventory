@@ -147,7 +147,8 @@ session ran `verify:migration` there, which applies `drop_user_scope`: `Location
 catalog models have no `userId` column, and `Location` has no `isDefault`. So **`main`'s
 cloud E2E cannot run on this database until H3a merges**: `main`'s server writes and reads
 those columns. A cloud location is no longer "the default" (see below), and `/e2e/cleanup`
-deletes **18** models (count the distinct `deleteMany` models in `lib/e2eCleanup.ts`).
+deletes **19** models since households H5b task G.6 added `HouseholdInvite` (count the
+distinct `deleteMany` models in `lib/e2eCleanup.ts`).
 
 The last E2E counts on the H3a branch, 2026-11-11, from **three separate runs** (not one
 `pnpm test:e2e:all`): `cloud` **126 passed / 7 skipped**, `local` **178 passed / 6 skipped**,
@@ -239,7 +240,8 @@ from disk, so a mock cannot satisfy it.
 **It checks every model in the schema now**, not only models that declare a `userId`
 (the rule until task 3.10). For each path, every schema model is either deleted or named
 in that path's `kept` list. `clearAllData` keeps `household`, `householdMember`,
-`locationMember` (they go with their location) and `user`; `/e2e/cleanup` keeps none.
+`locationMember` (they go with their location), `householdInvite` and `user`;
+`/e2e/cleanup` keeps none (it kept `householdInvite` from H5b task G.1 until task G.6).
 
 **The `itemStock` line still protects no DATA.** If someone deletes it, the rows still go:
 both of `ItemStock`'s foreign keys cascade. Measured 2026-09-25 — with
@@ -277,7 +279,8 @@ specs below run against real Postgres.
 ## `cleanup-endpoint.spec.ts` — the behavioural guard on `/e2e/cleanup`
 
 `e2e/tests/cleanup-endpoint.spec.ts` (added 2026-09-25, one cloud test) seeds **one row of
-every model `/e2e/cleanup` deletes** — all 18 since households H3a task 3.10, 15 since
+every model `/e2e/cleanup` deletes** — all 19 since households H5b task G.6 (the invite
+is made with the real `createInvite` mutation), 18 since households H3a task 3.10, 15 since
 households task 2.6, 14 before it —
 calls the route, and asserts every returned count is at least 1, then reads the data back
 and asserts empty. It is cloud-only and has no browser: it is in the `cloud` project's
@@ -287,8 +290,15 @@ and asserts empty. It is cloud-only and has no browser: it is in the `cloud` pro
 `{ count }`; `index.ts` used to throw those away and answer `{ ok: true }`. It now answers
 `{ ok: true, deleted: { inventoryLogs, cartItems, carts, itemTags, itemVendors,
 recipeItems, itemStocks, items, tags, tagTypes, vendors, recipes, shelves,
-locationMembers, locations, householdMembers, households, users } }` — 18 keys since
-households H3a task 3.10. The route is mounted only under `E2E_TEST_MODE`, so production
+locationMembers, locations, householdInvites, householdMembers, households, users } }` —
+19 keys since households H5b task G.6, 18 since households H3a task 3.10.
+
+**The invite statement runs BEFORE `household` and BEFORE `user`.** `HouseholdInvite.householdId`
+is `ON DELETE CASCADE`, so after the household delete the count would read 0.
+`createdById` is RESTRICT (decision T26), so an invite the user made in a household they do
+not own would make the `User` delete fail. That is why its filter is
+`OR: [{ householdId: owned }, { createdById: userId }]`. An invite the user only USED is
+not deleted: `usedById` is SET NULL. The route is mounted only under `E2E_TEST_MODE`, so production
 is unaffected.
 
 ### Households — the 16th to 18th models, since 2026-11-04 (households H3a, task 3.10)
@@ -671,8 +681,12 @@ route `POST /e2e/household-members` (`apps/server/src/lib/e2eHouseholds.ts`, dec
 1. The OWNER sends one GraphQL request first. That request makes the household.
 2. Add the member BEFORE the member sends any GraphQL request. A request would make the
    member a household of their own, and the route refuses a person who is already in a
-   household. (`ensureHousehold` reads a person's household with `findFirst` and no
-   `orderBy`, so a person in two households would get one of them at random.)
+   household. (Since households H5b a person can be in two households, through an
+   invite, and `ensureHousehold` picks one by a fixed rule: `User.activeHouseholdId`,
+   else the oldest membership. This route still refuses, because it sets no
+   `activeHouseholdId` and specs rely on the member's first request reading THIS
+   household. For a person in two households, use `createInvite` and
+   `joinHousehold` in `e2e/helpers/cloudUsers.ts`, which call the real mutations.)
 
 The route sets the member's first sign-in claim (`User.householdSetupAt`). So after the
 owner's cleanup removes the member's row, the member's next request gets `NO_HOUSEHOLD`. It
