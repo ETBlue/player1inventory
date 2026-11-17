@@ -213,4 +213,48 @@ describe('NoHouseholdScreen', () => {
     ).toBeInTheDocument()
     expect(submitButton()).toBeDisabled()
   })
+
+  it('keeps the error region mounted and empty before any error', async () => {
+    // A live region that appears already filled may not be read, so the
+    // `<output>` is there from the start
+    renderScreen([])
+    await openDialog()
+
+    const region = screen.getByRole('status')
+    expect(region).toBeEmptyDOMElement()
+    expect(screen.getByLabelText('Household name')).toHaveAttribute(
+      'aria-describedby',
+      region.id,
+    )
+  })
+
+  it('puts focus back on the name field after the server refuses the name', async () => {
+    renderScreen([createRefusal('BAD_USER_INPUT')])
+    const user = await openDialog()
+
+    await user.click(submitButton())
+
+    const input = screen.getByLabelText('Household name')
+    await waitFor(() => expect(input).toHaveFocus())
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Enter a name of 1 to 100 characters.',
+    )
+    expect(input).toHaveAttribute('aria-invalid', 'true')
+    expect(input).toHaveClass('border-importance-destructive-foreground')
+  })
+
+  it('gives the dialog a description, so Radix does not warn', async () => {
+    const warn = vi.spyOn(console, 'warn')
+    const error = vi.spyOn(console, 'error')
+    renderScreen([])
+    await openDialog()
+
+    expect(screen.getByRole('dialog')).toHaveAccessibleDescription(
+      'Leave it empty to use the default name.',
+    )
+    const messages = [...warn.mock.calls, ...error.mock.calls].map((c) =>
+      String(c[0]),
+    )
+    expect(messages.filter((m) => m.includes('Description'))).toEqual([])
+  })
 })

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogMain,
@@ -74,8 +75,13 @@ function CreateHouseholdDialog({ onClose }: { onClose: () => void }) {
   // device loads the pantry, so the button must not be pressed again.
   const [busy, setBusy] = useState(false)
   const inputId = useId()
-  const hintId = useId()
   const errorId = useId()
+  const inputRef = useRef<HTMLInputElement>(null)
+  // After the server refuses the name, the pressed button was disabled while
+  // busy, so focus fell to the page body. Put it back on the field.
+  useEffect(() => {
+    if (serverRefused) inputRef.current?.focus()
+  }, [serverRefused])
 
   // The name is optional: an empty field means "the default name". Only a
   // name that is too long is refused here. The server checks it again.
@@ -124,30 +130,39 @@ function CreateHouseholdDialog({ onClose }: { onClose: () => void }) {
             <div className="space-y-2 text-left">
               <Label htmlFor={inputId}>{t('noHousehold.nameLabel')}</Label>
               <Input
+                ref={inputRef}
                 id={inputId}
                 value={name}
                 autoFocus
                 maxLength={HOUSEHOLD_NAME_MAX_LENGTH}
                 aria-invalid={nameError ? true : undefined}
-                aria-describedby={nameError ? `${hintId} ${errorId}` : hintId}
+                aria-describedby={errorId}
+                // The red border of `Input`'s `error` state. Not the `error`
+                // prop itself: it also prints the message in a plain `<p>`,
+                // which a screen reader does not announce, and the message
+                // would then show twice.
+                className={
+                  nameError
+                    ? 'border-importance-destructive-foreground'
+                    : undefined
+                }
                 onChange={(e) => {
                   setName(e.target.value)
                   setServerRefused(false)
                 }}
               />
-              <p id={hintId} className="text-sm text-foreground-muted">
-                {t('noHousehold.nameHint')}
-              </p>
-              {/* An `<output>` has the role `status`, so the message is
-                  announced when it appears. */}
-              {nameError && (
-                <output
-                  id={errorId}
-                  className="block text-sm text-importance-destructive-foreground"
-                >
-                  {nameError}
-                </output>
-              )}
+              {/* The hint is the dialog's description, so Radix can link it
+                  (`aria-describedby` on the dialog). */}
+              <DialogDescription>{t('noHousehold.nameHint')}</DialogDescription>
+              {/* An `<output>` has the role `status`. It stays mounted, empty
+                  when there is no error: a live region that appears already
+                  filled may not be read. */}
+              <output
+                id={errorId}
+                className="block text-sm text-importance-destructive-foreground"
+              >
+                {nameError}
+              </output>
             </div>
           </DialogMain>
           <DialogFooter>
