@@ -89,10 +89,16 @@ export function useCreateVendor() {
       refetchQueries: [{ query: GetVendorsDocument }, 'AllCarts'],
     })
 
-  const cloudMutate = async (name: string) =>
-    cloudCreate({
-      variables: { name, locationId: await resolveCloudLocationId() },
+  // In a household with no location (households H5 task F.7) the resolver
+  // gives `undefined`, and no `locationId` is sent: the server then writes
+  // the vendor with no cart. Before the review of F.7 the `'local'` sentinel
+  // was sent here, and even the owner got FORBIDDEN.
+  const cloudMutate = async (name: string) => {
+    const locationId = await resolveCloudLocationId()
+    return cloudCreate({
+      variables: locationId === undefined ? { name } : { name, locationId },
     })
+  }
 
   if (mode === 'cloud') {
     return {

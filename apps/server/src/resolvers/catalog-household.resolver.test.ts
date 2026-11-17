@@ -466,8 +466,12 @@ afterAll(async () => {
   await server.stop()
 })
 
-async function exec(query: string, variables: Record<string, unknown> = {}) {
-  const r = await server.executeOperation({ query, variables }, { contextValue: { userId: 'caller' } })
+async function exec(
+  query: string,
+  variables: Record<string, unknown> = {},
+  contextValue: Context = { userId: 'caller' },
+) {
+  const r = await server.executeOperation({ query, variables }, { contextValue })
   if (r.body.kind !== 'single') throw new Error('expected a single result')
   return r.body.singleResult
 }
@@ -786,15 +790,64 @@ describe('createVendor: the location role decides the cart, not the vendor', () 
     expect(handles.$snapshot()).toEqual(before)
   })
 
-  it("a location of another household is refused, and nothing is written", async () => {
-    // Given the caller is a household manager of hh-1; loc-s is hh-2's
+  it('a location of another household is refused by the household check, and nothing is written', async () => {
+    // Given the caller is a household manager of hh-1 AND a member of hh-2
+    // who organizes loc-s there (a person in two households). The target
+    // household is pinned to hh-1, the H4 pattern. With a role at loc-s,
+    // `requireLocationRole` passes, so only `requireLocationInHousehold`
+    // can refuse. Without the role, the role check refused first and the
+    // household check was never reached.
     seed('manager', 'organizer')
+    world.households.state.householdMembers.push({ householdId: 'hh-2', userId: 'caller', role: 'member', joinedAt: T })
+    world.households.state.locationMembers.push({ locationId: 'loc-s', userId: 'caller', role: 'organizer', createdAt: T })
+    const pinned: Context = { userId: 'caller', requestCache: { householdId: Promise.resolve('hh-1') } }
     const before = handles.$snapshot()
 
     // When they name loc-s
-    const result = await exec('mutation { createVendor(name: "Lidl", locationId: "loc-s") { id } }')
+    const result = await exec('mutation { createVendor(name: "Lidl", locationId: "loc-s") { id } }', {}, pinned)
 
     // Then it is refused before any write
+    expect(codeOf(result)).toBe('FORBIDDEN')
+    expect(handles.$snapshot()).toEqual(before)
+
+    // And the same person naming loc-1 of hh-1 is not refused, so the
+    // refusal above came from the household check
+    const control = await exec('mutation { createVendor(name: "Lidl", locationId: "loc-1") { id } }', {}, pinned)
+    expect(control.errors).toBeUndefined()
+  })
+})
+
+describe('createVendor in a household with no location', () => {
+  // Since households H5 (review of task F.7) a household can have no
+  // location, and the web then sends no `locationId`. Before that the web
+  // sent the `'local'` sentinel, and the owner got FORBIDDEN.
+  //
+  // People: `other` holds the opposite household role; loc-2 is a location
+  // of hh-1 where the caller has no role (the fixture keeps it; the rule
+  // under test is "no location named", not "no location exists").
+  it('household manager can create a vendor with no location, and no cart is written', async () => {
+    // Given the caller is a household manager
+    seed('manager')
+    const cartsBefore = S.cart.state.rows.length
+
+    // When they create a vendor and name no location
+    const result = await exec('mutation { createVendor(name: "Lidl") { id } }')
+
+    // Then the vendor is in hh-1, and no cart was written
+    expect(result.errors).toBeUndefined()
+    expect(S.vendor.state.rows.find((r) => r.name === 'Lidl')).toMatchObject({ householdId: 'hh-1' })
+    expect(S.cart.state.rows).toHaveLength(cartsBefore)
+  })
+
+  it('household member cannot create a vendor with no location, and nothing is written', async () => {
+    // Given the caller is a household member (`other` is the manager)
+    seed('member')
+    const before = handles.$snapshot()
+
+    // When they create a vendor and name no location
+    const result = await exec('mutation { createVendor(name: "Lidl") { id } }')
+
+    // Then the household role still refuses it
     expect(codeOf(result)).toBe('FORBIDDEN')
     expect(handles.$snapshot()).toEqual(before)
   })

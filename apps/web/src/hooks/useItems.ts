@@ -50,7 +50,10 @@ import {
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import type { Item, ItemStock, PantryItem, StockFields } from '@/types'
 import { useActiveLocation } from './useActiveLocation'
-import { useCloudLocationId } from './useCloudLocationId'
+import {
+  useCloudLocationId,
+  useRequiredCloudLocationId,
+} from './useCloudLocationId'
 import { useCloudLocationKnown } from './useCloudLocationKnown'
 import { useDataMode } from './useDataMode'
 
@@ -647,6 +650,13 @@ export function useCreateItem(options?: { catalogOnly?: boolean }) {
       // `requireLocationRole` — the item lands in the catalog, stocked nowhere,
       // and the dialog hangs. See `useCloudLocationId`.
       const locationId = await resolveCloudLocationId()
+      // A household with no location (households H5 task F.7): the item stays
+      // in the catalog and is stocked nowhere. The `'local'` sentinel is never
+      // sent. The pantry's Add dialog cannot get here (`NoLocationsGate`), but
+      // a create from another page can.
+      if (locationId === undefined) {
+        return joinItemStock(item, undefined, activeLocationId)
+      }
 
       const stockRow = (
         await cloudStockNewItem({
@@ -781,7 +791,7 @@ export function useAddItemToLocation() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
   const { activeLocationId } = useActiveLocation()
-  const resolveCloudLocationId = useCloudLocationId()
+  const resolveCloudLocationId = useRequiredCloudLocationId()
 
   const localMutation = useMutation({
     mutationFn: ({ itemId, locationId }: AddToLocationVars) =>
@@ -882,7 +892,7 @@ export function useRemoveItemFromLocation() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
   const { activeLocationId } = useActiveLocation()
-  const resolveCloudLocationId = useCloudLocationId()
+  const resolveCloudLocationId = useRequiredCloudLocationId()
 
   const localMutation = useMutation({
     mutationFn: ({ itemId, locationId }: RemoveFromLocationVars) =>
@@ -959,7 +969,7 @@ export function useUpdateItem() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
   const { activeLocationId } = useActiveLocation()
-  const resolveCloudLocationId = useCloudLocationId()
+  const resolveCloudLocationId = useRequiredCloudLocationId()
 
   const localMutation = useMutation({
     mutationFn: ({ id, updates, locationId }: ItemUpdateVars) =>
@@ -1017,6 +1027,12 @@ export function useUpdateItem() {
       locationId,
     }: ItemUpdateVars) => {
       const config = toConfigInput(updates)
+      // Resolved at CALL time — see `useCloudLocationId`. And BEFORE the
+      // configuration write: in a household with no location it throws
+      // `NoCloudLocationError`, and then nothing at all has been sent.
+      const target = touchesStock(updates)
+        ? await resolveCloudLocationId(locationId)
+        : undefined
       // A pure stock edit (the quantity buttons, the Stock tab) sends no
       // `updateItem` at all, and a pure configuration edit (a rename, a tag
       // change) creates no ItemStock row where none existed.
@@ -1024,9 +1040,7 @@ export function useUpdateItem() {
         Object.keys(config).length > 0
           ? await cloudUpdate({ variables: { id, input: config } })
           : undefined
-      if (touchesStock(updates)) {
-        // Resolved at CALL time — see `useCloudLocationId`.
-        const target = await resolveCloudLocationId(locationId)
+      if (target !== undefined) {
         await cloudUpsertStock({
           variables: {
             itemId: id,
@@ -1139,7 +1153,10 @@ export function useApplyUnitSwitch() {
         refetchQueries: [
           { query: GetItemsDocument },
           { query: GetRecipesDocument },
-          ...stockListRefetches(pantryLocationId),
+          // No pantry to refetch in a household with no location.
+          ...(pantryLocationId === undefined
+            ? []
+            : stockListRefetches(pantryLocationId)),
         ],
         awaitRefetchQueries: true,
       })

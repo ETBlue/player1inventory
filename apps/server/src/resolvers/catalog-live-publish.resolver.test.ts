@@ -731,6 +731,18 @@ describe('createVendor', () => {
     expect(sortedEvents()).toEqual([change('CART', LOC_GARAGE, 'hh_home'), CATALOG_HOME])
   })
 
+  it('with no location named, it writes no cart and publishes only CATALOG', async () => {
+    // A household with no location sends no `locationId` (households H5,
+    // review of task F.7).
+    const cartsBefore = carts.state.carts.length
+
+    const res = await run('mutation { createVendor(name: "Lidl") { id } }', ALICE)
+
+    expect(res.errors).toBeUndefined()
+    expect(carts.state.carts).toHaveLength(cartsBefore)
+    expect(events()).toEqual([CATALOG_HOME])
+  })
+
   it('a viewer of the location gets the vendor, no cart, and only CATALOG', async () => {
     // Given ALICE is only a viewer at LOC_GARAGE (she stays hh_home owner)
     const row = world.households.state.locationMembers.find(
