@@ -136,7 +136,7 @@ that really set up that role.
 > | Helper | What it does |
 > |---|---|
 > | `requireHousehold(ctx)` | the caller's household id. Also first sign-in: it calls `ensureHousehold` (`lib/household.ts`), which makes the household and its first location, "Home", once, guarded by the `User.householdSetupAt` claim. Since H5b task G.2 a person in several households gets one fixed answer (decision T14): `User.activeHouseholdId` while they are still a member there, else the oldest membership by `joinedAt`, then `householdId`. One `user.findUnique` on the common path |
-> | `requireHouseholdRole(ctx, householdId, role)` | refuses with `FORBIDDEN` unless the caller's household role is `role` or stronger |
+> | `requireHouseholdRole(ctx, householdId, role, db?)` | refuses with `FORBIDDEN` unless the caller's household role is `role` or stronger. Inside an interactive transaction pass its `tx` as `db` (since H5b task G.5), so the read uses the transaction's connection |
 > | `requireCatalogRole(ctx, role)` | both of the above; returns the household id. Catalog reads ask `member`, writes `manager` |
 > | `requireLocationRole(ctx, locationId, role)` | refuses unless the caller has `role` or stronger on that location. A location role counts only while the matching `HouseholdMember` row exists (decision H18) |
 > | `locationIdsWithRole(ctx, role?, { householdId }?)` | every location the caller has a counted role on, optionally only in one household (since H4 task E.1). Use it for a read across locations; never write a new membership query. The five reads behind an export (`locations`, `inventoryLogs`, `allCarts`, `allCartItems`, `allItemStocks`) pass `{ householdId: await requireHousehold(ctx) }` since H4 task E.5, so they give one household only. Since H5 task F.2 so do `cartItemCountByItem` (with no `locationId`) and `itemStocksForItem`; the copy-on-add of `addItemToLocation` and `checkout` passes the TARGET location's household (`householdOfLocation`), not the caller's |
@@ -164,6 +164,26 @@ that really set up that role.
 > model, and reads the other models' rows from `householdWorld`'s `contents` store
 > (`world.contents.rows`). A test that `extend`s the world with its own `item` or `cart`
 > model must ALSO put rows in `contents`, or the "is it empty" check will not see them.
+>
+> **Members, roles, leaving and creating (households H5b task G.5).** In
+> `resolvers/household.resolver.ts`, tested in `household-members.resolver.test.ts`:
+>
+> | Field | Who | What it does |
+> |---|---|---|
+> | `householdMembers` | any household role (owner decision O13-A) | every person: `userId`, `displayName`, `role`, `joinedAt`, `isMe`. Owner first, then by `joinedAt`, then by `userId`. `HouseholdPerson` has NO e-mail field, and the name read selects `{ id, displayName }` only |
+> | `setHouseholdRole(userId, role)` | owner | `member` ↔ `manager`. `role: owner` and the owner's own row are `BAD_USER_INPUT`; a person not in the household is `FORBIDDEN`. The same role again writes and publishes nothing. Location roles and open invites stay (owner decision O18-A) |
+> | `removeMember(userId)` | owner: anyone but themself (`BAD_USER_INPUT`); manager: only a `member` | deletes the person's `LocationMember` rows on THIS household's locations, then their member row (decision T11). Their invites stay open (O18-A) |
+> | `leaveHousehold` | manager or member; the owner gets `BAD_USER_INPUT` | the same deletes, for the household the caller acts in |
+> | `createHousehold(name)` | a person in NO household (owner decision O16-A); else `BAD_USER_INPUT`, `extensions.reason` `ALREADY_IN_HOUSEHOLD` | `lockUser`, the first sign-in claim, the membership count, then `createHouseholdFor` (`lib/household.ts`, shared with first sign-in), then `activeHouseholdId`. It never calls `requireHousehold` (decision T22) |
+>
+> The first three take `lockHousehold` first and NEVER write a `User` row (decision T16), so
+> the person's `activeHouseholdId` may still name the household they left. `ensureHousehold`
+> ignores it, because it requires a current membership. They read the caller's role with
+> `requireHouseholdRole(ctx, householdId, role, tx)`: the optional fourth argument makes the
+> read use the transaction's own connection, not a second one from the pool. All four
+> publish household-level `LOCATION` after the commit. **A removed or leaving person's open
+> tabs do not hear it**: `shouldDeliver` checks membership, and they are no longer members
+> (tested; the H5a known gap is still open). Their next request shows the right screen.
 >
 > **`removeItemFromLocation` needs `organizer`, not `participant`** (owner decision 2026-11-11, `f4d993db`). It deletes every log of the item at that location, including other members' logs.
 >
@@ -332,10 +352,11 @@ that really set up that role.
 >
 > **Every `Mutation` field must be in one of two lists** in
 > `apps/server/src/resolvers/live-publish.guard.test.ts`: `publishes` (with its kinds) or
-> `publishesNothing` (with a reason). A new mutation in no list fails the test. Today: 65
-> fields, all 65 in `publishes` and 0 in `publishesNothing` (62 until households H5b task
-> G.3 added `createInvite` and `revokeInvite`, 64 until task G.4 added `joinHousehold`, all
-> three household-level `LOCATION`). H3c-1 had a third list,
+> `publishesNothing` (with a reason). A new mutation in no list fails the test. Today: 69
+> fields, all 69 in `publishes` and 0 in `publishesNothing` (62 until households H5b task
+> G.3 added `createInvite` and `revokeInvite`, 64 until task G.4 added `joinHousehold`, 65
+> until task G.5 added `setHouseholdRole`, `removeMember`, `leaveHousehold` and
+> `createHousehold`, all seven household-level `LOCATION`). H3c-1 had a third list,
 > `waitingForH3c2` (51 fields); H3c-2 task D.4 emptied it and deleted it.
 > The guard cannot see whether a resolver really calls `publishChange` or
 > `publishHouseholdChange`; the per-mutation tests in `cart-live-publish.resolver.test.ts`,
