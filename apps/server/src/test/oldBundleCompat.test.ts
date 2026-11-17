@@ -8,6 +8,8 @@ import {
   NoDeprecatedCustomRule,
   Source,
   buildSchema,
+  findBreakingChanges,
+  findDangerousChanges,
   getVariableValues,
   parse,
   validate,
@@ -34,10 +36,26 @@ import { typeDefs } from '../schema/index.js'
 // | `CheckoutItemInput.itemId` (and `cartItemId` made optional) | `cart.graphql` |
 // | `ConsumeRecipesItemInput.packedQuantity`, `.unpackedQuantity`, `.quantity` | `recipe.graphql` |
 //
-// The old documents are COPIED into `fixtures/main-web-operations/`, so this
+// The old documents are COPIED into `fixtures/main-web-operations/`, and
+// `main`'s server schema into `fixtures/main-server-schema.graphql`, so this
 // test does not change when `main` changes. Each file's header says where it
-// came from. When the shim goes, delete that folder, this file and the five
-// fields above together.
+// came from. When the shim goes, delete that folder, that file, this file and
+// the five fields above together.
+//
+// What each check sees:
+//
+// | Check                              | Catches                                         |
+// |------------------------------------|-------------------------------------------------|
+// | document validation                | a field or argument the old documents name that is gone or changed |
+// | the two variable tests             | a change to `CheckoutItemInput` or `ConsumeRecipesItemInput` that refuses the old VALUES |
+// | `findBreakingChanges` against `main` | any other breaking change: a removed or renamed type or field, an input field made required or removed, an argument type changed. This covers the input types that only reach the server as variables (for example `ItemInput` and `TagInput` from `main`'s `importData.ts`), which validation does not look inside. |
+// | `findDangerousChanges` against `main` | an added optional input field or argument, an enum value added, a default value changed |
+//
+// Document validation alone did NOT see an input type change: a variable's
+// type is only checked by name, and the fields inside are checked only when
+// values are given. A reviewer made `ItemInput.estimatedDueDays` `Int!` and
+// deleted `TagInput.parentId` (both sent by `main`'s import) and the first
+// version of this file stayed green.
 //
 // What this file does NOT prove: the VALUES the shim fields give. Those are
 // tested with the resolvers (`location-roles.resolver.test.ts`,
@@ -48,6 +66,7 @@ const FIXTURES = join(here, 'fixtures', 'main-web-operations')
 const WEB_OPERATIONS = join(here, '..', '..', '..', 'web', 'src', 'apollo', 'operations')
 
 const schema = buildSchema(typeDefs.join('\n'))
+const mainSchema = buildSchema(readFileSync(join(here, 'fixtures', 'main-server-schema.graphql'), 'utf-8'))
 
 function readDocuments(dir: string): Array<{ file: string; doc: DocumentNode }> {
   return readdirSync(dir)
@@ -121,6 +140,42 @@ describe("main's old web bundle against the current schema", () => {
       },
     })
     expect(res.errors).toBeUndefined()
+  })
+})
+
+describe("the current schema against main's schema", () => {
+  it('the breaking changes are exactly the ones the old bundle never sends', () => {
+    // Each of these is gone ON PURPOSE, and `main`'s web bundle selects none
+    // of them (the six `userId` fields left its documents in issue #359 step
+    // one; `purgeUserData` was never called by the web). Any other breaking
+    // change can fail a request from an old device: add a shim for it, or
+    // add it here only after checking that no old document or variable uses
+    // it.
+    const breaking = findBreakingChanges(mainSchema, schema)
+      .map((c) => `${c.type}: ${c.description}`)
+      .sort()
+    expect(breaking).toEqual(
+      [
+        'FIELD_REMOVED: Item.userId was removed.',
+        'FIELD_REMOVED: Mutation.purgeUserData was removed.',
+        'FIELD_REMOVED: Recipe.userId was removed.',
+        'FIELD_REMOVED: Shelf.userId was removed.',
+        'FIELD_REMOVED: Tag.userId was removed.',
+        'FIELD_REMOVED: TagType.userId was removed.',
+        'FIELD_REMOVED: Vendor.userId was removed.',
+        'TYPE_REMOVED: PurgeResult was removed.',
+      ].sort(),
+    )
+  })
+
+  it('the only dangerous change is the new optional cartItemId on CheckoutItemInput', () => {
+    // A "dangerous" change cannot fail an old request on its own, but it can
+    // change what the request means. `cartItemId` is the new checkout shape,
+    // and the old bundle never sends it (see `cart.graphql`).
+    const dangerous = findDangerousChanges(mainSchema, schema).map((c) => `${c.type}: ${c.description}`)
+    expect(dangerous).toEqual([
+      'OPTIONAL_INPUT_FIELD_ADDED: An optional field cartItemId on input type CheckoutItemInput was added.',
+    ])
   })
 })
 
