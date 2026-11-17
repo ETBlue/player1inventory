@@ -1180,6 +1180,10 @@ Filled in from the task reports and reviews.
 
 | Task | The plan said | What was true |
 |---|---|---|
+| G.1 | Step 3: make the SQL with `prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel …`, or by hand | `--from-migrations` needs a shadow database. `--from-schema-datamodel <the schema at the commit before> --to-schema-datamodel prisma/schema.prisma --script` needs none and gives Prisma's own SQL. `migration.sql` was made that way, then commented by hand |
+| G.1 | Step 4: add the migration to `MIGRATIONS` and add `assertHouseholdInvites` | Not enough. The Prisma client is generated from the FINAL schema, so a `prisma.user` read with no `select` asks for `activeHouseholdId`. Four such reads run BEFORE the fourth deploy (in `assertHouseholdsBackfill` and `assertDropUserScope`) and would fail with `P2022` at Step 7. Each now has an explicit `select`. The header comment of the script says so for the next migration |
+| G.1 | File list: schema, migration, `verify-migration.ts`, the two fakes | The new model and column also broke 2 server test files: `purge-coverage.test.ts` (every model must be deleted or kept on purpose by each purge path) and `e2eUsers.test.ts` (the route answers the whole stored row). And `tsc` found 11 test fixtures that build a full `UserRow` and needed `activeHouseholdId: null`. `clearAllData` now keeps `householdInvite` on purpose (an invite is about who may join, not about data). `/e2e/cleanup` keeps it ONLY until G.6: **G.6 must add its `deleteMany` and take `householdInvite` off that path's `kept` list** |
+| G.1 | Step 5: the invite fake models `expiresAt: { gt }` | The shared `where` checker (`whereKeys.ts`) had no kind for `{ gt: Date }`. A new kind, `dateGt`, was added with a test |
 
 ## Status
 
