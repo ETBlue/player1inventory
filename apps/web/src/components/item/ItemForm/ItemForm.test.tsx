@@ -1386,3 +1386,61 @@ describe('ItemForm — stock tab unit falls back honestly when unconfigured', ()
     expect(screen.getByText('0 / 4 unit')).toBeInTheDocument()
   })
 })
+
+describe('ItemForm — readOnly (households H5 task F.5)', () => {
+  it('household member sees every info field read only and no Save', () => {
+    // Given the Info section in read-only mode, tracked by measurement so
+    // the measurement fields are not disabled for another reason
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        sections={['info']}
+        readOnly
+        initialValues={{
+          name: 'Flour',
+          targetUnit: 'measurement',
+          measurementUnit: 'g',
+          amountPerPackage: 500,
+          expirationMode: 'days from purchase',
+          estimatedDueDays: 30,
+        }}
+      />,
+    )
+
+    // Then each text field is readOnly, not disabled (it can be copied)
+    for (const id of [
+      'name',
+      'wikidataUrl',
+      'note',
+      'packageUnit',
+      'consumeAmount',
+      'measurementUnit',
+      'amountPerPackage',
+      'expirationDueDays',
+      'expirationThreshold',
+    ]) {
+      const field = document.getElementById(id)
+      expect(field, id).not.toBeNull()
+      expect(field, id).toHaveAttribute('readonly')
+      expect(field, id).not.toBeDisabled()
+    }
+    // And the switch and the select, which cannot be readOnly, are disabled
+    expect(screen.getByRole('switch')).toBeDisabled()
+    expect(screen.getByRole('combobox')).toBeDisabled()
+    // And there is no Save button
+    expect(screen.queryByRole('button', { name: /save/i })).toBeNull()
+  })
+
+  it('household manager gets the same form editable (the control)', () => {
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        sections={['info']}
+        initialValues={{ name: 'Flour' }}
+      />,
+    )
+    expect(document.getElementById('name')).not.toHaveAttribute('readonly')
+    expect(screen.getByRole('switch')).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument()
+  })
+})

@@ -13,6 +13,7 @@ const {
   EditValidationError,
   CreateModeEmptyError,
   Saving,
+  InfoSectionReadOnly,
 } = composeStories(stories)
 
 describe('ItemForm stories smoke tests', () => {
@@ -76,5 +77,11 @@ describe('ItemForm stories smoke tests', () => {
   it('Saving renders disabled submit button', () => {
     render(<Saving />)
     expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
+  })
+
+  it('InfoSectionReadOnly shows a readOnly name and no Save button', () => {
+    render(<InfoSectionReadOnly />)
+    expect(document.getElementById('name')).toHaveAttribute('readonly')
+    expect(screen.queryByRole('button', { name: /save/i })).toBeNull()
   })
 })
