@@ -182,3 +182,62 @@ describe('householdWorld holds the invite store (households H5b, task G.3)', () 
     expect(world.households.state.householdInvites).toHaveLength(1)
   })
 })
+
+describe('householdWorld: household.deleteMany cascades across the fakes (households H5b, task G.4)', () => {
+  it('deletes the household locations, their stock rows, carts and cart rows, catalog rows, and sets activeHouseholdId to null', async () => {
+    // Given two households; hh-1 has a location with an empty cart and a
+    // stock row, and u1's active household is hh-1
+    const world = createHouseholdWorld()
+    world.stock.reset(
+      [
+        { id: 'loc-1', householdId: 'hh-1', name: 'A', order: 0 },
+        { id: 'loc-2', householdId: 'hh-2', name: 'B', order: 0 },
+      ],
+      [],
+    )
+    world.seedHouseholds({
+      households: [household('hh-1', 'u1'), household('hh-2', 'u2')],
+      householdMembers: [
+        { householdId: 'hh-1', userId: 'u1', role: 'owner', joinedAt: T },
+        { householdId: 'hh-2', userId: 'u2', role: 'owner', joinedAt: T },
+      ],
+      locationMembers: [
+        { locationId: 'loc-1', userId: 'u1', role: 'organizer', createdAt: T },
+        { locationId: 'loc-2', userId: 'u2', role: 'organizer', createdAt: T },
+      ],
+    })
+    world.setActiveHousehold('u1', 'hh-1')
+    world.setActiveHousehold('u2', 'hh-2')
+    world.contents.rows.carts.push(
+      { id: 'cart-1', locationId: 'loc-1' },
+      { id: 'cart-2', locationId: 'loc-2' },
+    )
+    world.contents.rows.cartItems.push({ cartId: 'cart-2' })
+    world.contents.rows.tags.push({ householdId: 'hh-2' })
+
+    // When hh-1 is deleted
+    const result = await world.client.household.deleteMany({ where: { id: { in: ['hh-1'] } } })
+
+    // Then hh-1 and everything under it is gone, and hh-2 is untouched
+    expect(result).toEqual({ count: 1 })
+    expect(world.households.state.households.map((h) => h.id)).toEqual(['hh-2'])
+    expect(world.stock.state.locations.map((l) => l.id)).toEqual(['loc-2'])
+    expect(world.households.state.locationMembers.map((m) => m.locationId)).toEqual(['loc-2'])
+    expect(world.contents.rows.carts.map((c) => c.id)).toEqual(['cart-2'])
+    expect(world.contents.rows.cartItems).toEqual([{ cartId: 'cart-2' }])
+    expect(world.contents.rows.tags).toEqual([{ householdId: 'hh-2' }])
+    const active = Object.fromEntries(world.users.state.rows.map((r) => [r.id, r.activeHouseholdId]))
+    expect(active).toEqual({ u1: null, u2: 'hh-2' })
+  })
+
+  it('the contents store rolls back with a transaction', async () => {
+    const world = createHouseholdWorld()
+    await expect(
+      world.client.$transaction(async () => {
+        world.contents.rows.items.push({ householdId: 'hh-1' })
+        throw new Error('boom')
+      }),
+    ).rejects.toThrow('boom')
+    expect(world.contents.rows.items).toEqual([])
+  })
+})

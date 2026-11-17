@@ -71,6 +71,33 @@
 //     a read that would not return it. A key that is not a column (a relation
 //     such as `household`, or a typo) throws.
 //
+// ── household.deleteMany AND "IS IT EMPTY" (households H5b, task G.4) ──
+//
+// `joinHousehold` deletes the joiner's own household only when it is empty,
+// with ONE conditional `deleteMany` (decision T21, `emptyHouseholdWhere` in
+// lib/invite.ts). So the household `where` also takes these keys, and no
+// other shape of them:
+//
+//   - `members: { every: { userId } }` — every member row passes. Prisma's
+//     `every` is true for an empty list.
+//   - `items`, `tags`, `tagTypes`, `vendors`, `recipes`, `shelves`:
+//     `{ none: {} }` — the household has no such row.
+//   - `locations: { every: { itemStocks: { none: {} }, inventoryLogs:
+//     { none: {} }, carts: { every: { items: { none: {} } } } } }` — every
+//     location of the household has no stock row, no log, and only empty
+//     carts.
+//
+// The rows these keys read live in other fakes. They come from the
+// `contents` option (and the locations from the `locations` option). A
+// `where` that names one of these keys on a fake built with no `contents`
+// THROWS, so no test can pass against a check the fake never ran.
+//
+// `deleteMany` deletes the matching households and, as Postgres does with
+// `onDelete: Cascade`, their `HouseholdMember` rows, their invites, and the
+// `LocationMember` rows of their locations. It does NOT delete the location
+// rows or anything in `contents`: those stores are not this fake's.
+// `householdWorld.ts` does that, and the `User.activeHouseholdId` SET NULL.
+//
 // ── THE RELATION FILTERS IT SUPPORTS, AND NO OTHER ──
 //
 // Chosen with task 3.5's helpers in mind. Every other nested key throws.
@@ -112,15 +139,15 @@
 //   - That `Household.ownerId` mirrors the owner's `HouseholdMember` row
 //     (decision H15). That is the job of the code that writes both rows in one
 //     transaction; a test of that code must assert both.
-//   - Cascades. Deleting a household is not offered here at all (the method is
-//     missing, so a call fails as "not a function").
+//   - Most cascades. `household.deleteMany` (below) is the one delete of a
+//     household, and it cascades only inside this fake's own stores.
 //   - `$transaction`. Import `runInTransaction` from `stockFake.ts` and pass
 //     this fake's `state` as a store. `state` holds plain data and `Date`s,
 //     which `structuredClone` copies.
 
 import type { Household, HouseholdInvite, HouseholdMember, LocationMember } from '@prisma/client'
 import { OwnedRowNotFoundError } from './ownedRowFake.js'
-import { checkWhere, type WhereSpec } from './whereKeys.js'
+import { checkWhere, type WhereKeyKind, type WhereSpec } from './whereKeys.js'
 
 export type HouseholdRow = Household
 export type HouseholdMemberRow = HouseholdMember
@@ -202,11 +229,38 @@ export class HouseholdFakeMissingColumnError extends Error {
 const MEMBER_SOME: WhereSpec = { userId: 'in', role: 'in' }
 const MEMBERS_RELATION = { nested: { some: { nested: MEMBER_SOME } } } as const
 
+/** `{ none: {} }` and nothing else: "there is no such row". */
+const NONE: WhereKeyKind = { nested: { none: { nested: {} } } }
+
 const HOUSEHOLD_WHERE: WhereSpec = {
   id: 'in',
   ownerId: 'nullableIn',
-  members: MEMBERS_RELATION,
+  // `every` only on the household's own where (decision T21): "this person
+  // is the only member".
+  members: {
+    nested: { some: { nested: MEMBER_SOME }, every: { nested: { userId: 'in' } } },
+  },
+  items: NONE,
+  tags: NONE,
+  tagTypes: NONE,
+  vendors: NONE,
+  recipes: NONE,
+  shelves: NONE,
+  locations: {
+    nested: {
+      every: {
+        nested: {
+          itemStocks: NONE,
+          inventoryLogs: NONE,
+          carts: { nested: { every: { nested: { items: NONE } } } },
+        },
+      },
+    },
+  },
 }
+
+/** The keys of HOUSEHOLD_WHERE that read the `contents` option. */
+const CONTENT_KEYS = ['items', 'tags', 'tagTypes', 'vendors', 'recipes', 'shelves'] as const
 
 const HOUSEHOLD_MEMBER_WHERE: WhereSpec = {
   householdId: 'in',
@@ -361,6 +415,24 @@ export interface HouseholdFakeState {
   householdInvites: HouseholdInviteRow[]
 }
 
+/**
+ * The rows of other fakes that decide whether a household is empty
+ * (decision T21). Only the columns the check reads. Pass a function, so the
+ * fake sees the CURRENT rows.
+ */
+export interface HouseholdContents {
+  items: readonly { householdId: string }[]
+  tags: readonly { householdId: string }[]
+  tagTypes: readonly { householdId: string }[]
+  vendors: readonly { householdId: string }[]
+  recipes: readonly { householdId: string }[]
+  shelves: readonly { householdId: string }[]
+  itemStocks: readonly { locationId: string }[]
+  inventoryLogs: readonly { locationId: string }[]
+  carts: readonly { id: string; locationId: string }[]
+  cartItems: readonly { cartId: string }[]
+}
+
 export interface HouseholdFakeOptions {
   households?: HouseholdRow[]
   householdMembers?: HouseholdMemberRow[]
@@ -374,6 +446,12 @@ export interface HouseholdFakeOptions {
    * `location` filter with no `locations` option throws.
    */
   locations?: () => readonly LocationRef[]
+  /**
+   * The rows behind the "is it empty" keys of the household `where`
+   * (decision T21). A `where` naming one of those keys on a fake built
+   * without it throws.
+   */
+  contents?: () => HouseholdContents
 }
 
 export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
@@ -395,6 +473,16 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
       )
     }
     return options.locations()
+  }
+
+  function contents(): HouseholdContents {
+    if (!options.contents) {
+      throw new HouseholdFakeUnsupportedError(
+        'Household',
+        'an "is it empty" filter, because it was built with no `contents` option',
+      )
+    }
+    return options.contents()
   }
 
   // ── Matchers. Each trusts that `checkWhere` already ran on the whole where. ──
@@ -421,11 +509,69 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     )
   }
 
+  /** `members: { every: {...} }`: every member row of `householdId` passes. */
+  function everyMember(householdId: string, members: Where): boolean {
+    const every = members.every as Where | undefined
+    if (every === undefined) return true
+    return state.householdMembers
+      .filter((m) => m.householdId === householdId)
+      .every((m) => memberMatches(m, every))
+  }
+
+  /** `{ none: {} }` over `rows`: true when no row belongs to `owner`. */
+  function noneOf<R>(filter: Where, rows: readonly R[], belongs: (row: R) => boolean): boolean {
+    if (filter.none === undefined) return true
+    return !rows.some(belongs)
+  }
+
+  /**
+   * `locations: { every: {...} }`: every location of the household has no
+   * stock row and no log, and every one of its carts has no row (decision
+   * T21). A key left out checks nothing.
+   */
+  function everyLocation(householdId: string, filter: Where): boolean {
+    const every = filter.every as Where | undefined
+    if (every === undefined) return true
+    const c = contents()
+    const own = locations('Household').filter((l) => (l.householdId ?? null) === householdId)
+    return own.every((location) => {
+      const stocks = every.itemStocks as Where | undefined
+      if (stocks && !noneOf(stocks, c.itemStocks, (s) => s.locationId === location.id)) {
+        return false
+      }
+      const logs = every.inventoryLogs as Where | undefined
+      if (logs && !noneOf(logs, c.inventoryLogs, (l) => l.locationId === location.id)) {
+        return false
+      }
+      const carts = every.carts as Where | undefined
+      const cartEvery = carts?.every as Where | undefined
+      if (cartEvery !== undefined) {
+        const rows = cartEvery.items as Where | undefined
+        const ownCarts = c.carts.filter((cart) => cart.locationId === location.id)
+        const allEmpty = ownCarts.every(
+          (cart) => !rows || noneOf(rows, c.cartItems, (item) => item.cartId === cart.id),
+        )
+        if (!allEmpty) return false
+      }
+      return true
+    })
+  }
+
   function householdMatches(row: HouseholdRow, where: Where): boolean {
     for (const [key, filter] of Object.entries(where)) {
       if (filter === undefined) continue
       if (key === 'members') {
         if (!someMember(row.id, filter as Where)) return false
+        if (!everyMember(row.id, filter as Where)) return false
+        continue
+      }
+      if ((CONTENT_KEYS as readonly string[]).includes(key)) {
+        const rows = contents()[key as (typeof CONTENT_KEYS)[number]]
+        if (!noneOf(filter as Where, rows, (r) => r.householdId === row.id)) return false
+        continue
+      }
+      if (key === 'locations') {
+        if (!everyLocation(row.id, filter as Where)) return false
         continue
       }
       if (!matchesScalar((row as unknown as Where)[key], filter)) return false
@@ -512,6 +658,13 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     checkWhere('householdFake(Household)', where, HOUSEHOLD_WHERE)
     const some = (where?.members as Where | undefined)?.some as Where | undefined
     checkRoleFilter('Household', some?.role, HOUSEHOLD_ROLES)
+    // Fail now, not only when a row reaches the matcher: an empty store never
+    // calls it.
+    if (!where) return
+    const usesContents =
+      CONTENT_KEYS.some((key) => where[key] !== undefined) || where.locations !== undefined
+    if (usesContents) contents()
+    if (where.locations !== undefined) locations('Household')
   }
 
   function checkMemberWhere(where: Where | undefined) {
@@ -783,6 +936,27 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
       const row = state.households.find((h) => householdMatches(h, args.where))
       if (!row) throw new OwnedRowNotFoundError('Household', args.where)
       return copy(updateHouseholdRow(row, args.data))
+    },
+    // Households H5b, task G.4 (decision T21). Cascades only inside this
+    // fake: member rows, invites, and the location role rows of the
+    // household's locations. See the file head.
+    deleteMany: async (args: { where?: Where } = {}) => {
+      refuseUnknownOptions('Household', 'deleteMany', args, ['where'])
+      checkHouseholdWhere(args.where)
+      const ids = new Set(
+        state.households.filter((h) => householdMatches(h, args.where ?? {})).map((h) => h.id),
+      )
+      if (ids.size === 0) return { count: 0 }
+      const locationIds = new Set(
+        (options.locations?.() ?? [])
+          .filter((l) => l.householdId != null && ids.has(l.householdId))
+          .map((l) => l.id),
+      )
+      state.households = state.households.filter((h) => !ids.has(h.id))
+      state.householdMembers = state.householdMembers.filter((m) => !ids.has(m.householdId))
+      state.householdInvites = state.householdInvites.filter((i) => !ids.has(i.householdId))
+      state.locationMembers = state.locationMembers.filter((m) => !locationIds.has(m.locationId))
+      return { count: ids.size }
     },
   }
 

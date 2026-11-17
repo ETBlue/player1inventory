@@ -24,13 +24,48 @@
 // without the queue, the fake is wrong, not the code. The real race is proved
 // against Postgres in `scripts/verify-migration.ts`.
 
-import { createHouseholdFake, type HouseholdFakeOptions } from './householdFake.js'
+import {
+  createHouseholdFake,
+  type HouseholdContents,
+  type HouseholdFakeOptions,
+} from './householdFake.js'
 import { createStockFake, runInTransaction, type RollbackStore } from './stockFake.js'
 import { createUserFake } from './userFake.js'
 
+/**
+ * The rows the world does not own as models, but that decide whether a
+ * household is EMPTY (decision T21 of the H5b plan, `joinHousehold`). A test
+ * pushes plain rows here: an item of a household, a log at a location, a cart
+ * and its rows. Stock rows are not here: they live in `stock`.
+ *
+ * Only `household.deleteMany`'s "is it empty" check reads them. They are NOT
+ * the `item`, `cart`, ... models of a test that `extend`s the world: such a
+ * model keeps its rows in its own store, and this check would not see them.
+ */
+export type WorldContents = { [K in Exclude<keyof HouseholdContents, 'itemStocks'>]: HouseholdContents[K][number][] }
+
+function emptyContents(): WorldContents {
+  return {
+    items: [],
+    tags: [],
+    tagTypes: [],
+    vendors: [],
+    recipes: [],
+    shelves: [],
+    inventoryLogs: [],
+    carts: [],
+    cartItems: [],
+  }
+}
+
 export function createHouseholdWorld() {
   const stock = createStockFake()
-  const households = createHouseholdFake({ locations: () => stock.state.locations })
+  // One plain object, registered as a rollback store below.
+  const contents: { rows: WorldContents } = { rows: emptyContents() }
+  const households = createHouseholdFake({
+    locations: () => stock.state.locations,
+    contents: () => ({ ...contents.rows, itemStocks: stock.state.itemStocks }),
+  })
   // `user.findUnique` can select `householdMemberships` (decision T14 of the
   // H5b plan: `ensureHousehold` reads the person and their memberships in
   // one query). The fake reads the CURRENT member rows of this world. And
@@ -49,7 +84,7 @@ export function createHouseholdWorld() {
 
   const client = {
     user: users.client,
-    household: households.client.household,
+    household: { ...households.client.household, deleteMany: deleteHouseholds },
     householdMember: households.client.householdMember,
     locationMember: households.client.locationMember,
     // The invite store (households H5b). It lives in `households.state`, so
@@ -92,6 +127,48 @@ export function createHouseholdWorld() {
     return result
   }
 
+  // `household.deleteMany` (households H5b, task G.4). The household fake
+  // deletes the household and its own child rows (member rows, invites,
+  // location role rows). Postgres also cascades from the household to its
+  // locations, from a location to its stock rows, logs and carts, from a cart
+  // to its rows, and from the household to its catalog rows. And it sets
+  // `User.activeHouseholdId` to null where it named the household
+  // (`onDelete: SetNull`). Those stores live here, so it is modelled here.
+  // Pinned in `householdWorld.test.ts`.
+  async function deleteHouseholds(args: { where?: Record<string, unknown> } = {}) {
+    const before = new Set(households.state.households.map((h) => h.id))
+    const result = await households.client.household.deleteMany(args)
+    const after = new Set(households.state.households.map((h) => h.id))
+    const gone = new Set([...before].filter((id) => !after.has(id)))
+    if (gone.size === 0) return result
+    const locationIds = new Set(
+      stock.state.locations
+        .filter((l) => l.householdId != null && gone.has(l.householdId))
+        .map((l) => l.id),
+    )
+    stock.state.locations = stock.state.locations.filter((l) => !locationIds.has(l.id))
+    stock.state.itemStocks = stock.state.itemStocks.filter((s) => !locationIds.has(s.locationId))
+    const c = contents.rows
+    const cartIds = new Set(c.carts.filter((x) => locationIds.has(x.locationId)).map((x) => x.id))
+    contents.rows = {
+      items: c.items.filter((r) => !gone.has(r.householdId)),
+      tags: c.tags.filter((r) => !gone.has(r.householdId)),
+      tagTypes: c.tagTypes.filter((r) => !gone.has(r.householdId)),
+      vendors: c.vendors.filter((r) => !gone.has(r.householdId)),
+      recipes: c.recipes.filter((r) => !gone.has(r.householdId)),
+      shelves: c.shelves.filter((r) => !gone.has(r.householdId)),
+      inventoryLogs: c.inventoryLogs.filter((r) => !locationIds.has(r.locationId)),
+      carts: c.carts.filter((r) => !cartIds.has(r.id)),
+      cartItems: c.cartItems.filter((r) => !cartIds.has(r.cartId)),
+    }
+    for (const row of users.state.rows) {
+      if (row.activeHouseholdId !== null && gone.has(row.activeHouseholdId)) {
+        row.activeHouseholdId = null
+      }
+    }
+    return result
+  }
+
   async function $transaction(arg: unknown): Promise<unknown> {
     const run = () =>
       runInTransaction(
@@ -99,6 +176,7 @@ export function createHouseholdWorld() {
           users.state as unknown as RollbackStore,
           households.state as unknown as RollbackStore,
           stock.state as unknown as RollbackStore,
+          contents as unknown as RollbackStore,
           ...extraStores,
         ],
         client,
@@ -141,6 +219,7 @@ export function createHouseholdWorld() {
     users.reset()
     stock.reset([], [])
     households.reset()
+    contents.rows = emptyContents()
     serialTransactions(false)
   }
 
@@ -185,6 +264,8 @@ export function createHouseholdWorld() {
     users,
     stock,
     households,
+    /** See `WorldContents`. Write to `contents.rows`; `reset` empties it. */
+    contents,
     client,
     serialTransactions,
     reset,

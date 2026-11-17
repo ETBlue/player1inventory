@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   createHouseholdFake,
+  type HouseholdContents,
   HouseholdFakeForeignKeyError,
   HouseholdFakeMissingColumnError,
   HouseholdFakeUniqueError,
@@ -138,13 +139,15 @@ describe('householdFake throws on a where key it does not model, once per call',
     // matcher would return early and never reach the nested key.
     const fake = fixture()
 
-    // When the nested filter uses `every`, or a key on location not modelled
-    // Then both throw, and name the path to the key
+    // When the nested filter uses `none`, or a key on location not modelled
+    // Then both throw, and name the path to the key. (This used `every` until
+    // households H5b task G.4, which models `members: { every }` for the
+    // "is it empty" check.)
     await expect(
       fake.client.household.findFirst({
-        where: { id: 'nobody', members: { every: { userId: CALLER } } },
+        where: { id: 'nobody', members: { none: { userId: CALLER } } },
       }),
-    ).rejects.toThrow(/'members\.every'/)
+    ).rejects.toThrow(/'members\.none'/)
     await expect(
       fake.client.locationMember.findFirst({
         where: { userId: 'nobody', location: { userId: CALLER } },
@@ -1330,5 +1333,178 @@ describe('householdFake applies select on invites (households H5b, review of G.3
     await expect(
       fake.client.householdInvite.findUnique({ where: { id: 'inv_1' }, select: { nope: true } }),
     ).rejects.toBeInstanceOf(HouseholdFakeUnsupportedError)
+  })
+})
+
+describe('householdFake: household.deleteMany and the "is it empty" where (households H5b, decision T21)', () => {
+  // OURS has two members (caller, second) and two locations. THEIRS has one
+  // member (stranger) and one location, SHED. Each test puts ONE row into
+  // `contents` and asks the empty check about THEIRS, so the answer depends
+  // on that one key.
+  function emptyContents(): HouseholdContents {
+    return {
+      items: [],
+      tags: [],
+      tagTypes: [],
+      vendors: [],
+      recipes: [],
+      shelves: [],
+      itemStocks: [],
+      inventoryLogs: [],
+      carts: [],
+      cartItems: [],
+    }
+  }
+
+  function withContents(c: HouseholdContents) {
+    return createHouseholdFake({
+      households: [household(OURS, CALLER), household(THEIRS, STRANGER)],
+      householdMembers: [
+        member(OURS, CALLER, 'owner'),
+        member(OURS, SECOND, 'manager'),
+        member(THEIRS, STRANGER, 'owner'),
+      ],
+      locationMembers: [
+        locMember(KITCHEN, CALLER, 'organizer'),
+        locMember(SHED, STRANGER, 'organizer'),
+      ],
+      householdInvites: [],
+      locations: () => LOCATIONS,
+      contents: () => c,
+    })
+  }
+
+  async function idsWhere(fake: ReturnType<typeof withContents>, where: Record<string, unknown>) {
+    return (await fake.client.household.findMany({ where })).map((h) => h.id).sort()
+  }
+
+  it("members: { every: { userId } } is true only when that person is the only member", async () => {
+    const fake = withContents(emptyContents())
+    expect(await idsWhere(fake, { members: { every: { userId: STRANGER } } })).toEqual([THEIRS])
+    expect(await idsWhere(fake, { members: { every: { userId: CALLER } } })).toEqual([])
+  })
+
+  for (const key of ['items', 'tags', 'tagTypes', 'vendors', 'recipes', 'shelves'] as const) {
+    it(`${key}: { none: {} } is false for a household with one such row`, async () => {
+      const c = emptyContents()
+      c[key] = [{ householdId: THEIRS }]
+      const fake = withContents(c)
+      expect(await idsWhere(fake, { [key]: { none: {} } })).toEqual([OURS])
+    })
+  }
+
+  it('locations.every.itemStocks none is false for a stock row at one of its locations', async () => {
+    const c = emptyContents()
+    c.itemStocks = [{ locationId: SHED }]
+    const fake = withContents(c)
+    expect(await idsWhere(fake, { locations: { every: { itemStocks: { none: {} } } } })).toEqual([
+      OURS,
+    ])
+  })
+
+  it('locations.every.inventoryLogs none is false for a log at one of its locations', async () => {
+    const c = emptyContents()
+    c.inventoryLogs = [{ locationId: SHED }]
+    const fake = withContents(c)
+    expect(
+      await idsWhere(fake, { locations: { every: { inventoryLogs: { none: {} } } } }),
+    ).toEqual([OURS])
+  })
+
+  it('locations.every.carts.every.items none: an empty cart passes, a cart with a row does not', async () => {
+    const c = emptyContents()
+    c.carts = [
+      { id: 'cart-empty', locationId: KITCHEN },
+      { id: 'cart-full', locationId: SHED },
+    ]
+    c.cartItems = [{ cartId: 'cart-full' }]
+    const fake = withContents(c)
+    const where = { locations: { every: { carts: { every: { items: { none: {} } } } } } }
+    expect(await idsWhere(fake, where)).toEqual([OURS])
+  })
+
+  it('a household with no locations passes locations.every (Prisma: every of nothing is true)', async () => {
+    const c = emptyContents()
+    c.itemStocks = [{ locationId: SHED }]
+    const fake = createHouseholdFake({
+      households: [household(THEIRS, STRANGER)],
+      householdMembers: [member(THEIRS, STRANGER, 'owner')],
+      locations: () => [],
+      contents: () => c,
+    })
+    expect(
+      (await fake.client.household.findMany({
+        where: { locations: { every: { itemStocks: { none: {} } } } },
+      })).map((h) => h.id),
+    ).toEqual([THEIRS])
+  })
+
+  it('throws on a shape it does not model, even on an EMPTY store', async () => {
+    const empty = createHouseholdFake({ locations: () => [], contents: () => emptyContents() })
+    const bad: Record<string, unknown>[] = [
+      { items: { some: {} } },
+      { items: { none: { name: 'x' } } },
+      { members: { none: {} } },
+      { locations: { some: {} } },
+      { locations: { every: { members: { none: {} } } } },
+      { locations: { every: { carts: { none: {} } } } },
+      { locations: { every: { carts: { every: { lastPurchasedAt: null } } } } },
+      { invites: { none: {} } },
+    ]
+    for (const where of bad) {
+      await expect(empty.client.household.deleteMany({ where })).rejects.toBeInstanceOf(
+        Error,
+      )
+      await expect(empty.client.household.findMany({ where })).rejects.toThrow(
+        /does not model|models '/,
+      )
+    }
+  })
+
+  it('an "is it empty" key on a fake built with no contents throws, even on an EMPTY store', async () => {
+    const fake = createHouseholdFake({ locations: () => [] })
+    await expect(
+      fake.client.household.deleteMany({ where: { items: { none: {} } } }),
+    ).rejects.toBeInstanceOf(HouseholdFakeUnsupportedError)
+    await expect(
+      fake.client.household.deleteMany({ where: { locations: { every: {} } } }),
+    ).rejects.toBeInstanceOf(HouseholdFakeUnsupportedError)
+  })
+
+  it('deleteMany deletes the matching households with their members, invites and location roles, and returns a count', async () => {
+    const fake = withContents(emptyContents())
+    fake.state.householdInvites.push({
+      id: 'inv-theirs',
+      householdId: THEIRS,
+      token: 't',
+      householdRole: 'member',
+      locationRoles: [],
+      createdById: STRANGER,
+      createdAt: T0,
+      expiresAt: T0,
+      usedAt: null,
+      usedById: null,
+      revokedAt: null,
+    })
+
+    const result = await fake.client.household.deleteMany({
+      where: { id: { in: [THEIRS] }, members: { every: { userId: STRANGER } } },
+    })
+
+    expect(result).toEqual({ count: 1 })
+    expect(fake.state.households.map((h) => h.id)).toEqual([OURS])
+    expect(fake.state.householdMembers.map((m) => m.householdId)).toEqual([OURS, OURS])
+    expect(fake.state.householdInvites).toEqual([])
+    expect(fake.state.locationMembers.map((m) => m.locationId)).toEqual([KITCHEN])
+  })
+
+  it('deleteMany that matches nothing changes nothing', async () => {
+    const fake = withContents(emptyContents())
+    const result = await fake.client.household.deleteMany({
+      where: { id: { in: [OURS] }, members: { every: { userId: CALLER } } },
+    })
+    expect(result).toEqual({ count: 0 })
+    expect(fake.state.households).toHaveLength(2)
+    expect(fake.state.householdMembers).toHaveLength(3)
   })
 })
