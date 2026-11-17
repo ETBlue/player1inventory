@@ -14,7 +14,7 @@ import { GraphQLError } from 'graphql'
 import { prisma } from './prisma.js'
 import type { HouseholdWorld } from '../test/householdWorld.js'
 import type { UserRow } from '../test/userFake.js'
-import { ensureHousehold, firstSignInNames, lockUser } from './household.js'
+import { ensureHousehold, firstSignInNames, lockHouseholds, lockUser } from './household.js'
 
 const world = (prisma as unknown as { $world: HouseholdWorld }).$world
 
@@ -440,5 +440,45 @@ describe('lockUser (households H5b, decision T16)', () => {
   it('throws P2025 when there is no User row, as Prisma does', async () => {
     world.users.reset([])
     await expect(lockUser(prisma as never, 'user-nobody')).rejects.toMatchObject({ code: 'P2025' })
+  })
+})
+
+describe('lockHouseholds (households H5b, task G.4)', () => {
+  function seedThree() {
+    const T = new Date('2026-11-01T00:00:00.000Z')
+    const row = (id: string) => ({
+      id,
+      name: id,
+      ownerId: null,
+      ownerGoneAt: null,
+      createdAt: T,
+      updatedAt: T,
+    })
+    world.seedHouseholds({ households: [row('hh-c'), row('hh-a'), row('hh-b')] })
+  }
+
+  it('locks each household once, sorted by id, and returns the ones it found', async () => {
+    seedThree()
+    const spy = vi.spyOn(world.client.household, 'updateMany')
+    try {
+      const locked = await lockHouseholds(prisma as never, ['hh-c', 'hh-gone', 'hh-a', 'hh-c'])
+
+      expect(spy.mock.calls.map((call) => call[0].where?.id)).toEqual([
+        'hh-a',
+        'hh-c',
+        'hh-gone',
+      ])
+      expect([...locked].sort()).toEqual(['hh-a', 'hh-c'])
+      // hh-b was not named, so it was not touched
+      const b = world.households.state.households.find((h) => h.id === 'hh-b')
+      expect(b?.updatedAt).toEqual(new Date('2026-11-01T00:00:00.000Z'))
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('a missing household is skipped with no error', async () => {
+    seedThree()
+    await expect(lockHouseholds(prisma as never, ['hh-gone'])).resolves.toEqual(new Set())
   })
 })

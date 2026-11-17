@@ -2,7 +2,7 @@ import { GraphQLError } from 'graphql'
 import type { Prisma } from '@prisma/client'
 import { requireAuth } from '../context.js'
 import { forbidden, requireHousehold, requireHouseholdRole } from '../lib/authz.js'
-import { lockHousehold, lockUser } from '../lib/household.js'
+import { lockHouseholds, lockUser } from '../lib/household.js'
 import {
   alreadyMember,
   emptyHouseholdWhere,
@@ -85,11 +85,34 @@ function isOpen(
   return row.usedAt === null && row.revokedAt === null && row.expiresAt.getTime() > now.getTime()
 }
 
-/** True for Prisma's "record not found" (P2025). */
-function isNotFound(err: unknown): boolean {
+/** True for Prisma's "write conflict or deadlock" (P2034). */
+function isWriteConflict(err: unknown): boolean {
   return (
-    typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'P2025'
+    typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'P2034'
   )
+}
+
+/**
+ * Run `work` (a whole transaction), and run it ONCE more when it fails with
+ * P2034, the error Prisma gives for a Postgres deadlock (`40P01`) or a write
+ * conflict. A second failure is thrown as it is. Postgres has rolled the
+ * first attempt back, so the second starts from a clean state.
+ *
+ * Why `joinHousehold` needs it: deleting an empty own household also sets
+ * `User.activeHouseholdId` to null on every `User` row that still names it
+ * (`onDelete: SetNull`), so a join can write another person's `User` row
+ * while it holds household locks. Two joins at once can then wait on each
+ * other. Also two people who join each other's household at the same moment.
+ * Postgres breaks the wait by failing one of them; one retry turns that into
+ * a normal join (or a normal refusal, when the invite is gone by then).
+ */
+export async function retryOnceOnConflict<T>(work: () => Promise<T>): Promise<T> {
+  try {
+    return await work()
+  } catch (err) {
+    if (!isWriteConflict(err)) throw err
+    return work()
+  }
 }
 
 const INVALID_PREVIEW = {
@@ -250,11 +273,27 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     // brand-new person. ONE transaction, in this order:
     //
     //   1. `lockUser` — the caller's `User` row lock, FIRST (decision T16).
-    //      Two joins by one person run one after the other, and no other
-    //      transaction takes a household lock and then a User lock.
+    //      Two joins by one person run one after the other. Then the first
+    //      sign-in claim (`householdSetupAt`), when it is still null: a
+    //      person can join before any request made them a household. Without
+    //      it, after a later leave or removal `ensureHousehold` would make a
+    //      new household instead of answering NO_HOUSEHOLD, and a first
+    //      request racing this join could make a stray empty household.
+    //      Other transactions take household locks and write no User row,
+    //      with one exception: a household delete sets
+    //      `User.activeHouseholdId` to null on every row that names it (see
+    //      `lockUser`). That is why the whole join is retried once on P2034.
     //   2. Read the invite by token. Not found, or not open → INVITE_INVALID.
     //      The same answer as `invitePreview` gives, before any other check.
-    //   3. `lockHousehold` of the invite's household.
+    //   3. Read the caller's other memberships, and lock the invite's
+    //      household AND those households together, sorted by id
+    //      (`lockHouseholds`). Sorted, so two joins never take them in
+    //      opposite orders. The other households are locked because step 9
+    //      may delete them: without the lock, a person joining one of them at
+    //      the same moment could commit between the "is it empty" check and
+    //      the delete, and lose their new membership with it. The invite's
+    //      household not found → INVITE_INVALID (it was deleted, with its
+    //      invites). An own household not found is skipped.
     //   4. ALREADY_MEMBER, BEFORE the claim (decision T17), with the same
     //      check as `invitePreview`: the caller's member row in the INVITE's
     //      household. The link stays unused, and a member gets an answer
@@ -274,7 +313,8 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     //   8. `activeHouseholdId` → this household. The User lock is already
     //      held, so this write breaks no lock order.
     //   9. Delete the caller's OTHER households that are empty, with one
-    //      conditional statement (decision T21, `emptyHouseholdWhere`).
+    //      conditional statement (decision T21, `emptyHouseholdWhere`). Only
+    //      the ones locked in step 3.
     //
     // A wrong-length token is refused before the transaction, with no read
     // and no lock: no stored token has another length. A bad `locationRoles`
@@ -290,10 +330,15 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       const userId = requireAuth(ctx)
       if (!hasInviteTokenLength(token)) throw inviteInvalid()
 
-      const joined = await prisma.$transaction(async (tx) => {
+      const joined = await retryOnceOnConflict(() => prisma.$transaction(async (tx) => {
         await lockUser(tx, userId)
 
         const now = new Date()
+        await tx.user.updateMany({
+          where: { id: userId, householdSetupAt: null },
+          data: { householdSetupAt: now },
+        })
+
         const row = await tx.householdInvite.findUnique({
           where: { token },
           select: {
@@ -309,14 +354,15 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         if (!row || !isOpen(row, now)) throw inviteInvalid()
         const householdId = row.householdId
 
-        try {
-          await lockHousehold(tx, householdId)
-        } catch (err) {
-          // The household was deleted after the invite was read. Its invites
-          // went with it (onDelete: Cascade).
-          if (isNotFound(err)) throw inviteInvalid()
-          throw err
-        }
+        const others = await tx.householdMember.findMany({
+          where: { userId },
+          select: { householdId: true },
+        })
+        const otherIds = others.map((m) => m.householdId).filter((id) => id !== householdId)
+        const locked = await lockHouseholds(tx, [householdId, ...otherIds])
+        // The household was deleted after the invite was read. Its invites
+        // went with it (onDelete: Cascade).
+        if (!locked.has(householdId)) throw inviteInvalid()
 
         const membership = await tx.householdMember.findUnique({
           where: { householdId_userId: { householdId, userId } },
@@ -334,12 +380,6 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           data: { usedAt: now, usedById: userId },
         })
         if (count === 0) throw inviteInvalid()
-
-        // Read BEFORE the new member row, so the target is not in the list.
-        const others = await tx.householdMember.findMany({
-          where: { userId },
-          select: { householdId: true },
-        })
 
         await tx.householdMember.create({
           data: { householdId, userId, role: row.householdRole },
@@ -368,9 +408,9 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           data: { activeHouseholdId: householdId },
         })
 
-        const otherIds = others.map((m) => m.householdId).filter((id) => id !== householdId)
-        if (otherIds.length > 0) {
-          await tx.household.deleteMany({ where: emptyHouseholdWhere(userId, otherIds) })
+        const deletable = otherIds.filter((id) => locked.has(id))
+        if (deletable.length > 0) {
+          await tx.household.deleteMany({ where: emptyHouseholdWhere(userId, deletable) })
         }
 
         const household = await tx.household.findUnique({
@@ -381,7 +421,7 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         // `deleteMany` cannot match it (it is not in `otherIds`).
         if (!household) throw new Error('joinHousehold: the joined household is gone')
         return { id: household.id, name: household.name, role: row.householdRole }
-      })
+      }))
 
       await publishHouseholdChange(ctx, ['LOCATION'], joined.id)
       return joined

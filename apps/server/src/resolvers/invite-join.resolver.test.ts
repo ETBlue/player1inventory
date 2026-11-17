@@ -56,6 +56,9 @@ const YUKI = 'user_yuki'
 const PAT = 'user_pat'
 const RIA = 'user_ria'
 const PIA = 'user_pia'
+// Never set up: `householdSetupAt` is null, as for a brand-new person whose
+// first request is the join.
+const NEWT = 'user_newt'
 
 const LOC_K = 'loc_kitchen'
 const LOC_G = 'loc_garage'
@@ -167,6 +170,7 @@ function seed(invites: HouseholdInviteRow[] = []) {
     user(PAT, 'Pat', null),
     user(RIA, 'Ria', 'hh_r'),
     user(PIA, 'Pia', null),
+    { ...user(NEWT, 'Newt', null), householdSetupAt: null },
   ])
 }
 
@@ -259,6 +263,26 @@ function snapshot() {
     users: world.users.state.rows.map((r) => `${r.id}:${r.activeHouseholdId}`).sort(),
     locations: world.stock.state.locations.map((l) => l.id).sort(),
   }
+}
+
+/** The household ids a `household.updateMany` spy locked, in call order. */
+function lockedIds(spy: { mock: { calls: unknown[][] } }): unknown[] {
+  return spy.mock.calls.map((call) => (call[0] as { where: { id: unknown } }).where.id)
+}
+
+/** Make the lock of one household find no row, as if it were deleted. */
+function lockFindsNothing(householdId: string) {
+  const households = world.client.household
+  const updateMany = households.updateMany
+  vi.spyOn(households, 'updateMany').mockImplementation(async (args) => {
+    if ((args.where as { id?: unknown } | undefined)?.id === householdId) return { count: 0 }
+    return updateMany(args)
+  })
+}
+
+/** A Prisma error with a code, the shape the resolver checks. */
+function prismaError(code: string): Error {
+  return Object.assign(new Error(`prisma ${code}`), { code })
 }
 
 // ─── the join ────────────────────────────────────────────────────────────────
@@ -571,7 +595,7 @@ describe('joinHousehold refuses', () => {
     // and the preview give the same answer for a link that no longer works.
     mainInvite().usedAt = T0
     mainInvite().usedById = YUKI
-    const lock = vi.spyOn(prisma.household, 'update')
+    const lock = vi.spyOn(world.client.household, 'updateMany')
 
     const res = await join(MAIN, BAO)
 
@@ -600,12 +624,9 @@ describe('joinHousehold refuses', () => {
   })
 
   it('a household deleted between the invite read and its lock gives INVITE_INVALID', async () => {
-    // Given the household lock finds no row (P2025): the household, and with
-    // it the invite, was deleted after the invite was read
-    const households = world.client.household
-    vi.spyOn(households, 'update').mockImplementationOnce(async () => {
-      throw Object.assign(new Error('No Household found'), { code: 'P2025' })
-    })
+    // Given the lock of hh_h finds no row: the household, and with it the
+    // invite, was deleted after the invite was read
+    lockFindsNothing('hh_h')
     const before = snapshot()
 
     const res = await join(MAIN, PAT)
@@ -616,7 +637,7 @@ describe('joinHousehold refuses', () => {
   })
 
   it('any other failure of the household lock is not turned into INVITE_INVALID', async () => {
-    vi.spyOn(world.client.household, 'update').mockImplementationOnce(async () => {
+    vi.spyOn(world.client.household, 'updateMany').mockImplementationOnce(async () => {
       throw Object.assign(new Error('connection lost'), { code: 'P1001' })
     })
 
@@ -624,6 +645,18 @@ describe('joinHousehold refuses', () => {
 
     expect(res.errors).toBeDefined()
     expect(reason(res)).toBeUndefined()
+  })
+
+  it('an own household that is gone when it is locked is skipped, and the join goes on', async () => {
+    lockFindsNothing('hh_p')
+
+    const res = await join(MAIN, PAT)
+
+    expect(res.errors).toBeUndefined()
+    expect(members()).toContain(`hh_h:${PAT}:member`)
+    // A household that was not locked is never deleted. (In the fake the row
+    // is still there, so this shows the delete skipped it.)
+    expect(householdIds()).toContain('hh_p')
   })
 
   it('the second of two joins on one link is refused (T17)', async () => {
@@ -667,19 +700,49 @@ describe('joinHousehold refuses', () => {
 // ─── order and atomicity ─────────────────────────────────────────────────────
 
 describe('joinHousehold locks and rolls back', () => {
-  it('the user lock is taken before the household lock (T16)', async () => {
+  it('the user lock is taken before the household locks (T16)', async () => {
     const userUpdate = vi.spyOn(prisma.user, 'update')
-    const householdUpdate = vi.spyOn(prisma.household, 'update')
+    const householdLock = vi.spyOn(world.client.household, 'updateMany')
 
     await join(MAIN, PAT)
 
     // The first `User` update is the lock, of PAT's row, before any
-    // `Household` update.
+    // `Household` lock.
     expect(userUpdate.mock.calls[0]?.[0]).toMatchObject({ where: { id: PAT } })
-    expect(householdUpdate.mock.calls[0]?.[0]).toMatchObject({ where: { id: 'hh_h' } })
     const firstUser = userUpdate.mock.invocationCallOrder[0] ?? Infinity
-    const firstHousehold = householdUpdate.mock.invocationCallOrder[0] ?? -Infinity
+    const firstHousehold = householdLock.mock.invocationCallOrder[0] ?? -Infinity
     expect(firstUser).toBeLessThan(firstHousehold)
+  })
+
+  it.each([
+    // [who joins, the invite's household, the expected lock order]
+    ['the joined household sorts first', PAT, 'hh_h', ['hh_h', 'hh_p']],
+    ['the own household sorts first', PAT, 'hh_x', ['hh_p', 'hh_x']],
+  ])('it locks the joined AND the own households, sorted by id: %s', async (_, who, target, order) => {
+    const token = tok('tok_lock')
+    seed([invite(target, 'member', { token })])
+    const householdLock = vi.spyOn(world.client.household, 'updateMany')
+
+    const res = await join(token, who)
+
+    expect(res.errors).toBeUndefined()
+    expect(lockedIds(householdLock)).toEqual(order)
+  })
+
+  it('every household lock comes before the delete of the own household', async () => {
+    const householdLock = vi.spyOn(world.client.household, 'updateMany')
+    const remove = vi.spyOn(world.client.household, 'deleteMany')
+
+    await join(MAIN, PAT)
+
+    const lastLock = Math.max(...householdLock.mock.invocationCallOrder)
+    expect(lastLock).toBeLessThan(remove.mock.invocationCallOrder[0] ?? -Infinity)
+  })
+
+  it('a person in no other household locks only the joined one', async () => {
+    const householdLock = vi.spyOn(world.client.household, 'updateMany')
+    await join(MAIN, PIA)
+    expect(lockedIds(householdLock)).toEqual(['hh_h'])
   })
 
   it('the user lock comes before the invite is read', async () => {
@@ -753,5 +816,115 @@ describe('joinHousehold publishes household-level LOCATION', () => {
     vi.spyOn(prisma.household, 'deleteMany').mockRejectedValueOnce(new Error('boom'))
     await join(MAIN, PAT)
     expect(seen).toEqual([])
+  })
+})
+
+// ─── the first sign-in claim (householdSetupAt) ─────────────────────────────
+
+describe('joinHousehold sets the first sign-in claim', () => {
+  function setupAtOf(userId: string) {
+    return world.users.state.rows.find((r) => r.id === userId)?.householdSetupAt
+  }
+
+  it('a person who was never set up has householdSetupAt set by the join', async () => {
+    expect(setupAtOf(NEWT)).toBeNull()
+
+    const res = await join(MAIN, NEWT)
+
+    expect(res.errors).toBeUndefined()
+    expect(setupAtOf(NEWT)).toEqual(NOW)
+  })
+
+  it('a person already set up keeps their old householdSetupAt', async () => {
+    await join(MAIN, PAT)
+    expect(setupAtOf(PAT)).toEqual(T0)
+  })
+
+  it('after a join and a later removal, ensureHousehold answers NO_HOUSEHOLD and makes no household', async () => {
+    // Given NEWT joined hh_h as their very first request
+    await join(MAIN, NEWT)
+    // And was then removed (G.5 deletes the member row and their roles)
+    world.households.state.householdMembers = world.households.state.householdMembers.filter(
+      (m) => m.userId !== NEWT,
+    )
+    const before = householdIds()
+
+    // When their next request asks for their household
+    const err = await ensureHousehold(NEWT, 'en').catch((e: unknown) => e)
+
+    // Then they are in no household, and no new one was made
+    expect(err).toMatchObject({ extensions: { code: 'NO_HOUSEHOLD' } })
+    expect(householdIds()).toEqual(before)
+  })
+
+  it('a refused join leaves householdSetupAt as it was', async () => {
+    await join(tok('tok_none'), NEWT)
+    expect(setupAtOf(NEWT)).toBeNull()
+  })
+})
+
+// ─── the retry on P2034 ──────────────────────────────────────────────────────
+
+describe('joinHousehold retries once on a write conflict or deadlock (P2034)', () => {
+  /** Make the next `count` transactions run in full, then fail with P2034. */
+  function conflictAfterWork(count: number) {
+    const run = world.client.$transaction
+    const spy = vi.spyOn(prisma, '$transaction')
+    for (let i = 0; i < count; i++) {
+      spy.mockImplementationOnce((async (fn: (tx: unknown) => Promise<unknown>) =>
+        run(async (tx: unknown) => {
+          await fn(tx)
+          throw prismaError('P2034')
+        })) as never)
+    }
+    return spy
+  }
+
+  it('a first attempt that fails with P2034 is run again, and the join succeeds once', async () => {
+    const spy = conflictAfterWork(1)
+
+    const res = await join(MAIN, PAT)
+
+    expect(res.errors).toBeUndefined()
+    expect(spy).toHaveBeenCalledTimes(2)
+    // One member row, one claim, one event: the first attempt left nothing
+    expect(members().filter((m) => m === `hh_h:${PAT}:member`)).toHaveLength(1)
+    expect(mainInvite().usedById).toBe(PAT)
+    expect(householdIds()).not.toContain('hh_p')
+    expect(seen).toHaveLength(1)
+  })
+
+  it('a second P2034 fails the join with that error, and writes nothing', async () => {
+    const before = snapshot()
+    const spy = conflictAfterWork(2)
+
+    const res = await join(MAIN, PAT)
+
+    expect(spy).toHaveBeenCalledTimes(2)
+    expect(res.errors?.[0]?.message).toBe('prisma P2034')
+    expect(snapshot()).toEqual(before)
+    expect(seen).toEqual([])
+  })
+
+  it('another error is not retried', async () => {
+    const run = world.client.$transaction
+    const spy = vi.spyOn(prisma, '$transaction')
+    spy.mockImplementationOnce((async (fn: (tx: unknown) => Promise<unknown>) =>
+      run(async (tx: unknown) => {
+        await fn(tx)
+        throw prismaError('P2002')
+      })) as never)
+
+    const res = await join(MAIN, PAT)
+
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(res.errors).toBeDefined()
+    expect(mainInvite().usedAt).toBeNull()
+  })
+
+  it('a refusal is not retried', async () => {
+    const spy = vi.spyOn(prisma, '$transaction')
+    await join(MAIN, BAO)
+    expect(spy).toHaveBeenCalledTimes(1)
   })
 })

@@ -323,14 +323,23 @@ export async function lockHousehold(
  * once (two tabs, two links) could both read "still a member of my own
  * household" and both act on it. With the lock they run one after the other.
  *
- * ONE LOCK ORDER: the `User` row first, then a `Household` row. Only
- * `joinHousehold` (and, from task G.5, `createHousehold`) take this lock, and
- * always FIRST. `removeMember`, `leaveHousehold` and `setHouseholdRole` take
- * only `lockHousehold` and never write a `User` row. Two transactions that
- * take the two locks in opposite orders can wait on each other; Postgres then
- * aborts one with `40P01` (a deadlock), and a person sees an error. So never
- * write a `User` row after a household lock unless this lock is already
- * held.
+ * ONE LOCK ORDER: the `User` row first, then `Household` rows, sorted by id
+ * (`lockHouseholds` below). Only `joinHousehold` (and, from task G.5,
+ * `createHousehold`) take this lock, and always FIRST. `removeMember`,
+ * `leaveHousehold` and `setHouseholdRole` take only `lockHousehold` and never
+ * write a `User` row themselves. Two transactions that take the two locks in
+ * opposite orders can wait on each other; Postgres then aborts one with
+ * `40P01` (a deadlock), and a person sees an error. So never write a `User`
+ * row after a household lock unless this lock is already held.
+ *
+ * ONE EXCEPTION THE CODE CANNOT AVOID: deleting a household writes OTHER
+ * people's `User` rows. `User.activeHouseholdId` is `onDelete: SetNull`, and
+ * a person who left or was removed still names the household there (removal
+ * and leaving never write the `User` row, decision T16). So the join's last
+ * step, the delete of an empty own household, can write a `User` row while
+ * the join holds household locks. Two joins can then deadlock. That is why
+ * `joinHousehold` retries ONCE on Prisma's `P2034` (a write conflict or a
+ * deadlock): see `retryOnceOnConflict` in resolvers/invite.resolver.ts.
  *
  * The cost: `User.updatedAt` moves on every call.
  *
@@ -340,4 +349,41 @@ export async function lockHousehold(
  */
 export async function lockUser(tx: Prisma.TransactionClient, userId: string): Promise<void> {
   await tx.user.update({ where: { id: userId }, data: { updatedAt: new Date() } })
+}
+
+/**
+ * Take the row lock of several households, one `UPDATE` each, in ONE fixed
+ * order: sorted by id, and each id once (households H5b, task G.4). Returns
+ * the ids that were found and locked. An id with no row is skipped, with no
+ * error: the caller decides what a missing household means.
+ *
+ * Why sorted. `joinHousehold` locks the household it joins AND every
+ * household of the caller it may delete. Two joins that lock the same two
+ * households in opposite orders could wait on each other (a deadlock).
+ * Sorted, every join takes them in the same order. Take `lockUser` first.
+ *
+ * Why lock the households it may delete. Without the lock, a join into one
+ * of them (another person using its invite) could commit between this
+ * transaction's "is it empty" check and its delete. Postgres then deletes the
+ * household with the other person's new membership in it. With the lock,
+ * that join waits, and then finds the household gone.
+ *
+ * `updateMany`, not `update`, so a missing row gives a count of 0 instead of
+ * P2025. The same `UPDATE` as `lockHousehold`; the Prisma fake has no row
+ * lock, so the unit tests prove only the order.
+ */
+export async function lockHouseholds(
+  tx: Prisma.TransactionClient,
+  householdIds: readonly string[],
+): Promise<Set<string>> {
+  const locked = new Set<string>()
+  const sorted = [...new Set(householdIds)].sort()
+  for (const id of sorted) {
+    const { count } = await tx.household.updateMany({
+      where: { id },
+      data: { updatedAt: new Date() },
+    })
+    if (count > 0) locked.add(id)
+  }
+  return locked
 }
