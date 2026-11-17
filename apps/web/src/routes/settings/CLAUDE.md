@@ -5,7 +5,7 @@ Since households phase H1, every settings page except `/settings` itself lives u
 
 | Route | File | What it shows |
 |---|---|---|
-| `/settings` | `settings/index.tsx` | Desktop: `<Navigate to="/settings/household">`. Mobile: an accordion with two items. The household item (open), labelled by `HouseholdLabel`, holds six `SettingsNavCard` links. "Preferences" (closed) holds `UserSettingsPanel`. |
+| `/settings` | `settings/index.tsx` | Desktop: `<Navigate to="/settings/household">`. Mobile: an accordion with two items. The household item (open), labelled by `HouseholdLabel`, holds six `SettingsNavCard` links, seven in cloud mode: **Members** is second there (households H5b task G.9). "Preferences" (closed) holds `UserSettingsPanel`. |
 | `/settings/household` | `settings/household/index.tsx` | Title `HouseholdLabel`, then `HouseholdNameCard` (cloud only), `ExportCard` and `ImportCard` |
 
 **The household name (households H3a task 3.13).** In cloud mode the 🏠 sidebar link, the
@@ -17,6 +17,7 @@ render `HouseholdLabel` (see `components/CLAUDE.md`). The name is shown as store
 checks the role too (`renameHousehold`, `apps/server/src/resolvers/household.resolver.ts`).
 Tests: `settings/household/index.cloud.test.tsx`; the local "My data" tests stay in
 `index.test.tsx` and `settings/index.test.tsx`.
+| `/settings/household/members` | `settings/household/members.tsx` | Cloud only (local mode: `<Navigate to="/settings/household">`). Every person and their household role; Invite, open invites, role control, Remove and Leave by role. See *The Members page* below. |
 | `/settings/household/{locations,shelves,vendors,recipes,tags}` | `settings/household/<section>/index.tsx` | The five list pages. Each has its own Back button on mobile only (`lg:hidden`). |
 | `/settings/household/<section>/<id>…` | detail pages | Full-screen on every screen size |
 
@@ -25,6 +26,24 @@ list pages. Theme, language, data mode and the account card are in `UserSettings
 which desktop shows in the user sidebar (the 👤 button). Which pages are full-screen is
 decided by `isFullscreenPage(pathname, { desktop })` in `src/lib/layoutRules.ts`. See
 `components/CLAUDE.md` (`Navigation`, `Sidebar`) for the full table.
+
+### The Members page (cloud, households H5b task G.9)
+
+Plan: `docs/global/permissions/2026-11-18-households-plan-h5b.md`, Task G.9. Server fields: `apps/server/src/schema/household.graphql`.
+
+| Household role | Sees |
+|---|---|
+| owner | every person; on every other row the role control (`member` ↔ `manager`) and Remove; **Invite someone** (member or manager); every open invite with Copy link and Revoke; the `ownerCannotLeave` note instead of Leave |
+| manager | every person; Remove on `member` rows; Leave on their own row; Invite (member only, O3-A); the `member` invites, Copy link and Revoke |
+| member | every person and role, no e-mail; Leave on their own row; no invites (O13-A) |
+
+- The rights come from `usePermissions()` (`canManageMembers`, `isHouseholdOwner`); which ROW gets which button is `memberActions` in `components/household/MemberList`. The server checks every write.
+- An owner who is the only person sees the `alone` note: joining another household through an invite deletes this one when it holds no data (decision T21). The page cannot see whether the household holds data.
+- Errors: one toast, `settings.household.members.error`; none for an `OfflineWriteError`.
+- A revoke that answers `false` refetches the list and shows no message.
+- Leave: see `useLeaveHousehold` in `hooks/CLAUDE.md`.
+- Mobile: not full-screen, like Locations; the page has its own Back button (`lg:hidden`).
+- Tests: `members.cloud.test.tsx` (the real route tree, real Apollo hooks, `MockedProvider`; every fixture holds all three roles), `members.test.tsx` (local mode), `components/household/MemberList/MemberList.test.tsx` (every caller × row pair), `lib/copyText.test.ts`. Stories: `Owner`, `Manager`, `Member`, `WithOpenInvites`, `InviteDialogOpen`. The axe scans (light and dark) belong to G.10's cloud spec, because `a11y.spec.ts` does not run in cloud.
 
 ### The Items tabs are global assignment pages
 

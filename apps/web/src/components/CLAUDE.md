@@ -14,7 +14,7 @@ src/components/
   settings/       — settings-specific: ConflictDialog, DataModeCard, ExportCard, HouseholdLabel, HouseholdNameCard, ImportCard, ImportLocationDialog, LanguageCard, SettingsNavCard, ThemeCard, UserSettingsPanel
   shelf/          — shelf-specific: ShelfList, AddShelfDialog
   location/       — location-specific: LocationList, NoLocationsEmptyState, NoLocationsGate (LocationSwitcher is in shared/)
-  household/      — households, cloud only: NoHouseholdGate, NoHouseholdScreen
+  household/      — households, cloud only: NoHouseholdGate, NoHouseholdScreen, MemberList, InviteDialog, InviteList
   ui/             — shadcn/ui primitives (flat files, not folders)
 ```
 
@@ -49,7 +49,7 @@ One-time structural components that appear once in the app shell.
 
 - **Back** (`navigation.back`). It goes to `lastAppPage(loadNavigationHistory())` from `src/lib/layoutRules.ts`: the newest `/`, `/shopping…` or `/cooking` URL in `app-navigation-history`, with its search string, or `/` when there is none. It pushes the full URL string with `router.history.push`, like `useAppNavigation`.
 - the heading `HouseholdLabel`: the household's name in cloud mode, "My data" (`settings.household.title`) in local mode and while the name loads. A long name wraps (`break-words`)
-- six links: General, Locations, Shelves, Vendors, Recipes, Tags. Active state comes from TanStack's own match (`activeOptions` + `activeProps`), so `aria-current="page"` and the active styling cannot disagree. General uses `exact: true`, so it is active only on `/settings/household` itself.
+- six links: General, Locations, Shelves, Vendors, Recipes, Tags. In cloud mode a seventh, **Members**, is second (households H5b task G.9). It has `cloudOnly: true` and local mode filters it out, because local mode has no members (design, *Local mode*). Active state comes from TanStack's own match (`activeOptions` + `activeProps`), so `aria-current="page"` and the active styling cannot disagree. General uses `exact: true`, so it is active only on `/settings/household` itself.
 
 The five list pages keep their own Back button on mobile only (`lg:hidden`), because on desktop the sidebar has Back.
 
@@ -70,6 +70,14 @@ Reusable across multiple features and pages.
 **`NoLocationsEmptyState`** (`src/components/location/NoLocationsEmptyState/`) — what Pantry, Shopping, a cart and Cooking show in cloud mode when the person has no location (households H5 task F.7): "You have no locations in this household yet." (`noLocations.title`) and a **Create a location** button (`noLocations.create`). One prop, `onCreate`. Presentational, with a story and a smoke test. **`NoLocationsGate`** (`src/components/location/NoLocationsGate/`) decides when to show it and owns the Add Location dialog: it wraps the four route components, and the item page's Stock and log tabs (since the review of F.7), and renders its children unless the cloud location list has LOADED and is EMPTY. It has no story: it reads `useDataMode`, `useLocations` and `useCreateLocation`, and a story cannot `vi.mock`, so it is tested through the routes in `routes/noLocations.cloud.test.tsx`.
 
 **`NoHouseholdScreen`** (`src/components/household/NoHouseholdScreen/`) — what a cloud page shows to a person in NO household (households H5b task G.8): an `h1` "You are not in any household." (`noHousehold.title`, focused when it appears) and **Create a household**, which opens a dialog with an optional name (`noHousehold.nameLabel`, max 100). Uses `useCreateHousehold`, then `switchToHousehold(id, { to: '/' })`. Stories `Default` and `CreateDialogOpen` mount the real screen. **`NoHouseholdGate`** (`src/components/household/NoHouseholdGate/`) decides when to show it; see `routes/CLAUDE.md`, *No household*. It has no story, for the same kind of reason as `NoLocationsGate`.
+
+**The Members page components** (`src/components/household/`, households H5b task G.9). All three take their data as props; the page (`routes/settings/household/members.tsx`) reads the hooks. Names render as stored, never `capitalize`.
+
+- **`MemberList`** — one row per person: name, "(you)" on the caller's row, and the household role. `memberActions(callerRole, person)` (exported) decides the buttons: the owner gets the role control (a `Select`, `member` / `manager`) and Remove on every row but the owner's; a manager gets Remove on `member` rows only; a manager or member gets **Leave household** on their own row. Nothing while `callerRole` is `undefined` (the role is loading). Remove and Leave confirm through `DeleteButton`. **`onRemove` and `onLeave` must not reject**: `DeleteButton` has no `catch`, and its `AlertDialogAction` closes the dialog at once, so an error would only be an unhandled rejection. The page catches and shows a toast.
+- **`InviteDialog`** — mount it only while open. Step 1: the household role (`member`, plus `manager` when `canInviteManager`), then every location with a role picker on **No access** (`settings.locations.noAccess`). Rows on No access are not sent. Step 2: the link `${origin}/join/${token}` (`inviteLink`, `components/household/inviteLink.ts`) in a read-only field, **Copy link**, and the `linkNote` with the date. Copy uses `copyText` (`lib/copyText.ts`: the Clipboard API, then a hidden text area and `execCommand('copy')`). When both fail, the field's text is selected and an `<output>` says to copy it by hand.
+- **`InviteList`** — the open invites: household role, location roles (or `noLocationRoles`), who made it, until when. **Copy link** on every row; **Revoke** for the owner on every row and for a manager on `member` invites only (O15-A). An empty list says `noInvites`. An empty role list cannot tell "made with none" from "its locations were deleted since"; the server sends the same thing for both.
+
+Stories: `MemberList` (`AsOwner`, `AsManager`, `AsMember`), `InviteList` (`AsOwner`, `AsManager`, `Empty`), `InviteDialog` (`OwnerForm`, `ManagerForm`, `LinkCreated` with a `play`).
 
 **`EmptyState`** (`src/components/shared/EmptyState/index.tsx`) — centered empty state message used across all list/tab pages. Props: `title: string`, `description: string`, `className?: string`. Renders `text-center py-12 text-foreground-muted` with title on first line and smaller description below. Used in cooking page, settings recipes/vendors lists, detail items tabs, and item detail tags tab.
 

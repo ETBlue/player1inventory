@@ -1064,10 +1064,10 @@ mounts the real component.
   `HouseholdInvites` → `LOCATION`; no map entry needed, `LOCATION` refetches all); locale
   files
 
-- [ ] **Step 1: Documents**: `HouseholdMembers`, `HouseholdInvites`, `CreateInvite`,
+- [x] **Step 1: Documents**: `HouseholdMembers`, `HouseholdInvites`, `CreateInvite`,
   `RevokeInvite`, `SetHouseholdRole`, `RemoveMember`, `LeaveHousehold`. Use
   `GetHouseholdLocations` (H5a) for the invite form's location list. `pnpm codegen`.
-- [ ] **Step 2: Failing page tests**, roles set through `permissionsFor`
+- [x] **Step 2: Failing page tests**, roles set through `permissionsFor`
   (`src/test/rolePermissions.ts`, the F.5 pattern) plus `MockedProvider` results:
   - `household owner sees the role control and Remove on every other row`, not on their own.
   - `household manager sees Remove only on member rows`, no role control.
@@ -1087,20 +1087,20 @@ mounts the real component.
     mode*), and opening the URL shows nothing cloud-only (redirect to `/settings/household`
     or a plain notice; pick one and test it).
   - Every confirm (remove, leave, revoke) uses the existing confirm dialog pattern.
-- [ ] **Step 3: Implement**, reading `usePermissions()` for `canManageLocations`-like
+- [x] **Step 3: Implement**, reading `usePermissions()` for `canManageLocations`-like
   checks only where they match; add a `canManageMembers` (owner or manager) and `isOwner` to
   `Permissions` if needed, with tests in `usePermissions.test.tsx`. **H5a's review found that
   `permissionsFor` cannot tell `canEditCatalog` from `canManageLocations`** (same value).
   A new right with the same value has the same weakness; if you add one, say so in the
   report.
-- [ ] **Step 4: Stories**: `Owner`, `Manager`, `Member`, `InviteDialogOpen`, `WithOpenInvites`,
+- [x] **Step 4: Stories**: `Owner`, `Manager`, `Member`, `InviteDialogOpen`, `WithOpenInvites`,
   through `MockedProvider` (`cloudRoleStory.tsx`), each mounting the real page. Smoke tests
   wait for `!isLoading` before they assert (the F.5 present-first trap).
-- [ ] **Step 5: Mutation checks**:
+- [x] **Step 5: Mutation checks**:
   - the manager filter on Remove dropped → "manager sees Remove only on member rows" red.
   - the invite form offers `manager` to a manager → its test red.
   - Leave shown to the owner → its test red.
-- [ ] **Step 6: Gate** (incl. `build-storybook`; check the new story ids in
+- [x] **Step 6: Gate** (incl. `build-storybook`; check the new story ids in
   `apps/web/storybook-static/index.json`), commit `feat(households): members page`.
 
 **Notes from the review of G.7:**
@@ -1395,6 +1395,12 @@ Filled in from the task reports and reviews.
 | G.8 | Step 2: show the screen "when `errorCode === 'NO_HOUSEHOLD'`" | Not enough on its own. A refetch (a live event, a reconnect) first reports `loading` with NO error (measured: `networkStatus: 4`, `error: undefined`), so the page would flash and mount pages that fail. The gate keeps the screen once shown, until a household arrives |
 | G.8 | Step 3 and the G.5 note: the creator's other tabs get `LOCATION`, refetch `GetHousehold`, "and the guard then sees the new id" | The refetch is real (tested). But `HouseholdChangeGuard` does NOT clear for that new id: Step 3b removed `last-household-id`, and a tab that opened on the no-household screen has never seen an id, so the guard only stores it. Components could keep state from before. The gate now calls `switchToHousehold(id, { to: '/' })` itself when a household arrives after the screen showed. A tab that did see the old id while it was still a member gets BOTH this switch and the guard's reload; both clear the cache, and whichever navigation runs last wins |
 | G.8 | *Files*: `NoHouseholdGate/` with "stories, smoke test" | The gate has no story, like `NoLocationsGate`. It needs a router, and in Storybook its Step 3b clear (`forgetHousehold`) would empty the real cloud cache. It is tested through the real root in `routes/noHousehold.cloud.test.tsx`. The screen has the stories |
+| G.9 | Step 2: set roles "through `permissionsFor` (`src/test/rolePermissions.ts`) plus `MockedProvider` results" | The page tests set the role through `GetHousehold` in `MockedProvider` (the `cloudRoleBaseMocks` path), so the REAL `usePermissions` reads it. `permissionsFor` cannot tell `canManageMembers` from `canEditCatalog` (same value), so a page test through it would not see the page reading the wrong right. `usePermissions.test.tsx` checks the three roles give three different answers |
+| G.9 | Notes from the review of G.7, and the main session: refetch `GetHousehold` through the WATCHED query after `leaveHousehold` | Not done that way, on purpose. Through the watched query a new household id also reaches `HouseholdChangeGuard`, which reloads the members page while the leave handler calls `switchToHousehold(id, { to: '/' })`: two navigations race. A `NO_HOUSEHOLD` there makes `NoHouseholdGate` unmount the page in the middle of the handler. `useLeaveHousehold` asks with `client.query` and `fetchPolicy: 'no-cache'`, then ALWAYS loads a page: `switchToHousehold(id, { to: '/' })`, or `forgetHousehold()` and `location.replace('/')`. The gate then learns `NO_HOUSEHOLD` on that fresh load, so the trap "a failed `client.query` puts no error into the watched query" does not apply. Tested: the switch and its target, the forget, and that nothing moves on a refused leave |
+| G.9 | Step 2: "Every confirm (remove, leave, revoke) uses the existing confirm dialog pattern" | Used (`DeleteButton`), with two facts the plan did not say. Its `AlertDialogAction` closes the dialog at once, so its "Deleting..." text is never seen (a `pendingLabel` prop was tried and dropped for this reason). And it has no `catch`, so every `onDelete` the page passes catches its own error and shows the toast |
+| G.9 | Files | Also needed: `hooks/useHouseholdMembers.ts` (the seven hooks), `lib/copyText.ts` (Clipboard API and fallback), `components/household/inviteLink.ts`, and `apollo/cloudCache.ts`: `householdMembers: { merge: false }`. `HouseholdPerson` has no `id`, and without a policy Apollo warns "Cache data may be lost" when a refetch brings a shorter list (after a removal). Proved by mutation in `apollo/client.test.ts` |
+| G.9 | O17: a key `…members.noAccess` | Not added: `settings.locations.noAccess` already holds the O11 text ("No access" / 「無權限」), so the invite form reuses it |
+| G.9 | Step 2: "the invite form lists every location with No access selected" | A test that only checks the starting value passes against a form that SENDS the No access rows, because a row the person never touched is not in the form state. The create test now sets the Garage to Viewer and back to No access, and expects the exact variables. The mutation "send the No access rows" stayed green before this and is red after |
 
 ## Status
 
@@ -1485,3 +1491,33 @@ again." / 「無法建立家庭，請再試一次。」). A refused name reuses
 `settings.household.name.invalidError`. **For G.10:** the plan gives G.8 no axe scan. The
 screen and its dialog need one, light and dark, in a cloud spec (`a11y.spec.ts` does not run
 in cloud), reached by a leave or a removal.
+
+**Task G.9 is done.** The Members page `/settings/household/members` (cloud only; local mode
+goes to `/settings/household`), second in the household sidebar and the mobile accordion in
+cloud mode. `MemberList`, `InviteDialog` and `InviteList` (`components/household/`), seven
+hooks in `hooks/useHouseholdMembers.ts`, `copyText` (`lib/`), and `canManageMembers` /
+`isHouseholdOwner` in `usePermissions`. Web tests: 3079 passed / 323 files (3017 / 315 before).
+Fourteen texts are not in the O17 table, for the owner's review in the PR:
+
+| Key (`settings.household.members.*`) | English | `tw` |
+|---|---|---|
+| `description` | People in this household, and invites | 家庭成員與邀請 |
+| `roleLabel` | Household role of {{name}} | {{name}} 的家庭角色 |
+| `linkLabel` | Invite link | 邀請連結 |
+| `copyFailed` | Could not copy. Select the link and copy it yourself. | 無法複製，請自行選取連結並複製。 |
+| `noInvites` | No open invites. | 目前沒有尚未使用的邀請。 |
+| `createdBy` | Created by {{name}} | 由 {{name}} 建立 |
+| `expires` | Valid until {{date}} | 有效期限：{{date}} |
+| `noLocationRoles` | No location roles | 沒有據點角色 |
+| `revokeConfirm` | Revoke this invite? The link will stop working. | 要撤銷這個邀請嗎？連結將無法再使用。 |
+| `revoked` | Invite revoked | 已撤銷邀請 |
+| `removeLabel` | Remove {{name}} | 移除 {{name}} |
+| `alone` | You are the only person in this household. If you join another household with an invite while this one holds no data, this one is deleted. | 這個家庭只有你一個人。如果這個家庭沒有任何資料，而你用邀請加入另一個家庭，這個家庭會被刪除。 |
+| `loadError` | Could not load the members. Try again. | 無法讀取成員，請再試一次。 |
+| `error` | Could not save the change. Try again. | 無法儲存變更，請再試一次。 |
+
+Not built, on purpose: a "this location now has no organizer" note after a removal or a leave
+(the plan says "may"; the Locations page already shows **No organizer**), and a reason on an
+invite with no location roles (the server sends the same empty list for "made with none" and
+"its locations were deleted since"). **For G.10:** the axe scans of this page and its dialogs,
+light and dark, in a cloud spec.
