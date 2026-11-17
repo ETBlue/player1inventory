@@ -746,8 +746,20 @@ the claim pattern from `ensureHousehold`; the fake has no row lock; live guard. 
 **Notes from task G.4, for later tasks.**
 
 - **G.5, `createHousehold`:** take `lockUser` FIRST, as `joinHousehold` does (decision
-  T16). `removeMember`, `leaveHousehold` and `setHouseholdRole` take only `lockHousehold`
-  and never write a `User` row.
+  T16), and set BOTH `activeHouseholdId` and `householdSetupAt` (the claim, when still
+  null). `removeMember`, `leaveHousehold` and `setHouseholdRole` take only `lockHousehold`
+  and never write a `User` row themselves. But a household DELETE writes the `User` rows
+  that name it (`onDelete: SetNull`); see the G.4 rows of *What this plan got wrong*.
+- **G.5, `removeMember` and `leaveHousehold` leave `activeHouseholdId` stale.** That is by
+  T16, and `ensureHousehold` falls back to the oldest membership. Do not change it without
+  the owner: writing the `User` row there would break the lock order.
+- **G.5, the test "a removed member gets `NO_HOUSEHOLD`"** needs a person whose
+  `householdSetupAt` was NULL before they joined (a brand-new person whose first request
+  was the join). Every older fixture sets it to a date, so it cannot see a join that
+  forgot the claim. `invite-join.resolver.test.ts` has one, `NEWT`.
+- **G.9, the Members page:** an owner left alone in a household with no data (everyone
+  else left, nothing stored) will lose that household the next time they join another
+  one through an invite (T21). The page should not surprise them; say so where it fits.
 - **G.5, tests:** the household fake now has `household.deleteMany`, and
   `householdWorld` cascades it (members, invites, location roles, locations, stock rows,
   the `contents` store, and `User.activeHouseholdId` SET NULL). A test that needs
@@ -1181,11 +1193,19 @@ plan's *What this plan got wrong* and *Status*.
   household that commits between the join's conditional `deleteMany` reading a row and
   deleting it is not seen. In practice that is the same person, in another tab, at the same
   second as pressing Join. The item would be lost with the household. Stated, not fixed.
-- **Two people who joined each other's empty households at the same moment** can make
-  Postgres abort one of the two joins with a deadlock error (`40P01`): each join holds its
-  target household and deletes the other's. The other join succeeds; the aborted person
-  sees a toast, and on retry the link is invalid (the household it belonged to was
-  deleted). Very unlikely; stated.
+  (A JOIN into that household is no longer part of this race: since the review of G.4 the
+  join locks every household it may delete, so the other join waits, then finds it gone.
+  A catalog or stock write takes no household lock, so it still is.)
+- **Two joins can still deadlock** (`40P01`, Prisma `P2034`): two people who join each
+  other's empty households at the same moment, or a household delete that sets another
+  person's `User.activeHouseholdId` to null while that person's own join holds their `User`
+  lock. Since the review of G.4 the join is retried ONCE on `P2034`, so the usual answer is
+  a normal join, or `INVITE_INVALID` when the household was deleted by the other join. A
+  second `P2034` reaches the person as an error. Proved in unit tests with a fake `P2034`
+  only; no test makes Postgres deadlock.
+- **`lockUser` throws a raw `P2025` when the caller has no `User` row.** That happens only
+  if `ensureUserOrLog` failed quietly earlier in the request. The person sees an internal
+  error. Left as it is.
 - **Expiry is proved with a clock in unit tests only** (T28). No E2E test opens a link that
   is really 7 days old.
 - **The lock order is proved by the order of calls in unit tests only.** The Prisma fake has
@@ -1249,6 +1269,9 @@ Filled in from the task reports and reviews.
 | G.4 | Step 3.3: `lockHousehold(tx, invite.householdId)` | The household can be deleted after the invite is read. `lockHousehold` then throws Prisma's P2025, which would reach the person as an internal error. It is mapped to `INVITE_INVALID` (the invite went with the household); any other error is not |
 | G.4 | Step 3.9: "the shared fakes must model this `where` ... by reading the other stores" | The world owns no catalog, log or cart store. `householdWorld` got a `contents` store of plain rows (catalog rows by household, logs and carts by location, cart rows by cart), rolled back with the rest. The brief also said "the fakes model no cascade"; that could not stay true: without the member row cascade, a deleted household kept the joiner as a member, and `ensureHousehold` could still pick it. `household.deleteMany` now cascades (members, invites, location roles, locations, stock rows, `contents`, and `User.activeHouseholdId` SET NULL) |
 | G.4 | Files: no change to the existing fake tests | `householdFake.test.ts` used `members: { every }` as its example of a filter the fake does NOT model. G.4 models it, so the example is now `members: { none }` |
+| G.4 (review) | T21: "One statement means no gap between 'is it empty' and 'delete it' in our own code" | False against a concurrent JOIN. Person A owns empty HA with an open invite to B. A joins HC while B joins HA. B locks HA, adds their member row, commits. A's `DELETE` waited on HA's row lock; under READ COMMITTED Postgres re-checks only the HA row, and the `members: { every }` subquery keeps its old snapshot, so HA is deleted with B's new membership. Fixed: the join locks the target AND every household it may delete, in one call sorted by id (`lockHouseholds`). B's join then waits, and finds HA gone (`INVITE_INVALID`). A household that was not locked is never deleted |
+| G.4 (review) | T16 and root `CLAUDE.md`: "only `joinHousehold` and `createHousehold` write a `User` row; never write one after a household lock" | A household delete also writes `User` rows: `User.activeHouseholdId` is `onDelete: SetNull`, and a person who left or was removed still names the household. So a join that deletes an empty household can write another person's `User` row while it holds household locks, and two joins can deadlock. Fixed by a retry: the whole join transaction runs once more on Prisma `P2034` (`retryOnceOnConflict`). Remove and leave are unchanged (T16; G.5 and the owner decide) |
+| G.4 (review) | T22 and the G.4 brief: the join never calls `requireHousehold` | Correct, but then nothing set the first sign-in claim. A person whose FIRST request is the join kept `householdSetupAt: null`, so after a later leave or removal `ensureHousehold` made them a new household instead of `NO_HOUSEHOLD`, and a first request racing the join could make a stray empty household. The join now sets the claim right after `lockUser`. No old fixture could see this: all set `householdSetupAt` |
 | G.4 | Live: "none for the deleted HP" | Also none for a KEPT own household: nothing in it changed. The joiner's other tabs still hear the one event for the joined household, because `shouldDeliver` checks membership per event, and the joiner is a member there by then. Tested both ways |
 
 ## Status
@@ -1297,3 +1320,9 @@ under Task G.3 for what later tasks must keep.
 `requireHousehold`. The live guard holds 65 fields. Server tests: 1961 / 74 files before,
 2025 / 75 after. See the G.4 rows of *What this plan got wrong* and *Notes from task G.4*
 under Task G.4.
+
+The review of G.4 found three issues, all fixed: the join now locks every household it
+may delete (sorted by id, with the target, `lockHouseholds`); the join transaction is
+retried once on `P2034`, because a household delete writes `User` rows through SET NULL;
+and the join sets `householdSetupAt`. See the three "G.4 (review)" rows of *What this
+plan got wrong*.

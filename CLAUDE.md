@@ -155,7 +155,9 @@ that really set up that role.
 >
 > | Rule | Why |
 > |---|---|
-> | **One lock order: `lockUser` (the `User` row) first, then `lockHousehold`.** Only `joinHousehold` and `createHousehold` take `lockUser`. Never write a `User` row after a household lock unless `lockUser` is already held | two locks taken in opposite orders give a Postgres deadlock (`40P01`). Both helpers are in `lib/household.ts` |
+> | **One lock order: `lockUser` (the `User` row) first, then household rows, sorted by id (`lockHouseholds`).** Only `joinHousehold` and `createHousehold` take `lockUser`. Never write a `User` row after a household lock unless `lockUser` is already held. **One write breaks this and cannot be avoided: deleting a household also writes every `User` row that names it**, because `User.activeHouseholdId` is `onDelete: SetNull` and a person who left or was removed still names it. So `joinHousehold` retries its whole transaction ONCE on Prisma's `P2034` (`retryOnceOnConflict` in `resolvers/invite.resolver.ts`) | locks taken in opposite orders give a Postgres deadlock (`40P01`), which Prisma reports as `P2034`. The helpers are in `lib/household.ts` |
+> | **`joinHousehold` locks every household it may delete**, in the same sorted call as the household it joins | without it, a person joining the joiner's empty own household at the same moment could commit between the "is it empty" check and the delete, and lose their new membership with it |
+> | **`joinHousehold` sets the first sign-in claim** (`User.householdSetupAt`) when it is still null | a person can join before any request made them a household. Without the claim, after a later leave or removal `ensureHousehold` would make them a new household instead of answering `NO_HOUSEHOLD` |
 > | **A new model that belongs to a household or a location must be added to `emptyHouseholdWhere`** (`lib/invite.ts`) | the join deletes the joiner's own household when that `where` matches (decision T21). A household holding only data of a model the `where` does not name would be deleted |
 >
 > The fakes model that `where`: `householdFake` throws on any key of it that it does not
