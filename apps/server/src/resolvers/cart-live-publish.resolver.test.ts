@@ -175,8 +175,12 @@ function seed() {
       householdRow('hh_other', STRANGER),
     ],
     householdMembers: [
-      // ALICE's hh_home row FIRST, so `requireHousehold(ALICE)` is hh_home.
-      householdMemberRow('hh_home', ALICE, 'owner'),
+      // ALICE's hh_home row joined LATER than her hh_second row, so hh_home
+      // is NOT her oldest membership. She acts in hh_home only because it is
+      // her active household (set below; decision T14 of the H5b plan). A
+      // test that targets hh_home therefore goes red if the active
+      // household is ignored.
+      { ...householdMemberRow('hh_home', ALICE, 'owner'), joinedAt: new Date('2026-11-02T00:00:00.000Z') },
       householdMemberRow('hh_home', BOB, 'member'),
       householdMemberRow('hh_home', VERA, 'member'),
       householdMemberRow('hh_second', CAROL, 'owner'),
@@ -193,6 +197,7 @@ function seed() {
       locationMemberRow(LOC_STRANGER, STRANGER, 'organizer'),
     ],
   })
+  world.setActiveHousehold(ALICE, 'hh_home')
   vendors.state.rows = [
     { id: 'ven_1', householdId: 'hh_home', name: 'Market' },
     { id: 'ven_empty', householdId: 'hh_home', name: 'No carts' },

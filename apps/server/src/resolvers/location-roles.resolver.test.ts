@@ -69,7 +69,10 @@ function seed() {
       { householdId: 'hh-1', userId: 'manager', role: 'manager', joinedAt: T },
       { householdId: 'hh-1', userId: 'member', role: 'member', joinedAt: T },
       { householdId: 'hh-2', userId: 'stranger', role: 'owner', joinedAt: T },
-      { householdId: 'hh-2', userId: 'owner', role: 'member', joinedAt: T },
+      // The owner joined hh-2 BEFORE hh-1, so hh-2 is their oldest
+      // membership. They act in hh-1 only because it is their active
+      // household (below), so the tests go red if that is ignored.
+      { householdId: 'hh-2', userId: 'owner', role: 'member', joinedAt: new Date(T.getTime() - 86_400_000) },
     ],
     locationMembers: [
       { locationId: 'loc-k', userId: 'owner', role: 'organizer', createdAt: T },

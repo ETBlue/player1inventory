@@ -800,7 +800,10 @@ describe('createVendor: the location role decides the cart, not the vendor', () 
     // can refuse. Without the role, the role check refused first and the
     // household check was never reached.
     seed('manager', 'organizer')
-    world.households.state.householdMembers.push({ householdId: 'hh-2', userId: 'caller', role: 'member', joinedAt: T })
+    // The caller joined hh-2 BEFORE hh-1, so hh-2 is their oldest
+    // membership and hh-1 is used only because it is their active household.
+    const BEFORE_T = new Date(T.getTime() - 86_400_000)
+    world.households.state.householdMembers.push({ householdId: 'hh-2', userId: 'caller', role: 'member', joinedAt: BEFORE_T })
     world.households.state.locationMembers.push({ locationId: 'loc-s', userId: 'caller', role: 'organizer', createdAt: T })
     world.setActiveHousehold('caller', 'hh-1')
     const pinned: Context = { userId: 'caller' }
