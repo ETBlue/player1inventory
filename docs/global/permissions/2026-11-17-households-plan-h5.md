@@ -1850,8 +1850,8 @@ database, with the owner's consent: exit 0, 186 `ok —` lines, 0 `FAIL:` lines.
 household-lock lines for two concurrent `deleteLocation` calls all passed: the second call
 WAITED for the lock, then saw 0 locations (no location left is allowed since F.7). Its review
 fixes are done. Task F.8 (two people in two browsers) is done. Its review fixes and task
-F.9 (docs, deploy note, the final gate) are done. **H5a is built and waits for its PR. It is
-not merged and not deployed.** How to deploy H5a together with H3a is decided (owner,
+F.9 (docs, deploy note, the final gate) are done. **H5a is merged into `develop` (#384, merge
+`4307d30a`, 2026-11-18). It is not deployed.** How to deploy H5a together with H3a is decided (owner,
 2026-11-17, option 4): the server keeps the fields `main`'s old bundle needs for one release,
 and the server goes first (H4 runbook, section 8.3). The shim is built. H5b is next, with
-its own detailed plan.
+its own detailed plan: `2026-11-18-households-plan-h5b.md`.
