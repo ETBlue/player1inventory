@@ -1224,6 +1224,87 @@ New texts: `settings.vendors.createForbidden` "Only a household owner or manager
 - [ ] **Step 6:** add the empty screen to `e2e/tests/a11y.spec.ts`, light and dark. **Gate**,
   commit `feat(households): a household can have no locations`.
 
+**As built (2026-11-17, `827b9997`).** Tests were written first and shown red (2 server, 8
+page, 1 provider, 2 settings page, 1 story smoke test), then the code.
+
+- **Server.** `deleteLocation` has no count and no `LAST_LOCATION`. `lockHousehold` stays
+  first (T8); its comment in `lib/household.ts` now says why it stays. The
+  `location.graphql` comment and the `clearAllData` comment in `import.resolver.ts`
+  (which still makes "Home", so a cleared household can start again at once) are updated.
+- **`verify-migration.ts`.** `deleteLocationBody` lost its count and its `last-location`
+  outcome. Part 1 of `assertHouseholdLock` now proves the second of two deletes WAITS for
+  the first: `overlapTwoTransactions` asserts B is blocked by A (`pg_blocking_pids`), and
+  B counts the household's locations inside its own transaction AFTER its delete and must
+  see 0 (A's committed delete). Without the lock B would not wait and would see 1. Part 2
+  (`clearAllData` with `deleteLocation`) needed no change. **Type-checked through the root
+  `pnpm build`, NOT run.** Running it needs the owner's consent.
+- **Web.**
+  - `NoLocationsEmptyState` (`components/location/`): the text and **Create a location**.
+    One prop, `onCreate`. Story `Default` (`components-location-nolocationsemptystate--default`
+    in `storybook-static/index.json`) and a smoke test.
+  - `NoLocationsGate` (`components/location/`): wraps the four route components
+    (`PantryRoute`, `ShoppingIndexRoute`, `VendorCartRoute`, `CookingRoute`) and shows the
+    empty screen only when the CLOUD list has loaded and is empty. It owns the Add Location
+    dialog (the same texts as the settings page). The page is its child, so no page hook
+    runs while the screen shows. No story: it reads three hooks and a story cannot mock
+    them; it is tested through the routes.
+  - `ActiveLocationProvider`: a loaded, EMPTY cloud list removes `active-location-id:cloud`
+    and sets the id back to the `'local'` sentinel. Local mode keeps the old rule.
+  - The settings page lost its `LAST_LOCATION` text (`settings.locations.deleteLastError`,
+    both languages). An older server that still refuses gets the general `deleteError`.
+- **New texts** (O11 and the owner answers):
+
+  | Key | English | `tw` |
+  |---|---|---|
+  | `noLocations.title` | You have no locations in this household yet. | 你在這個家庭還沒有據點。 |
+  | `noLocations.create` | Create a location | 建立據點 |
+
+  Removed: `settings.locations.deleteLastError`.
+- **Tests.** New: `routes/noLocations.cloud.test.tsx` (9: the empty screen and the dialog on
+  Pantry, Shopping, a cart and Cooking, plus a one-location control), the
+  `NoLocationsEmptyState` smoke test (1). Changed: `location.resolver.test.ts` (the
+  last-location test now expects success; the lock test no longer spies on a count),
+  `location-live-publish.resolver.test.ts` (one `LOCATION` event),
+  `useActiveLocation.test.tsx` (the empty-list test inverted, plus a local control),
+  `settings/household/locations/index.cloud.test.tsx` (delete the last location; an older
+  server's `LAST_LOCATION` gets the general text), `graphqlErrorCode.test.ts` (its sample
+  code is `CART_CHANGED` now). E2E: `settings/locations.spec.ts`'s last-location test is
+  now `user can delete the last location and sees the empty pantry` (it also creates one
+  from the empty screen), plus two cloud axe scans of the empty screen, light and dark.
+- **Mutations, each copied aside and restored from the copy (`diff -q` clean):**
+
+  | # | Mutation | Red |
+  |---|---|---|
+  | M1 | the count and `LAST_LOCATION` put back in `deleteLocation` (plan Step 5) | both server last-location tests |
+  | M2 | `NoLocationsGate` never shows the empty screen (plan Step 5) | all 8 page tests |
+  | M3 | the provider leaves an empty cloud list alone | `user whose cloud list comes back empty has the stale active location cleared…` |
+  | M4 | the provider clears in local mode too | `user in local mode whose list is empty keeps the stored id…` |
+
+  Guard, green either way by design: the one-location control in `noLocations.cloud.test.tsx`.
+- **Gate** (Node 22.17.1): root `pnpm lint`, `pnpm build`, `build-storybook`, `pnpm check`
+  and the `TS6385` grep clean. `pnpm test`: web **2900 / 302**, server **1816 / 70**,
+  `scripts/spec` **70** (F.6 ended at 2875 / 298 and 1813 / 70; the F.6 review fixes and
+  F.7 together added 25 web tests and 3 server tests).
+- **E2E** (ports 4001, 5174-5176 free first). `local`: `settings/locations`,
+  `location-switcher`, `shopping`, `cooking`, `shelves`, `vendors-group`, `recipes-group`,
+  `location-not-stocked-here`, `unified-item-search`, `item-list-state-restore`,
+  `item-management`, `item-stock-input`, `item-stock-pager`, `settings/vendors` and
+  `a11y.spec.ts`: **142 passed, 10 skipped** (2.9m, load 15 at the start from other
+  sessions, 3.4 at the end). `cloud`: the same files without `a11y`, plus `shared-cart`,
+  `live-cart`, `live-pantry` and `cloud-roles`: **94 passed, 6 skipped, 1 failed** (19.1m,
+  load 2.5 at the end). The new last-location test and both axe scans passed.
+- **The one cloud failure, and what it showed.** `item-stock-input.spec.ts:369` (the decimal
+  test) read `Expected "2.5" / Received "0"`. Its call log shows the Unpacked input
+  `readonly` for 3 polls, then editable: the test typed while the form was still read only.
+  Since F.6 the stock form is `readonly` until `usePermissions` knows the roles, and in cloud
+  that waits for `GetHousehold` too. `test-results/` was copied aside before any re-run. Run
+  alone at load 2.5 it passed (3 passed). So it is a timing race in the test, but it points at
+  a real product gap (see *Known gaps*). `StockFormPage.navigateTo` now waits until the
+  Packed field is editable; then `item-stock-input.spec.ts` gave 3 passed in `cloud` and 3
+  in `local`. Of the three proofs for "not a code regression": it passed alone (yes); the
+  error was the read-only state, not a wrong value (yes, from the call log); the failing set
+  moving between runs was not measured, because the whole cloud set was not run twice.
+
 ## Task F.8 — two browsers, two people: E2E
 
 **Files:**
@@ -1399,6 +1480,18 @@ and one test-only override in shipped code.
 - **`vendorCart` for a viewer returns a cart that is not saved.** If a participant creates it
   later, the viewer's cached cart has the same id, so nothing breaks; this is noted because a
   reader may expect every returned cart to exist.
+- **The empty screen covers four routes only** (F.7): Pantry, Shopping, a cart and Cooking.
+  Other location-scoped pages (the item page's Stock tab, an item's history) are reached
+  from those, so a person with no location rarely gets there; if they do, those pages still
+  wait for a location the way they did before F.7.
+- **The Stock form is read only for a moment on every cloud load** (found in F.7's E2E run,
+  caused by F.6). `usePermissions` answers `false` until BOTH `GetHousehold` and
+  `GetLocations` have arrived, so a person who types at once loses the keys. The location
+  right does not need the household role; `canEditLocation` could read only `myRole`. Not
+  changed here: it is F.6's rule (T9), and the E2E page object now waits instead.
+- **A failed create from the empty screen shows no message** (F.7). `NoLocationsGate`
+  copies the settings page's Add dialog, which has no `onError` either. Offline,
+  `offlineWriteLink` shows its own toast.
 - **`assertHouseholdLock` is rewritten but not run** until the owner runs `verify-migration.ts`
   against the test database.
 - **A removed member's open tab is not told.** Live events stop reaching them
@@ -1480,6 +1573,15 @@ Filled in from the task reports and reviews.
 | F.6 | Step 1: tests in cloud mode | The page tests keep local data and set the role through `permissionsFor` (the F.5 pattern, `asLocationRole`). Only the bootstrap test runs in cloud, through `MockedProvider` |
 | F.6 | (nothing about the search tail's lower section) | `ItemSearchTail` shows "not stocked here" only with its action (`hasVisibleTail`). With no Add to location, a viewer's search does not list items stocked elsewhere at all |
 | F.6 | (nothing about existing tests) | `stock.test.tsx`'s own graphql factory had no `useGetHouseholdQuery` (31 tests failed), and `stock.stories.test.tsx`'s fixture locations had no `myRole` |
+| F.6 review | (nothing about `createVendor`) | `createVendor` asked location role `participant` for the cart it pre-creates, so a household manager who is a viewer of the active location could not create a vendor at all (Review Focus case 4), and `NewVendorDialog` and the item Vendors tab showed nothing. It now asks `viewer` and writes the cart only for `participant` or higher |
+| F.6 | "The ref is set only when the call is made, so a role that rises later bootstraps then" | True, but with the switches A (participant), B (viewer), A the ref stayed at A, so A was not bootstrapped again. And the "role rises" rule had no test. A viewer location now moves the ref to a marker; both cases are tested |
+| F.7 | Files: `lib/graphqlErrorCode.ts` holds a `LAST_LOCATION` entry and a message key | It held only an example in a comment. The mapping and the `deleteLastError` key were in `routes/settings/household/locations/index.tsx` and the two locale files |
+| F.7 | Step 6: add the empty screen to `a11y.spec.ts`, light and dark | `a11y.spec.ts` runs in `local` and `pwa`, where the location list is never empty. The two scans went into `settings/locations.spec.ts`, in cloud (the F.4 pattern) |
+| F.7 | Pantry, Shopping and Cooking show the empty screen | The cart page (`/shopping/$vendorId`) waited forever too. It is wrapped as well |
+| F.7 | Change the files `routes/index.tsx`, `routes/shopping/index.tsx`, `routes/cooking.tsx` | Each route got a small wrapper component (`NoLocationsGate`), not a branch inside the page: inside the page every hook would still run for a location that does not exist. The gate is a component of its own, not part of `NoLocationsEmptyState`, so the empty state keeps a plain story |
+| F.7 | Files: `hooks/useLocations.test.tsx` gets the provider test | The provider tests live in `hooks/useActiveLocation.test.tsx`; `useLocations.test.tsx` only had a stale comment |
+| F.7 | (nothing about other mentions of `LAST_LOCATION`) | Also stale: `packages/types/src/index.ts`, `lib/household.ts` (`lockHousehold`'s reason), the `clearAllData` comment, `LocationList.stories.tsx`, `routes/settings/CLAUDE.md`, `locations/CLAUDE.md` |
+| F.7 | The `deleteHomeIfUnused` comment changes | Its check ("the import created at least one location") is kept on purpose, now for a new reason: a `clear` import of a backup with no locations must not leave the household with none |
 
 ## Status
 
@@ -1488,4 +1590,6 @@ Filled in from the task reports and reviews.
 `usePermissions`, with review fixes. Task F.4 (the View only badge) is done (`e5669669`).
 Task F.4's review fixes are done (`0a6321a2`, `4cab8303`, `fe085176`). Task F.5 (a household
 member sees the catalog read-only) is done, with review fixes. Task F.6 (a location viewer
-sees the location read-only) is done. Task F.7 is next.
+sees the location read-only) is done, with review fixes. Task F.7 (a household can have no
+locations) is done; its `verify-migration.ts` rewrite is type-checked, not run. Task F.8 is
+next.
