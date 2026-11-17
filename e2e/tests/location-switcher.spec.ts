@@ -465,11 +465,12 @@ test.describe('cloud: View only on the switcher (households H5 task F.4)', () =>
   /** The sidebar trigger on the pantry, with Home active and its badge shown. */
   async function viewerTrigger(page: Page) {
     await page.goto('/')
-    // The accessible name says "view only" (locationSwitcher.triggerLabelViewOnly)
+    // The accessible name holds the visible text "Home View only", in order
+    // (locationSwitcher.triggerLabelViewOnly, WCAG 2.5.3 Label in Name)
     const trigger = page
       .getByRole('navigation', { name: 'Sidebar navigation' })
       .getByRole('button', {
-        name: 'Switch location (current: Home, view only)',
+        name: 'Switch location (current: Home View only)',
       })
     await expect(trigger).toBeVisible()
     await expect(trigger).toContainText('View only')

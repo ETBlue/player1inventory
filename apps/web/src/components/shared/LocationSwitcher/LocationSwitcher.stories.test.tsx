@@ -152,7 +152,7 @@ describe('LocationSwitcher cloud stories smoke tests', () => {
     render(<CloudViewOnly />)
 
     const trigger = await screen.findByRole('button', {
-      name: 'Switch location (current: Kitchen, view only)',
+      name: 'Switch location (current: Kitchen View only)',
     })
     expect(within(trigger).getByText('View only')).toBeInTheDocument()
 
@@ -169,7 +169,7 @@ describe('LocationSwitcher cloud stories smoke tests', () => {
     render(<CloudViewOnlyCompact />)
 
     const trigger = await screen.findByRole('button', {
-      name: 'Switch location (current: Kitchen, view only)',
+      name: 'Switch location (current: Kitchen View only)',
     })
     expect(trigger).toHaveTextContent('K')
   })

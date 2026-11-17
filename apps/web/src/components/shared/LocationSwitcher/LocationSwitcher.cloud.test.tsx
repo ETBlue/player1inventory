@@ -12,6 +12,7 @@ import {
   ActiveLocationProvider,
   activeLocationStorageKey,
 } from '@/hooks/useActiveLocation'
+import i18n from '@/i18n'
 import { LocationSwitcher } from './LocationSwitcher'
 
 // The location switcher in CLOUD mode: the View only badge (households H5
@@ -166,9 +167,10 @@ describe('LocationSwitcher in cloud — View only (households H5 task F.4)', () 
     // Then the trigger shows the badge, and says it to a screen reader
     const button = await trigger('Cloud Kitchen')
     expect(button).toHaveAccessibleName(
-      'Switch location (current: Cloud Kitchen, view only)',
+      'Switch location (current: Cloud Kitchen View only)',
     )
-    expect(within(button).getByText('View only')).toBeInTheDocument()
+    // The badge is a <span>: a <div> inside a <button> is not valid HTML
+    expect(within(button).getByText('View only').tagName).toBe('SPAN')
 
     // And in the menu only the Kitchen row has the badge, and its name
     // reads "Cloud Kitchen View only", not "Cloud KitchenView only"
@@ -177,8 +179,8 @@ describe('LocationSwitcher in cloud — View only (households H5 task F.4)', () 
       await screen.findByRole('menuitem', { name: 'Cloud Kitchen View only' }),
     ).toBeInTheDocument()
     expect(
-      within(await menuRow('Cloud Kitchen')).getByText('View only'),
-    ).toBeInTheDocument()
+      within(await menuRow('Cloud Kitchen')).getByText('View only').tagName,
+    ).toBe('SPAN')
     for (const name of ['Cloud Garage', 'Cloud Pantry']) {
       expect(
         within(await menuRow(name)).queryByText('View only'),
@@ -216,6 +218,27 @@ describe('LocationSwitcher in cloud — View only (households H5 task F.4)', () 
     ).toBeInTheDocument()
   })
 
+  it('user sees the trigger named with its visible words, in order, in both languages', () => {
+    // WCAG 2.5.3 Label in Name: the full trigger shows "<name> View only",
+    // so its accessible name must contain that text, in that order. A
+    // person using voice control says what they see.
+    const en = i18n.getFixedT('en')
+    const tw = i18n.getFixedT('tw')
+    expect(
+      en('locationSwitcher.triggerLabelViewOnly', { name: 'Cloud Kitchen' }),
+    ).toContain(`Cloud Kitchen ${en('locationSwitcher.viewOnly')}`)
+    expect(
+      tw('locationSwitcher.triggerLabelViewOnly', { name: 'Cloud Kitchen' }),
+    ).toContain(`Cloud Kitchen ${tw('locationSwitcher.viewOnly')}`)
+    // And the plain trigger shows only the name, which its label contains
+    expect(
+      en('locationSwitcher.triggerLabel', { name: 'Cloud Kitchen' }),
+    ).toContain('Cloud Kitchen')
+    expect(
+      tw('locationSwitcher.triggerLabel', { name: 'Cloud Kitchen' }),
+    ).toContain('Cloud Kitchen')
+  })
+
   it('location participant sees no View only badge', async () => {
     activate(PANTRY)
     renderSwitcher('full')
@@ -230,7 +253,7 @@ describe('LocationSwitcher in cloud — View only (households H5 task F.4)', () 
 
     const button = await trigger('Cloud Kitchen')
     expect(button).toHaveAccessibleName(
-      'Switch location (current: Cloud Kitchen, view only)',
+      'Switch location (current: Cloud Kitchen View only)',
     )
     expect(
       within(button).getByTestId('location-switcher-view-only'),

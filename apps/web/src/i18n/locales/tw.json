@@ -892,7 +892,7 @@
   "locationSwitcher": {
     "triggerLabel": "切換據點（目前：{{name}}）",
     "manage": "管理據點",
-    "triggerLabelViewOnly": "切換據點（目前：{{name}}，僅檢視）",
+    "triggerLabelViewOnly": "切換據點（目前：{{name}} 僅檢視）",
     "viewOnly": "僅檢視"
   },
   "roles": {

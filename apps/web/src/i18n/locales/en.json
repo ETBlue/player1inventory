@@ -892,7 +892,7 @@
   "locationSwitcher": {
     "triggerLabel": "Switch location (current: {{name}})",
     "manage": "Manage locations",
-    "triggerLabelViewOnly": "Switch location (current: {{name}}, view only)",
+    "triggerLabelViewOnly": "Switch location (current: {{name}} View only)",
     "viewOnly": "View only"
   },
   "roles": {

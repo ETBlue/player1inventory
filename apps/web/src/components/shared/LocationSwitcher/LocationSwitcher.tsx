@@ -1,7 +1,7 @@
 import { useNavigate } from '@tanstack/react-router'
 import { Check, ChevronDown, Eye, MapPin, Pencil } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Badge } from '@/components/ui/badge'
+import { badgeVariants } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -46,7 +46,9 @@ interface LocationSwitcherProps {
  * caller's role is `viewer` carries a "View only" badge: on its dropdown row,
  * and on the trigger while it is the active location (the `full` trigger
  * shows the badge; the `compact` one has no room, so it shows a small eye).
- * Both triggers also say it in their accessible name. The role comes from
+ * Both triggers also say it in their accessible name, which holds the
+ * visible text "<name> View only" in that order (WCAG 2.5.3 Label in Name,
+ * since the review of task F.4). The role comes from
  * `usePermissions().roleAt`, so local mode (every row `organizer`) and a
  * role still loading (`null`) show no badge. A badge only tells; the server
  * refuses a viewer's writes either way.
@@ -152,7 +154,12 @@ export function LocationSwitcher({
 
 /**
  * "View only" (owner answer O11: 「僅檢視」). `normal-case` overrides the
- * Badge's built-in `capitalize`, so the text reads as written.
+ * badge's built-in `capitalize`, so the text reads as written.
+ *
+ * A `<span>` with the badge classes, not `<Badge>`: `Badge` renders a `<div>`,
+ * and a `<div>` inside the trigger `<button>` is not valid HTML (a button may
+ * hold only phrasing content). `Badge` has no `asChild`. The classes are the
+ * same, and `inline-flex` makes a span lay out like the div did.
  *
  * `bg-background-surface`: the `neutral-outline` variant has no background of
  * its own. On the open menu axe then measured the text against a colour from
@@ -162,11 +169,14 @@ export function LocationSwitcher({
 function ViewOnlyBadge({ className }: { className?: string }) {
   const { t } = useTranslation()
   return (
-    <Badge
-      variant="neutral-outline"
-      className={cn('normal-case bg-background-surface', className)}
+    <span
+      className={cn(
+        badgeVariants({ variant: 'neutral-outline' }),
+        'normal-case bg-background-surface',
+        className,
+      )}
     >
       {t('locationSwitcher.viewOnly')}
-    </Badge>
+    </span>
   )
 }
