@@ -1,3 +1,4 @@
+import { getApolloContext } from '@apollo/client/react'
 import {
   MockedProvider,
   type MockedProviderProps,
@@ -5,6 +6,7 @@ import {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
+import { useContext } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import {
@@ -80,9 +82,18 @@ function clearStoredActiveLocationIds() {
   localStorage.removeItem(activeLocationStorageKey('cloud'))
 }
 
-function Consumer({ switchTo }: { switchTo: string }) {
+function Consumer({
+  switchTo,
+  switchBackTo,
+}: {
+  switchTo: string
+  switchBackTo?: string | undefined
+}) {
   const { activeLocationId, setActiveLocationId, activeLocation } =
     useActiveLocation()
+  // The real client from MockedProvider. `useApolloClient` is a stub in
+  // src/test/setup.ts, so it cannot refetch.
+  const client = useContext(getApolloContext()).client
   return (
     <div>
       <span data-testid="active-location-id">{activeLocationId}</span>
@@ -92,6 +103,17 @@ function Consumer({ switchTo }: { switchTo: string }) {
       <button type="button" onClick={() => setActiveLocationId(switchTo)}>
         switch
       </button>
+      <button
+        type="button"
+        onClick={() => client?.refetchQueries({ include: 'active' })}
+      >
+        refetch
+      </button>
+      {switchBackTo && (
+        <button type="button" onClick={() => setActiveLocationId(switchBackTo)}>
+          switch back
+        </button>
+      )}
     </div>
   )
 }
@@ -99,6 +121,7 @@ function Consumer({ switchTo }: { switchTo: string }) {
 function renderProvider(
   mocks: MockedProviderProps['mocks'] = [],
   switchTo = 'loc-2',
+  switchBackTo?: string,
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -110,7 +133,7 @@ function renderProvider(
     <MockedProvider mocks={mocks} mockLinkDefaultOptions={{ delay: 0 }}>
       <QueryClientProvider client={queryClient}>
         <ActiveLocationProvider>
-          <Consumer switchTo={switchTo} />
+          <Consumer switchTo={switchTo} switchBackTo={switchBackTo} />
         </ActiveLocationProvider>
       </QueryClientProvider>
     </MockedProvider>
@@ -314,6 +337,74 @@ describe('ActiveLocationProvider — cloud cart bootstrap follows the location r
       'cloud bootstrapCarts failed',
       expect.anything(),
     )
+  })
+
+  it('location participant who passes through a viewer location gets a second bootstrap on the way back', async () => {
+    // Given the app opens at the participant location (one bootstrap)
+    localStorage.setItem(activeLocationStorageKey('cloud'), PARTICIPANT_ID)
+    const toViewer = vi.fn(() => ({ data: { bootstrapCarts: [] } }))
+    const toParticipant = vi.fn(() => ({ data: { bootstrapCarts: [] } }))
+    const user = userEvent.setup()
+    renderProvider(
+      [
+        roleLocationsMock,
+        bootstrapMock(VIEWER_ID, toViewer),
+        bootstrapMock(PARTICIPANT_ID, toParticipant),
+      ],
+      VIEWER_ID,
+      PARTICIPANT_ID,
+    )
+    await waitFor(() => expect(toParticipant).toHaveBeenCalledTimes(1))
+
+    // When they switch to the viewer location, and back
+    await user.click(screen.getByRole('button', { name: 'switch' }))
+    await waitFor(() => expect(activeId()).toBe(VIEWER_ID))
+    await user.click(screen.getByRole('button', { name: 'switch back' }))
+    await waitFor(() => expect(activeId()).toBe(PARTICIPANT_ID))
+
+    // Then the participant location is bootstrapped again, the same as after
+    // any other switch, and the viewer location never is. Before the fix the
+    // ref still said "participant location done", so the second call never
+    // came: a vendor made at another location meanwhile had no cart here.
+    await waitFor(() => expect(toParticipant).toHaveBeenCalledTimes(2))
+    expect(toViewer).not.toHaveBeenCalled()
+  })
+
+  it('location viewer whose role rises to participant gets the carts bootstrapped then', async () => {
+    // Given the caller is a viewer of the only location, and the next read of
+    // the list says participant (someone raised the role meanwhile)
+    localStorage.setItem(activeLocationStorageKey('cloud'), VIEWER_ID)
+    let reads = 0
+    const risingMock = {
+      request: { query: GetLocationsDocument },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+      result: () => {
+        reads++
+        return {
+          data: {
+            locations: [
+              {
+                ...cloudLocation(VIEWER_ID, 'Shed', 0),
+                myRole: (reads === 1 ? 'viewer' : 'participant') as
+                  | 'viewer'
+                  | 'participant',
+              },
+            ],
+          },
+        }
+      },
+    }
+    const toShed = vi.fn(() => ({ data: { bootstrapCarts: [] } }))
+    const user = userEvent.setup()
+    renderProvider([risingMock, bootstrapMock(VIEWER_ID, toShed)])
+    await waitFor(() => expect(activeId()).toBe(VIEWER_ID))
+    expect(toShed).not.toHaveBeenCalled()
+
+    // When the list is read again
+    await user.click(screen.getByRole('button', { name: 'refetch' }))
+
+    // Then the location is bootstrapped, now that the caller may write there
+    await waitFor(() => expect(toShed).toHaveBeenCalledTimes(1))
   })
 
   it('location participant opening the app gets the carts bootstrapped', async () => {

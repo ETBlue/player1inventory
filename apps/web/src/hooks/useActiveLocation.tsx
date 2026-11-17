@@ -273,10 +273,19 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
     // The validation effect above corrects the id, and this effect then runs
     // again with a real one.
     if (!activeLocationIsKnown) return
-    // Not for a viewer. `bootstrappedRef` is not set, so if the role rises
-    // to participant later, the effect runs again and bootstraps then.
-    if (!activeLocationIsWritable) return
     const key = `${mode}:${activeLocationId}`
+    // Not for a viewer. The ref still MOVES, to a viewer marker that is not
+    // `key`, with no call. So:
+    // - a switch back to the location before (participant, then viewer,
+    //   then the first again) bootstraps again, like any other switch. Until
+    //   the review of H5 task F.6 the ref stayed at the first location and
+    //   the second bootstrap never came;
+    // - if the role here rises to participant later, `key` is not the marker,
+    //   so the effect bootstraps then.
+    if (!activeLocationIsWritable) {
+      bootstrappedRef.current = `viewer:${key}`
+      return
+    }
     if (bootstrappedRef.current === key) return
     bootstrappedRef.current = key
     cloudBootstrapCarts({
