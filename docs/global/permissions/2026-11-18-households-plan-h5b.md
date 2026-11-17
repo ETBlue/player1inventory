@@ -867,13 +867,38 @@ passes); reuse `createFirstLocation`; live guard count is 69 after this task (me
 
 - **G.8, `createHousehold`:** a refusal for a person who is in a household is
   `BAD_USER_INPUT` with `extensions.reason` `ALREADY_IN_HOUSEHOLD`. A blank or too long name
-  is `BAD_USER_INPUT` with no reason (the same check as `renameHousehold`). `name: null`
-  gives the first sign-in name in the app language (`x-app-language`). After success the
-  household id changes, so G.7's guard clears the cache and reloads.
+  is `BAD_USER_INPUT` with no reason (the same check as `renameHousehold`). For the default
+  name send `name: null` (or leave it out), NEVER `""`: an empty string is a blank name and
+  is refused. `null` gives the first sign-in name in the app language (`x-app-language`).
+- **G.8, after a create:** the creating tab gets no live event back (the server never sends
+  a tab its own change), so it calls `switchToHousehold(id, { to: '/' })` itself. That is
+  what Step 3 and Step 3b of G.8 already say. The creator's OTHER tabs do get the
+  `LOCATION` event (`shouldDeliver` passes: they are a member of the new household; tested).
+  In those tabs `GetHousehold` last answered `NO_HOUSEHOLD`. By Apollo's rule an
+  ObservableQuery with observers stays "active" after an error, so `refetchQueries({ include:
+  'active' })` should refetch it, and the guard then sees the new id. This is read from
+  Apollo's rule, NOT tested: G.8 should test that a failed `GetHousehold` is refetched on
+  `LOCATION`.
 - **G.9, the list:** `householdMembers` answers every role, so the page needs no role check
   to show it. `isMe` marks the caller's row. There is NO e-mail field.
 - **G.9, set role:** asking for the role the person already has returns their row and
   publishes nothing. Treat it as success.
+- **G.9, the cache:** `HouseholdPerson` has no `id`, so Apollo does not normalise it. A
+  `setHouseholdRole` answer does not update the list by itself: refetch `HouseholdMembers`
+  after set-role and after remove (the live event does not come back to the acting tab). If
+  you add `keyFields: ['userId']` for it instead, note that the same person has one
+  `HouseholdPerson` per household; after H7's switch two households' lists would share
+  entries with different roles, so the key would then need the household too.
+- **G.9, which buttons:** Leave only on the row with `isMe` and a role that is not
+  `owner`. Remove: the owner on every row but their own; a manager only on `member` rows; a
+  member on none. The role control only for the owner, on rows that are not the owner's.
+  The server refuses everything else anyway.
+- **G.9, no organizer:** removing or leaving can leave a location with no organizer
+  (`Location.hasOrganizer` turns `false`). The page may say so after the action.
+- **G.10:** these are the first real-SQL runs of the four mutations and of the `tx` read
+  inside `requireHouseholdRole`. A removed person's open browser gets no live event, so
+  reload it before asserting what it shows. For the `NO_HOUSEHOLD` path use a person whose
+  `householdSetupAt` is set (a person never set up gets a new household instead).
 - **G.9, an owner left alone:** the server gives no "is this household empty" field. The
   page can see "I am the owner and the only member" from `householdMembers` (one row,
   `isMe`, `owner`). It cannot see whether the household holds data. So the page can only
@@ -1261,6 +1286,10 @@ plan's *What this plan got wrong* and *Status*.
   a normal join, or `INVITE_INVALID` when the household was deleted by the other join. A
   second `P2034` reaches the person as an error. Proved in unit tests with a fake `P2034`
   only; no test makes Postgres deadlock.
+- **`deleteLocation` and `clearAllData` can throw a raw `P2025`** when their household was
+  deleted after `requireHousehold` found it, because `lockHousehold` is an `update`. The same
+  shape G.5's review fixed for set-role, remove and leave. Rare (the owner's own join in
+  another tab at the same moment). Left as it is.
 - **`lockUser` throws a raw `P2025` when the caller has no `User` row.** That happens only
   if `ensureUserOrLog` failed quietly earlier in the request. The person sees an internal
   error. Left as it is.
@@ -1341,12 +1370,14 @@ Filled in from the task reports and reviews.
 | G.4 (review) | T16 and root `CLAUDE.md`: "only `joinHousehold` and `createHousehold` write a `User` row; never write one after a household lock" | A household delete also writes `User` rows: `User.activeHouseholdId` is `onDelete: SetNull`, and a person who left or was removed still names the household. So a join that deletes an empty household can write another person's `User` row while it holds household locks, and two joins can deadlock. Fixed by a retry: the whole join transaction runs once more on Prisma `P2034` (`retryOnceOnConflict`). Remove and leave are unchanged (T16; G.5 and the owner decide) |
 | G.4 (review) | T22 and the G.4 brief: the join never calls `requireHousehold` | Correct, but then nothing set the first sign-in claim. A person whose FIRST request is the join kept `householdSetupAt: null`, so after a later leave or removal `ensureHousehold` made them a new household instead of `NO_HOUSEHOLD`, and a first request racing the join could make a stray empty household. The join now sets the claim right after `lockUser`. No old fixture could see this: all set `householdSetupAt` |
 | G.4 | Live: "none for the deleted HP" | Also none for a KEPT own household: nothing in it changed. The joiner's other tabs still hear the one event for the joined household, because `shouldDeliver` checks membership per event, and the joiner is a member there by then. Tested both ways |
-| G.5 | Step 3: "read the caller's and the target's member rows; use `requireHouseholdRole` for the caller", inside the transaction after `lockHousehold` | `requireHouseholdRole` read through the GLOBAL `prisma`. Inside an interactive transaction that needs a second pool connection while the transaction holds the first; a small pool would make them wait until a timeout. No resolver did that before. It now takes an optional fourth argument, the client to read with, and the three resolvers pass `tx`. The Prisma fake gives `tx` and `prisma` as the same object, so no resolver test can tell them apart; `authz.test.ts` pins the argument itself |
+| G.5 | Step 3: "read the caller's and the target's member rows; use `requireHouseholdRole` for the caller", inside the transaction after `lockHousehold` | `requireHouseholdRole` read through the GLOBAL `prisma`. Inside an interactive transaction that needs a second pool connection while the transaction holds the first; a small pool would make them wait until a timeout. No resolver did that before. It now takes an optional fourth argument, the client to read with, and the three resolvers pass `tx`. `authz.test.ts` pins the argument itself. (This row first said the fake gives `tx` and `prisma` as "the same object", so no resolver test could tell them apart. That was wrong: they are different objects that SHARE the model objects. The review of G.5 gave the test file's `prisma` mock its own copy of each model object over the same stores; a spy on `prisma.householdMember.findUnique` then sees only reads outside a transaction. Dropping `tx` from the three calls turns 4 tests red) |
 | G.5 | Step 3, `createHousehold`: `lockUser`, the membership count, the writes, `activeHouseholdId` | Also the first sign-in claim (`householdSetupAt`) when still null, as the G.4 notes say. Without it a person never set up who creates a household and later leaves would get a new household instead of `NO_HOUSEHOLD`. Test "a person never set up can create one, and the first sign-in claim is set" |
 | G.5 | Step 1: "two creates at once make one household ... the fake proves the check comes after the lock" | It does not. The queue (`serialTransactions(true)`) runs the two transactions one after the other with or without `lockUser`, so that test stays green when `lockUser` is deleted. The ORDER test ("the user lock is taken before the membership is read") is the one that goes red. Both are kept |
 | G.5 | Step 3 named no lock-order test for `setHouseholdRole`, `removeMember` and `leaveHousehold` | Added: for each, the household lock is the first call, before any role read. Moving `lockHousehold` after `requireHouseholdRole` turns each one red |
 | G.5 | Files: `household.resolver.test.ts` modified | Not needed. `lib/authz.ts` and `lib/authz.test.ts` were (the row above) |
-| G.5 | The plan did not say what `setHouseholdRole` does for the role the person already has | It writes nothing, publishes nothing, and returns the person's row (the live rule: a write that changes nothing sends nothing). Also not said: a manager who removes themself. It is `BAD_USER_INPUT`, the same as the owner; a manager or member uses `leaveHousehold` |
+| G.5 | The plan did not say what `setHouseholdRole` does for the role the person already has | It changes no member row, publishes nothing, and returns the person's row (the live rule: a change that changes nothing sends nothing). The household lock's `UPDATE` still runs, so `Household.updatedAt` moves; the lock must come before the role read. (The first wording said "writes nothing", which was not true.) Also not said: a manager who removes themself. It is `BAD_USER_INPUT`, the same as the owner; a manager or member uses `leaveHousehold` |
+| G.5 (review) | Step 3: "`lockHousehold` first" for set-role, remove and leave | `lockHousehold` is an `update`. When the household is deleted after `requireHousehold` found it (the owner's join in another tab deletes it as empty), it throws Prisma's `P2025`, an internal error. The three now lock with `lockHouseholds` and answer `FORBIDDEN` when the row is gone (`lockOrForbid`). `deleteLocation` and `clearAllData` have the same shape and were left alone (*Known gaps*) |
+| G.5 (review) | The docs commit `6e0da9ac` | Its subject says "record task g.7"; it records task G.5. History was not rewritten |
 | G.6 | Files: `e2eCleanup.ts`, its test, `purge-coverage.test.ts`, `e2eHouseholds.ts`, `cleanup-endpoint.spec.ts`, `cloudUsers.ts` | Not all. `e2e/helpers/cloudTeardown.ts` keeps its own copy of `CLEANUP_MODEL_KEYS`, and `e2eCleanup.test.ts` fails when the two lists differ, so it needed `householdInvites` too. Three more comments still said "one household per person" or "at random" and were rewritten: the `addHouseholdMember` comment in `cloudUsers.ts`, the test at `e2eHouseholds.test.ts:332`, and step 2 of the 409 order in `e2e/CLAUDE.md`. The cleanup counts in root `CLAUDE.md` and `e2e/CLAUDE.md` (18) are now 19 |
 | G.6 | Step 2: "seed one invite and assert its count is at least 1" | Done, and the spec also reads the invite back BEFORE the cleanup with `householdInvites`. It cannot read it back after: like `locations`, that query runs first sign-in and would answer for a brand-new household. The `createdById` half of the filter (an invite the user made in a household they do not own) has no real-SQL check; only the unit test pins it |
 | G.7 | *Facts*: "`PostLoginMigrationDialog` opens only when `migration-strategy` is set"; Step 6: the local "Sign in to join" "must NOT set `migration-strategy`" | Not enough. `usePostLoginMigration` also PROMPTS ("Copy local data?") whenever local items exist and `migration-prompted` is unset, with or without a strategy. A local visitor with data would be asked to copy it right after sign-in, on the join page, while `join.needsCloud` says it is not copied. "Sign in to join" now sets `migration-prompted` too, as "Switch without copying" in `DataModeCard` does. The test asserts both keys |
@@ -1416,10 +1447,10 @@ plan got wrong*.
 
 **Task G.5 is done.** `householdMembers`, `setHouseholdRole`, `removeMember`,
 `leaveHousehold` and `createHousehold` in `resolvers/household.resolver.ts`, tested in
-`household-members.resolver.test.ts` (50 tests). `createHouseholdFor` (`lib/household.ts`)
+`household-members.resolver.test.ts` (50 tests; 60 after the review fixes). `createHouseholdFor` (`lib/household.ts`)
 is shared by first sign-in and `createHousehold`. `requireHouseholdRole` takes an optional
 client, so the three member writes read the caller's role through `tx`. The live guard
-holds 69 fields. Server tests: 2043 / 75 files before, 2094 / 76 after. See the G.5 rows
+holds 69 fields. Server tests: 2043 / 75 files before, 2094 / 76 after, 2104 / 76 after the review fixes. See the G.5 rows
 of *What this plan got wrong* and *Notes from task G.5* under Task G.5.
 
 **Task G.7 is done** (`c431025b`). The join page `/join/$token`, the sign-in return path

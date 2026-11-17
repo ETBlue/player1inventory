@@ -84,8 +84,9 @@ export const LIVE_BATCH_MS = 300
  * reason: `lib/importData.ts` runs it once, with `fetchPolicy: 'no-cache'`,
  * after a cloud import (decision O9), and no component watches it.
  *
- * `GetHousehold`'s `role` changes with role mutations, which do not exist
- * yet (H4/H5 decide their kind).
+ * `GetHousehold`'s `role` changes with `setHouseholdRole` (households H5b
+ * task G.5). It publishes `LOCATION`, which is `'all'`, so `GetHousehold`
+ * is refetched with every other active query.
  */
 export const QUERIES_BY_KIND: Record<ChangeKind, readonly string[] | 'all'> = {
   CART: [

@@ -171,16 +171,21 @@ that really set up that role.
 > | Field | Who | What it does |
 > |---|---|---|
 > | `householdMembers` | any household role (owner decision O13-A) | every person: `userId`, `displayName`, `role`, `joinedAt`, `isMe`. Owner first, then by `joinedAt`, then by `userId`. `HouseholdPerson` has NO e-mail field, and the name read selects `{ id, displayName }` only |
-> | `setHouseholdRole(userId, role)` | owner | `member` ↔ `manager`. `role: owner` and the owner's own row are `BAD_USER_INPUT`; a person not in the household is `FORBIDDEN`. The same role again writes and publishes nothing. Location roles and open invites stay (owner decision O18-A) |
+> | `setHouseholdRole(userId, role)` | owner | `member` ↔ `manager`. `role: owner` and the owner's own row are `BAD_USER_INPUT`; a person not in the household is `FORBIDDEN`. The same role again changes no member row and publishes nothing (the lock's `UPDATE` still moves `Household.updatedAt`). Location roles and open invites stay (owner decision O18-A) |
 > | `removeMember(userId)` | owner: anyone but themself (`BAD_USER_INPUT`); manager: only a `member` | deletes the person's `LocationMember` rows on THIS household's locations, then their member row (decision T11). Their invites stay open (O18-A) |
 > | `leaveHousehold` | manager or member; the owner gets `BAD_USER_INPUT` | the same deletes, for the household the caller acts in |
 > | `createHousehold(name)` | a person in NO household (owner decision O16-A); else `BAD_USER_INPUT`, `extensions.reason` `ALREADY_IN_HOUSEHOLD` | `lockUser`, the first sign-in claim, the membership count, then `createHouseholdFor` (`lib/household.ts`, shared with first sign-in), then `activeHouseholdId`. It never calls `requireHousehold` (decision T22) |
 >
-> The first three take `lockHousehold` first and NEVER write a `User` row (decision T16), so
+> The first three take the household lock first (`lockOrForbid`, which uses `lockHouseholds`;
+> a household deleted since `requireHousehold` found it gives `FORBIDDEN`, not Prisma's
+> `P2025`) and NEVER write a `User` row (decision T16), so
 > the person's `activeHouseholdId` may still name the household they left. `ensureHousehold`
 > ignores it, because it requires a current membership. They read the caller's role with
 > `requireHouseholdRole(ctx, householdId, role, tx)`: the optional fourth argument makes the
-> read use the transaction's own connection, not a second one from the pool. All four
+> read use the transaction's own connection, not a second one from the pool. The test file
+> gives the global `prisma` mock its own copy of each model object over the same stores, so a
+> spy on `prisma.householdMember` sees only reads outside a transaction (a read that forgot
+> `tx`), and a spy on `world.client.householdMember` only reads through `tx`. All four
 > publish household-level `LOCATION` after the commit. **A removed or leaving person's open
 > tabs do not hear it**: `shouldDeliver` checks membership, and they are no longer members
 > (tested; the H5a known gap is still open). Their next request shows the right screen.
