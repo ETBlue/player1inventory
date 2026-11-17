@@ -5,11 +5,11 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
-import { createItem, createRecipe } from '@/db/operations'
+import { createItem, createRecipe, getItemStock } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 import {
@@ -156,5 +156,59 @@ describe('when the household role cannot be read', () => {
         'Only a household owner or manager can add or change these.',
       ),
     ).toBeNull()
+  })
+})
+
+describe('household member who is a participant of the active location', () => {
+  // A guard for H5 decision O10: cooking is a LOCATION right, and marking a
+  // recipe as cooked needs only household `member`. So a member who is a
+  // participant of the active location can still cook: check the recipe,
+  // change an amount, and press Done. Green before and after F.5 by design.
+  it('household member can still cook at a location where they are a participant', async () => {
+    // Given Flour (5 packs) in a recipe that uses 2
+    const flour = await createItem({
+      name: 'Flour',
+      targetUnit: 'package',
+      targetQuantity: 10,
+      refillThreshold: 2,
+      packedQuantity: 5,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: flour.id, defaultAmount: 2 }],
+    })
+    asHouseholdMember()
+    renderCooking()
+    const user = userEvent.setup()
+
+    // When the member opens the recipe and checks it
+    await user.click(
+      await screen.findByRole('button', { name: /Expand Pasta/i }),
+    )
+    const recipe = await screen.findByRole('checkbox', { name: 'Pasta' })
+    expect(recipe).toBeEnabled()
+    await user.click(recipe)
+
+    // And lowers the amount from 2 to 1
+    await user.click(
+      await screen.findByRole('button', { name: 'Decrease quantity of Flour' }),
+    )
+
+    // And presses Done, then Confirm
+    const done = screen.getByRole('button', { name: /done/i })
+    await waitFor(() => expect(done).toBeEnabled())
+    await user.click(done)
+    await user.click(await screen.findByRole('button', { name: /confirm/i }))
+
+    // Then one pack was used (the changed amount), not two
+    await waitFor(async () => {
+      const stock = await getItemStock(flour.id)
+      expect(
+        (stock?.packedQuantity ?? 0) + (stock?.unpackedQuantity ?? 0),
+      ).toBe(4)
+    })
   })
 })

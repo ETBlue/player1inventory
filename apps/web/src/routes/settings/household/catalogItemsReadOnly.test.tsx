@@ -251,4 +251,28 @@ describe.each(people)('$who on the catalog Items tabs', (person) => {
       expect(stored?.filterConfig?.vendorIds ?? []).toHaveLength(0)
     }
   })
+
+  it(`${person.who} on a filter shelf's Filters tab sees the tag and recipe badges ${person.canEdit ? 'enabled' : 'marked disabled'}`, async () => {
+    // Given a filter shelf, a tag type with one tag, and a recipe. The vendor
+    // badge is pinned in the test above; the tag and recipe badges are
+    // rendered by two other blocks of the same page.
+    const storage = await createTagType({ name: 'Storage' })
+    await createTag({ name: 'Dairy', typeId: storage.id })
+    await createRecipe({ name: 'Pancakes' })
+    const shelf = await createShelf({
+      name: 'Breakfast',
+      type: 'filter',
+      order: 0,
+      filterConfig: {},
+    })
+    person.as()
+    renderAt(`/settings/household/shelves/${shelf.id}/filters`)
+
+    const tag = await screen.findByRole('button', { name: /Dairy/ })
+    const recipe = await screen.findByRole('button', { name: /Pancakes/ })
+    for (const badge of [tag, recipe]) {
+      if (person.canEdit) expect(badge).not.toHaveAttribute('aria-disabled')
+      else expect(badge).toHaveAttribute('aria-disabled', 'true')
+    }
+  })
 })
