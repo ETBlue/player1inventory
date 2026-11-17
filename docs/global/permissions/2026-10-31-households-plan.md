@@ -769,6 +769,14 @@ switcher already listed only locations with a role (H3a task 3.6).
 - Real-SQL test with two households: a purge of one leaves the other's rows. **Moved to H3a**
   (decision H10, `e2e/tests/purge-two-households.spec.ts`), because H3a changes the filters.
   H6 still owes the same kind of test for its new purges.
+- **Owed, must be fixed (owner decision 2026-11-17): a deleted organizer still counts for
+  `Location.hasOrganizer`.** The count is made by `countedOrganizerIn` and read by
+  `locationIdsWithOrganizer`, both in `apps/server/src/lib/authz.ts`. It checks only that
+  the organizer is still a member of the household. It does not check `User.deletedAt`,
+  the column that marks a deleted account (set by the `user.deleted` webhook since H2). So
+  a location whose only organizer deleted their account shows no "No organizer" warning.
+  The fix belongs with the `user.deleted` hand-over branch above. Recorded in the H5 plan's
+  *Known gaps* (`2026-11-17-households-plan-h5.md`).
 
 ### H7 — Personal order, household switch and create
 

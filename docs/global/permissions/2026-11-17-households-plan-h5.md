@@ -1634,6 +1634,13 @@ and one test-only override in shipped code.
 - **The Info tab's unit switch can fail for a household manager who is a viewer somewhere.**
   `applyUnitSwitch` asks `participant` on every location the item is stocked in. The page does
   not check that before Save, so the save fails with `FORBIDDEN`. Found in F.6, not fixed.
+- **Owed to H6, must be fixed: a deleted organizer still counts for `Location.hasOrganizer`**
+  (owner decision 2026-11-17). `countedOrganizerIn`, read by `locationIdsWithOrganizer` in
+  `apps/server/src/lib/authz.ts`, checks only that the organizer is still a member of the
+  household. It does not check `User.deletedAt`, the column that marks a deleted account. So
+  a location whose only organizer deleted their account gets no "No organizer" warning. It
+  may wait for a later phase, but it must be fixed; it is in the H6 section of
+  `2026-10-31-households-plan.md`.
 - **A viewer's search does not list items stocked elsewhere.** The tail's "not stocked here"
   section exists only with its Add to location action (F.6). Whether a viewer should see
   those rows without the action is a design question.
