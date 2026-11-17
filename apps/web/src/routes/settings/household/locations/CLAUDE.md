@@ -39,6 +39,17 @@ only the caller's own locations. Create, rename and delete refetch
 `GetHouseholdLocations` by name.
 
 Rows are not links, so a "No access" row opens nothing. Location names render as stored.
+The role text has a visually hidden prefix, `settings.locations.yourRole` ("Your role:"), so
+a screen reader says "Kitchen, Your role: Viewer", not "Kitchen Viewer". The `<ul>` has no
+`role="list"`: Biome refuses it (`noRedundantRoles`), so Safari with VoiceOver may not
+announce it as a list.
+
+**A refused reorder shows a toast** (`handleReorder`): `settings.locations.reorderError`,
+"The location list changed. It has been reloaded. Try again." The hook has already started
+the refetch of both lists. Offline, no toast from the page (the same rule as delete).
+
+**While the first cloud load runs, the page shows `LoadingSpinner`**, not the empty state.
+Before the review of H5 task F.3 it showed "No locations yet" until the list answered.
 
 **A failed delete shows a toast** (`handleDelete` in `index.tsx`). It reads the error code with `hasGraphQLErrorCode` (`src/lib/graphqlErrorCode.ts`), never the message text:
 
@@ -62,11 +73,11 @@ Before task 3.12 the page called `deleteLocation.mutate(location.id)` with no `o
 
 Global `Item`s are **not** touched — an item stocked only in the deleted location survives as an orphan (see below). If the deleted location was the active one, `useActiveLocation` falls back to the **`isDefault`** location (local) because the stored id no longer matches any location.
 
-**Delete cascade (cloud).** Postgres `ON DELETE CASCADE` removes the location's `ItemStock` rows and — since PR 3a gave both tables a `locationId` with the same rule — its `Cart` rows (and their `CartItem`s, which cascade from `Cart`) and its `InventoryLog` rows. That matches what local mode deletes. What does NOT match is the client cache: the cloud mutation refetches only `GetLocations`, so `AllCarts` / `AllCartItems` / `ItemLogs` observers can still hold deleted rows. **No reader can reach those rows**, which is why they are not refetched — each of the three is narrowed by location before anything renders it (checked 2026-10-07; this had been recorded as an open gap). That narrowing is by LOCATION and so does not cover a household switch. See the comment on `useDeleteLocation` for why `PantryData` / `ItemStocksForItem` are deliberately left off that list.
+**Delete cascade (cloud).** Postgres `ON DELETE CASCADE` removes the location's `ItemStock` rows and — since PR 3a gave both tables a `locationId` with the same rule — its `Cart` rows (and their `CartItem`s, which cascade from `Cart`) and its `InventoryLog` rows. That matches what local mode deletes. What does NOT match is the client cache: the cloud mutation refetches only the two location lists (`GetLocations`, and `GetHouseholdLocations` by name since H5 task F.3), so `AllCarts` / `AllCartItems` / `ItemLogs` observers can still hold deleted rows. **No reader can reach those rows**, which is why they are not refetched — each of the three is narrowed by location before anything renders it (checked 2026-10-07; this had been recorded as an open gap). That narrowing is by LOCATION and so does not cover a household switch. See the comment on `useDeleteLocation` for why `PantryData` / `ItemStocksForItem` are deliberately left off that list.
 
 **Un-stocking one item** is the narrower counterpart, `removeItemFromLocation(itemId, locationId)` — see the "Orphan items" section below and `src/routes/items/CLAUDE.md` for the Stock-tab UI that calls it.
 
-**Hooks** (`src/hooks/useLocations.ts`): `useLocations`, `useCreateLocation`, `useUpdateLocation` (takes `{ id, updates }`), `useDeleteLocation`, `useReorderLocations`. **Dual-mode** — local reads/writes Dexie, cloud runs the `GetLocations` / `CreateLocation` / `UpdateLocation` / `DeleteLocation` / `ReorderLocations` operations. Two cloud-contract details are easy to get wrong: `UpdateLocationInput` is **name-only** (reordering must go through `useReorderLocations`, and the cloud branch throws on an `order` update rather than dropping it), and `reorderLocations` returns `[Location!]!`, whose result the cloud branch writes straight into the `GetLocations` cache entry. See `src/hooks/CLAUDE.md`.
+**Hooks** (`src/hooks/useLocations.ts`): `useLocations` (the switcher's list), `useHouseholdLocations` (this page's list, H5 task F.3), `useCreateLocation`, `useUpdateLocation` (takes `{ id, updates }`), `useDeleteLocation`, `useReorderLocations`; and `usePermissions` (`src/hooks/usePermissions.ts`) for who may drag, delete and rename. **Dual-mode** — local reads/writes Dexie, cloud runs the `GetLocations` / `GetHouseholdLocations` / `CreateLocation` / `UpdateLocation` / `DeleteLocation` / `ReorderLocations` operations. Two cloud-contract details are easy to get wrong: `UpdateLocationInput` is **name-only** (reordering must go through `useReorderLocations`, and the cloud branch throws on an `order` update rather than dropping it), and `reorderLocations` returns `[Location!]!`, whose result the cloud branch writes straight into the `GetLocations` cache entry. A refused reorder refetches both lists by name. See `src/hooks/CLAUDE.md`.
 
 **Active location** (`src/hooks/useActiveLocation.tsx`): a React Context exposing `{ activeLocationId, setActiveLocationId, activeLocation }`, persisted in localStorage under the per-mode key `active-location-id:<mode>`, falling back, when the stored id names none of the loaded ones, to the `isDefault` location in local mode and to the first location in cloud mode. `ActiveLocationProvider` is mounted in `__root.tsx`. It also bootstraps the location's shopping carts (`bootstrapCarts`) whenever the active id changes. See `src/hooks/CLAUDE.md` for the full list of hooks that thread it.
 
@@ -80,4 +91,4 @@ Global `Item`s are **not** touched — an item stocked only in the deleted locat
 
 **i18n**: `settings.locations.*` in `src/i18n/locales/{en,tw}.json`.
 
-**Tests**: `src/routes/settings/household/locations/index.test.tsx` (route, local), `index.cloud.test.tsx` (route, cloud: the `LAST_LOCATION` toast, the general one, and no second toast when offline), `index.stories.tsx` + `index.stories.test.tsx` (stories + smoke), location operations/cascade in `src/db/operations.test.ts`, E2E in `e2e/tests/location-switcher.spec.ts` and `e2e/tests/settings/locations.spec.ts`.
+**Tests**: `src/routes/settings/household/locations/index.test.tsx` (route, local, incl. no role text in local mode), `index.cloud.test.tsx` (route, cloud: the `LAST_LOCATION` toast, the general one, no second toast when offline, the roles of H5 task F.3, the reorder refusal and the loading state), `index.stories.tsx` + `index.stories.test.tsx` (stories + smoke), location operations/cascade in `src/db/operations.test.ts`, E2E in `e2e/tests/location-switcher.spec.ts` and `e2e/tests/settings/locations.spec.ts`.
