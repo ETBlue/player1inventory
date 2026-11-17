@@ -621,6 +621,15 @@ Dates are `String!` in this schema (`Location.createdAt: String!`, `location.gra
 always has a second person with a different role and a location the caller has no role on;
 the live guard; never compare a `householdId` in code; the old-bundle shim; inject the clock.
 
+**Note for G.3 (from the review of G.1):** `clearAllData` keeps open invites (an invite is
+about who may join, not about data), but it deletes every location and makes a new "Home".
+So after a clear, every open invite names only locations that no longer exist, and a person
+who joins with it gets NO location role. G.4's "an invite location deleted since is skipped"
+handles that without an error. G.3 decides whether `householdInvites` shows such an invite
+with an empty role list (its "leaves out a location deleted since" test), and whether the
+Members page should say so. Do not add an invite delete to `clearAllData` without asking:
+`purge-coverage.test.ts` lists `householdInvite` as kept on purpose for that path.
+
 ---
 
 ## Task G.4 — server: `joinHousehold`
@@ -1184,6 +1193,8 @@ Filled in from the task reports and reviews.
 | G.1 | Step 4: add the migration to `MIGRATIONS` and add `assertHouseholdInvites` | Not enough. The Prisma client is generated from the FINAL schema, so a `prisma.user` read with no `select` asks for `activeHouseholdId`. Four such reads run BEFORE the fourth deploy (in `assertHouseholdsBackfill` and `assertDropUserScope`) and would fail with `P2022` at Step 7. Each now has an explicit `select`. The header comment of the script says so for the next migration |
 | G.1 | File list: schema, migration, `verify-migration.ts`, the two fakes | The new model and column also broke 2 server test files: `purge-coverage.test.ts` (every model must be deleted or kept on purpose by each purge path) and `e2eUsers.test.ts` (the route answers the whole stored row). And `tsc` found 11 test fixtures that build a full `UserRow` and needed `activeHouseholdId: null`. `clearAllData` now keeps `householdInvite` on purpose (an invite is about who may join, not about data). `/e2e/cleanup` keeps it ONLY until G.6: **G.6 must add its `deleteMany` and take `householdInvite` off that path's `kept` list** |
 | G.1 | Step 5: the invite fake models `expiresAt: { gt }` | The shared `where` checker (`whereKeys.ts`) had no kind for `{ gt: Date }`. A new kind, `dateGt`, was added with a test |
+| G.1 | Step 4: add the entry to `MIGRATIONS` after `shared_carts`, applied by the fourth deploy | Not enough, and the first version was wrong. The FIRST restore loop in `main()` put back "every migration except three named ones", so the new migration went into the first deploy, right after `add_user`, and its `CREATE TABLE` would fail: the `HouseholdRole` type does not exist until `add_households`. Step 7 would have failed before any assertion. A reviewer found it. Fixed by `scripts/migrationDeploys.ts`: each deploy now names its own migrations, and `migrationDeploys.test.ts` fails, with no database, while a migration folder is in no group or the groups are out of name order |
+| G.1 | Step 5: `userFake` needs `activeHouseholdId` and the T14 `findUnique`; the invite fake needs `create`, `findUnique`, `findMany`, `updateMany` | G.4 writes `activeHouseholdId` with `user.update` (one row, P2025 when none), and G.3 filters invites by `householdRole` (a manager sees and revokes only `member` invites, O15). The plan left out both. Added in the G.1 review fix, with contract tests and mutation checks |
 
 ## Status
 

@@ -193,7 +193,17 @@ rather than assuming the script rotted.
 These things about it are easy to get wrong. The list grows; count the bullets rather
 than trusting a number here — it said **four** when there were seven.
 
-- **It parks migrations by NAME.** `scripts/verify-migration.ts` holds a `MIGRATIONS` list —
+- **It parks migrations by NAME, and puts them back by deploy GROUP.** Since households H5b
+  task G.1 the names live in `scripts/migrationDeploys.ts`, one list per `migrate deploy`
+  (`first`, `households`, `drop user scope`, `last`), and `scripts/migrationDeploys.test.ts`
+  fails, with no database, while a folder under `prisma/migrations` is in no group or the
+  groups are out of name order. **Put a new migration into ONE group there.** Before G.1 the
+  first deploy put back "every migration except three named ones", so a new migration ran in
+  the first deploy by default; G.1's `add_household_invites` did, and would have failed
+  there (it needs the `HouseholdRole` type of `add_households`). The `last` group is applied
+  after `restoreIfParked`, so it is everything still parked at that point. **Ten** entries
+  since G.1 (`20261118000000_add_household_invites`, in the `last` group with `shared_carts`).
+  The history below said the list was in `scripts/verify-migration.ts`, as a `MIGRATIONS` list —
   **nine** entries since households H3b task B.3 (2026-11-15; eight on 2026-11-11). The
   ninth, `20261114000000_shared_carts`, is applied in a **fourth** `migrate deploy`, after
   `seedSharedCartDuplicates` writes duplicate cart rows that its unique index would refuse.
@@ -214,9 +224,11 @@ than trusting a number here — it said **four** when there were seven.
   old server could write between the two deploys (`seedBetweenDeploys`).
   **Count the array rather than trusting this line.** It said **four** until 2026-10-08:
   ```bash
-  grep -c "^  '2026" apps/server/scripts/verify-migration.ts
+  grep -o "'2026[0-9]*_[a-z_]*'" apps/server/scripts/migrationDeploys.ts | wc -l   # 10 since H5b task G.1
   ```
-  **Add your new migration to that list.** A
+  (The command was `grep -c "^  '2026" apps/server/scripts/verify-migration.ts` until G.1. It
+  prints 0 now.)
+  **Add your new migration to a group in `migrationDeploys.ts`.** A
   migration missing from it is not parked, so `migrate reset` replays it against a database
   that has not yet seen the migrations it depends on. Add assertions for it too: without new
   assertions the script re-proves the old migration and says nothing about yours.
