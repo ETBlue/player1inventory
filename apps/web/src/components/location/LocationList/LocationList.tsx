@@ -257,7 +257,7 @@ export function LocationList({
               location={location}
               // Only a LOCAL row can be the default. Cloud rows carry no
               // `isDefault` (task 3.12): every cloud row can be dragged and
-              // deleted, and the server refuses to delete the last one.
+              // deleted, the last one too (since households H5 task F.7).
               isDefault={location.isDefault === true}
               canManage={canManage}
               canRename={canRename(location)}

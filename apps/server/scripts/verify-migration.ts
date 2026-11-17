@@ -1623,8 +1623,11 @@ async function assertDropUserScope(): Promise<void> {
 // order of the calls. These two checks prove the lock itself:
 //
 //   1. Two `deleteLocation` transactions on the last two locations of one
-//      household (review of task 3.6). The second waits at the lock, then its
-//      count sees the first one's committed delete, so it refuses.
+//      household (review of task 3.6). The second waits at the lock. Since
+//      households H5 task F.7 it no longer refuses: after its own delete it
+//      counts the household's locations and must see 0, because the first
+//      one's delete has committed. Without the lock it would not wait and
+//      would see 1.
 //   2. `clearAllData` and `deleteLocation` at the same time (review of task
 //      3.10). Both take the lock before their location delete, so the second
 //      waits for the first and the two never deadlock.

@@ -59,8 +59,9 @@ export const MultipleLocations: Story = {
 /**
  * Cloud mode. A household has no default location (households task 3.12), so
  * cloud rows carry no `isDefault`. Every row, the first one too, has a drag
- * handle and a delete button, and no row says "Default". The server refuses
- * to delete the last location; the settings page shows that message.
+ * handle and a delete button, and no row says "Default". The last location
+ * can be deleted too (since households H5 task F.7); Pantry, Shopping and
+ * Cooking then show the empty locations screen.
  */
 export const CloudLocations: Story = {
   args: {
