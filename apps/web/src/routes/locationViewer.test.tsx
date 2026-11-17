@@ -249,7 +249,7 @@ describe.each(people)('$who on a cart', (person) => {
     // Given the iHerb cart here holds 3 Milk, and Eggs is not in it
     const vendor = await createVendor('iHerb')
     const milk = await makeItem('Milk', { vendorIds: [vendor.id] })
-    await makeItem('Eggs', { vendorIds: [vendor.id] })
+    const eggs = await makeItem('Eggs', { vendorIds: [vendor.id] })
     await db.shoppingCarts.put({
       id: cartIdFor(DEFAULT_LOCATION_ID, vendor.id),
     })
@@ -294,25 +294,28 @@ describe.each(people)('$who on a cart', (person) => {
       await new Promise((resolve) => setTimeout(resolve, 50))
       expect(
         (await db.cartItems.toArray()).map((row) => row.itemId),
-      ).not.toContain('Eggs')
+      ).not.toContain(eggs.id)
     }
   })
 
   it(`${person.who} ${person.canEdit ? 'sees' : 'does not see'} Create item or Add to location when searching a cart`, async () => {
     const vendor = await createVendor('iHerb')
     await makeItem('Milk', { vendorIds: [vendor.id] })
+    // Brie is stocked here and not sold by iHerb, so it is in the tail's
+    // upper section for both people (the household manager gets Apply iHerb).
+    // It is the present-first anchor: once it shows, the catalog has loaded,
+    // so the absence of Bread's Add to location below means something.
+    await makeItem('Brie')
     await makeItem('Bread', { vendorIds: [vendor.id] }, 'loc-elsewhere')
     asLocationRole(person.role)
-    renderAt(`/shopping/${vendor.id}?q=Bread`)
+    renderAt(`/shopping/${vendor.id}?q=Br`)
 
-    // Present first: the search row. Bread, stocked only elsewhere, is in the
-    // tail only with its Add to location action
+    // Present first: Brie in the tail
     expect(
-      await screen.findByRole('button', { name: /clear search/i }),
+      await screen.findByRole('button', { name: 'Apply iHerb: Brie' }),
     ).toBeInTheDocument()
-    if (person.canEdit) {
-      expect(await screen.findByText('Bread')).toBeInTheDocument()
-    }
+    // Bread, stocked only elsewhere, is in the tail only with its Add to
+    // location action
     expectFor(
       person.canEdit,
       screen.queryByRole('button', { name: /^Add to .*: Bread$/ }),
