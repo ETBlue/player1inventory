@@ -203,8 +203,12 @@ describe('LocationSwitcher in local mode — no View only', () => {
     clearStoredActiveLocationIds()
   })
 
-  it('user in local mode sees no View only badge on any location', async () => {
-    // Local mode has one person and no roles. The cloud badge is tested in
+  it('user in local mode sees no View only badge, because every location is organizer there', async () => {
+    // A NEGATIVE CONTROL, not evidence about roles. In local mode
+    // `usePermissions().roleAt` is hard-coded to `organizer`, so no role
+    // change can turn this test red. It goes red only when the switcher
+    // badges a location that is NOT a viewer one (measured in task F.4: "badge
+    // for every role" made it fail). The role rules are tested in
     // LocationSwitcher.cloud.test.tsx.
     const user = userEvent.setup()
     renderSwitcher({ variant: 'full' })
