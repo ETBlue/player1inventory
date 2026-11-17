@@ -290,6 +290,16 @@ O7-A, O9-A and O12-A. These are NEW. **A** is the recommendation unless it says 
 | O16 | `createHousehold` in H5b: who may use it? | **A.** Only a person who is in NO household (the no-household screen). Anyone else gets `ALREADY_IN_HOUSEHOLD`. H7 adds "Switch to… › Create new" for everyone. **B.** Anyone, now. They become active in the new household, with no way back to the old one until H7 | **A.** With B a person could strand their own data in a household they cannot switch back to | G.5, G.8 |
 | O17 | The new texts. English first, then the first `tw` version (the owner corrects `tw` in the PR) | See the table below | Approve, or give the words you prefer | G.7, G.8, G.9 |
 
+### Owner answers (2026-11-18)
+
+| # | Answer | Note |
+|---|---|---|
+| O13 | **A** | |
+| O14 | **A** | The owner asked whether an invite can give a location role. Yes: the invite form lists every location with a role picker (design, *Invite and join*, step 1). O14 only decides that no role is REQUIRED |
+| O15 | open | The owner asked for the rule that matches the other role rules. The main session suggested **A**, because it follows the same line as inviting (O3-A) and removing (design, *Household roles*): a manager acts only on `member`, the owner on anyone. Waiting for the owner to confirm. G.3 and G.9 need it |
+| O16 | **A** | |
+| O17 | deferred | The owner reviews the texts later, in the PR. Tasks use the table below as written |
+
 **O17 texts (proposed).** Role names reuse the O11 answers: 據點王 organizer, 搬運工
 participant, 圍觀的 viewer, 擁有者 owner, 管理者 manager, 成員 member.
 
