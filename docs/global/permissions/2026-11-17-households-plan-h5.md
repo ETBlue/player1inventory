@@ -1053,20 +1053,115 @@ first and shown red, then the code, except where a row below says otherwise. Com
 - `components/settings/…/LocationList.tsx` is done in F.3
 - Tests beside each
 
-- [ ] **Step 1: Write the failing tests** (cloud, active location K, `myRole: 'viewer'`, plus
+- [x] **Step 1: Write the failing tests** (cloud, active location K, `myRole: 'viewer'`, plus
   one `participant` case per page): `location viewer sees the pantry without quick update`,
   `location viewer sees the cart but cannot check out` (the rows and amounts are shown),
   `location viewer cannot cook`, `location participant does not see Remove from location`,
   `location organizer sees Remove from location`, `user sees a message when removing from a
   location is refused` (mock `FORBIDDEN`).
-- [ ] **Step 2: Run** — FAIL. **Step 3: Implement** with `canEditLocation(activeLocationId)`
+- [x] **Step 2: Run** — FAIL. **Step 3: Implement** with `canEditLocation(activeLocationId)`
   and `isOrganizerAt`. **Step 4: Run** — PASS.
-- [ ] **Step 5: Mutation checks:** invert the viewer check on the shopping page and on the
+- [x] **Step 5: Mutation checks:** invert the viewer check on the shopping page and on the
   pantry list → red; show Remove to `participant` → red.
-- [ ] **Step 6:** web side of T7: `ActiveLocationProvider` calls `cloudBootstrapCarts` only
+- [x] **Step 6:** web side of T7: `ActiveLocationProvider` calls `cloudBootstrapCarts` only
   when `canEditLocation(activeLocationId)`. Test: `location viewer switching to a location sends
   no bootstrapCarts`. Mutation: remove the condition → red. **Gate**, commit
   `feat(households): read-only location views for viewers`.
+
+**As built (2026-11-17, `7f50ece0`, docs `8c35e265`).** Tests were written first and shown
+red (16 page tests, 11 Stock tab tests, 2 bootstrap tests, 2 `ItemForm` tests), then the code.
+
+- **Where the rights are read.** Two new hooks in `hooks/useActiveLocationRights.ts`, on top
+  of `usePermissions`: `useActiveLocationRights()` gives `canEditHere` (`participant` or
+  higher at the active location) and `isViewerHere` (the role is KNOWN to be `viewer`, for the
+  note); `useCreateHere()` gives `canCreate` and the note for a create-from-search that also
+  stocks the item here, which needs the catalog right AND the location right. The rank rule
+  moved to `lib/locationRole.ts` (`locationRoleAtLeast`), because several test files mock
+  `usePermissions.ts` with only the hook, and `ActiveLocationProvider` needs the rule too.
+- **What a viewer of the active location gets** (local mode is unchanged):
+
+  | Surface | Viewer |
+  |---|---|
+  | pantry list, shelf, vendor and recipe views | no quick-update button; no Add button; no Create item on the empty pantry; no Create item from search (the search row says `common.locationViewOnly` instead); no `Add to {location}` in the search tail |
+  | cart page | checkboxes and amount buttons DISABLED, so they still show what is in the cart and how much; no Cancel, no Done; no Create item or Add to location from search; the note above the list |
+  | cooking | recipe and item checkboxes disabled; no Cancel, no Done (decision O10); the note under the toolbar |
+  | item Stock tab | per PAGE, by the role at that page's location: viewer → form read only (numbers `readOnly`, steppers, Pack, Unpack, Clear and Fill disabled, no Save) and the note; Add to location needs `participant`; Remove from location needs `organizer`. A refused removal shows a toast |
+  | `ActiveLocationProvider` | sends `bootstrapCarts` only where `myRole` is `participant` or higher (Review Focus 2). No call, so no error to handle |
+
+- **Review Focus 4.** A household manager who is a viewer here keeps every catalog action
+  (Apply vendor in the cart tail, Create recipe on the cooking page) and loses every stock
+  action. `asLocationRole(role, householdRole = 'manager')` in `src/test/rolePermissions.ts`
+  makes the viewer of every test a household manager on purpose.
+- **Disabled, not hidden, where the control shows state** (the F.5 rule): the cart checkboxes
+  and amounts, and the cooking checkboxes (their `aria-describedby` still names the stock
+  status). `ItemCard` gets no role prop: its callers pass `disabled` or leave out
+  `onQuickUpdate`, as the plan asked.
+- **Why the bootstrap gate reads the list, not `canEditLocation`.** `usePermissions` returns
+  `false` for every location while the HOUSEHOLD role loads. The provider already holds the
+  location list with `myRole`, so it reads the role there and does not wait for
+  `GetHousehold`. The ref that stops repeat calls is set only when a call is made, so a role
+  that rises to participant later bootstraps then.
+- **New texts** (first versions; the owner can correct `tw` in the PR):
+
+  | Key | English | `tw` |
+  |---|---|---|
+  | `common.locationViewOnly` | You can view this location, but not change it. | 你只能檢視這個據點，不能修改。 |
+  | `items.detail.locationPager.removeForbidden` | Only an organizer of {{location}} can remove {{name}} from it. | 只有{{location}}的據點王可以把{{name}}移出這個據點。 |
+  | `items.detail.locationPager.removeFailed` | Could not remove {{name}} from {{location}}. Please try again. | 無法把{{name}}移出{{location}}，請再試一次。 |
+
+- **Tests.** New files: `routes/locationViewer.test.tsx` (16: a viewer and a participant of the
+  active location who differ only in that role, both household managers, each with the other
+  role on a second location and none on a third; plus a household member who is a viewer),
+  `routes/items/$id/stock.roles.test.tsx` (11: viewer, participant and organizer; paging to a
+  location with another role; the FORBIDDEN and the general toast), `lib/locationRole.test.ts`
+  (2). Plus 2 in `useActiveLocation.test.tsx` (cloud, `MockedProvider`, a viewer location, a
+  participant location and a stored id with no role) and 2 in `ItemForm.test.tsx`. Story
+  `StockSectionReadOnly` on `ItemForm` with a smoke test (checked in
+  `storybook-static/index.json`). Web suite **2841 / 295 → 2875 / 298**. Server unchanged at
+  **1813 / 70**.
+- **Existing tests that had to change, and why:**
+  - `routes/items/$id/stock.test.tsx` replaces the generated hooks with its own factory, which
+    had no `useGetHouseholdQuery`. The Stock tab now reads `usePermissions`, so the real Apollo
+    hook ran with no provider and 31 tests failed. One stub line fixed it.
+  - `routes/items/$id/stock.stories.test.tsx`'s fixture locations had no `myRole`, so in cloud
+    the Stock tab showed no Add to location. They now say `organizer`. The `CloudMode` story
+    gained a `GetHousehold` mock (an owner), so in Storybook it does not depend on a failed
+    query either.
+- **Mutations, each copied aside and restored from the copy (`diff -q` clean):**
+
+  | # | Mutation | Red |
+  |---|---|---|
+  | M1 | cart checkboxes ignore the viewer check (plan Step 5) | `location viewer sees the cart but cannot check out` |
+  | M2 | cart Cancel and Done for every role | the same test |
+  | M3 | pantry list quick update for every role (plan Step 5) | `location viewer does not see quick update, Add, or Add to location on the pantry list` |
+  | M4 | Remove from location for a participant (plan Step 5) | `location participant does not see Remove from location` |
+  | M5 | the bootstrap gate removed (plan Step 6) | `location viewer switching to a location sends no bootstrapCarts, and logs no error` |
+  | M6 | the Stock tab form editable for a viewer | `location viewer cannot edit the stock of that location`, and the paging test |
+  | M7 | `FORBIDDEN` gets the general text | `user sees a message when removing from a location is refused` |
+  | M8 | the refusal rethrown (not caught) | both toast tests |
+  | M9 | the tail's Add to location for every role | the pantry list test and `household member who is only a viewer of the active location gets neither` |
+  | M10 | cooking Done for a viewer | `location viewer cannot cook` |
+  | M11 | cooking recipe checkbox enabled for a viewer | the same test |
+  | M12 | Fill to Full enabled in a read-only form | `location viewer sees every stock field read only and no Save` |
+  | M13 | pantry Add button for a viewer | the pantry list test |
+  | M14 | Stock tab Add to location for a viewer | `location viewer does not see Add to location on a page where the item is not stocked` |
+  | M15 | no view-only note under the search row | `location viewer does not see Create item from a pantry search` |
+  | M16 | create from search ignores the location role | the pantry and cart search tests |
+  | M17 | vendor view quick update for a viewer | `location viewer does not see quick update on the shelf, vendor and recipe views` |
+
+  Guard, green either way by design: the participant half of every test above.
+- **Gate and E2E** (Node 22.17.1). Root `pnpm lint`, `pnpm build`, `build-storybook`,
+  `pnpm check` and the `TS6385` grep: all clean. `pnpm test`: web **2875 / 298**, server
+  **1813 / 70**, `scripts/spec` **70**. Ports 4001, 5174-5176 free first. `local`: cooking,
+  item-management, item-stock-input, item-stock-pager, location-not-stocked-here,
+  location-switcher, shopping, shelves, vendors-group, recipes-group, unified-item-search,
+  item-list-state-restore, settings/tags, vendors, recipes, shelves, and `a11y.spec.ts`:
+  **159 passed, 8 skipped** (3.1m; load 22 at the start from other sessions, 4.6 at the end).
+  `cloud`: the same files (no a11y) plus shared-cart, live-cart, live-pantry and cloud-roles
+  (the browser is a household member in some): **110 passed, 6 skipped** (24.6m; load 2.9 at
+  the end). This covers Part 1 (the F.5 review fixes) too. No spec drives a location viewer
+  through a page, so E2E proves no regression for the other roles, not the viewer view: that
+  is F.8.
 
 ## Task F.7 — lift the last-location refusal; the empty locations screen
 
@@ -1297,6 +1392,14 @@ and one test-only override in shipped code.
   Recipes tabs and on the shelf Filters tab, a badge has `role="button"` but no `tabIndex` and
   no key handler. This is older than H5; F.5 only added `aria-disabled` to them. Found in the
   review of F.5, not fixed there.
+- **The Info tab's unit switch can fail for a household manager who is a viewer somewhere.**
+  `applyUnitSwitch` asks `participant` on every location the item is stocked in. The page does
+  not check that before Save, so the save fails with `FORBIDDEN`. Found in F.6, not fixed.
+- **A viewer's search does not list items stocked elsewhere.** The tail's "not stocked here"
+  section exists only with its Add to location action (F.6). Whether a viewer should see
+  those rows without the action is a design question.
+- **No E2E drives a viewer through a page.** F.6's E2E run proves no regression for the
+  roles the specs use; the viewer view itself is proved by unit tests only, until F.8.
 - **`rolePermissions.ts` cannot tell `canEditCatalog` from `canManageLocations`.**
   `permissionsFor` gives both the same value (owner or manager), so no page test can catch a
   page that reads the wrong one of the two. If the rules ever differ, the helper needs a
@@ -1353,6 +1456,13 @@ Filled in from the task reports and reviews.
 | F.5 review | (nothing about a failed `GetHousehold`) | `isLoading` is `false` when the query failed with nothing cached, so "not loading and not an editor" read as "member", and an owner was told the page is read only. `roleKnown` tells the two apart |
 | F.5 review | (the reviewer) the Add Tag dialog loses its autofocus like `TagInfoForm` does | It does not: it never passes `readOnly`, and only an editor can open it. A test pins it |
 | F.5 review | (nothing about a member whose search finds nothing) | Only the search tail said why Create was missing. The toolbar, the cooking search and the Add dialog now say it too, with two new texts |
+| F.6 | Files: the four `ItemCard` callers, the cart page, cooking, the Stock tab | Also location writes, and not listed: the pantry Add button and the empty pantry's Create item (`NewItemDialog` stocks here), create-from-search on the pantry list, shelf view and cart page (it creates AND stocks here), the search tail's `Add to {location}` (`useItemSearchTailWiring`), the Stock tab's Add to location (`participant`), `ItemForm`'s stock section and `QuantityStepper` (no read-only mode; `ItemForm`'s own comment said the stock fields do not read `readOnly`), and `ActiveLocationProvider` (Step 6) |
+| F.6 | Cart page: "no checkbox, no amounts"; Step 1: "the rows and amounts are shown" | The two lines disagree. The checkboxes and amounts are shown DISABLED, which is how a viewer sees what is in the cart and how much |
+| F.6 | Cooking: "no checkbox" | Disabled, not hidden: the recipe checkbox carries the `aria-describedby` stock status, and hiding it would move the layout |
+| F.6 | Step 6: call `cloudBootstrapCarts` only when `canEditLocation(activeLocationId)` | `canEditLocation` is `false` for every location while the HOUSEHOLD role loads, so bootstrap would wait for `GetHousehold`. The provider reads `myRole` from the list it already holds |
+| F.6 | Step 1: tests in cloud mode | The page tests keep local data and set the role through `permissionsFor` (the F.5 pattern, `asLocationRole`). Only the bootstrap test runs in cloud, through `MockedProvider` |
+| F.6 | (nothing about the search tail's lower section) | `ItemSearchTail` shows "not stocked here" only with its action (`hasVisibleTail`). With no Add to location, a viewer's search does not list items stocked elsewhere at all |
+| F.6 | (nothing about existing tests) | `stock.test.tsx`'s own graphql factory had no `useGetHouseholdQuery` (31 tests failed), and `stock.stories.test.tsx`'s fixture locations had no `myRole` |
 
 ## Status
 
@@ -1360,4 +1470,5 @@ Filled in from the task reports and reviews.
 2026-11-17 (see *Owner answers*). H5a task F.1 is done (`a59cfcb8`), with review fixes. Task F.2 is done, with review fixes. Task F.3 is done (`5b88bee7`), and it built
 `usePermissions`, with review fixes. Task F.4 (the View only badge) is done (`e5669669`).
 Task F.4's review fixes are done (`0a6321a2`, `4cab8303`, `fe085176`). Task F.5 (a household
-member sees the catalog read-only) is done. Task F.6 is next.
+member sees the catalog read-only) is done, with review fixes. Task F.6 (a location viewer
+sees the location read-only) is done. Task F.7 is next.
