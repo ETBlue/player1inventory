@@ -119,6 +119,8 @@ const publishes: Record<string, { kinds: Kind[] }> = {
   // `revokeInvite` publishes only when it revoked something.
   createInvite: { kinds: ['LOCATION'] },
   revokeInvite: { kinds: ['LOCATION'] },
+  // Households H5b task G.4: for the joined household only, after commit.
+  joinHousehold: { kinds: ['LOCATION'] },
   createItem: { kinds: ['CATALOG'] },
   updateItem: { kinds: ['CATALOG'] },
   createTag: { kinds: ['CATALOG'] },

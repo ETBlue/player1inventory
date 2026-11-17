@@ -2,10 +2,14 @@ import { GraphQLError } from 'graphql'
 import type { Prisma } from '@prisma/client'
 import { requireAuth } from '../context.js'
 import { forbidden, requireHousehold, requireHouseholdRole } from '../lib/authz.js'
+import { lockHousehold, lockUser } from '../lib/household.js'
 import {
+  alreadyMember,
+  emptyHouseholdWhere,
   hasInviteTokenLength,
   type InviteLocationRoleEntry,
   inviteExpiresAt,
+  inviteInvalid,
   newInviteToken,
   parseLocationRoles,
 } from '../lib/invite.js'
@@ -16,7 +20,8 @@ import type { Resolvers } from '../generated/graphql.js'
 // Create, list, preview and revoke household invites (households H5b, task
 // G.3; plan docs/global/permissions/2026-11-18-households-plan-h5b.md,
 // decisions T12, T17, T18, T19, T22, T26 and T27, owner decisions O3-A,
-// O6-A, O7-A, O13-A, O14-A and O15-A). `joinHousehold` is task G.4.
+// O6-A, O7-A, O13-A, O14-A and O15-A), and join with one (`joinHousehold`,
+// task G.4, decisions T16, T17, T20 and T21, owner decision O2-A).
 //
 // No role is checked by comparing ids in code. The household comes from
 // `requireHousehold`, the role from `requireHouseholdRole`, and every read
@@ -78,6 +83,13 @@ function isOpen(
   // Strict, as the list's `expiresAt: { gt: now }` and G.4's claim: an
   // invite that expires at exactly `now` is no longer open.
   return row.usedAt === null && row.revokedAt === null && row.expiresAt.getTime() > now.getTime()
+}
+
+/** True for Prisma's "record not found" (P2025). */
+function isNotFound(err: unknown): boolean {
+  return (
+    typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'P2025'
+  )
 }
 
 const INVALID_PREVIEW = {
@@ -230,6 +242,149 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         createdByName: people.get(userId) ?? '',
         expiresAt: row.expiresAt.toISOString(),
       }
+    },
+
+    // Any signed-in person, also one in no household: it must NOT call
+    // `requireHousehold` (decision T22), which throws NO_HOUSEHOLD for a
+    // person who left or was removed, and would make a household for a
+    // brand-new person. ONE transaction, in this order:
+    //
+    //   1. `lockUser` — the caller's `User` row lock, FIRST (decision T16).
+    //      Two joins by one person run one after the other, and no other
+    //      transaction takes a household lock and then a User lock.
+    //   2. Read the invite by token. Not found, or not open → INVITE_INVALID.
+    //      The same answer as `invitePreview` gives, before any other check.
+    //   3. `lockHousehold` of the invite's household.
+    //   4. ALREADY_MEMBER, BEFORE the claim (decision T17), with the same
+    //      check as `invitePreview`: the caller's member row in the INVITE's
+    //      household. The link stays unused, and a member gets an answer
+    //      about themselves even if the link was used in the meantime.
+    //   5. The claim: ONE conditional `updateMany` that matches only while
+    //      the invite is unused, not revoked and not expired (decision T17).
+    //      Under READ COMMITTED the second of two joins re-checks the `where`
+    //      after the first commits and matches 0 rows → INVITE_INVALID.
+    //      `revokeInvite` writes with `usedAt: null, revokedAt: null` in its
+    //      `where`, so a join and a revoke at the same moment cannot both win.
+    //      Do not drop any key of this `where`.
+    //   6. The member row, with the invite's household role.
+    //   7. Delete the caller's location role rows in this household (decision
+    //      T20: a leftover row must not come back), then write the invite's
+    //      roles on the locations that still exist in it. A location deleted
+    //      since is skipped, with no error.
+    //   8. `activeHouseholdId` → this household. The User lock is already
+    //      held, so this write breaks no lock order.
+    //   9. Delete the caller's OTHER households that are empty, with one
+    //      conditional statement (decision T21, `emptyHouseholdWhere`).
+    //
+    // A wrong-length token is refused before the transaction, with no read
+    // and no lock: no stored token has another length. A bad `locationRoles`
+    // row makes `parseLocationRoles` throw a plain Error. It is NOT caught:
+    // the transaction rolls back and the error reaches the logs.
+    //
+    // After the commit, one household-level `LOCATION` event for the joined
+    // household (decision T19). The caller is a member there now, so their
+    // other tabs get it too, and refetch everything. Nothing is sent to the
+    // household that was deleted (nobody is left in it to hear it) or to a
+    // household that was kept (nothing in it changed).
+    joinHousehold: async (_, { token }, ctx) => {
+      const userId = requireAuth(ctx)
+      if (!hasInviteTokenLength(token)) throw inviteInvalid()
+
+      const joined = await prisma.$transaction(async (tx) => {
+        await lockUser(tx, userId)
+
+        const now = new Date()
+        const row = await tx.householdInvite.findUnique({
+          where: { token },
+          select: {
+            id: true,
+            householdId: true,
+            householdRole: true,
+            locationRoles: true,
+            expiresAt: true,
+            usedAt: true,
+            revokedAt: true,
+          },
+        })
+        if (!row || !isOpen(row, now)) throw inviteInvalid()
+        const householdId = row.householdId
+
+        try {
+          await lockHousehold(tx, householdId)
+        } catch (err) {
+          // The household was deleted after the invite was read. Its invites
+          // went with it (onDelete: Cascade).
+          if (isNotFound(err)) throw inviteInvalid()
+          throw err
+        }
+
+        const membership = await tx.householdMember.findUnique({
+          where: { householdId_userId: { householdId, userId } },
+          select: { role: true },
+        })
+        if (membership) throw alreadyMember()
+
+        const { count } = await tx.householdInvite.updateMany({
+          where: {
+            id: row.id,
+            usedAt: null,
+            revokedAt: null,
+            expiresAt: { gt: now },
+          },
+          data: { usedAt: now, usedById: userId },
+        })
+        if (count === 0) throw inviteInvalid()
+
+        // Read BEFORE the new member row, so the target is not in the list.
+        const others = await tx.householdMember.findMany({
+          where: { userId },
+          select: { householdId: true },
+        })
+
+        await tx.householdMember.create({
+          data: { householdId, userId, role: row.householdRole },
+        })
+
+        await tx.locationMember.deleteMany({
+          where: { userId, location: { householdId } },
+        })
+        const wanted = parseLocationRoles(row.locationRoles)
+        if (wanted.length > 0) {
+          const existing = await tx.location.findMany({
+            where: { id: { in: wanted.map((entry) => entry.locationId) }, householdId },
+            select: { id: true },
+          })
+          const ids = new Set(existing.map((location) => location.id))
+          for (const entry of wanted) {
+            if (!ids.has(entry.locationId)) continue
+            await tx.locationMember.create({
+              data: { locationId: entry.locationId, userId, role: entry.role },
+            })
+          }
+        }
+
+        await tx.user.update({
+          where: { id: userId },
+          data: { activeHouseholdId: householdId },
+        })
+
+        const otherIds = others.map((m) => m.householdId).filter((id) => id !== householdId)
+        if (otherIds.length > 0) {
+          await tx.household.deleteMany({ where: emptyHouseholdWhere(userId, otherIds) })
+        }
+
+        const household = await tx.household.findUnique({
+          where: { id: householdId },
+          select: { id: true, name: true },
+        })
+        // Unreachable: the household lock above found this row, and the
+        // `deleteMany` cannot match it (it is not in `otherIds`).
+        if (!household) throw new Error('joinHousehold: the joined household is gone')
+        return { id: household.id, name: household.name, role: row.householdRole }
+      })
+
+      await publishHouseholdChange(ctx, ['LOCATION'], joined.id)
+      return joined
     },
 
     // Owner or manager. ONE conditional write, so a revoke and a join at the

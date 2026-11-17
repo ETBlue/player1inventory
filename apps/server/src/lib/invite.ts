@@ -1,6 +1,6 @@
 import { randomBytes } from 'crypto'
 import { GraphQLError } from 'graphql'
-import type { LocationRole } from '@prisma/client'
+import type { LocationRole, Prisma } from '@prisma/client'
 
 // Small helpers for household invites (households H5b, task G.3; plan
 // docs/global/permissions/2026-11-18-households-plan-h5b.md).
@@ -95,4 +95,59 @@ export function alreadyMember(): GraphQLError {
   return new GraphQLError('You are already in this household.', {
     extensions: { code: 'BAD_USER_INPUT', reason: 'ALREADY_MEMBER' },
   })
+}
+
+/**
+ * The `where` that matches the households in `householdIds` that are EMPTY
+ * for `userId` (households H5b, decision T21, owner decision O2-A). When a
+ * person joins a household through an invite, `joinHousehold` deletes their
+ * other households with ONE `household.deleteMany` on this `where`, inside
+ * the join transaction. One statement decides "is it empty" and deletes, so
+ * our own code leaves no gap between the two.
+ *
+ * "Empty" means all of these. Each key is here because the row it checks is
+ * data a person would lose:
+ *
+ * - `members: { every: { userId } }` — nobody else is in it. A household
+ *   someone else shares is never deleted.
+ * - `items`, `tags`, `tagTypes`, `vendors`, `recipes`, `shelves`: `none` —
+ *   no catalog row of any kind.
+ * - `locations: { every: ... }` — every location has no stock row
+ *   (`itemStocks`), no log (`inventoryLogs`), and only carts with no row
+ *   (`carts: { every: { items: { none } } }`).
+ *
+ * NOT checked, on purpose, so they do not keep a household: the locations
+ * themselves (first sign-in makes "Home"), the person's own location roles,
+ * empty carts (`vendorCart` makes one just by opening a cart page), and open
+ * invites. All of them go with the household, by `onDelete: Cascade`.
+ *
+ * The relation names are those of `prisma/schema.prisma`: `Household.members`,
+ * `.items`, `.tags`, `.tagTypes`, `.vendors`, `.recipes`, `.shelves`,
+ * `.locations`; `Location.itemStocks`, `.inventoryLogs`, `.carts`;
+ * `Cart.items`. Prisma's types refuse a wrong name, so `tsc` checks them.
+ *
+ * A NEW model that belongs to a household or a location must be added here,
+ * or a household holding only that data is deleted at the next join.
+ */
+export function emptyHouseholdWhere(
+  userId: string,
+  householdIds: string[],
+): Prisma.HouseholdWhereInput {
+  return {
+    id: { in: householdIds },
+    members: { every: { userId } },
+    items: { none: {} },
+    tags: { none: {} },
+    tagTypes: { none: {} },
+    vendors: { none: {} },
+    recipes: { none: {} },
+    shelves: { none: {} },
+    locations: {
+      every: {
+        itemStocks: { none: {} },
+        inventoryLogs: { none: {} },
+        carts: { every: { items: { none: {} } } },
+      },
+    },
+  }
 }

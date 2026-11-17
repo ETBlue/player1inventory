@@ -105,3 +105,16 @@ extend type Mutation {
   # invite, one already used or revoked, or a manager invite for a manager.
   revokeInvite(id: ID!): Boolean!
 }
+
+extend type Mutation {
+  # Join the household of this invite (households H5b, task G.4). Any
+  # signed-in person, also one in no household (decision T22). The caller
+  # becomes a member with the invite's household role and the invite's
+  # location roles, on the locations that still exist. The joined household
+  # becomes the one they act in. Their own household is deleted when it holds
+  # no data and nobody else (owner decision O2-A); otherwise it is kept.
+  # Refused with BAD_USER_INPUT and extensions.reason INVITE_INVALID (unknown,
+  # used, revoked or expired: one answer for all four) or ALREADY_MEMBER (the
+  # link stays unused).
+  joinHousehold(token: String!): Household!
+}

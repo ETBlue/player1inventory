@@ -309,3 +309,35 @@ export async function lockHousehold(
 ): Promise<void> {
   await tx.household.update({ where: { id: householdId }, data: { updatedAt: new Date() } })
 }
+
+/**
+ * Take the caller's `User` row lock for the rest of this transaction
+ * (households H5b, decision T16). The same idea as `lockHousehold` above: an
+ * `UPDATE` of `updatedAt` takes a row lock (`FOR NO KEY UPDATE`), and a
+ * second transaction that runs the same `UPDATE` waits at that statement
+ * until the first one commits or rolls back. Its reads come after the
+ * `UPDATE`, so under READ COMMITTED they see what the first one committed.
+ *
+ * Why it exists. `joinHousehold` reads the person's memberships, then may
+ * delete their own household when it is empty. Two joins by one person at
+ * once (two tabs, two links) could both read "still a member of my own
+ * household" and both act on it. With the lock they run one after the other.
+ *
+ * ONE LOCK ORDER: the `User` row first, then a `Household` row. Only
+ * `joinHousehold` (and, from task G.5, `createHousehold`) take this lock, and
+ * always FIRST. `removeMember`, `leaveHousehold` and `setHouseholdRole` take
+ * only `lockHousehold` and never write a `User` row. Two transactions that
+ * take the two locks in opposite orders can wait on each other; Postgres then
+ * aborts one with `40P01` (a deadlock), and a person sees an error. So never
+ * write a `User` row after a household lock unless this lock is already
+ * held.
+ *
+ * The cost: `User.updatedAt` moves on every call.
+ *
+ * The Prisma fake has no row lock, so the unit tests prove only the ORDER of
+ * the two `UPDATE`s, not that the second transaction waits. Nothing runs
+ * this on real Postgres yet.
+ */
+export async function lockUser(tx: Prisma.TransactionClient, userId: string): Promise<void> {
+  await tx.user.update({ where: { id: userId }, data: { updatedAt: new Date() } })
+}

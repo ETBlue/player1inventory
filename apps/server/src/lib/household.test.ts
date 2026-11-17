@@ -14,7 +14,7 @@ import { GraphQLError } from 'graphql'
 import { prisma } from './prisma.js'
 import type { HouseholdWorld } from '../test/householdWorld.js'
 import type { UserRow } from '../test/userFake.js'
-import { ensureHousehold, firstSignInNames } from './household.js'
+import { ensureHousehold, firstSignInNames, lockUser } from './household.js'
 
 const world = (prisma as unknown as { $world: HouseholdWorld }).$world
 
@@ -410,5 +410,35 @@ describe('firstSignInNames — the 100 code unit cap', () => {
     const name = `${'a'.repeat(80)}${' '.repeat(10)}tail`
     const { household } = firstSignInNames('en', name)
     expect(household).toBe(`${'a'.repeat(80)}'s Household`)
+  })
+})
+
+describe('lockUser (households H5b, decision T16)', () => {
+  it('writes only updatedAt of that one User row', async () => {
+    // Given two people, both last changed EARLIER
+    world.users.reset([
+      userRow({ id: 'user-a', householdSetupAt: EARLIER, activeHouseholdId: 'hh-1' }),
+      userRow({ id: 'user-b' }),
+    ])
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(NOW)
+    try {
+      // When A's row is locked
+      await lockUser(prisma as never, 'user-a')
+    } finally {
+      vi.useRealTimers()
+    }
+
+    // Then A's updatedAt moved and nothing else did; B is untouched
+    const [a, b] = world.users.state.rows
+    expect(a).toEqual(
+      userRow({ id: 'user-a', householdSetupAt: EARLIER, activeHouseholdId: 'hh-1', updatedAt: NOW }),
+    )
+    expect(b).toEqual(userRow({ id: 'user-b' }))
+  })
+
+  it('throws P2025 when there is no User row, as Prisma does', async () => {
+    world.users.reset([])
+    await expect(lockUser(prisma as never, 'user-nobody')).rejects.toMatchObject({ code: 'P2025' })
   })
 })
