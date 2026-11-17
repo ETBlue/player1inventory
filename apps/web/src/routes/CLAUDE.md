@@ -509,18 +509,33 @@ not in any household." and **Create a household** (owner decision O16-A).
   show the screen to a person just removed.
 - **Not on `/join/…` or `/sign-in`.** A person with no household can still open an invite
   link and sign in.
-- **When the screen first shows, it forgets the old household once**
-  (`forgetHousehold` in `apollo/householdGuard.ts`: `clearCache()`, remove
-  `last-household-id` and `active-location-id:cloud`), with no reload. `HouseholdChangeGuard`
-  cannot do it: there is no new id.
+- **When the screen first shows, it clears the old household's data once**, with no
+  reload. `HouseholdChangeGuard` cannot do it: there is no new id. Exactly what is cleared:
+  1. `forgetHousehold()` (`apollo/householdGuard.ts`): `clearCache()` empties the Apollo
+     cache in memory and the saved copy in `Player1InventoryCloudCache`; it removes
+     `last-household-id` and `active-location-id:cloud`. It keeps `cloud-cache-user-id`.
+  2. Then `client.refetchQueries({ include: 'active' })`. **Emptying the cache does not
+     change what a MOUNTED query shows**: Apollo sends it no new result. Without the
+     refetch the sidebar kept the old household's name (`HouseholdLabel`) and the switcher
+     its locations. A refetch first reports "loading" with no data, so those readers show
+     their empty state, then fail with `NO_HOUSEHOLD` with nothing cached.
 - **Once shown, the screen stays** until a household arrives. A refetch first reports
-  "loading" with no error; showing the page for that moment would flash it.
+  "loading" with no error; showing the page for that moment would flash it. The id cached
+  when the screen first showed (the household just lost) never counts as "arrived": a
+  switch to it would load `/`, get `NO_HOUSEHOLD` and show the screen again, on every load.
+- **A new account in the same tab starts again.** Sign-out goes to `/sign-in`, where the
+  gate stays mounted, and the old account's `NO_HOUSEHOLD` answer stays in Apollo. When the
+  Clerk user id changes to ANOTHER account (signed out, `null`, does not count; the same
+  account again does not count), the gate remounts with a fresh state, shows the page, and
+  refetches `GetHousehold`. Only that fresh answer can show the screen. The E2E build has no
+  Clerk and one account per page load, so it skips this.
 - **Create a household** sends `createHousehold(name)`. An empty field sends `name: null`
   (the server's default name); never `""`, which the server refuses as a blank name. On
   success: `switchToHousehold(id, { to: '/' })`, because the server sends the creating tab
   no live event. `ALREADY_IN_HOUSEHOLD` (another tab created or joined first) asks
   `GetHousehold` from the network and switches to that household. A refused name shows
-  `settings.household.name.invalidError` in an `<output>`; an `OfflineWriteError` shows no
+  `settings.household.name.invalidError` in an `<output>` that is always mounted (empty when
+  there is no error), and focus goes back to the name field; an `OfflineWriteError` shows no
   second toast; any other error shows `noHousehold.error` and the button stays.
 - **The person's other tabs** get the `LOCATION` event of `createHousehold`. It refetches
   every active query, the FAILED `GetHousehold` included (tested in

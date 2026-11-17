@@ -1203,6 +1203,16 @@ it, every cloud spec fails at the first request. Read `e2e/CLAUDE.md` first: por
   build, and `CloudAuthGuard` does not mount there. It is covered by unit tests only
   (`routes/sign-in.test.tsx`, `routes/__root.offline.test.tsx`).
 
+**Notes from the review of G.8:**
+- **Cleanup order.** If `/e2e/cleanup` deletes the OWNER's household before the member's
+  rows, the member is left with no household, so `NO_HOUSEHOLD`, and that browser shows the
+  no-household screen on every page. Clean up the member first, or create the member's own
+  household again before reuse.
+- **A removed member's open tab gets no event.** Reload that tab before asserting the
+  no-household screen.
+- **Add an axe scan of the no-household screen and of its Create dialog, light and dark**,
+  in a cloud spec (`a11y.spec.ts` does not run in cloud), reached by a leave or a removal.
+
 **The brief must pass down:** the 409 order for the E2E route still applies where it is
 used; assert something PRESENT before an absence (root `CLAUDE.md`, *An absence … can be
 satisfied by the loading state*); `expect.poll` for a backend read after a click; the three
@@ -1313,6 +1323,16 @@ plan's *What this plan got wrong* and *Status*.
 - **A leave or a removal into NO household leaves the old rows on the device** until G.8's
   screen clears them (G.8 Step 3b). `HouseholdChangeGuard` cannot see it: there is no new
   id.
+- **A removed person's OTHER tabs get no event** (`shouldDeliver` checks membership). Each
+  such tab keeps saving its old Apollo cache every 5 seconds into the ONE saved snapshot
+  (`Player1InventoryCloudCache`). So the old household's pantry can come back on the next
+  load of any tab, and stays until the network answers `NO_HOUSEHOLD`. Offline that can be
+  for as long as the device stays offline.
+- **On a first load with a saved snapshot, pages show the old household for a moment**
+  before the server's `NO_HOUSEHOLD` arrives and the screen replaces them.
+- **A person removed from a household and invited back to the SAME one**, who joins in
+  another tab, keeps the no-household screen in this tab until a reload. The gate ignores
+  the lost household's id on purpose (G.8 review, loop guard).
 - Carried over from H5a, still open: the old-bundle shim removal, the deleted-organizer
   `hasOrganizer` fix (H6), the keyboard gap on `role="button"` badges, and the other items
   in the H5 plan's *Known gaps*.
@@ -1395,6 +1415,9 @@ Filled in from the task reports and reviews.
 | G.8 | Step 2: show the screen "when `errorCode === 'NO_HOUSEHOLD'`" | Not enough on its own. A refetch (a live event, a reconnect) first reports `loading` with NO error (measured: `networkStatus: 4`, `error: undefined`), so the page would flash and mount pages that fail. The gate keeps the screen once shown, until a household arrives |
 | G.8 | Step 3 and the G.5 note: the creator's other tabs get `LOCATION`, refetch `GetHousehold`, "and the guard then sees the new id" | The refetch is real (tested). But `HouseholdChangeGuard` does NOT clear for that new id: Step 3b removed `last-household-id`, and a tab that opened on the no-household screen has never seen an id, so the guard only stores it. Components could keep state from before. The gate now calls `switchToHousehold(id, { to: '/' })` itself when a household arrives after the screen showed. A tab that did see the old id while it was still a member gets BOTH this switch and the guard's reload; both clear the cache, and whichever navigation runs last wins |
 | G.8 | *Files*: `NoHouseholdGate/` with "stories, smoke test" | The gate has no story, like `NoLocationsGate`. It needs a router, and in Storybook its Step 3b clear (`forgetHousehold`) would empty the real cloud cache. It is tested through the real root in `routes/noHousehold.cloud.test.tsx`. The screen has the stories |
+| G.8 (review) | Step 3b: clear the cache and the two keys when the screen shows | It assumed that clearing the cache removes the old rows from the SCREEN. It does not: Apollo sends a mounted query no new result after `cache.reset()`, so the sidebar kept the old household's name and the switcher its locations. The gate now refetches every active query after the clear, so they go to "loading" with no data |
+| G.8 (review) | Step 3b: the screen shows "until Create" | It did not say how a person leaves the screen other than Create. Sign-out and sign-in as ANOTHER account in the same tab left the old account's `NO_HOUSEHOLD` in Apollo, and the gate (mounted on `/sign-in` too) kept showing the screen to the new account. The gate now starts again when the Clerk user id changes to another account, and refetches `GetHousehold`. How a person with no household signs out or switches to local mode on a phone (the gate also covers `/settings`) waits for an owner decision |
+| G.8 (review) | Step 3: switch when a household id arrives | Loop safety rested on an Apollo internal that no test pinned (every gate test stubs `clearCache`). The gate now ignores the id cached when the screen first showed. Cost: a person removed and then invited back to the SAME household, who joins in another tab, keeps the screen in this tab until a reload |
 | G.9 | Step 2: set roles "through `permissionsFor` (`src/test/rolePermissions.ts`) plus `MockedProvider` results" | The page tests set the role through `GetHousehold` in `MockedProvider` (the `cloudRoleBaseMocks` path), so the REAL `usePermissions` reads it. `permissionsFor` cannot tell `canManageMembers` from `canEditCatalog` (same value), so a page test through it would not see the page reading the wrong right. `usePermissions.test.tsx` checks the three roles give three different answers |
 | G.9 | Notes from the review of G.7, and the main session: refetch `GetHousehold` through the WATCHED query after `leaveHousehold` | Not done that way, on purpose. Through the watched query a new household id also reaches `HouseholdChangeGuard`, which reloads the members page while the leave handler calls `switchToHousehold(id, { to: '/' })`: two navigations race. A `NO_HOUSEHOLD` there makes `NoHouseholdGate` unmount the page in the middle of the handler. `useLeaveHousehold` asks with `client.query` and `fetchPolicy: 'no-cache'`, then ALWAYS loads a page: `switchToHousehold(id, { to: '/' })`, or `forgetHousehold()` and `location.replace('/')`. The gate then learns `NO_HOUSEHOLD` on that fresh load, so the trap "a failed `client.query` puts no error into the watched query" does not apply. Tested: the switch and its target, the forget, and that nothing moves on a refused leave |
 | G.9 | Step 2: "Every confirm (remove, leave, revoke) uses the existing confirm dialog pattern" | Used (`DeleteButton`), with two facts the plan did not say. Its `AlertDialogAction` closes the dialog at once, so its "Deleting..." text is never seen (a `pendingLabel` prop was tried and dropped for this reason). And it has no `catch`, so every `onDelete` the page passes catches its own error and shows the toast |
