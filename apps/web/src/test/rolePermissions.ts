@@ -60,6 +60,8 @@ export interface RoleSpec {
   householdRole?: HouseholdRole
   locationRoles: Record<string, LocationRole>
   isLoading?: boolean
+  /** The location list is still loading (since the review of H5 task F.7). */
+  locationsLoading?: boolean
 }
 
 let current: RoleSpec | null = null
@@ -95,6 +97,7 @@ export function asRoleLoading() {
     householdRole: 'owner',
     locationRoles: LOCATION_ROLES,
     isLoading: true,
+    locationsLoading: true,
   })
 }
 

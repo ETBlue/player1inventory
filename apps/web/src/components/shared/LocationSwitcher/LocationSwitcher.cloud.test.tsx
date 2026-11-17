@@ -284,14 +284,18 @@ describe('LocationSwitcher in cloud — View only (households H5 task F.4)', () 
     ).not.toBeInTheDocument()
   })
 
-  it('user sees no View only badge while the household role is loading', async () => {
-    // `usePermissions` knows no role while it loads, so a badge appears late
-    // rather than showing on the wrong location.
+  it('user sees the View only badge while the household role is still loading', async () => {
+    // The badge follows the LOCATION role only. Since the review of
+    // households H5 task F.7 the location rights do not wait for
+    // `GetHousehold`: they are known as soon as the location list is. (Until
+    // then this test said the opposite: no badge while the household loads.)
+    // While the location list itself loads, `roleAt` is `null` and no badge
+    // shows; that is pinned in `usePermissions.test.tsx`.
     mockHouseholdLoading.mockReturnValue(true)
     activate(KITCHEN)
     renderSwitcher('full')
 
     const button = await trigger('Cloud Kitchen')
-    expect(within(button).queryByText('View only')).not.toBeInTheDocument()
+    expect(within(button).getByText('View only')).toBeInTheDocument()
   })
 })

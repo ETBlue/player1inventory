@@ -84,7 +84,7 @@ describe('usePermissions', () => {
     expect(p.isOrganizerAt('x')).toBe(true)
   })
 
-  it('cloud allows nothing while the household role is loading', () => {
+  it('cloud allows no catalog write while the household role is loading', () => {
     // Given the location list is there, but the household is still loading
     mockHousehold.mockReturnValue({ data: undefined, loading: true })
     mockLocations.mockReturnValue(locations([{ id: 'K', myRole: 'organizer' }]))
@@ -92,10 +92,38 @@ describe('usePermissions', () => {
     const p = render()
 
     expect(p.isLoading).toBe(true)
+    expect(p.roleKnown).toBe(false)
     expect(p.canEditCatalog).toBe(false)
     expect(p.canManageLocations).toBe(false)
-    expect(p.canEditLocation('K')).toBe(false)
-    expect(p.isOrganizerAt('K')).toBe(false)
+  })
+
+  it('location rights are known while GetHousehold still loads', () => {
+    // Given the location list has arrived (organizer of K, viewer of G, no
+    // role on X), but `GetHousehold` is still loading. This is the cold
+    // Apollo cache every E2E test starts with. Until the review of H5 task
+    // F.7 every location right waited for the household role too, so the
+    // Stock form stayed read only for a moment and lost the keys typed.
+    mockHousehold.mockReturnValue({ data: undefined, loading: true })
+    mockLocations.mockReturnValue(
+      locations([
+        { id: 'K', myRole: 'organizer' },
+        { id: 'G', myRole: 'viewer' },
+      ]),
+    )
+
+    const p = render()
+
+    // Then the location rights follow `myRole` at once
+    expect(p.roleAt('K')).toBe('organizer')
+    expect(p.canEditLocation('K')).toBe(true)
+    expect(p.isOrganizerAt('K')).toBe(true)
+    expect(p.roleAt('G')).toBe('viewer')
+    expect(p.canEditLocation('G')).toBe(false)
+    expect(p.roleAt('X')).toBeNull()
+    expect(p.canEditLocation('X')).toBe(false)
+    // And the household rights still wait
+    expect(p.canEditCatalog).toBe(false)
+    expect(p.canManageLocations).toBe(false)
   })
 
   it('cloud allows nothing while the location list is loading', () => {
@@ -107,6 +135,8 @@ describe('usePermissions', () => {
     expect(p.isLoading).toBe(true)
     expect(p.canEditCatalog).toBe(false)
     expect(p.canManageLocations).toBe(false)
+    expect(p.roleAt('K')).toBeNull()
+    expect(p.canEditLocation('K')).toBe(false)
   })
 
   it('household manager who is only a viewer of a location can edit the catalog but not that location', () => {

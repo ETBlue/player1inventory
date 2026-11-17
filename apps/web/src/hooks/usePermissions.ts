@@ -50,9 +50,12 @@ const LOCAL: Permissions = {
  * Local mode: everything is allowed (one person, no roles).
  *
  * Cloud: the household role comes from `useHousehold()`, the location roles
- * from `useLocations()` (`myRole`, households H5 task F.1). While either is
- * loading every `can…` is `false`, so a control appears late rather than
- * disappearing after a click. The household role and the location role are
+ * from `useLocations()` (`myRole`, households H5 task F.1). While the
+ * household role loads, `canEditCatalog` and `canManageLocations` are
+ * `false`; while the location list loads, every location right is `false`.
+ * So a control appears late rather than disappearing after a click. Since the
+ * review of H5 task F.7 the location rights do not wait for the household
+ * role (`locationsLoading` in `permissionsFor`). The household role and the location role are
  * two separate checks: a manager can edit the catalog and still be only a
  * viewer of a location (Review Focus 4 of the H5 plan).
  *
@@ -70,6 +73,7 @@ export function usePermissions(): Permissions {
   if (mode !== 'cloud') return LOCAL
 
   const isLoading = household.isLoading || locations.isLoading
+  const locationsLoading = locations.isLoading
   const locationRoles: Record<string, LocationRole> = {}
   for (const l of locations.data ?? []) {
     const role = (l as { myRole?: LocationRole | null }).myRole
@@ -78,6 +82,7 @@ export function usePermissions(): Permissions {
   return permissionsFor({
     mode,
     isLoading,
+    locationsLoading,
     householdRole: household.data?.role,
     locationRoles,
   })
@@ -96,11 +101,20 @@ export function usePermissions(): Permissions {
 export function permissionsFor({
   mode,
   isLoading = false,
+  locationsLoading = isLoading,
   householdRole,
   locationRoles = {},
 }: {
   mode: 'local' | 'cloud'
+  /** Either role is still loading. Gates the household rights. */
   isLoading?: boolean
+  /**
+   * Only the location list is still loading. Gates `roleAt`,
+   * `canEditLocation` and `isOrganizerAt`, which read only `myRole`. Defaults
+   * to `isLoading`, so a caller that sets only `isLoading` keeps every right
+   * closed.
+   */
+  locationsLoading?: boolean
   householdRole?: HouseholdRole | null | undefined
   /** Location id → the caller's role. A missing id is "no role". */
   locationRoles?: Record<string, LocationRole>
@@ -109,8 +123,13 @@ export function permissionsFor({
 
   const canManage =
     !isLoading && (householdRole === 'owner' || householdRole === 'manager')
+  // The location rights wait only for the location list, not for
+  // `GetHousehold` (households H5, review of task F.7). With a cold Apollo
+  // cache `GetHousehold` can answer after `GetLocations`, and the Stock form
+  // was read only in between, so keys typed at once were lost. A location
+  // role does not depend on the household role.
   const roleAt = (locationId: string) =>
-    isLoading ? null : (locationRoles[locationId] ?? null)
+    locationsLoading ? null : (locationRoles[locationId] ?? null)
   const atLeast = (locationId: string, min: LocationRole) =>
     locationRoleAtLeast(roleAt(locationId), min)
 
