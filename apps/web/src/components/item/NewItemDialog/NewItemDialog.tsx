@@ -95,8 +95,12 @@ export function NewItemDialog({
   // Creating a new item is a catalog write: not for a household member
   // (households H5 task F.5). Picking an existing item stocks it here, which
   // is a location right, so that stays.
-  const { canEditCatalog } = usePermissions()
+  const { canEditCatalog, roleKnown } = usePermissions()
   const showCreate = canEditCatalog && trimmed.length > 0 && !hasExactMatch
+  // Where Create would have shown, a household member is told why it is not
+  // there (households H5). Only once the role is known: it may be an owner.
+  const showCreateReadOnly =
+    roleKnown && !canEditCatalog && trimmed.length > 0 && !hasExactMatch
 
   // When the query exactly matches an item already stocked in the active
   // location, the sole matching option renders disabled and no Create
@@ -378,6 +382,11 @@ export function NewItemDialog({
                 )
               })}
             </div>
+            {showCreateReadOnly && (
+              <p className="text-sm text-foreground-muted">
+                {t('items.createReadOnly')}
+              </p>
+            )}
             {alreadyStockedExactMatch && (
               <p className="text-sm text-foreground-muted">
                 {t('items.addDialog.alreadyStockedHere', {

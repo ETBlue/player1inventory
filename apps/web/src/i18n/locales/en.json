@@ -127,6 +127,7 @@
     }
   },
   "cookingControlBar": {
+    "createReadOnly": "Only a household owner or manager can create a new recipe.",
     "sort": {
       "name": "Name",
       "recent": "Last Cooked",
@@ -231,6 +232,7 @@
     "back": "Back"
   },
   "items": {
+    "createReadOnly": "Only a household owner or manager can create a new item.",
     "newButton": "New Item",
     "addDialog": {
       "title": "Add Item",

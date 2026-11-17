@@ -80,14 +80,31 @@ describe.each(people)('$who in the pantry Add dialog', (person) => {
     expect(
       await screen.findByRole('option', { name: /Bread/ }),
     ).toBeInTheDocument()
+    // An exact name gets no note: nobody would be offered Create for it
+    await user.clear(box)
+    await user.type(box, 'Bread')
+    expect(
+      await screen.findByRole('option', { name: /Bread/ }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(
+        'Only a household owner or manager can create a new item.',
+      ),
+    ).toBeNull()
 
     // A new name: only a manager gets the Create option
     await user.clear(box)
     await user.type(box, 'Butter')
     const create = screen.queryByRole('option', { name: 'Create "Butter"' })
+    const note = screen.queryByText(
+      'Only a household owner or manager can create a new item.',
+    )
     if (person.canEdit) {
       expect(create).toBeInTheDocument()
+      expect(note).toBeNull()
     } else {
+      // A member is told why there is no Create option
+      expect(note).toBeInTheDocument()
       expect(create).toBeNull()
       expect(
         screen.queryByRole('button', { name: 'Create "Butter"' }),

@@ -41,7 +41,7 @@ function ShelfItemsTab() {
   // A household member sees the assignments read only (households H5 task
   // F.5): the checkboxes show what is assigned but are disabled, and there
   // is no "Create item" from search.
-  const { canEditCatalog } = usePermissions()
+  const { canEditCatalog, roleKnown } = usePermissions()
   const { data: items = [], isLoading } = useItems()
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
@@ -245,6 +245,9 @@ function ShelfItemsTab() {
         vendors={vendors}
         recipes={recipes}
         onCreateFromSearch={canEditCatalog ? handleCreateFromSearch : undefined}
+        createReadOnlyNote={
+          roleKnown && !canEditCatalog ? t('items.createReadOnly') : undefined
+        }
         hasExactMatch={hasExactMatch}
         isCreating={createItem.isPending || updateShelf.isPending}
         className="bg-transparent border-none"

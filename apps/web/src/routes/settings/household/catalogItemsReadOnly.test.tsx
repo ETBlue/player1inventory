@@ -182,10 +182,16 @@ describe.each(people)('$who on the catalog Items tabs', (person) => {
     // And "Create item" from search follows the household role
     const user = await searchForNewName('Butter')
     const create = screen.queryByRole('button', { name: /create item/i })
+    const createNote = screen.queryByText(
+      'Only a household owner or manager can create a new item.',
+    )
     if (person.canEdit) {
       expect(create).toBeInTheDocument()
+      expect(createNote).toBeNull()
     } else {
       expect(create).toBeNull()
+      // A member is told why there is no Create item
+      expect(createNote).toBeInTheDocument()
       // And Enter does not create it either
       await user.keyboard('{Enter}')
       await new Promise((resolve) => setTimeout(resolve, 50))

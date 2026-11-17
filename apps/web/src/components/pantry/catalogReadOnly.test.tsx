@@ -112,6 +112,15 @@ async function search(query: string) {
 }
 
 const TAIL_NOTE = 'Only an owner or manager can add it here.'
+// Where Create item would have shown, a member is told why it is missing
+const CREATE_NOTE = 'Only a household owner or manager can create a new item.'
+
+/** A member sees the create note in place of Create item; a manager does not. */
+function expectCreateNote(canEdit: boolean) {
+  const note = screen.queryByText(CREATE_NOTE)
+  if (canEdit) expect(note).toBeNull()
+  else expect(note).toBeInTheDocument()
+}
 
 const people = [
   { who: 'household member', as: asHouseholdMember, canEdit: false },
@@ -129,6 +138,7 @@ describe.each(people)('$who searching the pantry and the cart', (person) => {
 
     const user = await search('Butter')
     const create = screen.queryByRole('button', { name: /create item/i })
+    expectCreateNote(person.canEdit)
     if (person.canEdit) {
       expect(create).toBeInTheDocument()
     } else {
@@ -167,6 +177,7 @@ describe.each(people)('$who searching the pantry and the cart', (person) => {
     const create = screen.queryByRole('button', { name: /create item/i })
     if (person.canEdit) expect(create).toBeInTheDocument()
     else expect(create).toBeNull()
+    expectCreateNote(person.canEdit)
   })
 })
 
@@ -246,5 +257,23 @@ describe.each(people)('$who searching a pantry group', (person) => {
     const create = screen.queryByRole('button', { name: /create item/i })
     if (person.canEdit) expect(create).toBeInTheDocument()
     else expect(create).toBeNull()
+    expectCreateNote(person.canEdit)
+  })
+})
+
+describe('household member searching for a name that exists', () => {
+  it('household member sees no create note when the search matches an item exactly', async () => {
+    // The note replaces Create item, and Create item hides on an exact match
+    await makeItem('Milk')
+    asHouseholdMember()
+    renderAt('/')
+    expect(await screen.findByText('Milk')).toBeInTheDocument()
+
+    await search('Milk')
+    // Present first: the clear button of the search row
+    expect(
+      await screen.findByRole('button', { name: /clear search/i }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(CREATE_NOTE)).toBeNull()
   })
 })

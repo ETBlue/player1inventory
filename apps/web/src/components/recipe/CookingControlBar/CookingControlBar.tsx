@@ -30,6 +30,11 @@ interface CookingControlBarProps {
    * is no Create button, and Enter creates nothing.
    */
   onCreateRecipe?: ((name: string) => void) | undefined
+  /**
+   * Shown under the search row in place of Create, when there is no
+   * `onCreateRecipe` (a household member, households H5). It says why.
+   */
+  createReadOnlyNote?: string | undefined
 }
 
 export function CookingControlBar({
@@ -37,6 +42,7 @@ export function CookingControlBar({
   onExpandAll,
   onCollapseAll,
   onCreateRecipe,
+  createReadOnlyNote,
 }: CookingControlBarProps) {
   const { t } = useTranslation()
   const { sort, dir, q } = Route.useSearch()
@@ -229,6 +235,15 @@ export function CookingControlBar({
           )}
         </div>
       )}
+      {searchVisible &&
+        q.trim() &&
+        !onCreateRecipe &&
+        createReadOnlyNote &&
+        !hasExactTitleMatch && (
+          <p className="border-b-2 border-accessory-default px-3 py-2 text-xs text-foreground-muted">
+            {createReadOnlyNote}
+          </p>
+        )}
     </>
   )
 }

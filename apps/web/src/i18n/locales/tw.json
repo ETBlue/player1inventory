@@ -127,6 +127,7 @@
     }
   },
   "cookingControlBar": {
+    "createReadOnly": "只有家庭擁有者或管理者可以建立新的食譜。",
     "sort": {
       "name": "名稱",
       "recent": "最近做過",
@@ -231,6 +232,7 @@
     "back": "返回"
   },
   "items": {
+    "createReadOnly": "只有家庭擁有者或管理者可以建立新的品項。",
     "newButton": "新增品項",
     "addDialog": {
       "title": "新增品項",

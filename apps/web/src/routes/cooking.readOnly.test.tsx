@@ -126,10 +126,16 @@ describe.each(people)('$who on the cooking page', (person) => {
       await screen.findByRole('button', { name: /clear search/i }),
     ).toBeInTheDocument()
     const create = screen.queryByRole('button', { name: /^create$/i })
+    const note = screen.queryByText(
+      'Only a household owner or manager can create a new recipe.',
+    )
     if (person.canEdit) {
       expect(create).toBeInTheDocument()
+      expect(note).toBeNull()
     } else {
       expect(create).toBeNull()
+      // And the member is told why
+      expect(note).toBeInTheDocument()
       // And Enter opens no "New recipe" dialog
       await user.keyboard('{Enter}')
       expect(screen.queryByRole('dialog')).toBeNull()

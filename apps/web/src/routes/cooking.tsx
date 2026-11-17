@@ -760,6 +760,11 @@ function CookingPage() {
               replace: true,
             })
           }
+          createReadOnlyNote={
+            roleKnown && !canEditCatalog
+              ? t('cookingControlBar.createReadOnly')
+              : undefined
+          }
           onCreateRecipe={
             canEditCatalog
               ? (name) => {

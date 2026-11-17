@@ -48,7 +48,7 @@ interface ShelfDetailViewProps {
 
 export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
   const { t } = useTranslation()
-  const { canEditCatalog } = usePermissions()
+  const { canEditCatalog, roleKnown } = usePermissions()
   const navigate = useNavigate()
   const isUnsorted = shelfId === 'unsorted'
 
@@ -440,6 +440,9 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
             // Creating an item is a catalog write: not for a household
             // member (households H5 task F.5). No button, and no Enter.
             canEditCatalog ? handleCreateFromSearch : undefined
+          }
+          createReadOnlyNote={
+            roleKnown && !canEditCatalog ? t('items.createReadOnly') : undefined
           }
           hasExactMatch={hasExactGlobalMatch}
           isCreating={createItem.isPending}

@@ -40,7 +40,7 @@ function TagItemsTab() {
   // A household member sees the assignments read only (households H5 task
   // F.5): the checkboxes show what is assigned but are disabled, and there
   // is no "Create item" from search.
-  const { canEditCatalog } = usePermissions()
+  const { canEditCatalog, roleKnown } = usePermissions()
   const { data: vendors = [] } = useVendors()
   const { data: recipes = [] } = useRecipes()
 
@@ -237,6 +237,9 @@ function TagItemsTab() {
         vendors={vendors}
         recipes={recipes}
         onCreateFromSearch={canEditCatalog ? handleCreateFromSearch : undefined}
+        createReadOnlyNote={
+          roleKnown && !canEditCatalog ? t('items.createReadOnly') : undefined
+        }
         hasExactMatch={hasExactMatch}
         isCreating={createItem.isPending || updateItem.isPending}
         className="bg-transparent border-none"

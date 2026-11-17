@@ -54,6 +54,11 @@ interface ItemListToolbarProps {
   // Search/create callbacks — triggered when search has no exact name match
   onSearchSubmit?: (query: string) => void
   onCreateFromSearch?: ((query: string) => void) | undefined
+  // Shown under the search row where the Create button would have shown,
+  // when the caller passes no `onCreateFromSearch` (a household member,
+  // households H5). It says why there is no Create. Same trigger as the
+  // button: a search with no exact match.
+  createReadOnlyNote?: string | undefined
   hasExactMatch?: boolean // pass true when the GLOBAL catalog contains an exact case-insensitive match — NOT the visible/filtered list (see #245)
   vendors?: Vendor[]
   recipes?: Recipe[]
@@ -79,6 +84,7 @@ export function ItemListToolbar({
   children,
   onSearchSubmit,
   onCreateFromSearch,
+  createReadOnlyNote,
   hasExactMatch,
   vendors,
   recipes,
@@ -345,6 +351,14 @@ export function ItemListToolbar({
               </>
             )}
           </div>
+          {search.trim() &&
+            !onCreateFromSearch &&
+            createReadOnlyNote &&
+            !hasExactMatch && (
+              <p className="px-3 pb-2 text-xs text-foreground-muted">
+                {createReadOnlyNote}
+              </p>
+            )}
         </>
       )}
     </>

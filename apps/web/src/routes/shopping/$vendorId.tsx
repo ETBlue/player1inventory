@@ -59,7 +59,7 @@ export const Route = createFileRoute('/shopping/$vendorId')({
 
 function VendorCart() {
   const { t } = useTranslation()
-  const { canEditCatalog } = usePermissions()
+  const { canEditCatalog, roleKnown } = usePermissions()
   const navigate = useNavigate()
   const { vendorId: vendorIdParam } = Route.useParams()
   const cartVendorId: string | null =
@@ -473,6 +473,9 @@ function VendorCart() {
             // Creating an item is a catalog write: not for a household
             // member (households H5 task F.5). No button, and no Enter.
             canEditCatalog ? handleCreateFromSearch : undefined
+          }
+          createReadOnlyNote={
+            roleKnown && !canEditCatalog ? t('items.createReadOnly') : undefined
           }
           hasExactMatch={hasExactGlobalMatch}
           isCreating={createItem.isPending}
