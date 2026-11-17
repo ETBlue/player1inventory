@@ -1674,7 +1674,20 @@ and one test-only override in shipped code.
   have no button and no row note (follow-up to F.6, below). The pantry list and shelf view
   show `common.locationViewOnly` under the search row only when Create would have been
   offered, so not for an exact name. The vendor and recipe views show no note. The
-  `LocationSwitcher` badge "View only" is on every page.
+  `LocationSwitcher` badge "View only" is on every page. Two more cases, found in the review
+  of the follow-up:
+  - A viewer who is a household `member` gets the catalog note `items.createReadOnly`
+    ("Only a household owner or manager can create…") from `useCreateHere`. That note is
+    about creating, not about this location.
+  - When the pantry has nothing stocked here, the empty state used to show
+    `common.locationViewOnly`. Now a search that finds items stocked elsewhere shows the
+    tail instead, so that note is gone.
+  The cart page is the only surface that always shows `common.locationViewOnly`.
+- **Two viewer rules are pinned only below page level.** "No role at the active location →
+  the read-only section is hidden" fails in one test only, the hook test
+  `useItemSearchTailWiring.test.tsx` "person with no role". The shelf, vendor and recipe
+  views have no viewer page test for the section. All five surfaces share the wiring hook,
+  so the risk is low.
 - **E2E drives a viewer through TWO pages only.** Since F.8, `shared-household.spec.ts`
   test 2 has a location viewer on a cart page (live row, disabled checkbox, no Done). Since
   the follow-up to F.6, test 3 has a viewer search the pantry (the "not stocked here" row,
