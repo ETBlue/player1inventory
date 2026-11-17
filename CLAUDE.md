@@ -149,6 +149,20 @@ that really set up that role.
 > | `requireCatalogIds(ctx, householdId, model, ids)` | every id a write attaches is in the household (#273) |
 > | `requireOwnRowOrUnclaimed(ctx, model, id, targetHouseholdId)` | see the next paragraphs. The fourth argument is the household the write goes INTO, since H4 task E.1 |
 >
+> **Joining a household (households H5b task G.4).** `joinHousehold(token)` in
+> `resolvers/invite.resolver.ts` is one transaction, and it never calls `requireHousehold`
+> (decision T22). Two rules from it hold for every later writer:
+>
+> | Rule | Why |
+> |---|---|
+> | **One lock order: `lockUser` (the `User` row) first, then `lockHousehold`.** Only `joinHousehold` and `createHousehold` take `lockUser`. Never write a `User` row after a household lock unless `lockUser` is already held | two locks taken in opposite orders give a Postgres deadlock (`40P01`). Both helpers are in `lib/household.ts` |
+> | **A new model that belongs to a household or a location must be added to `emptyHouseholdWhere`** (`lib/invite.ts`) | the join deletes the joiner's own household when that `where` matches (decision T21). A household holding only data of a model the `where` does not name would be deleted |
+>
+> The fakes model that `where`: `householdFake` throws on any key of it that it does not
+> model, and reads the other models' rows from `householdWorld`'s `contents` store
+> (`world.contents.rows`). A test that `extend`s the world with its own `item` or `cart`
+> model must ALSO put rows in `contents`, or the "is it empty" check will not see them.
+>
 > **`removeItemFromLocation` needs `organizer`, not `participant`** (owner decision 2026-11-11, `f4d993db`). It deletes every log of the item at that location, including other members' logs.
 >
 > **`ItemStock` carries no `userId` column at all**, by design from before households. It is scoped *through* its location: `requireLocationRole` for one location, `locationIdsWithRole` for several. Do not add a `userId` column there.
@@ -316,9 +330,10 @@ that really set up that role.
 >
 > **Every `Mutation` field must be in one of two lists** in
 > `apps/server/src/resolvers/live-publish.guard.test.ts`: `publishes` (with its kinds) or
-> `publishesNothing` (with a reason). A new mutation in no list fails the test. Today: 64
-> fields, all 64 in `publishes` and 0 in `publishesNothing` (62 until households H5b task
-> G.3 added `createInvite` and `revokeInvite`, both household-level `LOCATION`). H3c-1 had a third list,
+> `publishesNothing` (with a reason). A new mutation in no list fails the test. Today: 65
+> fields, all 65 in `publishes` and 0 in `publishesNothing` (62 until households H5b task
+> G.3 added `createInvite` and `revokeInvite`, 64 until task G.4 added `joinHousehold`, all
+> three household-level `LOCATION`). H3c-1 had a third list,
 > `waitingForH3c2` (51 fields); H3c-2 task D.4 emptied it and deleted it.
 > The guard cannot see whether a resolver really calls `publishChange` or
 > `publishHouseholdChange`; the per-mutation tests in `cart-live-publish.resolver.test.ts`,

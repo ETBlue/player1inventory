@@ -743,6 +743,25 @@ User row after a household lock without already holding the User lock"; one test
 "not empty" relation (a fixture with only an item cannot catch a dropped `itemStocks` check);
 the claim pattern from `ensureHousehold`; the fake has no row lock; live guard. **Test doubles (from the G.2 review):** the hand-written `user.findUnique` stubs in the `import`, `item`, `shelf` and `tag` resolver tests return a membership of `hh_test` for ANY user id and any select, so they cannot show a join or a leave; use `householdWorld` for those. The inline `createUserFake` in `catalog-ownership`, `import-ownership` and `import-ownership-item` resolver tests is NOT registered with `runInTransaction` and is NOT reset between tests, so a rollback or a second test there would see stale `User` rows. To act in a household that is not the person's oldest, use `world.setActiveHousehold`.
 
+**Notes from task G.4, for later tasks.**
+
+- **G.5, `createHousehold`:** take `lockUser` FIRST, as `joinHousehold` does (decision
+  T16). `removeMember`, `leaveHousehold` and `setHouseholdRole` take only `lockHousehold`
+  and never write a `User` row.
+- **G.5, tests:** the household fake now has `household.deleteMany`, and
+  `householdWorld` cascades it (members, invites, location roles, locations, stock rows,
+  the `contents` store, and `User.activeHouseholdId` SET NULL). A test that needs
+  "is it empty" rows puts them in `world.contents.rows`.
+- **G.6, `/e2e/cleanup`:** a joined person may own a household that `joinHousehold`
+  kept (it had data). The route already deletes every household a user owns (E10), so
+  nothing changes there for G.4.
+- **G.7, the web:** the join answers `{ id name role }` of the JOINED household. A
+  refusal is `BAD_USER_INPUT` with `extensions.reason` `INVITE_INVALID` or
+  `ALREADY_MEMBER`. A corrupt invite row gives an internal error with no reason; show the
+  generic error.
+- **Any task that adds a model owned by a household or a location:** add it to
+  `emptyHouseholdWhere` (`lib/invite.ts`), and to `HouseholdContents` in the fake.
+
 ---
 
 ## Task G.5 — server: members, roles, remove, leave, create
@@ -1224,6 +1243,13 @@ Filled in from the task reports and reviews.
 | G.3 | "If G.3 needs `orderBy` for a stable list, extend the fake" | Not needed. `householdInvites` sorts in code, by `createdAt` and then `id`, so the order is fixed without `orderBy` and the invite fake did not change |
 | G.3 | Step 2 listed `invitePreview` names only for VALID | `ALREADY_MEMBER` carries the names and roles too, so the join page can say WHICH household the person is already in. Only `INVALID` carries none |
 | G.3 | Note on `clearAllData`: G.3 decides how `householdInvites` shows an invite whose locations were all deleted | It is listed, with an empty `locationRoles` list (test "an invite whose every location was deleted is listed with an empty role list"). G.9 decides whether the Members page says why the list is empty |
+| G.4 | Step 5: "`ALREADY_MEMBER` checked after the claim → 'invite stays unused' red" | Not true inside one transaction. The `ALREADY_MEMBER` throw rolls back the claim, so the invite stays unused either way, and the stored state is the same. Two things DO change, and the tests pin those: the claim is attempted (a spy on `updateMany`), and a member whose link was used by someone else in the meantime gets `INVITE_INVALID` instead of `ALREADY_MEMBER`. Moving the check after the claim turns both red |
+| G.4 | Step 3.2: "Read the invite by token. None → `INVITE_INVALID`" | Not enough. Without an open check on the read, a member who opens a USED link gets `ALREADY_MEMBER`, where `invitePreview` says INVALID. The join checks used, revoked and expired on the read too (the same `isOpen` as the preview), before any other check. The claim still checks all three again, for the race |
+| G.4 | Step 1: one race test, "the invite is claimed between the read and the claim" | It pins only `usedAt: null`. The claim has three keys (T17), and a claim that forgot `revokedAt` or `expiresAt` passed every listed test. Two more race tests: the invite revoked, and the invite expired, between the read and the claim. Each key is now red on its own |
+| G.4 | Step 3.3: `lockHousehold(tx, invite.householdId)` | The household can be deleted after the invite is read. `lockHousehold` then throws Prisma's P2025, which would reach the person as an internal error. It is mapped to `INVITE_INVALID` (the invite went with the household); any other error is not |
+| G.4 | Step 3.9: "the shared fakes must model this `where` ... by reading the other stores" | The world owns no catalog, log or cart store. `householdWorld` got a `contents` store of plain rows (catalog rows by household, logs and carts by location, cart rows by cart), rolled back with the rest. The brief also said "the fakes model no cascade"; that could not stay true: without the member row cascade, a deleted household kept the joiner as a member, and `ensureHousehold` could still pick it. `household.deleteMany` now cascades (members, invites, location roles, locations, stock rows, `contents`, and `User.activeHouseholdId` SET NULL) |
+| G.4 | Files: no change to the existing fake tests | `householdFake.test.ts` used `members: { every }` as its example of a filter the fake does NOT model. G.4 models it, so the example is now `members: { none }` |
+| G.4 | Live: "none for the deleted HP" | Also none for a KEPT own household: nothing in it changed. The joiner's other tabs still hear the one event for the joined household, because `shouldDeliver` checks membership per event, and the joiner is a member there by then. Tested both ways |
 
 ## Status
 
@@ -1264,3 +1290,10 @@ the read for a token of the wrong length and no longer reads the token column;
 `createInvite` publishes right after the write, before the two name reads; and a test
 pins that an expired, unused invite can be revoked. See *Notes from the review of G.3*
 under Task G.3 for what later tasks must keep.
+
+**Task G.4 is done** (`f8292f3a`, `d368c1e5`, `f202059a`). `joinHousehold(token)` in
+`resolvers/invite.resolver.ts`, one transaction in the order of Step 3, with `lockUser`
+(`lib/household.ts`) first and `emptyHouseholdWhere` (`lib/invite.ts`) last. It never calls
+`requireHousehold`. The live guard holds 65 fields. Server tests: 1961 / 74 files before,
+2025 / 75 after. See the G.4 rows of *What this plan got wrong* and *Notes from task G.4*
+under Task G.4.
