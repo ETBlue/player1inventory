@@ -149,6 +149,33 @@ describe('ensureHousehold — a user who is set up but in no household', () => {
     expect(world.users.state.rows[0]?.householdSetupAt).toEqual(EARLIER)
   })
 
+  it('a person whose only member row was deleted gets NO_HOUSEHOLD, not a missing-row error', async () => {
+    // Given B1 is a member of hh-1, with no User row seeded (the world
+    // implies one, as the foreign key does in Postgres)
+    world.seedHouseholds({
+      households: [
+        { id: 'hh-1', name: 'One', ownerId: 'user-a', ownerGoneAt: null, createdAt: EARLIER, updatedAt: EARLIER },
+      ],
+      householdMembers: [
+        { householdId: 'hh-1', userId: 'user-a', role: 'owner', joinedAt: EARLIER },
+        { householdId: 'hh-1', userId: 'user-b1', role: 'member', joinedAt: EARLIER },
+      ],
+    })
+    await expect(ensureHousehold('user-b1', 'en', NOW)).resolves.toBe('hh-1')
+
+    // When B1 is removed: the member row goes, the User row stays (T16)
+    world.households.state.householdMembers = world.households.state.householdMembers.filter(
+      (m) => m.userId !== 'user-b1',
+    )
+
+    // Then B1 is in no household
+    const error = await ensureHousehold('user-b1', 'en', NOW).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(GraphQLError)
+    expect((error as GraphQLError).extensions.code).toBe('NO_HOUSEHOLD')
+    // And no household was made for them
+    expect(world.households.state.households).toHaveLength(1)
+  })
+
   it('throws a plain error, not NO_HOUSEHOLD, when there is no User row at all', async () => {
     // Given no User row (ensureUserOrLog failed earlier in the request)
     // When a request needs the household

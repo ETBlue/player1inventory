@@ -64,9 +64,10 @@
 // seed member rows and no `User` row, because before H5b nothing read it.
 //
 // With `rowForEveryMember: true`, the fake acts as if there were a row for each
-// person a member row names and the store does not hold. A read sees such a
-// row without storing it, so a read changes nothing in `state`. A write first
-// stores those rows, so it can change them. The implied row is
+// person a member row names (or ever named) and the store does not hold. A
+// read sees such a row without storing it, so a read changes nothing in
+// `state`. A write stores the one implied row it changes (see below). The
+// implied row is
 // what such a person looks like in Postgres before they ever join a second
 // household: `householdSetupAt` set (they were set up), `activeHouseholdId`
 // `null`, `displayName` equal to the id. A row the test seeded is never
@@ -74,6 +75,16 @@
 //
 // It is checked on EVERY call, not when the rows are seeded, because many
 // tests push member rows straight into the household store.
+//
+// An implied row STAYS once a member row has named the person, also after
+// that member row is deleted. In Postgres removing or leaving a household
+// deletes the member row and never the `User` row (decision T16), so the
+// next request finds the person in no household and gets `NO_HOUSEHOLD`.
+// The ids seen are kept outside `state`, so a rolled-back transaction does
+// not remove them either (see `everNamed`). `reset` forgets them.
+//
+// A write stores the implied row it changes, and only that row, and only
+// after its argument checks pass. A refused write changes nothing.
 //
 // ── WHAT IT DOES NOT MODEL ──
 //
@@ -375,23 +386,34 @@ export function createUserFake(rows: UserRow[] = [], options: UserFakeOptions = 
   }
 
   /**
-   * The rows `rowForEveryMember` implies and the store does not hold. See
-   * the file head. They are NOT in `state`, so a read does not change the
-   * store (a test that compares the store before and after a refused call
-   * stays exact).
+   * Every person a member row has EVER named, while `rowForEveryMember` is
+   * on. See "A MEMBER ROW MEANS A USER ROW" in the file head.
+   *
+   * It is NOT in `state`, so `runInTransaction` does not roll it back. That
+   * is on purpose: a member row's foreign key needs the `User` row to exist
+   * BEFORE the member row is written, so the `User` row was there before the
+   * transaction began, and a rollback of that transaction (a failed join)
+   * does not remove it in Postgres either. `reset` empties it.
+   */
+  const everNamed = new Set<string>()
+
+  /**
+   * The rows `rowForEveryMember` implies and the store does not hold. They
+   * are NOT in `state`, so a read does not change the store (a test that
+   * compares the store before and after a refused call stays exact).
    */
   function impliedRows(): UserRow[] {
     if (!options.rowForEveryMember) return []
     if (!options.householdMembers) {
       throw new UserFakeUnsupportedError('rowForEveryMember with no `householdMembers` option')
     }
+    for (const member of options.householdMembers()) everNamed.add(member.userId)
     const out: UserRow[] = []
-    for (const member of options.householdMembers()) {
-      if (state.rows.some((r) => r.id === member.userId)) continue
-      if (out.some((r) => r.id === member.userId)) continue
+    for (const id of everNamed) {
+      if (state.rows.some((r) => r.id === id)) continue
       out.push({
-        id: member.userId,
-        displayName: member.userId,
+        id,
+        displayName: id,
         email: null,
         lastSeenAt: null,
         deletedAt: null,
@@ -409,9 +431,17 @@ export function createUserFake(rows: UserRow[] = [], options: UserFakeOptions = 
     return [...state.rows, ...impliedRows()]
   }
 
-  /** Before a write: store the implied rows, so the write can change them. */
-  function storeImpliedRows() {
-    state.rows.push(...impliedRows())
+  /**
+   * The stored row for one row a read found. An implied row is stored first,
+   * so a write can change it. Call it only after every argument check has
+   * passed and the write is sure to happen, so a refused write changes
+   * nothing.
+   */
+  function storedRow(found: UserRow): UserRow {
+    const stored = state.rows.find((r) => r.id === found.id)
+    if (stored) return stored
+    state.rows.push(found)
+    return found
   }
 
   const client = {
@@ -436,51 +466,51 @@ export function createUserFake(rows: UserRow[] = [], options: UserFakeOptions = 
       return readableRows().filter((r) => userMatches(r, args.where ?? {})).map(copy)
     },
     create: async (args: { data: Data }) => {
-      storeImpliedRows()
       refuseUnknownOptions('create', args, ['data'])
+      // An implied row's id is taken, as in Postgres. Refused before any write.
+      if (impliedRows().some((r) => r.id === args.data.id)) {
+        throw new OwnedRowIdConstraintError(MODEL, args.data.id as string)
+      }
       return copy(insert(args.data))
     },
     upsert: async (args: { where: Where; create: Data; update: Data }) => {
-      storeImpliedRows()
       refuseUnknownOptions('upsert', args, ['where', 'create', 'update'])
       checkUserWhere(args.where)
       if (typeof args.where.id !== 'string') {
         throw new UserFakeUnsupportedError('an upsert whose where has no string id')
       }
-      const row = state.rows.find((r) => userMatches(r, args.where))
-      return copy(row ? applyUpdate(row, args.update) : insert(args.create))
+      const found = readableRows().find((r) => userMatches(r, args.where))
+      return copy(found ? applyUpdate(storedRow(found), args.update) : insert(args.create))
     },
     // One row, by its unique id. Prisma raises P2025 when none matches.
     update: async (args: { where: Where; data: Data; select?: Record<string, unknown> }) => {
-      storeImpliedRows()
       refuseUnknownOptions('update', args, ['where', 'data', 'select'])
       checkUserWhere(args.where)
       if (typeof args.where.id !== 'string') {
         throw new UserFakeUnsupportedError('an update whose where has no string id')
       }
-      const row = state.rows.find((r) => userMatches(r, args.where))
-      if (!row) throw new OwnedRowNotFoundError(MODEL, args.where)
+      const found = readableRows().find((r) => userMatches(r, args.where))
+      if (!found) throw new OwnedRowNotFoundError(MODEL, args.where)
+      const row = storedRow(found)
       applyUpdate(row, args.data)
       // biome-ignore lint/suspicious/noExplicitAny: the shape depends on `select`, as in Prisma
       return (args.select ? applySelect(row, args.select) : copy(row)) as any
     },
     updateMany: async (args: { where?: Where; data: Data }) => {
-      storeImpliedRows()
       refuseUnknownOptions('updateMany', args, ['where', 'data'])
       checkUserWhere(args.where)
-      let count = 0
-      for (const row of state.rows) {
-        if (!userMatches(row, args.where ?? {})) continue
-        applyUpdate(row, args.data)
-        count++
-      }
-      return { count }
+      // Only the rows that match are stored, so a claim that matches nothing
+      // changes nothing.
+      const matched = readableRows().filter((r) => userMatches(r, args.where ?? {}))
+      for (const found of matched) applyUpdate(storedRow(found), args.data)
+      return { count: matched.length }
     },
   }
 
   /** Replace the store's contents. The rows are copied. */
   function reset(next: UserRow[] = []) {
     state.rows = next.map(copy)
+    everNamed.clear()
   }
 
   return { state, client, reset }

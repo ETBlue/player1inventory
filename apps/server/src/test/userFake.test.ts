@@ -739,12 +739,83 @@ describe('userFake gives every member a User row when asked (rowForEveryMember, 
     expect((await fake.client.findMany()).filter((r) => r.id === 'user_a')).toHaveLength(1)
   })
 
-  it('a write stores the implied rows first, so it can change them', async () => {
+  it('a write stores the one implied row it changes, and no other', async () => {
     const fake = fakeWithImpliedRows()
 
     await fake.client.update({ where: { id: 'user_a' }, data: { activeHouseholdId: 'h_a' } })
 
-    expect(fake.state.rows.find((r) => r.id === 'user_a')?.activeHouseholdId).toBe('h_a')
+    expect(fake.state.rows.map((r) => r.id)).toEqual(['user_a'])
+    expect(fake.state.rows[0]?.activeHouseholdId).toBe('h_a')
+  })
+
+  it('a member row deleted later leaves the User row readable, as after a removal in Postgres', async () => {
+    // Given a person named by a member row, and read once
+    let members = [membership('h_a', 'user_b1', JAN)]
+    const fake = createUserFake([], { householdMembers: () => members, rowForEveryMember: true })
+    await expect(fake.client.findUnique({ where: { id: 'user_b1' } })).resolves.not.toBeNull()
+
+    // When the member row is deleted (removal and leaving never write the User row, T16)
+    members = []
+
+    // Then the User row is still there, with no membership
+    const row = await fake.client.findUnique({ where: { id: 'user_b1' }, select: T14_SELECT })
+    expect(row).toEqual({ activeHouseholdId: null, householdMemberships: [] })
+    // And it is still implied, not stored
+    expect(fake.state.rows).toEqual([])
+  })
+
+  it('an implied row stays after a rolled-back transaction', async () => {
+    let members: ReturnType<typeof membership>[] = []
+    const fake = createUserFake([], { householdMembers: () => members, rowForEveryMember: true })
+    const client = { user: fake.client }
+
+    // When a transaction names the person (a join), reads them, and fails
+    await expect(
+      runInTransaction([fake.state as unknown as Record<string, unknown>], client, async () => {
+        members = [membership('h_a', 'user_b1', JAN)]
+        await fake.client.findUnique({ where: { id: 'user_b1' } })
+        throw new Error('the join failed')
+      }),
+    ).rejects.toThrow('the join failed')
+    members = []
+
+    // Then the person still has a User row: in Postgres it existed before the
+    // member row could be written
+    await expect(fake.client.findUnique({ where: { id: 'user_b1' } })).resolves.not.toBeNull()
+  })
+
+  it('reset forgets every implied row', async () => {
+    let members = [membership('h_a', 'user_b1', JAN)]
+    const fake = createUserFake([], { householdMembers: () => members, rowForEveryMember: true })
+    await fake.client.findMany()
+    members = []
+
+    fake.reset()
+
+    await expect(fake.client.findUnique({ where: { id: 'user_b1' } })).resolves.toBeNull()
+  })
+
+  it('a refused write changes nothing in the store', async () => {
+    const fake = fakeWithImpliedRows()
+
+    // An unknown option
+    await expect(
+      fake.client.update({ where: { id: 'user_a' }, data: {}, include: {} } as never),
+    ).rejects.toThrow()
+    // A row that does not exist (P2025)
+    await expect(
+      fake.client.update({ where: { id: 'user_ghost' }, data: { activeHouseholdId: 'h_a' } }),
+    ).rejects.toThrow()
+    // An implied id given to create (P2002)
+    await expect(
+      fake.client.create({ data: { id: 'user_a', displayName: 'A' } }),
+    ).rejects.toThrow()
+    // A claim that matches nobody
+    await expect(
+      fake.client.updateMany({ where: { id: 'user_a', householdSetupAt: null }, data: { householdSetupAt: JAN } }),
+    ).resolves.toEqual({ count: 0 })
+
+    expect(fake.state.rows).toEqual([])
   })
 
   it('a person with no member row and no stored row has none', async () => {
