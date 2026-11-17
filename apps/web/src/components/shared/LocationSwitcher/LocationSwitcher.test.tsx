@@ -197,6 +197,30 @@ describe('LocationSwitcher', () => {
   })
 })
 
+describe('LocationSwitcher in local mode — no View only', () => {
+  beforeEach(async () => {
+    await seedLocations()
+    clearStoredActiveLocationIds()
+  })
+
+  it('user in local mode sees no View only badge on any location', async () => {
+    // Local mode has one person and no roles. The cloud badge is tested in
+    // LocationSwitcher.cloud.test.tsx.
+    const user = userEvent.setup()
+    renderSwitcher({ variant: 'full' })
+    const button = await screen.findByRole('button', {
+      name: 'Switch location (current: My Home)',
+    })
+    expect(button).not.toHaveTextContent('View only')
+
+    await user.click(button)
+    expect(
+      await screen.findByRole('menuitem', { name: 'Office' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('View only')).not.toBeInTheDocument()
+  })
+})
+
 describe('LocationSwitcher variant="full"', () => {
   beforeEach(async () => {
     await seedLocations()

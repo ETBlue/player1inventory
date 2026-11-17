@@ -890,7 +890,9 @@
   },
   "locationSwitcher": {
     "triggerLabel": "Switch location (current: {{name}})",
-    "manage": "Manage locations"
+    "manage": "Manage locations",
+    "triggerLabelViewOnly": "Switch location (current: {{name}}, view only)",
+    "viewOnly": "View only"
   },
   "roles": {
     "location": {

@@ -1,6 +1,15 @@
 import { expect, test } from '@playwright/test'
-import { CLOUD_WEB_URL, homeLocationName } from '../constants'
+import { checkA11y, injectAxe } from 'axe-playwright'
+import {
+  CLOUD_WEB_URL,
+  E2E_SECOND_USER_ID,
+  E2E_USER_ID,
+  homeLocationName,
+} from '../constants'
+import { AXE_OPTIONS } from '../helpers/axe'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
+import { addHouseholdMember } from '../helpers/cloudUsers'
+import { makeGql } from '../utils/cloud'
 
 // The LocationSwitcher is a global active-location selector. PR B made it persist
 // the active location and update its trigger label; PR D made it LIVE — switching
@@ -386,5 +395,135 @@ test.describe('mobile (< lg): the switcher stays in the page toolbar', () => {
 
     // Then the compact trigger shows the new initial
     await expect(toolbarSwitcher(page)).toHaveText('O')
+  })
+})
+
+// ── Cloud: the View only badge (households H5 task F.4) ──
+//
+// Cloud only: local mode has one person and no roles. Two people, three
+// locations of the OWNER's household:
+//
+// | Location | Owner     | The browser's user (household `member`) |
+// |----------|-----------|------------------------------------------|
+// | Home     | organizer | viewer      → "View only"                |
+// | Garage   | organizer | participant → no badge                   |
+// | Shed     | organizer | no role     → not in the switcher at all |
+//
+// The browser's user is put into the owner's household with
+// `addHouseholdMember` BEFORE the page sends its first GraphQL request (the
+// route answers 409 to a person who already has a household; e2e/CLAUDE.md).
+//
+// `a11y.spec.ts` does not run in the `cloud` project, so the badge's a11y
+// scans (light and dark) live here, with the same axe rules
+// (`e2e/helpers/axe.ts`). Each scan runs twice: the whole page with the menu
+// CLOSED (the trigger's badge), then only `[role="menu"]` with it OPEN (the
+// row's badge). The whole page is not scanned with the menu open, for the
+// reason `a11y.spec.ts` gives above its sidebar switcher test: Radix's modal
+// portal marks the rest of the app `aria-hidden`, which trips
+// `aria-hidden-focus` for every dropdown in the app (measured here on
+// 2026-11-17: 1 node, the app root `.h-dvh`).
+const SWITCHER_OWNER = `${E2E_SECOND_USER_ID}-switcher-owner`
+const CREATE_LOCATION = `mutation ($name: String!) { createLocation(name: $name) { id } }`
+
+test.describe('cloud: View only on the switcher (households H5 task F.4)', () => {
+  test.beforeEach(async ({ request, baseURL }) => {
+    test.skip(baseURL !== CLOUD_WEB_URL, 'roles exist in cloud mode only')
+    // The browser's user first (its cleanup removes its own role rows), then
+    // the owner, whose cleanup deletes the household.
+    await cleanupCloudData(request, E2E_USER_ID)
+    await cleanupCloudData(request, SWITCHER_OWNER)
+
+    const owner = makeGql(request, SWITCHER_OWNER)
+    // The owner's first request runs first sign-in, which makes "Home"
+    const { locations } = await owner<{ locations: { id: string }[] }>(
+      `query { locations { id } }`,
+    )
+    const home = locations[0]
+    if (!home) throw new Error('no Home after first sign-in')
+    const garage = await owner<{ createLocation: { id: string } }>(
+      CREATE_LOCATION,
+      { name: 'Garage' },
+    )
+    await owner(CREATE_LOCATION, { name: 'Shed' })
+    await addHouseholdMember(request, {
+      ownerUserId: SWITCHER_OWNER,
+      memberUserId: E2E_USER_ID,
+      householdRole: 'member',
+      locations: [
+        { locationId: home.id, role: 'viewer' },
+        { locationId: garage.createLocation.id, role: 'participant' },
+      ],
+    })
+  })
+
+  test.afterEach(async ({ request, baseURL }) => {
+    if (baseURL !== CLOUD_WEB_URL) return
+    await cleanupCloudData(request, E2E_USER_ID)
+    await cleanupCloudData(request, SWITCHER_OWNER)
+  })
+
+  /** The sidebar trigger on the pantry, with Home active and its badge shown. */
+  async function viewerTrigger(page: Page) {
+    await page.goto('/')
+    // The accessible name says "view only" (locationSwitcher.triggerLabelViewOnly)
+    const trigger = page
+      .getByRole('navigation', { name: 'Sidebar navigation' })
+      .getByRole('button', {
+        name: 'Switch location (current: Home, view only)',
+      })
+    await expect(trigger).toBeVisible()
+    await expect(trigger).toContainText('View only')
+    return trigger
+  }
+
+  /** Open the sidebar switcher, with Home active. */
+  async function openViewerSwitcher(page: Page) {
+    await (await viewerTrigger(page)).click()
+    // The menu lists Home and Garage; Home alone carries the badge
+    await expect(
+      page.getByRole('menuitem', { name: 'Home View only', exact: true }),
+    ).toBeVisible()
+    await expect(
+      page.getByRole('menuitem', { name: 'Garage', exact: true }),
+    ).toBeVisible()
+  }
+
+  test('location viewer sees View only on the switcher, and only on that location', async ({
+    page,
+  }) => {
+    await openViewerSwitcher(page)
+
+    // And the Shed, where the browser's user has no role, is not listed.
+    // Asserted after Garage is visible, so the menu is loaded.
+    await expect(page.getByRole('menuitem', { name: /Shed/ })).toHaveCount(0)
+  })
+
+  /** The page with the menu closed, then the open menu alone. */
+  async function scanViewOnlySwitcher(page: Page) {
+    const trigger = await viewerTrigger(page)
+    await page.waitForLoadState('networkidle')
+    await injectAxe(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
+
+    await trigger.click()
+    await expect(
+      page.getByRole('menuitem', { name: 'Home View only', exact: true }),
+    ).toBeVisible()
+    await checkA11y(page, '[role="menu"]', AXE_OPTIONS)
+  }
+
+  test('user can view the View only switcher without accessibility violations', async ({
+    page,
+  }) => {
+    await scanViewOnlySwitcher(page)
+  })
+
+  test('user can view the View only switcher without accessibility violations in dark mode', async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('theme-preference', 'dark')
+    })
+    await scanViewOnlySwitcher(page)
   })
 })
