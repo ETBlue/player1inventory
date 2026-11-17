@@ -1,13 +1,25 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
+import { NoLocationsGate } from '@/components/location/NoLocationsGate'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { Card, CardContent } from '@/components/ui/card'
 import { useItem, useItemLogs } from '@/hooks'
 import { DEFAULT_PACKAGE_UNIT } from '@/types'
 
 export const Route = createFileRoute('/items/$id/log')({
-  component: ItemHistory,
+  component: ItemHistoryRoute,
 })
+
+// Households H5, review of task F.7: with no location the tab shows the
+// empty locations screen. Before, `useItemLogs` waited for a location that
+// never came, so the tab showed a spinner forever.
+function ItemHistoryRoute() {
+  return (
+    <NoLocationsGate>
+      <ItemHistory />
+    </NoLocationsGate>
+  )
+}
 
 function ItemHistory() {
   const { t } = useTranslation()

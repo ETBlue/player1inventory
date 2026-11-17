@@ -37,8 +37,13 @@ opens the same Add Location dialog as the settings page.
 
 - **`NoLocationsGate`** (`components/location/NoLocationsGate/`) wraps each of the four
   route components (`PantryRoute`, `ShoppingIndexRoute`, `VendorCartRoute`,
-  `CookingRoute`). The page is its CHILD, so none of the page's hooks run while the empty
-  screen shows.
+  `CookingRoute`), and since the review of F.7 the item page's Stock tab (`ItemStockTab`)
+  and log tab (`ItemHistoryRoute`). The page is its CHILD, so none of the page's hooks run
+  while the empty screen shows. Tested in `routes/noLocations.cloud.test.tsx` (including
+  that a still-loading list does not show it) and `routes/items/$id/noLocations.cloud.test.tsx`.
+- **The settings Items tabs need no gate.** `useItems()` reads the catalog from `GetItems`
+  when the household has no location (review of F.7), so those tabs list every item, with
+  no stock.
 - It shows the screen only when `mode === 'cloud'` and `useLocations().data` is a loaded,
   EMPTY array. While loading, or after a failed read with nothing cached, `data` is
   `undefined` and the page renders as before.

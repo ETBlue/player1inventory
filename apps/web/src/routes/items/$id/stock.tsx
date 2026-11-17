@@ -6,6 +6,7 @@ import { OfflineWriteError } from '@/apollo/offlineWriteLink'
 import type { ItemFormValues } from '@/components/item/ItemForm'
 import { ItemForm } from '@/components/item/ItemForm'
 import { LocationPager } from '@/components/item/LocationPager'
+import { NoLocationsGate } from '@/components/location/NoLocationsGate'
 import { DeleteButton } from '@/components/shared/DeleteButton'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
@@ -469,7 +470,14 @@ function StockTab({ itemId }: { itemId: string }) {
   )
 }
 
+// Households H5, review of task F.7: with no location the tab shows the
+// empty locations screen. Before, `viewed` was undefined and the tab rendered
+// nothing at all.
 function ItemStockTab() {
   const { id } = Route.useParams()
-  return <StockTab itemId={id} />
+  return (
+    <NoLocationsGate>
+      <StockTab itemId={id} />
+    </NoLocationsGate>
+  )
 }

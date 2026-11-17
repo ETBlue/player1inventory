@@ -4,7 +4,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { activeLocationStorageKey } from '@/hooks/useActiveLocation'
@@ -25,21 +25,27 @@ import { cloudLocation, LOC_A } from '@/test/cloudFixtures'
 // other cloud hook keeps the stubs of src/test/setup.ts.
 
 let locations: ReturnType<typeof cloudLocation>[] = []
+// While true, `useLocations()` reports the list as still loading: `data` is
+// undefined, as Apollo gives it before the first answer.
+let locationsLoading = false
 const createLocation = vi.fn()
 
 vi.mock('@/hooks/useLocations', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/hooks/useLocations')>()
   return {
     ...real,
-    useLocations: () => ({
-      data: locations.map((l) => ({
-        ...l,
-        createdAt: new Date(l.createdAt),
-        updatedAt: new Date(l.updatedAt),
-      })),
-      isLoading: false,
-      isError: false,
-    }),
+    useLocations: () =>
+      locationsLoading
+        ? { data: undefined, isLoading: true, isError: false }
+        : {
+            data: locations.map((l) => ({
+              ...l,
+              createdAt: new Date(l.createdAt),
+              updatedAt: new Date(l.updatedAt),
+            })),
+            isLoading: false,
+            isError: false,
+          },
     useCreateLocation: () => ({
       mutate: (name: string, options?: { onSuccess?: () => void }) => {
         createLocation(name)
@@ -60,6 +66,7 @@ beforeEach(() => {
   // A stale id, as after the last location was deleted on another device
   localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
   locations = []
+  locationsLoading = false
   createLocation.mockReset()
   sessionStorage.clear()
   queryClient = new QueryClient({
@@ -141,5 +148,25 @@ describe('with a location', () => {
         .length,
     ).toBeGreaterThan(0)
     expect(screen.queryByText(EMPTY_TEXT)).toBeNull()
+  })
+})
+
+describe('while the location list loads', () => {
+  it('user does not see the empty screen while the location list is still loading', async () => {
+    // Given the location list has not arrived yet (`data` is undefined)
+    locationsLoading = true
+    renderAt('/')
+
+    // Present first: the pantry page itself rendered, and shows its spinner
+    // while it waits for a location. The gate let the page through.
+    const main = await screen.findByRole('main')
+    await waitFor(() =>
+      expect(main.querySelector('.animate-spin')).not.toBeNull(),
+    )
+    // Then the empty screen is not shown: "still loading" is not "no location"
+    expect(within(main).queryByText(EMPTY_TEXT)).toBeNull()
+    expect(
+      within(main).queryByRole('button', { name: 'Create a location' }),
+    ).toBeNull()
   })
 })
