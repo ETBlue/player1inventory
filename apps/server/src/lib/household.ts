@@ -128,11 +128,16 @@ function pickHousehold(row: HouseholdChoice): string | null {
  * one a request acts in. The answer is the same on every request until the
  * person's memberships or their active household change.
  *
- * ── THE COMMON PATH: ONE QUERY ──
+ * ── THE COMMON PATH: ONE findUnique ──
  *
- * A person who already has a household costs one read: their `User` row with
- * `activeHouseholdId` and their memberships, in one `findUnique`. The
- * transaction runs only when that read finds no household.
+ * A person who already has a household costs one Prisma call: one
+ * `user.findUnique` for their `User` row with `activeHouseholdId` and their
+ * memberships. The transaction runs only when that read finds no household.
+ *
+ * One Prisma call is not always one SQL statement. Prisma 6 without the
+ * `relationJoins` preview feature (this schema does not turn it on) may run
+ * the nested `householdMemberships` select as a second statement. That is
+ * not measured. The old `householdMember.findFirst` was one statement.
  *
  * ── THE RACE GUARD (decision H1) ──
  *

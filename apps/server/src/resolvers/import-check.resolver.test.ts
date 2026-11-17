@@ -24,8 +24,11 @@ import { typeDefs } from '../schema/index.js'
 // | stranger | hh-c: owner                     | loc-c organizer                         |
 //
 // The caller is in TWO households. The target is hh-a, pinned through
-// `ctx.requestCache.householdId`, because `ensureHousehold` picks one of two
-// households at random. The caller organizes loc-b, in hh-b. So a check that
+// `ctx.requestCache.householdId`. Since H5b `ensureHousehold` gives a fixed
+// answer (decision T14), but the pin says which household on purpose.
+// `importCheck` is a QUERY, and a query is not wrapped by
+// `forgetRolesAroundEach`, so the pin holds (decision T15 forgets it only
+// around a `Mutation` field). The caller organizes loc-b, in hh-b. So a check that
 // asks "does the caller have a role on this location" instead of "is this
 // location in the target household" says loc-b is fine, and the tests below
 // see the difference.

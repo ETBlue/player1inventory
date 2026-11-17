@@ -43,8 +43,10 @@ import type { HouseholdWorld } from '../test/householdWorld.js'
 // - LOC_A3 is in hh_a, and USER has no role on it. A read scoped only by
 //   household would count it.
 // - Every request of USER pins hh_a through `requestCache.householdId`, the
-//   H4 pattern, because `ensureHousehold` picks one of two households with
-//   no order.
+//   H4 pattern. Since H5b `ensureHousehold` gives a fixed answer (decision
+//   T14), but the pin says which household on purpose. Every operation here
+//   is a QUERY, and a query is not wrapped by `forgetRolesAroundEach`, so the
+//   pin holds (decision T15 forgets it only around a `Mutation` field).
 
 vi.mock('../lib/prisma.js', async () => {
   const { createHouseholdWorld } = await import('../test/householdWorld.js')
