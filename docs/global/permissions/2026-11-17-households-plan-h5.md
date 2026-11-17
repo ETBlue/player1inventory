@@ -969,6 +969,75 @@ first and shown red, then the code. Commits `0a6321a2`, `4cab8303`, `fe085176`.
   Guard, green either way by design: `household member who is a participant of the active
   location still edits its stock`.
 
+**Review fixes for F.5 (2026-11-17, review of `54dcc8b3..683d0f15`).** Tests were written
+first and shown red, then the code, except where a row below says otherwise. Commits
+`de8ca513`, `bc006456`, `ef030253`, `b2d9670f`, `1c82b170`.
+
+- **A failed `GetHousehold` no longer shows an owner the member view.** When the query failed
+  with nothing cached, `isLoading` was `false` and the role `undefined`, so every page said
+  "Only a household owner or manager can change this.". `Permissions` has a new field,
+  `roleKnown`: `true` in local mode; in cloud `true` only when not loading AND a household
+  role is there. Every read-only note (the four list pages, the four Info pages, the item
+  Info tab, the cooking empty state, the search tail's member note) now shows only when
+  `roleKnown && !canEditCatalog`. Write controls stay hidden while the role is unknown.
+  Elsewhere the app already treated a missing role this way: `ImportCard` shows its member
+  line only for `role === 'member'` and keeps the button disabled otherwise, and
+  `HouseholdNameCard` renders nothing without data.
+- **A member is told why Create is missing.** A new line shows where Create would have
+  shown, with the same trigger (search text, no exact match): under the `ItemListToolbar`
+  search row (pantry list, shelf view, cart page, the four Items tabs) through a new prop
+  `createReadOnlyNote`; under the `CookingControlBar` search row through the same prop; and
+  under the matches of the pantry Add dialog. Only when `roleKnown`. No existing text fitted:
+  `settings.catalogReadOnly` says "these", and `items.searchTail.catalogReadOnly` says "add
+  it here".
+- **An empty tags page tells a member why it is empty.** The note needed
+  `tagTypes.length > 0`, so a member with no tag types saw a page with nothing on it. The
+  note now shows on the empty page too.
+- **The Info forms keep their autofocus.** `TagInfoForm`, `VendorInfoForm` and
+  `RecipeInfoForm` set `autoFocus={!readOnly}`. While the role loaded the form mounted
+  read-only, and React focuses only on mount, so an owner lost the focus. The three Info
+  pages now wait for the role (`isLoading`) before they mount the form. The review said the
+  Add Tag dialog had the same problem; it does not: it opens only from New Tag, which only an
+  editor sees, and it never passes `readOnly`. A test pins that it keeps the focus.
+- **Docs:** the tags, vendors and recipes notes, `routes/CLAUDE.md`, `items/CLAUDE.md`,
+  `settings/CLAUDE.md` (there is no shelves note), `hooks/CLAUDE.md` and
+  `components/CLAUDE.md`.
+- **New texts** (first versions; the owner can correct `tw` in the PR):
+
+  | Key | English | `tw` |
+  |---|---|---|
+  | `items.createReadOnly` | Only a household owner or manager can create a new item. | 只有家庭擁有者或管理者可以建立新的品項。 |
+  | `cookingControlBar.createReadOnly` | Only a household owner or manager can create a new recipe. | 只有家庭擁有者或管理者可以建立新的食譜。 |
+
+- **Tests.** `usePermissions.test.tsx` +4; `catalogReadOnly.test.tsx` +6 (2 empty tags page,
+  4 unknown role); new `catalogInfoRoleArrives.test.tsx` (10: focus once the role arrives,
+  member control, unknown role, for the tag, vendor and recipe Info pages, and the Add Tag
+  dialog); `items/$id/readOnly.test.tsx` +1; `cooking.readOnly.test.tsx` +2 (unknown role, the
+  O10 guard); `useItemSearchTailWiring.test.tsx` +1; `components/pantry/catalogReadOnly.test.tsx`
+  +1 and four more assertions; `NewItemDialog.readOnly.test.tsx`, `catalogItemsReadOnly.test.tsx`
+  (+1, the tag and recipe Filters badges) extended; `ItemListToolbar` story
+  `CreateReadOnlyNote` with a smoke test. `src/test/rolePermissions.ts` gained `asRoleUnknown`
+  and `useRoleOverride`. Web suite **2813 / 294 → 2841 / 295** (measured before and after on
+  this branch). Server unchanged at **1813 / 70**.
+- **Order of work, said plainly.** The unknown-role page tests were written after the page
+  fix had already been applied, so they never ran red against the old code on their own.
+  The mutation below (M-R1) is what proves them: it turns all 11 red.
+- **Mutations, each copied aside and restored from the copy (`diff -q` clean):**
+
+  | # | Mutation | Red |
+  |---|---|---|
+  | M-R1 | `roleKnown: !isLoading` (ignores a missing role) | 11: the hook test, 4 list pages, 3 Info pages, the item Info tab, the cooking empty state, the search tail |
+  | M-R2 | the vendor Info page mounts its form while the role loads | `household manager gets the focus in the vendor name once the role has loaded` |
+  | M-R3 | the tags note needs a tag type again | `household member on an empty tags page still sees why there is no add button` |
+  | M-R4 | the toolbar note ignores an exact match | `household member sees no create note when the search matches an item exactly` |
+  | M-R5 | the toolbar note text removed | 7: the four Items tabs, the pantry, the cart, the shelf view |
+  | M-R6 | the Add dialog note also on an exact match | `household member cannot create a new item, and can still pick an existing one` |
+  | M-R7 | the Add dialog note never shown | the same test |
+  | M-R8 | the cooking note never shown | `household member does not see Create when a recipe search finds nothing` |
+  | M-R9 | the recipe checkbox disabled for a member (O10 guard) | `household member can still cook at a location where they are a participant` |
+  | M-R10 | the Filters tab tag badge loses `aria-disabled` | `household member on a filter shelf's Filters tab sees the tag and recipe badges marked disabled` |
+  | M-R11 | the Filters tab recipe badge loses `aria-disabled` | the same test |
+
 ## Task F.6 — web: a location `viewer` sees the location read-only
 
 **Files:**
@@ -1224,6 +1293,14 @@ and one test-only override in shipped code.
   (`shouldDeliver` checks membership), so their screen is stale until their next request fails.
   H5b's `NO_HOUSEHOLD` handler covers the next request; nothing pushes it sooner.
 - **The `tw` texts in O11 are set by the owner's answers; the owner can still correct them in the PR.**
+- **The `role="button"` badges cannot be reached by keyboard.** On the item Tags, Vendors and
+  Recipes tabs and on the shelf Filters tab, a badge has `role="button"` but no `tabIndex` and
+  no key handler. This is older than H5; F.5 only added `aria-disabled` to them. Found in the
+  review of F.5, not fixed there.
+- **`rolePermissions.ts` cannot tell `canEditCatalog` from `canManageLocations`.**
+  `permissionsFor` gives both the same value (owner or manager), so no page test can catch a
+  page that reads the wrong one of the two. If the rules ever differ, the helper needs a
+  person for whom they differ. Found in the review of F.5.
 
 ## What this plan got wrong
 
@@ -1273,6 +1350,9 @@ Filled in from the task reports and reviews.
 | F.5 | `MemberReadOnly` stories "through the existing Apollo stub pattern" | `noopApolloClient` cannot carry a role. The stories use `MockedProvider` (`src/test/cloudRoleStory.tsx`). Their tests needed a present-first anchor: while the role loads every write control is hidden for ANY role, so a story set to `owner` still passed. The new `ReadOnlyNote` is that anchor, and it must wait for `!isLoading` |
 | F.5 | (nothing about empty states) | Vendors, recipes, shelves and cooking told a member to "Create your first …" with no button. A member now gets `settings.catalogReadOnly` there |
 | F.5 | (nothing about existing tests) | 4 test files broke: two cloud tests stubbed `GetHousehold` to nothing (so the role was unknown and the form read only), and two page unit tests render with no `QueryClient`. A story test (`recipes/$id/items`) also failed in full-suite runs, on a row that moved between groups |
+| F.5 review | (nothing about a failed `GetHousehold`) | `isLoading` is `false` when the query failed with nothing cached, so "not loading and not an editor" read as "member", and an owner was told the page is read only. `roleKnown` tells the two apart |
+| F.5 review | (the reviewer) the Add Tag dialog loses its autofocus like `TagInfoForm` does | It does not: it never passes `readOnly`, and only an editor can open it. A test pins it |
+| F.5 review | (nothing about a member whose search finds nothing) | Only the search tail said why Create was missing. The toolbar, the cooking search and the Add dialog now say it too, with two new texts |
 
 ## Status
 
