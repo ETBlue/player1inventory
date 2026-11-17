@@ -299,6 +299,7 @@ O7-A, O9-A and O12-A. These are NEW. **A** is the recommendation unless it says 
 | O15 | **A** | The owner asked for the rule that matches the other role rules. **A** follows the same line as inviting (O3-A) and removing (design, *Household roles*): a manager acts only on `member`, the owner on anyone. Confirmed by the owner |
 | O16 | **A** | |
 | O17 | deferred | The owner reviews the texts later, in the PR. Tasks use the table below as written |
+| O18 | **A** | Asked after the review of G.3: do a manager's open invites stay open after that manager is removed or demoted? **A**: yes. The invite belongs to the household. The owner sees it in the list, with the creator's name, and can revoke it. Removing or demoting a manager does NOT revoke their invites (no extra code in G.5). B was: revoke them automatically |
 
 **O17 texts (proposed).** Role names reuse the O11 answers: 據點王 organizer, 搬運工
 participant, 圍觀的 viewer, 擁有者 owner, 管理者 manager, 成員 member.
