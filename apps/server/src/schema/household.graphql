@@ -118,3 +118,47 @@ extend type Mutation {
   # link stays unused).
   joinHousehold(token: String!): Household!
 }
+
+# ── Members, roles, leaving and creating (households H5b, task G.5) ──
+
+# One person of the caller's household. Named `HouseholdPerson`, not
+# `HouseholdMember`, so it is not mixed up with the Prisma model in generated
+# code. It has no e-mail address, on purpose: every member reads this list
+# (owner decision O13-A).
+type HouseholdPerson {
+  userId: ID!
+  displayName: String!
+  role: HouseholdRole!
+  joinedAt: String!
+  # True only on the caller's own row.
+  isMe: Boolean!
+}
+
+extend type Query {
+  # Every person of the caller's household, for any household role (owner
+  # decision O13-A). The owner first, then by `joinedAt`, then by `userId`.
+  householdMembers: [HouseholdPerson!]!
+}
+
+extend type Mutation {
+  # Household role `owner`. Changes another person between `member` and
+  # `manager`. `role: owner` and the owner's own row are BAD_USER_INPUT (handing
+  # the household over is H6). A person not in the household is FORBIDDEN.
+  # Location roles do not change, and open invites stay open (owner decision
+  # O18-A). The same role again writes nothing.
+  setHouseholdRole(userId: ID!, role: HouseholdRole!): HouseholdPerson!
+  # The owner removes anyone but themself (BAD_USER_INPUT for themself). A
+  # manager removes only a `member`. Anything else is FORBIDDEN, also a person
+  # not in the household. The person's location roles in this household go
+  # with them (decision T11). Their invites stay open (owner decision O18-A).
+  removeMember(userId: ID!): Boolean!
+  # A manager or member leaves the household they act in, with their location
+  # roles there (decision T11). The owner cannot leave (BAD_USER_INPUT).
+  leaveHousehold: Boolean!
+  # Only for a person in NO household (owner decision O16-A); anyone else gets
+  # BAD_USER_INPUT with extensions.reason ALREADY_IN_HOUSEHOLD. Makes a
+  # household with the caller as owner and one location, "Home", the same as
+  # first sign-in. The name is trimmed, and checked like `renameHousehold`'s.
+  # With no name, the first sign-in name ("<name>'s Household").
+  createHousehold(name: String): Household!
+}

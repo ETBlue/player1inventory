@@ -1,5 +1,5 @@
 import { GraphQLError } from 'graphql'
-import type { HouseholdRole, LocationRole } from '@prisma/client'
+import type { HouseholdRole, LocationRole, Prisma } from '@prisma/client'
 import { parseCartId } from '@p1i/types'
 import { type Context, requireAuth } from '../context.js'
 import { ensureHousehold } from './household.js'
@@ -47,14 +47,22 @@ export function requireHousehold(ctx: Context): Promise<string> {
 /**
  * Refuse unless the caller holds `role` or higher in `householdId`.
  * `owner` > `manager` > `member`. Returns the role the caller holds.
+ *
+ * `db` is the client to read with. Inside an interactive transaction, pass
+ * its `tx` (households H5b task G.5: `setHouseholdRole`, `removeMember`,
+ * `leaveHousehold`). The read then runs on the transaction's own connection,
+ * after its `lockHousehold`. With the global client it would need a SECOND
+ * pool connection while the transaction holds the first, and a small pool
+ * would make the two wait on each other until a timeout.
  */
 export async function requireHouseholdRole(
   ctx: Context,
   householdId: string,
   role: HouseholdRole,
+  db: { householdMember: Prisma.TransactionClient['householdMember'] } = prisma,
 ): Promise<HouseholdRole> {
   const userId = requireAuth(ctx)
-  const membership = await prisma.householdMember.findUnique({
+  const membership = await db.householdMember.findUnique({
     where: { householdId_userId: { householdId, userId } },
     select: { role: true },
   })

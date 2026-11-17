@@ -217,20 +217,56 @@ export async function ensureHousehold(
     // Unreachable: the claim above matched this row, inside this transaction.
     if (!user) throw new Error('ensureHousehold: the claimed User row is gone')
     const names = firstSignInNames(language, user.displayName)
-
-    // The household first, then its owner row: the owner row's foreign key
-    // needs the household. `ownerId` mirrors the owner row and is written in
-    // the same transaction (decision H15).
-    const household = await tx.household.create({
-      data: { name: names.household, ownerId: userId },
+    const household = await createHouseholdFor(tx, {
+      userId,
+      name: names.household,
+      locationName: names.location,
     })
-    await tx.householdMember.create({
-      data: { householdId: household.id, userId, role: 'owner' },
-    })
-
-    await createFirstLocation(tx, { householdId: household.id, userId, name: names.location })
-
     return household.id
+  })
+}
+
+/**
+ * A new household with `userId` as its owner, and its first location with
+ * the owner's `organizer` row there. Run it inside the caller's transaction.
+ *
+ * Two places make a household: first sign-in (`ensureHousehold` above) and
+ * `createHousehold` (resolvers/household.resolver.ts, households H5b task
+ * G.5). One function, so the two cannot drift apart.
+ *
+ * The household first, then its owner row: the owner row's foreign key needs
+ * the household. `ownerId` mirrors the owner row and is written in the same
+ * transaction (decision H15).
+ *
+ * It does not write the `User` row. `createHousehold` sets
+ * `activeHouseholdId` itself, after it took `lockUser`.
+ */
+export async function createHouseholdFor(
+  tx: Prisma.TransactionClient,
+  args: { userId: string; name: string; locationName: string },
+): Promise<{ id: string; name: string }> {
+  const household = await tx.household.create({
+    data: { name: args.name, ownerId: args.userId },
+  })
+  await tx.householdMember.create({
+    data: { householdId: household.id, userId: args.userId, role: 'owner' },
+  })
+  await createFirstLocation(tx, {
+    householdId: household.id,
+    userId: args.userId,
+    name: args.locationName,
+  })
+  return { id: household.id, name: household.name }
+}
+
+/**
+ * `createHousehold` refuses a person who is already in a household (owner
+ * decision O16-A, decision T18 of the H5b plan). H7 lifts this with
+ * "Switch to… › Create new".
+ */
+export function alreadyInHousehold(): GraphQLError {
+  return new GraphQLError('You are already in a household.', {
+    extensions: { code: 'BAD_USER_INPUT', reason: 'ALREADY_IN_HOUSEHOLD' },
   })
 }
 
@@ -238,8 +274,9 @@ export async function ensureHousehold(
  * The first location of a household, and the caller's `organizer` row on it.
  * Run it inside the caller's transaction.
  *
- * Two places make it: first sign-in (`ensureHousehold` above) and
- * `clearAllData` (resolvers/import.resolver.ts), which makes "Home" again
+ * Three places make it: first sign-in and `createHousehold` (both through
+ * `createHouseholdFor` above) and `clearAllData`
+ * (resolvers/import.resolver.ts), which makes "Home" again
  * after it deletes every location of the household (decision H17). One
  * function, so the two cannot drift apart.
  *
@@ -324,8 +361,8 @@ export async function lockHousehold(
  * household" and both act on it. With the lock they run one after the other.
  *
  * ONE LOCK ORDER: the `User` row first, then `Household` rows, sorted by id
- * (`lockHouseholds` below). Only `joinHousehold` (and, from task G.5,
- * `createHousehold`) take this lock, and always FIRST. `removeMember`,
+ * (`lockHouseholds` below). Only `joinHousehold` and `createHousehold`
+ * (task G.5) take this lock, and always FIRST. `removeMember`,
  * `leaveHousehold` and `setHouseholdRole` take only `lockHousehold` and never
  * write a `User` row themselves. Two transactions that take the two locks in
  * opposite orders can wait on each other; Postgres then aborts one with

@@ -387,6 +387,26 @@ describe('requireHouseholdRole', () => {
     expect((error as GraphQLError).message).toBe('Forbidden')
     expect((error as GraphQLError).extensions.code).toBe('FORBIDDEN')
   })
+
+  it('reads through the client it is given, so a transaction can pass its own (H5b task G.5)', async () => {
+    // Given the store says the caller is a plain member of hh-1
+    seed({ callerHouseholdRole: 'member' })
+    const storeRead = vi.spyOn(prisma.householdMember, 'findUnique')
+    // And a transaction client that answers `owner`
+    const findUnique = vi.fn(async () => ({ role: 'owner' as const }))
+    const tx = { householdMember: { findUnique } }
+
+    // When the role is checked through that client
+    const role = await requireHouseholdRole(caller, 'hh-1', 'owner', tx as never)
+
+    // Then the answer comes from the client, and the global client is not read
+    expect(role).toBe('owner')
+    expect(findUnique).toHaveBeenCalledWith({
+      where: { householdId_userId: { householdId: 'hh-1', userId: caller.userId } },
+      select: { role: true },
+    })
+    expect(storeRead).not.toHaveBeenCalled()
+  })
 })
 
 describe('requireHousehold', () => {
