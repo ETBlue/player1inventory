@@ -143,7 +143,20 @@ async function seedHousehold(request: APIRequestContext): Promise<Seed> {
   return { fridge, garage, vendorId, bread }
 }
 
-/** A context for `userId`, with `activeLocationId` as the stored active location. */
+/**
+ * Every context a test opens. `afterEach` closes them all, even when the test
+ * failed.
+ */
+const contexts: BrowserContext[] = []
+
+/**
+ * A context for `userId`, with `activeLocationId` as the stored active location.
+ *
+ * The context goes into `contexts` at once, BEFORE `newPage`, so `afterEach`
+ * closes it even when `newPage` throws. (Until the review of task F.8 each
+ * test pushed the context after `openAs` returned, so a throw inside `openAs`
+ * left that context open.)
+ */
 async function openAs(
   browser: Browser,
   userId: string,
@@ -156,6 +169,7 @@ async function openAs(
       ? [{ name: 'active-location-id:cloud', value: activeLocationId }]
       : [],
   )
+  contexts.push(context)
   return { context, page: await context.newPage() }
 }
 
@@ -169,8 +183,6 @@ async function cleanupAll(request: APIRequestContext) {
   // made `getE2ETestUserId` ignore the key.
   await cleanupCloudData(request)
 }
-
-const contexts: BrowserContext[] = []
 
 test.beforeEach(async ({ request, baseURL }) => {
   test.skip(baseURL !== CLOUD_WEB_URL, 'cloud mode only')
@@ -196,7 +208,6 @@ test.describe('two people in one household', () => {
     await seedHousehold(request)
     const owner = await openAs(browser, OWNER)
     const member = await openAs(browser, MEMBER)
-    contexts.push(owner.context, member.context)
 
     // When both open the tags page
     await owner.page.goto('/settings/household/tags')
@@ -237,7 +248,6 @@ test.describe('two people in one household', () => {
     const ownerGql = makeGql(request, OWNER)
     const owner = await openAs(browser, OWNER, seed.fridge)
     const member = await openAs(browser, MEMBER, seed.fridge)
-    contexts.push(owner.context, member.context)
 
     const socket = await routeLiveSocket(member.page)
     await member.page.goto(`/shopping/${seed.vendorId}`)
@@ -293,7 +303,6 @@ test.describe('two people in one household', () => {
     // decision O4-A).
     await seedHousehold(request)
     const member = await openAs(browser, MEMBER)
-    contexts.push(member.context)
     await member.page.goto('/settings/household/locations')
     const memberMain = member.page.getByRole('main')
     await expect(memberMain.getByText('Fridge')).toBeVisible()
@@ -307,7 +316,6 @@ test.describe('two people in one household', () => {
 
     // When OWNER opens the location switcher
     const owner = await openAs(browser, OWNER)
-    contexts.push(owner.context)
     await owner.page.goto('/')
     await owner.page
       .getByRole('navigation', { name: 'Sidebar navigation' })
