@@ -492,11 +492,20 @@ The owner can still correct any `tw` text in the PR.
   a helper in the same file, for a call replaced by a comment that named it (the whole suite,
   1807 tests, stayed green), and could not see nested writes, `$executeRaw`, method-syntax
   fields, sub-folders, `household.delete` or a `householdId` move.
-- **What checks it now:** `lib/mutationRoleCache.test.ts` (6 tests) calls every `Mutation`
-  field of the executable schema with no user and a filled cache, and fails if one leaves a
-  cache filled. `graphql-tools` binds each resolver, so an identity check
-  (`field.resolve === wrapped`) does not work; the check is by behaviour. Two new document
-  tests in `location-roles.resolver.test.ts`.
+- **What checks it now:** `lib/mutationRoleCache.test.ts` (6 tests), in two parts.
+  - The **every-field test** calls every `Mutation` field of the executable schema with no
+    user and a filled cache, and fails if one leaves a cache filled. With no user every
+    field throws before it reads anything, so a forget BEFORE the field alone, or AFTER it
+    alone, empties the cache. So this test proves only that **at least one forget runs for
+    each field**: every field is wrapped. It cannot tell a field that forgets before from
+    one that forgets after. (Corrected in the review of F.3; this said the test was the
+    guard for the whole rule.)
+  - The **before** and **after** halves, and the throw case, are pinned by their own unit
+    tests of `forgetRolesAroundEach`: `forgets both role caches before the field runs`,
+    `… after the field, so its sub-fields read fresh rows`, `… when the field throws …`.
+  `graphql-tools` binds each resolver, so an identity check (`field.resolve === wrapped`)
+  does not work; the every-field check is by behaviour. Two new document tests in
+  `location-roles.resolver.test.ts`.
 - **Why a wrapper and not a better text guard:** it removes the thing to remember. H5b's join,
   remove and leave are covered with no change. The cost is one role read per root field that
   selects `myRole`, instead of one per request.
@@ -603,6 +612,64 @@ The owner can still correct any `tw` text in the PR.
   | the settings-list reorder cache write skipped | `household owner sees the settings list in the new order after a reorder, the No access row included` |
   | `usePermissions` gives `owner` while loading | both loading tests, and the page's "not known" test |
   | `canEditLocation` reads the household role | 3 `usePermissions` tests, incl. Review Focus 4 |
+
+**Review fixes for F.3 (2026-11-17, review of `71b15ae2..145ab166`).**
+
+- **A refused reorder now says so.** Since F.2 the server refuses a list that is not the
+  household's full set. When another member created or deleted a location while this tab's
+  list was out of date, the row jumped back with no message. Now `useReorderLocations`
+  refetches `GetHouseholdLocations` and `GetLocations` by name on any refusal (not when
+  offline), and the page shows a toast:
+
+  | Key | English | `tw` (first version; the owner can correct it in the PR) |
+  |---|---|---|
+  | `settings.locations.reorderError` | The location list changed. It has been reloaded. Try again. | 據點清單有變動，已重新載入，請再試一次。 |
+
+  The message shows for every refusal except offline, not only `BAD_USER_INPUT`: the reload
+  is right whatever the reason.
+- **The first cloud visit shows a spinner, not "No locations yet".** The page reads
+  `isLoading` from `useHouseholdLocations()` and shows `LoadingSpinner`, the same as
+  `settings/household/shelves/$shelfId`.
+- **The role text has context for screen readers.** A visually hidden prefix before the role
+  and before "No access":
+
+  | Key | English | `tw` |
+  |---|---|---|
+  | `settings.locations.yourRole` | Your role: | 你的角色： |
+
+- **No `role="list"` on the `<ul>`.** The reviewer asked for it if Biome allows it. Biome
+  does not: `lint/a11y/noRedundantRoles` (an error in `apps/web/biome.json`) and
+  `useSemanticElements` both refuse it, and lint-staged's `--unsafe` fix would delete it at
+  commit time. A comment in `LocationList.tsx` says so. Safari with VoiceOver may still not
+  announce the list as a list.
+- **New tests.** `useLocations.test.tsx`: 4 (create, rename and delete each answer the
+  settings list twice, with a different second answer; a refused reorder reloads both
+  lists). `index.cloud.test.tsx`: 3 (the reorder message and reload, the loading state, and a
+  control that the empty state still shows for an empty answer). `index.test.tsx`: 1 (no role
+  text in local mode). `LocationList.stories.test.tsx`: 1 (the hidden prefix).
+- **Docs.** `hooks/CLAUDE.md`, `useLocations.ts` (`useDeleteLocation`'s comment), the
+  locations `CLAUDE.md` (*Delete cascade (cloud)*, *Hooks*, *Tests*) and a comment in
+  `useLocations.test.tsx` said only `GetLocations` is refetched, or that the page reads
+  `useLocations()`. The every-field test of `mutationRoleCache.test.ts` was presented as the
+  guard in this plan, in `mutationRoleCache.ts` and in the root `CLAUDE.md`; all three now
+  say it proves only that at least one forget runs for each field.
+- **Mutations, each copied aside and restored from the copy (`diff -q` clean):**
+
+  | Mutation | Red |
+  |---|---|
+  | `HOUSEHOLD_LOCATIONS_REFETCH = 'NoSuchQuery'` (the reviewer's) | 5: the four new hook tests and the page's reorder test |
+  | the settings refetch dropped from `useCreateLocation` only | `household owner sees a new location on the settings list after creating it` |
+  | … from `useUpdateLocation` only | `household owner sees the new name on the settings list after a rename` |
+  | … from `useDeleteLocation` only | `household owner no longer sees a deleted location on the settings list` |
+  | `mutate` does not reload after a refusal | the hook's refused-reorder test and the page's reorder test |
+  | the reload leaves out `GetLocations` | the same two |
+  | the page shows no reorder message | `household owner sees why a refused reorder went back, and both location lists reload` |
+  | the page ignores `isLoading` | `user sees no empty state while the cloud locations list is loading` |
+  | `showRoles={true}` (the reviewer's) | `user sees no role text on the locations list in local mode` |
+  | the hidden "Your role:" prefix removed | `user of a screen reader hears "Your role:" before the role and before No access` |
+
+  Control, green either way: `user sees the empty state once the cloud list answers with no
+  location`.
 
 ## Task F.4 — web: `usePermissions` and the View only badge
 
