@@ -1350,6 +1350,54 @@ page, 1 provider, 2 settings page, 1 story smoke test), then the code.
   be any user; how; the 409 order still applies). **Gate**, commit
   `test(households): two people in two browsers`.
 
+**As built (2026-11-17).** The unit tests were written first and shown red (the module did
+not exist), then the code.
+
+- **`getE2ETestUserId()`** (`apps/web/src/lib/e2eUser.ts`, decision T10). With no
+  `VITE_E2E_TEST_USER_ID` it returns `undefined` BEFORE it reads `localStorage`. With the
+  flag set, a non-empty `localStorage['e2e-user-id']` wins, else the build-time id. The key
+  is `E2E_USER_ID_STORAGE_KEY`.
+- **Readers: two, not four.** `main.tsx` reads it once and passes it to
+  `createApolloClientForE2E` (the `x-e2e-user-id` header and the socket's `e2eUserId`) and
+  to `LiveUpdatesRunner` (a prop). Neither of those two read the env value themselves, so
+  neither changed. The Account card in `UserSettingsPanel` reads it, so each context shows
+  its own id. The other readers of `VITE_E2E_TEST_USER_ID` (`__root.tsx`,
+  `PostLoginMigrationDialog`, `DataModeCard`, `UserSettingsPanel`'s mode) only ask "is this
+  the E2E build", which the override does not change.
+- **The production guard, proved two ways.** (1) `e2eUser.test.ts` sets a key with the flag
+  empty and expects `undefined`; with the guard removed it goes red. (2) A production
+  `pnpm --filter web build` has no `"e2e-user-id"` string in any `dist/assets/*.js` (0
+  files; the only match for the text is the old header name `x-e2e-user-id`). The same
+  build with `VITE_E2E_TEST_USER_ID=probe` has it in 1 file, so the grep can find it.
+- **E2E.** `e2e/helpers/userContext.ts` exports `newUserContext(browser, userId,
+  extraLocalStorage?)`. The third argument was not in the plan: test 2 needs each person's
+  active location (`active-location-id:cloud`). `e2e/tests/shared-household.spec.ts`, 3
+  tests, cloud only (in `cloud`'s `testMatch` and `local`'s `testIgnore`). OWNER and MEMBER
+  are `${E2E_SECOND_USER_ID}-shared-owner` / `-member`. MEMBER is `member`, `viewer` of
+  Fridge, `participant` of Garage, no role on Home; OWNER has no role on Shed (test 3).
+  Cleanup also deletes `E2E_USER_ID`'s rows: when the override was broken on purpose, both
+  contexts became that user and wrote rows as it.
+- **Mutations, each copied aside and restored from the copy (`diff -q` clean), each run in
+  `cloud`:**
+
+  | # | Mutation | Red |
+  |---|---|---|
+  | M1 | `permissionsFor` gives `canEditCatalog: true` (plan Step 4) | test 1: the read-only note not found |
+  | M2 | the cart page shows Done without `canEditHere` (plan Step 4) | test 2: Done `toHaveCount(0)`, received 1 |
+  | M3 | `householdLocations` returns `visibleLocations` for every role (plan Step 4) | test 3: the Shed row not found |
+  | M4 | `getE2ETestUserId` ignores the key | all 3 tests |
+  | M5 | `getE2ETestUserId` without its production guard (unit) | `ignores the localStorage key when the build flag is not set (production)` |
+  | M6 | the Account card reads `import.meta.env.VITE_E2E_TEST_USER_ID` again (unit) | `user in E2E cloud mode acting as another person sees that person's id` |
+
+- **E2E, 2026-11-17, ports 4001 and 5174–5176 free first, load 2.1–2.7.** `cloud`:
+  `shared-household` plus every spec of a page Part 1 or F.8 touched (`settings/vendors`,
+  `tags`, `recipes`, `shelves`, `locations`, `location-switcher`, `item-stock-input`,
+  `item-stock-pager`, `item-logs`, `item-management`, `settings-global-pages`, `shopping`,
+  `cooking`, `live-cart`, `live-pantry`, `cloud-roles`, `unified-item-search`,
+  `location-not-stocked-here`): **107 passed, 7 skipped, 0 failed** (20.6m). `local`: the
+  same files that run there, plus `a11y.spec.ts`: **159 passed, 11 skipped, 0 failed**
+  (3.1m). F.9 runs the whole suite.
+
 ## Task F.9 — docs, deploy note and the final gate
 
 **Files:** root `CLAUDE.md` (*Authorization (cloud)*: `myRole`, `hasOrganizer`,
@@ -1535,8 +1583,10 @@ and one test-only override in shipped code.
 - **A viewer's search does not list items stocked elsewhere.** The tail's "not stocked here"
   section exists only with its Add to location action (F.6). Whether a viewer should see
   those rows without the action is a design question.
-- **No E2E drives a viewer through a page.** F.6's E2E run proves no regression for the
-  roles the specs use; the viewer view itself is proved by unit tests only, until F.8.
+- **E2E drives a viewer through ONE page only.** Since F.8, `shared-household.spec.ts`
+  test 2 has a location viewer on a cart page (live row, disabled checkbox, no Done). The
+  viewer views of the pantry, cooking and the Stock tab are still proved by unit tests
+  only.
 - **`rolePermissions.ts` cannot tell `canEditCatalog` from `canManageLocations`.**
   `permissionsFor` gives both the same value (owner or manager), so no page test can catch a
   page that reads the wrong one of the two. If the rules ever differ, the helper needs a
@@ -1614,6 +1664,11 @@ Filled in from the task reports and reviews.
 | F.7 review | The empty screen on Pantry, Shopping, a cart and Cooking | The item Stock tab rendered nothing and the log tab spun forever. Both are gated too |
 | T9 | "Cloud while loading: every `can…` is `false`" | Right for the household rights, wrong for the location rights: a location role does not need `GetHousehold`, and waiting for it made the Stock form read only on a cold cache (the F.7 E2E race). `permissionsFor` has a separate `locationsLoading` flag now |
 | F.7 review | (the F.7 server test) "a location of another household is refused" proves `requireLocationInHousehold` | It was refused earlier, by `requireLocationRole`: the caller had no role there. The test now gives the caller a role in the second household |
+| F.8 | Modify `apollo/client.ts` "only if it reads the env value directly", and T10 names `LiveUpdatesRunner` as a reader | Neither reads it. `main.tsx` passes the id to both. Only `main.tsx` and the Account card changed |
+| F.8 | `newUserContext(browser, userId)` | A third argument for extra `localStorage`, for the active location of each person |
+| F.8 | Test 2: B "sees no Done button" | Done shows only when the cart has rows, so the absence alone proves little. The test checks OWNER's Done is visible first, after the row is added |
+| F.8 | Clean up O and B in both hooks | Also `E2E_USER_ID`: if the override breaks, every context writes as that user, and the next spec sees the rows |
+| F.8 | Step 5: run `a11y.spec.ts` for the new spec | `a11y.spec.ts` runs in `local` and `pwa`, where there are no users. The spec adds no page, so it adds no scan |
 
 ## Status
 
@@ -1623,5 +1678,5 @@ Filled in from the task reports and reviews.
 Task F.4's review fixes are done (`0a6321a2`, `4cab8303`, `fe085176`). Task F.5 (a household
 member sees the catalog read-only) is done, with review fixes. Task F.6 (a location viewer
 sees the location read-only) is done, with review fixes. Task F.7 (a household can have no
-locations) is done; its `verify-migration.ts` rewrite is type-checked, not run. Task F.8 is
-next.
+locations) is done; its `verify-migration.ts` rewrite is type-checked, not run. Its review
+fixes are done. Task F.8 (two people in two browsers) is done. Task F.9 is next.
