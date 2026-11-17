@@ -7,6 +7,18 @@ import type { Vendor } from '@/types'
 
 // Mock TanStack Router
 const mockNavigate = vi.fn()
+// This file renders the page with no QueryClient and a mocked
+// `@/db/operations`, so the real `usePermissions` (which reads the location
+// list) cannot run here. Local mode allows everything; the role rules are
+// tested in `routes/settings/household/catalogReadOnly.test.tsx`.
+vi.mock('@/hooks/usePermissions', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/hooks/usePermissions')>()
+  return {
+    ...real,
+    usePermissions: () => real.permissionsFor({ mode: 'local' }),
+  }
+})
+
 vi.mock('@tanstack/react-router', async () => {
   const actual = await vi.importActual('@tanstack/react-router')
   return {
