@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { callArgs } from '@/test/narrow'
 import {
   useCreateVendor,
   useDeleteVendor,
@@ -139,6 +140,13 @@ describe('useCreateVendor (cloud mode)', () => {
     expect(mockCloudCreateVendor).toHaveBeenCalledWith({
       variables: { name: 'Costco' },
     })
+    // `toHaveBeenCalledWith` treats `{ locationId: undefined }` as equal to
+    // no key at all, so the line above passes either way. This line checks
+    // that the KEY is absent, which is what the hook does. Measured: with
+    // `variables: { name, locationId }` the line above stays green and this
+    // one goes red. Review of task F.8, finding N2.
+    const [options] = callArgs(mockCloudCreateVendor.mock)
+    expect(Object.keys(options.variables)).toEqual(['name'])
     expect((created as { name: string } | undefined)?.name).toBe('Costco')
   })
 })

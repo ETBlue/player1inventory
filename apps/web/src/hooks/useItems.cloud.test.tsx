@@ -544,6 +544,38 @@ describe('cloud catalog in a household with no location', () => {
     )
   })
 
+  it('sends no GetItems request while the location list is still loading', async () => {
+    // Given GetLocations has not answered yet (it waits 10 s), and a GetItems
+    // answer that counts every request the link serves. Review of task F.8,
+    // finding S1: with `(locations.length ?? 0) === 0` a list that has not
+    // loaded reads as "no location", and the hook asks GetItems for nothing.
+    let getItemsRequests = 0
+    const slowLocations = {
+      request: { query: GetLocationsDocument },
+      delay: 10_000,
+      result: { data: { locations: [] } },
+    }
+    const countingGetItems = {
+      request: { query: GetItemsDocument },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+      result: () => {
+        getItemsRequests += 1
+        return { data: { items: CATALOG } }
+      },
+    }
+    const { result } = renderHook(() => useItems(), {
+      wrapper: makeWrapper([slowLocations, countingGetItems]),
+    })
+
+    // When the hook has had time to send any request it would send
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    // Then it is still loading, and no GetItems request was sent
+    expect(result.current.isLoading).toBe(true)
+    expect(result.current.data).toBeUndefined()
+    expect(getItemsRequests).toBe(0)
+  })
+
   it('user with locations still gets the catalog from PantryData, not GetItems', async () => {
     // Guard: with a location, `GetItems` is never asked. The mocks hold no
     // `GetItems` answer, so a request for it would leave the hook loading.
