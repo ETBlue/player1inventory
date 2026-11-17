@@ -28,7 +28,11 @@ function VendorInfoTab() {
   const deleteVendor = useDeleteVendor()
   const { data: affectedItemCount = 0 } = useItemCountByVendor(id)
   // A household member sees this page read only (households H5 task F.5)
-  const { canEditCatalog, roleKnown } = usePermissions()
+  const {
+    canEditCatalog,
+    roleKnown,
+    isLoading: rolesLoading,
+  } = usePermissions()
 
   const handleDelete = async () => {
     if (!vendor) return
@@ -40,6 +44,12 @@ function VendorInfoTab() {
   }
 
   if (!vendor) return null
+  // Wait for the household role before the form mounts. The name field has
+  // `autoFocus={!readOnly}`, and React focuses only on mount: a form mounted
+  // read-only while the role loads would never take the focus for an owner.
+  // When the role cannot be read at all, `isLoading` is false and the form
+  // shows read-only (the safe default), with no note (`roleKnown` is false).
+  if (rolesLoading) return null
 
   return (
     <div className="p-4 bg-background-elevated min-h-[100cqh]">
