@@ -470,6 +470,7 @@
   },
   "settings": {
     "catalogReadOnly": "Only a household owner or manager can add or change these.",
+    "catalogReadOnlyItem": "Only a household owner or manager can change this.",
     "title": "Settings",
     "household": {
       "title": "My data",

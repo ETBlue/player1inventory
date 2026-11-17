@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DeleteButton } from '@/components/shared/DeleteButton'
+import { ReadOnlyNote } from '@/components/shared/ReadOnlyNote'
 import { TagInfoForm } from '@/components/tag/TagInfoForm'
 import {
   AlertDialog,
@@ -15,6 +16,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useTagLayout } from '@/hooks/useTagLayout'
 import {
   useDeleteTag,
@@ -43,6 +45,8 @@ function TagInfoTab() {
   const { goBack } = useAppNavigation()
   const deleteTag = useDeleteTag()
   const { data: affectedItemCount = 0 } = useItemCountByTag(id)
+  // A household member sees this page read only (households H5 task F.5)
+  const { canEditCatalog, isLoading: rolesLoading } = usePermissions()
 
   // Parent-delete dialog: open when deleting a tag that has children
   const [parentDeleteOpen, setParentDeleteOpen] = useState(false)
@@ -91,6 +95,12 @@ function TagInfoTab() {
   return (
     <div className="p-4 bg-background-elevated min-h-[100cqh]">
       <div className="space-y-4 max-w-2xl mx-auto">
+        {!rolesLoading && !canEditCatalog && (
+          <ReadOnlyNote
+            className="px-0"
+            text={t('settings.catalogReadOnlyItem')}
+          />
+        )}
         <TagInfoForm
           tag={tag}
           tagTypes={tagTypes}
@@ -113,9 +123,10 @@ function TagInfoTab() {
           }
           isPending={updateTag.isPending}
           onDirtyChange={registerDirtyState}
+          readOnly={!canEditCatalog}
         />
 
-        {hasChildren ? (
+        {!canEditCatalog ? null : hasChildren ? (
           <>
             <div className="max-w-2xl mx-auto">
               <Button

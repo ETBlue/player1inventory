@@ -10,6 +10,7 @@ const {
   Dirty,
   Saving,
   TypeReadonly,
+  ReadOnly,
 } = composeStories(stories)
 
 describe('TagInfoForm stories smoke tests', () => {
@@ -41,5 +42,11 @@ describe('TagInfoForm stories smoke tests', () => {
   it('TypeReadonly renders disabled type select', () => {
     render(<TypeReadonly />)
     expect(screen.getByRole('combobox', { name: /type/i })).toBeDisabled()
+  })
+
+  it('ReadOnly shows a readOnly name and no Save button', () => {
+    render(<ReadOnly />)
+    expect(screen.getByLabelText('Name')).toHaveAttribute('readonly')
+    expect(screen.queryByRole('button', { name: /save/i })).toBeNull()
   })
 })

@@ -57,3 +57,13 @@ export const Saving: Story = {
     isPending: true,
   },
 }
+
+// A household member (households H5 task F.5): the name is readOnly, any
+// select is disabled, and there is no Save button.
+export const ReadOnly: Story = {
+  args: {
+    vendor: { ...defaultVendor, name: 'iHerb' },
+    onSave: (data) => console.log('save', data),
+    readOnly: true,
+  },
+}

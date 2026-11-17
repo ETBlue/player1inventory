@@ -470,6 +470,7 @@
   },
   "settings": {
     "catalogReadOnly": "只有家庭擁有者或管理者可以新增或修改這些項目。",
+    "catalogReadOnlyItem": "只有家庭擁有者或管理者可以修改這個項目。",
     "title": "設定",
     "household": {
       "title": "我的資料",

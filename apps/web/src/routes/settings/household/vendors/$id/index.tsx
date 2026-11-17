@@ -1,8 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { DeleteButton } from '@/components/shared/DeleteButton'
+import { ReadOnlyNote } from '@/components/shared/ReadOnlyNote'
 import { VendorInfoForm } from '@/components/vendor/VendorInfoForm'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useVendorLayout } from '@/hooks/useVendorLayout'
 import {
   useDeleteVendor,
@@ -25,6 +27,8 @@ function VendorInfoTab() {
   const { goBack } = useAppNavigation()
   const deleteVendor = useDeleteVendor()
   const { data: affectedItemCount = 0 } = useItemCountByVendor(id)
+  // A household member sees this page read only (households H5 task F.5)
+  const { canEditCatalog, isLoading: rolesLoading } = usePermissions()
 
   const handleDelete = async () => {
     if (!vendor) return
@@ -40,6 +44,12 @@ function VendorInfoTab() {
   return (
     <div className="p-4 bg-background-elevated min-h-[100cqh]">
       <div className="max-w-2xl mx-auto">
+        {!rolesLoading && !canEditCatalog && (
+          <ReadOnlyNote
+            className="px-0"
+            text={t('settings.catalogReadOnlyItem')}
+          />
+        )}
         <VendorInfoForm
           vendor={vendor}
           onSave={(data) =>
@@ -49,23 +59,26 @@ function VendorInfoTab() {
           }
           isPending={updateVendor.isPending}
           onDirtyChange={registerDirtyState}
+          readOnly={!canEditCatalog}
         />
-        <div className="max-w-2xl mx-auto">
-          <DeleteButton
-            trigger={t('common.delete')}
-            dialogTitle={t('settings.vendors.deleteTitle')}
-            buttonClassName="mt-4 w-full"
-            dialogDescription={
-              affectedItemCount > 0
-                ? t('settings.vendors.deleteWithItems', {
-                    name: vendor.name,
-                    count: affectedItemCount,
-                  })
-                : t('settings.vendors.deleteNoItems', { name: vendor.name })
-            }
-            onDelete={handleDelete}
-          />
-        </div>
+        {canEditCatalog && (
+          <div className="max-w-2xl mx-auto">
+            <DeleteButton
+              trigger={t('common.delete')}
+              dialogTitle={t('settings.vendors.deleteTitle')}
+              buttonClassName="mt-4 w-full"
+              dialogDescription={
+                affectedItemCount > 0
+                  ? t('settings.vendors.deleteWithItems', {
+                      name: vendor.name,
+                      count: affectedItemCount,
+                    })
+                  : t('settings.vendors.deleteNoItems', { name: vendor.name })
+              }
+              onDelete={handleDelete}
+            />
+          </div>
+        )}
       </div>
     </div>
   )
