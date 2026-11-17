@@ -1491,9 +1491,15 @@ Needs owner decisions O2, O3, O6, O7, O9, O12.
 **H5a, two more notes (review of task F.7).**
 
 - **`createVendor(locationId:)` is optional on the new server.** An old web bundle always
-  sends it, so the change is backwards compatible. The new web bundle sends none only in a
-  household with no location, and an old server would refuse that call with a GraphQL
-  validation error. That is one more reason for server before web.
+  sends it, so an old web on the new server works. **A new web bundle on an old server
+  cannot create any vendor at all.** The new `vendors.graphql` declares the variable as
+  `$locationId: ID` (nullable), and the old schema's argument is `locationId: ID!`. GraphQL
+  validation compares the variable's TYPE, not its value, so the old server refuses EVERY
+  `createVendor` from the new bundle, with or without a location:
+  `Variable "$locationId" of type "ID" used in position expecting type "ID!"`. (This note
+  said until the review of task F.8 that only the call with no location was refused. That
+  was wrong.) That is one more reason for server before web: if the web is deployed first,
+  nobody can add a vendor until the server is deployed.
 - **The server-first window can leave an old web bundle on an empty household.** An old
   bundle on the new server can delete the household's last location, because the server no
   longer refuses it. That bundle has no `NoLocationsGate`, and its `ActiveLocationProvider`
@@ -1587,6 +1593,13 @@ and one test-only override in shipped code.
   test 2 has a location viewer on a cart page (live row, disabled checkbox, no Done). The
   viewer views of the pantry, cooking and the Stock tab are still proved by unit tests
   only.
+- **When `GetLocations` fails with nothing cached, the item Stock tab shows nothing.**
+  `NoLocationsGate` shows the empty screen only when the list has LOADED and is empty. A
+  failed read is not "empty", so the gate lets the Stock tab through, and the tab renders
+  nothing (`stock.tsx`, `if (!viewed) return null`): no error and no retry. This is older
+  than H5; F.7's gate did not cause it and does not fix it. Found in the review of F.8
+  (N3), not fixed: the right screen for "the location list could not be read" is a design
+  question, and it touches every location page, not only this one.
 - **`rolePermissions.ts` cannot tell `canEditCatalog` from `canManageLocations`.**
   `permissionsFor` gives both the same value (owner or manager), so no page test can catch a
   page that reads the wrong one of the two. If the rules ever differ, the helper needs a

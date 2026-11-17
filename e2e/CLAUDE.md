@@ -723,6 +723,15 @@ it.
 | readers | `main.tsx` (once, then passed to `createApolloClientForE2E` and `LiveUpdatesRunner`), the Account card in `UserSettingsPanel` | the HTTP header, the socket and the screen use one id |
 | production guard | `getE2ETestUserId` returns before it reads `localStorage` when the flag is empty | pinned by `e2eUser.test.ts`; a production build has no `"e2e-user-id"` string at all (grep `apps/web/dist/assets/*.js`, measured 2026-11-17: 0 files; the same build with the flag set: 1 file) |
 
+**Grep the production bundle for the QUOTED key, `"e2e-user-id"`, quotes included.**
+Without the quotes the text `e2e-user-id` also matches the header name `x-e2e-user-id`,
+which sits in code the production build keeps but never runs. Then the grep finds 1 file
+and looks like a failed guard. The command:
+
+```bash
+grep -l '"e2e-user-id"' apps/web/dist/assets/*.js | wc -l   # 0 in a production build
+```
+
 **The 409 order still applies.** Add the person to a household BEFORE their context
 opens a page: the first page load is their first GraphQL request.
 
