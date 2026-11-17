@@ -1182,6 +1182,35 @@ New texts: `settings.vendors.createForbidden` "Only a household owner or manager
 / 「只有家庭擁有者或管理者可以新增供應商。」 and `settings.vendors.createFailed` "Could not add
 {{name}}. Please try again." / 「無法新增{{name}}，請再試一次。」
 
+**Follow-up to F.6 (2026-11-17): a viewer's search lists items stocked elsewhere.** Owner
+decision: "yes, viewer can see household items with no add buttons". As built:
+
+- `ItemSearchTail` takes `notStockedHereReadOnly`. It lists the "not stocked here" section
+  with NO action: no button, no disabled control, no row note. It is ignored when
+  `addToLocationAction` is set. `hasVisibleTail` counts it, so a viewer's search that finds
+  only such items no longer shows the empty state.
+- `useItemSearchTailWiring` sets it only for a KNOWN viewer of the active location
+  (`roleAt(activeLocation.id) === 'viewer'`). A participant or organizer keeps Add to
+  location. While the roles load, or for no role, the section stays hidden, as before.
+  Local mode is unchanged (`roleAt` is `organizer`).
+- One change covers all five surfaces: the pantry list, shelf, vendor and recipe views and
+  the cart page.
+- No new text. The rows use the existing divider `common.notStockedHere`.
+- Tests: `routes/locationViewer.test.tsx` (3 changed: the pantry list, the cart search, and
+  the household member who is a viewer now see the row; Bread and Butter are stocked only at
+  `loc-elsewhere`), `hooks/useItemSearchTailWiring.test.tsx` (+4: viewer, participant, no
+  role, local), `ItemSearchTail.stories.test.tsx` (+2, story `NotStockedHereReadOnly`), and
+  `e2e/tests/shared-household.spec.ts` test 3 (cloud, OWNER and a viewer MEMBER on Fridge,
+  an item stocked only at Garage).
+- Mutations, each restored from a copy (`diff -q` clean): the section hidden for a viewer →
+  4 red; Add to location shown to a viewer → 4 red; `hasVisibleTail` ignoring the flag → 3
+  red. The first one also turns the new E2E test red (`1 not stocked here` not found).
+- Gate (Node 22.17.1): root `pnpm lint`, `pnpm build`, `build-storybook`, `pnpm check`, the
+  `TS6385` grep: clean. `pnpm test`: web **2922 / 305 → 2928 / 305**, server **1820 / 70**,
+  `scripts/spec` **70**. E2E: `cloud` `shared-household` + `unified-item-search` **14
+  passed**; `local` `unified-item-search` + `a11y` **78 passed, 2 skipped**; `pwa` `a11y`
+  **70 passed**.
+
 ## Task F.7 — lift the last-location refusal; the empty locations screen
 
 **Files:**
@@ -1641,13 +1670,16 @@ and one test-only override in shipped code.
   a location whose only organizer deleted their account gets no "No organizer" warning. It
   may wait for a later phase, but it must be fixed; it is in the H6 section of
   `2026-10-31-households-plan.md`.
-- **A viewer's search does not list items stocked elsewhere.** The tail's "not stocked here"
-  section exists only with its Add to location action (F.6). Whether a viewer should see
-  those rows without the action is a design question.
-- **E2E drives a viewer through ONE page only.** Since F.8, `shared-household.spec.ts`
-  test 2 has a location viewer on a cart page (live row, disabled checkbox, no Done). The
-  viewer views of the pantry, cooking and the Stock tab are still proved by unit tests
-  only.
+- **A viewer is not always told why the "not stocked here" rows have no action.** The rows
+  have no button and no row note (follow-up to F.6, below). The pantry list and shelf view
+  show `common.locationViewOnly` under the search row only when Create would have been
+  offered, so not for an exact name. The vendor and recipe views show no note. The
+  `LocationSwitcher` badge "View only" is on every page.
+- **E2E drives a viewer through TWO pages only.** Since F.8, `shared-household.spec.ts`
+  test 2 has a location viewer on a cart page (live row, disabled checkbox, no Done). Since
+  the follow-up to F.6, test 3 has a viewer search the pantry (the "not stocked here" row,
+  no Add). The rest of the viewer's pantry, cooking and the Stock tab are still proved by
+  unit tests only.
 - **When `GetLocations` fails with nothing cached, the item Stock tab shows nothing.**
   `NoLocationsGate` shows the empty screen only when the list has LOADED and is empty. A
   failed read is not "empty", so the gate lets the Stock tab through, and the tab renders
@@ -1717,6 +1749,7 @@ Filled in from the task reports and reviews.
 | F.6 | Step 6: call `cloudBootstrapCarts` only when `canEditLocation(activeLocationId)` | `canEditLocation` is `false` for every location while the HOUSEHOLD role loads, so bootstrap would wait for `GetHousehold`. The provider reads `myRole` from the list it already holds |
 | F.6 | Step 1: tests in cloud mode | The page tests keep local data and set the role through `permissionsFor` (the F.5 pattern, `asLocationRole`). Only the bootstrap test runs in cloud, through `MockedProvider` |
 | F.6 | (nothing about the search tail's lower section) | `ItemSearchTail` shows "not stocked here" only with its action (`hasVisibleTail`). With no Add to location, a viewer's search does not list items stocked elsewhere at all |
+| F.6 follow-up | (the brief) follow the read-only pattern, e.g. `ReadOnlyNote` | The F.5 member pattern puts a note in place of the action on each row. For a viewer that would repeat one text on every row, and the owner asked only for "no add buttons". The rows have no note; the gap is in *Known gaps* |
 | F.6 | (nothing about existing tests) | `stock.test.tsx`'s own graphql factory had no `useGetHouseholdQuery` (31 tests failed), and `stock.stories.test.tsx`'s fixture locations had no `myRole` |
 | F.6 review | (nothing about `createVendor`) | `createVendor` asked location role `participant` for the cart it pre-creates, so a household manager who is a viewer of the active location could not create a vendor at all (Review Focus case 4), and `NewVendorDialog` and the item Vendors tab showed nothing. It now asks `viewer` and writes the cart only for `participant` or higher |
 | F.6 | "The ref is set only when the call is made, so a role that rises later bootstraps then" | True, but with the switches A (participant), B (viewer), A the ref stayed at A, so A was not bootstrapped again. And the "role rises" rule had no test. A viewer location now moves the ref to a marker; both cases are tested |
