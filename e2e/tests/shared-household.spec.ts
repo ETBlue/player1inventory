@@ -31,10 +31,12 @@ import { makeGql } from '../utils/cloud'
 // |------|---------------------------------------------------------------------------|
 // | 1    | the tags page: the owner gets New Tag Type, the member a read-only note   |
 // | 2    | a cart: the owner adds a row; the viewer sees it live and gets no Done    |
-// | 3    | a member creates a location: the owner sees it only on the settings list, |
+// | 3    | a pantry search: both see an item stocked only elsewhere; only the      |
+// |      | owner gets Add to Fridge                                                  |
+// | 4    | a member creates a location: the owner sees it only on the settings list, |
 // |      | as No access with Delete, never in the switcher                          |
 //
-// | Person | Household role | Fridge    | Garage      | Home (first sign-in) | Shed (test 3) |
+// | Person | Household role | Fridge    | Garage      | Home (first sign-in) | Shed (test 4) |
 // |--------|----------------|-----------|-------------|----------------------|---------------|
 // | OWNER  | owner          | organizer | organizer   | organizer            | none          |
 // | MEMBER | member         | viewer    | participant | none                 | organizer     |
@@ -291,6 +293,45 @@ test.describe('two people in one household', () => {
     ).toBeVisible()
     await expect(
       member.page.getByRole('main').getByRole('button', { name: 'Done' }),
+    ).toHaveCount(0)
+  })
+
+  test('location viewer sees items stocked elsewhere in a search, with no Add', async ({
+    browser,
+    request,
+  }) => {
+    // Given Shared Jam, stocked only at Garage, and both people on Fridge,
+    // where OWNER is an organizer and MEMBER only a viewer
+    const seed = await seedHousehold(request)
+    const ownerGql = makeGql(request, OWNER)
+    const jam = (
+      await ownerGql<{ createItem: Row }>(CREATE_ITEM, {
+        input: { name: 'Shared Jam' },
+      })
+    ).createItem.id
+    await stock(ownerGql, jam, seed.garage, 1)
+    const owner = await openAs(browser, OWNER, seed.fridge)
+    const member = await openAs(browser, MEMBER, seed.fridge)
+
+    // When both search the Fridge pantry for it
+    await owner.page.goto('/?q=Shared%20Jam')
+    await member.page.goto('/?q=Shared%20Jam')
+
+    // Then OWNER gets the row with Add to Fridge (the control: the row is in
+    // the "not stocked here" section and the role decides the button)
+    const ownerMain = owner.page.getByRole('main')
+    await expect(ownerMain.getByText('1 not stocked here')).toBeVisible()
+    await expect(
+      ownerMain.getByRole('button', { name: 'Add to Fridge: Shared Jam' }),
+    ).toBeVisible()
+
+    // And MEMBER gets the same row (present first), with no Add to Fridge
+    // (owner decision 2026-11-17)
+    const memberMain = member.page.getByRole('main')
+    await expect(memberMain.getByText('1 not stocked here')).toBeVisible()
+    await expect(memberMain.getByText('Shared Jam')).toBeVisible()
+    await expect(
+      memberMain.getByRole('button', { name: /^Add to .*: Shared Jam$/ }),
     ).toHaveCount(0)
   })
 
