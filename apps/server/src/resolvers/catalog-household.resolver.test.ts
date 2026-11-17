@@ -851,6 +851,25 @@ describe('createVendor in a household with no location', () => {
     expect(codeOf(result)).toBe('FORBIDDEN')
     expect(handles.$snapshot()).toEqual(before)
   })
+
+  it('an empty-string locationId is a bad id, not "no location": FORBIDDEN and nothing is written', async () => {
+    // Review of task F.8. The resolver tests `locationId != null`, so only
+    // an absent key or `null` means "no location". `""` is a location id
+    // that no location holds, and `requireLocationRole` refuses it the same
+    // way as any other id the caller has no role on. This pins that
+    // behaviour, so a change to "treat '' as none" is a choice someone makes
+    // on purpose. The web never sends `""` (`useCreateVendor` leaves the key
+    // out).
+    seed('manager')
+    const before = handles.$snapshot()
+
+    // When a household manager names the location ""
+    const result = await exec('mutation { createVendor(name: "Lidl", locationId: "") { id } }')
+
+    // Then it is refused, and no vendor and no cart was written
+    expect(codeOf(result)).toBe('FORBIDDEN')
+    expect(handles.$snapshot()).toEqual(before)
+  })
 })
 
 describe('marking a recipe as cooked is a cooking right, not a catalog edit', () => {
