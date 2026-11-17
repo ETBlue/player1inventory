@@ -182,4 +182,3 @@ describe('householdWorld holds the invite store (households H5b, task G.3)', () 
     expect(world.households.state.householdInvites).toHaveLength(1)
   })
 })
-

@@ -65,6 +65,11 @@
 //     `count === 0`.
 //   - `locationRoles` is stored as given and returned as a copy. It is not
 //     parsed: the server's checked parser does that (decision T26).
+//   - `select` on `create`, `findUnique` and `findMany` is APPLIED (since the
+//     review of H5b task G.3): only the columns set to `true` come back, as in
+//     Prisma. Before, it was ignored, so a test got the secret token back from
+//     a read that would not return it. A key that is not a column (a relation
+//     such as `household`, or a typo) throws.
 //
 // ── THE RELATION FILTERS IT SUPPORTS, AND NO OTHER ──
 //
@@ -90,7 +95,9 @@
 //
 // ── WHAT IT DOES NOT MODEL ──
 //
-//   - `select`. Accepted and IGNORED: whole rows come back.
+//   - `select` on `Household`, `HouseholdMember` and `LocationMember`.
+//     Accepted and IGNORED: whole rows come back. (It IS applied on
+//     `HouseholdInvite`, see above.)
 //   - `include`, `orderBy`, `take`, `skip`, `distinct`. All throw as unknown
 //     options, so no test can rest on something this file never applied.
 //   - Nested writes, such as `household.create({ data: { members: { create }
@@ -308,6 +315,43 @@ function checkCompound(model: string, where: Where, key: string, fields: [string
 
 function copy<T>(row: T): T {
   return structuredClone(row)
+}
+
+const INVITE_COLUMNS = [
+  'id',
+  'householdId',
+  'token',
+  'householdRole',
+  'locationRoles',
+  'createdById',
+  'createdAt',
+  'expiresAt',
+  'usedAt',
+  'usedById',
+  'revokedAt',
+] as const
+
+/**
+ * An invite row as Prisma returns it for `select`: only the columns set to
+ * `true`, each copied. With no `select`, a copy of the whole row. A key that
+ * is not a column throws.
+ */
+function selectInvite(row: HouseholdInviteRow, select: Where | undefined): Record<string, unknown> {
+  if (select === undefined) return copy(row) as unknown as Record<string, unknown>
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(select)) {
+    if (!(INVITE_COLUMNS as readonly string[]).includes(key)) {
+      throw new HouseholdFakeUnsupportedError(
+        'HouseholdInvite',
+        `the select key '${key}' (only the columns are modelled, no relation)`,
+      )
+    }
+    if (value === true) out[key] = copy((row as unknown as Record<string, unknown>)[key])
+    else if (value !== false && value !== undefined) {
+      throw new HouseholdFakeUnsupportedError('HouseholdInvite', `the select value of '${key}'`)
+    }
+  }
+  return out
 }
 
 export interface HouseholdFakeState {
@@ -883,6 +927,11 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     },
   }
 
+  // A row used only to check a `create`'s select before the insert.
+  const placeholderInvite = Object.fromEntries(
+    INVITE_COLUMNS.map((c) => [c, null]),
+  ) as unknown as HouseholdInviteRow
+
   const householdInvite = {
     findUnique: async (args: { where: Where; select?: Where }) => {
       refuseUnknownOptions('HouseholdInvite', 'findUnique', args, READ)
@@ -896,16 +945,23 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
         )
       }
       const row = state.householdInvites.find((i) => inviteMatches(i, args.where))
-      return row ? copy(row) : null
+      // biome-ignore lint/suspicious/noExplicitAny: the shape depends on `select`, as in Prisma
+      return (row ? selectInvite(row, args.select) : null) as any
     },
     findMany: async (args: { where?: Where; select?: Where } = {}) => {
       refuseUnknownOptions('HouseholdInvite', 'findMany', args, READ)
       checkInviteWhere(args.where)
-      return state.householdInvites.filter((i) => inviteMatches(i, args.where ?? {})).map(copy)
+      return state.householdInvites
+        .filter((i) => inviteMatches(i, args.where ?? {}))
+        // biome-ignore lint/suspicious/noExplicitAny: the shape depends on `select`, as in Prisma
+        .map((i) => selectInvite(i, args.select)) as any[]
     },
     create: async (args: { data: Data; select?: Where }) => {
       refuseUnknownOptions('HouseholdInvite', 'create', args, ['data', 'select'])
-      return copy(insertInvite(args.data))
+      // The select is checked BEFORE the insert, so a bad one writes nothing.
+      if (args.select !== undefined) selectInvite(placeholderInvite, args.select)
+      // biome-ignore lint/suspicious/noExplicitAny: the shape depends on `select`, as in Prisma
+      return selectInvite(insertInvite(args.data), args.select) as any
     },
     updateMany: async (args: { where?: Where; data: Data }) => {
       refuseUnknownOptions('HouseholdInvite', 'updateMany', args, ['where', 'data'])

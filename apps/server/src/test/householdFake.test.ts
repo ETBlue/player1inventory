@@ -1273,3 +1273,62 @@ describe('householdFake filters invites by householdRole (owner decision O15)', 
     ).rejects.toBeInstanceOf(InvalidRoleError)
   })
 })
+
+describe('householdFake applies select on invites (households H5b, review of G.3)', () => {
+  // Before this, `select` was accepted and IGNORED, so a test got the token
+  // back from a read that, in Prisma, would not return it.
+  it('findUnique and findMany return only the selected columns', async () => {
+    // Given one invite
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+
+    // When it is read with a select that leaves out the token
+    const one = await fake.client.householdInvite.findUnique({
+      where: { token: 'token_1' },
+      select: { householdId: true, expiresAt: true },
+    })
+    const many = await fake.client.householdInvite.findMany({
+      where: { householdId: OURS },
+      select: { id: true, token: false },
+    })
+
+    // Then only those keys come back, and `false` leaves a key out
+    expect(one).toEqual({ householdId: OURS, expiresAt: LATER })
+    expect(many).toEqual([{ id: 'inv_1' }])
+  })
+
+  it('create applies select too', async () => {
+    const fake = fixture()
+    const row = await fake.client.householdInvite.create({
+      data: inviteData(),
+      select: { id: true },
+    })
+    expect(row).toEqual({ id: 'inv_1' })
+    // And the whole row is stored
+    expect(fake.state.householdInvites[0]?.token).toBe('token_1')
+  })
+
+  it('a selected copy is a copy', async () => {
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+    const one = await fake.client.householdInvite.findUnique({
+      where: { id: 'inv_1' },
+      select: { locationRoles: true },
+    })
+    ;(one?.locationRoles as unknown[]).push('changed')
+    expect(fake.state.householdInvites[0]?.locationRoles).toEqual([
+      { locationId: KITCHEN, role: 'viewer' },
+    ])
+  })
+
+  it('throws on a select key it does not model, such as a relation', async () => {
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+    await expect(
+      fake.client.householdInvite.findMany({ select: { household: true } }),
+    ).rejects.toBeInstanceOf(HouseholdFakeUnsupportedError)
+    await expect(
+      fake.client.householdInvite.findUnique({ where: { id: 'inv_1' }, select: { nope: true } }),
+    ).rejects.toBeInstanceOf(HouseholdFakeUnsupportedError)
+  })
+})
