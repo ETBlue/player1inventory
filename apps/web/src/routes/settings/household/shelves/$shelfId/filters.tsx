@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { X } from 'lucide-react'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Badge } from '@/components/ui/badge'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useRecipeItemCounts } from '@/hooks/useRecipeItemCounts'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useShelfQuery, useUpdateShelfMutation } from '@/hooks/useShelves'
@@ -9,6 +10,7 @@ import { useTagItemCounts } from '@/hooks/useTagItemCounts'
 import { useTagsWithDepth, useTagTypes } from '@/hooks/useTags'
 import { useVendorItemCounts } from '@/hooks/useVendorItemCounts'
 import { useVendors } from '@/hooks/useVendors'
+import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute(
   '/settings/household/shelves/$shelfId/filters',
@@ -20,6 +22,9 @@ function ShelfFiltersTab() {
   const { shelfId } = Route.useParams()
   const { data: shelf } = useShelfQuery(shelfId)
   const updateShelf = useUpdateShelfMutation()
+  // A household member sees which filters are on, and cannot change them
+  // (households H5 task F.5). The badges stay, marked `aria-disabled`.
+  const { canEditCatalog } = usePermissions()
 
   const { data: tagTypes = [] } = useTagTypes()
   const { data: tagsWithDepth = [] } = useTagsWithDepth()
@@ -38,7 +43,7 @@ function ShelfFiltersTab() {
     vendorIds?: string[]
     recipeIds?: string[]
   }) => {
-    if (!shelf) return
+    if (!shelf || !canEditCatalog) return
     const base = shelf.filterConfig ?? {}
     const merged = {
       ...(patch.tagIds !== undefined
@@ -163,13 +168,19 @@ function ShelfFiltersTab() {
                         )}
                         <Badge
                           role="button"
+                          aria-disabled={!canEditCatalog || undefined}
                           aria-pressed={isSelected}
                           variant={
                             isSelected
                               ? tagType.color
                               : `${tagType.color}-inverse`
                           }
-                          className="cursor-pointer z-10 relative"
+                          className={cn(
+                            canEditCatalog
+                              ? 'cursor-pointer'
+                              : 'cursor-default',
+                            'z-10 relative',
+                          )}
                           onClick={() => toggleTag(tag.id)}
                         >
                           {tag.name}
@@ -202,9 +213,13 @@ function ShelfFiltersTab() {
                 <Badge
                   key={vendor.id}
                   role="button"
+                  aria-disabled={!canEditCatalog || undefined}
                   aria-pressed={isSelected}
                   variant={isSelected ? 'neutral' : 'neutral-outline'}
-                  className="cursor-pointer normal-case"
+                  className={cn(
+                    canEditCatalog ? 'cursor-pointer' : 'cursor-default',
+                    'normal-case',
+                  )}
                   onClick={() => toggleVendor(vendor.id)}
                 >
                   {vendor.name}
@@ -233,9 +248,13 @@ function ShelfFiltersTab() {
                 <Badge
                   key={recipe.id}
                   role="button"
+                  aria-disabled={!canEditCatalog || undefined}
                   aria-pressed={isSelected}
                   variant={isSelected ? 'neutral' : 'neutral-outline'}
-                  className="cursor-pointer capitalize"
+                  className={cn(
+                    canEditCatalog ? 'cursor-pointer' : 'cursor-default',
+                    'capitalize',
+                  )}
                   onClick={() => toggleRecipe(recipe.id)}
                 >
                   {recipe.name}
