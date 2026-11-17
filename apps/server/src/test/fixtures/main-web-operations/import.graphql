@@ -1,0 +1,264 @@
+# OLD-BUNDLE FIXTURE. Do not edit by hand. Delete with the shim fields.
+#
+# A copy of `apps/web/src/apollo/operations/import.graphql` from `origin/main` at 351d22ad, taken 2026-11-17.
+# That is the web bundle in production before the households release.
+# `src/test/oldBundleCompat.test.ts` checks that the current server schema
+# still accepts it, so the server can be deployed before the web.
+# Delete this folder in the release after households, together with the
+# deprecated shim fields (see that test file).
+
+# `wikidataUrl` and `note` are absent from the two item selection sets in this
+# file on purpose, unlike in `GetItem`, `GetItems` and `UpdateItem`. What the
+# import sends UP is `ItemInput`, built by `toItemInput` (lib/importData.ts),
+# and that does carry both. What comes BACK is thrown away: both item calls in
+# `lib/importData.ts` end `.then(() => undefined)`, and all three import strategies finish with `await client.resetStore()`, which
+# empties the Apollo cache. Adding the fields would put two more strings per
+# imported item on the wire for nothing. `expirationMode` is absent from both
+# of these sets too.
+mutation BulkCreateItems($items: [ItemInput!]!) {
+  bulkCreateItems(items: $items) {
+    id
+    name
+    tagIds
+    vendorIds
+    packageUnit
+    measurementUnit
+    amountPerPackage
+    targetUnit
+    consumeAmount
+    estimatedDueDays
+    expirationThreshold
+    createdAt
+    updatedAt
+  }
+}
+
+mutation BulkCreateTags($tags: [TagInput!]!) {
+  bulkCreateTags(tags: $tags) {
+    id
+    name
+    typeId
+  }
+}
+
+mutation BulkCreateTagTypes($tagTypes: [TagTypeInput!]!) {
+  bulkCreateTagTypes(tagTypes: $tagTypes) {
+    id
+    name
+    color
+  }
+}
+
+mutation BulkCreateVendors($vendors: [VendorInput!]!) {
+  bulkCreateVendors(vendors: $vendors) {
+    id
+    name
+  }
+}
+
+mutation BulkCreateRecipes($recipes: [RecipeInput!]!) {
+  bulkCreateRecipes(recipes: $recipes) {
+    id
+    name
+    items {
+      itemId
+      defaultAmount
+    }
+    lastCookedAt
+  }
+}
+
+mutation BulkCreateInventoryLogs($logs: [InventoryLogInput!]!) {
+  bulkCreateInventoryLogs(logs: $logs) {
+    id
+    itemId
+    delta
+    quantity
+    occurredAt
+    note
+  }
+}
+
+mutation BulkCreateShoppingCarts($carts: [ShoppingCartInput!]!) {
+  bulkCreateShoppingCarts(carts: $carts) {
+    id
+    lastPurchasedAt
+  }
+}
+
+mutation BulkCreateCartItems($cartItems: [CartItemInput!]!) {
+  bulkCreateCartItems(cartItems: $cartItems) {
+    id
+    cartId
+    itemId
+    quantity
+  }
+}
+
+# `wikidataUrl` and `note` absent on purpose — see the comment on
+# `BulkCreateItems` at the top of this file.
+mutation BulkUpsertItems($items: [ItemInput!]!) {
+  bulkUpsertItems(items: $items) {
+    id
+    name
+    tagIds
+    vendorIds
+    packageUnit
+    measurementUnit
+    amountPerPackage
+    targetUnit
+    consumeAmount
+    estimatedDueDays
+    expirationThreshold
+    createdAt
+    updatedAt
+  }
+}
+
+mutation BulkUpsertTags($tags: [TagInput!]!) {
+  bulkUpsertTags(tags: $tags) {
+    id
+    name
+    typeId
+  }
+}
+
+mutation BulkUpsertTagTypes($tagTypes: [TagTypeInput!]!) {
+  bulkUpsertTagTypes(tagTypes: $tagTypes) {
+    id
+    name
+    color
+  }
+}
+
+mutation BulkUpsertVendors($vendors: [VendorInput!]!) {
+  bulkUpsertVendors(vendors: $vendors) {
+    id
+    name
+  }
+}
+
+mutation BulkUpsertRecipes($recipes: [RecipeInput!]!) {
+  bulkUpsertRecipes(recipes: $recipes) {
+    id
+    name
+    items {
+      itemId
+      defaultAmount
+    }
+    lastCookedAt
+  }
+}
+
+mutation BulkUpsertInventoryLogs($logs: [InventoryLogInput!]!) {
+  bulkUpsertInventoryLogs(logs: $logs) {
+    id
+    itemId
+    delta
+    quantity
+    occurredAt
+    note
+  }
+}
+
+mutation BulkUpsertShoppingCarts($carts: [ShoppingCartInput!]!) {
+  bulkUpsertShoppingCarts(carts: $carts) {
+    id
+    lastPurchasedAt
+  }
+}
+
+mutation BulkUpsertCartItems($cartItems: [CartItemInput!]!) {
+  bulkUpsertCartItems(cartItems: $cartItems) {
+    id
+    cartId
+    itemId
+    quantity
+  }
+}
+
+mutation BulkCreateShelves($shelves: [ShelfInput!]!) {
+  bulkCreateShelves(shelves: $shelves) {
+    id
+    name
+    type
+    order
+    filterConfig {
+      tagIds
+      vendorIds
+      recipeIds
+    }
+    itemIds
+  }
+}
+
+mutation BulkUpsertShelves($shelves: [ShelfInput!]!) {
+  bulkUpsertShelves(shelves: $shelves) {
+    id
+    name
+    type
+    order
+    filterConfig {
+      tagIds
+      vendorIds
+      recipeIds
+    }
+    itemIds
+  }
+}
+
+mutation BulkCreateLocations($locations: [LocationInput!]!) {
+  bulkCreateLocations(locations: $locations) {
+    id
+    name
+    order
+    isDefault
+    createdAt
+    updatedAt
+  }
+}
+
+mutation BulkUpsertLocations($locations: [LocationInput!]!) {
+  bulkUpsertLocations(locations: $locations) {
+    id
+    name
+    order
+    isDefault
+    createdAt
+    updatedAt
+  }
+}
+
+mutation BulkCreateItemStocks($itemStocks: [ItemStockImportInput!]!) {
+  bulkCreateItemStocks(itemStocks: $itemStocks) {
+    id
+    itemId
+    locationId
+    targetQuantity
+    refillThreshold
+    packedQuantity
+    unpackedQuantity
+    dueDate
+    createdAt
+    updatedAt
+  }
+}
+
+mutation BulkUpsertItemStocks($itemStocks: [ItemStockImportInput!]!) {
+  bulkUpsertItemStocks(itemStocks: $itemStocks) {
+    id
+    itemId
+    locationId
+    targetQuantity
+    refillThreshold
+    packedQuantity
+    unpackedQuantity
+    dueDate
+    createdAt
+    updatedAt
+  }
+}
+
+mutation ClearAllData {
+  clearAllData
+}

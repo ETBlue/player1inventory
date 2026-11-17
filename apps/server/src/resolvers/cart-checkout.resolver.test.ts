@@ -759,3 +759,93 @@ describe("checkout writes the CART's location", () => {
     expect(stockAt('item_eggs', LOC_HOME)).toMatchObject({ packedQuantity: 40, targetQuantity: 7 })
   })
 })
+
+// ─── OLD-BUNDLE SHIM: the `{ itemId, quantity }` input ───────────────────────
+//
+// Remove with `CheckoutItemInput.itemId`, in the release after households
+// (see `cart.graphql` and `src/test/oldBundleCompat.test.ts`). `main`'s web
+// bundle sends one entry per bought item, with its own STOCK TOTAL as
+// `quantity`. The server buys the stored amount of that item's row.
+
+async function checkoutRaw(items: Array<Record<string, unknown>>, userId: string) {
+  const res = await server.executeOperation(
+    { query: CHECKOUT, variables: { c: HOME_CART, items } },
+    { contextValue: { userId } },
+  )
+  if (res.body.kind !== 'single') throw new Error('expected a single result')
+  return res.body.singleResult
+}
+
+describe('checkout from an old web bundle', () => {
+  it('user on an old bundle checks out: the stored amounts are bought, the old totals are ignored', async () => {
+    // Given the old bundle sends item ids and stock totals that are wrong on
+    // purpose (999), as a stale screen could
+    const res = await checkoutRaw(
+      [
+        { itemId: 'item_milk', quantity: 999 },
+        { itemId: 'item_bread', quantity: 999 },
+      ],
+      ALICE,
+    )
+
+    // Then the stored amounts (milk 1, bread 3) are bought, not 999
+    expect(res.errors).toBeUndefined()
+    expect(stockAt('item_milk', LOC_HOME)).toMatchObject({ packedQuantity: 3, unpackedQuantity: 3 })
+    expect(stockAt('item_bread', LOC_HOME)?.packedQuantity).toBe(4)
+    // And the rows are gone, the pinned row stays
+    expect(rowIds(HOME_CART)).toEqual(['ci_bob_eggs_pinned'])
+    // And the logs carry the bought amount and the total the SERVER computed:
+    // 3 packs and 3 loose at 6 to a pack is 3.5
+    expect(
+      logs.state.logs
+        .map((l) => ({ itemId: l.itemId, delta: l.delta, quantity: l.quantity }))
+        .sort((a, b) => a.itemId.localeCompare(b.itemId)),
+    ).toEqual([
+      { itemId: 'item_bread', delta: 3, quantity: 4 },
+      { itemId: 'item_milk', delta: 1, quantity: 3.5 },
+    ])
+  })
+
+  it('an old-shape entry for an item with no row being bought is CART_CHANGED, and nothing is written', async () => {
+    // Given the eggs row is pinned (amount 0), so it is not being bought
+    const before = writable()
+    const res = await checkoutRaw(
+      [
+        { itemId: 'item_milk', quantity: 1 },
+        { itemId: 'item_bread', quantity: 1 },
+        { itemId: 'item_eggs', quantity: 1 },
+      ],
+      ALICE,
+    )
+
+    expect(code(res)).toBe('CART_CHANGED')
+    expect(writable()).toEqual(before)
+  })
+
+  it('an old-shape input that leaves a row out is CART_CHANGED, and nothing is written', async () => {
+    // Given a co-member added the bread after the old screen loaded
+    const before = writable()
+    const res = await checkoutRaw([{ itemId: 'item_milk', quantity: 1 }], ALICE)
+
+    expect(code(res)).toBe('CART_CHANGED')
+    expect(writable()).toEqual(before)
+  })
+
+  it.each([
+    { name: 'an entry with both ids', items: [{ cartItemId: 'ci_alice_milk', itemId: 'item_milk', quantity: 1 }] },
+    { name: 'an entry with neither id', items: [{ quantity: 1 }] },
+    {
+      name: 'a list that mixes the two shapes',
+      items: [
+        { cartItemId: 'ci_alice_milk', quantity: 1 },
+        { itemId: 'item_bread', quantity: 3 },
+      ],
+    },
+  ])('$name is BAD_USER_INPUT, and nothing is written', async ({ items }) => {
+    const before = writable()
+    const res = await checkoutRaw(items, ALICE)
+
+    expect(code(res)).toBe('BAD_USER_INPUT')
+    expect(writable()).toEqual(before)
+  })
+})

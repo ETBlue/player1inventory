@@ -44,11 +44,29 @@ resolver did not read `amountPerPackage`. The resolver now reads `Item` and the
 `getPackedTotal` from `@p1i/types`, the rule local mode uses. A total computed
 by the client could also be out of date by the time it arrived.
 
-An old web bundle still sends `itemId` and fails GraphQL validation. The owner
-accepted that on 2026-11-15 (H3b design, *Deploy*).
+── OLD-BUNDLE SHIM (remove in the release after households) ──
+
+An old web bundle (`main` before the households release) still sends
+`{ itemId, quantity }`, where `quantity` is its own stock total. On 2026-11-15
+the owner accepted that such a bundle fails. On 2026-11-17 the owner chose to
+deploy the server BEFORE the web for the households release (option 4 in
+section 8.3 of docs/global/backend/2026-11-17-deploy-runbook-households-h4.md),
+so for ONE release the server accepts the old shape too:
+
+- `cartItemId` is optional in the schema. The resolver still needs, in every
+  entry, exactly one of `cartItemId` and `itemId`, and the same one in every
+  entry. Anything else is `BAD_USER_INPUT`.
+- An old-shape entry names the cart row by its item (a cart has at most one row
+  per item). The server reads that row's stored amount and buys it, as the old
+  server did. The old `quantity` (a stock total) is ignored. All the
+  `CART_CHANGED` rules then apply as for a new-shape input.
+
+When the shim goes, make `cartItemId` `ID!` again and delete `itemId`.
 """
 input CheckoutItemInput {
-  cartItemId: ID!
+  cartItemId: ID
+  itemId: ID
+    @deprecated(reason: "Old web bundles only. Remove in the release after households.")
   quantity: Float!
 }
 

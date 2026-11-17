@@ -145,6 +145,36 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
       const organized = await locationIdsWithOrganizer(ctx, householdId)
       return organized.has(parent.id)
     },
+    // OLD-BUNDLE SHIM. Remove in the release after households, with the
+    // field in `location.graphql` (see the comment there for why it exists).
+    //
+    // True only for the first location the caller can see in this location's
+    // household, by `order` and then `id`: the first row of `locations`. The
+    // old bundle reads it in three places, and this value keeps each correct:
+    //
+    // | Old bundle code                              | Uses `isDefault` to          |
+    // |----------------------------------------------|------------------------------|
+    // | `useActiveLocation`, `useCloudLocationId`    | pick the active location     |
+    // | `fetchCloudDefaultLocationId` (importData)   | map a backup's default onto  |
+    // | `LocationList`                               | hide Delete, lock the drag   |
+    //
+    // `false` for every location would leave the import with no target, and
+    // would let the old bundle delete the household's last location, which
+    // it cannot show an empty screen for. One read per Location, which is
+    // acceptable for one release: the role map below is cached per request.
+    isDefault: async (parent, _, ctx) => {
+      const householdId = await householdIdOf(parent)
+      if (!householdId) return false
+      const roles = await locationRolesByLocation(ctx, householdId)
+      if (!roles.has(parent.id)) return false
+      const [first] = await prisma.location.findMany({
+        where: { id: { in: [...roles.keys()] } },
+        orderBy: [{ order: 'asc' }, { id: 'asc' }],
+        select: { id: true },
+        take: 1,
+      })
+      return first?.id === parent.id
+    },
   },
 
   Mutation: {

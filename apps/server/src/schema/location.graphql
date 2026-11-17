@@ -13,6 +13,27 @@ type Location {
   # its household (decision H18 applied to the ORGANIZER). The settings list
   # shows "No organizer" when it is false.
   hasOrganizer: Boolean!
+  # OLD-BUNDLE SHIM. Remove in the release after households.
+  #
+  # H3a dropped the `isDefault` column. `main`'s web bundle (before the
+  # households release) still selects this field in `GetLocations`,
+  # `CreateLocation`, `UpdateLocation`, `ReorderLocations`,
+  # `BulkCreateLocations` and `BulkUpsertLocations`. Without the field every
+  # one of those documents fails GraphQL validation, and an old device cannot
+  # load any location. The field is kept for ONE release so the server can be
+  # deployed before the web (owner decision 2026-11-17, option 4 in section
+  # 8.3 of docs/global/backend/2026-11-17-deploy-runbook-households-h4.md).
+  #
+  # The value: true for the FIRST location of the caller's `locations` list
+  # (by `order`, then `id`), false for every other one, and false for a
+  # location the caller has no role on. That is the location the old bundle
+  # expects: it picks it as the active location, maps a backup's default
+  # location onto it, and hides its delete button.
+  #
+  # No web document of this branch selects it. A test fails if one does
+  # (src/test/oldBundleCompat.test.ts).
+  isDefault: Boolean!
+    @deprecated(reason: "Old web bundles only. Remove in the release after households.")
 }
 
 # The three location roles (decision H14). `organizer` > `participant` >

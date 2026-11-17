@@ -354,3 +354,58 @@ describe('Location fields on a parent row with no householdId', () => {
     expect(await fields.hasOrganizer(bare('loc-gone'), {}, ctx())).toBe(false)
   })
 })
+
+// ── OLD-BUNDLE SHIM: `Location.isDefault` ──
+//
+// Remove with the field, in the release after households (see
+// `location.graphql` and `src/test/oldBundleCompat.test.ts`). `main`'s web
+// bundle picks its active location, its import target and the location it may
+// not delete by `isDefault`. The value must be the first row of the CALLER's
+// `locations` list, by `order` then `id`.
+describe('Location.isDefault for an old web bundle', () => {
+  it("is true only for the first location of the caller's list", async () => {
+    // Given the owner has a role on loc-k (order 0) only, and none on loc-g
+    const res = await run(`query { locations { id isDefault } householdLocations { id isDefault } }`, 'owner')
+
+    // Then loc-k is the default, and loc-g, where the owner has no role, is not
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.locations).toEqual([{ id: 'loc-k', isDefault: true }])
+    expect(res.data?.householdLocations).toEqual([
+      { id: 'loc-k', isDefault: true },
+      { id: 'loc-g', isDefault: false },
+    ])
+  })
+
+  it("is the caller's own first location, not the household's first", async () => {
+    // Given the member has a role on loc-g (order 1) only. loc-k (order 0) is
+    // the household's first location, but not in the member's list.
+    const res = await run(`query { locations { id isDefault } }`, 'member')
+
+    // Then loc-g is the member's default: their list must have one, or the old
+    // bundle has no active location and no import target
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.locations).toEqual([{ id: 'loc-g', isDefault: true }])
+  })
+
+  it('follows the order: after a reorder the new first location is the default', async () => {
+    // Given the owner creates a location. It goes last.
+    const created = await run(`mutation { createLocation(name: "Garage") { id isDefault } }`, 'owner')
+    expect(created.errors).toBeUndefined()
+    const garage = created.data?.createLocation as { id: string; isDefault: boolean }
+    expect(garage.isDefault).toBe(false)
+
+    // When the owner moves it first, as an old bundle's settings page would
+    const res = await run(
+      `mutation { reorderLocations(orderedIds: ["${garage.id}", "loc-k", "loc-g"]) { id isDefault } }`,
+      'owner',
+    )
+
+    // Then the reorder's answer already names it the default, and loc-k is not
+    // any more
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.reorderLocations).toEqual([
+      { id: garage.id, isDefault: true },
+      { id: 'loc-k', isDefault: false },
+    ])
+  })
+})

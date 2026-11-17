@@ -128,6 +128,53 @@ function matchCheckoutInput(
   return stored
 }
 
+type CheckoutEntry = { cartItemId?: string | null; itemId?: string | null; quantity: number }
+
+/**
+ * OLD-BUNDLE SHIM. Remove in the release after households, with
+ * `CheckoutItemInput.itemId` (see `cart.graphql`).
+ *
+ * Checks the input's shape, before anything is read. Returns `'new'` when every
+ * entry names a `cartItemId`, `'old'` when every entry names an `itemId` (the
+ * shape of `main`'s web bundle before households). An entry with both, with
+ * neither, or a list that mixes the two is `BAD_USER_INPUT`. An empty list is
+ * `'new'`.
+ */
+function checkoutInputShape(items: ReadonlyArray<CheckoutEntry>): 'new' | 'old' {
+  const isNew = (e: CheckoutEntry) => e.cartItemId != null && e.itemId == null
+  const isOld = (e: CheckoutEntry) => e.itemId != null && e.cartItemId == null
+  if (items.every(isNew)) return 'new'
+  if (items.every(isOld)) return 'old'
+  throw new GraphQLError(
+    'Every checkout entry must name exactly one of cartItemId and itemId, the same one in every entry.',
+    { extensions: { code: 'BAD_USER_INPUT' } },
+  )
+}
+
+/**
+ * OLD-BUNDLE SHIM. Turns old-shape entries (`{ itemId, quantity }`, where
+ * `quantity` was the client's stock total) into new-shape entries. A cart has
+ * at most one row per item (H3b), so the item names the row. The amount is the
+ * STORED amount: the old server bought what the cart held, and so does this.
+ * The old `quantity` is ignored.
+ *
+ * An item with no row being bought is refused with `CART_CHANGED`, the same
+ * answer `matchCheckoutInput` gives any other entry that does not match the
+ * cart. `matchCheckoutInput` then checks the rest (the same row twice, a row
+ * left out).
+ */
+function fromOldCheckoutInput(
+  stored: StoredRow[],
+  items: ReadonlyArray<CheckoutEntry>,
+): Array<{ cartItemId: string; quantity: number }> {
+  const byItem = new Map(stored.map((r) => [r.itemId, r]))
+  return items.map((e) => {
+    const row = byItem.get(e.itemId as string)
+    if (!row) throw cartChanged()
+    return { cartItemId: row.id, quantity: row.quantity }
+  })
+}
+
 /**
  * ── HOW CART DATA IS SCOPED (households H3b) ──
  *
@@ -373,6 +420,9 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       // and a cart id at a location that does not exist, both get the same
       // `FORBIDDEN` from `requireLocationRole`.
       const cartLocationId = await requireCartLocation(ctx, cartId, 'participant')
+      // OLD-BUNDLE SHIM: which input shape this is. Refused before any read
+      // when the entries mix the two shapes.
+      const shape = checkoutInputShape(items)
       // The locations a copy-on-add may copy stock settings from: the ones the
       // caller holds a role on (households H3a, task 3.8). Read once, before
       // the transaction opens, because it reads only membership rows.
@@ -397,7 +447,12 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
           })
 
           // Step 2. Throws `CART_CHANGED` before anything is written.
-          const bought = matchCheckoutInput(stored, items)
+          const bought = matchCheckoutInput(
+            stored,
+            shape === 'old'
+              ? fromOldCheckoutInput(stored, items)
+              : (items as Array<{ cartItemId: string; quantity: number }>),
+          )
 
           // Step 3. ── WHY THE CLAIM, AND WHY IT NAMES THE AMOUNT ──
           //
