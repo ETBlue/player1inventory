@@ -1163,6 +1163,23 @@ red (16 page tests, 11 Stock tab tests, 2 bootstrap tests, 2 `ItemForm` tests), 
   through a page, so E2E proves no regression for the other roles, not the viewer view: that
   is F.8.
 
+**Review fixes (2026-11-17, `31f83bc4`..`6c7193a2`).** A review of `683d0f15..eceef55b` found
+these. Each was checked first, and each test was mutation-checked.
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | A household manager who is a viewer of the active location could not create a vendor (Review Focus 4). `createVendor` asked `participant`, because it pre-creates the cart. The dialog stayed open with no message | `createVendor` asks `viewer` on the location (it reads the role for the cart decision in the same query, and keeps "no role learns nothing" before `requireLocationInHousehold`). It writes the cart and sends `CART` only for `participant` or higher. `NewVendorDialog` and the item Vendors tab show a toast (`showVendorCreateError`, `lib/vendorCreateError.ts`) |
+| 2 | The Stock tab's note (`roleAt(viewed.id)`) and Remove (`isOrganizerAt(viewed.id)`) had no test that could tell the viewed page from the active one | two paging tests in `stock.roles.test.tsx`: organizer here and viewer at the Cabin, and the reverse |
+| 3 | The viewer half of the cart search test asserted an absence before the catalog had loaded | it waits for Brie (stocked here, in the tail) first |
+| 4 | `.not.toContain('Eggs')` compared ids with a name | compares with the Eggs item's id |
+| 5 | A viewer was not told why the cart and cooking controls are disabled | `ReadOnlyNote` takes an `id`; `ItemCard` takes `controlsDescribedBy`; the cart checkboxes and amount buttons, and the cooking recipe and item checkboxes, name the note in `aria-describedby` (only for a KNOWN viewer, because the note renders only then) |
+| 6 | Switches A (participant), B (viewer), A gave no second bootstrap of A | a viewer location moves the ref to a viewer marker, with no call. The "role rises later" rule had no test either; it has one now |
+| 7 | Stale docs | `hooks/CLAUDE.md` (`useItemSearchTailWiring`, `useRemoveItemFromLocation`, `useImportTargetLocations`, the ref rule), root `CLAUDE.md` and `lib/importData.ts` |
+
+New texts: `settings.vendors.createForbidden` "Only a household owner or manager can add a vendor."
+/ 「只有家庭擁有者或管理者可以新增供應商。」 and `settings.vendors.createFailed` "Could not add
+{{name}}. Please try again." / 「無法新增{{name}}，請再試一次。」
+
 ## Task F.7 — lift the last-location refusal; the empty locations screen
 
 **Files:**

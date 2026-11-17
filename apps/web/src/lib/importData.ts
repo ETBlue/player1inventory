@@ -900,11 +900,12 @@ export interface ImportTargetLocation {
  * household's locations where the caller is `participant` or higher, by
  * `order` (households H4 task E.4, step 3).
  *
- * The web does not know location roles (`GetLocations` lists every location
- * the caller has ANY role on). So it asks `importCheck` with every listed
- * location as a `locationRefs` id, and leaves out the ones it reports in
- * `blockedLocationIds` (viewer) or `missingLocationIds` (deleted since the
- * list was read). This adds no new GraphQL field, so a new web bundle
+ * It asks `importCheck` with every listed location as a `locationRefs` id,
+ * and leaves out the ones it reports in `blockedLocationIds` (viewer) or
+ * `missingLocationIds` (deleted since the list was read). When this was
+ * written (H4) the web did not know location roles. Since households H5
+ * task F.1 `GetLocations` carries `myRole`, but the server's answer is still
+ * used: it also finds a location deleted since the list was read. This adds no new GraphQL field, so a new web bundle
  * against an old server breaks only the import, which needs `importCheck`
  * anyway (decision T9). A field on `Location` would break `GetLocations`,
  * and with it the whole app, in that window.
