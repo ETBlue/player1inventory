@@ -2423,9 +2423,13 @@ async function assertHouseholdInvites(): Promise<void> {
   `
   const indexDef = (name: string) => inviteIndexes.find((i) => i.indexname === name)?.indexdef
   const tokenIndex = indexDef('HouseholdInvite_token_key')
+  // Postgres quotes a column name in `indexdef` only when it must. "token" is
+  // all lower case, so it reads `(token)` with no quotes. The two camelCase
+  // columns below read with quotes. (The first run against the test database,
+  // 2026-11-18, failed here on `("token")`.)
   assert(
-    !!tokenIndex && tokenIndex.includes('UNIQUE') && tokenIndex.includes('("token")'),
-    `"HouseholdInvite_token_key" is a UNIQUE index on ("token") (read: ${tokenIndex ?? 'missing'})`,
+    !!tokenIndex && tokenIndex.includes('UNIQUE') && tokenIndex.includes('(token)'),
+    `"HouseholdInvite_token_key" is a UNIQUE index on (token) (read: ${tokenIndex ?? 'missing'})`,
   )
   const householdIndex = indexDef('HouseholdInvite_householdId_idx')
   assert(
