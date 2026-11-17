@@ -491,7 +491,44 @@ ANOTHER household: a join made in another tab, or a leave or a removal when the 
 a second household. **A leave or a removal that leaves the person in NO household does not
 reach it**: `GetHousehold` then fails with `NO_HOUSEHOLD`, there is no id, and the old
 household's rows stay in memory and in `Player1InventoryCloudCache`. The no-household
-screen (task G.8) must clear them. The join page calls `switchToHousehold` itself.
+screen clears them (see *No household* below). The join page calls `switchToHousehold` itself.
+
+### No household (cloud, households H5b task G.8)
+
+**A cloud person can be in NO household** after they leave or are removed. A brand-new
+person never is: their first request makes a household. The server then answers
+`NO_HOUSEHOLD` (a `GraphQLError` code), and every page shows `NoHouseholdScreen`: "You are
+not in any household." and **Create a household** (owner decision O16-A).
+
+- **`NoHouseholdGate`** (`components/household/NoHouseholdGate/`) wraps the `<Outlet />`
+  inside `Layout` in `__root.tsx`. It shows the screen only when `mode === 'cloud'` and
+  `useHousehold().errorCode === 'NO_HOUSEHOLD'`. **The CODE, never "the query failed"**: a
+  network error or offline shows the page as before. `errorCode` is set even when the old
+  household is still cached: Apollo keeps the cached answer in `data` next to the error
+  (measured on 4.1.6), so `isError` is `false` then, and a gate on `isError` would never
+  show the screen to a person just removed.
+- **Not on `/join/…` or `/sign-in`.** A person with no household can still open an invite
+  link and sign in.
+- **When the screen first shows, it forgets the old household once**
+  (`forgetHousehold` in `apollo/householdGuard.ts`: `clearCache()`, remove
+  `last-household-id` and `active-location-id:cloud`), with no reload. `HouseholdChangeGuard`
+  cannot do it: there is no new id.
+- **Once shown, the screen stays** until a household arrives. A refetch first reports
+  "loading" with no error; showing the page for that moment would flash it.
+- **Create a household** sends `createHousehold(name)`. An empty field sends `name: null`
+  (the server's default name); never `""`, which the server refuses as a blank name. On
+  success: `switchToHousehold(id, { to: '/' })`, because the server sends the creating tab
+  no live event. `ALREADY_IN_HOUSEHOLD` (another tab created or joined first) asks
+  `GetHousehold` from the network and switches to that household. A refused name shows
+  `settings.household.name.invalidError` in an `<output>`; an `OfflineWriteError` shows no
+  second toast; any other error shows `noHousehold.error` and the button stays.
+- **The person's other tabs** get the `LOCATION` event of `createHousehold`. It refetches
+  every active query, the FAILED `GetHousehold` included (tested in
+  `apollo/liveUpdates.test.ts`), and the gate then calls `switchToHousehold(id, { to: '/' })`.
+- Tests: `components/household/NoHouseholdGate/NoHouseholdGate.test.tsx` (when it shows),
+  `NoHouseholdScreen.test.tsx` (the create), `routes/noHousehold.cloud.test.tsx` (the real
+  root, with real Apollo hooks). The gate has no story: it needs a router, and in Storybook
+  `forgetHousehold` would clear the real cloud cache. The screen has stories.
 
 A story that mounts a cloud page must store its household as the last one
 (`cloudRoleStorySetup` does), or the guard reloads Storybook.

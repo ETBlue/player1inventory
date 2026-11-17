@@ -1017,18 +1017,18 @@ from a story.
 - Modify: `apps/web/src/hooks/useHousehold.ts` (+ test), `routes/__root.tsx`,
   `apollo/operations/household.graphql` (`CreateHousehold`), locale files
 
-- [ ] **Step 1: `useHousehold` returns `errorCode`** (the `extensions.code` of the failed
+- [x] **Step 1: `useHousehold` returns `errorCode`** (the `extensions.code` of the failed
   query, or `undefined`). Test with a `NO_HOUSEHOLD` error and with another error.
-- [ ] **Step 2: Gate component.** In cloud mode, when `useHousehold().errorCode ===
+- [x] **Step 2: Gate component.** In cloud mode, when `useHousehold().errorCode ===
   'NO_HOUSEHOLD'` and the path is not `/join/…` or `/sign-in`, render `NoHouseholdScreen`
   instead of the page. Mount it inside `Layout` around `<Outlet />` in `__root.tsx`. Tests:
   the screen shows for `NO_HOUSEHOLD`; not for another error (a network error must not tell
   someone they have no household); not while loading; not on `/join/x`; not in local mode.
-- [ ] **Step 3: The screen.** `noHousehold.title`, **Create a household** opening a dialog
+- [x] **Step 3: The screen.** `noHousehold.title`, **Create a household** opening a dialog
   with an optional name (`HOUSEHOLD_NAME_MAX_LENGTH`, 100). On success
   `switchToHousehold(id, { to: '/' })` (G.7). On `ALREADY_IN_HOUSEHOLD` the same call with
   the id from a `GetHousehold` refetch (another tab created or joined first).
-- [ ] **Step 3b: Clear the old household's data when the screen shows** (added by the
+- [x] **Step 3b: Clear the old household's data when the screen shows** (added by the
   review of G.7). A leave or a removal that leaves the person in NO household does NOT reach
   `HouseholdChangeGuard`: `GetHousehold` fails with `NO_HOUSEHOLD`, so there is no id to
   compare, and the old household's rows stay in memory and in
@@ -1039,10 +1039,10 @@ from a story.
   link). **Create a household** must end on `/`: call `switchToHousehold(id, { to: '/' })`,
   not a reload in place. Tests: the three are cleared when the screen shows; nothing is
   cleared for another error; not on `/join/x` or `/sign-in`; Create ends at `/`.
-- [ ] **Step 4: Mutation checks**: the gate checks `isError` instead of the code → the
+- [x] **Step 4: Mutation checks**: the gate checks `isError` instead of the code → the
   "another error" test red; the `/join` exception removed → its test red; the clear in
   Step 3b removed → its test red.
-- [ ] **Step 5: Gate**, commit `feat(households): screen for a person with no household`.
+- [x] **Step 5: Gate**, commit `feat(households): screen for a person with no household`.
 
 **The brief must pass down:** decide by the error CODE, never by "the query failed"
 (offline and network errors are common); no `capitalize` on household names; a story that
@@ -1391,6 +1391,10 @@ Filled in from the task reports and reviews.
 | G.7 (review) | T23, the guard's comment and `routes/CLAUDE.md`: a join, a leave and a removal "reach" the guard | A leave or a removal that leaves the person in NO household does not: `GetHousehold` fails with `NO_HOUSEHOLD`, there is no id, and the old rows stay in memory and in `Player1InventoryCloudCache`. Text corrected; G.8 got Step 3b (clear on the no-household screen) |
 | G.7 (review) | T23: compare `GetHousehold`'s id | `GetHousehold` is `cache-and-network`, so its first id can come from the cache restored from IndexedDB, before the server answers. With another tab still saving its old snapshot, the guard reloaded for nothing and stored a wrong id for a moment. It now acts only on a server answer (`networkStatus === NetworkStatus.ready`), and never stores or switches on a cache-only id |
 | G.7 (review) | T24: refuse a path starting with `//` or `/\` | `/..//evil.example`, `/.//evil.example` and `/%2e%2e//evil.example` pass that check, and the browser resolves them to `//evil.example`. `safeRedirectPath` now resolves the path with `new URL(raw, origin)`, requires the same origin and a pathname not starting with `//`, and returns the RESOLVED path |
+| G.8 | Step 1: `errorCode` is "the `extensions.code` of the failed query"; *Facts*: `useHousehold` reports `isError: !!error && !data` | Not wrong, but the easy way is a trap. Apollo 4.1.6 keeps the CACHED household in `data` next to the error (measured: `{ data: A, error, networkStatus: 8 }`), and a person who was just removed almost always has their old household cached. An `errorCode` tied to `!data`, like `isError`, would never be set for them, so the screen would never show. `errorCode` reads the error alone. Test "gives the code also when an old household is still cached"; mutation M7 |
+| G.8 | Step 2: show the screen "when `errorCode === 'NO_HOUSEHOLD'`" | Not enough on its own. A refetch (a live event, a reconnect) first reports `loading` with NO error (measured: `networkStatus: 4`, `error: undefined`), so the page would flash and mount pages that fail. The gate keeps the screen once shown, until a household arrives |
+| G.8 | Step 3 and the G.5 note: the creator's other tabs get `LOCATION`, refetch `GetHousehold`, "and the guard then sees the new id" | The refetch is real (tested). But `HouseholdChangeGuard` does NOT clear for that new id: Step 3b removed `last-household-id`, and a tab that opened on the no-household screen has never seen an id, so the guard only stores it. Components could keep state from before. The gate now calls `switchToHousehold(id, { to: '/' })` itself when a household arrives after the screen showed. A tab that did see the old id while it was still a member gets BOTH this switch and the guard's reload; both clear the cache, and whichever navigation runs last wins |
+| G.8 | *Files*: `NoHouseholdGate/` with "stories, smoke test" | The gate has no story, like `NoLocationsGate`. It needs a router, and in Storybook its Step 3b clear (`forgetHousehold`) would empty the real cloud cache. It is tested through the real root in `routes/noHousehold.cloud.test.tsx`. The screen has the stories |
 
 ## Status
 
@@ -1468,3 +1472,16 @@ reloaded `/join/<token>`), that the guard could act on a cached household id, an
 `safeRedirectPath` let `/..//evil.example` through. All fixed in `78163263`; see the G.7
 (review) rows of *What this plan got wrong*. G.8 got Step 3b, G.9
 and G.10 got notes. Web tests after the fixes: 2983 passed / 311 files.
+
+**Task G.8 is done.** `NoHouseholdGate` and `NoHouseholdScreen`
+(`apps/web/src/components/household/`), `useHousehold().errorCode`,
+`useCreateHousehold`, `forgetHousehold` (Step 3b, `apollo/householdGuard.ts`) and the
+`CreateHousehold` document. A test in `apollo/liveUpdates.test.ts` checks that a FAILED
+`GetHousehold` is refetched on `LOCATION` (the open point of the G.5 notes). Web tests:
+3017 passed / 315 files (2983 / 311 before). Two new texts not in the O17 table, for the
+owner's review: `noHousehold.nameHint` ("Leave it empty to use the default name." /
+「留空就會使用預設名稱。」) and `noHousehold.error` ("Could not create the household. Try
+again." / 「無法建立家庭，請再試一次。」). A refused name reuses
+`settings.household.name.invalidError`. **For G.10:** the plan gives G.8 no axe scan. The
+screen and its dialog need one, light and dark, in a cloud spec (`a11y.spec.ts` does not run
+in cloud), reached by a leave or a removal.
