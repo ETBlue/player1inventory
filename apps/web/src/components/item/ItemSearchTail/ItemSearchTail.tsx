@@ -94,7 +94,8 @@ export function ItemSearchTail(props: ItemSearchTailProps) {
       ? addToLocationAction
       : null
   // A location viewer: the same rows, with no action at all (not a disabled
-  // button). The view-only note under the search row says why.
+  // button). Nothing on the row says why. The LocationSwitcher "View only"
+  // badge is the only reason shown on every page; see the H5 plan, Known gaps.
   const showNotStockedHereReadOnly =
     !notStockedHereAction &&
     !!notStockedHereReadOnly &&
