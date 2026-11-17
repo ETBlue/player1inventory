@@ -127,6 +127,10 @@ function LocationRow({
           )}
           {showRoles && (
             <span className="text-xs font-normal text-foreground-muted">
+              {/* Read as "Kitchen, Your role: Viewer", not "Kitchen Viewer". */}
+              <span className="sr-only">
+                {t('settings.locations.yourRole')}{' '}
+              </span>
               {location.myRole
                 ? t(`roles.location.${location.myRole}`)
                 : t('settings.locations.noAccess')}
@@ -242,6 +246,10 @@ export function LocationList({
         <p className="sr-only" id="location-dnd-instructions">
           {t('settings.locations.dragInstructions')}
         </p>
+        {/* No `role="list"`. Safari with VoiceOver may drop the list role
+            from a <ul> with `list-style: none`, but Biome refuses the
+            attribute here (`noRedundantRoles`), and lint-staged's
+            `--unsafe` fix would delete it at commit time. */}
         <ul className="flex flex-col gap-px">
           {locations.map((location) => (
             <LocationRow

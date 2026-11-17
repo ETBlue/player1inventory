@@ -599,7 +599,8 @@
       "emptyTitle": "尚無據點",
       "emptyDescription": "使用上方按鈕新增據點。",
       "noAccess": "無權限",
-      "noOrganizer": "沒有據點王"
+      "noOrganizer": "沒有據點王",
+      "yourRole": "你的角色："
     },
     "shelves": {
       "label": "貨架",

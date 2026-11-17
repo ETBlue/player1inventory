@@ -1,5 +1,5 @@
 import { composeStories } from '@storybook/react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { elementAt } from '@/test/narrow'
@@ -119,6 +119,19 @@ describe('LocationList roles (households H5 task F.3)', () => {
     expect(
       screen.getByRole('button', { name: 'Rename Garage' }),
     ).toBeInTheDocument()
+  })
+
+  it('user of a screen reader hears "Your role:" before the role and before No access', () => {
+    // The role text is read right after the name. Without context a screen
+    // reader says "Kitchen Viewer". A visually hidden prefix gives
+    // "Kitchen, Your role: Viewer".
+    render(<ManagerWithNoAccessRow />)
+    for (const shown of ['Viewer', 'No access']) {
+      const label = screen.getByText(shown)
+      expect(label.textContent).toBe(`Your role: ${shown}`)
+      // The prefix is for screen readers only
+      expect(within(label).getByText('Your role:')).toHaveClass('sr-only')
+    }
   })
 
   it('MemberReadOnly shows the role and no Delete or drag handle', () => {

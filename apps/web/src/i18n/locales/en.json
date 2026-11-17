@@ -599,7 +599,8 @@
       "emptyTitle": "No locations yet",
       "emptyDescription": "Add a location using the button above.",
       "noAccess": "No access",
-      "noOrganizer": "No organizer"
+      "noOrganizer": "No organizer",
+      "yourRole": "Your role:"
     },
     "shelves": {
       "label": "Shelves",
