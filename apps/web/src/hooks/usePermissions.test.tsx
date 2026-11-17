@@ -151,4 +151,49 @@ describe('usePermissions', () => {
     expect(p.canEditLocation('X')).toBe(false)
     expect(p.isOrganizerAt('X')).toBe(false)
   })
+
+  it('cloud knows the role once the household has loaded', () => {
+    // A positive control for the two unknown cases below
+    mockHousehold.mockReturnValue(household('member'))
+    mockLocations.mockReturnValue(locations([{ id: 'K', myRole: 'viewer' }]))
+
+    const p = render()
+
+    expect(p.roleKnown).toBe(true)
+    expect(p.canEditCatalog).toBe(false)
+  })
+
+  it('local mode always knows the role', () => {
+    localStorage.setItem('data-mode', 'local')
+    expect(render().roleKnown).toBe(true)
+  })
+
+  it('cloud does not know the role while the household is loading', () => {
+    mockHousehold.mockReturnValue({ data: undefined, loading: true })
+    mockLocations.mockReturnValue(locations([{ id: 'K', myRole: 'organizer' }]))
+
+    expect(render().roleKnown).toBe(false)
+  })
+
+  it('cloud does not know the role when GetHousehold failed with nothing cached, and allows no catalog write', () => {
+    // Given the household query failed and the cache is empty: `loading` is
+    // false, so `isLoading` is false too, and there is no role to read
+    mockHousehold.mockReturnValue({
+      data: undefined,
+      loading: false,
+      error: new Error('network'),
+    })
+    mockLocations.mockReturnValue(locations([{ id: 'K', myRole: 'organizer' }]))
+
+    const p = render()
+
+    // Then the role is unknown, not "member"
+    expect(p.isLoading).toBe(false)
+    expect(p.roleKnown).toBe(false)
+    // And the safe default stays: no catalog or locations-list writes
+    expect(p.canEditCatalog).toBe(false)
+    expect(p.canManageLocations).toBe(false)
+    // The location roles come from another query and still count
+    expect(p.canEditLocation('K')).toBe(true)
+  })
 })

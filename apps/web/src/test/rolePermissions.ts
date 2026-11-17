@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react'
 import type { HouseholdRole, LocationRole } from '@/generated/graphql'
 
 // Set the caller's roles for a page test, through the SAME rules the app uses
@@ -53,47 +54,88 @@ const LOCATION_ROLES: Record<string, LocationRole> = {
 /** What `permissionsFor` gets. */
 export interface RoleSpec {
   mode: 'cloud'
-  householdRole: HouseholdRole
+  /** Left out: the household role could not be read (`roleKnown` false). */
+  householdRole?: HouseholdRole
   locationRoles: Record<string, LocationRole>
   isLoading?: boolean
 }
 
 let current: RoleSpec | null = null
+const listeners = new Set<() => void>()
+
+function setCurrent(next: RoleSpec | null) {
+  current = next
+  for (const listener of listeners) listener()
+}
 
 /** A household `member`: may read the catalog, not change it. */
 export function asHouseholdMember() {
-  current = {
+  setCurrent({
     mode: 'cloud',
     householdRole: 'member',
     locationRoles: LOCATION_ROLES,
-  }
+  })
 }
 
 /** A household `manager`: may change the catalog. The control for a member. */
 export function asHouseholdManager() {
-  current = {
+  setCurrent({
     mode: 'cloud',
     householdRole: 'manager',
     locationRoles: LOCATION_ROLES,
-  }
+  })
 }
 
 /** An owner whose role has not loaded yet: every `can…` is false. */
 export function asRoleLoading() {
-  current = {
+  setCurrent({
     mode: 'cloud',
     householdRole: 'owner',
     locationRoles: LOCATION_ROLES,
     isLoading: true,
-  }
+  })
+}
+
+/**
+ * An owner whose `GetHousehold` failed with nothing cached: not loading, but
+ * the household role is unknown. The location roles still load.
+ */
+export function asRoleUnknown() {
+  setCurrent({
+    mode: 'cloud',
+    locationRoles: LOCATION_ROLES,
+  })
 }
 
 /** Back to the real hook. Call it in `afterEach`. */
 export function resetRole() {
-  current = null
+  setCurrent(null)
 }
 
 /** The role the mocked `usePermissions` uses, or `null` for the real hook. */
 export function roleOverride(): RoleSpec | null {
   return current
+}
+
+/**
+ * The same as `roleOverride`, as a hook: a component that calls it renders
+ * again when a test changes the role. Use it in a mock to test what happens
+ * when the role ARRIVES (for example autofocus once the role has loaded):
+ *
+ *   usePermissions: () => {
+ *     const live = real.usePermissions()
+ *     const role = useRoleOverride()
+ *     return role ? real.permissionsFor(role) : live
+ *   },
+ *
+ * and wrap the role change in `act(...)`.
+ */
+export function useRoleOverride(): RoleSpec | null {
+  return useSyncExternalStore(
+    (listener) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    () => current,
+  )
 }

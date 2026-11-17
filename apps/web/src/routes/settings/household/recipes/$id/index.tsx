@@ -26,7 +26,7 @@ function RecipeInfoTab() {
   const { goBack } = useAppNavigation()
   const deleteRecipe = useDeleteRecipe()
   // A household member sees this page read only (households H5 task F.5)
-  const { canEditCatalog, isLoading: rolesLoading } = usePermissions()
+  const { canEditCatalog, roleKnown } = usePermissions()
 
   const handleDelete = async () => {
     if (!recipe) return
@@ -39,7 +39,7 @@ function RecipeInfoTab() {
   return (
     <div className="p-4 bg-background-elevated min-h-[100cqh]">
       <div className="max-w-2xl mx-auto">
-        {!rolesLoading && !canEditCatalog && (
+        {roleKnown && !canEditCatalog && (
           <ReadOnlyNote
             className="px-0"
             text={t('settings.catalogReadOnlyItem')}

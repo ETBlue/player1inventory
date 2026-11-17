@@ -15,6 +15,7 @@ import { noopApolloClient } from '@/test/apolloStub'
 import {
   asHouseholdManager,
   asHouseholdMember,
+  asRoleUnknown,
   resetRole,
 } from '@/test/rolePermissions'
 
@@ -133,5 +134,21 @@ describe.each(people)('$who on the cooking page', (person) => {
       await user.keyboard('{Enter}')
       expect(screen.queryByRole('dialog')).toBeNull()
     }
+  })
+})
+
+describe('when the household role cannot be read', () => {
+  it('user on the empty cooking page sees no Create recipe and no member note', async () => {
+    await createItem({ name: 'Milk', tagIds: [] })
+    asRoleUnknown()
+    renderCooking()
+
+    expect(await screen.findByText('No recipes yet')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Create recipe' })).toBeNull()
+    expect(
+      screen.queryByText(
+        'Only a household owner or manager can add or change these.',
+      ),
+    ).toBeNull()
   })
 })

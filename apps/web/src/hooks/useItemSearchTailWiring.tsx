@@ -69,11 +69,14 @@ export function useItemSearchTailWiring({
   // the CATALOG, which a household member may not do (households H5 task
   // F.5). For a member the action becomes a note that says why, so the row
   // still shows instead of vanishing. A caller's own `groupNote` is kept.
-  const { canEditCatalog } = usePermissions()
+  // While the role is unknown (loading, or `GetHousehold` failed) there is
+  // neither the action nor the member note: the note could be untrue.
+  const { canEditCatalog, roleKnown } = usePermissions()
   const catalogNote = () => <span>{t('items.searchTail.catalogReadOnly')}</span>
   const effectiveAction = canEditCatalog ? groupAction : undefined
   const effectiveNote =
-    groupNote ?? (groupAction && !canEditCatalog ? catalogNote : undefined)
+    groupNote ??
+    (groupAction && roleKnown && !canEditCatalog ? catalogNote : undefined)
   // One tail mutation at a time — see ItemSearchTailAction.pendingItemId.
   const [pendingItemId, setPendingItemId] = useState<string | null>(null)
 

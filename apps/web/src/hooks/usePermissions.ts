@@ -13,6 +13,16 @@ import { useLocations } from './useLocations'
  */
 export interface Permissions {
   isLoading: boolean
+  /**
+   * `true` once the household role is known. Cloud: `false` while
+   * `GetHousehold` loads, AND when it failed with nothing cached (then
+   * `isLoading` is already `false`, but there is no role). Local: `true`.
+   *
+   * Show a "read only" note only when this is `true`. While it is `false`
+   * every `can…` that needs the household role is `false` too (the safe
+   * default), but the page must not claim the caller is a member.
+   */
+  roleKnown: boolean
   /** Cloud: household role `owner` or `manager`. */
   canEditCatalog: boolean
   /** Cloud: household role `owner` or `manager`. Delete and reorder locations. */
@@ -33,6 +43,7 @@ const LOCATION_RANK: Record<LocationRole, number> = {
 
 const LOCAL: Permissions = {
   isLoading: false,
+  roleKnown: true,
   canEditCatalog: true,
   canManageLocations: true,
   roleAt: () => 'organizer',
@@ -112,6 +123,7 @@ export function permissionsFor({
 
   return {
     isLoading,
+    roleKnown: !isLoading && householdRole != null,
     canEditCatalog: canManage,
     canManageLocations: canManage,
     roleAt,

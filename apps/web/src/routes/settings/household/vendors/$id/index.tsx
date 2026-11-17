@@ -28,7 +28,7 @@ function VendorInfoTab() {
   const deleteVendor = useDeleteVendor()
   const { data: affectedItemCount = 0 } = useItemCountByVendor(id)
   // A household member sees this page read only (households H5 task F.5)
-  const { canEditCatalog, isLoading: rolesLoading } = usePermissions()
+  const { canEditCatalog, roleKnown } = usePermissions()
 
   const handleDelete = async () => {
     if (!vendor) return
@@ -44,7 +44,7 @@ function VendorInfoTab() {
   return (
     <div className="p-4 bg-background-elevated min-h-[100cqh]">
       <div className="max-w-2xl mx-auto">
-        {!rolesLoading && !canEditCatalog && (
+        {roleKnown && !canEditCatalog && (
           <ReadOnlyNote
             className="px-0"
             text={t('settings.catalogReadOnlyItem')}

@@ -46,7 +46,7 @@ function TagInfoTab() {
   const deleteTag = useDeleteTag()
   const { data: affectedItemCount = 0 } = useItemCountByTag(id)
   // A household member sees this page read only (households H5 task F.5)
-  const { canEditCatalog, isLoading: rolesLoading } = usePermissions()
+  const { canEditCatalog, roleKnown } = usePermissions()
 
   // Parent-delete dialog: open when deleting a tag that has children
   const [parentDeleteOpen, setParentDeleteOpen] = useState(false)
@@ -95,7 +95,7 @@ function TagInfoTab() {
   return (
     <div className="p-4 bg-background-elevated min-h-[100cqh]">
       <div className="space-y-4 max-w-2xl mx-auto">
-        {!rolesLoading && !canEditCatalog && (
+        {roleKnown && !canEditCatalog && (
           <ReadOnlyNote
             className="px-0"
             text={t('settings.catalogReadOnlyItem')}

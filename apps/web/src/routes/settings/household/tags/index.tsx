@@ -326,10 +326,11 @@ export function TagSettings() {
   const { data: tags = [], isLoading } = useTags()
   const { data: tagsWithDepth = [] } = useTagsWithDepth()
   // A household member sees the tags read-only (households H5 task F.5).
-  const { canEditCatalog, isLoading: rolesLoading } = usePermissions()
-  // Only once the role is known: while it loads, `canEditCatalog` is false
-  // for every role, and the note would flash for an owner.
-  const showReadOnlyNote = !rolesLoading && !canEditCatalog
+  const { canEditCatalog, roleKnown } = usePermissions()
+  // Only once the role is known (`roleKnown`): while it loads, or when
+  // `GetHousehold` failed, `canEditCatalog` is false for every role, and the
+  // note would tell an owner they cannot edit.
+  const showReadOnlyNote = roleKnown && !canEditCatalog
 
   // Scroll restoration: save on unmount, restore after data loads
   const currentUrl = useRouterState({
@@ -490,7 +491,9 @@ export function TagSettings() {
           className="overflow-y-auto [container-type:size] space-y-px pb-4"
         >
           {/* Why there is no add, edit or delete (H5 task F.5) */}
-          {showReadOnlyNote && tagTypes.length > 0 && <ReadOnlyNote />}
+          {/* Also on an empty page: a member has no New Tag Type button, so
+              the note is the only thing that says why */}
+          {showReadOnlyNote && <ReadOnlyNote />}
           {[...tagTypes]
             .sort((a, b) =>
               a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),

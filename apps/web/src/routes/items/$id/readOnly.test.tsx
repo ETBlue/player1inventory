@@ -21,6 +21,7 @@ import { noopApolloClient } from '@/test/apolloStub'
 import {
   asHouseholdManager,
   asHouseholdMember,
+  asRoleUnknown,
   resetRole,
 } from '@/test/rolePermissions'
 
@@ -220,5 +221,21 @@ describe.each(people)('$who on the item page', (person) => {
     expect(packed).not.toHaveAttribute('readonly')
     expect(packed).not.toBeDisabled()
     expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument()
+  })
+})
+
+describe('when the household role cannot be read', () => {
+  it("user sees the item's Info tab read only, with no member note", async () => {
+    // Given GetHousehold failed: the safe default is read only, but the page
+    // must not tell what may be an owner that only an owner can change it
+    const milk = await makeMilk()
+    asRoleUnknown()
+    renderAt(`/items/${milk.id}`)
+    const main = await screen.findByRole('main')
+
+    const name = await within(main).findByDisplayValue('Milk')
+    expect(name).toHaveAttribute('readonly')
+    expect(within(main).queryByRole('button', { name: /^save$/i })).toBeNull()
+    expect(within(main).queryByText(ITEM_NOTE)).toBeNull()
   })
 })

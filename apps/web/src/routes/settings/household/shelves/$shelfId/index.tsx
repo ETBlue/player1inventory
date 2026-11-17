@@ -30,7 +30,7 @@ function ShelfInfoTab() {
   const navigate = useNavigate()
   const { registerDirtyState } = useShelfLayout()
   // A household member sees this page read only (households H5 task F.5)
-  const { canEditCatalog, isLoading: rolesLoading } = usePermissions()
+  const { canEditCatalog, roleKnown } = usePermissions()
 
   // Flat state for editable fields
   const [name, setName] = useState('')
@@ -103,7 +103,7 @@ function ShelfInfoTab() {
 
   return (
     <form className="p-4 space-y-6 max-w-2xl mx-auto" onSubmit={handleSave}>
-      {!rolesLoading && !canEditCatalog && (
+      {roleKnown && !canEditCatalog && (
         <ReadOnlyNote
           className="px-0"
           text={t('settings.catalogReadOnlyItem')}

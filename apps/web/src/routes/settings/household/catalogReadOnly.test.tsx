@@ -21,6 +21,7 @@ import {
   asHouseholdManager,
   asHouseholdMember,
   asRoleLoading,
+  asRoleUnknown,
   resetRole,
 } from '@/test/rolePermissions'
 
@@ -220,6 +221,34 @@ describe('household member on an empty catalog list', () => {
     ).toBeInTheDocument()
   })
 
+  it('household member on an empty tags page still sees why there is no add button', async () => {
+    // Given no tag types at all, and a member
+    asHouseholdMember()
+    renderAt('/settings/household/tags')
+    const main = await screen.findByRole('main')
+
+    // Present first: the page title
+    expect(
+      await within(main).findByRole('heading', { name: 'Tags' }),
+    ).toBeInTheDocument()
+    // Then the note says why the page is empty and has no New Tag Type
+    expect(await within(main).findByText(READ_ONLY_NOTE)).toBeInTheDocument()
+    expect(
+      within(main).queryByRole('button', { name: 'New Tag Type' }),
+    ).toBeNull()
+  })
+
+  it('household manager on an empty tags page sees New Tag Type and no note', async () => {
+    // The control for the test above
+    asHouseholdManager()
+    renderAt('/settings/household/tags')
+    const main = await screen.findByRole('main')
+    expect(
+      await within(main).findByRole('button', { name: 'New Tag Type' }),
+    ).toBeInTheDocument()
+    expect(within(main).queryByText(READ_ONLY_NOTE)).toBeNull()
+  })
+
   it('household manager is still told to create the first vendor', async () => {
     // The control for the test above
     asHouseholdManager()
@@ -244,6 +273,52 @@ describe('while the household role loads', () => {
     expect(
       within(main).queryByRole('button', { name: 'New Vendor' }),
     ).toBeNull()
+    expect(within(main).queryByText(READ_ONLY_NOTE)).toBeNull()
+  })
+})
+
+describe('when the household role cannot be read', () => {
+  // `GetHousehold` failed with nothing cached: not loading, but no role. The
+  // page must hide the write controls (the safe default) and must NOT tell an
+  // owner "Only a household owner or manager can …".
+  it.each([
+    [
+      'tags',
+      async () => {
+        const storage = await createTagType({ name: 'Storage' })
+        await createTag({ name: 'Dairy', typeId: storage.id })
+      },
+      /Dairy/,
+      'New Tag Type',
+    ],
+    ['vendors', () => createVendor('iHerb'), 'iHerb', 'New Vendor'],
+    [
+      'recipes',
+      () => createRecipe({ name: 'Pancakes' }),
+      'Pancakes',
+      'New Recipe',
+    ],
+    [
+      'shelves',
+      () =>
+        createShelf({
+          name: 'Fridge',
+          type: 'selection',
+          order: 0,
+          itemIds: [],
+        }),
+      'Fridge',
+      'Add shelf',
+    ],
+  ] as const)('user on the %s page sees no write controls and no read-only note', async (page, seed, row, addName) => {
+    await seed()
+    asRoleUnknown()
+    renderAt(`/settings/household/${page}`)
+    const main = await screen.findByRole('main')
+    // Present first: the row
+    expect((await within(main).findAllByText(row)).length).toBeGreaterThan(0)
+
+    expect(within(main).queryByRole('button', { name: addName })).toBeNull()
     expect(within(main).queryByText(READ_ONLY_NOTE)).toBeNull()
   })
 })

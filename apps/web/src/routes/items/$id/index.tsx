@@ -201,7 +201,7 @@ function ItemInfoTab() {
   // A household member sees the item's catalog fields read only (households
   // H5 task F.5): readOnly fields, no Save and no Delete. The unit-switch
   // dialog is reached only through Save, so it cannot open either.
-  const { canEditCatalog, isLoading: rolesLoading } = usePermissions()
+  const { canEditCatalog, roleKnown } = usePermissions()
   const deleteItem = useDeleteItem()
   const { registerDirtyState } = useItemLayout()
   const { goBack } = useAppNavigation()
@@ -428,7 +428,7 @@ function ItemInfoTab() {
 
   return (
     <div className="p-4 pb-16 bg-background-elevated min-h-[100cqh]">
-      {!rolesLoading && !canEditCatalog && (
+      {roleKnown && !canEditCatalog && (
         <ReadOnlyNote
           className="max-w-2xl mx-auto px-0"
           text={t('settings.catalogReadOnlyItem')}

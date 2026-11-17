@@ -71,7 +71,7 @@ function CookingPage() {
   const { t } = useTranslation()
   // Creating a recipe is a catalog write: not for a household member
   // (households H5 task F.5). Cooking itself is a location right (F.6).
-  const { canEditCatalog, isLoading: rolesLoading } = usePermissions()
+  const { canEditCatalog, roleKnown } = usePermissions()
   const navigate = useNavigate()
   const { sort, dir, q, expanded } = Route.useSearch()
   const { data: recipes = [] } = useRecipes()
@@ -777,7 +777,7 @@ function CookingPage() {
             <div>
               <p>{t('cooking.empty.title')}</p>
               <p className="text-sm mt-1">
-                {!rolesLoading && !canEditCatalog
+                {roleKnown && !canEditCatalog
                   ? t('settings.catalogReadOnly')
                   : t('cooking.empty.description')}
               </p>

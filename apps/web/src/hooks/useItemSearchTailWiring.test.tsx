@@ -27,7 +27,8 @@ vi.mock('./useItems', () => ({
 // location list, which this file does not provide. Each test sets the role
 // through the real rules (`permissionsFor`); unset means local, where every
 // action is allowed.
-let household: 'member' | 'manager' | null = null
+// `'unknown'`: `GetHousehold` failed with nothing cached (no role at all).
+let household: 'member' | 'manager' | 'unknown' | null = null
 vi.mock('./usePermissions', async (importOriginal) => {
   const real = await importOriginal<typeof import('./usePermissions')>()
   return {
@@ -36,7 +37,7 @@ vi.mock('./usePermissions', async (importOriginal) => {
       household
         ? real.permissionsFor({
             mode: 'cloud',
-            householdRole: household,
+            ...(household !== 'unknown' && { householdRole: household }),
             // A viewer of one location, a participant of another, and no
             // role on any third: the same for both roles, so only the
             // household role can change the answer.
@@ -314,6 +315,32 @@ describe('useItemSearchTailWiring', () => {
       }
       // And "Add to location" (a location right) is the same for both
       expect(result.current.tailProps.addToLocationAction).toBeDefined()
+    })
+
+    it('user whose household role cannot be read gets neither the action nor the member note', () => {
+      // Given GetHousehold failed: the action would fail at the server, and
+      // "Only an owner or manager can add it here." may be untrue (an owner)
+      household = 'unknown'
+      mockMode('cloud')
+      mockActiveLocation(homeLocation)
+      mockSearchTail({ inLocation: [milk], notStockedHere: [] })
+      mockAddItemToLocation()
+
+      const { result } = renderHook(() =>
+        useItemSearchTailWiring({
+          inGroupIds: new Set(),
+          query: 'mil',
+          renderItem: () => null,
+          groupAction,
+        }),
+      )
+
+      // Present first: the row is still in the tail
+      expect(result.current.tailProps.inLocationItems.map((i) => i.id)).toEqual(
+        ['milk'],
+      )
+      expect(result.current.tailProps.groupAction).toBeUndefined()
+      expect(result.current.tailProps.groupNote).toBeUndefined()
     })
 
     it("household member keeps the caller's own group note", () => {

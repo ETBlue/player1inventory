@@ -23,10 +23,11 @@ function RecipeSettings() {
   const { data: recipes = [] } = useRecipes()
   const deleteRecipe = useDeleteRecipe()
   // A household member sees the recipes read-only (households H5 task F.5).
-  const { canEditCatalog, isLoading: rolesLoading } = usePermissions()
-  // Only once the role is known: while it loads, `canEditCatalog` is false
-  // for every role, and the note would flash for an owner.
-  const showReadOnlyNote = !rolesLoading && !canEditCatalog
+  const { canEditCatalog, roleKnown } = usePermissions()
+  // Only once the role is known (`roleKnown`): while it loads, or when
+  // `GetHousehold` failed, `canEditCatalog` is false for every role, and the
+  // note would tell an owner they cannot edit.
+  const showReadOnlyNote = roleKnown && !canEditCatalog
 
   const sortedRecipes = [...recipes].sort((a, b) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
