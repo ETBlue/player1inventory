@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { OfflineWriteError } from '@/apollo/offlineWriteLink'
 import {
   createLocation,
   deleteLocation,
@@ -154,6 +155,12 @@ export function useHouseholdLocations(): {
  */
 const HOUSEHOLD_LOCATIONS_REFETCH = 'GetHouseholdLocations'
 
+/** The two lists a refused reorder reloads, by name (only mounted ones ask). */
+const LOCATION_LISTS_AFTER_REFUSAL = [
+  HOUSEHOLD_LOCATIONS_REFETCH,
+  'GetLocations',
+] as const
+
 export function useCreateLocation() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
@@ -302,7 +309,8 @@ export function useDeleteLocation() {
 
   // The server cascade matches the local one, but Apollo has no prefix-keyed
   // invalidation to mirror those five keys with — it refetches named queries.
-  // Only `GetLocations` is refetched. The server cascade DOES take the
+  // Only the two location lists are refetched: `GetLocations`, and
+  // `GetHouseholdLocations` by name (H5 task F.3). The server cascade DOES take the
   // location's carts and inventory logs — `Cart.locationId` and
   // `InventoryLog.locationId` both carry `onDelete: Cascade` since PR 3a — so
   // `AllCarts`, `AllCartItems` and `ItemLogs` observers can hold rows that are
@@ -404,7 +412,7 @@ export function useReorderLocations() {
   // refetch to re-read what the mutation just returned. This is the cloud
   // equivalent of the local `invalidateQueries(['locations'])`; a drag settles
   // in one round trip, which is what keeps reordering feeling immediate.
-  const [cloudReorder, { loading: cloudReorderLoading }] =
+  const [cloudReorder, { loading: cloudReorderLoading, client }] =
     useReorderLocationsMutationGql({
       update: (cache, { data }, { variables }) => {
         if (!data?.reorderLocations) return
@@ -438,6 +446,19 @@ export function useReorderLocations() {
       },
     })
 
+  // A refused reorder reloads both lists. Since H5 task F.2 the server refuses
+  // any list that is not exactly the household's full set. So when another
+  // member created or deleted a location while this tab's list was out of
+  // date, the next drag would be refused again. The reload gives the next drag
+  // the right set. Offline there is nothing to reload from, so it is skipped.
+  const reloadAfterRefusal = (err: unknown) => {
+    if (err instanceof OfflineWriteError) return
+    client
+      ?.refetchQueries({ include: [...LOCATION_LISTS_AFTER_REFUSAL] })
+      // A failed reload leaves the old list; the next refusal tries again.
+      .catch(() => {})
+  }
+
   if (mode === 'cloud') {
     return {
       mutate: (
@@ -447,12 +468,17 @@ export function useReorderLocations() {
         cloudReorder({ variables: { orderedIds } }).then(
           () => options?.onSuccess?.(),
           (err) => {
+            reloadAfterRefusal(err)
             options?.onError?.(err)
           },
         ),
       mutateAsync: (orderedIds: string[]) =>
         cloudReorder({ variables: { orderedIds } }).then(
           (r) => r.data?.reorderLocations,
+          (err) => {
+            reloadAfterRefusal(err)
+            throw err
+          },
         ),
       isPending: cloudReorderLoading,
     }

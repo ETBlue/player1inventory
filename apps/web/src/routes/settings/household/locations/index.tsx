@@ -7,6 +7,7 @@ import { OfflineWriteError } from '@/apollo/offlineWriteLink'
 import { LocationList } from '@/components/location/LocationList'
 import { AddNameDialog } from '@/components/shared/AddNameDialog'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { Toolbar } from '@/components/shared/Toolbar'
 import { Button } from '@/components/ui/button'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
@@ -34,7 +35,10 @@ export function LocationSettingsPage() {
   // rows included, so a reorder sends the full list the server asks for
   // (households H5 tasks F.2 and F.3). Not `useLocations()`, the switcher's
   // list, which leaves out a location the caller has no role on.
-  const { data: locations = [] } = useHouseholdLocations()
+  //
+  // While the first load runs there is no list yet. The page shows a spinner,
+  // not "No locations yet", so the empty state does not flash.
+  const { data: locations = [], isLoading } = useHouseholdLocations()
   const { canManageLocations, isOrganizerAt } = usePermissions()
   const createLocation = useCreateLocation()
   const updateLocation = useUpdateLocation()
@@ -77,6 +81,22 @@ export function LocationSettingsPage() {
             ? t('settings.locations.deleteLastError')
             : t('settings.locations.deleteError'),
         )
+      },
+    })
+  }
+
+  // A refused reorder must say so. Since H5 task F.2 the server refuses any
+  // list that is not exactly the household's full set, so a drag fails when
+  // another member created or deleted a location while this list was out of
+  // date. The row then goes back to its place. `useReorderLocations` reloads
+  // both location lists, so the next drag sends the right set; this message
+  // tells the user why the row went back. Offline, `offlineWriteLink` has
+  // already shown its own toast (see `handleDelete`).
+  const handleReorder = (orderedIds: string[]) => {
+    reorderLocations.mutate(orderedIds, {
+      onError: (err: unknown) => {
+        if (err instanceof OfflineWriteError) return
+        toast.error(t('settings.locations.reorderError'))
       },
     })
   }
@@ -127,7 +147,9 @@ export function LocationSettingsPage() {
       </Toolbar>
 
       <div className="overflow-y-auto [container-type:size] space-y-px pb-4">
-        {locations.length === 0 ? (
+        {isLoading ? (
+          <LoadingSpinner />
+        ) : locations.length === 0 ? (
           <EmptyState
             title={t('settings.locations.emptyTitle')}
             description={t('settings.locations.emptyDescription')}
@@ -135,7 +157,7 @@ export function LocationSettingsPage() {
         ) : (
           <LocationList
             locations={locations}
-            onReorder={(orderedIds) => reorderLocations.mutate(orderedIds)}
+            onReorder={handleReorder}
             canManage={canManageLocations}
             canRename={(location) => isOrganizerAt(location.id)}
             showRoles={mode === 'cloud'}

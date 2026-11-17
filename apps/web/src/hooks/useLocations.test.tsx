@@ -484,8 +484,223 @@ describe('useHouseholdLocations', () => {
   })
 })
 
+// ── The settings list after a write (review of H5 task F.3) ──
+//
+// Create, rename and delete refetch `GetHouseholdLocations` BY NAME, and a
+// refused reorder reloads both lists. Each test answers the list twice, with a
+// different list the second time, so the test sees the second answer only when
+// the hook really asked again. A wrong query name asks nothing, and the list
+// keeps its first answer.
+const CLOUD_ATTIC_ID = 'clw3k1q2d0003s9f8h7g6d5e7'
+const ATTIC_ROW = settingsRow(CLOUD_ATTIC_ID, 'Cloud Attic', 3, 'organizer')
+
+/** `GetHouseholdLocations` answers `first`, then `second` on every later ask. */
+function settingsListAnswers(
+  first: typeof SETTINGS_ROWS,
+  second: typeof SETTINGS_ROWS,
+) {
+  return [
+    {
+      request: { query: GetHouseholdLocationsDocument },
+      result: { data: { householdLocations: first } },
+    },
+    {
+      request: { query: GetHouseholdLocationsDocument },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+      result: { data: { householdLocations: second } },
+    },
+  ]
+}
+
+describe('the settings list is fetched again after a write', () => {
+  beforeEach(async () => {
+    await seedLocalLocations()
+    mockMode('cloud')
+  })
+
+  it('household owner sees a new location on the settings list after creating it', async () => {
+    const created = {
+      ...cloudLocation(CLOUD_ATTIC_ID, 'Cloud Attic', 3),
+      hasOrganizer: true,
+    }
+    const { result } = renderHook(
+      () => ({
+        settings: useHouseholdLocations(),
+        create: useCreateLocation(),
+      }),
+      {
+        wrapper: makeWrapper([
+          getLocationsMock,
+          ...settingsListAnswers(SETTINGS_ROWS, [...SETTINGS_ROWS, ATTIC_ROW]),
+          {
+            request: {
+              query: CreateLocationDocument,
+              variables: { name: 'Cloud Attic' },
+            },
+            result: { data: { createLocation: created } },
+          },
+        ]),
+      },
+    )
+    await waitFor(() => expect(result.current.settings.data).toHaveLength(3))
+
+    await act(async () => {
+      await result.current.create.mutateAsync('Cloud Attic')
+    })
+
+    await waitFor(() =>
+      expect(result.current.settings.data?.map((l) => l.name)).toContain(
+        'Cloud Attic',
+      ),
+    )
+  })
+
+  it('household owner sees the new name on the settings list after a rename', async () => {
+    const renamed = {
+      ...CLOUD_OFFICE,
+      name: 'Cloud Studio',
+      hasOrganizer: true,
+    }
+    const { result } = renderHook(
+      () => ({
+        settings: useHouseholdLocations(),
+        rename: useUpdateLocation(),
+      }),
+      {
+        wrapper: makeWrapper([
+          getLocationsMock,
+          // The second answer renames the Shed too, which the caller has no
+          // role on. The rename's own result cannot put that name in the
+          // cache; only a refetch can.
+          ...settingsListAnswers(SETTINGS_ROWS, [
+            settingsRow(CLOUD_FIRST_ID, 'Cloud Warehouse', 0, 'organizer'),
+            settingsRow(CLOUD_SHED_ID, 'Cloud Barn', 1, null, false),
+            settingsRow(CLOUD_OTHER_ID, 'Cloud Studio', 2, 'organizer'),
+          ]),
+          {
+            request: {
+              query: UpdateLocationDocument,
+              variables: {
+                id: CLOUD_OTHER_ID,
+                input: { name: 'Cloud Studio' },
+              },
+            },
+            result: { data: { updateLocation: renamed } },
+          },
+        ]),
+      },
+    )
+    await waitFor(() => expect(result.current.settings.data).toHaveLength(3))
+
+    await act(async () => {
+      await result.current.rename.mutateAsync({
+        id: CLOUD_OTHER_ID,
+        updates: { name: 'Cloud Studio' },
+      })
+    })
+
+    await waitFor(() =>
+      expect(result.current.settings.data?.map((l) => l.name)).toContain(
+        'Cloud Barn',
+      ),
+    )
+  })
+
+  it('household owner no longer sees a deleted location on the settings list', async () => {
+    const { result } = renderHook(
+      () => ({
+        settings: useHouseholdLocations(),
+        remove: useDeleteLocation(),
+      }),
+      {
+        wrapper: makeWrapper([
+          getLocationsMock,
+          ...settingsListAnswers(
+            SETTINGS_ROWS,
+            SETTINGS_ROWS.filter((l) => l.id !== CLOUD_SHED_ID),
+          ),
+          {
+            request: {
+              query: DeleteLocationDocument,
+              variables: { id: CLOUD_SHED_ID },
+            },
+            result: { data: { deleteLocation: true } },
+          },
+        ]),
+      },
+    )
+    await waitFor(() => expect(result.current.settings.data).toHaveLength(3))
+
+    await act(async () => {
+      await result.current.remove.mutateAsync(CLOUD_SHED_ID)
+    })
+
+    await waitFor(() => expect(result.current.settings.data).toHaveLength(2))
+    expect(result.current.settings.data?.map((l) => l.name)).not.toContain(
+      'Cloud Shed',
+    )
+  })
+
+  it('household owner gets both location lists again after a refused reorder', async () => {
+    // Given another member created the Attic after this tab loaded, so the
+    // server refuses the three ids this tab sends (task F.2)
+    const orderedIds = [CLOUD_OTHER_ID, CLOUD_SHED_ID, CLOUD_FIRST_ID]
+    const atticForSwitcher = cloudLocation(CLOUD_ATTIC_ID, 'Cloud Attic', 3)
+    const { result } = renderHook(
+      () => ({
+        settings: useHouseholdLocations(),
+        switcher: useLocations(),
+        reorder: useReorderLocations(),
+      }),
+      {
+        wrapper: makeWrapper([
+          {
+            request: { query: GetLocationsDocument },
+            result: { data: { locations: CLOUD_LOCATIONS } },
+          },
+          {
+            request: { query: GetLocationsDocument },
+            maxUsageCount: Number.POSITIVE_INFINITY,
+            result: {
+              data: { locations: [...CLOUD_LOCATIONS, atticForSwitcher] },
+            },
+          },
+          ...settingsListAnswers(SETTINGS_ROWS, [...SETTINGS_ROWS, ATTIC_ROW]),
+          {
+            request: {
+              query: ReorderLocationsDocument,
+              variables: { orderedIds },
+            },
+            result: {
+              errors: [
+                {
+                  message: 'Send every location of the household.',
+                  extensions: { code: 'BAD_USER_INPUT' },
+                },
+              ],
+            },
+          },
+        ]),
+      },
+    )
+    await waitFor(() => expect(result.current.settings.data).toHaveLength(3))
+    await waitFor(() => expect(result.current.switcher.data).toHaveLength(2))
+
+    // When the reorder is refused
+    const onError = vi.fn()
+    await act(async () => {
+      await result.current.reorder.mutate(orderedIds, { onError })
+    })
+    expect(onError).toHaveBeenCalledTimes(1)
+
+    // Then both lists hold the Attic, so the next drag sends all four ids
+    await waitFor(() => expect(result.current.settings.data).toHaveLength(4))
+    await waitFor(() => expect(result.current.switcher.data).toHaveLength(3))
+  })
+})
+
 describe('cloud locations have no default location', () => {
-  // The settings page renders `useLocations()`'s list straight into
+  // This harness renders `useLocations()`'s list straight into
   // <LocationList>, which hides the delete control and the drag handle only
   // for a row with `isDefault === true`. Since households task 3.12 the cloud
   // `GetLocations` document no longer selects `isDefault`, so no cloud row can

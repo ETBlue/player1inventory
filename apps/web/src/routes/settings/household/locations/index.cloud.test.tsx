@@ -49,6 +49,11 @@ const mockHouseholdLocations = vi.fn<() => HouseholdRow[] | undefined>()
 const mockHouseholdRole = vi.fn<() => string>()
 const mockDeleteLocation = vi.fn()
 const mockReorderLocations = vi.fn()
+// `true` while the settings list has not answered yet (first visit).
+const mockHouseholdLocationsLoading = vi.fn<() => boolean>()
+// The Apollo client the reorder mutation hands back. A refused reorder
+// reloads the location lists through it.
+const mockRefetchQueries = vi.fn()
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
@@ -60,23 +65,28 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       ...emptyQuery,
       data: { locations: mockLocations() },
     }),
-    useGetHouseholdLocationsQuery: () => ({
-      ...emptyQuery,
-      data: {
-        householdLocations:
-          mockHouseholdLocations() ??
-          (mockLocations() as ReturnType<typeof cloudLocation>[]).map((l) => ({
-            ...l,
-            hasOrganizer: true,
-          })),
-      },
-    }),
+    useGetHouseholdLocationsQuery: () =>
+      mockHouseholdLocationsLoading()
+        ? { ...emptyQuery, loading: true }
+        : {
+            ...emptyQuery,
+            data: {
+              householdLocations:
+                mockHouseholdLocations() ??
+                (mockLocations() as ReturnType<typeof cloudLocation>[]).map(
+                  (l) => ({
+                    ...l,
+                    hasOrganizer: true,
+                  }),
+                ),
+            },
+          },
     useCreateLocationMutation: () => [vi.fn(), { loading: false }],
     useUpdateLocationMutation: () => [vi.fn(), { loading: false }],
     useDeleteLocationMutation: () => [mockDeleteLocation, { loading: false }],
     useReorderLocationsMutation: () => [
       mockReorderLocations,
-      { loading: false },
+      { loading: false, client: { refetchQueries: mockRefetchQueries } },
     ],
     useBootstrapCartsMutation: () => [
       vi.fn().mockResolvedValue({ data: undefined }),
@@ -116,6 +126,8 @@ const LAST_LOCATION_MESSAGE =
   'You cannot delete your last location. Add another location first.'
 const GENERAL_MESSAGE = 'Could not delete this location. Please try again.'
 const OFFLINE_MESSAGE = 'You are offline. Changes cannot be saved right now.'
+const REORDER_MESSAGE =
+  'The location list changed. It has been reloaded. Try again.'
 
 describe('Settings locations page — cloud mode', () => {
   let queryClient: QueryClient
@@ -125,6 +137,8 @@ describe('Settings locations page — cloud mode', () => {
     localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
     mockHouseholdRole.mockReturnValue('owner')
     mockHouseholdLocations.mockReturnValue(undefined)
+    mockHouseholdLocationsLoading.mockReturnValue(false)
+    mockRefetchQueries.mockResolvedValue([])
     mockReorderLocations.mockResolvedValue({ data: undefined })
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -254,6 +268,8 @@ describe('Settings locations page — cloud roles (households H5 task F.3)', () 
     localStorage.setItem('data-mode', 'cloud')
     localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
     mockHouseholdRole.mockReturnValue('owner')
+    mockHouseholdLocationsLoading.mockReturnValue(false)
+    mockRefetchQueries.mockResolvedValue([])
     mockReorderLocations.mockResolvedValue({ data: undefined })
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -289,6 +305,43 @@ describe('Settings locations page — cloud roles (households H5 task F.3)', () 
         <RouterProvider router={router} />
       </QueryClientProvider>,
     )
+  }
+
+  // jsdom has no layout, so every row measures 0 x 0 and the keyboard sensor
+  // finds nowhere to move. Give each row a 40px slot by its place in the
+  // list, which is all dnd-kit's vertical strategy reads.
+  function stubRowLayout() {
+    layout = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+    layout.mockImplementation(function (this: HTMLElement) {
+      const item = this.closest('li')
+      const index = item?.parentElement
+        ? Array.from(item.parentElement.children).indexOf(item)
+        : 0
+      const top = index * 40
+      return {
+        x: 0,
+        y: top,
+        top,
+        left: 0,
+        width: 300,
+        height: 40,
+        right: 300,
+        bottom: top + 40,
+        toJSON: () => ({}),
+      } as DOMRect
+    })
+  }
+
+  /** Move the row `name` down one place with the keyboard. */
+  async function moveDownOne(name: string) {
+    const user = userEvent.setup()
+    const handle = within(await rowNamed(name)).getByRole('button', {
+      name: `Drag to reorder ${name}`,
+    })
+    handle.focus()
+    await user.keyboard(' ')
+    await user.keyboard('{ArrowDown}')
+    await user.keyboard(' ')
   }
 
   /** The row of the settings list that shows `name`. */
@@ -426,39 +479,11 @@ describe('Settings locations page — cloud roles (households H5 task F.3)', () 
       row(LOC_C, 'Cloud Shed', 1, null),
       row(LOC_B, 'Cloud Garage', 2, 'organizer'),
     ])
-    // jsdom has no layout, so every row measures 0 x 0 and the keyboard
-    // sensor finds nowhere to move. Give each row a 40px slot by its place
-    // in the list, which is all dnd-kit's vertical strategy reads.
-    layout = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
-    layout.mockImplementation(function (this: HTMLElement) {
-      const item = this.closest('li')
-      const index = item?.parentElement
-        ? Array.from(item.parentElement.children).indexOf(item)
-        : 0
-      const top = index * 40
-      return {
-        x: 0,
-        y: top,
-        top,
-        left: 0,
-        width: 300,
-        height: 40,
-        right: 300,
-        bottom: top + 40,
-        toJSON: () => ({}),
-      } as DOMRect
-    })
+    stubRowLayout()
     renderPage()
-    const user = userEvent.setup()
 
     // When the owner moves the Kitchen down one place with the keyboard
-    const handle = within(await rowNamed('Cloud Kitchen')).getByRole('button', {
-      name: 'Drag to reorder Cloud Kitchen',
-    })
-    handle.focus()
-    await user.keyboard(' ')
-    await user.keyboard('{ArrowDown}')
-    await user.keyboard(' ')
+    await moveDownOne('Cloud Kitchen')
 
     // Then the reorder sends all three ids, the Shed's too. The server
     // refuses a list that leaves one out (task F.2).
@@ -478,5 +503,61 @@ describe('Settings locations page — cloud roles (households H5 task F.3)', () 
     expect(
       within(kitchen).queryByRole('button', { name: 'Delete Cloud Kitchen' }),
     ).not.toBeInTheDocument()
+  })
+
+  it('household owner sees why a refused reorder went back, and both location lists reload', async () => {
+    // Given an owner who organizes the Kitchen, is a viewer of the Garage
+    // and has no role on the Shed. Another member deleted a location in the
+    // meantime, so the server refuses the list this tab sends (task F.2).
+    given('owner', [
+      row(LOC_A, 'Cloud Kitchen', 0, 'organizer'),
+      row(LOC_C, 'Cloud Shed', 1, null),
+      row(LOC_B, 'Cloud Garage', 2, 'viewer'),
+    ])
+    mockReorderLocations.mockRejectedValue(
+      serverRefusal('BAD_USER_INPUT', 'Send every location of the household.'),
+    )
+    stubRowLayout()
+    renderPage()
+
+    // When the owner moves the Kitchen down one place
+    await moveDownOne('Cloud Kitchen')
+
+    // Then the page says the list changed and was reloaded
+    expect(await screen.findByText(REORDER_MESSAGE)).toBeInTheDocument()
+    expect(mockReorderLocations).toHaveBeenCalledWith({
+      variables: { orderedIds: [LOC_C, LOC_A, LOC_B] },
+    })
+    // And both location lists are fetched again, by name
+    expect(mockRefetchQueries).toHaveBeenCalledWith({
+      include: ['GetHouseholdLocations', 'GetLocations'],
+    })
+  })
+
+  it('user sees no empty state while the cloud locations list is loading', async () => {
+    // Given a member on a first visit: the settings list has not answered
+    given('member', [row(LOC_A, 'Cloud Kitchen', 0, 'viewer')])
+    mockHouseholdLocationsLoading.mockReturnValue(true)
+    renderPage()
+
+    // Then the page is shown (its title is there)
+    const main = await screen.findByRole('main')
+    expect(
+      await within(main).findByRole('heading', { name: 'Locations' }),
+    ).toBeInTheDocument()
+    // But it does not say "No locations yet" while it waits
+    expect(within(main).queryByText('No locations yet')).not.toBeInTheDocument()
+  })
+
+  it('user sees the empty state once the cloud list answers with no location', async () => {
+    // A control for the test above: the same page with an empty answer
+    // does show the empty state, so its absence above means something.
+    given('member', [])
+    renderPage()
+
+    const main = await screen.findByRole('main')
+    expect(
+      await within(main).findByText('No locations yet'),
+    ).toBeInTheDocument()
   })
 })
