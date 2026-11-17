@@ -36,3 +36,17 @@ Back button and post-action navigation use smart history tracking (same pattern 
 - `src/hooks/useTagLayout.tsx` - Dirty state provider
 - `src/components/tag/TagInfoForm/index.tsx` - Presentational form (name, type, parent; owns local state; onSave(data), onDirtyChange, typeReadonly?)
 - `src/components/tag/TagTypeInfoForm/index.tsx` - Shared form for tag type create/edit (name, color; owns local state; onSave(data))
+
+### What a household member sees (cloud, households H5 task F.5)
+
+A household `member` may read the catalog but not change it. The server checks every write (`requireCatalogRole`); the page only hides what would fail. All of it reads `usePermissions()` (`src/hooks/usePermissions.ts`). Local mode is unchanged.
+
+- **List page:** no New Tag Type, no edit, no delete, no New Tag, and no drag between types. A `ReadOnlyNote` above the list says "Only a household owner or manager can add or change these." (`settings.catalogReadOnly`). It shows on an EMPTY page too (no tag types at all), because then the note is the only thing that says why there is no New Tag Type. Before the F.5 review it needed at least one tag type, and a member saw an empty page with no reason.
+- **Info tab:** the name is `readOnly`, the type and parent selects are disabled, no Save, no Delete, and the note "Only a household owner or manager can change this." (`settings.catalogReadOnlyItem`).
+- **Items tab:** the checkboxes are disabled. They still show which items carry the tag.
+- **Add Tag dialog:** it opens only from New Tag, which a member does not see, so its form is never read only.
+
+- **While the role is not known** (`usePermissions().roleKnown` is `false`: `GetHousehold` is loading, or it failed with nothing cached), the write controls are hidden too, but no note shows. The note would be untrue for an owner.
+- **The Info form waits for the role before it mounts** (`isLoading`). Its name field has `autoFocus={!readOnly}`, and React focuses only on mount, so a form mounted read-only while the role loads would never take the focus for an owner. If the role cannot be read, the form shows read only, with no note.
+- **Search on the Items tab:** a member gets no `+ Create`, and a line under the search row says why: `items.createReadOnly` ("Only a household owner or manager can create a new item."). Same trigger as the button: a search with no exact match.
+- **Tests:** `routes/settings/household/catalogReadOnly.test.tsx` (list), `catalogDetailReadOnly.test.tsx` and `catalogInfoRoleArrives.test.tsx` (Info tab), `catalogItemsReadOnly.test.tsx` (Items tab). Each role test has a member and a manager who differ only in the household role.

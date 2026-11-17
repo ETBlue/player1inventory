@@ -26,6 +26,24 @@ assignment tabs create items stocked in **no** location, via
 No new GraphQL affordance was needed: the cloud branch runs `createItem` and simply omits
 the follow-up `upsertItemStock` the pantry's Add flow performs. See `settings/CLAUDE.md`.
 
+### Read-only views by role (cloud, households H5)
+
+Local mode has no roles, so none of this applies there. Every check reads `usePermissions()` (`src/hooks/usePermissions.ts`). It only hides what the server would refuse; the server checks every write.
+
+**A household `member` (task F.5) may not change the catalog.** On these pages:
+
+| Page | What a member does not get | What says why |
+| --- | --- | --- |
+| Pantry list, shelf view, cart page (`ItemListToolbar` search) | `Create item` from search, and Enter does not create | a line under the search row, `items.createReadOnly` ("Only a household owner or manager can create a new item."), passed as `createReadOnlyNote` |
+| Pantry Add dialog (`NewItemDialog`) | the `Create "<name>"` option and button, and the package unit field | the same text, under the list of matches |
+| The search tail on all five surfaces | the group action (Apply vendor, Add to recipe, Add to shelf) | `items.searchTail.catalogReadOnly` on the row ("Only an owner or manager can add it here.") |
+| Cooking (`CookingControlBar` search) | `Create` from search, and Enter does not create | `cookingControlBar.createReadOnly` ("Only a household owner or manager can create a new recipe.") under the search row |
+| Cooking empty state | `Create recipe` | `settings.catalogReadOnly` instead of "Create your first recipe" |
+
+The search notes show with the same trigger as the button they replace: a search with no exact match. Picking an existing item in the Add dialog, `Add to {location}` in the tail, and cooking itself are NOT catalog writes, so a member keeps them. Marking a recipe as cooked needs only household `member` (H5 decision O10); a guard test (`routes/cooking.readOnly.test.tsx`) checks that a member who is a participant can check a recipe, change an amount and press Done.
+
+**No note while the role is unknown.** `roleKnown` is `false` while `GetHousehold` loads and when it failed with nothing cached. The write controls stay hidden (the safe default), but none of the notes above shows: for an owner it would be untrue.
+
 ### Pantry Page (`/`)
 
 The pantry home page (`src/routes/index.tsx`) supports two display modes and three group-by views, all controlled by URL search params.

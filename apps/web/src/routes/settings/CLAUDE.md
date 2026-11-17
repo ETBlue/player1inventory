@@ -143,6 +143,10 @@ untouched. Plurals follow the surrounding style: `filterCount === 1 ? 'filter' :
 The pantry `ShelfList` / `GroupCard` surface is unrelated and unchanged — the
 filter count lives only on the settings page row.
 
+### Shelves for a household member (cloud, households H5 task F.5)
+
+There is no shelves `CLAUDE.md`, so the member rules are here. A household `member` gets no Add shelf, no delete and no drag handles on `/settings/household/shelves`, with the `settings.catalogReadOnly` note above the list. The shelf Info tab is read only with the `settings.catalogReadOnlyItem` note. The Items tab checkboxes are disabled. On a filter shelf's Filters tab every badge (tag, vendor, recipe) shows what is selected, is `aria-disabled`, and a press writes nothing. No note shows while `usePermissions().roleKnown` is `false`. Tests: `routes/settings/household/catalogReadOnly.test.tsx`, `catalogDetailReadOnly.test.tsx`, `catalogItemsReadOnly.test.tsx`.
+
 ### Shelf filters tab shows global counts
 
 `settings/household/shelves/$shelfId/filters.tsx` renders ` (N)` after every tag, vendor

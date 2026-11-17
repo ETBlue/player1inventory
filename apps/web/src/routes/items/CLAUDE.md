@@ -229,3 +229,18 @@ Users can manually set current inventory quantities in the item detail form:
 - `src/routes/items/$id/stock.tsx` - Stock tab form with quantity fields
 - `src/routes/items/$id.test.tsx` - Component tests
 - `src/lib/quantityUtils.ts` - packUnpacked() and `convertTrackedQuantities()` (the unit-switch conversion of the three tracked quantities); `getStockPreview()` (the Stock tab's progress-row derivation, shared with `QuickUpdateDialog` — see `components/CLAUDE.md`)
+
+### What a household member sees (cloud, households H5 task F.5)
+
+A household `member` may read the catalog but not change it. Everything reads `usePermissions()`; local mode is unchanged.
+
+| Tab | Member |
+| --- | --- |
+| Info | `ItemForm readOnly`: the fields are `readOnly` or disabled, no Save, no Delete. The note "Only a household owner or manager can change this." (`settings.catalogReadOnlyItem`) shows above the form. The unit-switch dialog is reached only through Save, so it cannot open |
+| Tags, Vendors, Recipes | the badges show what is assigned, are `aria-disabled`, and a press writes nothing. No "New Tag Type" / "New …" buttons |
+| Stock | unchanged by the household role. It follows the LOCATION role (task F.6) |
+
+The note shows only when `roleKnown` is `true`. While `GetHousehold` loads, or when it failed with nothing cached, the Info tab is read only (the safe default) but shows no note. Tests: `routes/items/$id/readOnly.test.tsx`.
+
+**Known gap:** the `role="button"` badges on the Tags, Vendors and Recipes tabs cannot be reached by keyboard (no `tabIndex`, no key handler). This is older than H5; see the H5 plan, *Known gaps*.
+
