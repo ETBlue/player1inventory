@@ -296,7 +296,7 @@ O7-A, O9-A and O12-A. These are NEW. **A** is the recommendation unless it says 
 |---|---|---|
 | O13 | **A** | |
 | O14 | **A** | The owner asked whether an invite can give a location role. Yes: the invite form lists every location with a role picker (design, *Invite and join*, step 1). O14 only decides that no role is REQUIRED |
-| O15 | open | The owner asked for the rule that matches the other role rules. The main session suggested **A**, because it follows the same line as inviting (O3-A) and removing (design, *Household roles*): a manager acts only on `member`, the owner on anyone. Waiting for the owner to confirm. G.3 and G.9 need it |
+| O15 | **A** | The owner asked for the rule that matches the other role rules. **A** follows the same line as inviting (O3-A) and removing (design, *Household roles*): a manager acts only on `member`, the owner on anyone. Confirmed by the owner |
 | O16 | **A** | |
 | O17 | deferred | The owner reviews the texts later, in the PR. Tasks use the table below as written |
 
