@@ -1236,3 +1236,40 @@ describe('householdFake models HouseholdInvite (households H5b, decision T26)', 
     expect(fake.state.householdInvites).toHaveLength(0)
   })
 })
+
+describe('householdFake filters invites by householdRole (owner decision O15)', () => {
+  it('a role value or { in } keeps only those invites, in findMany and updateMany', async () => {
+    // Given a member invite and a manager invite in one household
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+    await fake.client.householdInvite.create({
+      data: inviteData({ id: 'inv_mgr', token: 't_mgr', householdRole: 'manager' }),
+    })
+
+    // When the member invites are listed, and both kinds by { in }
+    const members = await fake.client.householdInvite.findMany({
+      where: { householdId: OURS, householdRole: 'member' },
+    })
+    const both = await fake.client.householdInvite.findMany({
+      where: { householdRole: { in: ['member', 'manager'] } },
+    })
+    // And a manager's revoke (member invites only) is aimed at the manager invite
+    const revoked = await fake.client.householdInvite.updateMany({
+      where: { id: 'inv_mgr', householdRole: 'member', revokedAt: null },
+      data: { revokedAt: NOW },
+    })
+
+    // Then only the member invite is listed, both by { in }, and the revoke touches nothing
+    expect(members.map((i) => i.id)).toEqual(['inv_1'])
+    expect(both.map((i) => i.id).sort()).toEqual(['inv_1', 'inv_mgr'])
+    expect(revoked).toEqual({ count: 0 })
+    expect(fake.state.householdInvites.find((i) => i.id === 'inv_mgr')?.revokedAt).toBeNull()
+  })
+
+  it('a role outside the household enum throws', async () => {
+    const fake = fixture()
+    await expect(
+      fake.client.householdInvite.findMany({ where: { householdRole: 'viewer' } }),
+    ).rejects.toBeInstanceOf(InvalidRoleError)
+  })
+})

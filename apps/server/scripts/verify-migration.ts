@@ -1,4 +1,4 @@
-// Verifies the migrations listed in MIGRATIONS below against a REAL Postgres, because the
+// Verifies the migrations listed in migrationDeploys.ts against a REAL Postgres, because the
 // resolver test suite runs entirely against a hand-written Prisma fake and
 // cannot exercise SQL at all.
 //
@@ -27,7 +27,7 @@
 //  10. 20261118000000_add_household_invites            (households H5b, task G.1) —
 //      a new, empty "HouseholdInvite" table and a nullable
 //      "User"."activeHouseholdId". Additive only
-// Ten migrations, then. This count and the MIGRATIONS array below must agree.
+// Ten migrations, then. This count and the list in migrationDeploys.ts must agree.
 // (It said "Eight" until H3b task B.3, and "Nine" until H5b task G.1, while
 // the line above it already said "Eight" again.) The comment said "Four"
 // for a while after entry 5 was added, so check the array rather than trusting
@@ -47,6 +47,8 @@
 // reads NULL") is about the rows the earlier steps wrote. Because it is the
 // last to run, every "User" read before the fourth deploy needs an explicit
 // `select` (the Prisma client is generated from the final schema).
+// Which migration goes in which deploy is listed in `migrationDeploys.ts`,
+// and `migrationDeploys.test.ts` checks that list with no database.
 // Migration 6 is not a location migration and depends on none of the others.
 // It is parked with them anyway. Left unparked, `migrate reset` would apply it
 // BEFORE migrations 1-5, which is not the order production applies them in.
@@ -71,6 +73,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Prisma, PrismaClient } from '@prisma/client'
 import { assertNotAnotherDatabase } from './databaseIsolation.js'
+import { MIGRATIONS, migrationsOfDeploy } from './migrationDeploys.js'
 
 const TEST_URL = process.env.TEST_DATABASE_URL
 const TEST_DIRECT = process.env.TEST_DIRECT_URL
@@ -2031,39 +2034,14 @@ async function assertHouseholdLock(): Promise<void> {
 
 const SERVER_DIR = fileURLToPath(new URL('..', import.meta.url))
 
-// In apply order. Adding a later migration under test means adding it here.
-const MIGRATIONS = [
-  '20260830000000_add_location_and_item_stock',
-  '20260916000000_add_location_to_log_and_cart',
-  '20260917000000_rekey_cart_to_location_vendor',
-  '20261004000000_drop_item_stock_state_columns',
-  '20261008000000_add_item_note_and_wikidata_url',
-  '20261031000000_add_user',
-  '20261104000000_add_households',
-  '20261111000000_drop_user_scope',
-  '20261114000000_shared_carts',
-  '20261118000000_add_household_invites',
-] as const
-
-// Applied on its own, in a second `migrate deploy`, after
-// seedUsersBeforeHouseholds. Every entry before it is applied in the first
-// deploy.
+// The migrations under test, and which `migrate deploy` applies each one, live
+// in `migrationDeploys.ts` (since H5b task G.1). A new migration goes into ONE
+// group there; `migrationDeploys.test.ts` fails, with no database, while a
+// migration folder is in no group. These names are kept for the log lines and
+// for the one block that reads add_households' SQL file.
 const HOUSEHOLDS_MIGRATION = '20261104000000_add_households'
-
-// Applied on its own, in a third `migrate deploy`, after seedBetweenDeploys.
 const DROP_USER_SCOPE_MIGRATION = '20261111000000_drop_user_scope'
-
-// Applied in a fourth `migrate deploy`, after seedSharedCartDuplicates.
-// It must be the last entry above that runs BEFORE that fourth deploy: the
-// fourth deploy happens after the `finally` in main(), where restoreIfParked
-// puts back EVERY parked migration, so it applies shared_carts and every entry
-// after it at once. Today the only entry after it is add_household_invites,
-// which needs nothing seeded before it. A later entry that needs a seed step
-// between the two must get its own deploy inside the `try`.
-// (It said "It must be the LAST entry above" until H5b task G.1.)
 const SHARED_CARTS_MIGRATION = '20261114000000_shared_carts'
-
-// Applied by the same fourth `migrate deploy` as shared_carts, after it.
 const HOUSEHOLD_INVITES_MIGRATION = '20261118000000_add_household_invites'
 
 const PARKED_ROOT = join(SERVER_DIR, '.migration-under-test')
@@ -2093,6 +2071,16 @@ function restoreIfParked(): void {
 }
 
 let parked = false
+
+// Put back the parked migrations of ONE deploy group (see migrationDeploys.ts).
+// Only the names the group lists: a migration in no group, or in a later
+// group, stays parked. That is what keeps a new migration out of an early
+// deploy.
+function restoreDeploy(label: Parameters<typeof migrationsOfDeploy>[0]): void {
+  const names = migrationsOfDeploy(label)
+  console.log(`Applying the "${label}" deploy: ${names.join(', ')}...`)
+  for (const name of names) renameSync(parkedDir(name), migrationDir(name))
+}
 
 // A SIGINT (Ctrl-C) or SIGTERM delivered while the migration is parked would,
 // with no handler registered, kill the process immediately at the OS level —
@@ -2415,6 +2403,41 @@ async function assertHouseholdInvites(): Promise<void> {
     )
   }
 
+  // `data_type` says only USER-DEFINED for an enum. `udt_name` names the type,
+  // so a column of the wrong enum (LocationRole) fails here.
+  const roleType = await prisma.$queryRaw<{ udt_name: string }[]>`
+    SELECT udt_name::text AS udt_name FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name::text = 'HouseholdInvite'
+      AND column_name::text = 'householdRole'
+  `
+  assert(
+    roleType[0]?.udt_name === 'HouseholdRole',
+    `"HouseholdInvite"."householdRole" is of the type "HouseholdRole" (read: ${roleType[0]?.udt_name ?? 'column missing'})`,
+  )
+
+  // ── The three indexes ──
+  const inviteIndexes = await prisma.$queryRaw<{ indexname: string; indexdef: string }[]>`
+    SELECT indexname::text AS indexname, indexdef
+    FROM pg_indexes WHERE schemaname = 'public' AND tablename IN ('HouseholdInvite', 'User')
+  `
+  const indexDef = (name: string) => inviteIndexes.find((i) => i.indexname === name)?.indexdef
+  const tokenIndex = indexDef('HouseholdInvite_token_key')
+  assert(
+    !!tokenIndex && tokenIndex.includes('UNIQUE') && tokenIndex.includes('("token")'),
+    `"HouseholdInvite_token_key" is a UNIQUE index on ("token") (read: ${tokenIndex ?? 'missing'})`,
+  )
+  const householdIndex = indexDef('HouseholdInvite_householdId_idx')
+  assert(
+    !!householdIndex && !householdIndex.includes('UNIQUE') && householdIndex.includes('("householdId")'),
+    `"HouseholdInvite_householdId_idx" is a plain index on ("householdId") — it lists a household's invites and serves the ON DELETE CASCADE (read: ${householdIndex ?? 'missing'})`,
+  )
+  const activeIndex = indexDef('User_activeHouseholdId_idx')
+  assert(
+    !!activeIndex && !activeIndex.includes('UNIQUE') && activeIndex.includes('("activeHouseholdId")'),
+    `"User_activeHouseholdId_idx" is a plain index on ("activeHouseholdId") — it serves the ON DELETE SET NULL (read: ${activeIndex ?? 'missing'})`,
+  )
+
   // ── 3 (first half). Every existing person reads NULL ──
   //
   // Runs before this block writes anything. The earlier blocks left many
@@ -2567,24 +2590,17 @@ async function main(): Promise<void> {
 
     // Apply migrations 1-6 first, then seed the "User" rows that only exist
     // once add_user has run. See seedUsersBeforeHouseholds for why.
-    console.log(
-      `Applying every migration under test except ${HOUSEHOLDS_MIGRATION}, ${DROP_USER_SCOPE_MIGRATION} and ${SHARED_CARTS_MIGRATION}...`,
-    )
-    for (const name of MIGRATIONS) {
-      if (
-        name !== HOUSEHOLDS_MIGRATION &&
-        name !== DROP_USER_SCOPE_MIGRATION &&
-        name !== SHARED_CARTS_MIGRATION
-      ) {
-        renameSync(parkedDir(name), migrationDir(name))
-      }
-    }
+    //
+    // Only the names of the "first" group. Until H5b task G.1 this loop put
+    // back "every migration except three named ones", so add_household_invites
+    // was put back here too and would have failed: its CREATE TABLE needs the
+    // "HouseholdRole" type, which add_households creates in the next deploy.
+    restoreDeploy('first')
     execSync('pnpm exec prisma migrate deploy', { cwd: SERVER_DIR, env, stdio: 'inherit' })
     await seedUsersBeforeHouseholds()
     await seedCrossHouseholdReferences()
 
-    console.log(`Applying ${HOUSEHOLDS_MIGRATION}...`)
-    renameSync(parkedDir(HOUSEHOLDS_MIGRATION), migrationDir(HOUSEHOLDS_MIGRATION))
+    restoreDeploy('households')
     execSync('pnpm exec prisma migrate deploy', { cwd: SERVER_DIR, env, stdio: 'inherit' })
 
     console.log(`Asserting, before ${DROP_USER_SCOPE_MIGRATION}...`)
@@ -2606,8 +2622,7 @@ async function main(): Promise<void> {
     // Inside the `try` since H3b task B.3: shared_carts must stay parked
     // during this deploy, and `restoreIfParked` in `finally` restores every
     // parked migration. So drop_user_scope is restored on its own here.
-    console.log(`Applying ${DROP_USER_SCOPE_MIGRATION}...`)
-    renameSync(parkedDir(DROP_USER_SCOPE_MIGRATION), migrationDir(DROP_USER_SCOPE_MIGRATION))
+    restoreDeploy('drop user scope')
     execSync('pnpm exec prisma migrate deploy', { cwd: SERVER_DIR, env, stdio: 'inherit' })
 
     console.log(`Asserting, after ${DROP_USER_SCOPE_MIGRATION}...`)
@@ -2620,7 +2635,9 @@ async function main(): Promise<void> {
     parked = false
   }
 
-  console.log(`Applying ${SHARED_CARTS_MIGRATION} and ${HOUSEHOLD_INVITES_MIGRATION}...`)
+  // The "last" group: restoreIfParked put back every migration still parked,
+  // and `migrationDeploys.ts` says those are exactly this group.
+  console.log(`Applying the "last" deploy: ${migrationsOfDeploy('last').join(', ')}...`)
   execSync('pnpm exec prisma migrate deploy', { cwd: SERVER_DIR, env, stdio: 'inherit' })
 
   console.log(`Asserting, after ${SHARED_CARTS_MIGRATION}...`)

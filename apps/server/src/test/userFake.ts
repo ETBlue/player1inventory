@@ -39,6 +39,10 @@
 //   - `activeHouseholdId` (households H5b, decision T14) starts `null` on
 //     create, like every column the add_household_invites migration added to
 //     an existing table.
+//   - `update` (households H5b, for G.4's `activeHouseholdId` write) acts on
+//     ONE row named by its string `id`, raises P2025 when no row matches,
+//     applies `data` with Prisma's `value !== undefined` rule, and honours
+//     `select` exactly like `findUnique`.
 //   - `findUnique` with `select` (households H5b, decision T14). It returns
 //     ONLY the selected keys, as Prisma does, so code cannot read a column it
 //     did not ask for. A scalar column is selected with `true`. The one
@@ -53,8 +57,8 @@
 //
 // ── WHAT IT DOES NOT MODEL ──
 //
-//   - `include`, and `select` on any method but `findUnique`. Both throw as
-//     unknown options.
+//   - `include`, and `select` on any method but `findUnique` and `update`.
+//     Both throw as unknown options.
 //   - The foreign key from `activeHouseholdId` to `Household`, and its
 //     ON DELETE SET NULL. `Household` lives in `householdFake`. Only real SQL
 //     proves them: `assertHouseholdInvites` in `scripts/verify-migration.ts`.
@@ -64,11 +68,12 @@
 //   - `$transaction`. Import `runInTransaction` from `stockFake.ts` and pass
 //     this fake's `state` as a store. `state` holds plain data and `Date`s,
 //     which `structuredClone` copies.
-//   - Methods other than `findUnique`, `findMany`, `create`, `upsert` and
-//     `updateMany`. Calling another one fails as "not a function".
+//   - Methods other than `findUnique`, `findMany`, `create`, `upsert`,
+//     `update` and `updateMany`. Calling another one fails as "not a
+//     function".
 
 import type { HouseholdMember, User } from '@prisma/client'
-import { OwnedRowIdConstraintError } from './ownedRowFake.js'
+import { OwnedRowIdConstraintError, OwnedRowNotFoundError } from './ownedRowFake.js'
 import { checkWhere, UnknownWhereKeyError, type WhereSpec } from './whereKeys.js'
 
 // The two shared `where` errors, so a test can import them from here.
@@ -373,6 +378,19 @@ export function createUserFake(rows: UserRow[] = [], options: UserFakeOptions = 
       }
       const row = state.rows.find((r) => userMatches(r, args.where))
       return copy(row ? applyUpdate(row, args.update) : insert(args.create))
+    },
+    // One row, by its unique id. Prisma raises P2025 when none matches.
+    update: async (args: { where: Where; data: Data; select?: Record<string, unknown> }) => {
+      refuseUnknownOptions('update', args, ['where', 'data', 'select'])
+      checkUserWhere(args.where)
+      if (typeof args.where.id !== 'string') {
+        throw new UserFakeUnsupportedError('an update whose where has no string id')
+      }
+      const row = state.rows.find((r) => userMatches(r, args.where))
+      if (!row) throw new OwnedRowNotFoundError(MODEL, args.where)
+      applyUpdate(row, args.data)
+      // biome-ignore lint/suspicious/noExplicitAny: the shape depends on `select`, as in Prisma
+      return (args.select ? applySelect(row, args.select) : copy(row)) as any
     },
     updateMany: async (args: { where?: Where; data: Data }) => {
       refuseUnknownOptions('updateMany', args, ['where', 'data'])

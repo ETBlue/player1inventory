@@ -631,3 +631,73 @@ describe('userFake findUnique applies select (households H5b, decision T14)', ()
     ).rejects.toThrow(/no `householdMembers` option/)
   })
 })
+
+describe('userFake update acts on one row (households H5b, for G.4)', () => {
+  it('writes the row its id names, and no other', async () => {
+    // Given two users
+    const fake = createUserFake([userRow('user_a'), userRow('user_b')])
+
+    // When one gets an active household
+    const result = await fake.client.update({
+      where: { id: 'user_b' },
+      data: { activeHouseholdId: 'h_b' },
+    })
+
+    // Then only that row changes, and the result is its new state
+    expect(result.activeHouseholdId).toBe('h_b')
+    expect(fake.state.rows.map((r) => [r.id, r.activeHouseholdId])).toEqual([
+      ['user_a', null],
+      ['user_b', 'h_b'],
+    ])
+  })
+
+  it('raises P2025 when no row has that id, and writes nothing', async () => {
+    // Given one user
+    const fake = createUserFake([userRow('user_a')])
+
+    // When an id no row holds is updated
+    // Then it is refused as Prisma refuses it
+    await expect(
+      fake.client.update({ where: { id: 'user_none' }, data: { activeHouseholdId: 'h_b' } }),
+    ).rejects.toMatchObject({ code: 'P2025' })
+    expect(fake.state.rows[0]?.activeHouseholdId).toBeNull()
+  })
+
+  it('skips an undefined value and writes null (Prisma\'s rule)', async () => {
+    // Given a user with an active household and a name
+    const fake = createUserFake([userRow('user_a', { activeHouseholdId: 'h_a', email: 'a@x' })])
+
+    // When the update passes undefined for one column and null for another
+    await fake.client.update({
+      where: { id: 'user_a' },
+      data: { email: undefined, activeHouseholdId: null },
+    })
+
+    // Then the undefined column is kept and the null one is cleared
+    expect(fake.state.rows[0]).toMatchObject({ email: 'a@x', activeHouseholdId: null })
+  })
+
+  it('honours select like findUnique, and returns a copy', async () => {
+    // Given one user
+    const fake = createUserFake([userRow('user_a')])
+
+    // When the update selects one column
+    const result = await fake.client.update({
+      where: { id: 'user_a' },
+      data: { activeHouseholdId: 'h_b' },
+      select: { activeHouseholdId: true },
+    })
+
+    // Then only that key comes back, and changing it changes nothing stored
+    expect(result).toEqual({ activeHouseholdId: 'h_b' })
+    result.activeHouseholdId = 'changed'
+    expect(fake.state.rows[0]?.activeHouseholdId).toBe('h_b')
+  })
+
+  it('a where with no string id throws', async () => {
+    const fake = createUserFake([userRow('user_a')])
+    await expect(
+      fake.client.update({ where: { householdSetupAt: null }, data: { activeHouseholdId: 'h' } }),
+    ).rejects.toThrow(/no string id/)
+  })
+})

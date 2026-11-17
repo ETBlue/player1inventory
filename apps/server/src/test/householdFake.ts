@@ -56,8 +56,9 @@
 //     fake does not hold. `usedAt`, `usedById` and `revokedAt` start null.
 //   - `findUnique` must name exactly ONE unique key, `id` or `token`, as a
 //     plain string.
-//   - `findMany` and `updateMany` take `id`, `householdId` (a string or
-//     `{ in }`), `usedAt: null`, `revokedAt: null` and `expiresAt: { gt }`.
+//   - `findMany` and `updateMany` take `id`, `householdId` and
+//     `householdRole` (each a value or `{ in }`; a role outside the enum
+//     throws), `usedAt: null`, `revokedAt: null` and `expiresAt: { gt }`.
 //     These are the keys of the invite claim (decision T17). Any other key
 //     throws. `{ gt }` is strict, as in SQL: an invite that expires at exactly
 //     `now` does not match. `updateMany` returns a count, so the claim can see
@@ -235,6 +236,8 @@ const INVITE_WHERE: WhereSpec = {
   id: 'in',
   token: 'in',
   householdId: 'in',
+  // A manager lists and revokes only `member` invites (owner decision O15).
+  householdRole: 'in',
   usedAt: 'null',
   revokedAt: 'null',
   expiresAt: 'dateGt',
@@ -458,6 +461,7 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
 
   function checkInviteWhere(where: Where | undefined) {
     checkWhere('householdFake(HouseholdInvite)', where, INVITE_WHERE)
+    checkRoleFilter('HouseholdInvite', where?.householdRole, HOUSEHOLD_ROLES)
   }
 
   function checkHouseholdWhere(where: Where | undefined) {
