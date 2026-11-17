@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { PantryItem } from '@/types'
 import * as activeLocationHooks from './useActiveLocation'
 import * as dataModeHooks from './useDataMode'
@@ -22,6 +22,29 @@ vi.mock('./useActiveLocation', () => ({
 vi.mock('./useItems', () => ({
   useAddItemToLocation: vi.fn(),
 }))
+
+// The household role (households H5 task F.5). The real hook reads the
+// location list, which this file does not provide. Each test sets the role
+// through the real rules (`permissionsFor`); unset means local, where every
+// action is allowed.
+let household: 'member' | 'manager' | null = null
+vi.mock('./usePermissions', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./usePermissions')>()
+  return {
+    ...real,
+    usePermissions: () =>
+      household
+        ? real.permissionsFor({
+            mode: 'cloud',
+            householdRole: household,
+            // A viewer of one location, a participant of another, and no
+            // role on any third: the same for both roles, so only the
+            // household role can change the answer.
+            locationRoles: { 'loc-viewer': 'viewer', home: 'participant' },
+          })
+        : real.permissionsFor({ mode: 'local' }),
+  }
+})
 
 function mockMode(mode: 'local' | 'cloud') {
   vi.mocked(dataModeHooks.useDataMode).mockReturnValue({
@@ -248,5 +271,70 @@ describe('useItemSearchTailWiring', () => {
     expect(
       result.current.tailProps.notStockedHereItems.map((i) => i.id),
     ).toEqual(['cherry', 'milk'])
+  })
+
+  describe('the household role (households H5 task F.5)', () => {
+    afterEach(() => {
+      household = null
+    })
+
+    const groupAction = {
+      label: 'Apply iHerb',
+      onAction: vi.fn(),
+    }
+
+    it.each([
+      ['member', false],
+      ['manager', true],
+    ] as const)('household %s gets the group action: %s', (role, hasAction) => {
+      // Given a row in bucket 2 and a caller-supplied group action
+      household = role
+      mockMode('cloud')
+      mockActiveLocation(homeLocation)
+      mockSearchTail({ inLocation: [milk], notStockedHere: [] })
+      mockAddItemToLocation()
+
+      const { result } = renderHook(() =>
+        useItemSearchTailWiring({
+          inGroupIds: new Set(),
+          query: 'mil',
+          renderItem: () => null,
+          groupAction,
+        }),
+      )
+
+      // Then a manager gets the action, and a member gets the note instead,
+      // so the row still shows and says why
+      if (hasAction) {
+        expect(result.current.tailProps.groupAction?.label).toBe('Apply iHerb')
+        expect(result.current.tailProps.groupNote).toBeUndefined()
+      } else {
+        expect(result.current.tailProps.groupAction).toBeUndefined()
+        expect(result.current.tailProps.groupNote).toBeDefined()
+      }
+      // And "Add to location" (a location right) is the same for both
+      expect(result.current.tailProps.addToLocationAction).toBeDefined()
+    })
+
+    it("household member keeps the caller's own group note", () => {
+      // Given the no-vendor cart, which passes a note and no action
+      household = 'member'
+      mockMode('cloud')
+      mockActiveLocation(homeLocation)
+      mockSearchTail({ inLocation: [milk], notStockedHere: [] })
+      mockAddItemToLocation()
+      const ownNote = () => 'In iHerb'
+
+      const { result } = renderHook(() =>
+        useItemSearchTailWiring({
+          inGroupIds: new Set(),
+          query: 'mil',
+          renderItem: () => null,
+          groupNote: ownNote,
+        }),
+      )
+
+      expect(result.current.tailProps.groupNote).toBe(ownNote)
+    })
   })
 })
