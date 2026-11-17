@@ -1572,7 +1572,11 @@ Needs owner decisions O2, O3, O6, O7, O9, O12.
   said until the review of task F.8 that only the call with no location was refused. That
   was wrong.) That is one more reason for server before web: if the web is deployed first,
   nobody can add a vendor until the server is deployed.
-- **The server-first window can leave an old web bundle on an empty household.** An old
+- **The server-first window can leave an old web bundle on an empty household.** (Written
+  before the shim. With the shim, an old bundle hides Delete on its `isDefault` location, so
+  it cannot delete the last one itself. The case that remains: after the web deploy, a device
+  with the NEW bundle in the same household deletes the last location, and a device that
+  still has the old bundle gets an empty list. H4 runbook 8.3.) An old
   bundle on the new server can delete the household's last location, because the server no
   longer refuses it. That bundle has no `NoLocationsGate`, and its `ActiveLocationProvider`
   keeps the stale active id when the list is empty. So Pantry, Shopping and Cooking show a
@@ -1590,14 +1594,17 @@ Now the new server still accepts everything `main`'s old bundle sends, for ONE r
 
 | Shim field (`@deprecated`) | Value |
 |---|---|
-| `Location.isDefault` | `true` for the first location of the caller's `locations` list (by `order`, then `id`), else `false` |
-| `CheckoutItemInput.itemId` (`cartItemId` becomes optional) | the row of that item is bought at its STORED amount; the old `quantity` (a stock total) is ignored |
+| `Location.isDefault` | `true` for the first location of the caller's `locations` list (by `order`, then `id`), else `false`. Not always the row `main` marked: on `main` the default was a stored flag, so a row could sit above it (runbook 8.3) |
+| `CheckoutItemInput.itemId` (`cartItemId` becomes optional) | the row of that item is bought at its STORED amount; the old `quantity` (a stock total) is ignored; an `itemId` with no row being bought is skipped, as `main`'s server did. The amount rule of `CART_CHANGED` cannot fire for this shape (runbook 8.3) |
 | `ConsumeRecipesItemInput.packedQuantity`, `.unpackedQuantity`, `.quantity` | ignored; the old `delta` is already the amount used |
 
 So the whole households release deploys **server first, then web**. The H4 runbook, section
 8.3, has the full list of differences, the order, and the checks to run on an old device
 between the two deploys. `apps/server/src/test/oldBundleCompat.test.ts` validates a copy of
-`main`'s documents (`apps/server/src/test/fixtures/main-web-operations/`) against the schema.
+`main`'s documents (`apps/server/src/test/fixtures/main-web-operations/`) against the schema,
+and compares a copy of `main`'s server schema
+(`apps/server/src/test/fixtures/main-server-schema.graphql`) with the current one: the
+breaking and dangerous changes must be exactly the known lists.
 
 The checkpoint release runs the H3a, H3b, H3c-1 and H4 runbooks, then an H5 section (now
 section 8 of the H4 runbook). Rehearse
@@ -1670,14 +1677,25 @@ and one test-only override in shipped code.
   `location.resolver.ts`), `CheckoutItemInput.itemId` (make `cartItemId` `ID!` again; delete
   `checkoutInputShape` and `fromOldCheckoutInput` in `cart.resolver.ts`), and
   `ConsumeRecipesItemInput.packedQuantity`, `.unpackedQuantity` and `.quantity`. Delete
-  `apps/server/src/test/fixtures/main-web-operations/` and
-  `apps/server/src/test/oldBundleCompat.test.ts` with them. Until then, a new web document must
-  not select them (that test fails if one does).
+  `apps/server/src/test/fixtures/main-web-operations/`,
+  `apps/server/src/test/fixtures/main-server-schema.graphql` and
+  `apps/server/src/test/oldBundleCompat.test.ts` with them, and the request-cache entry for
+  `isDefault`: `firstLocationIdOf` in `location.resolver.ts`, `RequestCache.firstLocationIds`
+  in `context.ts` and its `delete` in `forgetLocationRoles` (`lib/authz.ts`). Until then, a
+  new web document must not select them (that test fails if one does).
+- **While `cartItemId` is optional, `tsc` does not catch a web checkout that forgets it.** The
+  generated web type is `cartItemId?: InputMaybe<Scalars['ID']['input']>`. And
+  `NoDeprecatedCustomRule`, which `oldBundleCompat.test.ts` runs on the web documents, does
+  not flag a deprecated INPUT field passed through a variable, so a web call that sends
+  `itemId` would not be flagged either. Only the resolver's `checkoutInputShape` and the web's
+  own tests guard it. Both gaps end when the shim is removed.
 - **The shim is proved against the Prisma fakes and by GraphQL validation only.** No E2E test
   runs `main`'s old bundle against the new server. The checks on an old device in section 8.3
   of the H4 runbook are the real-world proof, and they are manual.
-- **`Location.isDefault` costs one extra read per location in a list.** The role map is cached
-  per request, but the "first location" read is not. Accepted for one release.
+- **`Location.isDefault` read: fixed in the review of the shim.** It cost one read per
+  location in a list. The first id is now kept on `ctx.requestCache.firstLocationIds`, one
+  read per household per request, and `forgetLocationRoles` clears it around every root
+  mutation field, so a reorder, create or delete in the same request is seen.
 - **A removed member's open tab is not told.** Live events stop reaching them
   (`shouldDeliver` checks membership), so their screen is stale until their next request fails.
   H5b's `NO_HOUSEHOLD` handler covers the next request; nothing pushes it sooner.
@@ -1815,6 +1833,9 @@ Filled in from the task reports and reviews.
 | F.9 | Files: `hooks/CLAUDE.md`, `routes/CLAUDE.md`, `locations/CLAUDE.md` | Already written by F.3–F.7 and their reviews. F.9 added only the N3 note to `routes/CLAUDE.md` |
 | Deploy shim (after F.9) | (brief) "the new server still ACCEPTS every field the old `main` bundle selects" | Selected fields were not the only break. Two INPUT types changed shape in H3b (`CheckoutItemInput`, `ConsumeRecipesItemInput`), and document validation cannot see that: the documents only declare `[CheckoutItemInput!]!`, and the variables fail later, at coercion. `findBreakingChanges` between the two schemas found them. Both are shimmed too |
 | Deploy shim (after F.9) | (H3a runbook) the old bundle's default location is the `isDefault` row | The column is gone. The shim gives `true` to the first location of the CALLER's list, not the household's first: a person with no role on the household's first location would otherwise have no default |
+| Shim review | (the shim commit) "Document validation alone does not see an input type change; the variable test does" | The variable test covered only `Checkout` and `ConsumeRecipes`. Making `ItemInput.estimatedDueDays` `Int!` or deleting `TagInput.parentId` (both sent by `main`'s import) left it green. `oldBundleCompat.test.ts` now compares `main`'s schema with the current one (`findBreakingChanges`, `findDangerousChanges`) against exact lists |
+| Shim review | (the shim commit) "All the `CART_CHANGED` rules then apply" to the old checkout shape | The amount rule cannot fire: the amount is copied from the same read it is compared with. And an `itemId` with no row being bought was `CART_CHANGED`, where `main`'s server skipped it, so an old device kept failing until a reload. It is skipped now |
+| Shim review | (the shim commit) `isDefault` "keeps each correct" | One location is always the default, but not always the one `main` marked: on `main` the default was a stored flag, so a row could sit above it (runbook 8.3) |
 
 ## Status
 

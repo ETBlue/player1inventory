@@ -243,7 +243,7 @@ PR. It is not merged and not deployed.** Plan:
 
 | Gap | Effect |
 |---|---|
-| **old web, new server** (server first) | **works.** The old bundle selects no new field. Two small things: an old bundle can delete the household's last location, because the server no longer refuses it, and then Pantry, Shopping and Cooking show a spinner that never ends (the old bundle has no empty screen). No data is lost; adding a location from the settings page ends it. |
+| **old web, new server** (server first) | **Replaced by 8.3 for the households release.** This row was written for H5a alone, after H3a's server was live. In the households release the old bundle is `main`'s, and 8.3 says what it sees. Kept for the record: **works.** The old bundle selects no new field. Two small things: an old bundle can delete the household's last location, because the server no longer refuses it, and then Pantry, Shopping and Cooking show a spinner that never ends (the old bundle has no empty screen). No data is lost; adding a location from the settings page ends it. |
 | **new web, old server** (web first) | **cloud mode is unusable.** `GetLocations` selects `myRole`, which the old server does not have, so the query fails GraphQL validation and no page can load its location. Also, **no vendor can be created at all**: the new `CreateVendor` document declares `$locationId: ID`, and the old argument is `ID!`, so every call fails with `Variable "$locationId" of type "ID" used in position expecting type "ID!"`, with or without a location |
 
 ### 8.3 H5a in the same checkpoint release as H3a — server first, with a shim
@@ -272,9 +272,14 @@ Found by validating every operation in `origin/main:apps/web/src/apollo/operatio
 
 | Old bundle sends | Where | Shim | Value given, and why |
 |---|---|---|---|
-| `Location.isDefault` (selected) | `GetLocations`, `CreateLocation`, `UpdateLocation`, `ReorderLocations`, `BulkCreateLocations`, `BulkUpsertLocations` | the field is back, `Boolean!` | `true` for the first location of the caller's `locations` list (by `order`, then `id`), `false` for every other and for a location the caller has no role on. The old bundle uses it to pick the active location, as the import's target location, and to hide Delete. With `false` everywhere the import would have no target, and the old bundle could delete the last location, for which it has no empty screen |
-| `CheckoutItemInput { itemId, quantity }`, where `quantity` is the client's stock total | `Checkout` | `itemId` is back; `cartItemId` is optional | the server finds the cart row by its item and buys the STORED amount, as the old server did. The old `quantity` is ignored. Every `CART_CHANGED` rule still applies. Each entry needs exactly one of `cartItemId` and `itemId`, the same in all entries; anything else is `BAD_USER_INPUT` |
+| `Location.isDefault` (selected) | `GetLocations`, `CreateLocation`, `UpdateLocation`, `ReorderLocations`, `BulkCreateLocations`, `BulkUpsertLocations` | the field is back, `Boolean!` | `true` for the first location of the caller's `locations` list (by `order`, then `id`), `false` for every other and for a location the caller has no role on. The old bundle uses it to pick the active location, as the import's target location, and to hide Delete. With `false` everywhere the import would have no target, and the old bundle could delete the last location, for which it has no empty screen. The first id is read once per household per request, not once per location |
+| `CheckoutItemInput { itemId, quantity }`, where `quantity` is the client's stock total | `Checkout` | `itemId` is back; `cartItemId` is optional | the server finds the cart row by its item and buys the STORED amount, as the old server did. The old `quantity` is ignored. An `itemId` with no row being bought is skipped, as the old server did. **Not every `CART_CHANGED` rule applies.** The amount rule cannot fire, because the amount is copied from the same read it would be compared with: a co-member's change that committed before the read is bought at the new amount, as on the old server. Still `CART_CHANGED`: the same `itemId` twice, a row being bought that the input leaves out, and a row changed or deleted between the read and the claim (the claim's `deleteMany` still stops a double buy). Each entry needs exactly one of `cartItemId` and `itemId`, the same in all entries; anything else is `BAD_USER_INPUT` |
 | `ConsumeRecipesItemInput { packedQuantity, unpackedQuantity, quantity }` beside `delta` | `ConsumeRecipes` | the three fields are back, optional | ignored. The old bundle's `delta` is already "minus the amount used", the value the new server needs |
+
+**The default can move.** On `main`, `isDefault` was a stored flag, not "the first by
+`order`", so a location could sit above it. On such a household the old bundle now locks a
+different row, shows Delete on its old default, and uses a different import target and
+active-location fallback. No data is lost.
 
 Not shimmed, because no `main` document uses them: the six `userId` fields (#359 step one
 removed every selection), `purgeUserData` and `PurgeResult`. One old document,
@@ -285,16 +290,21 @@ The test that keeps this true: `apps/server/src/test/oldBundleCompat.test.ts`. I
 every operation of a COPY of `main`'s documents
 (`apps/server/src/test/fixtures/main-web-operations/`) against the current schema, checks the
 old checkout and cooking variables, and fails if a current web document selects a deprecated
-field.
+field. It also compares a COPY of `main`'s server schema
+(`apps/server/src/test/fixtures/main-server-schema.graphql`) with the current one:
+`findBreakingChanges` must return exactly the eight changes above, and
+`findDangerousChanges` only `CheckoutItemInput.cartItemId`. Document validation alone does
+not look inside an input type sent as a variable, so this comparison is what catches a
+change to, for example, `ItemInput` or `TagInput`, which `main`'s import sends.
 
 #### Mutations an old bundle calls that now mean something else (they still work)
 
 | Mutation | What changed on the new server | Effect on an old bundle |
 |---|---|---|
 | every write | a household or location role is checked | none today: each person is the owner of their own household, with `organizer` on every location they made |
-| `deleteLocation` | the last location can be deleted (F.7) | the old bundle hides Delete on its `isDefault` location, so it cannot delete the last one |
+| `deleteLocation` | the last location can be deleted (F.7) | the old bundle hides Delete on its `isDefault` location, so it cannot delete the last one. **One case remains:** after the web deploy, a device with the NEW bundle in the same household (for example the same person's other device) can delete the last location. A device that still has the old bundle then gets an empty list and shows a spinner that never ends, until it accepts the update. No data is lost beyond what the delete removed |
 | `reorderLocations` | must name the household's full set (F.2) | the old bundle sends its whole `locations` list, which is the full set while nobody shares a household |
-| `checkout` | refuses a changed cart with `CART_CHANGED` | the old bundle shows a plain error. Reload and try again |
+| `checkout` | refuses a changed cart with `CART_CHANGED` | the old bundle shows a plain error. Reload and try again. Only a real change refuses it: an item the old screen still lists but the cart no longer buys is skipped, so a retry does not keep failing |
 | the 22 import mutations, `clearAllData` | role gate, household checks, no fallback location (H4) | as in section 4, row "old web, new server" |
 | `createVendor` | checks its location is in the household | none: the old bundle sends the active location |
 
@@ -317,9 +327,12 @@ Then deploy the web and do 8.4.
 
 #### Removing the shim (the release after households)
 
-Delete `Location.isDefault` and its resolver, `CheckoutItemInput.itemId` (and make
+Delete `Location.isDefault` and its resolver, with `firstLocationIdOf` in
+`location.resolver.ts`, the `firstLocationIds` entry of `RequestCache` (`context.ts`) and
+its `delete` in `forgetLocationRoles` (`lib/authz.ts`); `CheckoutItemInput.itemId` (and make
 `cartItemId` `ID!` again, removing `checkoutInputShape` and `fromOldCheckoutInput` in
-`cart.resolver.ts`), the three `ConsumeRecipesItemInput` fields, the fixture folder, and
+`cart.resolver.ts`); the three `ConsumeRecipesItemInput` fields; the fixture folder
+`main-web-operations/`, the schema copy `main-server-schema.graphql`, and
 `oldBundleCompat.test.ts`. Only after every device has the households bundle.
 
 ### 8.4 Checks after the deploy
