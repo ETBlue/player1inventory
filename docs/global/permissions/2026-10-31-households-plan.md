@@ -45,7 +45,7 @@ force-push, and a merge breaks the repo's rebase-only rule.
 | H2 `User` model, Clerk webhook, `lastSeenAt`, E2E user support | **Full** — tasks 2.1–2.7 | 2 |
 | H3 Households, roles, data migration, read scoping | Outline. Split into H3a, H3b and H3c; detailed plan for H3a: [2026-11-04-households-plan-h3a.md](2026-11-04-households-plan-h3a.md); design for H3b: [2026-11-14-households-h3b-design.md](2026-11-14-households-h3b-design.md), plan: [2026-11-14-households-plan-h3b.md](2026-11-14-households-plan-h3b.md) | 3 (now H3a ✅ merged into `develop` #375, `chore/build-shared-types` ✅ merged into `develop` #376, H3b ✅ merged into `develop` #377, H3c designed 2026-11-16: [design](2026-11-16-households-h3c-design.md); H3c-1 ✅ merged into `develop` #379: [plan](2026-11-16-households-plan-h3c-1.md); H3c-2 ✅ merged into `develop` #380: [plan](2026-11-16-households-plan-h3c-2.md)) |
 | H4 Import and export | Outline. Detailed plan: [2026-11-16-households-plan-h4.md](2026-11-16-households-plan-h4.md) ✅ merged into `develop` (#382, merge `bf87e839`), not deployed; deploy: [runbook](../backend/2026-11-17-deploy-runbook-households-h4.md) | 4 |
-| H5 Invites, join, members, read-only views | Outline | 5 |
+| H5 Invites, join, members, read-only views | Outline. Split into H5a, H5b and H5c; detailed plan for H5a: [2026-11-17-households-plan-h5.md](2026-11-17-households-plan-h5.md) (H5a ✅ built 2026-11-17 on `feature/households-h5`, awaiting PR, not merged, not deployed; H5b and H5c outlined) | 5 |
 | H6 Transfer, hand-over, purges, activity | Outline | 6 |
 | H7 Personal location order, household switch and create | Outline | 7 |
 
@@ -752,6 +752,15 @@ brainstorming:
   (`/settings/household/locations/$id`), switcher filtering and the **View only** badge,
   read-only views for members and viewers, the empty "no locations" screens.
 - Two-user cloud E2E with one browser context per user.
+
+**Split in three (H5 decision O1).** **H5a ✅ built 2026-11-17, awaiting PR:** the web
+learns each person's roles (`Location.myRole`, `Location.hasOrganizer`,
+`householdLocations`, `usePermissions`), read-only views for a household `member` and a
+location `viewer`, the **View only** badge, the empty "no locations" screens (decision H13
+lifted), and a browser context per test user in E2E. **H5b** (invites, `/join/$token`, the
+Members page) and **H5c** (the location people page) are outlined in the
+[H5 plan](2026-11-17-households-plan-h5.md). "Switcher filtering" needed no work: the
+switcher already listed only locations with a role (H3a task 3.6).
 
 ### H6 — Transfer, hand-over, purges, activity
 

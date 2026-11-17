@@ -46,7 +46,9 @@ opens the same Add Location dialog as the settings page.
   no stock.
 - It shows the screen only when `mode === 'cloud'` and `useLocations().data` is a loaded,
   EMPTY array. While loading, or after a failed read with nothing cached, `data` is
-  `undefined` and the page renders as before.
+  `undefined` and the page renders as before. **Known gap:** "as before" for the item Stock
+  tab after a failed read means a blank tab (`stock.tsx`, `if (!viewed) return null`), with
+  no error and no retry. Older than H5; recorded in the H5 plan's *Known gaps*.
 - **Before F.7 these pages showed a spinner forever** with an empty list: every
   location-scoped read waits for `useCloudLocationKnown`, which never became true (Review
   Focus case 3).

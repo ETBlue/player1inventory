@@ -269,6 +269,7 @@ The migration `drop_user_scope` (H3a plan task 3.14) makes `householdId` `NOT NU
 A user who never invites anyone sees the same pantry as before. The only visible changes are
 the household name in the 🏠 item, "Home" as the name of a new account's first location, and
 that any location except the last one can be deleted (see *First sign-in* and decision H13).
+Since H5a the last one can be deleted too (decision H13 lifted).
 
 ### Default names
 
@@ -415,6 +416,12 @@ default location from being deleted. With it gone, `deleteLocation` refuses the 
 last location with a new error code, `LAST_LOCATION`, until H5. An empty household has no
 screen to land on before H5 builds the "no locations" screen. Any other location can now be
 deleted in cloud. Local mode does not change.
+
+**Lifted in H5a (task F.7, owner answer O8).** The server no longer refuses the last
+location, and `LAST_LOCATION` is gone. With no location, Pantry, Shopping, a cart, Cooking
+and the item page's Stock and log tabs show "You have no locations in this household yet"
+and **Create a location** (`NoLocationsGate`). `deleteLocation` still takes
+`lockHousehold` first (H5 decision T8).
 
 Two deletes at once could both count two locations and both delete. To stop that,
 `deleteLocation` first locks the household row (`lockHousehold` in
@@ -570,7 +577,8 @@ location filters.
   location, not `userId`.
 - **`clearAllData` then re-creates a "Home" location**, with an `organizer` row for the
   caller, in the same transaction. The plan gives decision H13 as the reason: the household
-  must never be left with no location before H5. This differs from the *Clear household* row
+  must never be left with no location before H5. (H5a lifted H13 but kept this: a cleared
+  household still starts with "Home", so the person can start again at once.) This differs from the *Clear household* row
   in the table above, which deletes "all locations" and keeps nothing of them.
 - `/e2e/cleanup` deletes by the households the user **owns**, plus the user's own memberships
   in other households, then the three new tables, then the `User` row. It never deletes a
@@ -910,7 +918,7 @@ and the owner agreed to the order below. Detail:
 | `chore/build-shared-types` | ✅ Built 2026-11-13, PR not merged. The server build bundles with esbuild, so the server can import shared code from `@p1i/types` at runtime (needed by H3b, decision H7). The server's own copies of `cartIdFor`, `parseCartId` and `isBeingBought` are deleted. [Design](../backend/2026-11-13-build-shared-types-design.md) | No |
 | **H3b** | Shared carts: `@@unique([cartId, itemId])` (decision H8), the 15 `CartItem.userId` filters, `Cart.userId` dropped, checkout and `consumeRecipes` in one transaction with a server-computed total. Fixes #358. **Must merge before H5 starts** | No (one person per household) |
 | H4 | ✅ **Merged into `develop` 2026-11-17 (#382, merge `bf87e839`), not deployed.** Import and export: the new id rule, and `requireOwnRowOrUnclaimed` moved to the target household scope (#327 itself is already fixed by #354). Replaces H3a's import fallback location (decision H12) | The "Import into which location?" dialog |
-| H5 | Invites, join, members page, location people page, switcher filtering, read-only views. Lifts H3a's "last location" refusal (decision H13) | **Yes: sharing works** |
+| H5 | Split in three PRs (H5 decision O1), [plan](2026-11-17-households-plan-h5.md). **H5a ✅ built 2026-11-17 on `feature/households-h5`, awaiting PR, not merged, not deployed:** `Location.myRole`, `Location.hasOrganizer`, the `householdLocations` query, a location viewer reads carts, `usePermissions` and read-only views for a household `member` and a location `viewer`, the **View only** badge in the switcher (the switcher already listed only locations with a role, so there was nothing to filter), H13 lifted with an empty locations screen, and a browser context per test user in E2E. **H5b** (invites, join, members page) and **H5c** (location people page) are outlined only | H5a alone: the last location can be deleted. **H5a + H5b + H5c: sharing works** |
 | H6 | Transfer, hand-over, offers banner, purges, activity log | Yes: story 2 |
 | H7 | Personal location order and sort, household switch and create. Now also `LocationPreference`, `UserPreference` and `dataUpdatedAt` (decision H6), and the end of the shared `Location.order` (decision H5) | Yes |
 
@@ -962,7 +970,7 @@ The root `CLAUDE.md` rules apply. Points special to this design:
   location went to the caller's first location by `order`. **Closed in H4:** the fallback is
   deleted and the dialog replaces it. Carts it stored may still have an id whose prefix is not
   their location; the H4 runbook counts them before the release.
-- **The last location cannot be deleted until H5** (decision H13).
+- **The last location cannot be deleted until H5** (decision H13). Lifted in H5a, task F.7.
 - **The read-only member rules are a first version** and may change after feedback.
 - **Hand-over needs a deleted Clerk account.** If nobody deletes it, the family cannot take over.
 - **No email.** A person learns of an invite only from the link, and of an offer only by opening
@@ -998,8 +1006,9 @@ The root `CLAUDE.md` rules apply. Points special to this design:
   one fixed test user (`VITE_E2E_TEST_USER_ID`), and the API takes the user from the
   `x-e2e-user-id` header. A two-user spec needs a browser context per user. There is no
   test route yet to create a `User` row or to send a fake `user.deleted`. (Phase H2 added
-  E2E-only user routes, and H3a adds `POST /e2e/household-members`, decision H9. A browser
-  context per user is still H5.)
+  E2E-only user routes, and H3a adds `POST /e2e/household-members`, decision H9. H5a task
+  F.8 adds a browser context per user: `newUserContext` in `e2e/helpers/userContext.ts`,
+  and `shared-household.spec.ts` uses it.)
 - **H3a's two migrations join `verify:migration`.** The script asserts the final state, so the
   PR 1 assertions on `isDefault` must be replaced in task 3.14. It must be added to the `MIGRATIONS` list in
   `apps/server/scripts/verify-migration.ts`. That script now refuses to run if a test database

@@ -105,9 +105,11 @@ marked "cannot happen before H5".
 - **Blocks:** H6 (transfer needs a second member) and H7 (the household switch needs a person
   in two households, which H5b creates).
 - **Deploy order:** H5a adds GraphQL fields the new web bundle selects, so the **server
-  deploys before the web**, the same rule as H4 (H4 decision T9). H5a adds no new conflict
-  with the H3a rule (web before server); the H4 runbook already explains how both fit in one
-  release.
+  deploys before the web**, the same rule as H4 (H4 decision T9). **Correction (task
+  F.9):** this line said "H5a adds no new conflict with the H3a rule (web before server)".
+  It does. `GetLocations` selects `myRole`, so the new bundle on `main`'s old server fails
+  every location query, and in a release that also carries H3a neither order is safe. See
+  the H4 runbook, section 8.3, for the options; the owner decides.
 
 ### What the user gets (once merged AND deployed)
 
@@ -1398,6 +1400,22 @@ not exist), then the code.
   same files that run there, plus `a11y.spec.ts`: **159 passed, 11 skipped, 0 failed**
   (3.1m). F.9 runs the whole suite.
 
+**Review of F.8 (`822b45bb..491dae25`), fixed in F.9.** No must-fix bug. Each new test was
+shown red by a mutation, copied aside first and restored from the copy (`diff -q` clean):
+
+| Finding | Fix | Mutation | Red |
+|---|---|---|---|
+| S1: no test of `useItems` while `GetLocations` loads | `useItems.cloud.test.tsx`: GetLocations waits 10 s; no GetItems request, `isLoading` true | `noLocations` = `(locations.length ?? 0) === 0` | yes (`isLoading` false; GetItems was sent) |
+| S2: the deploy note said only the no-location `createVendor` fails on an old server | *Deploy notes* corrected: EVERY `createVendor` fails (`$locationId: ID` against `ID!`) | — | — |
+| N1: `useCreateItem` with no location | `useItemStockWrites.cloud.test.tsx`: catalog only, no UpsertItemStock | delete the `if (locationId === undefined) return …` block | yes |
+| N1: `useUpdateItem` resolves the location before the config write | same file: `NoCloudLocationError`, no UpdateItem | move the resolve after the config write | yes (`UpdateItem` 1) |
+| N1: `useApplyUnitSwitch` with no location | same file: the switch and GetRecipes run, no PantryData | drop the `=== undefined` guard; and, separately, use `useRequiredCloudLocationId` | yes, both |
+| N2: `useVendors.test.ts` could not tell "key omitted" from `locationId: undefined` | the test also checks `Object.keys(variables)` is `['name']` (the title was kept: it now proves what it says) | `variables: { name, locationId }` always | yes; the old `toHaveBeenCalledWith` line alone stays green |
+| N3: a failed `GetLocations` with nothing cached leaves the Stock tab blank | recorded in *Known gaps* and `routes/CLAUDE.md`, not fixed | — | — |
+| N4: the bundle grep must use the quoted key | `e2e/CLAUDE.md`. Measured on the F.9 production build: `"e2e-user-id"` 0 files, `e2e-user-id` 1 file | — | — |
+| N5: a throw in `openAs` left its context open | `openAs` pushes the context into `contexts` before `newPage` | — | — |
+| `createVendor(locationId: "")` | `catalog-household.resolver.test.ts`: `FORBIDDEN`, nothing written | `if (locationId)` instead of `!= null` | yes |
+
 ## Task F.9 — docs, deploy note and the final gate
 
 **Files:** root `CLAUDE.md` (*Authorization (cloud)*: `myRole`, `hasOrganizer`,
@@ -1414,6 +1432,29 @@ and *Status*.
 - [ ] **Step 2:** the full gate, then `pnpm test:e2e:all`. Every failure is a hard stop. Copy
   `test-results/` aside before a re-run. Report load average and the three project results.
 - [ ] **Step 3:** commit `docs(households): record H5a`. `git status` clean.
+
+**As built (2026-11-17).** The review fixes of F.8 came first (see the table after F.8's
+*As built*). Then the docs: root `CLAUDE.md` (*Authorization (cloud)*: an H5a table; the
+E2E paragraph for `shared-household.spec.ts`; the cloud spec count; the test counts),
+`hooks/CLAUDE.md` and `routes/CLAUDE.md` (one note each; the rest was written by F.3–F.7),
+`e2e/CLAUDE.md` (the count table), the design (*Sequencing*, H13 lifted, *Known gaps*), the
+phase plan (H5 row and outline), `docs/INDEX.md`, and section 8 of the H4 runbook (deploy).
+
+**The gate, Node 22.17.1, on the finished tree:**
+
+| Command | Result |
+|---|---|
+| `pnpm lint` | exit 0 (4 web warnings, 13 `e2e/` warnings, as before) |
+| `pnpm build` | exit 0; no `TS6385` |
+| `(cd apps/web && pnpm build-storybook)` | exit 0 |
+| `pnpm check` | exit 0 |
+| `pnpm test` | web **2922 / 305 files**, server **1820 / 70 files**, `scripts/spec` **70**; 0 failed |
+| `pnpm test:e2e:all` | **all three passed**, no failure and no flaky test: `local` 178 passed / 11 skipped (3m33s), `cloud` 161 passed / 7 skipped (35m29s), `pwa` 73 passed (1m38s) |
+
+Load average was 13.5 at one point before the E2E run (a browser on the same machine), 8.8
+when it started and 7.4 when it ended. That is why `cloud` took 35 minutes; nothing failed,
+so no re-run was needed. Collected with `--list`: `local` 189 in 23 files, `cloud` 168 in
+34, `pwa` 73 in 2.
 
 ---
 
@@ -1508,7 +1549,14 @@ Needs owner decisions O2, O3, O6, O7, O9, O12.
   still works) or the web is deployed. No data is lost. The window ends when the web
   deploys.
 
-The checkpoint release runs the H3a, H3b, H3c-1 and H4 runbooks, then an H5 section. Rehearse
+**H5a with H3a in one release has no safe order** (found in task F.9). H3a needs the web
+first, because `main`'s bundle selects `Location.isDefault`. H5a's bundle selects
+`Location.myRole` in `GetLocations`, so with the web first the new bundle fails every
+location query on `main`'s server. The H4 runbook, section 8 (H5a), gives the gaps and three
+options. The owner decides before the release.
+
+The checkpoint release runs the H3a, H3b, H3c-1 and H4 runbooks, then an H5 section (now
+section 8 of the H4 runbook). Rehearse
 every new migration on a fresh Neon branch of production first, like H3a. The test database is
 migrated by hand, by the owner or with the owner's consent.
 
@@ -1682,6 +1730,10 @@ Filled in from the task reports and reviews.
 | F.8 | Test 2: B "sees no Done button" | Done shows only when the cart has rows, so the absence alone proves little. The test checks OWNER's Done is visible first, after the row is added |
 | F.8 | Clean up O and B in both hooks | Also `E2E_USER_ID`: if the override breaks, every context writes as that user, and the next spec sees the rows |
 | F.8 | Step 5: run `a11y.spec.ts` for the new spec | `a11y.spec.ts` runs in `local` and `pwa`, where there are no users. The spec adds no page, so it adds no scan |
+| Relations, Deploy notes | "H5a adds no new conflict with the H3a rule (web before server)" | It does. `GetLocations` selects `myRole`, so the new bundle on `main`'s server fails every location query. With H3a in the same release, neither order is safe. Found in F.9; options in the H4 runbook, section 8.3; the owner decides |
+| Deploy notes (review of F.7) | An old server refuses only the `createVendor` call with no location | The variable's TYPE is checked, not its value: every `createVendor` from the new bundle fails on an old server. Corrected in the review of F.8 |
+| F.9 | Files: "a deploy section" | No new runbook file: section 8 of the H4 runbook, like H3c-2's section 9 in the H3c-1 runbook |
+| F.9 | Files: `hooks/CLAUDE.md`, `routes/CLAUDE.md`, `locations/CLAUDE.md` | Already written by F.3–F.7 and their reviews. F.9 added only the N3 note to `routes/CLAUDE.md` |
 
 ## Status
 
@@ -1692,4 +1744,8 @@ Task F.4's review fixes are done (`0a6321a2`, `4cab8303`, `fe085176`). Task F.5 
 member sees the catalog read-only) is done, with review fixes. Task F.6 (a location viewer
 sees the location read-only) is done, with review fixes. Task F.7 (a household can have no
 locations) is done; its `verify-migration.ts` rewrite is type-checked, not run. Its review
-fixes are done. Task F.8 (two people in two browsers) is done. Task F.9 is next.
+fixes are done. Task F.8 (two people in two browsers) is done. Its review fixes and task
+F.9 (docs, deploy note, the final gate) are done. **H5a is built and waits for its PR. It is
+not merged and not deployed.** Before the checkpoint release, the owner must decide how to
+deploy H5a together with H3a (H4 runbook, section 8.3): no order is safe. H5b is next, with
+its own detailed plan.

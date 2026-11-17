@@ -108,7 +108,23 @@ that really set up that role.
 
 ## Authorization (cloud)
 
-> See `docs/global/permissions/2026-10-04-households-design.md` (which replaces the role table of `docs/global/permissions/2026-08-29-design-location-rbac.md`). Rights come from roles, not from having created the row. **Households are built in H3a** (merged into `develop` in #375, not deployed; deploy steps in `docs/global/backend/2026-11-11-deploy-runbook-households-h3a.md`). **Shared carts are built in H3b** (merged into `develop` in #377, not deployed; deploy steps in `docs/global/backend/2026-11-15-deploy-runbook-households-h3b.md`): a cart belongs to its location, every cart read and write is scoped by location role, `Cart.userId` is dropped, and `CartItem.userId` means only "added by". **Import and export are built in H4** (merged into `develop` in #382, merge `bf87e839`, not deployed; deploy steps in `docs/global/backend/2026-11-17-deploy-runbook-households-h4.md`). H4 needs the **server before the web**, the opposite of H3a; that runbook says how the two rules fit in one release. Each person still has exactly one household until H5, so nothing is shared yet.
+> See `docs/global/permissions/2026-10-04-households-design.md` (which replaces the role table of `docs/global/permissions/2026-08-29-design-location-rbac.md`). Rights come from roles, not from having created the row. **Households are built in H3a** (merged into `develop` in #375, not deployed; deploy steps in `docs/global/backend/2026-11-11-deploy-runbook-households-h3a.md`). **Shared carts are built in H3b** (merged into `develop` in #377, not deployed; deploy steps in `docs/global/backend/2026-11-15-deploy-runbook-households-h3b.md`): a cart belongs to its location, every cart read and write is scoped by location role, `Cart.userId` is dropped, and `CartItem.userId` means only "added by". **Import and export are built in H4** (merged into `develop` in #382, merge `bf87e839`, not deployed; deploy steps in `docs/global/backend/2026-11-17-deploy-runbook-households-h4.md`). H4 needs the **server before the web**, the opposite of H3a; that runbook says how the two rules fit in one release. Each person still has exactly one household until H5b (invites), so nothing is shared yet in production.
+>
+> **Roles in the web, read-only views and empty households are built in H5a** (`feature/households-h5`, built 2026-11-17, awaiting PR; not merged, not deployed; plan `docs/global/permissions/2026-11-17-households-plan-h5.md`; deploy notes in section 8 of the H4 runbook). **H5a with H3a in one release has no safe deploy order** (runbook section 8.3); the owner decides before that release. What H5a adds:
+>
+> | Part | What |
+> |---|---|
+> | `Location.myRole` | the caller's counted location role there, or `null`. `GetLocations` and the three location mutations select it, so the web knows every location role (task F.1) |
+> | `Location.hasOrganizer` | `false` when no organizer of the location is still in the household (task F.1) |
+> | `householdLocations` | the settings list: every location of the household for an owner or manager (`myRole: null` = "No access"), the switcher's list for a member (tasks F.1, F.3) |
+> | `vendorCart` for a `viewer` | an unsaved empty cart instead of `FORBIDDEN`; it creates the cart only for `participant` (task F.2) |
+> | `reorderLocations` | refuses a list that is not the household's full set (`BAD_USER_INPUT`, task F.2) |
+> | `deleteLocation` | the LAST location can be deleted. `LAST_LOCATION` is gone (decision H13 lifted, task F.7). `lockHousehold` is still taken first |
+> | `createVendor(locationId:)` | optional. With no location the vendor is written with no cart. `""` is not "no location": it is refused like any unknown id |
+> | web: `usePermissions()` | one hook for "may I edit the catalog" and "may I edit this location" (`apps/web/src/hooks/CLAUDE.md`). It hides controls only; the server checks every write |
+> | web: read-only views | a household `member` sees the catalog read-only; a location `viewer` sees that location's stock, carts and cooking read-only; the switcher shows **View only** (`apps/web/src/routes/CLAUDE.md`, *Read-only views by role*) |
+> | web: no locations | `NoLocationsGate` shows "You have no locations in this household yet" on Pantry, Shopping, a cart, Cooking and the item Stock and log tabs. A cloud write that needs a location throws `NoCloudLocationError` before anything is sent (`useRequiredCloudLocationId`) |
+> | E2E: a browser per user | `newUserContext(browser, userId)` (`e2e/helpers/userContext.ts`) makes a context that acts as `userId`; see *E2E* below and `e2e/CLAUDE.md` |
 >
 > | Role ladder | Names, weakest first | Governs |
 > |---|---|---|
@@ -539,9 +555,10 @@ skips half the work. Nothing else in the gate checks `e2e/` formatting: `pnpm li
 `apps/server`'s build already carries a second pass for `scripts/`.
 
 **`pnpm test` runs both workspaces.** The root script is `pnpm -r test`, which recurses into
-every workspace package that defines a `test` script — today `apps/web` (**2678 tests**
-across 283 files) and `apps/server` (**1765** across 67). Measured 2026-11-17 on
-`feature/households-h4`, after households H4 (it said 2586 / 281 and 1566 / 64 on
+every workspace package that defines a `test` script — today `apps/web` (**2922 tests**
+across 305 files) and `apps/server` (**1820** across 70). Measured 2026-11-17 on
+`feature/households-h5`, after households H5a task F.9 (it said 2678 / 283 and 1765 / 67
+earlier that day on `feature/households-h4`, after households H4, 2586 / 281 and 1566 / 64 on
 2026-11-16 after households H3c-2, 2577 / 281 and 1412 / 61
 after H3c-1 the same day, 2543 / 276 and 1274 / 52 on
 2026-11-15 on `feature/households-h3b`, 2549 / 277 and 1244 / 51 earlier that
@@ -1758,8 +1775,9 @@ Note also that **no *unit* test executes the resolvers against real SQL** — ev
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
 Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
 branch), but only for the spec files listed in the `cloud` project's `testMatch` in
-`e2e/playwright.config.ts` — that list is opt-in and covers **33 of the 37 spec files in
-`e2e/tests/`** (measured 2026-11-17, after households H4 task E.6 added
+`e2e/playwright.config.ts` — that list is opt-in and covers **34 of the 38 spec files in
+`e2e/tests/`** (measured 2026-11-17, after households H5 task F.8 added
+`shared-household.spec.ts`; 33 of 37 earlier that day, after households H4 task E.6 added
 `settings/import-households.spec.ts`; 32 of 36 on 2026-11-16, after households H3c-2 task D.5 added
 `live-pantry.spec.ts`; 31 of 35 after H3c-1 task C.6 added `live-cart.spec.ts`; 30 of 34 on 2026-11-15, after households H3b task B.9 added
 `shared-cart.spec.ts`; it was 29 of 33 on 2026-11-04, after households H3a task 3.11 added
@@ -1963,6 +1981,21 @@ coverage of `importCheck`, the import role gate, "Import into which location?" a
 skipped-location message, and the first spec where the BROWSER is a second person in someone
 else's household. One person in TWO households is still impossible there, so issue #381 has no
 real-SQL test until H5. See `e2e/CLAUDE.md` for its tests.
+
+`shared-household.spec.ts` joined on 2026-11-17 (households H5 task F.8) — 3 cloud test
+cases, with a browser, cloud only (in `local`'s `testIgnore`). The `cloud` project now
+collects **168** tests in **34** files; `local` **189** in 23, `pwa` **73** in 2 (measured
+with `--list` on 2026-11-17, task F.9). **It is the first spec with two BROWSERS that are
+two different people.** The project's own `page` is still `E2E_USER_ID`, because
+`VITE_E2E_TEST_USER_ID` is one value in the web build. Since F.8 the E2E build also reads
+`localStorage['e2e-user-id']` (`getE2ETestUserId` in `apps/web/src/lib/e2eUser.ts`; a
+production build never reads it), and `newUserContext(browser, userId, extraLocalStorage?)`
+in `e2e/helpers/userContext.ts` makes a context that sets it. Its three tests: a household
+`member` sees the catalog read-only; a location `viewer` sees a cart row the owner adds in the
+owner's browser, live, and gets no Done; a location a member creates shows to the owner as
+**No access** and never in the switcher. The 409 order of `addHouseholdMember` still
+applies: add a person to the household BEFORE their context opens a page. See
+`e2e/CLAUDE.md` for the mutation table.
 
 The warning above still holds for everything else — most resolvers are named by no cloud
 spec.
