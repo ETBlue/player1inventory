@@ -95,7 +95,7 @@ export function permissionsFor({
 }: {
   mode: 'local' | 'cloud'
   isLoading?: boolean
-  householdRole?: HouseholdRole | null
+  householdRole?: HouseholdRole | null | undefined
   /** Location id → the caller's role. A missing id is "no role". */
   locationRoles?: Record<string, LocationRole>
 }): Permissions {

@@ -103,7 +103,7 @@ function DraggableTagBadge({
   tagType: TagType
   depth: number
   /** Left out for a read-only household member: no delete, and no drag. */
-  onDelete?: () => void
+  onDelete?: (() => void) | undefined
 }) {
   const { t } = useTranslation()
   const { data: itemCount = 0 } = useItemCountByTag(tag.id)
