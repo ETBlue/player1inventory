@@ -584,7 +584,9 @@
           "title": "No items yet",
           "description": "Use search to add items from this vendor"
         }
-      }
+      },
+      "createForbidden": "Only a household owner or manager can add a vendor.",
+      "createFailed": "Could not add {{name}}. Please try again."
     },
     "locations": {
       "label": "Locations",

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { useItem, useUpdateItem, useVendors } from '@/hooks'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useCreateVendor } from '@/hooks/useVendors'
+import { showVendorCreateError } from '@/lib/vendorCreateError'
 
 export const Route = createFileRoute('/items/$id/relation/vendors')({
   component: VendorsTab,
@@ -46,9 +47,17 @@ function VendorsTab() {
   }
 
   const handleAddVendor = async () => {
-    if (!newVendorName.trim()) return
+    const name = newVendorName.trim()
+    if (!name) return
 
-    const newVendor = await createVendor.mutateAsync(newVendorName.trim())
+    let newVendor: Awaited<ReturnType<typeof createVendor.mutateAsync>>
+    try {
+      newVendor = await createVendor.mutateAsync(name)
+    } catch (err) {
+      // The dialog stays open, so the user can try again.
+      showVendorCreateError(err, name)
+      return
+    }
     if (newVendor?.id) {
       // Immediately assign to current item
       const currentVendorIds = item?.vendorIds ?? []

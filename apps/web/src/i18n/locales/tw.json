@@ -584,7 +584,9 @@
           "title": "尚未建立物資清單",
           "description": "可以透過搜尋功能新增可套用此供應商的品項喔"
         }
-      }
+      },
+      "createForbidden": "只有家庭擁有者或管理者可以新增供應商。",
+      "createFailed": "無法新增{{name}}，請再試一次。"
     },
     "locations": {
       "label": "據點",

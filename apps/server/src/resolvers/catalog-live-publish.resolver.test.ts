@@ -731,6 +731,24 @@ describe('createVendor', () => {
     expect(sortedEvents()).toEqual([change('CART', LOC_GARAGE, 'hh_home'), CATALOG_HOME])
   })
 
+  it('a viewer of the location gets the vendor, no cart, and only CATALOG', async () => {
+    // Given ALICE is only a viewer at LOC_GARAGE (she stays hh_home owner)
+    const row = world.households.state.locationMembers.find(
+      (r) => r.locationId === LOC_GARAGE && r.userId === ALICE,
+    )
+    if (!row) throw new Error('fixture: ALICE has no row at LOC_GARAGE')
+    row.role = 'viewer'
+    const cartsBefore = carts.state.carts.length
+
+    // When she creates a vendor there
+    const res = await run(`mutation { createVendor(name: "Lidl", locationId: "${LOC_GARAGE}") { id } }`, ALICE)
+
+    // Then no cart is written, so no CART event is sent
+    expect(res.errors).toBeUndefined()
+    expect(carts.state.carts).toHaveLength(cartsBefore)
+    expect(events()).toEqual([CATALOG_HOME])
+  })
+
   it("a location of the caller's other household is refused and publishes nothing", async () => {
     // ALICE is organizer at LOC_SECOND (hh_second), and her catalog is
     // hh_home (pinned). Until households H4 task E.3 `createVendor` let that

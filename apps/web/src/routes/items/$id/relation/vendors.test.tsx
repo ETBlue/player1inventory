@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { createItem, createVendor } from '@/db/operations'
 import * as hooksModule from '@/hooks'
+import * as vendorsHooksModule from '@/hooks/useVendors'
 import { routeTree } from '@/routeTree.gen'
 
 // `useUpdateItem` returns a UNION of its two data-mode branches: local mode's
@@ -25,6 +26,23 @@ const pendingCloudUpdateItem = (): ReturnType<
   mutate: () => Promise.resolve(),
   mutateAsync: () => Promise.resolve(undefined),
   isPending: true,
+})
+
+const toastError = vi.fn()
+// The route tree renders sonner's `Toaster`, so the module stays real and
+// only `toast.error` is replaced.
+vi.mock('sonner', async (importOriginal) => {
+  const original = await importOriginal<typeof import('sonner')>()
+  return {
+    ...original,
+    toast: Object.assign(
+      (...a: Parameters<typeof original.toast>) => original.toast(...a),
+      original.toast,
+      {
+        error: (...args: unknown[]) => toastError(...args),
+      },
+    ),
+  }
 })
 
 describe('Vendors Tab', () => {
@@ -312,6 +330,49 @@ describe('Vendors Tab', () => {
         const badge = screen.getByRole('button', { name: /Costco/i })
         expect(badge.querySelector('.animate-spin')).not.toBeNull()
       })
+    })
+  })
+  describe('when creating a vendor fails', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+      toastError.mockReset()
+    })
+
+    it('user sees an error message when a new vendor cannot be created', async () => {
+      // Given the create is refused (a household manager who is only a
+      // viewer of the active location got FORBIDDEN here before H5's fix)
+      vi.spyOn(vendorsHooksModule, 'useCreateVendor').mockReturnValue({
+        mutate: () => Promise.resolve(),
+        mutateAsync: () => Promise.reject(new Error('refused')),
+        isPending: false,
+      } as unknown as ReturnType<typeof vendorsHooksModule.useCreateVendor>)
+      const item = await createItem({
+        name: 'Test Item',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+      })
+      renderVendorsTab(item.id)
+      const user = userEvent.setup()
+
+      // When the user adds a vendor named Lidl
+      await user.click(
+        await screen.findByRole('button', { name: /new vendor/i }),
+      )
+      await user.type(await screen.findByLabelText(/name/i), 'Lidl')
+      await user.click(screen.getByRole('button', { name: /add vendor/i }))
+
+      // Then a toast says it failed, and the dialog stays open
+      await waitFor(() =>
+        expect(toastError).toHaveBeenCalledWith(
+          'Could not add Lidl. Please try again.',
+        ),
+      )
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
     })
   })
 })

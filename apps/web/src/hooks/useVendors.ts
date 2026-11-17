@@ -66,8 +66,9 @@ export function useCreateVendor() {
   const { mode } = useDataMode()
   const { activeLocationId } = useActiveLocation()
   // Resolved at CALL time, not render time. `createVendor(locationId:)` is
-  // `ID!` since PR 3b Task 4 and the server writes a `Cart` row at that
-  // location, so it demands the `participant` location role on it. On a fresh cloud session
+  // `ID!` since PR 3b Task 4. The server asks a location role there (`viewer`
+  // since households H5; it writes the `Cart` row only for `participant` or
+  // higher). On a fresh cloud session
   // the render-time active id is still the `'local'` sentinel: the mutation
   // would be refused with FORBIDDEN and the vendor would never be created.
   // See `useCloudLocationId`.
