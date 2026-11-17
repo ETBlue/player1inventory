@@ -451,9 +451,15 @@ The page an invite link opens. Plan: `docs/global/permissions/2026-11-18-househo
 | cloud, `ALREADY_MEMBER` | the household name, `join.alreadyMember`, a link to the pantry |
 | cloud, `INVALID` | `join.invalid` and a link to the pantry. No name, even if one were sent |
 
-**Join** runs `joinHousehold`, then `switchToHousehold(id)`. A refusal with
-`extensions.reason` `INVITE_INVALID` or `ALREADY_MEMBER` (`hasGraphQLErrorReason`) shows
-the matching text. Any other error shows the toast `join.error` and keeps the button.
+**Join** runs `joinHousehold`, then `switchToHousehold(id, { to: '/' })`, which ends on
+the pantry. It must NOT reload the join page: the invite is used now, so `invitePreview`
+answers INVALID and the person would read "This invite is no longer valid" right after
+joining. A refusal with `extensions.reason` `INVITE_INVALID` or `ALREADY_MEMBER`
+(`hasGraphQLErrorReason`) shows the matching text in an `<output>` (role `status`), and
+focus moves to it (the Join button it replaces held the focus). An `OfflineWriteError`
+shows no second toast (`offlineWriteLink` showed one). Any other error shows the toast
+`join.error` and keeps the button. Every state has an `h1`: `join.heading` ("Join a
+household") where there is no household name to show.
 
 Three things could send a new person away from the link. Each is handled:
 
@@ -461,22 +467,34 @@ Three things could send a new person away from the link. Each is handled:
   (decision T25). Tested as a unit and on the real page with an empty database.
 - **Sign-in.** `CloudAuthGuard` sends a signed-out person to `/sign-in?redirect=<path>`,
   except on `/sign-in` itself. `/sign-in` follows `safeRedirectPath(redirect)`
-  (`lib/safeRedirect.ts`: only a path on this site, else `/`) and passes the same path to
-  Clerk's `forceRedirectUrl` AND `signUpForceRedirectUrl`, so a sign-up returns too
-  (decision T24).
+  (`lib/safeRedirect.ts`) and passes the same path to Clerk's `forceRedirectUrl` AND
+  `signUpForceRedirectUrl`, so a sign-up returns too (decision T24). `safeRedirectPath`
+  resolves the path with `new URL` against this site and checks the RESULT, because
+  `/..//evil.example` and `/%2e%2e//evil.example` pass a plain "starts with `//`" check
+  and still resolve to another host.
 - **Local mode**, the default for a new visitor: the row above.
 
 `/join/…` is full-screen (`isFullscreenPage`).
 
 **The household guard (decision T23).** `HouseholdChangeGuard` (`apollo/`) mounts in the
-root in cloud mode, in the Clerk tree and the E2E tree. When `GetHousehold` answers a
-household id other than the one this tab saw first (or, before it has seen one, the stored
-`last-household-id`), it calls `switchToHousehold`: `clearCache()` (memory and the saved
-copy; `LAST_USER_ID_KEY` stays), remove `active-location-id:cloud`, store the id, reload.
-A join, a leave and a removal all reach it; the join page calls `switchToHousehold`
-directly. If the cache cannot be cleared it logs and does not reload. A story that mounts a
-cloud page must store its household as the last one (`cloudRoleStorySetup` does), or the
-guard reloads Storybook.
+root in cloud mode, in the Clerk tree and the E2E tree. It acts only on a `GetHousehold`
+answer from the SERVER (`networkStatus === ready`): the query is `cache-and-network`, and
+the first answer may come from the cache restored from `Player1InventoryCloudCache`. When
+the server answers a household id other than the one this tab saw first (or, before it has
+seen one, the stored `last-household-id`), it calls `switchToHousehold` with no target:
+`clearCache()` (memory and the saved copy; `LAST_USER_ID_KEY` stays), remove
+`active-location-id:cloud`, store the id, reload this page. If the cache cannot be cleared
+it logs and does not reload.
+
+**What reaches it, and what does not.** It sees any change that leaves the person in
+ANOTHER household: a join made in another tab, or a leave or a removal when the person has
+a second household. **A leave or a removal that leaves the person in NO household does not
+reach it**: `GetHousehold` then fails with `NO_HOUSEHOLD`, there is no id, and the old
+household's rows stay in memory and in `Player1InventoryCloudCache`. The no-household
+screen (task G.8) must clear them. The join page calls `switchToHousehold` itself.
+
+A story that mounts a cloud page must store its household as the last one
+(`cloudRoleStorySetup` does), or the guard reloads Storybook.
 
 ### Onboarding Page
 

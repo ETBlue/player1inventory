@@ -1001,10 +1001,22 @@ from a story.
   someone they have no household); not while loading; not on `/join/x`; not in local mode.
 - [ ] **Step 3: The screen.** `noHousehold.title`, **Create a household** opening a dialog
   with an optional name (`HOUSEHOLD_NAME_MAX_LENGTH`, 100). On success
-  `switchToHousehold(id)` (G.7). On `ALREADY_IN_HOUSEHOLD` the same call with the id from a
-  `GetHousehold` refetch (another tab created or joined first).
+  `switchToHousehold(id, { to: '/' })` (G.7). On `ALREADY_IN_HOUSEHOLD` the same call with
+  the id from a `GetHousehold` refetch (another tab created or joined first).
+- [ ] **Step 3b: Clear the old household's data when the screen shows** (added by the
+  review of G.7). A leave or a removal that leaves the person in NO household does NOT reach
+  `HouseholdChangeGuard`: `GetHousehold` fails with `NO_HOUSEHOLD`, so there is no id to
+  compare, and the old household's rows stay in memory and in
+  `Player1InventoryCloudCache`. So when the gate shows the screen, it calls `clearCache()`
+  and removes `last-household-id` (`LAST_HOUSEHOLD_ID_KEY`) and `active-location-id:cloud`,
+  once. Do NOT reload: the screen is what the person should see. The gate must skip
+  `/sign-in` and `/join/` (a person with no household must still be able to open an invite
+  link). **Create a household** must end on `/`: call `switchToHousehold(id, { to: '/' })`,
+  not a reload in place. Tests: the three are cleared when the screen shows; nothing is
+  cleared for another error; not on `/join/x` or `/sign-in`; Create ends at `/`.
 - [ ] **Step 4: Mutation checks**: the gate checks `isError` instead of the code → the
-  "another error" test red; the `/join` exception removed → its test red.
+  "another error" test red; the `/join` exception removed → its test red; the clear in
+  Step 3b removed → its test red.
 - [ ] **Step 5: Gate**, commit `feat(households): screen for a person with no household`.
 
 **The brief must pass down:** decide by the error CODE, never by "the query failed"
@@ -1065,6 +1077,17 @@ mounts the real component.
   - Leave shown to the owner → its test red.
 - [ ] **Step 6: Gate** (incl. `build-storybook`; check the new story ids in
   `apps/web/storybook-static/index.json`), commit `feat(households): members page`.
+
+**Notes from the review of G.7:**
+- **After `leaveHousehold` the page calls the switch itself**, with target `/`. The leaver's
+  own other tabs get no live event (`shouldDeliver` checks membership, and they are no
+  longer a member; G.5 confirmed this). So: refetch `GetHousehold`; a household id →
+  `switchToHousehold(id, { to: '/' })`; `NO_HOUSEHOLD` → clear as in G.8 Step 3b and go to
+  `/`. This replaces the "Assert the page calls a `GetHousehold` refetch" wording above:
+  assert the switch and its target too.
+- **`setHouseholdRole` does not change the household id**, so the guard does nothing for
+  it. The person whose role changed must refetch `GetHousehold` to see the new role (the
+  household-level `LOCATION` event does this for their open tabs).
 
 **The brief must pass down:** design *Household roles* table; O3-A, O7-A, O13-A, O14-A,
 O15-A; names as stored; the read-only patterns from `routes/CLAUDE.md` (*Read-only views by
@@ -1141,6 +1164,19 @@ it, every cloud spec fails at the first request. Read `e2e/CLAUDE.md` first: por
 - [ ] **Step 5:** `e2e/CLAUDE.md`: the new spec, the `skipOnboarding` option, the 19-model
   cleanup, and that a person can now be in two households through the real flow (the 409
   route stays). **Gate**, commit `test(households): invite and join in two browsers`.
+
+**Notes from the review of G.7:**
+- After a join, assert the FINAL URL (`/`) and the joined household's name (the sidebar 🏠
+  label). Before the review fix the page reloaded `/join/<token>` and showed "This invite
+  is no longer valid", and a check of "the Join button went away" would have passed.
+- `HouseholdChangeGuard` reloads the page when the server answers a new household. A spec
+  that changes the user's household (join, leave, removal through the E2E route) while a
+  page of that user is open will see a reload in the middle of the test. That breaks
+  `stillSameDocument` and any locator held across it. Open the page after the change, or
+  expect the reload.
+- The sign-in return path (T24) cannot be tested in E2E: there is no Clerk in the E2E
+  build, and `CloudAuthGuard` does not mount there. It is covered by unit tests only
+  (`routes/sign-in.test.tsx`, `routes/__root.offline.test.tsx`).
 
 **The brief must pass down:** the 409 order for the E2E route still applies where it is
 used; assert something PRESENT before an absence (root `CLAUDE.md`, *An absence … can be
@@ -1238,6 +1274,16 @@ plan's *What this plan got wrong* and *Status*.
   analytics that records paths. It is single use and expires after 7 days, which limits the
   harm. No analytics run on the app today; recheck if one is added.
 - **E-mail invites do not exist** (design, *Postponed*). The owner shares the link by hand.
+- **The invite token travels inside Clerk's `redirect` value** when a signed-out person opens
+  the link (`/sign-in?redirect=/join/<token>`), so Clerk's own pages and logs may see it.
+  Low risk: it is single use and expires after 7 days.
+- **"Sign in to join" sets `migration-prompted='1'`** (G.7). On that device the automatic
+  "Copy local data?" prompt then never shows again. A person can still copy on purpose
+  through the data mode card (`DataModeCard`, which clears the key when a strategy is
+  chosen).
+- **A leave or a removal into NO household leaves the old rows on the device** until G.8's
+  screen clears them (G.8 Step 3b). `HouseholdChangeGuard` cannot see it: there is no new
+  id.
 - Carried over from H5a, still open: the old-bundle shim removal, the deleted-organizer
   `hasOrganizer` fix (H6), the keyboard gap on `role="button"` badges, and the other items
   in the H5 plan's *Known gaps*.
@@ -1310,6 +1356,10 @@ Filled in from the task reports and reviews.
 | G.7 | Step 5: tests stub `clearCache` and `reload`; nothing about stories | Every cloud role story answers `GetHousehold` with `household-role-story`. Once the guard is mounted, a different stored id would make it clear the cache and reload the Storybook page. `cloudRoleStorySetup` now stores that id as the last household too |
 | G.7 | T24: `safeRedirectPath` refuses `//` and `/\` | Also refuses a control character. A browser drops a tab or a new line inside a URL, so `/<tab>/evil.example` would become `//evil.example` |
 | G.7 | T24: "check the two prop names against the installed `@clerk/react` types" | Checked: both are right for `@clerk/react` 6.1.0. `SignInProps` has `forceRedirectUrl` and, through `SignUpForceRedirectUrl`, `signUpForceRedirectUrl` (`@clerk/shared` `dist/runtime/index-BVnpqOxQ.d.ts`) |
+| G.7 (review) | T23 and Step 6: "Join: the mutation, then `switchToHousehold(result.id)`", which reloads | Neither said WHERE the person lands. A reload keeps the URL `/join/<token>`, and `invitePreview` answers INVALID for a used invite before it checks membership, so the person who just joined read "This invite is no longer valid". `switchToHousehold(id, { to })` now takes a target (`location.replace`); the join page passes `/`, also in its catch path. `HouseholdChangeGuard` still reloads in place |
+| G.7 (review) | T23, the guard's comment and `routes/CLAUDE.md`: a join, a leave and a removal "reach" the guard | A leave or a removal that leaves the person in NO household does not: `GetHousehold` fails with `NO_HOUSEHOLD`, there is no id, and the old rows stay in memory and in `Player1InventoryCloudCache`. Text corrected; G.8 got Step 3b (clear on the no-household screen) |
+| G.7 (review) | T23: compare `GetHousehold`'s id | `GetHousehold` is `cache-and-network`, so its first id can come from the cache restored from IndexedDB, before the server answers. With another tab still saving its old snapshot, the guard reloaded for nothing and stored a wrong id for a moment. It now acts only on a server answer (`networkStatus === NetworkStatus.ready`), and never stores or switches on a cache-only id |
+| G.7 (review) | T24: refuse a path starting with `//` or `/\` | `/..//evil.example`, `/.//evil.example` and `/%2e%2e//evil.example` pass that check, and the browser resolves them to `//evil.example`. `safeRedirectPath` now resolves the path with `new URL(raw, origin)`, requires the same origin and a pathname not starting with `//`, and returns the RESOLVED path |
 
 ## Status
 
@@ -1381,3 +1431,9 @@ nothing under `apps/web` changed between `770a75e8` and the start of G.7, so G.7
 tests in 5 new files and 6 changed ones. See the G.7 rows of
 *What this plan got wrong*. G.10 still needs `newUserContext(..., { skipOnboarding: false })`
 for Review Focus 1: only unit tests see the onboarding exclusion today.
+
+The review of G.7 found that a join ended on "This invite is no longer valid" (the page
+reloaded `/join/<token>`), that the guard could act on a cached household id, and that
+`safeRedirectPath` let `/..//evil.example` through. All fixed in `78163263`; see the G.7
+(review) rows of *What this plan got wrong*. G.8 got Step 3b, G.9
+and G.10 got notes. Web tests after the fixes: 2983 passed / 311 files.
