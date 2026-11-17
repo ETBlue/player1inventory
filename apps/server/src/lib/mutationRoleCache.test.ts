@@ -34,25 +34,31 @@ function filledContext(): Context {
       householdId: Promise.resolve('hh-1'),
       locationRoles: new Map([['hh-1', Promise.resolve(new Map())]]),
       organizedLocations: new Map([['hh-1', Promise.resolve(new Set<string>())]]),
+      // OLD-BUNDLE SHIM. Remove with `Location.isDefault`.
+      firstLocationIds: new Map([['hh-1', Promise.resolve('loc-1')]]),
     },
   }
 }
 
 describe('forgetRolesAroundEach', () => {
-  it('forgets both role caches before the field runs', async () => {
+  it('forgets the role caches before the field runs', async () => {
     const ctx = filledContext()
     let seen: unknown = 'not called'
     const f = wrapOne(
       async (_p: unknown, _a: unknown, c: Context) => {
-        seen = [c.requestCache?.locationRoles, c.requestCache?.organizedLocations]
+        seen = [
+          c.requestCache?.locationRoles,
+          c.requestCache?.organizedLocations,
+          c.requestCache?.firstLocationIds,
+        ]
         return true
       },
     )
     await f({}, {}, ctx, {})
-    expect(seen).toEqual([undefined, undefined])
+    expect(seen).toEqual([undefined, undefined, undefined])
   })
 
-  it('forgets both role caches after the field, so its sub-fields read fresh rows', async () => {
+  it('forgets the role caches after the field, so its sub-fields read fresh rows', async () => {
     const ctx = filledContext()
     // A field that fills the cache while it runs, as a read inside a
     // resolver would.
@@ -64,19 +70,21 @@ describe('forgetRolesAroundEach', () => {
     expect(ctx.requestCache?.locationRoles).toBeUndefined()
   })
 
-  it('forgets both role caches when the field throws, and passes the error on', async () => {
+  it('forgets the role caches when the field throws, and passes the error on', async () => {
     const ctx = filledContext()
     const boom = new Error('refused')
     const f = wrapOne(
       async (_p: unknown, _a: unknown, c: Context) => {
         c.requestCache!.locationRoles = new Map([['hh-1', Promise.resolve(new Map())]])
         c.requestCache!.organizedLocations = new Map([['hh-1', Promise.resolve(new Set<string>())]])
+        c.requestCache!.firstLocationIds = new Map([['hh-1', Promise.resolve('loc-1')]])
         throw boom
       },
     )
     await expect(f({}, {}, ctx, {})).rejects.toBe(boom)
     expect(ctx.requestCache?.locationRoles).toBeUndefined()
     expect(ctx.requestCache?.organizedLocations).toBeUndefined()
+    expect(ctx.requestCache?.firstLocationIds).toBeUndefined()
   })
 
   it('keeps the household id, which tests pin to choose a household', async () => {
@@ -95,7 +103,7 @@ describe('forgetRolesAroundEach', () => {
 })
 
 describe('every Mutation field forgets the role caches', () => {
-  it('every field of the executable schema leaves both role caches empty, even when it throws', async () => {
+  it('every field of the executable schema leaves the role caches empty, even when it throws', async () => {
     const fields = createExecutableSchema().getMutationType()?.getFields() ?? {}
     const names = Object.keys(fields)
     // A schema with no mutation fields would pass the check below for the
@@ -117,7 +125,8 @@ describe('every Mutation field forgets the role caches', () => {
       } catch {
         // expected
       }
-      if (ctx.requestCache?.locationRoles || ctx.requestCache?.organizedLocations) kept.push(name)
+      const c = ctx.requestCache
+      if (c?.locationRoles || c?.organizedLocations || c?.firstLocationIds) kept.push(name)
     }
     expect(kept).toEqual([])
   })

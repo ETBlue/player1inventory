@@ -30,7 +30,9 @@ import { forgetLocationRoles } from './authz.js'
 //
 // What the tests in `mutationRoleCache.test.ts` prove:
 // - The every-field test calls every `Mutation` field of the executable schema
-//   with no user and a filled cache, and checks both caches are empty after.
+//   with no user and a filled cache, and checks the caches are empty after
+//   (`locationRoles`, `organizedLocations`, and the old-bundle shim's
+//   `firstLocationIds`).
 //   With no user each field throws before it reads anything, so a forget
 //   before OR a forget after is enough to pass. It proves only that at least
 //   one forget runs for each field, that is, every field is wrapped.

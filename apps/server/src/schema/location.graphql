@@ -28,7 +28,9 @@ type Location {
   # (by `order`, then `id`), false for every other one, and false for a
   # location the caller has no role on. That is the location the old bundle
   # expects: it picks it as the active location, maps a backup's default
-  # location onto it, and hides its delete button.
+  # location onto it, and hides its delete button. It is not always the row
+  # `main` marked: there the default was a stored flag, so a row could sit
+  # above it (runbook 8.3). No data is lost.
   #
   # No web document of this branch selects it. A test fails if one does
   # (src/test/oldBundleCompat.test.ts).

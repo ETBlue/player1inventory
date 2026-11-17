@@ -220,9 +220,12 @@ export function locationRolesByLocation(
 }
 
 /**
- * Forget the two role caches of this request: `locationRoles`
- * (`locationRolesByLocation`) and `organizedLocations`
- * (`locationIdsWithOrganizer`).
+ * Forget the role caches of this request: `locationRoles`
+ * (`locationRolesByLocation`), `organizedLocations`
+ * (`locationIdsWithOrganizer`) and, until the old-bundle shim goes,
+ * `firstLocationIds` (`firstLocationIdOf` in resolvers/location.resolver.ts).
+ * A create, delete or reorder changes which location is first, so the old
+ * bundle's `isDefault` must be read again after one.
  *
  * The root fields of a mutation run one after another in ONE request, so
  * they share the cache. Without a forget,
@@ -242,6 +245,8 @@ export function forgetLocationRoles(ctx: Context): void {
   if (!cache) return
   delete cache.locationRoles
   delete cache.organizedLocations
+  // OLD-BUNDLE SHIM. Remove with `Location.isDefault`.
+  delete cache.firstLocationIds
 }
 
 /**

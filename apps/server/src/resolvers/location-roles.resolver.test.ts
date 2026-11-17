@@ -315,7 +315,7 @@ describe('the role cache inside one request', () => {
     // A field that throws stops the whole document (every Mutation field is
     // non-null), so no later field of the SAME document can show what the
     // throw left behind. That case is pinned in lib/mutationRoleCache.test.ts
-    // ("forgets both role caches when the field throws"). Here: the error
+    // ("forgets the role caches when the field throws"). Here: the error
     // still reaches the client with its code, and nothing is deleted.
     const refused = await run(`mutation { deleteLocation(id: "loc-x") }`, 'manager')
     expect(refused.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
@@ -405,6 +405,51 @@ describe('Location.isDefault for an old web bundle', () => {
     expect(res.errors).toBeUndefined()
     expect(res.data?.reorderLocations).toEqual([
       { id: garage.id, isDefault: true },
+      { id: 'loc-k', isDefault: false },
+    ])
+  })
+
+  it('a list of N locations reads the first location once, not once per location', async () => {
+    // Given the owner organizes three locations of hh-1 (loc-k, A, B) and
+    // the household has four (loc-g too)
+    for (const name of ['A', 'B']) {
+      expect((await run(`mutation { createLocation(name: "${name}") { id } }`, 'owner')).errors).toBeUndefined()
+    }
+    const spy = vi.spyOn(prisma.location, 'findMany')
+
+    // When the owner lists every location of the household with isDefault
+    const res = await run(`query { householdLocations { id isDefault } }`, 'owner')
+
+    // Then four rows, one default, and two location reads in all: one for the
+    // list, one for the first id. One read per location would be five.
+    expect(res.errors).toBeUndefined()
+    const rows = res.data?.householdLocations as Array<{ isDefault: boolean }>
+    expect(rows).toHaveLength(4)
+    expect(rows.filter((r) => r.isDefault)).toHaveLength(1)
+    expect(spy).toHaveBeenCalledTimes(2)
+  })
+
+  it('after a reorder in the same request, the returned list names the new first location the default', async () => {
+    // Given the owner created a location. It goes last.
+    const created = await run(`mutation { createLocation(name: "Garage") { id } }`, 'owner')
+    const garage = (created.data?.createLocation as { id: string }).id
+
+    // When ONE document first reads isDefault (which fills the request's
+    // cache with loc-k as the first) and then moves the garage first
+    const res = await run(
+      `mutation {
+        a: updateLocation(id: "loc-k", input: { name: "Kitchen" }) { isDefault }
+        b: reorderLocations(orderedIds: ["${garage}", "loc-k", "loc-g"]) { id isDefault }
+      }`,
+      'owner',
+    )
+
+    // Then `a` saw loc-k first, and `b` names the garage. A first id kept
+    // from `a` would still name loc-k.
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.a).toEqual({ isDefault: true })
+    expect(res.data?.b).toEqual([
+      { id: garage, isDefault: true },
       { id: 'loc-k', isDefault: false },
     ])
   })

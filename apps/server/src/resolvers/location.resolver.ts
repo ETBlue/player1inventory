@@ -81,6 +81,38 @@ async function householdIdOf(parent: Location): Promise<string | null> {
   return row?.householdId ?? null
 }
 
+/**
+ * OLD-BUNDLE SHIM. Remove with `Location.isDefault`, in the release after
+ * households.
+ *
+ * The id of the first location, by `order` then `id`, among the locations of
+ * `householdId` on which the caller holds a counted role. `null` when there
+ * is none. Kept on `ctx.requestCache.firstLocationIds`, one entry per
+ * household, so `Location.isDefault` on a list of N locations reads it once.
+ * `forgetLocationRoles` (lib/authz.ts) clears it with the role caches, so a
+ * create, delete or reorder in the same request is seen.
+ */
+function firstLocationIdOf(ctx: Context, householdId: string): Promise<string | null> {
+  const cache = ctx.requestCache
+  const known = cache?.firstLocationIds?.get(householdId)
+  if (known) return known
+  const lookup = locationRolesByLocation(ctx, householdId).then(async (roles) => {
+    if (roles.size === 0) return null
+    const [first] = await prisma.location.findMany({
+      where: { id: { in: [...roles.keys()] } },
+      orderBy: [{ order: 'asc' }, { id: 'asc' }],
+      select: { id: true },
+      take: 1,
+    })
+    return first?.id ?? null
+  })
+  if (cache) {
+    cache.firstLocationIds ??= new Map()
+    cache.firstLocationIds.set(householdId, lookup)
+  }
+  return lookup
+}
+
 // ── LIVE EVENTS (households H3c-2 task D.3) ──
 //
 // Every mutation here publishes one household-level `LOCATION` event
@@ -150,7 +182,7 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
     //
     // True only for the first location the caller can see in this location's
     // household, by `order` and then `id`: the first row of `locations`. The
-    // old bundle reads it in three places, and this value keeps each correct:
+    // old bundle reads it in three places:
     //
     // | Old bundle code                              | Uses `isDefault` to          |
     // |----------------------------------------------|------------------------------|
@@ -158,22 +190,23 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
     // | `fetchCloudDefaultLocationId` (importData)   | map a backup's default onto  |
     // | `LocationList`                               | hide Delete, lock the drag   |
     //
+    // This keeps each of the three working: exactly one location of the
+    // caller's list is the default. It is not always the SAME location that
+    // `main` marked. On `main` the default was a stored flag, not the first
+    // by `order`, so a row could sit above it. Then the old bundle locks a
+    // different row, shows Delete on its old default, and picks a different
+    // import target and active location. No data is lost. See runbook 8.3.
+    //
     // `false` for every location would leave the import with no target, and
     // would let the old bundle delete the household's last location, which
-    // it cannot show an empty screen for. One read per Location, which is
-    // acceptable for one release: the role map below is cached per request.
+    // it cannot show an empty screen for.
+    //
+    // The first id is read ONCE per household per request
+    // (`firstLocationIdOf`), so a list of N locations costs one read, not N.
     isDefault: async (parent, _, ctx) => {
       const householdId = await householdIdOf(parent)
       if (!householdId) return false
-      const roles = await locationRolesByLocation(ctx, householdId)
-      if (!roles.has(parent.id)) return false
-      const [first] = await prisma.location.findMany({
-        where: { id: { in: [...roles.keys()] } },
-        orderBy: [{ order: 'asc' }, { id: 'asc' }],
-        select: { id: true },
-        take: 1,
-      })
-      return first?.id === parent.id
+      return (await firstLocationIdOf(ctx, householdId)) === parent.id
     },
   },
 
