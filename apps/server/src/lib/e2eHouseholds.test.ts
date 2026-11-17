@@ -328,8 +328,9 @@ describe('POST /e2e/household-members', () => {
     // When 'stranger' is added to hh-1
     const res = await post({ ...VALID, memberUserId: 'stranger' })
 
-    // Then it is refused, because a person in two households would get one of
-    // them at random from ensureHousehold
+    // Then it is refused. The route does not set `activeHouseholdId`, so the
+    // person would go on acting in their own household (decision T14), and
+    // specs rely on the member's first request reading THIS one (T29)
     expect(res.status).toBe(409)
     expect(snapshot()).toEqual(before)
   })

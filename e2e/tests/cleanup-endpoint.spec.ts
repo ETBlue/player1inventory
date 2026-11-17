@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { E2E_USER_ID } from '../constants'
 import { CLEANUP_MODEL_KEYS, cleanupCloudData } from '../helpers/cloudTeardown'
-import { createCloudUser } from '../helpers/cloudUsers'
+import { createCloudUser, createInvite } from '../helpers/cloudUsers'
 import { makeGql } from '../utils/cloud'
 
 // ── WHAT THIS FILE COVERS ────────────────────────────────────────────────────
@@ -11,13 +11,19 @@ import { makeGql } from '../utils/cloud'
 // its `User` row included, against real Postgres.
 //
 // Since households H3a task 3.10 the route deletes by the households the
-// user OWNS, plus the user's own role rows, and returns 18 counts. The seed
+// user OWNS, plus the user's own role rows, and returns 18 counts (19 since
+// households H5b task G.6 added `householdInvites`). The seed
 // below makes the user's household on the first request (first sign-in), so
 // the three new counts — `locationMembers`, `householdMembers` and
 // `households` — are at least 1 too. The rule "never delete a household the
 // user only belongs to" needs a second member, which E2E cannot add before
 // task 3.11 (`POST /e2e/household-members`). It is pinned only by the unit
 // test `apps/server/src/lib/e2eCleanup.test.ts`.
+//
+// The invite is made through the real `createInvite` mutation, in the user's
+// own household, so it is deleted by the `householdId` half of its filter.
+// The other half, `createdById` (an invite the user made in a household they
+// do not own), is pinned only by that unit test too.
 //
 // ── WHY IT EXISTS (issue #319) ───────────────────────────────────────────────
 //
@@ -258,6 +264,20 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
       occurredAt: new Date().toISOString(),
       locationId: home.id,
     })
+
+    // HouseholdInvite — an open invite to the user's own household, made
+    // through the real `createInvite` mutation (households H5b, task G.3).
+    // The user owns the household, so they may invite. It is read back
+    // BEFORE the cleanup only: `householdInvites` runs first sign-in like
+    // `locations`, so after the cleanup it would read a brand-new, empty
+    // household. Its `deleted` count below is the check on the delete.
+    const token = await createInvite(request, E2E_USER_ID, 'member', [
+      { locationId: home.id, role: 'viewer' },
+    ])
+    const { householdInvites } = await gql<{
+      householdInvites: { token: string }[]
+    }>(`query { householdInvites { token } }`)
+    expect(householdInvites.map((invite) => invite.token)).toEqual([token])
 
     // ── The seed really wrote rows ───────────────────────────────────────────
     //

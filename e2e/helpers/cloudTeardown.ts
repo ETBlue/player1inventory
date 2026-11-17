@@ -4,9 +4,10 @@ import { CLOUD_SERVER_URL, E2E_USER_ID } from '../constants'
 /**
  * Every model `/e2e/cleanup` deletes, in the order the route deletes them
  * (apps/server/src/lib/e2eCleanup.ts). The route returns one count per key
- * under `deleted`. 18 models (15 until households H3a task 3.10 added
- * `locationMembers`, `householdMembers` and `households`); `users` is the
- * `User` row itself, deleted last.
+ * under `deleted`. 19 models (15 until households H3a task 3.10 added
+ * `locationMembers`, `householdMembers` and `households`, 18 until households
+ * H5b task G.6 added `householdInvites`); `users` is the `User` row itself,
+ * deleted last.
  *
  * This list is the contract between the route and the tests. A model dropped
  * from the route's `$transaction` loses its key there, and `cleanupCloudData`
@@ -32,6 +33,7 @@ export const CLEANUP_MODEL_KEYS = [
   'shelves',
   'locationMembers',
   'locations',
+  'householdInvites',
   'householdMembers',
   'households',
   'users',

@@ -20,7 +20,13 @@ import { forgetSeenToday } from './userRow.js'
 //    `HouseholdMember` row there, and their `LocationMember` rows. Both have
 //    a RESTRICT foreign key to `User`, so the `User` row cannot go while
 //    they exist.
-// 3. The `User` row, last.
+// 3. Every invite of an owned household, and every invite the user MADE in
+//    a household they do not own (households H5b, task G.6).
+//    `HouseholdInvite.createdById` is RESTRICT too (decision T26), so an
+//    invite the user made as a manager of another household would block the
+//    `User` delete. An invite the user only USED is not deleted: its
+//    `usedById` is SET NULL, so Postgres clears it when the `User` row goes.
+// 4. The `User` row, last.
 //
 // **It never deletes a household the user only belongs to.** Two-user specs
 // run this route once for each user. If the first call emptied a household
@@ -32,7 +38,7 @@ import { forgetSeenToday } from './userRow.js'
 
 /**
  * The one key per model in the `deleted` object this route returns, in the
- * order the transaction deletes them. 18 models. The names match
+ * order the transaction deletes them. 19 models. The names match
  * `CLEANUP_MODEL_KEYS` in e2e/helpers/cloudTeardown.ts, which checks that
  * every one of them is present in the body.
  */
@@ -52,6 +58,7 @@ export const CLEANUP_MODEL_KEYS = [
   'shelves',
   'locationMembers',
   'locations',
+  'householdInvites',
   'householdMembers',
   'households',
   'users',
@@ -96,9 +103,9 @@ export async function e2eCleanupHandler(req: Request, res: Response): Promise<vo
   // the ItemTag rows go by ON DELETE CASCADE instead, reporting 0. The same
   // holds for `locationMember` before `location`, and every household-scoped
   // table before `household`: `householdId` is ON DELETE CASCADE on all of
-  // them.
+  // them, `HouseholdInvite` included.
   //
-  // This is the ARRAY form of `$transaction`: Prisma runs the 18 statements
+  // This is the ARRAY form of `$transaction`: Prisma runs the 19 statements
   // in this order, in one transaction, and returns their results in the
   // same order.
   const [
@@ -117,6 +124,7 @@ export async function e2eCleanupHandler(req: Request, res: Response): Promise<vo
     shelves,
     locationMembers,
     locations,
+    householdInvites,
     householdMembers,
     households,
     users,
@@ -144,13 +152,22 @@ export async function e2eCleanupHandler(req: Request, res: Response): Promise<vo
       where: { OR: [{ userId }, { location: { householdId: owned } }] },
     }),
     prisma.location.deleteMany({ where: { householdId: owned } }),
+    // Every invite of the owned households (anybody's), and the invites the
+    // user made in households they do not own (households H5b, task G.6).
+    // BEFORE `household`: `householdId` is ON DELETE CASCADE, so after the
+    // household delete the owned invites would be gone already and the count
+    // would read 0. BEFORE `user`: `createdById` is RESTRICT (decision T26),
+    // so an invite the user made elsewhere would make the `User` delete fail.
+    prisma.householdInvite.deleteMany({
+      where: { OR: [{ householdId: owned }, { createdById: userId }] },
+    }),
     // Every member row of the owned households (anybody's), and the user's
     // own member rows in households they do not own.
     prisma.householdMember.deleteMany({ where: { OR: [{ userId }, { householdId: owned }] } }),
     prisma.household.deleteMany({ where: { id: owned } }),
     // The User row itself (households task 2.6). Its key is `id`, not
     // `userId`: the row IS the user. It goes LAST, after the two role
-    // tables, whose `userId` foreign key to it is RESTRICT.
+    // tables and the invites, whose foreign keys to it are RESTRICT.
     prisma.user.deleteMany({ where: { id: userId } }),
   ])
 
@@ -180,6 +197,7 @@ export async function e2eCleanupHandler(req: Request, res: Response): Promise<vo
     shelves: shelves.count,
     locationMembers: locationMembers.count,
     locations: locations.count,
+    householdInvites: householdInvites.count,
     householdMembers: householdMembers.count,
     households: households.count,
     users: users.count,
