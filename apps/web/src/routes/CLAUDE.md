@@ -439,6 +439,45 @@ Row 3:            [A / T here · N empty · N low stock]
 - `src/routes/cooking.stories.tsx` — Storybook stories (Default, WithRecipes, WithCheckedRecipe, WithExpandedRecipe, WithActiveToolbar, WithSearch, SortByRecent, SortByCount, StockStatusHealthy, StockStatusPartial, StockStatusUnavailable, NotStockedHereSplit)
 - `src/components/recipe/CookingControlBar/index.tsx` — second-row toolbar component
 
+### Join Page (`/join/$token`, households H5b task G.7)
+
+The page an invite link opens. Plan: `docs/global/permissions/2026-11-18-households-plan-h5b.md`.
+
+| Mode, status | What shows |
+|---|---|
+| local | `join.needsCloud` and **Sign in to join**. It sets `data-mode` to `cloud` and `migration-prompted`, never `migration-strategy`, then reloads. So no copy of local data starts or is offered, and local data is not touched |
+| cloud, loading | the spinner |
+| cloud, `VALID` | `join.title` with the household name, `join.invitedBy`, the roles (household role, then each location as stored, never `capitalize`), **Join** |
+| cloud, `ALREADY_MEMBER` | the household name, `join.alreadyMember`, a link to the pantry |
+| cloud, `INVALID` | `join.invalid` and a link to the pantry. No name, even if one were sent |
+
+**Join** runs `joinHousehold`, then `switchToHousehold(id)`. A refusal with
+`extensions.reason` `INVITE_INVALID` or `ALREADY_MEMBER` (`hasGraphQLErrorReason`) shows
+the matching text. Any other error shows the toast `join.error` and keeps the button.
+
+Three things could send a new person away from the link. Each is handled:
+
+- **The onboarding redirect.** `shouldRedirectToOnboarding` returns `false` for `/join/…`
+  (decision T25). Tested as a unit and on the real page with an empty database.
+- **Sign-in.** `CloudAuthGuard` sends a signed-out person to `/sign-in?redirect=<path>`,
+  except on `/sign-in` itself. `/sign-in` follows `safeRedirectPath(redirect)`
+  (`lib/safeRedirect.ts`: only a path on this site, else `/`) and passes the same path to
+  Clerk's `forceRedirectUrl` AND `signUpForceRedirectUrl`, so a sign-up returns too
+  (decision T24).
+- **Local mode**, the default for a new visitor: the row above.
+
+`/join/…` is full-screen (`isFullscreenPage`).
+
+**The household guard (decision T23).** `HouseholdChangeGuard` (`apollo/`) mounts in the
+root in cloud mode, in the Clerk tree and the E2E tree. When `GetHousehold` answers a
+household id other than the one this tab saw first (or, before it has seen one, the stored
+`last-household-id`), it calls `switchToHousehold`: `clearCache()` (memory and the saved
+copy; `LAST_USER_ID_KEY` stays), remove `active-location-id:cloud`, store the id, reload.
+A join, a leave and a removal all reach it; the join page calls `switchToHousehold`
+directly. If the cache cannot be cleared it logs and does not reload. A story that mounts a
+cloud page must store its household as the last one (`cloudRoleStorySetup` does), or the
+guard reloads Storybook.
+
 ### Onboarding Page
 
 Full-screen onboarding flow at `/onboarding` shown automatically to new users (empty DB).

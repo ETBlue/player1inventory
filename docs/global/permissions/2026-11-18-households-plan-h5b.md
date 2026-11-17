@@ -1276,6 +1276,13 @@ Filled in from the task reports and reviews.
 | G.4 | Live: "none for the deleted HP" | Also none for a KEPT own household: nothing in it changed. The joiner's other tabs still hear the one event for the joined household, because `shouldDeliver` checks membership per event, and the joiner is a member there by then. Tested both ways |
 | G.6 | Files: `e2eCleanup.ts`, its test, `purge-coverage.test.ts`, `e2eHouseholds.ts`, `cleanup-endpoint.spec.ts`, `cloudUsers.ts` | Not all. `e2e/helpers/cloudTeardown.ts` keeps its own copy of `CLEANUP_MODEL_KEYS`, and `e2eCleanup.test.ts` fails when the two lists differ, so it needed `householdInvites` too. Three more comments still said "one household per person" or "at random" and were rewritten: the `addHouseholdMember` comment in `cloudUsers.ts`, the test at `e2eHouseholds.test.ts:332`, and step 2 of the 409 order in `e2e/CLAUDE.md`. The cleanup counts in root `CLAUDE.md` and `e2e/CLAUDE.md` (18) are now 19 |
 | G.6 | Step 2: "seed one invite and assert its count is at least 1" | Done, and the spec also reads the invite back BEFORE the cleanup with `householdInvites`. It cannot read it back after: like `locations`, that query runs first sign-in and would answer for a brand-new household. The `createdById` half of the filter (an invite the user made in a household they do not own) has no real-SQL check; only the unit test pins it |
+| G.7 | *Facts*: "`PostLoginMigrationDialog` opens only when `migration-strategy` is set"; Step 6: the local "Sign in to join" "must NOT set `migration-strategy`" | Not enough. `usePostLoginMigration` also PROMPTS ("Copy local data?") whenever local items exist and `migration-prompted` is unset, with or without a strategy. A local visitor with data would be asked to copy it right after sign-in, on the join page, while `join.needsCloud` says it is not copied. "Sign in to join" now sets `migration-prompted` too, as "Switch without copying" in `DataModeCard` does. The test asserts both keys |
+| G.7 | T23: the guard compares `household.id` with `localStorage['last-household-id']` | Misses the person's other tabs, which T23 names as the reason for the guard. The tab that joins stores the new id, and `localStorage` is shared, so the other tab reads "new = stored" and keeps the old rows. The guard compares with the id THIS tab saw first, and with the stored id only before it has seen one. Test "user's other tab also clears…"; mutation M3b |
+| G.7 | Step 2: `CloudAuthGuard` navigates with `search: { redirect: pathname + searchStr }` | On `/sign-in` itself the guard (mounted in the root) would navigate again and replace the return path with the sign-in page's own URL. It now does nothing on `/sign-in`. Test "does not send the sign-in page to itself"; mutation M9 |
+| G.7 | Step 6: "role names through the existing role keys" | Only `roles.location.*` existed. `roles.household.{owner,manager,member}` was added with the O11 names (擁有者, 管理者, 成員). Two texts that are not in the O17 table were also added, for the owner to review in the PR: `join.error` ("Could not join. Try again." / 「無法加入，請再試一次。」) and `join.loadError` ("Could not load this invite. Try again." / 「無法讀取這個邀請，請再試一次。」). `join.ownDataKept` is NOT used: `joinHousehold` does not say whether the own household was kept, so the page cannot know when to show it |
+| G.7 | Step 5: tests stub `clearCache` and `reload`; nothing about stories | Every cloud role story answers `GetHousehold` with `household-role-story`. Once the guard is mounted, a different stored id would make it clear the cache and reload the Storybook page. `cloudRoleStorySetup` now stores that id as the last household too |
+| G.7 | T24: `safeRedirectPath` refuses `//` and `/\` | Also refuses a control character. A browser drops a tab or a new line inside a URL, so `/<tab>/evil.example` would become `//evil.example` |
+| G.7 | T24: "check the two prop names against the installed `@clerk/react` types" | Checked: both are right for `@clerk/react` 6.1.0. `SignInProps` has `forceRedirectUrl` and, through `SignUpForceRedirectUrl`, `signUpForceRedirectUrl` (`@clerk/shared` `dist/runtime/index-BVnpqOxQ.d.ts`) |
 
 ## Status
 
@@ -1329,3 +1336,13 @@ may delete (sorted by id, with the target, `lockHouseholds`); the join transacti
 retried once on `P2034`, because a household delete writes `User` rows through SET NULL;
 and the join sets `householdSetupAt`. See the three "G.4 (review)" rows of *What this
 plan got wrong*.
+
+**Task G.7 is done** (`c431025b`). The join page `/join/$token`, the sign-in return path
+(`/sign-in?redirect=`, `safeRedirectPath`), the `/join/` exclusions (onboarding redirect,
+full-screen), and the household guard (`HouseholdChangeGuard`, `switchToHousehold` in
+`apps/web/src/apollo/householdGuard.ts`). Web tests: 2973 passed / 310 files after
+G.7. The plan's web baseline at `770a75e8` was 2928 / 305 (2927 passed, 1 flaky), and
+nothing under `apps/web` changed between `770a75e8` and the start of G.7, so G.7 adds 45
+tests in 5 new files and 6 changed ones. See the G.7 rows of
+*What this plan got wrong*. G.10 still needs `newUserContext(..., { skipOnboarding: false })`
+for Review Focus 1: only unit tests see the onboarding exclusion today.
