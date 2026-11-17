@@ -1267,8 +1267,10 @@ page, 1 provider, 2 settings page, 1 story smoke test), then the code.
   the first: `overlapTwoTransactions` asserts B is blocked by A (`pg_blocking_pids`), and
   B counts the household's locations inside its own transaction AFTER its delete and must
   see 0 (A's committed delete). Without the lock B would not wait and would see 1. Part 2
-  (`clearAllData` with `deleteLocation`) needed no change. **Type-checked through the root
-  `pnpm build`, NOT run.** Running it needs the owner's consent.
+  (`clearAllData` with `deleteLocation`) needed no change. Type-checked through the root
+  `pnpm build`. **Run on 2026-11-17** against the TEST database, with the owner's consent:
+  exit 0, 186 `ok —` lines, 0 `FAIL:` lines, and the three household-lock lines passed (the
+  second `deleteLocation` WAITED, then saw 0 locations).
 - **Web.**
   - `NoLocationsEmptyState` (`components/location/`): the text and **Create a location**.
     One prop, `onCreate`. Story `Default` (`components-location-nolocationsemptystate--default`
@@ -1578,11 +1580,24 @@ Needs owner decisions O2, O3, O6, O7, O9, O12.
   still works) or the web is deployed. No data is lost. The window ends when the web
   deploys.
 
-**H5a with H3a in one release has no safe order** (found in task F.9). H3a needs the web
-first, because `main`'s bundle selects `Location.isDefault`. H5a's bundle selects
-`Location.myRole` in `GetLocations`, so with the web first the new bundle fails every
-location query on `main`'s server. The H4 runbook, section 8 (H5a), gives the gaps and three
-options. The owner decides before the release.
+**H5a with H3a in one release: the server goes first, with a shim** (owner decision
+2026-11-17, option 4; built the same day). Found in task F.9: neither order was safe. H3a
+needed the web first, because `main`'s bundle selects `Location.isDefault`. H5a's bundle
+selects `Location.myRole` in `GetLocations`, so with the web first the new bundle fails every
+location query on `main`'s server.
+
+Now the new server still accepts everything `main`'s old bundle sends, for ONE release:
+
+| Shim field (`@deprecated`) | Value |
+|---|---|
+| `Location.isDefault` | `true` for the first location of the caller's `locations` list (by `order`, then `id`), else `false` |
+| `CheckoutItemInput.itemId` (`cartItemId` becomes optional) | the row of that item is bought at its STORED amount; the old `quantity` (a stock total) is ignored |
+| `ConsumeRecipesItemInput.packedQuantity`, `.unpackedQuantity`, `.quantity` | ignored; the old `delta` is already the amount used |
+
+So the whole households release deploys **server first, then web**. The H4 runbook, section
+8.3, has the full list of differences, the order, and the checks to run on an old device
+between the two deploys. `apps/server/src/test/oldBundleCompat.test.ts` validates a copy of
+`main`'s documents (`apps/server/src/test/fixtures/main-web-operations/`) against the schema.
 
 The checkpoint release runs the H3a, H3b, H3c-1 and H4 runbooks, then an H5 section (now
 section 8 of the H4 runbook). Rehearse
@@ -1650,8 +1665,19 @@ and one test-only override in shipped code.
 - **A failed create from the empty screen shows no message** (F.7). `NoLocationsGate`
   copies the settings page's Add dialog, which has no `onError` either. Offline,
   `offlineWriteLink` shows its own toast.
-- **`assertHouseholdLock` is rewritten but not run** until the owner runs `verify-migration.ts`
-  against the test database.
+- **The old-bundle shim fields must be removed in the release after households**, after every
+  device has the households bundle: `Location.isDefault` (and its resolver in
+  `location.resolver.ts`), `CheckoutItemInput.itemId` (make `cartItemId` `ID!` again; delete
+  `checkoutInputShape` and `fromOldCheckoutInput` in `cart.resolver.ts`), and
+  `ConsumeRecipesItemInput.packedQuantity`, `.unpackedQuantity` and `.quantity`. Delete
+  `apps/server/src/test/fixtures/main-web-operations/` and
+  `apps/server/src/test/oldBundleCompat.test.ts` with them. Until then, a new web document must
+  not select them (that test fails if one does).
+- **The shim is proved against the Prisma fakes and by GraphQL validation only.** No E2E test
+  runs `main`'s old bundle against the new server. The checks on an old device in section 8.3
+  of the H4 runbook are the real-world proof, and they are manual.
+- **`Location.isDefault` costs one extra read per location in a list.** The role map is cached
+  per request, but the "first location" read is not. Accepted for one release.
 - **A removed member's open tab is not told.** Live events stop reaching them
   (`shouldDeliver` checks membership), so their screen is stale until their next request fails.
   H5b's `NO_HOUSEHOLD` handler covers the next request; nothing pushes it sooner.
@@ -1787,6 +1813,8 @@ Filled in from the task reports and reviews.
 | Deploy notes (review of F.7) | An old server refuses only the `createVendor` call with no location | The variable's TYPE is checked, not its value: every `createVendor` from the new bundle fails on an old server. Corrected in the review of F.8 |
 | F.9 | Files: "a deploy section" | No new runbook file: section 8 of the H4 runbook, like H3c-2's section 9 in the H3c-1 runbook |
 | F.9 | Files: `hooks/CLAUDE.md`, `routes/CLAUDE.md`, `locations/CLAUDE.md` | Already written by F.3–F.7 and their reviews. F.9 added only the N3 note to `routes/CLAUDE.md` |
+| Deploy shim (after F.9) | (brief) "the new server still ACCEPTS every field the old `main` bundle selects" | Selected fields were not the only break. Two INPUT types changed shape in H3b (`CheckoutItemInput`, `ConsumeRecipesItemInput`), and document validation cannot see that: the documents only declare `[CheckoutItemInput!]!`, and the variables fail later, at coercion. `findBreakingChanges` between the two schemas found them. Both are shimmed too |
+| Deploy shim (after F.9) | (H3a runbook) the old bundle's default location is the `isDefault` row | The column is gone. The shim gives `true` to the first location of the CALLER's list, not the household's first: a person with no role on the household's first location would otherwise have no default |
 
 ## Status
 
@@ -1796,9 +1824,13 @@ Filled in from the task reports and reviews.
 Task F.4's review fixes are done (`0a6321a2`, `4cab8303`, `fe085176`). Task F.5 (a household
 member sees the catalog read-only) is done, with review fixes. Task F.6 (a location viewer
 sees the location read-only) is done, with review fixes. Task F.7 (a household can have no
-locations) is done; its `verify-migration.ts` rewrite is type-checked, not run. Its review
+locations) is done. Its `verify-migration.ts` rewrite was run on 2026-11-17 against the TEST
+database, with the owner's consent: exit 0, 186 `ok —` lines, 0 `FAIL:` lines. The three
+household-lock lines for two concurrent `deleteLocation` calls all passed: the second call
+WAITED for the lock, then saw 0 locations (no location left is allowed since F.7). Its review
 fixes are done. Task F.8 (two people in two browsers) is done. Its review fixes and task
 F.9 (docs, deploy note, the final gate) are done. **H5a is built and waits for its PR. It is
-not merged and not deployed.** Before the checkpoint release, the owner must decide how to
-deploy H5a together with H3a (H4 runbook, section 8.3): no order is safe. H5b is next, with
+not merged and not deployed.** How to deploy H5a together with H3a is decided (owner,
+2026-11-17, option 4): the server keeps the fields `main`'s old bundle needs for one release,
+and the server goes first (H4 runbook, section 8.3). The shim is built. H5b is next, with
 its own detailed plan.

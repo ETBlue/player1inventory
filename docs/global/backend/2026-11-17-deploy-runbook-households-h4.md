@@ -97,6 +97,11 @@ old server", and every cloud import fails until the server is live.
 
 ### 2.2 H4 in the same checkpoint release as H3a (the plan today)
 
+> **Replaced on 2026-11-17 (owner decision, option 4): the server goes FIRST for the whole
+> households release.** The server now keeps the fields `main`'s old bundle needs for one
+> release, so an old bundle works on the new server. See section 8.3. The text below is the
+> reasoning before that decision.
+
 **Follow H3a's order: the web first, then the server.** H3a's reason is stronger. With the
 server first, every location query of an old bundle fails, and cloud mode is unusable. With
 the web first, only the import fails, and it fails before it writes anything (section 4,
@@ -241,39 +246,81 @@ PR. It is not merged and not deployed.** Plan:
 | **old web, new server** (server first) | **works.** The old bundle selects no new field. Two small things: an old bundle can delete the household's last location, because the server no longer refuses it, and then Pantry, Shopping and Cooking show a spinner that never ends (the old bundle has no empty screen). No data is lost; adding a location from the settings page ends it. |
 | **new web, old server** (web first) | **cloud mode is unusable.** `GetLocations` selects `myRole`, which the old server does not have, so the query fails GraphQL validation and no page can load its location. Also, **no vendor can be created at all**: the new `CreateVendor` document declares `$locationId: ID`, and the old argument is `ID!`, so every call fails with `Variable "$locationId" of type "ID" used in position expecting type "ID!"`, with or without a location |
 
-### 8.3 H5a in the same checkpoint release as H3a — NO safe order
+### 8.3 H5a in the same checkpoint release as H3a — server first, with a shim
 
-**This is a problem the H5 plan did not see, and it needs an owner decision before that
-release.** The plan said "H5a adds no new conflict with the H3a rule (web before server)".
-That is not true:
+**Decided 2026-11-17 by the owner: option 4.** For one release, the new server still
+ACCEPTS every field and input field that `main`'s old web bundle sends. So **the server goes
+first, then the web**, for the whole households release. The extra fields are removed in the
+release after households.
 
-| Order | What is live in the gap | Effect |
+**This replaces the "web first" rule of the H3a runbook (section 1.3), the H3b runbook
+(section 0) and section 2.2 above, for this release.** Those rules were written when the old
+bundle could not work on the new server at all. With the shim it can.
+
+#### Why there was no safe order before
+
+| Order | What is live in the gap | Effect without the shim |
 |---|---|---|
-| server first | `main`'s old bundle on the new server | the old bundle selects `Location.isDefault`, which H3a removes: **every location query fails** (H3a runbook, section 2) |
+| server first | `main`'s old bundle on the new server | the old bundle selects `Location.isDefault`, which H3a removed: **every location query fails**. Its checkout and cooking send input fields H3b removed: **both fail** |
 | web first | the new bundle on `main`'s old server | the new bundle selects `Location.myRole`, which the old server does not have: **every location query fails** too |
 
-H3a's "web first" rule works only because H3a's bundle "selects no field the old server
-lacks, except in the new `GetHousehold` query" (H3a runbook, section 2). H5a's bundle breaks
-that: `myRole` is in `GetLocations`, which every page needs.
+#### What the shim adds (all `@deprecated`, built 2026-11-17)
 
-**Web first is still the less bad order**, for the PWA reason in the H3a runbook: a device
-keeps its old bundle until the person accepts the update prompt, and the old bundle works on
-the old server. So in a web-first gap only the devices that took the update are broken; in a
-server-first gap every device is broken until it updates. But neither order is safe.
+Found by validating every operation in `origin/main:apps/web/src/apollo/operations/*.graphql`
+(`351d22ad`) against the new schema, and by comparing the two schemas with graphql-js
+`findBreakingChanges`. These are ALL the differences the old bundle can reach:
 
-Options for the owner (not decided here):
+| Old bundle sends | Where | Shim | Value given, and why |
+|---|---|---|---|
+| `Location.isDefault` (selected) | `GetLocations`, `CreateLocation`, `UpdateLocation`, `ReorderLocations`, `BulkCreateLocations`, `BulkUpsertLocations` | the field is back, `Boolean!` | `true` for the first location of the caller's `locations` list (by `order`, then `id`), `false` for every other and for a location the caller has no role on. The old bundle uses it to pick the active location, as the import's target location, and to hide Delete. With `false` everywhere the import would have no target, and the old bundle could delete the last location, for which it has no empty screen |
+| `CheckoutItemInput { itemId, quantity }`, where `quantity` is the client's stock total | `Checkout` | `itemId` is back; `cartItemId` is optional | the server finds the cart row by its item and buys the STORED amount, as the old server did. The old `quantity` is ignored. Every `CART_CHANGED` rule still applies. Each entry needs exactly one of `cartItemId` and `itemId`, the same in all entries; anything else is `BAD_USER_INPUT` |
+| `ConsumeRecipesItemInput { packedQuantity, unpackedQuantity, quantity }` beside `delta` | `ConsumeRecipes` | the three fields are back, optional | ignored. The old bundle's `delta` is already "minus the amount used", the value the new server needs |
 
-1. **Two checkpoint releases**: the first carries H3a to H4 (web first, the H3a rule), the
-   second carries H5 (server first, section 8.2). Each gap is then safe or nearly safe. The
-   plan's decision T13 ("H5a, H5b and H5c must all be in `develop` before that release")
-   would change.
-2. **One release, gap as short as possible**: web first, then the server at once, and ask
-   people not to accept the update prompt until the server is live.
-3. A web change so a missing `myRole` does not fail the query. Not built, and not simple:
-   GraphQL validation fails the whole document, not one field.
+Not shimmed, because no `main` document uses them: the six `userId` fields (#359 step one
+removed every selection), `purgeUserData` and `PurgeResult`. One old document,
+`AllCartItems`, has the same name in `export.graphql` and `shopping.graphql`; that is a
+problem of `main` itself, not of this release, and each operation validates on its own.
 
-Not checked here: whether H3b, H3c-1, H3c-2 or H4 already added a field to a query that
-every page needs. The H4 runbook (section 2.2) says H4's new query is only used by import.
+The test that keeps this true: `apps/server/src/test/oldBundleCompat.test.ts`. It validates
+every operation of a COPY of `main`'s documents
+(`apps/server/src/test/fixtures/main-web-operations/`) against the current schema, checks the
+old checkout and cooking variables, and fails if a current web document selects a deprecated
+field.
+
+#### Mutations an old bundle calls that now mean something else (they still work)
+
+| Mutation | What changed on the new server | Effect on an old bundle |
+|---|---|---|
+| every write | a household or location role is checked | none today: each person is the owner of their own household, with `organizer` on every location they made |
+| `deleteLocation` | the last location can be deleted (F.7) | the old bundle hides Delete on its `isDefault` location, so it cannot delete the last one |
+| `reorderLocations` | must name the household's full set (F.2) | the old bundle sends its whole `locations` list, which is the full set while nobody shares a household |
+| `checkout` | refuses a changed cart with `CART_CHANGED` | the old bundle shows a plain error. Reload and try again |
+| the 22 import mutations, `clearAllData` | role gate, household checks, no fallback location (H4) | as in section 4, row "old web, new server" |
+| `createVendor` | checks its location is in the household | none: the old bundle sends the active location |
+
+#### The order
+
+1. Deploy the server (H3a runbook 4.4, with the migrations). Wait until it is live.
+2. Then merge `develop` into `main`, so Cloudflare builds the new web.
+3. Reload every device and accept the update prompt.
+
+#### What to check after the server deploy, before the web deploy
+
+On a device that still has the OLD bundle:
+
+1. Pantry loads, and the location switcher shows the locations. (`isDefault`)
+2. Settings → Locations: the first location shows the lock and has no Delete button.
+3. Add an item to a cart and check out. The stock goes up by the cart amount.
+4. Cook one recipe. The stock goes down by the amount used.
+
+Then deploy the web and do 8.4.
+
+#### Removing the shim (the release after households)
+
+Delete `Location.isDefault` and its resolver, `CheckoutItemInput.itemId` (and make
+`cartItemId` `ID!` again, removing `checkoutInputShape` and `fromOldCheckoutInput` in
+`cart.resolver.ts`), the three `ConsumeRecipesItemInput` fields, the fixture folder, and
+`oldBundleCompat.test.ts`. Only after every device has the households bundle.
 
 ### 8.4 Checks after the deploy
 

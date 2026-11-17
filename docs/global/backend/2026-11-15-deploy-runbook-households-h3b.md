@@ -60,6 +60,13 @@ Every `TBD after rehearsal` is filled in by the main session after the rehearsal
 | 9 | The manual smoke test | owner | H3a 6, and 6 below |
 | 10 | Turn Railway's automatic deploy back on | owner | H3a 4.5 |
 
+> **Changed on 2026-11-17 (owner decision, option 4): for the households release the
+> SERVER goes first.** The server now keeps, for one release, every field `main`'s old web
+> bundle sends (`Location.isDefault`, the old checkout and cooking inputs), so an old bundle
+> works on the new server. Follow section 8.3 of
+> [`2026-11-17-deploy-runbook-households-h4.md`](2026-11-17-deploy-runbook-households-h4.md)
+> for the order. The text below is the reasoning before that decision.
+
 **The web still goes first** (H3a 1.3: an old bundle against the new server breaks every
 location query). **But with H3b the gap between step 6 and step 7 must be short.** During
 that gap, checkout and cooking do not work (section 1.2).
