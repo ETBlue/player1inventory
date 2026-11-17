@@ -11,7 +11,9 @@ import { CLOUD_SERVER_URL } from '../constants'
  * Which id to pass:
  *
  * - For a second account, use `E2E_SECOND_USER_ID` from `e2e/constants.ts`.
- *   The browser can never be that user, so only API-only specs can use it.
+ *   The project's own `page` is never that user. A spec that needs a page as
+ *   that user opens one with `newUserContext` (`helpers/userContext.ts`,
+ *   since households H5 task F.8).
  * - `E2E_USER_ID` also works. Its row is normally created by the server's
  *   request-path safety net (`ensureUser`) on its first GraphQL request,
  *   named by its id. Call `createCloudUser` for it only when a spec needs the

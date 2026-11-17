@@ -185,10 +185,13 @@ export default defineConfig({
       // household-member-cleanup.spec.ts and shared-cart.spec.ts drive the
       // cloud backend directly and never open a page — none has a local-mode
       // counterpart. live-cart.spec.ts and live-pantry.spec.ts open a page but need a second
-      // (and live-cart a third) user and the live socket, which only the cloud project has. The last six also act as users other than E2E_USER_ID,
-      // which the web build cannot be (VITE_E2E_TEST_USER_ID below is one
-      // value). settings/import-households.spec.ts tests the household import
-      // roles, which local mode does not have (households H4 decision T18).
+      // (and live-cart a third) user and the live socket, which only the cloud project has. The last six also act as users other than E2E_USER_ID
+      // through the API. settings/import-households.spec.ts tests the
+      // household import roles, which local mode does not have (households H4
+      // decision T18). shared-household.spec.ts opens two browser contexts as
+      // two different users (households H5 task F.8): the E2E web build reads
+      // `localStorage['e2e-user-id']` (e2e/helpers/userContext.ts). Local mode
+      // has no users and no roles.
       testIgnore: [
         '**/settings/import-export-cloud.spec.ts',
         '**/pwa-offline.spec.ts',
@@ -204,6 +207,7 @@ export default defineConfig({
         '**/live-cart.spec.ts',
         '**/live-pantry.spec.ts',
         '**/settings/import-households.spec.ts',
+        '**/shared-household.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'], baseURL: LOCAL_WEB_URL },
     },
@@ -260,6 +264,7 @@ export default defineConfig({
         '**/live-cart.spec.ts',
         '**/live-pantry.spec.ts',
         '**/settings/import-households.spec.ts',
+        '**/shared-household.spec.ts',
       ],
     },
     {
