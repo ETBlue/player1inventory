@@ -156,3 +156,12 @@ export const InfoSectionReadOnly: Story = {
     readOnly: true,
   },
 }
+
+export const StockSectionReadOnly: Story = {
+  name: 'Stock Section, read only (location viewer)',
+  args: {
+    initialValues: editValues,
+    sections: ['stock'],
+    readOnly: true,
+  },
+}

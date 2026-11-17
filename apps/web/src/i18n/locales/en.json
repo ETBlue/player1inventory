@@ -5,6 +5,7 @@
     "positiveNumber": "Must be greater than 0."
   },
   "common": {
+    "locationViewOnly": "You can view this location, but not change it.",
     "cancel": "Cancel",
     "delete": "Delete",
     "deleting": "Deleting...",
@@ -435,7 +436,9 @@
         "notStockedDescription": "{{name}} has no stock in {{location}} yet.",
         "addToLocation": "Add to location",
         "addFailed": "Could not add {{name}} to {{location}}. Please try again.",
-        "removeFromLocation": "Remove from location"
+        "removeFromLocation": "Remove from location",
+        "removeForbidden": "Only an organizer of {{location}} can remove {{name}} from it.",
+        "removeFailed": "Could not remove {{name}} from {{location}}. Please try again."
       },
       "removeLocationDialog": {
         "title": "Remove {{name}} from {{location}}?",

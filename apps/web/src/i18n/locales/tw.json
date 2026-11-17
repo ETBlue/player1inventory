@@ -5,6 +5,7 @@
     "positiveNumber": "必須大於 0。"
   },
   "common": {
+    "locationViewOnly": "你只能檢視這個據點，不能修改。",
     "cancel": "取消",
     "delete": "刪除",
     "deleting": "刪除中...",
@@ -435,7 +436,9 @@
         "notStockedDescription": "{{name}} 尚未在 {{location}} 建立庫存。",
         "addToLocation": "加入這個據點",
         "addFailed": "無法將 {{name}} 加入 {{location}}，請再試一次。",
-        "removeFromLocation": "從這個據點移除"
+        "removeFromLocation": "從這個據點移除",
+        "removeForbidden": "只有{{location}}的據點王可以把{{name}}移出這個據點。",
+        "removeFailed": "無法把{{name}}移出{{location}}，請再試一次。"
       },
       "removeLocationDialog": {
         "title": "將 {{name}} 從 {{location}} 移除？",

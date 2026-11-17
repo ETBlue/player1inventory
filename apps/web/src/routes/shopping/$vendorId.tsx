@@ -13,6 +13,7 @@ import { ItemSearchTail } from '@/components/item/ItemSearchTail'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
+import { ReadOnlyNote } from '@/components/shared/ReadOnlyNote'
 import { Toolbar } from '@/components/shared/Toolbar'
 import {
   AlertDialog,
@@ -39,9 +40,12 @@ import {
   useVendorCart,
   useVendors,
 } from '@/hooks'
+import {
+  useActiveLocationRights,
+  useCreateHere,
+} from '@/hooks/useActiveLocationRights'
 import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
-import { usePermissions } from '@/hooks/usePermissions'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
 import { isCartChangedError } from '@/hooks/useShoppingCart'
@@ -59,7 +63,10 @@ export const Route = createFileRoute('/shopping/$vendorId')({
 
 function VendorCart() {
   const { t } = useTranslation()
-  const { canEditCatalog, roleKnown } = usePermissions()
+  // Households H5: creating from search needs the catalog AND the location
+  // right; quick update and the cart need the location right (task F.6).
+  const { canCreate, createReadOnlyNote } = useCreateHere()
+  const { canEditHere, isViewerHere } = useActiveLocationRights()
   const navigate = useNavigate()
   const { vendorId: vendorIdParam } = Route.useParams()
   const cartVendorId: string | null =
@@ -382,7 +389,9 @@ function VendorCart() {
           showTags={false}
           showTagSummary={false}
           isChecked={!!ci}
-          disabled={pendingItemIds.has(item.id) || !cart}
+          // A location viewer sees what is in the cart and how much, but
+          // cannot change it (households H5 task F.6)
+          disabled={pendingItemIds.has(item.id) || !cart || !canEditHere}
           isPending={pendingItemIds.has(item.id)}
           {...(ci ? { controlAmount: ci.quantity } : {})}
           onCheckboxToggle={() => handleToggleCart(item)}
@@ -431,7 +440,8 @@ function VendorCart() {
           >
             {t('shopping.toolbar.cartCount', { count: cartTotal })}
           </span>
-          {cartItems.length > 0 && (
+          {/* No abandon and no checkout for a location viewer (H5 task F.6) */}
+          {canEditHere && cartItems.length > 0 && (
             <>
               <Button
                 size="icon"
@@ -459,6 +469,8 @@ function VendorCart() {
           )}
         </Toolbar>
 
+        {isViewerHere && <ReadOnlyNote text={t('common.locationViewOnly')} />}
+
         <ItemListToolbar
           className="bg-transparent border-none"
           sortBy={sortBy}
@@ -470,12 +482,14 @@ function VendorCart() {
           items={vendorScopedItems}
           recipes={recipes}
           onCreateFromSearch={
-            // Creating an item is a catalog write: not for a household
-            // member (households H5 task F.5). No button, and no Enter.
-            canEditCatalog ? handleCreateFromSearch : undefined
+            // Creating here also stocks the item here: a catalog right AND a
+            // location right (households H5 tasks F.5 and F.6). No button,
+            // no Enter, and a note that says why.
+            canCreate ? handleCreateFromSearch : undefined
           }
           createReadOnlyNote={
-            roleKnown && !canEditCatalog ? t('items.createReadOnly') : undefined
+            // A viewer already sees the same reason above the list
+            isViewerHere ? undefined : createReadOnlyNote
           }
           hasExactMatch={hasExactGlobalMatch}
           isCreating={createItem.isPending}

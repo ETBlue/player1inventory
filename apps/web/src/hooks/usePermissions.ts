@@ -1,4 +1,5 @@
 import type { HouseholdRole, LocationRole } from '@/generated/graphql'
+import { locationRoleAtLeast } from '@/lib/locationRole'
 import { useDataMode } from './useDataMode'
 import { useHousehold } from './useHousehold'
 import { useLocations } from './useLocations'
@@ -33,12 +34,6 @@ export interface Permissions {
   canEditLocation(locationId: string): boolean
   /** `organizer` at that location. Rename it, remove an item from it. */
   isOrganizerAt(locationId: string): boolean
-}
-
-const LOCATION_RANK: Record<LocationRole, number> = {
-  viewer: 0,
-  participant: 1,
-  organizer: 2,
 }
 
 const LOCAL: Permissions = {
@@ -116,10 +111,8 @@ export function permissionsFor({
     !isLoading && (householdRole === 'owner' || householdRole === 'manager')
   const roleAt = (locationId: string) =>
     isLoading ? null : (locationRoles[locationId] ?? null)
-  const atLeast = (locationId: string, min: LocationRole) => {
-    const role = roleAt(locationId)
-    return role !== null && LOCATION_RANK[role] >= LOCATION_RANK[min]
-  }
+  const atLeast = (locationId: string, min: LocationRole) =>
+    locationRoleAtLeast(roleAt(locationId), min)
 
   return {
     isLoading,

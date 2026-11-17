@@ -7,7 +7,10 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
-import { GetLocationsDocument } from '@/generated/graphql'
+import {
+  BootstrapCartsDocument,
+  GetLocationsDocument,
+} from '@/generated/graphql'
 import { cartIdFor, DEFAULT_LOCATION_ID } from '@/types'
 import {
   ACTIVE_LOCATION_STORAGE_KEY,
@@ -226,6 +229,105 @@ describe('ActiveLocationProvider — cart bootstrap effect', () => {
       expect(ids).toContain(cartIdFor('loc-2', null))
       expect(ids).toContain(cartIdFor('loc-2', 'vendor-1'))
     })
+  })
+})
+
+describe('ActiveLocationProvider — cloud cart bootstrap follows the location role (households H5 task F.6)', () => {
+  // `bootstrapCarts` creates rows, so the server asks `participant` for it. A
+  // location viewer would get FORBIDDEN on every switch. The provider now
+  // sends it only where the caller's `myRole` is participant or higher.
+  //
+  // Three locations: a viewer one (first, so the app falls back to it), a
+  // participant one, and a stored id with NO role at all (it is not in the
+  // switcher list, which holds only locations with a role).
+  const VIEWER_ID = 'clw3k1q2v0000s9f8h7g6d5v1'
+  const PARTICIPANT_ID = 'clw3k1q2p0001s9f8h7g6d5p2'
+  const NO_ROLE_ID = 'clw3k1q2n0002s9f8h7g6d5n3'
+
+  const roleLocationsMock = {
+    request: { query: GetLocationsDocument },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: {
+      data: {
+        locations: [
+          { ...cloudLocation(VIEWER_ID, 'Shed', 0), myRole: 'viewer' as const },
+          {
+            ...cloudLocation(PARTICIPANT_ID, 'Kitchen', 1),
+            myRole: 'participant' as const,
+          },
+        ],
+      },
+    },
+  }
+
+  function bootstrapMock(
+    locationId: string,
+    result: () => { data: { bootstrapCarts: never[] } },
+  ) {
+    return {
+      request: { query: BootstrapCartsDocument, variables: { locationId } },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+      result,
+    }
+  }
+
+  beforeEach(() => {
+    mockMode('cloud')
+    clearStoredActiveLocationIds()
+  })
+
+  afterEach(() => {
+    clearStoredActiveLocationIds()
+    vi.restoreAllMocks()
+  })
+
+  it('location viewer switching to a location sends no bootstrapCarts, and logs no error', async () => {
+    // Given the stored active id names a location with no role, so the app
+    // falls back to the first one, where the caller is a viewer
+    localStorage.setItem(activeLocationStorageKey('cloud'), NO_ROLE_ID)
+    const toViewer = vi.fn(() => ({ data: { bootstrapCarts: [] } }))
+    const toParticipant = vi.fn(() => ({ data: { bootstrapCarts: [] } }))
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const user = userEvent.setup()
+
+    renderProvider(
+      [
+        roleLocationsMock,
+        bootstrapMock(VIEWER_ID, toViewer),
+        bootstrapMock(PARTICIPANT_ID, toParticipant),
+      ],
+      PARTICIPANT_ID,
+    )
+    await waitFor(() => expect(activeId()).toBe(VIEWER_ID))
+
+    // When the caller switches to the participant location
+    await user.click(screen.getByRole('button', { name: 'switch' }))
+    await waitFor(() => expect(activeId()).toBe(PARTICIPANT_ID))
+
+    // Then only the participant location was bootstrapped. The order makes
+    // the absence trustworthy: the viewer location came first, so a call for
+    // it would have been made before this one.
+    await waitFor(() => expect(toParticipant).toHaveBeenCalledTimes(1))
+    expect(toViewer).not.toHaveBeenCalled()
+    // And nothing went wrong on the way
+    expect(errors).not.toHaveBeenCalledWith(
+      'cloud bootstrapCarts failed',
+      expect.anything(),
+    )
+  })
+
+  it('location participant opening the app gets the carts bootstrapped', async () => {
+    // The control for the test above: the same list, starting at the
+    // participant location
+    localStorage.setItem(activeLocationStorageKey('cloud'), PARTICIPANT_ID)
+    const toParticipant = vi.fn(() => ({ data: { bootstrapCarts: [] } }))
+
+    renderProvider([
+      roleLocationsMock,
+      bootstrapMock(PARTICIPANT_ID, toParticipant),
+    ])
+
+    await waitFor(() => expect(toParticipant).toHaveBeenCalledTimes(1))
   })
 })
 

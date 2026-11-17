@@ -71,7 +71,7 @@ export function useItemSearchTailWiring({
   // still shows instead of vanishing. A caller's own `groupNote` is kept.
   // While the role is unknown (loading, or `GetHousehold` failed) there is
   // neither the action nor the member note: the note could be untrue.
-  const { canEditCatalog, roleKnown } = usePermissions()
+  const { canEditCatalog, roleKnown, canEditLocation } = usePermissions()
   const catalogNote = () => <span>{t('items.searchTail.catalogReadOnly')}</span>
   const effectiveAction = canEditCatalog ? groupAction : undefined
   const effectiveNote =
@@ -117,12 +117,14 @@ export function useItemSearchTailWiring({
     },
   })
 
-  // Gated on the active location resolving, and on nothing else: its name is in
-  // the button label — the same guard NewItemDialog applies for the same
-  // reason. When false, omit addToLocationAction entirely rather than passing a
-  // disabled one. Both modes stock through `useAddItemToLocation`; the cloud
-  // exclusion here dated from when that mutation threw.
-  const canAddToLocation = !!activeLocation
+  // Gated on the active location resolving (its name is in the button label,
+  // the same guard NewItemDialog applies) and, since households H5 task F.6,
+  // on the caller being `participant` or higher there: stocking an item is a
+  // location write, and the server refuses it for a viewer. When false, omit
+  // addToLocationAction entirely rather than passing a disabled one. Both
+  // modes stock through `useAddItemToLocation`; local mode allows it always.
+  const canAddToLocation =
+    !!activeLocation && canEditLocation(activeLocation.id)
 
   const tailProps: ItemSearchTailProps = {
     inLocationItems,

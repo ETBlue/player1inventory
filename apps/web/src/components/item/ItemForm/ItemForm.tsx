@@ -102,8 +102,9 @@ interface ItemFormProps {
    * For a household member on the Info tab (households H5 task F.5). Every
    * info field is `readOnly` (the text can still be selected), the switch
    * and the select are disabled, and there is no submit button. Only the
-   * Info tab passes it. Stock is decided by the location role (task F.6),
-   * and the stock fields do not read this prop.
+   * Info tab passes it for a member. Since task F.6 the Stock tab passes it
+   * for a location `viewer`: every stock number is `readOnly`, and the
+   * steppers, Pack, Unpack, Clear and Fill to Full are disabled.
    */
   readOnly?: boolean
 }
@@ -757,6 +758,7 @@ export function ItemForm({
                 decreaseLabel={t('items.form.packedQuantity.decrease')}
                 increaseLabel={t('items.form.packedQuantity.increase')}
                 disabled={isPending}
+                readOnly={readOnly}
                 size="default"
                 inputProps={{
                   id: 'packedQuantity',
@@ -771,7 +773,7 @@ export function ItemForm({
               <Button
                 type="button"
                 variant="neutral-outline"
-                disabled={packedQuantity < 1}
+                disabled={readOnly || packedQuantity < 1}
                 onClick={() => {
                   const next = computeUnpack(
                     {
@@ -816,6 +818,7 @@ export function ItemForm({
                 decreaseLabel={t('items.form.unpackedQuantity.decrease')}
                 increaseLabel={t('items.form.unpackedQuantity.increase')}
                 disabled={isPending}
+                readOnly={readOnly}
                 size="default"
                 inputProps={{
                   id: 'unpackedQuantity',
@@ -834,12 +837,13 @@ export function ItemForm({
                 type="button"
                 variant="neutral-outline"
                 disabled={
-                  targetUnit === 'package'
+                  readOnly ||
+                  (targetUnit === 'package'
                     ? unpackedQuantity < 1
                     : targetUnit === 'measurement'
                       ? !amountPerPackage ||
                         unpackedQuantity < Number(amountPerPackage)
-                      : true
+                      : true)
                 }
                 onClick={() => {
                   const next = computePack(
@@ -875,6 +879,7 @@ export function ItemForm({
                 id="expirationDueDate"
                 type="date"
                 value={dueDate}
+                readOnly={readOnly}
                 onChange={(e) => setDueDate(e.target.value)}
               />
               <p className="text-xs text-foreground-muted">
@@ -910,8 +915,8 @@ export function ItemForm({
               setPackedQuantity(fillToFullState.packedQuantity)
               setUnpackedQuantity(fillToFullState.unpackedQuantity)
             }}
-            clearDisabled={isPending || isStockAtZero}
-            fillDisabled={isPending || isStockAtFull}
+            clearDisabled={readOnly || isPending || isStockAtZero}
+            fillDisabled={readOnly || isPending || isStockAtFull}
             clearLabel={t('common.clear')}
             fillLabel={t('common.fillToFull')}
           />
@@ -935,6 +940,7 @@ export function ItemForm({
               decreaseLabel={t('items.form.targetQuantity.decrease')}
               increaseLabel={t('items.form.targetQuantity.increase')}
               disabled={isPending}
+              readOnly={readOnly}
               size="default"
               inputProps={{
                 id: 'targetQuantity',
@@ -970,6 +976,7 @@ export function ItemForm({
               decreaseLabel={t('items.form.refillThreshold.decrease')}
               increaseLabel={t('items.form.refillThreshold.increase')}
               disabled={isPending}
+              readOnly={readOnly}
               size="default"
               inputProps={{
                 id: 'refillThreshold',

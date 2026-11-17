@@ -18,6 +18,11 @@ export interface QuantityStepperProps {
   increaseLabel: string
   // Disables both buttons; combined with the value-at-0 test for `−`.
   disabled?: boolean
+  // Shows the value but lets nobody change it: both buttons are disabled and
+  // the input is `readOnly` (not disabled, so the number can still be
+  // selected). For a location viewer on the item Stock tab (households H5
+  // task F.6).
+  readOnly?: boolean
   // Pairs the buttons' Button `size` with the input's default height, so a
   // caller whose input is taller than the dialog's still gets a flush,
   // equal-height joined group instead of the buttons floating inside it.
@@ -38,6 +43,7 @@ export function QuantityStepper({
   decreaseLabel,
   increaseLabel,
   disabled,
+  readOnly = false,
   size = 'sm',
   inputProps,
 }: QuantityStepperProps) {
@@ -70,7 +76,7 @@ export function QuantityStepper({
         size={buttonSize}
         className="flex-shrink-0 -mr-[1px] rounded-tr-none rounded-br-none"
         aria-label={decreaseLabel}
-        disabled={value === 0 || disabled}
+        disabled={value === 0 || disabled || readOnly}
         onClick={() => bump(-step)}
         icon={<Minus className="h-4 w-4" />}
       />
@@ -79,6 +85,7 @@ export function QuantityStepper({
         min="0"
         className={defaultInputClassName}
         disabled={disabled}
+        readOnly={readOnly}
         {...inputProps}
       />
       <Button
@@ -87,7 +94,7 @@ export function QuantityStepper({
         size={buttonSize}
         className="flex-shrink-0 -ml-[1px] rounded-tl-none rounded-bl-none"
         aria-label={increaseLabel}
-        disabled={disabled}
+        disabled={disabled || readOnly}
         onClick={() => bump(step)}
         icon={<Plus className="h-4 w-4" />}
       />

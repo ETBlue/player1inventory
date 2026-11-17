@@ -121,6 +121,10 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     // provider. Placed right after `...original` so this file's own overrides
     // below still win.
     useGetLocationsQuery: () => mockUseGetLocationsQuery(),
+    // `usePermissions` (households H5 task F.6) reads the household role. In
+    // local mode the hook skips it; in cloud mode no role arrives, so the
+    // location roles from `GetLocations` decide alone.
+    useGetHouseholdQuery: queryStub,
     useCreateLocationMutation: () => [
       vi.fn().mockResolvedValue({ data: undefined }),
       {},

@@ -13,9 +13,12 @@ import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { ViewToggle } from '@/components/shared/ViewToggle'
 import { Button } from '@/components/ui/button'
 import { useStockedItems, useUpdateItem } from '@/hooks'
+import {
+  useActiveLocationRights,
+  useCreateHere,
+} from '@/hooks/useActiveLocationRights'
 import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
-import { usePermissions } from '@/hooks/usePermissions'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
 import { useShowStock } from '@/hooks/useShowStock'
@@ -35,7 +38,10 @@ import type { PantryItem, Recipe, StockFields, Vendor } from '@/types'
 
 export function PantryListView() {
   const { t } = useTranslation()
-  const { canEditCatalog, roleKnown } = usePermissions()
+  // Households H5: creating from search needs the catalog AND the location
+  // right; quick update and the cart need the location right (task F.6).
+  const { canCreate, createReadOnlyNote } = useCreateHere()
+  const { canEditHere, isViewerHere } = useActiveLocationRights()
   const navigate = useNavigate()
 
   const { data: items = [], isLoading } = useStockedItems()
@@ -262,13 +268,12 @@ export function PantryListView() {
           items={items}
           className="border-b"
           onCreateFromSearch={
-            // Creating an item is a catalog write: not for a household
-            // member (households H5 task F.5). No button, and no Enter.
-            canEditCatalog ? handleCreateFromSearch : undefined
+            // Creating here also stocks the item here: a catalog right AND a
+            // location right (households H5 tasks F.5 and F.6). No button,
+            // no Enter, and a note that says why.
+            canCreate ? handleCreateFromSearch : undefined
           }
-          createReadOnlyNote={
-            roleKnown && !canEditCatalog ? t('items.createReadOnly') : undefined
-          }
+          createReadOnlyNote={createReadOnlyNote}
           hasExactMatch={hasExactGlobalMatch}
           vendors={vendors}
           recipes={recipes}
@@ -290,15 +295,18 @@ export function PantryListView() {
             </>
           }
         >
-          <Button
-            size="icon"
-            className="lg:w-auto lg:px-3"
-            aria-label="Add item"
-            onClick={() => setNewItemOpen(true)}
-          >
-            <Plus />
-            <span className="hidden lg:inline">Add</span>
-          </Button>
+          {/* Adding stocks an item here: a location write (H5 task F.6) */}
+          {canEditHere && (
+            <Button
+              size="icon"
+              className="lg:w-auto lg:px-3"
+              aria-label="Add item"
+              onClick={() => setNewItemOpen(true)}
+            >
+              <Plus />
+              <span className="hidden lg:inline">Add</span>
+            </Button>
+          )}
         </ItemListToolbar>
         <div className="h-px bg-accessory-default" />
       </div>
@@ -311,16 +319,22 @@ export function PantryListView() {
           <div className="text-center py-16 text-foreground-muted flex flex-col items-center gap-6">
             <div>
               <p>{t('pantry.empty.title')}</p>
-              <p className="text-sm mt-1">{t('pantry.empty.description')}</p>
+              <p className="text-sm mt-1">
+                {isViewerHere
+                  ? t('common.locationViewOnly')
+                  : t('pantry.empty.description')}
+              </p>
             </div>
-            <Button
-              size="lg"
-              className="px-8"
-              onClick={() => setNewItemOpen(true)}
-            >
-              <Plus />
-              {t('pantry.empty.createButton')}
-            </Button>
+            {canEditHere && (
+              <Button
+                size="lg"
+                className="px-8"
+                onClick={() => setNewItemOpen(true)}
+              >
+                <Plus />
+                {t('pantry.empty.createButton')}
+              </Button>
+            )}
           </div>
         ) : sortedItems.length === 0 && !hasTail ? (
           <div className="text-center py-12 text-foreground-muted">
@@ -372,7 +386,10 @@ export function PantryListView() {
                 activeRecipeIds={selectedRecipeIds}
                 activeTagIds={activeTagIds}
                 isPending={pendingItemIds.has(item.id)}
-                onQuickUpdate={() => setQuickUpdateItemId(item.id)}
+                // A location viewer may not change the stock (households H5 task F.6)
+                {...(canEditHere && {
+                  onQuickUpdate: () => setQuickUpdateItemId(item.id),
+                })}
                 onTagClick={handleTagClick}
                 onVendorClick={handleVendorClick}
                 onRecipeClick={handleRecipeClick}
@@ -399,7 +416,10 @@ export function PantryListView() {
                 activeRecipeIds={selectedRecipeIds}
                 activeTagIds={activeTagIds}
                 isPending={pendingItemIds.has(item.id)}
-                onQuickUpdate={() => setQuickUpdateItemId(item.id)}
+                // A location viewer may not change the stock (households H5 task F.6)
+                {...(canEditHere && {
+                  onQuickUpdate: () => setQuickUpdateItemId(item.id),
+                })}
                 onTagClick={handleTagClick}
                 onVendorClick={handleVendorClick}
                 onRecipeClick={handleRecipeClick}

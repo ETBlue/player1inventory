@@ -10,9 +10,13 @@ import {
   useState,
 } from 'react'
 import { bootstrapCarts, getLocations } from '@/db/operations'
-import { useBootstrapCartsMutation } from '@/generated/graphql'
+import {
+  type LocationRole,
+  useBootstrapCartsMutation,
+} from '@/generated/graphql'
 import { useLocations } from '@/hooks/useLocations'
 import type { DataMode } from '@/lib/dataMode'
+import { locationRoleAtLeast } from '@/lib/locationRole'
 import { DEFAULT_LOCATION_ID, type Location } from '@/types'
 import { useDataMode } from './useDataMode'
 
@@ -245,6 +249,21 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
   const activeLocationIsKnown = !!locations?.some(
     (loc) => loc.id === activeLocationId,
   )
+  // `bootstrapCarts` creates rows, so the server asks `participant` for it. A
+  // location `viewer` would be refused with FORBIDDEN on every switch, so the
+  // call is made only where the caller may write (households H5 task F.6,
+  // decision T7). A viewer still READS the carts: `vendorCart` answers a
+  // viewer with an unsaved empty cart, and `allCarts` lists what exists.
+  // Read from the same list as `activeLocationIsKnown`, which carries
+  // `myRole`; a boolean again, for the same reason (see below).
+  const activeLocationIsWritable = locationRoleAtLeast(
+    (
+      locations?.find((loc) => loc.id === activeLocationId) as
+        | { myRole?: LocationRole | null }
+        | undefined
+    )?.myRole,
+    'participant',
+  )
   const bootstrappedRef = useRef<string | null>(null)
   useEffect(() => {
     if (mode !== 'cloud') return
@@ -254,6 +273,9 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
     // The validation effect above corrects the id, and this effect then runs
     // again with a real one.
     if (!activeLocationIsKnown) return
+    // Not for a viewer. `bootstrappedRef` is not set, so if the role rises
+    // to participant later, the effect runs again and bootstraps then.
+    if (!activeLocationIsWritable) return
     const key = `${mode}:${activeLocationId}`
     if (bootstrappedRef.current === key) return
     bootstrappedRef.current = key
@@ -263,7 +285,13 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
     }).catch((err) => {
       console.error('cloud bootstrapCarts failed', err)
     })
-  }, [mode, activeLocationId, activeLocationIsKnown, cloudBootstrapCarts])
+  }, [
+    mode,
+    activeLocationId,
+    activeLocationIsKnown,
+    activeLocationIsWritable,
+    cloudBootstrapCarts,
+  ])
 
   const activeLocation = useMemo(
     () => locations?.find((loc) => loc.id === activeLocationId),

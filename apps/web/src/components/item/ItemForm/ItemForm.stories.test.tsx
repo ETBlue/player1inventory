@@ -14,6 +14,7 @@ const {
   CreateModeEmptyError,
   Saving,
   InfoSectionReadOnly,
+  StockSectionReadOnly,
 } = composeStories(stories)
 
 describe('ItemForm stories smoke tests', () => {
@@ -82,6 +83,17 @@ describe('ItemForm stories smoke tests', () => {
   it('InfoSectionReadOnly shows a readOnly name and no Save button', () => {
     render(<InfoSectionReadOnly />)
     expect(document.getElementById('name')).toHaveAttribute('readonly')
+    expect(screen.queryByRole('button', { name: /save/i })).toBeNull()
+  })
+
+  it('StockSectionReadOnly shows readOnly numbers, disabled steppers and no Save', () => {
+    render(<StockSectionReadOnly />)
+    expect(document.getElementById('packedQuantity')).toHaveAttribute(
+      'readonly',
+    )
+    expect(
+      screen.getByRole('button', { name: /increase packed/i }),
+    ).toBeDisabled()
     expect(screen.queryByRole('button', { name: /save/i })).toBeNull()
   })
 })

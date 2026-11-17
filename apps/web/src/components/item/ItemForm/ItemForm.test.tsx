@@ -1444,3 +1444,83 @@ describe('ItemForm — readOnly (households H5 task F.5)', () => {
     expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument()
   })
 })
+
+describe('ItemForm — readOnly stock section (households H5 task F.6)', () => {
+  // The Stock tab passes `readOnly` for a location viewer. Every stock number
+  // stays readable and selectable, but nothing can change it.
+  const stockValues = {
+    name: 'Milk',
+    targetUnit: 'package' as const,
+    packedQuantity: 2,
+    unpackedQuantity: 1,
+    targetQuantity: 4,
+    refillThreshold: 1,
+    consumeAmount: 1,
+    expirationMode: 'date' as const,
+    dueDate: '2026-12-01',
+  }
+
+  it('location viewer sees every stock field read only and no Save', () => {
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        sections={['stock']}
+        readOnly
+        initialValues={stockValues}
+      />,
+    )
+
+    // Each number and the due date is readOnly, not disabled
+    for (const id of [
+      'packedQuantity',
+      'unpackedQuantity',
+      'targetQuantity',
+      'refillThreshold',
+      'expirationDueDate',
+    ]) {
+      const field = document.getElementById(id)
+      expect(field, id).not.toBeNull()
+      expect(field, id).toHaveAttribute('readonly')
+      expect(field, id).not.toBeDisabled()
+    }
+    // Every button that changes a number is disabled: the four steppers,
+    // Pack, Unpack, Clear and Fill to Full
+    for (const name of [
+      /increase packed/i,
+      /decrease packed/i,
+      /increase unpacked/i,
+      /increase target/i,
+      /increase refill/i,
+      /^unpack$/i,
+      /^pack$/i,
+      /^clear$/i,
+      /fill to full/i,
+    ]) {
+      expect(screen.getByRole('button', { name }), String(name)).toBeDisabled()
+    }
+    expect(screen.queryByRole('button', { name: /save/i })).toBeNull()
+  })
+
+  it('location participant gets the same stock section editable (the control)', () => {
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        sections={['stock']}
+        initialValues={stockValues}
+      />,
+    )
+    expect(document.getElementById('packedQuantity')).not.toHaveAttribute(
+      'readonly',
+    )
+    for (const name of [
+      /increase packed/i,
+      /^unpack$/i,
+      /^pack$/i,
+      /^clear$/i,
+      /fill to full/i,
+    ]) {
+      expect(screen.getByRole('button', { name }), String(name)).toBeEnabled()
+    }
+    expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument()
+  })
+})

@@ -39,6 +39,8 @@ import type { HouseholdRole, LocationRole } from '@/generated/graphql'
 export const VIEWER_LOCATION = 'loc-role-viewer'
 export const NO_ROLE_LOCATION = 'loc-role-none'
 export const ACTIVE_LOCAL_LOCATION = 'local'
+/** The second location of `asLocationRole`, with a role other than the active one's. */
+export const OTHER_LOCATION = 'loc-role-other'
 
 /**
  * Two people. Both are a viewer of one location, a participant of the active
@@ -104,6 +106,32 @@ export function asRoleUnknown() {
   setCurrent({
     mode: 'cloud',
     locationRoles: LOCATION_ROLES,
+  })
+}
+
+/**
+ * A person with `role` on the ACTIVE location (`'local'`), for the location
+ * role tests (households H5 task F.6). The second location has a DIFFERENT
+ * role (participant for a viewer, viewer otherwise), and `NO_ROLE_LOCATION`
+ * has none. Two people made with two different `role`s differ ONLY in the
+ * role on the active location, so a page that reads the wrong location, or
+ * the household role, fails one of the two.
+ *
+ * The household role defaults to `manager`: a household manager who is only
+ * a viewer of the active location can change the catalog but not the stock
+ * (Review Focus 4 of the H5 plan).
+ */
+export function asLocationRole(
+  role: LocationRole,
+  householdRole: HouseholdRole = 'manager',
+) {
+  setCurrent({
+    mode: 'cloud',
+    householdRole,
+    locationRoles: {
+      [ACTIVE_LOCAL_LOCATION]: role,
+      [OTHER_LOCATION]: role === 'viewer' ? 'participant' : 'viewer',
+    },
   })
 }
 

@@ -8,6 +8,7 @@ import { CookingControlBar } from '@/components/recipe/CookingControlBar'
 import { NewRecipeDialog } from '@/components/recipe/NewRecipeDialog'
 import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
+import { ReadOnlyNote } from '@/components/shared/ReadOnlyNote'
 import { Toolbar } from '@/components/shared/Toolbar'
 import {
   AlertDialog,
@@ -28,6 +29,7 @@ import {
 } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useItems, useTags, useTagTypes } from '@/hooks'
+import { useActiveLocationRights } from '@/hooks/useActiveLocationRights'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useConsumeRecipes, useRecipes } from '@/hooks/useRecipes'
@@ -72,6 +74,8 @@ function CookingPage() {
   // Creating a recipe is a catalog write: not for a household member
   // (households H5 task F.5). Cooking itself is a location right (F.6).
   const { canEditCatalog, roleKnown } = usePermissions()
+  // Cooking writes this location's stock: `participant` or higher
+  const { canEditHere, isViewerHere } = useActiveLocationRights()
   const navigate = useNavigate()
   const { sort, dir, q, expanded } = Route.useSearch()
   const { data: recipes = [] } = useRecipes()
@@ -527,7 +531,9 @@ function CookingPage() {
                 <Checkbox
                   id={`recipe-${recipe.id}`}
                   checked={recipeCheckState}
-                  disabled={isRecipeUnavailable}
+                  // A location viewer cannot cook (households H5 task F.6,
+                  // decision O10): nothing can be checked
+                  disabled={isRecipeUnavailable || !canEditHere}
                   // Points at the Row 3 status line so a screen
                   // reader announces WHY a disabled recipe is
                   // disabled ("0 / 2 here") instead of just
@@ -681,7 +687,7 @@ function CookingPage() {
                         showTags={false}
                         showTagSummary={false}
                         isChecked={isItemChecked}
-                        disabled={!available}
+                        disabled={!available || !canEditHere}
                         onCheckboxToggle={() =>
                           handleToggleItem(recipe.id, ri.itemId)
                         }
@@ -716,7 +722,8 @@ function CookingPage() {
           <span className="flex-1">
             {t('cooking.toolbar.servingCount', { count: totalServings })}
           </span>
-          {anyChecked && (
+          {/* No cook button for a location viewer (H5 decision O10) */}
+          {canEditHere && anyChecked && (
             <Button
               variant="destructive-ghost"
               onClick={() => setShowCancelDialog(true)}
@@ -724,13 +731,16 @@ function CookingPage() {
               <X /> {t('common.cancel')}
             </Button>
           )}
-          <Button
-            disabled={!anyChecked}
-            onClick={() => setShowDoneDialog(true)}
-          >
-            <Check /> {t('common.done')}
-          </Button>
+          {canEditHere && (
+            <Button
+              disabled={!anyChecked}
+              onClick={() => setShowDoneDialog(true)}
+            >
+              <Check /> {t('common.done')}
+            </Button>
+          )}
         </Toolbar>
+        {isViewerHere && <ReadOnlyNote text={t('common.locationViewOnly')} />}
 
         <CookingControlBar
           allExpanded={

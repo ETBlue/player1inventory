@@ -11,6 +11,7 @@ import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Button } from '@/components/ui/button'
 import { useStockedItems, useUpdateItem } from '@/hooks'
+import { useActiveLocationRights } from '@/hooks/useActiveLocationRights'
 import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
@@ -57,6 +58,7 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
   const { search, isTagsVisible } = useUrlSearchAndFilters()
 
   const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
+  const { canEditHere } = useActiveLocationRights()
   const [quickUpdateItemId, setQuickUpdateItemId] = useState<string | null>(
     null,
   )
@@ -273,7 +275,10 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
       showTags={isTagsVisible}
       disabled={pendingItemIds.has(item.id)}
       isPending={pendingItemIds.has(item.id)}
-      onQuickUpdate={() => setQuickUpdateItemId(item.id)}
+      // A location viewer may not change the stock (households H5 task F.6)
+      {...(canEditHere && {
+        onQuickUpdate: () => setQuickUpdateItemId(item.id),
+      })}
     />
   )
 
