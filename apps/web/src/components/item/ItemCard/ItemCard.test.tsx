@@ -2143,3 +2143,68 @@ describe('ItemCard - refill threshold marker', () => {
     expect(screen.queryByText(/Refill when below/)).not.toBeInTheDocument()
   })
 })
+
+describe('ItemCard - controlsDescribedBy', () => {
+  // A location viewer sees the cart and cooking checkboxes and amounts
+  // disabled. `controlsDescribedBy` points them at the page's view-only note,
+  // so a screen reader says WHY (households H5, review of task F.6).
+  const shoppingItem = makeItem({
+    name: 'Milk',
+    targetUnit: 'package',
+    packedQuantity: 1,
+    unpackedQuantity: 0,
+    targetQuantity: 2,
+    refillThreshold: 1,
+  })
+
+  it('puts the id on the checkbox and both amount buttons', async () => {
+    await renderWithRouter(
+      <>
+        <p id="why-note">You can view this location, but not change it.</p>
+        <ItemCard
+          lastPurchaseDate={undefined}
+          item={shoppingItem}
+          tags={[]}
+          tagTypes={[]}
+          mode="shopping"
+          isChecked
+          controlAmount={2}
+          onCheckboxToggle={() => {}}
+          onAmountChange={() => {}}
+          disabled
+          controlsDescribedBy="why-note"
+        />
+      </>,
+    )
+
+    const why = 'You can view this location, but not change it.'
+    expect(
+      screen.getByRole('checkbox', { name: 'Remove Milk' }),
+    ).toHaveAccessibleDescription(why)
+    expect(
+      screen.getByRole('button', { name: 'Increase quantity of Milk' }),
+    ).toHaveAccessibleDescription(why)
+    expect(
+      screen.getByRole('button', { name: 'Decrease quantity of Milk' }),
+    ).toHaveAccessibleDescription(why)
+  })
+
+  it('adds no description when the prop is left out', async () => {
+    await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={undefined}
+        item={shoppingItem}
+        tags={[]}
+        tagTypes={[]}
+        mode="shopping"
+        isChecked
+        controlAmount={2}
+        onCheckboxToggle={() => {}}
+        onAmountChange={() => {}}
+      />,
+    )
+    expect(
+      screen.getByRole('checkbox', { name: 'Remove Milk' }),
+    ).not.toHaveAttribute('aria-describedby')
+  })
+})

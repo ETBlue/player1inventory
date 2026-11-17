@@ -21,3 +21,12 @@ export const CustomText: Story = {
     text: 'Only a household owner or manager can change this item.',
   },
 }
+
+// With an id, so a disabled control can name it in `aria-describedby`
+// (a location viewer's cart and cooking checkboxes).
+export const WithId: Story = {
+  args: {
+    id: 'location-view-only-note',
+    text: 'You can view this location, but not change it.',
+  },
+}

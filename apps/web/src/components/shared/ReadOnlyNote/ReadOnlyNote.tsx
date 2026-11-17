@@ -6,6 +6,12 @@ interface ReadOnlyNoteProps {
   /** Defaults to `settings.catalogReadOnly`. */
   text?: string
   className?: string
+  /**
+   * Set it when a disabled control should say why: the control names this id
+   * in `aria-describedby` (a location viewer's cart and cooking checkboxes,
+   * households H5).
+   */
+  id?: string
 }
 
 /**
@@ -17,10 +23,11 @@ interface ReadOnlyNoteProps {
  * appears only once the role has loaded, so it also tells a test that the
  * missing buttons are the member rule and not the loading state.
  */
-export function ReadOnlyNote({ text, className }: ReadOnlyNoteProps) {
+export function ReadOnlyNote({ text, className, id }: ReadOnlyNoteProps) {
   const { t } = useTranslation()
   return (
     <p
+      id={id}
       className={cn(
         'flex items-center gap-2 px-4 py-2 text-sm text-foreground-muted',
         className,

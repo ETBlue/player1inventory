@@ -274,6 +274,7 @@ describe.each(people)('$who on a cart', (person) => {
         screen.getByRole('button', { name: /cancel/i }),
       ).toBeInTheDocument()
       expect(screen.queryByText(VIEW_ONLY_NOTE)).toBeNull()
+      expect(remove).not.toHaveAttribute('aria-describedby')
     } else {
       // Shown, not changeable
       expect(remove).toBeDisabled()
@@ -287,8 +288,13 @@ describe.each(people)('$who on a cart', (person) => {
       // No checkout and no abandon
       expect(screen.queryByRole('button', { name: /done/i })).toBeNull()
       expect(screen.queryByRole('button', { name: /cancel/i })).toBeNull()
-      // And the page says why
+      // And the page says why, and the disabled controls point at it
       expect(screen.getByText(VIEW_ONLY_NOTE)).toBeInTheDocument()
+      expect(remove).toHaveAccessibleDescription(VIEW_ONLY_NOTE)
+      expect(add).toHaveAccessibleDescription(VIEW_ONLY_NOTE)
+      expect(
+        screen.getByRole('button', { name: 'Increase quantity of Milk' }),
+      ).toHaveAccessibleDescription(VIEW_ONLY_NOTE)
       // A press on the disabled box writes nothing
       await userEvent.setup().click(add)
       await new Promise((resolve) => setTimeout(resolve, 50))
@@ -360,12 +366,21 @@ describe.each(people)('$who on the cooking page', (person) => {
       expect(item).toBeEnabled()
       expect(screen.getByRole('button', { name: /done/i })).toBeInTheDocument()
       expect(screen.queryByText(VIEW_ONLY_NOTE)).toBeNull()
+      expect(recipe).not.toHaveAccessibleDescription(
+        expect.stringContaining(VIEW_ONLY_NOTE),
+      )
     } else {
       expect(recipe).toBeDisabled()
       expect(item).toBeDisabled()
       // The cook button is hidden (H5 decision O10)
       expect(screen.queryByRole('button', { name: /done/i })).toBeNull()
       expect(screen.getByText(VIEW_ONLY_NOTE)).toBeInTheDocument()
+      // The disabled checkboxes say why. The recipe's description keeps its
+      // stock status too
+      expect(recipe).toHaveAccessibleDescription(
+        expect.stringContaining(VIEW_ONLY_NOTE),
+      )
+      expect(item).toHaveAccessibleDescription(VIEW_ONLY_NOTE)
     }
   })
 })

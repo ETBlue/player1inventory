@@ -4,7 +4,7 @@ import {
   useRouterState,
 } from '@tanstack/react-router'
 import { ArrowLeft, ArrowUpFromLine, Check, Loader2, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ItemCard } from '@/components/item/ItemCard'
@@ -67,6 +67,10 @@ function VendorCart() {
   // right; quick update and the cart need the location right (task F.6).
   const { canCreate, createReadOnlyNote } = useCreateHere()
   const { canEditHere, isViewerHere } = useActiveLocationRights()
+  // The disabled cart controls name the view-only note in
+  // `aria-describedby`. Only for a KNOWN viewer: the note renders only then,
+  // and an id that names nothing tells a screen reader nothing.
+  const viewOnlyNoteId = useId()
   const navigate = useNavigate()
   const { vendorId: vendorIdParam } = Route.useParams()
   const cartVendorId: string | null =
@@ -392,6 +396,8 @@ function VendorCart() {
           // A location viewer sees what is in the cart and how much, but
           // cannot change it (households H5 task F.6)
           disabled={pendingItemIds.has(item.id) || !cart || !canEditHere}
+          // and is told why: the controls point at the view-only note
+          controlsDescribedBy={isViewerHere ? viewOnlyNoteId : undefined}
           isPending={pendingItemIds.has(item.id)}
           {...(ci ? { controlAmount: ci.quantity } : {})}
           onCheckboxToggle={() => handleToggleCart(item)}
@@ -469,7 +475,12 @@ function VendorCart() {
           )}
         </Toolbar>
 
-        {isViewerHere && <ReadOnlyNote text={t('common.locationViewOnly')} />}
+        {isViewerHere && (
+          <ReadOnlyNote
+            id={viewOnlyNoteId}
+            text={t('common.locationViewOnly')}
+          />
+        )}
 
         <ItemListToolbar
           className="bg-transparent border-none"

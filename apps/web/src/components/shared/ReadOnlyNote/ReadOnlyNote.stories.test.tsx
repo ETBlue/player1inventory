@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './ReadOnlyNote.stories'
 
-const { Default, CustomText } = composeStories(stories)
+const { Default, CustomText, WithId } = composeStories(stories)
 
 describe('ReadOnlyNote stories smoke tests', () => {
   it('Default says who can change the catalog', () => {
@@ -22,5 +22,14 @@ describe('ReadOnlyNote stories smoke tests', () => {
         'Only a household owner or manager can change this item.',
       ),
     ).toBeInTheDocument()
+  })
+
+  it('WithId puts the id on the note, so a control can point at it', () => {
+    render(<WithId />)
+    expect(
+      screen
+        .getByText('You can view this location, but not change it.')
+        .closest('p'),
+    ).toHaveAttribute('id', 'location-view-only-note')
   })
 })

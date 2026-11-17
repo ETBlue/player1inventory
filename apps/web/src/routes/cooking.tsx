@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { Check, ChevronDown, ChevronLeft, Minus, Plus, X } from 'lucide-react'
-import React, { useMemo, useState } from 'react'
+import React, { useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ItemCard } from '@/components/item/ItemCard'
@@ -76,6 +76,9 @@ function CookingPage() {
   const { canEditCatalog, roleKnown } = usePermissions()
   // Cooking writes this location's stock: `participant` or higher
   const { canEditHere, isViewerHere } = useActiveLocationRights()
+  // The disabled checkboxes name the view-only note in `aria-describedby`.
+  // Only for a KNOWN viewer: the note renders only then.
+  const viewOnlyNoteId = useId()
   const navigate = useNavigate()
   const { sort, dir, q, expanded } = Route.useSearch()
   const { data: recipes = [] } = useRecipes()
@@ -534,13 +537,18 @@ function CookingPage() {
                   // A location viewer cannot cook (households H5 task F.6,
                   // decision O10): nothing can be checked
                   disabled={isRecipeUnavailable || !canEditHere}
-                  // Points at the Row 3 status line so a screen
-                  // reader announces WHY a disabled recipe is
-                  // disabled ("0 / 2 here") instead of just
-                  // "checkbox, disabled" — the association a sighted
-                  // user makes spatially. No axe or Biome rule covers
-                  // this, so it has to be wired by hand.
-                  aria-describedby={`recipe-status-${recipe.id}`}
+                  // Points at the Row 3 status line ("0 / 2 here"), so
+                  // a screen reader announces the stock status, which
+                  // is WHY a recipe with nothing stocked here is
+                  // disabled. For a location viewer the checkbox is
+                  // disabled for another reason, so it also points at
+                  // the view-only note (households H5). No axe or
+                  // Biome rule covers this, so it is wired by hand.
+                  aria-describedby={
+                    isViewerHere
+                      ? `recipe-status-${recipe.id} ${viewOnlyNoteId}`
+                      : `recipe-status-${recipe.id}`
+                  }
                   onCheckedChange={() => handleToggleRecipeCheckbox(recipe.id)}
                   aria-label={recipe.name}
                 />
@@ -688,6 +696,9 @@ function CookingPage() {
                         showTagSummary={false}
                         isChecked={isItemChecked}
                         disabled={!available || !canEditHere}
+                        controlsDescribedBy={
+                          isViewerHere ? viewOnlyNoteId : undefined
+                        }
                         onCheckboxToggle={() =>
                           handleToggleItem(recipe.id, ri.itemId)
                         }
@@ -740,7 +751,12 @@ function CookingPage() {
             </Button>
           )}
         </Toolbar>
-        {isViewerHere && <ReadOnlyNote text={t('common.locationViewOnly')} />}
+        {isViewerHere && (
+          <ReadOnlyNote
+            id={viewOnlyNoteId}
+            text={t('common.locationViewOnly')}
+          />
+        )}
 
         <CookingControlBar
           allExpanded={
