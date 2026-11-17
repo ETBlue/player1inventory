@@ -630,6 +630,26 @@ with an empty role list (its "leaves out a location deleted since" test), and wh
 Members page should say so. Do not add an invite delete to `clearAllData` without asking:
 `purge-coverage.test.ts` lists `householdInvite` as kept on purpose for that path.
 
+**Notes from the review of G.3, for later tasks.**
+
+- **G.9:** `revokeInvite` answers `false` when nothing was revoked: another tab or person
+  revoked it, it was used, or (for a manager) it is a `manager` invite. Treat `false` as
+  "this invite is no longer open": refetch the invite list, and show no success message.
+- **G.4, the join and revoke together:** the claim must keep `expiresAt: { gt: now }`, and
+  `revokeInvite` keeps `usedAt: null, revokedAt: null` in its `where`. Together they make a
+  join and a revoke at the same moment safe: only one of the two conditional writes can
+  match the row.
+- **G.4, `ALREADY_MEMBER`:** reuse the preview's check, one `householdMember.findUnique`
+  on the INVITE's household (`householdId_userId`), not the caller's household.
+- **G.4, a wrong-length token:** `invitePreview` answers INVALID for a token whose length is
+  not `INVITE_TOKEN_LENGTH` (43), with no read (`hasInviteTokenLength` in `lib/invite.ts`).
+  The join should do the same, with `INVITE_INVALID`.
+- **G.4, a bad `locationRoles` row:** do not catch a `parseLocationRoles` error inside the
+  join transaction. It means a corrupt row; the transaction must roll back and the error
+  must reach the logs.
+- **Open question for the owner (not decided):** an invite a manager made stays open after
+  that manager is removed or made a `member`. Should it be revoked then?
+
 ---
 
 ## Task G.4 — server: `joinHousehold`
@@ -1235,3 +1255,12 @@ error builders) and `resolvers/invite.resolver.ts`: `createInvite`, `householdIn
 `invitePreview` and `revokeInvite`. Both mutations publish household-level `LOCATION`; the
 live guard now holds 64 fields. `invitePreview` uses `requireAuth` only (T22). See the G.3
 rows of *What this plan got wrong*.
+
+The review of G.3 (no security or authorization bug; `revokeInvite` → `false` accepted)
+led to these fixes: the "oldest first" test now has the older invite carry the id that
+sorts later, plus a tie test; `householdFake` APPLIES `select` on invites (before, it was
+ignored, so a test could get the token back where Prisma would not); `invitePreview` skips
+the read for a token of the wrong length and no longer reads the token column;
+`createInvite` publishes right after the write, before the two name reads; and a test
+pins that an expired, unused invite can be revoked. See *Notes from the review of G.3*
+under Task G.3 for what later tasks must keep.
