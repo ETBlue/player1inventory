@@ -1440,6 +1440,20 @@ Needs owner decisions O2, O3, O6, O7, O9, O12.
 | H5b | `add_household_invites` (+ `User.activeHouseholdId` with O2-A) | migration with the server, then the web | probably none; check Clerk's redirect rules for `/join/*` |
 | H5c | none expected | server before web | none |
 
+**H5a, two more notes (review of task F.7).**
+
+- **`createVendor(locationId:)` is optional on the new server.** An old web bundle always
+  sends it, so the change is backwards compatible. The new web bundle sends none only in a
+  household with no location, and an old server would refuse that call with a GraphQL
+  validation error. That is one more reason for server before web.
+- **The server-first window can leave an old web bundle on an empty household.** An old
+  bundle on the new server can delete the household's last location, because the server no
+  longer refuses it. That bundle has no `NoLocationsGate`, and its `ActiveLocationProvider`
+  keeps the stale active id when the list is empty. So Pantry, Shopping and Cooking show a
+  spinner that never ends, until someone adds a location (from the settings page, which
+  still works) or the web is deployed. No data is lost. The window ends when the web
+  deploys.
+
 The checkpoint release runs the H3a, H3b, H3c-1 and H4 runbooks, then an H5 section. Rehearse
 every new migration on a fresh Neon branch of production first, like H3a. The test database is
 migrated by hand, by the owner or with the owner's consent.
@@ -1480,15 +1494,28 @@ and one test-only override in shipped code.
 - **`vendorCart` for a viewer returns a cart that is not saved.** If a participant creates it
   later, the viewer's cached cart has the same id, so nothing breaks; this is noted because a
   reader may expect every returned cart to exist.
-- **The empty screen covers four routes only** (F.7): Pantry, Shopping, a cart and Cooking.
-  Other location-scoped pages (the item page's Stock tab, an item's history) are reached
-  from those, so a person with no location rarely gets there; if they do, those pages still
-  wait for a location the way they did before F.7.
-- **The Stock form is read only for a moment on every cloud load** (found in F.7's E2E run,
-  caused by F.6). `usePermissions` answers `false` until BOTH `GetHousehold` and
-  `GetLocations` have arrived, so a person who types at once loses the keys. The location
-  right does not need the household role; `canEditLocation` could read only `myRole`. Not
-  changed here: it is F.6's rule (T9), and the E2E page object now waits instead.
+- **The empty screen covers six routes** (F.7 and its review): Pantry, Shopping, a cart,
+  Cooking, and the item page's Stock and log tabs. Before the review the Stock tab rendered
+  nothing (`stock.tsx`, `if (!viewed) return null`) and the log tab showed a spinner forever
+  (`useItemLogs` waits for a location). Both are now wrapped in `NoLocationsGate`. The item
+  page's Info and relation tabs need no location and work as before.
+- **In a household with no location, a cloud write that needs a location throws
+  `NoCloudLocationError`** (review of F.7, `useRequiredCloudLocationId`) before anything is
+  sent: stock, logs, cooking, add to or remove from a location. Before, they sent the
+  `'local'` sentinel and got `FORBIDDEN`. Every page that offers them is behind
+  `NoLocationsGate`, so no screen reaches them today; a page added later without the gate
+  would get the thrown error instead of a `FORBIDDEN`. `createVendor` sends no location,
+  `createItem` keeps the item in the catalog only, and `applyUnitSwitch` skips only its
+  pantry refetch.
+- **The settings Items tabs still offer Create while the catalog loads.** `hasExactMatch` is
+  computed against `[]` for that moment. This is older than H5 and not specific to an empty
+  household (the review of F.7 fixed only the empty-household case, where the catalog never
+  loaded at all).
+- **The Stock form is read only until `GetLocations` arrives** on a cold cache. Found in
+  F.7's E2E run, caused by F.6. Until the review of F.7 the location rights waited for
+  `GetHousehold` too; now `permissionsFor` has a separate `locationsLoading` flag, and
+  `roleAt`, `canEditLocation` and `isOrganizerAt` read only that. The window is shorter but
+  not gone, so `StockFormPage.navigateTo` still waits for an editable form.
 - **A failed create from the empty screen shows no message** (F.7). `NoLocationsGate`
   copies the settings page's Add dialog, which has no `onError` either. Offline,
   `offlineWriteLink` shows its own toast.
@@ -1582,6 +1609,11 @@ Filled in from the task reports and reviews.
 | F.7 | Files: `hooks/useLocations.test.tsx` gets the provider test | The provider tests live in `hooks/useActiveLocation.test.tsx`; `useLocations.test.tsx` only had a stale comment |
 | F.7 | (nothing about other mentions of `LAST_LOCATION`) | Also stale: `packages/types/src/index.ts`, `lib/household.ts` (`lockHousehold`'s reason), the `clearAllData` comment, `LocationList.stories.tsx`, `routes/settings/CLAUDE.md`, `locations/CLAUDE.md` |
 | F.7 | The `deleteHomeIfUnused` comment changes | Its check ("the import created at least one location") is kept on purpose, now for a new reason: a `clear` import of a backup with no locations must not leave the household with none |
+| F.7 review | (nothing about cloud writes in an empty household) | `useCloudLocationId` fell back to the `'local'` sentinel, so every cloud write sent it. An owner creating a vendor got `FORBIDDEN` and was told only an owner or manager may add one. `createVendor(locationId:)` is optional now, and the hook never returns the sentinel (`useRequiredCloudLocationId` throws `NoCloudLocationError` for the writes that need a location) |
+| F.7 review | (nothing about the catalog in an empty household) | `useItems()` in cloud reads `PantryData`, which needs a `locationId`, so the four settings Items tabs showed no items and offered Create for an item that existed. `useItems()` now reads `GetItems` when the list is loaded and empty |
+| F.7 review | The empty screen on Pantry, Shopping, a cart and Cooking | The item Stock tab rendered nothing and the log tab spun forever. Both are gated too |
+| T9 | "Cloud while loading: every `can…` is `false`" | Right for the household rights, wrong for the location rights: a location role does not need `GetHousehold`, and waiting for it made the Stock form read only on a cold cache (the F.7 E2E race). `permissionsFor` has a separate `locationsLoading` flag now |
+| F.7 review | (the F.7 server test) "a location of another household is refused" proves `requireLocationInHousehold` | It was refused earlier, by `requireLocationRole`: the caller had no role there. The test now gives the caller a role in the second household |
 
 ## Status
 
