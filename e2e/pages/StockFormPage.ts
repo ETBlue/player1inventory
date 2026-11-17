@@ -1,4 +1,4 @@
-import type { Locator, Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 import { withSteps } from './step'
 
 // The per-location stock form on the item-detail Stock tab
@@ -14,6 +14,14 @@ export class StockFormPage {
 
   async navigateTo(itemId: string) {
     await this.page.goto(`/items/${itemId}/stock`)
+    // Wait until the form can be edited. Since households H5 task F.6 the
+    // stock form is `readonly` while the caller's roles load (in cloud,
+    // `usePermissions` answers `false` until `GetHousehold` and
+    // `GetLocations` have both arrived). Keys typed in that moment are lost.
+    // Found 2026-11-17 in task F.7's cloud run: the decimal test typed into a
+    // `readonly` Unpacked field and read "0" (it passed when run alone).
+    // Every test that uses this page object is a person who may edit.
+    await expect(this.getPackedInput()).toBeEditable()
   }
 
   getPackedInput(): Locator {
