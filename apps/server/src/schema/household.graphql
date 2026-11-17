@@ -28,3 +28,78 @@ extend type Mutation {
   # code BAD_USER_INPUT.
   renameHousehold(name: String!): Household!
 }
+
+# ── Invites (households H5b, task G.3) ──
+
+# What `invitePreview` found for a token. One answer, INVALID, for a token
+# that is unknown, used, revoked or expired (decision T18), so a caller learns
+# nothing about a token.
+enum InviteStatus {
+  VALID
+  ALREADY_MEMBER
+  INVALID
+}
+
+# One location role an invite gives.
+type InviteLocationRole {
+  locationId: ID!
+  locationName: String!
+  role: LocationRole!
+}
+
+# An open invite: not used, not revoked, not expired.
+type HouseholdInvite {
+  id: ID!
+  # The secret part of the link. Only in `householdInvites`, for the owner and
+  # a manager, so they can copy an open link again (owner decision O7-A).
+  token: String!
+  householdRole: HouseholdRole!
+  # Only the locations that still exist in the household. An invite whose
+  # every location was deleted since (for example by clearAllData) has an
+  # empty list.
+  locationRoles: [InviteLocationRole!]!
+  createdByName: String!
+  expiresAt: String!
+}
+
+# What a person sees before they join (the join page).
+type InvitePreview {
+  status: InviteStatus!
+  # All four are null when status is INVALID.
+  householdName: String
+  invitedByName: String
+  householdRole: HouseholdRole
+  locationRoles: [InviteLocationRole!]
+}
+
+input InviteLocationRoleInput {
+  locationId: ID!
+  role: LocationRole!
+}
+
+extend type Query {
+  # The open invites of the caller's household, oldest first. Household role
+  # `manager` or higher. A manager sees only `member` invites (owner
+  # decisions O13-A, O15-A).
+  householdInvites: [HouseholdInvite!]!
+  # Any signed-in person, also one in no household (decision T22). It never
+  # throws for a token: it answers with a status. It holds no token.
+  invitePreview(token: String!): InvitePreview!
+}
+
+extend type Mutation {
+  # Household role `manager` or higher. Only the owner may invite a
+  # `manager`; nobody may invite an `owner` (BAD_USER_INPUT). Every location
+  # must be in the caller's household (FORBIDDEN otherwise); a location named
+  # twice is BAD_USER_INPUT. The list may be empty (owner decision O14-A).
+  # The link works once, for 7 days.
+  createInvite(
+    householdRole: HouseholdRole!
+    locationRoles: [InviteLocationRoleInput!]!
+  ): HouseholdInvite!
+  # Household role `manager` or higher. The owner revokes any open invite of
+  # the household; a manager only a `member` invite (owner decision O15-A).
+  # `false` when nothing was revoked: an unknown id, another household's
+  # invite, one already used or revoked, or a manager invite for a manager.
+  revokeInvite(id: ID!): Boolean!
+}

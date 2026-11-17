@@ -88,7 +88,8 @@
 //
 // ── WHAT IT DOES NOT MODEL ──
 //
-//   - `include`, and `select` on any method but `findUnique` and `update`.
+//   - `include`, and `select` on any method but `findUnique`, `findMany` and
+//     `update`.
 //     Both throw as unknown options.
 //   - The foreign key from `activeHouseholdId` to `Household`, and its
 //     ON DELETE SET NULL. `Household` lives in `householdFake`. Only real SQL
@@ -460,10 +461,15 @@ export function createUserFake(rows: UserRow[] = [], options: UserFakeOptions = 
       // biome-ignore lint/suspicious/noExplicitAny: the shape depends on `select`, as in Prisma
       return (args.select ? applySelect(row, args.select) : copy(row)) as any
     },
-    findMany: async (args: { where?: Where } = {}) => {
-      refuseUnknownOptions('findMany', args, ['where'])
+    // `select` since households H5b task G.3 (the invite list reads names
+    // only). Applied exactly like `findUnique`'s.
+    findMany: async (args: { where?: Where; select?: Record<string, unknown> } = {}) => {
+      refuseUnknownOptions('findMany', args, ['where', 'select'])
       checkUserWhere(args.where)
-      return readableRows().filter((r) => userMatches(r, args.where ?? {})).map(copy)
+      const rows = readableRows().filter((r) => userMatches(r, args.where ?? {}))
+      const select = args.select
+      // biome-ignore lint/suspicious/noExplicitAny: the shape depends on `select`, as in Prisma
+      return (select ? rows.map((r) => applySelect(r, select)) : rows.map(copy)) as any[]
     },
     create: async (args: { data: Data }) => {
       refuseUnknownOptions('create', args, ['data'])

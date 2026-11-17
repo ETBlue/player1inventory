@@ -151,3 +151,35 @@ describe('householdWorld', () => {
     expect(world.users.state.rows).toEqual([expect.objectContaining({ id: 'u1', activeHouseholdId: 'hh-1' })])
   })
 })
+
+describe('householdWorld holds the invite store (households H5b, task G.3)', () => {
+  it('the client has householdInvite, and a rolled-back transaction removes its write', async () => {
+    // Given a world with one household
+    const world = createHouseholdWorld()
+    world.seedHouseholds({
+      households: [household('hh-1', 'u1')],
+    })
+    const data = {
+      householdId: 'hh-1',
+      token: 't',
+      householdRole: 'member' as const,
+      locationRoles: [],
+      createdById: 'u1',
+      expiresAt: new Date('2030-01-01T00:00:00.000Z'),
+    }
+
+    // When an invite is written in a transaction that then throws
+    await expect(
+      world.client.$transaction(async (tx: unknown) => {
+        await (tx as typeof world.client).householdInvite.create({ data })
+        throw new Error('roll back')
+      }),
+    ).rejects.toThrow('roll back')
+
+    // Then the store holds no invite, and a plain write is kept
+    expect(world.households.state.householdInvites).toEqual([])
+    await world.client.householdInvite.create({ data })
+    expect(world.households.state.householdInvites).toHaveLength(1)
+  })
+})
+

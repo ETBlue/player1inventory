@@ -114,6 +114,11 @@ const publishes: Record<string, { kinds: Kind[] }> = {
   deleteVendor: { kinds: ['CATALOG', 'CART'] },
   // The household name is in every member's sidebar.
   renameHousehold: { kinds: ['CATALOG'] },
+  // Households H5b, decision T19: household-level `LOCATION`, which makes
+  // every open tab of the household refetch everything, the invite list too.
+  // `revokeInvite` publishes only when it revoked something.
+  createInvite: { kinds: ['LOCATION'] },
+  revokeInvite: { kinds: ['LOCATION'] },
   createItem: { kinds: ['CATALOG'] },
   updateItem: { kinds: ['CATALOG'] },
   createTag: { kinds: ['CATALOG'] },

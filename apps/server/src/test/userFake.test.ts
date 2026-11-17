@@ -833,3 +833,29 @@ describe('userFake gives every member a User row when asked (rowForEveryMember, 
     await expect(fake.client.findUnique({ where: { id: 'user_a' } })).rejects.toThrow(/rowForEveryMember/)
   })
 })
+
+describe('userFake findMany honours select (households H5b, task G.3)', () => {
+  it('returns only the selected scalar keys, for every matching row', async () => {
+    // Given two users with names and e-mail addresses
+    const fake = createUserFake([
+      userRow('user_a', { displayName: 'Ann', email: 'a@x' }),
+      userRow('user_b', { displayName: 'Ben', email: 'b@x' }),
+    ])
+
+    // When the invite list reads the names of some people
+    const rows = await fake.client.findMany({
+      where: { id: { in: ['user_b'] } },
+      select: { id: true, displayName: true },
+    })
+
+    // Then only those keys come back: no e-mail address
+    expect(rows).toEqual([{ id: 'user_b', displayName: 'Ben' }])
+  })
+
+  it('throws on a select key it does not model', async () => {
+    const fake = createUserFake([userRow('user_a')])
+    await expect(
+      fake.client.findMany({ where: { id: 'user_a' }, select: { notAColumn: true } }),
+    ).rejects.toThrow(/select key 'notAColumn/)
+  })
+})

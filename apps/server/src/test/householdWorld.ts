@@ -52,6 +52,9 @@ export function createHouseholdWorld() {
     household: households.client.household,
     householdMember: households.client.householdMember,
     locationMember: households.client.locationMember,
+    // The invite store (households H5b). It lives in `households.state`, so
+    // it rolls back with the rest.
+    householdInvite: households.client.householdInvite,
     location: {
       ...stock.client.location,
       delete: deleteLocation,

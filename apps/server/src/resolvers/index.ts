@@ -11,6 +11,7 @@ import { tagResolvers } from './tag.resolver.js'
 import { vendorResolvers } from './vendor.resolver.js'
 import { shelfResolvers } from './shelf.resolver.js'
 import { householdResolvers } from './household.resolver.js'
+import { inviteResolvers } from './invite.resolver.js'
 import { liveResolvers } from './live.resolver.js'
 import { forgetRolesAroundEach } from '../lib/mutationRoleCache.js'
 
@@ -27,6 +28,7 @@ const resolversObject: Resolvers = {
     ...locationResolvers.Query,
     ...itemStockResolvers.Query,
     ...householdResolvers.Query,
+    ...inviteResolvers.Query,
     ...importCheckResolvers.Query,
   },
   // Every root mutation field forgets the role caches before and after it
@@ -43,6 +45,7 @@ const resolversObject: Resolvers = {
     ...locationResolvers.Mutation,
     ...itemStockResolvers.Mutation,
     ...householdResolvers.Mutation,
+    ...inviteResolvers.Mutation,
   }),
   Recipe: recipeResolvers.Recipe,
   InventoryLog: inventoryLogResolvers.InventoryLog,
