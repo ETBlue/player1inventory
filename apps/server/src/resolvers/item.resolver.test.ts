@@ -14,8 +14,9 @@ import type { Context } from '../context.js'
 // pass quietly; without them it throws `Cannot read properties of undefined`,
 // which is what makes the deletion observable.
 //
-// `householdMember` answers the two reads `requireCatalogRole` (lib/authz.ts)
-// makes: every caller here is the `owner` of `hh_test`. The role checks
+// `user.findUnique` and `householdMember.findUnique` answer the two reads
+// `requireCatalogRole` (lib/authz.ts) makes: every caller here is the `owner`
+// of `hh_test`. The role checks
 // themselves are tested against stateful fakes in
 // `catalog-household.resolver.test.ts`, with three people.
 //
@@ -33,8 +34,12 @@ vi.mock('../lib/prisma.js', async () => {
     where.id.in.map((id) => ({ id }))
   return {
     prisma: {
+      // `ensureHousehold` (via `requireHousehold`) reads the caller's household
+      // through their `User` row (decision T14 of the H5b plan).
+      user: {
+        findUnique: vi.fn(async () => ({ activeHouseholdId: null, householdMemberships: [{ householdId: 'hh_test' }] })),
+      },
       householdMember: {
-        findFirst: vi.fn(async () => ({ householdId: 'hh_test' })),
         findUnique: vi.fn(async () => ({ role: 'owner' })),
       },
       tag: { findMany: vi.fn(echoIds) },

@@ -6,7 +6,7 @@ import type { Context } from '../context.js'
 
 // ─── Mock Prisma ─────────────────────────────────────────────────────────────
 
-// `householdMember` answers `requireHousehold` (lib/authz.ts): the caller is a
+// `user.findUnique` answers `requireHousehold` (lib/authz.ts): the caller is a
 // member of `hh_test`. The catalog mutations read and write by household
 // since households H3a task 3.7. `findUnique` answers the import role gate
 // (`requireCatalogRole(ctx, 'manager')`, households H4 task E.3): the caller
@@ -14,8 +14,12 @@ import type { Context } from '../context.js'
 // `import-role-gate.resolver.test.ts`.
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
+    // `ensureHousehold` (via `requireHousehold`) reads the caller's household
+    // through their `User` row (decision T14 of the H5b plan).
+    user: {
+      findUnique: vi.fn(async () => ({ activeHouseholdId: null, householdMemberships: [{ householdId: 'hh_test' }] })),
+    },
     householdMember: {
-      findFirst: vi.fn(async () => ({ householdId: 'hh_test' })),
       findUnique: vi.fn(async () => ({ role: 'owner' })),
     },
     item: {

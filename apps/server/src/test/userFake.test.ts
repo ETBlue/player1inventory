@@ -701,3 +701,64 @@ describe('userFake update acts on one row (households H5b, for G.4)', () => {
     ).rejects.toThrow(/no string id/)
   })
 })
+
+describe('userFake gives every member a User row when asked (rowForEveryMember, H5b G.2)', () => {
+  // `HouseholdMember.userId` is a foreign key to `User`, so in Postgres a
+  // member always has a row. Tests that seed member rows only rely on this.
+  function fakeWithImpliedRows(rows: UserRow[] = []) {
+    return createUserFake(rows, { householdMembers: () => MEMBERS, rowForEveryMember: true })
+  }
+
+  it('a read sees a row for a member with none, and does not store it', async () => {
+    const fake = fakeWithImpliedRows()
+
+    const row = await fake.client.findUnique({ where: { id: 'user_other' }, select: T14_SELECT })
+
+    expect(row).toEqual({ activeHouseholdId: null, householdMemberships: [{ householdId: 'h_x' }] })
+    // Read only: the store is unchanged
+    expect(fake.state.rows).toEqual([])
+  })
+
+  it('the implied row is set up, with no active household', async () => {
+    const fake = fakeWithImpliedRows()
+
+    const row = await fake.client.findUnique({ where: { id: 'user_a' } })
+
+    expect(row?.householdSetupAt).toBeInstanceOf(Date)
+    expect(row?.activeHouseholdId).toBeNull()
+    // And it is visible to findMany too, once per person
+    expect((await fake.client.findMany()).map((r) => r.id).sort()).toEqual(['user_a', 'user_other'])
+  })
+
+  it('a row the test seeded wins over the implied one', async () => {
+    const fake = fakeWithImpliedRows([userRow('user_a', { activeHouseholdId: 'h_c' })])
+
+    const row = await fake.client.findUnique({ where: { id: 'user_a' }, select: T14_SELECT })
+
+    expect(row?.activeHouseholdId).toBe('h_c')
+    expect((await fake.client.findMany()).filter((r) => r.id === 'user_a')).toHaveLength(1)
+  })
+
+  it('a write stores the implied rows first, so it can change them', async () => {
+    const fake = fakeWithImpliedRows()
+
+    await fake.client.update({ where: { id: 'user_a' }, data: { activeHouseholdId: 'h_a' } })
+
+    expect(fake.state.rows.find((r) => r.id === 'user_a')?.activeHouseholdId).toBe('h_a')
+  })
+
+  it('a person with no member row and no stored row has none', async () => {
+    const fake = fakeWithImpliedRows()
+    await expect(fake.client.findUnique({ where: { id: 'user_ghost' } })).resolves.toBeNull()
+  })
+
+  it('without the option, a member with no row has none', async () => {
+    const fake = createUserFake([], { householdMembers: () => MEMBERS })
+    await expect(fake.client.findUnique({ where: { id: 'user_a' } })).resolves.toBeNull()
+  })
+
+  it('throws when rowForEveryMember has no householdMembers to read', async () => {
+    const fake = createUserFake([], { rowForEveryMember: true })
+    await expect(fake.client.findUnique({ where: { id: 'user_a' } })).rejects.toThrow(/rowForEveryMember/)
+  })
+})

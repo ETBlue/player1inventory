@@ -24,15 +24,19 @@ import { forgetLocationRoles } from './authz.js'
 // reads the role rows once per field instead of once per request. Root
 // mutation fields are few, so this is small.
 //
-// `householdId` is NOT forgotten. Tests pin it on `requestCache` to choose
-// one of two households (the H4 pattern), and no mutation moves the caller to
-// another household yet. H5b's join will; it must decide then.
+// `householdId` IS forgotten too, since households H5b (decision T15).
+// `joinHousehold`, `leaveHousehold`, `removeMember` and `createHousehold`
+// change which household a person is in, so a later root field must look it
+// up again. Before H5b it was kept, because tests pinned it on
+// `requestCache` to choose one of two households (the H4 pattern). Those
+// tests now set the person's `User.activeHouseholdId` instead (decision T14).
+// A query is not wrapped, so a pin on `requestCache` still works for a query.
 //
 // What the tests in `mutationRoleCache.test.ts` prove:
 // - The every-field test calls every `Mutation` field of the executable schema
 //   with no user and a filled cache, and checks the caches are empty after
-//   (`locationRoles`, `organizedLocations`, and the old-bundle shim's
-//   `firstLocationIds`).
+//   (`householdId`, `locationRoles`, `organizedLocations`, and the old-bundle
+//   shim's `firstLocationIds`).
 //   With no user each field throws before it reads anything, so a forget
 //   before OR a forget after is enough to pass. It proves only that at least
 //   one forget runs for each field, that is, every field is wrapped.

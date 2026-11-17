@@ -55,6 +55,26 @@
 //     Ids are compared as JavaScript strings; Postgres compares text by its
 //     collation, which gives the same order for the ASCII ids used here.
 //
+// ── A MEMBER ROW MEANS A USER ROW (option `rowForEveryMember`) ──
+//
+// `HouseholdMember.userId` is a foreign key to `User`, so in Postgres a
+// person with a member row always has a `User` row. Since H5b,
+// `ensureHousehold` reads the household THROUGH that row (decision T14:
+// `user.findUnique` with `householdMemberships`). Hundreds of resolver tests
+// seed member rows and no `User` row, because before H5b nothing read it.
+//
+// With `rowForEveryMember: true`, the fake acts as if there were a row for each
+// person a member row names and the store does not hold. A read sees such a
+// row without storing it, so a read changes nothing in `state`. A write first
+// stores those rows, so it can change them. The implied row is
+// what such a person looks like in Postgres before they ever join a second
+// household: `householdSetupAt` set (they were set up), `activeHouseholdId`
+// `null`, `displayName` equal to the id. A row the test seeded is never
+// changed. A test about the active household seeds its `User` rows itself.
+//
+// It is checked on EVERY call, not when the rows are seeded, because many
+// tests push member rows straight into the household store.
+//
 // ── WHAT IT DOES NOT MODEL ──
 //
 //   - `include`, and `select` on any method but `findUnique` and `update`.
@@ -103,7 +123,16 @@ export interface UserFakeOptions {
    * with no `householdMembers` option throws.
    */
   householdMembers?: () => readonly HouseholdMember[]
+  /**
+   * Give every person named by a `householdMembers` row a `User` row, when a
+   * test did not seed one. See "A MEMBER ROW MEANS A USER ROW" in the file
+   * head. Needs `householdMembers`.
+   */
+  rowForEveryMember?: boolean
 }
+
+/** When an implied row (`rowForEveryMember`) was set up and last changed. */
+const IMPLIED_ROW_TIME = new Date('2026-01-01T00:00:00.000Z')
 
 const USER_COLUMNS = [
   'id',
@@ -345,6 +374,46 @@ export function createUserFake(rows: UserRow[] = [], options: UserFakeOptions = 
     return out
   }
 
+  /**
+   * The rows `rowForEveryMember` implies and the store does not hold. See
+   * the file head. They are NOT in `state`, so a read does not change the
+   * store (a test that compares the store before and after a refused call
+   * stays exact).
+   */
+  function impliedRows(): UserRow[] {
+    if (!options.rowForEveryMember) return []
+    if (!options.householdMembers) {
+      throw new UserFakeUnsupportedError('rowForEveryMember with no `householdMembers` option')
+    }
+    const out: UserRow[] = []
+    for (const member of options.householdMembers()) {
+      if (state.rows.some((r) => r.id === member.userId)) continue
+      if (out.some((r) => r.id === member.userId)) continue
+      out.push({
+        id: member.userId,
+        displayName: member.userId,
+        email: null,
+        lastSeenAt: null,
+        deletedAt: null,
+        householdSetupAt: IMPLIED_ROW_TIME,
+        activeHouseholdId: null,
+        createdAt: IMPLIED_ROW_TIME,
+        updatedAt: IMPLIED_ROW_TIME,
+      })
+    }
+    return out
+  }
+
+  /** What a read sees: the stored rows and the implied ones. */
+  function readableRows(): UserRow[] {
+    return [...state.rows, ...impliedRows()]
+  }
+
+  /** Before a write: store the implied rows, so the write can change them. */
+  function storeImpliedRows() {
+    state.rows.push(...impliedRows())
+  }
+
   const client = {
     // Prisma's WhereUniqueInput must name the unique key. Extra filters beside
     // it are allowed (Prisma 5+) and are applied.
@@ -356,7 +425,7 @@ export function createUserFake(rows: UserRow[] = [], options: UserFakeOptions = 
       if (typeof args.where.id !== 'string') {
         throw new UserFakeUnsupportedError('a findUnique whose where has no string id')
       }
-      const row = state.rows.find((r) => userMatches(r, args.where))
+      const row = readableRows().find((r) => userMatches(r, args.where))
       if (!row) return null
       // biome-ignore lint/suspicious/noExplicitAny: the shape depends on `select`, as in Prisma
       return (args.select ? applySelect(row, args.select) : copy(row)) as any
@@ -364,13 +433,15 @@ export function createUserFake(rows: UserRow[] = [], options: UserFakeOptions = 
     findMany: async (args: { where?: Where } = {}) => {
       refuseUnknownOptions('findMany', args, ['where'])
       checkUserWhere(args.where)
-      return state.rows.filter((r) => userMatches(r, args.where ?? {})).map(copy)
+      return readableRows().filter((r) => userMatches(r, args.where ?? {})).map(copy)
     },
     create: async (args: { data: Data }) => {
+      storeImpliedRows()
       refuseUnknownOptions('create', args, ['data'])
       return copy(insert(args.data))
     },
     upsert: async (args: { where: Where; create: Data; update: Data }) => {
+      storeImpliedRows()
       refuseUnknownOptions('upsert', args, ['where', 'create', 'update'])
       checkUserWhere(args.where)
       if (typeof args.where.id !== 'string') {
@@ -381,6 +452,7 @@ export function createUserFake(rows: UserRow[] = [], options: UserFakeOptions = 
     },
     // One row, by its unique id. Prisma raises P2025 when none matches.
     update: async (args: { where: Where; data: Data; select?: Record<string, unknown> }) => {
+      storeImpliedRows()
       refuseUnknownOptions('update', args, ['where', 'data', 'select'])
       checkUserWhere(args.where)
       if (typeof args.where.id !== 'string') {
@@ -393,6 +465,7 @@ export function createUserFake(rows: UserRow[] = [], options: UserFakeOptions = 
       return (args.select ? applySelect(row, args.select) : copy(row)) as any
     },
     updateMany: async (args: { where?: Where; data: Data }) => {
+      storeImpliedRows()
       refuseUnknownOptions('updateMany', args, ['where', 'data'])
       checkUserWhere(args.where)
       let count = 0

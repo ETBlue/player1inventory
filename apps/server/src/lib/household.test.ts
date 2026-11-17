@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // `ensureHousehold` writes through `prisma.user`, `household`,
 // `householdMember`, `location`, `locationMember` and `$transaction`. Here
@@ -158,6 +158,153 @@ describe('ensureHousehold — a user who is set up but in no household', () => {
     expect(error).toBeInstanceOf(Error)
     expect(error).not.toBeInstanceOf(GraphQLError)
     expect(world.households.state.households).toHaveLength(0)
+  })
+})
+
+describe('ensureHousehold — which household, for a person in several (decision T14)', () => {
+  // P is in three households: hh-1 (joined first), hh-2 and hh-4 (joined
+  // last). Q is a second person, with rows of their own that must never
+  // change P's answer (design, *Testing notes*).
+  //
+  // The store order of P's rows is hh-2, hh-1, hh-4, and it differs from the
+  // `joinedAt` order on purpose:
+  // - A read with no `orderBy` (the old `findFirst`) returns the first stored
+  //   row, hh-2. So a test that expects hh-1 (the oldest) fails when the
+  //   order is dropped.
+  // - The active-household tests use hh-4, which is neither the first stored
+  //   row nor the oldest. So they fail when the code ignores
+  //   `activeHouseholdId`, with or without the order.
+  const JOINED_1 = new Date('2026-11-02T08:00:00.000Z')
+  const JOINED_2 = new Date('2026-11-03T08:00:00.000Z')
+  const JOINED_4 = new Date('2026-11-04T07:00:00.000Z')
+
+  function household(id: string, ownerId: string) {
+    return { id, name: id, ownerId, ownerGoneAt: null, createdAt: EARLIER, updatedAt: EARLIER }
+  }
+
+  function seedHouseholdsOfPAndQ() {
+    world.seedHouseholds({
+      households: [
+        household('hh-1', 'user-p'),
+        household('hh-2', 'user-q'),
+        household('hh-3', 'user-q'),
+        household('hh-0', 'user-q'),
+        household('hh-4', 'user-q'),
+      ],
+      householdMembers: [
+        // Q, oldest of all, with the smallest id. Q is not P.
+        { householdId: 'hh-0', userId: 'user-q', role: 'owner', joinedAt: EARLIER },
+        { householdId: 'hh-2', userId: 'user-p', role: 'member', joinedAt: JOINED_2 },
+        { householdId: 'hh-1', userId: 'user-p', role: 'owner', joinedAt: JOINED_1 },
+        { householdId: 'hh-3', userId: 'user-q', role: 'owner', joinedAt: JOINED_1 },
+        { householdId: 'hh-4', userId: 'user-p', role: 'member', joinedAt: JOINED_4 },
+      ],
+    })
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  function seedUsers(activeOfP: string | null) {
+    world.users.reset([
+      userRow({ id: 'user-p', householdSetupAt: EARLIER, activeHouseholdId: activeOfP }),
+      // Q's active household is hh-0, where P is not a member.
+      userRow({ id: 'user-q', householdSetupAt: EARLIER, activeHouseholdId: 'hh-0' }),
+    ])
+  }
+
+  it('a person in several households gets the active one', async () => {
+    seedHouseholdsOfPAndQ()
+    seedUsers('hh-4')
+
+    await expect(ensureHousehold('user-p', 'en', NOW)).resolves.toBe('hh-4')
+  })
+
+  it('a person whose active household they left gets the oldest membership', async () => {
+    // Given P's active household is hh-3, where P has no member row (left it)
+    seedHouseholdsOfPAndQ()
+    seedUsers('hh-3')
+
+    // Then P gets hh-1, the oldest membership, not hh-3
+    await expect(ensureHousehold('user-p', 'en', NOW)).resolves.toBe('hh-1')
+  })
+
+  it('a person with no active household gets the oldest membership', async () => {
+    seedHouseholdsOfPAndQ()
+    seedUsers(null)
+
+    await expect(ensureHousehold('user-p', 'en', NOW)).resolves.toBe('hh-1')
+  })
+
+  it('two memberships with the same joinedAt are ordered by householdId', async () => {
+    // Given two memberships that joined at the same moment, the larger id
+    // stored first
+    world.seedHouseholds({
+      households: [household('hh-a', 'user-p'), household('hh-b', 'user-q')],
+      householdMembers: [
+        { householdId: 'hh-b', userId: 'user-p', role: 'member', joinedAt: JOINED_1 },
+        { householdId: 'hh-a', userId: 'user-p', role: 'owner', joinedAt: JOINED_1 },
+      ],
+    })
+    seedUsers(null)
+
+    // Then the smaller id wins
+    await expect(ensureHousehold('user-p', 'en', NOW)).resolves.toBe('hh-a')
+  })
+
+  it("Q's rows never change P's answer", async () => {
+    // Given Q is the oldest member of anything, with the smallest id, and Q's
+    // active household is hh-0. P has no active household.
+    seedHouseholdsOfPAndQ()
+    seedUsers(null)
+
+    // Then P still gets P's own oldest membership
+    await expect(ensureHousehold('user-p', 'en', NOW)).resolves.toBe('hh-1')
+    // And Q gets Q's active one
+    await expect(ensureHousehold('user-q', 'en', NOW)).resolves.toBe('hh-0')
+  })
+
+  it('the common path costs one query', async () => {
+    seedHouseholdsOfPAndQ()
+    seedUsers('hh-4')
+    const findUnique = vi.spyOn(prisma.user, 'findUnique')
+    const findFirst = vi.spyOn(prisma.householdMember, 'findFirst')
+    const transaction = vi.spyOn(prisma, '$transaction')
+
+    await expect(ensureHousehold('user-p', 'en', NOW)).resolves.toBe('hh-4')
+
+    expect(findUnique).toHaveBeenCalledTimes(1)
+    expect(findFirst).not.toHaveBeenCalled()
+    expect(transaction).not.toHaveBeenCalled()
+  })
+
+  it('the count === 0 branch uses the same rule', async () => {
+    // Given P's claim is already set, and P has no membership when the first
+    // read runs. The memberships are added right after that read, as if
+    // another request committed them in between.
+    world.users.reset([
+      userRow({ id: 'user-p', householdSetupAt: EARLIER, activeHouseholdId: 'hh-4' }),
+      userRow({ id: 'user-q', householdSetupAt: EARLIER, activeHouseholdId: 'hh-0' }),
+    ])
+    // `world.users.client` is the same object as `prisma.user` here, typed as
+    // the fake, so the stand-in below needs no cast.
+    const read = world.users.client.findUnique.bind(world.users.client)
+    vi.spyOn(world.users.client, 'findUnique').mockImplementationOnce(async (args) => {
+      const before = await read(args)
+      seedHouseholdsOfPAndQ()
+      return before
+    })
+
+    // When a request needs the household
+    const householdId = await ensureHousehold('user-p', 'en', NOW)
+
+    // Then the transaction's read applies the same rule: the active one,
+    // not the first stored row and not the oldest
+    expect(householdId).toBe('hh-4')
+    // And nothing new was made
+    expect(world.households.state.households).toHaveLength(5)
+    expect(world.stock.state.locations).toHaveLength(0)
   })
 })
 

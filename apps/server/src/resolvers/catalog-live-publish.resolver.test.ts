@@ -450,9 +450,9 @@ type Result = {
 }
 
 /**
- * `householdId`, when given, pins the caller's household through
- * `ctx.requestCache` (H4 plan rule 16), so a test about ALICE's two
- * households does not depend on the order of the fake's rows.
+ * `householdId`, when given, becomes the caller's active household
+ * (`User.activeHouseholdId`, decision T14 of the H5b plan; H4 plan rule 16),
+ * so a test about ALICE's two households says which one it acts in.
  */
 async function run(
   query: string,
@@ -460,10 +460,13 @@ async function run(
   variables: Record<string, unknown> = {},
   householdId?: string,
 ): Promise<Result> {
+  // Since H5b the chosen household is the person's active one (decision
+  // T14). A pin on `requestCache` is forgotten before every `Mutation`
+  // field (decision T15).
+  if (householdId !== undefined) world.setActiveHousehold(userId, householdId)
   const contextValue: Context = {
     userId,
     clientId: TAB,
-    ...(householdId === undefined ? {} : { requestCache: { householdId: Promise.resolve(householdId) } }),
   }
   const res = await server.executeOperation({ query, variables }, { contextValue })
   if (res.body.kind !== 'single') throw new Error('expected a single result')

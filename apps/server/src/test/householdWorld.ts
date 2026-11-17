@@ -29,9 +29,17 @@ import { createStockFake, runInTransaction, type RollbackStore } from './stockFa
 import { createUserFake } from './userFake.js'
 
 export function createHouseholdWorld() {
-  const users = createUserFake()
   const stock = createStockFake()
   const households = createHouseholdFake({ locations: () => stock.state.locations })
+  // `user.findUnique` can select `householdMemberships` (decision T14 of the
+  // H5b plan: `ensureHousehold` reads the person and their memberships in
+  // one query). The fake reads the CURRENT member rows of this world. And
+  // every person a member row names has a `User` row, as the foreign key
+  // makes it in Postgres (`rowForEveryMember`, see userFake.ts).
+  const users = createUserFake([], {
+    householdMembers: () => households.state.householdMembers,
+    rowForEveryMember: true,
+  })
 
   let serial = false
   let queue: Promise<unknown> = Promise.resolve()
@@ -138,7 +146,49 @@ export function createHouseholdWorld() {
     households.reset(next)
   }
 
-  return { users, stock, households, client, serialTransactions, reset, seedHouseholds, extend }
+  /**
+   * Make `householdId` the household `userId` acts in, by writing their
+   * `User.activeHouseholdId` (decision T14 of the H5b plan). Creates the
+   * `User` row when the store has none. For a test where one person is in
+   * two households and must act in a chosen one.
+   *
+   * Since H5b this replaces pinning `requestCache.householdId`: a pin does not
+   * survive a `Mutation` field, because `forgetRolesAroundEach` forgets it
+   * (decision T15). The person must be a member of `householdId`, or
+   * `ensureHousehold` falls back to their oldest membership, as it does in
+   * Postgres.
+   */
+  function setActiveHousehold(userId: string, householdId: string) {
+    const row = users.state.rows.find((r) => r.id === userId)
+    if (row) {
+      row.activeHouseholdId = householdId
+      return
+    }
+    const T = new Date('2026-01-01T00:00:00.000Z')
+    users.state.rows.push({
+      id: userId,
+      displayName: userId,
+      email: null,
+      lastSeenAt: null,
+      deletedAt: null,
+      householdSetupAt: T,
+      activeHouseholdId: householdId,
+      createdAt: T,
+      updatedAt: T,
+    })
+  }
+
+  return {
+    users,
+    stock,
+    households,
+    client,
+    serialTransactions,
+    reset,
+    seedHouseholds,
+    extend,
+    setActiveHousehold,
+  }
 }
 
 export type HouseholdWorld = ReturnType<typeof createHouseholdWorld>

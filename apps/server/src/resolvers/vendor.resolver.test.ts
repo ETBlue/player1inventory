@@ -224,10 +224,11 @@ describe('Vendor resolvers', () => {
       role: 'participant',
       createdAt: T,
     })
-    const pinned: Context = {
-      userId: 'user_test123',
-      requestCache: { householdId: Promise.resolve('hh_test') },
-    }
+    // hh_test is the caller's active household (decision T14 of the H5b
+    // plan). A household pinned on `requestCache` would be forgotten before
+    // the `Mutation` field runs (decision T15).
+    world.setActiveHousehold('user_test123', 'hh_test')
+    const pinned: Context = { userId: 'user_test123' }
     const CREATE = `mutation CreateVendor($name: String!, $locationId: ID!) {
       createVendor(name: $name, locationId: $locationId) { id name }
     }`

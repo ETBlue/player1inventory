@@ -38,9 +38,11 @@ const server = new ApolloServer<Context>({ typeDefs, resolvers })
 //   would leave it out.
 // - loc-x is in hh-2, has order 0, and the owner organizes it. A list that
 //   forgot the household filter would show it.
-// - The owner is in TWO households. Every request pins hh-1 through
-//   `requestCache.householdId` (the H4 pattern), because `ensureHousehold`
-//   picks one of two households with no order.
+// - The owner is in TWO households. hh-1 is their active household
+//   (`User.activeHouseholdId`, decision T14 of the H5b plan), so every
+//   request acts in hh-1. Before H5b this was a pin on
+//   `requestCache.householdId`, which a `Mutation` field now forgets
+//   (decision T15).
 function seed() {
   world.reset()
   const loc = (id: string, householdId: string, order: number): FakeLocation => ({
@@ -76,6 +78,7 @@ function seed() {
       { locationId: 'loc-x', userId: 'owner', role: 'organizer', createdAt: T },
     ],
   })
+  world.setActiveHousehold('owner', 'hh-1')
 }
 
 async function run(query: string, userId: string) {
@@ -84,9 +87,8 @@ async function run(query: string, userId: string) {
     {
       contextValue: {
         userId,
-        // A new cache per request, as `graphqlContext.ts` makes, with the
-        // household pinned.
-        requestCache: { householdId: Promise.resolve('hh-1') },
+        // A new cache per request, as `graphqlContext.ts` makes.
+        requestCache: {},
       },
     },
   )
@@ -161,7 +163,16 @@ describe('householdLocations', () => {
 
   it('a person in no household is refused', async () => {
     // Given a person with no HouseholdMember row, whose household id is pinned
-    const res = await run(HOUSEHOLD_LOCATIONS, 'nobody')
+    // to hh-1 on `requestCache`. This is a QUERY, and a query is not wrapped
+    // by `forgetRolesAroundEach`, so the pin holds. Without it there is no
+    // household to refuse, and `ensureHousehold` fails for the missing User
+    // row before the role check is reached.
+    const pinnedRun = await server.executeOperation(
+      { query: HOUSEHOLD_LOCATIONS },
+      { contextValue: { userId: 'nobody', requestCache: { householdId: Promise.resolve('hh-1') } } },
+    )
+    if (pinnedRun.body.kind !== 'single') throw new Error('expected single result')
+    const res = pinnedRun.body.singleResult
 
     // Then FORBIDDEN, and no location list
     expect(res.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
@@ -201,14 +212,14 @@ describe('locations', () => {
 
 describe('Location fields on a location of a second household', () => {
   it("myRole and hasOrganizer read the LOCATION's household, not the caller's", async () => {
-    // Given the owner is in hh-1 (pinned for this request) and in hh-2, and
+    // Given the owner is in hh-1 (their active household) and in hh-2, and
     // organizes loc-x in hh-2. `updateLocation` checks only the location
     // role, so it can rename loc-x and return it.
     const res = await server.executeOperation(
       {
         query: `mutation { updateLocation(id: "loc-x", input: { name: "Shed" }) { id name myRole hasOrganizer } }`,
       },
-      { contextValue: { userId: 'owner', requestCache: { householdId: Promise.resolve('hh-1') } } },
+      { contextValue: { userId: 'owner', requestCache: {} } },
     )
     if (res.body.kind !== 'single') throw new Error('expected single result')
 

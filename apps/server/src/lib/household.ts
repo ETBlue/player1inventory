@@ -78,14 +78,61 @@ function noHousehold(): GraphQLError {
 }
 
 /**
+ * What `ensureHousehold` reads about a person, in ONE query (decision T14 of
+ * the H5b plan): their active household and every household they are a
+ * member of, the oldest membership first. `householdId` breaks a tie in
+ * `joinedAt`, so the order is the same on every request.
+ */
+const HOUSEHOLD_CHOICE = {
+  activeHouseholdId: true,
+  householdMemberships: {
+    orderBy: [{ joinedAt: 'asc' }, { householdId: 'asc' }],
+    select: { householdId: true },
+  },
+} satisfies Prisma.UserSelect
+
+type HouseholdChoice = Prisma.UserGetPayload<{ select: typeof HOUSEHOLD_CHOICE }>
+
+/**
+ * The household a person acts in (decision T14 of the H5b plan):
+ *
+ * 1. their active household (`User.activeHouseholdId`), when they are still
+ *    a member there;
+ * 2. else their OLDEST membership, by `joinedAt`, then `householdId`;
+ * 3. else `null`: they are in no household.
+ *
+ * The active household can name a household they left or were removed from:
+ * removal and leaving never write the `User` row (decision T16). So rule 1
+ * checks the membership list, and rule 2 is the answer then.
+ *
+ * Both reads in `ensureHousehold` use this one function, so the two cannot
+ * drift apart.
+ */
+function pickHousehold(row: HouseholdChoice): string | null {
+  const ids = row.householdMemberships.map((m) => m.householdId)
+  if (row.activeHouseholdId !== null && ids.includes(row.activeHouseholdId)) {
+    return row.activeHouseholdId
+  }
+  return ids[0] ?? null
+}
+
+/**
  * The id of the caller's household. On first sign-in it creates the
  * household, the caller's `owner` row, a location ("Home" in English) and the
  * caller's `organizer` row on it, all in one transaction.
  *
+ * ── WHICH HOUSEHOLD (households H5b, decision T14) ──
+ *
+ * Since H5b a person can be in more than one household (they join one
+ * through an invite and keep their own). `pickHousehold` above decides which
+ * one a request acts in. The answer is the same on every request until the
+ * person's memberships or their active household change.
+ *
  * ── THE COMMON PATH: ONE QUERY ──
  *
- * A person who already has a household costs one read. The transaction runs
- * only when that read finds nothing.
+ * A person who already has a household costs one read: their `User` row with
+ * `activeHouseholdId` and their memberships, in one `findUnique`. The
+ * transaction runs only when that read finds no household.
  *
  * ── THE RACE GUARD (decision H1) ──
  *
@@ -98,8 +145,8 @@ function noHousehold(): GraphQLError {
  *
  * The first request to run it locks the `User` row. Postgres makes every other
  * request wait for that lock. When the first transaction commits, the others
- * re-check the `WHERE`, match 0 rows, and read the winner's household instead.
- * So only one household is ever made.
+ * re-check the `WHERE`, match 0 rows, and read the winner's household instead,
+ * with the same rule (`pickHousehold`). So only one household is ever made.
  *
  * What is proved on real Postgres, and what is not:
  *
@@ -108,7 +155,8 @@ function noHousehold(): GraphQLError {
  *   connections. It checks that the second claim waits for the first one's
  *   row lock, and that the first updates 1 row and the second 0. The script
  *   cannot import from `src`, so it repeats the call. If the claim here
- *   changes, change the script too.
+ *   changes, change the script too. H5b did NOT change the claim: only the
+ *   reads before and after it changed, and the script copies none of them.
  * - It does NOT run `ensureHousehold` itself. The read before the
  *   transaction, the `count === 0` branch that reads the winner's household,
  *   and the rows created after the claim are not run on real Postgres by
@@ -118,9 +166,9 @@ function noHousehold(): GraphQLError {
  * ── WHEN IT THROWS ──
  *
  * - `NO_HOUSEHOLD`: the claim is already set but the person is in no
- *   household. That is "left their household" (H5), and it must NOT make a
- *   second household (design, *Create and delete a household*). Nobody can
- *   reach this state before H5.
+ *   household. That is "left their household" or "was removed" (H5b), and it
+ *   must NOT make a second household (design, *Create and delete a
+ *   household*).
  * - A plain `Error` when there is no `User` row at all. `ensureUserOrLog`
  *   creates that row earlier in every request, so this means it failed. The
  *   household cannot be created without the row: `HouseholdMember.userId` is
@@ -131,11 +179,12 @@ export async function ensureHousehold(
   language: AppLanguage,
   now: Date = new Date(),
 ): Promise<string> {
-  const existing = await prisma.householdMember.findFirst({
-    where: { userId },
-    select: { householdId: true },
+  const person = await prisma.user.findUnique({
+    where: { id: userId },
+    select: HOUSEHOLD_CHOICE,
   })
-  if (existing) return existing.householdId
+  const existing = person ? pickHousehold(person) : null
+  if (existing) return existing
 
   return prisma.$transaction(async (tx) => {
     // The claim. It MUST be the first statement, so the row lock is taken
@@ -147,14 +196,15 @@ export async function ensureHousehold(
 
     if (count === 0) {
       // Another request claimed first and has committed by now (we waited
-      // for its lock), or this person was set up long ago.
-      const winner = await tx.householdMember.findFirst({
-        where: { userId },
-        select: { householdId: true },
+      // for its lock), or this person was set up long ago. Read again, with
+      // the same rule as the read above.
+      const again = await tx.user.findUnique({
+        where: { id: userId },
+        select: HOUSEHOLD_CHOICE,
       })
-      if (winner) return winner.householdId
-      const user = await tx.user.findUnique({ where: { id: userId } })
-      if (!user) throw new Error('ensureHousehold: no User row for this user')
+      if (!again) throw new Error('ensureHousehold: no User row for this user')
+      const winner = pickHousehold(again)
+      if (winner) return winner
       throw noHousehold()
     }
 

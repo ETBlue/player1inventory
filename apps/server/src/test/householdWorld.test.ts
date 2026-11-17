@@ -123,4 +123,31 @@ describe('householdWorld', () => {
     await client.things.create({ data: { id: 'thing-2' } })
     expect(extra.rows).toEqual([{ id: 'thing-2' }])
   })
+
+  it('a member row gives the person a User row the household read can see (H5b G.2)', async () => {
+    // Given a member row and no User row
+    const world = createHouseholdWorld()
+    world.seedHouseholds({
+      households: [household('hh-1', 'u1')],
+      householdMembers: [{ householdId: 'hh-1', userId: 'u1', role: 'owner', joinedAt: T }],
+    })
+
+    // Then the read `ensureHousehold` makes finds the person and the membership
+    const row = await world.client.user.findUnique({
+      where: { id: 'u1' },
+      select: { activeHouseholdId: true, householdMemberships: { select: { householdId: true } } },
+    })
+    expect(row).toEqual({ activeHouseholdId: null, householdMemberships: [{ householdId: 'hh-1' }] })
+  })
+
+  it('setActiveHousehold writes activeHouseholdId, creating the User row when there is none', async () => {
+    const world = createHouseholdWorld()
+    world.users.reset([])
+
+    world.setActiveHousehold('u1', 'hh-2')
+    expect(world.users.state.rows).toEqual([expect.objectContaining({ id: 'u1', activeHouseholdId: 'hh-2' })])
+
+    world.setActiveHousehold('u1', 'hh-1')
+    expect(world.users.state.rows).toEqual([expect.objectContaining({ id: 'u1', activeHouseholdId: 'hh-1' })])
+  })
 })
