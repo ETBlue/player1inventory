@@ -316,8 +316,9 @@ that really set up that role.
 >
 > **Every `Mutation` field must be in one of two lists** in
 > `apps/server/src/resolvers/live-publish.guard.test.ts`: `publishes` (with its kinds) or
-> `publishesNothing` (with a reason). A new mutation in no list fails the test. Today: 62
-> fields, all 62 in `publishes` and 0 in `publishesNothing`. H3c-1 had a third list,
+> `publishesNothing` (with a reason). A new mutation in no list fails the test. Today: 64
+> fields, all 64 in `publishes` and 0 in `publishesNothing` (62 until households H5b task
+> G.3 added `createInvite` and `revokeInvite`, both household-level `LOCATION`). H3c-1 had a third list,
 > `waitingForH3c2` (51 fields); H3c-2 task D.4 emptied it and deleted it.
 > The guard cannot see whether a resolver really calls `publishChange` or
 > `publishHouseholdChange`; the per-mutation tests in `cart-live-publish.resolver.test.ts`,
