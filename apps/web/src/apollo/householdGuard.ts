@@ -33,11 +33,23 @@ export function setLastHouseholdId(id: string): void {
  * 2. Remove `active-location-id:cloud`. The old location is not in the new
  *    household, so `ActiveLocationProvider` picks the first one there.
  * 3. Store the new id, so the guard does not fire again after the reload.
- * 4. Reload, so no component keeps an old row in its own state.
+ * 4. Load a page again, so no component keeps an old row in its own state.
+ *    With `to`, load that page (`location.replace`, so Back does not return
+ *    to the old one). Without it, reload the current page.
+ *
+ * The join page passes `{ to: '/' }`. Reloading `/join/<token>` would ask
+ * `invitePreview` about an invite that is now USED, and it answers INVALID,
+ * so the person who just joined would read "This invite is no longer valid".
+ * `HouseholdChangeGuard` passes no target: the page the person is on is
+ * still right for them.
  */
-export async function switchToHousehold(id: string): Promise<void> {
+export async function switchToHousehold(
+  id: string,
+  options: { to?: string } = {},
+): Promise<void> {
   await clearCache()
   localStorage.removeItem(activeLocationStorageKey('cloud'))
   setLastHouseholdId(id)
-  window.location.reload()
+  if (options.to === undefined) window.location.reload()
+  else window.location.replace(options.to)
 }

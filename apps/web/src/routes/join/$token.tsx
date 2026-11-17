@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { switchToHousehold } from '@/apollo/householdGuard'
@@ -68,10 +68,15 @@ function LocalJoin() {
 
   return (
     <>
+      <PageHeading>{t('join.heading')}</PageHeading>
       <p>{t('join.needsCloud')}</p>
       <Button onClick={handleSignIn}>{t('join.signIn')}</Button>
     </>
   )
+}
+
+function PageHeading({ children }: { children: ReactNode }) {
+  return <h1 className="text-xl font-semibold">{children}</h1>
 }
 
 type Preview = InvitePreviewQuery['invitePreview']
@@ -91,11 +96,27 @@ function CloudJoin({ token }: { token: string }) {
   // preview was read.
   const [refusal, setRefusal] = useState<Refusal | null>(null)
   const [busy, setBusy] = useState(false)
+  // When a refusal replaces the Join button, the focused button is gone and
+  // focus would fall to the page body. Move it to the message instead, so a
+  // screen reader reads it. The message is an `<output>`, whose role is
+  // `status`, so it is announced as well.
+  const messageRef = useRef<HTMLOutputElement>(null)
+  useEffect(() => {
+    if (refusal) messageRef.current?.focus()
+  }, [refusal])
 
   const data = preview.data?.invitePreview
   if (!data) {
-    if (preview.error) return <p>{t('join.loadError')}</p>
-    return <LoadingSpinner />
+    return (
+      <>
+        <PageHeading>{t('join.heading')}</PageHeading>
+        {preview.error ? (
+          <output className="block">{t('join.loadError')}</output>
+        ) : (
+          <LoadingSpinner />
+        )}
+      </>
+    )
   }
 
   const status = refusal ?? data.status
@@ -117,17 +138,20 @@ function CloudJoin({ token }: { token: string }) {
       else if (!(err instanceof OfflineWriteError)) toast.error(t('join.error'))
       return
     }
-    // The join is done. The server now answers for the joined household,
-    // so clear the old household's cache and reload (decision T23). Keep
-    // the button disabled: the page is about to reload.
+    // The join is done. The server now answers for the joined household, so
+    // clear the old household's cache (decision T23) and go to the pantry.
+    // NOT a reload of this page: the invite is used now, so `invitePreview`
+    // would answer INVALID and the person would read "This invite is no
+    // longer valid" right after joining. Keep the button disabled: the page
+    // is about to change.
     try {
-      await switchToHousehold(householdId)
+      await switchToHousehold(householdId, { to: '/' })
     } catch (err) {
-      // The cache could not be cleared. Reload anyway: the stored household
-      // id is still the old one, so `HouseholdChangeGuard` tries again on
-      // the next load.
+      // The cache could not be cleared. Go to the pantry anyway: the stored
+      // household id is still the old one, so `HouseholdChangeGuard` tries
+      // again on the next load.
       console.error('Could not clear the data of the old household', err)
-      window.location.reload()
+      window.location.replace('/')
     }
   }
 
@@ -136,7 +160,10 @@ function CloudJoin({ token }: { token: string }) {
     // is no longer valid should say nothing about a household.
     return (
       <>
-        <p>{t('join.invalid')}</p>
+        <PageHeading>{t('join.heading')}</PageHeading>
+        <output ref={messageRef} tabIndex={-1} className="block">
+          {t('join.invalid')}
+        </output>
         <PantryLink />
       </>
     )
@@ -145,10 +172,10 @@ function CloudJoin({ token }: { token: string }) {
   if (status === 'ALREADY_MEMBER') {
     return (
       <>
-        {data.householdName && (
-          <h1 className="text-xl font-semibold">{data.householdName}</h1>
-        )}
-        <p>{t('join.alreadyMember')}</p>
+        <PageHeading>{data.householdName ?? t('join.heading')}</PageHeading>
+        <output ref={messageRef} tabIndex={-1} className="block">
+          {t('join.alreadyMember')}
+        </output>
         <PantryLink />
       </>
     )
@@ -156,9 +183,9 @@ function CloudJoin({ token }: { token: string }) {
 
   return (
     <>
-      <h1 className="text-xl font-semibold">
+      <PageHeading>
         {t('join.title', { household: data.householdName ?? '' })}
-      </h1>
+      </PageHeading>
       {data.invitedByName && (
         <p>{t('join.invitedBy', { name: data.invitedByName })}</p>
       )}

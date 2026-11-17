@@ -13,6 +13,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { OfflineWriteError } from '@/apollo/offlineWriteLink'
 import { db } from '@/db'
 import {
   InvitePreviewDocument,
@@ -42,6 +43,7 @@ vi.mock('@/apollo/householdGuard', async (importOriginal) => {
 
 const TOKEN = 'tok-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_abcd'
 const reloadMock = vi.fn()
+const replaceMock = vi.fn()
 const originalLocation = window.location
 
 type Preview = InvitePreviewQuery['invitePreview']
@@ -87,6 +89,22 @@ function joinRefusal(reason: string) {
   }
 }
 
+function joinSuccess() {
+  return {
+    request: { query: JoinHouseholdDocument, variables: { token: TOKEN } },
+    result: {
+      data: {
+        joinHousehold: {
+          __typename: 'Household',
+          id: 'household-joined',
+          name: 'the Lin home',
+          role: 'member',
+        },
+      },
+    },
+  }
+}
+
 function renderCloud(mocks: NonNullable<MockedProviderProps['mocks']>) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -127,7 +145,7 @@ function renderLocal() {
 
 beforeEach(() => {
   Object.defineProperty(window, 'location', {
-    value: { ...originalLocation, reload: reloadMock },
+    value: { ...originalLocation, reload: reloadMock, replace: replaceMock },
     writable: true,
     configurable: true,
   })
@@ -143,7 +161,8 @@ afterEach(async () => {
     configurable: true,
   })
   reloadMock.mockReset()
-  switchToHouseholdMock.mockClear()
+  replaceMock.mockReset()
+  switchToHouseholdMock.mockReset()
   vi.restoreAllMocks()
   localStorage.clear()
   await db.delete()
@@ -162,6 +181,9 @@ describe('join page, local mode', () => {
     // Then they see why joining needs cloud sync, and a way to sign in
     expect(
       await screen.findByRole('button', { name: 'Sign in to join' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Join a household' }),
     ).toBeInTheDocument()
     expect(
       screen.getByText(
@@ -262,6 +284,9 @@ describe('join page, cloud mode', () => {
         'This invite is no longer valid. Ask for a new one.',
       ),
     ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Join a household' }),
+    ).toBeInTheDocument()
     expect(screen.queryByText(/the Lin home/)).toBeNull()
     expect(screen.queryByText(/Mei Lin/)).toBeNull()
     expect(screen.queryByRole('button', { name: 'Join' })).toBeNull()
@@ -273,27 +298,55 @@ describe('join page, cloud mode', () => {
     renderCloud([
       previewMock(VALID),
       {
-        request: { query: JoinHouseholdDocument, variables: { token: TOKEN } },
-        result: {
-          data: {
-            joinHousehold: {
-              __typename: 'Household',
-              id: 'household-joined',
-              name: 'the Lin home',
-              role: 'member',
-            },
-          },
-        },
+        ...joinSuccess(),
       },
     ])
 
     // When they press Join
     await user.click(await screen.findByRole('button', { name: 'Join' }))
 
-    // Then the device moves to the joined household (decision T23)
+    // Then the device moves to the joined household (decision T23) and
+    // ends on the pantry. Reloading the join page would show the now-used
+    // invite as "no longer valid"
     await waitFor(() =>
-      expect(switchToHouseholdMock).toHaveBeenCalledWith('household-joined'),
+      expect(switchToHouseholdMock).toHaveBeenCalledWith('household-joined', {
+        to: '/',
+      }),
     )
+    expect(reloadMock).not.toHaveBeenCalled()
+  })
+
+  it('user who joins still ends on the pantry when the old cache cannot be cleared', async () => {
+    // Given a join that works, and a cache that cannot be cleared
+    switchToHouseholdMock.mockRejectedValueOnce(new Error('IndexedDB is gone'))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const user = userEvent.setup()
+    renderCloud([previewMock(VALID), joinSuccess()])
+
+    // When they press Join
+    await user.click(await screen.findByRole('button', { name: 'Join' }))
+
+    // Then the browser goes to the pantry, not back to the join page
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/'))
+    expect(reloadMock).not.toHaveBeenCalled()
+  })
+
+  it('user who presses Join twice joins once', async () => {
+    // Given a join that takes a moment. There is only ONE join answer: a
+    // second request would get no answer and show the error toast
+    const errorToast = vi.spyOn(toast, 'error')
+    const user = userEvent.setup()
+    renderCloud([previewMock(VALID), { ...joinSuccess(), delay: 50 }])
+
+    // When they press Join twice
+    const button = await screen.findByRole('button', { name: 'Join' })
+    await user.click(button)
+    await user.click(button)
+
+    // Then the button is disabled while the join runs, and one join is sent
+    expect(button).toBeDisabled()
+    await waitFor(() => expect(switchToHouseholdMock).toHaveBeenCalledOnce())
+    expect(errorToast).not.toHaveBeenCalled()
   })
 
   it('user whose link was used meanwhile is told it is no longer valid', async () => {
@@ -305,11 +358,12 @@ describe('join page, cloud mode', () => {
     await user.click(await screen.findByRole('button', { name: 'Join' }))
 
     // Then the page says the link is no longer valid, and nothing switches
-    expect(
-      await screen.findByText(
-        'This invite is no longer valid. Ask for a new one.',
-      ),
-    ).toBeInTheDocument()
+    const message = await screen.findByText(
+      'This invite is no longer valid. Ask for a new one.',
+    )
+    // And the message is announced and holds the focus the Join button had
+    expect(screen.getByRole('status')).toBe(message)
+    await waitFor(() => expect(message).toHaveFocus())
     expect(screen.queryByRole('button', { name: 'Join' })).toBeNull()
     expect(switchToHouseholdMock).not.toHaveBeenCalled()
   })
@@ -322,10 +376,12 @@ describe('join page, cloud mode', () => {
     // When they press Join
     await user.click(await screen.findByRole('button', { name: 'Join' }))
 
-    // Then the page says they are already in the household
-    expect(
-      await screen.findByText('You are already in this household.'),
-    ).toBeInTheDocument()
+    // Then the page says they are already in the household, with focus on
+    // the message
+    const message = await screen.findByText(
+      'You are already in this household.',
+    )
+    await waitFor(() => expect(message).toHaveFocus())
     expect(switchToHouseholdMock).not.toHaveBeenCalled()
   })
 
@@ -350,5 +406,46 @@ describe('join page, cloud mode', () => {
     )
     expect(screen.getByRole('button', { name: 'Join' })).toBeEnabled()
     expect(switchToHouseholdMock).not.toHaveBeenCalled()
+  })
+
+  it('user who is offline sees only the offline toast when Join fails', async () => {
+    // Given a join refused by `offlineWriteLink`, which shows its own toast
+    const errorToast = vi.spyOn(toast, 'error')
+    const user = userEvent.setup()
+    renderCloud([
+      previewMock(VALID),
+      {
+        request: { query: JoinHouseholdDocument, variables: { token: TOKEN } },
+        error: new OfflineWriteError(),
+      },
+    ])
+
+    // When they press Join
+    const button = await screen.findByRole('button', { name: 'Join' })
+    await user.click(button)
+
+    // Then no second toast is shown, and they can try again
+    await waitFor(() => expect(button).toBeEnabled())
+    expect(errorToast).not.toHaveBeenCalled()
+    expect(switchToHouseholdMock).not.toHaveBeenCalled()
+  })
+
+  it('user sees a message when the invite cannot be loaded', async () => {
+    // Given the invite preview fails (no connection, server down)
+    renderCloud([
+      {
+        request: { query: InvitePreviewDocument, variables: { token: TOKEN } },
+        error: new Error('network down'),
+      },
+    ])
+
+    // Then the page says so, under its heading, with no Join button
+    expect(
+      await screen.findByText('Could not load this invite. Try again.'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Join a household' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Join' })).toBeNull()
   })
 })

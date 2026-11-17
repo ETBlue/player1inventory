@@ -12,7 +12,13 @@
  * - does not start with `//` or `/\` (a browser reads both as "another
  *   host", for example `//evil.example`),
  * - holds no control character (a browser drops a tab or a new line inside
- *   a URL, so `/<tab>/evil.example` would become `//evil.example`).
+ *   a URL, so `/<tab>/evil.example` would become `//evil.example`),
+ * - still names this site, and still does not start with `//`, AFTER the
+ *   browser's own rules are applied. `/..//evil.example` passes the checks
+ *   above, but the browser removes the `..` and goes to `//evil.example`.
+ *   `%2e%2e` counts as `..` too. So the path is resolved with `new URL`,
+ *   checked again, and the RESOLVED path is returned: what is checked is
+ *   what is followed.
  */
 export function safeRedirectPath(raw: unknown): string {
   if (typeof raw !== 'string') return '/'
@@ -20,5 +26,14 @@ export function safeRedirectPath(raw: unknown): string {
   if (raw.startsWith('//') || raw.startsWith('/\\')) return '/'
   // biome-ignore lint/suspicious/noControlCharactersInRegex: the check is about control characters
   if (/[\u0000-\u001f\u007f]/.test(raw)) return '/'
-  return raw
+  const origin = window.location.origin
+  let url: URL
+  try {
+    url = new URL(raw, origin)
+  } catch {
+    return '/'
+  }
+  if (url.origin !== origin) return '/'
+  if (url.pathname.startsWith('//')) return '/'
+  return url.pathname + url.search + url.hash
 }

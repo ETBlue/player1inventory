@@ -929,6 +929,7 @@
     "create": "建立據點"
   },
   "join": {
+    "heading": "加入家庭",
     "title": "加入 {{household}}",
     "invitedBy": "{{name}} 邀請了你。",
     "yourRoles": "你的角色",

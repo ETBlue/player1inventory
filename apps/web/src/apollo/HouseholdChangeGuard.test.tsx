@@ -4,17 +4,28 @@ import type { CloudHousehold } from '@/hooks/useHousehold'
 import { HouseholdChangeGuard } from './HouseholdChangeGuard'
 import { LAST_HOUSEHOLD_ID_KEY } from './householdGuard'
 
+// What `GetHousehold` answers. `networkStatus` 7 is `NetworkStatus.ready`:
+// the answer came from the server. 1 is `loading`: with
+// `cache-and-network`, a cached household may already be in `data` then.
 const householdState = vi.hoisted(() => ({
   value: {
     data: undefined as CloudHousehold | undefined,
-    isLoading: false,
-    isError: false,
+    networkStatus: 7,
   },
 }))
 
-vi.mock('@/hooks/useHousehold', () => ({
-  useHousehold: () => householdState.value,
-}))
+vi.mock('@/generated/graphql', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/generated/graphql')>()
+  return {
+    ...actual,
+    useGetHouseholdQuery: () => ({
+      data: householdState.value.data
+        ? { household: householdState.value.data }
+        : undefined,
+      networkStatus: householdState.value.networkStatus,
+    }),
+  }
+})
 
 const clearCacheMock = vi.hoisted(() => vi.fn(async () => {}))
 vi.mock('./persistence', async (importOriginal) => {
@@ -32,12 +43,7 @@ function household(id: string): CloudHousehold {
 }
 
 function setHousehold(next: Partial<typeof householdState.value>) {
-  householdState.value = {
-    data: undefined,
-    isLoading: false,
-    isError: false,
-    ...next,
-  }
+  householdState.value = { data: undefined, networkStatus: 7, ...next }
 }
 
 beforeEach(() => {
@@ -137,11 +143,11 @@ describe('HouseholdChangeGuard', () => {
   it('does nothing while the household is loading or failed to load', async () => {
     // Given a stored id, and no household answer yet
     localStorage.setItem(LAST_HOUSEHOLD_ID_KEY, 'h-1')
-    setHousehold({ isLoading: true })
+    setHousehold({ networkStatus: 1 })
     const { rerender } = render(<HouseholdChangeGuard />)
 
-    // When the read fails with nothing cached
-    setHousehold({ isError: true })
+    // When the read fails with nothing cached (8 is `NetworkStatus.error`)
+    setHousehold({ networkStatus: 8 })
     rerender(<HouseholdChangeGuard />)
     await Promise.resolve()
 
@@ -149,6 +155,41 @@ describe('HouseholdChangeGuard', () => {
     expect(clearCacheMock).not.toHaveBeenCalled()
     expect(reloadMock).not.toHaveBeenCalled()
     expect(localStorage.getItem(LAST_HOUSEHOLD_ID_KEY)).toBe('h-1')
+  })
+
+  it('does not act on a household that came only from the cache', async () => {
+    // Given the stored id is h-1, and the cache restored from IndexedDB
+    // still holds h-2 while the server has not answered yet
+    localStorage.setItem(LAST_HOUSEHOLD_ID_KEY, 'h-1')
+    setHousehold({ data: household('h-2'), networkStatus: 1 })
+    const { rerender } = render(<HouseholdChangeGuard />)
+    await Promise.resolve()
+
+    // Then nothing is cleared and the stored id is not changed
+    expect(clearCacheMock).not.toHaveBeenCalled()
+    expect(reloadMock).not.toHaveBeenCalled()
+    expect(localStorage.getItem(LAST_HOUSEHOLD_ID_KEY)).toBe('h-1')
+
+    // When the server answers h-1
+    setHousehold({ data: household('h-1'), networkStatus: 7 })
+    rerender(<HouseholdChangeGuard />)
+    await Promise.resolve()
+
+    // Then still nothing: the cached h-2 was never this tab's household
+    expect(clearCacheMock).not.toHaveBeenCalled()
+    expect(reloadMock).not.toHaveBeenCalled()
+  })
+
+  it('does not store a household that came only from the cache', async () => {
+    // Given no stored id, and only a cached household so far
+    setHousehold({ data: household('h-cached'), networkStatus: 1 })
+
+    // When the guard renders
+    render(<HouseholdChangeGuard />)
+    await Promise.resolve()
+
+    // Then nothing is stored until the server answers
+    expect(localStorage.getItem(LAST_HOUSEHOLD_ID_KEY)).toBeNull()
   })
 
   it('does not reload when the cache cannot be cleared', async () => {

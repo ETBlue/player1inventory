@@ -929,6 +929,7 @@
     "create": "Create a location"
   },
   "join": {
+    "heading": "Join a household",
     "title": "Join {{household}}",
     "invitedBy": "{{name}} invited you.",
     "yourRoles": "Your roles",

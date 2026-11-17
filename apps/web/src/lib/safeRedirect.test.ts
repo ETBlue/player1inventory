@@ -38,6 +38,22 @@ describe('safeRedirectPath', () => {
     expect(safeRedirectPath('/\n/evil.example')).toBe('/')
   })
 
+  it('refuses a path that a browser resolves to another host', () => {
+    // `/..//evil.example` passes a plain "starts with //" check, but the
+    // browser removes the `..` segment and goes to `//evil.example`
+    expect(safeRedirectPath('/..//evil.example')).toBe('/')
+    expect(safeRedirectPath('/.//evil.example')).toBe('/')
+    expect(safeRedirectPath('/%2e%2e//evil.example')).toBe('/')
+    expect(safeRedirectPath('/%2E%2E//evil.example/join/abc')).toBe('/')
+    expect(safeRedirectPath('/./\\evil.example')).toBe('/')
+  })
+
+  it('returns the path the browser would go to', () => {
+    // A harmless `..` is resolved, so the result is what was checked
+    expect(safeRedirectPath('/settings/../join/abc')).toBe('/join/abc')
+    expect(safeRedirectPath('/join/abc#top')).toBe('/join/abc#top')
+  })
+
   it('refuses anything that is not a string', () => {
     expect(safeRedirectPath(undefined)).toBe('/')
     expect(safeRedirectPath(null)).toBe('/')
