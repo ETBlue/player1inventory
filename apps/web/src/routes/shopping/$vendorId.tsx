@@ -41,6 +41,7 @@ import {
 } from '@/hooks'
 import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
 import { isCartChangedError } from '@/hooks/useShoppingCart'
@@ -58,6 +59,7 @@ export const Route = createFileRoute('/shopping/$vendorId')({
 
 function VendorCart() {
   const { t } = useTranslation()
+  const { canEditCatalog } = usePermissions()
   const navigate = useNavigate()
   const { vendorId: vendorIdParam } = Route.useParams()
   const cartVendorId: string | null =
@@ -467,7 +469,11 @@ function VendorCart() {
           }}
           items={vendorScopedItems}
           recipes={recipes}
-          onCreateFromSearch={handleCreateFromSearch}
+          onCreateFromSearch={
+            // Creating an item is a catalog write: not for a household
+            // member (households H5 task F.5). No button, and no Enter.
+            canEditCatalog ? handleCreateFromSearch : undefined
+          }
           hasExactMatch={hasExactGlobalMatch}
           isCreating={createItem.isPending}
         />

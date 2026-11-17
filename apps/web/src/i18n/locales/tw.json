@@ -251,6 +251,7 @@
       "addToRecipe": "加入食譜",
       "inRecipes": "屬於 {{recipes}}",
       "addToShelf": "加入層架",
+      "catalogReadOnly": "只有擁有者或管理者可以加到這裡。",
       "notMatchingShelf": "不符合此層架的篩選條件",
       "filterPicks": {
         "title": "將「{{name}}」加入「{{shelf}}」",

@@ -251,6 +251,7 @@
       "addToRecipe": "Add to recipe",
       "inRecipes": "In {{recipes}}",
       "addToShelf": "Add to shelf",
+      "catalogReadOnly": "Only an owner or manager can add it here.",
       "notMatchingShelf": "Doesn't match this shelf's filters",
       "filterPicks": {
         "title": "Add {{name}} to {{shelf}}",

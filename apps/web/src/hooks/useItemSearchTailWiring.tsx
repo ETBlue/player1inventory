@@ -11,6 +11,7 @@ import type { PantryItem } from '@/types'
 import { useActiveLocation } from './useActiveLocation'
 import { useItemSearchTail } from './useItemSearchTail'
 import { useAddItemToLocation } from './useItems'
+import { usePermissions } from './usePermissions'
 
 export interface ItemSearchTailGroupAction {
   /** Already-translated button label, e.g. "Apply Costco". */
@@ -64,6 +65,15 @@ export function useItemSearchTailWiring({
   const { t } = useTranslation()
   const { activeLocation } = useActiveLocation()
   const addItemToLocation = useAddItemToLocation()
+  // Every bucket-2 action (Apply vendor, Add to recipe, Add to shelf) writes
+  // the CATALOG, which a household member may not do (households H5 task
+  // F.5). For a member the action becomes a note that says why, so the row
+  // still shows instead of vanishing. A caller's own `groupNote` is kept.
+  const { canEditCatalog } = usePermissions()
+  const catalogNote = () => <span>{t('items.searchTail.catalogReadOnly')}</span>
+  const effectiveAction = canEditCatalog ? groupAction : undefined
+  const effectiveNote =
+    groupNote ?? (groupAction && !canEditCatalog ? catalogNote : undefined)
   // One tail mutation at a time — see ItemSearchTailAction.pendingItemId.
   const [pendingItemId, setPendingItemId] = useState<string | null>(null)
 
@@ -115,8 +125,8 @@ export function useItemSearchTailWiring({
     inLocationItems,
     notStockedHereItems,
     renderItem,
-    ...(groupAction ? { groupAction: wrapAction(groupAction) } : {}),
-    ...(groupNote ? { groupNote } : {}),
+    ...(effectiveAction ? { groupAction: wrapAction(effectiveAction) } : {}),
+    ...(effectiveNote ? { groupNote: effectiveNote } : {}),
     ...(canAddToLocation
       ? {
           addToLocationAction: wrapAction({

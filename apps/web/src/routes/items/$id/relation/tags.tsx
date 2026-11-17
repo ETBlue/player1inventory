@@ -33,7 +33,7 @@ function TagTypeSection({
   item: { tagIds: string[] }
   onToggle: (tagId: string) => void
   /** Left out for a household member: no "New Tag" button. */
-  onAddTag?: (typeId: string) => void
+  onAddTag?: ((typeId: string) => void) | undefined
   loadingTagId?: string | null
   /** A household member cannot toggle: the badges are aria-disabled. */
   readOnly?: boolean

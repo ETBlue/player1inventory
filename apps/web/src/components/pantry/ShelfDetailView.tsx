@@ -15,6 +15,7 @@ import { useCreateItem, useStockedItems, useUpdateItem } from '@/hooks'
 import { useApplyShelfFilterPicks } from '@/hooks/useApplyShelfFilterPicks'
 import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useRecipes } from '@/hooks/useRecipes'
 import {
   useShelfQuery,
@@ -47,6 +48,7 @@ interface ShelfDetailViewProps {
 
 export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
   const { t } = useTranslation()
+  const { canEditCatalog } = usePermissions()
   const navigate = useNavigate()
   const isUnsorted = shelfId === 'unsorted'
 
@@ -434,7 +436,11 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
           items={inShelfItems}
           vendors={vendors}
           recipes={recipes}
-          onCreateFromSearch={handleCreateFromSearch}
+          onCreateFromSearch={
+            // Creating an item is a catalog write: not for a household
+            // member (households H5 task F.5). No button, and no Enter.
+            canEditCatalog ? handleCreateFromSearch : undefined
+          }
           hasExactMatch={hasExactGlobalMatch}
           isCreating={createItem.isPending}
           leading={

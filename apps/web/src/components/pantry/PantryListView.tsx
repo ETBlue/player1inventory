@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { useStockedItems, useUpdateItem } from '@/hooks'
 import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
 import { useShowStock } from '@/hooks/useShowStock'
@@ -34,6 +35,7 @@ import type { PantryItem, Recipe, StockFields, Vendor } from '@/types'
 
 export function PantryListView() {
   const { t } = useTranslation()
+  const { canEditCatalog } = usePermissions()
   const navigate = useNavigate()
 
   const { data: items = [], isLoading } = useStockedItems()
@@ -259,7 +261,11 @@ export function PantryListView() {
           isRelationsToggleEnabled
           items={items}
           className="border-b"
-          onCreateFromSearch={handleCreateFromSearch}
+          onCreateFromSearch={
+            // Creating an item is a catalog write: not for a household
+            // member (households H5 task F.5). No button, and no Enter.
+            canEditCatalog ? handleCreateFromSearch : undefined
+          }
           hasExactMatch={hasExactGlobalMatch}
           vendors={vendors}
           recipes={recipes}
