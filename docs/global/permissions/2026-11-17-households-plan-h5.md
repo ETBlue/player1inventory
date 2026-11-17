@@ -65,7 +65,8 @@ a real user first. Each one has its test in the task named.
    (Task F.2.)
 2. **A location viewer switches to that location.** `ActiveLocationProvider` calls the
    `bootstrapCarts` mutation on every switch, and it needs `participant`. Expected: no call is
-   made for a viewer, and no unhandled error. (Task F.2 server side, F.5 web side.)
+   made for a viewer, and no unhandled error. (Task F.2 server side, F.6 web side. This
+   said "F.5 web side" until F.5; T7 and F.6 Step 6 always put it in F.6.)
 3. **A person whose location list is empty.** A member added with no location roles, or a
    household whose last location was deleted (after F.7). Expected: Pantry, Shopping and
    Cooking show "You have no locations in this household yet" and **Create a location**, not
@@ -851,22 +852,122 @@ first and shown red, then the code. Commits `0a6321a2`, `4cab8303`, `fe085176`.
 - Cooking: the empty state's **Create recipe** button in `routes/cooking.tsx`
 - Tests beside each file (`*.cloud.test.tsx` where the file already has one)
 
-- [ ] **Step 1: Write the failing tests**, one per page group, cloud mode, `useHousehold`
+- [x] **Step 1: Write the failing tests**, one per page group, cloud mode, `useHousehold`
   mocked to `member`, and one control per page in the `manager` state (so the test can fail
   both ways): `household member sees tags without add, edit or delete`, the same for shelves
   (no drag handle either), vendors, recipes; `household member sees item details read only`
   (inputs `disabled` or `readOnly`, no Save, no Delete) `and can still edit stock where they
   are a participant` (the Stock tab); `household member does not see Create item in search`.
-- [ ] **Step 2: Run** — FAIL. **Step 3: Implement** with `usePermissions().canEditCatalog`.
+- [x] **Step 2: Run** — FAIL. **Step 3: Implement** with `usePermissions().canEditCatalog`.
   Hide controls; do not disable them, except form inputs, which are `readOnly` so the text can
   still be selected. **Step 4: Run** — PASS.
-- [ ] **Step 5: Mutation checks:** on three pages chosen from different groups (one list,
+- [x] **Step 5: Mutation checks:** on three pages chosen from different groups (one list,
   one detail, the item form), invert the condition → each page's test goes red. Report which
   three.
-- [ ] **Step 6:** stories: add one `MemberReadOnly` story per list page that renders the real
+- [x] **Step 6:** stories: add one `MemberReadOnly` story per list page that renders the real
   page with the role mocked through the existing Apollo stub pattern (root `CLAUDE.md`,
   *Apollo context in route stories*). **Gate**, commit
   `feat(households): read-only catalog for household members`.
+
+**As built (2026-11-17, `2adf7371..cf6fd212`).** Feature commits: lists `2adf7371`, Info pages `efdef324`, Items and Filters tabs `e3addd27`, item page `e9e1fb35`, search `1392029c`, cooking `b1889646`, pantry Add dialog `aaf908b8`. Fixes on the way: `134d7477`, `74d806fd`, `acff9ab0`, `cf6fd212`.
+
+- **Order of work.** Tests first this time. Each group's tests were run and shown red for the
+  member case before any page code changed, then the code, then green. One exception:
+  `ItemForm`'s `readOnly` prop was written before its unit test; that test was proved by a
+  mutation instead (M3 below).
+- **Where the rules live.** `usePermissions` is split. `permissionsFor({ mode, isLoading?,
+  householdRole?, locationRoles? })` holds the rules; the hook reads the two roles and calls
+  it. Page tests set a role through the same rules with `src/test/rolePermissions.ts`. The
+  two people in every role test differ ONLY in the household role (`member` and `manager`),
+  and both are a viewer of one location, a participant of the active one, and have no role
+  on a third. So a page that read a location role by mistake fails one of the two.
+- **What a household member sees** (all through `usePermissions().canEditCatalog`; local
+  mode is unchanged):
+
+  | Surface | Member |
+  |---|---|
+  | tags, vendors, recipes, shelves lists | no add, edit, delete or drag; a `ReadOnlyNote` above a non-empty list; an empty list says who can add rows instead of "Create your first …" |
+  | the four Info pages (`$id/index.tsx`) | name `readOnly`, selects disabled, no Save, no Delete, the note "Only a household owner or manager can change this." |
+  | the four Items tabs | checkboxes and recipe amounts disabled (they still show what is assigned), no "Create item" from search (button or Enter) |
+  | a filter shelf's Filters tab | badges show what is on, `aria-disabled`, a press writes nothing |
+  | item Info tab | `ItemForm readOnly`, no Delete, the note. The unit-switch dialog is reached only through Save, so it cannot open |
+  | item Tags, Vendors, Recipes tabs | badges `aria-disabled`, a press writes nothing, no "New …" buttons |
+  | item Stock tab | unchanged: it follows the location role (F.6). A guard test checks a member who is a participant still edits it |
+  | Create item in search (pantry list, shelf view, cart page) | hidden, Enter does nothing |
+  | the search tail's group action (Apply vendor, Add to recipe, Add to shelf) | replaced by a note, "Only an owner or manager can add it here.", in `useItemSearchTailWiring` |
+  | the pantry Add dialog (`NewItemDialog`) | no Create option, button or package unit field; picking an existing item still stocks it (a location right) |
+  | cooking page | no "Create recipe" in the empty state, no "Create" from search |
+
+  Controls are hidden, as Step 3 says, except form inputs (`readOnly`) and three things that
+  SHOW state: the Items-tab checkboxes and recipe amounts (disabled), and the filter and
+  relation badges (`aria-disabled`). Hiding those would hide what is assigned.
+- **The note waits for the role.** `ReadOnlyNote` (new, `components/shared/`) and the
+  read-only empty texts show only when `!isLoading && !canEditCatalog`. While the role loads
+  `canEditCatalog` is `false` for every role, so with `!canEditCatalog` alone the note
+  flashed for an owner, and a story test that waited for it passed with the role set to
+  `owner`.
+- **New texts** (first versions; the owner can correct `tw` in the PR):
+
+  | Key | English | `tw` |
+  |---|---|---|
+  | `settings.catalogReadOnly` | Only a household owner or manager can add or change these. | 只有家庭擁有者或管理者可以新增或修改這些項目。 |
+  | `settings.catalogReadOnlyItem` | Only a household owner or manager can change this. | 只有家庭擁有者或管理者可以修改這個項目。 |
+  | `items.searchTail.catalogReadOnly` | Only an owner or manager can add it here. | 只有擁有者或管理者可以加到這裡。 |
+
+- **Stories.** `MemberReadOnly` on the tags, vendors, recipes, shelves and cooking pages,
+  each rendering the REAL page in cloud mode with the role from `GetHousehold`
+  (`src/test/cloudRoleStory.tsx`, `CloudRolePage`). Each smoke test restores the real
+  generated and Apollo hooks, waits for the member note FIRST, then checks the absences;
+  each went red with the story's role set to `owner`. Also `ReadOnlyNote` (`Default`,
+  `CustomText`), `ReadOnly` on `VendorCard`, `RecipeCard`, `VendorInfoForm`,
+  `RecipeInfoForm`, `TagInfoForm`, and `InfoSectionReadOnly` on `ItemForm`. Checked in
+  `storybook-static/index.json`.
+- **Tests.** New files: `routes/settings/household/catalogReadOnly.test.tsx` (12),
+  `catalogDetailReadOnly.test.tsx` (8), `catalogItemsReadOnly.test.tsx` (12),
+  `routes/items/$id/readOnly.test.tsx` (10), `components/pantry/catalogReadOnly.test.tsx`
+  (10), `routes/cooking.readOnly.test.tsx` (4), `NewItemDialog.readOnly.test.tsx` (2). Plus
+  3 in `useItemSearchTailWiring.test.tsx`, 2 in `ItemForm.test.tsx`, and story smoke tests.
+  Web suite **2735 / 286 → 2813 / 294** (2735 measured after Part 1 of this session, on the
+  tree before F.5). Server unchanged at **1813 / 70**.
+- **E2E** (ports 4001, 5174-5176 free first). `local`: tags, vendors, recipes, shelves,
+  locations settings, `location-switcher`, `item-management`, `unified-item-search`,
+  `shopping`, `cooking`, `shelves`, `vendors-group`, `recipes-group`,
+  `settings-global-pages` and `a11y.spec.ts`: **149 passed, 9 skipped** (2.9m, load 18 at
+  the start from other sessions, 4.8 at the end). `cloud`: the same files (a11y is not in
+  cloud) plus the four specs where the browser is a household member (`shared-cart`,
+  `live-cart`, `live-pantry`, `settings/import-households`): **105 passed, 6 skipped**
+  (21.9m, load 2 to 5). No spec drives a member through a catalog page, so E2E proves no
+  regression for owners and managers, not the member view; that is F.8.
+- **Existing tests that had to change, and why:**
+  - `routes/items/$id/index.cloud.test.tsx` and `NewItemDialog.cloud.test.tsx` now answer
+    `GetHousehold` with `manager`. They stubbed it to nothing, so the role was unknown and
+    the Info tab became read only.
+  - `tags/index.test.tsx` and `vendors.test.tsx` render a page with no `QueryClient`, so
+    they mock `usePermissions` to the local rules.
+  - `useItemSearchTailWiring.test.tsx` mocks its neighbours, so it mocks `usePermissions`.
+  - `recipes/$id/items.stories.test.tsx` waits for the assigned checkbox, not the name.
+- **Mutations, each copied aside and restored from the copy (`diff -q` clean):**
+
+  | # | Mutation | Red |
+  |---|---|---|
+  | M1 (list) | vendors list shows New Vendor for every role | 3, incl. `household member does not see add or delete on the vendors page` and the `MemberReadOnly` story test |
+  | M2 (detail) | recipe Info page never `readOnly` | `household member sees read only a recipe's Info page` |
+  | M3 (item form) | `ItemForm`'s name field not `readOnly` | 3, incl. `household member sees read only the item's Info tab` |
+  | M4 | the search tail keeps the group action for a member | 5, incl. the cart, vendor, recipe and shelf view tests |
+  | M5 | the Add dialog offers Create to every role | `household member cannot create a new item, and can still pick an existing one` |
+  | M6 | vendor Items-tab checkbox enabled for every role | `household member on the Items tab of 'a vendor'` |
+  | M7 | the Filters tab's write guard removed (`aria-disabled` kept) | `household member on a filter shelf's Filters tab cannot toggle a filter` |
+  | M8 | the item Vendors tab's toggle guard removed | `household member on the item's 'vendors' tab cannot change it` |
+  | M9 | `CookingControlBar` shows Create with no `onCreateRecipe` | `household member does not see Create when a recipe search finds nothing` |
+  | M10 | the vendors note shown while the role loads | `user sees neither write controls nor the read-only note yet` |
+  | M11 | a member can still drag a tag | `household member does not see add, edit, delete or drag on the tags page` |
+  | M12 | shelf drag handle for every role | `household member does not see add, delete or drag handles on the shelves page` |
+  | M13 | item Info Delete for every role | `household member sees read only the item's Info tab` |
+  | M14 | `canEditCatalog` also true for a participant of the active location | 10, across the item page and the list pages |
+
+  Plan Step 5 asked for three (one list, one detail, the item form): M1, M2, M3.
+  Guard, green either way by design: `household member who is a participant of the active
+  location still edits its stock`.
 
 ## Task F.6 — web: a location `viewer` sees the location read-only
 
@@ -1164,10 +1265,19 @@ Filled in from the task reports and reviews.
 | F.3 review | Show `reorderError` for every refusal except offline: "the reload is right whatever the reason" | Untrue for a network error or `FORBIDDEN`, and "has been reloaded" was too early even for `BAD_USER_INPUT`. Fixed in the F.4 review: the code decides the text and the reload |
 | F.4 | Use `Badge` for the switcher's badge | `Badge` renders a `<div>`, invalid inside the trigger `<button>`. A `<span>` with `badgeVariants` |
 | F.4 | The name "Switch location (current: {{name}}, view only)" | Fails WCAG 2.5.3: the visible "Home View only" was not in the name in order |
+| F.4 review | (Review Focus) case 2's web side is in F.5 | T7 and F.6 Step 6 put it in F.6, and F.5 has no step for it. F.5 followed the task text; the Review Focus line now says F.6 |
+| F.5 | Files: the list pages, `VendorCard`, `RecipeCard`, the detail pages, the item page, `ItemListToolbar`'s callers, cooking | Also catalog writes, and not listed: the pantry Add dialog's Create (`NewItemDialog`), the search tail's group action on five surfaces (one change in `useItemSearchTailWiring`), the three Info forms (`TagInfoForm`, `VendorInfoForm`, `RecipeInfoForm`, which had no read-only mode), `CookingControlBar` (it showed Create with no handler), the Filters tab's badges, and the item Tags tab's "New Tag Type" |
+| F.5 | `ItemListToolbar`: hide Create when the caller passes no `onCreateFromSearch` | It already did. What it needed was `\| undefined` on the prop: `exactOptionalPropertyTypes` refuses `undefined` for an optional prop without it |
+| F.5 | Hide controls; do not disable them, except form inputs | The Items-tab checkboxes, recipe amounts and the filter and relation badges SHOW what is assigned. They are disabled or `aria-disabled`, not hidden |
+| F.5 | Tests in cloud mode with `useHousehold` mocked to `member` | Most pages read Dexie in local mode and many Apollo hooks in cloud. The page tests keep local data and set the role through the real rules (`permissionsFor`, `src/test/rolePermissions.ts`). Cloud is covered by the `MemberReadOnly` stories and `usePermissions.test.tsx` |
+| F.5 | `MemberReadOnly` stories "through the existing Apollo stub pattern" | `noopApolloClient` cannot carry a role. The stories use `MockedProvider` (`src/test/cloudRoleStory.tsx`). Their tests needed a present-first anchor: while the role loads every write control is hidden for ANY role, so a story set to `owner` still passed. The new `ReadOnlyNote` is that anchor, and it must wait for `!isLoading` |
+| F.5 | (nothing about empty states) | Vendors, recipes, shelves and cooking told a member to "Create your first …" with no button. A member now gets `settings.catalogReadOnly` there |
+| F.5 | (nothing about existing tests) | 4 test files broke: two cloud tests stubbed `GetHousehold` to nothing (so the role was unknown and the form read only), and two page unit tests render with no `QueryClient`. A story test (`recipes/$id/items`) also failed in full-suite runs, on a row that moved between groups |
 
 ## Status
 
 **Plan written 2026-11-17** on `feature/households-h5`. Owner decisions O1–O12 answered
 2026-11-17 (see *Owner answers*). H5a task F.1 is done (`a59cfcb8`), with review fixes. Task F.2 is done, with review fixes. Task F.3 is done (`5b88bee7`), and it built
 `usePermissions`, with review fixes. Task F.4 (the View only badge) is done (`e5669669`).
-Task F.5 is next.
+Task F.4's review fixes are done (`0a6321a2`, `4cab8303`, `fe085176`). Task F.5 (a household
+member sees the catalog read-only) is done. Task F.6 is next.
