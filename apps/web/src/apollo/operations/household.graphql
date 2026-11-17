@@ -13,3 +13,30 @@ mutation RenameHousehold($name: String!) {
     role
   }
 }
+
+# The join page (households H5b, task G.7). Any signed-in person, also one in
+# no household. For INVALID every field except `status` is null.
+query InvitePreview($token: String!) {
+  invitePreview(token: $token) {
+    status
+    householdName
+    invitedByName
+    householdRole
+    locationRoles {
+      locationId
+      locationName
+      role
+    }
+  }
+}
+
+# Refused with BAD_USER_INPUT and extensions.reason INVITE_INVALID or
+# ALREADY_MEMBER. On success the joined household is the one the person acts
+# in, so the web treats it as a household switch (decision T23).
+mutation JoinHousehold($token: String!) {
+  joinHousehold(token: $token) {
+    id
+    name
+    role
+  }
+}

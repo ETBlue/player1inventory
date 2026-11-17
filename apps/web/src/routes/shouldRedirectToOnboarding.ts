@@ -26,6 +26,10 @@ export function shouldRedirectToOnboarding({
   if (!isEmpty) return false
   if (mode === 'cloud' && offline) return false
   if (pathname === '/onboarding') return false
+  // The join page of an invite link (households H5b, decision T25). A
+  // brand-new person who opens the link has an empty catalog, so without
+  // this they would be sent away from the link before they could join.
+  if (pathname.startsWith('/join/')) return false
   if (dismissed) return false
   return true
 }

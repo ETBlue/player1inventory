@@ -17,6 +17,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ShoppingIndexRouteImport } from './routes/shopping/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as ShoppingVendorIdRouteImport } from './routes/shopping/$vendorId'
+import { Route as JoinTokenRouteImport } from './routes/join/$token'
 import { Route as ItemsIdRouteImport } from './routes/items/$id'
 import { Route as SettingsHouseholdIndexRouteImport } from './routes/settings/household/index'
 import { Route as ItemsIdIndexRouteImport } from './routes/items/$id/index'
@@ -90,6 +91,11 @@ const ShoppingVendorIdRoute = ShoppingVendorIdRouteImport.update({
   id: '/$vendorId',
   path: '/$vendorId',
   getParentRoute: () => ShoppingRoute,
+} as any)
+const JoinTokenRoute = JoinTokenRouteImport.update({
+  id: '/join/$token',
+  path: '/join/$token',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ItemsIdRoute = ItemsIdRouteImport.update({
   id: '/items/$id',
@@ -285,6 +291,7 @@ export interface FileRoutesByFullPath {
   '/shopping': typeof ShoppingRouteWithChildren
   '/sign-in': typeof SignInRoute
   '/items/$id': typeof ItemsIdRouteWithChildren
+  '/join/$token': typeof JoinTokenRoute
   '/shopping/$vendorId': typeof ShoppingVendorIdRoute
   '/settings/': typeof SettingsIndexRoute
   '/shopping/': typeof ShoppingIndexRoute
@@ -326,6 +333,7 @@ export interface FileRoutesByTo {
   '/cooking': typeof CookingRoute
   '/onboarding': typeof OnboardingRoute
   '/sign-in': typeof SignInRoute
+  '/join/$token': typeof JoinTokenRoute
   '/shopping/$vendorId': typeof ShoppingVendorIdRoute
   '/settings': typeof SettingsIndexRoute
   '/shopping': typeof ShoppingIndexRoute
@@ -360,6 +368,7 @@ export interface FileRoutesById {
   '/shopping': typeof ShoppingRouteWithChildren
   '/sign-in': typeof SignInRoute
   '/items/$id': typeof ItemsIdRouteWithChildren
+  '/join/$token': typeof JoinTokenRoute
   '/shopping/$vendorId': typeof ShoppingVendorIdRoute
   '/settings/': typeof SettingsIndexRoute
   '/shopping/': typeof ShoppingIndexRoute
@@ -405,6 +414,7 @@ export interface FileRouteTypes {
     | '/shopping'
     | '/sign-in'
     | '/items/$id'
+    | '/join/$token'
     | '/shopping/$vendorId'
     | '/settings/'
     | '/shopping/'
@@ -446,6 +456,7 @@ export interface FileRouteTypes {
     | '/cooking'
     | '/onboarding'
     | '/sign-in'
+    | '/join/$token'
     | '/shopping/$vendorId'
     | '/settings'
     | '/shopping'
@@ -479,6 +490,7 @@ export interface FileRouteTypes {
     | '/shopping'
     | '/sign-in'
     | '/items/$id'
+    | '/join/$token'
     | '/shopping/$vendorId'
     | '/settings/'
     | '/shopping/'
@@ -523,6 +535,7 @@ export interface RootRouteChildren {
   ShoppingRoute: typeof ShoppingRouteWithChildren
   SignInRoute: typeof SignInRoute
   ItemsIdRoute: typeof ItemsIdRouteWithChildren
+  JoinTokenRoute: typeof JoinTokenRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
   SettingsHouseholdLocationsRoute: typeof SettingsHouseholdLocationsRouteWithChildren
   SettingsHouseholdRecipesRoute: typeof SettingsHouseholdRecipesRouteWithChildren
@@ -589,6 +602,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/shopping/$vendorId'
       preLoaderRoute: typeof ShoppingVendorIdRouteImport
       parentRoute: typeof ShoppingRoute
+    }
+    '/join/$token': {
+      id: '/join/$token'
+      path: '/join/$token'
+      fullPath: '/join/$token'
+      preLoaderRoute: typeof JoinTokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/items/$id': {
       id: '/items/$id'
@@ -1029,6 +1049,7 @@ const rootRouteChildren: RootRouteChildren = {
   ShoppingRoute: ShoppingRouteWithChildren,
   SignInRoute: SignInRoute,
   ItemsIdRoute: ItemsIdRouteWithChildren,
+  JoinTokenRoute: JoinTokenRoute,
   SettingsIndexRoute: SettingsIndexRoute,
   SettingsHouseholdLocationsRoute: SettingsHouseholdLocationsRouteWithChildren,
   SettingsHouseholdRecipesRoute: SettingsHouseholdRecipesRouteWithChildren,

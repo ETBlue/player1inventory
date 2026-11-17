@@ -909,6 +909,11 @@
       "organizer": "據點王",
       "participant": "搬運工",
       "viewer": "圍觀的"
+    },
+    "household": {
+      "owner": "擁有者",
+      "manager": "管理者",
+      "member": "成員"
     }
   },
   "pwa": {
@@ -922,5 +927,17 @@
   "noLocations": {
     "title": "你在這個家庭還沒有據點。",
     "create": "建立據點"
+  },
+  "join": {
+    "title": "加入 {{household}}",
+    "invitedBy": "{{name}} 邀請了你。",
+    "yourRoles": "你的角色",
+    "join": "加入",
+    "alreadyMember": "你已經在這個家庭裡了。",
+    "invalid": "這個邀請已經失效，請再要一個新的。",
+    "needsCloud": "加入家庭需要使用雲端同步。這台裝置上的資料會留在這裡，不會被複製。",
+    "signIn": "登入以加入",
+    "error": "無法加入，請再試一次。",
+    "loadError": "無法讀取這個邀請，請再試一次。"
   }
 }

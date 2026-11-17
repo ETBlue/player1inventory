@@ -909,6 +909,11 @@
       "organizer": "Organizer",
       "participant": "Participant",
       "viewer": "Viewer"
+    },
+    "household": {
+      "owner": "Owner",
+      "manager": "Manager",
+      "member": "Member"
     }
   },
   "pwa": {
@@ -922,5 +927,17 @@
   "noLocations": {
     "title": "You have no locations in this household yet.",
     "create": "Create a location"
+  },
+  "join": {
+    "title": "Join {{household}}",
+    "invitedBy": "{{name}} invited you.",
+    "yourRoles": "Your roles",
+    "join": "Join",
+    "alreadyMember": "You are already in this household.",
+    "invalid": "This invite is no longer valid. Ask for a new one.",
+    "needsCloud": "Joining a household uses cloud sync. Your data on this device stays here and is not copied.",
+    "signIn": "Sign in to join",
+    "error": "Could not join. Try again.",
+    "loadError": "Could not load this invite. Try again."
   }
 }

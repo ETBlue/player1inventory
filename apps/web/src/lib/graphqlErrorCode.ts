@@ -16,3 +16,20 @@ export function hasGraphQLErrorCode(err: unknown, code: string): boolean {
     err.errors.some((e) => e.extensions?.code === code)
   )
 }
+
+/**
+ * Whether a rejected Apollo call carries a GraphQL error with this
+ * `extensions.reason`. The server adds a reason to some `BAD_USER_INPUT`
+ * refusals, so a caller can tell them apart: `INVITE_INVALID` and
+ * `ALREADY_MEMBER` from `joinHousehold` (households H5b, decision T18), or
+ * `IMPORT_NEEDS_LOCATION` from an import.
+ *
+ * Like `hasGraphQLErrorCode`, it never reads the message text, and any value
+ * that is not a GraphQL error returns `false`.
+ */
+export function hasGraphQLErrorReason(err: unknown, reason: string): boolean {
+  return (
+    CombinedGraphQLErrors.is(err) &&
+    err.errors.some((e) => e.extensions?.reason === reason)
+  )
+}

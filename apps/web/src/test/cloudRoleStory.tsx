@@ -9,6 +9,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { useState } from 'react'
+import { LAST_HOUSEHOLD_ID_KEY } from '@/apollo/householdGuard'
 import {
   BootstrapCartsDocument,
   GetHouseholdDocument,
@@ -32,6 +33,9 @@ import { routeTree } from '@/routeTree.gen'
 /** The one location every role story is active at. */
 export const ROLE_STORY_LOCATION = 'clw3rolestory0a00s9f8h7g6d5'
 
+/** The household id `cloudRoleBaseMocks` answers. */
+const ROLE_STORY_HOUSEHOLD = 'household-role-story'
+
 /** The mocks every page needs, for a person with `householdRole`. */
 export function cloudRoleBaseMocks(
   householdRole: HouseholdRole,
@@ -44,7 +48,7 @@ export function cloudRoleBaseMocks(
         data: {
           household: {
             __typename: 'Household',
-            id: 'household-role-story',
+            id: ROLE_STORY_HOUSEHOLD,
             name: 'The Lin home',
             role: householdRole,
           },
@@ -81,15 +85,24 @@ export function cloudRoleBaseMocks(
   ]
 }
 
-/** A story's `beforeEach`: cloud mode, active at `ROLE_STORY_LOCATION`. */
+/**
+ * A story's `beforeEach`: cloud mode, active at `ROLE_STORY_LOCATION`.
+ *
+ * It also stores the story household as the device's last household. Without
+ * it, a story household that differs from one stored by an earlier story
+ * would make `HouseholdChangeGuard` clear the cache and RELOAD the Storybook
+ * page (households H5b, decision T23).
+ */
 export function cloudRoleStorySetup() {
   localStorage.setItem('data-mode', 'cloud')
   localStorage.setItem('e2e-skip-onboarding', 'true')
   localStorage.setItem(activeLocationStorageKey('cloud'), ROLE_STORY_LOCATION)
+  localStorage.setItem(LAST_HOUSEHOLD_ID_KEY, ROLE_STORY_HOUSEHOLD)
   return () => {
     localStorage.removeItem('data-mode')
     localStorage.removeItem('e2e-skip-onboarding')
     localStorage.removeItem(activeLocationStorageKey('cloud'))
+    localStorage.removeItem(LAST_HOUSEHOLD_ID_KEY)
   }
 }
 
