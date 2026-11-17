@@ -1,4 +1,4 @@
-import type { LocationRole } from '@/generated/graphql'
+import type { HouseholdRole, LocationRole } from '@/generated/graphql'
 import { useDataMode } from './useDataMode'
 import { useHousehold } from './useHousehold'
 import { useLocations } from './useLocations'
@@ -64,17 +64,47 @@ export function usePermissions(): Permissions {
   if (mode !== 'cloud') return LOCAL
 
   const isLoading = household.isLoading || locations.isLoading
-  const householdRole = isLoading ? undefined : household.data?.role
-  const canManage = householdRole === 'owner' || householdRole === 'manager'
-
-  const roles = new Map<string, LocationRole>()
-  if (!isLoading) {
-    for (const l of locations.data ?? []) {
-      const role = (l as { myRole?: LocationRole | null }).myRole
-      if (role) roles.set(l.id, role)
-    }
+  const locationRoles: Record<string, LocationRole> = {}
+  for (const l of locations.data ?? []) {
+    const role = (l as { myRole?: LocationRole | null }).myRole
+    if (role) locationRoles[l.id] = role
   }
-  const roleAt = (locationId: string) => roles.get(locationId) ?? null
+  return permissionsFor({
+    mode,
+    isLoading,
+    householdRole: household.data?.role,
+    locationRoles,
+  })
+}
+
+/**
+ * The rules of `usePermissions`, with no data reading: the household role and
+ * the location roles in, the `Permissions` out.
+ *
+ * Exported so a page test can set a role through the SAME rules the app uses
+ * (`vi.mock('@/hooks/usePermissions')` returning
+ * `permissionsFor({ mode: 'cloud', householdRole: 'member', … })`), while the
+ * page keeps reading local data. How the hook reads the two roles from Apollo
+ * is tested in `usePermissions.test.tsx`. Added in households H5 task F.5.
+ */
+export function permissionsFor({
+  mode,
+  isLoading = false,
+  householdRole,
+  locationRoles = {},
+}: {
+  mode: 'local' | 'cloud'
+  isLoading?: boolean
+  householdRole?: HouseholdRole | null
+  /** Location id → the caller's role. A missing id is "no role". */
+  locationRoles?: Record<string, LocationRole>
+}): Permissions {
+  if (mode !== 'cloud') return LOCAL
+
+  const canManage =
+    !isLoading && (householdRole === 'owner' || householdRole === 'manager')
+  const roleAt = (locationId: string) =>
+    isLoading ? null : (locationRoles[locationId] ?? null)
   const atLeast = (locationId: string, min: LocationRole) => {
     const role = roleAt(locationId)
     return role !== null && LOCATION_RANK[role] >= LOCATION_RANK[min]

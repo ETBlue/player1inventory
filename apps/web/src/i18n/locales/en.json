@@ -469,6 +469,7 @@
     "createItem": "Create item"
   },
   "settings": {
+    "catalogReadOnly": "Only a household owner or manager can add or change these.",
     "title": "Settings",
     "household": {
       "title": "My data",

@@ -9,8 +9,10 @@ import {
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
 import { createTag, createTagType } from '@/db/operations'
+import { GetTagsDocument, GetTagTypesDocument } from '@/generated/graphql'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
+import { CloudRolePage, cloudRoleStorySetup } from '@/test/cloudRoleStory'
 import { TagColor } from '@/types'
 
 const meta = {
@@ -254,4 +256,52 @@ export const WithParentSelector: Story = {
 
 export const WithNewTagTypeDialog: Story = {
   render: () => <WithNewTagTypeDialogStory />,
+}
+
+// Households H5 task F.5. A household `member` in cloud mode: the tag types and tags are listed, with no add, edit or delete, and no drag.
+const memberTagMocks = [
+  {
+    request: { query: GetTagTypesDocument },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: {
+      data: {
+        tagTypes: [
+          {
+            __typename: 'TagType',
+            id: 'tagtype-story-storage',
+            name: 'Storage',
+            color: 'blue',
+          },
+        ],
+      },
+    },
+  },
+  {
+    request: { query: GetTagsDocument },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: {
+      data: {
+        tags: [
+          {
+            __typename: 'Tag',
+            id: 'tag-story-dairy',
+            name: 'Dairy',
+            typeId: 'tagtype-story-storage',
+            parentId: null,
+          },
+        ],
+      },
+    },
+  },
+]
+
+export const MemberReadOnly: Story = {
+  beforeEach: cloudRoleStorySetup,
+  render: () => (
+    <CloudRolePage
+      path="/settings/household/tags"
+      householdRole="member"
+      mocks={memberTagMocks}
+    />
+  ),
 }

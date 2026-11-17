@@ -5,9 +5,11 @@ import { useTranslation } from 'react-i18next'
 import { NewRecipeDialog } from '@/components/recipe/NewRecipeDialog'
 import { RecipeCard } from '@/components/recipe/RecipeCard'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { ReadOnlyNote } from '@/components/shared/ReadOnlyNote'
 import { Toolbar } from '@/components/shared/Toolbar'
 import { Button } from '@/components/ui/button'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useDeleteRecipe, useRecipes } from '@/hooks/useRecipes'
 
 export const Route = createFileRoute('/settings/household/recipes/')({
@@ -20,6 +22,11 @@ function RecipeSettings() {
   const { goBack } = useAppNavigation('/settings')
   const { data: recipes = [] } = useRecipes()
   const deleteRecipe = useDeleteRecipe()
+  // A household member sees the recipes read-only (households H5 task F.5).
+  const { canEditCatalog, isLoading: rolesLoading } = usePermissions()
+  // Only once the role is known: while it loads, `canEditCatalog` is false
+  // for every role, and the note would flash for an owner.
+  const showReadOnlyNote = !rolesLoading && !canEditCatalog
 
   const sortedRecipes = [...recipes].sort((a, b) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
@@ -41,17 +48,25 @@ function RecipeSettings() {
           </Button>
           <h1>{t('settings.recipes.label')}</h1>
         </div>
-        <Button onClick={() => setOpen(true)}>
-          <Plus className="h-4 w-4" />
-          {t('settings.recipes.newButton')}
-        </Button>
+        {canEditCatalog && (
+          <Button onClick={() => setOpen(true)}>
+            <Plus className="h-4 w-4" />
+            {t('settings.recipes.newButton')}
+          </Button>
+        )}
       </Toolbar>
 
       <div className="overflow-y-auto [container-type:size] space-y-px pb-4">
+        {/* Why there is no add, edit or delete (H5 task F.5) */}
+        {showReadOnlyNote && sortedRecipes.length > 0 && <ReadOnlyNote />}
         {sortedRecipes.length === 0 ? (
           <EmptyState
             title={t('settings.recipes.empty.title')}
-            description={t('settings.recipes.empty.description')}
+            description={
+              !showReadOnlyNote
+                ? t('settings.recipes.empty.description')
+                : t('settings.catalogReadOnly')
+            }
           />
         ) : (
           sortedRecipes.map((recipe) => (
@@ -59,7 +74,9 @@ function RecipeSettings() {
               key={recipe.id}
               recipe={recipe}
               itemCount={recipe.items.length}
-              onDelete={() => deleteRecipe.mutate(recipe.id)}
+              {...(canEditCatalog && {
+                onDelete: () => deleteRecipe.mutate(recipe.id),
+              })}
             />
           ))
         )}
