@@ -1828,12 +1828,15 @@ async function makeTwoLocationHousehold(
  *
  *   lockHouseholdCopy    ← `await lockHousehold(tx, householdId)`
  *   location.findFirst   ← `tx.location.findFirst({ where: { id, householdId }, … })`
- *   location.count       ← `tx.location.count({ where: { householdId } })`
  *   location.delete      ← `tx.location.delete({ where: { id } })`
  *
- * The resolver throws `forbidden()` and `LAST_LOCATION`. Here each one is a
- * result instead, so the script can read which way it went. A thrown error
- * would roll the transaction back too, so nothing else differs.
+ * Since households H5 task F.7 there is no `location.count` and no
+ * `LAST_LOCATION`: the last location may be deleted (decision H13 lifted,
+ * owner answer O8). The lock stays (decision T8 of the H5 plan).
+ *
+ * The resolver throws `forbidden()`. Here it is a result instead, so the
+ * script can read which way it went. A thrown error would roll the
+ * transaction back too, so nothing else differs.
  *
  * `hold` is called right after the lock, when given.
  */
@@ -1842,30 +1845,37 @@ async function deleteLocationBody(
   householdId: string,
   id: string,
   hold?: () => Promise<void>,
-): Promise<{ outcome: 'deleted' | 'forbidden' | 'last-location'; count?: number }> {
+): Promise<{ outcome: 'deleted' | 'forbidden' }> {
   await lockHouseholdCopy(tx, householdId)
   if (hold) await hold()
   const location = await tx.location.findFirst({ where: { id, householdId }, select: { id: true } })
   if (!location) return { outcome: 'forbidden' }
-  const count = await tx.location.count({ where: { householdId } })
-  if (count <= 1) return { outcome: 'last-location', count }
   await tx.location.delete({ where: { id } })
-  return { outcome: 'deleted', count }
+  return { outcome: 'deleted' }
 }
 
 async function assertHouseholdLock(): Promise<void> {
   console.log('the household lock (lockHousehold) on real Postgres:')
 
-  // ── 1. Two deletes of the last two locations (review of task 3.6) ──
+  // ── 1. Two deletes of the last two locations (review of task 3.6;
+  //       rewritten in households H5 task F.7) ──
   //
-  // A deletes location 1 and holds its transaction open AFTER the delete.
-  // B then tries to delete location 2. B must wait at the lock. When A
-  // commits, B's count is a new statement, so under READ COMMITTED it sees
-  // A's delete: 1 location, and B refuses with LAST_LOCATION.
+  // Until F.7 the second delete counted 1 location and refused with
+  // LAST_LOCATION. F.7 removed the count: both deletes now succeed and the
+  // household is left with no location. What this still proves is that the
+  // lock makes the second delete WAIT for the first:
   //
-  // Without the lock, B's count would run at once, see 2 (A has not
-  // committed), and delete location 2 as well. Then the household has no
-  // location. Each of the checks below fails in that case.
+  // - A deletes location 1 and holds its transaction open AFTER the delete.
+  // - B then deletes location 2. `overlapTwoTransactions` asserts that B is
+  //   blocked by A (pg_blocking_pids), which is the wait at the lock.
+  // - When A commits, B goes on. B then counts the household's locations
+  //   AFTER its own delete. That count is a new statement, so under READ
+  //   COMMITTED it sees A's committed delete: 0.
+  //
+  // Without the lock, B would not wait at its first statement. It would
+  // delete location 2 while A is still open, and its count would see A's
+  // location 1 (not committed yet): 1. `overlapTwoTransactions` would also
+  // report that B was never blocked.
   {
     const { householdId, locationIds } = await makeTwoLocationHousehold('delete-delete')
     const [loc1, loc2] = locationIds
@@ -1873,24 +1883,30 @@ async function assertHouseholdLock(): Promise<void> {
       'two deleteLocation at once',
       async (tx, hold) => {
         const result = await deleteLocationBody(tx, householdId, loc1)
-        // Hold AFTER the delete, so B's count would see 2 if it did not wait.
+        // Hold AFTER the delete, so B would see location 1 if it did not wait.
         await hold()
         return result
       },
-      (tx) => deleteLocationBody(tx, householdId, loc2),
+      async (tx) => {
+        const result = await deleteLocationBody(tx, householdId, loc2)
+        // Not a statement of the resolver: an observation, read inside B's
+        // transaction after its delete.
+        const seenAfter = await tx.location.count({ where: { householdId } })
+        return { ...result, seenAfter }
+      },
     )
     assert(
-      first.outcome === 'deleted' && first.count === 2,
-      `two deleteLocation at once: the first counts 2 and deletes its location (read: ${first.outcome}, count ${first.count})`,
+      first.outcome === 'deleted',
+      `two deleteLocation at once: the first deletes its location (read: ${first.outcome})`,
     )
     assert(
-      second.outcome === 'last-location' && second.count === 1,
-      `two deleteLocation at once: the second, after the wait, counts 1 (it sees the first one's committed delete) and refuses with LAST_LOCATION (read: ${second.outcome}, count ${second.count})`,
+      second.outcome === 'deleted' && second.seenAfter === 0,
+      `two deleteLocation at once: the second, after the wait, deletes its location and then sees 0 locations, so it ran after the first had committed (read: ${second.outcome}, seen after ${second.seenAfter})`,
     )
     const left = (await prisma.location.findMany({ where: { householdId } })).map((l) => l.id)
     assert(
-      JSON.stringify(left) === JSON.stringify([loc2]),
-      `two deleteLocation at once: the household keeps exactly one location, ${loc2} (read: ${left.join(', ') || 'none'})`,
+      left.length === 0,
+      `two deleteLocation at once: the household has no location left, which is allowed since H5 task F.7 (read: ${left.join(', ') || 'none'})`,
     )
   }
 

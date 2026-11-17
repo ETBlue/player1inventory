@@ -84,9 +84,9 @@ export const CloudLocations: Story = {
 }
 
 /**
- * Cloud mode with ONE location. The row still shows Delete: the list does not
- * know it is the last one. The server refuses the delete with `LAST_LOCATION`,
- * and the settings page shows "You cannot delete your last location."
+ * Cloud mode with ONE location. The row shows Delete. Since households H5 task
+ * F.7 the server allows deleting the last location; Pantry, Shopping and
+ * Cooking then show "You have no locations in this household yet."
  */
 export const CloudLastLocation: Story = {
   args: {

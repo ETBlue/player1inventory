@@ -63,11 +63,13 @@ export function LocationSettingsPage() {
     })
   }
 
-  // A failed delete must say so. In cloud the server refuses to delete a
-  // household's last location (`LAST_LOCATION`, households decision H13):
-  // there is no default location to keep, so this is the only thing that
-  // stops a household from having none. Any other failure (no role, a local
-  // Dexie error) gets a general message rather than nothing.
+  // A failed delete must say so: no role, a local Dexie error, or a network
+  // error gets a general message rather than nothing. Until households H5 task
+  // F.7 the server also refused a household's LAST location (`LAST_LOCATION`,
+  // decision H13) and this page had its own text for it. F.7 lifted that rule,
+  // so the last location can go, and a person with no location sees the empty
+  // screen on Pantry, Shopping and Cooking (`NoLocationsGate`). An older
+  // server that still answers `LAST_LOCATION` gets the general message.
   //
   // Offline is the exception. `offlineWriteLink` has already shown its own
   // "You are offline" toast before it rejects with `OfflineWriteError`, so a
@@ -76,11 +78,7 @@ export function LocationSettingsPage() {
     deleteLocation.mutate(location.id, {
       onError: (err: unknown) => {
         if (err instanceof OfflineWriteError) return
-        toast.error(
-          hasGraphQLErrorCode(err, 'LAST_LOCATION')
-            ? t('settings.locations.deleteLastError')
-            : t('settings.locations.deleteError'),
-        )
+        toast.error(t('settings.locations.deleteError'))
       },
     })
   }

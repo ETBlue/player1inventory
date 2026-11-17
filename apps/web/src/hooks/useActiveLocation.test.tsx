@@ -509,25 +509,64 @@ describe('ActiveLocationProvider — the active id is validated against the real
     )
   })
 
-  it('user whose cloud list comes back empty keeps the location they had', async () => {
-    // Given cloud mode with a stored id and a list that loads but is empty
+  it('user whose cloud list comes back empty has the stale active location cleared, and no bootstrapCarts is sent', async () => {
+    // Given cloud mode with a stored id, and a list that loads but is empty.
+    // Since households H5 task F.7 an empty household is real: its last
+    // location was deleted, or a member was added with no location role.
     mockMode('cloud')
     localStorage.setItem(activeLocationStorageKey('cloud'), 'ghost')
+    const toGhost = vi.fn(() => ({ data: { bootstrapCarts: [] } }))
+    const toSentinel = vi.fn(() => ({ data: { bootstrapCarts: [] } }))
+    renderProvider([
+      emptyLocationsMock,
+      {
+        request: {
+          query: BootstrapCartsDocument,
+          variables: { locationId: 'ghost' },
+        },
+        maxUsageCount: Number.POSITIVE_INFINITY,
+        result: toGhost,
+      },
+      {
+        request: {
+          query: BootstrapCartsDocument,
+          variables: { locationId: DEFAULT_LOCATION_ID },
+        },
+        maxUsageCount: Number.POSITIVE_INFINITY,
+        result: toSentinel,
+      },
+    ])
 
-    // When the provider mounts and the empty list resolves
-    renderProvider([emptyLocationsMock])
+    // When the empty list resolves
+    // Then the stored id is removed, and the active id is the sentinel again,
+    // which names no cloud location. A location created later is picked up by
+    // the fallback above (the first location).
+    await waitFor(() =>
+      expect(
+        localStorage.getItem(activeLocationStorageKey('cloud')),
+      ).toBeNull(),
+    )
+    expect(activeId()).toBe(DEFAULT_LOCATION_ID)
+    expect(screen.getByTestId('active-location-name')).toHaveTextContent('—')
+    // And nothing was bootstrapped: there is no location to bootstrap
+    expect(toGhost).not.toHaveBeenCalled()
+    expect(toSentinel).not.toHaveBeenCalled()
+  })
+
+  it('user in local mode whose list is empty keeps the stored id (local mode is unchanged)', async () => {
+    // Local mode always has its default location, so an empty local list is
+    // not a real state. The rule above is cloud only.
+    mockMode('local')
+    await db.locations.clear()
+    localStorage.setItem(activeLocationStorageKey('local'), 'loc-garage')
+    renderProvider()
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
-
-    // Then the id is left alone: there is no location to fall back TO, and
-    // clobbering it would discard the user's choice for the moment a real list
-    // arrives. Rendering is unaffected — `activeLocation` is simply undefined.
-    expect(activeId()).toBe('ghost')
-    expect(localStorage.getItem(activeLocationStorageKey('cloud'))).toBe(
-      'ghost',
+    expect(activeId()).toBe('loc-garage')
+    expect(localStorage.getItem(activeLocationStorageKey('local'))).toBe(
+      'loc-garage',
     )
-    expect(screen.getByTestId('active-location-name')).toHaveTextContent('—')
   })
 })
 

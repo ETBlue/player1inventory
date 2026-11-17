@@ -2,7 +2,7 @@ import { CombinedGraphQLErrors } from '@apollo/client/errors'
 
 /**
  * Whether a rejected Apollo call carries a GraphQL error with this
- * `extensions.code` (for example `LAST_LOCATION` or `FORBIDDEN`).
+ * `extensions.code` (for example `FORBIDDEN` or `BAD_USER_INPUT`).
  *
  * It reads the CODE, never the message text. The server's message can change,
  * and a different error could happen to use the same words.

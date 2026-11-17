@@ -1057,8 +1057,10 @@ function payloadUsesLocation(
 //
 // - the import put no location row, stock row, log or cart there, and
 // - the import created at least one location of its own, so the fresh Home
-//   is not the household's last location (the server refuses that with
-//   LAST_LOCATION).
+//   is not the household's last location. Until households H5 task F.7 the
+//   server refused that delete (LAST_LOCATION). It allows it now, but this
+//   check stays: a `clear` import of a backup with no locations must not
+//   leave the household with none.
 //
 // A local backup always puts "My Home" there (`placeDefaultLocation`), so it
 // is never deleted then.

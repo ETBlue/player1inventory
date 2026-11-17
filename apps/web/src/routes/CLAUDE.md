@@ -26,6 +26,33 @@ assignment tabs create items stocked in **no** location, via
 No new GraphQL affordance was needed: the cloud branch runs `createItem` and simply omits
 the follow-up `upsertItemStock` the pantry's Add flow performs. See `settings/CLAUDE.md`.
 
+### No locations (cloud, households H5 task F.7)
+
+**A cloud person can have no location at all** since F.7: the household's last location
+can be deleted (decision H13 lifted, owner answer O8), and a member can be added with no
+location role. Then Pantry (`/`), Shopping (`/shopping`), a cart (`/shopping/$vendorId`)
+and Cooking (`/cooking`) show `NoLocationsEmptyState`: "You have no locations in this
+household yet." / 「你在這個家庭還沒有據點。」 and **Create a location** / 「建立據點」, which
+opens the same Add Location dialog as the settings page.
+
+- **`NoLocationsGate`** (`components/location/NoLocationsGate/`) wraps each of the four
+  route components (`PantryRoute`, `ShoppingIndexRoute`, `VendorCartRoute`,
+  `CookingRoute`). The page is its CHILD, so none of the page's hooks run while the empty
+  screen shows.
+- It shows the screen only when `mode === 'cloud'` and `useLocations().data` is a loaded,
+  EMPTY array. While loading, or after a failed read with nothing cached, `data` is
+  `undefined` and the page renders as before.
+- **Before F.7 these pages showed a spinner forever** with an empty list: every
+  location-scoped read waits for `useCloudLocationKnown`, which never became true (Review
+  Focus case 3).
+- `ActiveLocationProvider` clears the stale active id when the cloud list is empty (see
+  `hooks/CLAUDE.md`).
+- Local mode never gets here: its default location cannot be deleted.
+- Tested in `routes/noLocations.cloud.test.tsx` (all four pages, the dialog, and a
+  one-location control), E2E in `e2e/tests/settings/locations.spec.ts` (cloud: delete the
+  last location, see the empty pantry, create one; and axe scans of the empty screen, light
+  and dark, because `a11y.spec.ts` does not run in cloud).
+
 ### Read-only views by role (cloud, households H5)
 
 Local mode has no roles, so none of this applies there. Every check reads `usePermissions()` (`src/hooks/usePermissions.ts`). It only hides what the server would refuse; the server checks every write.

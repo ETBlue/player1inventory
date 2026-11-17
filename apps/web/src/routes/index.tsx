@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect } from 'react'
+import { NoLocationsGate } from '@/components/location/NoLocationsGate'
 import { PantryListView } from '@/components/pantry/PantryListView'
 import { RecipeDetailView } from '@/components/pantry/RecipeDetailView'
 import { RecipeGroupView } from '@/components/pantry/RecipeGroupView'
@@ -21,8 +22,18 @@ export const Route = createFileRoute('/')({
       : {}),
     ...(search.id ? { id: search.id as string } : {}),
   }),
-  component: PantryView,
+  component: PantryRoute,
 })
+
+// Households H5 task F.7: with no location, the page is not rendered at all
+// (`NoLocationsGate`), so none of its location-scoped reads run.
+function PantryRoute() {
+  return (
+    <NoLocationsGate>
+      <PantryView />
+    </NoLocationsGate>
+  )
+}
 
 function PantryView() {
   const { groupBy, id } = Route.useSearch()

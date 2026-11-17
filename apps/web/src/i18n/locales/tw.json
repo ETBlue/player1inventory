@@ -600,7 +600,6 @@
       "deleteLabel": "刪除 {{name}}",
       "deleteTitle": "刪除「{{name}}」？",
       "deleteDescription": "將會移除這個據點。",
-      "deleteLastError": "無法刪除最後一個據點。請先新增另一個據點。",
       "deleteError": "無法刪除這個據點，請再試一次。",
       "reorderError": "據點清單有變動，正在重新載入，請再試一次。",
       "reorderFailed": "無法儲存新的順序，請再試一次。",
@@ -919,5 +918,9 @@
     "offlineSyncedAt": "顯示 {{time}} 的資料",
     "offlineNeverSynced": "目前沒有資料可顯示，請連線後再讀取。",
     "writeBlocked": "目前離線中，暫時無法儲存變更。"
+  },
+  "noLocations": {
+    "title": "你在這個家庭還沒有據點。",
+    "create": "建立據點"
   }
 }

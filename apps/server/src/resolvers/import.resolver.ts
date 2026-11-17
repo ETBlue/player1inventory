@@ -2291,9 +2291,12 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     // - The household lock comes FIRST, before any delete. `deleteLocation`
     //   also takes it first. If this took it later, after the location delete
     //   had locked location rows, the two could wait on each other.
-    // - "Home" is made in the SAME transaction, so the household is never
-    //   left with no location: there is no screen for that before H5
-    //   (decision H13). If making it fails, every delete is rolled back.
+    // - "Home" is made in the SAME transaction, so a cleared household starts
+    //   with one location (decision H13). Since H5 task F.7 a household MAY
+    //   have no location (the last one can be deleted, and the web shows an
+    //   empty screen), but *Clear household* still makes "Home", so the
+    //   person can start again at once. If making it fails, every delete is
+    //   rolled back.
     //
     // The order of the deletes is children before parents, as before.
     // `ItemStock`, `Cart`, `InventoryLog` and `LocationMember` would also go

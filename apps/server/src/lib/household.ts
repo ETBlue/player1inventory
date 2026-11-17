@@ -213,19 +213,23 @@ export async function createFirstLocation(
  * Take the `Household` row's lock for the rest of this transaction. Call it
  * FIRST in the transaction, before any other read or write.
  *
- * `deleteLocation` counts the household's locations and then deletes one. Two
- * deletes at once, of the last two locations, could both count 2 and both
- * delete, leaving no location at all (decision H13 exists to stop that).
- *
- * How the lock closes that race:
+ * Why it exists. Until households H5 task F.7, `deleteLocation` counted the
+ * household's locations and refused the last one (decision H13). Two deletes
+ * at once, of the last two locations, could both count 2 and both delete,
+ * leaving no location at all. The lock closed that race:
  *
  * - The `UPDATE` takes a row lock on the household row (`FOR NO KEY UPDATE`).
  * - A second transaction that runs the same `UPDATE` waits at that statement
  *   until the first one commits or rolls back.
- * - The second transaction's `findFirst` and `count` come AFTER its `UPDATE`,
- *   so they are new statements. Under READ COMMITTED each statement sees what
- *   is committed when it starts. So they see the first transaction's
- *   committed delete: the count is 1, and the delete is refused.
+ * - The second transaction's reads come AFTER its `UPDATE`, so they are new
+ *   statements. Under READ COMMITTED each statement sees what is committed
+ *   when it starts, so they see the first transaction's committed delete.
+ *
+ * F.7 lifted H13 (owner answer O8): a household may now have no location,
+ * and there is no count. The lock STAYS (decision T8 of the H5 plan). Every
+ * transaction that removes locations of a household still takes it first, so
+ * they run one after the other and in one lock order, and H6's purges will
+ * need it again.
  *
  * It is the same idea as the first sign-in claim on `User` (`ensureHousehold`
  * above, decision H1).
@@ -238,11 +242,11 @@ export async function createFirstLocation(
  * The cost: `Household.updatedAt` moves on every call.
  *
  * The Prisma fake has no row lock, so the unit tests prove only that the
- * `UPDATE` is sent first, and the count and the refusal. No E2E spec runs two
- * deletes at once. The proof on real Postgres is `assertHouseholdLock` in
- * scripts/verify-migration.ts (plan H3a, task 3.16): two deletes at once, and
- * `clearAllData` with `deleteLocation`. It keeps a copy of the `UPDATE` below;
- * change both together.
+ * `UPDATE` is sent first. No E2E spec runs two deletes at once. The proof on
+ * real Postgres is `assertHouseholdLock` in scripts/verify-migration.ts (plan
+ * H3a, task 3.16; rewritten in H5 task F.7): the second of two deletes WAITS
+ * for the first, and `clearAllData` with `deleteLocation`. It keeps a copy of
+ * the `UPDATE` below; change both together.
  */
 export async function lockHousehold(
   tx: Prisma.TransactionClient,

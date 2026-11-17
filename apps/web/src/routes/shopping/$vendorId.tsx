@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { ItemSearchTail } from '@/components/item/ItemSearchTail'
+import { NoLocationsGate } from '@/components/location/NoLocationsGate'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
@@ -58,8 +59,18 @@ import { sortItems } from '@/lib/sortUtils'
 import { isBeingBought, type PantryItem } from '@/types'
 
 export const Route = createFileRoute('/shopping/$vendorId')({
-  component: VendorCart,
+  component: VendorCartRoute,
 })
+
+// Households H5 task F.7: with no location, the page is not rendered at all
+// (`NoLocationsGate`), so none of its location-scoped reads run.
+function VendorCartRoute() {
+  return (
+    <NoLocationsGate>
+      <VendorCart />
+    </NoLocationsGate>
+  )
+}
 
 function VendorCart() {
   const { t } = useTranslation()

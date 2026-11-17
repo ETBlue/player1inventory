@@ -4,6 +4,7 @@ import React, { useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ItemCard } from '@/components/item/ItemCard'
+import { NoLocationsGate } from '@/components/location/NoLocationsGate'
 import { CookingControlBar } from '@/components/recipe/CookingControlBar'
 import { NewRecipeDialog } from '@/components/recipe/NewRecipeDialog'
 import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
@@ -57,7 +58,7 @@ function highlight(text: string, query: string): React.ReactNode {
 }
 
 export const Route = createFileRoute('/cooking')({
-  component: CookingPage,
+  component: CookingRoute,
   validateSearch: (search: Record<string, unknown>) => ({
     sort:
       search.sort === 'name' || search.sort === 'count'
@@ -68,6 +69,16 @@ export const Route = createFileRoute('/cooking')({
     expanded: typeof search.expanded === 'string' ? search.expanded : '',
   }),
 })
+
+// Households H5 task F.7: with no location, the page is not rendered at all
+// (`NoLocationsGate`), so none of its location-scoped reads run.
+function CookingRoute() {
+  return (
+    <NoLocationsGate>
+      <CookingPage />
+    </NoLocationsGate>
+  )
+}
 
 function CookingPage() {
   const { t } = useTranslation()

@@ -887,8 +887,8 @@ describe('cloud locations have no default location', () => {
   // <LocationList>, which hides the delete control and the drag handle only
   // for a row with `isDefault === true`. Since households task 3.12 the cloud
   // `GetLocations` document no longer selects `isDefault`, so no cloud row can
-  // be locked. The server refuses to delete the LAST location instead
-  // (`LAST_LOCATION`); the settings page shows that refusal, see
+  // be locked. Since households H5 task F.7 the server allows deleting the
+  // LAST location too (before, it refused with `LAST_LOCATION`); see
   // `routes/settings/household/locations/index.cloud.test.tsx`.
   function CloudLocationSettings() {
     const { data = [] } = useLocations()

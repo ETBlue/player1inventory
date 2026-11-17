@@ -600,7 +600,6 @@
       "deleteLabel": "Delete {{name}}",
       "deleteTitle": "Delete \"{{name}}\"?",
       "deleteDescription": "This location will be removed.",
-      "deleteLastError": "You cannot delete your last location. Add another location first.",
       "deleteError": "Could not delete this location. Please try again.",
       "reorderError": "The location list changed. Reloading it now. Try again.",
       "reorderFailed": "Could not save the new order. Please try again.",
@@ -919,5 +918,9 @@
     "offlineSyncedAt": "Showing data from {{time}}",
     "offlineNeverSynced": "Showing no data. Connect to load your items.",
     "writeBlocked": "You are offline. Changes cannot be saved right now."
+  },
+  "noLocations": {
+    "title": "You have no locations in this household yet.",
+    "create": "Create a location"
   }
 }

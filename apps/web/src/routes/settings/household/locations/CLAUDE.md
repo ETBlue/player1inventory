@@ -9,7 +9,7 @@ Location CRUD at `/settings/household/locations`. A **Location** is a place the 
 | | Local | Cloud |
 |---|---|---|
 | Default location | "My Home", `isDefault: true`, id `DEFAULT_LOCATION_ID = 'local'` | none. Rows carry no `isDefault`: the `GetLocations` document stopped selecting it. The server still declares the field until task 3.14 |
-| Can a row be deleted? | every row except the default. `LocationList` shows a `Lock` icon instead of the drag handle and a spacer instead of Delete, and `deleteLocation` (Dexie) throws if called anyway | every row. The server refuses to delete the household's **last** location with the error code `LAST_LOCATION` (decision H13) |
+| Can a row be deleted? | every row except the default. `LocationList` shows a `Lock` icon instead of the drag handle and a spacer instead of Delete, and `deleteLocation` (Dexie) throws if called anyway | every row, the household's **last** location too (since households H5 task F.7, owner answer O8). Until then the server refused the last one with the error code `LAST_LOCATION` (decision H13). With no location, Pantry, Shopping and Cooking show the empty screen (`NoLocationsGate`, see `routes/CLAUDE.md`) |
 | Fallback when the active id names no location | the `isDefault` row, then the first row | the **first** location. The server returns the list by `order` |
 
 `LocationList` locks a row only when `location.isDefault === true`. Never read the flag as a plain boolean: it is `undefined` on every cloud row.
@@ -67,9 +67,13 @@ Before the review of H5 task F.3 it showed "No locations yet" until the list ans
 
 | Error | Toast (`settings.locations.*`) |
 |---|---|
-| `LAST_LOCATION` | `deleteLastError`: "You cannot delete your last location. Add another location first." |
 | `OfflineWriteError` (cloud, no network) | none from the page. `offlineWriteLink` (`src/apollo/offlineWriteLink.ts`) has already shown `pwa.writeBlocked` before it rejects, so the page returns early instead of adding a second toast |
 | anything else (another code such as `FORBIDDEN`, a Dexie error) | `deleteError`: "Could not delete this location. Please try again." |
+
+Until households H5 task F.7 the table had a `LAST_LOCATION` row with its own text
+(`deleteLastError`, "You cannot delete your last location. Add another location first.").
+F.7 deleted the row and the key. An older server that still answers `LAST_LOCATION` (the
+deploy window) gets the general `deleteError`.
 
 Before task 3.12 the page called `deleteLocation.mutate(location.id)` with no `onError`, so a refused delete showed nothing.
 
@@ -103,4 +107,4 @@ Global `Item`s are **not** touched — an item stocked only in the deleted locat
 
 **i18n**: `settings.locations.*` in `src/i18n/locales/{en,tw}.json`.
 
-**Tests**: `src/routes/settings/household/locations/index.test.tsx` (route, local, incl. no role text in local mode), `index.cloud.test.tsx` (route, cloud: the `LAST_LOCATION` toast, the general one, no second toast when offline, the roles of H5 task F.3, the reorder refusal and the loading state), `index.stories.tsx` + `index.stories.test.tsx` (stories + smoke), location operations/cascade in `src/db/operations.test.ts`, E2E in `e2e/tests/location-switcher.spec.ts` and `e2e/tests/settings/locations.spec.ts`.
+**Tests**: `src/routes/settings/household/locations/index.test.tsx` (route, local, incl. no role text in local mode), `index.cloud.test.tsx` (route, cloud: deleting the last location, an older server's `LAST_LOCATION` getting the general toast, the general one, no second toast when offline, the roles of H5 task F.3, the reorder refusal and the loading state), `index.stories.tsx` + `index.stories.test.tsx` (stories + smoke), location operations/cascade in `src/db/operations.test.ts`, E2E in `e2e/tests/location-switcher.spec.ts` and `e2e/tests/settings/locations.spec.ts`.

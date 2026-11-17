@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -21,10 +21,12 @@ import {
 
 // The locations page in CLOUD mode (households task 3.12).
 //
-// A household has no default location. Every cloud row can be deleted, and the
-// server refuses to delete the LAST one with the error code `LAST_LOCATION`
-// (decision H13). Before this task the page called `deleteLocation.mutate`
-// with no `onError`, so that refusal showed nothing at all.
+// A household has no default location. Every cloud row can be deleted. Until
+// households H5 task F.7 the server refused to delete the LAST one with the
+// error code `LAST_LOCATION` (decision H13), and the page had its own message
+// for it. F.7 lifted that rule: the last location can go, and the page has no
+// special message any more. Before task 3.12 the page called
+// `deleteLocation.mutate` with no `onError`, so a refusal showed nothing.
 //
 // The delete goes through the REAL `useDeleteLocation` cloud branch; only the
 // generated Apollo hook under it is replaced, so the rejection it returns is
@@ -122,8 +124,6 @@ function serverRefusal(code: string, message: string) {
   })
 }
 
-const LAST_LOCATION_MESSAGE =
-  'You cannot delete your last location. Add another location first.'
 const GENERAL_MESSAGE = 'Could not delete this location. Please try again.'
 const OFFLINE_MESSAGE = 'You are offline. Changes cannot be saved right now.'
 const REORDER_MESSAGE =
@@ -180,8 +180,27 @@ describe('Settings locations page — cloud mode', () => {
     await user.click(within(dialog).getByRole('button', { name: /^delete$/i }))
   }
 
-  it('user cannot delete the last location in cloud mode and sees why', async () => {
-    // Given a household with ONE location, which the server refuses to delete
+  it('user can delete the last location in cloud mode', async () => {
+    // Given a household with ONE location (H5 task F.7: the server allows it)
+    mockLocations.mockReturnValue([cloudLocation(LOC_A, 'Cloud Kitchen', 0)])
+    mockDeleteLocation.mockResolvedValue({ data: { deleteLocation: true } })
+    renderPage()
+
+    // When the user deletes it (cloud shows Delete on every row, this one too)
+    await deleteLocationNamed('Cloud Kitchen')
+
+    // Then the delete is sent for that location
+    await waitFor(() =>
+      expect(mockDeleteLocation).toHaveBeenCalledWith({
+        variables: { id: LOC_A },
+      }),
+    )
+  })
+
+  it('user sees the general message when an older server still refuses the last location', async () => {
+    // Given a server from before H5 task F.7, which still answers
+    // LAST_LOCATION. The web no longer has its own text for that code, so
+    // this deploy window shows the general message.
     mockLocations.mockReturnValue([cloudLocation(LOC_A, 'Cloud Kitchen', 0)])
     mockDeleteLocation.mockRejectedValue(
       serverRefusal(
@@ -191,16 +210,9 @@ describe('Settings locations page — cloud mode', () => {
     )
     renderPage()
 
-    // When the user deletes it (cloud shows Delete on every row, this one too)
     await deleteLocationNamed('Cloud Kitchen')
 
-    // Then the page says why, in the app's own words
-    expect(await screen.findByText(LAST_LOCATION_MESSAGE)).toBeInTheDocument()
-    expect(screen.queryByText(GENERAL_MESSAGE)).not.toBeInTheDocument()
-    // And the delete really was sent for that location
-    expect(mockDeleteLocation).toHaveBeenCalledWith({
-      variables: { id: LOC_A },
-    })
+    expect(await screen.findByText(GENERAL_MESSAGE)).toBeInTheDocument()
   })
 
   it('user sees a general message when a cloud delete fails for another reason', async () => {
@@ -215,9 +227,8 @@ describe('Settings locations page — cloud mode', () => {
     // When the user deletes the second location
     await deleteLocationNamed('Cloud Garage')
 
-    // Then a general failure message is shown, not the last-location one
+    // Then a general failure message is shown
     expect(await screen.findByText(GENERAL_MESSAGE)).toBeInTheDocument()
-    expect(screen.queryByText(LAST_LOCATION_MESSAGE)).not.toBeInTheDocument()
   })
 
   it('user deleting a location while offline sees only the offline message', async () => {

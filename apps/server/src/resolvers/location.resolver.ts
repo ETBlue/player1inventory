@@ -198,8 +198,12 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
       await requireHouseholdRole(ctx, householdId, 'manager')
 
       await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        // FIRST, before the read and the count below, so two deletes at once
-        // cannot both count 2 (lib/household.ts explains how).
+        // FIRST, before the read below. Until H5 task F.7 this stopped two
+        // deletes at once from both counting 2 and leaving no location. That
+        // count is gone (the last location may go now), but the lock stays:
+        // `deleteLocation` and `clearAllData` take it in the same order, and
+        // H6's purges will need it (decision T8 of the H5 plan). A second
+        // delete in the same household waits here for the first to commit.
         await lockHousehold(tx, householdId)
 
         // The location must be in the caller's household. A `where` filter,
@@ -211,15 +215,11 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
         })
         if (!location) throw forbidden()
 
-        // Decision H13: a household always keeps one location, because
-        // there is no screen for a household with none until H5. `isDefault`
-        // is no longer read: any location may go, except the last one.
-        const count = await tx.location.count({ where: { householdId } })
-        if (count <= 1) {
-          throw new GraphQLError("The household's last location cannot be deleted.", {
-            extensions: { code: 'LAST_LOCATION' },
-          })
-        }
+        // Any location may go, the last one too. Decision H13 refused the
+        // last location (error code LAST_LOCATION) while there was no screen
+        // for a household with none. H5 task F.7 lifted it (owner answer O8):
+        // Pantry, Shopping and Cooking now show "You have no locations in
+        // this household yet." with Create a location.
 
         // ItemStock, Cart, InventoryLog and LocationMember all cascade via
         // their foreign keys, so this one delete removes the location's stock

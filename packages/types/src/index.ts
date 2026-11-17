@@ -272,8 +272,9 @@ export interface Location {
   // order is not stable.
   //
   // Cloud rows never carry it (households H3a, task 3.12). A household has no
-  // default location: any location can be deleted except the last one, which
-  // the server refuses with `LAST_LOCATION`. Where cloud code needs "the
+  // default location: any location can be deleted, the last one too since
+  // households H5 task F.7 (before, the server refused it with
+  // `LAST_LOCATION`). Where cloud code needs "the
   // fallback location", it uses the FIRST location (the server returns them
   // by `order`). So code must test `isDefault === true`, never just read it.
   isDefault?: boolean

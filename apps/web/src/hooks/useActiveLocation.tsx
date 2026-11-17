@@ -166,14 +166,36 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
   //     the list by `order`, so "first" is the top row of the locations page.
   // Never the `'local'` literal: in cloud it names nothing.
   //
-  // A list that has loaded but is EMPTY leaves the active id untouched: there
-  // is nothing to point at, and blanking it would discard the user's choice for
-  // the moment the list does arrive. An empty list is far more often transient
-  // (a refetch in flight, a failed cloud read) than a genuine "no locations" —
-  // local seeds a default on populate, the server creates "Home" at first
-  // sign-in, and it refuses to delete a household's last location.
+  // A CLOUD list that has loaded but is EMPTY clears the active id: the
+  // stored id is removed and the state goes back to the `'local'` sentinel,
+  // which names no cloud location. Since households H5 task F.7 an empty
+  // household is real (its last location was deleted, or a member was added
+  // with no location role), so the old id names a location that is gone or
+  // was never visible. `NoLocationsGate` shows the empty screen; when a
+  // location is created, the fallback below picks it.
+  //
+  // Until F.7 an empty list left the id untouched, with the reason "an empty
+  // list is usually transient". That is not true here: a refetch in flight
+  // and a failed read both keep `locations` as it was (or `undefined`), they
+  // do not give `[]`. `[]` is the server saying "no location".
+  //
+  // LOCAL mode keeps the old rule: local seeds a default location on
+  // populate and refuses to delete it, so an empty local list is not a real
+  // state, and nothing changes there.
   useEffect(() => {
     if (!locations) return
+    if (locations.length === 0) {
+      if (mode !== 'cloud') return
+      try {
+        localStorage.removeItem(activeLocationStorageKey(mode))
+      } catch {
+        // ignore write failures (e.g. private mode)
+      }
+      if (activeLocationId !== DEFAULT_LOCATION_ID) {
+        setActiveLocationIdState(DEFAULT_LOCATION_ID)
+      }
+      return
+    }
     if (locations.some((loc) => loc.id === activeLocationId)) return
     const fallbackId =
       mode === 'cloud'
