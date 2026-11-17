@@ -202,6 +202,56 @@ describe('the Stock tab follows the role of the page being viewed', () => {
     expect(screen.getByRole('button', { name: /^save$/i })).toBeInTheDocument()
   })
 
+  it('location organizer of the active location sees the view-only note and no Remove on a page where they are a viewer', async () => {
+    // Given Milk stocked here and at the Cabin. This person organizes the
+    // active location and is only a viewer at the Cabin (`asLocationRole`).
+    // So the note and Remove give different answers on the two pages, and a
+    // check that read the ACTIVE location's role on every page would fail.
+    const milk = await makeMilk()
+    asLocationRole('organizer')
+    renderStock(milk.id)
+
+    // On the active location: Remove, and no note
+    expect(await screen.findByLabelText(/^packed/i)).not.toHaveAttribute(
+      'readonly',
+    )
+    expect(
+      screen.getByRole('button', { name: /remove from location/i }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(VIEW_ONLY_NOTE)).toBeNull()
+
+    // When they page to the Cabin
+    await userEvent.setup().click(screen.getByRole('tab', { name: 'Cabin' }))
+
+    // Then the Cabin page shows the note and no Remove
+    await waitFor(() =>
+      expect(screen.getByLabelText(/^packed/i)).toHaveAttribute('readonly'),
+    )
+    expect(screen.getByText(VIEW_ONLY_NOTE)).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /remove from location/i }),
+    ).toBeNull()
+  })
+
+  it('location viewer of the active location sees the note here and not on a page where they are a participant', async () => {
+    // Given a viewer here and a participant at the Cabin
+    const milk = await makeMilk()
+    asLocationRole('viewer')
+    renderStock(milk.id)
+
+    // Here: the note
+    expect(await screen.findByText(VIEW_ONLY_NOTE)).toBeInTheDocument()
+
+    // When they page to the Cabin
+    await userEvent.setup().click(screen.getByRole('tab', { name: 'Cabin' }))
+
+    // Then the Cabin page is editable and has no note
+    await waitFor(() =>
+      expect(screen.getByLabelText(/^packed/i)).not.toHaveAttribute('readonly'),
+    )
+    expect(screen.queryByText(VIEW_ONLY_NOTE)).toBeNull()
+  })
+
   it(`location viewer does not see Add to location on a page where the item is not stocked`, async () => {
     // Given Bread stocked only at the Cabin, where this person is a
     // participant, and not here, where they are a viewer
