@@ -155,23 +155,38 @@ function checkoutInputShape(items: ReadonlyArray<CheckoutEntry>): 'new' | 'old' 
  * OLD-BUNDLE SHIM. Turns old-shape entries (`{ itemId, quantity }`, where
  * `quantity` was the client's stock total) into new-shape entries. A cart has
  * at most one row per item (H3b), so the item names the row. The amount is the
- * STORED amount: the old server bought what the cart held, and so does this.
+ * STORED amount: `main`'s server bought what the cart held, and so does this.
  * The old `quantity` is ignored.
  *
- * An item with no row being bought is refused with `CART_CHANGED`, the same
- * answer `matchCheckoutInput` gives any other entry that does not match the
- * cart. `matchCheckoutInput` then checks the rest (the same row twice, a row
- * left out).
+ * An `itemId` with no row being bought is SKIPPED, as `main`'s server did
+ * (it looked each cart row up in the input and never the other way round).
+ * Refusing it would leave an old device failing on every retry until a
+ * reload, because its stale entry would come back each time.
+ *
+ * What still refuses an old-shape checkout:
+ *
+ * | Case                                               | Refused by                          |
+ * |----------------------------------------------------|-------------------------------------|
+ * | the same `itemId` twice                            | `matchCheckoutInput` (same row twice) |
+ * | a row being bought that the input leaves out       | `matchCheckoutInput`                |
+ * | the row deleted or changed between the read and the claim | the claim's `deleteMany` count |
+ *
+ * The amount rule of `matchCheckoutInput` CANNOT fire here: the amount is
+ * copied from the same read it is compared with. So a co-member's change
+ * that committed BEFORE the read is bought silently, at the new amount. That
+ * is what `main`'s server did too. A change that commits between the read and
+ * the claim still gives `CART_CHANGED`, and the claim still stops a double
+ * buy.
  */
 function fromOldCheckoutInput(
   stored: StoredRow[],
   items: ReadonlyArray<CheckoutEntry>,
 ): Array<{ cartItemId: string; quantity: number }> {
   const byItem = new Map(stored.map((r) => [r.itemId, r]))
-  return items.map((e) => {
+  return items.flatMap((e) => {
     const row = byItem.get(e.itemId as string)
-    if (!row) throw cartChanged()
-    return { cartItemId: row.id, quantity: row.quantity }
+    if (!row) return []
+    return [{ cartItemId: row.id, quantity: row.quantity }]
   })
 }
 
@@ -420,8 +435,9 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       // and a cart id at a location that does not exist, both get the same
       // `FORBIDDEN` from `requireLocationRole`.
       const cartLocationId = await requireCartLocation(ctx, cartId, 'participant')
-      // OLD-BUNDLE SHIM: which input shape this is. Refused before any read
-      // when the entries mix the two shapes.
+      // OLD-BUNDLE SHIM: which input shape this is. Refused before any cart
+      // read when the entries mix the two shapes. (The role check above has
+      // already read.)
       const shape = checkoutInputShape(items)
       // The locations a copy-on-add may copy stock settings from: the ones the
       // caller holds a role on (households H3a, task 3.8). Read once, before

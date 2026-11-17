@@ -806,20 +806,67 @@ describe('checkout from an old web bundle', () => {
     ])
   })
 
-  it('an old-shape entry for an item with no row being bought is CART_CHANGED, and nothing is written', async () => {
-    // Given the eggs row is pinned (amount 0), so it is not being bought
-    const before = writable()
+  it('user on an old bundle checks out with an entry for an item with no row being bought: that entry is skipped, as main did', async () => {
+    // Given the old screen still lists eggs, whose row is pinned (amount 0),
+    // and an item whose row is gone. `main`'s server ignored both.
     const res = await checkoutRaw(
       [
         { itemId: 'item_milk', quantity: 1 },
         { itemId: 'item_bread', quantity: 1 },
         { itemId: 'item_eggs', quantity: 1 },
+        { itemId: 'item_gone', quantity: 1 },
+      ],
+      ALICE,
+    )
+
+    // Then milk and bread are bought, and nothing is written for the other two
+    expect(res.errors).toBeUndefined()
+    expect(stockAt('item_milk', LOC_HOME)?.packedQuantity).toBe(3)
+    expect(stockAt('item_bread', LOC_HOME)?.packedQuantity).toBe(4)
+    expect(logs.state.logs.map((l) => l.itemId).sort()).toEqual(['item_bread', 'item_milk'])
+    // And the pinned eggs row stays
+    expect(rowIds(HOME_CART)).toEqual(['ci_bob_eggs_pinned'])
+  })
+
+  it('an old-shape input that names the same item twice is CART_CHANGED, and nothing is written', async () => {
+    const before = writable()
+    const res = await checkoutRaw(
+      [
+        { itemId: 'item_milk', quantity: 1 },
+        { itemId: 'item_bread', quantity: 1 },
+        { itemId: 'item_milk', quantity: 1 },
       ],
       ALICE,
     )
 
     expect(code(res)).toBe('CART_CHANGED')
     expect(writable()).toEqual(before)
+  })
+
+  it('an old-shape checkout whose row a co-member changes between the read and the claim is CART_CHANGED', async () => {
+    // Given BOB changes the bread from 3 to 5 while ALICE's old-bundle
+    // checkout waits. The amount rule cannot see this (the old shape copies
+    // the amount from the read); the claim can.
+    hooks.beforeClaim = () => {
+      hooks.beforeClaim = undefined
+      const bread = carts.state.cartItems.find((r) => r.id === 'ci_bob_bread')
+      if (bread) bread.quantity = 5
+    }
+    const stockBefore = structuredClone(world.stock.state.itemStocks)
+
+    const res = await checkoutRaw(
+      [
+        { itemId: 'item_milk', quantity: 1 },
+        { itemId: 'item_bread', quantity: 1 },
+      ],
+      ALICE,
+    )
+
+    // Then refused, and no stock is added (the fake's rollback also restores
+    // the cart rows, which Postgres would not, so they are not asserted)
+    expect(code(res)).toBe('CART_CHANGED')
+    expect(world.stock.state.itemStocks).toEqual(stockBefore)
+    expect(logs.state.logs).toHaveLength(0)
   })
 
   it('an old-shape input that leaves a row out is CART_CHANGED, and nothing is written', async () => {

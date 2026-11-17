@@ -58,8 +58,14 @@ so for ONE release the server accepts the old shape too:
   entry. Anything else is `BAD_USER_INPUT`.
 - An old-shape entry names the cart row by its item (a cart has at most one row
   per item). The server reads that row's stored amount and buys it, as the old
-  server did. The old `quantity` (a stock total) is ignored. All the
-  `CART_CHANGED` rules then apply as for a new-shape input.
+  server did. The old `quantity` (a stock total) is ignored.
+- An `itemId` with no row being bought is skipped, as the old server did.
+- NOT every `CART_CHANGED` rule applies. The amount rule cannot fire: the
+  amount is copied from the same read it would be compared with, so a change
+  that committed before the read is bought at the new amount (as on the old
+  server). Still `CART_CHANGED`: the same `itemId` twice, a row being bought
+  that the input leaves out, and a row changed or deleted between the read and
+  the claim. The claim still stops a double buy.
 
 When the shim goes, make `cartItemId` `ID!` again and delete `itemId`.
 """
