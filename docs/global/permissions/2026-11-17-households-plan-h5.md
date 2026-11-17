@@ -623,7 +623,7 @@ The owner can still correct any `tw` text in the PR.
 
   | Key | English | `tw` (first version; the owner can correct it in the PR) |
   |---|---|---|
-  | `settings.locations.reorderError` | The location list changed. It has been reloaded. Try again. | 據點清單有變動，已重新載入，請再試一次。 |
+  | `settings.locations.reorderError` | The location list changed. It has been reloaded. Try again. (changed in the F.4 review, see there) | 據點清單有變動，已重新載入，請再試一次。 |
 
   The message shows for every refusal except offline, not only `BAD_USER_INPUT`: the reload
   is right whatever the reason.
@@ -733,7 +733,7 @@ The owner can still correct any `tw` text in the PR.
   | Key | English | `tw` |
   |---|---|---|
   | `locationSwitcher.viewOnly` | View only | 僅檢視 |
-  | `locationSwitcher.triggerLabelViewOnly` | Switch location (current: {{name}}, view only) | 切換據點（目前：{{name}}，僅檢視） |
+  | `locationSwitcher.triggerLabelViewOnly` | Switch location (current: {{name}}, view only) (changed in the F.4 review, see there) | 切換據點（目前：{{name}}，僅檢視） |
 
 - **Tests.** `LocationSwitcher.cloud.test.tsx` (new, 8): three locations with three roles
   (viewer, organizer, participant), a fourth on the settings list only (no role), and the
@@ -775,6 +775,64 @@ The owner can still correct any `tw` text in the PR.
 - **Order of work.** The implementation was written before the tests, in this task and in
   the F.3 review fixes. Every test was then checked by a mutation above, so each one is
   known to fail without the behaviour it names.
+
+**Review fixes for F.4 (2026-11-17, review of `145ab166..54dcc8b3`).** Tests were written
+first and shown red, then the code. Commits `0a6321a2`, `4cab8303`, `fe085176`.
+
+- **A refused reorder now says what really happened.** The message and the reload follow
+  the error code (`hasGraphQLErrorCode`):
+
+  | Error | Toast | `useReorderLocations` reloads |
+  |---|---|---|
+  | `BAD_USER_INPUT` | `reorderError` | `GetHouseholdLocations`, `GetLocations` |
+  | `FORBIDDEN` | `reorderFailed` (the general text, in the shape of `deleteError`) | `GetHousehold`, so the drag handles go away |
+  | a network error, anything else | `reorderFailed` | nothing |
+  | `OfflineWriteError` | none from the page | nothing |
+
+  No toast once the page has unmounted (a `mounted` ref); the reload still runs. The hook's
+  own `OfflineWriteError` check is gone: an offline error has no GraphQL code, so the code
+  rule already reloads nothing (a mutation that removed only that check left every test
+  green, so it was dead code).
+- **`mutateAsync` keeps its reload, and now has a test.** It has no caller in the app, but
+  the hook tests use it, and it keeps the cloud branch's shape the same as the local
+  `useMutation` branch. Removing it would have changed three existing tests for no gain.
+- **The badge is a `<span>`** with `badgeVariants({ variant: 'neutral-outline' })`. `Badge`
+  renders a `<div>`, which is not valid inside the trigger `<button>`, and has no
+  `asChild`. Same classes, and `inline-flex` lays a span out like the div.
+- **Label in Name (WCAG 2.5.3).** The view only name now contains the visible text
+  "<name> View only" in order. The plain name ("Switch location (current: Home)") already
+  contained the visible name, so it is unchanged; E2E page objects that find the switcher
+  by "Switch location" keep working.
+- **The local badge test is a labelled negative control.** Local `roleAt` is hard-coded,
+  so it cannot see a role bug. It still goes red when the switcher badges a non-viewer
+  location.
+- **Texts (new or changed):**
+
+  | Key | English | `tw` (first version; the owner can correct it in the PR) |
+  |---|---|---|
+  | `settings.locations.reorderError` (changed) | The location list changed. Reloading it now. Try again. | 據點清單有變動，正在重新載入，請再試一次。 |
+  | `settings.locations.reorderFailed` (new) | Could not save the new order. Please try again. | 無法儲存新的順序，請再試一次。 |
+  | `locationSwitcher.triggerLabelViewOnly` (changed) | Switch location (current: {{name}} View only) | 切換據點（目前：{{name}} 僅檢視） |
+
+- **Tests.** `useLocations.test.tsx` +4 (FORBIDDEN reloads the role only; network error
+  and offline reload nothing; `mutateAsync` reloads both lists). `index.cloud.test.tsx` +4
+  (FORBIDDEN, network error, offline, a refusal after the page unmounted); the
+  `BAD_USER_INPUT` test now also checks that nothing else is reloaded.
+  `LocationSwitcher.cloud.test.tsx` +1 (the name holds the visible words, in `en` and `tw`),
+  and the viewer test checks the badge is a `SPAN`.
+- **Mutations, each copied aside and restored from the copy (`diff -q` clean):**
+
+  | Mutation | Red |
+  |---|---|
+  | the page's `OfflineWriteError` check removed | `household owner reordering while offline sees only the offline message` |
+  | the hook reloads both lists for any non-code error (offline included) | 4: both hook tests "… gets no reload", and the page's offline and network tests |
+  | `mutateAsync` does not reload | `household owner gets both location lists again after a refused reorder through mutateAsync too` |
+  | the page shows `reorderError` for every error | the page's FORBIDDEN and network tests |
+  | `FORBIDDEN` reloads nothing | the hook's and the page's FORBIDDEN tests |
+  | the page toasts after unmount | `user who leaves the page before a reorder is refused sees no message about it` |
+  | the badge is a `<div>` again | `location viewer sees View only next to that location, on the trigger and in the menu` |
+
+  The `tw` label was red first too (the en/tw Label in Name test).
 
 ## Task F.5 — web: a household `member` sees the catalog read-only
 
@@ -1103,6 +1161,9 @@ Filled in from the task reports and reviews.
 | F.4 | Modify the switcher, its stories and smoke test, and `hooks/CLAUDE.md` | Also: a new `LocationSwitcher.cloud.test.tsx` (the stories run in local mode, and a story cannot `vi.mock`), two new i18n keys (the accessible name had to say "view only" too), `components/CLAUDE.md`, and `e2e/helpers/axe.ts` |
 | F.4 | (nothing about where the badge goes on the compact trigger) | The compact trigger is one letter in an icon-size button. It shows an `Eye` mark instead of the word, and both triggers say "view only" in their name |
 | F.4 | (nothing about a11y) | `a11y.spec.ts` runs in `local` and `pwa` only, and roles exist only in cloud. The scans went into `location-switcher.spec.ts` (cloud). The first scan failed `color-contrast` on the transparent badge (an axe stack reading, 1.44:1) and `aria-hidden-focus` (Radix, every dropdown) |
+| F.3 review | Show `reorderError` for every refusal except offline: "the reload is right whatever the reason" | Untrue for a network error or `FORBIDDEN`, and "has been reloaded" was too early even for `BAD_USER_INPUT`. Fixed in the F.4 review: the code decides the text and the reload |
+| F.4 | Use `Badge` for the switcher's badge | `Badge` renders a `<div>`, invalid inside the trigger `<button>`. A `<span>` with `badgeVariants` |
+| F.4 | The name "Switch location (current: {{name}}, view only)" | Fails WCAG 2.5.3: the visible "Home View only" was not in the name in order |
 
 ## Status
 
