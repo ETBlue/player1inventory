@@ -34,6 +34,8 @@ import {
   useCreateItemMutation,
   useDeleteItemMutation,
   useGetItemQuery,
+  useGetItemsQuery,
+  useGetLocationsQuery,
   useInventoryLogCountByItemQuery,
   useItemStocksForItemQuery,
   usePantryDataQuery,
@@ -407,6 +409,49 @@ export function useItems() {
     () => joinPantryData(cloud.data, activeLocationId, false),
     [cloud.data, activeLocationId],
   )
+
+  // A household with NO location (real since households H5 task F.7). The
+  // catalog does not depend on a location; only the stock join does, and
+  // `PantryData` needs a `locationId: ID!`. So with no location `PantryData`
+  // stays skipped, and the catalog comes from `GetItems` with no stock: every
+  // item zeroed, `stockId` undefined, the same as an item not stocked here.
+  // Before the review of F.7 this hook stayed `isLoading` with no data, so the
+  // four Settings Items tabs showed "no items" and offered Create for an item
+  // that already exists.
+  //
+  // "No location" means the list has LOADED and is empty. While `GetLocations`
+  // loads, `data` is undefined and this stays false. `cache-first`, like
+  // `useCloudLocationKnown`: it shares `useLocations()`'s cache entry and costs
+  // no request of its own.
+  const { data: locationList } = useGetLocationsQuery({ skip: !isCloud })
+  const noLocations = isCloud && locationList?.locations.length === 0
+  const catalog = useGetItemsQuery({
+    skip: !noLocations,
+    fetchPolicy: 'cache-and-network',
+  })
+  const catalogData = useMemo(
+    () =>
+      catalog.data?.items.map((item) =>
+        joinItemStock(
+          deserializeItem(item as Record<string, unknown>),
+          undefined,
+          activeLocationId,
+        ),
+      ),
+    [catalog.data, activeLocationId],
+  )
+
+  if (noLocations) {
+    // The same pair of rules as the branch below: "nothing to show yet" and
+    // "an error only when there is nothing to show".
+    return {
+      data: catalogData,
+      isLoading: catalog.loading && !catalog.data,
+      isFetching: catalog.networkStatus < 7,
+      isError: !!catalog.error && !catalog.data,
+      refetch: catalog.refetch,
+    }
+  }
 
   if (isCloud) {
     return {

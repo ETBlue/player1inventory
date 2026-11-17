@@ -101,6 +101,17 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
   return {
     ...original,
+    // `useItems` reads the catalog from `GetItems` in a household with no
+    // location (households H5, review of task F.7). This factory replaces
+    // setup.ts's, so it must stub that hook too: the real one needs an
+    // ApolloProvider even when skipped.
+    useGetItemsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+      networkStatus: 7,
+      refetch: () => Promise.resolve(),
+    }),
     // This per-file factory REPLACES the one in `src/test/setup.ts` rather than
     // layering on it, so every Apollo hook the dialog's tree mounts has to be
     // stubbed here or the real hook runs and demands a provider.

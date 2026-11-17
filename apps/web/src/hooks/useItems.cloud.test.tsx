@@ -8,6 +8,7 @@ import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   GetItemDocument,
+  GetItemsDocument,
   GetLocationsDocument,
   ItemStocksForItemDocument,
   PantryDataDocument,
@@ -500,5 +501,58 @@ describe('cloud pantry data (PantryData join)', () => {
     // `useStockedItems` derives from the same result rather than asking again
     expect(pantryRequests[LOC_A]).toBe(1)
     expect(pantryRequests[LOC_B]).toBeUndefined()
+  })
+})
+
+// Households H5, review of task F.7. A household can have NO location, and
+// `PantryData` needs a `locationId: ID!`. The catalog does not depend on a
+// location, so `useItems` reads it from `GetItems` then. Before this it stayed
+// `isLoading` with no data, and the four Settings Items tabs showed "no
+// items" and offered Create for an item that already existed.
+describe('cloud catalog in a household with no location', () => {
+  beforeEach(() => {
+    mockMode('cloud')
+    localStorage.clear()
+  })
+
+  const emptyLocations = {
+    request: { query: GetLocationsDocument },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: { data: { locations: [] } },
+  }
+  const getItemsMock = {
+    request: { query: GetItemsDocument },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: { data: { items: CATALOG } },
+  }
+
+  it('user with no location still sees the whole catalog, with no stock', async () => {
+    // Given the location list has loaded and is empty, and the household has
+    // three items
+    const { result } = renderHook(() => useItems(), {
+      wrapper: makeWrapper([emptyLocations, getItemsMock]),
+    })
+
+    // When the catalog loads
+    await waitFor(() => expect(result.current.data).toHaveLength(3))
+
+    // Then every item is there, and none is stocked anywhere
+    expect(result.current.isLoading).toBe(false)
+    expect(names(result.current.data)).toEqual(['Milk', 'Rice', 'Flour'])
+    expect(result.current.data?.every((i) => i.stockId === undefined)).toBe(
+      true,
+    )
+  })
+
+  it('user with locations still gets the catalog from PantryData, not GetItems', async () => {
+    // Guard: with a location, `GetItems` is never asked. The mocks hold no
+    // `GetItems` answer, so a request for it would leave the hook loading.
+    localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
+    const { result } = renderHook(() => useItems(), {
+      wrapper: makeWrapper([getLocationsMock, pantryMock(LOC_A)]),
+    })
+
+    await waitFor(() => expect(result.current.data).toHaveLength(3))
+    expect(byName(result.current.data, 'Milk')?.stockId).toBe('stock-milk-a')
   })
 })
