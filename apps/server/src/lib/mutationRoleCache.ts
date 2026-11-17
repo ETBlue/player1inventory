@@ -28,8 +28,14 @@ import { forgetLocationRoles } from './authz.js'
 // one of two households (the H4 pattern), and no mutation moves the caller to
 // another household yet. H5b's join will; it must decide then.
 //
-// `mutationRoleCache.test.ts` calls every `Mutation` field of the executable
-// schema and checks that each one leaves both caches empty.
+// What the tests in `mutationRoleCache.test.ts` prove:
+// - The every-field test calls every `Mutation` field of the executable schema
+//   with no user and a filled cache, and checks both caches are empty after.
+//   With no user each field throws before it reads anything, so a forget
+//   before OR a forget after is enough to pass. It proves only that at least
+//   one forget runs for each field, that is, every field is wrapped.
+// - The "before" half, the "after" half and the throw case are pinned by their
+//   own unit tests of `forgetRolesAroundEach` in the same file.
 
 type AnyResolver = (parent: unknown, args: unknown, ctx: Context, info: unknown) => unknown
 
