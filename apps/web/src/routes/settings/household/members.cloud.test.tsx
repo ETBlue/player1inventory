@@ -119,10 +119,19 @@ function invite(
 interface Server {
   members: Person[]
   invites: Invite[]
-  /** `GetHousehold`: a household id, or the error code NO_HOUSEHOLD. */
-  household: { id: string; role: HouseholdRole } | 'NO_HOUSEHOLD'
+  /**
+   * `GetHousehold`: a household id, the error code NO_HOUSEHOLD, or another
+   * error. (`MockedProvider` cannot switch a mock to a NETWORK error between
+   * requests: a `result` function that throws breaks the mock link. A server
+   * error takes the same branch of `useLeaveHousehold`: any error that is not
+   * NO_HOUSEHOLD.)
+   */
+  household: { id: string; role: HouseholdRole } | 'NO_HOUSEHOLD' | 'FAILS'
   membersCalls: number
   invitesCalls: number
+  /** When set, `HouseholdMembers` / `HouseholdInvites` answer an error. */
+  membersFail?: boolean
+  invitesFail?: boolean
 }
 
 let server: Server
@@ -134,6 +143,16 @@ function dynamicMocks(): NonNullable<MockedProviderProps['mocks']> {
       maxUsageCount: Number.POSITIVE_INFINITY,
       result: () => {
         const h = server.household
+        if (h === 'FAILS') {
+          return {
+            errors: [
+              {
+                message: 'down',
+                extensions: { code: 'INTERNAL_SERVER_ERROR' },
+              },
+            ],
+          }
+        }
         if (h === 'NO_HOUSEHOLD') {
           return {
             errors: [
@@ -158,6 +177,15 @@ function dynamicMocks(): NonNullable<MockedProviderProps['mocks']> {
       maxUsageCount: Number.POSITIVE_INFINITY,
       result: () => {
         server.membersCalls += 1
+        if (server.membersFail)
+          return {
+            errors: [
+              {
+                message: 'down',
+                extensions: { code: 'INTERNAL_SERVER_ERROR' },
+              },
+            ],
+          }
         return { data: { householdMembers: server.members } }
       },
     },
@@ -166,6 +194,15 @@ function dynamicMocks(): NonNullable<MockedProviderProps['mocks']> {
       maxUsageCount: Number.POSITIVE_INFINITY,
       result: () => {
         server.invitesCalls += 1
+        if (server.invitesFail)
+          return {
+            errors: [
+              {
+                message: 'down',
+                extensions: { code: 'INTERNAL_SERVER_ERROR' },
+              },
+            ],
+          }
         return { data: { householdInvites: server.invites } }
       },
     },
@@ -702,6 +739,87 @@ describe('Members page — open invites', () => {
     expect(await screen.findByText('No open invites.')).toBeInTheDocument()
   })
 
+  it('after a revoke, focus moves to the Open invites heading', async () => {
+    server.members = people('u-olive')
+    server.invites = [invite('inv-member', 'member')]
+    renderPage('owner', [
+      {
+        request: {
+          query: RevokeInviteDocument,
+          variables: { id: 'inv-member' },
+        },
+        result: () => {
+          server.invites = []
+          return { data: { revokeInvite: true } }
+        },
+      },
+    ])
+
+    await revokeFirst()
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('heading', { name: 'Open invites' }),
+      ),
+    )
+  })
+
+  it('user sees an error, not "No open invites.", when the invites cannot be read', async () => {
+    // Given the open invites cannot be read
+    server.members = people('u-olive')
+    server.invitesFail = true
+    renderPage('owner')
+
+    // Then the section says so
+    expect(
+      await screen.findByText('Could not load the open invites. Try again.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('No open invites.')).toBeNull()
+  })
+
+  it('user whose browser cannot copy an open invite sees its link on the row, selected', async () => {
+    // Given the owner with one open invite, and a browser that cannot copy
+    server.members = people('u-olive')
+    server.invites = [invite('inv-member', 'member')]
+    renderPage('owner')
+    const user = userEvent.setup()
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(
+      new Error('NotAllowedError'),
+    )
+    Object.defineProperty(document, 'execCommand', {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    })
+    try {
+      const list = (await screen.findByText('Open invites')).closest(
+        'section',
+      ) as HTMLElement
+      const [row] = await within(list).findAllByRole('listitem')
+
+      // When they press Copy link
+      await user.click(
+        within(row as HTMLElement).getByRole('button', { name: 'Copy link' }),
+      )
+
+      // Then the row shows the link, focused and selected
+      const field = (await within(row as HTMLElement).findByRole('textbox', {
+        name: 'Invite link',
+      })) as HTMLInputElement
+      expect(field.value).toBe(`${window.location.origin}/join/${TOKEN}`)
+      expect(document.activeElement).toBe(field)
+      expect(field.selectionStart).toBe(0)
+      expect(field.selectionEnd).toBe(field.value.length)
+      expect(
+        await screen.findByText(
+          'Could not copy. Select the link and copy it yourself.',
+        ),
+      ).toBeInTheDocument()
+    } finally {
+      Reflect.deleteProperty(document, 'execCommand')
+    }
+  })
+
   it('a revoke that answers false refetches the list and shows no success message', async () => {
     // Given the invite was used in the meantime: the server revokes nothing
     server.members = people('u-olive')
@@ -808,6 +926,133 @@ describe('Members page — role, remove and leave', () => {
     expect(await rowOf('Milo')).toBeInTheDocument()
   })
 
+  it('a remove that worked shows no error when the list cannot be read again', async () => {
+    // Given the remove works, but the refetch of the list then fails
+    server.members = people('u-olive')
+    renderPage('owner', [
+      {
+        request: {
+          query: RemoveMemberDocument,
+          variables: { userId: 'u-mia' },
+        },
+        result: () => {
+          server.membersFail = true
+          return { data: { removeMember: true } }
+        },
+      },
+    ])
+    const user = userEvent.setup()
+    const before = server.membersCalls
+    await user.click(
+      await within(await rowOf('Mia')).findByRole('button', {
+        name: 'Remove Mia',
+      }),
+    )
+    await user.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: 'Remove',
+      }),
+    )
+
+    // Then the list was asked for again, and no "could not save" shows:
+    // the write itself worked
+    await waitFor(() => expect(server.membersCalls).toBeGreaterThan(before))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(
+      screen.queryByText('Could not save the change. Try again.'),
+    ).toBeNull()
+  })
+
+  it('user who confirms Remove sees "Removing…" and cannot confirm it again', async () => {
+    // Given a slow server
+    server.members = people('u-olive')
+    let removeCalls = 0
+    renderPage('owner', [
+      {
+        request: {
+          query: RemoveMemberDocument,
+          variables: { userId: 'u-mia' },
+        },
+        maxUsageCount: Number.POSITIVE_INFINITY,
+        delay: 300,
+        result: () => {
+          removeCalls += 1
+          const gone = !server.members.some((p) => p.userId === 'u-mia')
+          server.members = server.members.filter((p) => p.userId !== 'u-mia')
+          // A second remove of someone no longer here is refused
+          return gone
+            ? {
+                errors: [{ message: 'no', extensions: { code: 'FORBIDDEN' } }],
+              }
+            : { data: { removeMember: true } }
+        },
+      },
+    ])
+    const user = userEvent.setup()
+    const row = await rowOf('Mia')
+    const confirmRemove = async (button: HTMLElement) => {
+      await user.click(button)
+      await user.click(
+        within(await screen.findByRole('alertdialog')).getByRole('button', {
+          name: 'Remove',
+        }),
+      )
+    }
+
+    // When the owner confirms Remove on Mia
+    await confirmRemove(
+      await within(row).findByRole('button', { name: 'Remove Mia' }),
+    )
+
+    // Then the row says so, and has no Remove to press again
+    expect(within(row).getByRole('status')).toHaveTextContent('Removing…')
+    const again = within(row).queryByRole('button', { name: 'Remove Mia' })
+    if (again) await confirmRemove(again)
+    expect(again).toBeNull()
+
+    // And one request was sent, and no false error shows
+    await waitFor(() => expect(screen.queryByText('Mia')).toBeNull())
+    expect(removeCalls).toBe(1)
+    expect(
+      screen.queryByText('Could not save the change. Try again.'),
+    ).toBeNull()
+  })
+
+  it('after a remove, focus moves to the page heading', async () => {
+    server.members = people('u-olive')
+    renderPage('owner', [
+      {
+        request: {
+          query: RemoveMemberDocument,
+          variables: { userId: 'u-mia' },
+        },
+        result: () => {
+          server.members = server.members.filter((p) => p.userId !== 'u-mia')
+          return { data: { removeMember: true } }
+        },
+      },
+    ])
+    const user = userEvent.setup()
+    await user.click(
+      await within(await rowOf('Mia')).findByRole('button', {
+        name: 'Remove Mia',
+      }),
+    )
+    await user.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: 'Remove',
+      }),
+    )
+
+    // Then the button that had focus is gone, and focus is on the heading
+    await waitFor(() => expect(screen.queryByText('Mia')).toBeNull())
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('heading', { level: 1, name: 'Members' }),
+      ),
+    )
+  })
+
   it('a refused remove shows an error and keeps the row', async () => {
     server.members = people('u-olive')
     renderPage('owner', [
@@ -854,15 +1099,66 @@ describe('Members page — role, remove and leave', () => {
     )
   }
 
-  function leaveMock(after: Server['household']) {
+  let leaveCalls = 0
+  function leaveMock(after: Server['household'], delay = 0) {
+    leaveCalls = 0
     return {
       request: { query: LeaveHouseholdDocument },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+      delay,
       result: () => {
+        leaveCalls += 1
         server.household = after
         return { data: { leaveHousehold: true } }
       },
     }
   }
+
+  it('user who confirms Leave sees "Leaving…" and cannot confirm it again', async () => {
+    // Given Mia is in two households, and the server is slow to answer
+    server.members = people('u-mia')
+    renderPage('member', [
+      leaveMock({ id: 'household-next', role: 'owner' }, 300),
+    ])
+    const user = userEvent.setup()
+
+    // When she confirms Leave
+    await leave()
+
+    // Then her row says it is leaving, in a status
+    const row = await rowOf('Mia')
+    expect(within(row).getByRole('status')).toHaveTextContent('Leaving…')
+    // And she tries to confirm again, if the button is still there
+    const again = within(row).queryByRole('button', { name: 'Leave household' })
+    if (again) {
+      await user.click(again)
+      await user.click(
+        within(await screen.findByRole('alertdialog')).getByRole('button', {
+          name: 'Leave household',
+        }),
+      )
+    }
+    expect(again).toBeNull()
+
+    // Then exactly one leave reached the server: a second one would leave
+    // her next household too
+    await waitFor(() => expect(switchToHouseholdMock).toHaveBeenCalled())
+    expect(leaveCalls).toBe(1)
+  })
+
+  it('leaving when the household cannot be read afterwards still loads the pantry, and forgets nothing', async () => {
+    // Given the leave works, but the next read fails with an error that is
+    // not NO_HOUSEHOLD (offline, or a server error)
+    server.members = people('u-mia')
+    renderPage('member', [leaveMock('FAILS')])
+
+    await leave()
+
+    // Then the pantry loads again; the next load asks the server again
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/'))
+    expect(forgetHouseholdMock).not.toHaveBeenCalled()
+    expect(switchToHouseholdMock).not.toHaveBeenCalled()
+  })
 
   it('leaving calls leaveHousehold, then switchToHousehold for the next household', async () => {
     // Given Mia is also in another household

@@ -63,6 +63,13 @@ export interface MemberListProps {
   onRemove: (person: MemberRow) => Promise<void>
   /** Must not reject: it reports its own error. */
   onLeave: () => Promise<void>
+  /**
+   * A leave is running. The caller's Leave button is replaced by a
+   * "Leaving…" status, so it cannot be confirmed twice (review of G.9).
+   */
+  leaving?: boolean
+  /** People whose removal is running: their Remove is replaced the same way. */
+  removingUserIds?: ReadonlySet<string>
 }
 
 /**
@@ -76,6 +83,8 @@ export function MemberList({
   onSetRole,
   onRemove,
   onLeave,
+  leaving = false,
+  removingUserIds,
 }: MemberListProps) {
   const { t } = useTranslation()
   return (
@@ -126,7 +135,12 @@ export function MemberList({
                   {t(`roles.household.${person.role}`)}
                 </span>
               )}
-              {canRemove && (
+              {canRemove && removingUserIds?.has(person.userId) && (
+                <output className="text-sm text-foreground-muted">
+                  {t('settings.household.members.removing')}
+                </output>
+              )}
+              {canRemove && !removingUserIds?.has(person.userId) && (
                 <DeleteButton
                   trigger={<UserMinus />}
                   buttonSize="icon"
@@ -142,7 +156,12 @@ export function MemberList({
                   onDelete={() => onRemove(person)}
                 />
               )}
-              {canLeave && (
+              {canLeave && leaving && (
+                <output className="text-sm text-foreground-muted">
+                  {t('settings.household.members.leaving')}
+                </output>
+              )}
+              {canLeave && !leaving && (
                 <DeleteButton
                   trigger={
                     <>

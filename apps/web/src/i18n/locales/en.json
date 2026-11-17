@@ -522,7 +522,12 @@
         "ownerCannotLeave": "The owner cannot leave. Handing over the household comes in a later version.",
         "alone": "You are the only person in this household. If you join another household with an invite while this one holds no data, this one is deleted.",
         "loadError": "Could not load the members. Try again.",
-        "error": "Could not save the change. Try again."
+        "error": "Could not save the change. Try again.",
+        "leaving": "Leaving…",
+        "removing": "Removing…",
+        "invitesLoadError": "Could not load the open invites. Try again.",
+        "locationsLoadError": "Could not load the locations. Try again.",
+        "noLocations": "This household has no locations yet."
       }
     },
     "user": {

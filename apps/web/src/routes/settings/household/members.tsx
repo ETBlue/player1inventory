@@ -1,6 +1,6 @@
 import { createFileRoute, Navigate } from '@tanstack/react-router'
 import { ArrowLeft, Info, UserPlus } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { OfflineWriteError } from '@/apollo/offlineWriteLink'
@@ -73,6 +73,18 @@ export function MembersPage() {
   const invites = useHouseholdInvites({ enabled: canManageMembers })
   // Only for the invite form, so only asked while the form is open.
   const [inviteOpen, setInviteOpen] = useState(false)
+  // A leave or a removal is running. The confirm dialog closes at once, so
+  // without these the same button could be confirmed again (review of G.9):
+  // a second leave would leave the person's NEXT household too, and a second
+  // remove would get FORBIDDEN and a false error toast.
+  const [leaving, setLeaving] = useState(false)
+  const [removingIds, setRemovingIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  )
+  // After a Remove or a Revoke the row, and the button that had focus, goes
+  // away with the refetch. Focus moves to a heading that stays.
+  const titleRef = useRef<HTMLHeadingElement>(null)
+  const invitesHeadingRef = useRef<HTMLHeadingElement>(null)
 
   const { setRole } = useSetHouseholdRole()
   const { remove } = useRemoveMember()
@@ -86,26 +98,39 @@ export function MembersPage() {
     setRole(person.userId, role).catch((err) => reportError(err, errorText))
   }
   const handleRemove = async (person: MemberRow) => {
+    if (removingIds.has(person.userId)) return
+    setRemovingIds((prev) => new Set(prev).add(person.userId))
     try {
       await remove(person.userId)
+      titleRef.current?.focus()
     } catch (err) {
       reportError(err, errorText)
+    } finally {
+      setRemovingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(person.userId)
+        return next
+      })
     }
   }
-  // After a leave this page is about to go away: `leave` moves the device to
-  // the person's next household, or to the no-household screen. So nothing
-  // here touches page state after it resolves.
+  // After a leave this page is about to go away: `leave` loads another page
+  // (the person's next household, or the no-household screen). So `leaving`
+  // stays on after it resolves, and only a failure turns it off again.
   const handleLeave = async () => {
+    if (leaving) return
+    setLeaving(true)
     try {
       await leave()
     } catch (err) {
+      setLeaving(false)
       reportError(err, errorText)
     }
   }
-  const handleCopy = async (token: string) => {
-    if (await copyText(inviteLink(token)))
-      toast.success(t('settings.household.members.copied'))
+  const handleCopy = async (token: string): Promise<boolean> => {
+    const ok = await copyText(inviteLink(token))
+    if (ok) toast.success(t('settings.household.members.copied'))
     else toast.error(t('settings.household.members.copyFailed'))
+    return ok
   }
   const handleRevoke = async (id: string) => {
     try {
@@ -114,6 +139,7 @@ export function MembersPage() {
       // either way; only a real revoke says so.
       if (await revoke(id))
         toast.success(t('settings.household.members.revoked'))
+      invitesHeadingRef.current?.focus()
     } catch (err) {
       reportError(err, errorText)
     }
@@ -137,7 +163,9 @@ export function MembersPage() {
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h1>{t('settings.household.members.title')}</h1>
+          <h1 ref={titleRef} tabIndex={-1} className="outline-none">
+            {t('settings.household.members.title')}
+          </h1>
         </div>
         {canManageMembers && (
           <Button onClick={() => setInviteOpen(true)}>
@@ -162,6 +190,8 @@ export function MembersPage() {
               onSetRole={handleSetRole}
               onRemove={handleRemove}
               onLeave={handleLeave}
+              leaving={leaving}
+              removingUserIds={removingIds}
             />
             {me?.role === 'owner' && (
               <Note text={t('settings.household.members.ownerCannotLeave')} />
@@ -174,11 +204,19 @@ export function MembersPage() {
 
         {canManageMembers && (
           <section className="space-y-px">
-            <h2 className="px-4 py-2 text-sm font-medium text-foreground-muted">
+            <h2
+              ref={invitesHeadingRef}
+              tabIndex={-1}
+              className="px-4 py-2 text-sm font-medium text-foreground-muted outline-none"
+            >
               {t('settings.household.members.openInvites')}
             </h2>
             {invites.isLoading ? (
               <LoadingSpinner />
+            ) : invites.isError ? (
+              <output className="block px-4 py-2">
+                {t('settings.household.members.invitesLoadError')}
+              </output>
             ) : (
               <InviteList
                 invites={invites.data ?? []}
@@ -206,8 +244,8 @@ export function MembersPage() {
 function InviteDialogWithLocations(
   props: Omit<React.ComponentProps<typeof InviteDialog>, 'locations'>,
 ) {
-  const { data } = useHouseholdLocations()
-  return <InviteDialog {...props} locations={data} />
+  const { data, isError } = useHouseholdLocations()
+  return <InviteDialog {...props} locations={data} locationsError={isError} />
 }
 
 function Note({ text }: { text: string }) {

@@ -42,6 +42,8 @@ export interface InviteDialogProps {
   canInviteManager: boolean
   /** Every location of the household, names as stored. `undefined` while loading. */
   locations: { id: string; name: string }[] | undefined
+  /** The location list could not be read: the form says so and cannot be sent. */
+  locationsError?: boolean
   /**
    * Create the invite. Rejects on a refusal; the dialog shows the error and
    * stays open.
@@ -68,6 +70,7 @@ export function InviteDialog({
   onClose,
   canInviteManager,
   locations,
+  locationsError = false,
   onCreate,
 }: InviteDialogProps) {
   const { t } = useTranslation()
@@ -104,7 +107,11 @@ export function InviteDialog({
 
   async function handleCopy() {
     if (!created) return
-    const ok = await copyText(inviteLink(created.token))
+    // Copy from the visible field: it is inside the dialog, which keeps
+    // focus inside itself (see `copyText`).
+    const ok = await copyText(inviteLink(created.token), {
+      from: linkRef.current,
+    })
     if (!ok) linkRef.current?.select()
     setCopyState(ok ? 'copied' : 'failed')
   }
@@ -186,6 +193,16 @@ export function InviteDialog({
                   <legend className="mb-2 text-sm font-medium">
                     {t('settings.household.members.inviteLocations')}
                   </legend>
+                  {locationsError && (
+                    <output className="block text-sm text-importance-destructive-foreground">
+                      {t('settings.household.members.locationsLoadError')}
+                    </output>
+                  )}
+                  {locations?.length === 0 && (
+                    <p className="text-sm text-foreground-muted">
+                      {t('settings.household.members.noLocations')}
+                    </p>
+                  )}
                   {(locations ?? []).map((location) => (
                     <div
                       key={location.id}
@@ -228,7 +245,7 @@ export function InviteDialog({
               </Button>
               <Button
                 type="submit"
-                disabled={busy || locations === undefined}
+                disabled={busy || locations === undefined || locationsError}
                 isLoading={busy}
               >
                 {t('settings.household.members.createLink')}

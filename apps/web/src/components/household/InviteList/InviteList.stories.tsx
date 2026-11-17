@@ -9,7 +9,7 @@ const meta = {
   title: 'Components/Household/InviteList',
   component: InviteList,
   args: {
-    onCopy: fn(),
+    onCopy: fn(async () => true),
     onRevoke: fn(async () => {}),
   },
 } satisfies Meta<typeof InviteList>

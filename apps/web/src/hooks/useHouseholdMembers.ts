@@ -2,7 +2,6 @@ import { useApolloClient } from '@apollo/client/react'
 import { forgetHousehold, switchToHousehold } from '@/apollo/householdGuard'
 import {
   GetHouseholdDocument,
-  GetHouseholdLocationsDocument,
   type GetHouseholdQuery,
   HouseholdInvitesDocument,
   type HouseholdInvitesQuery,
@@ -122,12 +121,21 @@ export function useRevokeInvite() {
 /**
  * Change a person between `member` and `manager` (owner only). The answer
  * has no `id`, so Apollo cannot update the list row by itself: refetch the
- * list. `GetHousehold` too: it holds the caller's own role. The household id
- * does not change, so `HouseholdChangeGuard` does nothing here.
+ * list.
+ *
+ * Not `GetHousehold`: it holds the CALLER's role, and the caller is the
+ * owner, whose own row the server refuses to change. The person whose role
+ * changed gets the household-level `LOCATION` event in their own tabs, which
+ * refetches their `GetHousehold`.
+ *
+ * `awaitRefetchQueries`: the call resolves once the list shows the change. A
+ * refetch that FAILS does not reject the call (measured on Apollo 4.1.6, the
+ * test "a remove that worked shows no error when the list cannot be read
+ * again"), so a write that worked never reads as "could not save".
  */
 export function useSetHouseholdRole() {
   const [setRole] = useSetHouseholdRoleMutation({
-    refetchQueries: [HouseholdMembersDocument, GetHouseholdDocument],
+    refetchQueries: [HouseholdMembersDocument],
     awaitRefetchQueries: true,
   })
   return {
@@ -138,12 +146,17 @@ export function useSetHouseholdRole() {
 }
 
 /**
- * Remove a person. Refetch the list, and the settings location list: a
- * location may have lost its organizer (`hasOrganizer`).
+ * Remove a person, then refetch the list (awaited, as in
+ * `useSetHouseholdRole`; a failed refetch does not reject).
+ *
+ * A location may now have no organizer (`hasOrganizer`). Nothing here
+ * refetches the settings location list: on this page it is mounted only
+ * while the invite dialog is open. The Locations page reads it again
+ * (`cache-and-network`) on its next visit.
  */
 export function useRemoveMember() {
   const [removeMember] = useRemoveMemberMutation({
-    refetchQueries: [HouseholdMembersDocument, GetHouseholdLocationsDocument],
+    refetchQueries: [HouseholdMembersDocument],
     awaitRefetchQueries: true,
   })
   return {
@@ -172,36 +185,55 @@ export function useRemoveMember() {
  * reload THIS page at the same moment, and the two navigations would race.
  *
  * A failed leave rejects, and nothing moves.
+ *
+ * **Only one leave at a time** (review of G.9). The confirm dialog closes at
+ * once and the steps above take a moment. A second `leave()` sent meanwhile
+ * would ask the server again, and the server answers for the household the
+ * person is in NOW: a person in A and B would leave A, then B. So while one
+ * leave runs, `leave()` returns that same promise and sends nothing. The
+ * promise is held per module, not per component, so a second mount of the
+ * page cannot start another one. The page also hides the button.
  */
+let leaveInFlight: Promise<void> | null = null
+
 export function useLeaveHousehold() {
   const client = useApolloClient()
   const [leaveHousehold] = useLeaveHouseholdMutation()
-  return {
-    leave: async (): Promise<void> => {
-      await leaveHousehold()
-      let nextId: string | undefined
-      try {
-        const now = await client.query<GetHouseholdQuery>({
-          query: GetHouseholdDocument,
-          fetchPolicy: 'no-cache',
+
+  const run = async (): Promise<void> => {
+    await leaveHousehold()
+    let nextId: string | undefined
+    try {
+      const now = await client.query<GetHouseholdQuery>({
+        query: GetHouseholdDocument,
+        fetchPolicy: 'no-cache',
+      })
+      nextId = now.data?.household.id
+    } catch (err) {
+      if (graphQLErrorCode(err) === 'NO_HOUSEHOLD') {
+        await forgetHousehold().catch((clearErr) => {
+          console.error('Could not clear the data of the household', clearErr)
         })
-        nextId = now.data?.household.id
+      }
+    }
+    if (nextId) {
+      try {
+        await switchToHousehold(nextId, { to: '/' })
+        return
       } catch (err) {
-        if (graphQLErrorCode(err) === 'NO_HOUSEHOLD') {
-          await forgetHousehold().catch((clearErr) => {
-            console.error('Could not clear the data of the household', clearErr)
-          })
-        }
+        console.error('Could not clear the data of the household', err)
       }
-      if (nextId) {
-        try {
-          await switchToHousehold(nextId, { to: '/' })
-          return
-        } catch (err) {
-          console.error('Could not clear the data of the household', err)
-        }
-      }
-      window.location.replace('/')
+    }
+    window.location.replace('/')
+  }
+
+  return {
+    leave: (): Promise<void> => {
+      if (leaveInFlight) return leaveInFlight
+      leaveInFlight = run().finally(() => {
+        leaveInFlight = null
+      })
+      return leaveInFlight
     },
   }
 }

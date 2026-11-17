@@ -84,4 +84,34 @@ describe('copyText', () => {
     setExecCommand(undefined)
     await expect(copyText('t')).resolves.toBe(false)
   })
+
+  it('copies from the given field, not from a text area on the body, when one is passed', async () => {
+    // Given a field inside a dialog that shows the link
+    setClipboard(undefined)
+    const field = document.createElement('input')
+    field.value = 'https://x/join/abc'
+    document.body.appendChild(field)
+    let focused: Element | null = null
+    let selected = ''
+    const execCommand = vi.fn(() => {
+      focused = document.activeElement
+      selected = field.value.slice(
+        field.selectionStart ?? 0,
+        field.selectionEnd ?? 0,
+      )
+      // No text area was added
+      expect(document.querySelector('textarea')).toBeNull()
+      return true
+    })
+    setExecCommand(execCommand)
+
+    await expect(copyText('https://x/join/abc', { from: field })).resolves.toBe(
+      true,
+    )
+
+    // Then the copy ran with that field focused and its whole text selected
+    expect(focused).toBe(field)
+    expect(selected).toBe('https://x/join/abc')
+    field.remove()
+  })
 })

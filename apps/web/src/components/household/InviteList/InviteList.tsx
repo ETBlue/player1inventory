@@ -1,17 +1,25 @@
 import { Copy, Link2Off } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DeleteButton } from '@/components/shared/DeleteButton'
 import { Button } from '@/components/ui/button'
 import { Card, CardMetadata, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import type { InviteFieldsFragment } from '@/generated/graphql'
 import { useLanguage } from '@/hooks/useLanguage'
 import { formatDate } from '@/lib/formatDate'
+import { inviteLink } from '../inviteLink'
 
 export interface InviteListProps {
   invites: InviteFieldsFragment[]
   /** The owner revokes any invite; a manager only a `member` invite (O15-A). */
   isOwner: boolean
-  onCopy: (invite: InviteFieldsFragment) => void
+  /**
+   * Copy the invite's link. Resolves to `false` when it could not be copied:
+   * the row then shows the link in a read-only field, selected, so the person
+   * can copy it by hand.
+   */
+  onCopy: (invite: InviteFieldsFragment) => Promise<boolean>
   /** Must not reject: it reports its own error. */
   onRevoke: (invite: InviteFieldsFragment) => Promise<void>
 }
@@ -35,6 +43,8 @@ export function InviteList({
 }: InviteListProps) {
   const { t } = useTranslation()
   const { language } = useLanguage()
+  // The invite whose link could not be copied: its row shows the link.
+  const [manualId, setManualId] = useState<string | null>(null)
 
   if (invites.length === 0) {
     return (
@@ -78,7 +88,10 @@ export function InviteList({
               <Button
                 type="button"
                 variant="neutral-outline"
-                onClick={() => onCopy(invite)}
+                onClick={async () => {
+                  const ok = await onCopy(invite)
+                  setManualId(ok ? null : invite.id)
+                }}
               >
                 <Copy />
                 {t('settings.household.members.copyLink')}
@@ -97,6 +110,16 @@ export function InviteList({
                   )}
                   confirmLabel={t('settings.household.members.revoke')}
                   onDelete={() => onRevoke(invite)}
+                />
+              )}
+              {manualId === invite.id && (
+                <Input
+                  readOnly
+                  autoFocus
+                  className="basis-full"
+                  aria-label={t('settings.household.members.linkLabel')}
+                  value={inviteLink(invite.token)}
+                  onFocus={(e) => e.currentTarget.select()}
                 />
               )}
             </Card>
