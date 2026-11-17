@@ -44,6 +44,21 @@ The search notes show with the same trigger as the button they replace: a search
 
 **No note while the role is unknown.** `roleKnown` is `false` while `GetHousehold` loads and when it failed with nothing cached. The write controls stay hidden (the safe default), but none of the notes above shows: for an owner it would be untrue.
 
+**A location `viewer` (task F.6) may not change the ACTIVE location's stock, carts or cooking.** Read through `useActiveLocationRights()` (`canEditHere`, `isViewerHere`) and `useCreateHere()`:
+
+| Page | What a viewer does not get | What stays |
+| --- | --- | --- |
+| Pantry list, shelf, vendor and recipe views | the quick-update button; the Add button; the empty pantry's Create item; `Create item` from search; the search tail's `Add to {location}` (and so its whole "not stocked here" section, which shows only with that action) | every row and its numbers |
+| Cart page (`/shopping/$vendorId`) | Cancel and Done; the checkboxes and amount buttons are DISABLED, not hidden, so they still show what is in the cart and how much; `Create item` and `Add to {location}` from search | the rows, the amounts, a catalog group action such as Apply vendor for a household manager |
+| Cooking | Cancel and Done (the cook button, H5 decision O10); the recipe and item checkboxes are disabled | the list, the stock status, Create recipe for a household manager |
+| Item Stock tab | see `items/CLAUDE.md` | |
+
+The cart page, the cooking page and the empty pantry say why: `common.locationViewOnly` ("You can view this location, but not change it."). On the pantry list and shelf view the same text shows under the search row where Create would have been. The `LocationSwitcher` badge "View only" (task F.4) is on every one of these pages too.
+
+`ActiveLocationProvider` sends `bootstrapCarts` only where the caller is `participant` or higher (Review Focus 2). A viewer still reads the carts: `vendorCart` gives a viewer an unsaved empty cart (task F.2).
+
+The location role and the household role are two checks (Review Focus 4): a household manager who is a viewer here keeps every catalog action (Apply vendor, Add to recipe, Create recipe) and loses every stock action. Tests: `routes/locationViewer.test.tsx` (a viewer and a participant who differ only in the role at the active location, plus a household member who is a viewer).
+
 ### Pantry Page (`/`)
 
 The pantry home page (`src/routes/index.tsx`) supports two display modes and three group-by views, all controlled by URL search params.
@@ -200,7 +215,7 @@ Two-level route structure (mirrors `items/` pattern):
 
 **`'no-vendor'` sentinel:** The URL segment `no-vendor` maps to `vendorId: null` in the database. Items with no vendors assigned appear exclusively in the no-vendor cart.
 
-**Active-location scoping (PR D, and cloud since PR 3b):** carts are per **(location × vendor)** in BOTH modes, keyed `${locationId}:${vendorId | 'no-vendor'}` (parsed by `parseCartId` — never by string prefix, so a vendor id containing `:` can't be mistaken for a location). Every cart hook (`useVendorCart`, `useAllActiveCarts`, `useLastPurchasedByVendor`) threads `activeLocationId`: local carries it in the query key, cloud sends it as a `vendorCart` variable or filters `allCarts` by the parsed id. Checkout consumes from the **cart's own** location's `ItemStock` and stamps that `locationId` on the `InventoryLog` rows it writes. The URL carries only the vendor — the location comes from the global active-location state, so a `/shopping/$vendorId` URL means a different cart under a different active location. Carts are **bootstrapped up front** by `ActiveLocationProvider` whenever the active location changes — `bootstrapCarts(locationId)` in Dexie for local, the `bootstrapCarts(locationId: ID!)` mutation for cloud; `getCart` is a pure read.
+**Active-location scoping (PR D, and cloud since PR 3b):** carts are per **(location × vendor)** in BOTH modes, keyed `${locationId}:${vendorId | 'no-vendor'}` (parsed by `parseCartId` — never by string prefix, so a vendor id containing `:` can't be mistaken for a location). Every cart hook (`useVendorCart`, `useAllActiveCarts`, `useLastPurchasedByVendor`) threads `activeLocationId`: local carries it in the query key, cloud sends it as a `vendorCart` variable or filters `allCarts` by the parsed id. Checkout consumes from the **cart's own** location's `ItemStock` and stamps that `locationId` on the `InventoryLog` rows it writes. The URL carries only the vendor — the location comes from the global active-location state, so a `/shopping/$vendorId` URL means a different cart under a different active location. Carts are **bootstrapped up front** by `ActiveLocationProvider` whenever the active location changes — `bootstrapCarts(locationId)` in Dexie for local, the `bootstrapCarts(locationId: ID!)` mutation for cloud (since households H5 task F.6 only where the caller is `participant` or higher); `getCart` is a pure read.
 
 ---
 
