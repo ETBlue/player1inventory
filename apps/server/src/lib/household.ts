@@ -409,8 +409,10 @@ export async function lockUser(tx: Prisma.TransactionClient, userId: string): Pr
  * P2025. `setHouseholdRole`, `removeMember` and `leaveHousehold` (task G.5)
  * lock their one household through this too (`lockOrForbid` in
  * resolvers/household.resolver.ts), so a household deleted since
- * `requireHousehold` found it gives FORBIDDEN, not an internal error. The same `UPDATE` as `lockHousehold`; the Prisma fake has no row
- * lock, so the unit tests prove only the order.
+ * `requireHousehold` found it gives FORBIDDEN, not an internal error.
+ *
+ * The same `UPDATE` as `lockHousehold`. The Prisma fake has no row lock, so
+ * the unit tests prove only the order.
  */
 export async function lockHouseholds(
   tx: Prisma.TransactionClient,

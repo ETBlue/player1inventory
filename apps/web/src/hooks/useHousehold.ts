@@ -111,7 +111,8 @@ export function useRenameHousehold() {
  *   Never `""`: the server refuses an empty string as a blank name.
  * - `ALREADY_IN_HOUSEHOLD` means another tab created or joined a household
  *   first. That is not a failure: it asks the server which household the
- *   person is in now (`GetHousehold`, from the network) and resolves to it.
+ *   person is in now (`GetHousehold`, from the network, not written to the
+ *   cache) and resolves to it.
  * - Any other rejection is passed on as it is. Offline, it is an
  *   `OfflineWriteError`, and `offlineWriteLink` has already shown its toast.
  */
@@ -131,9 +132,15 @@ export function useCreateHousehold() {
         return created.id
       } catch (err) {
         if (!hasGraphQLErrorReason(err, 'ALREADY_IN_HOUSEHOLD')) throw err
+        // `no-cache`, not `network-only`: written to the cache, the answer
+        // also reaches the WATCHED `GetHousehold`, so `NoHouseholdGate` sees
+        // the new id and calls `switchToHousehold` too. That was two cache
+        // clears and two page loads (measured in
+        // `routes/noHousehold.cloud.test.tsx`). `useLeaveHousehold` has the
+        // same rule for the same reason.
         const now = await client.query<GetHouseholdQuery>({
           query: GetHouseholdDocument,
-          fetchPolicy: 'network-only',
+          fetchPolicy: 'no-cache',
         })
         const id = now.data?.household.id
         if (!id) throw err

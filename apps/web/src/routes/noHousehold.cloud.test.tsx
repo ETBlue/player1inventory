@@ -61,6 +61,7 @@ const NO_HOUSEHOLD = {
 function renderAt(
   path: string,
   mocks: NonNullable<MockedProviderProps['mocks']> = [],
+  household: NonNullable<MockedProviderProps['mocks']>[number] = NO_HOUSEHOLD,
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -71,7 +72,7 @@ function renderAt(
     context: { queryClient },
   })
   render(
-    <MockedProvider mocks={[NO_HOUSEHOLD, ...mocks]}>
+    <MockedProvider mocks={[household, ...mocks]}>
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
       </QueryClientProvider>
@@ -162,5 +163,71 @@ describe('no-household screen, cloud mode', () => {
         to: '/',
       }),
     )
+  })
+  it('user whose other tab made a household first moves there once, not twice', async () => {
+    // Given GetHousehold answers NO_HOUSEHOLD until the other tab's household
+    // exists, and the create is refused with ALREADY_IN_HOUSEHOLD
+    let otherTabCreated = false
+    renderAt(
+      '/',
+      [
+        {
+          request: {
+            query: CreateHouseholdDocument,
+            variables: { name: null },
+          },
+          result: () => {
+            otherTabCreated = true
+            return {
+              errors: [
+                {
+                  message: 'refused',
+                  extensions: {
+                    code: 'BAD_USER_INPUT',
+                    reason: 'ALREADY_IN_HOUSEHOLD',
+                  },
+                },
+              ],
+            }
+          },
+        },
+      ],
+      {
+        request: { query: GetHouseholdDocument },
+        maxUsageCount: Number.POSITIVE_INFINITY,
+        result: () =>
+          otherTabCreated
+            ? {
+                data: {
+                  household: {
+                    __typename: 'Household',
+                    id: 'household-other-tab',
+                    name: 'Other tab',
+                    role: 'owner',
+                  },
+                },
+              }
+            : NO_HOUSEHOLD.result,
+      },
+    )
+    const user = userEvent.setup()
+    await screen.findByRole('heading', { level: 1, name: TITLE })
+
+    // When the person presses Create
+    await user.click(screen.getByRole('button', { name: 'Create a household' }))
+    await user.click(screen.getByRole('button', { name: 'Create a household' }))
+
+    // Then the device moves to that household ONCE. The screen's own read
+    // of the household must not reach the cache: there `NoHouseholdGate`
+    // would see the new id and start a second switch (a second cache clear
+    // and a second page load).
+    await waitFor(() =>
+      expect(switchToHouseholdMock).toHaveBeenCalledWith(
+        'household-other-tab',
+        { to: '/' },
+      ),
+    )
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    expect(switchToHouseholdMock).toHaveBeenCalledTimes(1)
   })
 })

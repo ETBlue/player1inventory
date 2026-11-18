@@ -161,10 +161,13 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     },
 
     // Any signed-in person (decision T22). It must NOT call
-    // `requireHousehold`: a person with no household would get NO_HOUSEHOLD,
-    // and a brand-new person would get a household made for them just by
-    // looking at a link. It never throws for a token, and it never returns
-    // one. INVALID carries no name at all (decision T18). A token of the wrong
+    // `requireHousehold`: a person with no household would get NO_HOUSEHOLD.
+    // (It does NOT keep a brand-new person from getting a household. On the
+    // real `/join/…` page other root queries, from `HouseholdChangeGuard`,
+    // `ActiveLocationProvider` and `PostLoginMigrationDialog`, already call
+    // `requireHousehold`, so first sign-in makes one. The join then deletes
+    // it as empty, decision T21.) It never throws for a token, and it never
+    // returns one. INVALID carries no name at all (decision T18). A token of the wrong
     // length cannot name an invite, so it is INVALID with no read at all. The
     // read selects every column but the token.
     invitePreview: async (_, { token }, ctx) => {
@@ -269,8 +272,10 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
 
     // Any signed-in person, also one in no household: it must NOT call
     // `requireHousehold` (decision T22), which throws NO_HOUSEHOLD for a
-    // person who left or was removed, and would make a household for a
-    // brand-new person. ONE transaction, in this order:
+    // person who left or was removed. A brand-new person usually HAS a
+    // household by now: other root queries on the `/join/…` page called
+    // `requireHousehold` first, and step 9 deletes that household as empty.
+    // ONE transaction, in this order:
     //
     //   1. `lockUser` — the caller's `User` row lock, FIRST (decision T16).
     //      Two joins by one person run one after the other. Then the first
