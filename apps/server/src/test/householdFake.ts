@@ -299,6 +299,8 @@ const INVITE_WHERE: WhereSpec = {
   householdId: 'in',
   // A manager lists and revokes only `member` invites (owner decision O15).
   householdRole: 'in',
+  // A removed or leaving person's open invites are revoked (owner decision O20).
+  createdById: 'in',
   usedAt: 'null',
   revokedAt: 'null',
   expiresAt: 'dateGt',

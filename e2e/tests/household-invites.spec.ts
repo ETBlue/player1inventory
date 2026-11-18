@@ -809,6 +809,29 @@ test.describe('invite, join and members', () => {
 
     // Then MEMBER is gone, and OWNER and MANAGER stay
     await expect.poll(() => memberIds(seed)).toEqual([OWNER, MANAGER])
+
+    // Given MANAGER makes an open member invite (a manager sees every open
+    // member invite with its token, so could keep a copy)
+    const managerToken = await createInvite(request, MANAGER, 'member', [])
+    // MANAGER's page is closed first: no test changes a person's household
+    // while their page is open (see TRAPS)
+    await managerPage.context().close()
+
+    // When OWNER removes MANAGER
+    await expect(
+      seed.owner(REMOVE_MEMBER, { userId: MANAGER }),
+    ).resolves.toEqual({ removeMember: true })
+
+    // Then MANAGER's invite is revoked with the removal (owner decision
+    // O20): it is not in the open list, and MANAGER cannot rejoin with it
+    const { householdInvites } = await seed.owner<{
+      householdInvites: { token: string }[]
+    }>(INVITES)
+    expect(householdInvites.map((i) => i.token)).not.toContain(managerToken)
+    await expect(joinHousehold(request, MANAGER, managerToken)).rejects.toThrow(
+      /INVITE_INVALID/,
+    )
+    expect(await memberIds(seed)).toEqual([OWNER])
   })
 
   /**

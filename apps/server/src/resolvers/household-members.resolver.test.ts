@@ -14,7 +14,7 @@ import { shouldDeliver } from './live.resolver.js'
 
 // The Members page's server side (households H5b, task G.5; plan
 // docs/global/permissions/2026-11-18-households-plan-h5b.md, decisions T11,
-// T16, T19 and T22, owner decisions O13-A, O16-A and O18-A):
+// T16, T19 and T22, owner decisions O13-A, O16-A and O20):
 // `householdMembers`, `setHouseholdRole`, `removeMember`, `leaveHousehold`
 // and `createHousehold`.
 //
@@ -120,10 +120,15 @@ function tok(name: string): string {
 /** An open `member` invite to hh_h, used by NEWT to join. */
 const NEWT_LINK = tok('tok_newt')
 
-function invite(id: string, createdById: string, token: string): HouseholdInviteRow {
+function invite(
+  id: string,
+  createdById: string,
+  token: string,
+  householdId = 'hh_h',
+): HouseholdInviteRow {
   return {
     id,
-    householdId: 'hh_h',
+    householdId,
     token,
     householdRole: 'member',
     locationRoles: [],
@@ -168,7 +173,18 @@ function seed() {
       locationMemberRow(LOC_K, BOB, 'viewer'),
       locationMemberRow(LOC_Z, YUKI, 'organizer'),
     ],
-    householdInvites: [invite('inv_newt', OWEN, NEWT_LINK), invite('inv_max', MAX, tok('tok_max'))],
+    // MIA's invites cover every case of owner decision O20: open in hh_h,
+    // open in her OTHER household hh_x, used, already revoked, and expired
+    // but never used.
+    householdInvites: [
+      invite('inv_newt', OWEN, NEWT_LINK),
+      invite('inv_max', MAX, tok('tok_max')),
+      invite('inv_mia_h', MIA, tok('tok_mia_h')),
+      invite('inv_mia_x', MIA, tok('tok_mia_x'), 'hh_x'),
+      { ...invite('inv_mia_used', MIA, tok('tok_mia_used')), usedAt: D5, usedById: BOB },
+      { ...invite('inv_mia_revoked', MIA, tok('tok_mia_revoked')), revokedAt: D5 },
+      { ...invite('inv_mia_expired', MIA, tok('tok_mia_expired')), expiresAt: D5 },
+    ],
   })
   world.users.reset([
     user(OWEN, 'Owen', 'hh_h'),
@@ -281,7 +297,28 @@ function snapshot() {
     households: householdIds(),
     locations: world.stock.state.locations.map((l) => l.id).sort(),
     users: world.users.state.rows.map((r) => `${r.id}:${r.activeHouseholdId}`).sort(),
+    invites: inviteStates(),
   }
+}
+
+/** Every invite as `id:open`, or `id:<revokedAt>`. */
+function inviteStates() {
+  return world.households.state.householdInvites
+    .map((i) => `${i.id}:${i.revokedAt ? i.revokedAt.toISOString() : 'open'}`)
+    .sort()
+}
+
+/** The invites a removal or leave of MIA from hh_h must revoke (owner decision O20). */
+function miaRevokedInHh() {
+  return [
+    `inv_max:open`,
+    `inv_mia_expired:${NOW.toISOString()}`,
+    `inv_mia_h:${NOW.toISOString()}`,
+    `inv_mia_revoked:${D5.toISOString()}`,
+    `inv_mia_used:open`,
+    `inv_mia_x:open`,
+    `inv_newt:open`,
+  ]
 }
 
 function locationEvent(householdId: string): ChangeEvent {
@@ -442,8 +479,10 @@ describe('setHouseholdRole', () => {
     expect(members()).toContain(`hh_x:${MIA}:manager`)
   })
 
-  it('a demoted manager’s open invites stay open (O18-A)', async () => {
+  it('a demoted manager’s open invites stay open (O20 covers removal and leave only)', async () => {
+    const before = inviteStates()
     await setRole(OWEN, MAX, 'member')
+    expect(inviteStates()).toEqual(before)
     const res = await run(INVITES, {}, OWEN)
     expect(res.data?.householdInvites).toEqual(
       expect.arrayContaining([{ id: 'inv_max' }, { id: 'inv_newt' }]),
@@ -568,12 +607,48 @@ describe('removeMember', () => {
     expect(userRow(BEA).activeHouseholdId).toBe('hh_h')
   })
 
-  it('a removed manager’s open invites stay open (O18-A)', async () => {
-    await remove(OWEN, MAX)
-    const res = await run(INVITES, {}, OWEN)
-    expect(res.data?.householdInvites).toEqual(
+  it('removing a manager revokes their open invites of that household only (O20)', async () => {
+    // Given MIA, a manager of hh_h AND hh_x, with invites of every kind
+    // When the owner removes her from hh_h
+    const res = await remove(OWEN, MIA)
+    expect(res.errors).toBeUndefined()
+
+    // Then her unused, unrevoked hh_h invites are revoked now (the expired
+    // one too). Her used invite, her invite revoked earlier (its date is
+    // kept), her hh_x invite and the invites of OWEN and MAX are untouched.
+    expect(inviteStates()).toEqual(miaRevokedInHh())
+    // And the owner's list no longer shows hers
+    const list = await run(INVITES, {}, OWEN)
+    expect(list.data?.householdInvites).toEqual(
       expect.arrayContaining([{ id: 'inv_max' }, { id: 'inv_newt' }]),
     )
+    expect(list.data?.householdInvites).toHaveLength(2)
+  })
+
+  it('a removed manager cannot rejoin through their own invite (O20)', async () => {
+    // Given MAX made an open member invite, and is then removed
+    await remove(OWEN, MAX)
+
+    // When MAX opens it
+    const res = await run(JOIN, { token: tok('tok_max') }, MAX)
+
+    // Then it is refused and MAX is still out of hh_h
+    expect(code(res)).toBe('BAD_USER_INPUT')
+    expect(reason(res)).toBe('INVITE_INVALID')
+    expect(members().filter((m) => m.includes(MAX))).toEqual([])
+  })
+
+  it('a removal that fails revokes nothing (one transaction)', async () => {
+    // Given the member row delete fails, AFTER the revoke has run
+    vi.spyOn(world.client.householdMember, 'delete').mockRejectedValue(new Error('boom'))
+    const before = snapshot()
+
+    const res = await remove(OWEN, MIA)
+
+    // Then nothing is written, the invites included
+    expect(res.errors).toBeDefined()
+    expect(snapshot()).toEqual(before)
+    expect(seen).toEqual([])
   })
 })
 
@@ -606,6 +681,24 @@ describe('leaveHousehold', () => {
     const before = snapshot()
     const res = await leave(OWEN)
     expect(code(res)).toBe('BAD_USER_INPUT')
+    expect(snapshot()).toEqual(before)
+  })
+
+  it('leaving revokes the leaver’s open invites of that household only (O20)', async () => {
+    // Given MIA, a manager of hh_h AND hh_x, with invites of every kind
+    const res = await leave(MIA)
+    expect(res.errors).toBeUndefined()
+    expect(inviteStates()).toEqual(miaRevokedInHh())
+    // And one LOCATION event for hh_h, which makes open Members pages read
+    // the invite list again
+    expect(seen).toEqual([locationEvent('hh_h')])
+  })
+
+  it('a leave that fails revokes nothing (one transaction)', async () => {
+    vi.spyOn(world.client.householdMember, 'delete').mockRejectedValue(new Error('boom'))
+    const before = snapshot()
+    const res = await leave(MIA)
+    expect(res.errors).toBeDefined()
     expect(snapshot()).toEqual(before)
   })
 

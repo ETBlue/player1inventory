@@ -1178,7 +1178,7 @@ describe('householdFake models HouseholdInvite (households H5b, decision T26)', 
 
     // Then an unknown key, and expiresAt with an operator it does not model, each throw
     await expect(
-      fake.client.householdInvite.findMany({ where: { createdById: CALLER } }),
+      fake.client.householdInvite.findMany({ where: { usedById: CALLER } }),
     ).rejects.toBeInstanceOf(UnknownWhereKeyError)
     await expect(
       fake.client.householdInvite.updateMany({
@@ -1189,6 +1189,28 @@ describe('householdFake models HouseholdInvite (households H5b, decision T26)', 
     await expect(
       fake.client.householdInvite.findMany({ where: { usedAt: { not: null } } }),
     ).rejects.toBeInstanceOf(UnsupportedWhereFilterError)
+  })
+
+  it('filters by createdById, for the revoke on removal (owner decision O20)', async () => {
+    // Given one invite made by CALLER and one by SECOND
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+    await fake.client.householdInvite.create({
+      data: inviteData({ id: 'inv_2', token: 'token_2', createdById: SECOND }),
+    })
+
+    // When the invites CALLER made are revoked
+    const result = await fake.client.householdInvite.updateMany({
+      where: { householdId: OURS, createdById: CALLER, usedAt: null, revokedAt: null },
+      data: { revokedAt: NOW },
+    })
+
+    // Then only CALLER's is revoked
+    expect(result).toEqual({ count: 1 })
+    expect(fake.state.householdInvites.map((i) => [i.id, i.revokedAt])).toEqual([
+      ['inv_1', NOW],
+      ['inv_2', null],
+    ])
   })
 
   it('returns copies, locationRoles included', async () => {

@@ -929,6 +929,43 @@ describe('Members page — role, remove and leave', () => {
     expect(await rowOf('Milo')).toBeInTheDocument()
   })
 
+  it('removing a manager reads the open invites again, so their revoked invites go (O20)', async () => {
+    // Given Max, a manager, made an open invite. The server revokes it with
+    // the removal; this tab gets no live event for its own change.
+    server.members = people('u-olive')
+    server.invites = [invite('inv-max', 'member')]
+    renderPage('owner', [
+      {
+        request: {
+          query: RemoveMemberDocument,
+          variables: { userId: 'u-max' },
+        },
+        result: () => {
+          server.members = server.members.filter((p) => p.userId !== 'u-max')
+          server.invites = []
+          return { data: { removeMember: true } }
+        },
+      },
+    ])
+    const user = userEvent.setup()
+    const list = (await screen.findByText('Open invites')).closest('section')
+    expect(
+      await within(list as HTMLElement).findAllByRole('listitem'),
+    ).toHaveLength(1)
+
+    // When the owner removes Max
+    await user.click(
+      await within(await rowOf('Max')).findByRole('button', {
+        name: 'Remove Max',
+      }),
+    )
+    const confirm = await screen.findByRole('alertdialog')
+    await user.click(within(confirm).getByRole('button', { name: 'Remove' }))
+
+    // Then the invite list is read again and shows no open invite
+    expect(await screen.findByText('No open invites.')).toBeInTheDocument()
+  })
+
   it('a remove that worked shows no error when the list cannot be read again', async () => {
     // Given the remove works, but the refetch of the list then fails
     server.members = people('u-olive')

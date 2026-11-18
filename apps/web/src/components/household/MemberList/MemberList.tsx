@@ -148,10 +148,20 @@ export function MemberList({
                     name: person.displayName,
                   })}
                   dialogTitle={t('settings.household.members.remove')}
-                  dialogDescription={t(
-                    'settings.household.members.removeConfirm',
-                    { name: person.displayName },
-                  )}
+                  dialogDescription={
+                    // A manager could see the token of every open `member`
+                    // invite. Their own open invites are revoked with the
+                    // removal (owner decision O20), but they may have copied
+                    // one made by someone else. A member sees no tokens, so
+                    // the extra sentence is for a manager only.
+                    person.role === 'manager'
+                      ? `${t('settings.household.members.removeConfirm', {
+                          name: person.displayName,
+                        })} ${t('settings.household.members.removeConfirmManager')}`
+                      : t('settings.household.members.removeConfirm', {
+                          name: person.displayName,
+                        })
+                  }
                   confirmLabel={t('settings.household.members.remove')}
                   onDelete={() => onRemove(person)}
                 />

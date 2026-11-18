@@ -517,6 +517,7 @@
         "remove": "移除",
         "removeLabel": "移除 {{name}}",
         "removeConfirm": "要把 {{name}} 移出這個家庭嗎？他會失去所有據點的權限。",
+        "removeConfirmManager": "其他人建立的尚未使用的邀請仍然有效。如果對方可能複製過其中的連結，請撤銷該邀請。",
         "leave": "離開家庭",
         "leaveConfirm": "要離開這個家庭嗎？你會失去所有據點的權限。",
         "ownerCannotLeave": "擁有者不能離開。轉讓家庭的功能之後才會有。",

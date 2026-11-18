@@ -84,4 +84,40 @@ describe('MemberList', () => {
       expect.objectContaining({ userId: 'u2' }),
     )
   })
+
+  it('the remove confirm warns about other invites only for a manager (O20)', async () => {
+    // Given the owner, a manager and a member
+    render(
+      <MemberList
+        members={[
+          { userId: 'u1', displayName: 'Olive', role: 'owner', isMe: true },
+          { userId: 'u2', displayName: 'Max', role: 'manager', isMe: false },
+          { userId: 'u3', displayName: 'Bob', role: 'member', isMe: false },
+        ]}
+        callerRole="owner"
+        onSetRole={vi.fn()}
+        onRemove={vi.fn(async () => {})}
+        onLeave={vi.fn(async () => {})}
+      />,
+    )
+    const user = userEvent.setup()
+    const warning =
+      'Open invites made by others stay open. If this person may have copied one, revoke it.'
+
+    // When the owner opens the confirm for the manager, it has the warning:
+    // a manager could see the token of every open member invite
+    await user.click(screen.getByRole('button', { name: 'Remove Max' }))
+    expect(screen.getByRole('alertdialog')).toHaveTextContent(warning)
+    await user.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', {
+        name: 'Cancel',
+      }),
+    )
+
+    // And the confirm for a member does not: a member sees no tokens
+    await user.click(screen.getByRole('button', { name: 'Remove Bob' }))
+    const dialog = screen.getByRole('alertdialog')
+    expect(dialog).toHaveTextContent('Remove Bob from this household?')
+    expect(dialog).not.toHaveTextContent(warning)
+  })
 })

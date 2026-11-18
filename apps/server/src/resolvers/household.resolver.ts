@@ -95,12 +95,28 @@ async function lockOrForbid(
 
 /**
  * Remove one person from one household, inside the caller's transaction:
- * their location roles on the household's locations first (decision T11:
- * a leftover row would come back on a re-invite, D9), then their member row.
- * The `location: { householdId }` filter keeps their roles in any OTHER
- * household. It never writes a `User` row (decision T16), so the person's
+ *
+ * 1. Their location roles on the household's locations (decision T11: a
+ *    leftover row would come back on a re-invite, D9). The
+ *    `location: { householdId }` filter keeps their roles in any OTHER
+ *    household.
+ * 2. Revoke every invite of THIS household they made that is not used and
+ *    not revoked yet (owner decision O20). A manager can see the token of
+ *    every open invite, so without this a removed manager could rejoin
+ *    through an invite they made. Expired invites are revoked too: they
+ *    cannot be used anyway, and the `where` stays the same as
+ *    `revokeInvite`'s. An invite revoked earlier keeps its date. The
+ *    household and the creator are in the `where`, so invites of their
+ *    other household stay open.
+ * 3. Their member row.
+ *
+ * It never writes a `User` row (decision T16), so the person's
  * `activeHouseholdId` may still name this household. `ensureHousehold`
  * ignores an active household the person is no longer a member of.
+ *
+ * Nothing extra is published for the invites: the caller publishes a
+ * household-level `LOCATION`, and the Members page reads the invite list
+ * again on `LOCATION` (`apps/web/src/apollo/liveUpdates.ts`).
  */
 async function removeFromHousehold(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
@@ -108,6 +124,10 @@ async function removeFromHousehold(
   userId: string,
 ): Promise<void> {
   await tx.locationMember.deleteMany({ where: { userId, location: { householdId } } })
+  await tx.householdInvite.updateMany({
+    where: { householdId, createdById: userId, usedAt: null, revokedAt: null },
+    data: { revokedAt: new Date() },
+  })
   await tx.householdMember.delete({
     where: { householdId_userId: { householdId, userId } },
   })
@@ -242,8 +262,9 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
 
     // The owner removes anyone but themself. A manager removes only a
     // `member` (design, *Household roles, removal and leaving*). A member
-    // removes nobody. Open invites the removed person made stay open (owner
-    // decision O18-A): the invite belongs to the household.
+    // removes nobody. The open invites the removed person made in this
+    // household are revoked in the same transaction (owner decision O20,
+    // which replaced O18-A; see `removeFromHousehold`).
     removeMember: async (_, { userId: target }, ctx) => {
       const callerId = requireAuth(ctx)
       const householdId = await requireHousehold(ctx)
@@ -266,7 +287,8 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     },
 
     // A manager or member leaves the household they act in. The owner
-    // cannot: handing the household over comes in H6.
+    // cannot: handing the household over comes in H6. Their open invites in
+    // this household are revoked (owner decision O20, `removeFromHousehold`).
     leaveHousehold: async (_, __, ctx) => {
       const callerId = requireAuth(ctx)
       const householdId = await requireHousehold(ctx)

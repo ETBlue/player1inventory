@@ -149,6 +149,11 @@ export function useSetHouseholdRole() {
  * Remove a person, then refetch the list (awaited, as in
  * `useSetHouseholdRole`; a failed refetch does not reject).
  *
+ * The open invites are read again too: the server revokes the open invites
+ * the removed person made in this household (owner decision O20), and this
+ * tab gets no live event for its own change. For a `member` caller the
+ * invites query is not mounted, and Apollo refetches only mounted queries.
+ *
  * A location may now have no organizer (`hasOrganizer`). Nothing here
  * refetches the settings location list: on this page it is mounted only
  * while the invite dialog is open. The Locations page reads it again
@@ -156,7 +161,7 @@ export function useSetHouseholdRole() {
  */
 export function useRemoveMember() {
   const [removeMember] = useRemoveMemberMutation({
-    refetchQueries: [HouseholdMembersDocument],
+    refetchQueries: [HouseholdMembersDocument, HouseholdInvitesDocument],
     awaitRefetchQueries: true,
   })
   return {
