@@ -18,7 +18,6 @@ import {
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createCache } from '@/apollo/cloudCache'
-import { db } from '@/db'
 import {
   CreateInviteDocument,
   GetHouseholdDocument,
@@ -304,7 +303,7 @@ beforeEach(() => {
   })
 })
 
-afterEach(async () => {
+afterEach(() => {
   cleanup()
   Object.defineProperty(window, 'location', {
     value: originalLocation,
@@ -317,8 +316,12 @@ afterEach(async () => {
   forgetHouseholdMock.mockReset()
   vi.restoreAllMocks()
   localStorage.clear()
-  await db.delete()
-  await db.open()
+  // No db.delete() here. This cloud test writes nothing to the local Dexie
+  // database, but the cloud root still READS it: usePostLoginMigration calls
+  // getAllItems() to see whether there is local data to copy. That read is
+  // two Dexie transactions and outlives the test on a loaded machine. Deleting
+  // the database between them made the second one fail with an unhandled
+  // DatabaseClosedError after the test had ended.
 })
 
 describe('Members page — who sees which control', () => {
