@@ -1134,9 +1134,9 @@ because `a11y.spec.ts` does not run in cloud.
 it, every cloud spec fails at the first request. Read `e2e/CLAUDE.md` first: ports, a stale
 `generated/graphql.ts`, the shared test database.
 
-- [ ] **Step 1:** `newUserContext(browser, userId, extraLocalStorage?, { skipOnboarding? })`,
+- [x] **Step 1:** `newUserContext(browser, userId, extraLocalStorage?, { skipOnboarding? })`,
   default `true`, so the 3 existing tests are untouched.
-- [ ] **Step 2: The spec**, cloud only. Users: OWNER O (`${E2E_SECOND_USER_ID}-invite-owner`),
+- [x] **Step 2: The spec**, cloud only. Users: OWNER O (`${E2E_SECOND_USER_ID}-invite-owner`),
   NEWCOMER N, and REPEAT R. O sends one GraphQL request first (makes H and "Home"), seeds
   one item stocked at Home through `makeGql`. Clean up O, N, R and `E2E_USER_ID` in
   `beforeEach` and `afterEach` (the F.8 rule).
@@ -1169,7 +1169,7 @@ it, every cloud spec fails at the first request. Read `e2e/CLAUDE.md` first: por
      screen → **Create a household** → N's pantry shows "Home" with no items.
   6. a11y: axe scans of `/join/<token>` (VALID) and the Members page, light and dark, in
      this spec (the F.4 pattern; `e2e/helpers/axe.ts`).
-- [ ] **Step 3: Mutation checks**, each run in `cloud`, copied aside and restored from the
+- [x] **Step 3: Mutation checks**, each run in `cloud`, copied aside and restored from the
   copy, each must turn a named test red:
   - `shouldRedirectToOnboarding` without the `/join` branch → test 1 (N lands on
     `/onboarding`).
@@ -1180,13 +1180,13 @@ it, every cloud spec fails at the first request. Read `e2e/CLAUDE.md` first: por
     database order is not random in practice). If it stays green, say so plainly; the unit
     test of G.2 is the guard for the order.
   - `invitePreview` returns the name for INVALID → test 2.
-- [ ] **Step 4: Run** `pnpm test:e2e --project=cloud e2e/tests/household-invites.spec.ts`
+- [x] **Step 4: Run** `pnpm test:e2e --project=cloud e2e/tests/household-invites.spec.ts`
   plus every spec of a page this branch touched (pick from `ls e2e/tests e2e/tests/settings`:
   at least `shared-household`, `cloud-roles`, `household-member-cleanup`,
   `cleanup-endpoint`, `settings-global-pages`, `settings/locations`, `live-pantry`,
   `onboarding` in `local`), and the `local` project with `a11y.spec.ts`. **Copy
   `test-results/` aside before any re-run.** Report the load average.
-- [ ] **Step 5:** `e2e/CLAUDE.md`: the new spec, the `skipOnboarding` option, the 19-model
+- [x] **Step 5:** `e2e/CLAUDE.md`: the new spec, the `skipOnboarding` option, the 19-model
   cleanup, and that a person can now be in two households through the real flow (the 409
   route stays). **Gate**, commit `test(households): invite and join in two browsers`.
 
@@ -1454,6 +1454,15 @@ Filled in from the task reports and reviews.
 | G.9 (review) | `copyText`'s fallback adds a text area to `document.body` | Inside a Radix dialog `FocusScope` keeps focus inside the dialog. In jsdom the copy command then ran with focus on the dialog's button, not on the text area (mutation R13). The dialog now copies from its own visible link field (`copyText(text, { from })`). What a real browser copies is a manual check for G.11 |
 | G.9 (review) | `useRemoveMember` refetched `GetHouseholdLocations`; `useSetHouseholdRole` refetched `GetHousehold` | Neither did anything useful: the location list is mounted on this page only while the invite dialog is open, and the caller's own role (the owner's) cannot change. Both dropped. Measured on Apollo 4.1.6: with `awaitRefetchQueries: true`, a FAILED refetch does not reject the mutation, so a write that worked never shows "Could not save the change" (test "a remove that worked shows no error when the list cannot be read again") |
 | G.9 (review) | Nothing about focus | After Remove or Revoke the button that had focus goes away with the refetch, and focus fell to the page body. It now moves to the page heading (Remove) or the **Open invites** heading (Revoke) |
+| G.10 | Step 1: one option, `{ skipOnboarding? }` | Not enough for Review Focus 1. A brand-new visitor has no `data-mode` key, so the app starts in LOCAL mode; `newUserContext` always set `data-mode: cloud`. A second option, `cloudMode` (default `true`), leaves the key out. Test 1 uses both |
+| G.10 | Test 1: "N's own Home is NOT in N's switcher" | The switcher lists the ACTIVE household's locations only, so it cannot show the old household either way, and that check would pass against a join that deletes nothing. GraphQL cannot read a household the person no longer acts in. The test reads the cleanup's counts instead: N's cleanup deletes N's member row in H (`householdMembers: 1`) and owns no household (`households: 0`). Mutation: `Expected 1, Received 2` |
+| G.10 | Test 3: "R's own household was empty and deleted at the first join" | R's first request IS the join (through `joinHousehold`), so R never had a household of their own: the join sets the first sign-in claim. The no-household screen after the removal comes from that claim |
+| G.10 | Test 4: "read both households back" | R2's own household cannot be read through GraphQL once R2 acts in H. The test reads H as the owner (`itemStocks`, `cartItems`) and R2's own household through R2's cleanup counts (1 household, 1 item, 1 stock row, 0 cart rows) |
+| G.10 | Step 3: `invitePreview` returns the name for INVALID → test 2 (the page) | The page never shows a name for INVALID (`join/$token.tsx` uses `join.heading` there), so no page check can see it. Test 2 also reads `invitePreview` through the API for each link; that check is the one that goes red |
+| G.10 | Step 3: `removeMember` without T11 and join without T20 → "R is participant again" | Not what happens. With both deletes gone, the join's `locationMember.create` hits the unique key and the JOIN fails (red only as a 90 s timeout waiting for `/`). With either one alone, test 3 stays GREEN: each removes the old role on this path. "Participant again" needs the rejected design too (`createMany({ skipDuplicates: true })`); then test 3 is red on the value. So test 3 guards "T11 or T20", not each of them; their own unit tests guard each |
+| G.10 | Step 3: the `findFirst` mutation "MAY stay green" | It went red. The old rule also ignores `activeHouseholdId`, and R2's own household is the older membership, so R2 acted in their own household. The G.2 unit test is still the guard for the ORDER on its own (a mutation that keeps the active household and drops only the `orderBy` is not caught here) |
+| G.10 | Step 2.6 and the G.8/G.9 notes: "the same axe options as `a11y.spec.ts`" | A plain `checkA11y` on a dialog fails on the known `opacity-90` defect of `buttonVariants`, and on one instance nobody had recorded: a PRIMARY filled button inside a dialog is 4.19:1 in light ("Create invite link", "Copy link", "Create a household"). The destructive confirm is 3.56:1 in dark, not the "~4.09:1 (modelled)" `a11y.spec.ts` gives. Dialog scans use `checkDialogA11y` (`e2e/helpers/axe.ts`), which excludes only those filled buttons and only from `color-contrast`. The fix of `opacity-90` stays the follow-up the owner ruled |
+| G.10 | The tests listed | Brief added: set-role and the manager limits (test 6), and a larger a11y set (both confirms, the no-household screen and its dialog). The plan's test 6 is two tests (light, dark) covering all of them |
 | G.9 (review) | The invite form with no location list | A failed read left Create disabled with no reason; a household with no location showed only the "Location roles" heading. Now `locationsLoadError` and `noLocations` |
 
 ## Status
@@ -1589,3 +1598,32 @@ the O17 table, for the owner's review:
 | `invitesLoadError` | Could not load the open invites. Try again. | 無法讀取尚未使用的邀請，請再試一次。 |
 | `locationsLoadError` | Could not load the locations. Try again. | 無法讀取據點，請再試一次。 |
 | `noLocations` | This household has no locations yet. | 這個家庭還沒有任何據點。 |
+
+**Task G.10 is done.** `e2e/tests/household-invites.spec.ts`, 8 cloud tests, all passing
+(5.8 min); page objects `JoinPage` and `MembersPage`; `newUserContext` options
+`skipOnboarding` and `cloudMode`; `checkDialogA11y` in `e2e/helpers/axe.ts`. It is the
+first real-SQL run of the invite, join and member mutations, and **nothing failed on real
+SQL that the fakes had accepted**: all 6 functional tests passed on their first run. Ten
+mutation checks, all red except two that are expected to stay green (see the G.10 rows of
+*What this plan got wrong*, and `e2e/CLAUDE.md`). Two findings:
+
+- **`settings-global-pages.spec.ts` failed in `cloud` since G.9**: it still expected six
+  household sidebar links, and G.9 added **Members** second in cloud. G.9 never ran that
+  spec. The expected list now has Members in cloud only.
+- **A filled button inside a dialog fails WCAG AA contrast at rest**: primary 4.19:1 in
+  light, destructive 3.92:1 light and 3.56:1 dark. Same cause as the known `opacity-90`
+  defect `a11y.spec.ts` records; the primary case had never been scanned. Not fixed here
+  (the owner ruled the fix a follow-up with its own visual review); excluded from the
+  `color-contrast` rule only, in dialog scans only.
+
+Cloud collects 177 tests in 35 files, local 189 in 23.
+
+**Open for the main session: `pnpm test` exits 1 at this point, and not because of G.10.**
+Web 3102 passed / 325 files and server 2104 / 76 all pass, but Vitest reports 2 unhandled
+`DatabaseClosedError` rejections "originated in"
+`src/routes/settings/household/members.cloud.test.tsx` (G.9). Seen in 2 of 2 full runs, in
+0 of 3 runs of that file alone; the full suite drives the load average to about 18. G.10
+changed no file under `apps/web`, so the same commit of web code gives the same result.
+That file is the only `*.cloud.test.tsx` that runs `db.delete()` and `db.open()` in
+`afterEach`; the local-mode `bootstrapCarts` effect in `useActiveLocation` then writes to a
+closed database. Not fixed here: it is G.9's test, and the fix needs its own check.
