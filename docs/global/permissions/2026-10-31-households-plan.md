@@ -797,6 +797,13 @@ switcher already listed only locations with a role (H3a task 3.6).
   shown. Fix: the web sends the household id it shows, and the server refuses a write whose
   id does not match the household it would act in. A test with one person in two
   households, a stale tab and a write. See the H5b plan, *Known gaps*.
+- **Owed from H5b (owner decision O22-A):** a copy of offline data chosen in
+  `DataModeCard` ("Copy local data") now asks "Copy your offline data into {household}?" with
+  **Copy here** and **Don't copy**, and can only go into the household the person acts in
+  now. H7 adds the full choice: any household the person is in (with the import role), or a
+  new one. It needs **Switch to…** and a household input on `importCheck`, `clearAllData` and
+  the 22 bulk import mutations (today they all use `requireHousehold`). See the H5b plan,
+  decision T31 and *Known gaps*.
 
 ---
 

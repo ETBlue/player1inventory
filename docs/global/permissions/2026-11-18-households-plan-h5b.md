@@ -277,6 +277,7 @@ T11 and T12 are from the H5 plan and are repeated here because H5b builds them.
 | T28 | **Expiry is tested with a clock in unit tests, not in E2E.** No E2E route moves time | A route that rewrites `expiresAt` would be one more E2E-only write path | An E2E-only "expire this invite" route |
 | T29 | **`POST /e2e/household-members` stays, with its 409 rule.** Only its comment changes: a person CAN be in two households since H5b (through invites), and the rule picks one by T14; the route still refuses, because many specs depend on "the member's first request reads this household" | Changing the route would touch 6 spec files for no gain | Letting the route add a person who has a household |
 | T30 | **Removing or leaving revokes the person's open invites of that household** (owner decision O20). In `removeFromHousehold`, in the same transaction as the member row delete, before it: `householdInvite.updateMany({ where: { householdId, createdById: userId, usedAt: null, revokedAt: null }, data: { revokedAt: now } })`. Expired, unused invites are revoked too | A manager sees the token of every open `member` invite, so a removed manager could rejoin through their own invite. The household and the creator are in the `where`; no code compares user ids. Expiry is left out of the `where` so it stays the same as `revokeInvite`'s, and an expired invite cannot be used anyway. No new event: the removal already publishes household-level `LOCATION`, and the Members page refetches `HouseholdInvites` on it. The acting tab gets no event, so `useRemoveMember` refetches `HouseholdInvites` itself | Revoking only unexpired invites (one more key, no gain); a demote also revoking (O20 leaves a demoted manager's invites open: they are still a member) |
+| T31 | **A stored copy asks first** (owner decision O22-A). `usePostLoginMigration` takes the household (`{ name, role }`, from `useHousehold()`) as an argument. With a stored `migration-strategy` it waits until BOTH `GetLocations` and the household have loaded, then goes to a new state, `'confirming'`. `PostLoginMigrationDialog` asks "Copy your offline data into {household}?". **Copy here** (`confirmCopy`) runs the copy as before, with "Import into which location?" for `skip` and `replace`. **Don't copy** (`declineCopy`) removes `migration-strategy` and sets `migration-prompted`, like Skip, so the next load does not ask "Import local data to cloud?" either. A non-owner also reads that the household is shared. A role that cannot copy (`canCopyInto`: a member; a manager with `clear`, which needs owner) gets a sentence and only **Done**, which does the same as Don't copy. A cached household next to a `NO_HOUSEHOLD` error counts as no household. The question shows for **every** stored copy, the owner's too | Simplest rule that closes the hole: the copy cannot run into a household the person did not see named. "Every" rather than "only when it waited": a wait leaves no trace after the page load that `switchToHousehold` makes, so telling the two apart needs one more stored key, and the owner case costs one click in a flow the person started on purpose. H7's household choice will live in this same dialog. A member gets no Copy here because the server refuses it (`FORBIDDEN`), and an offer that is sure to fail is worse than a plain sentence | Asking only non-owners (an owner who chose the copy long ago, in another session, would still not see the target named); a "copy was waiting" key (more state, and it can go stale itself); a disabled Copy here for a member (a button that cannot be pressed explains less than a sentence). The manual prompt ("Import local data to cloud?") and `ImportCard` are not changed |
 
 ### Owner decisions (needed before the task that uses them)
 
@@ -304,6 +305,7 @@ O7-A, O9-A and O12-A. These are NEW. **A** is the recommendation unless it says 
 | O19 | **Three actions** (2026-11-18) | Asked after the review of G.8: how does a person leave the no-household screen without creating a household? The gate covers `/settings` too, so on a phone the screen is all they have. The screen gets **Create a household** (the main action), **Switch to offline mode** and **Sign in to another account**. No plain Sign out. Switch to offline mode keeps the person signed in, so if they change their mind they switch back to cloud and land on Create with no new sign-in. Sign in to another account clears the cached cloud data first, then signs out, and stays in cloud mode. The owner first decided two actions; the third was added the same day. Built after G.11 (see *Status*) |
 | O20 | **Revoke on removal and on leave** (2026-11-18, replaces O18-A) | Found in the whole-branch review: a manager can see every open `member` invite with its token. Under O18-A a removed manager's own invites stayed open, so they could rejoin through one (`joinHousehold`). The same after a leave. Now `removeMember` and `leaveHousehold` revoke every open invite of that household the person made, in the same transaction (decision T30). A DEMOTE does not: a demoted manager is still a member. The remove confirm for a manager gets one more sentence: "Open invites made by others stay open. If this person may have copied one, revoke it." / 「其他人建立的尚未使用的邀請仍然有效。如果對方可能複製過其中的連結，請撤銷該邀請。」 (for the owner's review in the PR). A member sees no tokens, so their confirm has no such sentence |
 | O21 | **Record only, owed to H7** (2026-11-18) | A person in two households: tab 1 leaves A or is removed from A. Tab 2 still shows A (no event reaches it), and a write from tab 2 goes into B through `requireHousehold` (T14), with nothing shown. Fix in H7: the web sends the household id it shows, and the server refuses a mismatch. See *Known gaps* |
+| O22 | **A** (2026-11-18) | Found in the whole-branch review: "Copy local data", chosen while switching to cloud, waited silently for a person in no household and then ran into whatever household came next, a shared one joined as manager included (a member got a `FORBIDDEN` error). **A**: before a stored copy runs, ask "Copy your offline data into {household}?" with **Copy here** and **Don't copy**. A person who is not the owner also reads that the household is shared and others will see the data. Built as decision T31. Choosing ANY household, or a new one, is owed to H7 |
 
 **O17 texts (proposed).** Role names reuse the O11 answers: 據點王 organizer, 搬運工
 participant, 圍觀的 viewer, 擁有者 owner, 管理者 manager, 成員 member.
@@ -1384,11 +1386,14 @@ plan's *What this plan got wrong* and *Status*.
     that device until they switch back to cloud, land on the no-household screen again,
     and press **Sign in to another account**. A person in a household signs out from the
     data mode card in cloud mode.
-  - **Switching back to cloud with "Copy local data" was not tested for a person in no
-    household.** The copy runs in `usePostLoginMigration`, which is mounted outside the
-    gate. Every import mutation starts with `requireCatalogRole`, so the import should be
-    refused with `NO_HOUSEHOLD` and show an import error next to the screen. This was
-    read from the code, not run.
+  - **Switching back to cloud with "Copy local data" while in no household.** This
+    bullet first predicted an import error next to the screen. That was wrong (*What this
+    plan got wrong*): the copy does not start at all, because it waits for `GetLocations`,
+    which fails with `NO_HOUSEHOLD`. It waited silently, with the key stored, and then ran
+    into the next household. Since O22-A (decision T31) it still waits, and then asks
+    "Copy your offline data into {household}?" before anything is sent. Pinned by
+    `a stored copy waits, unsent, while the person is in no household` in
+    `usePostLoginMigration.test.ts`. No E2E test drives the no-household case.
 - **Old, not new in H5b: the "copy local data?" check can fail with an unhandled
   rejection.** `usePostLoginMigration` (`apps/web/src/hooks/usePostLoginMigration.ts:183`)
   calls `getAllItems().then(...)` with no `.catch`. In cloud mode, when the local IndexedDB
@@ -1398,6 +1403,28 @@ plan's *What this plan got wrong* and *Status*.
   not set, so the next load tries again. The code is from `4bd17a75` (2026-03-12). Found
   this session while finding the `DatabaseClosedError` of `8d48b999` (*Status*, G.10). Not
   fixed here; it needs a `.catch` and a test.
+- **A stored copy can only go into the household the person acts in now** (O22-A, owed to
+  **H7**). The question names that household and offers Copy here or Don't copy. Choosing
+  another household the person is in, or a new one, needs Switch to… and a household input
+  on the import mutations. See the H7 outline in `2026-10-31-households-plan.md`.
+- **The manual prompt "Import local data to cloud?" does not name the household** (O22-A
+  covers the STORED copy only). It shows when local items exist and `migration-prompted` is
+  unset, and the person presses Import on purpose, then answers "Import into which
+  location?", which lists that household's locations. A member pressing Import still gets
+  the role error after the location question.
+- **Found while building O22-A, not fixed: a remove that worked can show "Could not save
+  the change"** when the members list then fails to load again. `useRemoveMember` uses
+  `refetchQueries` with `awaitRefetchQueries: true`, and in the test the `remove()` promise
+  REJECTS with the refetch's error ("down", `INTERNAL_SERVER_ERROR`). A probe in the
+  `catch` of `handleRemove` (`routes/settings/household/members.tsx`) logged it in every run:
+  18 with the O22-A change, 6 with HEAD's migration code. (In a few runs the error was
+  instead "QueryManager stopped while query was in flight", after the test had ended.) So the claim in `hooks/CLAUDE.md` that "a FAILED
+  refetch does not reject the call (measured on Apollo 4.1.6)" does not hold here. The test
+  `a remove that worked shows no error when the list cannot be read again`
+  (`members.cloud.test.tsx`) passes only when the toast comes later than its 50 ms wait:
+  under load it failed 3 of 6 runs at HEAD `262f7117` and twice in full suite runs on this
+  branch. `useSetHouseholdRole` has the same shape. Fix: refetch after the mutation and
+  drop a refetch error, then wait for the error toast in the test instead of 50 ms.
 - Carried over from H5a, still open: the old-bundle shim removal, the deleted-organizer
   `hasOrganizer` fix (H6), the keyboard gap on `role="button"` badges, and the other items
   in the H5 plan's *Known gaps*.
@@ -1514,6 +1541,8 @@ Filled in from the task reports and reviews.
 | O19 | The brief: "Suggested English: Use local mode" | The app calls local mode **Offline Mode** (`settings.dataMode.local.title`, 「離線模式」), and its own switch says "Switch to offline" (`signOutOfflineDialog.switchToOffline`). "Local mode" would be a third name for the same thing. The button says **Switch to offline mode** / 「切換至離線模式」, for the owner's review in the PR |
 | O19 | The brief: check that the gate is off after the reload | Already true and already tested ("does nothing in local mode" in `NoHouseholdGate.test.tsx` checks that nothing is cleared). No test checked that the PAGE shows in local mode while Apollo still holds a `NO_HOUSEHOLD` answer. Added; mutation M7 (the gate ignores the mode) turns both red |
 | O19 | The brief: a Known gap "cannot switch to another account from the screen" | Overtaken the same day: the owner added **Sign in to another account**. The gaps that are really left are in *Known gaps* |
+| O19 | *Known gaps*: switching back to cloud with "Copy local data" in no household "should be refused with `NO_HOUSEHOLD` and show an import error next to the screen" | Wrong, and read from the code without running it. The copy never reaches an import mutation: it waits for `GetLocations`, which fails with `NO_HOUSEHOLD`, so `locationsLoaded` stays false. Nothing shows, the key stays, and the copy runs into the NEXT household, a shared one included. Found by the whole-branch review; fixed by O22-A (decision T31) |
+| Review | The `joinHousehold` transaction used Prisma's 5 s default `timeout` | An E2E run against the remote test database took 5064 ms: "The timeout for this transaction was 5000 ms, however 5064 ms passed" (`invite.resolver.ts:389`). A re-run passed. `joinHousehold` and `createHousehold` now pass `HOUSEHOLD_MOVE_TIMEOUT_MS` (15 s, `lib/household.ts`), following `checkout` and `consumeRecipes` (30 s each, whose query count grows with the data; these do not) |
 | O18 | O18-A: a removed or demoted manager's open invites stay open, "the owner sees them and can revoke them" | It did not consider the removed person using the invites THEMSELVES. A manager sees every open `member` invite with its token, so a removed manager could rejoin through their own invite, and the same after a leave. Replaced by O20 (decision T30) |
 | G.7/G.8 | *Known gaps*: "a tab that sends nothing stays stale" | Incomplete. A tab that WRITES does not fail: for a person in two households, the write goes into the other household through `requireHousehold` (T14), and the tab shows nothing. Recorded as O21, owed to H7 |
 | T22 | The code comments of `invitePreview` and `joinHousehold`: T22 also keeps "a brand-new person" from getting "a household made just by looking at a link" | Not true. On the real `/join/…` page `HouseholdChangeGuard`, `ActiveLocationProvider` and `PostLoginMigrationDialog` already send queries that call `requireHousehold`, so first sign-in makes a household anyway, and the join deletes it as empty (T21). The comments and the T22 row now give the one real reason |
@@ -1741,3 +1770,16 @@ T22 comments, and runbook 9.8 and 9.9. See the four new rows of *What this plan 
 wrong*. Tests: server 2109 / 76, web 3115 / 325, `household-invites.spec.ts` 8 of 8 in
 `cloud` (test 6 now also checks O20; with the revoke removed it fails on
 `not.toContain`).
+
+**Owner decision O22-A is built (2026-11-18), decision T31.** A copy chosen in
+`DataModeCard` ("Copy local data") no longer runs by itself. `usePostLoginMigration` waits
+for `GetLocations` and the household, then asks "Copy your offline data into
+{household}?" (`'confirming'`) with **Copy here** and **Don't copy**. A non-owner also reads
+that the household is shared. A member, or a manager with `clear`, gets a sentence and only
+**Done**. The full household choice is owed to H7 (the H7 outline in
+`2026-10-31-households-plan.md`). Also from the review: `joinHousehold` and
+`createHousehold` pass a 15 s transaction `timeout` (`HOUSEHOLD_MOVE_TIMEOUT_MS`). Tests:
+server 2111 / 76, web 3133 / 325, `pnpm test:spec` 70. E2E in `cloud`:
+`settings/data-mode-migration.spec.ts` (now presses Copy here) and
+`household-invites.spec.ts`, 10 of 10. One pre-existing timing failure in
+`members.cloud.test.tsx` is recorded in *Known gaps*.
