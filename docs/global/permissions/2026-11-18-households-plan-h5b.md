@@ -1535,6 +1535,7 @@ Filled in from the task reports and reviews.
 | T22 | The code comments of `invitePreview` and `joinHousehold`: T22 also keeps "a brand-new person" from getting "a household made just by looking at a link" | Not true. On the real `/join/…` page `HouseholdChangeGuard`, `ActiveLocationProvider` and `PostLoginMigrationDialog` already send queries that call `requireHousehold`, so first sign-in makes a household anyway, and the join deletes it as empty (T21). The comments and the T22 row now give the one real reason |
 | G.8 | `useCreateHousehold`: after `ALREADY_IN_HOUSEHOLD`, read `GetHousehold` "from the network" | It used `fetchPolicy: 'network-only'`, which writes `ROOT_QUERY.household`. The watched `GetHousehold` then gave `NoHouseholdGate` the new id, so it called `switchToHousehold` too: two cache clears and two page loads. Measured: `switchToHousehold` called **2** times in `routes/noHousehold.cloud.test.tsx`. Now `no-cache`, the same rule `useLeaveHousehold` already had |
 | Review (refetch) | The G.9 review: "with `awaitRefetchQueries: true`, a FAILED refetch does not reject the mutation" (measured on Apollo 4.1.6), and the same sentence in `hooks/CLAUDE.md` | False. Apollo waits for the refetches with `Promise.all` (`@apollo/client@4.1.6`, `core/QueryInfo.js`, `markMutationResult`), so a failed refetch REJECTS the mutation, and a remove or role change that worked showed "Could not save the change". The "measurement" was the test "a remove that worked shows no error…", which waited a fixed 50 ms and passed only when the toast came later than that. `useSetHouseholdRole` and `useRemoveMember` now send the mutation with no `refetchQueries`, then `await client.refetchQueries(…).catch(() => {})` (`refetchAfterWrite`). The page test now waits for "Removing…" to go away, and 4 hook tests in `useHouseholdMembers.test.tsx` await the call itself. With the old hook code they are red every run (5 of 5 at load 3), not only under load |
+| G.7 | Step 5: the household guard, with unit tests only; G.7's brief named no E2E spec, and no task after it ran `settings/import-export-cloud.spec.ts` or `settings/import-strategies.spec.ts` in `cloud` | `HouseholdChangeGuard` reloads the page when the server answers a household id the browser did not store. `/e2e/cleanup` deletes the household and the next request makes a new one, so four re-import tests that load a page, call `cleanupCloudData` in the MIDDLE of the test and load a page again were reloaded about 1.4 s after the second load, while `fetchExistingData` or the location menu was in flight. The import never ran and "Import complete." never showed. Found by the full gate at `b0cde30f`. The app is right; the specs now call `forgetDeletedHousehold(page)` (`e2e/helpers/cloudTeardown.ts`) after such a cleanup. Any NEW spec that cleans up mid-test after a page load needs it too |
 
 ## Status
 
@@ -1778,3 +1779,18 @@ the mutation when a refetch fails. Each now refetches after the mutation through
 `refetchAfterWrite`, which still waits for the read but drops its error. The query keeps
 the error, so a failed read shows on the page as before. See the row "Review (refetch)"
 of *What this plan got wrong*. Tests: web 3137 / 325 (4 new in `useHouseholdMembers.test.tsx`), server 2111 / 76, `pnpm test:spec` 70.
+
+**The cloud re-import specs pass again (2026-11-18).** The full gate at `b0cde30f` failed 6
+cloud tests: 5 in `settings/import-export-cloud.spec.ts` and 1 in
+`settings/import-strategies.spec.ts`. Two causes, both in the specs, not in the app:
+
+| Cause | Tests | Fix |
+|---|---|---|
+| `HouseholdChangeGuard` (G.7) reloads the page after a mid-test `cleanupCloudData`, because the server now answers a new household id. The reload threw away the import (trace: 7 queries of `fetchExistingData` `net::ERR_ABORTED`, then `[vite] connecting...`, then nothing) | cloud → cloud, and the three re-import tests (new household, carts, logs) | `forgetDeletedHousehold(page)` removes `last-household-id` after the cleanup, as a fresh browser would have |
+| over the 30 s budget, with no bug: the import alone takes 13 to 15 s on the shared Neon database | local → cloud (28.2 s, 32.4 s with trace), `clear` (30.4 s) and `replace` (31.3 s) | `test.setTimeout(60000)` with the measurements in a comment |
+
+Evidence that the guard is the cause: with `HouseholdChangeGuard` made to return early, the
+unchanged cloud → cloud test PASSED. Mutation: `forgetDeletedHousehold` made a no-op → the
+cloud → cloud test red with `locator.waitFor: Timeout 30000ms exceeded` on
+"Import complete.". No unit test: the app did what it should, and the bug was in the spec.
+See the row "G.7" of *What this plan got wrong*.

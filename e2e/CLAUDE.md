@@ -213,6 +213,19 @@ the Stock tab where the test expected `6`.
 the URL it actually called. In the proof above that made the message disagree with the
 404 body. It is cosmetic, but do not read the message as proof of which URL was hit.
 
+### A cleanup in the MIDDLE of a test needs `forgetDeletedHousehold(page)` — since 2026-11-18
+
+`/e2e/cleanup` deletes the user's household, and the next request makes a new one with a
+new id. A page that already showed the app keeps the old id in `last-household-id`. On the
+next page load `HouseholdChangeGuard` (households H5b) sees a different id, clears the
+cache and **reloads the page**, about 1.4 s after it opened. Whatever the test started in
+that time is lost, with no error on screen: an import never runs, an open menu closes.
+
+So after a `cleanupCloudData` that runs mid-test, once a page has loaded, call
+`forgetDeletedHousehold(page)` (`e2e/helpers/cloudTeardown.ts`). It removes only that key.
+The four re-import tests of `settings/import-export-cloud.spec.ts` do this. The
+`beforeEach` and `afterEach` calls need nothing: each test has a fresh context.
+
 ## `/e2e/cleanup` deletes `Location` and `ItemStock` — since 2026-09-14
 
 Before that date the endpoint deleted 12 models and missed both. The effect was not
