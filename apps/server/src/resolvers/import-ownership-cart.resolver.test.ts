@@ -940,9 +940,10 @@ describe('CartItem → Cart is reached through a location role', () => {
 // a cart of hh_second.
 //
 // A test can only see this when the caller is in TWO households. Nothing in
-// the schema stops that, and H5 makes it real. The target is pinned through
-// `ctx.requestCache.householdId` (H4 plan rule 16), because `ensureHousehold`
-// picks one of two households in no fixed order.
+// the schema stops that, and H5 makes it real. The target is the caller's
+// active household (`User.activeHouseholdId`, decision T14 of the H5b plan;
+// H4 plan rule 16). Without it, `ensureHousehold` picks the oldest
+// membership.
 //
 // | Person | Household | Household role | Location roles        |
 // |--------|-----------|----------------|-----------------------|
@@ -962,8 +963,13 @@ describe('CartItem → the cart and the item must be in the target household', (
   const CART_SECOND_B = `${LOC_SECOND_B}:${VENDOR}` // a second one, for the rows that pass
   const ITEM_SECOND = 'item_second' // an item of hh_second
 
-  const intoUser: Context = { userId: USER, requestCache: { householdId: Promise.resolve(HH_USER) } }
-  const intoSecond: Context = { userId: USER, requestCache: { householdId: Promise.resolve(HH_SECOND) } }
+  // The target household is USER's active household (decision T14 of the H5b
+  // plan). A household pinned on `requestCache` would be forgotten before the
+  // `Mutation` field runs (decision T15).
+  const into = (householdId: string): Context => {
+    mockPrisma.$world.setActiveHousehold(USER, householdId)
+    return { userId: USER }
+  }
 
   beforeEach(() => {
     mockPrisma.$stockFake.reset([
@@ -1016,7 +1022,7 @@ describe('CartItem → the cart and the item must be in the target household', (
       ]
 
       // When USER imports it into hh_user
-      const result = await exec(query, { cartItems: payload }, intoUser)
+      const result = await exec(query, { cartItems: payload }, into(HH_USER))
 
       // Then only the hh_user row is written. The two rows at LOC_SECOND are
       // SKIPPED, like a cart that is gone: the import is not aimed at
@@ -1038,7 +1044,7 @@ describe('CartItem → the cart and the item must be in the target household', (
       ]
 
       // When USER imports it into hh_second
-      const result = await exec(query, { cartItems: payload }, intoSecond)
+      const result = await exec(query, { cartItems: payload }, into(HH_SECOND))
 
       // Then the hh_second item is written and the hh_user item is SKIPPED.
       // Checked against any household USER is in, ITEM_MINE would pass and
@@ -1071,7 +1077,7 @@ describe('CartItem → the cart and the item must be in the target household', (
       ]
 
       // When USER imports it into hh_second
-      const result = await exec(query, { cartItems: payload }, intoSecond)
+      const result = await exec(query, { cartItems: payload }, into(HH_SECOND))
 
       // Then the viewer's row is skipped and the other one is written
       expect(result.errors).toBeUndefined()
@@ -1093,7 +1099,7 @@ describe('CartItem → the cart and the item must be in the target household', (
       ]
 
       // When USER imports it into hh_second
-      const result = await exec(query, { cartItems: payload }, intoSecond)
+      const result = await exec(query, { cartItems: payload }, into(HH_SECOND))
 
       // Then the row for LOC_SECOND is skipped and the other one is written
       expect(result.errors).toBeUndefined()

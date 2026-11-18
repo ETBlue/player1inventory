@@ -141,6 +141,12 @@ vi.mock('../lib/prisma.js', async () => {
 
   return {
     prisma: {
+      // `ensureHousehold` reads the household through the `User` row (decision
+      // T14 of the H5b plan). Every member here gets one (`rowForEveryMember`).
+      user: (await import('../test/userFake.js')).createUserFake([], {
+        householdMembers: () => households.state.householdMembers,
+        rowForEveryMember: true,
+      }).client,
       householdMember: households.client.householdMember,
       tag: wrap(tag.client),
       tagType: wrap(tagType.client),

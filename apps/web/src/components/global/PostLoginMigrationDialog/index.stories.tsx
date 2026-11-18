@@ -1,8 +1,13 @@
 import { ApolloProvider } from '@apollo/client/react'
+import {
+  MockedProvider,
+  type MockedProviderProps,
+} from '@apollo/client/testing/react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
+import { GetHouseholdDocument, GetLocationsDocument } from '@/generated/graphql'
 import { noopApolloClient } from '@/test/apolloStub'
 import { PostLoginMigrationDialog } from '.'
 
@@ -102,15 +107,101 @@ export const Prompting: Story = {
   render: () => <PromptingStory />,
 }
 
-// Story 3: AutoImporting — stored strategy triggers immediate migration progress dialog
-export const AutoImporting: Story = {
-  name: 'AutoImporting — stored strategy, progress dialog shown',
-  beforeEach() {
-    localStorage.setItem('migration-strategy', 'skip')
+// Stories 3 to 5: a stored copy asks first (owner decision O22-A).
+//
+// `DataModeCard` stored a copy strategy before the switch to cloud. The hook
+// waits for the household and the location list, then asks
+// "Copy your offline data into {household}?". These run in cloud mode, so
+// `GetHousehold` and `GetLocations` are answered by `MockedProvider` (in real
+// Storybook only; the smoke test stubs the two hooks itself, because
+// `src/test/setup.ts` replaces every generated Apollo hook).
+function cloudMocks(role: 'owner' | 'manager' | 'member') {
+  const mocks: NonNullable<MockedProviderProps['mocks']> = [
+    {
+      request: { query: GetHouseholdDocument },
+      result: {
+        data: {
+          household: {
+            __typename: 'Household',
+            id: 'household-1',
+            name: 'Our Home',
+            role,
+          },
+        },
+      },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+    },
+    {
+      request: { query: GetLocationsDocument },
+      result: {
+        data: {
+          locations: [
+            {
+              __typename: 'Location',
+              id: 'location-1',
+              name: 'Kitchen',
+              order: 0,
+              createdAt: '2026-11-01T00:00:00.000Z',
+              updatedAt: '2026-11-01T00:00:00.000Z',
+              myRole: 'organizer',
+            },
+          ],
+        },
+      },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+    },
+  ]
+  return mocks
+}
+
+function storedCopy(strategy: 'skip' | 'clear') {
+  return () => {
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem('migration-strategy', strategy)
     localStorage.removeItem('migration-prompted')
     return () => {
+      localStorage.removeItem('data-mode')
       localStorage.removeItem('migration-strategy')
       localStorage.removeItem('migration-prompted')
     }
-  },
+  }
+}
+
+// The owner of the household: the question with Copy here and Don't copy.
+export const AskBeforeCopy: Story = {
+  name: 'AskBeforeCopy — owner, stored copy waits for Copy here',
+  decorators: [
+    (Story) => (
+      <MockedProvider mocks={cloudMocks('owner')}>
+        <Story />
+      </MockedProvider>
+    ),
+  ],
+  beforeEach: storedCopy('skip'),
+}
+
+// A manager: the same question, plus the line that the household is shared.
+export const AskBeforeCopyShared: Story = {
+  name: 'AskBeforeCopyShared — manager, the household is shared',
+  decorators: [
+    (Story) => (
+      <MockedProvider mocks={cloudMocks('manager')}>
+        <Story />
+      </MockedProvider>
+    ),
+  ],
+  beforeEach: storedCopy('skip'),
+}
+
+// A member cannot import (decision O1): no Copy here, one button.
+export const MemberCannotCopy: Story = {
+  name: 'MemberCannotCopy — member, only Done',
+  decorators: [
+    (Story) => (
+      <MockedProvider mocks={cloudMocks('member')}>
+        <Story />
+      </MockedProvider>
+    ),
+  ],
+  beforeEach: storedCopy('skip'),
 }

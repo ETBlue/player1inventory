@@ -1491,6 +1491,14 @@ so no re-run was needed. Collected with `--list`: `local` 189 in 23 files, `clou
 
 ## H5b — invites, join, members (outline; detailed plan after H5a merges)
 
+> **This outline is replaced by the detailed plan
+> [`2026-11-18-households-plan-h5b.md`](2026-11-18-households-plan-h5b.md).** H5b is built
+> there (tasks G.1–G.10 and the docs of G.11, 2026-11-18, on `feature/households-h5b`; not
+> merged, not deployed; the final gate of G.11 Step 3 is still to run).
+> Where this outline and that plan differ, the detailed plan and its *What this plan got
+> wrong* table are right. One example: the migration is no longer added to a `MIGRATIONS`
+> list in `verify-migration.ts`, but to a deploy group in `scripts/migrationDeploys.ts`.
+
 Needs owner decisions O2, O3, O6, O7, O9, O12.
 
 - **Migration `add_household_invites`** (and, with O2-A, `User.activeHouseholdId` nullable,
@@ -1850,8 +1858,13 @@ database, with the owner's consent: exit 0, 186 `ok —` lines, 0 `FAIL:` lines.
 household-lock lines for two concurrent `deleteLocation` calls all passed: the second call
 WAITED for the lock, then saw 0 locations (no location left is allowed since F.7). Its review
 fixes are done. Task F.8 (two people in two browsers) is done. Its review fixes and task
-F.9 (docs, deploy note, the final gate) are done. **H5a is built and waits for its PR. It is
-not merged and not deployed.** How to deploy H5a together with H3a is decided (owner,
+F.9 (docs, deploy note, the final gate) are done. **H5a is merged into `develop` (#384, merge
+`4307d30a`, 2026-11-18). It is not deployed.** How to deploy H5a together with H3a is decided (owner,
 2026-11-17, option 4): the server keeps the fields `main`'s old bundle needs for one release,
 and the server goes first (H4 runbook, section 8.3). The shim is built. H5b is next, with
-its own detailed plan.
+its own detailed plan: `2026-11-18-households-plan-h5b.md`.
+
+**H5b is built** (2026-11-18, tasks G.1–G.10 and the docs of G.11 of that plan, on
+`feature/households-h5b`). It is not merged and not deployed. The final gate (G.11 Step 3)
+is still to run. Its deploy notes are section 9 of the H4 runbook. H5c is
+next.

@@ -491,6 +491,44 @@
         "forbiddenError": "Only the household owner can rename the household.",
         "invalidError": "Enter a name of 1 to {{max}} characters.",
         "saveError": "Could not save the household name. Please try again."
+      },
+      "members": {
+        "title": "Members",
+        "description": "People in this household, and invites",
+        "you": "(you)",
+        "roleLabel": "Household role of {{name}}",
+        "invite": "Invite someone",
+        "inviteRole": "Household role",
+        "inviteLocations": "Location roles",
+        "createLink": "Create invite link",
+        "linkLabel": "Invite link",
+        "copyLink": "Copy link",
+        "copied": "Link copied",
+        "copyFailed": "Could not copy. Select the link and copy it yourself.",
+        "linkNote": "Anyone with this link can join once, until {{date}}.",
+        "openInvites": "Open invites",
+        "noInvites": "No open invites.",
+        "createdBy": "Created by {{name}}",
+        "expires": "Valid until {{date}}",
+        "noLocationRoles": "No location roles",
+        "revoke": "Revoke",
+        "revokeConfirm": "Revoke this invite? The link will stop working.",
+        "revoked": "Invite revoked",
+        "remove": "Remove",
+        "removeLabel": "Remove {{name}}",
+        "removeConfirm": "Remove {{name}} from this household? They lose access to all its locations.",
+        "removeConfirmManager": "Open invites made by others stay open. If this person may have copied one, revoke it.",
+        "leave": "Leave household",
+        "leaveConfirm": "Leave this household? You lose access to all its locations.",
+        "ownerCannotLeave": "The owner cannot leave. Handing over the household comes in a later version.",
+        "alone": "You are the only person in this household. If you join another household with an invite while this one holds no data, this one is deleted.",
+        "loadError": "Could not load the members. Try again.",
+        "error": "Could not save the change. Try again.",
+        "leaving": "Leaving…",
+        "removing": "Removing…",
+        "invitesLoadError": "Could not load the open invites. Try again.",
+        "locationsLoadError": "Could not load the locations. Try again.",
+        "noLocations": "This household has no locations yet."
       }
     },
     "user": {
@@ -715,7 +753,14 @@
       "errorTitle": "Copy failed",
       "errorForbidden": "Some rows in your local data belong to another household, so the copy was refused. Nothing was copied. Your local data is unchanged.",
       "errorRole": "Only the owner or a manager of your household can copy data into it, so the copy was refused. Nothing was copied. Your local data is unchanged.",
-      "errorOther": "The copy failed: {{message}}"
+      "errorOther": "The copy failed: {{message}}",
+      "confirmTitle": "Copy your offline data into {{household}}?",
+      "confirmDescription": "A copy of the data on this device goes into this household. The data on this device stays as it is.",
+      "confirmShared": "This household is shared, and you are not its owner. Other people in it will see this data.",
+      "copyHere": "Copy here",
+      "dontCopy": "Don't copy",
+      "cannotCopyMember": "Only the owner or a manager of this household can copy data into it. The data on this device stays as it is.",
+      "cannotCopyClear": "Only the owner of this household can clear it and copy data into it. The data on this device stays as it is."
     },
     "export": {
       "label": "Download my data",
@@ -909,6 +954,11 @@
       "organizer": "Organizer",
       "participant": "Participant",
       "viewer": "Viewer"
+    },
+    "household": {
+      "owner": "Owner",
+      "manager": "Manager",
+      "member": "Member"
     }
   },
   "pwa": {
@@ -922,5 +972,29 @@
   "noLocations": {
     "title": "You have no locations in this household yet.",
     "create": "Create a location"
+  },
+  "join": {
+    "heading": "Join a household",
+    "title": "Join {{household}}",
+    "invitedBy": "{{name}} invited you.",
+    "yourRoles": "Your roles",
+    "join": "Join",
+    "alreadyMember": "You are already in this household.",
+    "invalid": "This invite is no longer valid. Ask for a new one.",
+    "needsCloud": "Joining a household uses cloud sync. Your data on this device stays here and is not copied.",
+    "signIn": "Sign in to join",
+    "error": "Could not join. Try again.",
+    "loadError": "Could not load this invite. Try again."
+  },
+  "noHousehold": {
+    "title": "You are not in any household.",
+    "create": "Create a household",
+    "nameLabel": "Household name",
+    "nameHint": "Leave it empty to use the default name.",
+    "error": "Could not create the household. Try again.",
+    "useLocalMode": "Switch to offline mode",
+    "useLocalModeHint": "Data is stored on this device only. You stay signed in.",
+    "signInToAnotherAccount": "Sign in to another account",
+    "signOutError": "Could not sign out. Try again."
   }
 }

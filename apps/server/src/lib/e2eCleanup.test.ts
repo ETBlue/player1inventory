@@ -9,8 +9,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 //
 // What these tests pin, and what they do not:
 // - They pin WHICH models are deleted, in WHICH order, with the EXACT filter
-//   of each of the 18 (households H3a, task 3.10), and that exactly those 18
-//   operations, in that order, are what reaches `$transaction`.
+//   of each of the 19 (18 since households H3a task 3.10, plus the invites
+//   since H5b task G.6), and that exactly those 19 operations, in that
+//   order, are what reaches `$transaction`.
 // - They pin which households count as the user's: only those with an
 //   `owner` row. A household the user only belongs to is never deleted.
 // - They pin that each count lands under its own key, and that
@@ -25,7 +26,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const shared = vi.hoisted(() => ({
   /** Every call this file sees, in order: `read:owners`, `delete:<model>`, `commit`, `forget:<id>`. */
   events: [] as string[],
-  /** The 18 Prisma client names, in the order the route must delete them. */
+  /** The 19 Prisma client names, in the order the route must delete them. */
   MODELS: [
     'inventoryLog',
     'cartItem',
@@ -42,6 +43,7 @@ const shared = vi.hoisted(() => ({
     'shelf',
     'locationMember',
     'location',
+    'householdInvite',
     'householdMember',
     'household',
     'user',
@@ -153,7 +155,7 @@ beforeEach(() => {
   ]
 })
 
-/** The filter each of the 18 deletes must carry, for `e2e-user-1` who owns hh-own. */
+/** The filter each of the 19 deletes must carry, for `e2e-user-1` who owns hh-own. */
 const OWNED = { in: ['hh-own'] }
 const EXPECTED_FILTERS: Record<(typeof MODELS)[number], unknown> = {
   inventoryLog: { where: { location: { householdId: OWNED } } },
@@ -173,6 +175,11 @@ const EXPECTED_FILTERS: Record<(typeof MODELS)[number], unknown> = {
     where: { OR: [{ userId: 'e2e-user-1' }, { location: { householdId: OWNED } }] },
   },
   location: { where: { householdId: OWNED } },
+  // Every invite of hh-own, and the invites e2e-user-1 made anywhere else
+  // (`createdById` is RESTRICT, so they would block the User delete).
+  householdInvite: {
+    where: { OR: [{ householdId: OWNED }, { createdById: 'e2e-user-1' }] },
+  },
   householdMember: { where: { OR: [{ userId: 'e2e-user-1' }, { householdId: OWNED }] } },
   household: { where: { id: OWNED } },
   user: { where: { id: 'e2e-user-1' } },
@@ -187,7 +194,7 @@ describe('e2eCleanupHandler', () => {
     expect(events).toEqual([])
   })
 
-  it('deletes the 18 models in order, each with its exact filter, and the User row last', async () => {
+  it('deletes the 19 models in order, each with its exact filter, and the User row last', async () => {
     // When the cleanup runs for a user who owns one household
     const res = fakeResponse()
     await e2eCleanupHandler(fakeRequest('e2e-user-1'), res as unknown as Response)
@@ -207,7 +214,7 @@ describe('e2eCleanupHandler', () => {
       const client = prisma as unknown as Record<string, { deleteMany: ReturnType<typeof vi.fn> }>
       expect(client[model]?.deleteMany.mock.calls, model).toStrictEqual([[EXPECTED_FILTERS[model]]])
     }
-    // And exactly those 18 operations, in that order, are what reaches the
+    // And exactly those 19 operations, in that order, are what reaches the
     // one transaction. A real PrismaPromise is lazy: a deleteMany that is
     // built but left out of the array never runs, and its argument above
     // would still look right.
@@ -254,6 +261,11 @@ describe('e2eCleanupHandler', () => {
     expect(deleteArgsOf('householdMember')).toEqual({
       where: { OR: [{ userId: 'e2e-user-3' }, { householdId: { in: [] } }] },
     })
+    // And only the invites this user made go, because they block the User
+    // delete. Invites of hh-other that someone else made stay.
+    expect(deleteArgsOf('householdInvite')).toEqual({
+      where: { OR: [{ householdId: { in: [] } }, { createdById: 'e2e-user-3' }] },
+    })
     expect(deleteArgsOf('user')).toEqual({ where: { id: 'e2e-user-3' } })
   })
 
@@ -267,8 +279,8 @@ describe('e2eCleanupHandler', () => {
       ok: true,
       deleted: Object.fromEntries(CLEANUP_MODEL_KEYS.map((key, index) => [key, index + 1])),
     })
-    expect(CLEANUP_MODEL_KEYS).toHaveLength(18)
-    expect(CLEANUP_MODEL_KEYS[17]).toBe('users')
+    expect(CLEANUP_MODEL_KEYS).toHaveLength(19)
+    expect(CLEANUP_MODEL_KEYS[18]).toBe('users')
   })
 
   it('forgets the user only after the transaction has finished', async () => {

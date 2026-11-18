@@ -114,6 +114,20 @@ const publishes: Record<string, { kinds: Kind[] }> = {
   deleteVendor: { kinds: ['CATALOG', 'CART'] },
   // The household name is in every member's sidebar.
   renameHousehold: { kinds: ['CATALOG'] },
+  // Households H5b, decision T19: household-level `LOCATION`, which makes
+  // every open tab of the household refetch everything, the invite list too.
+  // `revokeInvite` publishes only when it revoked something.
+  createInvite: { kinds: ['LOCATION'] },
+  revokeInvite: { kinds: ['LOCATION'] },
+  // Households H5b task G.4: for the joined household only, after commit.
+  joinHousehold: { kinds: ['LOCATION'] },
+  // Households H5b task G.5, decision T19. `setHouseholdRole` publishes only
+  // when the role changed. `removeMember` and `leaveHousehold` publish to the
+  // household the person left; `createHousehold` to the new household.
+  setHouseholdRole: { kinds: ['LOCATION'] },
+  removeMember: { kinds: ['LOCATION'] },
+  leaveHousehold: { kinds: ['LOCATION'] },
+  createHousehold: { kinds: ['LOCATION'] },
   createItem: { kinds: ['CATALOG'] },
   updateItem: { kinds: ['CATALOG'] },
   createTag: { kinds: ['CATALOG'] },

@@ -305,8 +305,9 @@ test('user sees My data and Preferences pinned to the bottom of the sidebar, and
   await sidebar.getByRole('link', { name: homeLabel }).click()
 
   // Then the household config page opens, and the sidebar shows the
-  // household view: Back, the heading, and six links
-  // (src/components/global/Sidebar/HouseholdSidebar.tsx)
+  // household view: Back, the heading, and six links, seven in cloud, where
+  // Members is second (src/components/global/Sidebar/HouseholdSidebar.tsx;
+  // Members is `cloudOnly` since households H5b task G.9)
   await expect(page).toHaveURL(/\/settings\/household$/)
   await expect(sidebar.getByRole('button', { name: 'Back' })).toBeVisible()
   await expect(
@@ -314,6 +315,7 @@ test('user sees My data and Preferences pinned to the bottom of the sidebar, and
   ).toBeVisible()
   await expect(sidebar.getByRole('link')).toHaveText([
     'General',
+    ...(baseURL === CLOUD_WEB_URL ? ['Members'] : []),
     'Locations',
     'Shelves',
     'Vendors',
@@ -325,7 +327,7 @@ test('user sees My data and Preferences pinned to the bottom of the sidebar, and
     'aria-current',
     'page',
   )
-  // The main view is gone. Asserted after the six links are present, so a
+  // The main view is gone. Asserted after the links are present, so a
   // sidebar that has not rendered yet cannot satisfy it.
   await expect(sidebar.getByRole('link', { name: 'Pantry' })).toHaveCount(0)
   await expect(

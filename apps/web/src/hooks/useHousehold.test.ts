@@ -1,3 +1,4 @@
+import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useHousehold, useRenameHousehold } from './useHousehold'
@@ -55,6 +56,7 @@ describe('useHousehold', () => {
       data: undefined,
       isLoading: false,
       isError: false,
+      errorCode: undefined,
     })
   })
 
@@ -103,6 +105,65 @@ describe('useHousehold', () => {
       error: new Error('offline'),
     })
     expect(renderHook(() => useHousehold()).result.current.isError).toBe(true)
+  })
+})
+
+describe('useHousehold errorCode (households H5b, task G.8)', () => {
+  function noHousehold() {
+    return new CombinedGraphQLErrors({
+      errors: [
+        { message: 'No household', extensions: { code: 'NO_HOUSEHOLD' } },
+      ],
+    })
+  }
+
+  it('gives the code of a failed query', () => {
+    localStorage.setItem('data-mode', 'cloud')
+    mockQuery.mockReturnValue({
+      data: undefined,
+      loading: false,
+      error: noHousehold(),
+    })
+
+    expect(renderHook(() => useHousehold()).result.current.errorCode).toBe(
+      'NO_HOUSEHOLD',
+    )
+  })
+
+  it('gives the code also when an old household is still cached', () => {
+    // Apollo keeps the cached answer in `data` after a failed network leg.
+    // A person removed while their old household was cached must still get
+    // the code, or the no-household screen would never show for them.
+    localStorage.setItem('data-mode', 'cloud')
+    mockQuery.mockReturnValue({
+      data: { household: HOUSEHOLD },
+      loading: false,
+      error: noHousehold(),
+    })
+
+    expect(renderHook(() => useHousehold()).result.current.errorCode).toBe(
+      'NO_HOUSEHOLD',
+    )
+  })
+
+  it('gives no code for a network error', () => {
+    localStorage.setItem('data-mode', 'cloud')
+    mockQuery.mockReturnValue({
+      data: undefined,
+      loading: false,
+      error: new Error('Failed to fetch'),
+    })
+
+    const { result } = renderHook(() => useHousehold())
+    expect(result.current.isError).toBe(true)
+    expect(result.current.errorCode).toBeUndefined()
+  })
+
+  it('gives no code when the query worked', () => {
+    localStorage.setItem('data-mode', 'cloud')
+    expect(
+      renderHook(() => useHousehold()).result.current.errorCode,
+    ).toBeUndefined()
   })
 })
 

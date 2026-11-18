@@ -11,9 +11,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { useHousehold } from '@/hooks/useHousehold'
 import { useImportTargetLocations } from '@/hooks/useImportTargetLocations'
 import {
+  canCopyInto,
   type MigrationAuth,
+  type MigrationHousehold,
   usePostLoginMigration,
 } from '@/hooks/usePostLoginMigration'
 import { defaultImportLocationName } from '@/lib/importData'
@@ -64,10 +67,24 @@ function PostLoginMigrationDialogE2E() {
 }
 
 function MigrationDialogs({ isLoaded, isSignedIn }: MigrationAuth) {
+  // The household a stored copy would go into (owner decision O22-A).
+  // `undefined` while it loads, and when the person is in no household: then
+  // the stored copy waits. A cached household next to a NO_HOUSEHOLD error is
+  // a household the person has left (`useHousehold`'s `errorCode`), so it is
+  // not offered either.
+  const householdQuery = useHousehold()
+  const household: MigrationHousehold | undefined =
+    householdQuery.data !== undefined &&
+    householdQuery.errorCode !== 'NO_HOUSEHOLD'
+      ? { name: householdQuery.data.name, role: householdQuery.data.role }
+      : undefined
   const {
     state,
     error,
     dismiss,
+    confirmCopy,
+    declineCopy,
+    waitingStrategy,
     importData,
     chooseLocation,
     cancelLocation,
@@ -75,6 +92,7 @@ function MigrationDialogs({ isLoaded, isSignedIn }: MigrationAuth) {
   } = usePostLoginMigration({
     isLoaded,
     isSignedIn,
+    household,
   })
   const { t } = useTranslation()
   const choosingLocation = state === 'choosing-location'
@@ -92,8 +110,62 @@ function MigrationDialogs({ isLoaded, isSignedIn }: MigrationAuth) {
   // location being copied and the ones being left behind. Nothing is left
   // behind, so there is nothing to name and nothing to hold the button for.
 
+  const confirming =
+    state === 'confirming' &&
+    household !== undefined &&
+    waitingStrategy !== null
+  const canCopy = confirming && canCopyInto(household.role, waitingStrategy)
+
   return (
     <>
+      {/* "Copy your offline data into {household}?" (owner decision O22-A).
+          A stored copy waits here before it runs. Copy here runs it as
+          before, with "Import into which location?" for skip and replace.
+          Don't copy removes the stored strategy. A person whose role cannot
+          copy (a member; a manager with clear) gets no Copy here, only a
+          sentence and one button that does the same as Don't copy. */}
+      <AlertDialog open={confirming}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('settings.postLoginMigration.confirmTitle', {
+                household: household?.name ?? '',
+              })}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          {canCopy ? (
+            <AlertDialogDescription>
+              {t('settings.postLoginMigration.confirmDescription')}
+              {household?.role !== 'owner' && (
+                <> {t('settings.postLoginMigration.confirmShared')}</>
+              )}
+            </AlertDialogDescription>
+          ) : (
+            <AlertDialogDescription>
+              {waitingStrategy === 'clear' && household?.role === 'manager'
+                ? t('settings.postLoginMigration.cannotCopyClear')
+                : t('settings.postLoginMigration.cannotCopyMember')}
+            </AlertDialogDescription>
+          )}
+          <AlertDialogFooter>
+            {canCopy ? (
+              <>
+                <AlertDialogCancel onClick={declineCopy}>
+                  {t('settings.postLoginMigration.dontCopy')}
+                </AlertDialogCancel>
+                <AlertDialogAction onClick={confirmCopy}>
+                  {t('settings.postLoginMigration.copyHere')}
+                </AlertDialogAction>
+              </>
+            ) : (
+              <AlertDialogAction onClick={declineCopy}>
+                {t('common.done')}
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Auto-import progress dialog — no buttons, user already chose strategy */}
       <AlertDialog open={state === 'auto-importing'}>
         <AlertDialogContent aria-describedby={undefined}>

@@ -4,9 +4,9 @@ import { prisma } from './prisma.js'
 
 // `POST /e2e/household-members`: put a second person into an existing
 // household, with a household role and some location roles (households H3a,
-// task 3.11, decision H9). Invites are H5, so until then this E2E-only route
-// is the only way a cloud spec can have two people in one household, and so
-// the only way to check roles against real Postgres.
+// task 3.11, decision H9). Before the invites of H5b it was the only way a
+// cloud spec could have two people in one household. It stays, because it
+// is shorter than an invite and a join, and many specs use it (decision T29).
 //
 // `index.ts` mounts it ONLY inside its `if (E2E_TEST_MODE)` block.
 // `src/webhookRouteOrder.test.ts` guards that. It checks no signature and no
@@ -43,15 +43,22 @@ import { prisma } from './prisma.js'
 // two writes inside the transaction does not matter for H18: there is no
 // foreign key between the two tables.
 //
-// ── ONE HOUSEHOLD PER PERSON ──
+// ── ONE HOUSEHOLD PER PERSON (for this route only) ──
 //
-// `ensureHousehold` (lib/household.ts) finds a person's household with
-// `householdMember.findFirst({ where: { userId } })`, with no `orderBy`. A
-// person in two households would get one of the two, and which one is up to
-// Postgres. Before H5 nobody can be in two households, and no code is built
-// for it. So this route refuses a member who already has a household, for
+// Since households H5b a person CAN be in two households: an invite adds a
+// person who already has one (`joinHousehold`). `ensureHousehold`
+// (lib/household.ts) then gives one fixed answer (decision T14): the
+// household in `User.activeHouseholdId` while the person is still a member
+// there, else the oldest membership by `joinedAt`, then `householdId`.
+//
+// This route still refuses a member who already has a household, for
 // example one who sent a GraphQL request before being added (that request
-// made their own household).
+// made their own household). It does not set `activeHouseholdId`, so a
+// second membership added here would not be the household the person acts
+// in, and many specs rely on "the member's first request reads THIS
+// household" (decision T29). A spec that needs a person in two households
+// uses the real invite mutations instead (`createInvite` and `joinHousehold`
+// in e2e/helpers/cloudUsers.ts).
 //
 // To stop the member's first request from making a household of its own
 // AFTER they were added, the route sets `User.householdSetupAt`, the first

@@ -13,3 +13,116 @@ mutation RenameHousehold($name: String!) {
     role
   }
 }
+
+# The join page (households H5b, task G.7). Any signed-in person, also one in
+# no household. For INVALID every field except `status` is null.
+query InvitePreview($token: String!) {
+  invitePreview(token: $token) {
+    status
+    householdName
+    invitedByName
+    householdRole
+    locationRoles {
+      locationId
+      locationName
+      role
+    }
+  }
+}
+
+# Refused with BAD_USER_INPUT and extensions.reason INVITE_INVALID or
+# ALREADY_MEMBER. On success the joined household is the one the person acts
+# in, so the web treats it as a household switch (decision T23).
+mutation JoinHousehold($token: String!) {
+  joinHousehold(token: $token) {
+    id
+    name
+    role
+  }
+}
+
+# The no-household screen (households H5b, task G.8). Only for a person in NO
+# household (owner decision O16-A). Anyone else gets BAD_USER_INPUT with
+# extensions.reason ALREADY_IN_HOUSEHOLD. Send `name: null` for the default
+# name, never "": an empty string is a blank name and is refused.
+mutation CreateHousehold($name: String) {
+  createHousehold(name: $name) {
+    id
+    name
+    role
+  }
+}
+
+# ── The Members page (households H5b, task G.9) ──
+
+# Every person of the household, for any household role (owner decision
+# O13-A). `HouseholdPerson` has no `id`, so Apollo does not normalise a row:
+# the page refetches this list after a role change and after a removal.
+query HouseholdMembers {
+  householdMembers {
+    userId
+    displayName
+    role
+    joinedAt
+    isMe
+  }
+}
+
+# Owner and manager only. A household member gets FORBIDDEN, so the page
+# skips this query for them. A manager sees only `member` invites (O15-A).
+query HouseholdInvites {
+  householdInvites {
+    ...InviteFields
+  }
+}
+
+fragment InviteFields on HouseholdInvite {
+  id
+  token
+  householdRole
+  locationRoles {
+    locationId
+    locationName
+    role
+  }
+  createdByName
+  expiresAt
+}
+
+# The list may be empty: an invite may give no location role (O14-A).
+mutation CreateInvite(
+  $householdRole: HouseholdRole!
+  $locationRoles: [InviteLocationRoleInput!]!
+) {
+  createInvite(householdRole: $householdRole, locationRoles: $locationRoles) {
+    ...InviteFields
+  }
+}
+
+# `false` means "this invite is no longer open" (used, revoked, or one this
+# caller may not revoke). The page refetches the list and shows no success
+# message then.
+mutation RevokeInvite($id: ID!) {
+  revokeInvite(id: $id)
+}
+
+# Owner only: `member` <-> `manager`.
+mutation SetHouseholdRole($userId: ID!, $role: HouseholdRole!) {
+  setHouseholdRole(userId: $userId, role: $role) {
+    userId
+    displayName
+    role
+    joinedAt
+    isMe
+  }
+}
+
+mutation RemoveMember($userId: ID!) {
+  removeMember(userId: $userId)
+}
+
+# A manager or member leaves. The server sends the leaving tab no live event,
+# so the page asks which household the person is in now and moves there.
+mutation LeaveHousehold {
+  leaveHousehold
+}

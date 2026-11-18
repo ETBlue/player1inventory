@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   createHouseholdFake,
+  type HouseholdContents,
   HouseholdFakeForeignKeyError,
   HouseholdFakeMissingColumnError,
   HouseholdFakeUniqueError,
@@ -138,13 +139,15 @@ describe('householdFake throws on a where key it does not model, once per call',
     // matcher would return early and never reach the nested key.
     const fake = fixture()
 
-    // When the nested filter uses `every`, or a key on location not modelled
-    // Then both throw, and name the path to the key
+    // When the nested filter uses `none`, or a key on location not modelled
+    // Then both throw, and name the path to the key. (This used `every` until
+    // households H5b task G.4, which models `members: { every }` for the
+    // "is it empty" check.)
     await expect(
       fake.client.household.findFirst({
-        where: { id: 'nobody', members: { every: { userId: CALLER } } },
+        where: { id: 'nobody', members: { none: { userId: CALLER } } },
       }),
-    ).rejects.toThrow(/'members\.every'/)
+    ).rejects.toThrow(/'members\.none'/)
     await expect(
       fake.client.locationMember.findFirst({
         where: { userId: 'nobody', location: { userId: CALLER } },
@@ -968,5 +971,590 @@ describe('householdFake: rules pinned after review', () => {
     await expect(
       fake.client.householdMember.findUnique({ where: { householdId: OURS, userId: CALLER } }),
     ).rejects.toThrow(/no 'householdId_userId'/)
+  })
+})
+
+// ── Households H5b, task G.1: the HouseholdInvite store ──
+//
+// G.3 and G.4 test invites and the join on top of this store. The claim of
+// decision T17 is one conditional updateMany:
+//   where: { id, usedAt: null, revokedAt: null, expiresAt: { gt: now } }
+// so each of those keys must really filter.
+
+const NOW = new Date('2026-11-18T12:00:00.000Z')
+const LATER = new Date('2026-11-25T12:00:00.000Z')
+
+function inviteData(over: Record<string, unknown> = {}) {
+  return {
+    id: 'inv_1',
+    householdId: OURS,
+    token: 'token_1',
+    householdRole: 'member',
+    locationRoles: [{ locationId: KITCHEN, role: 'viewer' }],
+    createdById: CALLER,
+    expiresAt: LATER,
+    ...over,
+  }
+}
+
+const CLAIM_WHERE = { id: 'inv_1', usedAt: null, revokedAt: null, expiresAt: { gt: NOW } }
+const CLAIM_DATA = { usedAt: NOW, usedById: SECOND }
+
+describe('householdFake models HouseholdInvite (households H5b, decision T26)', () => {
+  it('create fills the defaults and keeps the columns it was given', async () => {
+    // Given the fixture
+    const fake = fixture()
+
+    // When an invite is created
+    const invite = await fake.client.householdInvite.create({ data: inviteData() })
+
+    // Then it is stored with null used and revoked columns and its location roles
+    expect(invite).toMatchObject({
+      id: 'inv_1',
+      householdId: OURS,
+      token: 'token_1',
+      householdRole: 'member',
+      createdById: CALLER,
+      expiresAt: LATER,
+      usedAt: null,
+      usedById: null,
+      revokedAt: null,
+      locationRoles: [{ locationId: KITCHEN, role: 'viewer' }],
+    })
+    expect(invite.createdAt).toBeInstanceOf(Date)
+    expect(fake.state.householdInvites).toHaveLength(1)
+  })
+
+  it('a second invite with the same token raises P2002, after a new token was accepted', async () => {
+    // Given one invite, and a second with a NEW token accepted
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+    await fake.client.householdInvite.create({ data: inviteData({ id: 'inv_2', token: 'token_2' }) })
+
+    // When a third reuses the first token
+    // Then it is refused on the token's unique index, and nothing is added
+    await expect(
+      fake.client.householdInvite.create({ data: inviteData({ id: 'inv_3', token: 'token_1' }) }),
+    ).rejects.toMatchObject({ code: 'P2002', constraint: 'HouseholdInvite_token_key' })
+    expect(fake.state.householdInvites).toHaveLength(2)
+  })
+
+  it('a taken id raises P2002, a missing household P2003, a bad role and a missing column throw', async () => {
+    // Given one invite
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+
+    // Then each broken write is refused
+    await expect(
+      fake.client.householdInvite.create({ data: inviteData({ token: 'token_9' }) }),
+    ).rejects.toMatchObject({ code: 'P2002', constraint: 'HouseholdInvite_pkey' })
+    await expect(
+      fake.client.householdInvite.create({
+        data: inviteData({ id: 'inv_9', token: 'token_9', householdId: 'household_none' }),
+      }),
+    ).rejects.toBeInstanceOf(HouseholdFakeForeignKeyError)
+    await expect(
+      fake.client.householdInvite.create({
+        data: inviteData({ id: 'inv_9', token: 'token_9', householdRole: 'organizer' }),
+      }),
+    ).rejects.toBeInstanceOf(InvalidRoleError)
+    await expect(
+      fake.client.householdInvite.create({
+        data: inviteData({ id: 'inv_9', token: 'token_9', expiresAt: undefined }),
+      }),
+    ).rejects.toBeInstanceOf(HouseholdFakeMissingColumnError)
+  })
+
+  it('findUnique finds by id and by token, and needs exactly one of them', async () => {
+    // Given two invites
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+    await fake.client.householdInvite.create({ data: inviteData({ id: 'inv_2', token: 'token_2' }) })
+
+    // When each is read by one unique key
+    const byId = await fake.client.householdInvite.findUnique({ where: { id: 'inv_2' } })
+    const byToken = await fake.client.householdInvite.findUnique({ where: { token: 'token_1' } })
+    const none = await fake.client.householdInvite.findUnique({ where: { token: 'token_none' } })
+
+    // Then the right row comes back, and nothing for a token no row holds
+    expect(byId?.token).toBe('token_2')
+    expect(byToken?.id).toBe('inv_1')
+    expect(none).toBeNull()
+
+    // And a where with no unique key, or both, throws
+    await expect(
+      fake.client.householdInvite.findUnique({ where: { householdId: OURS } }),
+    ).rejects.toBeInstanceOf(HouseholdFakeUnsupportedError)
+    await expect(
+      fake.client.householdInvite.findUnique({ where: { id: 'inv_1', token: 'token_1' } }),
+    ).rejects.toBeInstanceOf(HouseholdFakeUnsupportedError)
+  })
+
+  it('findMany filters by householdId, usedAt null and revokedAt null', async () => {
+    // Given an open invite of ours, a used one, a revoked one, and one of theirs
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+    await fake.client.householdInvite.create({
+      data: inviteData({ id: 'inv_used', token: 't_used', usedAt: NOW, usedById: SECOND }),
+    })
+    await fake.client.householdInvite.create({
+      data: inviteData({ id: 'inv_revoked', token: 't_revoked', revokedAt: NOW }),
+    })
+    await fake.client.householdInvite.create({
+      data: inviteData({ id: 'inv_theirs', token: 't_theirs', householdId: THEIRS }),
+    })
+
+    // When the open invites of our household are listed
+    const open = await fake.client.householdInvite.findMany({
+      where: { householdId: OURS, usedAt: null, revokedAt: null },
+    })
+
+    // Then only the open one of ours comes back
+    expect(open.map((i) => i.id)).toEqual(['inv_1'])
+  })
+
+  it('the claim matches an open invite once, and its count says so', async () => {
+    // Given one open invite
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+
+    // When the claim runs twice
+    const first = await fake.client.householdInvite.updateMany({ where: CLAIM_WHERE, data: CLAIM_DATA })
+    const second = await fake.client.householdInvite.updateMany({ where: CLAIM_WHERE, data: CLAIM_DATA })
+
+    // Then the first claims it and the second finds it used
+    expect(first).toEqual({ count: 1 })
+    expect(second).toEqual({ count: 0 })
+    expect(fake.state.householdInvites[0]).toMatchObject({ usedAt: NOW, usedById: SECOND })
+  })
+
+  it('the claim does not match an expired invite, nor one that expires exactly now', async () => {
+    // Given an invite that expired, one that expires now, and one still open
+    const fake = fixture()
+    await fake.client.householdInvite.create({
+      data: inviteData({ id: 'inv_old', token: 't_old', expiresAt: new Date(NOW.getTime() - 1) }),
+    })
+    await fake.client.householdInvite.create({
+      data: inviteData({ id: 'inv_edge', token: 't_edge', expiresAt: NOW }),
+    })
+    await fake.client.householdInvite.create({ data: inviteData() })
+
+    // When each is claimed
+    const counts = []
+    for (const id of ['inv_old', 'inv_edge', 'inv_1']) {
+      counts.push(
+        (
+          await fake.client.householdInvite.updateMany({
+            where: { ...CLAIM_WHERE, id },
+            data: CLAIM_DATA,
+          })
+        ).count,
+      )
+    }
+
+    // Then only the open one is claimed: `gt` is strict, as in SQL
+    expect(counts).toEqual([0, 0, 1])
+  })
+
+  it('the claim does not match a revoked invite', async () => {
+    // Given a revoked invite
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData({ revokedAt: NOW }) })
+
+    // When it is claimed
+    const result = await fake.client.householdInvite.updateMany({
+      where: CLAIM_WHERE,
+      data: CLAIM_DATA,
+    })
+
+    // Then nothing is claimed and the invite is unchanged
+    expect(result).toEqual({ count: 0 })
+    expect(fake.state.householdInvites[0]?.usedAt).toBeNull()
+  })
+
+  it('throws on a where key or filter shape it does not model, even on an empty store', async () => {
+    // Given an EMPTY invite store
+    const fake = fixture()
+
+    // Then an unknown key, and expiresAt with an operator it does not model, each throw
+    await expect(
+      fake.client.householdInvite.findMany({ where: { usedById: CALLER } }),
+    ).rejects.toBeInstanceOf(UnknownWhereKeyError)
+    await expect(
+      fake.client.householdInvite.updateMany({
+        where: { id: 'inv_1', expiresAt: { gte: NOW } },
+        data: CLAIM_DATA,
+      }),
+    ).rejects.toBeInstanceOf(UnsupportedWhereFilterError)
+    await expect(
+      fake.client.householdInvite.findMany({ where: { usedAt: { not: null } } }),
+    ).rejects.toBeInstanceOf(UnsupportedWhereFilterError)
+  })
+
+  it('filters by createdById, for the revoke on removal (owner decision O20)', async () => {
+    // Given one invite made by CALLER and one by SECOND
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+    await fake.client.householdInvite.create({
+      data: inviteData({ id: 'inv_2', token: 'token_2', createdById: SECOND }),
+    })
+
+    // When the invites CALLER made are revoked
+    const result = await fake.client.householdInvite.updateMany({
+      where: { householdId: OURS, createdById: CALLER, usedAt: null, revokedAt: null },
+      data: { revokedAt: NOW },
+    })
+
+    // Then only CALLER's is revoked
+    expect(result).toEqual({ count: 1 })
+    expect(fake.state.householdInvites.map((i) => [i.id, i.revokedAt])).toEqual([
+      ['inv_1', NOW],
+      ['inv_2', null],
+    ])
+  })
+
+  it('returns copies, locationRoles included', async () => {
+    // Given one invite
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+
+    // When a returned row and its location roles are changed
+    const read = await fake.client.householdInvite.findUnique({ where: { id: 'inv_1' } })
+    if (!read) throw new Error('the invite was not found')
+    read.token = 'changed'
+    ;(read.locationRoles as Array<{ role: string }>)[0]!.role = 'organizer'
+
+    // Then the store is unchanged
+    expect(fake.state.householdInvites[0]?.token).toBe('token_1')
+    expect(fake.state.householdInvites[0]?.locationRoles).toEqual([
+      { locationId: KITCHEN, role: 'viewer' },
+    ])
+  })
+
+  it('a claim inside a transaction that throws is rolled back', async () => {
+    // Given one open invite, and the fake's state registered with runInTransaction
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+
+    // When a transaction claims it and then throws
+    await expect(
+      runInTransaction([fake.state as unknown as Record<string, unknown>], fake.client, async () => {
+        await fake.client.householdInvite.updateMany({ where: CLAIM_WHERE, data: CLAIM_DATA })
+        throw new Error('later step failed')
+      }),
+    ).rejects.toThrow('later step failed')
+
+    // Then the invite is open again
+    expect(fake.state.householdInvites[0]?.usedAt).toBeNull()
+    expect(fake.state.householdInvites[0]?.usedById).toBeNull()
+  })
+
+  it('reset empties the invite store', async () => {
+    // Given one invite
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+
+    // When the fake is reset
+    fake.reset()
+
+    // Then no invite is left
+    expect(fake.state.householdInvites).toHaveLength(0)
+  })
+})
+
+describe('householdFake filters invites by householdRole (owner decision O15)', () => {
+  it('a role value or { in } keeps only those invites, in findMany and updateMany', async () => {
+    // Given a member invite and a manager invite in one household
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+    await fake.client.householdInvite.create({
+      data: inviteData({ id: 'inv_mgr', token: 't_mgr', householdRole: 'manager' }),
+    })
+
+    // When the member invites are listed, and both kinds by { in }
+    const members = await fake.client.householdInvite.findMany({
+      where: { householdId: OURS, householdRole: 'member' },
+    })
+    const both = await fake.client.householdInvite.findMany({
+      where: { householdRole: { in: ['member', 'manager'] } },
+    })
+    // And a manager's revoke (member invites only) is aimed at the manager invite
+    const revoked = await fake.client.householdInvite.updateMany({
+      where: { id: 'inv_mgr', householdRole: 'member', revokedAt: null },
+      data: { revokedAt: NOW },
+    })
+
+    // Then only the member invite is listed, both by { in }, and the revoke touches nothing
+    expect(members.map((i) => i.id)).toEqual(['inv_1'])
+    expect(both.map((i) => i.id).sort()).toEqual(['inv_1', 'inv_mgr'])
+    expect(revoked).toEqual({ count: 0 })
+    expect(fake.state.householdInvites.find((i) => i.id === 'inv_mgr')?.revokedAt).toBeNull()
+  })
+
+  it('a role outside the household enum throws', async () => {
+    const fake = fixture()
+    await expect(
+      fake.client.householdInvite.findMany({ where: { householdRole: 'viewer' } }),
+    ).rejects.toBeInstanceOf(InvalidRoleError)
+  })
+})
+
+describe('householdFake applies select on invites (households H5b, review of G.3)', () => {
+  // Before this, `select` was accepted and IGNORED, so a test got the token
+  // back from a read that, in Prisma, would not return it.
+  it('findUnique and findMany return only the selected columns', async () => {
+    // Given one invite
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+
+    // When it is read with a select that leaves out the token
+    const one = await fake.client.householdInvite.findUnique({
+      where: { token: 'token_1' },
+      select: { householdId: true, expiresAt: true },
+    })
+    const many = await fake.client.householdInvite.findMany({
+      where: { householdId: OURS },
+      select: { id: true, token: false },
+    })
+
+    // Then only those keys come back, and `false` leaves a key out
+    expect(one).toEqual({ householdId: OURS, expiresAt: LATER })
+    expect(many).toEqual([{ id: 'inv_1' }])
+  })
+
+  it('create applies select too', async () => {
+    const fake = fixture()
+    const row = await fake.client.householdInvite.create({
+      data: inviteData(),
+      select: { id: true },
+    })
+    expect(row).toEqual({ id: 'inv_1' })
+    // And the whole row is stored
+    expect(fake.state.householdInvites[0]?.token).toBe('token_1')
+  })
+
+  it('a selected copy is a copy', async () => {
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+    const one = await fake.client.householdInvite.findUnique({
+      where: { id: 'inv_1' },
+      select: { locationRoles: true },
+    })
+    ;(one?.locationRoles as unknown[]).push('changed')
+    expect(fake.state.householdInvites[0]?.locationRoles).toEqual([
+      { locationId: KITCHEN, role: 'viewer' },
+    ])
+  })
+
+  it('throws on a select key it does not model, such as a relation', async () => {
+    const fake = fixture()
+    await fake.client.householdInvite.create({ data: inviteData() })
+    await expect(
+      fake.client.householdInvite.findMany({ select: { household: true } }),
+    ).rejects.toBeInstanceOf(HouseholdFakeUnsupportedError)
+    await expect(
+      fake.client.householdInvite.findUnique({ where: { id: 'inv_1' }, select: { nope: true } }),
+    ).rejects.toBeInstanceOf(HouseholdFakeUnsupportedError)
+  })
+})
+
+describe('householdFake: household.deleteMany and the "is it empty" where (households H5b, decision T21)', () => {
+  // OURS has two members (caller, second) and two locations. THEIRS has one
+  // member (stranger) and one location, SHED. Each test puts ONE row into
+  // `contents` and asks the empty check about THEIRS, so the answer depends
+  // on that one key.
+  function emptyContents(): HouseholdContents {
+    return {
+      items: [],
+      tags: [],
+      tagTypes: [],
+      vendors: [],
+      recipes: [],
+      shelves: [],
+      itemStocks: [],
+      inventoryLogs: [],
+      carts: [],
+      cartItems: [],
+    }
+  }
+
+  function withContents(c: HouseholdContents) {
+    return createHouseholdFake({
+      households: [household(OURS, CALLER), household(THEIRS, STRANGER)],
+      householdMembers: [
+        member(OURS, CALLER, 'owner'),
+        member(OURS, SECOND, 'manager'),
+        member(THEIRS, STRANGER, 'owner'),
+      ],
+      locationMembers: [
+        locMember(KITCHEN, CALLER, 'organizer'),
+        locMember(SHED, STRANGER, 'organizer'),
+      ],
+      householdInvites: [],
+      locations: () => LOCATIONS,
+      contents: () => c,
+    })
+  }
+
+  async function idsWhere(fake: ReturnType<typeof withContents>, where: Record<string, unknown>) {
+    return (await fake.client.household.findMany({ where })).map((h) => h.id).sort()
+  }
+
+  it("members: { every: { userId } } is true only when that person is the only member", async () => {
+    const fake = withContents(emptyContents())
+    expect(await idsWhere(fake, { members: { every: { userId: STRANGER } } })).toEqual([THEIRS])
+    expect(await idsWhere(fake, { members: { every: { userId: CALLER } } })).toEqual([])
+  })
+
+  for (const key of ['items', 'tags', 'tagTypes', 'vendors', 'recipes', 'shelves'] as const) {
+    it(`${key}: { none: {} } is false for a household with one such row`, async () => {
+      const c = emptyContents()
+      c[key] = [{ householdId: THEIRS }]
+      const fake = withContents(c)
+      expect(await idsWhere(fake, { [key]: { none: {} } })).toEqual([OURS])
+    })
+  }
+
+  it('locations.every.itemStocks none is false for a stock row at one of its locations', async () => {
+    const c = emptyContents()
+    c.itemStocks = [{ locationId: SHED }]
+    const fake = withContents(c)
+    expect(await idsWhere(fake, { locations: { every: { itemStocks: { none: {} } } } })).toEqual([
+      OURS,
+    ])
+  })
+
+  it('locations.every.inventoryLogs none is false for a log at one of its locations', async () => {
+    const c = emptyContents()
+    c.inventoryLogs = [{ locationId: SHED }]
+    const fake = withContents(c)
+    expect(
+      await idsWhere(fake, { locations: { every: { inventoryLogs: { none: {} } } } }),
+    ).toEqual([OURS])
+  })
+
+  it('locations.every.carts.every.items none: an empty cart passes, a cart with a row does not', async () => {
+    const c = emptyContents()
+    c.carts = [
+      { id: 'cart-empty', locationId: KITCHEN },
+      { id: 'cart-full', locationId: SHED },
+    ]
+    c.cartItems = [{ cartId: 'cart-full' }]
+    const fake = withContents(c)
+    const where = { locations: { every: { carts: { every: { items: { none: {} } } } } } }
+    expect(await idsWhere(fake, where)).toEqual([OURS])
+  })
+
+  it('a household with no locations passes locations.every (Prisma: every of nothing is true)', async () => {
+    const c = emptyContents()
+    c.itemStocks = [{ locationId: SHED }]
+    const fake = createHouseholdFake({
+      households: [household(THEIRS, STRANGER)],
+      householdMembers: [member(THEIRS, STRANGER, 'owner')],
+      locations: () => [],
+      contents: () => c,
+    })
+    expect(
+      (await fake.client.household.findMany({
+        where: { locations: { every: { itemStocks: { none: {} } } } },
+      })).map((h) => h.id),
+    ).toEqual([THEIRS])
+  })
+
+  it('throws on a shape it does not model, even on an EMPTY store', async () => {
+    const empty = createHouseholdFake({ locations: () => [], contents: () => emptyContents() })
+    const bad: Record<string, unknown>[] = [
+      { items: { some: {} } },
+      { items: { none: { name: 'x' } } },
+      { members: { none: {} } },
+      { locations: { some: {} } },
+      { locations: { every: { members: { none: {} } } } },
+      { locations: { every: { carts: { none: {} } } } },
+      { locations: { every: { carts: { every: { lastPurchasedAt: null } } } } },
+      { invites: { none: {} } },
+    ]
+    for (const where of bad) {
+      await expect(empty.client.household.deleteMany({ where })).rejects.toBeInstanceOf(
+        Error,
+      )
+      await expect(empty.client.household.findMany({ where })).rejects.toThrow(
+        /does not model|models '/,
+      )
+    }
+  })
+
+  it('an "is it empty" key on a fake built with no contents throws, even on an EMPTY store', async () => {
+    const fake = createHouseholdFake({ locations: () => [] })
+    await expect(
+      fake.client.household.deleteMany({ where: { items: { none: {} } } }),
+    ).rejects.toBeInstanceOf(HouseholdFakeUnsupportedError)
+    await expect(
+      fake.client.household.deleteMany({ where: { locations: { every: {} } } }),
+    ).rejects.toBeInstanceOf(HouseholdFakeUnsupportedError)
+  })
+
+  it('deleteMany deletes the matching households with their members, invites and location roles, and returns a count', async () => {
+    const fake = withContents(emptyContents())
+    fake.state.householdInvites.push({
+      id: 'inv-theirs',
+      householdId: THEIRS,
+      token: 't',
+      householdRole: 'member',
+      locationRoles: [],
+      createdById: STRANGER,
+      createdAt: T0,
+      expiresAt: T0,
+      usedAt: null,
+      usedById: null,
+      revokedAt: null,
+    })
+
+    const result = await fake.client.household.deleteMany({
+      where: { id: { in: [THEIRS] }, members: { every: { userId: STRANGER } } },
+    })
+
+    expect(result).toEqual({ count: 1 })
+    expect(fake.state.households.map((h) => h.id)).toEqual([OURS])
+    expect(fake.state.householdMembers.map((m) => m.householdId)).toEqual([OURS, OURS])
+    expect(fake.state.householdInvites).toEqual([])
+    expect(fake.state.locationMembers.map((m) => m.locationId)).toEqual([KITCHEN])
+  })
+
+  it('deleteMany that matches nothing changes nothing', async () => {
+    const fake = withContents(emptyContents())
+    const result = await fake.client.household.deleteMany({
+      where: { id: { in: [OURS] }, members: { every: { userId: CALLER } } },
+    })
+    expect(result).toEqual({ count: 0 })
+    expect(fake.state.households).toHaveLength(2)
+    expect(fake.state.householdMembers).toHaveLength(3)
+  })
+})
+
+describe('householdFake: household.updateMany (households H5b, task G.4)', () => {
+  it('updates the matching households only, moves updatedAt, and returns a count', async () => {
+    const fake = fixture()
+    const result = await fake.client.household.updateMany({
+      where: { id: OURS },
+      data: { updatedAt: new Date('2026-11-18T00:00:00.000Z') },
+    })
+    expect(result).toEqual({ count: 1 })
+    const [ours, theirs] = fake.state.households
+    expect(ours?.updatedAt.getTime()).not.toBe(T0.getTime())
+    expect(theirs?.updatedAt).toEqual(T0)
+  })
+
+  it('returns count 0, and throws nothing, when no row matches', async () => {
+    const fake = fixture()
+    await expect(
+      fake.client.household.updateMany({ where: { id: 'nobody' }, data: { updatedAt: T0 } }),
+    ).resolves.toEqual({ count: 0 })
+  })
+
+  it('throws on a where key it does not model, even on an EMPTY store', async () => {
+    const fake = createHouseholdFake()
+    await expect(
+      fake.client.household.updateMany({ where: { name: 'x' }, data: { updatedAt: T0 } }),
+    ).rejects.toBeInstanceOf(UnknownWhereKeyError)
   })
 })

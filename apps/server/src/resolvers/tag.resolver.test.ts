@@ -6,8 +6,9 @@ import type { Context } from '../context.js'
 
 // ─── Mock Prisma ─────────────────────────────────────────────────────────────
 
-// `householdMember` answers the two reads `requireCatalogRole` (lib/authz.ts)
-// and `requireHousehold` make: every caller here is the `owner` of `hh_test`.
+// `user.findUnique` and `householdMember.findUnique` answer the two reads
+// `requireCatalogRole` (lib/authz.ts) and `requireHousehold` make: every
+// caller here is the `owner` of `hh_test`.
 // The role checks themselves are tested with three people in
 // `catalog-household.resolver.test.ts`.
 //
@@ -21,8 +22,12 @@ vi.mock('../lib/prisma.js', () => ({
       const { prisma } = await import('../lib/prisma.js')
       return fn(prisma)
     }),
+    // `ensureHousehold` (via `requireHousehold`) reads the caller's household
+    // through their `User` row (decision T14 of the H5b plan).
+    user: {
+      findUnique: vi.fn(async () => ({ activeHouseholdId: null, householdMemberships: [{ householdId: 'hh_test' }] })),
+    },
     householdMember: {
-      findFirst: vi.fn(async () => ({ householdId: 'hh_test' })),
       findUnique: vi.fn(async () => ({ role: 'owner' })),
     },
     tagType: {

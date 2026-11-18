@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { importCloudData } from '@/lib/importData'
@@ -73,6 +73,23 @@ vi.mock('@/hooks/useLocations', async (importOriginal) => {
   return { ...actual, useLocations: () => ({ data: [] }) }
 })
 
+// The household a stored copy goes into (owner decision O22-A). The copy
+// asks "Copy your offline data into Our Home?" first, so the test presses
+// Copy here.
+vi.mock('@/hooks/useHousehold', () => ({
+  useHousehold: () => ({
+    data: {
+      __typename: 'Household',
+      id: 'hh-1',
+      name: 'Our Home',
+      role: 'owner',
+    },
+    isLoading: false,
+    isError: false,
+    errorCode: undefined,
+  }),
+}))
+
 vi.mock('@/lib/exportData', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/exportData')>()
   return {
@@ -127,8 +144,9 @@ describe('root route in E2E test mode', () => {
     // Given cloud mode, E2E test mode, and a strategy stored by DataModeCard
     localStorage.setItem('migration-strategy', 'clear')
 
-    // When the root route renders
+    // When the root route renders, and the user presses Copy here
     await renderRootInE2ECloudMode()
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy here' }))
 
     // Then PostLoginMigrationDialog is mounted and runs the copy
     await waitFor(() => expect(importCloudData).toHaveBeenCalledTimes(1))

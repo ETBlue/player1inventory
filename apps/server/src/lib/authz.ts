@@ -1,5 +1,5 @@
 import { GraphQLError } from 'graphql'
-import type { HouseholdRole, LocationRole } from '@prisma/client'
+import type { HouseholdRole, LocationRole, Prisma } from '@prisma/client'
 import { parseCartId } from '@p1i/types'
 import { type Context, requireAuth } from '../context.js'
 import { ensureHousehold } from './household.js'
@@ -47,14 +47,22 @@ export function requireHousehold(ctx: Context): Promise<string> {
 /**
  * Refuse unless the caller holds `role` or higher in `householdId`.
  * `owner` > `manager` > `member`. Returns the role the caller holds.
+ *
+ * `db` is the client to read with. Inside an interactive transaction, pass
+ * its `tx` (households H5b task G.5: `setHouseholdRole`, `removeMember`,
+ * `leaveHousehold`). The read then runs on the transaction's own connection,
+ * after its `lockHousehold`. With the global client it would need a SECOND
+ * pool connection while the transaction holds the first, and a small pool
+ * would make the two wait on each other until a timeout.
  */
 export async function requireHouseholdRole(
   ctx: Context,
   householdId: string,
   role: HouseholdRole,
+  db: { householdMember: Prisma.TransactionClient['householdMember'] } = prisma,
 ): Promise<HouseholdRole> {
   const userId = requireAuth(ctx)
-  const membership = await prisma.householdMember.findUnique({
+  const membership = await db.householdMember.findUnique({
     where: { householdId_userId: { householdId, userId } },
     select: { role: true },
   })
@@ -220,9 +228,10 @@ export function locationRolesByLocation(
 }
 
 /**
- * Forget the role caches of this request: `locationRoles`
- * (`locationRolesByLocation`), `organizedLocations`
- * (`locationIdsWithOrganizer`) and, until the old-bundle shim goes,
+ * Forget the role caches of this request: `householdId`
+ * (`requireHousehold`), `locationRoles` (`locationRolesByLocation`),
+ * `organizedLocations` (`locationIdsWithOrganizer`) and, until the old-bundle
+ * shim goes,
  * `firstLocationIds` (`firstLocationIdOf` in resolvers/location.resolver.ts).
  * A create, delete or reorder changes which location is first, so the old
  * bundle's `isDefault` must be read again after one.
@@ -237,12 +246,21 @@ export function locationRolesByLocation(
  * calls it before and after EVERY root `Mutation` field, so a new writer of a
  * role row is covered without remembering to (review of H5 task F.2).
  *
- * `householdId` is NOT forgotten: no resolver moves the caller to another
- * household yet (H5b's join will, and must decide then).
+ * `householdId` IS forgotten, since households H5b (decision T15).
+ * `joinHousehold`, `leaveHousehold`, `removeMember` and `createHousehold`
+ * change which household a person is in. A later root field of the same
+ * mutation must look it up again, not use the household an earlier field
+ * read. The forget before the FIRST field clears an empty cache, so a
+ * one-field mutation still looks the household up once.
+ *
+ * A test that wants a person in two households to act in one of them sets
+ * that person's `User.activeHouseholdId` (decision T14). A household pinned
+ * on `requestCache` does NOT survive a `Mutation` field any more.
  */
 export function forgetLocationRoles(ctx: Context): void {
   const cache = ctx.requestCache
   if (!cache) return
+  delete cache.householdId
   delete cache.locationRoles
   delete cache.organizedLocations
   // OLD-BUNDLE SHIM. Remove with `Location.isDefault`.

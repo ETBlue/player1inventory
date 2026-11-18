@@ -6,9 +6,11 @@ import {
   useRouterState,
 } from '@tanstack/react-router'
 import { useEffect } from 'react'
+import { HouseholdChangeGuard } from '@/apollo/HouseholdChangeGuard'
 import { Layout } from '@/components/global/Layout'
 import { OfflineBanner } from '@/components/global/OfflineBanner'
 import { PostLoginMigrationDialog } from '@/components/global/PostLoginMigrationDialog'
+import { NoHouseholdGate } from '@/components/household/NoHouseholdGate'
 import { Toaster } from '@/components/ui/sonner'
 import { ActiveLocationProvider } from '@/hooks/useActiveLocation'
 import { useDataMode } from '@/hooks/useDataMode'
@@ -31,6 +33,8 @@ export function CloudAuthGuard() {
   const { isSignedIn, isLoaded } = useAuth()
   const navigate = useNavigate()
   const offline = useIsOffline()
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const searchStr = useRouterState({ select: (s) => s.location.searchStr })
 
   useEffect(() => {
     // Do not redirect while offline. Clerk cannot confirm the session
@@ -38,9 +42,20 @@ export function CloudAuthGuard() {
     // The user's cached data is on the device and should stay reachable.
     if (offline) return
     if (isLoaded && !isSignedIn) {
-      navigate({ to: '/sign-in' })
+      // Already there. Navigating again would replace the return path with
+      // the sign-in page's own URL.
+      if (pathname === '/sign-in') return
+      // Come back to this page after sign-in (households H5b, decision
+      // T24). A person who opens an invite link must land on it again, also
+      // after signing UP. `/sign-in` checks the value with
+      // `safeRedirectPath`, because anyone can write it into a URL.
+      const redirect = pathname + searchStr
+      navigate({
+        to: '/sign-in',
+        search: redirect === '/' ? {} : { redirect },
+      })
     }
-  }, [isLoaded, isSignedIn, navigate, offline])
+  }, [isLoaded, isSignedIn, navigate, offline, pathname, searchStr])
 
   return null
 }
@@ -111,9 +126,24 @@ function RootComponent() {
         contained.
       */}
       {mode === 'cloud' && <PostLoginMigrationDialog />}
+      {/*
+        HouseholdChangeGuard mounts in E2E test mode too, beside the dialog
+        above: it calls no Clerk hook. When the server answers a different
+        household (a join, a leave, a removal), it clears the cache and
+        reloads (households H5b, decision T23).
+      */}
+      {mode === 'cloud' && <HouseholdChangeGuard />}
       <Layout>
         {mode === 'cloud' && <OfflineBanner />}
-        <Outlet />
+        {/*
+          In cloud mode, a person in NO household (after a leave or a
+          removal) sees the no-household screen instead of the page
+          (households H5b, task G.8). Not on `/join/…` or `/sign-in`. The
+          gate does nothing in local mode.
+        */}
+        <NoHouseholdGate>
+          <Outlet />
+        </NoHouseholdGate>
       </Layout>
       <Toaster />
       {/* <TanStackRouterDevtools /> */}

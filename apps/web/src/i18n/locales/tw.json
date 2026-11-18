@@ -491,6 +491,44 @@
         "forbiddenError": "只有家庭擁有者可以修改家庭名稱。",
         "invalidError": "請輸入 1 到 {{max}} 個字的名稱。",
         "saveError": "無法儲存家庭名稱，請再試一次。"
+      },
+      "members": {
+        "title": "成員",
+        "description": "家庭成員與邀請",
+        "you": "（你）",
+        "roleLabel": "{{name}} 的家庭角色",
+        "invite": "邀請成員",
+        "inviteRole": "家庭角色",
+        "inviteLocations": "據點角色",
+        "createLink": "建立邀請連結",
+        "linkLabel": "邀請連結",
+        "copyLink": "複製連結",
+        "copied": "已複製連結",
+        "copyFailed": "無法複製，請自行選取連結並複製。",
+        "linkNote": "任何拿到這個連結的人都可以加入一次，期限到 {{date}}。",
+        "openInvites": "尚未使用的邀請",
+        "noInvites": "目前沒有尚未使用的邀請。",
+        "createdBy": "由 {{name}} 建立",
+        "expires": "有效期限：{{date}}",
+        "noLocationRoles": "沒有據點角色",
+        "revoke": "撤銷",
+        "revokeConfirm": "要撤銷這個邀請嗎？連結將無法再使用。",
+        "revoked": "已撤銷邀請",
+        "remove": "移除",
+        "removeLabel": "移除 {{name}}",
+        "removeConfirm": "要把 {{name}} 移出這個家庭嗎？他會失去所有據點的權限。",
+        "removeConfirmManager": "其他人建立的尚未使用的邀請仍然有效。如果對方可能複製過其中的連結，請撤銷該邀請。",
+        "leave": "離開家庭",
+        "leaveConfirm": "要離開這個家庭嗎？你會失去所有據點的權限。",
+        "ownerCannotLeave": "擁有者不能離開。轉讓家庭的功能之後才會有。",
+        "alone": "這個家庭只有你一個人。如果這個家庭沒有任何資料，而你用邀請加入另一個家庭，這個家庭會被刪除。",
+        "loadError": "無法讀取成員，請再試一次。",
+        "error": "無法儲存變更，請再試一次。",
+        "leaving": "離開中…",
+        "removing": "移除中…",
+        "invitesLoadError": "無法讀取尚未使用的邀請，請再試一次。",
+        "locationsLoadError": "無法讀取據點，請再試一次。",
+        "noLocations": "這個家庭還沒有任何據點。"
       }
     },
     "user": {
@@ -715,7 +753,14 @@
       "errorTitle": "複製失敗",
       "errorForbidden": "本機資料裡有些資料屬於別的家庭，所以複製被拒絕了，沒有複製任何資料，您的本機資料沒有變動",
       "errorRole": "只有家庭擁有者或管理者可以把資料複製進家庭，所以複製被拒絕了，沒有複製任何資料，您的本機資料沒有變動",
-      "errorOther": "複製失敗：{{message}}"
+      "errorOther": "複製失敗：{{message}}",
+      "confirmTitle": "要把離線資料複製到 {{household}} 嗎？",
+      "confirmDescription": "這台裝置上的資料會複製一份到這個家庭，裝置上的資料不會變動。",
+      "confirmShared": "這個家庭是共用的，而且你不是擁有者。家庭裡的其他人會看到這些資料。",
+      "copyHere": "複製到這裡",
+      "dontCopy": "不要複製",
+      "cannotCopyMember": "只有這個家庭的擁有者或管理者可以把資料複製進來。這台裝置上的資料不會變動。",
+      "cannotCopyClear": "只有這個家庭的擁有者可以清除它並把資料複製進來。這台裝置上的資料不會變動。"
     },
     "export": {
       "label": "下載我的資料",
@@ -909,6 +954,11 @@
       "organizer": "據點王",
       "participant": "搬運工",
       "viewer": "圍觀的"
+    },
+    "household": {
+      "owner": "擁有者",
+      "manager": "管理者",
+      "member": "成員"
     }
   },
   "pwa": {
@@ -922,5 +972,29 @@
   "noLocations": {
     "title": "你在這個家庭還沒有據點。",
     "create": "建立據點"
+  },
+  "join": {
+    "heading": "加入家庭",
+    "title": "加入 {{household}}",
+    "invitedBy": "{{name}} 邀請了你。",
+    "yourRoles": "你的角色",
+    "join": "加入",
+    "alreadyMember": "你已經在這個家庭裡了。",
+    "invalid": "這個邀請已經失效，請再要一個新的。",
+    "needsCloud": "加入家庭需要使用雲端同步。這台裝置上的資料會留在這裡，不會被複製。",
+    "signIn": "登入以加入",
+    "error": "無法加入，請再試一次。",
+    "loadError": "無法讀取這個邀請，請再試一次。"
+  },
+  "noHousehold": {
+    "title": "你目前不在任何家庭裡。",
+    "create": "建立家庭",
+    "nameLabel": "家庭名稱",
+    "nameHint": "留空就會使用預設名稱。",
+    "error": "無法建立家庭，請再試一次。",
+    "useLocalMode": "切換至離線模式",
+    "useLocalModeHint": "資料僅儲存在此裝置上，你仍會保持登入。",
+    "signInToAnotherAccount": "登入其他帳號",
+    "signOutError": "無法登出，請再試一次。"
   }
 }

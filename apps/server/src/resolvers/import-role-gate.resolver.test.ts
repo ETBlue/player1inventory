@@ -32,9 +32,9 @@ import type { InventoryLogFake } from '../test/inventoryLogFake.js'
 // ALICE is in TWO households, and holds a write role in both. With one
 // household, "the caller's household", "the target household" and "the
 // location's household" are the same answer, so a check against the wrong
-// one passes (issue #381). The target is pinned through
-// `ctx.requestCache.householdId`, because `ensureHousehold` picks one of two
-// households in no fixed order.
+// one passes (issue #381). The target is the caller's active household
+// (`User.activeHouseholdId`, decision T14 of the H5b plan), set by `run`.
+// Without it, `ensureHousehold` picks the oldest membership.
 //
 // MIA organizes LOC_A but is only a household `member`. Decision O7: a member
 // who organizes a location still may not import. So MIA would pass every
@@ -243,6 +243,14 @@ function seed() {
       locationMemberRow(LOC_C, STRANGER, 'organizer'),
     ],
   })
+  // Every person's `User` row, with an active household (decision T14 of the
+  // H5b plan). `run` sets it again for the household each call targets, so
+  // a call that targets the same household changes nothing in the store, and
+  // a "nothing is written" snapshot stays exact.
+  world.setActiveHousehold(ALICE, HH_A)
+  world.setActiveHousehold(MIA, HH_A)
+  world.setActiveHousehold('user_bob', HH_B)
+  world.setActiveHousehold(STRANGER, HH_C)
   S.items.reset([
     { id: ITEM_A, householdId: HH_A, name: 'Milk' },
     { id: ITEM_B, householdId: HH_B, name: 'Tea' },
@@ -269,9 +277,15 @@ function snapshot(): string {
 
 const server = new ApolloServer<Context>({ typeDefs, resolvers })
 
-/** Run as `userId`, with the target household pinned (H4 plan rule 16). */
+/**
+ * Run as `userId`, with the target household chosen (H4 plan rule 16). Since
+ * H5b the choice is the person's active household (decision T14): a household
+ * pinned on `requestCache` is forgotten before every `Mutation` field
+ * (decision T15).
+ */
 async function run(query: string, variables: Record<string, unknown>, userId: string, householdId: string) {
-  const contextValue: Context = { userId, requestCache: { householdId: Promise.resolve(householdId) } }
+  world.setActiveHousehold(userId, householdId)
+  const contextValue: Context = { userId }
   const res = await server.executeOperation({ query, variables }, { contextValue })
   if (res.body.kind !== 'single') throw new Error('expected a single result')
   return res.body.singleResult

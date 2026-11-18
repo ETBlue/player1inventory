@@ -1,12 +1,13 @@
-import type { APIRequestContext } from '@playwright/test'
+import type { APIRequestContext, Page } from '@playwright/test'
 import { CLOUD_SERVER_URL, E2E_USER_ID } from '../constants'
 
 /**
  * Every model `/e2e/cleanup` deletes, in the order the route deletes them
  * (apps/server/src/lib/e2eCleanup.ts). The route returns one count per key
- * under `deleted`. 18 models (15 until households H3a task 3.10 added
- * `locationMembers`, `householdMembers` and `households`); `users` is the
- * `User` row itself, deleted last.
+ * under `deleted`. 19 models (15 until households H3a task 3.10 added
+ * `locationMembers`, `householdMembers` and `households`, 18 until households
+ * H5b task G.6 added `householdInvites`); `users` is the `User` row itself,
+ * deleted last.
  *
  * This list is the contract between the route and the tests. A model dropped
  * from the route's `$transaction` loses its key there, and `cleanupCloudData`
@@ -32,6 +33,7 @@ export const CLEANUP_MODEL_KEYS = [
   'shelves',
   'locationMembers',
   'locations',
+  'householdInvites',
   'householdMembers',
   'households',
   'users',
@@ -119,4 +121,43 @@ export async function cleanupCloudData(
     ok: body.ok === true,
     deleted: deleted as Record<CleanupModelKey, number>,
   }
+}
+
+/**
+ * The `localStorage` key where the app keeps the household id it showed last.
+ * The same string as `LAST_HOUSEHOLD_ID_KEY` in
+ * apps/web/src/apollo/householdGuard.ts. `e2e/` does not import app code, so
+ * the value is written here again.
+ */
+export const LAST_HOUSEHOLD_ID_KEY = 'last-household-id'
+
+/**
+ * Make the open page forget the household that `cleanupCloudData` just
+ * deleted. Call it right after a `cleanupCloudData` that runs in the MIDDLE of
+ * a test, when the page has already shown the app (households H5b).
+ *
+ * WHY. `/e2e/cleanup` deletes the user's household. The next GraphQL request
+ * creates a new one with a NEW id. But the browser still holds the old id in
+ * `last-household-id`. On the next page load `HouseholdChangeGuard`
+ * (apps/web/src/apollo/HouseholdChangeGuard.tsx) sees the server answer a
+ * different household, clears the cache and RELOADS the page. That is right
+ * for a real person who joined or left a household. In a test it reloads the
+ * page about one second after it opens, and whatever the test started in that
+ * second is lost. Measured on 2026-11-18: the reload came after
+ * `triggerImport`, so the import never ran and "Import complete." never
+ * showed. In another test it closed the location menu the test had opened.
+ *
+ * A real person cannot get here: nothing in the app deletes their household
+ * and gives them a new one. So the test removes the stale id, which is what a
+ * fresh browser has. The guard then stores the new id on the next load and
+ * does not reload.
+ *
+ * The page must be on the app's origin, because `localStorage` belongs to the
+ * origin. It keeps every other key, `active-location-id:cloud` included.
+ */
+export async function forgetDeletedHousehold(page: Page): Promise<void> {
+  await page.evaluate(
+    (key) => localStorage.removeItem(key),
+    LAST_HOUSEHOLD_ID_KEY,
+  )
 }

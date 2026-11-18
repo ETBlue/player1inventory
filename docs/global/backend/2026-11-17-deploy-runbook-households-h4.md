@@ -222,8 +222,9 @@ out with H3a, use the H3a runbook's rollback, which covers both.
 
 ## 8. Households H5a (roles in the web, read-only views, empty households)
 
-Added 2026-11-17 by H5 task F.9. **H5a is built on `feature/households-h5` and waits for its
-PR. It is not merged and not deployed.** Plan:
+Added 2026-11-17 by H5 task F.9. **H5a is merged into `develop` (#384, merge `4307d30a`,
+2026-11-18). It is not deployed.** (Until 2026-11-18 this line said "built on
+`feature/households-h5` and waits for its PR".) Plan:
 [`../permissions/2026-11-17-households-plan-h5.md`](../permissions/2026-11-17-households-plan-h5.md),
 *Deploy notes*.
 
@@ -343,6 +344,218 @@ its `delete` in `forgetLocationRoles` (`lib/authz.ts`); `CheckoutItemInput.itemI
    test household, not a real one). Pantry shows "You have no locations in this household
    yet" and **Create a location**. Create one; the pantry comes back.
 3. Create a vendor. It must work, with a location and in an empty household.
+
+## 9. Households H5b (invites, join, members, the no-household screen)
+
+Added 2026-11-18 by H5b task G.11. **H5b is built on `feature/households-h5b`. It is not
+merged and not deployed.** Plan:
+[`../permissions/2026-11-18-households-plan-h5b.md`](../permissions/2026-11-18-households-plan-h5b.md),
+*Deploy notes* and *Known gaps*.
+
+**Nobody runs SQL while writing this section.** Every result below is `TBD`.
+
+### 9.1 What changes
+
+| Part | What is new |
+|---|---|
+| Database | **one migration**, `20261118000000_add_household_invites`. It adds the table `HouseholdInvite` and the nullable column `User.activeHouseholdId`. Additive only: no row is changed, nothing is dropped, no backfill |
+| Server env, web build env | nothing new |
+| Clerk | no new setting, but one check (9.4): the return to `/join/<token>` after sign-in and after sign-up |
+| GraphQL schema | 3 new queries (`householdInvites`, `invitePreview`, `householdMembers`) and 7 new mutations (`createInvite`, `revokeInvite`, `joinHousehold`, `setHouseholdRole`, `removeMember`, `leaveHousehold`, `createHousehold`). No field, argument or input field is removed or changed. `oldBundleCompat.test.ts` still passes with the same list of known changes (in `pnpm test`, 2026-11-18) |
+| Server behaviour | a person in two households acts in one, by a fixed rule: `User.activeHouseholdId` while they are still a member there, else the oldest membership (decision T14). A person who left or was removed, with no other household, gets `NO_HOUSEHOLD` |
+| Web behaviour | the join page `/join/$token`, the sign-in return path (`/sign-in?redirect=`), the Members page `/settings/household/members` (cloud only), the no-household screen, and a guard that clears the Apollo cache when the household changes |
+
+### 9.2 The migration deploys with the server
+
+The migration runs in Railway's release command, like every other one. In the households
+release it is the **fourth** migration. So two numbers in the earlier runbooks are now one
+too low:
+
+| Runbook step | It says | With H5b in the release |
+|---|---|---|
+| H3b runbook 3.1 (the pending list) | exactly three pending migrations | **exactly four**: `20261104000000_add_households`, `20261111000000_drop_user_scope`, `20261114000000_shared_carts`, `20261118000000_add_household_invites`. If it lists more, stop and find out why |
+| H3b runbook 4.2 (the release log) | three `Applying migration` lines | **four** lines, the fourth `Applying migration \`20261118000000_add_household_invites\`` |
+| H3b runbook 5, check 1 | H3a 5 query 1 with `LIMIT 4` | `LIMIT 5`: all four new migrations have `finished_at` and no `rolled_back_at` |
+
+H3c-1, H3c-2, H4 and H5a have no migration, so they add nothing to these lists.
+
+The test database is already migrated. The main session ran `verify-migration.ts` on it on
+2026-11-18, with the owner's consent (plan, *Status*, task G.1: exit 0, 213 `ok —` lines,
+0 `FAIL:`). That proves the migration on a database built from the committed history. It
+does NOT prove it on production data. That is 9.3.
+
+### 9.3 Rehearse on a FRESH Neon branch of production
+
+**Main session, with the owner's consent.** Do this inside the release rehearsal of the H3a
+and H3b runbooks (section 3 of each), on the same fresh branch, in the same run. Each
+rehearsal writes to its branch, so a branch that was used once cannot rehearse again.
+
+- **Only `prisma migrate deploy` and read-only SQL.** H5b's migration is additive only, so
+  this is the *Production-data rehearsals* rule in `apps/server/prisma/CLAUDE.md`.
+- **Never run `verify:migration` (`scripts/verify-migration.ts`) against a copy of
+  production.** It resets its target. Its guard refuses the `PROD_COPY_*` variables, but do
+  not rely on the guard.
+- **Prove the env override first** (H3a runbook 3.1): `prisma migrate status` with and
+  without the override must report different hosts. Never paste a host or a connection
+  string anywhere.
+
+After all four migrations are applied, run these on the rehearsal branch. All are
+read-only.
+
+```sql
+-- H5b-1. The new column exists and is empty on every row.
+--        Expect with_active_household = 0.
+SELECT count(*) AS users,
+       count("activeHouseholdId") AS with_active_household
+FROM "User";
+
+-- H5b-2. The new table exists and holds nothing. Expect 0.
+SELECT count(*) AS invites FROM "HouseholdInvite";
+
+-- H5b-3. The four foreign keys and what each does on delete.
+--        Expect exactly four rows:
+--          User_activeHouseholdId_fkey        n  (SET NULL)
+--          HouseholdInvite_householdId_fkey   c  (CASCADE)
+--          HouseholdInvite_createdById_fkey   r  (RESTRICT)
+--          HouseholdInvite_usedById_fkey      n  (SET NULL)
+SELECT conname, confdeltype
+FROM pg_constraint
+WHERE conname IN ('User_activeHouseholdId_fkey',
+                  'HouseholdInvite_householdId_fkey',
+                  'HouseholdInvite_createdById_fkey',
+                  'HouseholdInvite_usedById_fkey')
+ORDER BY conname;
+
+-- H5b-4. The three new indexes. Expect three rows; only the token index is UNIQUE.
+SELECT indexname, indexdef
+FROM pg_indexes
+WHERE indexname IN ('HouseholdInvite_token_key',
+                    'HouseholdInvite_householdId_idx',
+                    'User_activeHouseholdId_idx')
+ORDER BY indexname;
+```
+
+| Check | Expected | Result |
+|---|---|---|
+| H5b-1 | `with_active_household` = 0 | `TBD after rehearsal` |
+| H5b-2 | 0 | `TBD after rehearsal` |
+| H5b-3 | four rows, delete rules `n`, `c`, `r`, `n` as listed | `TBD after rehearsal` |
+| H5b-4 | three rows, only `HouseholdInvite_token_key` unique | `TBD after rehearsal` |
+
+**Stop rule:** any other answer means the migration did not apply as written. Do not
+deploy. Find out why with the main session.
+
+### 9.4 The order: server first, then the web
+
+This is already the order of the whole households release (section 8.3). H5b does not
+change it.
+
+- **New web on an old server does not work.** The new bundle sends queries the old server
+  does not have (`invitePreview`, `householdMembers`, `householdInvites`, `createHousehold`
+  and the rest), so the join page, the Members page and the no-household screen fail
+  GraphQL validation.
+- **Old web on the new server works.** `main`'s bundle selects none of the new fields.
+
+### 9.5 Clerk: the return to the invite link
+
+**Owner, in the PRODUCTION Clerk instance, before the web deploy.** A person who opens an
+invite link while signed out goes to `/sign-in?redirect=/join/<token>`. The sign-in page
+passes that same-origin path to Clerk as `forceRedirectUrl` AND `signUpForceRedirectUrl`
+(decision T24). Clerk may refuse a redirect it does not allow.
+
+1. In the Clerk Dashboard, open **Paths** and any list of allowed redirect URLs. Check that a
+   path on the production origin, such as `/join/<token>`, is allowed.
+2. After the deploy, test both ways, with a link from a test household:
+   - **Sign-in:** open the link in a private window, signed out. Sign in with an existing
+     account. The page must come back to `/join/<token>`.
+   - **Sign-up:** open a NEW link in a private window. Sign up as a new account (including
+     any e-mail check Clerk asks for). The page must come back to `/join/<token>`, not to
+     `/`.
+
+If either lands on `/`, the person can still open the link again by hand. Fix the Clerk
+setting; no code change is needed for that.
+
+Result: `TBD on deploy day` (sign-in: back on the link yes/no; sign-up: yes/no).
+
+### 9.6 Manual check on two real devices: invite, join, leave
+
+**Owner, after the web deploy.** Use two real devices (for example a laptop and a phone)
+and two accounts. Use a test household, not the real one.
+
+1. Device A, as the owner: **Settings › Household › Members › Invite someone**. Choose
+   `member`, give one location a role, create the link.
+2. Device B, signed out: open the link. Sign in or sign up. The join page shows the
+   household name, who invited you and your roles. Press **Join**. Device B lands on the
+   pantry of A's household.
+3. Device A: the Members page lists the new person without a reload (live update).
+4. Device B: **Members › Leave household**, and confirm. Device B shows "You are not in any
+   household." and **Create a household**. (If B had another household, B lands there
+   instead.)
+5. Device A: the new person is gone from the list.
+
+Result: `TBD on deploy day`.
+
+### 9.7 Manual check: Copy link where the Clipboard API does not work
+
+**Owner, after the web deploy, or on a local build before it.** The unit tests run in jsdom,
+which cannot show what a real browser copies (review of task G.9). `copyText` uses the
+Clipboard API first, then a hidden text area with `execCommand('copy')`.
+
+1. Make the Clipboard API fail. One of:
+   - open the app over plain `http://` on a phone in the local network (the Clipboard API
+     needs a secure page, and a plain `http://` address on the local network is not one),
+     for example a local production build served with `vite preview --host`; or
+   - block the clipboard permission for the site in the browser settings.
+2. **In the invite dialog:** create a link, press **Copy link**, then paste it into another
+   app. The pasted text must be the full link `<origin>/join/<token>`.
+3. **On an open-invite row:** press **Copy link** on a row in **Open invites**, then paste.
+   The same check.
+4. If copying fails, the page must show the link in a read-only field, selected, with the
+   text "Could not copy. Select the link and copy it yourself."
+
+Result: `TBD` (dialog: pasted yes/no; row: pasted yes/no; browser and device used).
+
+### 9.8 The old-bundle window
+
+`main`'s old bundle never calls the new fields, so it keeps working on the new server
+(9.4). It also has no no-household screen and no Members page.
+
+- **Between the server deploy and the web deploy nobody can invite, join or remove**,
+  because only the new bundle has those screens.
+- **After the web deploy, a device that has not accepted the update yet still runs the old
+  bundle.** If someone on a new bundle removes that person from their only household, the
+  old bundle gets `NO_HOUSEHOLD` on every request. It shows failing pages and no screen
+  that explains why, until the device reloads and takes the new bundle. No data is lost.
+- **An old-bundle device can mix two households after a join.** The old bundle has no
+  `HouseholdChangeGuard`. So when the person joins another household on a new-bundle
+  device, an old-bundle device does not clear its cache or reload. It can show the old
+  household's cached rows mixed with answers from the new household, until it takes the
+  update. No data is written to the wrong household by this; it is what the screen shows.
+- This is the same window as H5a's (8.3). The fix is the same: reload every device and
+  accept the update prompt right after the web deploy.
+
+### 9.9 If something is wrong
+
+| Symptom | Likely cause | What to do |
+|---|---|---|
+| The release log stops at `add_household_invites` with an error | the migration failed. Each migration file runs as its own transaction (H3a runbook 7.1), so nothing of this one is applied; the three before it stay applied | the old server keeps serving. Read the error, then follow H3a runbook 7.1, with `20261118000000_add_household_invites` as the name to mark `--rolled-back` |
+| A signed-out person who opens a link ends on `/` after sign-in or sign-up | Clerk did not accept the redirect (9.5) | fix the Clerk setting. The person opens the link again |
+| The join page, Members page or no-household screen shows an error for everyone | the web is new and the server is old, or the server was rolled back | check the Railway deployment is the new commit |
+
+**Rollback.** The migration only adds. To roll back the server alone, redeploy the previous
+server deployment; the old server ignores the new table and column. Invites made in the
+meantime stay in the table, unused. A person who joined a household in the meantime stays a
+member. **But the old server has no rule for a person in two households**: it picks one
+with `findFirst` and no order, so such a person may see a different household on each
+request. For a full rollback use H3a runbook 7.2, which restores the branch taken before all
+four migrations.
+
+**Rolling back the web alone** (to the H5a bundle, with the H5b server still running).
+The H5a bundle has no no-household screen, no join page and no Members page. A person in
+NO household (who left or was removed) then gets `NO_HOUSEHOLD` on every request: the
+pages fail and nothing explains why. No data is lost. A person still in a household is not
+affected. So when anyone may be in no household, prefer to fix forward over a web-only
+rollback.
 
 ## Where this file lives, and why
 

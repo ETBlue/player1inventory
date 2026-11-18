@@ -7,6 +7,22 @@ import { CLOUD_WEB_URL } from '../constants'
  */
 export const E2E_USER_ID_STORAGE_KEY = 'e2e-user-id'
 
+/** Options of `newUserContext`. Both default to `true`. */
+export type UserContextOptions = {
+  /**
+   * Set `e2e-skip-onboarding`, so an empty catalog does not send every page
+   * to `/onboarding`. Pass `false` to see what a real new person sees
+   * (households H5b task G.10, Review Focus 1).
+   */
+  skipOnboarding?: boolean
+  /**
+   * Set `data-mode: cloud`. Pass `false` for a brand-new visitor: with no
+   * `data-mode` key the app starts in LOCAL mode, as it does for a person
+   * who opens the site for the first time.
+   */
+  cloudMode?: boolean
+}
+
 /**
  * A new browser context in which the cloud web app acts as `userId`
  * (households H5 task F.8, decision T10).
@@ -18,7 +34,8 @@ export const E2E_USER_ID_STORAGE_KEY = 'e2e-user-id'
  *
  * `browser.newContext` does NOT inherit the project's `use` settings, so this
  * sets them again: `baseURL`, `data-mode: cloud`, and `e2e-skip-onboarding`.
- * The caller closes the context.
+ * `options` can leave the last two out (households H5b task G.10). The
+ * caller closes the context.
  *
  * The 409 rule of `addHouseholdMember` still applies: add a person to a
  * household BEFORE their context opens a page, because the first page sends
@@ -28,7 +45,9 @@ export async function newUserContext(
   browser: Browser,
   userId: string,
   extraLocalStorage: { name: string; value: string }[] = [],
+  options: UserContextOptions = {},
 ): Promise<BrowserContext> {
+  const { skipOnboarding = true, cloudMode = true } = options
   return browser.newContext({
     baseURL: CLOUD_WEB_URL,
     storageState: {
@@ -37,9 +56,11 @@ export async function newUserContext(
         {
           origin: CLOUD_WEB_URL,
           localStorage: [
-            { name: 'data-mode', value: 'cloud' },
+            ...(cloudMode ? [{ name: 'data-mode', value: 'cloud' }] : []),
             { name: E2E_USER_ID_STORAGE_KEY, value: userId },
-            { name: 'e2e-skip-onboarding', value: 'true' },
+            ...(skipOnboarding
+              ? [{ name: 'e2e-skip-onboarding', value: 'true' }]
+              : []),
             ...extraLocalStorage,
           ],
         },

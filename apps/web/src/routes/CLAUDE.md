@@ -439,6 +439,136 @@ Row 3:            [A / T here · N empty · N low stock]
 - `src/routes/cooking.stories.tsx` — Storybook stories (Default, WithRecipes, WithCheckedRecipe, WithExpandedRecipe, WithActiveToolbar, WithSearch, SortByRecent, SortByCount, StockStatusHealthy, StockStatusPartial, StockStatusUnavailable, NotStockedHereSplit)
 - `src/components/recipe/CookingControlBar/index.tsx` — second-row toolbar component
 
+### Join Page (`/join/$token`, households H5b task G.7)
+
+The page an invite link opens. Plan: `docs/global/permissions/2026-11-18-households-plan-h5b.md`.
+
+| Mode, status | What shows |
+|---|---|
+| local | `join.needsCloud` and **Sign in to join**. It sets `data-mode` to `cloud` and `migration-prompted`, never `migration-strategy`, then reloads. So no copy of local data starts or is offered, and local data is not touched |
+| cloud, loading | the spinner |
+| cloud, `VALID` | `join.title` with the household name, `join.invitedBy`, the roles (household role, then each location as stored, never `capitalize`), **Join** |
+| cloud, `ALREADY_MEMBER` | the household name, `join.alreadyMember`, a link to the pantry |
+| cloud, `INVALID` | `join.invalid` and a link to the pantry. No name, even if one were sent |
+
+**Join** runs `joinHousehold`, then `switchToHousehold(id, { to: '/' })`, which ends on
+the pantry. It must NOT reload the join page: the invite is used now, so `invitePreview`
+answers INVALID and the person would read "This invite is no longer valid" right after
+joining. A refusal with `extensions.reason` `INVITE_INVALID` or `ALREADY_MEMBER`
+(`hasGraphQLErrorReason`) shows the matching text in an `<output>` (role `status`), and
+focus moves to it (the Join button it replaces held the focus). An `OfflineWriteError`
+shows no second toast (`offlineWriteLink` showed one). Any other error shows the toast
+`join.error` and keeps the button. Every state has an `h1`: `join.heading` ("Join a
+household") where there is no household name to show.
+
+Three things could send a new person away from the link. Each is handled:
+
+- **The onboarding redirect.** `shouldRedirectToOnboarding` returns `false` for `/join/…`
+  (decision T25). Tested as a unit and on the real page with an empty database.
+- **Sign-in.** `CloudAuthGuard` sends a signed-out person to `/sign-in?redirect=<path>`,
+  except on `/sign-in` itself. `/sign-in` follows `safeRedirectPath(redirect)`
+  (`lib/safeRedirect.ts`) and passes the same path to Clerk's `forceRedirectUrl` AND
+  `signUpForceRedirectUrl`, so a sign-up returns too (decision T24). `safeRedirectPath`
+  resolves the path with `new URL` against this site and checks the RESULT, because
+  `/..//evil.example` and `/%2e%2e//evil.example` pass a plain "starts with `//`" check
+  and still resolve to another host.
+- **Local mode**, the default for a new visitor: the row above.
+
+`/join/…` is full-screen (`isFullscreenPage`).
+
+**The household guard (decision T23).** `HouseholdChangeGuard` (`apollo/`) mounts in the
+root in cloud mode, in the Clerk tree and the E2E tree. It acts only on a `GetHousehold`
+answer from the SERVER (`networkStatus === ready`): the query is `cache-and-network`, and
+the first answer may come from the cache restored from `Player1InventoryCloudCache`. When
+the server answers a household id other than the one this tab saw first (or, before it has
+seen one, the stored `last-household-id`), it calls `switchToHousehold` with no target:
+`clearCache()` (memory and the saved copy; `LAST_USER_ID_KEY` stays), remove
+`active-location-id:cloud`, store the id, reload this page. If the cache cannot be cleared
+it logs and does not reload.
+
+**What reaches it, and what does not.** It sees any change that leaves the person in
+ANOTHER household: a join made in another tab, or a leave or a removal when the person has
+a second household. **A leave or a removal that leaves the person in NO household does not
+reach it**: `GetHousehold` then fails with `NO_HOUSEHOLD`, there is no id, and the old
+household's rows stay in memory and in `Player1InventoryCloudCache`. The no-household
+screen clears them (see *No household* below). The join page calls `switchToHousehold` itself.
+
+### No household (cloud, households H5b task G.8)
+
+**A cloud person can be in NO household** after they leave or are removed. A brand-new
+person never is: their first request makes a household. The server then answers
+`NO_HOUSEHOLD` (a `GraphQLError` code), and every page shows `NoHouseholdScreen`: "You are
+not in any household." and three actions (owner decision O19): **Create a household**
+(O16-A), **Switch to offline mode** and **Sign in to another account**.
+
+- **`NoHouseholdGate`** (`components/household/NoHouseholdGate/`) wraps the `<Outlet />`
+  inside `Layout` in `__root.tsx`. It shows the screen only when `mode === 'cloud'` and
+  `useHousehold().errorCode === 'NO_HOUSEHOLD'`. **The CODE, never "the query failed"**: a
+  network error or offline shows the page as before. `errorCode` is set even when the old
+  household is still cached: Apollo keeps the cached answer in `data` next to the error
+  (measured on 4.1.6), so `isError` is `false` then, and a gate on `isError` would never
+  show the screen to a person just removed.
+- **Not on `/join/…` or `/sign-in`.** A person with no household can still open an invite
+  link and sign in.
+- **When the screen first shows, it clears the old household's data once**, with no
+  reload. `HouseholdChangeGuard` cannot do it: there is no new id. Exactly what is cleared:
+  1. `forgetHousehold()` (`apollo/householdGuard.ts`): `clearCache()` empties the Apollo
+     cache in memory and the saved copy in `Player1InventoryCloudCache`; it removes
+     `last-household-id` and `active-location-id:cloud`. It keeps `cloud-cache-user-id`.
+  2. Then `client.refetchQueries({ include: 'active' })`. **Emptying the cache does not
+     change what a MOUNTED query shows**: Apollo sends it no new result. Without the
+     refetch the sidebar kept the old household's name (`HouseholdLabel`) and the switcher
+     its locations. A refetch first reports "loading" with no data, so those readers show
+     their empty state, then fail with `NO_HOUSEHOLD` with nothing cached.
+- **Once shown, the screen stays** until a household arrives. A refetch first reports
+  "loading" with no error; showing the page for that moment would flash it. The id cached
+  when the screen first showed (the household just lost) never counts as "arrived": a
+  switch to it would load `/`, get `NO_HOUSEHOLD` and show the screen again, on every load.
+- **A new account in the same tab starts again.** Sign-out goes to `/sign-in`, where the
+  gate stays mounted, and the old account's `NO_HOUSEHOLD` answer stays in Apollo. When the
+  Clerk user id changes to ANOTHER account (signed out, `null`, does not count; the same
+  account again does not count), the gate remounts with a fresh state, shows the page, and
+  refetches `GetHousehold`. Only that fresh answer can show the screen. The E2E build has no
+  Clerk and one account per page load, so it skips this.
+- **Create a household** sends `createHousehold(name)`. An empty field sends `name: null`
+  (the server's default name); never `""`, which the server refuses as a blank name. On
+  success: `switchToHousehold(id, { to: '/' })`, because the server sends the creating tab
+  no live event. `ALREADY_IN_HOUSEHOLD` (another tab created or joined first) asks
+  `GetHousehold` from the network and switches to that household. A refused name shows
+  `settings.household.name.invalidError` in an `<output>` that is always mounted (empty when
+  there is no error), and focus goes back to the name field; an `OfflineWriteError` shows no
+  second toast; any other error shows `noHousehold.error` and the button stays.
+- **How a person leaves the screen without creating a household** (owner decision O19,
+  2026-11-18). The gate also covers `/settings`, so on a phone the screen must hold these:
+  - **Switch to offline mode** sets `localStorage['data-mode'] = 'local'`
+    (`DATA_MODE_STORAGE_KEY`) and reloads, like Switch with "Start Fresh" in
+    `DataModeCard`. No copy (no cloud data) and no confirm (nothing is lost). The Clerk
+    session stays alive. After the reload the gate is off (it returns its children when
+    `mode !== 'cloud'`), so the normal local app shows. When the person switches back to
+    cloud later (Settings, **Switch...**), they need no sign-in and land on this screen
+    again, with Create.
+  - **Sign in to another account** runs `clearCache()` first, then Clerk's `signOut()`, and
+    keeps cloud mode, like Sign Out in `DataModeCard` without "switch to offline". A failed
+    clear signs nothing out and shows `noHousehold.signOutError`. The button is disabled
+    while it runs. `CloudAuthGuard` then loads `/sign-in`, where the gate is off. When
+    another account signs in, the gate starts again and asks `GetHousehold` for that
+    account (see *A new account in the same tab* above), and `ApolloWrapper` clears the
+    cache again on the account change. **Not shown in the E2E build**: it calls
+    `useClerk()`, and the E2E build has no `ClerkProvider`. So no E2E test can press it;
+    `NoHouseholdScreen.test.tsx` carries it.
+  - **No plain Sign out** on the screen (O19).
+- **The person's other tabs** get the `LOCATION` event of `createHousehold`. It refetches
+  every active query, the FAILED `GetHousehold` included (tested in
+  `apollo/liveUpdates.test.ts`), and the gate then calls `switchToHousehold(id, { to: '/' })`.
+- Tests: `components/household/NoHouseholdGate/NoHouseholdGate.test.tsx` (when it shows),
+  `NoHouseholdScreen.test.tsx` (the create and the two other actions),
+  `routes/noHousehold.cloud.test.tsx` (the real
+  root, with real Apollo hooks). The gate has no story: it needs a router, and in Storybook
+  `forgetHousehold` would clear the real cloud cache. The screen has stories.
+
+A story that mounts a cloud page must store its household as the last one
+(`cloudRoleStorySetup` does), or the guard reloads Storybook.
+
 ### Onboarding Page
 
 Full-screen onboarding flow at `/onboarding` shown automatically to new users (empty DB).

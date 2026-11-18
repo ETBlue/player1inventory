@@ -387,6 +387,26 @@ describe('requireHouseholdRole', () => {
     expect((error as GraphQLError).message).toBe('Forbidden')
     expect((error as GraphQLError).extensions.code).toBe('FORBIDDEN')
   })
+
+  it('reads through the client it is given, so a transaction can pass its own (H5b task G.5)', async () => {
+    // Given the store says the caller is a plain member of hh-1
+    seed({ callerHouseholdRole: 'member' })
+    const storeRead = vi.spyOn(prisma.householdMember, 'findUnique')
+    // And a transaction client that answers `owner`
+    const findUnique = vi.fn(async () => ({ role: 'owner' as const }))
+    const tx = { householdMember: { findUnique } }
+
+    // When the role is checked through that client
+    const role = await requireHouseholdRole(caller, 'hh-1', 'owner', tx as never)
+
+    // Then the answer comes from the client, and the global client is not read
+    expect(role).toBe('owner')
+    expect(findUnique).toHaveBeenCalledWith({
+      where: { householdId_userId: { householdId: 'hh-1', userId: caller.userId } },
+      select: { role: true },
+    })
+    expect(storeRead).not.toHaveBeenCalled()
+  })
 })
 
 describe('requireHousehold', () => {
@@ -399,7 +419,9 @@ describe('requireHousehold', () => {
   it('reads the household once per request when the request has a cache', async () => {
     // Given one request context with its own cache
     seed({})
-    const findFirst = vi.spyOn(world.households.client.householdMember, 'findFirst')
+    // `ensureHousehold` reads the household in one `user.findUnique`
+    // (decision T14 of the H5b plan).
+    const findUnique = vi.spyOn(world.users.client, 'findUnique')
     const ctx: Context = { userId: 'caller', requestCache: {} }
 
     // When three resolvers in that request ask at once, and one more later
@@ -412,18 +434,18 @@ describe('requireHousehold', () => {
 
     // Then all four get the household from one lookup
     expect(ids).toEqual(['hh-1', 'hh-1', 'hh-1', 'hh-1'])
-    expect(findFirst).toHaveBeenCalledTimes(1)
+    expect(findUnique).toHaveBeenCalledTimes(1)
   })
 
   it('a context with no cache looks the household up every time', async () => {
     seed({})
-    const findFirst = vi.spyOn(world.households.client.householdMember, 'findFirst')
+    const findUnique = vi.spyOn(world.users.client, 'findUnique')
     const ctx: Context = { userId: 'caller' }
 
     await requireHousehold(ctx)
     await requireHousehold(ctx)
 
-    expect(findFirst).toHaveBeenCalledTimes(2)
+    expect(findUnique).toHaveBeenCalledTimes(2)
   })
 
   it('user signing in for the first time gets a household named in their app language', async () => {
@@ -437,6 +459,7 @@ describe('requireHousehold', () => {
         lastSeenAt: null,
         deletedAt: null,
         householdSetupAt: null,
+        activeHouseholdId: null,
         createdAt: T,
         updatedAt: T,
       },
@@ -923,11 +946,12 @@ describe('forgetLocationRoles (review of H5 task F.1)', () => {
     expect(spy).toHaveBeenCalledTimes(2)
   })
 
-  it('does not forget the household id', async () => {
+  it('forgets the household id too (decision T15 of the H5b plan)', async () => {
+    // A join, a leave or a removal can change the caller's household inside
+    // one request, so the next root field must look it up again.
     const ctx = callerIn('hh-a')
-    const pinned = ctx.requestCache?.householdId
     forgetLocationRoles(ctx)
-    expect(ctx.requestCache?.householdId).toBe(pinned)
+    expect(ctx.requestCache?.householdId).toBeUndefined()
   })
 
   it('does nothing on a context with no cache', () => {

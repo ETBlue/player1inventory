@@ -68,4 +68,46 @@ describe('HouseholdSidebar', () => {
       expect(router.state.location.href).toBe('/shopping/v1?q=milk')
     })
   })
+
+  // Households H5b task G.9: Members is second, and cloud only (design,
+  // *Local mode*: the household sidebar hides Members).
+  describe('the Members item', () => {
+    function linkHrefs() {
+      return within(screen.getByRole('navigation'))
+        .getAllByRole('link')
+        .map((link) => link.getAttribute('href'))
+    }
+
+    it('user in cloud mode sees Members second', async () => {
+      localStorage.setItem('data-mode', 'cloud')
+      try {
+        renderHouseholdSidebar('/settings/household')
+        await screen.findByRole('link', { name: 'Members' })
+        expect(linkHrefs()).toEqual([
+          '/settings/household',
+          '/settings/household/members',
+          '/settings/household/locations',
+          '/settings/household/shelves',
+          '/settings/household/vendors',
+          '/settings/household/recipes',
+          '/settings/household/tags',
+        ])
+      } finally {
+        localStorage.removeItem('data-mode')
+      }
+    })
+
+    it('user in local mode does not see Members', async () => {
+      localStorage.setItem('data-mode', 'local')
+      try {
+        renderHouseholdSidebar('/settings/household')
+        // Present first: the list has rendered
+        await screen.findByRole('link', { name: 'General' })
+        expect(screen.queryByRole('link', { name: 'Members' })).toBeNull()
+        expect(linkHrefs()).toHaveLength(6)
+      } finally {
+        localStorage.removeItem('data-mode')
+      }
+    })
+  })
 })

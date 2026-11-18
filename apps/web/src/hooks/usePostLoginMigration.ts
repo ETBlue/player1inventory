@@ -1,6 +1,7 @@
 import { useApolloClient } from '@apollo/client/react'
 import { useEffect, useRef, useState } from 'react'
 import { getAllItems } from '@/db/operations'
+import type { HouseholdRole } from '@/generated/graphql'
 import { type ExportPayload, fetchLocalPayload } from '@/lib/exportData'
 import {
   type ImportStrategy,
@@ -16,6 +17,9 @@ export const MIGRATION_STRATEGY_KEY = 'migration-strategy'
 
 export type MigrationState =
   | 'idle'
+  // "Copy your offline data into {household}?" is open (owner decision
+  // O22-A). A stored strategy waits here for Copy here or Don't copy.
+  | 'confirming'
   | 'prompting'
   | 'conflict'
   | 'importing'
@@ -73,10 +77,47 @@ export type MigrationAuth = {
   isSignedIn: boolean
 }
 
-export function usePostLoginMigration({ isLoaded, isSignedIn }: MigrationAuth) {
+/** The household a stored copy would go into: its name and the caller's role. */
+export type MigrationHousehold = { name: string; role: HouseholdRole }
+
+/**
+ * What the hook needs from its caller. `household` is `undefined` while the
+ * household is loading, and while the person is in no household
+ * (`NO_HOUSEHOLD`). Then a stored copy waits and nothing is shown.
+ */
+export type MigrationInput = MigrationAuth & {
+  household: MigrationHousehold | undefined
+}
+
+/**
+ * Whether the caller's household role lets the copy run (households H4
+ * decision T17, plan O1). A `member` cannot import at all. A `manager` can,
+ * except `clear`: that deletes the household's data first, and the server
+ * allows it to the `owner` only (`importCheck` with `forClear`).
+ *
+ * The confirm dialog reads this so it never offers a copy the server will
+ * refuse (owner decision O22-A). The server still checks; this only picks
+ * what the dialog shows.
+ */
+export function canCopyInto(
+  role: HouseholdRole,
+  strategy: ImportStrategy,
+): boolean {
+  if (role === 'owner') return true
+  if (role === 'manager') return strategy !== 'clear'
+  return false
+}
+
+export function usePostLoginMigration({
+  isLoaded,
+  isSignedIn,
+  household,
+}: MigrationInput) {
   const [state, setState] = useState<MigrationState>('idle')
   const [error, setError] = useState<MigrationError | null>(null)
   const [pending, setPending] = useState<PendingCopy | null>(null)
+  // The stored strategy, while "Copy your offline data into …?" is open.
+  const [waiting, setWaiting] = useState<ImportStrategy | null>(null)
   const apolloClient = useApolloClient()
   const { data: locations } = useLocations()
   // Hold the one-shot auto-import until this account's location list has
@@ -99,6 +140,12 @@ export function usePostLoginMigration({ isLoaded, isSignedIn }: MigrationAuth) {
   // land in the Apollo cache after it. Waiting for one resolved list keeps the
   // session settled before the destructive write begins.
   const locationsLoaded = locations !== undefined
+  // The second gate of the stored copy (owner decision O22-A). The copy asks
+  // first, naming the household, so it waits until the name and the role are
+  // known. A person in no household has none: the copy waits, and the strategy
+  // key stays stored, until they create or join one. A boolean for the same
+  // reason as `locationsLoaded`: a rename must not re-fire the effect.
+  const householdLoaded = household !== undefined
   // The auto-import is one-shot.
   //
   // `locationsLoaded` is a dependency of the effect below and it is a BOOLEAN,
@@ -120,8 +167,10 @@ export function usePostLoginMigration({ isLoaded, isSignedIn }: MigrationAuth) {
   // is still unset, so the effect called `setState('prompting')` and replaced
   // 'error'. The user never saw the error and was asked again (bug
   // 2026-10-31, `docs/global/bugs/2026-10-31-bug-cloud-copy-aborted-on-pantry.md`).
-  // So the ref covers BOTH copy paths: it is set when the auto-import starts
-  // and when `importData` starts, and once it is set the effect does nothing.
+  // So the ref covers BOTH copy paths: it is set when the stored copy's
+  // confirm opens (owner decision O22-A; before that, when the auto-import
+  // started) and when `importData` starts, and once it is set the effect does
+  // nothing.
   // A refresh mounts the hook again with a fresh ref, so the user can retry.
   const importStarted = useRef(false)
 
@@ -135,48 +184,17 @@ export function usePostLoginMigration({ isLoaded, isSignedIn }: MigrationAuth) {
     ) as ImportStrategy | null
 
     if (storedStrategy) {
-      // Only the auto-import is gated: it is one-shot and destructive on the
-      // cloud side. The prompting path below merely decides whether to show the
-      // dialog.
-      if (!locationsLoaded) return
+      // Only the stored copy is gated: it is one-shot and destructive on the
+      // cloud side. The prompting path below merely decides whether to show
+      // the dialog.
+      if (!locationsLoaded || !householdLoaded) return
+      // Ask before copying (owner decision O22-A). The strategy may have
+      // been chosen long ago, while the person was in no household, and the
+      // household they are in now may be shared. `importStarted` is set here
+      // already, so a re-run of the effect cannot ask twice or start a copy.
       importStarted.current = true
-      setState('auto-importing')
-      fetchLocalPayload()
-        .then((payload) => {
-          // Local data always has its default location `'local'`, so for
-          // `skip` and `replace` the copy asks where it goes first (decision
-          // O3: always, even with one location). `clear` does not ask
-          // (decision O2). The E2E specs answer the dialog in the page, the
-          // same way a person does; there is no key that skips it.
-          if (storedStrategy !== 'clear' && needsImportLocation(payload)) {
-            setPending({ payload, strategy: storedStrategy })
-            setState('choosing-location')
-            return
-          }
-          return importCloudData(payload, storedStrategy, apolloClient).then(
-            () => {
-              localStorage.removeItem(MIGRATION_STRATEGY_KEY)
-              localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
-              setState('done')
-            },
-          )
-        })
-        .catch((err) => {
-          // The copy failed. The state is 'error', so the dialog tells the user
-          // so and gives them a button to close it. It used to be 'done', which
-          // closed the dialog as if the copy had worked and left the user in a
-          // half-copied account with no message at all.
-          //
-          // Both localStorage decisions are unchanged, and for the same two
-          // reasons as before:
-          //   - MIGRATION_STRATEGY_KEY is removed, so the next mount does not
-          //     take the auto-import branch again and loop on the same failure.
-          //   - MIGRATION_PROMPTED_KEY stays unset, so a refresh still offers
-          //     the copy and the user can retry.
-          localStorage.removeItem(MIGRATION_STRATEGY_KEY)
-          setError(toMigrationError(err, storedStrategy))
-          setState('error')
-        })
+      setWaiting(storedStrategy)
+      setState('confirming')
       return
     }
 
@@ -189,7 +207,64 @@ export function usePostLoginMigration({ isLoaded, isSignedIn }: MigrationAuth) {
         localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
       }
     })
-  }, [isLoaded, isSignedIn, apolloClient, locationsLoaded])
+  }, [isLoaded, isSignedIn, locationsLoaded, householdLoaded])
+
+  // Copy here. Runs the stored copy, as it ran before the confirm existed:
+  // "Import into which location?" for `skip` and `replace`, none for `clear`.
+  function confirmCopy() {
+    if (waiting === null) return
+    const storedStrategy = waiting
+    setWaiting(null)
+    setState('auto-importing')
+    fetchLocalPayload()
+      .then((payload) => {
+        // Local data always has its default location `'local'`, so for
+        // `skip` and `replace` the copy asks where it goes first (decision
+        // O3: always, even with one location). `clear` does not ask
+        // (decision O2). The E2E specs answer the dialog in the page, the
+        // same way a person does; there is no key that skips it.
+        if (storedStrategy !== 'clear' && needsImportLocation(payload)) {
+          setPending({ payload, strategy: storedStrategy })
+          setState('choosing-location')
+          return
+        }
+        return importCloudData(payload, storedStrategy, apolloClient).then(
+          () => {
+            localStorage.removeItem(MIGRATION_STRATEGY_KEY)
+            localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
+            setState('done')
+          },
+        )
+      })
+      .catch((err) => {
+        // The copy failed. The state is 'error', so the dialog tells the user
+        // so and gives them a button to close it. It used to be 'done', which
+        // closed the dialog as if the copy had worked and left the user in a
+        // half-copied account with no message at all.
+        //
+        // Both localStorage decisions are unchanged, and for the same two
+        // reasons as before:
+        //   - MIGRATION_STRATEGY_KEY is removed, so the next mount does not
+        //     take the stored-copy branch again and loop on the same failure.
+        //   - MIGRATION_PROMPTED_KEY stays unset, so a refresh still offers
+        //     the copy and the user can retry.
+        localStorage.removeItem(MIGRATION_STRATEGY_KEY)
+        setError(toMigrationError(err, storedStrategy))
+        setState('error')
+      })
+  }
+
+  // Don't copy (and the one button a person who cannot copy gets). The
+  // stored strategy is removed, so the copy never runs. MIGRATION_PROMPTED_KEY
+  // is set, the same as Skip, so the next load does not ask again with
+  // "Import local data to cloud?". Local data on the device is not touched.
+  // A copy is still possible later, from Settings (`ImportCard`).
+  function declineCopy() {
+    setWaiting(null)
+    localStorage.removeItem(MIGRATION_STRATEGY_KEY)
+    localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
+    setState('done')
+  }
 
   function dismiss() {
     localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
@@ -254,6 +329,10 @@ export function usePostLoginMigration({ isLoaded, isSignedIn }: MigrationAuth) {
     state,
     error,
     dismiss,
+    confirmCopy,
+    declineCopy,
+    // The stored strategy while state is 'confirming', else null.
+    waitingStrategy: waiting,
     importData,
     chooseLocation,
     cancelLocation,

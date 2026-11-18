@@ -793,14 +793,20 @@ describe('createVendor: the location role decides the cart, not the vendor', () 
   it('a location of another household is refused by the household check, and nothing is written', async () => {
     // Given the caller is a household manager of hh-1 AND a member of hh-2
     // who organizes loc-s there (a person in two households). The target
-    // household is pinned to hh-1, the H4 pattern. With a role at loc-s,
+    // household is hh-1, the caller's active household (decision T14 of the
+    // H5b plan; a pin on `requestCache` would be forgotten before the
+    // `Mutation` field, decision T15). With a role at loc-s,
     // `requireLocationRole` passes, so only `requireLocationInHousehold`
     // can refuse. Without the role, the role check refused first and the
     // household check was never reached.
     seed('manager', 'organizer')
-    world.households.state.householdMembers.push({ householdId: 'hh-2', userId: 'caller', role: 'member', joinedAt: T })
+    // The caller joined hh-2 BEFORE hh-1, so hh-2 is their oldest
+    // membership and hh-1 is used only because it is their active household.
+    const BEFORE_T = new Date(T.getTime() - 86_400_000)
+    world.households.state.householdMembers.push({ householdId: 'hh-2', userId: 'caller', role: 'member', joinedAt: BEFORE_T })
     world.households.state.locationMembers.push({ locationId: 'loc-s', userId: 'caller', role: 'organizer', createdAt: T })
-    const pinned: Context = { userId: 'caller', requestCache: { householdId: Promise.resolve('hh-1') } }
+    world.setActiveHousehold('caller', 'hh-1')
+    const pinned: Context = { userId: 'caller' }
     const before = handles.$snapshot()
 
     // When they name loc-s

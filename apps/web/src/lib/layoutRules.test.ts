@@ -19,6 +19,7 @@ describe('isFullscreenPage', () => {
       '/settings/household/vendors/v1/items',
       '/settings/household/recipes/r1',
       '/settings/household/shelves/s1/filters',
+      '/join/AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_abcd',
     ])('%s is full-screen', (path) => {
       expect(isFullscreenPage(path, { desktop })).toBe(true)
     })
@@ -32,6 +33,8 @@ describe('isFullscreenPage', () => {
       '/settings/household/',
       '/settings/household/locations',
       '/settings/household/locations/',
+      '/join',
+      '/joined',
     ])('%s is not full-screen', (path) => {
       expect(isFullscreenPage(path, { desktop })).toBe(false)
     })

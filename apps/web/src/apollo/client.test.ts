@@ -308,6 +308,41 @@ describe('createCache — vendorCart is cached per location', () => {
   })
 })
 
+// Households H5b, task G.9. `HouseholdPerson` has no `id`, so a refetch that
+// brings a shorter list (after a removal) would warn "Cache data may be lost".
+describe('createCache — householdMembers is replaced, not merged', () => {
+  const MEMBERS = gql`
+    query HouseholdMembers {
+      householdMembers {
+        userId
+        displayName
+      }
+    }
+  `
+  const row = (userId: string) => ({
+    __typename: 'HouseholdPerson',
+    userId,
+    displayName: userId,
+  })
+
+  it('user sees the shorter list after a removal, with no data-loss warning', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const cache = createCache()
+    cache.writeQuery({
+      query: MEMBERS,
+      data: { householdMembers: [row('a'), row('b')] },
+    })
+    cache.writeQuery({ query: MEMBERS, data: { householdMembers: [row('a')] } })
+
+    const read = cache.readQuery<{ householdMembers: { userId: string }[] }>({
+      query: MEMBERS,
+    })
+    expect(read?.householdMembers.map((p) => p.userId)).toEqual(['a'])
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+})
+
 describe('both Apollo clients share the cache configuration', () => {
   // The E2E client exists to exercise the production code path; a policy applied
   // to only one of the two caches would make cloud E2E prove nothing.

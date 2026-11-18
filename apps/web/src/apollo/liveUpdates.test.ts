@@ -8,6 +8,7 @@ import {
 import { getMainDefinition } from '@apollo/client/utilities'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as generated from '@/generated/graphql'
+import { elementAt } from '@/test/narrow'
 import {
   LIVE_BATCH_MS,
   type LiveSocket,
@@ -527,5 +528,95 @@ describe('startLiveUpdates — after the subscription ends', () => {
     window.dispatchEvent(new Event('online'))
 
     expect(h.subscriptions).toHaveLength(1)
+  })
+})
+
+describe('a GetHousehold that failed with NO_HOUSEHOLD (households H5b, task G.8)', () => {
+  // The person created a household in ANOTHER tab. This tab still shows the
+  // no-household screen, because its last `GetHousehold` answer was the
+  // `NO_HOUSEHOLD` error. The creating tab's `createHousehold` publishes
+  // `LOCATION`, and this tab must refetch the FAILED query, so
+  // `NoHouseholdGate` sees the new household. Apollo keeps a query with an
+  // observer "active" after an error; this test checks that, instead of
+  // trusting it.
+  it('user sees the new household after a LOCATION event in another tab', async () => {
+    let created = false
+    const sent: string[] = []
+    let live: Emitter | undefined
+    const link = new ApolloLink((operation) => {
+      const def = getMainDefinition(operation.query)
+      if (
+        def.kind === 'OperationDefinition' &&
+        def.operation === 'subscription'
+      ) {
+        return new Observable<ApolloLink.Result>((observer) => {
+          live = observer as Emitter
+        })
+      }
+      sent.push(operation.operationName ?? '?')
+      return new Observable<ApolloLink.Result>((observer) => {
+        observer.next(
+          created
+            ? {
+                data: {
+                  household: {
+                    __typename: 'Household',
+                    id: 'household-new',
+                    name: 'New home',
+                    role: 'owner',
+                  },
+                },
+              }
+            : {
+                errors: [
+                  {
+                    message: 'No household',
+                    extensions: { code: 'NO_HOUSEHOLD' },
+                  },
+                ],
+              },
+        )
+        observer.complete()
+      })
+    })
+    const client = new ApolloClient({ link, cache: new InMemoryCache() })
+    const results: { id: string | null; error: boolean }[] = []
+    const sub = client
+      .watchQuery<generated.GetHouseholdQuery>({
+        query: generated.GetHouseholdDocument,
+        fetchPolicy: 'cache-and-network',
+      })
+      .subscribe((r) => {
+        results.push({
+          id: r.data?.household?.id ?? null,
+          error: r.error !== undefined,
+        })
+      })
+    const stop = startLiveUpdates({
+      client,
+      socket: { on: () => () => {} },
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    // Given the query failed with NO_HOUSEHOLD
+    expect(elementAt(results, results.length - 1)).toEqual({
+      id: null,
+      error: true,
+    })
+    expect(sent).toEqual(['GetHousehold'])
+
+    // When the other tab creates a household and its LOCATION event arrives
+    created = true
+    live?.next(cartEvent('LOCATION'))
+    await vi.advanceTimersByTimeAsync(LIVE_BATCH_MS)
+
+    // Then the failed query is sent again and answers the new household
+    expect(sent).toEqual(['GetHousehold', 'GetHousehold'])
+    expect(elementAt(results, results.length - 1)).toEqual({
+      id: 'household-new',
+      error: false,
+    })
+
+    stop()
+    sub.unsubscribe()
   })
 })

@@ -1,6 +1,8 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Context } from '../context.js'
 import { createExecutableSchema } from '../schema/executableSchema.js'
+import { requireHousehold } from './authz.js'
+import { ensureHousehold } from './household.js'
 import { forgetRolesAroundEach } from './mutationRoleCache.js'
 
 // No database: any Prisma call throws. Every call below has no signed-in
@@ -14,6 +16,13 @@ vi.mock('./prisma.js', () => ({
       },
     },
   ),
+}))
+
+// `requireHousehold` asks `ensureHousehold` for the household. Here it is a
+// counter, so a test can see how many times the household was looked up.
+vi.mock('./household.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./household.js')>()),
+  ensureHousehold: vi.fn(async () => 'hh-looked-up'),
 }))
 
 // The wrapper itself. What it does inside a real document is tested in
@@ -41,6 +50,10 @@ function filledContext(): Context {
 }
 
 describe('forgetRolesAroundEach', () => {
+  beforeEach(() => {
+    vi.mocked(ensureHousehold).mockClear()
+  })
+
   it('forgets the role caches before the field runs', async () => {
     const ctx = filledContext()
     let seen: unknown = 'not called'
@@ -87,12 +100,53 @@ describe('forgetRolesAroundEach', () => {
     expect(ctx.requestCache?.firstLocationIds).toBeUndefined()
   })
 
-  it('keeps the household id, which tests pin to choose a household', async () => {
+  it('forgets the household id between two fields, so the second reads it again (decision T15)', async () => {
+    // Given one request, and a first field that looks the household up (as
+    // a join would, after it moved the caller to another household)
+    const ctx: Context = { userId: 'u1', requestCache: {} }
+    const first = wrapOne(async (_p: unknown, _a: unknown, c: Context) => {
+      c.requestCache!.householdId = Promise.resolve('hh-before-the-join')
+      return true
+    })
+    let seen: unknown = 'not called'
+    const second = wrapOne(async (_p: unknown, _a: unknown, c: Context) => {
+      seen = c.requestCache?.householdId
+      return true
+    })
+
+    // When the two root fields run one after the other, as GraphQL runs them
+    await first({}, {}, ctx, {})
+    await second({}, {}, ctx, {})
+
+    // Then the second field finds no household in the cache
+    expect(seen).toBeUndefined()
+  })
+
+  it('forgets a household id that was in the cache before the field', async () => {
     const ctx = filledContext()
-    const pinned = ctx.requestCache?.householdId
-    const f = wrapOne(async () => true)
+    let seen: unknown = 'not called'
+    const f = wrapOne(async (_p: unknown, _a: unknown, c: Context) => {
+      seen = c.requestCache?.householdId
+      return true
+    })
     await f({}, {}, ctx, {})
-    expect(ctx.requestCache?.householdId).toBe(pinned)
+    expect(seen).toBeUndefined()
+  })
+
+  it('a one-field mutation still looks the household up once', async () => {
+    // Given a field that asks for the household three times, two at once
+    const ctx: Context = { userId: 'u1', requestCache: {} }
+    const f = wrapOne(async (_p: unknown, _a: unknown, c: Context) => {
+      await Promise.all([requireHousehold(c), requireHousehold(c)])
+      return requireHousehold(c)
+    })
+
+    // When it runs
+    await expect(f({}, {}, ctx, {})).resolves.toBe('hh-looked-up')
+
+    // Then the household was looked up once: the forget before the field
+    // cleared an empty cache, and nothing forgets it during the field
+    expect(vi.mocked(ensureHousehold)).toHaveBeenCalledTimes(1)
   })
 
   it('refuses a resolver that is not a function, so none goes unwrapped', () => {
@@ -126,7 +180,7 @@ describe('every Mutation field forgets the role caches', () => {
         // expected
       }
       const c = ctx.requestCache
-      if (c?.locationRoles || c?.organizedLocations || c?.firstLocationIds) kept.push(name)
+      if (c?.householdId || c?.locationRoles || c?.organizedLocations || c?.firstLocationIds) kept.push(name)
     }
     expect(kept).toEqual([])
   })

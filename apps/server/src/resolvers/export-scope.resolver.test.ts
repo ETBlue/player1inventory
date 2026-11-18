@@ -28,8 +28,10 @@ import type { InventoryLogFake } from '../test/inventoryLogFake.js'
 //
 // ALICE is owner of hh_a and manager of hh_b, so her role on LOC_B counts
 // (decision H18). Only the household filter can leave LOC_B out. The target
-// is pinned through `ctx.requestCache.householdId`, because
-// `ensureHousehold` picks one of two households in no fixed order.
+// is pinned through `ctx.requestCache.householdId`. These are queries, and a
+// query is not wrapped by `forgetRolesAroundEach`, so the pin holds. (A
+// mutation test sets `User.activeHouseholdId` instead: decisions T14 and T15
+// of the H5b plan.)
 //
 // Every location holds one row of each kind, so each read has rows it must
 // return and rows it must not.

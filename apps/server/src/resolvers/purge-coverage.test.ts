@@ -218,7 +218,7 @@ const DATA_MODELS = Object.keys(MODEL_PATHS).sort()
 const OWNED_SCOPE = '{ householdId: owned }'
 
 /**
- * `/e2e/cleanup`'s four filters that are not the scope. Each is allowed on
+ * `/e2e/cleanup`'s five filters that are not the scope. Each is allowed on
  * its one model only.
  *
  * - `locationMember` and `householdMember`: every role row in the owned
@@ -226,6 +226,11 @@ const OWNED_SCOPE = '{ householdId: owned }'
  *   RESTRICT foreign key to `User`, so the `User` row cannot go while one
  *   exists. The `{ userId }` half is allowed here and nowhere else: it picks
  *   the user's own membership, not rows the user wrote.
+ * - `householdInvite` (households H5b, task G.6): every invite of the owned
+ *   households, and the invites the user MADE anywhere else.
+ *   `createdById` is RESTRICT, so the `User` row cannot go while such an
+ *   invite exists. The `{ createdById: userId }` half is allowed here and
+ *   nowhere else, for the same reason as the `{ userId }` half above.
  * - `household`: the owned households themselves, by their `id`.
  * - `user`: the User row. Its key is `id`, because the row IS the user. The
  *   same filter on any other model would compare that model's id with a user
@@ -239,6 +244,10 @@ const CLEANUP_EXCEPTIONS: readonly FilterException[] = [
   {
     model: 'householdMember',
     arg: '{ where: { OR: [{ userId }, { householdId: owned }] } }',
+  },
+  {
+    model: 'householdInvite',
+    arg: '{ where: { OR: [{ householdId: owned }, { createdById: userId }] } }',
   },
   { model: 'household', arg: '{ where: { id: owned } }' },
   { model: 'user', arg: '{ where: { id: userId } }' },
@@ -266,7 +275,10 @@ const PURGE_PATHS: readonly PurgePath[] = [
     // roles (design *Purge*), and the caller's account. `locationMember` has
     // no delete of its own: its rows go with their location (ON DELETE
     // CASCADE), and the caller gets a new one on the new "Home".
-    kept: ['household', 'householdMember', 'locationMember', 'user'],
+    // `householdInvite` (H5b) is kept too: an invite is about who may JOIN the
+    // household, not about its data, and clearing the data keeps the
+    // household and its members.
+    kept: ['household', 'householdInvite', 'householdMember', 'locationMember', 'user'],
     scope: '{ householdId }',
     exceptions: [],
   },
@@ -277,7 +289,18 @@ const PURGE_PATHS: readonly PurgePath[] = [
     label: 'e2eCleanup',
     purgeSource: cleanupSource,
     client: 'prisma',
-    models: [...DATA_MODELS, 'household', 'householdMember', 'locationMember', 'user'].sort(),
+    models: [
+      ...DATA_MODELS,
+      'household',
+      'householdInvite',
+      'householdMember',
+      'locationMember',
+      'user',
+    ].sort(),
+    // Nothing is kept: the route deletes every model. `householdInvite` was
+    // kept from H5b task G.1 until task G.6 added its deleteMany. An invite
+    // the user made in ANOTHER household would block the `user` delete
+    // (createdById is RESTRICT), so the route must delete it.
     kept: [],
     scope: OWNED_SCOPE,
     exceptions: CLEANUP_EXCEPTIONS,
@@ -300,6 +323,7 @@ describe('purge coverage against prisma/schema.prisma', () => {
         'cart',
         'cartItem',
         'household',
+        'householdInvite',
         'householdMember',
         'inventoryLog',
         'item',

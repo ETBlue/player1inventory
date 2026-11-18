@@ -240,8 +240,12 @@ function seed() {
       householdRow('hh_other', STRANGER),
     ],
     householdMembers: [
-      // ALICE's hh_home row FIRST, so `requireHousehold(ALICE)` is hh_home.
-      householdMemberRow('hh_home', ALICE, 'owner'),
+      // ALICE's hh_home row joined LATER than her hh_second row, so hh_home
+      // is NOT her oldest membership. She acts in hh_home only because it is
+      // her active household (set below; decision T14 of the H5b plan). A
+      // test that targets hh_home therefore goes red if the active
+      // household is ignored.
+      { ...householdMemberRow('hh_home', ALICE, 'owner'), joinedAt: new Date('2026-11-02T00:00:00.000Z') },
       householdMemberRow('hh_home', BOB, 'member'),
       householdMemberRow('hh_home', VERA, 'member'),
       householdMemberRow('hh_second', CAROL, 'owner'),
@@ -258,6 +262,7 @@ function seed() {
       locationMemberRow(LOC_STRANGER, STRANGER, 'organizer'),
     ],
   })
+  world.setActiveHousehold(ALICE, 'hh_home')
   items.state.rows = [
     item('item_milk', 'hh_home'),
     item('item_bread', 'hh_home'),
@@ -325,16 +330,19 @@ function change(kind: ChangeEvent['kind'], locationId: string | null, householdI
 const server = new ApolloServer<Context>({ typeDefs, resolvers })
 
 /**
- * `householdId`, when given, pins the caller's household through
- * `ctx.requestCache` (H4 plan rule 16). An import writes into that household.
- * Without the pin, `ensureHousehold` picks one of ALICE's two households in
- * no fixed order.
+ * `householdId`, when given, becomes the caller's active household
+ * (`User.activeHouseholdId`, decision T14 of the H5b plan; H4 plan rule 16).
+ * An import writes into that household. Without it, `ensureHousehold` picks
+ * the caller's oldest membership.
  */
 async function run(query: string, variables: Record<string, unknown>, userId: string, householdId?: string) {
+  // Since H5b the chosen household is the person's active one (decision
+  // T14). A pin on `requestCache` is forgotten before every `Mutation`
+  // field (decision T15).
+  if (householdId !== undefined) world.setActiveHousehold(userId, householdId)
   const contextValue: Context = {
     userId,
     clientId: TAB,
-    ...(householdId === undefined ? {} : { requestCache: { householdId: Promise.resolve(householdId) } }),
   }
   const res = await server.executeOperation({ query, variables }, { contextValue })
   if (res.body.kind !== 'single') throw new Error('expected a single result')

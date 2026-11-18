@@ -175,8 +175,12 @@ function seed() {
       householdRow('hh_other', STRANGER),
     ],
     householdMembers: [
-      // ALICE's hh_home row FIRST, so `requireHousehold(ALICE)` is hh_home.
-      householdMemberRow('hh_home', ALICE, 'owner'),
+      // ALICE's hh_home row joined LATER than her hh_second row, so hh_home
+      // is NOT her oldest membership. She acts in hh_home only because it is
+      // her active household (set below; decision T14 of the H5b plan). A
+      // test that targets hh_home therefore goes red if the active
+      // household is ignored.
+      { ...householdMemberRow('hh_home', ALICE, 'owner'), joinedAt: new Date('2026-11-02T00:00:00.000Z') },
       householdMemberRow('hh_home', BOB, 'member'),
       householdMemberRow('hh_home', VERA, 'member'),
       householdMemberRow('hh_second', CAROL, 'owner'),
@@ -193,6 +197,7 @@ function seed() {
       locationMemberRow(LOC_STRANGER, STRANGER, 'organizer'),
     ],
   })
+  world.setActiveHousehold(ALICE, 'hh_home')
   vendors.state.rows = [
     { id: 'ven_1', householdId: 'hh_home', name: 'Market' },
     { id: 'ven_empty', householdId: 'hh_home', name: 'No carts' },
@@ -271,11 +276,10 @@ function change(
 const server = new ApolloServer<Context>({ typeDefs, resolvers })
 
 /**
- * Run one operation as `userId`. `householdId`, when given, pins the
- * caller's household through `ctx.requestCache` (H4 plan rule 16). An import
- * writes into that household. Without the pin, `ensureHousehold` picks one of
- * ALICE's two households in no fixed order, so a test about "the other
- * household" would depend on the order of the fake's rows.
+ * Run one operation as `userId`. `householdId`, when given, becomes the
+ * caller's active household (`User.activeHouseholdId`, decision T14 of the
+ * H5b plan; H4 plan rule 16). An import writes into that household. Without
+ * it, `ensureHousehold` picks the caller's oldest membership.
  */
 async function run(
   query: string,
@@ -284,10 +288,13 @@ async function run(
   clientId: string | null = TAB,
   householdId?: string,
 ) {
+  // Since H5b the chosen household is the person's active one (decision
+  // T14). A pin on `requestCache` is forgotten before every `Mutation`
+  // field (decision T15).
+  if (householdId !== undefined) world.setActiveHousehold(userId, householdId)
   const contextValue: Context = {
     userId,
     ...(clientId === null ? {} : { clientId }),
-    ...(householdId === undefined ? {} : { requestCache: { householdId: Promise.resolve(householdId) } }),
   }
   const res = await server.executeOperation({ query, variables }, { contextValue })
   if (res.body.kind !== 'single') throw new Error('expected a single result')

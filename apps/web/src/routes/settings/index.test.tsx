@@ -131,6 +131,36 @@ describe('Settings page (/settings)', () => {
       ])
     })
 
+    it('user in cloud mode sees Members second among the household links', async () => {
+      // Given a mobile screen in cloud mode (households H5b task G.9)
+      mockScreen({ desktop: false })
+      localStorage.setItem('data-mode', 'cloud')
+      vi.stubEnv('VITE_E2E_TEST_USER_ID', '')
+
+      // When the user opens /settings
+      renderSettings()
+
+      // Then the household item holds seven links, Members second
+      const main = await screen.findByRole('main')
+      const general = await within(main).findByRole('link', { name: /General/ })
+      const region = general.closest('[role="region"]') as HTMLElement
+      const hrefs = within(region)
+        .getAllByRole('link')
+        .map((link) => link.getAttribute('href'))
+      expect(hrefs).toEqual([
+        '/settings/household',
+        '/settings/household/members',
+        '/settings/household/locations',
+        '/settings/household/shelves',
+        '/settings/household/vendors',
+        '/settings/household/recipes',
+        '/settings/household/tags',
+      ])
+      expect(
+        within(region).getByRole('link', { name: /Members/ }),
+      ).toHaveTextContent('People in this household, and invites')
+    })
+
     it('user can open the preferences item to see theme, language and data mode', async () => {
       // Given a mobile screen with /settings open
       mockScreen({ desktop: false })

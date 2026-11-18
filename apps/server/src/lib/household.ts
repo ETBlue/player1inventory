@@ -29,6 +29,23 @@ export interface FirstSignInNames {
 export const HOUSEHOLD_NAME_MAX_LENGTH = 100
 
 /**
+ * The `timeout` of the `joinHousehold` and `createHousehold` transactions.
+ *
+ * Prisma's interactive transaction times out after 5 s by default. A join
+ * makes about 15 queries (locks, the invite claim, the member row, the
+ * empty-household delete), plus one per location role on the invite. A
+ * create makes about 10. Each is a round trip to the database. An E2E run
+ * against the remote test database once took 5064 ms for a join
+ * (2026-11-18) and failed with "The timeout for this transaction was
+ * 5000 ms". The count grows only with the invite's location roles, not with
+ * the household's data, so 15 s is enough. `checkout` and `consumeRecipes`
+ * use 30 s because their count grows with the cart or the recipe. Hitting
+ * the limit is safe: Prisma rolls the whole transaction back, and the person
+ * gets an error and can retry.
+ */
+export const HOUSEHOLD_MOVE_TIMEOUT_MS = 15_000
+
+/**
  * The names for a new household, in the app language. `<displayName>` is the
  * `User.displayName` H2 stores. The owner can rename the household (task
  * 3.13) and the location at any time.
@@ -78,14 +95,66 @@ function noHousehold(): GraphQLError {
 }
 
 /**
+ * What `ensureHousehold` reads about a person, in ONE query (decision T14 of
+ * the H5b plan): their active household and every household they are a
+ * member of, the oldest membership first. `householdId` breaks a tie in
+ * `joinedAt`, so the order is the same on every request.
+ */
+const HOUSEHOLD_CHOICE = {
+  activeHouseholdId: true,
+  householdMemberships: {
+    orderBy: [{ joinedAt: 'asc' }, { householdId: 'asc' }],
+    select: { householdId: true },
+  },
+} satisfies Prisma.UserSelect
+
+type HouseholdChoice = Prisma.UserGetPayload<{ select: typeof HOUSEHOLD_CHOICE }>
+
+/**
+ * The household a person acts in (decision T14 of the H5b plan):
+ *
+ * 1. their active household (`User.activeHouseholdId`), when they are still
+ *    a member there;
+ * 2. else their OLDEST membership, by `joinedAt`, then `householdId`;
+ * 3. else `null`: they are in no household.
+ *
+ * The active household can name a household they left or were removed from:
+ * removal and leaving never write the `User` row (decision T16). So rule 1
+ * checks the membership list, and rule 2 is the answer then.
+ *
+ * Both reads in `ensureHousehold` use this one function, so the two cannot
+ * drift apart.
+ */
+function pickHousehold(row: HouseholdChoice): string | null {
+  const ids = row.householdMemberships.map((m) => m.householdId)
+  if (row.activeHouseholdId !== null && ids.includes(row.activeHouseholdId)) {
+    return row.activeHouseholdId
+  }
+  return ids[0] ?? null
+}
+
+/**
  * The id of the caller's household. On first sign-in it creates the
  * household, the caller's `owner` row, a location ("Home" in English) and the
  * caller's `organizer` row on it, all in one transaction.
  *
- * ── THE COMMON PATH: ONE QUERY ──
+ * ── WHICH HOUSEHOLD (households H5b, decision T14) ──
  *
- * A person who already has a household costs one read. The transaction runs
- * only when that read finds nothing.
+ * Since H5b a person can be in more than one household (they join one
+ * through an invite and keep their own). `pickHousehold` above decides which
+ * one a request acts in. The answer is the same on every request until the
+ * person's memberships or their active household change.
+ *
+ * ── THE COMMON PATH: ONE findUnique ──
+ *
+ * A person who already has a household costs one Prisma call: one
+ * `user.findUnique` for their `User` row with `activeHouseholdId` and their
+ * memberships. The transaction runs only when that read finds no household.
+ *
+ * One Prisma call is not always one SQL statement. Prisma 6 without the
+ * `relationJoins` preview feature (this schema does not turn it on) may run
+ * the nested `householdMemberships` select as a second statement. That is
+ * not measured. The old `householdMember.findFirst` was one statement.
  *
  * ── THE RACE GUARD (decision H1) ──
  *
@@ -98,8 +167,8 @@ function noHousehold(): GraphQLError {
  *
  * The first request to run it locks the `User` row. Postgres makes every other
  * request wait for that lock. When the first transaction commits, the others
- * re-check the `WHERE`, match 0 rows, and read the winner's household instead.
- * So only one household is ever made.
+ * re-check the `WHERE`, match 0 rows, and read the winner's household instead,
+ * with the same rule (`pickHousehold`). So only one household is ever made.
  *
  * What is proved on real Postgres, and what is not:
  *
@@ -108,7 +177,8 @@ function noHousehold(): GraphQLError {
  *   connections. It checks that the second claim waits for the first one's
  *   row lock, and that the first updates 1 row and the second 0. The script
  *   cannot import from `src`, so it repeats the call. If the claim here
- *   changes, change the script too.
+ *   changes, change the script too. H5b did NOT change the claim: only the
+ *   reads before and after it changed, and the script copies none of them.
  * - It does NOT run `ensureHousehold` itself. The read before the
  *   transaction, the `count === 0` branch that reads the winner's household,
  *   and the rows created after the claim are not run on real Postgres by
@@ -118,9 +188,9 @@ function noHousehold(): GraphQLError {
  * ── WHEN IT THROWS ──
  *
  * - `NO_HOUSEHOLD`: the claim is already set but the person is in no
- *   household. That is "left their household" (H5), and it must NOT make a
- *   second household (design, *Create and delete a household*). Nobody can
- *   reach this state before H5.
+ *   household. That is "left their household" or "was removed" (H5b), and it
+ *   must NOT make a second household (design, *Create and delete a
+ *   household*).
  * - A plain `Error` when there is no `User` row at all. `ensureUserOrLog`
  *   creates that row earlier in every request, so this means it failed. The
  *   household cannot be created without the row: `HouseholdMember.userId` is
@@ -131,11 +201,12 @@ export async function ensureHousehold(
   language: AppLanguage,
   now: Date = new Date(),
 ): Promise<string> {
-  const existing = await prisma.householdMember.findFirst({
-    where: { userId },
-    select: { householdId: true },
+  const person = await prisma.user.findUnique({
+    where: { id: userId },
+    select: HOUSEHOLD_CHOICE,
   })
-  if (existing) return existing.householdId
+  const existing = person ? pickHousehold(person) : null
+  if (existing) return existing
 
   return prisma.$transaction(async (tx) => {
     // The claim. It MUST be the first statement, so the row lock is taken
@@ -147,14 +218,15 @@ export async function ensureHousehold(
 
     if (count === 0) {
       // Another request claimed first and has committed by now (we waited
-      // for its lock), or this person was set up long ago.
-      const winner = await tx.householdMember.findFirst({
-        where: { userId },
-        select: { householdId: true },
+      // for its lock), or this person was set up long ago. Read again, with
+      // the same rule as the read above.
+      const again = await tx.user.findUnique({
+        where: { id: userId },
+        select: HOUSEHOLD_CHOICE,
       })
-      if (winner) return winner.householdId
-      const user = await tx.user.findUnique({ where: { id: userId } })
-      if (!user) throw new Error('ensureHousehold: no User row for this user')
+      if (!again) throw new Error('ensureHousehold: no User row for this user')
+      const winner = pickHousehold(again)
+      if (winner) return winner
       throw noHousehold()
     }
 
@@ -162,20 +234,56 @@ export async function ensureHousehold(
     // Unreachable: the claim above matched this row, inside this transaction.
     if (!user) throw new Error('ensureHousehold: the claimed User row is gone')
     const names = firstSignInNames(language, user.displayName)
-
-    // The household first, then its owner row: the owner row's foreign key
-    // needs the household. `ownerId` mirrors the owner row and is written in
-    // the same transaction (decision H15).
-    const household = await tx.household.create({
-      data: { name: names.household, ownerId: userId },
+    const household = await createHouseholdFor(tx, {
+      userId,
+      name: names.household,
+      locationName: names.location,
     })
-    await tx.householdMember.create({
-      data: { householdId: household.id, userId, role: 'owner' },
-    })
-
-    await createFirstLocation(tx, { householdId: household.id, userId, name: names.location })
-
     return household.id
+  })
+}
+
+/**
+ * A new household with `userId` as its owner, and its first location with
+ * the owner's `organizer` row there. Run it inside the caller's transaction.
+ *
+ * Two places make a household: first sign-in (`ensureHousehold` above) and
+ * `createHousehold` (resolvers/household.resolver.ts, households H5b task
+ * G.5). One function, so the two cannot drift apart.
+ *
+ * The household first, then its owner row: the owner row's foreign key needs
+ * the household. `ownerId` mirrors the owner row and is written in the same
+ * transaction (decision H15).
+ *
+ * It does not write the `User` row. `createHousehold` sets
+ * `activeHouseholdId` itself, after it took `lockUser`.
+ */
+export async function createHouseholdFor(
+  tx: Prisma.TransactionClient,
+  args: { userId: string; name: string; locationName: string },
+): Promise<{ id: string; name: string }> {
+  const household = await tx.household.create({
+    data: { name: args.name, ownerId: args.userId },
+  })
+  await tx.householdMember.create({
+    data: { householdId: household.id, userId: args.userId, role: 'owner' },
+  })
+  await createFirstLocation(tx, {
+    householdId: household.id,
+    userId: args.userId,
+    name: args.locationName,
+  })
+  return { id: household.id, name: household.name }
+}
+
+/**
+ * `createHousehold` refuses a person who is already in a household (owner
+ * decision O16-A, decision T18 of the H5b plan). H7 lifts this with
+ * "Switch to… › Create new".
+ */
+export function alreadyInHousehold(): GraphQLError {
+  return new GraphQLError('You are already in a household.', {
+    extensions: { code: 'BAD_USER_INPUT', reason: 'ALREADY_IN_HOUSEHOLD' },
   })
 }
 
@@ -183,10 +291,11 @@ export async function ensureHousehold(
  * The first location of a household, and the caller's `organizer` row on it.
  * Run it inside the caller's transaction.
  *
- * Two places make it: first sign-in (`ensureHousehold` above) and
- * `clearAllData` (resolvers/import.resolver.ts), which makes "Home" again
+ * Three places make it: first sign-in and `createHousehold` (both through
+ * `createHouseholdFor` above) and `clearAllData`
+ * (resolvers/import.resolver.ts), which makes "Home" again
  * after it deletes every location of the household (decision H17). One
- * function, so the two cannot drift apart.
+ * function, so the three cannot drift apart.
  *
  * A location carries no `userId` and no `isDefault` since task 3.14 (the
  * drop_user_scope migration). The caller's `organizer` row is what ties them
@@ -253,4 +362,87 @@ export async function lockHousehold(
   householdId: string,
 ): Promise<void> {
   await tx.household.update({ where: { id: householdId }, data: { updatedAt: new Date() } })
+}
+
+/**
+ * Take the caller's `User` row lock for the rest of this transaction
+ * (households H5b, decision T16). The same idea as `lockHousehold` above: an
+ * `UPDATE` of `updatedAt` takes a row lock (`FOR NO KEY UPDATE`), and a
+ * second transaction that runs the same `UPDATE` waits at that statement
+ * until the first one commits or rolls back. Its reads come after the
+ * `UPDATE`, so under READ COMMITTED they see what the first one committed.
+ *
+ * Why it exists. `joinHousehold` reads the person's memberships, then may
+ * delete their own household when it is empty. Two joins by one person at
+ * once (two tabs, two links) could both read "still a member of my own
+ * household" and both act on it. With the lock they run one after the other.
+ *
+ * ONE LOCK ORDER: the `User` row first, then `Household` rows, sorted by id
+ * (`lockHouseholds` below). Only `joinHousehold` and `createHousehold`
+ * (task G.5) take this lock, and always FIRST. `removeMember`,
+ * `leaveHousehold` and `setHouseholdRole` take only `lockHousehold` and never
+ * write a `User` row themselves. Two transactions that take the two locks in
+ * opposite orders can wait on each other; Postgres then aborts one with
+ * `40P01` (a deadlock), and a person sees an error. So never write a `User`
+ * row after a household lock unless this lock is already held.
+ *
+ * ONE EXCEPTION THE CODE CANNOT AVOID: deleting a household writes OTHER
+ * people's `User` rows. `User.activeHouseholdId` is `onDelete: SetNull`, and
+ * a person who left or was removed still names the household there (removal
+ * and leaving never write the `User` row, decision T16). So the join's last
+ * step, the delete of an empty own household, can write a `User` row while
+ * the join holds household locks. Two joins can then deadlock. That is why
+ * `joinHousehold` retries ONCE on Prisma's `P2034` (a write conflict or a
+ * deadlock): see `retryOnceOnConflict` in resolvers/invite.resolver.ts.
+ *
+ * The cost: `User.updatedAt` moves on every call.
+ *
+ * The Prisma fake has no row lock, so the unit tests prove only the ORDER of
+ * the two `UPDATE`s, not that the second transaction waits. Nothing runs
+ * this on real Postgres yet.
+ */
+export async function lockUser(tx: Prisma.TransactionClient, userId: string): Promise<void> {
+  await tx.user.update({ where: { id: userId }, data: { updatedAt: new Date() } })
+}
+
+/**
+ * Take the row lock of several households, one `UPDATE` each, in ONE fixed
+ * order: sorted by id, and each id once (households H5b, task G.4). Returns
+ * the ids that were found and locked. An id with no row is skipped, with no
+ * error: the caller decides what a missing household means.
+ *
+ * Why sorted. `joinHousehold` locks the household it joins AND every
+ * household of the caller it may delete. Two joins that lock the same two
+ * households in opposite orders could wait on each other (a deadlock).
+ * Sorted, every join takes them in the same order. Take `lockUser` first.
+ *
+ * Why lock the households it may delete. Without the lock, a join into one
+ * of them (another person using its invite) could commit between this
+ * transaction's "is it empty" check and its delete. Postgres then deletes the
+ * household with the other person's new membership in it. With the lock,
+ * that join waits, and then finds the household gone.
+ *
+ * `updateMany`, not `update`, so a missing row gives a count of 0 instead of
+ * P2025. `setHouseholdRole`, `removeMember` and `leaveHousehold` (task G.5)
+ * lock their one household through this too (`lockOrForbid` in
+ * resolvers/household.resolver.ts), so a household deleted since
+ * `requireHousehold` found it gives FORBIDDEN, not an internal error.
+ *
+ * The same `UPDATE` as `lockHousehold`. The Prisma fake has no row lock, so
+ * the unit tests prove only the order.
+ */
+export async function lockHouseholds(
+  tx: Prisma.TransactionClient,
+  householdIds: readonly string[],
+): Promise<Set<string>> {
+  const locked = new Set<string>()
+  const sorted = [...new Set(householdIds)].sort()
+  for (const id of sorted) {
+    const { count } = await tx.household.updateMany({
+      where: { id },
+      data: { updatedAt: new Date() },
+    })
+    if (count > 0) locked.add(id)
+  }
+  return locked
 }

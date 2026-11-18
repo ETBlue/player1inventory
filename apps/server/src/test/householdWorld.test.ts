@@ -123,4 +123,121 @@ describe('householdWorld', () => {
     await client.things.create({ data: { id: 'thing-2' } })
     expect(extra.rows).toEqual([{ id: 'thing-2' }])
   })
+
+  it('a member row gives the person a User row the household read can see (H5b G.2)', async () => {
+    // Given a member row and no User row
+    const world = createHouseholdWorld()
+    world.seedHouseholds({
+      households: [household('hh-1', 'u1')],
+      householdMembers: [{ householdId: 'hh-1', userId: 'u1', role: 'owner', joinedAt: T }],
+    })
+
+    // Then the read `ensureHousehold` makes finds the person and the membership
+    const row = await world.client.user.findUnique({
+      where: { id: 'u1' },
+      select: { activeHouseholdId: true, householdMemberships: { select: { householdId: true } } },
+    })
+    expect(row).toEqual({ activeHouseholdId: null, householdMemberships: [{ householdId: 'hh-1' }] })
+  })
+
+  it('setActiveHousehold writes activeHouseholdId, creating the User row when there is none', async () => {
+    const world = createHouseholdWorld()
+    world.users.reset([])
+
+    world.setActiveHousehold('u1', 'hh-2')
+    expect(world.users.state.rows).toEqual([expect.objectContaining({ id: 'u1', activeHouseholdId: 'hh-2' })])
+
+    world.setActiveHousehold('u1', 'hh-1')
+    expect(world.users.state.rows).toEqual([expect.objectContaining({ id: 'u1', activeHouseholdId: 'hh-1' })])
+  })
+})
+
+describe('householdWorld holds the invite store (households H5b, task G.3)', () => {
+  it('the client has householdInvite, and a rolled-back transaction removes its write', async () => {
+    // Given a world with one household
+    const world = createHouseholdWorld()
+    world.seedHouseholds({
+      households: [household('hh-1', 'u1')],
+    })
+    const data = {
+      householdId: 'hh-1',
+      token: 't',
+      householdRole: 'member' as const,
+      locationRoles: [],
+      createdById: 'u1',
+      expiresAt: new Date('2030-01-01T00:00:00.000Z'),
+    }
+
+    // When an invite is written in a transaction that then throws
+    await expect(
+      world.client.$transaction(async (tx: unknown) => {
+        await (tx as typeof world.client).householdInvite.create({ data })
+        throw new Error('roll back')
+      }),
+    ).rejects.toThrow('roll back')
+
+    // Then the store holds no invite, and a plain write is kept
+    expect(world.households.state.householdInvites).toEqual([])
+    await world.client.householdInvite.create({ data })
+    expect(world.households.state.householdInvites).toHaveLength(1)
+  })
+})
+
+describe('householdWorld: household.deleteMany cascades across the fakes (households H5b, task G.4)', () => {
+  it('deletes the household locations, their stock rows, carts and cart rows, catalog rows, and sets activeHouseholdId to null', async () => {
+    // Given two households; hh-1 has a location with an empty cart and a
+    // stock row, and u1's active household is hh-1
+    const world = createHouseholdWorld()
+    world.stock.reset(
+      [
+        { id: 'loc-1', householdId: 'hh-1', name: 'A', order: 0 },
+        { id: 'loc-2', householdId: 'hh-2', name: 'B', order: 0 },
+      ],
+      [],
+    )
+    world.seedHouseholds({
+      households: [household('hh-1', 'u1'), household('hh-2', 'u2')],
+      householdMembers: [
+        { householdId: 'hh-1', userId: 'u1', role: 'owner', joinedAt: T },
+        { householdId: 'hh-2', userId: 'u2', role: 'owner', joinedAt: T },
+      ],
+      locationMembers: [
+        { locationId: 'loc-1', userId: 'u1', role: 'organizer', createdAt: T },
+        { locationId: 'loc-2', userId: 'u2', role: 'organizer', createdAt: T },
+      ],
+    })
+    world.setActiveHousehold('u1', 'hh-1')
+    world.setActiveHousehold('u2', 'hh-2')
+    world.contents.rows.carts.push(
+      { id: 'cart-1', locationId: 'loc-1' },
+      { id: 'cart-2', locationId: 'loc-2' },
+    )
+    world.contents.rows.cartItems.push({ cartId: 'cart-2' })
+    world.contents.rows.tags.push({ householdId: 'hh-2' })
+
+    // When hh-1 is deleted
+    const result = await world.client.household.deleteMany({ where: { id: { in: ['hh-1'] } } })
+
+    // Then hh-1 and everything under it is gone, and hh-2 is untouched
+    expect(result).toEqual({ count: 1 })
+    expect(world.households.state.households.map((h) => h.id)).toEqual(['hh-2'])
+    expect(world.stock.state.locations.map((l) => l.id)).toEqual(['loc-2'])
+    expect(world.households.state.locationMembers.map((m) => m.locationId)).toEqual(['loc-2'])
+    expect(world.contents.rows.carts.map((c) => c.id)).toEqual(['cart-2'])
+    expect(world.contents.rows.cartItems).toEqual([{ cartId: 'cart-2' }])
+    expect(world.contents.rows.tags).toEqual([{ householdId: 'hh-2' }])
+    const active = Object.fromEntries(world.users.state.rows.map((r) => [r.id, r.activeHouseholdId]))
+    expect(active).toEqual({ u1: null, u2: 'hh-2' })
+  })
+
+  it('the contents store rolls back with a transaction', async () => {
+    const world = createHouseholdWorld()
+    await expect(
+      world.client.$transaction(async () => {
+        world.contents.rows.items.push({ householdId: 'hh-1' })
+        throw new Error('boom')
+      }),
+    ).rejects.toThrow('boom')
+    expect(world.contents.rows.items).toEqual([])
+  })
 })

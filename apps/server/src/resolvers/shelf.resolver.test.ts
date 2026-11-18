@@ -24,8 +24,8 @@ import type { Context } from '../context.js'
 //
 // Since households H3a task 3.7 the rows carry a `householdId`, and the two
 // `findFirst` fakes accept `id` and `householdId` and THROW on any other key.
-// `householdMember` answers the reads `requireCatalogRole` makes: the caller
-// is the `owner` of `hh_test`. `tag.findMany` and `vendor.findMany` answer
+// `user.findUnique` and `householdMember.findUnique` answer the reads
+// `requireCatalogRole` makes: the caller is the `owner` of `hh_test`. `tag.findMany` and `vendor.findMany` answer
 // `requireCatalogIds` by echoing every id back, so every tag and vendor id
 // here is the household's. The refusals of another household's ids are
 // tested with stateful fakes in `catalog-household.resolver.test.ts`.
@@ -117,8 +117,12 @@ const { state, sharedClient, snapshot } = vi.hoisted(() => {
   }
 
   const sharedClient = {
+    // `ensureHousehold` (via `requireHousehold`) reads the caller's household
+    // through their `User` row (decision T14 of the H5b plan).
+    user: {
+      findUnique: async () => ({ activeHouseholdId: null, householdMemberships: [{ householdId: 'hh_test' }] }),
+    },
     householdMember: {
-      findFirst: async () => ({ householdId: 'hh_test' }),
       findUnique: async () => ({ role: 'owner' }),
     },
     tag: { findMany: echoIds },

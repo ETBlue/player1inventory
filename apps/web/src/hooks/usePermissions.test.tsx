@@ -226,4 +226,38 @@ describe('usePermissions', () => {
     // The location roles come from another query and still count
     expect(p.canEditLocation('K')).toBe(true)
   })
+
+  // Households H5b, task G.9: the Members page. The three household roles
+  // must give three different answers, so a check that reads the wrong right
+  // fails one of them.
+  it.each([
+    ['owner', true, true],
+    ['manager', true, false],
+    ['member', false, false],
+  ] as const)('household %s: canManageMembers %s, isHouseholdOwner %s', (role, manage, owner) => {
+    mockHousehold.mockReturnValue(household(role))
+    mockLocations.mockReturnValue(locations([{ id: 'K', myRole: 'viewer' }]))
+
+    const p = render()
+
+    expect(p.canManageMembers).toBe(manage)
+    expect(p.isHouseholdOwner).toBe(owner)
+  })
+
+  it('cloud gives no member rights while the household role is loading', () => {
+    mockHousehold.mockReturnValue({ data: undefined, loading: true })
+    mockLocations.mockReturnValue(locations([]))
+
+    const p = render()
+
+    expect(p.canManageMembers).toBe(false)
+    expect(p.isHouseholdOwner).toBe(false)
+  })
+
+  it('local mode gives no member rights: it has no members', () => {
+    localStorage.setItem('data-mode', 'local')
+    const p = render()
+    expect(p.canManageMembers).toBe(false)
+    expect(p.isHouseholdOwner).toBe(false)
+  })
 })

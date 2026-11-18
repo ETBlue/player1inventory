@@ -147,7 +147,8 @@ session ran `verify:migration` there, which applies `drop_user_scope`: `Location
 catalog models have no `userId` column, and `Location` has no `isDefault`. So **`main`'s
 cloud E2E cannot run on this database until H3a merges**: `main`'s server writes and reads
 those columns. A cloud location is no longer "the default" (see below), and `/e2e/cleanup`
-deletes **18** models (count the distinct `deleteMany` models in `lib/e2eCleanup.ts`).
+deletes **19** models since households H5b task G.6 added `HouseholdInvite` (count the
+distinct `deleteMany` models in `lib/e2eCleanup.ts`).
 
 The last E2E counts on the H3a branch, 2026-11-11, from **three separate runs** (not one
 `pnpm test:e2e:all`): `cloud` **126 passed / 7 skipped**, `local` **178 passed / 6 skipped**,
@@ -212,6 +213,19 @@ the Stock tab where the test expected `6`.
 the URL it actually called. In the proof above that made the message disagree with the
 404 body. It is cosmetic, but do not read the message as proof of which URL was hit.
 
+### A cleanup in the MIDDLE of a test needs `forgetDeletedHousehold(page)` — since 2026-11-18
+
+`/e2e/cleanup` deletes the user's household, and the next request makes a new one with a
+new id. A page that already showed the app keeps the old id in `last-household-id`. On the
+next page load `HouseholdChangeGuard` (households H5b) sees a different id, clears the
+cache and **reloads the page**, about 1.4 s after it opened. Whatever the test started in
+that time is lost, with no error on screen: an import never runs, an open menu closes.
+
+So after a `cleanupCloudData` that runs mid-test, once a page has loaded, call
+`forgetDeletedHousehold(page)` (`e2e/helpers/cloudTeardown.ts`). It removes only that key.
+The four re-import tests of `settings/import-export-cloud.spec.ts` do this. The
+`beforeEach` and `afterEach` calls need nothing: each test has a fresh context.
+
 ## `/e2e/cleanup` deletes `Location` and `ItemStock` — since 2026-09-14
 
 Before that date the endpoint deleted 12 models and missed both. The effect was not
@@ -239,7 +253,8 @@ from disk, so a mock cannot satisfy it.
 **It checks every model in the schema now**, not only models that declare a `userId`
 (the rule until task 3.10). For each path, every schema model is either deleted or named
 in that path's `kept` list. `clearAllData` keeps `household`, `householdMember`,
-`locationMember` (they go with their location) and `user`; `/e2e/cleanup` keeps none.
+`locationMember` (they go with their location), `householdInvite` and `user`;
+`/e2e/cleanup` keeps none (it kept `householdInvite` from H5b task G.1 until task G.6).
 
 **The `itemStock` line still protects no DATA.** If someone deletes it, the rows still go:
 both of `ItemStock`'s foreign keys cascade. Measured 2026-09-25 — with
@@ -277,7 +292,8 @@ specs below run against real Postgres.
 ## `cleanup-endpoint.spec.ts` — the behavioural guard on `/e2e/cleanup`
 
 `e2e/tests/cleanup-endpoint.spec.ts` (added 2026-09-25, one cloud test) seeds **one row of
-every model `/e2e/cleanup` deletes** — all 18 since households H3a task 3.10, 15 since
+every model `/e2e/cleanup` deletes** — all 19 since households H5b task G.6 (the invite
+is made with the real `createInvite` mutation), 18 since households H3a task 3.10, 15 since
 households task 2.6, 14 before it —
 calls the route, and asserts every returned count is at least 1, then reads the data back
 and asserts empty. It is cloud-only and has no browser: it is in the `cloud` project's
@@ -287,8 +303,15 @@ and asserts empty. It is cloud-only and has no browser: it is in the `cloud` pro
 `{ count }`; `index.ts` used to throw those away and answer `{ ok: true }`. It now answers
 `{ ok: true, deleted: { inventoryLogs, cartItems, carts, itemTags, itemVendors,
 recipeItems, itemStocks, items, tags, tagTypes, vendors, recipes, shelves,
-locationMembers, locations, householdMembers, households, users } }` — 18 keys since
-households H3a task 3.10. The route is mounted only under `E2E_TEST_MODE`, so production
+locationMembers, locations, householdInvites, householdMembers, households, users } }` —
+19 keys since households H5b task G.6, 18 since households H3a task 3.10.
+
+**The invite statement runs BEFORE `household` and BEFORE `user`.** `HouseholdInvite.householdId`
+is `ON DELETE CASCADE`, so after the household delete the count would read 0.
+`createdById` is RESTRICT (decision T26), so an invite the user made in a household they do
+not own would make the `User` delete fail. That is why its filter is
+`OR: [{ householdId: owned }, { createdById: userId }]`. An invite the user only USED is
+not deleted: `usedById` is SET NULL. The route is mounted only under `E2E_TEST_MODE`, so production
 is unaffected.
 
 ### Households — the 16th to 18th models, since 2026-11-04 (households H3a, task 3.10)
@@ -568,17 +591,17 @@ reconcile finds nothing to remove and creates every row the fixture lists. No ed
 loop was needed in 4b or in PR 5 — which is the whole argument for reading state back
 instead of predicting it.
 
-**The `cloud` project's `testMatch` is 29 files today** (`e2e/playwright.config.ts`,
-measured 2026-11-04, after households H3a task 3.11), up from 13 on 2026-09-23. **Count the
-array rather than reusing that 29** — it grows most weeks:
+**The `cloud` project's `testMatch` is 35 files today** (`e2e/playwright.config.ts`,
+measured 2026-11-18, after households H5b task G.10; it was 29 on 2026-11-04 and 13 on
+2026-09-23). **Count the array rather than reusing that 35** — it grows most weeks:
 
 ```bash
 awk "/name: 'cloud'/,/name: 'pwa'/" e2e/playwright.config.ts | grep -c "spec\.ts'"
 ```
 
 The `awk` range matters: the file holds **three** such lists — `local`'s `testIgnore`,
-`cloud`'s `testMatch` and `pwa`'s `testMatch` — and a grep over the whole file counts all 40
-entries instead of the 29 that belong to `cloud`.
+`cloud`'s `testMatch` and `pwa`'s `testMatch` — and a grep over the whole file counts all 52
+entries instead of the 35 that belong to `cloud` (measured 2026-11-18).
 
 **The command this section used to give printed 0 from 2026-10-30.** It ended
 `| grep -m1 testMatch | grep -o "'\*\*/[^']*\.spec\.ts'" | wc -l`, so it only counted the
@@ -637,8 +660,10 @@ only". So in cloud its template test would write to IndexedDB, reach **zero** re
 still pass `await expect(page).toHaveURL('/')`. That is a test reporting as covered while
 covering nothing. The product gap is issue **#347**.
 
-The `local` project is 23 spec files: 33 files under `e2e/tests/` minus the 10 in its
-`testIgnore` (measured 2026-11-04, after households H3a task 3.11).
+The `local` project is 23 spec files: 39 files under `e2e/tests/` minus the 16 in its
+`testIgnore` (measured 2026-11-18, after households H5b task G.10; it was 33 minus 10 on
+2026-11-04). Count them with `find e2e/tests -name '*.spec.ts' | wc -l` and
+`awk "/testIgnore: \[/,/\],/" e2e/playwright.config.ts | grep -c "spec\.ts'"`.
 
 File 26 is `cloud-user-row.spec.ts`, added 2026-10-31 by households H2 task 2.7. It is
 cloud-only and has no browser, so it is also in `local`'s `testIgnore`. Its 3 tests act as
@@ -671,8 +696,12 @@ route `POST /e2e/household-members` (`apps/server/src/lib/e2eHouseholds.ts`, dec
 1. The OWNER sends one GraphQL request first. That request makes the household.
 2. Add the member BEFORE the member sends any GraphQL request. A request would make the
    member a household of their own, and the route refuses a person who is already in a
-   household. (`ensureHousehold` reads a person's household with `findFirst` and no
-   `orderBy`, so a person in two households would get one of them at random.)
+   household. (Since households H5b a person can be in two households, through an
+   invite, and `ensureHousehold` picks one by a fixed rule: `User.activeHouseholdId`,
+   else the oldest membership. This route still refuses, because it sets no
+   `activeHouseholdId` and specs rely on the member's first request reading THIS
+   household. For a person in two households, use `createInvite` and
+   `joinHousehold` in `e2e/helpers/cloudUsers.ts`, which call the real mutations.)
 
 The route sets the member's first sign-in claim (`User.householdSetupAt`). So after the
 owner's cleanup removes the member's row, the member's next request gets `NO_HOUSEHOLD`. It
@@ -706,16 +735,26 @@ another household's item writes nothing (its new VENDOR is what makes that able 
 because vendors go out before items); "Import into which location?" puts a local backup's
 default rows into the picked location, or into a "New location"; a location the importer
 only views is skipped and named; and a "Clear & import" of a cloud backup leaves no empty
-"Home" (decision 6). One person in TWO households is still impossible here (409).
+"Home" (decision 6). One person in TWO households is still impossible through
+`addHouseholdMember` (409). Since households H5b it is possible through a real invite:
+`household-invites.spec.ts` test 4 does it with `createInvite` and `joinHousehold`.
 
 **A browser context can be any user — since households H5 task F.8.** The project's own
 `page` is still `E2E_USER_ID`, because `VITE_E2E_TEST_USER_ID` is one value in the web
 build. A spec that needs a page as someone else calls
-`newUserContext(browser, userId, extraLocalStorage?)` (`e2e/helpers/userContext.ts`). It
+`newUserContext(browser, userId, extraLocalStorage?, options?)` (`e2e/helpers/userContext.ts`). It
 makes a new context with `data-mode: cloud`, `e2e-skip-onboarding: true` and
 `e2e-user-id: <userId>` in `localStorage`, and `baseURL: CLOUD_WEB_URL`: a context made
 with `browser.newContext` does not inherit the project's `use` settings. The caller closes
 it.
+
+`options` (since households H5b task G.10) leaves out the first two keys, to act as a
+brand-new visitor:
+
+| Option | Default | `false` means |
+|---|---|---|
+| `skipOnboarding` | `true` | no `e2e-skip-onboarding`, so an empty catalog sends pages to `/onboarding`, as for a real new person |
+| `cloudMode` | `true` | no `data-mode` key, so the app starts in LOCAL mode, as it does on a first visit |
 
 | Part | Where | What it does |
 |---|---|---|
@@ -753,6 +792,51 @@ settings list as No access with Delete, and never in the switcher. Proved by mut
 | `householdLocations` returns `visibleLocations` for every role | test 3, the Shed row not found |
 | `getE2ETestUserId` ignores the key | all 3 |
 
+**`household-invites.spec.ts` joined on 2026-11-18 (households H5b task G.10).** Cloud
+only, with up to three browsers, in `local`'s `testIgnore`. It is the first real-SQL run of
+`createInvite`, `revokeInvite`, `invitePreview`, `joinHousehold`, `setHouseholdRole`,
+`removeMember`, `leaveHousehold` and `createHousehold`. Page objects: `e2e/pages/JoinPage.ts`
+and `e2e/pages/MembersPage.ts`.
+
+| Test | What it proves |
+|---|---|
+| 1 | a brand-new visitor (`cloudMode: false`, `skipOnboarding: false`) opens a link made in the owner's browser, is NOT sent to `/onboarding`, presses Sign in to join and then Join, and lands on `/` in the owner's household. Their own empty household is deleted (read back as the cleanup's `households: 0`). Both browsers then see each other's changes live: the owner's Members page gets the new member (`LOCATION`), the joiner's pantry gets the owner's quantity (`STOCK`) |
+| 2 | a used, a revoked, a made-up and a too-short link all show "no longer valid", and `invitePreview` sends no name for them |
+| 3 | a removed person invited again as viewer is ONLY a viewer (View only, no quick update, `myRole: viewer`) |
+| 4 | a person in two households acts in the one joined last; an import cannot write a stock row for the target household's item at their other household's location (`FORBIDDEN`), or put that household's item in a cart (row skipped). No browser |
+| 5 | a member leaves, sees the no-household screen, and creates a household; their role on the owner's Home is gone (T11) |
+| 6 | the owner makes a member a manager; the manager may remove a member, not the owner, sets no roles, and may not invite a manager. The server refuses a manager's `setHouseholdRole` and `removeMember` of the owner with `FORBIDDEN`. Then the manager makes a member invite and the owner removes them: the invite is gone from the open list and joining with it gives `INVITE_INVALID` (owner decision O20). The revoke sets `revokedAt` and deletes nothing, so the cleanup order for `createdById` (RESTRICT) is unchanged: the manager's cleanup deletes the revoked invite before their `User` row |
+| 7, 8 | axe scans, light and dark: join page, Members page, invite dialog (form and link), Remove and Leave confirms, no-household screen and its Create dialog |
+
+Proved by mutation on 2026-11-18, each in `cloud`, restored from a copy:
+
+| Mutation | Red test, failure |
+|---|---|
+| `shouldRedirectToOnboarding` without its `/join/` line | 1: the local "Joining a household uses cloud sync…" text not found (the visitor was on `/onboarding`) |
+| `joinHousehold` without the empty-household `deleteMany` (T21) | 1: `householdMembers` Expected 1, Received 2 |
+| `removeMember` without T11 AND join without T20 AND `createMany({ skipDuplicates })` instead of `create` | 3: `Expected substring: "View only" / Received string: "Home"` |
+| T11 and T20 both removed (no `skipDuplicates`) | 3: the join itself fails on the unique key; the test times out waiting for `/` |
+| T11 alone, or T20 alone | 3 **stays green**: each one removes the old role on this path, so one is enough |
+| T11 alone (the leave and remove `locationMember.deleteMany`) | 5: `locationMembers` Expected 1, Received 2 (added by the review of G.10: the leaver's cleanup counts their new Home's organizer row, plus any row left on the owner's Home) |
+| `requireLocationInHousehold` removed from `requireOwnItemStockRefs` (issue #381 gap 1) | 4: `Received promise resolved instead of rejected`. The import names the TARGET household's item, so only the location check can refuse it |
+| the household rule back to "first membership, no order, no active household" | 4: `household.id` is the person's own household |
+| `invitePreview` names the household of a used or revoked link | 2: `householdName` `"Olivia Owner's Household"` where `null` was expected. Only the API check sees it: the page shows no name for INVALID |
+| `memberActions` gives a manager Remove on every row | 6: `Remove Olivia Owner` Expected 0, Received 1 |
+| `createInvite` lets a manager invite a manager | 6: `Received promise resolved instead of rejected` |
+| `leaveHousehold` deletes nothing | 5: the member list still holds the newcomer |
+
+**Two traps it hit, both about what a page can see:**
+
+- **The switcher shows the ACTIVE household's locations only**, so it cannot show that a
+  person's OTHER household was deleted. Test 1 reads the cleanup's counts instead. A
+  person's other household cannot be read through GraphQL at all once they act elsewhere.
+- **A filled button inside a dialog fails contrast at rest** (the `opacity-90` on
+  `buttonVariants`). Measured: primary 4.19:1 in light, destructive 3.92:1 light and
+  3.56:1 dark. Dialog scans use `checkDialogA11y` (`e2e/helpers/axe.ts`), which excludes
+  only those `button` elements (not a Badge, Switch or bar with the same class) and only
+  from `color-contrast`, like `a11y.spec.ts`. Whole-page scans
+  use `checkA11y` with nothing excluded, and they pass.
+
 **`DataModeCard`'s Switch flow renders in E2E mode — since households H4 task E.6.** A
 production change made for a test, like `PostLoginMigrationDialog`'s below. The cloud
 section used to be left out in E2E mode because its Sign Out flow calls `useClerk()`.
@@ -783,7 +867,8 @@ What the number has been, so you can see how fast it moves rather than reuse a f
 | 2026-11-11 | `feature/households-h3a`, after task 3.15 | 133 |
 | 2026-11-16 | `feature/households-h3c-2`, after `live-pantry.spec.ts` | 151 |
 | 2026-11-17 | `feature/households-h4`, after task E.6 and the O9 follow-up | 160 |
-| 2026-11-17 | `feature/households-h5`, after task F.8 | **168** |
+| 2026-11-17 | `feature/households-h5`, after task F.8 | 168 |
+| 2026-11-18 | `feature/households-h5b`, after task G.10. G.10 added 8 (`household-invites.spec.ts`); the other 1 came from an earlier H5b task and is not attributed here | **177** |
 
 H5a added 9 tests and removed 1. All of them RUN only in `cloud`; the six in the two
 shared spec files are also collected (and skipped) in `local`, which went 184 → 189: 3 in `location-switcher.spec.ts` (task
@@ -1141,6 +1226,14 @@ the same error the stale-codegen section above describes, from a different cause
 
 The order is therefore: `page.goto('/')` → write `data-mode=local` → `page.reload()` →
 `seedLocalFixture(page, …)`.
+
+### The stored copy asks first (owner decision O22-A, 2026-11-18)
+
+After the reload the copy no longer starts by itself. `PostLoginMigrationDialog` first asks
+"Copy your offline data into {household}?", naming the household, once `GetHousehold` and
+`GetLocations` have both loaded. The spec waits for that heading, checks the "shared" line is
+absent (the E2E user owns its household), and presses **Copy here**. Only then does
+"Copying local data to cloud…" show.
 
 ### Do NOT set `data-mode` in `page.addInitScript`
 

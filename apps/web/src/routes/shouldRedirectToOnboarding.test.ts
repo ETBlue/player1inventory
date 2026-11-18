@@ -102,4 +102,30 @@ describe('shouldRedirectToOnboarding', () => {
     // Then no redirect is issued
     expect(result).toBe(false)
   })
+
+  it.each([
+    'local',
+    'cloud',
+  ] as const)('user who opens an invite link with no data is NOT sent to onboarding (%s mode)', (mode) => {
+    // Given a brand-new person whose catalog has loaded and is empty, on the
+    // join page of an invite link (Review Focus 1, decision T25)
+    const input = { ...baseInput, mode, pathname: '/join/some-token' }
+
+    // When the decision is made
+    const result = shouldRedirectToOnboarding(input)
+
+    // Then they stay on the join page, so they can press Join
+    expect(result).toBe(false)
+  })
+
+  it('user on a page whose name only starts with "join" IS sent to onboarding', () => {
+    // Given an empty catalog on a path that is not the join page
+    const input = { ...baseInput, pathname: '/joined' }
+
+    // When the decision is made
+    const result = shouldRedirectToOnboarding(input)
+
+    // Then the usual rule applies
+    expect(result).toBe(true)
+  })
 })

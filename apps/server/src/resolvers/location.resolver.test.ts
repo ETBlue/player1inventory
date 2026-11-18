@@ -247,6 +247,7 @@ describe('locations', () => {
         lastSeenAt: null,
         deletedAt: null,
         householdSetupAt: null,
+        activeHouseholdId: null,
         createdAt: T,
         updatedAt: T,
       },

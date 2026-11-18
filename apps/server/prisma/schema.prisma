@@ -321,13 +321,13 @@ model User {
   // The Clerk user id. Since H2 the webhook and ensureUser create this row
   // before first sign-in runs, so this key cannot be the first sign-in race
   // guard. householdSetupAt below is (decision H1).
-  id               String    @id
-  displayName      String
+  id                String     @id
+  displayName       String
   // Optional: a Clerk account may sign in by phone or username, and the
   // user.deleted event carries no email.
-  email            String?
-  lastSeenAt       DateTime?
-  deletedAt        DateTime?
+  email             String?
+  lastSeenAt        DateTime?
+  deletedAt         DateTime?
   // The first sign-in claim (decision H1). Null means this person has never
   // had a household set up. First sign-in runs
   //   updateMany({ where: { id, householdSetupAt: null }, data: { householdSetupAt: now } })
@@ -335,9 +335,17 @@ model User {
   // creates the household; 0 means another request already did. It also tells
   // "never set up" apart from "left their household" (H5), so leaving does not
   // make a new household.
-  householdSetupAt DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  householdSetupAt  DateTime?
+  // The household this person last chose (households H5b, decision T14).
+  // Null for every person when this column is added, and after the household
+  // is deleted (SetNull). The server reads it only while the person is still a
+  // member there. Otherwise it falls back to the OLDEST membership by
+  // joinedAt, then householdId, so null needs no backfill and every request
+  // gives the same answer. Joining or creating a household sets it.
+  activeHouseholdId String?
+  activeHousehold   Household? @relation("ActiveHousehold", fields: [activeHouseholdId], references: [id], onDelete: SetNull)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
 
   // Households whose ownerId is this person. Named, because the relation from
   // Household to User is not the only path between them: HouseholdMember joins
@@ -345,6 +353,14 @@ model User {
   ownedHouseholds      Household[]       @relation("HouseholdOwner")
   householdMemberships HouseholdMember[]
   locationMemberships  LocationMember[]
+  // Invites this person made, and invites this person used (decision T26).
+  // Named, because HouseholdInvite points at User twice.
+  invitesCreated       HouseholdInvite[] @relation("InviteCreatedBy")
+  invitesUsed          HouseholdInvite[] @relation("InviteUsedBy")
+
+  // Serves the ON DELETE SET NULL on activeHouseholdId, which Postgres runs
+  // as a lookup by that column when a household is deleted.
+  @@index([activeHouseholdId])
 }
 
 enum HouseholdRole {
@@ -382,6 +398,11 @@ model Household {
   vendors   Vendor[]
   recipes   Recipe[]
   shelves   Shelf[]
+  // People whose active household this is (decision T14). Named, because
+  // "HouseholdOwner" already joins Household and User.
+  activeFor User[]            @relation("ActiveHousehold")
+  // Open, used and revoked invites. Deleted with the household (Cascade).
+  invites   HouseholdInvite[]
 
   // Finds "the households this person owns", and serves the ON DELETE SET
   // NULL above, which Postgres runs as a lookup by ownerId.
@@ -425,4 +446,41 @@ model LocationMember {
 
   @@id([locationId, userId])
   @@index([userId])
+}
+
+// An invite link to a household (households H5b, decision T26). See
+// docs/global/permissions/2026-10-04-households-design.md, *Invite and join*,
+// and docs/global/permissions/2026-11-18-households-plan-h5b.md.
+//
+// One invite can be used once. It is claimed with a conditional updateMany
+// (usedAt null, revokedAt null, expiresAt in the future), so two joins with
+// one token cannot both win (decision T17).
+model HouseholdInvite {
+  id            String        @id @default(cuid())
+  householdId   String
+  // 32 random bytes, base64url (decision T12). Secret: never logged. Stored
+  // plainly, so the owner or a manager can copy an open link again (O7-A).
+  token         String        @unique
+  householdRole HouseholdRole
+  // A JSON list of { locationId, role }. Read through a checked parser every
+  // time. A list, not a child table: an invite that names a location deleted
+  // since must still be readable.
+  locationRoles Json
+  // No onDelete, so Prisma's default (Restrict) applies, the same as the
+  // member tables: deleting a User who made an invite is a bug and fails
+  // loudly. /e2e/cleanup deletes the invites first.
+  createdById   String
+  createdAt     DateTime      @default(now())
+  expiresAt     DateTime
+  usedAt        DateTime?
+  // History only, so it may be lost: SetNull when the User row is deleted.
+  usedById      String?
+  revokedAt     DateTime?
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  createdBy User      @relation("InviteCreatedBy", fields: [createdById], references: [id])
+  usedBy    User?     @relation("InviteUsedBy", fields: [usedById], references: [id], onDelete: SetNull)
+
+  // Lists a household's invites, and serves the ON DELETE CASCADE above.
+  @@index([householdId])
 }
