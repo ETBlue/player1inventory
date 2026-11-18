@@ -1214,6 +1214,14 @@ the same error the stale-codegen section above describes, from a different cause
 The order is therefore: `page.goto('/')` → write `data-mode=local` → `page.reload()` →
 `seedLocalFixture(page, …)`.
 
+### The stored copy asks first (owner decision O22-A, 2026-11-18)
+
+After the reload the copy no longer starts by itself. `PostLoginMigrationDialog` first asks
+"Copy your offline data into {household}?", naming the household, once `GetHousehold` and
+`GetLocations` have both loaded. The spec waits for that heading, checks the "shared" line is
+absent (the E2E user owns its household), and presses **Copy here**. Only then does
+"Copying local data to cloud…" show.
+
 ### Do NOT set `data-mode` in `page.addInitScript`
 
 `addInitScript` re-runs on **every** document load. `DataModeCard.doEnableSwitch` writes

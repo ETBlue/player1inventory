@@ -753,7 +753,14 @@
       "errorTitle": "Copy failed",
       "errorForbidden": "Some rows in your local data belong to another household, so the copy was refused. Nothing was copied. Your local data is unchanged.",
       "errorRole": "Only the owner or a manager of your household can copy data into it, so the copy was refused. Nothing was copied. Your local data is unchanged.",
-      "errorOther": "The copy failed: {{message}}"
+      "errorOther": "The copy failed: {{message}}",
+      "confirmTitle": "Copy your offline data into {{household}}?",
+      "confirmDescription": "A copy of the data on this device goes into this household. The data on this device stays as it is.",
+      "confirmShared": "This household is shared, and you are not its owner. Other people in it will see this data.",
+      "copyHere": "Copy here",
+      "dontCopy": "Don't copy",
+      "cannotCopyMember": "Only the owner or a manager of this household can copy data into it. The data on this device stays as it is.",
+      "cannotCopyClear": "Only the owner of this household can clear it and copy data into it. The data on this device stays as it is."
     },
     "export": {
       "label": "Download my data",

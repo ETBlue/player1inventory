@@ -305,6 +305,18 @@ test('user can switch from offline to cloud mode and clear & import their local 
   // t('settings.dataMode.enableStrategyDialog.clearAndImport') = "Clear & import"
   await dialog.getByRole('button', { name: 'Clear & import' }).click()
 
+  // ── The stored copy asks first (owner decision O22-A) ───────────────────────
+  // After the reload the copy does not start by itself any more. It asks
+  // "Copy your offline data into {household}?", naming the E2E user's
+  // household. The user owns it, so there is no "shared" line.
+  // t('settings.postLoginMigration.confirmTitle')
+  await expect(
+    page.getByRole('heading', { name: /^Copy your offline data into / }),
+  ).toBeVisible({ timeout: 15000 })
+  await expect(page.getByText(/This household is shared/)).not.toBeVisible()
+  // t('settings.postLoginMigration.copyHere') = "Copy here"
+  await page.getByRole('button', { name: 'Copy here' }).click()
+
   // ── Then the auto-import branch runs, and it is SEEN running ─────────────────
   // ASSERTING THE MECHANISM, NOT ONLY THE OUTCOME. This dialog renders only
   // while `usePostLoginMigration`'s state is `auto-importing`

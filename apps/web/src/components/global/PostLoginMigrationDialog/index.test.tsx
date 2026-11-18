@@ -1,6 +1,6 @@
 import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
@@ -113,6 +113,34 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   }
 })
 
+// The household a stored copy would go into (owner decision O22-A). Each test
+// sets the name, the role, and whether it is still loading.
+const { householdState } = vi.hoisted(() => ({
+  householdState: {
+    data: { id: 'hh-1', name: 'Our Home', role: 'owner' } as
+      | { id: string; name: string; role: 'owner' | 'manager' | 'member' }
+      | undefined,
+    errorCode: undefined as string | undefined,
+  },
+}))
+vi.mock('@/hooks/useHousehold', () => ({
+  useHousehold: () => ({
+    data: householdState.data,
+    isLoading: householdState.data === undefined,
+    isError: false,
+    errorCode: householdState.errorCode,
+  }),
+}))
+
+function setHousehold(
+  role: 'owner' | 'manager' | 'member' | 'loading',
+  errorCode?: string,
+) {
+  householdState.data =
+    role === 'loading' ? undefined : { id: 'hh-1', name: 'Our Home', role }
+  householdState.errorCode = errorCode
+}
+
 // The locations "Import into which location?" offers (households H4 task E.4).
 vi.mock('@/hooks/useImportTargetLocations', () => ({
   useImportTargetLocations: (enabled: boolean) => ({
@@ -179,6 +207,7 @@ describe('PostLoginMigrationDialog — signing in copies the local pantry', () =
 
   afterEach(async () => {
     localStorage.clear()
+    setHousehold('owner')
     vi.mocked(importCloudData).mockClear()
     vi.mocked(getLocations).mockReset()
     mockGetLocationsQuery.mockReturnValue({
@@ -309,8 +338,10 @@ describe('PostLoginMigrationDialog — signing in copies the local pantry', () =
     localStorage.setItem('migration-strategy', 'clear')
     vi.mocked(importCloudData).mockRejectedValueOnce(forbiddenError())
 
-    // When the copy runs by itself after sign-in
+    // When the user presses Copy here after sign-in
+    const user = userEvent.setup()
     renderDialog()
+    await user.click(await screen.findByRole('button', { name: 'Copy here' }))
 
     // Then the refusal is explained, rather than the dialog closing as if the
     // copy had worked or sitting on 'Copying…' for ever
@@ -347,8 +378,10 @@ describe('PostLoginMigrationDialog — signing in copies the local pantry', () =
       new ImportRefusedError('role'),
     )
 
-    // When the copy runs by itself after sign-in
+    // When the user presses Copy here after sign-in
+    const user = userEvent.setup()
     renderDialog()
+    await user.click(await screen.findByRole('button', { name: 'Copy here' }))
 
     // Then the role sentence is shown, not the household one
     expect(
@@ -359,5 +392,181 @@ describe('PostLoginMigrationDialog — signing in copies the local pantry', () =
     expect(
       screen.queryByText(/belong to another household/),
     ).not.toBeInTheDocument()
+  })
+})
+
+// ─── Owner decision O22-A: a stored copy asks first ──────────────────────────
+describe('PostLoginMigrationDialog — a stored copy asks first', () => {
+  beforeEach(() => {
+    // The local location list must load, or the stored copy never gets to
+    // the question (`locationsLoaded` in the hook).
+    const now = new Date()
+    vi.mocked(getLocations).mockResolvedValue([
+      {
+        id: 'local',
+        name: 'My Home',
+        order: 0,
+        isDefault: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ])
+    localStorage.setItem('migration-strategy', 'clear')
+  })
+
+  afterEach(() => {
+    localStorage.clear()
+    setHousehold('owner')
+    vi.mocked(importCloudData).mockClear()
+    vi.mocked(getLocations).mockReset()
+  })
+
+  // Lets a copy that WOULD start reach `importCloudData` before an absence
+  // check, so the check does not pass only because nothing has run yet.
+  async function drain() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+  }
+
+  it('user who owns the household is asked, by name, with no shared line', async () => {
+    // Given a stored copy and the owner of "Our Home"
+    setHousehold('owner')
+
+    // When the dialog mounts
+    renderDialog()
+
+    // Then it asks about Our Home, with both buttons, and has copied nothing
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Copy your offline data into Our Home?',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Copy here' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: "Don't copy" }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/This household is shared/)).toBeNull()
+    expect(importCloudData).not.toHaveBeenCalled()
+  })
+
+  it('user who is a manager is told the household is shared', async () => {
+    // Given a stored `skip` copy and a manager of "Our Home"
+    localStorage.setItem('migration-strategy', 'skip')
+    setHousehold('manager')
+
+    // When the dialog mounts
+    renderDialog()
+
+    // Then the shared line shows, and the copy is still offered
+    expect(
+      await screen.findByText(
+        /This household is shared, and you are not its owner/,
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Copy here' }),
+    ).toBeInTheDocument()
+  })
+
+  it('user pressing Copy here has the stored copy run', async () => {
+    // Given the question is open for a stored `clear` copy
+    const user = userEvent.setup()
+    renderDialog()
+
+    // When the user presses Copy here
+    await user.click(await screen.findByRole('button', { name: 'Copy here' }))
+
+    // Then the copy runs with the stored strategy
+    await waitFor(() => expect(importCloudData).toHaveBeenCalledTimes(1))
+    expect(callArgs(vi.mocked(importCloudData).mock, 0)[1]).toBe('clear')
+  })
+
+  it("user pressing Don't copy has nothing copied and the stored copy removed", async () => {
+    // Given the question is open
+    const user = userEvent.setup()
+    renderDialog()
+
+    // When the user presses Don't copy
+    await user.click(await screen.findByRole('button', { name: "Don't copy" }))
+
+    // Then the dialog closes, nothing is copied, and the key is gone
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('heading', { name: /Copy your offline data/ }),
+      ).toBeNull(),
+    )
+    await drain()
+    expect(importCloudData).not.toHaveBeenCalled()
+    expect(localStorage.getItem('migration-strategy')).toBeNull()
+  })
+
+  it('user who is a member is told they cannot copy, and is offered no copy', async () => {
+    // Given a stored copy and a household member (decision O1: a member
+    // cannot import)
+    localStorage.setItem('migration-strategy', 'skip')
+    setHousehold('member')
+    const user = userEvent.setup()
+    renderDialog()
+
+    // Then the sentence says who can, and there is no Copy here
+    expect(
+      await screen.findByText(
+        /Only the owner or a manager of this household can copy data into it/,
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Copy here' })).toBeNull()
+
+    // When the user presses Done
+    await user.click(screen.getByRole('button', { name: 'Done' }))
+
+    // Then nothing is copied and the stored copy is removed
+    await drain()
+    expect(importCloudData).not.toHaveBeenCalled()
+    expect(localStorage.getItem('migration-strategy')).toBeNull()
+  })
+
+  it('user who is a manager with a stored clear is told only the owner can', async () => {
+    // Given a stored `clear` copy, which the server allows to the owner only
+    setHousehold('manager')
+    renderDialog()
+
+    // Then the clear sentence shows, and there is no Copy here
+    expect(
+      await screen.findByText(
+        /Only the owner of this household can clear it and copy data into it/,
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Copy here' })).toBeNull()
+  })
+
+  it('nothing is shown or copied while the household is loading', async () => {
+    // Given a stored copy and a household that has not loaded
+    setHousehold('loading')
+
+    // When the dialog mounts
+    renderDialog()
+    await drain()
+
+    // Then there is no dialog and no copy, and the key waits
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(importCloudData).not.toHaveBeenCalled()
+    expect(localStorage.getItem('migration-strategy')).toBe('clear')
+  })
+
+  it('nothing is shown for a cached household the person has left', async () => {
+    // Given a cached household next to a NO_HOUSEHOLD error
+    setHousehold('owner', 'NO_HOUSEHOLD')
+
+    // When the dialog mounts
+    renderDialog()
+    await drain()
+
+    // Then there is no question about the household they left
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(importCloudData).not.toHaveBeenCalled()
+    expect(localStorage.getItem('migration-strategy')).toBe('clear')
   })
 })

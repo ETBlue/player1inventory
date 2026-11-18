@@ -753,7 +753,14 @@
       "errorTitle": "複製失敗",
       "errorForbidden": "本機資料裡有些資料屬於別的家庭，所以複製被拒絕了，沒有複製任何資料，您的本機資料沒有變動",
       "errorRole": "只有家庭擁有者或管理者可以把資料複製進家庭，所以複製被拒絕了，沒有複製任何資料，您的本機資料沒有變動",
-      "errorOther": "複製失敗：{{message}}"
+      "errorOther": "複製失敗：{{message}}",
+      "confirmTitle": "要把離線資料複製到 {{household}} 嗎？",
+      "confirmDescription": "這台裝置上的資料會複製一份到這個家庭，裝置上的資料不會變動。",
+      "confirmShared": "這個家庭是共用的，而且你不是擁有者。家庭裡的其他人會看到這些資料。",
+      "copyHere": "複製到這裡",
+      "dontCopy": "不要複製",
+      "cannotCopyMember": "只有這個家庭的擁有者或管理者可以把資料複製進來。這台裝置上的資料不會變動。",
+      "cannotCopyClear": "只有這個家庭的擁有者可以清除它並把資料複製進來。這台裝置上的資料不會變動。"
     },
     "export": {
       "label": "下載我的資料",
