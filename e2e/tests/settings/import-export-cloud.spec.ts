@@ -14,7 +14,10 @@ import {
   FIXTURE_STOCK_BY_LOCATION,
 } from '../../helpers/backupAssertions'
 import { ensureCloudHomeLocation } from '../../helpers/cloudSeed'
-import { cleanupCloudData } from '../../helpers/cloudTeardown'
+import {
+  cleanupCloudData,
+  forgetDeletedHousehold,
+} from '../../helpers/cloudTeardown'
 import { readLocations, readStocksForItem } from '../../helpers/stockReadback'
 import { ItemPage } from '../../pages/ItemPage'
 import { PantryPage } from '../../pages/PantryPage'
@@ -438,6 +441,9 @@ test('user can export and re-import cloud data (cloud → cloud)', async ({
 
   // Then: clear all cloud data
   await cleanupCloudData(request)
+  // And: the page forgets the deleted household, or the household guard
+  // reloads it during the import (see `forgetDeletedHousehold`)
+  await forgetDeletedHousehold(page)
 
   // When: import the downloaded file
   await settings.navigateTo()
@@ -465,6 +471,12 @@ test('user can import a local backup into cloud mode (local → cloud)', async (
   request,
   baseURL,
 }) => {
+  // Over the default 30s since households H4 added "Import into which
+  // location?" and `importCheck`. Measured 2026-11-18 at load average 2.5 to
+  // 2.8: 28.2s in a run of the whole spec, and 32.4s (hooks included) in a run
+  // with `--trace on`, where the import alone took 12.9s and the dialog 4.4s.
+  // It failed on the 30s budget in two runs of the full gate that day.
+  test.setTimeout(60000)
   const settings = new SettingsPage(page)
 
   // Given: no existing cloud data (beforeEach cleanup ran)
@@ -545,6 +557,9 @@ test('user re-importing a cloud backup into a new household gets every location 
     locations: { id: string; name: string }[]
   }
   await cleanupCloudData(request)
+  // And: the page forgets the deleted household, or the household guard
+  // reloads it during the import (see `forgetDeletedHousehold`)
+  await forgetDeletedHousehold(page)
   // And: the user is on the new household's own "Home", which is empty
   await page.goto('/')
   await switchToLocation(page, CLOUD_HOME_LOCATION_NAME)
@@ -610,6 +625,9 @@ test('user re-importing a cloud backup keeps each cart at its own location', asy
   const downloadPath = await download.path()
   if (!downloadPath) throw new Error('Download path is null')
   await cleanupCloudData(request)
+  // And: the page forgets the deleted household, or the household guard
+  // reloads it during the import (see `forgetDeletedHousehold`)
+  await forgetDeletedHousehold(page)
   await settings.navigateTo()
   await settings.triggerImport(downloadPath)
   await settings.waitForImportDone('cloud')
@@ -663,6 +681,9 @@ test('user re-importing a cloud backup keeps each log’s location and message',
   const downloadPath = await download.path()
   if (!downloadPath) throw new Error('Download path is null')
   await cleanupCloudData(request)
+  // And: the page forgets the deleted household, or the household guard
+  // reloads it during the import (see `forgetDeletedHousehold`)
+  await forgetDeletedHousehold(page)
   await settings.navigateTo()
   await settings.triggerImport(downloadPath)
   await settings.waitForImportDone('cloud')

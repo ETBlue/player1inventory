@@ -282,13 +282,15 @@ test('user can clear existing data and import a backup over it', async ({
   request,
   baseURL,
 }) => {
-  // NO `test.setTimeout` HERE, AND THAT WAS MEASURED RATHER THAN ASSUMED.
-  // Measured 2026-10-08 on this branch at load average ~6: this test takes
-  // 18.1s in `cloud` and the whole file 7.3s in `local`, against Playwright's
-  // default 30s budget. `settings/import-export-cloud.spec.ts` needs 60000 on
-  // its one round-trip test because that one takes 36.5s; this one does not,
-  // and leaving the default in place is what lets a future slowdown report
-  // itself.
+  // 60s, measured. On 2026-10-08 this test took 18.1s in `cloud` and had no
+  // `test.setTimeout`, so that a slowdown would report itself. It did: on
+  // 2026-11-18 (households H5b) it failed the 30s budget in one run of the
+  // full gate, and took 30.4s when its file ran alone at load average 1.9.
+  // A trace that day: the import alone took 15.0s (`importCheck` 1.4s,
+  // `clearAllData` 1.9s, then 12 bulk mutations of 0.6 to 1.8s each against
+  // the shared Neon test database). `importCheck` and the per-batch role
+  // checks arrived with households H4. The whole file takes 7.3s in `local`.
+  test.setTimeout(60000)
   const settings = new SettingsPage(page)
   const mode = isCloud(baseURL) ? 'cloud' : 'local'
   expectBackupPreconditions()
@@ -358,8 +360,10 @@ test('user can replace the matching rows and keep everything else', async ({
   request,
   baseURL,
 }) => {
-  // Measured 13.5s in `cloud`, so the default 30s budget stands — see the note
-  // on the `clear` test above.
+  // 60s for the reason on the `clear` test above. Measured 13.5s in `cloud`
+  // on 2026-10-08; 31.3s on 2026-11-18, when its file ran alone at load
+  // average 1.9, and it failed the 30s budget in one run of the full gate.
+  test.setTimeout(60000)
   const settings = new SettingsPage(page)
   const mode = isCloud(baseURL) ? 'cloud' : 'local'
   expectBackupPreconditions()
