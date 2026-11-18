@@ -135,6 +135,10 @@ const INVITE_PREVIEW = `query ($token: String!) {
 const CREATE_INVITE_RAW = `mutation ($householdRole: HouseholdRole!, $locationRoles: [InviteLocationRoleInput!]!) {
   createInvite(householdRole: $householdRole, locationRoles: $locationRoles) { id }
 }`
+const SET_ROLE = `mutation ($userId: ID!, $role: HouseholdRole!) {
+  setHouseholdRole(userId: $userId, role: $role) { userId }
+}`
+const REMOVE_MEMBER = `mutation ($userId: ID!) { removeMember(userId: $userId) }`
 const VENDOR_CART = `query ($locationId: ID!) { vendorCart(vendorId: null, locationId: $locationId) { id } }`
 const CART_ITEMS = `query ($cartId: ID!) { cartItems(cartId: $cartId) { itemId } }`
 const ITEM_STOCKS = `query ($locationId: ID!) { itemStocks(locationId: $locationId) { itemId } }`
@@ -443,7 +447,7 @@ test.describe('invite, join and members', () => {
     )
   })
 
-  test('removed member who is invited again gets only the new roles', async ({
+  test('user who was removed and invited again gets only the new roles', async ({
     browser,
     request,
   }) => {
@@ -511,7 +515,7 @@ test.describe('invite, join and members', () => {
     ])
   })
 
-  test('person in two households uses the household they joined last', async ({
+  test('user in two households acts in the household they joined last', async ({
     request,
   }) => {
     // Given TWO_HOMES has a household of their own with an item in it (so the
@@ -552,15 +556,18 @@ test.describe('invite, join and members', () => {
     const { locations } = await two<{ locations: Row[] }>(LOCATIONS)
     expect(locations.map((l) => l.id)).toEqual([seed.home])
 
-    // When TWO_HOMES imports a stock row at the location of their OWN
-    // household, into the household they act in
+    // When TWO_HOMES imports a stock row for an item of the household they
+    // act in (Invite Rice) at the location of their OWN household. The item
+    // is allowed and TWO_HOMES organizes that location, so only the check
+    // "the location is in the target household" (`requireLocationInHousehold`
+    // in `requireOwnItemStockRefs`, issue #381 gap 1) can refuse it
     const stamp = new Date().toISOString()
     await expect(
       two(BULK_ITEM_STOCKS, {
         itemStocks: [
           {
             id: `g10-stock-${Date.now()}`,
-            itemId: tea,
+            itemId: seed.rice,
             locationId: ownHome,
             targetQuantity: 9,
             refillThreshold: 1,
@@ -608,8 +615,9 @@ test.describe('invite, join and members', () => {
     expect(cartItems.map((row) => row.itemId)).toEqual([seed.rice])
 
     // And the own household is unchanged: TWO_HOMES's cleanup deletes it
-    // with exactly its one item and its one stock row (no stock row of 9
-    // was added there), and TWO_HOMES's member row in OWNER's household
+    // with exactly its one item and its one stock row (Own Tea's; the
+    // refused Invite Rice row was not added there), and TWO_HOMES's member
+    // row in OWNER's household
     const left = await cleanupCloudData(request, TWO_HOMES)
     expect(left.deleted.households).toBe(1)
     expect(left.deleted.items).toBe(1)
@@ -671,6 +679,16 @@ test.describe('invite, join and members', () => {
       locationId: locations[0]?.id,
     })
     expect(itemStocks).toEqual([])
+
+    // And the leave deleted NEWCOMER's participant role on OWNER's Home
+    // (decision T11). The cleanup deletes every role row of NEWCOMER
+    // (`OR: [{ userId }, …]` in apps/server/src/lib/e2eCleanup.ts), so it
+    // counts the organizer row on NEWCOMER's new Home, plus any row left on
+    // OWNER's Home. The page is closed first, so it makes no new request.
+    for (const context of contexts.splice(0)) await context.close()
+    const left = await cleanupCloudData(request, NEWCOMER)
+    expect(left.deleted.households).toBe(1)
+    expect(left.deleted.locationMembers).toBe(1)
   })
 
   test('household owner can make a member a manager, who may remove only members', async ({
@@ -741,6 +759,16 @@ test.describe('invite, join and members', () => {
         locationRoles: [],
       }),
     ).rejects.toThrow(/FORBIDDEN/)
+    // And the server refuses MANAGER setting a role (owner only) and
+    // removing the owner (a manager removes only a `member`)
+    const managerGql = makeGql(request, MANAGER)
+    await expect(
+      managerGql(SET_ROLE, { userId: MEMBER, role: 'manager' }),
+    ).rejects.toThrow(/"code":"FORBIDDEN"/)
+    await expect(managerGql(REMOVE_MEMBER, { userId: OWNER })).rejects.toThrow(
+      /"code":"FORBIDDEN"/,
+    )
+    expect(await memberIds(seed)).toEqual([OWNER, MANAGER, MEMBER])
 
     // When MANAGER removes MEMBER
     await members.removeMember(NAMES[MEMBER] ?? '')

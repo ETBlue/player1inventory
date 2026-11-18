@@ -29,9 +29,21 @@ export class MembersPage {
     return this.page.getByRole('main')
   }
 
-  /** The row of one person, found by the name shown on it. */
+  /**
+   * The members list: the list that holds the caller's own row, "(you)"
+   * (`settings.household.members.you`, MemberList). The open-invites list
+   * below it also has rows with a person's name ("Created by <name>",
+   * InviteList), so a row is never searched in all of `main`.
+   */
+  memberList(): Locator {
+    return this.main()
+      .getByRole('list')
+      .filter({ has: this.page.getByText('(you)', { exact: true }) })
+  }
+
+  /** The row of one person in the members list, found by their name. */
   memberRow(name: string): Locator {
-    return this.main().getByRole('listitem').filter({ hasText: name })
+    return this.memberList().getByRole('listitem').filter({ hasText: name })
   }
 
   /** The open invite dialog, its form or its link step. */

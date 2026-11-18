@@ -78,9 +78,13 @@ export const AXE_OPTIONS = { axeOptions: AXE_RUN_OPTIONS }
 // REMOVAL CONDITION: once `opacity-90` is gone from `buttonVariants`, delete
 // `KNOWN_FILLED_BUTTON_CONTRAST` and call `checkA11y(page, selector,
 // AXE_OPTIONS)` instead of `checkDialogA11y`.
+//
+// The selectors name `button` on purpose. The same background classes are on
+// other elements too (a primary or destructive Badge, a checked Switch, the
+// ImportCard progress bar), and those must still be checked for contrast.
 export const KNOWN_FILLED_BUTTON_CONTRAST = [
-  ['.bg-importance-destructive-background'],
-  ['.bg-importance-primary-background'],
+  ['button.bg-importance-destructive-background'],
+  ['button.bg-importance-primary-background'],
 ]
 
 /**
