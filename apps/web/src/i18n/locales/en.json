@@ -12,6 +12,7 @@
     "nameLabel": "Name",
     "save": "Save",
     "saving": "Saving...",
+    "saveFailed": "Could not save the change. Please try again.",
     "discard": "Discard",
     "goBack": "Go back",
     "edit": "Edit",
@@ -244,7 +245,8 @@
       "alreadyStocked": "Already here",
       "alreadyStockedHere": "{{name}} is already in {{location}}.",
       "packageUnitLabel": "Package unit",
-      "packageUnitPlaceholder": "e.g. bottle, kg"
+      "packageUnitPlaceholder": "e.g. bottle, kg",
+      "createFailed": "Could not create {{name}}. Please try again."
     },
     "searchTail": {
       "rowAction": "{{action}}: {{name}}",
