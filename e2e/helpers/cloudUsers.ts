@@ -81,6 +81,10 @@ export type CloudUserRow = {
   email: string | null
   lastSeenAt: string | null
   deletedAt: string | null
+  /** The first sign-in claim (households H3a, decision H1). */
+  householdSetupAt: string | null
+  /** The household the person joined last (households H5b, decision T14). */
+  activeHouseholdId: string | null
   createdAt: string
   updatedAt: string
 }

@@ -720,16 +720,26 @@ another household's item writes nothing (its new VENDOR is what makes that able 
 because vendors go out before items); "Import into which location?" puts a local backup's
 default rows into the picked location, or into a "New location"; a location the importer
 only views is skipped and named; and a "Clear & import" of a cloud backup leaves no empty
-"Home" (decision 6). One person in TWO households is still impossible here (409).
+"Home" (decision 6). One person in TWO households is still impossible through
+`addHouseholdMember` (409). Since households H5b it is possible through a real invite:
+`household-invites.spec.ts` test 4 does it with `createInvite` and `joinHousehold`.
 
 **A browser context can be any user — since households H5 task F.8.** The project's own
 `page` is still `E2E_USER_ID`, because `VITE_E2E_TEST_USER_ID` is one value in the web
 build. A spec that needs a page as someone else calls
-`newUserContext(browser, userId, extraLocalStorage?)` (`e2e/helpers/userContext.ts`). It
+`newUserContext(browser, userId, extraLocalStorage?, options?)` (`e2e/helpers/userContext.ts`). It
 makes a new context with `data-mode: cloud`, `e2e-skip-onboarding: true` and
 `e2e-user-id: <userId>` in `localStorage`, and `baseURL: CLOUD_WEB_URL`: a context made
 with `browser.newContext` does not inherit the project's `use` settings. The caller closes
 it.
+
+`options` (since households H5b task G.10) leaves out the first two keys, to act as a
+brand-new visitor:
+
+| Option | Default | `false` means |
+|---|---|---|
+| `skipOnboarding` | `true` | no `e2e-skip-onboarding`, so an empty catalog sends pages to `/onboarding`, as for a real new person |
+| `cloudMode` | `true` | no `data-mode` key, so the app starts in LOCAL mode, as it does on a first visit |
 
 | Part | Where | What it does |
 |---|---|---|
@@ -767,6 +777,48 @@ settings list as No access with Delete, and never in the switcher. Proved by mut
 | `householdLocations` returns `visibleLocations` for every role | test 3, the Shed row not found |
 | `getE2ETestUserId` ignores the key | all 3 |
 
+**`household-invites.spec.ts` joined on 2026-11-18 (households H5b task G.10).** Cloud
+only, with up to three browsers, in `local`'s `testIgnore`. It is the first real-SQL run of
+`createInvite`, `revokeInvite`, `invitePreview`, `joinHousehold`, `setHouseholdRole`,
+`removeMember`, `leaveHousehold` and `createHousehold`. Page objects: `e2e/pages/JoinPage.ts`
+and `e2e/pages/MembersPage.ts`.
+
+| Test | What it proves |
+|---|---|
+| 1 | a brand-new visitor (`cloudMode: false`, `skipOnboarding: false`) opens a link made in the owner's browser, is NOT sent to `/onboarding`, presses Sign in to join and then Join, and lands on `/` in the owner's household. Their own empty household is deleted (read back as the cleanup's `households: 0`). Both browsers then see each other's changes live: the owner's Members page gets the new member (`LOCATION`), the joiner's pantry gets the owner's quantity (`STOCK`) |
+| 2 | a used, a revoked, a made-up and a too-short link all show "no longer valid", and `invitePreview` sends no name for them |
+| 3 | a removed person invited again as viewer is ONLY a viewer (View only, no quick update, `myRole: viewer`) |
+| 4 | a person in two households acts in the one joined last; an import cannot write a stock row at their other household's location (`FORBIDDEN`) or put that household's item in a cart (row skipped). No browser |
+| 5 | a member leaves, sees the no-household screen, and creates a household |
+| 6 | the owner makes a member a manager; the manager may remove a member, not the owner, sets no roles, and may not invite a manager (page and server) |
+| 7, 8 | axe scans, light and dark: join page, Members page, invite dialog (form and link), Remove and Leave confirms, no-household screen and its Create dialog |
+
+Proved by mutation on 2026-11-18, each in `cloud`, restored from a copy:
+
+| Mutation | Red test, failure |
+|---|---|
+| `shouldRedirectToOnboarding` without its `/join/` line | 1: the local "Joining a household uses cloud sync…" text not found (the visitor was on `/onboarding`) |
+| `joinHousehold` without the empty-household `deleteMany` (T21) | 1: `householdMembers` Expected 1, Received 2 |
+| `removeMember` without T11 AND join without T20 AND `createMany({ skipDuplicates })` instead of `create` | 3: `Expected substring: "View only" / Received string: "Home"` |
+| T11 and T20 both removed (no `skipDuplicates`) | 3: the join itself fails on the unique key; the test times out waiting for `/` |
+| T11 alone, or T20 alone | 3 **stays green**: each one removes the old role on this path, so one is enough |
+| the household rule back to "first membership, no order, no active household" | 4: `household.id` is the person's own household |
+| `invitePreview` names the household of a used or revoked link | 2: `householdName` `"Olivia Owner's Household"` where `null` was expected. Only the API check sees it: the page shows no name for INVALID |
+| `memberActions` gives a manager Remove on every row | 6: `Remove Olivia Owner` Expected 0, Received 1 |
+| `createInvite` lets a manager invite a manager | 6: `Received promise resolved instead of rejected` |
+| `leaveHousehold` deletes nothing | 5: the member list still holds the newcomer |
+
+**Two traps it hit, both about what a page can see:**
+
+- **The switcher shows the ACTIVE household's locations only**, so it cannot show that a
+  person's OTHER household was deleted. Test 1 reads the cleanup's counts instead. A
+  person's other household cannot be read through GraphQL at all once they act elsewhere.
+- **A filled button inside a dialog fails contrast at rest** (the `opacity-90` on
+  `buttonVariants`). Measured: primary 4.19:1 in light, destructive 3.92:1 light and
+  3.56:1 dark. Dialog scans use `checkDialogA11y` (`e2e/helpers/axe.ts`), which excludes
+  only those buttons and only from `color-contrast`, like `a11y.spec.ts`. Whole-page scans
+  use `checkA11y` with nothing excluded, and they pass.
+
 **`DataModeCard`'s Switch flow renders in E2E mode — since households H4 task E.6.** A
 production change made for a test, like `PostLoginMigrationDialog`'s below. The cloud
 section used to be left out in E2E mode because its Sign Out flow calls `useClerk()`.
@@ -797,7 +849,8 @@ What the number has been, so you can see how fast it moves rather than reuse a f
 | 2026-11-11 | `feature/households-h3a`, after task 3.15 | 133 |
 | 2026-11-16 | `feature/households-h3c-2`, after `live-pantry.spec.ts` | 151 |
 | 2026-11-17 | `feature/households-h4`, after task E.6 and the O9 follow-up | 160 |
-| 2026-11-17 | `feature/households-h5`, after task F.8 | **168** |
+| 2026-11-17 | `feature/households-h5`, after task F.8 | 168 |
+| 2026-11-18 | `feature/households-h5b`, after task G.10. G.10 added 8 (`household-invites.spec.ts`); the other 1 came from an earlier H5b task and is not attributed here | **177** |
 
 H5a added 9 tests and removed 1. All of them RUN only in `cloud`; the six in the two
 shared spec files are also collected (and skipped) in `local`, which went 184 → 189: 3 in `location-switcher.spec.ts` (task

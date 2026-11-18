@@ -191,7 +191,9 @@ export default defineConfig({
       // decision T18). shared-household.spec.ts opens two browser contexts as
       // two different users (households H5 task F.8): the E2E web build reads
       // `localStorage['e2e-user-id']` (e2e/helpers/userContext.ts). Local mode
-      // has no users and no roles.
+      // has no users and no roles. household-invites.spec.ts tests invites,
+      // joins and the Members page (households H5b task G.10), which exist in
+      // cloud mode only.
       testIgnore: [
         '**/settings/import-export-cloud.spec.ts',
         '**/pwa-offline.spec.ts',
@@ -208,6 +210,7 @@ export default defineConfig({
         '**/live-pantry.spec.ts',
         '**/settings/import-households.spec.ts',
         '**/shared-household.spec.ts',
+        '**/household-invites.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'], baseURL: LOCAL_WEB_URL },
     },
@@ -265,6 +268,7 @@ export default defineConfig({
         '**/live-pantry.spec.ts',
         '**/settings/import-households.spec.ts',
         '**/shared-household.spec.ts',
+        '**/household-invites.spec.ts',
       ],
     },
     {
