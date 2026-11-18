@@ -38,6 +38,7 @@ import { useItemStocks } from '@/hooks/useItemStocks'
 import { useLocations } from '@/hooks/useLocations'
 import { usePermissions } from '@/hooks/usePermissions'
 import { hasGraphQLErrorCode } from '@/lib/graphqlErrorCode'
+import { showSaveError } from '@/lib/saveError'
 import type { ItemStock, Location, PantryItem, StockFields } from '@/types'
 
 export const Route = createFileRoute('/items/$id/stock')({
@@ -167,11 +168,21 @@ function StockFormPanel({
     // compatible at runtime; the cast is needed because exactOptionalPropertyTypes
     // disallows undefined on Partial<StockFields>. updateItem routes these stock
     // fields to `locationId`'s ItemStock (the active location when omitted).
-    await updateItem.mutateAsync({
-      id,
-      updates: buildStockUpdates(values) as Partial<StockFields>,
-      ...(locationId ? { locationId } : {}),
-    })
+    //
+    // Caught here because `ItemForm` does not await `onSubmit`: a failed save
+    // would otherwise be an unhandled rejection with nothing on screen. The
+    // form keeps the typed values and stays dirty, so Save can be pressed
+    // again.
+    try {
+      await updateItem.mutateAsync({
+        id,
+        updates: buildStockUpdates(values) as Partial<StockFields>,
+        ...(locationId ? { locationId } : {}),
+      })
+    } catch (err) {
+      showSaveError(err)
+      return
+    }
     setSavedAt((n) => n + 1)
     goBack()
   }

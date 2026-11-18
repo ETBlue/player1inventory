@@ -29,6 +29,7 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { useRecipes } from '@/hooks/useRecipes'
 import type { TrackedQuantities } from '@/lib/quantityUtils'
 import { convertTrackedQuantities } from '@/lib/quantityUtils'
+import { showSaveError } from '@/lib/saveError'
 import type { Item, PantryItem, StockConfigFields, StockFields } from '@/types'
 import { DEFAULT_PACKAGE_UNIT } from '@/types'
 
@@ -239,8 +240,16 @@ function ItemInfoTab() {
     goBack()
   }
 
+  // Caught here because `ItemForm` does not await `onSubmit`: a failed save
+  // would otherwise be an unhandled rejection with nothing on screen. The form
+  // keeps the typed values and stays dirty, so Save can be pressed again.
   const doSave = async (values: ItemFormValues) => {
-    await persistInfo(values)
+    try {
+      await persistInfo(values)
+    } catch (err) {
+      showSaveError(err)
+      return
+    }
     finishSave()
   }
 
@@ -392,15 +401,24 @@ function ItemInfoTab() {
       ]
     })
 
-    await applyUnitSwitch.mutateAsync({
-      itemId: id,
-      updates: buildInfoUpdates(pending.values) as Partial<Item>,
-      stockConversions: pending.conversions.map((conversion) => ({
-        locationId: conversion.locationId,
-        quantities: conversion.after as Partial<StockFields>,
-      })),
-      recipeUpdates,
-    })
+    // A failure is caught and shown: this runs straight off the dialog's
+    // button. The dialog has already closed (`AlertDialogAction` closes it on
+    // click), and nothing was written, because it is one transaction. The form
+    // stays dirty, so Save opens the dialog again.
+    try {
+      await applyUnitSwitch.mutateAsync({
+        itemId: id,
+        updates: buildInfoUpdates(pending.values) as Partial<Item>,
+        stockConversions: pending.conversions.map((conversion) => ({
+          locationId: conversion.locationId,
+          quantities: conversion.after as Partial<StockFields>,
+        })),
+        recipeUpdates,
+      })
+    } catch (err) {
+      showSaveError(err)
+      return
+    }
 
     setPending(null)
     finishSave()

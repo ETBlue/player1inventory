@@ -13,7 +13,7 @@ import {
   within,
 } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import {
   createItem,
@@ -27,6 +27,7 @@ import {
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { elementAt } from '@/test/narrow'
+import { watchUnhandledRejections } from '@/test/unhandledRejections'
 import { DEFAULT_LOCATION_ID } from '@/types'
 
 describe('Item detail page - manual quantity input', () => {
@@ -2440,5 +2441,147 @@ describe('Item detail form — a consume amount of 0 is displayed honestly', () 
 
     // Then it survives — nothing snapped it to 3
     expect(unpackedInput.value).toBe('2.5')
+  })
+})
+
+// A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+// `ItemForm` calls `onSubmit` without awaiting it, so before the fix a failed
+// write on the Info or Stock tab was an unhandled rejection with nothing on
+// screen. The unit-switch confirm had the same problem.
+describe('Item detail page - a failed save', () => {
+  let queryClient: QueryClient
+  let rejections: ReturnType<typeof watchUnhandledRejections>
+
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.recipes.clear()
+    await db.inventoryLogs.clear()
+    sessionStorage.clear()
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    rejections = watchUnhandledRejections()
+  })
+
+  afterEach(() => {
+    rejections.stop()
+    vi.restoreAllMocks()
+  })
+
+  const renderPage = async (path: string) => {
+    await queryClient.prefetchQuery({
+      queryKey: ['recipes'],
+      queryFn: getRecipes,
+    })
+    const history = createMemoryHistory({ initialEntries: [path] })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    return router
+  }
+
+  const makeFlour = () =>
+    createItem({
+      name: 'Flour',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 2,
+      tagIds: [],
+    })
+
+  it('user sees a message when saving the Stock tab fails, and the edit is kept', async () => {
+    const user = userEvent.setup()
+    // Given an item, and a database that refuses the stock write
+    const item = await makeFlour()
+    vi.spyOn(db.itemStocks, 'put').mockRejectedValueOnce(new Error('disk full'))
+    const router = await renderPage(`/items/${item.id}/stock`)
+
+    // When the user changes the packed quantity and saves
+    const packedInput = await screen.findByLabelText(/^packed/i)
+    await user.clear(packedInput)
+    await user.type(packedInput, '7')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then a message says the change was not saved
+    expect(
+      await screen.findByText('Could not save the change. Please try again.'),
+    ).toBeInTheDocument()
+    // And the page stays, with the typed value and Save enabled again
+    expect(router.state.location.pathname).toBe(`/items/${item.id}/stock`)
+    expect(screen.getByLabelText(/^packed/i)).toHaveValue(7)
+    expect(screen.getByRole('button', { name: /save/i })).toBeEnabled()
+    expect(
+      (await getItemStock(item.id, DEFAULT_LOCATION_ID))?.packedQuantity,
+    ).toBe(2)
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
+  })
+
+  it('user sees a message when saving the Info tab fails, and the edit is kept', async () => {
+    const user = userEvent.setup()
+    // Given an item, and a database that refuses the item write
+    const item = await makeFlour()
+    vi.spyOn(db.items, 'update').mockRejectedValueOnce(new Error('disk full'))
+    const router = await renderPage(`/items/${item.id}`)
+
+    // When the user renames it and saves
+    const nameInput = await screen.findByRole('textbox', { name: /^name/i })
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Rye flour')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then a message says the change was not saved, and the page stays
+    expect(
+      await screen.findByText('Could not save the change. Please try again.'),
+    ).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe(`/items/${item.id}`)
+    expect(screen.getByRole('textbox', { name: /^name/i })).toHaveValue(
+      'Rye flour',
+    )
+    expect(screen.getByRole('button', { name: /save/i })).toBeEnabled()
+    expect((await getItem(item.id))?.name).toBe('Flour')
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
+  })
+
+  it('user sees a message when confirming the recipe update fails', async () => {
+    const user = userEvent.setup()
+    // Given an item used by a recipe, and a database that refuses the write
+    const item = await makeFlour()
+    const recipe = await createRecipe({
+      name: 'Bread',
+      items: [{ itemId: item.id, defaultAmount: 4 }],
+    })
+    vi.spyOn(db.items, 'update').mockRejectedValueOnce(new Error('disk full'))
+    const router = await renderPage(`/items/${item.id}`)
+
+    // When the user changes the consume amount, saves and confirms
+    const consumeInput = await screen.findByLabelText(/amount per consume/i)
+    await user.clear(consumeInput)
+    await user.type(consumeInput, '3')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+    await screen.findByRole('alertdialog')
+    await user.click(screen.getByRole('button', { name: /update & save/i }))
+
+    // Then a message says the change was not saved, and nothing moved
+    expect(
+      await screen.findByText('Could not save the change. Please try again.'),
+    ).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe(`/items/${item.id}`)
+    // The dialog has closed; Save opens it again
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/amount per consume/i)).toHaveValue(3)
+    expect(screen.getByRole('button', { name: /save/i })).toBeEnabled()
+    const stored = await db.recipes.get(recipe.id)
+    expect(stored?.items[0]?.defaultAmount).toBe(4)
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
   })
 })

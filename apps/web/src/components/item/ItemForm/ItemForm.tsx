@@ -93,6 +93,13 @@ const DEFAULT_VALUES: ItemFormValues = {
 interface ItemFormProps {
   initialValues?: Partial<ItemFormValues>
   sections?: ('stock' | 'info')[]
+  /**
+   * Called on submit and NOT awaited. It must not reject: the caller catches
+   * a failed save and shows the message (`showSaveError`), because this form
+   * has no place for one. Both callers, `routes/items/$id/index.tsx` and
+   * `routes/items/$id/stock.tsx`, do. When the save fails the caller does not
+   * bump `savedAt`, so the form keeps its values and stays dirty.
+   */
   onSubmit: (values: ItemFormValues) => void
   onDirtyChange?: (isDirty: boolean) => void
   savedAt?: number
