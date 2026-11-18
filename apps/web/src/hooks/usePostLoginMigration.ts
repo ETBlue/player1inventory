@@ -198,15 +198,26 @@ export function usePostLoginMigration({
       return
     }
 
-    getAllItems().then((items) => {
-      // An import may have started while `getAllItems()` was in flight.
-      if (importStarted.current) return
-      if (items.length > 0) {
-        setState('prompting')
-      } else {
-        localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
-      }
-    })
+    getAllItems()
+      .then((items) => {
+        // An import may have started while `getAllItems()` was in flight.
+        if (importStarted.current) return
+        if (items.length > 0) {
+          setState('prompting')
+        } else {
+          localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
+        }
+      })
+      .catch((err) => {
+        // The local database could not be read (blocked or closed IndexedDB,
+        // a private window). Log it; there is no dialog to show it in. Stay
+        // 'idle' and leave MIGRATION_PROMPTED_KEY unset, like the other
+        // failures in this hook, so the next run of this effect (or a
+        // refresh) reads again. Without this catch the failure was an
+        // unhandled rejection (docs/global/bugs/
+        // 2026-11-18-bug-post-login-migration-unhandled-read.md).
+        console.error('Could not read the local items to offer a copy', err)
+      })
   }, [isLoaded, isSignedIn, locationsLoaded, householdLoaded])
 
   // Copy here. Runs the stored copy, as it ran before the confirm existed:
