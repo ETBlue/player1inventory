@@ -300,6 +300,7 @@ O7-A, O9-A and O12-A. These are NEW. **A** is the recommendation unless it says 
 | O16 | **A** | |
 | O17 | deferred | The owner reviews the texts later, in the PR. Tasks use the table below as written |
 | O18 | **A** | Asked after the review of G.3: do a manager's open invites stay open after that manager is removed or demoted? **A**: yes. The invite belongs to the household. The owner sees it in the list, with the creator's name, and can revoke it. Removing or demoting a manager does NOT revoke their invites (no extra code in G.5). B was: revoke them automatically |
+| O19 | **Three actions** (2026-11-18) | Asked after the review of G.8: how does a person leave the no-household screen without creating a household? The gate covers `/settings` too, so on a phone the screen is all they have. The screen gets **Create a household** (the main action), **Switch to offline mode** and **Sign in to another account**. No plain Sign out. Switch to offline mode keeps the person signed in, so if they change their mind they switch back to cloud and land on Create with no new sign-in. Sign in to another account clears the cached cloud data first, then signs out, and stays in cloud mode. The owner first decided two actions; the third was added the same day. Built after G.11 (see *Status*) |
 
 **O17 texts (proposed).** Role names reuse the O11 answers: 據點王 organizer, 搬運工
 participant, 圍觀的 viewer, 擁有者 owner, 管理者 manager, 成員 member.
@@ -1357,12 +1358,24 @@ plan's *What this plan got wrong* and *Status*.
 - **A person removed from a household and invited back to the SAME one**, who joins in
   another tab, keeps the no-household screen in this tab until a reload. The gate ignores
   the lost household's id on purpose (G.8 review, loop guard).
-- **How a person leaves the no-household screen on a phone** (sign out, go back to local
-  mode) waits for an owner decision. The options: **Sign out** and **Use local mode** links
-  on the screen; **Sign out** only; or keep `/settings` reachable. The screen itself has no
-  Sign out and no local-mode control, and `NoHouseholdGate` covers `/settings` too, so on a
-  phone the settings that hold those controls are behind the screen. Found in the review of
-  G.8; see the "G.8 (review)" row of *What this plan got wrong*.
+- **Leaving the no-household screen (owner decision O19) has three limits.**
+  - **"Sign in to another account" is not in the E2E build** and no E2E test presses it.
+    It calls `useClerk()`, and the E2E build has no `ClerkProvider`. The unit tests in
+    `NoHouseholdScreen.test.tsx` carry it (order of clear and sign-out, no change of
+    `data-mode`, the double-press guard, a failed clear). The axe scans of the screen do
+    not see the button either. It uses `neutral-ghost`, the same text colour as the
+    scanned `neutral-outline` button, but nothing measured it.
+  - **Local mode has no sign-out anywhere.** In local mode Settings shows only the data
+    mode card with **Switch...** (to cloud), and `UserSettingsPanel` shows no account
+    card. So a person who used **Switch to offline mode** stays signed in to Clerk on
+    that device until they switch back to cloud, land on the no-household screen again,
+    and press **Sign in to another account**. A person in a household signs out from the
+    data mode card in cloud mode.
+  - **Switching back to cloud with "Copy local data" was not tested for a person in no
+    household.** The copy runs in `usePostLoginMigration`, which is mounted outside the
+    gate. Every import mutation starts with `requireCatalogRole`, so the import should be
+    refused with `NO_HOUSEHOLD` and show an import error next to the screen. This was
+    read from the code, not run.
 - **Old, not new in H5b: the "copy local data?" check can fail with an unhandled
   rejection.** `usePostLoginMigration` (`apps/web/src/hooks/usePostLoginMigration.ts:183`)
   calls `getAllItems().then(...)` with no `.catch`. In cloud mode, when the local IndexedDB
@@ -1485,11 +1498,14 @@ Filled in from the task reports and reviews.
 | G.11 | *Files* did not name the H3b runbook | `2026-11-15-deploy-runbook-households-h3b.md` says the rehearsal must list **exactly three** pending migrations ("if it lists more, stop"), the release log three lines, and H3a 5 query 1 `LIMIT 4`. With H5b in the release each is one more. Section 9.2 of the H4 runbook gives the new numbers, and the H3b runbook now points there at all three places. Without it the rehearsal would have stopped on a correct pending list |
 | G.11 | *Deploy notes*: "a person removed from their only household while on the old bundle sees failing requests until the web deploys" | Between the two deploys nobody can remove anybody: only the NEW bundle has the Members page. The real window is AFTER the web deploy, for a device that has not taken the update yet, whose person is removed by someone on the new bundle. Runbook 9.8 says it that way |
 | G.11 | *Files*: the docs to update | Most were already updated, task by task, by G.1–G.10. What was still missing: root `CLAUDE.md` had no H5b overview (the G.3 queries and mutations, the household guard), no E2E paragraph for `household-invites.spec.ts`, and test counts from H5a; the design's *Sequencing* row, the phase plan's H5 outline and the H4 runbook's section 8 still said H5a was "awaiting PR" (it merged as #384) |
+| O19 | The brief: "Suggested English: Use local mode" | The app calls local mode **Offline Mode** (`settings.dataMode.local.title`, 「離線模式」), and its own switch says "Switch to offline" (`signOutOfflineDialog.switchToOffline`). "Local mode" would be a third name for the same thing. The button says **Switch to offline mode** / 「切換至離線模式」, for the owner's review in the PR |
+| O19 | The brief: check that the gate is off after the reload | Already true and already tested ("does nothing in local mode" in `NoHouseholdGate.test.tsx` checks that nothing is cleared). No test checked that the PAGE shows in local mode while Apollo still holds a `NO_HOUSEHOLD` answer. Added; mutation M7 (the gate ignores the mode) turns both red |
+| O19 | The brief: a Known gap "cannot switch to another account from the screen" | Overtaken the same day: the owner added **Sign in to another account**. The gaps that are really left are in *Known gaps* |
 
 ## Status
 
 **Plan written 2026-11-18** on `feature/households-h5b`, based on `develop` at `4307d30a`
-(HEAD `770a75e8`). Owner decisions O13–O16 answered 2026-11-18 (all A); O17 texts are
+(HEAD `770a75e8`). Owner decisions O13–O16 answered 2026-11-18 (all A), O19 answered the same day; O17 texts are
 reviewed by the owner in the PR.
 
 **Task G.1 is done** (`aa596f4d`, `4c01a450`), with review fixes (`75a16ca6`, `2c91f68c`).
@@ -1666,6 +1682,35 @@ with no code change since:
 | `/e2e/cleanup` models | 19 | `CLEANUP_MODEL_KEYS` in `e2e/helpers/cloudTeardown.ts` |
 | migrations in `migrationDeploys.ts` | 10 | `grep -o "'2026[0-9]*_[a-z_]*'" apps/server/scripts/migrationDeploys.ts \| wc -l` (the plan's `grep -c "^  '2026" …verify-migration.ts` gives 0) |
 
-**One web change waits for an owner decision:** how a person leaves the no-household screen
-on a phone (see *Known gaps*). The docs leave one place for it: the *No household* section
-of `apps/web/src/routes/CLAUDE.md`. Counts may move a little after that change.
+**Owner decision O19 is built (2026-11-18).** The no-household screen has three actions:
+Create a household, Switch to offline mode, and Sign in to another account (real build
+only). See *Owner answers*, the *No household* section of `apps/web/src/routes/CLAUDE.md`,
+and *Known gaps*. Code, tests, stories and the E2E steps in `4ab9aea9`. Measured
+2026-11-18 at `4ab9aea9`, with the full gate green (`pnpm lint`, `pnpm build` with no
+`TS6385`, `build-storybook`, `pnpm check`, `pnpm test`):
+
+| Count | Before | After |
+|---|---|---|
+| web tests | 3102 / 325 files | **3112 / 325 files** (9 in `NoHouseholdScreen.test.tsx`, 1 in `NoHouseholdGate.test.tsx`) |
+| server tests | 2104 / 76 | 2104 / 76 |
+| `scripts/spec` tests | 70 | 70 |
+| `household-invites.spec.ts` in `cloud` | 8 passed | **8 passed** in 5.0m (test 5 now switches to offline mode and back) |
+
+Mutation checks, each red, each restored from a copy:
+
+| Mutation | Red test |
+|---|---|
+| M1 no `setItem` of `data-mode` | 2 unit tests; E2E test 5 (`Switch location (current: My Home)` not found) |
+| M2 no reload | 2 unit tests |
+| M3 reload before `setItem` | "stores local mode BEFORE the reload" |
+| M4 offline switch in the default (filled) style | "user sees a second action…" |
+| M5 no `aria-describedby` on the hint | "user sees a second action…" |
+| M6 the offline switch also signs out | "does not sign the person out" |
+| M7 the gate ignores the data mode | 2 gate tests |
+| M8 `signOut` before `clearCache` | 3 unit tests |
+| M9 no `clearCache` | 3 unit tests |
+| M10 account action shown in the E2E build | "is not shown in the E2E build" (`useClerk` throws) |
+| M11 no double-press guard | "ignores a second press…" |
+| M12 the account action sets `data-mode` to local | "user can sign out…; the cache is cleared first" |
+| M13 account action in the outline style | "user sees a third action…" |
+| M14 sign out even when the clear fails | "does not sign out when the cache could not be cleared" |

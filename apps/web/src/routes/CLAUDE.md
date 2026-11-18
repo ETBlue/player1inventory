@@ -498,7 +498,8 @@ screen clears them (see *No household* below). The join page calls `switchToHous
 **A cloud person can be in NO household** after they leave or are removed. A brand-new
 person never is: their first request makes a household. The server then answers
 `NO_HOUSEHOLD` (a `GraphQLError` code), and every page shows `NoHouseholdScreen`: "You are
-not in any household." and **Create a household** (owner decision O16-A).
+not in any household." and three actions (owner decision O19): **Create a household**
+(O16-A), **Switch to offline mode** and **Sign in to another account**.
 
 - **`NoHouseholdGate`** (`components/household/NoHouseholdGate/`) wraps the `<Outlet />`
   inside `Layout` in `__root.tsx`. It shows the screen only when `mode === 'cloud'` and
@@ -537,15 +538,31 @@ not in any household." and **Create a household** (owner decision O16-A).
   `settings.household.name.invalidError` in an `<output>` that is always mounted (empty when
   there is no error), and focus goes back to the name field; an `OfflineWriteError` shows no
   second toast; any other error shows `noHousehold.error` and the button stays.
-- **How a person leaves the screen without creating a household** (sign out, or go back to
-  local mode) is NOT decided yet, above all on a phone, where the gate also covers
-  `/settings`. It waits for an owner decision. Add the decided rule here, in one sentence,
-  when it is built.
+- **How a person leaves the screen without creating a household** (owner decision O19,
+  2026-11-18). The gate also covers `/settings`, so on a phone the screen must hold these:
+  - **Switch to offline mode** sets `localStorage['data-mode'] = 'local'`
+    (`DATA_MODE_STORAGE_KEY`) and reloads, like Switch with "Start Fresh" in
+    `DataModeCard`. No copy (no cloud data) and no confirm (nothing is lost). The Clerk
+    session stays alive. After the reload the gate is off (it returns its children when
+    `mode !== 'cloud'`), so the normal local app shows. When the person switches back to
+    cloud later (Settings, **Switch...**), they need no sign-in and land on this screen
+    again, with Create.
+  - **Sign in to another account** runs `clearCache()` first, then Clerk's `signOut()`, and
+    keeps cloud mode, like Sign Out in `DataModeCard` without "switch to offline". A failed
+    clear signs nothing out and shows `noHousehold.signOutError`. The button is disabled
+    while it runs. `CloudAuthGuard` then loads `/sign-in`, where the gate is off. When
+    another account signs in, the gate starts again and asks `GetHousehold` for that
+    account (see *A new account in the same tab* above), and `ApolloWrapper` clears the
+    cache again on the account change. **Not shown in the E2E build**: it calls
+    `useClerk()`, and the E2E build has no `ClerkProvider`. So no E2E test can press it;
+    `NoHouseholdScreen.test.tsx` carries it.
+  - **No plain Sign out** on the screen (O19).
 - **The person's other tabs** get the `LOCATION` event of `createHousehold`. It refetches
   every active query, the FAILED `GetHousehold` included (tested in
   `apollo/liveUpdates.test.ts`), and the gate then calls `switchToHousehold(id, { to: '/' })`.
 - Tests: `components/household/NoHouseholdGate/NoHouseholdGate.test.tsx` (when it shows),
-  `NoHouseholdScreen.test.tsx` (the create), `routes/noHousehold.cloud.test.tsx` (the real
+  `NoHouseholdScreen.test.tsx` (the create and the two other actions),
+  `routes/noHousehold.cloud.test.tsx` (the real
   root, with real Apollo hooks). The gate has no story: it needs a router, and in Storybook
   `forgetHousehold` would clear the real cloud cache. The screen has stories.
 
