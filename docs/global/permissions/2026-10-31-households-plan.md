@@ -792,6 +792,11 @@ switcher already listed only locations with a role (H3a task 3.6).
 - The household switch must set the active location and clear the household-scoped Apollo cache
   (including the persisted `Player1InventoryCloudCache`) in one step. A test switches with a
   cart in the old household and sees no old rows.
+- **Owed from H5b (owner decision O21):** a write from a tab that still shows a household
+  the person left lands in their OTHER household, through `requireHousehold`, with nothing
+  shown. Fix: the web sends the household id it shows, and the server refuses a write whose
+  id does not match the household it would act in. A test with one person in two
+  households, a stale tab and a write. See the H5b plan, *Known gaps*.
 
 ---
 

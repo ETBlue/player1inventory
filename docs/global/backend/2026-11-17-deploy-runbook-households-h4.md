@@ -526,6 +526,11 @@ Result: `TBD` (dialog: pasted yes/no; row: pasted yes/no; browser and device use
   bundle.** If someone on a new bundle removes that person from their only household, the
   old bundle gets `NO_HOUSEHOLD` on every request. It shows failing pages and no screen
   that explains why, until the device reloads and takes the new bundle. No data is lost.
+- **An old-bundle device can mix two households after a join.** The old bundle has no
+  `HouseholdChangeGuard`. So when the person joins another household on a new-bundle
+  device, an old-bundle device does not clear its cache or reload. It can show the old
+  household's cached rows mixed with answers from the new household, until it takes the
+  update. No data is written to the wrong household by this; it is what the screen shows.
 - This is the same window as H5a's (8.3). The fix is the same: reload every device and
   accept the update prompt right after the web deploy.
 
@@ -540,8 +545,17 @@ Result: `TBD` (dialog: pasted yes/no; row: pasted yes/no; browser and device use
 **Rollback.** The migration only adds. To roll back the server alone, redeploy the previous
 server deployment; the old server ignores the new table and column. Invites made in the
 meantime stay in the table, unused. A person who joined a household in the meantime stays a
-member. **But the old server has no rule for a person in two households**: it picks one with `findFirst` and no order, so such a person may see a different household on each request. For a full rollback use H3a runbook 7.2, which restores the branch taken before all
+member. **But the old server has no rule for a person in two households**: it picks one
+with `findFirst` and no order, so such a person may see a different household on each
+request. For a full rollback use H3a runbook 7.2, which restores the branch taken before all
 four migrations.
+
+**Rolling back the web alone** (to the H5a bundle, with the H5b server still running).
+The H5a bundle has no no-household screen, no join page and no Members page. A person in
+NO household (who left or was removed) then gets `NO_HOUSEHOLD` on every request: the
+pages fail and nothing explains why. No data is lost. A person still in a household is not
+affected. So when anyone may be in no household, prefer to fix forward over a web-only
+rollback.
 
 ## Where this file lives, and why
 

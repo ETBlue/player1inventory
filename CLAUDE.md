@@ -189,9 +189,9 @@ that really set up that role.
 > | Field | Who | What it does |
 > |---|---|---|
 > | `householdMembers` | any household role (owner decision O13-A) | every person: `userId`, `displayName`, `role`, `joinedAt`, `isMe`. Owner first, then by `joinedAt`, then by `userId`. `HouseholdPerson` has NO e-mail field, and the name read selects `{ id, displayName }` only |
-> | `setHouseholdRole(userId, role)` | owner | `member` ↔ `manager`. `role: owner` and the owner's own row are `BAD_USER_INPUT`; a person not in the household is `FORBIDDEN`. The same role again changes no member row and publishes nothing (the lock's `UPDATE` still moves `Household.updatedAt`). Location roles and open invites stay (owner decision O18-A) |
-> | `removeMember(userId)` | owner: anyone but themself (`BAD_USER_INPUT`); manager: only a `member` | deletes the person's `LocationMember` rows on THIS household's locations, then their member row (decision T11). Their invites stay open (O18-A) |
-> | `leaveHousehold` | manager or member; the owner gets `BAD_USER_INPUT` | the same deletes, for the household the caller acts in |
+> | `setHouseholdRole(userId, role)` | owner | `member` ↔ `manager`. `role: owner` and the owner's own row are `BAD_USER_INPUT`; a person not in the household is `FORBIDDEN`. The same role again changes no member row and publishes nothing (the lock's `UPDATE` still moves `Household.updatedAt`). Location roles and open invites stay (a demote is not a removal; owner decision O20) |
+> | `removeMember(userId)` | owner: anyone but themself (`BAD_USER_INPUT`); manager: only a `member` | deletes the person's `LocationMember` rows on THIS household's locations, revokes every open invite of THIS household they made (owner decision O20, which replaced O18-A; decision T30), then deletes their member row (decision T11). All in one transaction |
+> | `leaveHousehold` | manager or member; the owner gets `BAD_USER_INPUT` | the same deletes and the same invite revoke, for the household the caller acts in |
 > | `createHousehold(name)` | a person in NO household (owner decision O16-A); else `BAD_USER_INPUT`, `extensions.reason` `ALREADY_IN_HOUSEHOLD` | `lockUser`, the first sign-in claim, the membership count, then `createHouseholdFor` (`lib/household.ts`, shared with first sign-in), then `activeHouseholdId`. It never calls `requireHousehold` (decision T22) |
 >
 > The first three take the household lock first (`lockOrForbid`, which uses `lockHouseholds`;

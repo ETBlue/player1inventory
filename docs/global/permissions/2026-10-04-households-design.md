@@ -455,7 +455,7 @@ inviting one.
 | Must an invite give a location role? | No (O14-A). The form lists every location on **No access**. A person who joins with none sees "You have no locations in this household yet" until H5c lets someone give them a role |
 | Who revokes an invite? | The owner revokes any. A manager revokes `member` invites only (O15-A), the same line as inviting |
 | What does a `member` see on the Members page? | Every person's name and household role, and their own **Leave**. No e-mail, no invites (O13-A) |
-| An invite made by a manager who is later removed or demoted | It stays open. The invite belongs to the household; the owner sees it and can revoke it (O18-A) |
+| An invite made by a manager who is later removed or demoted | Removed or left: every open invite of that household the person made is revoked in the same transaction (O20, which replaced O18-A on 2026-11-18). Demoted: it stays open; a demoted manager is still a member. Invites made by OTHERS stay open; the remove confirm for a manager tells the owner to revoke one the person may have copied |
 | The joiner's own household | Deleted at the join when it holds no data (decision T21). Kept when it holds data, but not reachable from the screen until H7's switch (O2-A) |
 | A person in two households | Acts in `User.activeHouseholdId` while still a member there, else in the oldest membership (decision T14). The join sets it to the joined household |
 | The link | 32 random bytes, base64url (T12). Single use, 7 days. A wrong, used, revoked or expired link gets ONE answer, `INVITE_INVALID`, so a caller learns nothing about a token (T18) |

@@ -792,7 +792,7 @@ and `e2e/pages/MembersPage.ts`.
 | 3 | a removed person invited again as viewer is ONLY a viewer (View only, no quick update, `myRole: viewer`) |
 | 4 | a person in two households acts in the one joined last; an import cannot write a stock row for the target household's item at their other household's location (`FORBIDDEN`), or put that household's item in a cart (row skipped). No browser |
 | 5 | a member leaves, sees the no-household screen, and creates a household; their role on the owner's Home is gone (T11) |
-| 6 | the owner makes a member a manager; the manager may remove a member, not the owner, sets no roles, and may not invite a manager. The server refuses a manager's `setHouseholdRole` and `removeMember` of the owner with `FORBIDDEN` |
+| 6 | the owner makes a member a manager; the manager may remove a member, not the owner, sets no roles, and may not invite a manager. The server refuses a manager's `setHouseholdRole` and `removeMember` of the owner with `FORBIDDEN`. Then the manager makes a member invite and the owner removes them: the invite is gone from the open list and joining with it gives `INVITE_INVALID` (owner decision O20). The revoke sets `revokedAt` and deletes nothing, so the cleanup order for `createdById` (RESTRICT) is unchanged: the manager's cleanup deletes the revoked invite before their `User` row |
 | 7, 8 | axe scans, light and dark: join page, Members page, invite dialog (form and link), Remove and Leave confirms, no-household screen and its Create dialog |
 
 Proved by mutation on 2026-11-18, each in `cloud`, restored from a copy:
