@@ -1459,10 +1459,12 @@ Filled in from the task reports and reviews.
 | G.10 | Test 3: "R's own household was empty and deleted at the first join" | R's first request IS the join (through `joinHousehold`), so R never had a household of their own: the join sets the first sign-in claim. The no-household screen after the removal comes from that claim |
 | G.10 | Test 4: "read both households back" | R2's own household cannot be read through GraphQL once R2 acts in H. The test reads H as the owner (`itemStocks`, `cartItems`) and R2's own household through R2's cleanup counts (1 household, 1 item, 1 stock row, 0 cart rows) |
 | G.10 | Step 3: `invitePreview` returns the name for INVALID → test 2 (the page) | The page never shows a name for INVALID (`join/$token.tsx` uses `join.heading` there), so no page check can see it. Test 2 also reads `invitePreview` through the API for each link; that check is the one that goes red |
-| G.10 | Step 3: `removeMember` without T11 and join without T20 → "R is participant again" | Not what happens. With both deletes gone, the join's `locationMember.create` hits the unique key and the JOIN fails (red only as a 90 s timeout waiting for `/`). With either one alone, test 3 stays GREEN: each removes the old role on this path. "Participant again" needs the rejected design too (`createMany({ skipDuplicates: true })`); then test 3 is red on the value. So test 3 guards "T11 or T20", not each of them; their own unit tests guard each |
+| G.10 | Step 3: `removeMember` without T11 and join without T20 → "R is participant again" | Not what happens. With both deletes gone, the join's `locationMember.create` hits the unique key and the JOIN fails (red only as a 90 s timeout waiting for `/`). With either one alone, test 3 stays GREEN: each removes the old role on this path. "Participant again" needs the rejected design too (`createMany({ skipDuplicates: true })`); then test 3 is red on the value. So test 3 guards "T11 or T20", not each of them. After the review of G.10, test 5 guards T11 alone on real SQL; T20 alone has only its unit test |
 | G.10 | Step 3: the `findFirst` mutation "MAY stay green" | It went red. The old rule also ignores `activeHouseholdId`, and R2's own household is the older membership, so R2 acted in their own household. The G.2 unit test is still the guard for the ORDER on its own (a mutation that keeps the active household and drops only the `orderBy` is not caught here) |
 | G.10 | Step 2.6 and the G.8/G.9 notes: "the same axe options as `a11y.spec.ts`" | A plain `checkA11y` on a dialog fails on the known `opacity-90` defect of `buttonVariants`, and on one instance nobody had recorded: a PRIMARY filled button inside a dialog is 4.19:1 in light ("Create invite link", "Copy link", "Create a household"). The destructive confirm is 3.56:1 in dark, not the "~4.09:1 (modelled)" `a11y.spec.ts` gives. Dialog scans use `checkDialogA11y` (`e2e/helpers/axe.ts`), which excludes only those filled buttons and only from `color-contrast`. The fix of `opacity-90` stays the follow-up the owner ruled |
 | G.10 | The tests listed | Brief added: set-role and the manager limits (test 6), and a larger a11y set (both confirms, the no-household screen and its dialog). The plan's test 6 is two tests (light, dark) covering all of them |
+| G.10 | The test list | It named no check of T11 on its own. Test 3 (re-invite) cannot see T11 alone, because T20 removes the same old row at the join. The review of G.10 added one: at the end of test 5 (leave), the person's cleanup must count exactly 1 `locationMember` row (their new household's organizer row); a row left on the owner's Home makes it 2 |
+| G.10 | Step 3: the mutation list | It had nothing for issue #381 gap 1, a stock import at a location of another household. The first version of test 4 imported the OTHER household's item at that location, so the item check would refuse it too, and the test could not show the location check works. The review of G.10 changed it to the TARGET household's item, and added the mutation (`requireLocationInHousehold` removed from `requireOwnItemStockRefs`) |
 | G.9 (review) | The invite form with no location list | A failed read left Create disabled with no reason; a household with no location showed only the "Location roles" heading. Now `locationsLoadError` and `noLocations` |
 
 ## Status
@@ -1603,8 +1605,8 @@ the O17 table, for the owner's review:
 (5.8 min); page objects `JoinPage` and `MembersPage`; `newUserContext` options
 `skipOnboarding` and `cloudMode`; `checkDialogA11y` in `e2e/helpers/axe.ts`. It is the
 first real-SQL run of the invite, join and member mutations, and **nothing failed on real
-SQL that the fakes had accepted**: all 6 functional tests passed on their first run. Ten
-mutation checks, all red except two that are expected to stay green (see the G.10 rows of
+SQL that the fakes had accepted**: all 6 functional tests passed on their first run. Twelve
+mutation checks (two added by the review of G.10), all red except two that are expected to stay green (see the G.10 rows of
 *What this plan got wrong*, and `e2e/CLAUDE.md`). Two findings:
 
 - **`settings-global-pages.spec.ts` failed in `cloud` since G.9**: it still expected six
@@ -1618,12 +1620,13 @@ mutation checks, all red except two that are expected to stay green (see the G.1
 
 Cloud collects 177 tests in 35 files, local 189 in 23.
 
-**Open for the main session: `pnpm test` exits 1 at this point, and not because of G.10.**
-Web 3102 passed / 325 files and server 2104 / 76 all pass, but Vitest reports 2 unhandled
+**Fixed in `8d48b999`: `pnpm test` exited 1 after G.10, and not because of G.10.** Web
+3102 passed / 325 files and server 2104 / 76 all passed, but Vitest reported 2 unhandled
 `DatabaseClosedError` rejections "originated in"
-`src/routes/settings/household/members.cloud.test.tsx` (G.9). Seen in 2 of 2 full runs, in
-0 of 3 runs of that file alone; the full suite drives the load average to about 18. G.10
-changed no file under `apps/web`, so the same commit of web code gives the same result.
-That file is the only `*.cloud.test.tsx` that runs `db.delete()` and `db.open()` in
-`afterEach`; the local-mode `bootstrapCarts` effect in `useActiveLocation` then writes to a
-closed database. Not fixed here: it is G.9's test, and the fix needs its own check.
+`src/routes/settings/household/members.cloud.test.tsx` (G.9). Seen in 2 of 2 full runs and
+in 0 of 3 runs of that file alone; the full suite drives the load average to about 18.
+The G.10 report blamed the local `bootstrapCarts` effect in `useActiveLocation`. **That was
+wrong.** The cause was `usePostLoginMigration` in the cloud root: it calls `getAllItems()`,
+two Dexie reads, to see whether there is local data to copy. Under load the second read was
+still running when the test's `afterEach` ran `db.delete()`. The test writes nothing to the
+local database, so `8d48b999` stopped deleting it.

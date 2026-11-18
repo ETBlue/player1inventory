@@ -578,17 +578,17 @@ reconcile finds nothing to remove and creates every row the fixture lists. No ed
 loop was needed in 4b or in PR 5 — which is the whole argument for reading state back
 instead of predicting it.
 
-**The `cloud` project's `testMatch` is 29 files today** (`e2e/playwright.config.ts`,
-measured 2026-11-04, after households H3a task 3.11), up from 13 on 2026-09-23. **Count the
-array rather than reusing that 29** — it grows most weeks:
+**The `cloud` project's `testMatch` is 35 files today** (`e2e/playwright.config.ts`,
+measured 2026-11-18, after households H5b task G.10; it was 29 on 2026-11-04 and 13 on
+2026-09-23). **Count the array rather than reusing that 35** — it grows most weeks:
 
 ```bash
 awk "/name: 'cloud'/,/name: 'pwa'/" e2e/playwright.config.ts | grep -c "spec\.ts'"
 ```
 
 The `awk` range matters: the file holds **three** such lists — `local`'s `testIgnore`,
-`cloud`'s `testMatch` and `pwa`'s `testMatch` — and a grep over the whole file counts all 40
-entries instead of the 29 that belong to `cloud`.
+`cloud`'s `testMatch` and `pwa`'s `testMatch` — and a grep over the whole file counts all 52
+entries instead of the 35 that belong to `cloud` (measured 2026-11-18).
 
 **The command this section used to give printed 0 from 2026-10-30.** It ended
 `| grep -m1 testMatch | grep -o "'\*\*/[^']*\.spec\.ts'" | wc -l`, so it only counted the
@@ -647,8 +647,10 @@ only". So in cloud its template test would write to IndexedDB, reach **zero** re
 still pass `await expect(page).toHaveURL('/')`. That is a test reporting as covered while
 covering nothing. The product gap is issue **#347**.
 
-The `local` project is 23 spec files: 33 files under `e2e/tests/` minus the 10 in its
-`testIgnore` (measured 2026-11-04, after households H3a task 3.11).
+The `local` project is 23 spec files: 39 files under `e2e/tests/` minus the 16 in its
+`testIgnore` (measured 2026-11-18, after households H5b task G.10; it was 33 minus 10 on
+2026-11-04). Count them with `find e2e/tests -name '*.spec.ts' | wc -l` and
+`awk "/testIgnore: \[/,/\],/" e2e/playwright.config.ts | grep -c "spec\.ts'"`.
 
 File 26 is `cloud-user-row.spec.ts`, added 2026-10-31 by households H2 task 2.7. It is
 cloud-only and has no browser, so it is also in `local`'s `testIgnore`. Its 3 tests act as
@@ -788,9 +790,9 @@ and `e2e/pages/MembersPage.ts`.
 | 1 | a brand-new visitor (`cloudMode: false`, `skipOnboarding: false`) opens a link made in the owner's browser, is NOT sent to `/onboarding`, presses Sign in to join and then Join, and lands on `/` in the owner's household. Their own empty household is deleted (read back as the cleanup's `households: 0`). Both browsers then see each other's changes live: the owner's Members page gets the new member (`LOCATION`), the joiner's pantry gets the owner's quantity (`STOCK`) |
 | 2 | a used, a revoked, a made-up and a too-short link all show "no longer valid", and `invitePreview` sends no name for them |
 | 3 | a removed person invited again as viewer is ONLY a viewer (View only, no quick update, `myRole: viewer`) |
-| 4 | a person in two households acts in the one joined last; an import cannot write a stock row at their other household's location (`FORBIDDEN`) or put that household's item in a cart (row skipped). No browser |
-| 5 | a member leaves, sees the no-household screen, and creates a household |
-| 6 | the owner makes a member a manager; the manager may remove a member, not the owner, sets no roles, and may not invite a manager (page and server) |
+| 4 | a person in two households acts in the one joined last; an import cannot write a stock row for the target household's item at their other household's location (`FORBIDDEN`), or put that household's item in a cart (row skipped). No browser |
+| 5 | a member leaves, sees the no-household screen, and creates a household; their role on the owner's Home is gone (T11) |
+| 6 | the owner makes a member a manager; the manager may remove a member, not the owner, sets no roles, and may not invite a manager. The server refuses a manager's `setHouseholdRole` and `removeMember` of the owner with `FORBIDDEN` |
 | 7, 8 | axe scans, light and dark: join page, Members page, invite dialog (form and link), Remove and Leave confirms, no-household screen and its Create dialog |
 
 Proved by mutation on 2026-11-18, each in `cloud`, restored from a copy:
@@ -802,6 +804,8 @@ Proved by mutation on 2026-11-18, each in `cloud`, restored from a copy:
 | `removeMember` without T11 AND join without T20 AND `createMany({ skipDuplicates })` instead of `create` | 3: `Expected substring: "View only" / Received string: "Home"` |
 | T11 and T20 both removed (no `skipDuplicates`) | 3: the join itself fails on the unique key; the test times out waiting for `/` |
 | T11 alone, or T20 alone | 3 **stays green**: each one removes the old role on this path, so one is enough |
+| T11 alone (the leave and remove `locationMember.deleteMany`) | 5: `locationMembers` Expected 1, Received 2 (added by the review of G.10: the leaver's cleanup counts their new Home's organizer row, plus any row left on the owner's Home) |
+| `requireLocationInHousehold` removed from `requireOwnItemStockRefs` (issue #381 gap 1) | 4: `Received promise resolved instead of rejected`. The import names the TARGET household's item, so only the location check can refuse it |
 | the household rule back to "first membership, no order, no active household" | 4: `household.id` is the person's own household |
 | `invitePreview` names the household of a used or revoked link | 2: `householdName` `"Olivia Owner's Household"` where `null` was expected. Only the API check sees it: the page shows no name for INVALID |
 | `memberActions` gives a manager Remove on every row | 6: `Remove Olivia Owner` Expected 0, Received 1 |
@@ -816,7 +820,8 @@ Proved by mutation on 2026-11-18, each in `cloud`, restored from a copy:
 - **A filled button inside a dialog fails contrast at rest** (the `opacity-90` on
   `buttonVariants`). Measured: primary 4.19:1 in light, destructive 3.92:1 light and
   3.56:1 dark. Dialog scans use `checkDialogA11y` (`e2e/helpers/axe.ts`), which excludes
-  only those buttons and only from `color-contrast`, like `a11y.spec.ts`. Whole-page scans
+  only those `button` elements (not a Badge, Switch or bar with the same class) and only
+  from `color-contrast`, like `a11y.spec.ts`. Whole-page scans
   use `checkA11y` with nothing excluded, and they pass.
 
 **`DataModeCard`'s Switch flow renders in E2E mode — since households H4 task E.6.** A
