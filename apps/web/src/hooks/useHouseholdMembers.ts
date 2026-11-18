@@ -1,3 +1,4 @@
+import type { DocumentNode } from '@apollo/client'
 import { useApolloClient } from '@apollo/client/react'
 import { forgetHousehold, switchToHousehold } from '@/apollo/householdGuard'
 import {
@@ -119,6 +120,27 @@ export function useRevokeInvite() {
 }
 
 /**
+ * Read the lists a write changed again, and wait for them. A read that FAILS
+ * is not reported: the write before it worked, so the call must not reject
+ * with "could not save". The query itself keeps the error, so the page shows
+ * a failed read the way it shows any failed read.
+ *
+ * Why not the mutation's own `refetchQueries` with `awaitRefetchQueries`:
+ * Apollo waits for those refetches with `Promise.all`, so a failed refetch
+ * REJECTS the mutation (`@apollo/client@4.1.6`, `core/QueryInfo.js`,
+ * `markMutationResult`). Measured in `useHouseholdMembers.test.tsx`
+ * (`household writes whose refetch fails`).
+ *
+ * Only mounted queries are read again, as with `refetchQueries`.
+ */
+async function refetchAfterWrite(
+  client: ReturnType<typeof useApolloClient>,
+  include: DocumentNode[],
+): Promise<void> {
+  await client.refetchQueries({ include }).catch(() => {})
+}
+
+/**
  * Change a person between `member` and `manager` (owner only). The answer
  * has no `id`, so Apollo cannot update the list row by itself: refetch the
  * list.
@@ -128,26 +150,24 @@ export function useRevokeInvite() {
  * changed gets the household-level `LOCATION` event in their own tabs, which
  * refetches their `GetHousehold`.
  *
- * `awaitRefetchQueries`: the call resolves once the list shows the change. A
- * refetch that FAILS does not reject the call (measured on Apollo 4.1.6, the
- * test "a remove that worked shows no error when the list cannot be read
- * again"), so a write that worked never reads as "could not save".
+ * The call resolves once the list has been read again. A failed read does
+ * not reject it (`refetchAfterWrite`), so a write that worked never reads as
+ * "could not save". A failed WRITE still rejects.
  */
 export function useSetHouseholdRole() {
-  const [setRole] = useSetHouseholdRoleMutation({
-    refetchQueries: [HouseholdMembersDocument],
-    awaitRefetchQueries: true,
-  })
+  const client = useApolloClient()
+  const [setRole] = useSetHouseholdRoleMutation()
   return {
     setRole: async (userId: string, role: HouseholdRole): Promise<void> => {
       await setRole({ variables: { userId, role } })
+      await refetchAfterWrite(client, [HouseholdMembersDocument])
     },
   }
 }
 
 /**
- * Remove a person, then refetch the list (awaited, as in
- * `useSetHouseholdRole`; a failed refetch does not reject).
+ * Remove a person, then read the list again (as in `useSetHouseholdRole`:
+ * the call waits for the read, and a failed read does not reject it).
  *
  * The open invites are read again too: the server revokes the open invites
  * the removed person made in this household (owner decision O20), and this
@@ -160,13 +180,15 @@ export function useSetHouseholdRole() {
  * (`cache-and-network`) on its next visit.
  */
 export function useRemoveMember() {
-  const [removeMember] = useRemoveMemberMutation({
-    refetchQueries: [HouseholdMembersDocument, HouseholdInvitesDocument],
-    awaitRefetchQueries: true,
-  })
+  const client = useApolloClient()
+  const [removeMember] = useRemoveMemberMutation()
   return {
     remove: async (userId: string): Promise<void> => {
       await removeMember({ variables: { userId } })
+      await refetchAfterWrite(client, [
+        HouseholdMembersDocument,
+        HouseholdInvitesDocument,
+      ])
     },
   }
 }

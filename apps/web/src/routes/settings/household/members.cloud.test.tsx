@@ -975,6 +975,8 @@ describe('Members page — role, remove and leave', () => {
           query: RemoveMemberDocument,
           variables: { userId: 'u-mia' },
         },
+        // Long enough to see "Removing…" before the answer comes
+        delay: 100,
         result: () => {
           server.membersFail = true
           return { data: { removeMember: true } }
@@ -983,8 +985,9 @@ describe('Members page — role, remove and leave', () => {
     ])
     const user = userEvent.setup()
     const before = server.membersCalls
+    const row = await rowOf('Mia')
     await user.click(
-      await within(await rowOf('Mia')).findByRole('button', {
+      await within(row).findByRole('button', {
         name: 'Remove Mia',
       }),
     )
@@ -993,11 +996,15 @@ describe('Members page — role, remove and leave', () => {
         name: 'Remove',
       }),
     )
+    expect(within(row).getByRole('status')).toHaveTextContent('Removing…')
 
-    // Then the list was asked for again, and no "could not save" shows:
-    // the write itself worked
+    // Then the list was asked for again. "Removing…" goes away only when
+    // `remove()` has settled, whether it resolved or rejected, so after it
+    // the page has already decided about the error. No fixed wait: a wait
+    // of 50 ms passed whenever the error came later than that.
     await waitFor(() => expect(server.membersCalls).toBeGreaterThan(before))
-    await new Promise((r) => setTimeout(r, 50))
+    await waitFor(() => expect(within(row).queryByRole('status')).toBeNull())
+    // And no "could not save" shows: the write itself worked
     expect(
       screen.queryByText('Could not save the change. Try again.'),
     ).toBeNull()
