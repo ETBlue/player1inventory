@@ -1412,19 +1412,6 @@ plan's *What this plan got wrong* and *Status*.
   unset, and the person presses Import on purpose, then answers "Import into which
   location?", which lists that household's locations. A member pressing Import still gets
   the role error after the location question.
-- **Found while building O22-A, not fixed: a remove that worked can show "Could not save
-  the change"** when the members list then fails to load again. `useRemoveMember` uses
-  `refetchQueries` with `awaitRefetchQueries: true`, and in the test the `remove()` promise
-  REJECTS with the refetch's error ("down", `INTERNAL_SERVER_ERROR`). A probe in the
-  `catch` of `handleRemove` (`routes/settings/household/members.tsx`) logged it in every run:
-  18 with the O22-A change, 6 with HEAD's migration code. (In a few runs the error was
-  instead "QueryManager stopped while query was in flight", after the test had ended.) So the claim in `hooks/CLAUDE.md` that "a FAILED
-  refetch does not reject the call (measured on Apollo 4.1.6)" does not hold here. The test
-  `a remove that worked shows no error when the list cannot be read again`
-  (`members.cloud.test.tsx`) passes only when the toast comes later than its 50 ms wait:
-  under load it failed 3 of 6 runs at HEAD `262f7117` and twice in full suite runs on this
-  branch. `useSetHouseholdRole` has the same shape. Fix: refetch after the mutation and
-  drop a refetch error, then wait for the error toast in the test instead of 50 ms.
 - Carried over from H5a, still open: the old-bundle shim removal, the deleted-organizer
   `hasOrganizer` fix (H6), the keyboard gap on `role="button"` badges, and the other items
   in the H5 plan's *Known gaps*.
@@ -1520,7 +1507,7 @@ Filled in from the task reports and reviews.
 | G.9 (review) | The page reads `invites.isLoading` only | A failed `HouseholdInvites` read showed "No open invites.". It now shows `invitesLoadError` |
 | G.9 (review) | Copy link on an invite ROW | When copying failed, the toast said to select the link, but the row never showed it. The row now shows the link in a read-only field, focused and selected |
 | G.9 (review) | `copyText`'s fallback adds a text area to `document.body` | Inside a Radix dialog `FocusScope` keeps focus inside the dialog. In jsdom the copy command then ran with focus on the dialog's button, not on the text area (mutation R13). The dialog now copies from its own visible link field (`copyText(text, { from })`). What a real browser copies is a manual check for G.11 |
-| G.9 (review) | `useRemoveMember` refetched `GetHouseholdLocations`; `useSetHouseholdRole` refetched `GetHousehold` | Neither did anything useful: the location list is mounted on this page only while the invite dialog is open, and the caller's own role (the owner's) cannot change. Both dropped. Measured on Apollo 4.1.6: with `awaitRefetchQueries: true`, a FAILED refetch does not reject the mutation, so a write that worked never shows "Could not save the change" (test "a remove that worked shows no error when the list cannot be read again") |
+| G.9 (review) | `useRemoveMember` refetched `GetHouseholdLocations`; `useSetHouseholdRole` refetched `GetHousehold` | Neither did anything useful: the location list is mounted on this page only while the invite dialog is open, and the caller's own role (the owner's) cannot change. Both dropped. (This row also said a FAILED refetch does not reject the mutation with `awaitRefetchQueries: true`. That was wrong; see the row "Review (refetch)" below) |
 | G.9 (review) | Nothing about focus | After Remove or Revoke the button that had focus goes away with the refetch, and focus fell to the page body. It now moves to the page heading (Remove) or the **Open invites** heading (Revoke) |
 | G.10 | Step 1: one option, `{ skipOnboarding? }` | Not enough for Review Focus 1. A brand-new visitor has no `data-mode` key, so the app starts in LOCAL mode; `newUserContext` always set `data-mode: cloud`. A second option, `cloudMode` (default `true`), leaves the key out. Test 1 uses both |
 | G.10 | Test 1: "N's own Home is NOT in N's switcher" | The switcher lists the ACTIVE household's locations only, so it cannot show the old household either way, and that check would pass against a join that deletes nothing. GraphQL cannot read a household the person no longer acts in. The test reads the cleanup's counts instead: N's cleanup deletes N's member row in H (`householdMembers: 1`) and owns no household (`households: 0`). Mutation: `Expected 1, Received 2` |
@@ -1547,6 +1534,7 @@ Filled in from the task reports and reviews.
 | G.7/G.8 | *Known gaps*: "a tab that sends nothing stays stale" | Incomplete. A tab that WRITES does not fail: for a person in two households, the write goes into the other household through `requireHousehold` (T14), and the tab shows nothing. Recorded as O21, owed to H7 |
 | T22 | The code comments of `invitePreview` and `joinHousehold`: T22 also keeps "a brand-new person" from getting "a household made just by looking at a link" | Not true. On the real `/join/…` page `HouseholdChangeGuard`, `ActiveLocationProvider` and `PostLoginMigrationDialog` already send queries that call `requireHousehold`, so first sign-in makes a household anyway, and the join deletes it as empty (T21). The comments and the T22 row now give the one real reason |
 | G.8 | `useCreateHousehold`: after `ALREADY_IN_HOUSEHOLD`, read `GetHousehold` "from the network" | It used `fetchPolicy: 'network-only'`, which writes `ROOT_QUERY.household`. The watched `GetHousehold` then gave `NoHouseholdGate` the new id, so it called `switchToHousehold` too: two cache clears and two page loads. Measured: `switchToHousehold` called **2** times in `routes/noHousehold.cloud.test.tsx`. Now `no-cache`, the same rule `useLeaveHousehold` already had |
+| Review (refetch) | The G.9 review: "with `awaitRefetchQueries: true`, a FAILED refetch does not reject the mutation" (measured on Apollo 4.1.6), and the same sentence in `hooks/CLAUDE.md` | False. Apollo waits for the refetches with `Promise.all` (`@apollo/client@4.1.6`, `core/QueryInfo.js`, `markMutationResult`), so a failed refetch REJECTS the mutation, and a remove or role change that worked showed "Could not save the change". The "measurement" was the test "a remove that worked shows no error…", which waited a fixed 50 ms and passed only when the toast came later than that. `useSetHouseholdRole` and `useRemoveMember` now send the mutation with no `refetchQueries`, then `await client.refetchQueries(…).catch(() => {})` (`refetchAfterWrite`). The page test now waits for "Removing…" to go away, and 4 hook tests in `useHouseholdMembers.test.tsx` await the call itself. With the old hook code they are red every run (5 of 5 at load 3), not only under load |
 
 ## Status
 
@@ -1782,4 +1770,11 @@ that the household is shared. A member, or a manager with `clear`, gets a senten
 server 2111 / 76, web 3133 / 325, `pnpm test:spec` 70. E2E in `cloud`:
 `settings/data-mode-migration.spec.ts` (now presses Copy here) and
 `household-invites.spec.ts`, 10 of 10. One pre-existing timing failure in
-`members.cloud.test.tsx` is recorded in *Known gaps*.
+`members.cloud.test.tsx` was recorded in *Known gaps*; it is fixed (next paragraph).
+
+**A write that worked no longer reports failure when its refetch fails (2026-11-18).**
+`useSetHouseholdRole` and `useRemoveMember` used `awaitRefetchQueries: true`, which REJECTS
+the mutation when a refetch fails. Each now refetches after the mutation through
+`refetchAfterWrite`, which still waits for the read but drops its error. The query keeps
+the error, so a failed read shows on the page as before. See the row "Review (refetch)"
+of *What this plan got wrong*. Tests: web 3137 / 325 (4 new in `useHouseholdMembers.test.tsx`), server 2111 / 76, `pnpm test:spec` 70.
