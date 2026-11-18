@@ -191,6 +191,8 @@ changes. **Use a fresh branch made for this release.** The H3a rehearsal branch 
 ### 3.1 Changes to H3a 3.1 (the branch and the pending list)
 
 - Name the branch `prod-rehearsal-checkpoint-<date>`.
+**If the release also carries H5b, the count here is one more** (a fourth migration, `20261118000000_add_household_invites`). See section 9.2 of the [H4 runbook](2026-11-17-deploy-runbook-households-h4.md).
+
 - The run with the override must list **exactly three** pending migrations:
   `20261104000000_add_households`, `20261111000000_drop_user_scope` and
   `20261114000000_shared_carts`. If it lists more, stop and find out why.
@@ -349,6 +351,8 @@ Result: `TBD on deploy day` (each local device opened; version seen).
 Start this **as soon as** the cloud devices have the new bundle. The gap breaks checkout and
 cooking (1.2), and nothing else needs it to be long.
 
+**If the release also carries H5b, the count here is one more** (a fourth migration, `20261118000000_add_household_invites`). See section 9.2 of the [H4 runbook](2026-11-17-deploy-runbook-households-h4.md).
+
 The release log must show three lines, in this order:
 
 ```
@@ -367,6 +371,8 @@ Result: `TBD on deploy day` (three lines seen; time taken).
 ## 5. How to tell it worked (read-only)
 
 **Owner or main session**, in the Neon SQL Editor on the production branch, after H3a 5:
+
+**If the release also carries H5b, the count here is one more** (a fourth migration, `20261118000000_add_household_invites`). See section 9.2 of the [H4 runbook](2026-11-17-deploy-runbook-households-h4.md).
 
 1. H3a 5 query 1, with `LIMIT 4`: all three new migrations have `finished_at` and no
    `rolled_back_at`.
