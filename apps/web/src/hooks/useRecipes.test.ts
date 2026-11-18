@@ -279,13 +279,14 @@ describe('useUpdateRecipe (cloud mode)', () => {
       updates: { name: 'Waffles' },
     })
 
-    // Then it delegates to cloudUpdate with variables + refetch config
-    expect(mockCloudUpdateRecipe).toHaveBeenCalledWith(
-      expect.objectContaining({
-        variables: { id: 'r-1', name: 'Waffles' },
-        awaitRefetchQueries: true,
-      }),
-    )
+    // Then it delegates to cloudUpdate with the variables only. The reads
+    // after the write are sent by `refetchAfterWrite`, not by the mutation's
+    // own `refetchQueries`, so a failed read cannot reject the save. That
+    // behaviour, and the wait for the reads, is tested against real Apollo in
+    // `useUpdateRecipe.cloud.test.tsx`.
+    expect(mockCloudUpdateRecipe).toHaveBeenCalledWith({
+      variables: { id: 'r-1', name: 'Waffles' },
+    })
     expect((updated as { name: string } | undefined)?.name).toBe('Waffles')
   })
 })

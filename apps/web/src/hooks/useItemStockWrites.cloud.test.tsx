@@ -1,3 +1,4 @@
+import { useApolloClient } from '@apollo/client/react'
 import {
   MockedProvider,
   type MockedProviderProps,
@@ -12,8 +13,10 @@ import {
   GetItemsDocument,
   GetLocationsDocument,
   GetRecipesDocument,
+  type GetRecipesQuery,
   ItemStocksForItemDocument,
   PantryDataDocument,
+  type PantryDataQuery,
   UpdateItemDocument,
   UpsertItemStockDocument,
 } from '@/generated/graphql'
@@ -109,12 +112,21 @@ const stocksIn = (locationId: string) =>
 const rowAt = (itemId: string, locationId: string) =>
   stocks.find((s) => s.itemId === itemId && s.locationId === locationId)
 
+// When true, every `PantryData` read fails with a GraphQL error. The write
+// before it still lands, so a failed READ can be told apart from a failed save.
+let failPantry = false
+
 const pantryMock = (locationId: string) => ({
   request: { query: PantryDataDocument, variables: { locationId } },
   maxUsageCount: Number.POSITIVE_INFINITY,
-  result: () => ({
-    data: { items: catalog, itemStocks: stocksIn(locationId) },
-  }),
+  result: () =>
+    failPantry
+      ? {
+          errors: [
+            { message: 'down', extensions: { code: 'INTERNAL_SERVER_ERROR' } },
+          ],
+        }
+      : { data: { items: catalog, itemStocks: stocksIn(locationId) } },
 })
 
 const getItemsMock = {
@@ -215,6 +227,24 @@ const createItemMock = {
   },
 }
 
+const getRecipesMock = {
+  request: { query: GetRecipesDocument },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+  result: () => {
+    count('GetRecipes')
+    return { data: { recipes: [] } }
+  },
+}
+
+const applyUnitSwitchMock = {
+  request: { query: ApplyUnitSwitchDocument, variables: () => true },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+  result: () => {
+    count('ApplyUnitSwitch')
+    return { data: { applyUnitSwitch: pick(MILK, ['createdAt']) } }
+  },
+}
+
 const MOCKS = [
   bootstrapCartsMock,
   getLocationsMock,
@@ -254,6 +284,7 @@ describe('cloud stock writes go to one location', () => {
     catalog = [MILK, RICE]
     stocks = [MILK_A, MILK_B, RICE_B]
     served = {}
+    failPantry = false
   })
 
   it('user editing stock saves it to the ACTIVE location only', async () => {
@@ -529,22 +560,6 @@ describe('cloud writes in a household with no location', () => {
       return { data: { items: catalog, itemStocks: [] } }
     },
   }
-  const getRecipesMock = {
-    request: { query: GetRecipesDocument },
-    maxUsageCount: Number.POSITIVE_INFINITY,
-    result: () => {
-      count('GetRecipes')
-      return { data: { recipes: [] } }
-    },
-  }
-  const applyUnitSwitchMock = {
-    request: { query: ApplyUnitSwitchDocument, variables: () => true },
-    maxUsageCount: Number.POSITIVE_INFINITY,
-    result: () => {
-      count('ApplyUnitSwitch')
-      return { data: { applyUnitSwitch: pick(MILK, ['createdAt']) } }
-    },
-  }
   const NO_LOCATION_MOCKS = [
     emptyLocations,
     getItemsMock,
@@ -633,5 +648,191 @@ describe('cloud writes in a household with no location', () => {
     expect(served.ApplyUnitSwitch).toBe(1)
     expect(served.GetRecipes).toBeGreaterThanOrEqual(1)
     expect(served.PantryData).toBeUndefined()
+  })
+})
+
+// ── A failed read after a saved write ─────────────────────────────────────────
+//
+// The server saved the write, then the pantry list could not be read again (a
+// weak connection, for example). The call must still resolve: the screen must
+// not show a saved write as failed (docs/global/bugs/
+// 2026-11-18-bug-failed-refetch-rejects-saved-write.md). A failed WRITE must
+// still reject. And the call must still WAIT for the read, because callers
+// work out values again from the fresh lists after their `await`.
+describe('cloud stock writes whose refresh fails', () => {
+  const NEW_ITEM_INPUT = {
+    name: 'Oat milk',
+    tagIds: [],
+    vendorIds: [],
+    targetUnit: 'package' as const,
+    targetQuantity: 3,
+    refillThreshold: 1,
+    packedQuantity: 0,
+    unpackedQuantity: 0,
+  }
+  const SWITCH_MOCKS = [...MOCKS, getRecipesMock, applyUnitSwitchMock]
+
+  beforeEach(() => {
+    vi.mocked(dataModeHooks.useDataMode).mockReturnValue({
+      mode: 'cloud',
+      setMode: vi.fn(),
+    })
+    localStorage.clear()
+    localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
+    catalog = [MILK, RICE]
+    stocks = [MILK_A, MILK_B, RICE_B]
+    served = {}
+    failPantry = false
+  })
+
+  /**
+   * The pantry's stock rows for one location, as the cache holds them now.
+   * `returnPartialData`, because the created item's catalog row in this
+   * fixture lacks some fields `PantryData` selects; only `itemStocks` matters.
+   */
+  function cachedPantry(
+    client: ReturnType<typeof useApolloClient>,
+    locationId: string,
+  ) {
+    return client.cache.diff<PantryDataQuery>({
+      query: PantryDataDocument,
+      variables: { locationId },
+      returnPartialData: true,
+      optimistic: false,
+    }).result?.itemStocks
+  }
+
+  it("user's new item is not shown as failed when the refresh after it fails", async () => {
+    // Given the pantry list cannot be read
+    failPantry = true
+    const { result } = renderHook(() => useCreateItem(), {
+      wrapper: makeWrapper(),
+    })
+
+    // When the user creates an item, which the server saves
+    const created = await result.current.mutateAsync(NEW_ITEM_INPUT)
+
+    // Then the call resolves with the saved row, not an error
+    expect(created?.stockId).toBe(`stock-item-new-${LOC_A}`)
+    expect(rowAt('item-new', LOC_A)?.targetQuantity).toBe(3)
+  })
+
+  it("user's saved stock change is not shown as failed when the refresh fails", async () => {
+    // Given the pantry list cannot be read
+    failPantry = true
+    const { result } = renderHook(() => useUpdateItem(), {
+      wrapper: makeWrapper(),
+    })
+
+    // When the user saves 9 packed, which the server saves
+    await result.current.mutateAsync({
+      id: 'item-milk',
+      updates: { packedQuantity: 9 },
+    })
+
+    // Then the call resolved, and the row moved
+    expect(rowAt('item-milk', LOC_A)?.packedQuantity).toBe(9)
+  })
+
+  it("user's unit switch is not shown as failed when the refresh fails", async () => {
+    // Given the pantry list cannot be read
+    failPantry = true
+    const { result } = renderHook(() => useApplyUnitSwitch(), {
+      wrapper: makeWrapper(SWITCH_MOCKS),
+    })
+
+    // When the user confirms a unit switch, which the server saves
+    await result.current.mutateAsync({
+      itemId: 'item-milk',
+      updates: { targetUnit: 'measurement' },
+      stockConversions: [],
+      recipeUpdates: [],
+    })
+
+    // Then the call resolved, and the switch was sent once
+    expect(served.ApplyUnitSwitch).toBe(1)
+  })
+
+  it('a failed stock write still rejects', async () => {
+    // Given a server that refuses the stock write
+    const refused = {
+      request: { query: UpsertItemStockDocument, variables: () => true },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+      result: {
+        errors: [{ message: 'no', extensions: { code: 'FORBIDDEN' } }],
+      },
+    }
+    const { result } = renderHook(() => useUpdateItem(), {
+      wrapper: makeWrapper([
+        bootstrapCartsMock,
+        getLocationsMock,
+        pantryMock(LOC_A),
+        refused,
+      ]),
+    })
+
+    // When the user saves a quantity
+    const save = result.current.mutateAsync({
+      id: 'item-milk',
+      updates: { packedQuantity: 9 },
+    })
+
+    // Then the call rejects
+    await expect(save).rejects.toThrow('no')
+  })
+
+  // Controls: the call still WAITS for the read. Nothing below is mounted
+  // except the hook, so the only thing that can fill the cache is the
+  // refetch the hook awaits.
+  it('a create resolves only after the pantry list has been read again', async () => {
+    const { result } = renderHook(
+      () => ({ create: useCreateItem(), client: useApolloClient() }),
+      { wrapper: makeWrapper() },
+    )
+
+    await result.current.create.mutateAsync(NEW_ITEM_INPUT)
+
+    expect(
+      cachedPantry(result.current.client, LOC_A)?.map((s) => s.itemId),
+    ).toContain('item-new')
+  })
+
+  it('a stock edit resolves only after the pantry list has been read again', async () => {
+    const { result } = renderHook(
+      () => ({ update: useUpdateItem(), client: useApolloClient() }),
+      { wrapper: makeWrapper() },
+    )
+
+    await result.current.update.mutateAsync({
+      id: 'item-milk',
+      updates: { packedQuantity: 9 },
+    })
+
+    expect(
+      cachedPantry(result.current.client, LOC_A)?.find(
+        (s) => s.itemId === 'item-milk',
+      )?.packedQuantity,
+    ).toBe(9)
+  })
+
+  it('a unit switch resolves only after the lists have been read again', async () => {
+    const { result } = renderHook(
+      () => ({ apply: useApplyUnitSwitch(), client: useApolloClient() }),
+      { wrapper: makeWrapper(SWITCH_MOCKS) },
+    )
+
+    await result.current.apply.mutateAsync({
+      itemId: 'item-milk',
+      updates: { targetUnit: 'measurement' },
+      stockConversions: [],
+      recipeUpdates: [],
+    })
+
+    expect(cachedPantry(result.current.client, LOC_A)).toHaveLength(1)
+    expect(
+      result.current.client.readQuery<GetRecipesQuery>({
+        query: GetRecipesDocument,
+      })?.recipes,
+    ).toEqual([])
   })
 })

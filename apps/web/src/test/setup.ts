@@ -37,6 +37,9 @@ vi.mock('@apollo/client/react', async (importOriginal) => {
       },
       query: vi.fn().mockResolvedValue({ data: {} }),
       mutate: vi.fn().mockResolvedValue({ data: {} }),
+      // `refetchAfterWrite` (`apollo/refetchAfterWrite.ts`) calls it after a
+      // cloud write in tests that stub the mutation hooks.
+      refetchQueries: vi.fn().mockResolvedValue([]),
       resetStore: vi.fn().mockResolvedValue(null),
     })),
   }

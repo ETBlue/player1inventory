@@ -32,6 +32,15 @@ import { useItemSearchTailWiring } from './useItemSearchTailWiring'
 // press, and `src/test/setup.ts` stubs every generated hook by default.
 vi.mock('@/generated/graphql', async (importOriginal) => await importOriginal())
 
+// The REAL `useApolloClient` too. `useAddItemToLocation` reads the pantry
+// again through it after the write (`refetchAfterWrite`), and
+// `src/test/setup.ts`'s stub has a `query` that resolves `{ data: {} }`, so
+// the row would never leave bucket 3.
+vi.mock(
+  '@apollo/client/react',
+  async (importOriginal) => await importOriginal(),
+)
+
 vi.mock('./useDataMode', () => ({ useDataMode: vi.fn() }))
 
 const MILK = cloudItem('item-milk', 'Milk')

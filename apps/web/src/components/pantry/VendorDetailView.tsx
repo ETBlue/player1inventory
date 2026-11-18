@@ -180,9 +180,10 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
   // so `mutateAsync` resolves only once the two have resettled together and
   // the wiring hook re-enables the rows against fresh data. What the guard
   // still covers is every path that does NOT await that refetch: `mutate` call
-  // sites, cloud mode (whose `useUpdateItem` does not pass
-  // `awaitRefetchQueries`), and any concurrent write from another surface or
-  // tab landing between this render and the press.
+  // sites, cloud mode (whose `useUpdateItem` does not wait for its `GetItems`
+  // refetch after a configuration edit like this one; it waits only for the
+  // stock lists after a stock edit), and any concurrent write from another
+  // surface or tab landing between this render and the press.
   async function handleApplyVendor(item: PantryItem) {
     if (isUnsorted || !vendor) return
     if ((item.vendorIds ?? []).includes(vendor.id)) return

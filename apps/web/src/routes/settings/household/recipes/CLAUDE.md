@@ -11,7 +11,7 @@ Recipe CRUD at `/settings/household/recipes`. Recipes group items with per-item 
 **Hooks** (`src/hooks/useRecipes.ts`): `useRecipes`, `useRecipe`, `useCreateRecipe`, `useUpdateRecipe` (takes `{ id, updates }`), `useDeleteRecipe`, `useUpdateRecipeLastCookedAt`, `useItemCountByRecipe` — all dual-mode (local: TanStack Query + Dexie; cloud: Apollo GraphQL)
 
 **Cloud mode notes:**
-- `useUpdateRecipe` uses `refetchQueries: [GetRecipesDocument, GetRecipeDocument]` + `awaitRefetchQueries: true` to ensure UI is consistent after saves
+- `useUpdateRecipe` sends the mutation, then awaits `refetchAfterWrite` (`apps/web/src/apollo/refetchAfterWrite.ts`) over `{ query: GetRecipesDocument }` and `{ query: GetRecipeDocument, variables: { id } }`, so the call resolves only after both lists are read again. A failed read does not reject a save that worked. Until 2026-11-18 it used `refetchQueries` + `awaitRefetchQueries: true`, which rejected the save when a read failed (`docs/global/bugs/2026-11-18-bug-failed-refetch-rejects-saved-write.md`)
 - `toVars` strips `__typename` from `RecipeItem` objects before passing as `RecipeItemInput` — Apollo attaches `__typename: 'RecipeItem'` to query results but the input type doesn't accept it
 
 **Routes**:
