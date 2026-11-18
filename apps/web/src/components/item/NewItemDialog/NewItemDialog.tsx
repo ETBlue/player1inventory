@@ -61,6 +61,9 @@ export function NewItemDialog({
   // Index of the keyboard-highlighted option in the combined options list.
   const [activeIndex, setActiveIndex] = useState(0)
   const [submitting, setSubmitting] = useState(false)
+  // The message for a failed save, shown inline like `ShelfFilterPicksDialog`
+  // does. The dialog stays open, so the person can try again.
+  const [saveError, setSaveError] = useState<string | undefined>(undefined)
 
   const listboxId = useId()
   const inputId = useId()
@@ -159,6 +162,7 @@ export function NewItemDialog({
     setName(initialName)
     setPackageUnit('')
     setActiveIndex(0)
+    setSaveError(undefined)
   }
 
   const handleClose = () => {
@@ -169,8 +173,10 @@ export function NewItemDialog({
   const handleCreate = async () => {
     if (!trimmed || submitting) return
     setSubmitting(true)
+    setSaveError(undefined)
+    let item: Awaited<ReturnType<typeof createItem.mutateAsync>>
     try {
-      const item = await createItem.mutateAsync({
+      item = await createItem.mutateAsync({
         name: trimmed,
         tagIds: [],
         vendorIds: [],
@@ -181,15 +187,20 @@ export function NewItemDialog({
         unpackedQuantity: 0,
         ...(packageUnit.trim() ? { packageUnit: packageUnit.trim() } : {}),
       })
-      if (!item) return
-      handleClose()
-      if (onSuccess) {
-        onSuccess(item as PantryItem)
-      } else {
-        navigate({ to: '/items/$id', params: { id: (item as PantryItem).id } })
-      }
+    } catch {
+      // A failed save: say so and keep the dialog open with the name typed.
+      // (Offline, `offlineWriteLink` also shows its own toast.)
+      setSaveError(t('items.addDialog.createFailed', { name: trimmed }))
+      return
     } finally {
       setSubmitting(false)
+    }
+    if (!item) return
+    handleClose()
+    if (onSuccess) {
+      onSuccess(item as PantryItem)
+    } else {
+      navigate({ to: '/items/$id', params: { id: (item as PantryItem).id } })
     }
   }
 
@@ -200,6 +211,8 @@ export function NewItemDialog({
     // same copy-on-add server-side in cloud (hooks/useItems.ts).
     if (submitting) return
     setSubmitting(true)
+    setSaveError(undefined)
+    let stock: Awaited<ReturnType<typeof addItemToLocation.mutateAsync>>
     try {
       // The resolved ItemStock carries the real, freshly copied stock fields.
       // Merge those in rather than spreading the stale pre-add `item` (whose
@@ -207,28 +220,37 @@ export function NewItemDialog({
       // previously stocked at the active location) — otherwise callers like
       // the recipe items dialog read defaults (e.g. consumeAmount: 1) instead
       // of the item's real copied values (PR D review 3.5).
-      const stock = await addItemToLocation.mutateAsync({ itemId: item.id })
-      handleClose()
-      if (onSuccess) {
-        const {
-          id,
-          itemId: _itemId,
-          createdAt: _createdAt,
-          updatedAt: _updatedAt,
-          locationId,
-          ...stockFields
-        } = stock
-        onSuccess({
-          ...item,
-          ...stockFields,
-          stockId: id,
-          locationId,
-        })
-      }
-      // No navigation by default — the item now appears in the pantry list.
+      stock = await addItemToLocation.mutateAsync({ itemId: item.id })
+    } catch {
+      // A failed save: say so and keep the dialog open.
+      setSaveError(
+        t('items.detail.locationPager.addFailed', {
+          name: item.name,
+          location: activeLocation?.name ?? '',
+        }),
+      )
+      return
     } finally {
       setSubmitting(false)
     }
+    handleClose()
+    if (onSuccess) {
+      const {
+        id,
+        itemId: _itemId,
+        createdAt: _createdAt,
+        updatedAt: _updatedAt,
+        locationId,
+        ...stockFields
+      } = stock
+      onSuccess({
+        ...item,
+        ...stockFields,
+        stockId: id,
+        locationId,
+      })
+    }
+    // No navigation by default — the item now appears in the pantry list.
   }
 
   const handleSelectOption = (opt: Option) => {
@@ -302,7 +324,10 @@ export function NewItemDialog({
                 ? { 'aria-activedescendant': activeOptionId }
                 : {})}
               placeholder={t('items.addDialog.searchPlaceholder')}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value)
+                setSaveError(undefined)
+              }}
               onKeyDown={handleKeyDown}
             />
             {/* Listbox of matches. Focus stays on the combobox input above;
@@ -396,6 +421,11 @@ export function NewItemDialog({
               </p>
             )}
           </div>
+          {saveError && (
+            <p role="alert" className="text-sm text-status-error-foreground">
+              {saveError}
+            </p>
+          )}
           {showCreate && (
             <div className="space-y-2">
               <Label htmlFor="new-item-package-unit">
