@@ -537,6 +537,10 @@ not in any household." and **Create a household** (owner decision O16-A).
   `settings.household.name.invalidError` in an `<output>` that is always mounted (empty when
   there is no error), and focus goes back to the name field; an `OfflineWriteError` shows no
   second toast; any other error shows `noHousehold.error` and the button stays.
+- **How a person leaves the screen without creating a household** (sign out, or go back to
+  local mode) is NOT decided yet, above all on a phone, where the gate also covers
+  `/settings`. It waits for an owner decision. Add the decided rule here, in one sentence,
+  when it is built.
 - **The person's other tabs** get the `LOCATION` event of `createHousehold`. It refetches
   every active query, the FAILED `GetHousehold` included (tested in
   `apollo/liveUpdates.test.ts`), and the gate then calls `switchToHousehold(id, { to: '/' })`.

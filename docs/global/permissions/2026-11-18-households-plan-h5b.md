@@ -1254,7 +1254,7 @@ design (*Sequencing* H5 row; *Invite and join* answers; *Create and delete a hou
 outline points here; *Status*), `docs/INDEX.md`, the deploy section (below), and this
 plan's *What this plan got wrong* and *Status*.
 
-- [ ] **Step 1: Deploy section.** Add **section 9, "H5b"**, to
+- [x] **Step 1: Deploy section.** Add **section 9, "H5b"**, to
   `docs/global/backend/2026-11-17-deploy-runbook-households-h4.md` (the H5a notes are its
   section 8). Contents: the migration `20261118000000_add_household_invites` deploys with
   the server; rehearse it on a FRESH Neon branch of production (additive-only: `migrate
@@ -1269,12 +1269,12 @@ plan's *What this plan got wrong* and *Status*.
   and paste: jsdom cannot show what a browser really copies). The
   old `main` bundle never calls the new fields; a person removed while on the old bundle sees
   failing requests and no screen until the web deploys (same window as H5a's).
-- [ ] **Step 2: Docs.** Re-measure every count (test totals with `pnpm test`; E2E with
+- [x] **Step 2: Docs.** Re-measure every count (test totals with `pnpm test`; E2E with
   `--list`; the guard's field count; `grep -c "^  '2026" apps/server/scripts/verify-migration.ts`).
   Do not copy numbers from this plan.
 - [ ] **Step 3: The full gate, then `pnpm test:e2e:all`.** Every failure is a hard stop. Copy
   `test-results/` aside before a re-run. Report load average and the three project results.
-- [ ] **Step 4:** commit `docs(households): record H5b`. `git status` clean.
+- [x] **Step 4:** commit `docs(households): record H5b`. `git status` clean.
 
 ---
 
@@ -1357,6 +1357,21 @@ plan's *What this plan got wrong* and *Status*.
 - **A person removed from a household and invited back to the SAME one**, who joins in
   another tab, keeps the no-household screen in this tab until a reload. The gate ignores
   the lost household's id on purpose (G.8 review, loop guard).
+- **How a person leaves the no-household screen on a phone** (sign out, go back to local
+  mode) waits for an owner decision. The options: **Sign out** and **Use local mode** links
+  on the screen; **Sign out** only; or keep `/settings` reachable. The screen itself has no
+  Sign out and no local-mode control, and `NoHouseholdGate` covers `/settings` too, so on a
+  phone the settings that hold those controls are behind the screen. Found in the review of
+  G.8; see the "G.8 (review)" row of *What this plan got wrong*.
+- **Old, not new in H5b: the "copy local data?" check can fail with an unhandled
+  rejection.** `usePostLoginMigration` (`apps/web/src/hooks/usePostLoginMigration.ts:183`)
+  calls `getAllItems().then(...)` with no `.catch`. In cloud mode, when the local IndexedDB
+  read fails (a closed or blocked database, private browsing that refuses IndexedDB), the
+  promise rejects with nothing to catch it. The browser reports an unhandled rejection, and
+  the check never finishes for that page load: no prompt shows, and `migration-prompted` is
+  not set, so the next load tries again. The code is from `4bd17a75` (2026-03-12). Found
+  this session while finding the `DatabaseClosedError` of `8d48b999` (*Status*, G.10). Not
+  fixed here; it needs a `.catch` and a test.
 - Carried over from H5a, still open: the old-bundle shim removal, the deleted-organizer
   `hasOrganizer` fix (H6), the keyboard gap on `role="button"` badges, and the other items
   in the H5 plan's *Known gaps*.
@@ -1466,6 +1481,10 @@ Filled in from the task reports and reviews.
 | G.10 | The test list | It named no check of T11 on its own. Test 3 (re-invite) cannot see T11 alone, because T20 removes the same old row at the join. The review of G.10 added one: at the end of test 5 (leave), the person's cleanup must count exactly 1 `locationMember` row (their new household's organizer row); a row left on the owner's Home makes it 2 |
 | G.10 | Step 3: the mutation list | It had nothing for issue #381 gap 1, a stock import at a location of another household. The first version of test 4 imported the OTHER household's item at that location, so the item check would refuse it too, and the test could not show the location check works. The review of G.10 changed it to the TARGET household's item, and added the mutation (`requireLocationInHousehold` removed from `requireOwnItemStockRefs`) |
 | G.9 (review) | The invite form with no location list | A failed read left Create disabled with no reason; a household with no location showed only the "Location roles" heading. Now `locationsLoadError` and `noLocations` |
+| G.11 | Step 2: re-measure with `grep -c "^  '2026" apps/server/scripts/verify-migration.ts`; *Files*: "`MIGRATIONS` now 10" in `apps/server/prisma/CLAUDE.md` | That command prints **0** since G.1: the names moved to deploy groups in `scripts/migrationDeploys.ts` (`MIGRATIONS` there is built from the groups). The count is `grep -o "'2026[0-9]*_[a-z_]*'" apps/server/scripts/migrationDeploys.ts \| wc -l`, which gives **10**. G.1 had already written this into the prisma `CLAUDE.md` |
+| G.11 | *Files* did not name the H3b runbook | `2026-11-15-deploy-runbook-households-h3b.md` says the rehearsal must list **exactly three** pending migrations ("if it lists more, stop"), the release log three lines, and H3a 5 query 1 `LIMIT 4`. With H5b in the release each is one more. Section 9.2 of the H4 runbook gives the new numbers, and the H3b runbook now points there at all three places. Without it the rehearsal would have stopped on a correct pending list |
+| G.11 | *Deploy notes*: "a person removed from their only household while on the old bundle sees failing requests until the web deploys" | Between the two deploys nobody can remove anybody: only the NEW bundle has the Members page. The real window is AFTER the web deploy, for a device that has not taken the update yet, whose person is removed by someone on the new bundle. Runbook 9.8 says it that way |
+| G.11 | *Files*: the docs to update | Most were already updated, task by task, by G.1–G.10. What was still missing: root `CLAUDE.md` had no H5b overview (the G.3 queries and mutations, the household guard), no E2E paragraph for `household-invites.spec.ts`, and test counts from H5a; the design's *Sequencing* row, the phase plan's H5 outline and the H4 runbook's section 8 still said H5a was "awaiting PR" (it merged as #384) |
 
 ## Status
 
@@ -1630,3 +1649,23 @@ wrong.** The cause was `usePostLoginMigration` in the cloud root: it calls `getA
 two Dexie reads, to see whether there is local data to copy. Under load the second read was
 still running when the test's `afterEach` ran `db.delete()`. The test writes nothing to the
 local database, so `8d48b999` stopped deleting it.
+
+**Task G.11, Steps 1, 2 and 4 are done** (the docs and the deploy notes). Step 3, the full
+gate and `pnpm test:e2e:all`, is still to run. Counts measured 2026-11-18 at `ff2f0df0`,
+with no code change since:
+
+| Count | Value | Command |
+|---|---|---|
+| web tests | 3102 passed / 325 files | `pnpm test` (load average 8 at the start, about 20 at the end; exit 0, no unhandled errors) |
+| server tests | 2104 passed / 76 files | `pnpm test` |
+| `scripts/spec` tests | 70 passed | `pnpm test` (`pnpm test:spec`) |
+| E2E `local` | 189 tests in 23 files | `pnpm test:e2e --project=local --list` |
+| E2E `cloud` | 177 tests in 35 files, 8 of them in `household-invites.spec.ts` | `pnpm test:e2e --project=cloud --list` |
+| E2E `pwa` | 73 tests in 2 files | `pnpm test:e2e --project=pwa --list` |
+| live guard | 69 fields in `publishes`, 0 in `publishesNothing` | the entries of `publishes` in `live-publish.guard.test.ts`; the guard test passes, so the schema has the same 69 |
+| `/e2e/cleanup` models | 19 | `CLEANUP_MODEL_KEYS` in `e2e/helpers/cloudTeardown.ts` |
+| migrations in `migrationDeploys.ts` | 10 | `grep -o "'2026[0-9]*_[a-z_]*'" apps/server/scripts/migrationDeploys.ts \| wc -l` (the plan's `grep -c "^  '2026" …verify-migration.ts` gives 0) |
+
+**One web change waits for an owner decision:** how a person leaves the no-household screen
+on a phone (see *Known gaps*). The docs leave one place for it: the *No household* section
+of `apps/web/src/routes/CLAUDE.md`. Counts may move a little after that change.

@@ -149,6 +149,24 @@ that really set up that role.
 > | `requireCatalogIds(ctx, householdId, model, ids)` | every id a write attaches is in the household (#273) |
 > | `requireOwnRowOrUnclaimed(ctx, model, id, targetHouseholdId)` | see the next paragraphs. The fourth argument is the household the write goes INTO, since H4 task E.1 |
 >
+> **Invites, join, members and the no-household screen are built in H5b** (on
+> `feature/households-h5b`; not merged, not deployed; plan
+> `docs/global/permissions/2026-11-18-households-plan-h5b.md`; deploy notes in section 9 of
+> the H4 runbook). One migration, `20261118000000_add_household_invites` (table
+> `HouseholdInvite`, column `User.activeHouseholdId`), deploys with the server. Since H5b a
+> person CAN be in two households. What H5b adds:
+>
+> | Part | What |
+> |---|---|
+> | which household (decision T14) | `requireHousehold` picks `User.activeHouseholdId` while the person is still a member there, else the oldest membership. See `requireHousehold` in the table above |
+> | one lock order (decision T16) | the `User` row (`lockUser`) before any household row (`lockHouseholds`, sorted by id). See *Joining a household* below |
+> | 3 queries | `householdInvites` (owner and manager; a manager sees `member` invites only, O15-A). The `token` is on the `HouseholdInvite` type only, so only this query and the `createInvite` answer carry it, `invitePreview(token)` (`requireAuth` only, never throws for a token: `status` is `VALID`, `ALREADY_MEMBER` or `INVALID`, and `INVALID` carries no name), `householdMembers` (any household role, no e-mail) |
+> | 7 mutations | `createInvite` and `revokeInvite` (`resolvers/invite.resolver.ts`, task G.3), `joinHousehold` (G.4), `setHouseholdRole`, `removeMember`, `leaveHousehold`, `createHousehold` (`resolvers/household.resolver.ts`, G.5). All seven publish household-level `LOCATION` after the commit (decision T19), so the live guard holds **69** fields. `revokeInvite` answers `false`, not an error, for every invite this caller may not revoke (unknown, another household's, used, revoked, or a `manager` invite for a manager) |
+> | refusals (decision T18) | `BAD_USER_INPUT` with `extensions.reason`: `INVITE_INVALID` (one answer for unknown, expired, used and revoked), `ALREADY_MEMBER`, `ALREADY_IN_HOUSEHOLD`. Role refusals stay `FORBIDDEN`. A person in no household gets `NO_HOUSEHOLD` (a `GraphQLError` code) |
+> | web: the household guard | `HouseholdChangeGuard` (`apps/web/src/apollo/householdGuard.ts`, decision T23) clears the Apollo cache and reloads when the server answers another household id. It cannot see a move into NO household; `NoHouseholdGate` clears the cache then. See `apps/web/src/routes/CLAUDE.md`, *Join Page* and *No household* |
+> | web: pages | `/join/$token`, `/sign-in?redirect=` (`safeRedirectPath`), `/settings/household/members` (cloud only), the no-household screen (`apps/web/src/routes/settings/CLAUDE.md`, `apps/web/src/components/CLAUDE.md`) |
+> | E2E | `household-invites.spec.ts`, 8 cloud tests; see *E2E* below and `e2e/CLAUDE.md` |
+>
 > **Joining a household (households H5b task G.4).** `joinHousehold(token)` in
 > `resolvers/invite.resolver.ts` is one transaction, and it never calls `requireHousehold`
 > (decision T22). Two rules from it hold for every later writer:
@@ -601,9 +619,10 @@ skips half the work. Nothing else in the gate checks `e2e/` formatting: `pnpm li
 `apps/server`'s build already carries a second pass for `scripts/`.
 
 **`pnpm test` runs both workspaces.** The root script is `pnpm -r test`, which recurses into
-every workspace package that defines a `test` script — today `apps/web` (**2922 tests**
-across 305 files) and `apps/server` (**1820** across 70). Measured 2026-11-17 on
-`feature/households-h5`, after households H5a task F.9 (it said 2678 / 283 and 1765 / 67
+every workspace package that defines a `test` script — today `apps/web` (**3102 tests**
+across 325 files) and `apps/server` (**2104** across 76). Measured 2026-11-18 on
+`feature/households-h5b`, after households H5b task G.10 (it said 2922 / 305 and 1820 / 70
+on 2026-11-17 on `feature/households-h5`, after households H5a task F.9, 2678 / 283 and 1765 / 67
 earlier that day on `feature/households-h4`, after households H4, 2586 / 281 and 1566 / 64 on
 2026-11-16 after households H3c-2, 2577 / 281 and 1412 / 61
 after H3c-1 the same day, 2543 / 276 and 1274 / 52 on
@@ -2043,6 +2062,21 @@ owner's browser, live, and gets no Done; a location a member creates shows to th
 **No access** and never in the switcher. The 409 order of `addHouseholdMember` still
 applies: add a person to the household BEFORE their context opens a page. See
 `e2e/CLAUDE.md` for the mutation table.
+
+`household-invites.spec.ts` joined on 2026-11-18 (households H5b task G.10) — 8 cloud test
+cases, with up to three browsers, cloud only (in `local`'s `testIgnore`). The `cloud` project
+now collects **177** tests in **35** files; `local` **189** in 23, `pwa` **73** in 2 (measured
+with `--list` on 2026-11-18, task G.11). It is the first real-SQL run of `createInvite`,
+`revokeInvite`, `invitePreview`, `joinHousehold`, `setHouseholdRole`, `removeMember`,
+`leaveHousehold` and `createHousehold`, and the first real-SQL test of one person in two
+households (the issue #381 test H4 owed). A person joins through the real flow, starting
+as a brand-new visitor in LOCAL mode (`newUserContext(…, { cloudMode: false,
+skipOnboarding: false })`). Nothing failed on real SQL that the fakes had accepted. Tests
+7 and 8 are the axe scans of the join page, the Members page, its dialogs and the
+no-household screen, light and dark: `a11y.spec.ts` does not run in cloud. Dialog scans
+use `checkDialogA11y` (`e2e/helpers/axe.ts`), which leaves out only filled buttons, only
+from `color-contrast`, because of the known `opacity-90` defect of `buttonVariants`. See
+`e2e/CLAUDE.md` for the test table and the twelve mutation checks.
 
 The warning above still holds for everything else — most resolvers are named by no cloud
 spec.

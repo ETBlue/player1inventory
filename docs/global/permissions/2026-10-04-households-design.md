@@ -446,6 +446,22 @@ inviting one.
 | Already in this household | "You are already in this household." The link is not used up |
 | Expired, used or revoked link | "This invite is no longer valid. Ask for a new one." |
 
+**How H5b answered the open points** (plan
+[2026-11-18-households-plan-h5b.md](2026-11-18-households-plan-h5b.md), *Decisions* and
+*Owner answers*):
+
+| Question | Answer |
+|---|---|
+| Must an invite give a location role? | No (O14-A). The form lists every location on **No access**. A person who joins with none sees "You have no locations in this household yet" until H5c lets someone give them a role |
+| Who revokes an invite? | The owner revokes any. A manager revokes `member` invites only (O15-A), the same line as inviting |
+| What does a `member` see on the Members page? | Every person's name and household role, and their own **Leave**. No e-mail, no invites (O13-A) |
+| An invite made by a manager who is later removed or demoted | It stays open. The invite belongs to the household; the owner sees it and can revoke it (O18-A) |
+| The joiner's own household | Deleted at the join when it holds no data (decision T21). Kept when it holds data, but not reachable from the screen until H7's switch (O2-A) |
+| A person in two households | Acts in `User.activeHouseholdId` while still a member there, else in the oldest membership (decision T14). The join sets it to the joined household |
+| The link | 32 random bytes, base64url (T12). Single use, 7 days. A wrong, used, revoked or expired link gets ONE answer, `INVITE_INVALID`, so a caller learns nothing about a token (T18) |
+| A signed-out person | `/sign-in?redirect=/join/<token>`; Clerk returns to the link after sign-in AND sign-up (T24). A device in local mode is told that joining uses cloud sync and offers **Sign in to join**; local data is not copied |
+| Removing or leaving | Also deletes the person's location roles in that household (T11). A re-invite gives only the new invite's roles (T20) |
+
 ### Location roles
 
 - Owner and manager give or remove any location role on any location.
@@ -509,8 +525,12 @@ Only account deletion starts a hand-over in this phase. See *Postponed*.
   - **Exception: first sign-in** (decision H1). A person whose `User.householdSetupAt` is null
     has never had a household, so the server creates one for them. A person who has a
     `householdSetupAt` but no membership has left or been removed; for them the server creates
-    nothing and answers `NO_HOUSEHOLD`. Nobody can leave before H5. **No phase in
-    *Sequencing* names the "no household" screen yet**; it must exist by the time leaving does.
+    nothing and answers `NO_HOUSEHOLD`. Nobody can leave before H5. **The "no household"
+    screen exists since H5b** (task G.8, built on `feature/households-h5b`, not merged): it
+    ships in the same phase as leaving and removing. Until 2026-11-18 this line said "No
+    phase in *Sequencing* names the no household screen yet".
+  - **Until H7, `createHousehold` is only for a person in NO household** (owner decision
+    O16-A). Anyone else gets `ALREADY_IN_HOUSEHOLD`. The **Switch to…** entry above is H7.
 
 ### Checkout with a shared cart
 
@@ -918,7 +938,7 @@ and the owner agreed to the order below. Detail:
 | `chore/build-shared-types` | ✅ Built 2026-11-13, PR not merged. The server build bundles with esbuild, so the server can import shared code from `@p1i/types` at runtime (needed by H3b, decision H7). The server's own copies of `cartIdFor`, `parseCartId` and `isBeingBought` are deleted. [Design](../backend/2026-11-13-build-shared-types-design.md) | No |
 | **H3b** | Shared carts: `@@unique([cartId, itemId])` (decision H8), the 15 `CartItem.userId` filters, `Cart.userId` dropped, checkout and `consumeRecipes` in one transaction with a server-computed total. Fixes #358. **Must merge before H5 starts** | No (one person per household) |
 | H4 | ✅ **Merged into `develop` 2026-11-17 (#382, merge `bf87e839`), not deployed.** Import and export: the new id rule, and `requireOwnRowOrUnclaimed` moved to the target household scope (#327 itself is already fixed by #354). Replaces H3a's import fallback location (decision H12) | The "Import into which location?" dialog |
-| H5 | Split in three PRs (H5 decision O1), [plan](2026-11-17-households-plan-h5.md). **H5a ✅ built 2026-11-17 on `feature/households-h5`, awaiting PR, not merged, not deployed:** `Location.myRole`, `Location.hasOrganizer`, the `householdLocations` query, a location viewer reads carts, `usePermissions` and read-only views for a household `member` and a location `viewer`, the **View only** badge in the switcher (the switcher already listed only locations with a role, so there was nothing to filter), H13 lifted with an empty locations screen, and a browser context per test user in E2E. **H5b** (invites, join, members page) and **H5c** (location people page) are outlined only | H5a alone: the last location can be deleted. **H5a + H5b + H5c: sharing works** |
+| H5 | Split in three PRs (H5 decision O1), [plan](2026-11-17-households-plan-h5.md). **H5a ✅ merged into `develop` (#384, merge `4307d30a`, 2026-11-18), not deployed:** `Location.myRole`, `Location.hasOrganizer`, the `householdLocations` query, a location viewer reads carts, `usePermissions` and read-only views for a household `member` and a location `viewer`, the **View only** badge in the switcher (the switcher already listed only locations with a role, so there was nothing to filter), H13 lifted with an empty locations screen, and a browser context per test user in E2E. **H5b ✅ built 2026-11-18 on `feature/households-h5b`, not merged, not deployed** ([plan](2026-11-18-households-plan-h5b.md)): one migration (`HouseholdInvite`, `User.activeHouseholdId`), invite links, the join page, the Members page, leave and remove, a fixed rule for a person in two households, and the no-household screen with **Create a household**. **H5c** (location people page) is outlined only | H5a alone: the last location can be deleted. **H5a + H5b + H5c: sharing works** |
 | H6 | Transfer, hand-over, offers banner, purges, activity log | Yes: story 2 |
 | H7 | Personal location order and sort, household switch and create. Now also `LocationPreference`, `UserPreference` and `dataUpdatedAt` (decision H6), and the end of the shared `Location.order` (decision H5) | Yes |
 

@@ -203,6 +203,8 @@ than trusting a number here — it said **four** when there were seven.
   there (it needs the `HouseholdRole` type of `add_households`). The `last` group is applied
   after `restoreIfParked`, so it is everything still parked at that point. **Ten** entries
   since G.1 (`20261118000000_add_household_invites`, in the `last` group with `shared_carts`).
+  So the **fourth** `migrate deploy` now applies two migrations, `shared_carts` and then
+  `add_household_invites` (measured 2026-11-18 by the G.1 Step 7 run on the test database).
   The history below said the list was in `scripts/verify-migration.ts`, as a `MIGRATIONS` list —
   **nine** entries since households H3b task B.3 (2026-11-15; eight on 2026-11-11). The
   ninth, `20261114000000_shared_carts`, is applied in a **fourth** `migrate deploy`, after
