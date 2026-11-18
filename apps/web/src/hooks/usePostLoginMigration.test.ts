@@ -700,6 +700,95 @@ describe('usePostLoginMigration — a failed copy stays failed', () => {
   })
 })
 
+// ─── A failed local read (docs/global/bugs/2026-11-18-bug-post-login-migration-unhandled-read.md)
+//
+// The prompting branch reads the local items with `getAllItems()`. In cloud
+// mode that read can fail (a blocked or closed IndexedDB, a private window).
+// It had no `.catch`, so the browser got an unhandled rejection. Like the
+// other failures in this hook, MIGRATION_PROMPTED_KEY stays unset so a later
+// run can try again.
+describe('usePostLoginMigration — a failed local read', () => {
+  const readFailure = new Error('IndexedDB is blocked')
+  let unhandled: unknown[] = []
+  const onUnhandled = (reason: unknown) => {
+    unhandled.push(reason)
+  }
+
+  beforeEach(() => {
+    unhandled = []
+    process.on('unhandledRejection', onUnhandled)
+    mockCloudLocations([{ id: CLOUD_HOME_ID, name: 'My Home', order: 0 }])
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem(activeLocationStorageKey('cloud'), CLOUD_HOME_ID)
+  })
+
+  afterEach(() => {
+    process.off('unhandledRejection', onUnhandled)
+  })
+
+  /** Let the read, its handlers and Node's unhandled-rejection check run. */
+  async function drain() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+  }
+
+  it('a failed local read is logged, asks nothing and leaves the prompt unset', async () => {
+    // Given a local database that cannot be read
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(getAllItems).mockRejectedValue(readFailure)
+
+    // When the hook runs after sign-in
+    const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
+      wrapper,
+    })
+    await drain()
+
+    // Then it stays idle, nothing is marked as asked, and the failure is
+    // logged instead of left unhandled
+    expect(getAllItems).toHaveBeenCalled()
+    expect(result.current.state).toBe('idle')
+    expect(localStorage.getItem(MIGRATION_PROMPTED_KEY)).toBeNull()
+    expect(unhandled).toEqual([])
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining('local items'),
+      readFailure,
+    )
+    log.mockRestore()
+  })
+
+  it('user is asked to copy once a later local read works', async () => {
+    // Given a first read that fails, and local data that can be read later
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(getAllItems)
+      .mockRejectedValueOnce(readFailure)
+      .mockResolvedValue([{ id: 'item-1', name: 'Milk' }] as unknown as Awaited<
+        ReturnType<typeof getAllItems>
+      >)
+    const { result, rerender } = renderHook(
+      () => usePostLoginMigration(SIGNED_IN),
+      { wrapper },
+    )
+    await drain()
+    expect(result.current.state).toBe('idle')
+
+    // When the effect runs again (the location list goes unknown and back)
+    mockGetLocationsQuery.mockReturnValue({
+      data: undefined,
+      loading: true,
+      error: undefined,
+    })
+    rerender()
+    mockCloudLocations([{ id: CLOUD_HOME_ID, name: 'My Home', order: 0 }])
+    rerender()
+
+    // Then the user is asked whether to copy
+    await waitFor(() => expect(result.current.state).toBe('prompting'))
+    log.mockRestore()
+  })
+})
+
 // ─── "Import into which location?" before the copy (households H4 task E.4) ──
 //
 // Local data always has its default location `'local'`. Decision O3: the copy

@@ -168,8 +168,10 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
   // local `onSuccess` RETURNS its `['recipes']` invalidation, so `mutateAsync`
   // resolves only once `recipe.items` has refetched, and the wiring hook
   // re-enables the rows against fresh data. Cloud is NOT an exception here —
-  // both of `useUpdateRecipe`'s cloud branches pass `awaitRefetchQueries: true`
-  // (`useRecipes.ts:199,219`), unlike the shelf and item hooks. What the guard
+  // both of `useUpdateRecipe`'s cloud branches (`mutate` and `mutateAsync`)
+  // go through `runCloudUpdate` in `useRecipes.ts`, which awaits
+  // `refetchAfterWrite` over `GetRecipes` and `GetRecipe` after the write
+  // (a failed read does not reject the save). What the guard
   // still covers is every path that does NOT await that refetch — `mutate`
   // call sites, whose continuation runs without awaiting the returned promise
   // (e.g. `items/$id/relation/recipes.tsx:45`) — and any concurrent write

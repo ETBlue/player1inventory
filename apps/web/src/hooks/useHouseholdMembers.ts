@@ -1,6 +1,6 @@
-import type { DocumentNode } from '@apollo/client'
 import { useApolloClient } from '@apollo/client/react'
 import { forgetHousehold, switchToHousehold } from '@/apollo/householdGuard'
+import { refetchAfterWrite } from '@/apollo/refetchAfterWrite'
 import {
   GetHouseholdDocument,
   type GetHouseholdQuery,
@@ -117,27 +117,6 @@ export function useRevokeInvite() {
       return result.data?.revokeInvite === true
     },
   }
-}
-
-/**
- * Read the lists a write changed again, and wait for them. A read that FAILS
- * is not reported: the write before it worked, so the call must not reject
- * with "could not save". The query itself keeps the error, so the page shows
- * a failed read the way it shows any failed read.
- *
- * Why not the mutation's own `refetchQueries` with `awaitRefetchQueries`:
- * Apollo waits for those refetches with `Promise.all`, so a failed refetch
- * REJECTS the mutation (`@apollo/client@4.1.6`, `core/QueryInfo.js`,
- * `markMutationResult`). Measured in `useHouseholdMembers.test.tsx`
- * (`household writes whose refetch fails`).
- *
- * Only mounted queries are read again, as with `refetchQueries`.
- */
-async function refetchAfterWrite(
-  client: ReturnType<typeof useApolloClient>,
-  include: DocumentNode[],
-): Promise<void> {
-  await client.refetchQueries({ include }).catch(() => {})
 }
 
 /**

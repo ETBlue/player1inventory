@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useRefetchAfterWrite } from '@/apollo/refetchAfterWrite'
 import {
   consumeRecipesBatch,
   createRecipe,
@@ -164,6 +165,7 @@ export function useCreateRecipe() {
 export function useUpdateRecipe() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
+  const { refetchAfterWrite, isRefetching } = useRefetchAfterWrite()
 
   const localMutation = useMutation({
     mutationFn: ({
@@ -203,6 +205,24 @@ export function useUpdateRecipe() {
       }
       return vars
     }
+    // Write, then read the recipe lists again and WAIT for them, the cloud
+    // counterpart of the local branch's returned invalidation. A failed read
+    // does not reject: the write worked (`refetchAfterWrite`). Both `{ query }`
+    // entries are read even when nothing is mounted, as they were under the
+    // old `refetchQueries` + `awaitRefetchQueries: true`, which rejected the
+    // save when a read failed (docs/global/bugs/
+    // 2026-11-18-bug-failed-refetch-rejects-saved-write.md).
+    const runCloudUpdate = async (
+      id: string,
+      updates: Partial<Omit<Recipe, 'id' | 'createdAt'>>,
+    ) => {
+      const result = await cloudUpdate({ variables: toVars(id, updates) })
+      await refetchAfterWrite([
+        { query: GetRecipesDocument },
+        { query: GetRecipeDocument, variables: { id } },
+      ])
+      return result.data?.updateRecipe
+    }
     return {
       mutate: (
         {
@@ -214,14 +234,7 @@ export function useUpdateRecipe() {
         },
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
-        cloudUpdate({
-          variables: toVars(id, updates),
-          refetchQueries: [
-            { query: GetRecipesDocument },
-            { query: GetRecipeDocument, variables: { id } },
-          ],
-          awaitRefetchQueries: true,
-        }).then(
+        runCloudUpdate(id, updates).then(
           () => options?.onSuccess?.(),
           (err) => {
             options?.onError?.(err)
@@ -233,16 +246,8 @@ export function useUpdateRecipe() {
       }: {
         id: string
         updates: Partial<Omit<Recipe, 'id' | 'createdAt'>>
-      }) =>
-        cloudUpdate({
-          variables: toVars(id, updates),
-          refetchQueries: [
-            { query: GetRecipesDocument },
-            { query: GetRecipeDocument, variables: { id } },
-          ],
-          awaitRefetchQueries: true,
-        }).then((r) => r.data?.updateRecipe),
-      isPending: cloudUpdateLoading,
+      }) => runCloudUpdate(id, updates),
+      isPending: cloudUpdateLoading || isRefetching,
     }
   }
 

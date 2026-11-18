@@ -817,10 +817,9 @@ describe('location mutations go to the cloud in cloud mode', () => {
 
     // Then the request went to the server with that location, and the untouched
     // local row proves Dexie was not the target
-    // `objectContaining`: the call also carries the per-call
-    // `refetchQueries` / `awaitRefetchQueries` that target the written
-    // location (see `stockListRefetches`). The VARIABLES are what this
-    // assertion is about.
+    // The VARIABLES are what this assertion is about. Since 2026-11-18 the
+    // call carries nothing else: the lists are read again afterwards by
+    // `refetchAfterWrite` (see `stockListRefetches`), not by the mutation.
     expect(mockCloudRemoveFromLocation).toHaveBeenCalledWith(
       expect.objectContaining({
         variables: { itemId: item.id, locationId: CLOUD_LOCATION },

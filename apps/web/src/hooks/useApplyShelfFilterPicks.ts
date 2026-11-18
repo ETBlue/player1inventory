@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useRefetchAfterWrite } from '@/apollo/refetchAfterWrite'
 import { applyShelfFilterPicksBatch } from '@/db/operations'
 import {
   GetItemsDocument,
@@ -36,12 +37,15 @@ export interface ApplyShelfFilterPicksVars {
  *
  * The local `onSuccess` RETURNS its invalidations, so `mutateAsync` resolves only once
  * both refetches have landed — see the "Awaited invalidation" paragraph in
- * `hooks/CLAUDE.md`. Two keys, not four: invalidation matches by PREFIX, so `['items']`
+ * `hooks/CLAUDE.md`. The cloud branch awaits `refetchAfterWrite` over the same two
+ * queries after the mutation: it waits for the reads too, but a failed read does not
+ * reject a write that worked (the shelf filter dialog showed an inline error before). Two keys, not four: invalidation matches by PREFIX, so `['items']`
  * covers `useItems` and `useStockedItems` alike and `['recipes']` covers `['recipes', id]`.
  */
 export function useApplyShelfFilterPicks() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
+  const { refetchAfterWrite, isRefetching } = useRefetchAfterWrite()
 
   const localMutation = useMutation({
     mutationFn: async (vars: ApplyShelfFilterPicksVars) => {
@@ -74,14 +78,13 @@ export function useApplyShelfFilterPicks() {
               addRecipeId: vars.recipe?.id ?? null,
             },
           },
-          refetchQueries: [
-            { query: GetItemsDocument },
-            { query: GetRecipesDocument },
-          ],
-          awaitRefetchQueries: true,
         })
+        await refetchAfterWrite([
+          { query: GetItemsDocument },
+          { query: GetRecipesDocument },
+        ])
       },
-      isPending: cloudApplyLoading,
+      isPending: cloudApplyLoading || isRefetching,
     }
   }
 
