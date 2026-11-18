@@ -652,6 +652,40 @@ test.describe('invite, join and members', () => {
     // wrote nothing fails on the value), and sees the no-household screen
     await expect.poll(() => memberIds(seed)).toEqual([OWNER])
     await expect(noHouseholdTitle(page)).toBeVisible()
+    // The screen's other actions (owner decision O19). "Sign in to another
+    // account" needs Clerk, and the E2E build has none, so it is not shown
+    // here; the unit tests of NoHouseholdScreen carry it
+    const offline = page.getByRole('button', { name: 'Switch to offline mode' })
+    await expect(offline).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: 'Sign in to another account' }),
+    ).toHaveCount(0)
+
+    // When NEWCOMER switches to offline mode
+    await offline.click()
+
+    // Then the page loads again in local mode, with no screen. The proof of
+    // local mode is local's own seeded location, "My Home": a cloud person
+    // with no household has no location at all. (The sidebar's "My data" is
+    // NOT a proof: `HouseholdLabel` shows it in cloud mode too, while the
+    // name cannot be read. A mutation that kept cloud mode passed it.)
+    await expect(
+      sidebar(page).getByRole('button', {
+        name: 'Switch location (current: My Home)',
+      }),
+    ).toBeVisible()
+    await expect(noHouseholdTitle(page)).toHaveCount(0)
+    expect(await page.evaluate(() => localStorage.getItem('data-mode'))).toBe(
+      'local',
+    )
+
+    // When NEWCOMER switches back to cloud (the Clerk session, here the E2E
+    // user id, was kept, so no sign-in)
+    await page.evaluate(() => localStorage.setItem('data-mode', 'cloud'))
+    await page.reload()
+
+    // Then the no-household screen shows again, with Create
+    await expect(noHouseholdTitle(page)).toBeVisible()
 
     // When NEWCOMER creates a household with the default name
     await page.getByRole('button', { name: 'Create a household' }).click()

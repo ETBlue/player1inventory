@@ -983,6 +983,10 @@
     "create": "Create a household",
     "nameLabel": "Household name",
     "nameHint": "Leave it empty to use the default name.",
-    "error": "Could not create the household. Try again."
+    "error": "Could not create the household. Try again.",
+    "useLocalMode": "Switch to offline mode",
+    "useLocalModeHint": "Data is stored on this device only. You stay signed in.",
+    "signInToAnotherAccount": "Sign in to another account",
+    "signOutError": "Could not sign out. Try again."
   }
 }

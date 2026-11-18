@@ -197,6 +197,21 @@ describe('NoHouseholdGate', () => {
     expect(screen.queryByText('the-page')).toBeNull()
   })
 
+  it('user sees the page in local mode, even after a NO_HOUSEHOLD answer', async () => {
+    // Given the person pressed "Switch to offline mode" on the screen (owner
+    // decision O19): the page loads again with `data-mode` set to local, and
+    // Apollo may still hold the cloud answer
+    localStorage.setItem('data-mode', 'local')
+    answer(noHousehold(OLD_HOUSEHOLD))
+
+    renderAt('/settings')
+
+    // Then the local page shows, and nothing of the cloud data is touched
+    expect(await screen.findByText('the-page')).toBeInTheDocument()
+    expect(screen.queryByText('no-household-screen')).toBeNull()
+    expect(clearCacheMock).not.toHaveBeenCalled()
+  })
+
   it('shows the screen also when the old household is still cached', async () => {
     // Apollo keeps the cached household in `data` next to the error
     answer(noHousehold(OLD_HOUSEHOLD))

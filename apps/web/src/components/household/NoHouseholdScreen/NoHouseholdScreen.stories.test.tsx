@@ -14,7 +14,7 @@ vi.mock(
 const { Default, CreateDialogOpen } = composeStories(stories)
 
 describe('NoHouseholdScreen stories smoke tests', () => {
-  it('Default shows the heading and the Create button', () => {
+  it('Default shows the heading and all three actions', () => {
     render(<Default />)
     expect(
       screen.getByRole('heading', {
@@ -24,6 +24,13 @@ describe('NoHouseholdScreen stories smoke tests', () => {
     ).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: 'Create a household' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Switch to offline mode' }),
+    ).toBeInTheDocument()
+    // `setup.ts` mocks `@clerk/react`, as Storybook's stub does
+    expect(
+      screen.getByRole('button', { name: 'Sign in to another account' }),
     ).toBeInTheDocument()
   })
 

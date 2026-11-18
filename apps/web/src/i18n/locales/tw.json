@@ -983,6 +983,10 @@
     "create": "建立家庭",
     "nameLabel": "家庭名稱",
     "nameHint": "留空就會使用預設名稱。",
-    "error": "無法建立家庭，請再試一次。"
+    "error": "無法建立家庭，請再試一次。",
+    "useLocalMode": "切換至離線模式",
+    "useLocalModeHint": "資料僅儲存在此裝置上，你仍會保持登入。",
+    "signInToAnotherAccount": "登入其他帳號",
+    "signOutError": "無法登出，請再試一次。"
   }
 }

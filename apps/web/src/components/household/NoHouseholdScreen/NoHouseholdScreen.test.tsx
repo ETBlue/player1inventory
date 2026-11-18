@@ -11,6 +11,7 @@ import {
   CreateHouseholdDocument,
   GetHouseholdDocument,
 } from '@/generated/graphql'
+import { DATA_MODE_STORAGE_KEY } from '@/lib/dataMode'
 import { NoHouseholdScreen } from './NoHouseholdScreen'
 
 // The real generated hooks and Apollo React hooks, so `MockedProvider`
@@ -28,6 +29,26 @@ vi.mock('@/apollo/householdGuard', async (importOriginal) => {
   const actual =
     await importOriginal<typeof import('@/apollo/householdGuard')>()
   return { ...actual, switchToHousehold: switchToHouseholdMock }
+})
+
+// Clerk's `signOut`, for "Sign in to another account" (owner decision O19).
+// `clerk.missing` makes `useClerk()` throw, the way it does with no
+// `ClerkProvider` (the E2E build).
+const clerk = vi.hoisted(() => ({ missing: false }))
+const signOutMock = vi.hoisted(() => vi.fn(async () => {}))
+vi.mock('@clerk/react', () => ({
+  useClerk: () => {
+    if (clerk.missing) throw new Error('useClerk needs a ClerkProvider')
+    return { signOut: signOutMock }
+  },
+  useAuth: () => ({ userId: 'user-a', signOut: signOutMock }),
+}))
+
+// The cache clear touches IndexedDB. The test needs to know it ran, and when.
+const clearCacheMock = vi.hoisted(() => vi.fn(async () => {}))
+vi.mock('@/apollo/persistence', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/apollo/persistence')>()
+  return { ...actual, clearCache: clearCacheMock }
 })
 
 function household(id: string, name: string) {
@@ -241,6 +262,214 @@ describe('NoHouseholdScreen', () => {
     )
     expect(input).toHaveAttribute('aria-invalid', 'true')
     expect(input).toHaveClass('border-importance-destructive-foreground')
+  })
+
+  describe('switch to offline mode (owner decision O19)', () => {
+    const originalLocation = window.location
+    let reloadMock: ReturnType<typeof vi.fn>
+
+    function mockReload() {
+      reloadMock = vi.fn()
+      Object.defineProperty(window, 'location', {
+        value: { ...originalLocation, reload: reloadMock },
+        writable: true,
+        configurable: true,
+      })
+    }
+
+    afterEach(() => {
+      Object.defineProperty(window, 'location', {
+        value: originalLocation,
+        writable: true,
+        configurable: true,
+      })
+      localStorage.removeItem(DATA_MODE_STORAGE_KEY)
+      signOutMock.mockClear()
+    })
+
+    it('user sees a second action to switch to offline mode, with a hint', () => {
+      renderScreen([])
+
+      const button = screen.getByRole('button', {
+        name: 'Switch to offline mode',
+      })
+      expect(button).toHaveAccessibleDescription(
+        'Data is stored on this device only. You stay signed in.',
+      )
+      // Create stays the main action: the switch has the neutral outline
+      // style (Create does not), and it comes after Create
+      const create = screen.getByRole('button', { name: 'Create a household' })
+      expect(button).toHaveClass('text-importance-neutral-foreground')
+      expect(create).not.toHaveClass('text-importance-neutral-foreground')
+      expect(
+        create.compareDocumentPosition(button) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+    })
+
+    it('user can switch to offline mode, which stores local mode and reloads', async () => {
+      // Given the screen in cloud mode
+      localStorage.setItem(DATA_MODE_STORAGE_KEY, 'cloud')
+      mockReload()
+      renderScreen([])
+      const user = userEvent.setup()
+
+      // When they press the switch
+      await user.click(
+        screen.getByRole('button', { name: 'Switch to offline mode' }),
+      )
+
+      // Then local mode is stored and the page loads again, with no dialog
+      expect(localStorage.getItem(DATA_MODE_STORAGE_KEY)).toBe('local')
+      expect(reloadMock).toHaveBeenCalledOnce()
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(switchToHouseholdMock).not.toHaveBeenCalled()
+    })
+
+    it('stores local mode BEFORE the reload', async () => {
+      // A reload that runs first would load the page in cloud mode again
+      localStorage.setItem(DATA_MODE_STORAGE_KEY, 'cloud')
+      mockReload()
+      let modeAtReload: string | null = null
+      reloadMock.mockImplementation(() => {
+        modeAtReload = localStorage.getItem(DATA_MODE_STORAGE_KEY)
+      })
+      renderScreen([])
+
+      await userEvent
+        .setup()
+        .click(screen.getByRole('button', { name: 'Switch to offline mode' }))
+
+      expect(modeAtReload).toBe('local')
+    })
+
+    it('does not sign the person out', async () => {
+      // The switch keeps the Clerk session alive, so a person who switches
+      // back to cloud does not sign in again (O19)
+      mockReload()
+      renderScreen([])
+
+      await userEvent
+        .setup()
+        .click(screen.getByRole('button', { name: 'Switch to offline mode' }))
+
+      expect(signOutMock).not.toHaveBeenCalled()
+      expect(clearCacheMock).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('sign in to another account (owner decision O19)', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs()
+      clerk.missing = false
+      signOutMock.mockReset()
+      signOutMock.mockImplementation(async () => {})
+      clearCacheMock.mockReset()
+      clearCacheMock.mockImplementation(async () => {})
+      localStorage.removeItem(DATA_MODE_STORAGE_KEY)
+    })
+
+    function accountButton() {
+      return screen.getByRole('button', { name: 'Sign in to another account' })
+    }
+
+    it('user sees a third action to sign in to another account', () => {
+      renderScreen([])
+
+      const button = accountButton()
+      // A secondary action: the ghost style, after the offline switch
+      expect(button).toHaveClass('border-transparent')
+      const offline = screen.getByRole('button', {
+        name: 'Switch to offline mode',
+      })
+      expect(
+        offline.compareDocumentPosition(button) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+    })
+
+    it('is not shown in the E2E build, which has no Clerk', () => {
+      // Given the E2E build: no ClerkProvider, so `useClerk()` throws
+      vi.stubEnv('VITE_E2E_TEST_USER_ID', 'e2e-user-id')
+      clerk.missing = true
+
+      renderScreen([])
+
+      // Then the screen renders, with the other two actions only
+      expect(
+        screen.getByRole('button', { name: 'Create a household' }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Switch to offline mode' }),
+      ).toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: 'Sign in to another account' }),
+      ).not.toBeInTheDocument()
+    })
+
+    it('user can sign out to sign in to another account; the cache is cleared first', async () => {
+      // Given the screen in cloud mode
+      localStorage.setItem(DATA_MODE_STORAGE_KEY, 'cloud')
+      const calls: string[] = []
+      clearCacheMock.mockImplementation(async () => {
+        calls.push('clearCache')
+      })
+      signOutMock.mockImplementation(async () => {
+        calls.push('signOut')
+      })
+      renderScreen([])
+
+      // When they press the account action
+      await userEvent.setup().click(accountButton())
+
+      // Then this account's cached cloud data is removed BEFORE the sign-out
+      // (a shared device), and the mode stays cloud, so the auth guard sends
+      // the page to /sign-in
+      await waitFor(() => expect(calls).toEqual(['clearCache', 'signOut']))
+      expect(localStorage.getItem(DATA_MODE_STORAGE_KEY)).toBe('cloud')
+    })
+
+    it('does not sign out when the cache could not be cleared', async () => {
+      clearCacheMock.mockRejectedValue(new Error('IndexedDB blocked'))
+      const toastError = vi.spyOn(toast, 'error')
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      renderScreen([])
+
+      await userEvent.setup().click(accountButton())
+
+      await waitFor(() =>
+        expect(toastError).toHaveBeenCalledWith(
+          'Could not sign out. Try again.',
+        ),
+      )
+      expect(signOutMock).not.toHaveBeenCalled()
+      // The person can try again
+      expect(accountButton()).toBeEnabled()
+    })
+
+    it('ignores a second press while the sign-out runs', async () => {
+      // Given a sign-out that has not finished
+      let finish: () => void = () => {}
+      signOutMock.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve
+          }),
+      )
+      renderScreen([])
+      const user = userEvent.setup()
+
+      // When they press twice
+      await user.click(accountButton())
+      await waitFor(() => expect(signOutMock).toHaveBeenCalledTimes(1))
+      expect(accountButton()).toBeDisabled()
+      await user.click(accountButton())
+
+      // Then only one sign-out was sent
+      expect(clearCacheMock).toHaveBeenCalledTimes(1)
+      expect(signOutMock).toHaveBeenCalledTimes(1)
+      finish()
+    })
   })
 
   it('gives the dialog a description, so Radix does not warn', async () => {
