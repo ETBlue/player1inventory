@@ -724,6 +724,26 @@ describe('createHousehold', () => {
     return m.householdId
   }
 
+  it('runs in a transaction with a longer timeout than the 5 s default', async () => {
+    // Given a spy on the transaction, so the options it gets can be read.
+    // The fake ignores them; only real Postgres times out.
+    const spy = vi.spyOn(prisma, '$transaction')
+    try {
+      // When PIA creates a household
+      await create(PIA, 'the Lin home')
+
+      // Then the transaction asked for HOUSEHOLD_MOVE_TIMEOUT_MS
+      // (an E2E join once took 5064 ms against the 5 s default)
+      const withTimeout = spy.mock.calls.filter((call) => {
+        const options = call[1] as { timeout?: number } | undefined
+        return options?.timeout === 15_000
+      })
+      expect(withTimeout).toHaveLength(1)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('user with no household can create one', async () => {
     // Given PIA, set up once and in no household now
     const res = await create(PIA, '  the Lin home  ')

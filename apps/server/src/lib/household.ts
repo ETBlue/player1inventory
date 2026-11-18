@@ -29,6 +29,23 @@ export interface FirstSignInNames {
 export const HOUSEHOLD_NAME_MAX_LENGTH = 100
 
 /**
+ * The `timeout` of the `joinHousehold` and `createHousehold` transactions.
+ *
+ * Prisma's interactive transaction times out after 5 s by default. A join
+ * makes about 15 queries (locks, the invite claim, the member row, the
+ * empty-household delete), plus one per location role on the invite. A
+ * create makes about 10. Each is a round trip to the database. An E2E run
+ * against the remote test database once took 5064 ms for a join
+ * (2026-11-18) and failed with "The timeout for this transaction was
+ * 5000 ms". The count grows only with the invite's location roles, not with
+ * the household's data, so 15 s is enough. `checkout` and `consumeRecipes`
+ * use 30 s because their count grows with the cart or the recipe. Hitting
+ * the limit is safe: Prisma rolls the whole transaction back, and the person
+ * gets an error and can retry.
+ */
+export const HOUSEHOLD_MOVE_TIMEOUT_MS = 15_000
+
+/**
  * The names for a new household, in the app language. `<displayName>` is the
  * `User.displayName` H2 stores. The owner can rename the household (task
  * 3.13) and the location at any time.

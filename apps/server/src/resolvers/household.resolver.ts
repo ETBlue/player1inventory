@@ -7,6 +7,7 @@ import {
   createHouseholdFor,
   firstLocationName,
   firstSignInNames,
+  HOUSEHOLD_MOVE_TIMEOUT_MS,
   HOUSEHOLD_NAME_MAX_LENGTH,
   lockHouseholds,
   lockUser,
@@ -359,7 +360,9 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           data: { activeHouseholdId: household.id },
         })
         return household
-      })
+        // See `HOUSEHOLD_MOVE_TIMEOUT_MS`: the 5 s default was too short
+        // against a remote database.
+      }, { timeout: HOUSEHOLD_MOVE_TIMEOUT_MS })
       await publishHouseholdChange(ctx, ['LOCATION'], created.id)
       return { id: created.id, name: created.name, role: 'owner' as const }
     },

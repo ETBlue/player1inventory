@@ -424,6 +424,27 @@ describe('joinHousehold', () => {
     expect(ensureHousehold).not.toHaveBeenCalled()
   })
 
+  it('runs in a transaction with a longer timeout than the 5 s default', async () => {
+    // Given a spy on the transaction, so the options it gets can be read.
+    // The fake ignores them; only real Postgres times out.
+    const spy = vi.spyOn(prisma, '$transaction')
+    try {
+      // When PAT joins
+      const res = await join(MAIN, PAT)
+      expect(res.errors).toBeUndefined()
+
+      // Then the join's transaction asked for HOUSEHOLD_MOVE_TIMEOUT_MS
+      // (an E2E join took 5064 ms against the 5 s default on 2026-11-18)
+      const withTimeout = spy.mock.calls.filter((call) => {
+        const options = call[1] as { timeout?: number } | undefined
+        return options?.timeout === 15_000
+      })
+      expect(withTimeout).toHaveLength(1)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('a manager invite makes a manager', async () => {
     const token = tok('tok_mgr')
     seed([invite('hh_h', 'manager', { token })])

@@ -2,7 +2,7 @@ import { GraphQLError } from 'graphql'
 import type { Prisma } from '@prisma/client'
 import { requireAuth } from '../context.js'
 import { forbidden, requireHousehold, requireHouseholdRole } from '../lib/authz.js'
-import { lockHouseholds, lockUser } from '../lib/household.js'
+import { HOUSEHOLD_MOVE_TIMEOUT_MS, lockHouseholds, lockUser } from '../lib/household.js'
 import {
   alreadyMember,
   emptyHouseholdWhere,
@@ -426,7 +426,9 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         // `deleteMany` cannot match it (it is not in `otherIds`).
         if (!household) throw new Error('joinHousehold: the joined household is gone')
         return { id: household.id, name: household.name, role: row.householdRole }
-      }))
+        // See `HOUSEHOLD_MOVE_TIMEOUT_MS`: an E2E join once took 5064 ms
+        // against the 5 s default.
+      }, { timeout: HOUSEHOLD_MOVE_TIMEOUT_MS }))
 
       await publishHouseholdChange(ctx, ['LOCATION'], joined.id)
       return joined
