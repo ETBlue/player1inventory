@@ -11,6 +11,7 @@ import { db } from '@/db'
 import { createVendor } from '@/db/operations'
 import * as useVendorsModule from '@/hooks/useVendors'
 import { routeTree } from '@/routeTree.gen'
+import { watchUnhandledRejections } from '@/test/unhandledRejections'
 import type { Vendor } from '@/types'
 
 // The argument `useUpdateVendor`'s `mutate`/`mutateAsync` take in both
@@ -302,5 +303,65 @@ describe('Vendor Detail - Info Tab', () => {
 
     // And name input shows original value
     expect(screen.getByLabelText(/name/i)).toHaveValue('Test Vendor')
+  })
+})
+
+// A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+// Before the fix the page chained `.then(goBack)` with no catch: a failed write
+// was an unhandled rejection and nothing on screen said so.
+describe('Vendor Detail - a failed save', () => {
+  let queryClient: QueryClient
+  let rejections: ReturnType<typeof watchUnhandledRejections>
+
+  beforeEach(async () => {
+    await db.vendors.clear()
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    sessionStorage.clear()
+    rejections = watchUnhandledRejections()
+  })
+
+  afterEach(() => {
+    rejections.stop()
+    vi.restoreAllMocks()
+  })
+
+  it('user sees a message when saving the name fails, and the name is kept', async () => {
+    // Given a vendor, and a database that refuses the write
+    const vendor = await createVendor('Costco')
+    vi.spyOn(db.vendors, 'update').mockRejectedValueOnce(new Error('disk full'))
+    const history = createMemoryHistory({
+      initialEntries: [`/settings/household/vendors/${vendor.id}`],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    const user = userEvent.setup()
+
+    // When the user renames it and saves
+    const nameInput = await screen.findByLabelText('Name')
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Costco Wholesale')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then a message says the change was not saved
+    expect(
+      await screen.findByText('Could not save the change. Please try again.'),
+    ).toBeInTheDocument()
+    // And the page stays, with the typed name and Save enabled again
+    expect(router.state.location.pathname).toBe(
+      `/settings/household/vendors/${vendor.id}`,
+    )
+    expect(screen.getByLabelText('Name')).toHaveValue('Costco Wholesale')
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /save/i })).toBeEnabled(),
+    )
+    expect((await db.vendors.get(vendor.id))?.name).toBe('Costco')
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
   })
 })

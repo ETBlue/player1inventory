@@ -10,7 +10,13 @@ interface RecipeInfoFormProps {
   /** Optional override for the initial displayed value (e.g. prefill from ?name= URL param).
    *  When provided, the form starts dirty if initialValue !== recipe.name. */
   initialValue?: string
-  onSave: (data: { name: string }) => void
+  /**
+   * May return a promise. When it rejects, the save failed: the form puts
+   * its "saved" baseline back, so the edit counts as unsaved again and Save
+   * is enabled. The form swallows the rejection; the caller shows the
+   * message (see docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+   */
+  onSave: (data: { name: string }) => void | Promise<void>
   isPending?: boolean
   onDirtyChange?: (isDirty: boolean) => void
   /**
@@ -48,10 +54,13 @@ export function RecipeInfoForm({
     e.preventDefault()
     if (readOnly || nameError || !isDirty || isPending) return
     const trimmedName = name.trim()
-    onSave({ name: trimmedName })
+    const previousName = committedName
+    const result = onSave({ name: trimmedName })
     // Advance the committed baseline so isDirty → false → onDirtyChange(false)
     setName(trimmedName)
     setCommittedName(trimmedName)
+    // A failed save: put the baseline back, so the edit is unsaved again
+    result?.catch(() => setCommittedName(previousName))
   }
 
   return (

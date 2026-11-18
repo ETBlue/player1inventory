@@ -26,6 +26,7 @@ import {
   useTagTypes,
   useUpdateTag,
 } from '@/hooks/useTags'
+import { showSaveError } from '@/lib/saveError'
 import { getTagAndDescendantIds } from '@/lib/tagUtils'
 import type { Tag } from '@/types'
 
@@ -129,7 +130,17 @@ function TagInfoTab() {
                     : { parentId: undefined }),
                 } as Parameters<typeof updateTag.mutateAsync>[0]['updates'],
               })
-              .then(() => goBack())
+              // A failed save shows a toast and keeps the page, so the
+              // person can try again. Before, it was an unhandled rejection
+              // with nothing on screen. The error is passed on so the form
+              // marks the edit as unsaved again; the form catches it.
+              .then(
+                () => goBack(),
+                (err: unknown) => {
+                  showSaveError(err)
+                  throw err
+                },
+              )
           }
           isPending={updateTag.isPending}
           onDirtyChange={registerDirtyState}
