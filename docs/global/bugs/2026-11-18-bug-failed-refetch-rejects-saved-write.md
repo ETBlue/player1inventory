@@ -89,4 +89,4 @@ unit test pins the "parked `PantryData` observer" trap; cloud E2E does.
 
 ## PR / commit
 
-Commit `0e32675c` on `fix/refetch-and-migration-catch`. PR: *TBD*.
+Commit `0e32675c` on `fix/refetch-and-migration-catch`. PR #386.
