@@ -6,6 +6,7 @@
   },
   "common": {
     "locationViewOnly": "You can view this location, but not change it.",
+    "lostLocationAccess": "You no longer have access to {{location}}.",
     "cancel": "Cancel",
     "delete": "Delete",
     "deleting": "Deleting...",

@@ -6,6 +6,7 @@
   },
   "common": {
     "locationViewOnly": "你只能檢視這個據點，不能修改。",
+    "lostLocationAccess": "你已經沒有{{location}}的權限了。",
     "cancel": "取消",
     "delete": "刪除",
     "deleting": "刪除中...",

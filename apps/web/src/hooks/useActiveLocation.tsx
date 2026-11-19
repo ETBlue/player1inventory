@@ -9,12 +9,14 @@ import {
   useRef,
   useState,
 } from 'react'
+import { toast } from 'sonner'
 import { bootstrapCarts, getLocations } from '@/db/operations'
 import {
   type LocationRole,
   useBootstrapCartsMutation,
 } from '@/generated/graphql'
 import { useLocations } from '@/hooks/useLocations'
+import i18n from '@/i18n'
 import type { DataMode } from '@/lib/dataMode'
 import { locationRoleAtLeast } from '@/lib/locationRole'
 import { DEFAULT_LOCATION_ID, type Location } from '@/types'
@@ -111,7 +113,7 @@ const ActiveLocationContext = createContext<ActiveLocationContextValue | null>(
 )
 
 export function ActiveLocationProvider({ children }: { children: ReactNode }) {
-  const { data: locations } = useLocations()
+  const { data: locations, isCacheOnly } = useLocations()
   const { mode } = useDataMode()
   const queryClient = useQueryClient()
   // Always called (Rules of Hooks). Safe in local mode: main.tsx wraps every
@@ -182,8 +184,44 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
   // LOCAL mode keeps the old rule: local seeds a default location on
   // populate and refuses to delete it, so an empty local list is not a real
   // state, and nothing changes there.
+  // ── THE LOST-ACCESS NOTICE (households H5c task H.7, owner decision O27-A,
+  // decision T45) ──
+  //
+  // When the active location leaves the list, the person lost it: they left
+  // it, someone removed their role, or it was deleted. The effect below moves
+  // the tab. This adds one toast, `common.lostLocationAccess`, with the
+  // location's name as stored.
+  //
+  // The toast shows only for a location THIS tab has seen in a list the server
+  // sent during this page visit. `seenLocations` (id → name) holds those. So:
+  // - a stored id from an earlier visit is not in it: no toast on a cold load;
+  // - a list that is only the restored cache is not recorded (`isCacheOnly`),
+  //   because the cache can still name a location lost since the last visit;
+  // - the `'local'` sentinel is never in a cloud list;
+  // - a household switch reloads the page (`HouseholdChangeGuard`), so the
+  //   map starts empty. It is a ref, not module state, on purpose.
+  // Cloud only: local mode has no roles to lose.
+  //
+  // One loss shows one toast. The toast is in the same effect run that moves
+  // the tab off the lost id, so the next run no longer finds the loss. A
+  // second read of the same list, or React StrictMode running the effect
+  // again, finds the tab already moved. If the person gets the location back
+  // and loses it again, that is a new loss and a new toast.
+  const seenLocationsRef = useRef<Map<string, string>>(new Map())
+
   useEffect(() => {
     if (!locations) return
+    if (mode === 'cloud') {
+      const seen = seenLocationsRef.current
+      const stillThere = locations.some((loc) => loc.id === activeLocationId)
+      const lostName = stillThere ? undefined : seen.get(activeLocationId)
+      if (lostName !== undefined) {
+        toast.info(i18n.t('common.lostLocationAccess', { location: lostName }))
+      }
+      if (!isCacheOnly) {
+        for (const loc of locations) seen.set(loc.id, loc.name)
+      }
+    }
     if (locations.length === 0) {
       if (mode !== 'cloud') return
       try {
@@ -203,7 +241,7 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
         : (locations.find((loc) => loc.isDefault === true)?.id ??
           locations[0]?.id)
     if (fallbackId) setActiveLocationId(fallbackId)
-  }, [mode, locations, activeLocationId, setActiveLocationId])
+  }, [mode, locations, isCacheOnly, activeLocationId, setActiveLocationId])
 
   // `getCart` is a pure read (see db/operations.ts) — it no longer creates a
   // missing cart on demand. Bootstrap the no-vendor + per-vendor carts for

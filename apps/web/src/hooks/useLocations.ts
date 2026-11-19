@@ -1,3 +1,4 @@
+import { NetworkStatus } from '@apollo/client'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   createLocation,
@@ -73,6 +74,15 @@ export function useLocations() {
       // still holds the cached locations; calling that an error would let a
       // consumer put an error state in front of a list the user can read.
       isError: !!cloud.error && !cloud.data,
+      // `true` while `data` is only the cached list and the server has not
+      // answered yet in this mount (the first `cache-and-network` leg). The
+      // cache is restored from IndexedDB, so it can name a location the
+      // person lost since their last visit. `ActiveLocationProvider` does not
+      // count such a list as "seen" (households H5c task H.7, decision T45).
+      // A refetch over data the server already sent is `refetch`, not
+      // `loading`, so it is not "cache only".
+      isCacheOnly:
+        !!cloud.data && cloud.networkStatus === NetworkStatus.loading,
     }
   }
 
@@ -80,6 +90,7 @@ export function useLocations() {
     data: local.data,
     isLoading: local.isPending ?? false,
     isError: local.isError,
+    isCacheOnly: false,
   }
 }
 
