@@ -961,7 +961,7 @@ user until the checkpoint release deploys the server and then the web.
   they left, or the location was deleted by someone else), every open tab moves to their
   next location, or to the empty screen, with no reload, and shows "You no longer have access
   to {location}." once (O27-A). No message for their own delete or their own `clear` import.
-  Their own Leave does show it (open owner question).
+  Their own Leave does show it (owner decision, 2026-11-20: keep).
 - Every change shows in the other open tabs of the household within about a second.
 
 **What the developer gets:**
@@ -1033,10 +1033,10 @@ user until the checkpoint release deploys the server and then the web.
   when `ClearAllData` fails. If the server applied the clear and the answer was lost (a
   dropped connection), the locations are gone and the mark is gone too, so the person reads
   "You no longer have access to …" for their own import.
-- **The lost-access toast shows after the person's OWN Leave** (H.8, test 5). O27-A names
-  leaving, so it was kept. The review left out the toast for the person's own delete and own
-  `clear` import, not for a leave. Whether to hide it after a leave too is an open owner
-  question.
+- **The lost-access toast shows after the person's OWN Leave** (H.8, test 5). This is on
+  purpose. O27-A names leaving, and on 2026-11-20 the owner chose to keep it so the rule is
+  the same for every way of losing a role. Only the person's own delete and own `clear`
+  import show no toast.
 - **The lost-access toast after a sign-out and a sign-in in the same household** (H.7). With
   no reload between them, the second person gets no toast for a location the first person
   had seen, until a reload.
@@ -1132,5 +1132,5 @@ Owner decisions O23–O31 answered 2026-11-19: all A.
 | `pnpm test` | exit 0: web **3454 / 347 files**, server **2401 / 78 files**, `scripts/spec` **70**. At `712f76f6` it was 3319 / 337, 2111 / 76 and 70 |
 | `pnpm test:e2e:all` | exit 0, no retry: `local` 178 passed / 11 skipped (3m38s), `cloud` 179 passed / 7 skipped (46m35s), `pwa` 73 passed (1m34s). Load average 5.67 at the start, 3.74 at the end |
 
-**Open owner question:** the lost-access toast shows after the person's own Leave (see
-*Known gaps*). Keep it, or hide it like the person's own delete?
+**Owner decision (2026-11-20):** the lost-access toast stays after the person's own Leave,
+so the rule is the same for every way of losing a role.
