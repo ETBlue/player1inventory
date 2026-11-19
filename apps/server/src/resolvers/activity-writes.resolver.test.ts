@@ -275,6 +275,7 @@ const LEAVE_HOUSEHOLD = `mutation { leaveHousehold }`
 const CREATE_INVITE = `mutation C($r: HouseholdRole!, $l: [InviteLocationRoleInput!]!) { createInvite(householdRole: $r, locationRoles: $l) { id } }`
 const REVOKE_INVITE = `mutation V($id: ID!) { revokeInvite(id: $id) }`
 const JOIN = `mutation J($t: String!) { joinHousehold(token: $t) { id } }`
+const RECORD_IMPORT = `mutation I($c: ImportCountsInput!) { recordImport(counts: $c) }`
 
 // ─── location roles (location.resolver.ts) ──────────────────────────────────
 
@@ -552,5 +553,62 @@ describe('invite writes and joins are logged', () => {
     expect(roleOn(LOC_K, PAT)).toBeNull()
     expect(logRows()).toEqual([])
     expect(seen).toEqual([])
+  })
+})
+
+// ─── recordImport (import.resolver.ts, owner decision O33-A) ───────────────
+
+const COUNTS = {
+  items: 12,
+  tags: 3,
+  tagTypes: 1,
+  vendors: 2,
+  recipes: 1,
+  shelves: 0,
+  locations: 2,
+  itemStocks: 14,
+  inventoryLogs: 40,
+  shoppingCarts: 1,
+  cartItems: 2,
+}
+
+describe('recordImport', () => {
+  it('household manager who records an import writes one IMPORT row with the counts', async () => {
+    expect(ok(await run(RECORD_IMPORT, { c: COUNTS }, MIA)).recordImport).toBe(true)
+    expect(logRows()).toEqual([
+      {
+        householdId: 'hh_h',
+        actorId: MIA,
+        action: 'IMPORT',
+        targetUserId: null,
+        locationId: null,
+        details: { counts: COUNTS },
+      },
+    ])
+    // It publishes nothing: the import's own mutations already did
+    expect(seen).toEqual([])
+  })
+
+  it('household owner can record an import', async () => {
+    expect(ok(await run(RECORD_IMPORT, { c: COUNTS }, OWEN)).recordImport).toBe(true)
+    expect(logRows()).toHaveLength(1)
+  })
+
+  it('household member cannot record an import, even as the organizer of a location, and nothing is logged', async () => {
+    const res = await run(RECORD_IMPORT, { c: COUNTS }, NOA)
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(logRows()).toEqual([])
+  })
+
+  it('writes the row to the household the caller acts in, not another one they own', async () => {
+    // YUKI owns hh_x only
+    ok(await run(RECORD_IMPORT, { c: COUNTS }, YUKI))
+    expect(logRows().map((r) => r.householdId)).toEqual(['hh_x'])
+  })
+
+  it('refuses a negative count with BAD_USER_INPUT, and writes no row', async () => {
+    const res = await run(RECORD_IMPORT, { c: { ...COUNTS, items: -1 } }, MIA)
+    expect(code(res)).toBe('BAD_USER_INPUT')
+    expect(logRows()).toEqual([])
   })
 })

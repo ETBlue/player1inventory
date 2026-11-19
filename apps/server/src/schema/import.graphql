@@ -179,6 +179,35 @@ extend type Mutation {
   # one new location, "Home", with the caller as organizer, in the same
   # transaction (households H3a task 3.10, decision H17).
   clearAllData: Boolean!
+
+  # Write ONE activity row for an import that has finished (households H6
+  # task J.2, owner decision O33-A). The web calls it once, after the last
+  # batch, with the number of rows of each kind it sent. An import is up to 22
+  # mutations in batches of 50, so the server cannot tell where one ends; that
+  # is why the web says so.
+  #
+  # Household role `owner` or `manager`, the same as every import mutation.
+  # The counts are the client's own numbers and are only shown in the log.
+  # Every imported row was already checked by the import mutations. A
+  # negative count is BAD_USER_INPUT. It publishes nothing: the import's own
+  # mutations already did.
+  recordImport(counts: ImportCountsInput!): Boolean!
+}
+
+# How many rows of each kind one import sent (`recordImport`). Every count is
+# 0 or more. The names are the backup file's keys.
+input ImportCountsInput {
+  items: Int!
+  tags: Int!
+  tagTypes: Int!
+  vendors: Int!
+  recipes: Int!
+  shelves: Int!
+  locations: Int!
+  itemStocks: Int!
+  inventoryLogs: Int!
+  shoppingCarts: Int!
+  cartItems: Int!
 }
 
 # The ids of an import file, per model, for `importCheck` (households H4 task

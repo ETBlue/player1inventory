@@ -2356,5 +2356,35 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       await publishHouseholdChange(ctx, ['LOCATION', 'CATALOG'], householdId)
       return true
     },
+
+    // -------------------------------------------------------------------------
+    // Log a finished import (households H6 task J.2, owner decision O33-A)
+    // -------------------------------------------------------------------------
+    //
+    // One `IMPORT` activity row with the counts the web sends. The same role
+    // as the 22 import mutations (`manager` or higher, decision O7), checked
+    // first. The counts are only shown in the log: every imported row was
+    // already checked by the mutation that wrote it. It publishes nothing, so
+    // it is in `publishesNothing` in `live-publish.guard.test.ts`.
+    recordImport: async (_, { counts }, ctx) => {
+      const userId = requireAuth(ctx)
+      const householdId = await requireCatalogRole(ctx, 'manager')
+      for (const [key, value] of Object.entries(counts)) {
+        if (!Number.isInteger(value) || value < 0) {
+          throw new GraphQLError(`recordImport: the count "${key}" must be 0 or more.`, {
+            extensions: { code: 'BAD_USER_INPUT' },
+          })
+        }
+      }
+      await prisma.$transaction(async (tx) => {
+        await recordActivity(tx, {
+          householdId,
+          actorId: userId,
+          action: 'IMPORT',
+          details: { counts: { ...counts } },
+        })
+      })
+      return true
+    },
   },
 }

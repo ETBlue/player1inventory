@@ -171,12 +171,15 @@ const publishes: Record<string, { kinds: Kind[] }> = {
 }
 
 /**
- * Fields that change nothing another tab shows. Empty on purpose: on
- * 2026-11-16 every one of the 62 fields writes data that some screen of
- * another member shows. There is no user display name or language mutation
- * yet. Add one here only with a reason another tab does not need to know.
+ * Fields that change nothing another tab needs to hear about. It was empty
+ * until households H6 task J.2: on 2026-11-16 every one of the 62 fields
+ * wrote data that some screen of another member shows. Add one here only
+ * with a reason another tab does not need to know.
  */
-const publishesNothing: Record<string, string> = {}
+const publishesNothing: Record<string, string> = {
+  recordImport:
+    "writes only an activity row; the import's own mutations already published",
+}
 
 type Lists = {
   publishes: Record<string, unknown>
