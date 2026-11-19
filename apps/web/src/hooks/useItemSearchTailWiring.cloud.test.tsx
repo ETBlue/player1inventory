@@ -5,7 +5,8 @@ import {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { toast } from 'sonner'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   AddItemToLocationDocument,
   PantryDataDocument,
@@ -18,6 +19,7 @@ import {
   LOC_A,
   LOC_B,
 } from '@/test/cloudFixtures'
+import { watchUnhandledRejections } from '@/test/unhandledRejections'
 import {
   ActiveLocationProvider,
   activeLocationStorageKey,
@@ -117,7 +119,7 @@ function makeWrapper(mocks: MockedProviderProps['mocks'] = MOCKS) {
   )
 }
 
-function renderWiring() {
+function renderWiring(mocks: MockedProviderProps['mocks'] = MOCKS) {
   return renderHook(
     () =>
       useItemSearchTailWiring({
@@ -125,7 +127,7 @@ function renderWiring() {
         query: 'milk',
         renderItem: () => null,
       }),
-    { wrapper: makeWrapper() },
+    { wrapper: makeWrapper(mocks) },
   )
 }
 
@@ -182,5 +184,71 @@ describe('useItemSearchTailWiring (cloud mode)', () => {
     expect(result.current.tailProps.inLocationItems.map((i) => i.id)).toEqual([
       'item-powder',
     ])
+  })
+
+  // A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md),
+  // through REAL Apollo: the server answers the mutation with a GraphQL error,
+  // Apollo's `mutate` rejects with it, `useAddItemToLocation`'s cloud branch
+  // passes it on, and the wiring shows the toast. The other cloud tests for
+  // this PR stub the generated hook; this one proves the step they skip.
+  describe('when the server refuses "Add to location"', () => {
+    let rejections: ReturnType<typeof watchUnhandledRejections>
+    beforeEach(() => {
+      rejections = watchUnhandledRejections()
+    })
+    afterEach(() => {
+      rejections.stop()
+      vi.restoreAllMocks()
+    })
+
+    it('user in cloud mode sees a message, and the row is not stuck', async () => {
+      // Given a server that refuses to stock Milk Powder here
+      const toastError = vi.spyOn(toast, 'error')
+      let refusals = 0
+      const refusedAdd = {
+        request: addMock.request,
+        maxUsageCount: Number.POSITIVE_INFINITY,
+        result: () => {
+          refusals += 1
+          return {
+            errors: [
+              { message: 'Not allowed.', extensions: { code: 'FORBIDDEN' } },
+            ],
+          }
+        },
+      }
+      const { result } = renderWiring([
+        bootstrapCartsMock,
+        getLocationsMock,
+        pantryMock(LOC_A),
+        pantryMock(LOC_B),
+        refusedAdd,
+      ])
+      await waitFor(() =>
+        expect(result.current.tailProps.notStockedHereItems).toHaveLength(1),
+      )
+      const powder = result.current.tailProps.notStockedHereItems[0]
+
+      // When the user presses "Add to Cloud Kitchen"
+      await act(async () => {
+        await result.current.tailProps.addToLocationAction?.onAction(
+          powder as never,
+        )
+      })
+
+      // Then the request reached the server, and a toast names the item and
+      // the location
+      expect(refusals).toBe(1)
+      expect(toastError).toHaveBeenCalledWith(
+        'Could not add Milk Powder to Cloud Kitchen. Please try again.',
+      )
+      // And the row is still in bucket 3 and no longer pending
+      expect(result.current.tailProps.notStockedHereItems).toHaveLength(1)
+      expect(
+        result.current.tailProps.addToLocationAction?.pendingItemId,
+      ).toBeNull()
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    })
   })
 })
