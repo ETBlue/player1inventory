@@ -570,3 +570,70 @@ describe('resolveToken', () => {
     expect(token).toBeNull()
   })
 })
+
+// Households H5c, task H.4. `LocationPerson` has no `id` either. A refetch
+// after a role is removed brings a shorter list for that location, which
+// without a policy warns "Cache data may be lost".
+describe('createCache — locationPeople is replaced, not merged', () => {
+  const PEOPLE = gql`
+    query LocationPeople($locationId: ID!) {
+      locationPeople(locationId: $locationId) {
+        userId
+        displayName
+      }
+    }
+  `
+  const row = (userId: string) => ({
+    __typename: 'LocationPerson',
+    userId,
+    displayName: userId,
+  })
+
+  it('user sees the shorter list after a removal, with no data-loss warning', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const cache = createCache()
+    const variables = { locationId: 'loc-k' }
+    cache.writeQuery({
+      query: PEOPLE,
+      variables,
+      data: { locationPeople: [row('a'), row('b')] },
+    })
+    cache.writeQuery({
+      query: PEOPLE,
+      variables,
+      data: { locationPeople: [row('a')] },
+    })
+
+    const read = cache.readQuery<{ locationPeople: { userId: string }[] }>({
+      query: PEOPLE,
+      variables,
+    })
+    expect(read?.locationPeople.map((p) => p.userId)).toEqual(['a'])
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('two locations keep their own lists', () => {
+    // A control: the policy must not drop the `locationId` from the key
+    const cache = createCache()
+    cache.writeQuery({
+      query: PEOPLE,
+      variables: { locationId: 'loc-k' },
+      data: { locationPeople: [row('a')] },
+    })
+    cache.writeQuery({
+      query: PEOPLE,
+      variables: { locationId: 'loc-g' },
+      data: { locationPeople: [row('b'), row('c')] },
+    })
+    const read = (locationId: string) =>
+      cache
+        .readQuery<{ locationPeople: { userId: string }[] }>({
+          query: PEOPLE,
+          variables: { locationId },
+        })
+        ?.locationPeople.map((p) => p.userId)
+    expect(read('loc-k')).toEqual(['a'])
+    expect(read('loc-g')).toEqual(['b', 'c'])
+  })
+})

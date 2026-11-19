@@ -70,3 +70,45 @@ mutation ReorderLocations($orderedIds: [ID!]!) {
     hasOrganizer
   }
 }
+
+# ── Location roles (households H5c, task H.4) ──
+
+# The people page of one location (decisions T32 and T39). Anyone with a role
+# on the location may read it, and every household owner and manager, also on
+# a location where they have no role (owner decision O24-A). Anyone else gets
+# FORBIDDEN, the same as an unknown id. `LocationPerson` has no `id`, so
+# `apollo/cloudCache.ts` replaces the cached list instead of merging it.
+query LocationPeople($locationId: ID!) {
+  locationPeople(locationId: $locationId) {
+    userId
+    displayName
+    role
+    isMe
+  }
+}
+
+# Give a person a role on the location, or change it. The same role again
+# writes nothing and returns the row (decision T38).
+mutation SetLocationRole(
+  $locationId: ID!
+  $userId: ID!
+  $role: LocationRole!
+) {
+  setLocationRole(locationId: $locationId, userId: $userId, role: $role) {
+    userId
+    displayName
+    role
+    isMe
+  }
+}
+
+# `false` when the person has no role there (a second press, decision T38).
+mutation RemoveLocationRole($locationId: ID!, $userId: ID!) {
+  removeLocationRole(locationId: $locationId, userId: $userId)
+}
+
+# The caller leaves the location. Any role may leave, the only organizer too
+# (owner decision O25-A). `false` when the caller has no role there.
+mutation LeaveLocation($locationId: ID!) {
+  leaveLocation(locationId: $locationId)
+}

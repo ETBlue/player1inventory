@@ -47,6 +47,10 @@ export function createCache() {
           // always the whole answer, so it simply replaces the old one
           // (households H5b, task G.9).
           householdMembers: { merge: false },
+          // The same for `LocationPerson` (households H5c, task H.4): a
+          // removal or a leave brings a shorter list. One list per location:
+          // `keyArgs` keeps the `locationId` in the cache key.
+          locationPeople: { keyArgs: ['locationId'], merge: false },
         },
       },
     },
