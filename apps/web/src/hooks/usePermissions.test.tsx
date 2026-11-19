@@ -372,6 +372,15 @@ describe('usePermissions — the location people page', () => {
     expect(p.canOpenLocationPage('X')).toBe(false)
   })
 
+  it('household owner gets no role change while the location list is loading', () => {
+    // An owner's answer does not need a location role, so only the loading
+    // flag can keep it closed. The rights must not show before the list.
+    mockHousehold.mockReturnValue(household('owner'))
+    mockLocations.mockReturnValue({ data: undefined, loading: true })
+
+    expect(render().canChangeRole('K', null, 'viewer')).toBe(false)
+  })
+
   it('cloud allows no role change when GetHousehold failed with nothing cached', () => {
     mockHousehold.mockReturnValue({
       data: undefined,

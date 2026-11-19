@@ -57,7 +57,19 @@ const ROLE_WRITE_REFETCHES = [
  * access" (`FORBIDDEN`) from "could not load, try again" (decision T41).
  * Like `useHousehold().errorCode`, it is NOT tied to `data`.
  *
- * Skipped in local mode and while `locationId` is `undefined`.
+ * **The page (task H.5) must read `errorCode`, not `isError`, for "no
+ * access".** After the caller leaves the location (or loses the role in
+ * another tab), the read again answers FORBIDDEN, but Apollo keeps the old
+ * rows: `data` is the old list, `isError` is `false`, and only `errorCode`
+ * is `'FORBIDDEN'`. Pinned in `useLocationPeople.test.tsx`.
+ *
+ * Skipped in local mode and while `locationId` is `undefined`. A skipped
+ * query is still a mounted observer, and a refetch by DOCUMENT reaches it
+ * too (Apollo 4.1.6 leaves out a `standby` query only for `'active'`). So
+ * while a write's reads run, a mount with no id sends
+ * `locationPeople(locationId: "")`, which the server refuses with FORBIDDEN.
+ * The refusal is swallowed and costs one request. Pass an id where you have
+ * one.
  */
 export function useLocationPeople(locationId: string | undefined): {
   data: LocationPerson[] | undefined
@@ -97,6 +109,11 @@ export function useLocationPeople(locationId: string | undefined): {
  *
  * Held per module, not per component, so a second mount of the page cannot
  * start a second write either.
+ *
+ * `isPending` belongs to the hook instance that STARTED the write. A second
+ * caller that gets the shared promise sends no mutation of its own, so its
+ * own `isPending` stays `false`. A page that has one button per row reads
+ * `isPending` from the one hook that sends the write.
  */
 const inFlight = new Map<string, Promise<unknown>>()
 

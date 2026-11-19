@@ -114,6 +114,14 @@ const membersData: HouseholdMembersQuery = {
   ],
 }
 
+/** The `setRole` and `remove` calls the fake server answers. */
+const SET_CALLS: [string, Person['role']][] = [
+  ['u-mia', 'viewer'],
+  ['u-noa', 'viewer'],
+  ['u-mia', 'participant'],
+]
+const REMOVE_CALLS = ['u-mia', 'u-noa']
+
 /** A delay on every write, so a second press can arrive while one runs. */
 const WRITE_DELAY = 30
 
@@ -167,10 +175,10 @@ function wrapper({ children }: { children: ReactNode }) {
             return readsFail ? SERVER_ERROR : { data: membersData }
           },
         },
-        {
+        ...SET_CALLS.map(([userId, role]) => ({
           request: {
             query: SetLocationRoleDocument,
-            variables: { locationId: LOC_K, userId: 'u-mia', role: 'viewer' },
+            variables: { locationId: LOC_K, userId, role },
           },
           maxUsageCount: Number.POSITIVE_INFINITY,
           delay: WRITE_DELAY,
@@ -178,27 +186,27 @@ function wrapper({ children }: { children: ReactNode }) {
             countWrite('SetLocationRole')
             if (writeFails) return FORBIDDEN
             people = [
-              ...people.filter((p) => p.userId !== 'u-mia'),
-              person('u-mia', 'viewer'),
+              ...people.filter((p) => p.userId !== userId),
+              person(userId, role),
             ]
-            return { data: { setLocationRole: person('u-mia', 'viewer') } }
+            return { data: { setLocationRole: person(userId, role) } }
           },
-        },
-        {
+        })),
+        ...REMOVE_CALLS.map((userId) => ({
           request: {
             query: RemoveLocationRoleDocument,
-            variables: { locationId: LOC_K, userId: 'u-mia' },
+            variables: { locationId: LOC_K, userId },
           },
           maxUsageCount: Number.POSITIVE_INFINITY,
           delay: WRITE_DELAY,
           result: () => {
             countWrite('RemoveLocationRole')
             if (writeFails) return FORBIDDEN
-            const had = people.some((p) => p.userId === 'u-mia')
-            people = people.filter((p) => p.userId !== 'u-mia')
+            const had = people.some((p) => p.userId === userId)
+            people = people.filter((p) => p.userId !== userId)
             return { data: { removeLocationRole: had } }
           },
-        },
+        })),
         {
           request: {
             query: LeaveLocationDocument,
@@ -395,6 +403,31 @@ describe('useSetLocationRole', () => {
     })
     expect(writes.SetLocationRole).toBe(2)
   })
+
+  it('two presses for different people at the same time are both sent', async () => {
+    // The guard is per change, not per hook: Mia and Noa are two changes
+    const result = await renderListsAnd(() => useSetLocationRole())
+    let first: Promise<Person> | undefined
+    let second: Promise<Person> | undefined
+    await act(async () => {
+      first = result.current.write.setRole(LOC_K, 'u-mia', 'viewer')
+      second = result.current.write.setRole(LOC_K, 'u-noa', 'viewer')
+      await Promise.all([first, second])
+    })
+    expect(second).not.toBe(first)
+    expect(writes.SetLocationRole).toBe(2)
+  })
+
+  it('two presses with different roles at the same time are both sent', async () => {
+    const result = await renderListsAnd(() => useSetLocationRole())
+    await act(async () => {
+      await Promise.all([
+        result.current.write.setRole(LOC_K, 'u-mia', 'viewer'),
+        result.current.write.setRole(LOC_K, 'u-mia', 'participant'),
+      ])
+    })
+    expect(writes.SetLocationRole).toBe(2)
+  })
 })
 
 describe('useRemoveLocationRole', () => {
@@ -461,6 +494,17 @@ describe('useRemoveLocationRole', () => {
     expect(second).toBe(first)
     expect(writes.RemoveLocationRole).toBe(1)
   })
+
+  it('two removes of different people at the same time are both sent', async () => {
+    const result = await renderListsAnd(() => useRemoveLocationRole())
+    await act(async () => {
+      await Promise.all([
+        result.current.write.remove(LOC_K, 'u-mia'),
+        result.current.write.remove(LOC_K, 'u-noa'),
+      ])
+    })
+    expect(writes.RemoveLocationRole).toBe(2)
+  })
 })
 
 describe('useLeaveLocation', () => {
@@ -474,6 +518,27 @@ describe('useLeaveLocation', () => {
 
     expect(answer).toBe(true)
     expect(reads).toEqual(ONE_READ_EACH)
+  })
+
+  it('after a leave the people list keeps its rows and gives the code FORBIDDEN', async () => {
+    // Given the people page of the Kitchen is shown
+    const result = await renderListsAnd(() => useLeaveLocation())
+    // And after the leave, the server refuses the caller the people list
+    peopleAnswer = 'forbidden'
+
+    // When the caller leaves the Kitchen
+    await act(async () => {
+      await result.current.write.leave(LOC_K)
+    })
+
+    // Then the list still holds the old rows, and is NOT an error by
+    // `isError` (Apollo keeps the cached rows next to the error). Only
+    // `errorCode` says FORBIDDEN, so the page (H.5) must read `errorCode`.
+    expect(reads.LocationPeople).toBe(1)
+    const people = result.current.people
+    expect(people.data?.map((p) => p.userId)).toEqual(['u-olive', 'u-mia'])
+    expect(people.isError).toBe(false)
+    expect(people.errorCode).toBe('FORBIDDEN')
   })
 
   it('a leave that worked resolves when the lists cannot be read again', async () => {
