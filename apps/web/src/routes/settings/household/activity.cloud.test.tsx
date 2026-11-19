@@ -1,11 +1,12 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ActivityAction } from '@/generated/graphql'
+import type { ActivityAction, HouseholdRole } from '@/generated/graphql'
 import type {
   ActivityEntry,
   useHouseholdActivity,
 } from '@/hooks/useHouseholdActivity'
+import { type Permissions, permissionsFor } from '@/hooks/usePermissions'
 import { WithRouterContext } from '@/test/routerContext'
 import { ActivityPage } from './activity'
 
@@ -15,6 +16,17 @@ import { ActivityPage } from './activity'
 // the stories (`activity.stories.tsx`) render the page with the real hook.
 
 type HookResult = ReturnType<typeof useHouseholdActivity>
+
+// The caller's household role, through the app's own rules
+// (`permissionsFor`). A manager unless a test says otherwise.
+const perms = vi.hoisted(() => ({ current: undefined as unknown }))
+vi.mock('@/hooks/usePermissions', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/usePermissions')>()
+  return { ...actual, usePermissions: () => perms.current as Permissions }
+})
+function setRole(householdRole: HouseholdRole | undefined) {
+  perms.current = permissionsFor({ mode: 'cloud', householdRole })
+}
 
 const hook = vi.hoisted(() => ({ current: undefined as unknown }))
 vi.mock('@/hooks/useHouseholdActivity', async (importOriginal) => {
@@ -76,6 +88,7 @@ function renderPage() {
 }
 
 beforeEach(() => {
+  setRole('manager')
   loadMore.mockReset()
   loadMore.mockImplementation(async () => {})
   refetch.mockReset()
@@ -234,6 +247,30 @@ describe('Activity page', () => {
       screen.getByText('Only the owner and managers can see the activity.'),
     ).toBeInTheDocument()
     expect(screen.queryByText('Olive left the household')).toBeNull()
+  })
+
+  it('household member never sees rows still in the cache, before or without an answer from the server', () => {
+    // Given the cache still holds rows from when this person was a manager,
+    // the household role already says member, and the server has not
+    // answered (still on the way, or the device is offline)
+    setRole('member')
+    setHook({ data: [entry('a1', 'MEMBER_LEFT')], errorCode: undefined })
+    renderPage()
+
+    // Then the page shows the no-access text, not the old rows
+    expect(
+      screen.getByText('Only the owner and managers can see the activity.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Olive left the household')).toBeNull()
+    expect(screen.queryByRole('list')).toBeNull()
+  })
+
+  it('user sees the rows while the household role is still loading', () => {
+    // A role not known yet is not "no access": the server decides
+    setRole(undefined)
+    setHook({ data: [entry('a1', 'MEMBER_LEFT')] })
+    renderPage()
+    expect(screen.getByText('Olive left the household')).toBeInTheDocument()
   })
 
   it('user sees Retry after a network error, and Retry reads again', async () => {

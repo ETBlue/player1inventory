@@ -55,7 +55,7 @@ Plan: `docs/global/permissions/2026-11-20-households-plan-h6.md`, Task J.6. Hook
 
 | State | What shows |
 |---|---|
-| `errorCode === 'FORBIDDEN'` (a member, or a manager demoted in another tab) | `noAccess` and a link back to `/settings/household`. The old rows are NOT shown. Read from `errorCode`, never `isError`: after a demote Apollo keeps the old rows and `isError` stays `false` |
+| `errorCode === 'FORBIDDEN'` (a member, or a manager demoted in another tab), OR the household role is known and below manager (`usePermissions()`: `roleKnown && !canReadActivity`) | `noAccess` and a link back to `/settings/household`. The old rows are NOT shown. Read from `errorCode`, never `isError`: after a demote Apollo keeps the old rows and `isError` stays `false`. The role check was added in the J.6 review: rows from an earlier manager session can stay in the Apollo cache (stored in IndexedDB), and `cache-and-network` showed them until the FORBIDDEN arrived, or for good when offline. A role still loading does not hide the rows; the server decides |
 | loading | the spinner |
 | any other error, or no data | `loadError` and **Retry** (`refetch`) |
 | rows | `ActivityList`, then **Load more** while `hasMore`, off while `isLoadingMore`. A failed page shows `loadMoreError` (role `status`) and the rows stay; **Load more** tries again |

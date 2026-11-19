@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useDataMode } from '@/hooks/useDataMode'
 import { useHouseholdActivity } from '@/hooks/useHouseholdActivity'
+import { usePermissions } from '@/hooks/usePermissions'
 
 // The Activity page (households H6, task J.6; decisions T53, T54). Cloud
 // only. Owner and managers read the household's log, newest first, 50 rows
@@ -17,7 +18,12 @@ import { useHouseholdActivity } from '@/hooks/useHouseholdActivity'
 //
 // The sidebar and the mobile accordion list the page only for an owner or a
 // manager (`usePermissions().canReadActivity`). The server is the real
-// check: a member who opens the URL gets the no-access text.
+// check: a member who opens the URL gets the no-access text. The page also
+// shows that text as soon as the household role is KNOWN to be below
+// manager, without waiting for the server: rows from an earlier manager
+// session can still be in the Apollo cache (it is stored in IndexedDB), and
+// `cache-and-network` would show them until the FORBIDDEN arrives, or for
+// good when the device is offline.
 export const Route = createFileRoute('/settings/household/activity')({
   component: ActivityRoute,
 })
@@ -36,6 +42,7 @@ export function ActivityPage() {
   const { t } = useTranslation()
   const { goBack } = useAppNavigation('/settings')
   const activity = useHouseholdActivity()
+  const { roleKnown, canReadActivity } = usePermissions()
   const titleRef = useRef<HTMLHeadingElement>(null)
   const listRef = useRef<HTMLOListElement>(null)
 
@@ -55,7 +62,11 @@ export function ActivityPage() {
   // The CODE, not `isError`: a manager demoted in another tab keeps the old
   // rows in `data`, so `isError` stays false and only `errorCode` says
   // FORBIDDEN (`useHouseholdActivity`). The old rows are not shown then.
-  if (activity.errorCode === 'FORBIDDEN') {
+  // A household role known to be below manager hides them too, before the
+  // server answers (see the top of this file).
+  const noAccess =
+    activity.errorCode === 'FORBIDDEN' || (roleKnown && !canReadActivity)
+  if (noAccess) {
     body = (
       <div className="space-y-2 px-4 py-4">
         <p>{t('settings.household.activity.noAccess')}</p>
