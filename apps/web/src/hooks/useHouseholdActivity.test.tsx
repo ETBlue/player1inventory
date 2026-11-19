@@ -1,6 +1,6 @@
 import { MockedProvider } from '@apollo/client/testing/react'
 import { act, renderHook, waitFor } from '@testing-library/react'
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createCache } from '@/apollo/cloudCache'
 import {
@@ -64,6 +64,10 @@ let requests: { before?: string | null; first?: number | null }[] = []
 /** A delay on every read, so a second "Load more" can arrive while one runs. */
 const READ_DELAY = 20
 
+// Changing this and calling `rerender` mounts the hook again under the SAME
+// Apollo client and cache (MockedProvider keeps its client across renders).
+let mountKey = 0
+
 function wrapper({ children }: { children: ReactNode }) {
   return (
     <MockedProvider
@@ -91,7 +95,7 @@ function wrapper({ children }: { children: ReactNode }) {
         },
       ]}
     >
-      {children}
+      <Fragment key={mountKey}>{children}</Fragment>
     </MockedProvider>
   )
 }
@@ -106,6 +110,7 @@ beforeEach(() => {
   answer = 'ok'
   failBefore = false
   requests = []
+  mountKey = 0
 })
 
 afterEach(() => {
@@ -151,6 +156,61 @@ describe('useHouseholdActivity', () => {
   it('a page shorter than the page size has no more rows', async () => {
     const { result } = renderHook(() => useHouseholdActivity(), { wrapper })
     await waitFor(() => expect(result.current.data).toHaveLength(3))
+    expect(result.current.hasMore).toBe(false)
+  })
+
+  it('a short first page still means the end after a refetch adds new rows on top', async () => {
+    // Given the whole log is shorter than one page
+    serverHolds(ACTIVITY_PAGE_SIZE - 5)
+    const oldest = elementAt(log, log.length - 1).id
+    const { result } = renderHook(() => useHouseholdActivity(), { wrapper })
+    await waitFor(() =>
+      expect(result.current.data).toHaveLength(ACTIVITY_PAGE_SIZE - 5),
+    )
+    expect(result.current.hasMore).toBe(false)
+
+    // When 10 new rows are written and the first page is read again
+    const newer = Array.from({ length: 10 }, (_, i) => ({
+      ...entry(0),
+      id: `new-${String(i).padStart(2, '0')}`,
+    }))
+    log = [...newer, ...log]
+    act(() => result.current.refetch())
+
+    // Then the new rows are on top and the old rows stay below them
+    await waitFor(() =>
+      expect(result.current.data).toHaveLength(ACTIVITY_PAGE_SIZE + 5),
+    )
+    expect(elementAt(result.current.data ?? [], 0).id).toBe('new-00')
+    expect(
+      elementAt(result.current.data ?? [], ACTIVITY_PAGE_SIZE + 4).id,
+    ).toBe(oldest)
+    // And the list still ends at the oldest row: no Load more
+    expect(result.current.hasMore).toBe(false)
+  })
+
+  it('the end of the log is remembered when the page is opened again', async () => {
+    // Given the user loaded the whole log, longer than one page
+    serverHolds(ACTIVITY_PAGE_SIZE + 3)
+    const { result, rerender } = renderHook(() => useHouseholdActivity(), {
+      wrapper,
+    })
+    await waitFor(() => expect(result.current.hasMore).toBe(true))
+    await act(async () => {
+      await result.current.loadMore()
+    })
+    await waitFor(() => expect(result.current.hasMore).toBe(false))
+
+    // When the page is left and opened again, with the list in the cache
+    requests = []
+    mountKey = 1
+    rerender()
+
+    // Then the first page is read again from the network
+    await waitFor(() => expect(requests).toHaveLength(1))
+    await new Promise((r) => setTimeout(r, READ_DELAY * 2))
+    expect(result.current.data).toHaveLength(ACTIVITY_PAGE_SIZE + 3)
+    // And there is still no Load more
     expect(result.current.hasMore).toBe(false)
   })
 
