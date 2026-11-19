@@ -121,7 +121,9 @@ extend type Mutation {
   setLocationRole(locationId: ID!, userId: ID!, role: LocationRole!): LocationPerson!
   # Takes a person's role away. Deletes one role row and nothing else: the
   # location's carts, cart rows, stock and logs stay (decision T42). `false`
-  # when the person has no role there (a second press).
+  # when the person has no role there (a second press), but only to a caller
+  # who may read the location's people (owner decision O24-A). Anyone else
+  # gets FORBIDDEN, so the answer cannot tell them who has no role there.
   removeLocationRole(locationId: ID!, userId: ID!): Boolean!
   # The caller leaves the location. Any role may leave, the only organizer
   # too (owner decision O25-A). `false` when the caller has no role there.

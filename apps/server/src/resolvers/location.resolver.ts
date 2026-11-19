@@ -156,9 +156,10 @@ async function peopleOfLocation(ctx: Context, locationId: string, householdId: s
 /**
  * The role of `userId` on the location, read through `db`, or `null`. Only a
  * row that still counts: the person must be a member of `householdId`
- * (decision H18, the same filter as `peopleOfLocation`). The three role
- * writes check the person's membership first, so today the filter changes
- * nothing for them. It is there so every `LocationMember` read carries H18.
+ * (decision H18, the same filter as `peopleOfLocation`). Its two callers,
+ * `setLocationRole` and `removeLocationRole` (through `lockAndReadRoles`),
+ * check the person's membership first, so today the filter changes nothing
+ * for them. It is there so every `LocationMember` read carries H18.
  */
 async function roleOfPerson(
   db: Prisma.TransactionClient,
@@ -192,9 +193,12 @@ async function roleOfPerson(
  *   5. The target's member row in this household. None → FORBIDDEN.
  *   6. The target's current role, or null (`roleOfPerson`).
  *
- * Every read uses `tx`, the transaction's own connection. A read through the
- * global client would need a second connection from the pool, and on
- * Postgres it would not wait for the lock.
+ * Every read uses `tx`, the transaction's own connection, for two reasons.
+ * A read through the global client needs a second connection from the pool
+ * while this one is held. And a read through `tx` is a new statement after
+ * the lock, so under READ COMMITTED it sees what a write that held the lock
+ * before (for example `removeMember`) committed. (A plain SELECT never waits
+ * for a row lock. The reads are safe because they come AFTER the lock.)
  *
  * It checks no rule: the caller does that with `canChangeLocationRole`.
  */
