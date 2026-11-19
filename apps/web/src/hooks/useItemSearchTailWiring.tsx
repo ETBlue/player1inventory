@@ -7,6 +7,7 @@ import {
   type ItemSearchTailAction,
   type ItemSearchTailProps,
 } from '@/components/item/ItemSearchTail'
+import { showSaveError } from '@/lib/saveError'
 import type { PantryItem } from '@/types'
 import { useActiveLocation } from './useActiveLocation'
 import { useItemSearchTail } from './useItemSearchTail'
@@ -93,9 +94,12 @@ export function useItemSearchTailWiring({
 
   // Wraps a caller's async onAction with the pending-id bookkeeping, so the
   // caller cannot forget it and every action clears the same way regardless
-  // of outcome.
+  // of outcome. A failure shows `failMessage(item)` as a toast, or
+  // `common.saveFailed` when none is given (`showSaveError`, which shows
+  // nothing more offline: `offlineWriteLink` already did).
   const wrapAction = (
     action: ItemSearchTailGroupAction,
+    failMessage?: (item: PantryItem) => string,
   ): ItemSearchTailAction => ({
     label: action.label,
     icon: action.icon,
@@ -104,15 +108,13 @@ export function useItemSearchTailWiring({
       setPendingItemId(item.id)
       try {
         await action.onAction(item)
-      } catch {
-        // Swallowed — nothing surfaces THIS action's failure to the user.
-        // There is no MutationCache-level onError (the QueryClient in
-        // main.tsx sets only a staleTime default) and no global React error
-        // boundary in __root.tsx. The app DOES use sonner's `toast`
-        // elsewhere (ImportCard, settings/household/tags/index.tsx) — just not wired
-        // to this catch. Behaviour matches pre-refactor (`onError:
-        // clearTailPending` also only cleared pending). Pending must still
-        // clear on every path so the row doesn't spin forever.
+      } catch (err) {
+        // Shown as a toast. Until 2026-11-19 this catch showed nothing: it
+        // kept the behaviour of the code it replaced, whose `onError` only
+        // cleared the pending id. Nothing else reports the failure — there is
+        // no MutationCache-level onError and no error boundary
+        // (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+        showSaveError(err, failMessage?.(item))
       } finally {
         setPendingItemId(null)
       }
@@ -144,15 +146,22 @@ export function useItemSearchTailWiring({
     ...(effectiveNote ? { groupNote: effectiveNote } : {}),
     ...(canAddToLocation
       ? {
-          addToLocationAction: wrapAction({
-            label: t('items.searchTail.addToLocation', {
-              location: activeLocation?.name ?? '',
-            }),
-            onAction: async (item) => {
-              await addItemToLocation.mutateAsync({ itemId: item.id })
+          addToLocationAction: wrapAction(
+            {
+              label: t('items.searchTail.addToLocation', {
+                location: activeLocation?.name ?? '',
+              }),
+              onAction: async (item) => {
+                await addItemToLocation.mutateAsync({ itemId: item.id })
+              },
+              icon: <Plus />,
             },
-            icon: <Plus />,
-          }),
+            (item) =>
+              t('items.detail.locationPager.addFailed', {
+                name: item.name,
+                location: activeLocation?.name ?? '',
+              }),
+          ),
         }
       : {}),
     ...(listNotStockedHereReadOnly ? { notStockedHereReadOnly: true } : {}),
