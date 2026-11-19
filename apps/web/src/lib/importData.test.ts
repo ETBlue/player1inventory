@@ -2326,6 +2326,8 @@ describe('importCloudData — locations and stock upload in dependency order', (
       'BulkCreateShoppingCarts',
       'BulkCreateCartItems',
       'BulkCreateShelves',
+      // The activity row for the finished import (households H6, O33-A)
+      'RecordImport',
     ])
 
     // And, said as the three constraints that matter, so a failure names which
@@ -2488,9 +2490,10 @@ describe('importCloudData — locations and stock upload in dependency order', (
     })
 
     // Then `computeTotalBatches` counted exactly the batches the loop sent —
-    // the eleven bulk mutations, not counting `ClearAllData`
+    // the eleven bulk mutations, not counting `ClearAllData` or the activity
+    // row `RecordImport` (households H6, O33-A)
     const sentBatches = mutationOrder(client).filter(
-      (name) => name !== 'ClearAllData',
+      (name) => name !== 'ClearAllData' && name !== 'RecordImport',
     ).length
     expect(sentBatches).toBe(11)
     expect(rowAt(progress).totalBatches).toBe(sentBatches)
@@ -2652,9 +2655,17 @@ describe('importCloudData — batched cloud import', () => {
     // When retrying the import
     await importCloudData(payload, 'skip', client as never, { session })
 
-    // Then Apollo mutate is only called once (for batch 1 = the second 10 items)
-    // Not for batch 0 which is already done
-    const mutateCalls = (client.mutate as ReturnType<typeof vi.fn>).mock.calls
+    // Then Apollo mutate is only called once for items (for batch 1 = the
+    // second 10 items). Not for batch 0 which is already done. The other call
+    // is the activity row `RecordImport` (households H6, O33-A), which
+    // carries `counts`, not rows.
+    const mutateCalls = (
+      client.mutate as ReturnType<typeof vi.fn>
+    ).mock.calls.filter(
+      (c) =>
+        (c[0] as { variables?: { counts?: unknown } }).variables?.counts ===
+        undefined,
+    )
     expect(mutateCalls).toHaveLength(1)
 
     // Verify the single call contains the second batch (10 items)
@@ -4623,8 +4634,12 @@ describe('importCloudData — a pre-v15 backup keeps its stock (PR 4b task 8)', 
     // Then the total the bar settles on counts the stock batch the upgrade
     // created. Reporting the raw payload's total instead would leave the bar
     // one batch short of its own progress.
+    // (`RecordImport`, the activity row of households H6, carries `counts`,
+    // not rows, so it is not a batch.)
     const sentEntities = client.mutate.mock.calls.filter(
-      (c) => c[0]?.variables !== undefined,
+      (c) =>
+        c[0]?.variables !== undefined &&
+        (c[0].variables as { counts?: unknown }).counts === undefined,
     ).length
     // `Array.prototype.at` is ES2022 and this project's `lib` is ES2020.
     expect(rowAt(totals, totals.length - 1)).toBe(sentEntities)
@@ -6093,7 +6108,11 @@ describe('importCloudData — the check before the first write (households H4 ta
     const deletes = client.calls.filter((c) => c.op === 'DeleteLocation')
     expect(deletes.map((c) => c.variables)).toEqual([{ id: 'cloud_home' }])
     const ops = mutations(client)
-    expect(ops.indexOf('DeleteLocation')).toBe(ops.length - 1)
+    const lastBulk = ops.reduce(
+      (last, op, i) => (op.startsWith('Bulk') ? i : last),
+      -1,
+    )
+    expect(ops.indexOf('DeleteLocation')).toBeGreaterThan(lastBulk)
   })
 
   it('user clearing before importing a local backup keeps the fresh Home, where My Home went', async () => {
@@ -6374,6 +6393,95 @@ describe('importCloudData — the check before the first write (households H4 ta
       importCloudData(localFile(), 'skip', client as never),
     ).rejects.toThrow('needs a target location')
     expect(client.calls).toEqual([])
+  })
+  // Households H6 task J.5, owner decision O33-A: one activity row per
+  // import. The web sends `recordImport` once, after the last batch, with the
+  // number of rows of each kind it sent.
+  describe('the finished import is logged once (O33-A)', () => {
+    // The variable that carries each kind's rows in its bulk mutation
+    const VARIABLE_OF: Record<string, string> = {
+      items: 'items',
+      tags: 'tags',
+      tagTypes: 'tagTypes',
+      vendors: 'vendors',
+      recipes: 'recipes',
+      shelves: 'shelves',
+      locations: 'locations',
+      itemStocks: 'itemStocks',
+      inventoryLogs: 'logs',
+      shoppingCarts: 'carts',
+      cartItems: 'cartItems',
+    }
+
+    const recorded = (client: ReturnType<typeof makeClient>) =>
+      client.calls
+        .filter((c) => c.kind === 'mutate' && c.op === 'RecordImport')
+        .map((c) => (c.variables as { counts: Record<string, number> }).counts)
+
+    for (const strategy of ['skip', 'replace', 'clear'] as const) {
+      it(`user's ${strategy} import is logged once, with the rows it sent, after the last batch`, async () => {
+        // Given a clean check
+        const client = makeClient()
+
+        // When the user imports a file with a new item and two locations
+        await importCloudData(localFile(), strategy, client as never, {
+          target: { locationId: 'cloud_home' },
+        })
+
+        // Then one RecordImport was sent
+        const counts = recorded(client)
+        expect(counts).toHaveLength(1)
+        // And each count is the number of rows the bulk mutations sent
+        const expected = Object.fromEntries(
+          Object.entries(VARIABLE_OF).map(([kind, variable]) => [
+            kind,
+            sent(client, variable).length,
+          ]),
+        )
+        expect(counts[0]).toEqual(expected)
+        // Which is not all zeros: the file's item and stock rows were sent
+        expect(counts[0]?.items).toBe(1)
+        expect(counts[0]?.itemStocks).toBe(2)
+        // And it came after every bulk mutation
+        const ops = mutations(client)
+        const lastBulk = ops.reduce(
+          (last, op, i) => (op.startsWith('Bulk') ? i : last),
+          -1,
+        )
+        expect(lastBulk).toBeGreaterThanOrEqual(0)
+        expect(ops.indexOf('RecordImport')).toBeGreaterThan(lastBulk)
+      })
+    }
+
+    it('user whose import worked is not told it failed when the log cannot be written', async () => {
+      // Given recordImport fails (a network error, or a role change)
+      const client = makeClient({ failOn: 'RecordImport' })
+
+      // When the user imports, then the import still resolves: the rows are
+      // written, and the log row is not data (O33-A)
+      await expect(
+        importCloudData(localFile(), 'skip', client as never, {
+          target: { locationId: 'cloud_home' },
+        }),
+      ).resolves.toEqual({ skipped: { locationNames: [], rowCount: 0 } })
+      expect(mutations(client)).toContain('RecordImport')
+      // And the cache was still refreshed after it
+      expect(client.resetStore).toHaveBeenCalledOnce()
+    })
+
+    it('an import that fails in a batch is not logged', async () => {
+      // Given the item batch is refused
+      const client = makeClient({ failOn: 'BulkCreateItems' })
+
+      await expect(
+        importCloudData(localFile(), 'skip', client as never, {
+          target: { locationId: 'cloud_home' },
+        }),
+      ).rejects.toBeDefined()
+
+      // Then nothing was logged: the import did not finish
+      expect(recorded(client)).toEqual([])
+    })
   })
 })
 
