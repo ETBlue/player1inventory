@@ -600,10 +600,22 @@ describe('recordImport', () => {
     expect(logRows()).toEqual([])
   })
 
-  it('writes the row to the household the caller acts in, not another one they own', async () => {
-    // YUKI owns hh_x only
+  it('writes the row to the household the caller acts in, not another one they manage', async () => {
+    // Given YUKI owns hh_x and is also a manager of hh_h. Both rows give the
+    // right to import, so only the active household can decide. The test
+    // runs once with each household active, so it does not depend on the
+    // order of the member rows in the store.
+    world.households.state.householdMembers.push(householdMemberRow('hh_h', YUKI, 'manager'))
+    const yuki = world.users.state.rows.find((row) => row.id === YUKI)
+    if (!yuki) throw new Error('fixture: YUKI has no User row')
+
+    // When YUKI records an import while acting in hh_x, then in hh_h
     ok(await run(RECORD_IMPORT, { c: COUNTS }, YUKI))
-    expect(logRows().map((r) => r.householdId)).toEqual(['hh_x'])
+    yuki.activeHouseholdId = 'hh_h'
+    ok(await run(RECORD_IMPORT, { c: COUNTS }, YUKI))
+
+    // Then each row is in the household YUKI was acting in at the time
+    expect(logRows().map((r) => r.householdId)).toEqual(['hh_x', 'hh_h'])
   })
 
   it('refuses a negative count with BAD_USER_INPUT, and writes no row', async () => {

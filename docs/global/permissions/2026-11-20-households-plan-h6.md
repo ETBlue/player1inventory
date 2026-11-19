@@ -486,6 +486,14 @@ copy (`diff -q` clean, green again after each).
 | `createInvite` logs through the global `prisma`, not `tx` | **red**: the `afterEach` spy check ("householdActivity.create through the global client: expected 1 to be +0") on the INVITE_CREATED test, and the invite atomicity test |
 | `recordImport` asks `requireHousehold` instead of `requireCatalogRole(ctx, 'manager')` | **red**: "household member cannot record an import, even as the organizer of a location, and nothing is logged" |
 
+**Review of J.2 (2026-11-20).** Three more mutations, run by the reviewer the same way:
+
+| Mutation | Result |
+|---|---|
+| `removeLocationRole` writes its row before the `from === null` check | **red**: "removing a role nobody has answers false and writes no row" (and the one-row test) |
+| `recordImport` accepts a negative count (`value < 0` dropped) | **red**: "refuses a negative count with BAD_USER_INPUT, and writes no row" |
+| `recordImport` takes the caller's FIRST owner or manager membership instead of `requireCatalogRole` | **stayed green** with the test as committed. Its title said "not another one they own", but YUKI owned only hh_x, so any household of YUKI's was the right one. The test now makes YUKI a manager of hh_h too and records once with each household active. The same mutation is now **red**: `expected [ 'hh_x', 'hh_x' ] to deeply equal [ 'hh_x', 'hh_h' ]` |
+
 **E2E:** none (J.8). `e2e/tests/cleanup-endpoint.spec.ts` expects `householdActivities >= 1`.
 Since this task `createInvite` writes an `INVITE_CREATED` row, so the spec should pass now. It
 is unrun until J.8.

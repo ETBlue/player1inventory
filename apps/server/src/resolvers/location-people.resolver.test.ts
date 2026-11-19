@@ -737,8 +737,8 @@ describe('removeLocationRole: who may do what (task H.3)', () => {
     const res = await removeRole(BEA, LOC_K, BOB)
 
     // Then the transaction reached only the household, location and role
-    // models, and the activity log (households H6 task J.2): no cart, cart
-    // row, stock row or log model at all
+    // models, and the household activity log (households H6 task J.2): no
+    // cart, cart row, stock row or inventory log model at all
     const touched = [...tx.touched].sort()
     tx.unknownTouched.clear()
     expect(touched).toEqual([
