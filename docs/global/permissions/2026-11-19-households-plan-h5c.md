@@ -1000,6 +1000,7 @@ Filled in from the task reports and reviews.
 | H.2 | Step 4: names with `select: { id, displayName }` | `household.resolver.ts` and `invite.resolver.ts` each had a private `displayNames`. One shared `displayNamesOf` in `lib/household.ts` replaces both, so `locationPeople` adds no third copy |
 | H.2 | Only `oldBundleCompat.test.ts` lists fields | `household-members.resolver.test.ts` has a test that lists every `HouseholdPerson` field (the no e-mail test). It needed `hasLocationRole` added. `oldBundleCompat.test.ts` needed no change |
 | H.2 | T40's `where`: `location: { householdId }, userId: { in }` | That `where` carries no H18 filter. The ids come from the same household's member list, so it is right today, but the rule says every `LocationMember` read applies H18. The `user: { householdMemberships: { some: { householdId } } }` filter is added too |
+| H.2 | Mutation "drop the `user: { householdMemberships … }` filter" | It can go red only for `locationPeople`. For `hasLocationRole` it cannot: the ids already come from this household's member list, so the filter changes nothing there. It is not coverage for `hasLocationRole` |
 
 ## Status
 
