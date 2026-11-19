@@ -894,7 +894,7 @@ same set), `routes/settings/household/locations/$id.tsx` and `$id.cloud.test.tsx
 `$id.stories.tsx`; the locale files; `routes/settings/CLAUDE.md`,
 `routes/settings/household/locations/CLAUDE.md`, `lib/seenLocations.ts` (see below).
 
-- [ ] **Step 1: failing tests.**
+- [x] **Step 1: failing tests.**
   - The household page shows the danger zone to the OWNER only, in cloud only. Each button
     opens a confirm with a text field; the confirm button stays disabled until the field
     equals the household name exactly (case and spaces as stored); Enter does nothing while
@@ -912,14 +912,34 @@ same set), `routes/settings/household/locations/$id.tsx` and `$id.cloud.test.tsx
     household**: mark the locations with `expectLocationLoss` (`lib/seenLocations.ts`, H5c
     H.7) before the write, and take the mark back when it fails, exactly as the `clear`
     import does.
-- [ ] **Step 2:** red.
-- [ ] **Step 3:** the components and texts. Reuse the existing confirm dialog pattern
+- [x] **Step 2:** red.
+- [x] **Step 3:** the components and texts. Reuse the existing confirm dialog pattern
   (`DeleteButton` or the dialog the H5c page uses); do not build a third confirm.
-- [ ] **Step 4:** stories and smoke tests; the full gate.
+- [x] **Step 4:** stories and smoke tests; the full gate.
 
 **Mutation checks:** the confirm enabled on a case-insensitive match → the exact-match test;
 the zone shown to a manager → the owner-only test; `expectLocationLoss` not called → the "no
 toast" test; **Remove all items** shown to a participant → its test.
+
+**Done 2026-11-20.** Each mutation was made in the source, the named tests went red on an
+assertion (not a `ReferenceError` or a syntax error), the file was restored from a copy, `diff
+-q` was clean, and the tests were green again.
+
+| # | Mutation (file) | Red |
+|---|---|---|
+| 1 | `typed.toLowerCase() === confirmName?.toLowerCase()` (`DeleteButton.tsx`) | 6: the exact-match test and Enter test of `DeleteButton.test.tsx`, the three "after typing the household name exactly" tests of `HouseholdDangerZone.test.tsx`, the location one in `LocationDangerZone.test.tsx` |
+| 2 | `typed.trim() === confirmName` (`DeleteButton.tsx`) | 1: "user cannot confirm until the name is typed exactly as stored" (the trailing-space step) |
+| 3 | `e.preventDefault()` removed from the typed-name confirm (`DeleteButton.tsx`) | 6: the two "dialog stays open" tests in `DeleteButton.test.tsx`, the failure tests of both zones, `ClearFails` and `RemoveFails` smoke tests |
+| 4 | the zone reads `canManageMembers` instead of `canPurgeHousehold` (`HouseholdDangerZone.tsx`) | 2: "household manager does not see the danger zone" in the component test and in `index.cloud.test.tsx` |
+| 5 | Remove all items reads `canEditLocation` instead of `canRemoveAllItems` (`LocationDangerZone.tsx`) | 4: "location participant does not see Remove all items" (component and page), the local-mode test, and the existing "location participant sees the people and Leave, and no other control" |
+| 6 | `expectingLoss` marks nothing (`const takeBack = () => {}`, `hooks/usePurges.ts`) | 6 in `usePurges.test.tsx`: the "no lost-access toast" and "takes the mark back" tests of the three purges that delete locations. J.7 adds no call of its own (the hooks mark), so this J.5 test is the guard |
+| 7 | `<HouseholdDangerZone />` removed from `routes/settings/household/index.tsx` | 4: the owner tests in `index.cloud.test.tsx` and `CloudOwner` in `index.stories.test.tsx` |
+
+The gate after J.7 (Node 22.17.1): web **3604 tests in 360 files**, server **2563 in 83**,
+`scripts/spec` 70. J.7 added 40 web tests and 4 files (the baseline 3564 / 356 is that
+difference, not a separate run). The known flaky `routes/shopping/index.stories.test.tsx`
+(Offline) failed once at load average 16 and passed alone and in the next full run. Commits
+`3c893dea` (`DeleteButton`'s typed-name mode) and `542afb2b` (the danger zones).
 
 **E2E:** none (J.8).
 
@@ -1418,6 +1438,11 @@ Filled in from the task reports and reviews.
 | J.6 | Facts: "use the app's date helpers" | `formatDate` shows no time. A log row needs one, so `formatDateTime` was added beside it |
 | J.6 (review) | Step 1: "a `FORBIDDEN` … shows the no-access state"; the page read only the server's answer | With `cache-and-network`, rows cached during an earlier manager session showed until `FORBIDDEN` arrived, and for good offline. The page also checks the known household role (`usePermissions().canReadActivity`) |
 | J.5 | Step 1: `loadMore()` and `hasMore` | The hook also needed `isLoadingMore`, `loadMoreFailed` (a failed page must not reject, and must not hide the rows shown) and `refetch` (the page's Retry). `useDeleteHousehold` has an `isPending` of its own: it has no refetch, and it stays true until the move starts |
+| J.7 | Step 3: reuse `DeleteButton` or the H5c dialog, "do not build a third confirm" | `DeleteButton` could not do it as it was: `AlertDialogAction` closes the dialog on click, and a failure was a toast. The brief asked for a dialog that stays open with the error. `DeleteButton` gained a typed-name mode (`confirmName`, `confirmNameLabel`, `disabled`): an exact-match field, the dialog open while the delete runs, the error inside it as `role="alert"`. Plain callers are unchanged |
+| J.7 | Files: `lib/seenLocations.ts`; Step 1: mark the locations with `expectLocationLoss` | Nothing changed there. The hooks mark (the J.5 rows above). The "no toast" mutation was run on `usePurges.ts` against J.5's tests |
+| J.7 | Step 1: "after it, the pantry of that location is empty and its logs are still on the item log tab"; "Delete household … then the app shows the no-household screen" | A web unit test cannot show either: the server does the delete, and the move is `useDeleteHousehold`'s (pinned in `usePurges.test.tsx`). The page tests check that the right mutation is sent once and that the dialog closes. Both screens are left to J.8 (tests 4 and 5) |
+| J.7 | O39: `…danger.removeAllDescription` "The location, its people and its logs stay." | The brief asked that the text say the catalog stays too: "The location, its people, its logs and the catalog stay." `…deleteLocationsDescription` also says "No new location is made." (O34-A). O39 had no title for the location's zone: `settings.locations.danger.title` was added. The location confirm reuses `settings.household.danger.typeName` |
+| J.7 | Files: `$id.stories.tsx` | Unchanged: its `OrganizerView` already shows the zone; its smoke test now checks for Remove all items. `routes/settings/household/index.stories.tsx` gained `CloudOwner` |
 
 ## Status
 
