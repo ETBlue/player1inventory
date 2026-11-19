@@ -466,6 +466,67 @@ describe('Members page — who sees which control', () => {
   })
 })
 
+// Households H5c task H.6, owner decision O28-A. Milo joined with no
+// location role (O14-A). Every other person has one.
+describe('Members page — No location roles', () => {
+  function peopleWithMiloWithoutRole(me: string): Person[] {
+    return people(me).map((p) =>
+      p.userId === 'u-milo' ? { ...p, hasLocationRole: false } : p,
+    )
+  }
+
+  it.each([
+    'owner',
+    'manager',
+  ] as const)('household %s sees No location roles and a link on a person with no location role', async (role) => {
+    // Given the caller (Olive the owner, or Max the manager), and Milo with
+    // no location role
+    server.members = peopleWithMiloWithoutRole(
+      role === 'owner' ? 'u-olive' : 'u-max',
+    )
+    renderPage(role)
+
+    // Then Milo's row says so, with a link to the locations list, where a
+    // role is given on a location's page
+    const milo = await rowOf('Milo')
+    expect(
+      await within(milo).findByText('No location roles'),
+    ).toBeInTheDocument()
+    expect(
+      within(milo).getByRole('link', { name: 'Give a location role' }),
+    ).toHaveAttribute('href', '/settings/household/locations')
+
+    // And nobody else's row has the mark
+    const main = await screen.findByRole('main')
+    expect(within(main).getAllByText('No location roles')).toHaveLength(1)
+    expect(
+      within(main).getAllByRole('link', { name: 'Give a location role' }),
+    ).toHaveLength(1)
+  })
+
+  it('household member sees no No location roles mark', async () => {
+    // Given Mia, a member, and Milo with no location role. A member cannot
+    // give a location role, so the mark would point at nothing they can do.
+    server.members = peopleWithMiloWithoutRole('u-mia')
+    renderPage('member')
+
+    // Then Milo's row shows his name and role, and no mark or link. Leave on
+    // Mia's own row shows that the role is known, so the mark is not just
+    // still waiting for it.
+    expect(await rowOf('Milo')).toHaveTextContent('Member')
+    expect(
+      await within(await rowOf('Mia')).findByRole('button', {
+        name: 'Leave household',
+      }),
+    ).toBeInTheDocument()
+    const main = await screen.findByRole('main')
+    expect(within(main).queryByText('No location roles')).toBeNull()
+    expect(
+      within(main).queryByRole('link', { name: 'Give a location role' }),
+    ).toBeNull()
+  })
+})
+
 describe('Members page — the invite form', () => {
   async function openForm() {
     const user = userEvent.setup()

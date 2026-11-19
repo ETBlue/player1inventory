@@ -514,6 +514,7 @@
         "createdBy": "Created by {{name}}",
         "expires": "Valid until {{date}}",
         "noLocationRoles": "No location roles",
+        "giveLocationRole": "Give a location role",
         "revoke": "Revoke",
         "revokeConfirm": "Revoke this invite? The link will stop working.",
         "revoked": "Invite revoked",

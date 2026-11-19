@@ -514,6 +514,7 @@
         "createdBy": "由 {{name}} 建立",
         "expires": "有效期限：{{date}}",
         "noLocationRoles": "沒有據點角色",
+        "giveLocationRole": "指派據點角色",
         "revoke": "撤銷",
         "revokeConfirm": "要撤銷這個邀請嗎？連結將無法再使用。",
         "revoked": "已撤銷邀請",

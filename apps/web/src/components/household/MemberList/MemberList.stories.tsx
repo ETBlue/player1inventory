@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { fn } from 'storybook/test'
+import { WithRouterContext } from '@/test/routerContext'
 import { MemberList, type MemberRow } from '.'
 
 // The REAL list (households H5b, task G.9). Which buttons each row gets is
@@ -54,4 +55,28 @@ export const AsManager: Story = {
 /** A member: every name and role, and their own Leave. */
 export const AsMember: Story = {
   args: { members: people('u-mia'), callerRole: 'member' },
+}
+
+/**
+ * Households H5c task H.6 (owner decision O28-A): the owner, and Mia joined
+ * with no location role. Her row says "No location roles" with a link,
+ * "Give a location role", to Settings › Locations. The page shows the mark to
+ * an owner or manager only (`showLocationRoleMarks`).
+ */
+export const AsOwnerWithNoLocationRoles: Story = {
+  decorators: [
+    (Story) => (
+      <WithRouterContext initialPath="/settings/household/members">
+        <Story />
+      </WithRouterContext>
+    ),
+  ],
+  args: {
+    members: people('u-olive').map((p) => ({
+      ...p,
+      hasLocationRole: p.userId !== 'u-mia',
+    })),
+    callerRole: 'owner',
+    showLocationRoleMarks: true,
+  },
 }

@@ -26,7 +26,8 @@ type Story = StoryObj<typeof meta>
 type Person = HouseholdMembersQuery['householdMembers'][number]
 type Invite = HouseholdInvitesQuery['householdInvites'][number]
 
-function people(me: string): Person[] {
+/** `withoutLocationRole`: people who joined with no location role (O14-A). */
+function people(me: string, withoutLocationRole: string[] = []): Person[] {
   const row = (userId: string, displayName: string, role: HouseholdRole) => ({
     __typename: 'HouseholdPerson' as const,
     userId,
@@ -34,7 +35,7 @@ function people(me: string): Person[] {
     role,
     joinedAt: '2026-11-01T00:00:00.000Z',
     isMe: userId === me,
-    hasLocationRole: true,
+    hasLocationRole: !withoutLocationRole.includes(userId),
   })
   return [
     row('u-olive', 'Olive Lin', 'owner'),
@@ -74,12 +75,15 @@ const openInvites: Invite[] = [
 function pageMocks(
   me: string,
   invites: Invite[],
+  withoutLocationRole: string[] = [],
 ): NonNullable<MockedProviderProps['mocks']> {
   return [
     {
       request: { query: HouseholdMembersDocument },
       maxUsageCount: Number.POSITIVE_INFINITY,
-      result: { data: { householdMembers: people(me) } },
+      result: {
+        data: { householdMembers: people(me, withoutLocationRole) },
+      },
     },
     {
       request: { query: HouseholdInvitesDocument },
@@ -161,6 +165,22 @@ export const WithOpenInvites: Story = {
       path={PATH}
       householdRole="owner"
       mocks={pageMocks('u-olive', openInvites)}
+    />
+  ),
+}
+
+/**
+ * Households H5c task H.6 (owner decision O28-A): the owner, and mia joined
+ * with no location role. Her row says "No location roles", with a link,
+ * "Give a location role", to Settings › Locations.
+ */
+export const OwnerSeesNoLocationRoles: Story = {
+  beforeEach: cloudRoleStorySetup,
+  render: () => (
+    <CloudRolePage
+      path={PATH}
+      householdRole="owner"
+      mocks={pageMocks('u-olive', [], ['u-mia'])}
     />
   ),
 }
