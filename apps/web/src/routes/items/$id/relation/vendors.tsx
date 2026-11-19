@@ -65,12 +65,16 @@ function VendorsTab() {
       return
     }
     if (newVendor?.id) {
-      // Immediately assign to current item
+      // Immediately assign to current item. The vendor exists now, so the
+      // dialog closes even if this fails; the toast says so.
       const currentVendorIds = item?.vendorIds ?? []
-      updateItem.mutate({
-        id,
-        updates: { vendorIds: [...currentVendorIds, newVendor.id] },
-      })
+      updateItem.mutate(
+        {
+          id,
+          updates: { vendorIds: [...currentVendorIds, newVendor.id] },
+        },
+        { onError: (err) => showSaveError(err) },
+      )
     }
     setNewVendorName('')
     setShowDialog(false)

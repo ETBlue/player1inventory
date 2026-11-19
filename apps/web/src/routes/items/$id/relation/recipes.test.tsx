@@ -445,4 +445,53 @@ describe('Recipes Tab', () => {
       vi.restoreAllMocks()
     }
   })
+
+  // A failed create in the New Recipe dialog
+  // (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md). Before the
+  // fix `mutate` had no `onError`, so nothing on screen said so.
+  it('user sees a message when creating a new recipe fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given an item, and a database that refuses the new recipe
+      const item = await createItem({
+        name: 'Test Item',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+      })
+      vi.spyOn(db.recipes, 'add').mockRejectedValueOnce(new Error('disk full'))
+      renderRecipesTab(item.id)
+      const user = userEvent.setup()
+
+      // When the user adds a recipe named "Soup"
+      await user.click(
+        await screen.findByRole('button', { name: /new recipe/i }),
+      )
+      await user.type(screen.getByLabelText(/name/i), 'Soup')
+      await user.click(screen.getByRole('button', { name: /add recipe/i }))
+
+      // Then a message says the change was not saved
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      // And the dialog stays open with the name, and Add can be pressed again
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+      expect(screen.getByLabelText(/name/i)).toHaveValue('Soup')
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: /add recipe/i }),
+        ).toBeEnabled(),
+      )
+      expect(await db.recipes.count()).toBe(0)
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
+  })
 })

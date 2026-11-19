@@ -134,20 +134,33 @@ function TagsTab() {
   const [loadingTagId, setLoadingTagId] = useState<string | null>(null)
 
   const handleAddTag = async () => {
-    if (addTagDialog && newTagName.trim()) {
-      const newTag = await createTag.mutateAsync({
+    if (!addTagDialog || !newTagName.trim()) return
+    let newTag: Awaited<ReturnType<typeof createTag.mutateAsync>>
+    try {
+      newTag = await createTag.mutateAsync({
         name: newTagName.trim(),
         typeId: addTagDialog,
       })
-      if (newTag?.id && item) {
-        // Immediately assign the new tag to the current item
-        updateItem.mutate({
+    } catch (err) {
+      // The dialog stays open with the name, so the user can try again.
+      // Before, this was an unhandled rejection with nothing on screen.
+      showSaveError(err)
+      return
+    }
+    // The tag exists now, so the dialog closes even if the assign below
+    // fails: trying again would create the same tag a second time.
+    setNewTagName('')
+    setAddTagDialog(null)
+    if (newTag?.id && item) {
+      // Immediately assign the new tag to the current item
+      try {
+        await updateItem.mutateAsync({
           id,
           updates: { tagIds: [...item.tagIds, newTag.id] },
         })
+      } catch (err) {
+        showSaveError(err)
       }
-      setNewTagName('')
-      setAddTagDialog(null)
     }
   }
 
@@ -234,7 +247,13 @@ function TagsTab() {
         onNameChange={setNewTagTypeName}
         onAdd={async () => {
           if (!newTagTypeName.trim()) return
-          await addTagType({ name: newTagTypeName.trim() })
+          try {
+            await addTagType({ name: newTagTypeName.trim() })
+          } catch (err) {
+            // The dialog stays open with the name, so the user can try again
+            showSaveError(err)
+            return
+          }
           setNewTagTypeName('')
           setNewTagTypeOpen(false)
         }}

@@ -316,4 +316,137 @@ describe('Tags Tab - Add Tag Functionality', () => {
       vi.restoreAllMocks()
     }
   })
+
+  // A failed create in the New Tag and New Tag Type dialogs
+  // (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md). Before the
+  // fix each write had no catch: an unhandled rejection, and nothing on screen.
+  const renderTagsTab = (itemId: string) => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const history = createMemoryHistory({
+      initialEntries: [`/items/${itemId}/relation/tags`],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('user sees a message when creating a new tag fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given an item, a tag type, and a database that refuses the new tag
+      await createTagType({ name: 'categories', color: TagColor.blue })
+      const item = await createItem({
+        name: 'Test Item',
+        tagIds: [],
+        targetQuantity: 2,
+        refillThreshold: 1,
+      })
+      renderTagsTab(item.id)
+      vi.spyOn(db.tags, 'add').mockRejectedValueOnce(new Error('disk full'))
+      const user = userEvent.setup()
+
+      // When the user adds a tag named "dairy"
+      expect(await screen.findByText(/categories/i)).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: /new tag/i }))
+      await user.type(screen.getByLabelText(/name/i), 'dairy')
+      await user.click(screen.getByRole('button', { name: /^add tag$/i }))
+
+      // Then a message says the change was not saved
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      // And the dialog stays open with the name, and Add can be pressed again
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+      expect(screen.getByLabelText(/name/i)).toHaveValue('dairy')
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: /^add tag$/i }),
+        ).toBeEnabled(),
+      )
+      expect(await db.tags.count()).toBe(0)
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('user sees a message when assigning a newly created tag fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given an item, a tag type, and a database that refuses the item write
+      await createTagType({ name: 'categories', color: TagColor.blue })
+      const item = await createItem({
+        name: 'Test Item',
+        tagIds: [],
+        targetQuantity: 2,
+        refillThreshold: 1,
+      })
+      renderTagsTab(item.id)
+      vi.spyOn(db.items, 'update').mockRejectedValueOnce(new Error('disk full'))
+      const user = userEvent.setup()
+
+      // When the user adds a tag named "dairy"
+      expect(await screen.findByText(/categories/i)).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: /new tag/i }))
+      await user.type(screen.getByLabelText(/name/i), 'dairy')
+      await user.click(screen.getByRole('button', { name: /^add tag$/i }))
+
+      // Then a message says the change was not saved
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      // And the tag exists but is not on the item
+      expect(await db.tags.count()).toBe(1)
+      expect((await db.items.get(item.id))?.tagIds).toEqual([])
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('user sees a message when creating a new tag type fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given an item with no tag types, and a database that refuses the write
+      const item = await createItem({
+        name: 'Yogurt',
+        tagIds: [],
+        targetQuantity: 4,
+        refillThreshold: 1,
+      })
+      renderTagsTab(item.id)
+      vi.spyOn(db.tagTypes, 'add').mockRejectedValueOnce(new Error('disk full'))
+      const user = userEvent.setup()
+
+      // When the user adds a tag type named "Season"
+      await user.click(
+        await screen.findByRole('button', { name: /new tag type/i }),
+      )
+      await user.type(screen.getByLabelText(/name/i), 'Season')
+      await user.click(screen.getByRole('button', { name: /^add$/i }))
+
+      // Then a message says the change was not saved
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      // And the dialog stays open with the name
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+      expect(screen.getByLabelText(/name/i)).toHaveValue('Season')
+      expect(await db.tagTypes.count()).toBe(0)
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
+  })
 })

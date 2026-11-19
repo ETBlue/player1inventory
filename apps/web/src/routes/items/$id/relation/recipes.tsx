@@ -66,6 +66,9 @@ function RecipesTab() {
           setNewRecipeName('')
           setShowDialog(false)
         },
+        // The dialog stays open with the name, so the user can try again.
+        // Before, the error was ignored and nothing on screen said so.
+        onError: (err) => showSaveError(err),
       },
     )
   }
