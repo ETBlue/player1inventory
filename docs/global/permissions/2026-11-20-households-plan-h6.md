@@ -547,6 +547,20 @@ each).
 | `actorIsMe` always `false` | **red**: "user sees who acted, and whether it was them" |
 | `importCounts` always `null` | **red**, 2 tests |
 
+**Review of J.3 (2026-11-20).** Two mutations stayed GREEN against the 24 tests above. One test
+was added and one was extended (24 → 25 in the file). Each mutation was run on a copy-restored file
+(`diff -q` clean after each).
+
+| Mutation | Before the review | After |
+|---|---|---|
+| the cursor as ONE condition, `createdAt <= cursor AND id < cursor` (no `OR`) | **green**, 24 of 24: in the fixture the ids follow the time order, so the wrong cursor gives the same pages | **red**: "paging orders by time first, and uses the id only between rows of the same time" (the newest row has the smallest id) |
+| `importCounts` read for every action, not only `IMPORT` | **green**: no non-`IMPORT` row carried `details.counts` | **red**: "details of the wrong shape give null fields, not an error" (a `LOCATIONS_DELETED` row with `counts`) |
+| the cursor's first branch `lte` instead of `lt` (repeats the cursor row's time) | **red**, 3 tests | **red**, 3 tests |
+| `targetIsMe` always `false` | **red**, 1 test | — |
+| `actorDeleted` read from the target's account | **red**, 1 test | — |
+| a missing `User` row gives `actorDeleted: false` | **red**, 1 test | — |
+| `targetName` read from the actor's account | **red**, 2 tests | — |
+
 **E2E:** none (J.8).
 
 ---
@@ -1198,6 +1212,7 @@ Filled in from the task reports and reviews.
 | J.3 | T53: `count: Int` is the only number | `IMPORT` stores 11 counts in `details.counts`. The entry has `importCounts: ActivityImportCounts`, a type with the same 11 `Int!` fields as `ImportCountsInput`. A count missing from the stored row is 0; `details.counts` that is not an object gives `null` |
 | J.3 | T53 names `action: ActivityAction!` but no task adds the enum to GraphQL | J.3's `schema/activity.graphql` adds `enum ActivityAction` with all 19 values, H6b's included, the same list as the Prisma enum. So a stored `action` is always a valid GraphQL value, and the generated type matches Prisma's. (The whole enum is new since `main`, so `oldBundleCompat.test.ts` does not see it either way.) |
 | J.3 | T51 says `LOCATION_ITEMS_REMOVED` stores `{ stockRows, cartRows }`; T53 has only `count` | J.3 exposes `count` from `details.count` only. **J.4 must decide**: store `count` too, or add fields. Today such a row would show `count: null` |
+| J.3 (review) | The J.3 row above: "J.4 must decide: store `count` too, or add fields" for `LOCATION_ITEMS_REMOVED` | The O39 text for that action is "{{actor}} removed all items from {{location}}". It uses NO number, but it needs `{{location}}`. So J.4 must store `details: { locationName }` on that row (it may keep `stockRows` and `cartRows` too; nothing reads them). Stored as T51 says, the row gives `locationName: null` and the sentence has no location. No new GraphQL field is needed. The same check for `MEMBER_JOINED`: its O39 text is "{{actor}} joined the household", so its `locationRoles` need no field either |
 | J.3 | T53 does not say what `MEMBER_JOINED`'s `locationRoles` become | Not exposed. The entry carries `householdRole` only. If the Activity page should list the joiner's location roles, J.5/J.6 needs a new field |
 | J.3 | T54: `first` defaults to 50, at most 200 | It did not say what 0 or a negative number does. Both are `BAD_USER_INPUT` |
 | J.3 | Step 3: "extend `displayNamesOf` to return `deletedAt` too, or add a sibling" | A sibling, `accountNamesOf` in `lib/household.ts`, selects `{ id, displayName, deletedAt }`. `displayNamesOf` is unchanged, so its callers in three resolver files and their tests do not move |
