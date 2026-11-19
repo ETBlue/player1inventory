@@ -218,7 +218,7 @@ const DATA_MODELS = Object.keys(MODEL_PATHS).sort()
 const OWNED_SCOPE = '{ householdId: owned }'
 
 /**
- * `/e2e/cleanup`'s five filters that are not the scope. Each is allowed on
+ * `/e2e/cleanup`'s six filters that are not the scope. Each is allowed on
  * its one model only.
  *
  * - `locationMember` and `householdMember`: every role row in the owned
@@ -231,6 +231,9 @@ const OWNED_SCOPE = '{ householdId: owned }'
  *   `createdById` is RESTRICT, so the `User` row cannot go while such an
  *   invite exists. The `{ createdById: userId }` half is allowed here and
  *   nowhere else, for the same reason as the `{ userId }` half above.
+ * - `householdActivity` (households H6, task J.1): the activity rows of the
+ *   owned households. The scope on the row itself, but listed here and not
+ *   in `MODEL_PATHS`, because `clearAllData` must keep the log.
  * - `household`: the owned households themselves, by their `id`.
  * - `user`: the User row. Its key is `id`, because the row IS the user. The
  *   same filter on any other model would compare that model's id with a user
@@ -249,6 +252,10 @@ const CLEANUP_EXCEPTIONS: readonly FilterException[] = [
     model: 'householdInvite',
     arg: '{ where: { OR: [{ householdId: owned }, { createdById: userId }] } }',
   },
+  // Every activity row of the owned households (households H6, task J.1).
+  // Not in `MODEL_PATHS`: `clearAllData` keeps the log (see its `kept`), so
+  // the form is allowed on this path only.
+  { model: 'householdActivity', arg: '{ where: { householdId: owned } }' },
   { model: 'household', arg: '{ where: { id: owned } }' },
   { model: 'user', arg: '{ where: { id: userId } }' },
 ]
@@ -278,7 +285,18 @@ const PURGE_PATHS: readonly PurgePath[] = [
     // `householdInvite` (H5b) is kept too: an invite is about who may JOIN the
     // household, not about its data, and clearing the data keeps the
     // household and its members.
-    kept: ['household', 'householdInvite', 'householdMember', 'locationMember', 'user'],
+    //
+    // `householdActivity` (H6 task J.1) is kept: the log says who cleared the
+    // household, so a clear must not delete it. J.2 writes the
+    // HOUSEHOLD_CLEARED row after the deletes, in the same transaction.
+    kept: [
+      'household',
+      'householdActivity',
+      'householdInvite',
+      'householdMember',
+      'locationMember',
+      'user',
+    ],
     scope: '{ householdId }',
     exceptions: [],
   },
@@ -292,6 +310,7 @@ const PURGE_PATHS: readonly PurgePath[] = [
     models: [
       ...DATA_MODELS,
       'household',
+      'householdActivity',
       'householdInvite',
       'householdMember',
       'locationMember',
@@ -323,6 +342,7 @@ describe('purge coverage against prisma/schema.prisma', () => {
         'cart',
         'cartItem',
         'household',
+        'householdActivity',
         'householdInvite',
         'householdMember',
         'inventoryLog',

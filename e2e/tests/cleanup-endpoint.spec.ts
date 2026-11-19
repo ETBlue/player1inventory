@@ -12,7 +12,8 @@ import { makeGql } from '../utils/cloud'
 //
 // Since households H3a task 3.10 the route deletes by the households the
 // user OWNS, plus the user's own role rows, and returns 18 counts (19 since
-// households H5b task G.6 added `householdInvites`). The seed
+// households H5b task G.6 added `householdInvites`, 20 since households H6
+// task J.1 added `householdActivities`). The seed
 // below makes the user's household on the first request (first sign-in), so
 // the three new counts — `locationMembers`, `householdMembers` and
 // `households` — are at least 1 too. The rule "never delete a household the
@@ -271,6 +272,13 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     // BEFORE the cleanup only: `householdInvites` runs first sign-in like
     // `locations`, so after the cleanup it would read a brand-new, empty
     // household. Its `deleted` count below is the check on the delete.
+    //
+    // HouseholdActivity — no seed step of its own. From households H6 task
+    // J.2, `createInvite` writes an INVITE_CREATED row in the user's own
+    // household, so this one call also seeds the activity row that the
+    // `householdActivities` count below needs. Between H6 tasks J.1 and J.2
+    // nothing writes an activity row, so this spec reports
+    // `"householdActivities":0` and fails. H6 task J.8 runs it.
     const token = await createInvite(request, E2E_USER_ID, 'member', [
       { locationId: home.id, role: 'viewer' },
     ])
