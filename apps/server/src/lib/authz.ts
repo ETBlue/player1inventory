@@ -145,8 +145,11 @@ export async function requireLocationRole(
  * The caller's COUNTED role on one location (decision H18), or `null`.
  *
  * Unlike `requireLocationRole`, it never throws for a role: "no role", "a
- * role that does not count any more", "another household's location" and "no
- * such location" all give `null`. It is for a check that needs the role
+ * role that does not count any more", "a location of a household the caller
+ * is not in" and "no such location" all give `null`. A person in two
+ * households gets their real role on a location of their OTHER household, so
+ * a caller that must stay in one household checks the location's household
+ * first (decision T34). It is for a check that needs the role
  * itself, such as `canChangeLocationRole` (`@p1i/types`), where no role is a
  * valid input and not a refusal. It still throws `Unauthorized` when there is
  * no signed-in user.
