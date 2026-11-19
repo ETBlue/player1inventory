@@ -791,7 +791,7 @@ and its tests and stories; `routes/settings/index.tsx` and its tests;
 `lib/layoutRules.ts` if needed; the locale files; `routes/settings/CLAUDE.md`,
 `components/CLAUDE.md`.
 
-- [ ] **Step 1: failing tests.**
+- [x] **Step 1: failing tests.**
   - `user sees who changed what in the household, newest first`: one row per action of
     T51, each a full sentence from the O39 texts, with names as stored (no `capitalize`);
   - an entry whose location is deleted still shows its stored name;
@@ -802,11 +802,11 @@ and its tests and stories; `routes/settings/index.tsx` and its tests;
   - the sidebar and the mobile accordion show **Activity** to an owner or manager in cloud
     only, as item 8 (after Tags), and not to a member;
   - empty log: "Nothing has happened here yet."
-- [ ] **Step 2:** red.
-- [ ] **Step 3:** the page, the component, the sidebar item, the texts.
-- [ ] **Step 4:** stories (owner with every action, empty, loading, no access, error) and
+- [x] **Step 2:** red.
+- [x] **Step 3:** the page, the component, the sidebar item, the texts.
+- [x] **Step 4:** stories (owner with every action, empty, loading, no access, error) and
   smoke tests that assert a real sentence, not `container.firstChild`.
-- [ ] **Step 5:** the full gate.
+- [x] **Step 5:** the full gate.
 
 **Mutation checks:** the page passes every entry to a generic text (no per-action sentence)
 → the per-action test; the sidebar item shown in local mode → its local test; the item shown
@@ -814,6 +814,56 @@ to a member → its member test.
 
 **E2E:** none (J.8; `a11y.spec.ts` has no `cloud` project, so the page's axe scans go into
 J.8's cloud spec, as H5c did).
+
+**Done (2026-11-20).** Web suite **3519 / 349 → 3562 / 356** (+43 tests, 7 new files).
+Server suite unchanged at **2563 / 83**; no server change. What was built:
+
+| Part | Where | Note |
+|---|---|---|
+| the page | `routes/settings/household/activity.tsx` | cloud only; local mode goes to `/settings/household`. No access (`errorCode === 'FORBIDDEN'`, old rows hidden), spinner, error with Retry, empty, list, **Load more** (only while `hasMore`, off while `isLoadingMore`), a failed page's message. Focus goes to the first new row after Load more |
+| the list | `components/household/ActivityList/` | `ActivityList` and `activitySentence(entry, t)`: one i18next key per action, fallbacks for `null` fields and an unknown action |
+| the sidebar item | `components/global/Sidebar/HouseholdSidebar.tsx` | eighth, after Tags; `cloudOnly` and `readsActivity` (`usePermissions().canReadActivity`) |
+| the mobile card | `routes/settings/index.tsx` | eighth, after Tags, the same rule |
+| `formatDateTime` | `lib/formatDate.ts` | the date and the time; `''` for an invalid date (Intl throws for it) |
+| texts | `i18n/locales/en.json`, `tw.json` | `settings.household.activity.*`, 38 keys each. The O39 texts (`locationsDeleted` as `_other`) plus 13 new ones (listed in the J.6 report) |
+| the hook fix | `hooks/useHouseholdActivity.ts` | see below |
+
+**Decisions made here:**
+
+- **The H6b actions get their O39 texts now**, not "Unknown". The enum already holds all 19
+  values (J.1, J.3), so the texts cost nothing and K.* needs no web change for them.
+- **`LOCATIONS_DELETED` has `_one` and `_other`.** "deleted all 1 locations" reads badly, so
+  `_one` says "deleted the only location". A `null` count uses a sentence with no number.
+- **"You" for the caller.** `actorIsMe` gives "You", `targetIsMe` gives "you" (`tw` 你). O39
+  has no text for it.
+- **The hook fix, from the J.5 review.** A short first page now marks the end too, and the
+  end is kept per Apollo client (`oldestIdByClient`, a module `WeakMap`), so a remount with
+  the whole list in the cache keeps it. Safe because log rows are never deleted and ids are
+  `cuid()`. The comment "A first page shorter than a full page is the whole log" is now true.
+- **`refetchWritePolicy: 'merge'` on the query.** Found while writing the test for the fix:
+  Apollo's default for a refetch is `overwrite`, which gives the field policy no old list.
+  So until now every live event or write dropped the pages "Load more" had added, and J.5's
+  "the pages already loaded stay" was not true. J.5's `client.test.ts` tests write through
+  the cache directly, not through `refetch`, so they could not see it.
+
+**Mutation checks run (2026-11-20).** Each file was copied aside first, broken, run,
+restored from the copy and compared with `diff -q`. Every row went red on an assertion.
+
+| # | Mutation | Red |
+|---|---|---|
+| 1 | `refetchWritePolicy: 'merge'` removed | "a short first page still means the end after a refetch adds new rows on top" (`expected … to have a length of 55 but got 50`) |
+| 2 | the effect that marks a short list's last row as the end does nothing | the same test (`expected true to be false`, on `hasMore`) |
+| 3 | the end not kept per client (state only) | "the end of the log is remembered when the page is opened again" |
+| 4 | every entry gets the generic `unknownAction` text (the plan's check) | 7 in `ActivityList.test.tsx` (the per-action test, the tw word order, the fallbacks) and the `EveryAction` smoke test |
+| 5 | the sidebar item shown in local mode (the plan's check) | "user in local mode does not see Activity" (sidebar) |
+| 6 | the sidebar item shown to a member (the plan's check) | "household member does not see Activity" (sidebar) |
+| 7 | the accordion card shown in local mode | "user in local mode does not see Activity" (accordion) |
+| 8 | the accordion card shown to a member | "household member does not see Activity" (accordion) |
+| 9 | no access read from `isError && errorCode` | "household manager demoted in another tab sees the no-access text, not the old rows" |
+| 10 | Load more never disabled | "Load more is off while the next page loads" |
+| 11 | no focus move after Load more | "focus moves to the first new row after Load more" |
+| 12 | no "(deleted account)" | 4: the per-action test, the deleted-account test, the tw test, the `DeletedAccount` smoke test |
+| 13 | Load more shown when `hasMore` is false | "user can load more, and Load more is gone at the end of the log" and the empty-log test |
 
 ---
 
@@ -1345,6 +1395,11 @@ Filled in from the task reports and reviews.
 | J.5 | File map: `recordImport` in `lib/importData.ts` and `components/settings/ImportCard/` | Only `lib/importData.ts` changed. `importCloudData` is shared by `ImportCard` and the sign-in copy (`usePostLoginMigration`), so both are logged from one call site. `ImportCard` needs nothing |
 | J.5 | J.7 Step 1: J.7 calls `expectLocationLoss` before **Delete all locations** and **Delete household** | The hooks do it (`usePurges.ts`), and also for **Clear household**. J.7 needs no call of its own |
 | J.5 | J.7 Step 1: after **Delete household** "the app shows the no-household screen or the person's other household" | `useDeleteHousehold` does the move (`moveToCurrentHousehold`, as `leave()`), and it clears the Apollo cache and `Player1InventoryCloudCache`. J.7 shows the dialog only |
+| J.5 | Step 3: "a refetch after a live event replaces the first page" and keeps the pages loaded (the decisions list: "new rows go on top, and the pages already loaded stay") | Not true until J.6. Apollo's `refetch` uses `refetchWritePolicy: 'overwrite'` by default, so the field policy got no old list and every live event or write dropped the "Load more" pages. J.5's `client.test.ts` tests wrote to the cache directly, not through `refetch`. J.6 set `refetchWritePolicy: 'merge'` on the query and pinned it with a hook test |
+| J.6 | Files: the sidebar item in `HouseholdSidebar.tsx` "and its tests and stories" | `usePermissions` in the sidebar needs a `QueryClientProvider` (local mode reads the location list through TanStack Query). The existing `HouseholdSidebar.test.tsx` and `HouseholdSidebar.stories.tsx` had none and failed until one was added. New tests went into two new files, `HouseholdSidebar.activity.test.tsx` and `routes/settings/index.activity.test.tsx`, which replace `usePermissions` with `permissionsFor` |
+| J.6 | O39 lists the texts | It has no text for the caller ("You"), for a missing name, location or role, for an unknown action, for one deleted location, or for the page's errors and link back. 13 texts were added; see the J.6 report |
+| J.6 | Files: no shared fixtures | The page story and the list story need the same 19 rows, and a named export in a `.stories.tsx` becomes a broken story. They live in a new module, `src/test/activityFixtures.ts` |
+| J.6 | Facts: "use the app's date helpers" | `formatDate` shows no time. A log row needs one, so `formatDateTime` was added beside it |
 | J.5 | Step 1: `loadMore()` and `hasMore` | The hook also needed `isLoadingMore`, `loadMoreFailed` (a failed page must not reject, and must not hide the rows shown) and `refetch` (the page's Retry). `useDeleteHousehold` has an `isPending` of its own: it has no refetch, and it stays true until the move starts |
 
 ## Status
