@@ -1359,7 +1359,9 @@ plan's *What this plan got wrong* and *Status*.
 - **"Sign in to join" sets `migration-prompted='1'`** (G.7). On that device the automatic
   "Copy local data?" prompt then never shows again. A person can still copy on purpose
   through the data mode card (`DataModeCard`, which clears the key when a strategy is
-  chosen).
+  chosen). **Fixed 2026-11-19**: the button no longer sets the key; the question waits on
+  the join and sign-in pages, and Join skips only the joined household
+  (`docs/global/bugs/2026-11-19-bug-join-turns-off-copy-prompt.md`).
 - **A leave or a removal into NO household leaves the old rows on the device** until G.8's
   screen clears them (G.8 Step 3b). `HouseholdChangeGuard` cannot see it: there is no new
   id.
