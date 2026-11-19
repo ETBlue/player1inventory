@@ -152,9 +152,12 @@ describe('PostLoginMigrationDialog — the E2E branch needs no ClerkProvider', (
     // When the dialog mounts in E2E test mode
     await renderE2EDialog()
 
-    // Then the user is asked, and nothing was copied without being asked
+    // Then the user is asked, by household name, and nothing was copied
+    // without being asked
     expect(
-      await screen.findByText('Import local data to cloud?'),
+      await screen.findByRole('heading', {
+        name: /^Copy your offline data into /,
+      }),
     ).toBeInTheDocument()
     expect(importCloudData).not.toHaveBeenCalled()
   })

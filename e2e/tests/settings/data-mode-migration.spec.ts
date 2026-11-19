@@ -344,8 +344,13 @@ test('user can switch from offline to cloud mode and clear & import their local 
   // They follow it so the page has settled first.
   // t('settings.postLoginMigration.errorTitle') = "Copy failed"
   await expect(page.getByText('Copy failed')).not.toBeVisible()
-  // t('settings.postLoginMigration.title') = "Import local data to cloud?"
-  await expect(page.getByText('Import local data to cloud?')).not.toBeVisible()
+  // Since 2026-11-19 the question with no stored strategy has the same title
+  // as the stored copy's question, naming the household
+  // (docs/global/bugs/2026-11-19-bug-manual-import-names-no-household.md).
+  // t('settings.postLoginMigration.confirmTitle') = "Copy your offline data into {{household}}?"
+  await expect(
+    page.getByRole('heading', { name: /^Copy your offline data into / }),
+  ).not.toBeVisible()
 
   // ── And the local pantry REPLACED the cloud account's contents ──────────────
   // EXACTLY the payload's one item. The absence of `Cloud Only Item` is what

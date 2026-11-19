@@ -8,8 +8,8 @@ import * as stories from './index.stories'
 // chain (fetchLocalPayload → importCloudData → 'done') settles in a single tick
 // — fetchLocalPayload rejects against the empty test DB and the .catch jumps the
 // hook straight to 'done', closing the progress dialog before findByText can
-// observe it. Idle returns early (migration-prompted set) and Prompting calls
-// getAllItems (not fetchLocalPayload), so neither is affected.
+// observe it. Idle returns early (migration-prompted set) and the two Prompting
+// stories call getAllItems (not fetchLocalPayload), so none is affected.
 // The three cloud stories need a household and a location list. `setup.ts`
 // stubs both Apollo hooks with no data, and `MockedProvider` takes effect only
 // in real Storybook, so this file answers them. Each test sets the role.
@@ -67,6 +67,7 @@ vi.mock('@/lib/exportData', async (importOriginal) => {
 const {
   Idle,
   Prompting,
+  PromptingMember,
   AskBeforeCopy,
   AskBeforeCopyShared,
   MemberCannotCopy,
@@ -93,13 +94,37 @@ describe('PostLoginMigrationDialog stories smoke tests', () => {
   })
 
   describe('Prompting', () => {
-    afterEach(() => localStorage.removeItem('migration-prompted'))
+    beforeEach(() => localStorage.setItem('data-mode', 'cloud'))
+    afterEach(() => {
+      localStorage.clear()
+      state.role = 'owner'
+    })
 
-    it('renders without error — dialog title visible once db is ready', async () => {
+    it('Prompting names the household and offers the copy', async () => {
+      state.role = 'owner'
       render(<Prompting />)
       expect(
-        await screen.findByText('Import local data to cloud?'),
+        await screen.findByRole('heading', {
+          name: 'Copy your offline data into Our Home?',
+        }),
       ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Copy here' }),
+      ).toBeInTheDocument()
+    })
+
+    it('PromptingMember names the household and offers no copy', async () => {
+      state.role = 'member'
+      render(<PromptingMember />)
+      expect(
+        await screen.findByRole('heading', {
+          name: 'Copy your offline data into Our Home?',
+        }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByText(/Only the owner or a manager of this household/),
+      ).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Copy here' })).toBeNull()
     })
   })
 

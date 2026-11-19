@@ -1309,11 +1309,11 @@ describe('Item stock tab', () => {
 
     renderStockTab(cloudItem.id)
 
-    // Local data in cloud mode opens the "Import local data to cloud?"
-    // dialog, which is what the local fixture above triggers. Skip it — the
-    // local rows only exist here so the numbers below can be told apart from
-    // the cloud ones.
-    await user.click(await screen.findByRole('button', { name: /^skip$/i }))
+    // Local data in cloud mode would open the copy question, but it waits for
+    // the household (docs/global/bugs/2026-11-19-bug-manual-import-names-no-household.md),
+    // and `GetHousehold` answers nothing in this file. So no dialog covers the
+    // page. The local rows only exist here so the numbers below can be told
+    // apart from the cloud ones.
     await screen.findByLabelText(/^packed/i)
 
     // When the user asks to remove the item from the cloud location

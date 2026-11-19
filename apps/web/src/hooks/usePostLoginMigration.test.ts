@@ -1039,8 +1039,8 @@ describe('usePostLoginMigration — a stored copy asks first (O22-A)', () => {
     await drain()
     expect(mockImportCloudData).not.toHaveBeenCalled()
 
-    // And after a reload neither the question nor "Import local data to
-    // cloud?" comes back
+    // And after a reload neither the question nor the one with no stored
+    // strategy comes back
     unmount()
     const next = renderWith(OWNER_HOUSEHOLD)
     await drain()
@@ -1216,6 +1216,26 @@ describe('usePostLoginMigration — a joined household is skipped, not every hou
     rerender({ h: OWNER_HOUSEHOLD, p: false })
 
     // Then the question comes in their own household
+    await waitFor(() => expect(result.current.state).toBe('prompting'))
+  })
+
+  // docs/global/bugs/2026-11-19-bug-manual-import-names-no-household.md: the
+  // question with no stored strategy names the household and reads the role,
+  // so it waits for the household like the stored copy does.
+  it('with no skip at all, the question waits until the household is known', async () => {
+    // Given local items, no skip list, and a household still loading
+    seed()
+    const { result, rerender } = renderWith(undefined)
+    await drain()
+
+    // Then nothing is asked yet, and nothing is stored
+    expect(result.current.state).toBe('idle')
+    expect(localStorage.getItem(MIGRATION_PROMPTED_KEY)).toBeNull()
+
+    // When the household loads
+    rerender({ h: OWNER_HOUSEHOLD, p: false })
+
+    // Then the question comes
     await waitFor(() => expect(result.current.state).toBe('prompting'))
   })
 
