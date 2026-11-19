@@ -74,6 +74,33 @@ Commits on `fix/screens-show-save-errors`: `22ae22ce` (helper), `a8c555ce` (#1, 
 `6c6e6bd3` (#3, #4, Info tab), `ad90a7a5` (#5, tag and vendor Info), `9a99a089` (#6, tag and
 vendor Items), `5d6f2a5c` (#7, relation tags and vendors), `b4901deb` (#8), `c6104f11` (#9).
 
+### Second round: the places left out of the first round
+
+The first round listed these as known gaps. The owner asked for them in the same PR. A sweep
+for `.mutate(`, `mutateAsync(`, `void handle`, `.catch(() =>` and `catch {}` in
+`apps/web/src/routes` and `apps/web/src/components` found more of the same shape; those are
+fixed here too (marked *sweep*).
+
+| Commit | Screen | What was wrong | Fix |
+|---|---|---|---|
+| `2614ed0f` | create-from-search on the Items tab of a tag, vendor, recipe and shelf | `catch {}` showed nothing | toast `common.saveFailed`; the typed name stays |
+| `2614ed0f` | `ShelfDetailView` create-from-search | `catch {}`, and the shelf write after the create was a `mutate` nobody read | toast; the shelf write is awaited inside the same `try` |
+| `2614ed0f` | shelf Items tab checkbox (*sweep*) | try/finally with no catch, the same bug the tag and vendor tabs had | toast |
+| `b91c4534` | item Relation tabs: New Tag | create had no catch (unhandled rejection); the assign after it was a `mutate` with no `onError` | toast. A failed create keeps the dialog and name. A failed assign closes it, because the tag exists now |
+| `b91c4534` | item Relation tabs: New Tag Type (*sweep*), New Recipe, New Vendor's assign (*sweep*) | no catch / no `onError` | toast |
+| `ee0dd012` | shelves page: Add shelf, drag to reorder | `mutate` with no `onError`; `AddShelfDialog` closed and cleared the name before the write ended | toast. `AddShelfDialog.onSubmit` may return a promise; the dialog closes only when it resolves |
+| `ee0dd012` | shelf Info tab Save (both branches), shelf Filters tab | `mutate` with no `onError` | toast |
+| `ee0dd012` | tags page: New Tag Type, New Tag, Edit Tag Type | `mutate` with no `onError`; the Add Tag dialog closed before the write ended | toast. Add Tag awaits `mutateAsync` and rethrows, so `TagInfoForm` marks the edit unsaved again |
+| `4da8317c` | every delete through `DeleteButton` | no catch: pages that passed `mutateAsync` left an unhandled rejection, pages that passed `mutate` never saw the failure | `DeleteButton` shows a new text, `common.deleteFailed`, in one place. Every caller now awaits `mutateAsync` |
+| `4da8317c` | tag page "has child tags" dialog (*sweep*) | its own `AlertDialogAction`s, same unhandled rejection | toast `common.deleteFailed` |
+| `cc1f9fee` | shopping cart page: create-from-search, check / uncheck / amount, abandon, checkout | `catch {}`, or an `onError` that only cleared the pending row, or a failure other than `CART_CHANGED` that showed nothing | toast; dialogs stay open |
+| `d61d40e3` | locations page Add and Rename, `NoLocationsGate` Add, `NewRecipeDialog` (*sweep*) | `mutate` with no `onError`; `NewRecipeDialog` had no catch | toast; the dialog keeps the name |
+
+New text: `common.deleteFailed` ("Could not delete. Please try again." /
+「無法刪除，請再試一次。」).
+
+Contracts written down: `DeleteButton` and `AddShelfDialog` in `components/CLAUDE.md`.
+
 ## Test added
 
 - 21 new web tests (web 3159 / 327 files → 3180 / 328). A new test helper,
@@ -85,17 +112,23 @@ vendor Items), `5d6f2a5c` (#7, relation tags and vendors), `b4901deb` (#8), `c61
   baseline revert removed, `onError` removed, and so on) all went red, then green after
   restore.
 
+Second round: 42 new web tests and 1 new test file,
+`routes/settings/household/deleteFailed.test.tsx` (web 3180 / 328 files → 3222 / 329). Every new
+test was red before its fix, and 42 mutation checks (message removed, catch
+rethrows, `mutateAsync` put back to `mutate`, `onError` removed, the dialog closing on a
+failure) all went red, then green after restore. Four older tests pinned the old `mutate`
+calls or "no toast at all"; they now check the new contract.
+
 **Not covered:**
 
 - No cloud-mode test. All new tests make the local Dexie write fail. The cloud branches reject
   the same way, but no test drives them.
-- **Left out, the same kind of bug:** the create-from-search catches that show nothing
-  (`recipes/$id/items.tsx`, `tags/$id/items.tsx`, `vendors/$id/items.tsx`,
-  `shelves/$shelfId/items.tsx`, `ShelfDetailView.handleCreateFromSearch`);
-  `relation/tags.tsx` `handleAddTag`; `relation/recipes.tsx` `createRecipe.mutate`; the
-  shelves settings pages and `tags/index.tsx` (`mutate` with no `onError`); every delete
-  through `DeleteButton`; the `mutate` calls on the shopping page.
+- `NoLocationsGate`'s Add runs only in cloud mode, so its fix has no test yet.
+- The shelves page drag-to-reorder fix has no test: jsdom has no layout, so a keyboard drag
+  finds no drop target and never calls the reorder.
+- After a successful checkout the cart page awaits `refetchItems()` with no catch. That is a
+  failed refresh, not a failed save (the area of PR #386), so it is left as it is.
 
 ## PR / commit
 
-*TBD*
+PR #387, branch `fix/screens-show-save-errors`. Commits are listed above.
