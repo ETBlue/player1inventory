@@ -4,6 +4,7 @@ import { NoLocationsEmptyState } from '@/components/location/NoLocationsEmptySta
 import { AddNameDialog } from '@/components/shared/AddNameDialog'
 import { useDataMode } from '@/hooks/useDataMode'
 import { useCreateLocation, useLocations } from '@/hooks/useLocations'
+import { showSaveError } from '@/lib/saveError'
 
 /**
  * Shows `NoLocationsEmptyState` instead of the page when the person has no
@@ -45,6 +46,9 @@ export function NoLocationsGate({ children }: { children: ReactNode }) {
         setAddName('')
         setAddOpen(false)
       },
+      // The dialog stays open with the name. Before, nothing on screen said
+      // the location was not created.
+      onError: (err) => showSaveError(err),
     })
   }
 

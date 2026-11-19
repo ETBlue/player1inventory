@@ -13,6 +13,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useCreateRecipe } from '@/hooks/useRecipes'
+import { showSaveError } from '@/lib/saveError'
 import type { Recipe } from '@/types'
 
 interface NewRecipeDialogProps {
@@ -44,7 +45,15 @@ export function NewRecipeDialog({
 
   const handleSubmit = async () => {
     if (nameError || createRecipe.isPending) return
-    const recipe = await createRecipe.mutateAsync({ name: name.trim() })
+    let recipe: Awaited<ReturnType<typeof createRecipe.mutateAsync>>
+    try {
+      recipe = await createRecipe.mutateAsync({ name: name.trim() })
+    } catch (err) {
+      // The dialog stays open with the name, so the user can try again.
+      // Before, this was an unhandled rejection with nothing on screen.
+      showSaveError(err)
+      return
+    }
     if (!recipe) return
     handleClose()
     if (onSuccess) {

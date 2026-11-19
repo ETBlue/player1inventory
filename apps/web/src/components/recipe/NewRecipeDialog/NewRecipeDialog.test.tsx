@@ -2,7 +2,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { Toaster } from '@/components/ui/sonner'
 import { db } from '@/db'
+import { watchUnhandledRejections } from '@/test/unhandledRejections'
 import type { Recipe } from '@/types'
 import { NewRecipeDialog } from './NewRecipeDialog'
 
@@ -105,5 +107,51 @@ describe('NewRecipeDialog', () => {
         expect.objectContaining({ to: '/settings/household/recipes/$id' }),
       )
     })
+  })
+
+  // A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+  // Before the fix `handleSubmit` awaited `mutateAsync` with no catch: an
+  // unhandled rejection, and nothing on screen said the recipe was not made.
+  it('user sees a message when creating the recipe fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given the dialog is open, and a database that refuses the new recipe
+      const user = userEvent.setup()
+      const onOpenChange = vi.fn()
+      const onSuccess = vi.fn()
+      renderWithClient(
+        <>
+          <NewRecipeDialog
+            open={true}
+            onOpenChange={onOpenChange}
+            onSuccess={onSuccess}
+          />
+          <Toaster />
+        </>,
+      )
+      vi.spyOn(db.recipes, 'add').mockRejectedValueOnce(new Error('disk full'))
+
+      // When the user types a name and submits
+      await user.type(screen.getByRole('textbox'), 'Pasta')
+      await user.click(screen.getByRole('button', { name: /new recipe/i }))
+
+      // Then a message says so, and the dialog stays open with the name
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      expect(screen.getByRole('textbox')).toHaveValue('Pasta')
+      expect(onOpenChange).not.toHaveBeenCalled()
+      expect(onSuccess).not.toHaveBeenCalled()
+      await vi.waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: /new recipe/i }),
+        ).toBeEnabled(),
+      )
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
   })
 })
