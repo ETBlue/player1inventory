@@ -239,6 +239,8 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     //      that deletes an empty household), so the retry stays.
     //   2. The household lock (`lockHouseholdOrForbid`), then the owner
     //      check through `tx` (decision T52). A refusal rolls step 1 back.
+    //      Before the transaction there is also an early owner check (see
+    //      below), so a manager or member never reaches step 1.
     //   3. `deleteHouseholdData`, the same ordered delete as `clearAllData`
     //      (decision T64). `Tag.type` is NoAction, so the catalog is not left
     //      to the cascade.
@@ -260,6 +262,16 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       const householdId = await requireHousehold(ctx)
       // Prisma reads `undefined` as NO filter in the deletes below.
       if (!householdId) throw new Error('deleteHousehold: no household id')
+
+      // An EARLY refusal, outside the transaction. It is not the check that
+      // counts: that one is step 2, after the lock, through `tx`. It is here
+      // because step 1 writes OTHER people's `User` rows. Without it, a
+      // manager or member would take those row locks before being refused,
+      // and could push another person's join (which holds its own `User`
+      // row and then wants this household's lock) into P2034. A role read
+      // here can be stale only in the safe direction: an owner demoted
+      // after this read is still refused in step 2.
+      await requireHouseholdRole(ctx, householdId, 'owner')
 
       await retryOnceOnConflict(() =>
         prisma.$transaction(

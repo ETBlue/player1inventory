@@ -396,7 +396,7 @@ describe('the household writes lock first and read the role after, through tx (d
     expect(order).toContain('role')
   })
 
-  it.each(writes)('%s: nothing reads the household role through the global client', async (_name, act) => {
+  it.each(writes)('%s: no household role read on the global client, except the one early read of deleteHousehold', async (name, act) => {
     // `requireHousehold` reads the person's memberships through the global
     // client before the transaction, which is fine: it decides WHICH
     // household, not the role. The role read must be inside the lock.
@@ -410,7 +410,11 @@ describe('the household writes lock first and read the role after, through tx (d
     })
     const res = await act()
     expect(res.errors).toBeUndefined()
-    expect(globalRoleReads).toEqual([])
+    // `deleteHousehold` makes ONE early owner read before its transaction,
+    // so a manager or member never writes other people's `User` rows. It is
+    // not the check that counts: the order test above proves the read
+    // through tx after the lock, and the race test below that it refuses.
+    expect(globalRoleReads).toEqual(name === 'deleteHousehold' ? ['outside'] : [])
   })
 
   it.each(writes)(
@@ -954,6 +958,26 @@ describe('deleteHousehold (owner decision O38-A)', () => {
       const res = await deleteHousehold(userId)
       expect(code(res)).toBe('FORBIDDEN')
       expect(snapshot()).toEqual(before)
+    })
+  }
+
+  for (const [who, userId] of [
+    ['manager', MIA],
+    ['member', BOB],
+  ] as const) {
+    it(`household ${who} is refused before any transaction, so no User row is ever written`, async () => {
+      // Step 1 of deleteHousehold writes OTHER people's `User` rows. A
+      // refusal after it rolls back, but the row locks are still taken, and a
+      // join that holds one of those rows can be pushed into P2034. So a
+      // person who is not the owner must be refused before step 1 runs.
+      const transaction = vi.spyOn(prisma, '$transaction')
+      const userUpdateMany = vi.spyOn(world.client.user, 'updateMany')
+
+      const res = await deleteHousehold(userId)
+
+      expect(code(res)).toBe('FORBIDDEN')
+      expect(transaction).not.toHaveBeenCalled()
+      expect(userUpdateMany).not.toHaveBeenCalled()
     })
   }
 
