@@ -839,4 +839,45 @@ describe('Tag Detail - Items Tab', () => {
       vi.restoreAllMocks()
     }
   })
+
+  // A failed create from search
+  // (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md). Before
+  // the fix the catch kept the typed name but showed nothing.
+  it('user sees a message when creating an item from search fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given a tag, and a database that refuses the new item
+      const tagType = await createTagType({
+        name: 'Category',
+        color: TagColor.blue,
+      })
+      const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
+      renderItemsTab(tag.id)
+      vi.spyOn(db.items, 'add').mockRejectedValueOnce(new Error('disk full'))
+      const user = userEvent.setup()
+
+      // When the user types a new name and presses Enter
+      await user.click(
+        await screen.findByRole('button', { name: /toggle search/i }),
+      )
+      await user.type(
+        await screen.findByPlaceholderText(/search items/i),
+        'Butter',
+      )
+      await user.keyboard('{Enter}')
+
+      // Then a message says the change was not saved
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      // And the typed name is kept, so the user can try again
+      expect(screen.getByPlaceholderText(/search items/i)).toHaveValue('Butter')
+      expect(await db.items.count()).toBe(0)
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
+  })
 })

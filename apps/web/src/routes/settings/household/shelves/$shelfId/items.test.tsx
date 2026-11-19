@@ -6,10 +6,11 @@ import {
 } from '@tanstack/react-router'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { createItem, createShelf } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+import { watchUnhandledRejections } from '@/test/unhandledRejections'
 
 describe('Shelf Detail - Items Tab', () => {
   let queryClient: QueryClient
@@ -287,5 +288,78 @@ describe('Shelf Detail - Items Tab', () => {
     expect(names[0]).toMatch(/apple/i)
     expect(names[1]).toMatch(/zucchini/i)
     expect(names[2]).toMatch(/almond/i)
+  })
+
+  // A failed create from search
+  // (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md). Before
+  // the fix the catch kept the typed name but showed nothing.
+  it('user sees a message when creating an item from search fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given a selection shelf, and a database that refuses the new item
+      const shelf = await makeShelf()
+      renderItemsTab(shelf.id)
+      vi.spyOn(db.items, 'add').mockRejectedValueOnce(new Error('disk full'))
+      const user = userEvent.setup()
+
+      // When the user types a new name and presses Enter
+      await user.click(
+        await screen.findByRole('button', { name: /toggle search/i }),
+      )
+      await user.type(
+        await screen.findByPlaceholderText(/search items/i),
+        'Butter',
+      )
+      await user.keyboard('{Enter}')
+
+      // Then a message says the change was not saved
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      // And the typed name is kept, so the user can try again
+      expect(screen.getByPlaceholderText(/search items/i)).toHaveValue('Butter')
+      expect(await db.items.count()).toBe(0)
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
+  })
+
+  // A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+  // Before the fix the write had a try/finally with no catch: an unhandled
+  // rejection, and nothing on screen said the change was not saved.
+  it('user sees a message when adding an item to the shelf fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given a selection shelf and an item, and a database that refuses the write
+      const shelf = await makeShelf()
+      await makeItem('Milk')
+      renderItemsTab(shelf.id)
+      vi.spyOn(db.shelves, 'update').mockRejectedValueOnce(
+        new Error('disk full'),
+      )
+      const user = userEvent.setup()
+
+      // When the user checks the item
+      await user.click(await screen.findByLabelText('Add Milk'))
+
+      // Then a message says the change was not saved
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      // And the row is unchanged and can be pressed again
+      await waitFor(() =>
+        expect(screen.getByLabelText('Add Milk')).toBeEnabled(),
+      )
+      expect(screen.getByLabelText('Add Milk')).not.toBeChecked()
+      expect((await db.shelves.get(shelf.id))?.itemIds).toEqual([])
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
   })
 })

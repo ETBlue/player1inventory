@@ -186,8 +186,10 @@ function VendorItemsTab() {
         id: newItem.id,
         updates: { vendorIds: [vendorId] },
       })
-    } catch {
-      // input stays populated for retry
+    } catch (err) {
+      // The typed name stays in the search box, so the user can try again.
+      // Before, this catch showed nothing.
+      showSaveError(err)
     }
   }
 

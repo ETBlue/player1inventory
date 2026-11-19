@@ -36,6 +36,7 @@ import {
   filterItemsByVendors,
 } from '@/lib/filterUtils'
 import { isInactive } from '@/lib/quantityUtils'
+import { showSaveError } from '@/lib/saveError'
 import {
   deriveFilterAxes,
   type FilterPicks,
@@ -395,13 +396,17 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
       })
       if (shelf?.type === 'selection' && newItem?.id) {
         const currentIds = shelf.itemIds ?? []
-        updateShelf.mutate({
+        // Awaited, so a failed shelf write reaches the catch below. It was a
+        // `mutate` whose error nobody read.
+        await updateShelf.mutateAsync({
           id: shelf.id,
           data: { itemIds: [...currentIds, newItem.id] },
         })
       }
-    } catch {
-      // input stays populated for retry
+    } catch (err) {
+      // The typed name stays in the search box, so the user can try again.
+      // Before, this catch showed nothing.
+      showSaveError(err)
     }
   }
 
