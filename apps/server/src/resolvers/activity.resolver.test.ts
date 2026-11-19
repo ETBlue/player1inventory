@@ -318,6 +318,22 @@ describe('householdActivity: paging', () => {
     expect(await ids(OWEN, { first: 1, before: 'act_07a' })).toEqual(['act_06'])
   })
 
+  it('paging orders by time first, and uses the id only between rows of the same time', async () => {
+    // Given ids that do NOT follow the time order: the newest row has the
+    // smallest id and the oldest row the largest. (In the main fixture the
+    // ids follow the time, so a cursor of "createdAt <= cursor AND id <
+    // cursor" passes every other paging test.)
+    seed([
+      row('act_z', 'hh_h', at(3), OWEN, 'INVITE_REVOKED'),
+      row('act_m', 'hh_h', at(4), OWEN, 'INVITE_REVOKED'),
+      row('act_a', 'hh_h', at(5), OWEN, 'INVITE_REVOKED'),
+    ])
+
+    expect(await ids(OWEN, { first: 1 })).toEqual(['act_a'])
+    expect(await ids(OWEN, { first: 1, before: 'act_a' })).toEqual(['act_m'])
+    expect(await ids(OWEN, { first: 1, before: 'act_m' })).toEqual(['act_z'])
+  })
+
   it("an id of another household's row is BAD_USER_INPUT", async () => {
     const res = await run(OWEN, { before: 'act_x1' })
     expect(code(res)).toBe('BAD_USER_INPUT')
@@ -446,6 +462,8 @@ describe('householdActivity: the fields of an entry', () => {
       row('act_bad3', 'hh_h', at(3), OWEN, 'IMPORT', { details: { counts: 'many' } }),
       row('act_bad4', 'hh_h', at(4), OWEN, 'LOCATIONS_DELETED', { details: { count: 1.5 } }),
       row('act_bad5', 'hh_h', at(5), OWEN, 'HOUSEHOLD_CLEARED', { details: [1, 2] }),
+      // `counts` on a row that is not an IMPORT is not read
+      row('act_bad6', 'hh_h', at(6), OWEN, 'LOCATIONS_DELETED', { details: { count: 2, counts: COUNTS } }),
     ])
     const seen = new Map((await entries(OWEN)).map((e) => [e.id, e]))
     expect(seen.get('act_bad')).toMatchObject({ locationName: null, fromRole: null, toRole: null })
@@ -453,6 +471,7 @@ describe('householdActivity: the fields of an entry', () => {
     expect(seen.get('act_bad3')).toMatchObject({ importCounts: null })
     expect(seen.get('act_bad4')).toMatchObject({ count: null })
     expect(seen.get('act_bad5')).toMatchObject({ locationName: null, count: null })
+    expect(seen.get('act_bad6')).toMatchObject({ count: 2, importCounts: null })
   })
 
   it('an import row missing one count gives 0 for that count', async () => {

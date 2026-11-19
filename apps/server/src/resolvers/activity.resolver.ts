@@ -32,7 +32,10 @@ import type {
 // and the `ORDER BY` uses the same collation, so the cursor and the order
 // agree. The test fake compares with JavaScript's string order, and its sort
 // does too. The ids are cuids (lowercase letters and digits), so the order
-// among tied rows is stable but is NOT the order they were written in.
+// among tied rows is stable, but it is not promised to be the order they
+// were written in. Nor are ids promised to follow `createdAt`, so the id must
+// only break a tie: "createdAt <= cursor AND id < cursor" would skip an
+// older row with a larger id (tested).
 //
 // ── NAMES ──
 //
