@@ -674,7 +674,10 @@
         "removing": "Removing…",
         "loadError": "Could not load the people. Try again.",
         "error": "Could not save the change. Try again.",
-        "retry": "Retry"
+        "retry": "Retry",
+        "unnamed": "Location",
+        "choosePerson": "Choose a person",
+        "membersLoadError": "Could not load the household members. Try again."
       }
     },
     "shelves": {

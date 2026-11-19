@@ -42,16 +42,22 @@ export function useHouseholdMembers(): {
   data: HouseholdPerson[] | undefined
   isLoading: boolean
   isError: boolean
+  /** Read the list again (a Retry). Never rejects. */
+  refetch: () => void
 } {
   const { mode } = useDataMode()
+  const skip = mode !== 'cloud'
   const cloud = useHouseholdMembersQuery({
-    skip: mode !== 'cloud',
+    skip,
     fetchPolicy: 'cache-and-network',
   })
   return {
     data: cloud.data?.householdMembers,
     isLoading: cloud.loading && !cloud.data,
     isError: !!cloud.error && !cloud.data,
+    refetch: () => {
+      if (!skip) cloud.refetch().catch(() => {})
+    },
   }
 }
 

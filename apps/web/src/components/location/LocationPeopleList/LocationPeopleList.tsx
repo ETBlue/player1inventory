@@ -66,6 +66,11 @@ export interface LocationPeopleListProps {
    * "Removing…", so it cannot be confirmed twice.
    */
   removingUserIds?: ReadonlySet<string>
+  /**
+   * Role changes that are running: the row's picker shows the picked role
+   * and is disabled until the change and its reads are done.
+   */
+  pendingRoles?: ReadonlyMap<string, LocationRole>
 }
 
 /**
@@ -86,6 +91,7 @@ export function LocationPeopleList({
   onSetRole,
   onRemove,
   removingUserIds,
+  pendingRoles,
 }: LocationPeopleListProps) {
   const { t } = useTranslation()
   if (people.length === 0) {
@@ -101,6 +107,7 @@ export function LocationPeopleList({
         const choices = roleChoices(canChange, person.role)
         const canRemove = !person.isMe && canChange(person.role, null)
         const removing = removingUserIds?.has(person.userId) ?? false
+        const pendingRole = pendingRoles?.get(person.userId)
         return (
           <li key={person.userId}>
             <Card className="flex flex-wrap items-center gap-x-4 gap-y-2 py-2">
@@ -114,7 +121,8 @@ export function LocationPeopleList({
               </CardTitle>
               {choices.length > 0 ? (
                 <Select
-                  value={person.role}
+                  value={pendingRole ?? person.role}
+                  disabled={pendingRole !== undefined}
                   onValueChange={(next) => {
                     if (next !== person.role)
                       onSetRole(person, next as LocationRole)

@@ -1,9 +1,7 @@
-import { ApolloLink } from '@apollo/client'
+import { ApolloClient, ApolloLink } from '@apollo/client'
+import { ApolloProvider } from '@apollo/client/react'
 import { MockLink } from '@apollo/client/testing'
-import {
-  MockedProvider,
-  type MockedProviderProps,
-} from '@apollo/client/testing/react'
+import type { MockedProviderProps } from '@apollo/client/testing/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   createMemoryHistory,
@@ -11,6 +9,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import {
+  act,
   cleanup,
   render,
   screen,
@@ -90,6 +89,10 @@ interface Server {
   peopleFail?: 'DOWN' | undefined
   /** When set, `SetLocationRole` is refused with this code. */
   setFails?: string | undefined
+  /** Milliseconds `SetLocationRole` waits before it answers. */
+  setDelay?: number | undefined
+  /** When set, `HouseholdMembers` answers an error. */
+  membersFail?: boolean | undefined
   setCalls: Record<string, unknown>[]
   removeCalls: Record<string, unknown>[]
   leaveCalls: Record<string, unknown>[]
@@ -217,19 +220,29 @@ function dynamicMocks(): NonNullable<MockedProviderProps['mocks']> {
     {
       request: { query: HouseholdMembersDocument },
       maxUsageCount: Number.POSITIVE_INFINITY,
-      result: () => ({
-        data: {
-          householdMembers: HOUSEHOLD.map((p) => ({
-            __typename: 'HouseholdPerson',
-            ...p,
-            joinedAt: '2026-11-01T00:00:00.000Z',
-            isMe: p.userId === server.me,
-            hasLocationRole: Object.values(server.roles).some(
-              (r) => p.userId in r,
-            ),
-          })),
-        },
-      }),
+      result: () =>
+        server.membersFail
+          ? {
+              errors: [
+                {
+                  message: 'down',
+                  extensions: { code: 'INTERNAL_SERVER_ERROR' },
+                },
+              ],
+            }
+          : {
+              data: {
+                householdMembers: HOUSEHOLD.map((p) => ({
+                  __typename: 'HouseholdPerson',
+                  ...p,
+                  joinedAt: '2026-11-01T00:00:00.000Z',
+                  isMe: p.userId === server.me,
+                  hasLocationRole: Object.values(server.roles).some(
+                    (r) => p.userId in r,
+                  ),
+                })),
+              },
+            },
     },
     // The active location's carts (`ActiveLocationProvider`). Not this
     // page's data; answered so the console stays quiet.
@@ -241,6 +254,7 @@ function dynamicMocks(): NonNullable<MockedProviderProps['mocks']> {
     {
       request: { query: SetLocationRoleDocument, variables: () => true },
       maxUsageCount: Number.POSITIVE_INFINITY,
+      delay: () => server.setDelay ?? 0,
       result: (variables: Record<string, unknown>) => {
         server.setCalls.push(variables)
         if (server.setFails)
@@ -335,14 +349,17 @@ function renderPage(locationId: string) {
       defaultOptions: { delay: 0 },
     }),
   ])
+  // Our own client, not MockedProvider's, so a test can read every active
+  // ACTIVE query again, the way a live LOCATION event does.
+  const client = new ApolloClient({ cache: createCache(), link })
   render(
-    <MockedProvider link={link} cache={createCache()}>
+    <ApolloProvider client={client}>
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
       </QueryClientProvider>
-    </MockedProvider>,
+    </ApolloProvider>,
   )
-  return router
+  return Object.assign(router, { apolloClient: client })
 }
 
 async function main() {
@@ -813,5 +830,157 @@ describe('location people page — states', () => {
     server.peopleFail = undefined
     await user.click(within(page).getByRole('button', { name: 'Retry' }))
     expect(await rowOf('vic')).toHaveTextContent('Viewer')
+  })
+})
+
+describe('location people page — review fixes', () => {
+  it('user who loses their role in another tab sees no access, and no old names', async () => {
+    // Given Pia, a participant of the Kitchen, looking at its people
+    const router = renderPage(KITCHEN)
+    await rowOf('vic')
+
+    // When someone removes Pia in another tab, and a live LOCATION event
+    // reads every active query again
+    delete server.roles[KITCHEN]?.['u-pia']
+    // (the read of the people is FORBIDDEN now, so the call rejects)
+    await act(async () => {
+      await router.apolloClient
+        .refetchQueries({ include: 'active' })
+        .catch(() => {})
+    })
+
+    // Then the page says so, and shows none of the old rows. Apollo keeps the
+    // old rows next to the FORBIDDEN, so only `errorCode` can tell.
+    const page = await main()
+    expect(
+      await within(page).findByText('You do not have access to this location.'),
+    ).toBeInTheDocument()
+    expect(within(page).queryByText('vic')).toBeNull()
+    expect(within(page).queryByText('oz Lin')).toBeNull()
+  })
+
+  it('after a Remove, focus moves to the People heading', async () => {
+    server.me = 'u-ola'
+    const user = userEvent.setup()
+    renderPage(KITCHEN)
+    const row = await rowOf('vic')
+    await user.click(
+      within(row).getByRole('button', {
+        name: 'Remove vic from this location',
+      }),
+    )
+    await user.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: 'Remove',
+      }),
+    )
+    const heading = within(await main()).getByRole('heading', {
+      name: 'People',
+    })
+    await waitFor(() => expect(document.activeElement).toBe(heading))
+  })
+
+  it('after a Leave, a household owner who stays gets focus on the People heading', async () => {
+    server.me = 'u-olive'
+    server.roles[KITCHEN] = { ...server.roles[KITCHEN], 'u-olive': 'viewer' }
+    const user = userEvent.setup()
+    renderPage(KITCHEN)
+    await rowOf('Olive')
+    await user.click(
+      await within(await main()).findByRole('button', {
+        name: 'Leave location',
+      }),
+    )
+    await user.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: 'Leave location',
+      }),
+    )
+    await waitFor(() =>
+      expect(within(screen.getByRole('main')).queryByText('Olive')).toBeNull(),
+    )
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(screen.getByRole('main')).getByRole('heading', {
+          name: 'People',
+        }),
+      ),
+    )
+  })
+
+  it('user sees a heading even when the location is not in their list', async () => {
+    // Given Max, a household member with no role on the Kitchen: the
+    // Kitchen is not in Max's list, so its name is not known
+    server.me = 'u-max'
+    renderPage(KITCHEN)
+    const page = await main()
+    await within(page).findByText('You do not have access to this location.')
+    expect(
+      within(page).getByRole('heading', { level: 1, name: 'Location' }),
+    ).toBeInTheDocument()
+  })
+
+  it('user sees the picked role, and cannot pick again, while the change runs', async () => {
+    // Given the owner, and a slow server
+    server.me = 'u-olive'
+    server.setDelay = 300
+    const user = userEvent.setup()
+    renderPage(KITCHEN)
+    const picker = await within(await rowOf('vic')).findByRole('combobox', {
+      name: 'Location role of vic',
+    })
+
+    // When the owner makes vic a participant
+    await user.click(picker)
+    await user.click(screen.getByRole('option', { name: 'Participant' }))
+
+    // Then the picker shows the new role at once, and is off while it runs
+    const running = within(await rowOf('vic')).getByRole('combobox', {
+      name: 'Location role of vic',
+    })
+    expect(running).toHaveTextContent('Participant')
+    expect(running).toBeDisabled()
+
+    // And once the change has landed it is on again, still on the new role
+    await waitFor(() =>
+      expect(
+        within(screen.getByText('vic').closest('li') as HTMLElement).getByRole(
+          'combobox',
+          { name: 'Location role of vic' },
+        ),
+      ).toBeEnabled(),
+    )
+    expect(
+      within(screen.getByText('vic').closest('li') as HTMLElement).getByRole(
+        'combobox',
+        { name: 'Location role of vic' },
+      ),
+    ).toHaveTextContent('Participant')
+    expect(server.setCalls).toEqual([
+      { locationId: KITCHEN, userId: 'u-vic', role: 'participant' },
+    ])
+  })
+
+  it('user sees why Add person is missing when the members cannot be read, and can retry', async () => {
+    server.me = 'u-olive'
+    server.membersFail = true
+    const user = userEvent.setup()
+    renderPage(KITCHEN)
+    const page = await main()
+    await rowOf('vic')
+    expect(
+      await within(page).findByText(
+        'Could not load the household members. Try again.',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      within(page).queryByRole('button', { name: 'Add person' }),
+    ).toBeNull()
+
+    server.membersFail = false
+    await user.click(within(page).getByRole('button', { name: 'Retry' }))
+    expect(
+      await within(page).findByRole('button', { name: 'Add person' }),
+    ).toBeInTheDocument()
   })
 })

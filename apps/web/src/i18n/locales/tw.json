@@ -674,7 +674,10 @@
         "removing": "移除中…",
         "loadError": "無法讀取人員，請再試一次。",
         "error": "無法儲存變更，請再試一次。",
-        "retry": "再試一次"
+        "retry": "再試一次",
+        "unnamed": "據點",
+        "choosePerson": "選擇一個人",
+        "membersLoadError": "無法讀取家庭成員，請再試一次。"
       }
     },
     "shelves": {

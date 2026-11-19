@@ -81,20 +81,37 @@ export function LocationPeoplePage({ locationId }: { locationId: string }) {
     () => new Set(),
   )
   const [leaving, setLeaving] = useState(false)
+  // A role change is running, per person: the picker shows the picked role
+  // and is off until the change and its reads are done. Without it the
+  // picker jumped back to the old role until the list was read again, and a
+  // second, different pick could be sent meanwhile.
+  const [pendingRoles, setPendingRoles] = useState<
+    ReadonlyMap<string, LocationRole>
+  >(() => new Map())
   const [renameName, setRenameName] = useState<string | null>(null)
   const peopleHeadingRef = useRef<HTMLHeadingElement>(null)
 
   const errorText = t('settings.locations.people.error')
-  const name = location?.name ?? ''
+  // A member with no role here, an unknown id or a failed list read has no
+  // name for the location; the heading must still say something.
+  const name = location?.name ?? t('settings.locations.people.unnamed')
   const canChange = (from: LocationRole | null, to: LocationRole | null) =>
     canChangeRole(locationId, from, to)
   // The roles the caller may GIVE to a person with no role here.
   const givableRoles = ROLES.filter((r) => canChange(null, r))
 
   const handleSetRole = (person: LocationPersonRow, role: LocationRole) => {
-    setRole(locationId, person.userId, role).catch((err) =>
-      showSaveError(err, errorText),
-    )
+    if (pendingRoles.has(person.userId)) return
+    setPendingRoles((prev) => new Map(prev).set(person.userId, role))
+    setRole(locationId, person.userId, role)
+      .catch((err) => showSaveError(err, errorText))
+      .finally(() =>
+        setPendingRoles((prev) => {
+          const next = new Map(prev)
+          next.delete(person.userId)
+          return next
+        }),
+      )
   }
 
   // `false` from the server means the person had no role here any more (a
@@ -127,6 +144,8 @@ export function LocationPeoplePage({ locationId }: { locationId: string }) {
       await leave(locationId)
       if (canManageLocations) {
         setLeaving(false)
+        // The Leave button, which had focus, is gone.
+        peopleHeadingRef.current?.focus()
       } else {
         await navigate({ to: '/settings/household/locations' })
       }
@@ -210,6 +229,7 @@ export function LocationPeoplePage({ locationId }: { locationId: string }) {
             onSetRole={handleSetRole}
             onRemove={handleRemove}
             removingUserIds={removingIds}
+            pendingRoles={pendingRoles}
           />
         </section>
 
@@ -339,6 +359,18 @@ function AddPersonSection({
   const members = useHouseholdMembers()
   const [open, setOpen] = useState(false)
   const [adding, setAdding] = useState(false)
+  if (members.isError) {
+    return (
+      <div className="flex flex-wrap items-center gap-2 px-4 py-2">
+        <output className="text-sm">
+          {t('settings.locations.people.membersLoadError')}
+        </output>
+        <Button variant="neutral-outline" onClick={members.refetch}>
+          {t('settings.locations.people.retry')}
+        </Button>
+      </div>
+    )
+  }
   if (!members.data) return null
   const listed = new Set(people.map((p) => p.userId))
   const candidates = members.data

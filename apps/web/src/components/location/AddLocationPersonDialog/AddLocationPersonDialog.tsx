@@ -77,7 +77,9 @@ export function AddLocationPersonDialog({
             </Label>
             <Select value={userId} onValueChange={setUserId}>
               <SelectTrigger aria-labelledby={personId}>
-                <SelectValue />
+                <SelectValue
+                  placeholder={t('settings.locations.people.choosePerson')}
+                />
               </SelectTrigger>
               <SelectContent>
                 {candidates.map((c) => (

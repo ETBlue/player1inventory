@@ -54,6 +54,13 @@ describe('AddLocationPersonDialog', () => {
     expect(onAdd).toHaveBeenCalledWith('u-max', 'viewer')
   })
 
+  it('user sees a placeholder on Person until someone is chosen', () => {
+    renderDialog()
+    expect(screen.getByRole('combobox', { name: 'Person' })).toHaveTextContent(
+      'Choose a person',
+    )
+  })
+
   it('starts on participant when it may be given', () => {
     renderDialog({ roles: ['organizer', 'participant', 'viewer'] })
     expect(screen.getByRole('combobox', { name: 'Role' })).toHaveTextContent(
