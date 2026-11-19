@@ -131,3 +131,11 @@ mutation RemoveMember($userId: ID!) {
 mutation LeaveHousehold {
   leaveHousehold
 }
+
+# Household owner only (households H6, owner decision O38-A). Deletes the
+# household with all its data. The server sends NO live event: nobody is a
+# member any more. `useDeleteHousehold` moves this device to the person's
+# other household, or to the no-household screen.
+mutation DeleteHousehold {
+  deleteHousehold
+}

@@ -10,13 +10,16 @@ import {
   AddItemToLocationDocument,
   ApplyShelfFilterPicksDocument,
   ApplyUnitSwitchDocument,
+  ClearAllDataDocument,
   CreateItemDocument,
+  DeleteAllLocationsDocument,
   GetHouseholdLocationsDocument,
   GetItemsDocument,
   GetRecipeDocument,
   GetRecipesDocument,
   LeaveLocationDocument,
   PantryDataDocument,
+  RemoveAllLocationItemsDocument,
   RemoveItemFromLocationDocument,
   RemoveLocationRoleDocument,
   SetLocationRoleDocument,
@@ -52,11 +55,16 @@ import {
   useRemoveLocationRole,
   useSetLocationRole,
 } from './useLocationPeople'
+import {
+  useClearHousehold,
+  useDeleteAllLocations,
+  useRemoveAllLocationItems,
+} from './usePurges'
 import { useUpdateRecipe } from './useRecipes'
 
-// Every hook that reports `isPending: loading || isRefetching` (PR #386, and
-// since households H5c task H.4 the three location role hooks,
-// `apollo/refetchAfterWrite.ts`). Callers read `isPending` as "the write AND
+// Every hook that reports `isPending: loading || isRefetching` (PR #386,
+// since households H5c task H.4 the three location role hooks, and since
+// households H6 task J.5 the three purge hooks, `apollo/refetchAfterWrite.ts`). Callers read `isPending` as "the write AND
 // the reads after it are done": the search tail re-enables a row after it, and
 // the recipe relation tab keeps a badge busy on it. So for each hook:
 //
@@ -236,6 +244,25 @@ const MOCKS = [
     request: { query: LeaveLocationDocument, variables: any },
     maxUsageCount: Number.POSITIVE_INFINITY,
     result: () => answer('LeaveLocation', { data: { leaveLocation: true } }),
+  },
+  {
+    request: { query: ClearAllDataDocument },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: () => answer('ClearAllData', { data: { clearAllData: true } }),
+  },
+  {
+    request: { query: DeleteAllLocationsDocument },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: () =>
+      answer('DeleteAllLocations', { data: { deleteAllLocations: true } }),
+  },
+  {
+    request: { query: RemoveAllLocationItemsDocument, variables: any },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: () =>
+      answer('RemoveAllLocationItems', {
+        data: { removeAllLocationItems: true },
+      }),
   },
   {
     request: { query: UpdateRecipeDocument, variables: any },
@@ -418,6 +445,36 @@ const CASES: Case[] = [
     start: (h) => (h as ReturnType<typeof useLeaveLocation>).leave(LOC_A),
     firstWrite: 'LeaveLocation',
     lastWrite: 'LeaveLocation',
+    read: 'GetHouseholdLocations',
+    loaded: listLoaded,
+  },
+  // The purge hooks read every ACTIVE query again (`'active'`), so the
+  // mounted `GetHouseholdLocations` is one of them.
+  {
+    hook: 'useClearHousehold',
+    use: withHouseholdLocations(useClearHousehold),
+    start: (h) => (h as ReturnType<typeof useClearHousehold>).clear(),
+    firstWrite: 'ClearAllData',
+    lastWrite: 'ClearAllData',
+    read: 'GetHouseholdLocations',
+    loaded: listLoaded,
+  },
+  {
+    hook: 'useDeleteAllLocations',
+    use: withHouseholdLocations(useDeleteAllLocations),
+    start: (h) => (h as ReturnType<typeof useDeleteAllLocations>).deleteAll(),
+    firstWrite: 'DeleteAllLocations',
+    lastWrite: 'DeleteAllLocations',
+    read: 'GetHouseholdLocations',
+    loaded: listLoaded,
+  },
+  {
+    hook: 'useRemoveAllLocationItems',
+    use: withHouseholdLocations(() => useRemoveAllLocationItems(LOC_A)),
+    start: (h) =>
+      (h as ReturnType<typeof useRemoveAllLocationItems>).removeAll(),
+    firstWrite: 'RemoveAllLocationItems',
+    lastWrite: 'RemoveAllLocationItems',
     read: 'GetHouseholdLocations',
     loaded: listLoaded,
   },

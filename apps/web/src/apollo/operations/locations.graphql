@@ -112,3 +112,19 @@ mutation RemoveLocationRole($locationId: ID!, $userId: ID!) {
 mutation LeaveLocation($locationId: ID!) {
   leaveLocation(locationId: $locationId)
 }
+
+# ── Purges (households H6, task J.5; decision T55) ──
+
+# Household owner only. Deletes every location of the household with its
+# stock, logs, carts and role rows. The catalog stays. `false` when the
+# household had no location.
+mutation DeleteAllLocations {
+  deleteAllLocations
+}
+
+# Location organizer only. Deletes the location's stock rows and the rows of
+# its carts. The location, its carts, its logs and its roles stay. `false`
+# when there was nothing to delete.
+mutation RemoveAllLocationItems($locationId: ID!) {
+  removeAllLocationItems(locationId: $locationId)
+}
