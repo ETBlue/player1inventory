@@ -995,6 +995,11 @@ Filled in from the task reports and reviews.
 | H.1 | The file list | Root `CLAUDE.md` also named `lockOrForbid`; that line was updated |
 | H.1 | `householdRole: null` is allowed by the signature | The plan did not say what it gives. It is treated like `member`, with a test |
 | H.1 | T33's first wording | Made null→null true for owner and manager; step 1 said false. The code follows step 1; T33 is corrected |
+| H.2 | The fakes model what T40 needs | `householdFake` threw on `distinct` for every model. `locationMember.findMany` now APPLIES `distinct` (a string or an array of columns; any other key throws), with 5 tests in `householdFake.test.ts` |
+| H.2 | Step 5: `hasLocationRole` in `householdMembers` | `setHouseholdRole` returns a `HouseholdPerson` too, so it needs the field. It reads it after the commit with the same helper (`peopleWithLocationRole`) |
+| H.2 | Step 4: names with `select: { id, displayName }` | `household.resolver.ts` and `invite.resolver.ts` each had a private `displayNames`. One shared `displayNamesOf` in `lib/household.ts` replaces both, so `locationPeople` adds no third copy |
+| H.2 | Only `oldBundleCompat.test.ts` lists fields | `household-members.resolver.test.ts` has a test that lists every `HouseholdPerson` field (the no e-mail test). It needed `hasLocationRole` added. `oldBundleCompat.test.ts` needed no change |
+| H.2 | T40's `where`: `location: { householdId }, userId: { in }` | That `where` carries no H18 filter. The ids come from the same household's member list, so it is right today, but the rule says every `LocationMember` read applies H18. The `user: { householdMemberships: { some: { householdId } } }` filter is added too |
 
 ## Status
 
