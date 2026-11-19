@@ -13,6 +13,7 @@ import {
   requireLocationRole,
 } from '../lib/authz.js'
 import { displayNamesOf, lockHousehold, lockHouseholdOrForbid } from '../lib/household.js'
+import { recordActivity } from '../lib/activity.js'
 import { prisma } from '../lib/prisma.js'
 import { publishHouseholdChange } from '../lib/publishChange.js'
 import type { Location, Resolvers } from '../generated/graphql.js'
@@ -212,7 +213,7 @@ async function lockAndReadRoles(
   await lockHouseholdOrForbid(tx, householdId)
   const location = await tx.location.findFirst({
     where: { id: locationId, householdId },
-    select: { id: true },
+    select: { id: true, name: true },
   })
   if (!location) throw forbidden()
   const householdRole = await requireHouseholdRole(ctx, householdId, 'member', tx)
@@ -223,7 +224,9 @@ async function lockAndReadRoles(
   })
   if (!membership) throw forbidden()
   const from = await roleOfPerson(tx, locationId, target, householdId)
-  return { householdRole, callerRole, from }
+  // The name goes into the activity row (households H6 task J.2): the
+  // location may be deleted later, and the log must still name it.
+  return { householdRole, callerRole, from, locationName: location.name }
 }
 
 // ── LIVE EVENTS (households H3c-2 task D.3) ──
@@ -506,8 +509,9 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
     // (decision T36). The person who lost a role is still a household member,
     // so their tabs hear it.
     //
-    // No role write is logged yet: the activity log comes in H6 (owner
-    // decision O29-A).
+    // Each write that changed a row also writes ONE activity row through
+    // `tx`, in the same transaction (households H6 task J.2, decisions T47
+    // and T51, owner decision O29-A). Nothing changed, or refused: no row.
 
     // Adds a role or changes it. The same role again writes nothing, sends
     // nothing, and returns the row (decision T38).
@@ -515,7 +519,7 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
       const callerId = requireAuth(ctx)
       const householdId = await requireHousehold(ctx)
       const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        const { householdRole, callerRole, from } = await lockAndReadRoles(
+        const { householdRole, callerRole, from, locationName } = await lockAndReadRoles(
           ctx,
           tx,
           householdId,
@@ -533,6 +537,14 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
           create: { locationId, userId: target, role },
           update: { role },
           select: { role: true },
+        })
+        await recordActivity(tx, {
+          householdId,
+          actorId: callerId,
+          action: 'LOCATION_ROLE_SET',
+          targetUserId: target,
+          locationId,
+          details: { locationName, from, to: saved.role },
         })
         return { role: saved.role, changed: true }
       })
@@ -553,9 +565,10 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
     // carts, cart rows (their `userId` means only "added by"), stock and logs
     // stay.
     removeLocationRole: async (_, { locationId, userId: target }, ctx) => {
+      const callerId = requireAuth(ctx)
       const householdId = await requireHousehold(ctx)
       const changed = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        const { householdRole, callerRole, from } = await lockAndReadRoles(
+        const { householdRole, callerRole, from, locationName } = await lockAndReadRoles(
           ctx,
           tx,
           householdId,
@@ -577,7 +590,16 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
         const { count } = await tx.locationMember.deleteMany({
           where: { locationId, userId: target },
         })
-        return count > 0
+        if (count === 0) return false
+        await recordActivity(tx, {
+          householdId,
+          actorId: callerId,
+          action: 'LOCATION_ROLE_REMOVED',
+          targetUserId: target,
+          locationId,
+          details: { locationName, from },
+        })
+        return true
       })
       if (changed) await publishHouseholdChange(ctx, ['LOCATION'], householdId)
       return changed
@@ -594,16 +616,25 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
         await lockHouseholdOrForbid(tx, householdId)
         const location = await tx.location.findFirst({
           where: { id: locationId, householdId },
-          select: { id: true },
+          select: { id: true, name: true },
         })
         if (!location) throw forbidden()
         await requireHouseholdRole(ctx, householdId, 'member', tx)
         // No role: `false`, not an error (a second press, decision T38).
-        if ((await locationRoleOf(ctx, locationId, tx)) === null) return false
+        const from = await locationRoleOf(ctx, locationId, tx)
+        if (from === null) return false
         const { count } = await tx.locationMember.deleteMany({
           where: { locationId, userId: callerId },
         })
-        return count > 0
+        if (count === 0) return false
+        await recordActivity(tx, {
+          householdId,
+          actorId: callerId,
+          action: 'LOCATION_LEFT',
+          locationId,
+          details: { locationName: location.name, from },
+        })
+        return true
       })
       if (changed) await publishHouseholdChange(ctx, ['LOCATION'], householdId)
       return changed

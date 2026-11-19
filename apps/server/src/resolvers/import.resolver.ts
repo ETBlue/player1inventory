@@ -12,6 +12,7 @@ import {
 } from '../lib/authz.js'
 import { parseCartId } from '@p1i/types'
 import { createFirstLocation, firstLocationName, lockHousehold } from '../lib/household.js'
+import { recordActivity } from '../lib/activity.js'
 import { prisma } from '../lib/prisma.js'
 import { type ChangedLocation, publishChange, publishHouseholdChange } from '../lib/publishChange.js'
 import { type Context, requireAuth } from '../context.js'
@@ -2338,6 +2339,11 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           userId,
           name: firstLocationName(ctx.language ?? 'en'),
         })
+        // The activity row (households H6 task J.2, decision T51), LAST, in
+        // this transaction. The log is not in the delete list above, so the
+        // clear keeps older rows. The organizer row on the new "Home" is part
+        // of this one row and gets none of its own.
+        await recordActivity(tx, { householdId, actorId: userId, action: 'HOUSEHOLD_CLEARED' })
       })
       // ── THE LIVE EVENT (households H3c-2 task D.3) ──
       //

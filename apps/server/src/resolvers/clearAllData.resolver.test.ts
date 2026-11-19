@@ -55,6 +55,7 @@ vi.mock('../lib/prisma.js', async () => {
     household: world.client.household,
     itemStock: world.client.itemStock,
     location: world.client.location,
+    householdActivity: world.client.householdActivity,
   }
   const recorders: Record<string, unknown> = {}
   for (const model of shared.RECORDED) {
@@ -67,6 +68,15 @@ vi.mock('../lib/prisma.js', async () => {
   }
   world.extend({
     ...recorders,
+    // The activity row (households H6 task J.2). Recorded as `log`, so a
+    // test can see that it is written AFTER the deletes and "Home".
+    householdActivity: {
+      ...base.householdActivity,
+      create: async (args: Parameters<typeof base.householdActivity.create>[0]) => {
+        shared.events.push('log')
+        return base.householdActivity.create(args)
+      },
+    },
     household: {
       ...base.household,
       update: async (args: Parameters<typeof base.household.update>[0]) => {
@@ -209,6 +219,9 @@ describe('clearAllData clears the household', () => {
       'lock',
       ...DELETE_ORDER.map((model) => `delete:${model}`),
       'create:location',
+      // The activity row comes last (households H6 task J.2), after every
+      // delete: see the HOUSEHOLD_CLEARED tests below.
+      'log',
     ])
 
     // And every recorded delete carries its exact household filter. Logs,
@@ -306,6 +319,84 @@ describe('clearAllData clears the household', () => {
     ])
     expect(world.households.state.locationMembers).toHaveLength(4)
     expect(world.stock.state.itemStocks).toHaveLength(3)
+  })
+})
+
+describe('clearAllData writes one activity row (households H6 task J.2)', () => {
+  function logRows() {
+    return world.households.state.householdActivities.map((row) => ({
+      householdId: row.householdId,
+      actorId: row.actorId,
+      action: row.action,
+      targetUserId: row.targetUserId,
+      locationId: row.locationId,
+    }))
+  }
+
+  it('household owner who clears writes one HOUSEHOLD_CLEARED row, and older rows stay', async () => {
+    // Given hh-1 already has a log row, and hh-2 has one of its own
+    world.households.state.householdActivities.push(
+      {
+        id: 'act-old',
+        householdId: 'hh-1',
+        actorId: 'other',
+        action: 'MEMBER_JOINED',
+        targetUserId: null,
+        locationId: null,
+        details: null,
+        createdAt: new Date('2026-11-01T00:00:00.000Z'),
+      },
+      {
+        id: 'act-theirs',
+        householdId: 'hh-2',
+        actorId: 'stranger',
+        action: 'MEMBER_LEFT',
+        targetUserId: null,
+        locationId: null,
+        details: null,
+        createdAt: new Date('2026-11-01T00:00:00.000Z'),
+      },
+    )
+
+    // When the owner clears the household
+    const res = await run(CLEAR)
+
+    // Then the clear keeps the log: the old rows are there, and one new row
+    // says who cleared which household
+    expect(res.errors).toBeUndefined()
+    expect(logRows()).toEqual([
+      { householdId: 'hh-1', actorId: 'other', action: 'MEMBER_JOINED', targetUserId: null, locationId: null },
+      { householdId: 'hh-2', actorId: 'stranger', action: 'MEMBER_LEFT', targetUserId: null, locationId: null },
+      { householdId: 'hh-1', actorId: 'caller', action: 'HOUSEHOLD_CLEARED', targetUserId: null, locationId: null },
+    ])
+  })
+
+  it('the clear and its row roll back together when the log write fails', async () => {
+    // Given the log write will fail
+    const spy = vi
+      .spyOn(world.client.householdActivity, 'create')
+      .mockRejectedValueOnce(new Error('the log write failed'))
+
+    // When the owner clears the household
+    const res = await run(CLEAR)
+    spy.mockRestore()
+
+    // Then the mutation fails, nothing is deleted, and there is no row
+    expect(res.errors).toBeDefined()
+    expect(world.stock.state.locations.map((l) => l.id).sort()).toEqual([
+      'loc-kitchen',
+      'loc-pantry',
+      'loc-theirs',
+    ])
+    expect(world.stock.state.itemStocks).toHaveLength(3)
+    expect(logRows()).toEqual([])
+  })
+
+  it('household manager who is refused writes no row', async () => {
+    seed('manager')
+    const res = await run(CLEAR)
+    expect(res.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(logRows()).toEqual([])
   })
 })
 

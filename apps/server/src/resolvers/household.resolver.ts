@@ -13,6 +13,7 @@ import {
   lockHouseholdOrForbid,
   lockUser,
 } from '../lib/household.js'
+import { recordActivity } from '../lib/activity.js'
 import { prisma } from '../lib/prisma.js'
 import { publishHouseholdChange } from '../lib/publishChange.js'
 import type { Resolvers } from '../generated/graphql.js'
@@ -231,6 +232,9 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     //      same answer as a person the caller may not touch.
     //   4. The writes.
     //
+    //   5. The activity row (households H6 task J.2), through `tx`, after
+    //      the writes. Only when something changed.
+    //
     // None of them takes `lockUser` or writes a `User` row (decision T16):
     // that keeps the one lock order (`User`, then `Household`). So a removed
     // or leaving person's `activeHouseholdId` stays as it was, on purpose.
@@ -266,6 +270,14 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           data: { role },
           select: { userId: true, role: true, joinedAt: true },
         })
+        // Logged only when the role changed (households H6 task J.2).
+        await recordActivity(tx, {
+          householdId,
+          actorId: callerId,
+          action: 'HOUSEHOLD_ROLE_CHANGED',
+          targetUserId: target,
+          details: { from: row.role, to: saved.role },
+        })
         return { row: saved, changed: true }
       })
       if (result.changed) await publishHouseholdChange(ctx, ['LOCATION'], householdId)
@@ -300,6 +312,12 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         if (!row) throw forbidden()
         if (callerRole === 'manager' && row.role !== 'member') throw forbidden()
         await removeFromHousehold(tx, householdId, target)
+        await recordActivity(tx, {
+          householdId,
+          actorId: callerId,
+          action: 'MEMBER_REMOVED',
+          targetUserId: target,
+        })
       })
       await publishHouseholdChange(ctx, ['LOCATION'], householdId)
       return true
@@ -318,6 +336,7 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           throw badInput('The owner cannot leave. Handing over the household comes later.')
         }
         await removeFromHousehold(tx, householdId, callerId)
+        await recordActivity(tx, { householdId, actorId: callerId, action: 'MEMBER_LEFT' })
       })
       // To the household LEFT: its other members' tabs refetch the list.
       await publishHouseholdChange(ctx, ['LOCATION'], householdId)

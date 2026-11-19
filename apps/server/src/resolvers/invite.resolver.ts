@@ -18,6 +18,7 @@ import {
   newInviteToken,
   parseLocationRoles,
 } from '../lib/invite.js'
+import { recordActivity } from '../lib/activity.js'
 import { prisma } from '../lib/prisma.js'
 import { publishHouseholdChange } from '../lib/publishChange.js'
 import type { Resolvers } from '../generated/graphql.js'
@@ -200,7 +201,10 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
 
   Mutation: {
     // Owner or manager. One INSERT, so no `lockHousehold`: nothing it reads
-    // decides what another write may do. The checks, in order: the role
+    // decides what another write may do. The INSERT and its activity row run
+    // in one interactive transaction (households H6 task J.2, decision T47),
+    // so both are written or neither is. That transaction takes no lock, so
+    // it adds nothing to the lock order (decision T16). The checks, in order: the role
     // (FORBIDDEN), no `owner` invite (BAD_USER_INPUT), only the owner invites
     // a `manager` (O3-A, FORBIDDEN), no location twice (BAD_USER_INPUT),
     // every location in this household (FORBIDDEN, the same answer for an
@@ -231,19 +235,28 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         role: entry.role,
       }))
       const now = new Date()
-      const row = await prisma.householdInvite.create({
-        data: {
+      const row = await prisma.$transaction(async (tx) => {
+        const created = await tx.householdInvite.create({
+          data: {
+            householdId,
+            token: newInviteToken(),
+            householdRole,
+            locationRoles: entries as unknown as Prisma.InputJsonValue,
+            createdById: userId,
+            expiresAt: inviteExpiresAt(now),
+          },
+        })
+        await recordActivity(tx, {
           householdId,
-          token: newInviteToken(),
-          householdRole,
-          locationRoles: entries as unknown as Prisma.InputJsonValue,
-          createdById: userId,
-          expiresAt: inviteExpiresAt(now),
-        },
+          actorId: userId,
+          action: 'INVITE_CREATED',
+          details: { householdRole },
+        })
+        return created
       })
       // Household-level `LOCATION` (decision T19): every open tab of the
       // household refetches, so the Members page shows the new invite. Sent
-      // right after the write, BEFORE the two reads below: if one of them
+      // right after the commit, BEFORE the two reads below: if one of them
       // throws, the row is still written and the other tabs must still hear
       // of it.
       await publishHouseholdChange(ctx, ['LOCATION'], householdId)
@@ -311,6 +324,7 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     //   9. Delete the caller's OTHER households that are empty, with one
     //      conditional statement (decision T21, `emptyHouseholdWhere`). Only
     //      the ones locked in step 3.
+    //  10. The `MEMBER_JOINED` activity row (households H6 task J.2).
     //
     // A wrong-length token is refused before the transaction, with no read
     // and no lock: no stored token has another length. A bad `locationRoles`
@@ -385,17 +399,22 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           where: { userId, location: { householdId } },
         })
         const wanted = parseLocationRoles(row.locationRoles)
+        // The roles really given, with each location's name, for the
+        // activity row below.
+        const given: NamedLocationRole[] = []
         if (wanted.length > 0) {
           const existing = await tx.location.findMany({
             where: { id: { in: wanted.map((entry) => entry.locationId) }, householdId },
-            select: { id: true },
+            select: { id: true, name: true },
           })
-          const ids = new Set(existing.map((location) => location.id))
+          const names = new Map(existing.map((location) => [location.id, location.name]))
           for (const entry of wanted) {
-            if (!ids.has(entry.locationId)) continue
+            const locationName = names.get(entry.locationId)
+            if (locationName === undefined) continue
             await tx.locationMember.create({
               data: { locationId: entry.locationId, userId, role: entry.role },
             })
+            given.push({ locationId: entry.locationId, locationName, role: entry.role })
           }
         }
 
@@ -408,6 +427,21 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         if (deletable.length > 0) {
           await tx.household.deleteMany({ where: emptyHouseholdWhere(userId, deletable) })
         }
+
+        // 10. The activity row (households H6 task J.2), in the joined
+        //     household, inside this callback. So a first attempt that fails
+        //     with P2034 rolls its row back with everything else, and the
+        //     retry writes ONE row. A location deleted since the invite was
+        //     made is not in it, the same as its role.
+        await recordActivity(tx, {
+          householdId,
+          actorId: userId,
+          action: 'MEMBER_JOINED',
+          details: {
+            householdRole: row.householdRole,
+            locationRoles: given.map((entry) => ({ ...entry })),
+          },
+        })
 
         const household = await tx.household.findUnique({
           where: { id: householdId },
@@ -435,20 +469,31 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     // not be used anyway (G.4's claim also needs `expiresAt > now`), the list
     // leaves it out either way, and one extra refetch costs little. Keeping
     // the `where` short keeps it the same as the claim's other half.
+    //
+    // The write and its activity row run in one interactive transaction
+    // (households H6 task J.2, decision T47). The row is written only when
+    // the invite was revoked: a `false` answer logs nothing. The transaction
+    // takes no lock, so it adds nothing to the lock order (decision T16).
     revokeInvite: async (_, { id }, ctx) => {
+      const userId = requireAuth(ctx)
       const householdId = await requireHousehold(ctx)
       const callerRole = await requireHouseholdRole(ctx, householdId, 'manager')
-      const { count } = await prisma.householdInvite.updateMany({
-        where: {
-          id,
-          householdId,
-          usedAt: null,
-          revokedAt: null,
-          householdRole: callerRole === 'manager' ? 'member' : undefined,
-        },
-        data: { revokedAt: new Date() },
+      const revoked = await prisma.$transaction(async (tx) => {
+        const { count } = await tx.householdInvite.updateMany({
+          where: {
+            id,
+            householdId,
+            usedAt: null,
+            revokedAt: null,
+            householdRole: callerRole === 'manager' ? 'member' : undefined,
+          },
+          data: { revokedAt: new Date() },
+        })
+        if (count !== 1) return false
+        await recordActivity(tx, { householdId, actorId: userId, action: 'INVITE_REVOKED' })
+        return true
       })
-      if (count !== 1) return false
+      if (!revoked) return false
       await publishHouseholdChange(ctx, ['LOCATION'], householdId)
       return true
     },

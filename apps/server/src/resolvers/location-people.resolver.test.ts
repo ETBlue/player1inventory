@@ -736,11 +736,18 @@ describe('removeLocationRole: who may do what (task H.3)', () => {
     // When the organizer removes BOB from LOC_K
     const res = await removeRole(BEA, LOC_K, BOB)
 
-    // Then the transaction reached only the household, location and role models:
-    // no cart, cart row, stock row or log model at all
+    // Then the transaction reached only the household, location and role
+    // models, and the activity log (households H6 task J.2): no cart, cart
+    // row, stock row or log model at all
     const touched = [...tx.touched].sort()
     tx.unknownTouched.clear()
-    expect(touched).toEqual(['household', 'householdMember', 'location', 'locationMember'])
+    expect(touched).toEqual([
+      'household',
+      'householdActivity',
+      'householdMember',
+      'location',
+      'locationMember',
+    ])
     expect(ok(res, 'removeLocationRole')).toBe(true)
     // And only BOB's role row is gone
     expect(storedRole(LOC_K, BOB)).toBeNull()

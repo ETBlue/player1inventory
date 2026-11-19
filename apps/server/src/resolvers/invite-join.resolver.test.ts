@@ -944,6 +944,18 @@ describe('joinHousehold retries once on a write conflict or deadlock (P2034)', (
     expect(seen).toHaveLength(1)
   })
 
+  it('a join retried after P2034 writes ONE MEMBER_JOINED row, not two (households H6 task J.2)', async () => {
+    conflictAfterWork(1)
+
+    const res = await join(MAIN, PAT)
+
+    expect(res.errors).toBeUndefined()
+    // The first attempt's row rolled back with the rest of that attempt
+    expect(
+      world.households.state.householdActivities.map((row) => `${row.householdId}:${row.actorId}:${row.action}`),
+    ).toEqual([`hh_h:${PAT}:MEMBER_JOINED`])
+  })
+
   it('a second P2034 fails the join with that error, and writes nothing', async () => {
     const before = snapshot()
     const spy = conflictAfterWork(2)
