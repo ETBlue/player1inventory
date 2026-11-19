@@ -38,8 +38,13 @@ vi.mock('@apollo/client/react', async (importOriginal) => {
       query: vi.fn().mockResolvedValue({ data: {} }),
       mutate: vi.fn().mockResolvedValue({ data: {} }),
       // `refetchAfterWrite` (`apollo/refetchAfterWrite.ts`) calls it after a
-      // cloud write in tests that stub the mutation hooks.
-      refetchQueries: vi.fn().mockResolvedValue([]),
+      // cloud write in tests that stub the mutation hooks. Apollo's answer is
+      // a promise that ALSO carries `queries` and `results` (one promise per
+      // read), and the helper waits for each of `results` (since the review
+      // of households H5c task H.4), so the stub carries both, empty.
+      refetchQueries: vi.fn(() =>
+        Object.assign(Promise.resolve([]), { queries: [], results: [] }),
+      ),
       resetStore: vi.fn().mockResolvedValue(null),
     })),
   }
