@@ -37,11 +37,9 @@ function VendorInfoTab() {
 
   const handleDelete = async () => {
     if (!vendor) return
-    deleteVendor.mutate(id, {
-      onSuccess: () => {
-        goBack()
-      },
-    })
+    // Awaited, so `DeleteButton` sees a failure and says so
+    await deleteVendor.mutateAsync(id)
+    goBack()
   }
 
   if (!vendor) return null

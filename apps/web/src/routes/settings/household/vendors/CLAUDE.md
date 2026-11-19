@@ -13,7 +13,7 @@ Vendor CRUD at `/settings/household/vendors`. Vendors are separate entities (not
 **Routes**: `src/routes/settings/household/vendors/index.tsx` — vendor list. Its New button opens `NewVendorDialog`, which goes to the detail page after save
 
 **Components**:
-- `src/components/vendor/VendorCard/index.tsx` — displays one vendor with a delete button; vendor name links to the detail page. Accepts `itemCount` and `onDelete` (the actual delete operation); wraps `DeleteButton` internally with an `itemCount`-based dialog description
+- `src/components/vendor/VendorCard/index.tsx` — displays one vendor with a delete button; vendor name links to the detail page. Accepts `itemCount` and `onDelete` (the actual delete operation; return its promise, so `DeleteButton` can show a failed delete); wraps `DeleteButton` internally with an `itemCount`-based dialog description
 - `src/components/vendor/VendorInfoForm/index.tsx` — presentational form component (name input + save button) used by both the new vendor page and the Info tab
 
 **Item counts**: Vendor list displays item count for each vendor (e.g. "Costco · 12 items") using `useVendorItemCounts()` hook.

@@ -104,7 +104,7 @@ function DraggableTagBadge({
   tagType: TagType
   depth: number
   /** Left out for a read-only household member: no delete, and no drag. */
-  onDelete?: (() => void) | undefined
+  onDelete?: (() => void | Promise<void>) | undefined
 }) {
   const { t } = useTranslation()
   const { data: itemCount = 0 } = useItemCountByTag(tag.id)
@@ -227,9 +227,9 @@ function DroppableTagTypeCard({
    * tag" control, and its tags cannot be deleted or dragged.
    */
   onEdit?: () => void
-  onDelete?: () => void
+  onDelete?: () => void | Promise<void>
   onAddTag?: () => void
-  onDeleteTag?: (tagId: string) => void
+  onDeleteTag?: (tagId: string) => void | Promise<void>
 }) {
   const { t } = useTranslation()
   const { setNodeRef } = useDroppable({
@@ -382,8 +382,9 @@ export function TagSettings() {
     migrateTagColorTints()
   }, [])
 
+  // Awaited, so `DeleteButton` sees a failure and says so
   const handleDeleteTag = async (tagId: string) => {
-    deleteTag.mutate({ id: tagId })
+    await deleteTag.mutateAsync({ id: tagId })
   }
 
   const handleDragStart = (event: DragEndEvent) => {
@@ -522,7 +523,9 @@ export function TagSettings() {
                   tagCount={typeTags.length}
                   {...(canEditCatalog && {
                     onEdit: () => setEditTagType(tagType),
-                    onDelete: () => deleteTagType.mutate(tagType.id),
+                    onDelete: async () => {
+                      await deleteTagType.mutateAsync(tagType.id)
+                    },
                     onAddTag: () => setAddTagDialog(tagType.id),
                     onDeleteTag: handleDeleteTag,
                   })}

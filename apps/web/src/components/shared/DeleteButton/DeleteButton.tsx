@@ -14,8 +14,17 @@ import {
 } from '@/components/ui/alert-dialog'
 import type { ButtonProps } from '@/components/ui/button'
 import { Button } from '@/components/ui/button'
+import { showSaveError } from '@/lib/saveError'
 
 export interface DeleteButtonProps {
+  /**
+   * Return the delete's promise (`await mutateAsync(…)`), not a `mutate` call.
+   * When it rejects, this button shows `common.deleteFailed` (none offline:
+   * `offlineWriteLink` already showed one), so the caller must not show its
+   * own message and rethrow. A `mutate` call returns before the delete ends,
+   * so a failure would never reach this button. See
+   * docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md.
+   */
   onDelete: () => void | Promise<void>
   trigger: ReactNode
   buttonVariant?: ButtonProps['variant']
@@ -47,6 +56,10 @@ export function DeleteButton({
     try {
       await onDelete()
       setOpen(false)
+    } catch (err) {
+      // Shown, not left unhandled. Before, nothing on screen said the delete
+      // did not happen. The page stays as it was, so the user can try again.
+      showSaveError(err, t('common.deleteFailed'))
     } finally {
       setIsDeleting(false)
     }

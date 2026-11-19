@@ -92,7 +92,9 @@ function VendorSettings() {
               vendor={vendor}
               itemCount={vendorCounts.get(vendor.id) ?? 0}
               {...(canEditCatalog && {
-                onDelete: () => deleteVendor.mutate(vendor.id),
+                onDelete: async () => {
+                  await deleteVendor.mutateAsync(vendor.id)
+                },
               })}
             />
           ))

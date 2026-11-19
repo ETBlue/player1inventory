@@ -1,6 +1,9 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import { OfflineWriteError } from '@/apollo/offlineWriteLink'
+import { Toaster } from '@/components/ui/sonner'
+import { watchUnhandledRejections } from '@/test/unhandledRejections'
 import { DeleteButton } from '.'
 
 describe('DeleteButton', () => {
@@ -140,5 +143,78 @@ describe('DeleteButton', () => {
     // Given icon-only button with aria-label
     const button = screen.getByRole('button', { name: 'Delete Costco' })
     expect(button).toBeInTheDocument()
+  })
+
+  // A failed delete (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+  // Before the fix `handleConfirm` had a try/finally with no catch: an
+  // unhandled rejection, and nothing on screen said the delete did not happen.
+  it('user sees a message when the delete fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given a delete that fails
+      const user = userEvent.setup()
+      const handleDelete = vi.fn().mockRejectedValue(new Error('disk full'))
+      render(
+        <>
+          <DeleteButton
+            trigger="Delete Item"
+            dialogTitle="Delete Item?"
+            dialogDescription="Are you sure?"
+            onDelete={handleDelete}
+          />
+          <Toaster />
+        </>,
+      )
+
+      // When the user confirms the delete
+      await user.click(screen.getByRole('button', { name: /delete item/i }))
+      await user.click(screen.getByRole('button', { name: /^delete$/i }))
+
+      // Then a message says the delete did not happen
+      expect(
+        await screen.findByText('Could not delete. Please try again.'),
+      ).toBeInTheDocument()
+      // And the user can try again
+      expect(screen.getByRole('button', { name: /delete item/i })).toBeEnabled()
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+    }
+  })
+
+  it('user sees no second message when the delete fails offline', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given a delete refused because the app is offline. The offline link
+      // has already shown its own toast, so DeleteButton adds none.
+      const user = userEvent.setup()
+      const handleDelete = vi.fn().mockRejectedValue(new OfflineWriteError())
+      render(
+        <>
+          <DeleteButton
+            trigger="Delete Item"
+            dialogTitle="Delete Item?"
+            dialogDescription="Are you sure?"
+            onDelete={handleDelete}
+          />
+          <Toaster />
+        </>,
+      )
+
+      // When the user confirms the delete
+      await user.click(screen.getByRole('button', { name: /delete item/i }))
+      await user.click(screen.getByRole('button', { name: /^delete$/i }))
+      await waitFor(() => expect(handleDelete).toHaveBeenCalled())
+      await rejections.settle()
+
+      // Then no failed-delete message shows, and nothing is left unhandled
+      expect(
+        screen.queryByText('Could not delete. Please try again.'),
+      ).not.toBeInTheDocument()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+    }
   })
 })

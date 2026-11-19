@@ -9,6 +9,7 @@
     "cancel": "Cancel",
     "delete": "Delete",
     "deleting": "Deleting...",
+    "deleteFailed": "Could not delete. Please try again.",
     "nameLabel": "Name",
     "save": "Save",
     "saving": "Saving...",

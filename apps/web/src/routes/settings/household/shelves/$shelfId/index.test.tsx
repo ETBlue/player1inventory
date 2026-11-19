@@ -13,7 +13,6 @@ import { createShelf } from '@/db/operations'
 import * as useShelvesModule from '@/hooks/useShelves'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
-import { callArgs, defined } from '@/test/narrow'
 import { watchUnhandledRejections } from '@/test/unhandledRejections'
 
 describe('Shelf Settings - Info Tab', () => {
@@ -169,22 +168,19 @@ describe('Shelf Settings - Info Tab', () => {
     })
 
     it('user can delete a shelf and navigate to the shelf list', async () => {
-      // Given: deleteShelf.mutate that never calls onSuccess (mutation pending)
-      // The signature is the cloud branch's own (hooks/useShelves.ts:284), so
-      // `mutateFn.mock.calls[0]` is a typed 2-tuple and the options argument
-      // read below needs no cast.
-      const mutateFn = vi.fn(
-        async (
-          _id: string,
-          _options?: {
-            onSuccess?: () => void
-            onError?: (err: unknown) => void
-          },
-        ) => {},
+      // Given: a delete that stays pending until the test resolves it. The page
+      // awaits `mutateAsync`, so `DeleteButton` can see a failed delete
+      // (deleteFailed.test.tsx covers that case).
+      let resolveDelete: (value: boolean) => void = () => {}
+      const mutateAsyncFn = vi.fn(
+        (_id: string) =>
+          new Promise<boolean>((resolve) => {
+            resolveDelete = resolve
+          }),
       )
       vi.spyOn(useShelvesModule, 'useDeleteShelfMutation').mockReturnValue({
-        mutate: mutateFn,
-        mutateAsync: vi.fn(async (_id: string) => true),
+        mutate: vi.fn(async () => {}),
+        mutateAsync: mutateAsyncFn,
         isPending: false,
       })
 
@@ -203,34 +199,21 @@ describe('Shelf Settings - Info Tab', () => {
         expect(screen.getByLabelText('Shelf name')).toHaveValue('Fridge'),
       )
 
-      // When user clicks Delete to open confirmation dialog
+      // When user clicks Delete and confirms
       await user.click(screen.getByRole('button', { name: /delete shelf/i }))
-      // Wait for confirmation dialog to appear
       await waitFor(() =>
         expect(screen.getByRole('alertdialog')).toBeInTheDocument(),
       )
-
-      // Confirm the deletion (use exact match to avoid matching "Delete shelf" trigger)
       await user.click(screen.getByRole('button', { name: /^delete$/i }))
 
-      // Then mutate is called at all (basic sanity check)
-      await waitFor(() => expect(mutateFn).toHaveBeenCalled())
+      // Then the delete is sent for this shelf
+      await waitFor(() => expect(mutateAsyncFn).toHaveBeenCalledWith(shelf.id))
 
-      // And mutate is called with shelf.id AND an onSuccess callback
-      expect(mutateFn).toHaveBeenCalledWith(
-        shelf.id,
-        expect.objectContaining({ onSuccess: expect.any(Function) }),
-      )
-
-      // And navigation has NOT happened yet (mutation is still pending)
+      // And navigation has NOT happened yet (the delete is still pending)
       expect(screen.getByLabelText('Shelf name')).toBeInTheDocument()
 
-      // When onSuccess fires
-      const capturedOptions = defined(
-        callArgs(mutateFn.mock, 0)[1],
-        'the options argument of the first mutate call',
-      )
-      defined(capturedOptions.onSuccess, 'the onSuccess callback')()
+      // When the delete finishes
+      resolveDelete(true)
 
       // Then navigation happens (form is gone)
       await waitFor(() => {

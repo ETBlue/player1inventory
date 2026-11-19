@@ -146,11 +146,10 @@ function ShelfInfoTab() {
             buttonClassName="mt-2 w-full"
             dialogTitle={`Delete "${shelf.name}"?`}
             dialogDescription="Items will move to Unsorted."
-            onDelete={() => {
-              deleteShelf.mutate(shelf.id, {
-                onSuccess: () =>
-                  navigate({ to: '/settings/household/shelves' }),
-              })
+            // Awaited, so `DeleteButton` sees a failure and says so
+            onDelete={async () => {
+              await deleteShelf.mutateAsync(shelf.id)
+              navigate({ to: '/settings/household/shelves' })
             }}
           />
         </>

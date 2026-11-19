@@ -67,7 +67,7 @@ interface SortableShelfRowProps {
    * Left out for a household member (households H5 task F.5): the row then
    * has no drag handle and no Delete button.
    */
-  onDelete?: () => void
+  onDelete?: () => Promise<void>
 }
 
 function SortableShelfRow({
@@ -353,7 +353,9 @@ export function ShelfSettingsPage() {
                   shelf={shelf}
                   itemCount={getItemCount(shelf)}
                   {...(canEditCatalog && {
-                    onDelete: () => deleteShelf.mutate(shelf.id),
+                    onDelete: async () => {
+                      await deleteShelf.mutateAsync(shelf.id)
+                    },
                   })}
                 />
               ))}

@@ -9,6 +9,7 @@
     "cancel": "取消",
     "delete": "刪除",
     "deleting": "刪除中...",
+    "deleteFailed": "無法刪除，請再試一次。",
     "nameLabel": "名稱",
     "save": "存檔",
     "saving": "存檔中...",
