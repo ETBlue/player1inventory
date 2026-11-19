@@ -12,6 +12,7 @@ import {
   useSetLocationRoleMutation,
 } from '@/generated/graphql'
 import { graphQLErrorCode } from '@/lib/graphqlErrorCode'
+import { createOncePerKey } from '@/lib/oncePerKey'
 import { useDataMode } from './useDataMode'
 
 // The people page of one location (households H5c, task H.4). Cloud mode
@@ -110,31 +111,17 @@ export function useLocationPeople(locationId: string | undefined): {
 }
 
 /**
- * One write per key at a time (the H5b G.9 double-press finding). The
- * confirm dialog closes at once, and the write and its reads take a moment.
- * A second press with the SAME arguments while the first runs returns the
- * first promise and sends nothing. A press with other arguments (another
- * person, another role) is sent: it is a different change.
- *
- * Held per module, not per component, so a second mount of the page cannot
- * start a second write either.
+ * One write per key at a time (`lib/oncePerKey.ts`). A second press with the
+ * SAME arguments while the first runs returns the first promise and sends
+ * nothing. A press with other arguments (another person, another role) is
+ * sent: it is a different change.
  *
  * `isPending` belongs to the hook instance that STARTED the write. A second
  * caller that gets the shared promise sends no mutation of its own, so its
  * own `isPending` stays `false`. A page that has one button per row reads
  * `isPending` from the one hook that sends the write.
  */
-const inFlight = new Map<string, Promise<unknown>>()
-
-function once<T>(key: string, run: () => Promise<T>): Promise<T> {
-  const running = inFlight.get(key)
-  if (running) return running as Promise<T>
-  const promise = run().finally(() => {
-    inFlight.delete(key)
-  })
-  inFlight.set(key, promise)
-  return promise
-}
+const once = createOncePerKey()
 
 /**
  * Give a person a role on a location, or change it (decision T32). Resolves

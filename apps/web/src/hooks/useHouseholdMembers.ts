@@ -1,3 +1,4 @@
+import type { ApolloClient } from '@apollo/client'
 import { useApolloClient } from '@apollo/client/react'
 import { forgetHousehold, switchToHousehold } from '@/apollo/householdGuard'
 import { refetchAfterWrite } from '@/apollo/refetchAfterWrite'
@@ -208,35 +209,48 @@ export function useRemoveMember() {
  */
 let leaveInFlight: Promise<void> | null = null
 
+/**
+ * After this person left a household, or deleted it (households H6,
+ * `useDeleteHousehold`), ask the server which household they are in now and
+ * move the device there. The table and the `no-cache` reason are above
+ * `useLeaveHousehold`. Never rejects: on any failure it loads `/`, and the
+ * next load asks again.
+ */
+export async function moveToCurrentHousehold(
+  client: ApolloClient,
+): Promise<void> {
+  let nextId: string | undefined
+  try {
+    const now = await client.query<GetHouseholdQuery>({
+      query: GetHouseholdDocument,
+      fetchPolicy: 'no-cache',
+    })
+    nextId = now.data?.household.id
+  } catch (err) {
+    if (graphQLErrorCode(err) === 'NO_HOUSEHOLD') {
+      await forgetHousehold().catch((clearErr) => {
+        console.error('Could not clear the data of the household', clearErr)
+      })
+    }
+  }
+  if (nextId) {
+    try {
+      await switchToHousehold(nextId, { to: '/' })
+      return
+    } catch (err) {
+      console.error('Could not clear the data of the household', err)
+    }
+  }
+  window.location.replace('/')
+}
+
 export function useLeaveHousehold() {
   const client = useApolloClient()
   const [leaveHousehold] = useLeaveHouseholdMutation()
 
   const run = async (): Promise<void> => {
     await leaveHousehold()
-    let nextId: string | undefined
-    try {
-      const now = await client.query<GetHouseholdQuery>({
-        query: GetHouseholdDocument,
-        fetchPolicy: 'no-cache',
-      })
-      nextId = now.data?.household.id
-    } catch (err) {
-      if (graphQLErrorCode(err) === 'NO_HOUSEHOLD') {
-        await forgetHousehold().catch((clearErr) => {
-          console.error('Could not clear the data of the household', clearErr)
-        })
-      }
-    }
-    if (nextId) {
-      try {
-        await switchToHousehold(nextId, { to: '/' })
-        return
-      } catch (err) {
-        console.error('Could not clear the data of the household', err)
-      }
-    }
-    window.location.replace('/')
+    await moveToCurrentHousehold(client)
   }
 
   return {
