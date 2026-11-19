@@ -322,9 +322,13 @@ than trusting a number here — it said **four** when there were seven.
   `deleteLocation` at once. Both use two `PrismaClient`s and read `pg_blocking_pids` to SEE
   that the second transaction waits. Each keeps a copy of the code it proves, because
   `scripts/` must not import from `src`: the `updateMany` claim of `ensureHousehold`, the
-  `UPDATE` of `lockHousehold`, and the statements of `deleteLocation` and `clearAllData`.
+  household lock, and the statements of `deleteLocation` and `clearAllData`.
   **When you change one of those in `src`, change the copy too**, or the proof stops being
-  about the code that runs. The lock proof was written on 2026-11-11 and has not been run
+  about the code that runs. Since households H6 task J.4 the lock copy is the `updateMany`
+  of `lockHouseholdOrForbid` (it was the `update` of `lockHousehold`), both bodies read the
+  household role after the lock, and `clearAllData`'s fourteen deletes are copied from
+  `deleteHouseholdData` in `src/lib/household.ts`. That change to the script has not been
+  run against a database. The lock proof was written on 2026-11-11 and has not been run
   yet at the time of writing; check the H3a runbook, section 8, for its result.
 - **`RAISE NOTICE` lines do not show in its output.** Measured 2026-11-11: the `RAISE NOTICE`
   counts of `drop_user_scope` step 3 did not appear when the script ran `migrate deploy`. A

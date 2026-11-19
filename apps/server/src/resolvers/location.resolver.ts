@@ -12,7 +12,7 @@ import {
   requireLocationInHousehold,
   requireLocationRole,
 } from '../lib/authz.js'
-import { displayNamesOf, lockHousehold, lockHouseholdOrForbid } from '../lib/household.js'
+import { displayNamesOf, lockHouseholdOrForbid } from '../lib/household.js'
 import { recordActivity } from '../lib/activity.js'
 import { prisma } from '../lib/prisma.js'
 import { publishHouseholdChange } from '../lib/publishChange.js'
@@ -403,16 +403,22 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
     // household `member` who organizes one may not.
     deleteLocation: async (_, { id }, ctx) => {
       const householdId = await requireHousehold(ctx)
-      await requireHouseholdRole(ctx, householdId, 'manager')
 
       await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        // FIRST, before the read below. Until H5 task F.7 this stopped two
+        // FIRST, before the reads below. Until H5 task F.7 this stopped two
         // deletes at once from both counting 2 and leaving no location. That
         // count is gone (the last location may go now), but the lock stays:
-        // `deleteLocation` and `clearAllData` take it in the same order, and
-        // H6's purges will need it (decision T8 of the H5 plan). A second
-        // delete in the same household waits here for the first to commit.
-        await lockHousehold(tx, householdId)
+        // `deleteLocation`, `clearAllData` and the H6 purges take it in the
+        // same order (decision T8 of the H5 plan). A second delete in the
+        // same household waits here for the first to commit.
+        //
+        // Since households H6 task J.4 (decision T52) it is
+        // `lockHouseholdOrForbid`, so a household deleted since
+        // `requireHousehold` found it gives FORBIDDEN, not Prisma's P2025.
+        // And the `manager` role is read AFTER it, through `tx`, so a
+        // manager demoted at the same moment is refused.
+        await lockHouseholdOrForbid(tx, householdId)
+        await requireHouseholdRole(ctx, householdId, 'manager', tx)
 
         // The location must be in the caller's household. A `where` filter,
         // and the same `Forbidden` for "another household's" and "no such

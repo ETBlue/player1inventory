@@ -189,26 +189,31 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     // name is checked, so a manager or member gets FORBIDDEN whatever name
     // they send.
     //
-    // No `lockHousehold` here, on purpose. The rename is one `UPDATE` of one
-    // row, and Postgres runs a single statement atomically, so two renames at
-    // once end with one of the two names, never a mix. `lockHousehold` exists
-    // for a read-then-write that must not interleave (`deleteLocation` counts
-    // and then deletes). This mutation reads nothing that the write depends
-    // on. The one gap: the role is read before the `UPDATE`, so an owner who
-    // hands the household over (H6) at the same moment could still rename it
-    // once. H6 decides whether that matters.
+    // The household lock FIRST, then the owner check through `tx`, then the
+    // write (households H6 task J.4, decision T52). Until J.4 this read the
+    // role and then wrote with no lock. A rename is one `UPDATE`, so two
+    // renames never mix. The gap was the role: it was read before the write,
+    // so an owner who hands the household over (H6b) at the same moment
+    // could still rename it once. The transfer takes the same lock, so now
+    // the two run one after the other, and the rename reads the role the
+    // transfer left. A household deleted since `requireHousehold` found it
+    // gives FORBIDDEN.
     renameHousehold: async (_, { name }, ctx) => {
       const householdId = await requireHousehold(ctx)
-      const role = await requireHouseholdRole(ctx, householdId, 'owner')
-      const clean = cleanHouseholdName(name)
-      const row = await prisma.household.update({
-        where: { id: householdId },
-        data: { name: clean },
-        select: { id: true, name: true },
+      const { row, role } = await prisma.$transaction(async (tx) => {
+        await lockHouseholdOrForbid(tx, householdId)
+        const role = await requireHouseholdRole(ctx, householdId, 'owner', tx)
+        const clean = cleanHouseholdName(name)
+        const row = await tx.household.update({
+          where: { id: householdId },
+          data: { name: clean },
+          select: { id: true, name: true },
+        })
+        return { row, role }
       })
       // `CATALOG` (households H3c-2 task D.4): the name is in every member's
       // sidebar, and on the web `GetHousehold` is refetched for `CATALOG`.
-      // For the SAVED row's household.
+      // For the SAVED row's household. After the commit.
       await publishHouseholdChange(ctx, ['CATALOG'], row.id)
       return { id: row.id, name: row.name, role }
     },

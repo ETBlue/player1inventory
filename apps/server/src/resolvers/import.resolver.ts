@@ -15,7 +15,7 @@ import {
   createFirstLocation,
   deleteHouseholdData,
   firstLocationName,
-  lockHousehold,
+  lockHouseholdOrForbid,
 } from '../lib/household.js'
 import { recordActivity } from '../lib/activity.js'
 import { prisma } from '../lib/prisma.js'
@@ -2289,7 +2289,8 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     // household roles. Then makes "Home" again (decision H17).
     //
     // - Household role `owner` only: *Clear household* is owner only, and so
-    //   is the `clear` import strategy that calls this (decision H17).
+    //   is the `clear` import strategy that calls this (decision H17). The
+    //   role is read inside the transaction, after the lock (decision T52).
     // - Every filter is the household, or goes through the location, the
     //   item, the recipe or the cart. NONE goes by `userId`: "no path deletes
     //   rows because of who created them" (issue #320). So a log or a cart a
@@ -2313,13 +2314,20 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       const householdId = await requireHousehold(ctx)
       // Prisma reads `{ householdId: undefined }` as NO filter, so every
       // delete below would empty its table for EVERY household. No text check
-      // can see an `undefined` value, so refuse it here, before the role
-      // check and before the transaction.
+      // can see an `undefined` value, so refuse it here, before the
+      // transaction.
       if (!householdId) throw new Error('clearAllData: no household id')
-      await requireHouseholdRole(ctx, householdId, 'owner')
 
       await prisma.$transaction(async (tx) => {
-        await lockHousehold(tx, householdId)
+        // The lock FIRST, then the owner check through `tx` (households H6
+        // task J.4, decision T52). A role read before the lock could be stale
+        // by the time the deletes run: an owner who hands the household over
+        // (H6b) at the same moment could still clear it. The transfer takes
+        // the same lock, so the two run one after the other. A household
+        // deleted since `requireHousehold` found it gives FORBIDDEN, not
+        // Prisma's P2025 (the H5b known gap).
+        await lockHouseholdOrForbid(tx, householdId)
+        await requireHouseholdRole(ctx, householdId, 'owner', tx)
         // The ordered delete of every data row of the household (decision
         // T64 of the H6 plan). Shared with `deleteHousehold`.
         await deleteHouseholdData(tx, householdId)

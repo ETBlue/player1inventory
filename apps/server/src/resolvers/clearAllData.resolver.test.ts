@@ -77,11 +77,13 @@ vi.mock('../lib/prisma.js', async () => {
         return base.householdActivity.create(args)
       },
     },
+    // The lock is `lockHouseholdOrForbid`, an `updateMany`, since households
+    // H6 task J.4 (decision T52). It was `lockHousehold`, an `update`.
     household: {
       ...base.household,
-      update: async (args: Parameters<typeof base.household.update>[0]) => {
+      updateMany: async (args: Parameters<typeof base.household.updateMany>[0]) => {
         shared.events.push('lock')
-        return base.household.update(args)
+        return base.household.updateMany(args)
       },
     },
     itemStock: {
@@ -409,9 +411,11 @@ describe('clearAllData is owner only', () => {
       // When the caller tries to clear it
       const res = await run(CLEAR)
 
-      // Then it is refused before anything runs
+      // Then it is refused after the lock and before any delete. Since
+      // households H6 task J.4 the role is read AFTER the lock (decision
+      // T52), so the lock is taken, and rolled back with the refusal.
       expect(res.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
-      expect(events).toEqual([])
+      expect(events).toEqual(['lock'])
       expect(world.stock.state.locations).toHaveLength(3)
       expect(world.households.state.locationMembers).toHaveLength(4)
     })

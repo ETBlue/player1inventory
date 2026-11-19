@@ -385,6 +385,14 @@ export async function deleteHouseholdData(
  * Take the `Household` row's lock for the rest of this transaction. Call it
  * FIRST in the transaction, before any other read or write.
  *
+ * NO CODE CALLS THIS SINCE HOUSEHOLDS H6 TASK J.4. `deleteLocation` and
+ * `clearAllData`, its last two callers, moved to `lockHouseholdOrForbid`
+ * below, which runs the same lock as an `updateMany` and gives FORBIDDEN
+ * instead of Prisma's P2025 when the household is gone (decision T52). The
+ * function is kept for now because this comment is the one place that
+ * explains the lock, and many comments and `scripts/verify-migration.ts`
+ * point here. New code must use `lockHouseholdOrForbid`.
+ *
  * Why it exists. Until households H5 task F.7, `deleteLocation` counted the
  * household's locations and refused the last one (decision H13). Two deletes
  * at once, of the last two locations, could both count 2 and both delete,
@@ -513,7 +521,9 @@ export async function lockHouseholds(
 /**
  * Take the household's row lock, FIRST in the transaction, for
  * `setHouseholdRole`, `removeMember` and `leaveHousehold` (and, from
- * households H5c, the three location role writes). The household
+ * households H5c, the three location role writes; from households H6 task
+ * J.4, `clearAllData`, `renameHousehold`, `deleteLocation` and the purges,
+ * decision T52). Read the caller's role AFTER it, through `tx`. The household
  * can be deleted after `requireHousehold` found it (for example the owner
  * joined another household in another tab, and the join deleted this one as
  * empty). `lockHousehold` would then throw Prisma's P2025, which reaches the

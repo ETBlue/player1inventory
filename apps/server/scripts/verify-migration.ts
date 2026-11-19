@@ -1665,12 +1665,31 @@ async function assertDropUserScope(): Promise<void> {
 // main() calls this at the very end. It writes its own users, households and
 // locations, so it does not depend on the fixture above.
 
-// The lock, written exactly as lockHousehold in src/lib/household.ts writes
-// it. scripts/ must not import from src (see the no-overlap note in the root
-// CLAUDE.md), so the call is repeated here. If lockHousehold changes, change
-// this one too, or these proofs stop being about the code that runs.
-const lockHouseholdCopy = (tx: Prisma.TransactionClient, householdId: string) =>
-  tx.household.update({ where: { id: householdId }, data: { updatedAt: new Date() } })
+// The lock, written exactly as `lockHouseholdOrForbid` in src/lib/household.ts
+// runs it (through `lockHouseholds`): one `updateMany`, and a count of 0 means
+// the household is gone. Since households H6 task J.4 (decision T52) that is
+// the lock `deleteLocation` and `clearAllData` take; until then it was
+// `lockHousehold`, an `update` of the same row. Both take the same row lock.
+// scripts/ must not import from src (see the no-overlap note in the root
+// CLAUDE.md), so the call is repeated here. If the lock changes, change this
+// one too, or these proofs stop being about the code that runs.
+const lockHouseholdCopy = async (tx: Prisma.TransactionClient, householdId: string) => {
+  const { count } = await tx.household.updateMany({
+    where: { id: householdId },
+    data: { updatedAt: new Date() },
+  })
+  if (count === 0) throw new Error(`FAIL: the household ${householdId} to lock is gone`)
+}
+
+// The household role read both bodies make AFTER the lock, through `tx`
+// (`requireHouseholdRole(ctx, householdId, role, tx)` in src/lib/authz.ts;
+// households H6 task J.4, decision T52). It takes no lock; it is here so the
+// statements are the ones that run. The fixture's user is the owner.
+const householdRoleCopy = (tx: Prisma.TransactionClient, householdId: string, userId: string) =>
+  tx.householdMember.findUnique({
+    where: { householdId_userId: { householdId, userId } },
+    select: { role: true },
+  })
 
 async function backendPidOf(tx: Prisma.TransactionClient): Promise<number> {
   const rows = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`
@@ -1854,7 +1873,8 @@ async function makeTwoLocationHousehold(
  * The body of deleteLocation's transaction, in the same order, with the same
  * Prisma calls (src/resolvers/location.resolver.ts, `deleteLocation`):
  *
- *   lockHouseholdCopy    ← `await lockHousehold(tx, householdId)`
+ *   lockHouseholdCopy    ← `await lockHouseholdOrForbid(tx, householdId)`
+ *   householdRoleCopy    ← `await requireHouseholdRole(ctx, householdId, 'manager', tx)`
  *   location.findFirst   ← `tx.location.findFirst({ where: { id, householdId }, … })`
  *   location.delete      ← `tx.location.delete({ where: { id } })`
  *
@@ -1871,11 +1891,14 @@ async function makeTwoLocationHousehold(
 async function deleteLocationBody(
   tx: Prisma.TransactionClient,
   householdId: string,
+  userId: string,
   id: string,
   hold?: () => Promise<void>,
 ): Promise<{ outcome: 'deleted' | 'forbidden' }> {
   await lockHouseholdCopy(tx, householdId)
   if (hold) await hold()
+  const role = await householdRoleCopy(tx, householdId, userId)
+  if (!role || role.role === 'member') return { outcome: 'forbidden' }
   const location = await tx.location.findFirst({ where: { id, householdId }, select: { id: true } })
   if (!location) return { outcome: 'forbidden' }
   await tx.location.delete({ where: { id } })
@@ -1905,18 +1928,18 @@ async function assertHouseholdLock(): Promise<void> {
   // location 1 (not committed yet): 1. `overlapTwoTransactions` would also
   // report that B was never blocked.
   {
-    const { householdId, locationIds } = await makeTwoLocationHousehold('delete-delete')
+    const { userId, householdId, locationIds } = await makeTwoLocationHousehold('delete-delete')
     const [loc1, loc2] = locationIds
     const { first, second } = await overlapTwoTransactions(
       'two deleteLocation at once',
       async (tx, hold) => {
-        const result = await deleteLocationBody(tx, householdId, loc1)
+        const result = await deleteLocationBody(tx, householdId, userId, loc1)
         // Hold AFTER the delete, so B would see location 1 if it did not wait.
         await hold()
         return result
       },
       async (tx) => {
-        const result = await deleteLocationBody(tx, householdId, loc2)
+        const result = await deleteLocationBody(tx, householdId, userId, loc2)
         // Not a statement of the resolver: an observation, read inside B's
         // transaction after its delete.
         const seenAfter = await tx.location.count({ where: { householdId } })
@@ -1964,16 +1987,19 @@ async function assertHouseholdLock(): Promise<void> {
   // live in `deleteHouseholdData` (src/lib/household.ts), which clearAllData
   // calls; the copy below is of that function's body, unchanged. Each line
   // below names the source line it mirrors.
-  // The owner check before the transaction (requireHouseholdRole) is left
-  // out: it takes no lock.
+  // Since J.4 the owner check is inside the transaction, after the lock
+  // (decision T52), so it is copied too. It takes no lock.
   {
     const { userId, householdId, locationIds } = await makeTwoLocationHousehold('clear-delete')
     const [, loc2] = locationIds
     const { first, second } = await overlapTwoTransactions(
       'clearAllData and deleteLocation at once',
       async (tx, hold) => {
-        // `await lockHousehold(tx, householdId)`
+        // `await lockHouseholdOrForbid(tx, householdId)`
         await lockHouseholdCopy(tx, householdId)
+        // `await requireHouseholdRole(ctx, householdId, 'owner', tx)`
+        const role = await householdRoleCopy(tx, householdId, userId)
+        if (role?.role !== 'owner') throw new Error(`FAIL: the fixture user is not the owner (read: ${role?.role})`)
         // `await tx.inventoryLog.deleteMany({ where: { location: { householdId } } })`
         await tx.inventoryLog.deleteMany({ where: { location: { householdId } } })
         // `await tx.cartItem.deleteMany({ where: { cart: { location: { householdId } } } })`
@@ -2017,7 +2043,7 @@ async function assertHouseholdLock(): Promise<void> {
         })
         return { locationsDeleted, homeId: home.id }
       },
-      (tx) => deleteLocationBody(tx, householdId, loc2),
+      (tx) => deleteLocationBody(tx, householdId, userId, loc2),
     )
     assert(
       first.locationsDeleted === 2,
