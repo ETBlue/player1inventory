@@ -53,7 +53,18 @@ import { type ChangeEvent, liveEvents } from '../lib/liveEvents.js'
 // How many `$transaction` callbacks are running right now. The three role
 // writes (task H.3) must read nothing through the global client while it is
 // above 0, and must publish only when it is back to 0 (after the commit).
-const tx = vi.hoisted(() => ({ depth: 0 }))
+//
+// `touched` holds every model a transaction callback reached through `tx`,
+// and `unknownTouched` every model the world does not have (for example
+// `cartItem`). Such a model gets a recording stub instead of `undefined`, so
+// a resolver that writes one fails on an assertion about WHICH models it
+// touched, not on a `TypeError`. Every test ends by checking that no unknown
+// model was reached (the `afterEach` below).
+const tx = vi.hoisted(() => ({
+  depth: 0,
+  touched: new Set<string>(),
+  unknownTouched: new Set<string>(),
+}))
 
 vi.mock('../lib/prisma.js', async () => {
   const { createHouseholdWorld } = await import('../test/householdWorld.js')
@@ -74,9 +85,22 @@ vi.mock('../lib/prisma.js', async () => {
     // Count the depth INSIDE the callback, so a transaction that waits in
     // the `serialTransactions` queue is not counted as running.
     return worldTransaction(async (client: unknown) => {
+      const real = client as Record<string, unknown>
+      const recorded = new Proxy(real, {
+        get(target, prop, receiver) {
+          if (typeof prop !== 'string' || prop.startsWith('$') || prop === 'then') {
+            return Reflect.get(target, prop, receiver)
+          }
+          tx.touched.add(prop)
+          if (prop in target) return Reflect.get(target, prop, receiver)
+          tx.unknownTouched.add(prop)
+          // A stub whose every method resolves to an empty answer.
+          return new Proxy({}, { get: () => async () => ({ count: 0 }) })
+        },
+      })
       tx.depth++
       try {
-        return await (arg as (c: unknown) => Promise<unknown>)(client)
+        return await (arg as (c: unknown) => Promise<unknown>)(recorded)
       } finally {
         tx.depth--
       }
@@ -187,6 +211,11 @@ beforeEach(() => {
 afterEach(() => {
   unsubscribe()
   vi.restoreAllMocks()
+  // No resolver here may reach a model the world does not have.
+  const unknown = [...tx.unknownTouched]
+  tx.touched.clear()
+  tx.unknownTouched.clear()
+  expect(unknown).toEqual([])
 })
 
 // ─── running an operation ────────────────────────────────────────────────────
@@ -661,6 +690,16 @@ describe('removeLocationRole: who may do what (task H.3)', () => {
     expect(seen).toEqual([])
   })
 
+  it('location organizer who is a household member gets false for a person with no row (a second press)', async () => {
+    // Given NOA has no role on LOC_K, and BEA organizes LOC_K as a household member
+    // When BEA removes NOA from LOC_K (for example a second press of Remove)
+    const res = await removeRole(BEA, LOC_K, NOA)
+
+    // Then the answer is false, not an error, and nothing is sent
+    expect(ok(res, 'removeLocationRole')).toBe(false)
+    expect(seen).toEqual([])
+  })
+
   it('a caller who may not read the people gets FORBIDDEN for a person with no row', async () => {
     // Given NOA, a household member with no role on LOC_K, so no right to see who is there
     // When NOA asks to remove OWEN, who has no row on LOC_K
@@ -692,11 +731,18 @@ describe('removeLocationRole: who may do what (task H.3)', () => {
     world.contents.rows.carts.push(cart)
     world.contents.rows.cartItems.push(cartItem)
     const before = JSON.stringify({ stock: world.stock.state.itemStocks, rows: world.contents.rows })
+    tx.touched.clear()
 
     // When the organizer removes BOB from LOC_K
-    expect(ok(await removeRole(BEA, LOC_K, BOB), 'removeLocationRole')).toBe(true)
+    const res = await removeRole(BEA, LOC_K, BOB)
 
-    // Then only BOB's role row is gone
+    // Then the transaction reached only the household, location and role models:
+    // no cart, cart row, stock row or log model at all
+    const touched = [...tx.touched].sort()
+    tx.unknownTouched.clear()
+    expect(touched).toEqual(['household', 'householdMember', 'location', 'locationMember'])
+    expect(ok(res, 'removeLocationRole')).toBe(true)
+    // And only BOB's role row is gone
     expect(storedRole(LOC_K, BOB)).toBeNull()
     expect(JSON.stringify({ stock: world.stock.state.itemStocks, rows: world.contents.rows })).toBe(
       before,
