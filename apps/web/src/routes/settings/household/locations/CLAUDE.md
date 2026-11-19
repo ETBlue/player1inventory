@@ -172,6 +172,9 @@ Top to bottom: Back and the location name (as stored, no `capitalize`; `people.u
   every fixture holds two organizers, a participant, a viewer and a location the caller has
   no role on), `$id.test.tsx` (local redirect), `components/location/LocationPeopleList/` and
   `components/location/AddLocationPersonDialog/` unit tests. Stories: `OwnerView`,
-  `OrganizerView`, `ParticipantView`, `NoOrganizer`, `NobodyToAdd`. **No axe scan yet**:
-  `a11y.spec.ts` runs in `local` and `pwa` only, where this page does not exist; the scans
-  belong to H.8's cloud spec, like the Members page's.
+  `OrganizerView`, `ParticipantView`, `NoOrganizer`, `NobodyToAdd`. **Axe scans and E2E**:
+  `e2e/tests/location-people.spec.ts` (cloud, households H5c task H.8), because
+  `a11y.spec.ts` runs in `local` and `pwa` only, where this page does not exist. Its tests 8
+  and 9 scan, light and dark, this page with No organizer, Add person, the Remove and Leave
+  confirms, the name links on the list and the Members page's "No location roles" mark. Its
+  tests 1 to 7 cover the page in two browsers on real SQL (see `e2e/CLAUDE.md`).

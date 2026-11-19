@@ -1843,8 +1843,9 @@ Note also that **no *unit* test executes the resolvers against real SQL** — ev
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
 Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
 branch), but only for the spec files listed in the `cloud` project's `testMatch` in
-`e2e/playwright.config.ts` — that list is opt-in and covers **35 of the 39 spec files in
-`e2e/tests/`** (measured 2026-11-18, after households H5b task G.10 added
+`e2e/playwright.config.ts` — that list is opt-in and covers **36 of the 40 spec files in
+`e2e/tests/`** (measured 2026-11-19, after households H5c task H.8 added
+`location-people.spec.ts`; 35 of 39 on 2026-11-18, after households H5b task G.10 added
 `household-invites.spec.ts`; 34 of 38 on 2026-11-17, after households H5 task F.8 added
 `shared-household.spec.ts`; 33 of 37 earlier that day, after households H4 task E.6 added
 `settings/import-households.spec.ts`; 32 of 36 on 2026-11-16, after households H3c-2 task D.5 added
