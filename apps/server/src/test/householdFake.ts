@@ -128,13 +128,6 @@
 //   - `include`, `orderBy`, `take`, `skip`. All throw as unknown options, so
 //     no test can rest on something this file never applied. `distinct`
 //     throws too, except on `locationMember.findMany` (below).
-//
-// ── `distinct` ON `locationMember.findMany` (households H5c, task H.2) ──
-//
-// `HouseholdPerson.hasLocationRole` reads `distinct: ['userId']` (decision
-// T40). It is APPLIED: the first row of each combination of the named
-// columns is kept, in store order, as Prisma keeps one row per value. A
-// string or an array of `LocationMember` columns; any other key throws.
 //   - Nested writes, such as `household.create({ data: { members: { create }
 //     } })`, and update operators such as `{ set }`. A `data` value that is a
 //     plain object throws. Write each row with its own call.
@@ -152,6 +145,13 @@
 //   - `$transaction`. Import `runInTransaction` from `stockFake.ts` and pass
 //     this fake's `state` as a store. `state` holds plain data and `Date`s,
 //     which `structuredClone` copies.
+//
+// ── `distinct` ON `locationMember.findMany` (households H5c, task H.2) ──
+//
+// `HouseholdPerson.hasLocationRole` reads `distinct: ['userId']` (decision
+// T40). It is APPLIED: the first row of each combination of the named
+// columns is kept, in store order, as Prisma keeps one row per value. A
+// string or an array of `LocationMember` columns; any other key throws.
 
 import type { Household, HouseholdInvite, HouseholdMember, LocationMember } from '@prisma/client'
 import { OwnedRowNotFoundError } from './ownedRowFake.js'
