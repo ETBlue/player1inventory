@@ -54,6 +54,13 @@ opens the same Add Location dialog as the settings page.
   Focus case 3).
 - `ActiveLocationProvider` clears the stale active id when the cloud list is empty (see
   `hooks/CLAUDE.md`).
+- **Losing the active location** (households H5c task H.7, owner decision O27-A). When the
+  person leaves it, an owner removes their role, or it is deleted, the tab moves to their
+  first other location, or to this empty screen, with no reload. One toast says "You no
+  longer have access to {location}." / 「你已經沒有{location}的權限了。」. Only when this tab
+  had shown that location during this page visit; never on a cold load with an old stored
+  id. The leaving tab moves because `useLeaveLocation` reads `GetLocations` again; another
+  tab moves on the live `LOCATION` event. See `hooks/CLAUDE.md`, `useActiveLocation()`.
 - Local mode never gets here: its default location cannot be deleted.
 - Tested in `routes/noLocations.cloud.test.tsx` (all four pages, the dialog, and a
   one-location control), E2E in `e2e/tests/settings/locations.spec.ts` (cloud: delete the
