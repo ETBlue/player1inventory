@@ -311,7 +311,19 @@ Not folded in, on purpose:
 ### Owner decisions
 
 Questions **O32–O39** are at the end of this file, under *Owner questions*. Each task names the
-ones it needs. Until they are answered, the plan is written for the recommended option.
+ones it needs. **The owner answered "all A" on 2026-11-20.** So the plan as written, which uses
+the recommended option everywhere, is the decided plan:
+
+| Question | Answer |
+|---|---|
+| O32 | A. Two PRs: H6a (J.1–J.9), then H6b (K.1–K.9) |
+| O33 | A. One log row per import, through `recordImport` |
+| O34 | A. No new "Home" after "Delete all locations" |
+| O35 | A. The stored name with "(deleted account)" after it |
+| O36 | A. Count deleted accounts before the release; a one-off script only if the count is not 0 |
+| O37 | A. The last person leaving an ownerless household deletes it, after a warning |
+| O38 | A. "Delete the household" is built in H6a, in the household danger zone |
+| O39 | A. The texts as written; the owner may still correct them in the PR |
 
 ---
 
@@ -1133,7 +1145,7 @@ Filled in from the task reports and reviews.
 ## Status
 
 **Plan written 2026-11-20** on `feature/households-h6`, based on `develop` at `7dbaeca9`.
-Owner decisions O32–O39: not answered yet.
+Owner decisions O32–O39: all A (2026-11-20). H6a (J.1–J.9) comes first.
 
 ---
 
