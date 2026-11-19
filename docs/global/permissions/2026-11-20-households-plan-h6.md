@@ -656,6 +656,24 @@ copy and compared with `diff -q`. Every row went red on an assertion, not on a l
 | 15 | `deleteAllLocations` reads the owner role before the lock | its order test and its global-read test |
 | 16 | `deleteHousehold` without `deleteHouseholdData` (only the household delete and its cascade) | 2: "deletes the catalog through deleteHouseholdData" and the `purge-coverage` check. The "all its data" test stays GREEN for this one: the fake cascades locations from the household, as Postgres does. Only the `Tag.type` NoAction case needs the explicit list, and real SQL (J.8) proves that |
 
+**Review of J.4 (2026-11-20).** One fix. `deleteHousehold` wrote other people's `User` rows
+(step 1, before the lock) BEFORE it checked that the caller is the owner. A refusal rolled
+the write back, but a manager or member still took those row locks, and could push another
+person's `joinHousehold` (which holds its own `User` row and then wants this household's
+lock) into `P2034`. Nothing ever committed. The fix adds an EARLY owner check with the
+global client, before the transaction. The check after the lock, through `tx`, stays and is
+still the one that counts: a role read early can be stale only in the safe direction. The
+test "no household role read on the global client" in `purges.resolver.test.ts` now expects exactly one
+early read for `deleteHousehold` and none for the other four writes.
+
+| # | Mutation (review) | Red |
+|---|---|---|
+| R1 | `removeAllLocationItems`: `itemStock.deleteMany({ where: { location: { householdId } } })` | 4, among them "a second location of the same household keeps its stock rows and cart rows" (`expected [ 's_z' ] to include 's_p'`) |
+| R2 | `deleteHouseholdData`: `tag.deleteMany({})` | 4: the scope test and the rows test in `deleteHouseholdData.test.ts`, the `clearAllData` scope test, and "deletes the catalog through deleteHouseholdData" |
+| R3 | `deleteHouseholdData`: `inventoryLog.deleteMany({ where: {} })` | 12 or more across the four files (some on the purges fake, which throws on a `where` it does not model) |
+| R4 | `deleteHousehold` without the early owner check | 3: "household manager / member is refused before any transaction, so no User row is ever written" (`$transaction` was called 1 time) and the global-read test |
+| R5 | `deleteHousehold` with the early check but WITHOUT the check through `tx` | 2: its order test and "deleteHousehold by an owner who is demoted at the same moment is refused". So the early check does not make the real one redundant |
+
 **E2E:** none (J.8).
 
 ---
@@ -1253,6 +1271,7 @@ Filled in from the task reports and reviews.
 | J.4 | T55: `deleteAllLocations` is "`deleteMany` of the household's locations, which cascades" | Kept as one `deleteMany`. The test fake had no cascade from a location to logs, carts and cart rows, so `purges.resolver.test.ts` models it itself |
 | J.4 | T55 does not say how `removeAllLocationItems` checks its role | It takes the household lock first and reads the location and the role through `tx` (`locationRoleOf(ctx, id, tx)`), like the H5c role writes. So an organizer demoted at the same moment is refused. Cost: `Household.updatedAt` moves on every call |
 | J.4 | T60 / T16: a household delete writes other people's `User` rows, so it "retries once on `P2034`" | `deleteHousehold` also clears every `User.activeHouseholdId` that names the household BEFORE it takes the household lock, so the usual order (User rows, then households) holds. The cascade would make the same writes after the lock. The retry stays for other writers. `userFake` gained the `activeHouseholdId` where key for this |
+| J.4 (review) | T52: the owner check runs AFTER the household lock, through `tx`. Combined with the J.4 row above (clear `User.activeHouseholdId` BEFORE the lock), that put a write of other people's rows before ANY role check | `deleteHousehold` also checks the owner role early, outside the transaction, so a manager or member is refused before step 1. The check after the lock stays. Any later write that must touch `User` rows before the household lock (K.4's hand-over runs as the webhook, not a person, so it is not affected) needs the same early check |
 | J.4 | Step 1: the `deleteHouseholdData` test "with a tag that has a tag type"; the mutation table: "`tagType` before `tag`: nothing on the fake" | A small table fake in the new `lib/deleteHouseholdData.test.ts` models `Tag.type` as NoAction, so that mutation goes red there (P2003). Real SQL in J.8 is still the proof for Postgres |
 | J.4 | Facts: `verify-migration.ts` keeps a copy of `lockHousehold` | No code calls `lockHousehold` any more: its last two callers moved to `lockHouseholdOrForbid`. The function is kept for its long comment, with a note that says so. The script's copy is now the `updateMany` form, and both copied bodies read the household role after the lock. **That script change is unrun** (no subagent runs a database command) |
 | J.4 | `purge-coverage.test.ts` reads `clearAllData`'s body | It now reads `deleteHouseholdData`'s body (the path is labelled after the helper), and two new tests check that `clearAllData` and `deleteHousehold` hold no data delete of their own and call the helper |
