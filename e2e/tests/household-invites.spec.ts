@@ -896,7 +896,15 @@ test.describe('invite, join and members', () => {
     await expect(
       members.main().getByRole('heading', { name: 'Open invites' }),
     ).toBeVisible()
-    await expect(members.main().getByText('No location roles')).toBeVisible()
+    // The open invite's row only. A MEMBER row can carry the same mark (H5c
+    // task H.6), and two marks in `main` would fail Playwright's strict mode
+    await expect(
+      members
+        .main()
+        .getByRole('listitem')
+        .filter({ hasText: `Created by ${NAMES[OWNER]}` })
+        .getByText('No location roles'),
+    ).toBeVisible()
     await ownerPage.waitForLoadState('networkidle')
     await scan(ownerPage)
     await members.openRemove(NAMES[MEMBER] ?? '')

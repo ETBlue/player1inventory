@@ -128,6 +128,12 @@ const publishes: Record<string, { kinds: Kind[] }> = {
   removeMember: { kinds: ['LOCATION'] },
   leaveHousehold: { kinds: ['LOCATION'] },
   createHousehold: { kinds: ['LOCATION'] },
+  // Households H5c task H.3, decision T36: household-level `LOCATION`, for
+  // the caller's household, after the commit, and only when a role row
+  // changed (the same role again, or no row to remove, sends nothing).
+  setLocationRole: { kinds: ['LOCATION'] },
+  removeLocationRole: { kinds: ['LOCATION'] },
+  leaveLocation: { kinds: ['LOCATION'] },
   createItem: { kinds: ['CATALOG'] },
   updateItem: { kinds: ['CATALOG'] },
   createTag: { kinds: ['CATALOG'] },

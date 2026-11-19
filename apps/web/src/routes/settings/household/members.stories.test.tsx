@@ -12,8 +12,14 @@ vi.mock(
   async (importOriginal) => await importOriginal(),
 )
 
-const { Owner, Manager, Member, WithOpenInvites, InviteDialogOpen } =
-  composeStories(stories)
+const {
+  Owner,
+  Manager,
+  Member,
+  WithOpenInvites,
+  InviteDialogOpen,
+  OwnerSeesNoLocationRoles,
+} = composeStories(stories)
 
 // composeStories does not run a story's `beforeEach`, so each test runs it.
 // Each test waits for a control that shows only once the ROLE has loaded
@@ -69,5 +75,16 @@ describe('Members page stories smoke tests', () => {
     expect(
       within(dialog).getByRole('combobox', { name: 'Garage' }),
     ).toHaveTextContent('No access')
+  })
+
+  it('OwnerSeesNoLocationRoles marks the member with no location role', async () => {
+    onTestFinished(cloudRoleStorySetup())
+    render(<OwnerSeesNoLocationRoles />)
+    const link = await screen.findByRole('link', {
+      name: 'Give a location role',
+    })
+    const row = link.closest('li') as HTMLElement
+    expect(row).toHaveTextContent('mia')
+    expect(within(row).getByText('No location roles')).toBeInTheDocument()
   })
 })

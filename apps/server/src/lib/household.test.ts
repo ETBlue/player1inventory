@@ -14,7 +14,13 @@ import { GraphQLError } from 'graphql'
 import { prisma } from './prisma.js'
 import type { HouseholdWorld } from '../test/householdWorld.js'
 import type { UserRow } from '../test/userFake.js'
-import { ensureHousehold, firstSignInNames, lockHouseholds, lockUser } from './household.js'
+import {
+  ensureHousehold,
+  firstSignInNames,
+  lockHouseholdOrForbid,
+  lockHouseholds,
+  lockUser,
+} from './household.js'
 
 const world = (prisma as unknown as { $world: HouseholdWorld }).$world
 
@@ -480,5 +486,49 @@ describe('lockHouseholds (households H5b, task G.4)', () => {
   it('a missing household is skipped with no error', async () => {
     seedThree()
     await expect(lockHouseholds(prisma as never, ['hh-gone'])).resolves.toEqual(new Set())
+  })
+})
+
+describe('lockHouseholdOrForbid (households H5c task H.1)', () => {
+  const T = new Date('2026-11-01T00:00:00.000Z')
+  const row = (id: string) => ({
+    id,
+    name: id,
+    ownerId: null,
+    ownerGoneAt: null,
+    createdAt: T,
+    updatedAt: T,
+  })
+
+  it('locks a household that exists, with one UPDATE of that household only', async () => {
+    // Given two households
+    world.seedHouseholds({ households: [row('hh-a'), row('hh-b')] })
+    const spy = vi.spyOn(world.client.household, 'updateMany')
+    try {
+      // When hh-a is locked
+      await expect(lockHouseholdOrForbid(prisma as never, 'hh-a')).resolves.toBeUndefined()
+
+      // Then one UPDATE of hh-a was sent, and hh-b was not touched
+      expect(spy.mock.calls.map((call) => call[0].where?.id)).toEqual(['hh-a'])
+      const a = world.households.state.households.find((h) => h.id === 'hh-a')
+      const b = world.households.state.households.find((h) => h.id === 'hh-b')
+      expect(a?.updatedAt).not.toEqual(T)
+      expect(b?.updatedAt).toEqual(T)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('refuses with FORBIDDEN, not P2025, when the household was deleted', async () => {
+    // Given hh-a exists, but the household asked for does not any more
+    world.seedHouseholds({ households: [row('hh-a')] })
+
+    // When it is locked
+    const error = await lockHouseholdOrForbid(prisma as never, 'hh-gone').catch((e: unknown) => e)
+
+    // Then it is the shared FORBIDDEN refusal
+    expect(error).toBeInstanceOf(GraphQLError)
+    expect((error as GraphQLError).message).toBe('Forbidden')
+    expect((error as GraphQLError).extensions.code).toBe('FORBIDDEN')
   })
 })

@@ -347,8 +347,8 @@ its `delete` in `forgetLocationRoles` (`lib/authz.ts`); `CheckoutItemInput.itemI
 
 ## 9. Households H5b (invites, join, members, the no-household screen)
 
-Added 2026-11-18 by H5b task G.11. **H5b is built on `feature/households-h5b`. It is not
-merged and not deployed.** Plan:
+Added 2026-11-18 by H5b task G.11. **H5b is merged into `develop` (#385, merge
+`938fa2aa`, 2026-11-18). It is not deployed.** Plan:
 [`../permissions/2026-11-18-households-plan-h5b.md`](../permissions/2026-11-18-households-plan-h5b.md),
 *Deploy notes* and *Known gaps*.
 
@@ -556,6 +556,69 @@ NO household (who left or was removed) then gets `NO_HOUSEHOLD` on every request
 pages fail and nothing explains why. No data is lost. A person still in a household is not
 affected. So when anyone may be in no household, prefer to fix forward over a web-only
 rollback.
+
+## 10. Households H5c (the location people page)
+
+Added 2026-11-19 by H5c task H.9. **H5c is built on `feature/households-h5c`. It is not
+merged and not deployed.** Plan:
+[`../permissions/2026-11-19-households-plan-h5c.md`](../permissions/2026-11-19-households-plan-h5c.md),
+*Deploy notes* and *Known gaps*.
+
+### 10.1 What changes
+
+| Part | What is new |
+|---|---|
+| Database | **no migration**. No table, column or index changes |
+| Server env, web build env, Clerk | nothing new |
+| GraphQL schema | 1 new query (`locationPeople`), 1 new type (`LocationPerson`), 1 new field (`HouseholdPerson.hasLocationRole`) and 3 new mutations (`setLocationRole`, `removeLocationRole`, `leaveLocation`). No field, argument or input field is removed or changed. `oldBundleCompat.test.ts` still passes with the same list of known changes (in `pnpm test`, 2026-11-19) |
+| Live updates | each of the 3 mutations sends one household-level `LOCATION` event after the commit. The live guard holds 72 mutation fields |
+| Web behaviour | the page `/settings/household/locations/$id` (cloud only), a link on each location name in **Settings › Household › Locations**, the **No location roles** mark on the Members page, and a short message when a tab loses its active location |
+
+### 10.2 The order: server first, then the web
+
+This is already the order of the whole households release (section 8.3). H5c does not
+change it.
+
+- **New web on an old server does not work.** The new bundle selects `locationPeople` and
+  `HouseholdPerson.hasLocationRole`. An old server fails GraphQL validation on both, so the
+  people page and the **Members page** show an error (the Members query selects the new
+  field).
+- **Old web on the new server works.** `main`'s bundle selects none of the new fields, and
+  an H5b-era bundle was never deployed, so there is no in-between bundle.
+
+### 10.3 Checks after the deploy
+
+**Owner, after the web deploy.** Use two real devices (for example a laptop and a phone)
+and two accounts in one TEST household, not the real one. Device B's person must be a
+household `member`.
+
+1. Device A, as the owner: **Settings › Household › Locations**. Each location name is a
+   link. Open one.
+2. The page shows the location name and the people with a role there. Press **Add
+   person**, choose B's person and **Viewer**, and add.
+3. Device B, already open on the pantry or on the empty screen: within a few seconds,
+   with no reload, B sees the location (in the switcher, with **View only**).
+4. Device A: change B's role to **Participant**. Device B: the **View only** badge goes,
+   with no reload.
+5. Device A: remove B from the location (the Remove button on B's row, then confirm).
+   Device B, if it was showing that location: the screen moves to B's next location, or to
+   the empty screen, and shows "You no longer have access to {location}." once.
+6. Device A: **Settings › Household › Members**. If B now has no location role, B's row
+   shows **No location roles** with a link to the locations.
+
+Result: `TBD on deploy day`.
+
+### 10.4 If something is wrong
+
+| Symptom | Likely cause | What to do |
+|---|---|---|
+| The people page, or the Members page, shows an error for everyone | the web is new and the server is old, or the server was rolled back | check the Railway deployment is the new commit |
+| Device B does not change in step 3 or 4 until a reload | the live socket is not connected (H3c-1 runbook) | check `VITE_GRAPHQL_WS_URL` in the Cloudflare build and the socket in the browser's network tab. The write itself is saved: a reload shows it |
+
+**Rollback.** No migration, so the server can go back to the previous deployment by
+itself. Role changes made in the meantime are ordinary `LocationMember` rows and stay. But
+roll back the web FIRST (or together): an H5c bundle on an H5b server fails on the Members
+page (10.2). Role changes made between H5c and H6 are not logged (owner decision O29-A).
 
 ## Where this file lives, and why
 

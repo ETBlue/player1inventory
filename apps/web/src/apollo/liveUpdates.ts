@@ -61,8 +61,9 @@ export const LIVE_BATCH_MS = 300
  * | `GetTagTypes`, `GetTags`, `GetTagsByType`, `TagCountByType` | tags  | CATALOG          |
  * | `GetVendors`           | vendors                                    | CATALOG          |
  * | `GetHousehold`         | the household `name` (and the caller's `role`) | CATALOG      |
- * | `HouseholdMembers`     | every person and their household role      | LOCATION         |
+ * | `HouseholdMembers`     | every person, their household role, `hasLocationRole` | LOCATION |
  * | `HouseholdInvites`     | the open invites                           | LOCATION         |
+ * | `LocationPeople`       | the people of one location and their role  | LOCATION         |
  * | `VendorCart`, `AllCarts` | cart `id`, `lastPurchasedAt`             | CART             |
  * | `CartItems`, `AllCartItems` | `cartId`, `itemId`, `quantity`        | CART             |
  * | `CartItemCountByItem`  | a count of cart rows                       | CART             |
@@ -94,6 +95,11 @@ export const LIVE_BATCH_MS = 300
  * task G.9) need no entry for the same reason: every member and invite
  * mutation publishes household-level `LOCATION` (decision T19), and
  * `LOCATION` refetches every active query.
+ *
+ * `LocationPeople` (the location people page, households H5c task H.4) needs
+ * no entry either: `setLocationRole`, `removeLocationRole` and
+ * `leaveLocation` publish household-level `LOCATION` (decision T36). So do
+ * `removeMember` and `leaveHousehold`, which delete a person's role rows.
  */
 export const QUERIES_BY_KIND: Record<ChangeKind, readonly string[] | 'all'> = {
   CART: [

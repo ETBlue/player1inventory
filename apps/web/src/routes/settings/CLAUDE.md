@@ -43,9 +43,10 @@ Plan: `docs/global/permissions/2026-11-18-households-plan-h5b.md`, Task G.9. Ser
 - A revoke that answers `false` refetches the list and shows no message.
 - Leave and Remove cannot be confirmed twice while one runs: "Leaving…" / "Removing…" replace the button (review of G.9). After a Remove focus moves to the page heading, after a Revoke to the **Open invites** heading, because the button that had focus goes away.
 - A failed invites read shows `invitesLoadError`, not "No open invites.".
+- **"No location roles"** (households H5c task H.6, owner decision O28-A): an owner or manager (`canManageMembers`) sees `noLocationRoles` and a link, **Give a location role** (`giveLocationRole`), on the row of a person with `hasLocationRole: false` (a person who joined with no location role, O14-A). The link goes to Settings › Locations; the role is given on a location's page with **Add person**. A member sees no mark: they cannot give a location role.
 - Leave: see `useLeaveHousehold` in `hooks/CLAUDE.md`.
 - Mobile: not full-screen, like Locations; the page has its own Back button (`lg:hidden`).
-- Tests: `members.cloud.test.tsx` (the real route tree, real Apollo hooks, `MockedProvider`; every fixture holds all three roles), `members.test.tsx` (local mode), `components/household/MemberList/MemberList.test.tsx` (every caller × row pair), `lib/copyText.test.ts`. Stories: `Owner`, `Manager`, `Member`, `WithOpenInvites`, `InviteDialogOpen`. The axe scans (light and dark) belong to G.10's cloud spec, because `a11y.spec.ts` does not run in cloud.
+- Tests: `members.cloud.test.tsx` (the real route tree, real Apollo hooks, `MockedProvider`; every fixture holds all three roles), `members.test.tsx` (local mode), `components/household/MemberList/MemberList.test.tsx` (every caller × row pair), `lib/copyText.test.ts`. Stories: `Owner`, `Manager`, `Member`, `WithOpenInvites`, `InviteDialogOpen`, `OwnerSeesNoLocationRoles`. The axe scans (light and dark) belong to G.10's cloud spec, because `a11y.spec.ts` does not run in cloud.
 
 ### The Items tabs are global assignment pages
 

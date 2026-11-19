@@ -25,9 +25,9 @@ export type RefetchAfterWrite =
   | { query: DocumentNode; variables?: OperationVariables }
 
 /**
- * Read the lists a write changed again, and wait for them. A read that FAILS
- * is not reported: the write before it worked, so the call must not reject
- * with "could not save". A watched query keeps its own error, so the page
+ * Read the lists a write changed again, and wait for EACH of them, also when
+ * another one fails. A read that FAILS is not reported: the write before it
+ * worked, so the call must not reject with "could not save". A watched query keeps its own error, so the page
  * shows a failed read the way it shows any failed read.
  *
  * Why not the mutation's own `refetchQueries` with `awaitRefetchQueries`:
@@ -65,7 +65,18 @@ export async function refetchAfterWrite(
     }
   }
   if (include.length > 0) {
-    reads.push(client.refetchQueries({ include }).catch(() => {}))
+    // Wait for EACH read on its own. The returned promise is a `Promise.all`
+    // over the reads (`core/ApolloClient.js`, `refetchQueries`), so it
+    // rejects as soon as ONE read fails, while the others are still open.
+    // Waiting for it stopped the wait early: after a person left a location,
+    // the mounted `LocationPeople` read failed with FORBIDDEN at once, and
+    // the call resolved before `GetHouseholdLocations` had landed (review of
+    // households H5c task H.4). `results` holds one promise per read.
+    const all = client.refetchQueries({ include })
+    all.catch(() => {})
+    for (const read of all.results) {
+      reads.push(Promise.resolve(read).catch(() => {}))
+    }
   }
   await Promise.all(reads)
 }

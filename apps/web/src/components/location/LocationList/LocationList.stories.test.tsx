@@ -10,6 +10,7 @@ const {
   CloudLocations,
   DefaultOnly,
   ManagerWithNoAccessRow,
+  ManagerWithPeopleLinks,
   MemberReadOnly,
   MixedCaseNames,
   MultipleLocations,
@@ -155,5 +156,37 @@ describe('LocationList roles (households H5 task F.3)', () => {
     render(<CloudLocations />)
     expect(screen.queryByText('Organizer')).not.toBeInTheDocument()
     expect(screen.queryByText('No access')).not.toBeInTheDocument()
+  })
+})
+
+describe('LocationList links to the people page (households H5c task H.6)', () => {
+  it('ManagerWithPeopleLinks links every name, the No access one too', () => {
+    render(<ManagerWithPeopleLinks />)
+    for (const [id, name] of [
+      ['cloud-kitchen', 'Kitchen'],
+      ['cloud-shed', 'Shed'],
+      ['cloud-garage', 'my Garage'],
+    ] as const) {
+      const link = screen.getByRole('link', { name: `Open ${name}` })
+      expect(link).toHaveAttribute(
+        'href',
+        `/settings/household/locations/${id}`,
+      )
+      // The visible text is the name as stored, with no capitalize
+      expect(link).toHaveTextContent(name)
+      expect(link.className).not.toMatch(/capitalize/)
+      // Underlined at rest, not only on hover, so it reads as a link
+      expect(link.className).toMatch(/(^|\s)underline(\s|$)/)
+    }
+    // The drag handle is still its own button, outside the link
+    const handle = screen.getByRole('button', { name: 'Drag to reorder Shed' })
+    expect(handle.closest('a')).toBeNull()
+  })
+
+  it('a list without canOpen has no link', () => {
+    // Local mode and every older caller pass no `canOpen`
+    render(<CloudLocations />)
+    expect(screen.getByText('Home')).toBeInTheDocument()
+    expect(screen.queryAllByRole('link')).toEqual([])
   })
 })

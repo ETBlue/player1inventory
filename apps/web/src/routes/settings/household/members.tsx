@@ -192,6 +192,10 @@ export function MembersPage() {
               onLeave={handleLeave}
               leaving={leaving}
               removingUserIds={removingIds}
+              // "No location roles" and its link, for an owner or manager
+              // only: they are the ones who can give the role (households
+              // H5c, task H.6, owner decision O28-A).
+              showLocationRoleMarks={canManageMembers}
             />
             {me?.role === 'owner' && (
               <Note text={t('settings.household.members.ownerCannotLeave')} />

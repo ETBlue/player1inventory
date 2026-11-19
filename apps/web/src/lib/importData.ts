@@ -77,6 +77,7 @@ import type {
 import { cartIdFor, DEFAULT_LOCATION_ID, parseCartId } from '@/types'
 import { deserializeRecipe, parseWireDate } from './deserialization'
 import type { ExportPayload } from './exportData'
+import { expectLocationLoss } from './seenLocations'
 
 export type ImportStrategy = 'skip' | 'replace' | 'clear'
 
@@ -3444,7 +3445,20 @@ export async function importCloudData(
       // those rows again. So every batch must be sent again: forget the keys
       // (E.4 review finding 1; the bug is older than H4).
       session.completedBatchKeys.clear()
-      await client.mutate({ mutation: ClearAllDataDocument })
+      // The person's own import deletes every location, the active one
+      // included. That is not "you no longer have access", so no toast for
+      // those losses (households H5c task H.7, review). When the clear
+      // fails, the mark is taken back, because usually nothing was deleted.
+      // Not always: the server may apply the clear and the answer be lost
+      // (a dropped connection). Then the locations are gone, and the person
+      // sees the toast for their own import. Accepted; a plan known gap.
+      const takeBackExpectedLoss = expectLocationLoss()
+      try {
+        await client.mutate({ mutation: ClearAllDataDocument })
+      } catch (err) {
+        takeBackExpectedLoss()
+        throw err
+      }
       // AFTER the clear, never before: see `fetchHomeAfterClear`.
       const home = await fetchHomeAfterClear(client)
       const { payload, skipped } = withoutRefusedRows(

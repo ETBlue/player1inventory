@@ -154,6 +154,11 @@ The last E2E counts on the H3a branch, 2026-11-11, from **three separate runs** 
 `pnpm test:e2e:all`): `cloud` **126 passed / 7 skipped**, `local` **178 passed / 6 skipped**,
 `pwa` **73 passed**. Re-measure rather than quote.
 
+The last whole gate, `pnpm test:e2e:all` on `feature/households-h5c` on 2026-11-19 (households
+H5c task H.9), all three green with no retry: `local` **178 passed / 11 skipped** in 3m38s,
+`cloud` **179 passed / 7 skipped** in 46m35s, `pwa` **73 passed** in 1m34s. Load average 5.67
+at the start, 3.74 at the end. The `cloud` project is now most of the time.
+
 This was obscured for a while by a leftover `MONGODB_URI` from the MongoDB → Prisma
 migration, which made the config *look* isolated. The server never read it (Prisma reads
 `DATABASE_URL`/`DIRECT_URL`), so it was inert rather than erroring. Removed in PR #242;
@@ -591,17 +596,17 @@ reconcile finds nothing to remove and creates every row the fixture lists. No ed
 loop was needed in 4b or in PR 5 — which is the whole argument for reading state back
 instead of predicting it.
 
-**The `cloud` project's `testMatch` is 35 files today** (`e2e/playwright.config.ts`,
-measured 2026-11-18, after households H5b task G.10; it was 29 on 2026-11-04 and 13 on
-2026-09-23). **Count the array rather than reusing that 35** — it grows most weeks:
+**The `cloud` project's `testMatch` is 36 files today** (`e2e/playwright.config.ts`,
+measured 2026-11-19, after households H5c task H.8; 35 on 2026-11-18, 29 on 2026-11-04 and
+13 on 2026-09-23). **Count the array rather than reusing that 36** — it grows most weeks:
 
 ```bash
 awk "/name: 'cloud'/,/name: 'pwa'/" e2e/playwright.config.ts | grep -c "spec\.ts'"
 ```
 
 The `awk` range matters: the file holds **three** such lists — `local`'s `testIgnore`,
-`cloud`'s `testMatch` and `pwa`'s `testMatch` — and a grep over the whole file counts all 52
-entries instead of the 35 that belong to `cloud` (measured 2026-11-18).
+`cloud`'s `testMatch` and `pwa`'s `testMatch` — and a grep over the whole file counts all 54
+entries instead of the 36 that belong to `cloud` (measured 2026-11-19).
 
 **The command this section used to give printed 0 from 2026-10-30.** It ended
 `| grep -m1 testMatch | grep -o "'\*\*/[^']*\.spec\.ts'" | wc -l`, so it only counted the
@@ -660,9 +665,9 @@ only". So in cloud its template test would write to IndexedDB, reach **zero** re
 still pass `await expect(page).toHaveURL('/')`. That is a test reporting as covered while
 covering nothing. The product gap is issue **#347**.
 
-The `local` project is 23 spec files: 39 files under `e2e/tests/` minus the 16 in its
-`testIgnore` (measured 2026-11-18, after households H5b task G.10; it was 33 minus 10 on
-2026-11-04). Count them with `find e2e/tests -name '*.spec.ts' | wc -l` and
+The `local` project is 23 spec files: 40 files under `e2e/tests/` minus the 17 in its
+`testIgnore` (measured 2026-11-19, after households H5c task H.8; 39 minus 16 on
+2026-11-18, and 33 minus 10 on 2026-11-04). Count them with `find e2e/tests -name '*.spec.ts' | wc -l` and
 `awk "/testIgnore: \[/,/\],/" e2e/playwright.config.ts | grep -c "spec\.ts'"`.
 
 File 26 is `cloud-user-row.spec.ts`, added 2026-10-31 by households H2 task 2.7. It is
@@ -837,6 +842,72 @@ Proved by mutation on 2026-11-18, each in `cloud`, restored from a copy:
   from `color-contrast`, like `a11y.spec.ts`. Whole-page scans
   use `checkA11y` with nothing excluded, and they pass.
 
+**`location-people.spec.ts` joined on 2026-11-19 (households H5c task H.8).** Cloud only,
+with up to two browsers, in `local`'s `testIgnore` (local mode has no people page; the URL
+redirects there). It is the first real-SQL run of `locationPeople`, `setLocationRole`,
+`removeLocationRole` and `leaveLocation`, and of their household-level `LOCATION` event.
+Page object: `e2e/pages/LocationPeoplePage.ts`. 9 tests, **9 passed in 3.8 min** (load
+average 2.7 at the start). Tests 1 to 4 carry `test.setTimeout` (90 s, 60 s, 60 s, 60 s):
+measured with `--timeout=120000` at load 2.1 to 2.8 they took 43.0 s, 29.8 s, 28.0 s and
+29.6 s. Tests 6 and 7 carry 60 s too, since households H5c task H.9: a later run measured
+them at 24.4 s and 25.5 s, too close to 30 s under the load of the full gate. Tests 5, 8
+and 9 keep the 30 s default.
+
+The household: OWNER owns it ("Home" from first sign-in). CLEO and BEN join through
+`createInvite(…, [])` + `joinHousehold` with NO location role (plan decision T44). CLEO then
+makes "Garage", so CLEO is its only organizer and OWNER has No access there.
+
+| Test | What it proves |
+|---|---|
+| 1 | an owner gives BEN (no location role, the "No location roles" mark on Members) a role from Home's page; BEN's empty screen turns into Home's pantry with no reload |
+| 2 | Review Focus 1: an organizer (household `member`) gets no picker and no Remove on an organizer row, their own too, and only Participant and Viewer in Add person and in a row picker. The server refuses CLEO's forged `setLocationRole(…, organizer)`, a demote of OWNER, and a remove of OWNER with `FORBIDDEN` |
+| 3 | Review Focus 2: BEN, active on Home, loses Home in OWNER's browser. BEN's tab moves to Garage (View only) with no reload, shows "You no longer have access to Home." once, and no Home card stays. Then losing Garage shows the empty screen |
+| 4 | Review Focus 5: CLEO, the only organizer, leaves Garage (the confirm warns); CLEO's list and switcher lose Garage; OWNER's list shows No access and No organizer; OWNER gives themselves Organizer and the note goes |
+| 5 | an owner who leaves their ACTIVE location stays on its page; the tab's active id moves to Home through the leave's own `GetLocations` read; the lost-access message shows (O27-A names leaving) |
+| 6 | Review Focus 4: an owner with No access opens Garage's page and sees CLEO. Until the people and the Add person button are on screen, every GraphQL REQUEST of the tab that names Garage is `LocationPeople` (it checks requests, not responses). After OWNER gives themselves Viewer, `itemStocks(Garage)` answers (the positive control of the `FORBIDDEN` before) |
+| 7 | Review Focus 3, as far as E2E can: `removeMember(BEN)` and `setLocationRole(BEN)` sent together; then BEN rejoins with no role and has no location. A `race order` annotation says which write went first. Then remove-then-set is `FORBIDDEN`. No browser |
+| 8, 9 | axe, light and dark: the Members page with the "No location roles" mark and its link, Settings › Locations with the name links, the people page with No organizer, Add person, the Remove and Leave confirms. These were owed by H.5 and H.6: `a11y.spec.ts` does not run in `cloud` |
+
+Proved by mutation on 2026-11-19, each in `cloud`, run as `location-people.spec.ts:<line>`,
+restored from a copy and checked with `diff -q`:
+
+| Mutation | Red test, failure |
+|---|---|
+| `canChangeLocationRole` lets an organizer give organizer (`packages/types`, so web AND server) | 2: the Organizer option `toHaveCount(0)`, Received 1 |
+| the server's `setLocationRole` skips the rule (the page unchanged) | 2: the forged organizer call, `Received promise resolved instead of rejected` |
+| `setLocationRole` publishes nothing | 1: BEN's switcher `Switch location (current: )`, the empty screen stayed |
+| `removeLocationRole` publishes nothing | 3: BEN's switcher still `Switch location (current: Home)` |
+| the lost-access `toast.info` removed | 3: the toast not found |
+| the toast called twice | 3: strict mode, the toast text resolved to 2 elements |
+| the fallback effect never moves the tab (`if (locations.length > 0) return`) | 3: BEN's switcher `Switch location (current: )` |
+| `leaveLocation` deletes nothing | 4: the Garage row of CLEO's list, Expected 0, Received 1 |
+| the role hooks do not read `GetLocations` again | 5: the stored active id is still Garage's |
+| `locationPeople` refuses an owner with No access | 6: CLEO's picker not found (the page shows no access) |
+| the people page also reads `PantryData` for its location | 6: the operations naming Garage were `LocationPeople` plus one more |
+| `removeMember` keeps the role rows (T11) AND `locationPeople` without the H18 filter | 7: Home's people listed BEN right after the removal (line of the first readback) |
+| `removeMember` keeps the role rows AND the join keeps old role rows (T20) | 7: BEN's `locations` after the rejoin was not empty |
+
+Three mutations stayed **green**, and each one is a measured limit, not coverage:
+
+- **`removeMember` keeps the role rows (T11) alone**: green. The H18 filter hides the left row
+  before the rejoin, and the join's own delete (T20) removes it at the rejoin. The two
+  double mutations above are what pin T11, H18 and T20 here.
+- **the H18 filter alone**: not run as its own mutation, because no real write leaves a role
+  row for a non-member. Without the T11 mutation the filter changes nothing on real SQL.
+- **the role hooks skip `GetLocations`, measured on test 4**: green. CLEO's leave ends in a
+  navigation to the list, and the list mounts new `useLocations` readers, whose
+  `cache-and-network` reads `GetLocations` again. Test 5 was added for this: an owner stays
+  on the page, so nothing new mounts.
+
+**Two traps it hit:**
+
+- **Settings pages have no location switcher.** The settings layout shows the household
+  sidebar. Test 4 first looked for the switcher on Settings › Locations and timed out. A
+  check of the active location on a settings page reads `active-location-id:cloud` from
+  `localStorage` instead; the switcher is checked after a `goto('/')`.
+- **A navigation can do the work you meant to test.** See the third green mutation above.
+  A check that the tab "moved by itself" must not navigate first.
+
 **`DataModeCard`'s Switch flow renders in E2E mode — since households H4 task E.6.** A
 production change made for a test, like `PostLoginMigrationDialog`'s below. The cloud
 section used to be left out in E2E mode because its Sign Out flow calls `useClerk()`.
@@ -868,7 +939,8 @@ What the number has been, so you can see how fast it moves rather than reuse a f
 | 2026-11-16 | `feature/households-h3c-2`, after `live-pantry.spec.ts` | 151 |
 | 2026-11-17 | `feature/households-h4`, after task E.6 and the O9 follow-up | 160 |
 | 2026-11-17 | `feature/households-h5`, after task F.8 | 168 |
-| 2026-11-18 | `feature/households-h5b`, after task G.10. G.10 added 8 (`household-invites.spec.ts`); the other 1 came from an earlier H5b task and is not attributed here | **177** |
+| 2026-11-18 | `feature/households-h5b`, after task G.10. G.10 added 8 (`household-invites.spec.ts`); the other 1 came from an earlier H5b task and is not attributed here | 177 |
+| 2026-11-19 | `feature/households-h5c`, after task H.8 (`location-people.spec.ts`, 9). `local` still collects 189 in 23 files | **186** |
 
 H5a added 9 tests and removed 1. All of them RUN only in `cloud`; the six in the two
 shared spec files are also collected (and skipped) in `local`, which went 184 → 189: 3 in `location-switcher.spec.ts` (task

@@ -11,13 +11,18 @@ import {
   ApplyShelfFilterPicksDocument,
   ApplyUnitSwitchDocument,
   CreateItemDocument,
+  GetHouseholdLocationsDocument,
   GetItemsDocument,
   GetRecipeDocument,
   GetRecipesDocument,
+  LeaveLocationDocument,
   PantryDataDocument,
   RemoveItemFromLocationDocument,
+  RemoveLocationRoleDocument,
+  SetLocationRoleDocument,
   UpdateRecipeDocument,
   UpsertItemStockDocument,
+  useGetHouseholdLocationsQuery,
 } from '@/generated/graphql'
 import {
   bootstrapCartsMock,
@@ -42,9 +47,15 @@ import {
   useRemoveItemFromLocation,
   useUpdateItem,
 } from './useItems'
+import {
+  useLeaveLocation,
+  useRemoveLocationRole,
+  useSetLocationRole,
+} from './useLocationPeople'
 import { useUpdateRecipe } from './useRecipes'
 
-// Every hook that reports `isPending: loading || isRefetching` (PR #386,
+// Every hook that reports `isPending: loading || isRefetching` (PR #386, and
+// since households H5c task H.4 the three location role hooks,
 // `apollo/refetchAfterWrite.ts`). Callers read `isPending` as "the write AND
 // the reads after it are done": the search tail re-enables a row after it, and
 // the recipe relation tab keeps a badge busy on it. So for each hook:
@@ -182,6 +193,51 @@ const MOCKS = [
       }),
   },
   {
+    request: { query: GetHouseholdLocationsDocument },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: {
+      data: {
+        householdLocations: [
+          {
+            __typename: 'Location',
+            id: LOC_A,
+            name: 'Cloud Kitchen',
+            order: 0,
+            myRole: 'organizer',
+            hasOrganizer: true,
+          },
+        ],
+      },
+    },
+  },
+  {
+    request: { query: SetLocationRoleDocument, variables: any },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: () =>
+      answer('SetLocationRole', {
+        data: {
+          setLocationRole: {
+            __typename: 'LocationPerson',
+            userId: 'u-mia',
+            displayName: 'Mia',
+            role: 'viewer',
+            isMe: false,
+          },
+        },
+      }),
+  },
+  {
+    request: { query: RemoveLocationRoleDocument, variables: any },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: () =>
+      answer('RemoveLocationRole', { data: { removeLocationRole: true } }),
+  },
+  {
+    request: { query: LeaveLocationDocument, variables: any },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: () => answer('LeaveLocation', { data: { leaveLocation: true } }),
+  },
+  {
     request: { query: UpdateRecipeDocument, variables: any },
     maxUsageCount: Number.POSITIVE_INFINITY,
     result: () =>
@@ -222,7 +278,29 @@ type Case = {
   lastWrite: string
   /** The read after the write that is held open. */
   read: string
+  /**
+   * The read is a MOUNTED query, refetched by document. Wait until its first
+   * read has landed before holding it, or the mount read would be held.
+   */
+  loaded?: (hook: Pending) => boolean
 }
+
+type WithList<H> = H & { listLoaded: boolean }
+
+/**
+ * A location role hook, with `GetHouseholdLocations` mounted beside it. The
+ * hook reads its lists again by DOCUMENT, so only a mounted list is read.
+ */
+function withHouseholdLocations<H extends Pending>(use: () => H) {
+  return (): WithList<H> => {
+    const list = useGetHouseholdLocationsQuery({
+      fetchPolicy: 'cache-and-network',
+    })
+    return { ...use(), listLoaded: !!list.data && !list.loading }
+  }
+}
+
+const listLoaded = (h: Pending) => (h as WithList<Pending>).listLoaded
 
 type MutateAsync<V> = { mutateAsync: (vars: V) => Promise<unknown> }
 
@@ -310,6 +388,39 @@ const CASES: Case[] = [
     lastWrite: 'UpdateRecipe',
     read: 'GetRecipes',
   },
+  {
+    hook: 'useSetLocationRole',
+    use: withHouseholdLocations(useSetLocationRole),
+    start: (h) =>
+      (h as ReturnType<typeof useSetLocationRole>).setRole(
+        LOC_A,
+        'u-mia',
+        'viewer',
+      ),
+    firstWrite: 'SetLocationRole',
+    lastWrite: 'SetLocationRole',
+    read: 'GetHouseholdLocations',
+    loaded: listLoaded,
+  },
+  {
+    hook: 'useRemoveLocationRole',
+    use: withHouseholdLocations(useRemoveLocationRole),
+    start: (h) =>
+      (h as ReturnType<typeof useRemoveLocationRole>).remove(LOC_A, 'u-mia'),
+    firstWrite: 'RemoveLocationRole',
+    lastWrite: 'RemoveLocationRole',
+    read: 'GetHouseholdLocations',
+    loaded: listLoaded,
+  },
+  {
+    hook: 'useLeaveLocation',
+    use: withHouseholdLocations(useLeaveLocation),
+    start: (h) => (h as ReturnType<typeof useLeaveLocation>).leave(LOC_A),
+    firstWrite: 'LeaveLocation',
+    lastWrite: 'LeaveLocation',
+    read: 'GetHouseholdLocations',
+    loaded: listLoaded,
+  },
 ]
 
 describe.each(CASES)('$hook (cloud) isPending', (c) => {
@@ -330,6 +441,8 @@ describe.each(CASES)('$hook (cloud) isPending', (c) => {
     const { result } = renderHook(() => c.use(), {
       wrapper: makeWrapper(hold),
     })
+    const loaded = c.loaded
+    if (loaded) await waitFor(() => expect(loaded(result.current)).toBe(true))
     hold.hold(c.firstWrite)
     hold.hold(c.read)
 
@@ -337,7 +450,10 @@ describe.each(CASES)('$hook (cloud) isPending', (c) => {
 
     // 1. The write is in flight, so the call is pending
     await waitFor(() => expect(hold.waiting(c.firstWrite)).toBe(1))
-    expect(result.current.isPending).toBe(true)
+    // (`waitFor`, not a plain `expect`: the location role hooks send their
+    // write in the same tick as the call, before React has rendered the new
+    // `loading`. The write is held, so it cannot finish meanwhile.)
+    await waitFor(() => expect(result.current.isPending).toBe(true))
 
     // 2. The server answers every write; the read after it is held open.
     // The call is STILL pending: callers must not act on the old lists.

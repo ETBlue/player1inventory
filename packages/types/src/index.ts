@@ -286,3 +286,8 @@ export interface Location {
 // B.1). `quantity.ts` imports two types back from this file. That import is
 // type-only, so it is erased at build time and makes no runtime cycle.
 export * from './quantity'
+
+// The location role rules shared by the web and the server (households H5c,
+// decision T33): the rank map, `locationRoleAtLeast` and
+// `canChangeLocationRole`.
+export * from './locationRoles'

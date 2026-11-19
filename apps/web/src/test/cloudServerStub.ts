@@ -111,7 +111,12 @@ function useStubMutation(hook: string) {
     {
       loading,
       called: false,
-      client: { refetchQueries: () => Promise.resolve([]) },
+      client: {
+        // The Apollo shape: a promise that also carries `queries` and
+        // `results`, like `setup.ts`. `refetchAfterWrite` reads `results`.
+        refetchQueries: () =>
+          Object.assign(Promise.resolve([]), { queries: [], results: [] }),
+      },
     },
   ] as const
 }

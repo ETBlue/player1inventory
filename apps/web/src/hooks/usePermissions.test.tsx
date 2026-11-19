@@ -1,3 +1,4 @@
+import { canChangeLocationRole } from '@p1i/types'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook } from '@testing-library/react'
 import type { ReactNode } from 'react'
@@ -259,5 +260,153 @@ describe('usePermissions', () => {
     const p = render()
     expect(p.canManageMembers).toBe(false)
     expect(p.isHouseholdOwner).toBe(false)
+  })
+})
+
+// Households H5c, task H.4: the location people page. The household role and
+// the caller's role on THIS location both count, so each fixture has a
+// location for every caller role: K organizer, P participant, V viewer, and X
+// with no role (not in the switcher's list at all).
+const ROLE_ROWS = [
+  { id: 'K', myRole: 'organizer' },
+  { id: 'P', myRole: 'participant' },
+  { id: 'V', myRole: 'viewer' },
+] as const
+const CALLER_ROLE_AT = {
+  K: 'organizer',
+  P: 'participant',
+  V: 'viewer',
+  X: null,
+} as const
+const ROLES_OR_NONE = ['organizer', 'participant', 'viewer', null] as const
+
+describe('usePermissions — the location people page', () => {
+  it.each([
+    ['owner', { K: true, P: true, V: true, X: true }],
+    ['manager', { K: true, P: true, V: true, X: true }],
+    ['member', { K: true, P: true, V: true, X: false }],
+  ] as const)('household %s: canOpenLocationPage per location (O24-A)', (role, expected) => {
+    // Given a household role, and a role on K, P and V but not on X
+    mockHousehold.mockReturnValue(household(role))
+    mockLocations.mockReturnValue(locations([...ROLE_ROWS]))
+
+    const p = render()
+
+    // Then an owner or manager may open every page, also X with No access;
+    // anyone else only the pages of locations they have a role on
+    for (const id of ['K', 'P', 'V', 'X'] as const) {
+      expect(p.canOpenLocationPage(id), id).toBe(expected[id])
+    }
+  })
+
+  it('household member with no role on a location cannot open its page', () => {
+    // The O24-A case most likely to be got wrong: a role elsewhere is not
+    // enough
+    mockHousehold.mockReturnValue(household('member'))
+    mockLocations.mockReturnValue(locations([{ id: 'K', myRole: 'viewer' }]))
+
+    expect(render().canOpenLocationPage('X')).toBe(false)
+  })
+
+  it.each([
+    'owner',
+    'manager',
+    'member',
+  ] as const)('household %s: canChangeRole gives the same answer as canChangeLocationRole', (householdRole) => {
+    mockHousehold.mockReturnValue(household(householdRole))
+    mockLocations.mockReturnValue(locations([...ROLE_ROWS]))
+
+    const p = render()
+
+    // Every location (so every caller role, and no role) times every change
+    for (const id of ['K', 'P', 'V', 'X'] as const) {
+      for (const from of ROLES_OR_NONE) {
+        for (const to of ROLES_OR_NONE) {
+          const expected = canChangeLocationRole({
+            householdRole,
+            callerRole: CALLER_ROLE_AT[id],
+            from,
+            to,
+          })
+          expect(p.canChangeRole(id, from, to), `${id} ${from}→${to}`).toBe(
+            expected,
+          )
+        }
+      }
+    }
+  })
+
+  it('location organizer who is a household member can give a participant role but not the organizer role', () => {
+    // Review Focus 1, in the web: the control for it is hidden
+    mockHousehold.mockReturnValue(household('member'))
+    mockLocations.mockReturnValue(locations([...ROLE_ROWS]))
+
+    const p = render()
+
+    expect(p.canChangeRole('K', null, 'participant')).toBe(true)
+    expect(p.canChangeRole('K', 'viewer', 'participant')).toBe(true)
+    expect(p.canChangeRole('K', null, 'organizer')).toBe(false)
+    expect(p.canChangeRole('K', 'organizer', null)).toBe(false)
+    // A participant of P changes nothing there
+    expect(p.canChangeRole('P', null, 'viewer')).toBe(false)
+  })
+
+  it('household manager with no role on a location can give themselves the organizer role', () => {
+    mockHousehold.mockReturnValue(household('manager'))
+    mockLocations.mockReturnValue(locations([...ROLE_ROWS]))
+
+    expect(render().canChangeRole('X', null, 'organizer')).toBe(true)
+  })
+
+  it('cloud allows no role change while the household role is loading', () => {
+    // An organizer's answer does not depend on the household role, but an
+    // owner's does, so nothing is offered until it is known
+    mockHousehold.mockReturnValue({ data: undefined, loading: true })
+    mockLocations.mockReturnValue(locations([...ROLE_ROWS]))
+
+    const p = render()
+
+    expect(p.canChangeRole('K', null, 'viewer')).toBe(false)
+    // A role on the location is enough to open its page
+    expect(p.canOpenLocationPage('K')).toBe(true)
+    expect(p.canOpenLocationPage('X')).toBe(false)
+  })
+
+  it('household owner gets no role change while the location list is loading', () => {
+    // An owner's answer does not need a location role, so only the loading
+    // flag can keep it closed. The rights must not show before the list.
+    mockHousehold.mockReturnValue(household('owner'))
+    mockLocations.mockReturnValue({ data: undefined, loading: true })
+
+    expect(render().canChangeRole('K', null, 'viewer')).toBe(false)
+  })
+
+  it('cloud allows no role change when GetHousehold failed with nothing cached', () => {
+    mockHousehold.mockReturnValue({
+      data: undefined,
+      loading: false,
+      error: new Error('network'),
+    })
+    mockLocations.mockReturnValue(locations([...ROLE_ROWS]))
+
+    expect(render().canChangeRole('K', null, 'viewer')).toBe(false)
+  })
+
+  it('cloud allows nothing on the people page while the location list is loading', () => {
+    mockHousehold.mockReturnValue(household('member'))
+    mockLocations.mockReturnValue({ data: undefined, loading: true })
+
+    const p = render()
+
+    expect(p.canOpenLocationPage('K')).toBe(false)
+    expect(p.canChangeRole('K', null, 'viewer')).toBe(false)
+  })
+
+  it('local mode has no people page and no role changes', () => {
+    // Local mode has one person and no roles (decision T41)
+    localStorage.setItem('data-mode', 'local')
+    const p = render()
+    expect(p.canOpenLocationPage('local')).toBe(false)
+    expect(p.canChangeRole('local', null, 'viewer')).toBe(false)
   })
 })

@@ -1547,6 +1547,11 @@ Needs owner decisions O2, O3, O6, O7, O9, O12.
 
 ## H5c — the location people page (outline)
 
+> **This outline is replaced by the detailed plan
+> [`2026-11-19-households-plan-h5c.md`](2026-11-19-households-plan-h5c.md)** (written
+> 2026-11-19). Where the two differ, the detailed plan is right. H5c is built there
+> (2026-11-19), not merged, not deployed.
+
 - Route `/settings/household/locations/$id` (P6). Name (organizer edits), people and their
   roles, **Add person** (choose from household members), change and remove roles, **Leave
   location**, **No organizer** warning. The danger zone's *Remove all items* stays in H6.
@@ -1865,6 +1870,9 @@ and the server goes first (H4 runbook, section 8.3). The shim is built. H5b is n
 its own detailed plan: `2026-11-18-households-plan-h5b.md`.
 
 **H5b is built** (2026-11-18, tasks G.1–G.10 and the docs of G.11 of that plan, on
-`feature/households-h5b`). It is not merged and not deployed. The final gate (G.11 Step 3)
-is still to run. Its deploy notes are section 9 of the H4 runbook. H5c is
-next.
+`feature/households-h5b`). **It is merged into `develop` (#385, merge `938fa2aa`,
+2026-11-18). It is not deployed.** Its deploy notes are section 9 of the H4 runbook.
+Follow-ups merged after it: #386 (a failed refresh no longer fails a saved write), #387 (screens show save errors), #388 (the join keeps the copy question), #389 (the copy question names the household), #390 (`isPending` tests).
+H5c has its own detailed plan, `2026-11-19-households-plan-h5c.md`. **H5c is built** (2026-11-19,
+on `feature/households-h5c`). It is not merged and not deployed. Its deploy notes are section 10
+of the H4 runbook.

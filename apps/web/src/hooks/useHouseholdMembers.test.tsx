@@ -128,6 +128,7 @@ function person(userId: string, role: Person['role']): Person {
     role,
     joinedAt: '2026-11-01T00:00:00.000Z',
     isMe: userId === 'u-olive',
+    hasLocationRole: true,
   }
 }
 

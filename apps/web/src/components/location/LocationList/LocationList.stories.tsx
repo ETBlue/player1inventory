@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
+import { WithRouterContext } from '@/test/routerContext'
 import { DEFAULT_LOCATION_ID, type Location } from '@/types'
 import { LocationList } from './LocationList'
 
@@ -178,6 +179,35 @@ export const NoOrganizer: Story = {
     locations: [
       cloudRow('cloud-kitchen', 'Kitchen', 0, 'organizer'),
       cloudRow('cloud-shed', 'Shed', 1, null, false),
+    ],
+  },
+}
+
+/**
+ * Households H5c task H.6: a household manager. Each name links to that
+ * location's people page, the Shed's too, where they have No access (owner
+ * decision O24-A). The page passes `usePermissions().canOpenLocationPage`;
+ * a household member gets a link only where they hold a role, and local mode
+ * gets none. The drag handle stays a separate button. The name is
+ * underlined, so it reads as a link at rest.
+ */
+export const ManagerWithPeopleLinks: Story = {
+  decorators: [
+    (Story) => (
+      <WithRouterContext initialPath="/settings/household/locations">
+        <Story />
+      </WithRouterContext>
+    ),
+  ],
+  args: {
+    showRoles: true,
+    canManage: true,
+    canRename: (location) => location.myRole === 'organizer',
+    canOpen: () => true,
+    locations: [
+      cloudRow('cloud-kitchen', 'Kitchen', 0, 'organizer'),
+      cloudRow('cloud-shed', 'Shed', 1, null, false),
+      cloudRow('cloud-garage', 'my Garage', 2, 'viewer'),
     ],
   },
 }

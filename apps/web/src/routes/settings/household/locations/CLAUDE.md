@@ -29,6 +29,7 @@ role). What each row shows and allows:
 | drag handle and Delete | household `owner` or `manager` (`canManageLocations`) | `usePermissions()` |
 | Rename | `organizer` of THAT location (`isOrganizerAt`) | `usePermissions()` |
 | Add | everyone (the server asks household `member`) | — |
+| the name is a link to the people page, `/settings/household/locations/$id`, named "Open {name}" (`settings.locations.open`) | cloud: a household `owner` or `manager` on every row, "No access" rows too (owner decision O24-A); anyone else only where they hold a role. Local: never (no people page, decision T41) | `usePermissions().canOpenLocationPage`, passed as `LocationList`'s `canOpen` (households H5c task H.6) |
 
 **A reorder sends every row of this list.** Since H5 task F.2 the server refuses a list
 that leaves out a location of the household (`BAD_USER_INPUT`), so an owner or manager
@@ -38,7 +39,7 @@ cached `GetHouseholdLocations` rows in the order that was sent, because the answ
 only the caller's own locations. Create, rename and delete refetch
 `GetHouseholdLocations` by name.
 
-Rows are not links, so a "No access" row opens nothing. Location names render as stored.
+**Only the NAME is a link, not the whole row** (households H5c task H.6). The drag handle, Rename and Delete stay separate buttons. Only the handle carries the drag listeners: the link must never get them, because dnd-kit's `KeyboardSensor` starts a drag on Space or Enter on any element that has them (a mouse click cannot show it, the `PointerSensor` waits for an 8 px move). The name is underlined at rest, like the links in `MemberList`. An owner's or manager's "No access" row links too: its page shows names and roles, never the location's stock, carts or logs (O24-A). A household `member` never gets a "No access" row from the server; if one came, it would not be a link. Location names render as stored, in the link too.
 The role text has a visually hidden prefix, `settings.locations.yourRole` ("Your role:"), so
 a screen reader says "Kitchen, Your role: Viewer", not "Kitchen Viewer". The `<ul>` has no
 `role="list"`: Biome refuses it (`noRedundantRoles`), so Safari with VoiceOver may not
@@ -97,7 +98,7 @@ Global `Item`s are **not** touched — an item stocked only in the deleted locat
 
 **Active location** (`src/hooks/useActiveLocation.tsx`): a React Context exposing `{ activeLocationId, setActiveLocationId, activeLocation }`, persisted in localStorage under the per-mode key `active-location-id:<mode>`, falling back, when the stored id names none of the loaded ones, to the `isDefault` location in local mode and to the first location in cloud mode. `ActiveLocationProvider` is mounted in `__root.tsx`. It also bootstraps the location's shopping carts (`bootstrapCarts`) whenever the active id changes. See `src/hooks/CLAUDE.md` for the full list of hooks that thread it.
 
-**Route**: `src/routes/settings/household/locations.tsx` (layout) + `src/routes/settings/household/locations/index.tsx` (list). Toolbar: back button (mobile only, `lg:hidden`, because on desktop the household sidebar has Back) + title + an **Add** button opening `AddNameDialog`. Rename reuses the same `AddNameDialog` with a Save label. Linked from the household sidebar (`src/components/global/Sidebar/HouseholdSidebar.tsx`) and the mobile `/settings` accordion (`src/routes/settings/index.tsx`), both with the `MapPin` icon and `settings.locations.label`/`.description`.
+**Route**: `src/routes/settings/household/locations.tsx` (layout) + `src/routes/settings/household/locations/index.tsx` (list) + `src/routes/settings/household/locations/$id.tsx` (the people page of one location, cloud only, below). Toolbar: back button (mobile only, `lg:hidden`, because on desktop the household sidebar has Back) + title + an **Add** button opening `AddNameDialog`. Rename reuses the same `AddNameDialog` with a Save label. Linked from the household sidebar (`src/components/global/Sidebar/HouseholdSidebar.tsx`) and the mobile `/settings` accordion (`src/routes/settings/index.tsx`), both with the `MapPin` icon and `settings.locations.label`/`.description`.
 
 **Components**:
 - `src/components/location/LocationList/LocationList.tsx` — the reorderable list. One `Card` per location: drag handle (or `Lock` for the local default) · `MapPin` + name + a "Default" hint · rename (pencil) · delete (trash, absent for the local default). A cloud row is never the default, so every cloud row has a drag handle and a delete button (stories `CloudLocations` and `CloudLastLocation`). Drag-reorder via `@dnd-kit` with `PointerSensor`/`TouchSensor`/`KeyboardSensor`, mirroring `ShelfList`; keyboard instructions live in an `sr-only` paragraph (`settings.locations.dragInstructions`). Names render **as stored** — no `capitalize`, in the row label or the drag overlay. Location names are user-specified and may carry intentional casing ("iHerb pantry", "my Garage"), so they follow the vendor-name exception in the root `CLAUDE.md` "Name Display Convention" rather than the item/tag/recipe title-case rule. This matches `LocationSwitcher`, so the same location reads identically in the sidebar and here.
@@ -107,4 +108,73 @@ Global `Item`s are **not** touched — an item stocked only in the deleted locat
 
 **i18n**: `settings.locations.*` in `src/i18n/locales/{en,tw}.json`.
 
-**Tests**: `src/routes/settings/household/locations/index.test.tsx` (route, local, incl. no role text in local mode), `index.cloud.test.tsx` (route, cloud: deleting the last location, an older server's `LAST_LOCATION` getting the general toast, the general one, no second toast when offline, the roles of H5 task F.3, the reorder refusal and the loading state), `index.stories.tsx` + `index.stories.test.tsx` (stories + smoke), location operations/cascade in `src/db/operations.test.ts`, E2E in `e2e/tests/location-switcher.spec.ts` and `e2e/tests/settings/locations.spec.ts`.
+**Tests**: `src/routes/settings/household/locations/index.test.tsx` (route, local, incl. no role text and no link in local mode), `index.cloud.test.tsx` (route, cloud: deleting the last location, an older server's `LAST_LOCATION` getting the general toast, the general one, no second toast when offline, the roles of H5 task F.3, the reorder refusal and the loading state, and since H5c task H.6 the links: a manager's "No access" row links, a member's links follow their roles, a click opens the people page; Space on the focused name starts no drag and Enter opens the people page, which fails if the link carries the drag listeners; and a reorder still works with links on every row), `components/location/LocationList/LocationList.stories.test.tsx` (story `ManagerWithPeopleLinks`; a list with no `canOpen` has no link), `index.stories.tsx` + `index.stories.test.tsx` (stories + smoke), location operations/cascade in `src/db/operations.test.ts`, E2E in `e2e/tests/location-switcher.spec.ts` and `e2e/tests/settings/locations.spec.ts`.
+
+### The people page of one location (cloud, households H5c task H.5)
+
+`/settings/household/locations/$id` (`$id.tsx`). Plan:
+`docs/global/permissions/2026-11-19-households-plan-h5c.md`, Task H.5. Server fields:
+`locationPeople`, `setLocationRole`, `removeLocationRole`, `leaveLocation` in
+`apps/server/src/schema/location.graphql`. Hooks: `hooks/useLocationPeople.ts`
+(`hooks/CLAUDE.md`).
+
+**Local mode has no such page** (decision T41): the URL redirects to the locations list.
+It is a household detail page, so it is full-screen on every screen size
+(`isFullscreenPage`), with its own **Back to locations** link.
+
+Top to bottom: Back and the location name (as stored, no `capitalize`; `people.unnamed`,
+"Location", when the name is not known: a member with no role, an unknown id, or a failed
+`GetHouseholdLocations`), a Rename button for an organizer of the location; the **No organizer** note; **People**; **Add person**;
+**Leave location**.
+
+| Who | Sees |
+|---|---|
+| household owner or manager | every location's page, also one with No access (owner decision O24-A). A role picker with all three roles and Remove on every row but their own (their own row has the picker only; they use Leave). Add person with all three roles. The No organizer action sentence |
+| location organizer who is a household `member` | the people. On a participant or viewer row: a picker with participant and viewer, and Remove. On an organizer row, their own included: nothing (Review Focus 1). Add person with participant and viewer. Rename. Leave |
+| location participant or viewer | the people and roles, and Leave (O24-A). No picker, Remove, Add person or Rename |
+| anyone else (a household `member` with no role there) | "You do not have access to this location." (`people.noAccess`) and Back. Decided by `locationPeople`'s `FORBIDDEN` |
+
+- **Which control shows comes from `usePermissions().canChangeRole`**, the shared rule
+  `canChangeLocationRole` (decision T33). The picker lists the current role plus every role
+  the rule allows (`roleChoices` in `components/location/LocationPeopleList`); with no other
+  role allowed, the role is plain text. The server checks every write.
+- **No organizer** (`hasOrganizer: false` on the `GetHouseholdLocations` row): the title
+  `settings.locations.noOrganizer` and `people.noOrganizerNote` for everyone who sees the
+  page (O26-A); `people.noOrganizerAction` only for an owner or manager.
+- **A role change** shows the picked role at once, and the picker is disabled until the
+  change and its reads are done (`pendingRoles`). Before the review of H.5 the picker jumped
+  back to the old role until the list was read again, and a second pick could be sent.
+- **Add person** shows when the caller may give at least one role. It lists the household
+  members (`HouseholdMembers`, read only then) who are not on the people list, in the members
+  list's order (T43). With nobody left: `people.noOneToAdd`, and no button. When
+  `HouseholdMembers` fails: `people.membersLoadError` and Retry, not silence. The dialog's
+  Person select starts on the placeholder `people.choosePerson`.
+- **Leave location** shows when `roleAt(id) !== null` (the switcher's list). The only
+  organizer's confirm adds `people.leaveOnlyOrganizer` (O25-A). After the leave an owner or
+  manager stays on the page, and focus moves to the **People** heading (the Leave button
+  is gone); anyone else goes to the list.
+- **States**: the people loading → `LoadingSpinner`; `errorCode === 'FORBIDDEN'` → no access
+  (the CODE, not `isError`: after a leave, or a live event after someone else removed the
+  caller, Apollo keeps the old rows next to the error; pinned by "user who loses their role
+  in another tab sees no access, and no old names"); any
+  other failed read → `people.loadError` and **Retry** (`people.retry`).
+- **Errors**: a refused write shows one toast, `people.error`, through `showSaveError` (none
+  offline). A remove or leave the server answers `false` (already gone, decision T38) shows
+  nothing. While a remove or leave runs, its button is replaced by `people.removing` /
+  `people.leaving` in an `<output>`. After a Remove, focus moves to the **People** heading.
+- **Nothing else of the location is read** (Review Focus 4): the page sends
+  `LocationPeople`, and the household-wide `GetHouseholdLocations` and `HouseholdMembers`. An
+  owner with No access sees names and roles, never stock, carts or logs.
+- **Names render in the server's order** (organizers first, then by name, decision T39).
+  The page does not sort again.
+- Tests: `$id.cloud.test.tsx` (the real route tree, real Apollo hooks and the REAL
+  `usePermissions`, through `MockedProvider` with a spy link that records every operation;
+  every fixture holds two organizers, a participant, a viewer and a location the caller has
+  no role on), `$id.test.tsx` (local redirect), `components/location/LocationPeopleList/` and
+  `components/location/AddLocationPersonDialog/` unit tests. Stories: `OwnerView`,
+  `OrganizerView`, `ParticipantView`, `NoOrganizer`, `NobodyToAdd`. **Axe scans and E2E**:
+  `e2e/tests/location-people.spec.ts` (cloud, households H5c task H.8), because
+  `a11y.spec.ts` runs in `local` and `pwa` only, where this page does not exist. Its tests 8
+  and 9 scan, light and dark, this page with No organizer, Add person, the Remove and Leave
+  confirms, the name links on the list and the Members page's "No location roles" mark. Its
+  tests 1 to 7 cover the page in two browsers on real SQL (see `e2e/CLAUDE.md`).

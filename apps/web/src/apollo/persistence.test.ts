@@ -1,5 +1,6 @@
 import { gql, InMemoryCache } from '@apollo/client'
 import { afterEach, describe, expect, it } from 'vitest'
+import { registerSeenLocations } from '@/lib/seenLocations'
 import { cacheDb } from './cacheDb'
 import { cloudCache } from './cloudCache'
 import {
@@ -120,6 +121,25 @@ describe('cache persistence', () => {
     // the next account read these rows through the default cache-first policy.
     expect(cloudCache.extract()).not.toHaveProperty('Item:item-1')
     expect(cloudCache.readQuery({ query: QUERY })).toBeNull()
+  })
+
+  it('sign-out forgets the locations the active-location notice has seen', async () => {
+    // Given a mounted active-location provider (households H5c task H.7)
+    let forgotten = 0
+    const unregister = registerSeenLocations({
+      expectLoss: () => () => {},
+      forget: () => {
+        forgotten++
+      },
+    })
+
+    // When the user signs out
+    await clearCache()
+    unregister()
+
+    // Then the provider forgot every seen location, so the next person to
+    // sign in never gets a toast naming this person's location
+    expect(forgotten).toBe(1)
   })
 
   it('sign-out keeps the last signed-in user id', async () => {

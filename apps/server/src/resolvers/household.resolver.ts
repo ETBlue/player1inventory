@@ -1,15 +1,16 @@
 import { GraphQLError } from 'graphql'
-import type { HouseholdRole } from '@prisma/client'
+import type { HouseholdRole, Prisma } from '@prisma/client'
 import { requireAuth } from '../context.js'
 import { forbidden, requireHousehold, requireHouseholdRole } from '../lib/authz.js'
 import {
   alreadyInHousehold,
   createHouseholdFor,
+  displayNamesOf,
   firstLocationName,
   firstSignInNames,
   HOUSEHOLD_MOVE_TIMEOUT_MS,
   HOUSEHOLD_NAME_MAX_LENGTH,
-  lockHouseholds,
+  lockHouseholdOrForbid,
   lockUser,
 } from '../lib/household.js'
 import { prisma } from '../lib/prisma.js'
@@ -51,6 +52,7 @@ function person(
   row: { userId: string; role: HouseholdRole; joinedAt: Date },
   names: Map<string, string>,
   callerId: string,
+  withLocationRole: Set<string>,
 ) {
   return {
     userId: row.userId,
@@ -60,38 +62,43 @@ function person(
     joinedAt: row.joinedAt.toISOString(),
     // Not an authorization check: it only marks the caller's own row.
     isMe: row.userId === callerId,
+    hasLocationRole: withLocationRole.has(row.userId),
   }
 }
 
 /**
- * The display names of some people, by id. Names ONLY: the select never
- * names `email`, so no role can read an address through this list (owner
- * decision O13-A).
+ * The people, of `userIds`, who hold a role on at least one location of
+ * `householdId` (households H5c, decision T40, owner decision O28-A).
+ *
+ * ONE read for the whole list, not one per person. The two relation filters
+ * keep it to THIS household:
+ *
+ * - `location: { householdId }`: a role on a location of another household
+ *   does not count.
+ * - `user: { householdMemberships: { some: { householdId } } }`: the row's
+ *   person is still a member of the household (decision H18). The ids come
+ *   from this household's member list, so this only matters for a person
+ *   removed between the two reads. It is kept so every `LocationMember` read
+ *   carries H18.
+ *
+ * `db` is the client to read with, for a call inside a transaction.
  */
-async function displayNames(userIds: string[]): Promise<Map<string, string>> {
-  if (userIds.length === 0) return new Map()
-  const rows = await prisma.user.findMany({
-    where: { id: { in: [...new Set(userIds)] } },
-    select: { id: true, displayName: true },
-  })
-  return new Map(rows.map((row) => [row.id, row.displayName]))
-}
-
-/**
- * Take the household's row lock, FIRST in the transaction, for
- * `setHouseholdRole`, `removeMember` and `leaveHousehold`. The household
- * can be deleted after `requireHousehold` found it (for example the owner
- * joined another household in another tab, and the join deleted this one as
- * empty). `lockHousehold` would then throw Prisma's P2025, which reaches the
- * person as an internal error. `lockHouseholds` gives a count instead, and a
- * missing household is FORBIDDEN: the caller holds no role in it any more.
- */
-async function lockOrForbid(
-  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+async function peopleWithLocationRole(
   householdId: string,
-): Promise<void> {
-  const locked = await lockHouseholds(tx, [householdId])
-  if (!locked.has(householdId)) throw forbidden()
+  userIds: string[],
+  db: { locationMember: Prisma.TransactionClient['locationMember'] } = prisma,
+): Promise<Set<string>> {
+  if (userIds.length === 0) return new Set()
+  const rows = await db.locationMember.findMany({
+    where: {
+      userId: { in: [...new Set(userIds)] },
+      location: { householdId },
+      user: { householdMemberships: { some: { householdId } } },
+    },
+    select: { userId: true },
+    distinct: ['userId'],
+  })
+  return new Set(rows.map((row) => row.userId))
 }
 
 /**
@@ -167,8 +174,12 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           a.joinedAt.getTime() - b.joinedAt.getTime() ||
           (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0),
       )
-      const names = await displayNames(rows.map((row) => row.userId))
-      return rows.map((row) => person(row, names, userId))
+      const ids = rows.map((row) => row.userId)
+      const [names, withLocationRole] = await Promise.all([
+        displayNamesOf(ids),
+        peopleWithLocationRole(householdId, ids),
+      ])
+      return rows.map((row) => person(row, names, userId, withLocationRole))
     },
   },
 
@@ -205,11 +216,12 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     //
     // The same shape for all three. One transaction:
     //
-    //   1. The household lock FIRST (`lockOrForbid`, the same `UPDATE` as
-    //      `lockHousehold`). Two of these writes on one household run one
-    //      after the other, so a check never reads a role that another write
-    //      is changing at the same moment (for example a manager who removes
-    //      a member while the owner demotes that manager). A household
+    //   1. The household lock FIRST (`lockHouseholdOrForbid` in
+    //      lib/household.ts, the same `UPDATE` as `lockHousehold`). Two of
+    //      these writes on one household run one after the other, so a check
+    //      never reads a role that another write is changing at the same
+    //      moment (for example a manager who removes a member while the
+    //      owner demotes that manager). A household
     //      deleted since `requireHousehold` found it → FORBIDDEN.
     //   2. The caller's role, with `requireHouseholdRole`, read through `tx`
     //      (the transaction's own connection, not a second one from the
@@ -233,7 +245,7 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       const callerId = requireAuth(ctx)
       const householdId = await requireHousehold(ctx)
       const result = await prisma.$transaction(async (tx) => {
-        await lockOrForbid(tx, householdId)
+        await lockHouseholdOrForbid(tx, householdId)
         await requireHouseholdRole(ctx, householdId, 'owner', tx)
         if (role === 'owner') {
           throw badInput('Handing over the household is not possible yet.')
@@ -257,8 +269,14 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         return { row: saved, changed: true }
       })
       if (result.changed) await publishHouseholdChange(ctx, ['LOCATION'], householdId)
-      const names = await displayNames([target])
-      return person(result.row, names, callerId)
+      // Read after the commit. A household role change does not touch
+      // location roles (design, *Rules that cross the two levels*), so this
+      // is the same answer the list gives.
+      const [names, withLocationRole] = await Promise.all([
+        displayNamesOf([target]),
+        peopleWithLocationRole(householdId, [target]),
+      ])
+      return person(result.row, names, callerId, withLocationRole)
     },
 
     // The owner removes anyone but themself. A manager removes only a
@@ -270,7 +288,7 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       const callerId = requireAuth(ctx)
       const householdId = await requireHousehold(ctx)
       await prisma.$transaction(async (tx) => {
-        await lockOrForbid(tx, householdId)
+        await lockHouseholdOrForbid(tx, householdId)
         const callerRole = await requireHouseholdRole(ctx, householdId, 'manager', tx)
         if (target === callerId) {
           throw badInput('You cannot remove yourself. A manager or member can leave instead.')
@@ -294,7 +312,7 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       const callerId = requireAuth(ctx)
       const householdId = await requireHousehold(ctx)
       await prisma.$transaction(async (tx) => {
-        await lockOrForbid(tx, householdId)
+        await lockHouseholdOrForbid(tx, householdId)
         const role = await requireHouseholdRole(ctx, householdId, 'member', tx)
         if (role === 'owner') {
           throw badInput('The owner cannot leave. Handing over the household comes later.')

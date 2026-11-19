@@ -1,4 +1,5 @@
 import type { InMemoryCache } from '@apollo/client'
+import { forgetSeenLocations } from '@/lib/seenLocations'
 import { cacheDb, SNAPSHOT_ID } from './cacheDb'
 import { cloudCache } from './cloudCache'
 
@@ -69,6 +70,10 @@ export async function restoreCache(
 export async function clearCache(): Promise<void> {
   // In-memory rows first, or user B reads user A's data.
   await cloudCache.reset()
+  // The next person must not get a "You no longer have access to …" toast
+  // naming this account's location (households H5c task H.7, review). After
+  // the reset, so no render re-records this account's list from the cache.
+  forgetSeenLocations()
   await cacheDb.snapshots.clear()
   localStorage.removeItem(LAST_SYNCED_AT_KEY)
   // LAST_USER_ID_KEY is NOT removed here, on purpose (plan decision P7).

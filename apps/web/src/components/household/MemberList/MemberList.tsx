@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import { LogOut, UserMinus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { DeleteButton } from '@/components/shared/DeleteButton'
@@ -17,6 +18,12 @@ export interface MemberRow {
   displayName: string
   role: HouseholdRole
   isMe: boolean
+  /**
+   * The person holds a role on at least one location of this household
+   * (`HouseholdPerson.hasLocationRole`, households H5c decision T40). Only
+   * `false` shows the "No location roles" mark; `undefined` shows nothing.
+   */
+  hasLocationRole?: boolean
 }
 
 /**
@@ -70,6 +77,15 @@ export interface MemberListProps {
   leaving?: boolean
   /** People whose removal is running: their Remove is replaced the same way. */
   removingUserIds?: ReadonlySet<string>
+  /**
+   * Show "No location roles" and a "Give a location role" link (to
+   * Settings › Locations) on each row with `hasLocationRole: false`
+   * (households H5c, task H.6, owner decision O28-A). The page passes
+   * `usePermissions().canManageMembers`: an owner or manager may give a
+   * location role, a member may not. Default `false`. With it on, the list
+   * needs the router in context.
+   */
+  showLocationRoleMarks?: boolean
 }
 
 /**
@@ -85,6 +101,7 @@ export function MemberList({
   onLeave,
   leaving = false,
   removingUserIds,
+  showLocationRoleMarks = false,
 }: MemberListProps) {
   const { t } = useTranslation()
   return (
@@ -105,6 +122,21 @@ export function MemberList({
                   </span>
                 )}
               </CardTitle>
+              {showLocationRoleMarks && person.hasLocationRole === false && (
+                <span className="flex items-center gap-2 text-sm">
+                  <span className="text-foreground-muted">
+                    {t('settings.household.members.noLocationRoles')}
+                  </span>
+                  {/* The role is given on a location's page, with Add
+                      person (O28-A). The list is one click from there. */}
+                  <Link
+                    to="/settings/household/locations"
+                    className="underline underline-offset-4"
+                  >
+                    {t('settings.household.members.giveLocationRole')}
+                  </Link>
+                </span>
+              )}
               {canSetRole ? (
                 <Select
                   value={person.role}
