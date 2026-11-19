@@ -275,6 +275,10 @@ Not folded in, on purpose:
 
 O1–O22 were answered for H5a and H5b. These are NEW. The recommendation is in **bold**.
 
+**Answered 2026-11-19: all A** (the owner's reply: "all A"). O23-A one PR, O24-A, O25-A, O26-A,
+O27-A, O28-A, O29-A, O30-A. O31: the texts below are used as written; the owner may correct
+them in the PR.
+
 **O23 — One PR or two?** (needed before H.1)
 
 H5c has no migration. It adds a server part (H.1–H.3) and a web part (H.4–H.7), plus an E2E
@@ -991,4 +995,4 @@ Filled in from the task reports and reviews.
 ## Status
 
 **Plan written 2026-11-19** on `feature/households-h5c`, based on `develop` at `712f76f6`.
-Owner decisions O23–O31 are open. No task has started.
+Owner decisions O23–O31 answered 2026-11-19: all A. No task has started.
