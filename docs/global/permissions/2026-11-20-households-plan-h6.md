@@ -431,7 +431,7 @@ Needs owner decision **O33** (imports).
 `clearAllData.resolver.test.ts`), and with O33-A `schema/import.graphql` and
 `live-publish.guard.test.ts`.
 
-- [ ] **Step 1: failing tests.** One per write in T51, through the resolver, on
+- [x] **Step 1: failing tests.** One per write in T51, through the resolver, on
   `householdWorld`:
   - `setLocationRole` (add and change), `removeLocationRole`, `leaveLocation`: one row each,
     with the right action, actor, target, `locationId`, and `details.locationName` and
@@ -451,16 +451,16 @@ Needs owner decision **O33** (imports).
   - With **O33-A**: `recordImport(counts: ImportCountsInput!): Boolean!` (owner or manager,
     `requireCatalogRole(ctx, 'manager')`), one `IMPORT` row with the counts in `details`; a
     `member` gets `FORBIDDEN`.
-- [ ] **Step 2:** red.
-- [ ] **Step 3:** wrap `createInvite` and `revokeInvite` in `prisma.$transaction(async (tx)
+- [x] **Step 2:** red.
+- [x] **Step 3:** wrap `createInvite` and `revokeInvite` in `prisma.$transaction(async (tx)
   => …)`. Keep their reads and answers as they are; publish after the commit, as now.
-- [ ] **Step 4:** add `recordActivity(tx, …)` to each write, inside its transaction, after
+- [x] **Step 4:** add `recordActivity(tx, …)` to each write, inside its transaction, after
   the change and before the callback returns. Read display names for `details` only where
   T53 needs them stored (`locationName`); person names are read at query time.
-- [ ] **Step 5 (O33-A):** the `recordImport` mutation and its input; add it to
+- [x] **Step 5 (O33-A):** the `recordImport` mutation and its input; add it to
   `publishesNothing` with the reason "writes only an activity row; the import's own
   mutations already published".
-- [ ] **Step 6:** `pnpm codegen` (check the output: `grep -c recordImport
+- [x] **Step 6:** `pnpm codegen` (check the output: `grep -c recordImport
   apps/server/src/generated/graphql.ts`), `oldBundleCompat.test.ts`, the full gate.
 
 **Mutation checks:**
@@ -473,7 +473,22 @@ Needs owner decision **O33** (imports).
 | `joinHousehold` logs outside the retried callback | the `P2034` test |
 | `clearAllData` writes the row before the deletes | the `HOUSEHOLD_CLEARED` test, if the deletes ever reach the table; otherwise note it as unreachable, not as coverage |
 
-**E2E:** none (J.8).
+**Mutation checks run (2026-11-20).** Each file was copied aside first and restored from the
+copy (`diff -q` clean, green again after each).
+
+| Mutation | Result |
+|---|---|
+| `setLocationRole` writes its row in a second transaction after the first one commits | **red**: "the role change and its row roll back together when the log write fails" (`activity-writes.resolver.test.ts`) |
+| `setHouseholdRole` logs also when the role did not change | **red**: "the same household role again writes no row" |
+| `revokeInvite` logs before checking `count` | **red**: "a revoke that answers false writes no row" |
+| `joinHousehold` logs in a second transaction after the retried one | **red**: "the join and its row roll back together when the log write fails", and the existing P2034 test "a first attempt … the join succeeds once" (it counts 3 `$transaction` calls, not 2). The new "a join retried after P2034 writes ONE MEMBER_JOINED row" test **stays green**: see *What this plan got wrong* |
+| `clearAllData` writes the row right after the lock, before the deletes | **red**: "household owner can clear the household: every delete is scoped to it, lock first, Home last" (the `log` event is no longer last). The HOUSEHOLD_CLEARED content test stays green, because no delete reaches the log table: that is expected, not coverage |
+| `createInvite` logs through the global `prisma`, not `tx` | **red**: the `afterEach` spy check ("householdActivity.create through the global client: expected 1 to be +0") on the INVITE_CREATED test, and the invite atomicity test |
+| `recordImport` asks `requireHousehold` instead of `requireCatalogRole(ctx, 'manager')` | **red**: "household member cannot record an import, even as the organizer of a location, and nothing is logged" |
+
+**E2E:** none (J.8). `e2e/tests/cleanup-endpoint.spec.ts` expects `householdActivities >= 1`.
+Since this task `createInvite` writes an `INVITE_CREATED` row, so the spec should pass now. It
+is unrun until J.8.
 
 ---
 
@@ -1146,6 +1161,11 @@ Filled in from the task reports and reviews.
 | J.1 | `purge-coverage.test.ts`: "the filter text of the new call" | Two more edits were needed. `householdActivity` joins `clearAllData`'s `kept` list (a clear must keep the log), and its `/e2e/cleanup` filter is a path EXCEPTION, not a `MODEL_PATHS` entry: a `MODEL_PATHS` entry would make the guard demand that `clearAllData` delete the log too |
 | J.1 | T51 lists the H6b actions "in H6b"; K.1 does not say who adds them to the enum | J.1's migration creates all 19 values, H6b's included. So K.1 needs no `ALTER TYPE … ADD VALUE` (a value added that way cannot be used in the same transaction) |
 | J.1 | `cleanup-endpoint.spec.ts`: one seeded row, "written through a real logged mutation, for example `createInvite`, once J.2 exists" | The spec already calls the real `createInvite`. Once J.2 makes it log `INVITE_CREATED`, the activity row is seeded with no new step. Between J.1 and J.2 the spec reports `"householdActivities":0` and would fail. Only comments were changed; it is unrun until J.8 |
+| J.2 | Step 1: the tests go in the five existing test files | Most went into ONE new file, `resolvers/activity-writes.resolver.test.ts`, with one fixture for every write in three resolver files. Only the `clearAllData` tests (in `clearAllData.resolver.test.ts`, which already records each delete) and the P2034 test (in `invite-join.resolver.test.ts`, next to its helper) went into existing files. One existing test had to change: `location-people.resolver.test.ts` T42 lists every model `removeLocationRole` touches, and `householdActivity` is now one of them |
+| J.2 | Atomicity: "make the step after `recordActivity` throw" | `recordActivity` is the LAST step of every callback, so there is no step after it. The tests make the log write itself fail (`householdActivity.create` rejects once) and check that the change is gone too. That catches a log row moved out of the transaction. A second check, a spy on the GLOBAL client's `householdActivity.create` in `afterEach`, catches a write that forgets `tx` |
+| J.2 | The `joinHousehold` mutation check: "logs outside the retried callback" must turn the `P2034` test red | The new one-row `P2034` test stays green for that mutation. The fake's rollback restores the whole store, and a log written once, after the retry, still gives one row. What turns red is the join atomicity test, and the existing `P2034` test, which counts `$transaction` calls. The one-row test is kept as a check of the result, not as proof of where the call sits |
+| J.2 | T51 gives `LOCATION_ROLE_REMOVED` and `LOCATION_LEFT` no `details` | T53 needs `locationName` for every row about a location, and `fromRole` reads well for a removal. Both store `{ locationName, from }`. `INVITE_REVOKED`, `MEMBER_REMOVED` and `MEMBER_LEFT` store no `details` |
+| J.2 | `recordImport(counts: ImportCountsInput!)` names no fields | `ImportCountsInput` has 11 required `Int!` fields named after the backup file's keys: `items`, `tags`, `tagTypes`, `vendors`, `recipes`, `shelves`, `locations`, `itemStocks`, `inventoryLogs`, `shoppingCarts`, `cartItems`. A negative or non-integer count is `BAD_USER_INPUT`. The row stores `details: { counts }` |
 
 ## Status
 
