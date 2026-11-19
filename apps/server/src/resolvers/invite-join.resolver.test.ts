@@ -530,6 +530,35 @@ describe('joinHousehold keeps the joiner’s own household when it is not empty'
     expect(householdIds()).not.toContain('hh_p')
   })
 
+  it('activity log rows do not keep it, and go with it (H6 decision T49)', async () => {
+    // Given PAT's own household holds only "Home" and two activity rows. A
+    // log row is not data a person would lose, so the join must still delete
+    // the household, and the rows go with it (ON DELETE CASCADE).
+    for (const action of ['HOUSEHOLD_CLEARED', 'INVITE_CREATED'] as const) {
+      await world.client.householdActivity.create({
+        data: { householdId: 'hh_p', actorId: PAT, action },
+      })
+    }
+    // And one row of another household, which must stay
+    await world.client.householdActivity.create({
+      data: { householdId: 'hh_x', actorId: YUKI, action: 'INVITE_CREATED' },
+    })
+
+    // When PAT joins hh_h
+    const res = await join(MAIN, PAT)
+
+    // Then the join succeeds and hh_p is deleted
+    expect(res.errors).toBeUndefined()
+    expect(householdIds()).not.toContain('hh_p')
+    // And of the rows seeded above, only hh_x's is left. (Rows of hh_h are
+    // left out: from H6 task J.2 the join logs itself there.)
+    expect(
+      world.households.state.householdActivities
+        .map((r) => r.householdId)
+        .filter((id) => id !== 'hh_h'),
+    ).toEqual(['hh_x'])
+  })
+
   it("another household's data does not keep it", async () => {
     // A control for the cases above: rows that belong to hh_x only.
     world.contents.rows.items.push({ householdId: 'hh_x' })

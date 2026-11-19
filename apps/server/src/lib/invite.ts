@@ -128,6 +128,16 @@ export function alreadyMember(): GraphQLError {
  *
  * A NEW model that belongs to a household or a location must be added here,
  * or a household holding only that data is deleted at the next join.
+ *
+ * Except the activity log, on purpose (households H6, decision T49).
+ * `HouseholdActivity` rows are NOT checked here: a log is not data a person
+ * would lose, so a household that holds only log rows is still "empty", and
+ * its rows go with it (ON DELETE CASCADE). If this `where` asked
+ * `activities: { none: {} }`, a person who once cleared their own empty
+ * household (which writes a log row) could never have it removed at a join.
+ * `invite-join.resolver.test.ts` pins it ("activity log rows do not keep
+ * it"). H6b's `OwnershipOffer` will follow the same rule: an offer in a
+ * one-person household cannot exist.
  */
 export function emptyHouseholdWhere(
   userId: string,
