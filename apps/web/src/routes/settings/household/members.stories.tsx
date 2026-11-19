@@ -34,6 +34,7 @@ function people(me: string): Person[] {
     role,
     joinedAt: '2026-11-01T00:00:00.000Z',
     isMe: userId === me,
+    hasLocationRole: true,
   })
   return [
     row('u-olive', 'Olive Lin', 'owner'),

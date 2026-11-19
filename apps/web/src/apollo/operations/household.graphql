@@ -58,6 +58,10 @@ mutation CreateHousehold($name: String) {
 # Every person of the household, for any household role (owner decision
 # O13-A). `HouseholdPerson` has no `id`, so Apollo does not normalise a row:
 # the page refetches this list after a role change and after a removal.
+#
+# `hasLocationRole` (households H5c, decision T40): the person has a role on at
+# least one location of this household. The Members page shows "No location
+# roles" when it is false (owner decision O28-A).
 query HouseholdMembers {
   householdMembers {
     userId
@@ -65,6 +69,7 @@ query HouseholdMembers {
     role
     joinedAt
     isMe
+    hasLocationRole
   }
 }
 
