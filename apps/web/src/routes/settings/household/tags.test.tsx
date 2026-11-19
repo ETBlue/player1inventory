@@ -5,14 +5,15 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { createTag, createTagType } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 import { elementAt } from '@/test/narrow'
+import { watchUnhandledRejections } from '@/test/unhandledRejections'
 import { TagColor } from '@/types/index'
 
 describe('Tag settings page - context-aware back navigation', () => {
@@ -172,5 +173,143 @@ describe('Tags List Page - Database Operations', () => {
     // Note: Testing the full drag-and-drop UI interaction would require
     // @dnd-kit testing utilities or manual event simulation.
     // The drag-and-drop UX will be verified in Task 7 manual testing.
+  })
+})
+
+// A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+// Before the fix the three dialogs below used `mutate` with no `onError`, and
+// the Add Tag dialog closed before the write ended, so the name was lost.
+describe('Tag settings page - a failed save', () => {
+  let queryClient: QueryClient
+
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.tags.clear()
+    await db.tagTypes.clear()
+    sessionStorage.clear()
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+  })
+
+  const renderPage = () => {
+    const history = createMemoryHistory({
+      initialEntries: ['/settings/household/tags'],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <ApolloProvider client={noopApolloClient}>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </ApolloProvider>,
+    )
+  }
+
+  it('user sees a message when creating a tag type fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given the tags page, and a database that refuses the new tag type
+      renderPage()
+      vi.spyOn(db.tagTypes, 'add').mockRejectedValueOnce(new Error('disk full'))
+      const user = userEvent.setup()
+
+      // When the user creates a tag type named "Storage"
+      await user.click(
+        await screen.findByRole('button', { name: 'New Tag Type' }),
+      )
+      const dialog = await screen.findByRole('dialog')
+      await user.type(within(dialog).getByLabelText(/name/i), 'Storage')
+      await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+      // Then a message says the change was not saved
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      // And the dialog stays open with the name
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+      expect(within(dialog).getByLabelText(/name/i)).toHaveValue('Storage')
+      expect(await db.tagTypes.count()).toBe(0)
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('user sees a message when creating a tag fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given a tag type, and a database that refuses the new tag
+      await createTagType({ name: 'Produce', color: TagColor.green })
+      renderPage()
+      vi.spyOn(db.tags, 'add').mockRejectedValueOnce(new Error('disk full'))
+      const user = userEvent.setup()
+
+      // When the user adds a tag named "Apples"
+      await user.click(
+        await screen.findByRole('button', { name: /^new tag$/i }),
+      )
+      const dialog = await screen.findByRole('dialog')
+      await user.type(within(dialog).getByLabelText(/name/i), 'Apples')
+      await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+      // Then a message says the change was not saved
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      // And the dialog stays open with the name, and Save can be pressed again
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+      expect(within(dialog).getByLabelText(/name/i)).toHaveValue('Apples')
+      await waitFor(() =>
+        expect(
+          within(dialog).getByRole('button', { name: /^save$/i }),
+        ).toBeEnabled(),
+      )
+      expect(await db.tags.count()).toBe(0)
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('user sees a message when renaming a tag type fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given a tag type, and a database that refuses the write
+      const tagType = await createTagType({
+        name: 'Produce',
+        color: TagColor.green,
+      })
+      renderPage()
+      vi.spyOn(db.tagTypes, 'update').mockRejectedValueOnce(
+        new Error('disk full'),
+      )
+      const user = userEvent.setup()
+
+      // When the user renames it to "Fruit"
+      await user.click(await screen.findByRole('button', { name: /^edit$/i }))
+      const dialog = await screen.findByRole('dialog')
+      const input = within(dialog).getByLabelText(/name/i)
+      await user.clear(input)
+      await user.type(input, 'Fruit')
+      await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+      // Then a message says the change was not saved
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      // And the dialog stays open with the name
+      expect(within(dialog).getByLabelText(/name/i)).toHaveValue('Fruit')
+      expect((await db.tagTypes.get(tagType.id))?.name).toBe('Produce')
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
   })
 })

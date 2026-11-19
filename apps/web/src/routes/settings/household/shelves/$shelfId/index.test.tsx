@@ -14,6 +14,7 @@ import * as useShelvesModule from '@/hooks/useShelves'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 import { callArgs, defined } from '@/test/narrow'
+import { watchUnhandledRejections } from '@/test/unhandledRejections'
 
 describe('Shelf Settings - Info Tab', () => {
   let queryClient: QueryClient
@@ -316,5 +317,52 @@ describe('Shelf Settings - Info Tab', () => {
         expect(screen.queryByLabelText('Shelf name')).not.toBeInTheDocument()
       })
     })
+  })
+
+  // A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+  // Before the fix the save was a `mutate` with no `onError`, so nothing on
+  // screen said the name was not saved.
+  // The save has one branch per shelf type, so both are tested
+  it.each([
+    'selection',
+    'filter',
+  ] as const)('user sees a message when saving the name of a %s shelf fails', async (type) => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given a shelf, and a database that refuses the write
+      const shelf = await createShelf(
+        type === 'selection'
+          ? { name: 'Fridge', type, order: 0, itemIds: [] }
+          : { name: 'Fridge', type, order: 0, filterConfig: {} },
+      )
+      renderInfoTab(shelf.id)
+      const user = userEvent.setup()
+      const nameInput = await screen.findByLabelText('Shelf name')
+      await waitFor(() => expect(nameInput).toHaveValue('Fridge'))
+      vi.spyOn(db.shelves, 'update').mockRejectedValueOnce(
+        new Error('disk full'),
+      )
+
+      // When the user renames it and presses Save
+      await user.clear(nameInput)
+      await user.type(nameInput, 'Pantry')
+      await user.click(screen.getByRole('button', { name: /save/i }))
+
+      // Then a message says the change was not saved
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      // And the page stays with the typed name, and Save can be pressed again
+      expect(screen.getByLabelText('Shelf name')).toHaveValue('Pantry')
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /save/i })).toBeEnabled(),
+      )
+      expect((await db.shelves.get(shelf.id))?.name).toBe('Fridge')
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
   })
 })

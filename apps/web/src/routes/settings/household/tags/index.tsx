@@ -58,6 +58,7 @@ import {
   useUpdateTag,
   useUpdateTagType,
 } from '@/hooks/useTags'
+import { showSaveError } from '@/lib/saveError'
 import { sortTagsByName } from '@/lib/tagSortUtils'
 import { type Tag, TagColor, type TagType } from '@/types/index'
 
@@ -541,6 +542,9 @@ export function TagSettings() {
               onSave={(data) => {
                 createTagType.mutate(data, {
                   onSuccess: () => setNewTagTypeDialog(false),
+                  // The dialog stays open with the name. Before, a failed
+                  // save showed nothing.
+                  onError: (err) => showSaveError(err),
                 })
               }}
               isPending={createTagType.isPending}
@@ -570,14 +574,25 @@ export function TagSettings() {
                   (t) => t.typeId === addTagDialog,
                 )}
                 typeReadonly={true}
-                onSave={(data) => {
-                  createTag.mutate({
-                    name: data.name,
-                    typeId: data.typeId,
-                    ...(data.parentId ? { parentId: data.parentId } : {}),
-                  })
-                  setAddTagDialog(null)
-                }}
+                // The dialog closes only once the tag is saved. Before, it
+                // closed at once and a failed save lost the name with no
+                // message. The error is passed on so `TagInfoForm` marks the
+                // edit as unsaved again; the form catches it.
+                onSave={(data) =>
+                  createTag
+                    .mutateAsync({
+                      name: data.name,
+                      typeId: data.typeId,
+                      ...(data.parentId ? { parentId: data.parentId } : {}),
+                    })
+                    .then(
+                      () => setAddTagDialog(null),
+                      (err: unknown) => {
+                        showSaveError(err)
+                        throw err
+                      },
+                    )
+                }
                 isPending={createTag.isPending}
               />
             )}
@@ -589,7 +604,11 @@ export function TagSettings() {
       <EditTagTypeDialog
         tagType={editTagType}
         onSave={(data) =>
-          updateTagType.mutate({ id: editTagType?.id ?? '', updates: data })
+          updateTagType.mutate(
+            { id: editTagType?.id ?? '', updates: data },
+            // Before, a failed save showed nothing
+            { onError: (err) => showSaveError(err) },
+          )
         }
         onClose={() => setEditTagType(null)}
         isPending={updateTagType.isPending}

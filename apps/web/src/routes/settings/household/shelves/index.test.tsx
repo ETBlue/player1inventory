@@ -5,12 +5,14 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { createShelf, createTag, createTagType } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
+import { watchUnhandledRejections } from '@/test/unhandledRejections'
 
 describe('Shelf settings page — filter count', () => {
   let queryClient: QueryClient
@@ -114,5 +116,45 @@ describe('Shelf settings page — filter count', () => {
       await screen.findByRole('link', { name: 'Pantry Essentials' }),
     ).toBeInTheDocument()
     expect(screen.queryByText(/^\d+ filters?$/)).not.toBeInTheDocument()
+  })
+
+  // A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+  // Before the fix the create was a `mutate` with no `onError`, and the dialog
+  // closed and cleared the name before the write ended.
+  it('user sees a message when creating a shelf fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given the shelves page, and a database that refuses the new shelf
+      renderShelfSettingsPage()
+      vi.spyOn(db.shelves, 'add').mockRejectedValueOnce(new Error('disk full'))
+      const user = userEvent.setup()
+
+      // When the user creates a shelf named "Snacks"
+      await user.click(await screen.findByRole('button', { name: 'Add shelf' }))
+      const dialog = await screen.findByRole('dialog')
+      await user.type(within(dialog).getByLabelText(/name/i), 'Snacks')
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Create Shelf' }),
+      )
+
+      // Then a message says the change was not saved
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      // And the dialog stays open with the name, and Create can be pressed again
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+      expect(within(dialog).getByLabelText(/name/i)).toHaveValue('Snacks')
+      await waitFor(() =>
+        expect(
+          within(dialog).getByRole('button', { name: 'Create Shelf' }),
+        ).toBeEnabled(),
+      )
+      expect(await db.shelves.count()).toBe(0)
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
   })
 })

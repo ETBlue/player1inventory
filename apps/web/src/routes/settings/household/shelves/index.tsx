@@ -50,6 +50,7 @@ import {
   useShelvesQuery,
 } from '@/hooks/useShelves'
 import { useTags } from '@/hooks/useTags'
+import { showSaveError } from '@/lib/saveError'
 import { countSelectedFilters, matchesFilterConfig } from '@/lib/shelfUtils'
 import type { Shelf } from '@/types'
 
@@ -210,20 +211,34 @@ export function ShelfSettingsPage() {
     if (oldIndex === -1 || newIndex === -1) return
 
     const reordered = arrayMove(userShelves, oldIndex, newIndex)
-    reorderShelves.mutate(reordered.map((s) => s.id))
+    // Before, a failed reorder showed nothing
+    reorderShelves.mutate(
+      reordered.map((s) => s.id),
+      {
+        onError: (err) => showSaveError(err),
+      },
+    )
   }
 
   const handleDragCancel = () => {
     setActiveId(null)
   }
 
-  const handleAddShelf = (data: CreateShelfInput) => {
-    createShelf.mutate({
-      name: data.name,
-      type: data.type,
-      order: shelves.length,
-      ...(data.filterConfig ? { filterConfig: data.filterConfig } : {}),
-    })
+  // A failed create shows a toast and is passed on, so `AddShelfDialog`
+  // stays open with what the user typed. Before, the dialog closed at once
+  // and a failure showed nothing.
+  const handleAddShelf = async (data: CreateShelfInput) => {
+    try {
+      await createShelf.mutateAsync({
+        name: data.name,
+        type: data.type,
+        order: shelves.length,
+        ...(data.filterConfig ? { filterConfig: data.filterConfig } : {}),
+      })
+    } catch (err) {
+      showSaveError(err)
+      throw err
+    }
   }
 
   const getItemCount = (shelf: Shelf): number => {
