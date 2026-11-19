@@ -269,9 +269,9 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         return { row: saved, changed: true }
       })
       if (result.changed) await publishHouseholdChange(ctx, ['LOCATION'], householdId)
-      // Read after the commit: a role change in the household does not touch
-      // location roles (owner decision O20), so this is the same answer the
-      // list gives.
+      // Read after the commit. A household role change does not touch
+      // location roles (design, *Rules that cross the two levels*), so this
+      // is the same answer the list gives.
       const [names, withLocationRole] = await Promise.all([
         displayNamesOf([target]),
         peopleWithLocationRole(householdId, [target]),

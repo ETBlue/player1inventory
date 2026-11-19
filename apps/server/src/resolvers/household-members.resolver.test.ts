@@ -433,6 +433,47 @@ describe('setHouseholdRole', () => {
     expect(locationRolesOf(BOB)).toEqual([`${LOC_K}:viewer`])
   })
 
+  // `hasLocationRole` on the answer (households H5c, decision T40). The
+  // shared `PERSON` selection does not name it, so these tests ask for it.
+  const SET_ROLE_MARK = `mutation S($userId: ID!, $role: HouseholdRole!) { setHouseholdRole(userId: $userId, role: $role) { userId hasLocationRole } }`
+  const setRoleMark = async (userId: string, role: HouseholdRole) => {
+    const res = await run(SET_ROLE_MARK, { userId, role }, OWEN)
+    expect(res.errors).toBeUndefined()
+    return (res.data?.setHouseholdRole as { hasLocationRole: boolean }).hasLocationRole
+  }
+
+  it('the answer marks a person with a location role in this household', async () => {
+    // Given BOB, a member with a viewer role on LOC_K (hh_h)
+    // When OWEN promotes him, and demotes him again
+    // Then both answers say he has a location role
+    expect(await setRoleMark(BOB, 'manager')).toBe(true)
+    expect(await setRoleMark(BOB, 'member')).toBe(true)
+  })
+
+  it('the answer does not mark a person with no location role', async () => {
+    // Given BOB with his only location role removed
+    world.households.state.locationMembers = world.households.state.locationMembers.filter(
+      (m) => m.userId !== BOB,
+    )
+
+    // When OWEN promotes him
+    // Then the answer says he has no location role
+    expect(await setRoleMark(BOB, 'manager')).toBe(false)
+  })
+
+  it('the answer does not count a role on another household\'s location', async () => {
+    // Given MIA, a manager of hh_h, whose only location role left is the
+    // viewer role on LOC_Z, a location of hh_x
+    world.households.state.locationMembers = world.households.state.locationMembers.filter(
+      (m) => !(m.userId === MIA && m.locationId === LOC_K),
+    )
+    expect(locationRolesOf(MIA)).toEqual([`${LOC_Z}:viewer`])
+
+    // When OWEN demotes her to member
+    // Then the answer says she has no location role in hh_h
+    expect(await setRoleMark(MIA, 'member')).toBe(false)
+  })
+
   it('household manager cannot change a role', async () => {
     const before = snapshot()
     const res = await setRole(MIA, BOB, 'manager')
