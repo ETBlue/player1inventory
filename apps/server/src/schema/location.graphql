@@ -99,6 +99,33 @@ extend type Mutation {
   # or a subset is BAD_USER_INPUT, an id of another household or of no
   # location is FORBIDDEN, and nothing is written. Returns `locations`.
   reorderLocations(orderedIds: [ID!]!): [Location!]!
+
+  # ── Location roles (households H5c, task H.3, decisions T32–T38) ──
+  #
+  # Only a location of the household the caller acts in. Another household's
+  # location and an unknown id get the same FORBIDDEN (decision T35). The
+  # person must be a member of that household (decision H18), or FORBIDDEN.
+  #
+  # Who may change a role is ONE rule, `canChangeLocationRole` in
+  # `@p1i/types` (decision T33): a household owner or manager may make any
+  # change; a location organizer may give, change and remove the participant
+  # and viewer roles only, never the organizer role, and never their own
+  # organizer row. The TARGET's household role does not matter (owner
+  # decision O30-A).
+  #
+  # Each one sends one household-level LOCATION event, after the commit, and
+  # only when something changed (decision T36).
+
+  # Gives a person a role on the location, or changes it. The same role again
+  # writes nothing and returns the row (decision T38).
+  setLocationRole(locationId: ID!, userId: ID!, role: LocationRole!): LocationPerson!
+  # Takes a person's role away. Deletes one role row and nothing else: the
+  # location's carts, cart rows, stock and logs stay (decision T42). `false`
+  # when the person has no role there (a second press).
+  removeLocationRole(locationId: ID!, userId: ID!): Boolean!
+  # The caller leaves the location. Any role may leave, the only organizer
+  # too (owner decision O25-A). `false` when the caller has no role there.
+  leaveLocation(locationId: ID!): Boolean!
 }
 
 input UpdateLocationInput {

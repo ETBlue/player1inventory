@@ -1,5 +1,5 @@
 import { GraphQLError } from 'graphql'
-import { LOCATION_ROLE_RANK } from '@p1i/types'
+import { canChangeLocationRole, LOCATION_ROLE_RANK } from '@p1i/types'
 import { type Context, requireAuth } from '../context.js'
 import {
   forbidden,
@@ -12,11 +12,11 @@ import {
   requireLocationInHousehold,
   requireLocationRole,
 } from '../lib/authz.js'
-import { displayNamesOf, lockHousehold } from '../lib/household.js'
+import { displayNamesOf, lockHousehold, lockHouseholdOrForbid } from '../lib/household.js'
 import { prisma } from '../lib/prisma.js'
 import { publishHouseholdChange } from '../lib/publishChange.js'
 import type { Location, Resolvers } from '../generated/graphql.js'
-import type { Prisma, Location as PrismaLocation } from '@prisma/client'
+import type { LocationRole, Prisma, Location as PrismaLocation } from '@prisma/client'
 
 // Map a Prisma Location row to the GraphQL shape. GraphQL schema types
 // createdAt/updatedAt as String! — Date objects must be explicitly
@@ -151,6 +151,75 @@ async function peopleOfLocation(ctx: Context, locationId: string, householdId: s
         byText(a.displayName, b.displayName) ||
         byText(a.userId, b.userId),
     )
+}
+
+/**
+ * The role of `userId` on the location, read through `db`, or `null`. Only a
+ * row that still counts: the person must be a member of `householdId`
+ * (decision H18, the same filter as `peopleOfLocation`). The three role
+ * writes check the person's membership first, so today the filter changes
+ * nothing for them. It is there so every `LocationMember` read carries H18.
+ */
+async function roleOfPerson(
+  db: Prisma.TransactionClient,
+  locationId: string,
+  userId: string,
+  householdId: string,
+): Promise<LocationRole | null> {
+  const row = await db.locationMember.findFirst({
+    where: { locationId, userId, user: { householdMemberships: { some: { householdId } } } },
+    select: { role: true },
+  })
+  return row?.role ?? null
+}
+
+/**
+ * The lock, then the checks, of `setLocationRole` and `removeLocationRole`,
+ * inside their transaction (households H5c, decision T34). In this order:
+ *
+ *   1. The household lock FIRST (`lockHouseholdOrForbid`). `removeMember`
+ *      and `leaveHousehold` take the same lock, so a role write and a removal
+ *      of the same person run one after the other. The role write then sees
+ *      in step 5 that the person is gone, and no role row is left behind
+ *      (Review Focus 3 of the plan). A household deleted since
+ *      `requireHousehold` found it → FORBIDDEN.
+ *   2. The location, in THIS household, in SQL (decision T35). None →
+ *      FORBIDDEN, the same answer for an unknown id and another household's
+ *      location. It comes before any role read: a person in two households
+ *      has real roles on the other household's locations.
+ *   3. The caller's household role (`requireHouseholdRole`).
+ *   4. The caller's counted location role, or null (`locationRoleOf`).
+ *   5. The target's member row in this household. None → FORBIDDEN.
+ *   6. The target's current role, or null (`roleOfPerson`).
+ *
+ * Every read uses `tx`, the transaction's own connection. A read through the
+ * global client would need a second connection from the pool, and on
+ * Postgres it would not wait for the lock.
+ *
+ * It checks no rule: the caller does that with `canChangeLocationRole`.
+ */
+async function lockAndReadRoles(
+  ctx: Context,
+  tx: Prisma.TransactionClient,
+  householdId: string,
+  locationId: string,
+  target: string,
+) {
+  await lockHouseholdOrForbid(tx, householdId)
+  const location = await tx.location.findFirst({
+    where: { id: locationId, householdId },
+    select: { id: true },
+  })
+  if (!location) throw forbidden()
+  const householdRole = await requireHouseholdRole(ctx, householdId, 'member', tx)
+  const callerRole = await locationRoleOf(ctx, locationId, tx)
+  const membership = await tx.householdMember.findUnique({
+    where: { householdId_userId: { householdId, userId: target } },
+    select: { role: true },
+  })
+  if (!membership) throw forbidden()
+  const from = await roleOfPerson(tx, locationId, target, householdId)
+  return { householdRole, callerRole, from }
 }
 
 // ── LIVE EVENTS (households H3c-2 task D.3) ──
@@ -421,6 +490,119 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
         await publishHouseholdChange(ctx, ['LOCATION'], householdId)
       }
       return visibleLocations(ctx)
+    },
+
+    // ── setLocationRole, removeLocationRole, leaveLocation (households H5c,
+    // task H.3) ──
+    //
+    // One transaction each, in the order of `lockAndReadRoles` (decision
+    // T34). Who may do what is ONE rule, `canChangeLocationRole` in
+    // `@p1i/types`, which the web uses too (decision T33). After the commit,
+    // ONE household-level `LOCATION` event, and only when a row changed
+    // (decision T36). The person who lost a role is still a household member,
+    // so their tabs hear it.
+    //
+    // No role write is logged yet: the activity log comes in H6 (owner
+    // decision O29-A).
+
+    // Adds a role or changes it. The same role again writes nothing, sends
+    // nothing, and returns the row (decision T38).
+    setLocationRole: async (_, { locationId, userId: target, role }, ctx) => {
+      const callerId = requireAuth(ctx)
+      const householdId = await requireHousehold(ctx)
+      const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const { householdRole, callerRole, from } = await lockAndReadRoles(
+          ctx,
+          tx,
+          householdId,
+          locationId,
+          target,
+        )
+        if (!canChangeLocationRole({ householdRole, callerRole, from, to: role })) {
+          throw forbidden()
+        }
+        if (from === role) return { role, changed: false }
+        // `upsert` on the one row a person has per location: a change of role
+        // updates it, a new role creates it.
+        const saved = await tx.locationMember.upsert({
+          where: { locationId_userId: { locationId, userId: target } },
+          create: { locationId, userId: target, role },
+          update: { role },
+          select: { role: true },
+        })
+        return { role: saved.role, changed: true }
+      })
+      if (result.changed) await publishHouseholdChange(ctx, ['LOCATION'], householdId)
+      // Read after the commit: the name is not part of the check.
+      const names = await displayNamesOf([target])
+      return {
+        userId: target,
+        // Every member has a `User` row (a foreign key). `''` should never show.
+        displayName: names.get(target) ?? '',
+        role: result.role,
+        // Not an authorization check: it only marks the caller's own row.
+        isMe: target === callerId,
+      }
+    },
+
+    // Deletes ONE role row and nothing else (decision T42). The location's
+    // carts, cart rows (their `userId` means only "added by"), stock and logs
+    // stay.
+    removeLocationRole: async (_, { locationId, userId: target }, ctx) => {
+      const householdId = await requireHousehold(ctx)
+      const changed = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const { householdRole, callerRole, from } = await lockAndReadRoles(
+          ctx,
+          tx,
+          householdId,
+          locationId,
+          target,
+        )
+        if (from === null) {
+          // Nothing to remove: `false`, not an error, so a second press of
+          // Remove shows no error (decision T38). But only to a caller who
+          // may read the people of the location (owner decision O24-A).
+          // Anyone else gets FORBIDDEN, so `false` cannot tell them who has
+          // no role there.
+          if (householdRole === 'member' && callerRole === null) throw forbidden()
+          return false
+        }
+        if (!canChangeLocationRole({ householdRole, callerRole, from, to: null })) {
+          throw forbidden()
+        }
+        const { count } = await tx.locationMember.deleteMany({
+          where: { locationId, userId: target },
+        })
+        return count > 0
+      })
+      if (changed) await publishHouseholdChange(ctx, ['LOCATION'], householdId)
+      return changed
+    },
+
+    // The caller leaves the location. It never refuses for a role reason:
+    // any role may leave, the only organizer too (owner decision O25-A). The
+    // location then shows "No organizer". The same lock and the same first
+    // checks as the two writes above.
+    leaveLocation: async (_, { locationId }, ctx) => {
+      const callerId = requireAuth(ctx)
+      const householdId = await requireHousehold(ctx)
+      const changed = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        await lockHouseholdOrForbid(tx, householdId)
+        const location = await tx.location.findFirst({
+          where: { id: locationId, householdId },
+          select: { id: true },
+        })
+        if (!location) throw forbidden()
+        await requireHouseholdRole(ctx, householdId, 'member', tx)
+        // No role: `false`, not an error (a second press, decision T38).
+        if ((await locationRoleOf(ctx, locationId, tx)) === null) return false
+        const { count } = await tx.locationMember.deleteMany({
+          where: { locationId, userId: callerId },
+        })
+        return count > 0
+      })
+      if (changed) await publishHouseholdChange(ctx, ['LOCATION'], householdId)
+      return changed
     },
   },
 }

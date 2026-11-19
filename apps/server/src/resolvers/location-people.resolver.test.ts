@@ -6,11 +6,14 @@ import type { Context } from '../context.js'
 import type { HouseholdWorld } from '../test/householdWorld.js'
 import type { FakeLocation } from '../test/stockFake.js'
 import type { UserRow } from '../test/userFake.js'
+import { type ChangeEvent, liveEvents } from '../lib/liveEvents.js'
 
-// The people of one location (households H5c, task H.2; plan
+// The people of one location (households H5c, tasks H.2 and H.3; plan
 // docs/global/permissions/2026-11-19-households-plan-h5c.md, decisions T39
 // and T40, owner decisions O24-A and O28-A): the `locationPeople` query and
-// `HouseholdPerson.hasLocationRole`.
+// `HouseholdPerson.hasLocationRole` (task H.2), and the three role writes
+// `setLocationRole`, `removeLocationRole` and `leaveLocation` (task H.3,
+// decisions T34–T38 and T42, owner decisions O25-A and O30-A).
 //
 // ── THE FIXTURE ──
 //
@@ -47,6 +50,11 @@ import type { UserRow } from '../test/userFake.js'
 // - MIA's only location role is in hh_x. So `hasLocationRole` without the
 //   `location: { householdId }` filter would call her true.
 
+// How many `$transaction` callbacks are running right now. The three role
+// writes (task H.3) must read nothing through the global client while it is
+// above 0, and must publish only when it is back to 0 (after the commit).
+const tx = vi.hoisted(() => ({ depth: 0 }))
+
 vi.mock('../lib/prisma.js', async () => {
   const { createHouseholdWorld } = await import('../test/householdWorld.js')
   const world = createHouseholdWorld()
@@ -59,7 +67,22 @@ vi.mock('../lib/prisma.js', async () => {
       value && typeof value === 'object' ? { ...value } : value,
     ]),
   )
-  return { prisma: { ...copy, $world: world } }
+  const worldTransaction = (world.client as unknown as { $transaction: (arg: unknown) => Promise<unknown> })
+    .$transaction
+  async function $transaction(arg: unknown) {
+    if (typeof arg !== 'function') return worldTransaction(arg)
+    // Count the depth INSIDE the callback, so a transaction that waits in
+    // the `serialTransactions` queue is not counted as running.
+    return worldTransaction(async (client: unknown) => {
+      tx.depth++
+      try {
+        return await (arg as (c: unknown) => Promise<unknown>)(client)
+      } finally {
+        tx.depth--
+      }
+    })
+  }
+  return { prisma: { ...copy, $transaction, $world: world } }
 })
 
 import { prisma } from '../lib/prisma.js'
@@ -149,11 +172,20 @@ function seed() {
   ])
 }
 
+/** Every event on the bus, with the transaction depth when it was published. */
+let seen: { event: ChangeEvent; depth: number }[] = []
+let unsubscribe: () => void = () => undefined
+
 beforeEach(() => {
   seed()
+  seen = []
+  unsubscribe = liveEvents.subscribe((event) => {
+    seen.push({ event, depth: tx.depth })
+  })
 })
 
 afterEach(() => {
+  unsubscribe()
   vi.restoreAllMocks()
 })
 
@@ -410,5 +442,586 @@ describe('HouseholdPerson.hasLocationRole (households H5c, decision T40, owner d
     // Then one read covers all of them
     expect(spy).toHaveBeenCalledTimes(1)
     expect(first).not.toHaveBeenCalled()
+  })
+})
+
+// ─── setLocationRole, removeLocationRole, leaveLocation (task H.3) ─────────
+
+const SET = `mutation S($locationId: ID!, $userId: ID!, $role: LocationRole!) { setLocationRole(locationId: $locationId, userId: $userId, role: $role) { userId displayName role isMe } }`
+const REMOVE = `mutation R($locationId: ID!, $userId: ID!) { removeLocationRole(locationId: $locationId, userId: $userId) }`
+const LEAVE = `mutation L($locationId: ID!) { leaveLocation(locationId: $locationId) }`
+const REMOVE_MEMBER = `mutation M($userId: ID!) { removeMember(userId: $userId) }`
+const HOUSEHOLD_LOCATIONS = `query { householdLocations { id hasOrganizer } }`
+
+type Role = 'organizer' | 'participant' | 'viewer'
+
+const setRole = (actor: string, locationId: string, userId: string, role: Role) =>
+  run(SET, { locationId, userId, role }, actor)
+const removeRole = (actor: string, locationId: string, userId: string) =>
+  run(REMOVE, { locationId, userId }, actor)
+const leave = (actor: string, locationId: string) => run(LEAVE, { locationId }, actor)
+const removeMember = (actor: string, userId: string) => run(REMOVE_MEMBER, { userId }, actor)
+
+/** Every stored role row, as `location:user:role`, sorted. */
+function roleRows() {
+  return world.households.state.locationMembers
+    .map((m) => `${m.locationId}:${m.userId}:${m.role}`)
+    .sort()
+}
+
+/** The stored role of one person on one location, or null. */
+function storedRole(locationId: string, userId: string) {
+  return (
+    world.households.state.locationMembers.find(
+      (m) => m.locationId === locationId && m.userId === userId,
+    )?.role ?? null
+  )
+}
+
+function ok(res: Result, field: string) {
+  if (res.errors) throw new Error(`unexpected errors: ${JSON.stringify(res.errors)}`)
+  return res.data?.[field]
+}
+
+/** The household-level LOCATION event the three writes send (decision T36). */
+function locationEvent(householdId: string): ChangeEvent {
+  return { kind: 'LOCATION', householdId, locationId: null, sourceClientId: 'tab-1' }
+}
+
+function events() {
+  return seen.map((s) => s.event)
+}
+
+describe('setLocationRole: who may do what (task H.3, through the resolver)', () => {
+  it('location organizer can give 搬運工 to a household member with no role there', async () => {
+    // Given NOA, a household member with no role on LOC_K
+    // When BEA, its organizer, gives NOA the participant role
+    const res = await setRole(BEA, LOC_K, NOA, 'participant')
+
+    // Then the answer is NOA's new row
+    expect(ok(res, 'setLocationRole')).toEqual({
+      userId: NOA,
+      displayName: 'Noa',
+      role: 'participant',
+      isMe: false,
+    })
+    // And it is stored
+    expect(storedRole(LOC_K, NOA)).toBe('participant')
+  })
+
+  it('location organizer can change a participant to a viewer', async () => {
+    // Given BOB, a participant on LOC_K
+    // When BEA makes BOB a viewer
+    const res = await setRole(BEA, LOC_K, BOB, 'viewer')
+
+    // Then the same row now says viewer: no second row
+    expect(ok(res, 'setLocationRole')).toMatchObject({ userId: BOB, role: 'viewer' })
+    expect(roleRows().filter((r) => r.startsWith(`${LOC_K}:${BOB}:`))).toEqual([
+      `${LOC_K}:${BOB}:viewer`,
+    ])
+  })
+
+  it('location organizer cannot give the 據點王 role', async () => {
+    // Given VIC, a viewer on LOC_K
+    const before = roleRows()
+
+    // When BEA, an organizer who is a household member, tries to make VIC an organizer
+    const res = await setRole(BEA, LOC_K, VIC, 'organizer')
+
+    // Then it is refused and nothing changes
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(roleRows()).toEqual(before)
+  })
+
+  it('location organizer cannot change another organizer', async () => {
+    // Given NOA made a second organizer of LOC_K by the owner
+    ok(await setRole(OWEN, LOC_K, NOA, 'organizer'), 'setLocationRole')
+    const before = roleRows()
+
+    // When BEA tries to make NOA a viewer
+    const res = await setRole(BEA, LOC_K, NOA, 'viewer')
+
+    // Then it is refused
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(roleRows()).toEqual(before)
+  })
+
+  it('location organizer cannot change their own organizer row (they use Leave)', async () => {
+    const res = await setRole(BEA, LOC_K, BEA, 'participant')
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(storedRole(LOC_K, BEA)).toBe('organizer')
+  })
+
+  it('location participant cannot give a role', async () => {
+    // Given BOB, a participant on LOC_K, and VIC, a viewer there
+    // When BOB tries to give NOA the viewer role
+    const res = await setRole(BOB, LOC_K, NOA, 'viewer')
+
+    // Then it is refused
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(storedRole(LOC_K, NOA)).toBeNull()
+  })
+
+  it('location viewer cannot change a role', async () => {
+    const res = await setRole(VIC, LOC_K, BOB, 'viewer')
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(storedRole(LOC_K, BOB)).toBe('participant')
+  })
+
+  it('household member with no role on the location cannot give a role there', async () => {
+    // Given NOA, who organizes LOC_G but has no role on LOC_K
+    // When NOA tries to make VIC a participant on LOC_K
+    const res = await setRole(NOA, LOC_K, VIC, 'participant')
+
+    // Then it is refused
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(storedRole(LOC_K, VIC)).toBe('viewer')
+  })
+
+  it('household owner with No access can give the 據點王 role', async () => {
+    // Given OWEN, the owner, with no role on LOC_K
+    // When OWEN makes VIC an organizer
+    const res = await setRole(OWEN, LOC_K, VIC, 'organizer')
+
+    // Then it is stored
+    expect(ok(res, 'setLocationRole')).toMatchObject({ userId: VIC, role: 'organizer' })
+    expect(storedRole(LOC_K, VIC)).toBe('organizer')
+  })
+
+  it('household manager with No access can give themselves 據點王, and is then listed', async () => {
+    // Given MIA, a household manager with no role on LOC_K
+    // When MIA gives herself the organizer role
+    const res = await setRole(MIA, LOC_K, MIA, 'organizer')
+
+    // Then the answer is her own row
+    expect(ok(res, 'setLocationRole')).toEqual({
+      userId: MIA,
+      displayName: 'Mia',
+      role: 'organizer',
+      isMe: true,
+    })
+    // And locationPeople lists her as an organizer
+    const rows = list(await people(MIA, LOC_K))
+    expect(short(rows)).toContain(`${MIA}:organizer`)
+  })
+})
+
+describe('removeLocationRole: who may do what (task H.3)', () => {
+  it('location organizer can remove a participant', async () => {
+    const res = await removeRole(BEA, LOC_K, BOB)
+    expect(ok(res, 'removeLocationRole')).toBe(true)
+    expect(storedRole(LOC_K, BOB)).toBeNull()
+    // Only BOB's row on LOC_K is gone
+    expect(storedRole(LOC_K, AAA)).toBe('participant')
+  })
+
+  it('location organizer cannot remove another organizer', async () => {
+    // Given NOA made a second organizer of LOC_K by the owner
+    ok(await setRole(OWEN, LOC_K, NOA, 'organizer'), 'setLocationRole')
+
+    // When BEA tries to remove NOA
+    const res = await removeRole(BEA, LOC_K, NOA)
+
+    // Then it is refused, and NOA keeps the role
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(storedRole(LOC_K, NOA)).toBe('organizer')
+  })
+
+  it('location organizer can remove the household owner’s 搬運工 role (O30-A)', async () => {
+    // Given OWEN, the owner, gave himself the participant role on LOC_K
+    ok(await setRole(OWEN, LOC_K, OWEN, 'participant'), 'setLocationRole')
+
+    // When BEA, an organizer who is a household member, removes it
+    const res = await removeRole(BEA, LOC_K, OWEN)
+
+    // Then it is removed: the location rule looks at location roles only
+    expect(ok(res, 'removeLocationRole')).toBe(true)
+    expect(storedRole(LOC_K, OWEN)).toBeNull()
+  })
+
+  it('location participant cannot remove anyone', async () => {
+    const res = await removeRole(BOB, LOC_K, VIC)
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(storedRole(LOC_K, VIC)).toBe('viewer')
+  })
+
+  it('household manager with No access can remove the organizer', async () => {
+    const res = await removeRole(MIA, LOC_K, BEA)
+    expect(ok(res, 'removeLocationRole')).toBe(true)
+    expect(storedRole(LOC_K, BEA)).toBeNull()
+  })
+
+  it('a person with no row gets false, not an error (a second press, T38)', async () => {
+    // Given NOA has no role on LOC_K
+    // When the owner removes NOA from LOC_K
+    const res = await removeRole(OWEN, LOC_K, NOA)
+
+    // Then the answer is false, and nothing is sent
+    expect(ok(res, 'removeLocationRole')).toBe(false)
+    expect(seen).toEqual([])
+  })
+
+  it('a caller who may not read the people gets FORBIDDEN for a person with no row', async () => {
+    // Given NOA, a household member with no role on LOC_K, so no right to see who is there
+    // When NOA asks to remove OWEN, who has no row on LOC_K
+    const res = await removeRole(NOA, LOC_K, OWEN)
+
+    // Then it is refused: a false would tell NOA that OWEN has no role there
+    expect(code(res)).toBe('FORBIDDEN')
+  })
+
+  it('removing a role leaves the location’s carts, cart rows, stock and logs (T42)', async () => {
+    // Given BOB's stock row, log, cart and "added by" cart row at LOC_K
+    const stockRow = {
+      id: 'stock_k',
+      itemId: 'item_milk',
+      locationId: LOC_K,
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      dueDate: null,
+      createdAt: T0,
+      updatedAt: T0,
+    }
+    world.stock.state.itemStocks = [stockRow]
+    const log = { id: 'log_k', locationId: LOC_K, userId: BOB }
+    const cart = { id: `${LOC_K}:vendor_a`, locationId: LOC_K }
+    const cartItem = { id: 'ci_k', cartId: cart.id, userId: BOB, itemId: 'item_milk' }
+    world.contents.rows.inventoryLogs.push(log)
+    world.contents.rows.carts.push(cart)
+    world.contents.rows.cartItems.push(cartItem)
+    const before = JSON.stringify({ stock: world.stock.state.itemStocks, rows: world.contents.rows })
+
+    // When the organizer removes BOB from LOC_K
+    expect(ok(await removeRole(BEA, LOC_K, BOB), 'removeLocationRole')).toBe(true)
+
+    // Then only BOB's role row is gone
+    expect(storedRole(LOC_K, BOB)).toBeNull()
+    expect(JSON.stringify({ stock: world.stock.state.itemStocks, rows: world.contents.rows })).toBe(
+      before,
+    )
+  })
+})
+
+describe('leaveLocation (task H.3, owner decision O25-A)', () => {
+  it('location viewer can leave', async () => {
+    const res = await leave(VIC, LOC_K)
+    expect(ok(res, 'leaveLocation')).toBe(true)
+    expect(storedRole(LOC_K, VIC)).toBeNull()
+    // Only VIC's own row went
+    expect(storedRole(LOC_K, BOB)).toBe('participant')
+  })
+
+  it('the only organizer can leave, and the location then has no organizer', async () => {
+    // Given BEA, the only organizer of LOC_K
+    // When BEA leaves
+    const res = await leave(BEA, LOC_K)
+
+    // Then it works
+    expect(ok(res, 'leaveLocation')).toBe(true)
+    expect(storedRole(LOC_K, BEA)).toBeNull()
+    // And the owner's list says LOC_K has no organizer, while LOC_G still has one
+    const locations = ok(await run(HOUSEHOLD_LOCATIONS, {}, OWEN), 'householdLocations') as {
+      id: string
+      hasOrganizer: boolean
+    }[]
+    expect(Object.fromEntries(locations.map((l) => [l.id, l.hasOrganizer]))).toEqual({
+      [LOC_K]: false,
+      [LOC_G]: true,
+    })
+  })
+
+  it('leaving with no role gets false, not an error (a second press, T38)', async () => {
+    const res = await leave(NOA, LOC_K)
+    expect(ok(res, 'leaveLocation')).toBe(false)
+    expect(seen).toEqual([])
+  })
+
+  it('leaving a location of the other household is FORBIDDEN, and the role stays (T35)', async () => {
+    // Given BEA acts in hh_h and is a viewer on LOC_Z, a location of hh_x
+    // When BEA leaves LOC_Z
+    const res = await leave(BEA, LOC_Z)
+
+    // Then it is refused: only the active household's locations
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(storedRole(LOC_Z, BEA)).toBe('viewer')
+  })
+})
+
+describe('the target must be a member of the household (decision H18)', () => {
+  it('a target removed from the household is FORBIDDEN, and their leftover row stays as it was', async () => {
+    // Given PAM, no longer in hh_h, with a leftover participant row on LOC_K
+    const before = roleRows()
+
+    // When the owner gives PAM a role on LOC_K, or removes it
+    const set = await setRole(OWEN, LOC_K, PAM, 'viewer')
+    const remove = await removeRole(OWEN, LOC_K, PAM)
+
+    // Then both are refused, and no row is written
+    expect(code(set)).toBe('FORBIDDEN')
+    expect(code(remove)).toBe('FORBIDDEN')
+    expect(roleRows()).toEqual(before)
+  })
+
+  it('a target in the other household only is FORBIDDEN, and no row is written', async () => {
+    const before = roleRows()
+    const res = await setRole(OWEN, LOC_K, YUKI, 'viewer')
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(roleRows()).toEqual(before)
+  })
+})
+
+describe('only a location of the household the caller acts in (decision T35)', () => {
+  it('a manager acting in their other household cannot change a role here', async () => {
+    // Given MIA, a manager of hh_h and a member of hh_x
+    // When MIA acts in hh_h, she can make VIC a participant on LOC_K (a control)
+    ok(await setRole(MIA, LOC_K, VIC, 'participant'), 'setLocationRole')
+
+    // When MIA acts in hh_x and tries to make VIC a viewer again
+    world.setActiveHousehold(MIA, 'hh_x')
+    const res = await setRole(MIA, LOC_K, VIC, 'viewer')
+
+    // Then it is refused, and VIC keeps the participant role
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(storedRole(LOC_K, VIC)).toBe('participant')
+  })
+
+  it('another household’s location, and an unknown id, get the same FORBIDDEN', async () => {
+    const before = roleRows()
+    const other = await setRole(OWEN, LOC_Z, BEA, 'participant')
+    const unknown = await setRole(OWEN, 'loc_nope', BEA, 'participant')
+    const removed = await removeRole(OWEN, LOC_Z, BEA)
+    expect(code(other)).toBe('FORBIDDEN')
+    expect(code(unknown)).toBe('FORBIDDEN')
+    expect(code(removed)).toBe('FORBIDDEN')
+    expect(unknown.errors?.[0]?.message).toBe(other.errors?.[0]?.message)
+    expect(roleRows()).toEqual(before)
+  })
+})
+
+describe('the same role again, and nothing to remove (decision T38)', () => {
+  it('the same role again writes nothing, sends nothing, and returns the row', async () => {
+    // Given BOB, a participant on LOC_K, and spies on every role write
+    const upsert = vi.spyOn(world.client.locationMember, 'upsert')
+    const create = vi.spyOn(world.client.locationMember, 'create')
+    const update = vi.spyOn(world.client.locationMember, 'update')
+
+    // When BEA gives BOB the participant role again
+    const res = await setRole(BEA, LOC_K, BOB, 'participant')
+
+    // Then the answer is BOB's row, unchanged
+    expect(ok(res, 'setLocationRole')).toEqual({
+      userId: BOB,
+      displayName: 'Bob',
+      role: 'participant',
+      isMe: false,
+    })
+    // And nothing was written or sent
+    expect(upsert).not.toHaveBeenCalled()
+    expect(create).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
+    expect(seen).toEqual([])
+  })
+})
+
+describe('the three writes lock the household first and read through tx (decision T34)', () => {
+  /** Record the lock and every read the checks make, in call order, through tx. */
+  function recordOrder() {
+    const order: string[] = []
+    const updateMany = world.client.household.updateMany
+    vi.spyOn(world.client.household, 'updateMany').mockImplementation(async (args) => {
+      order.push(`lock:${String((args.where as { id?: unknown } | undefined)?.id)}`)
+      return updateMany(args)
+    })
+    const reads = [
+      [world.client.location, 'findFirst'],
+      [world.client.householdMember, 'findUnique'],
+      [world.client.locationMember, 'findFirst'],
+      [world.client.locationMember, 'findUnique'],
+      [world.client.locationMember, 'findMany'],
+    ] as const
+    for (const [model, method] of reads) {
+      const target = model as unknown as Record<string, (...args: unknown[]) => unknown>
+      const real = target[method] as (...args: unknown[]) => unknown
+      vi.spyOn(target, method).mockImplementation(async (...args: unknown[]) => {
+        order.push('read')
+        return real(...args)
+      })
+    }
+    return order
+  }
+
+  const writes = [
+    ['setLocationRole', () => setRole(BEA, LOC_K, NOA, 'participant')],
+    ['removeLocationRole', () => removeRole(BEA, LOC_K, BOB)],
+    ['leaveLocation', () => leave(VIC, LOC_K)],
+  ] as const
+
+  it.each(writes)('%s: the lock comes before every role read', async (_name, act) => {
+    const order = recordOrder()
+    const res = await act()
+    expect(res.errors).toBeUndefined()
+    expect(order[0]).toBe('lock:hh_h')
+    expect(order.filter((x) => x.startsWith('lock:'))).toEqual(['lock:hh_h'])
+    // The checks really read something after the lock
+    expect(order.filter((x) => x === 'read').length).toBeGreaterThanOrEqual(3)
+  })
+
+  it.each(writes)(
+    '%s: nothing is read through the global client while the transaction runs',
+    async (_name, act) => {
+      // The global client is a second pool connection on Postgres. Inside the
+      // transaction every read must use `tx` (the H5b G.5 trap).
+      const globalReads: string[] = []
+      const models = ['location', 'householdMember', 'locationMember', 'household', 'user'] as const
+      for (const model of models) {
+        const client = prisma[model] as unknown as Record<string, unknown>
+        for (const method of ['findFirst', 'findUnique', 'findMany', 'count']) {
+          if (typeof client[method] !== 'function') continue
+          const real = (client[method] as (...a: unknown[]) => unknown).bind(client)
+          vi.spyOn(client as Record<string, (...a: unknown[]) => unknown>, method).mockImplementation(
+            async (...args: unknown[]) => {
+              if (tx.depth > 0) globalReads.push(`${model}.${method}`)
+              return real(...args)
+            },
+          )
+        }
+      }
+      const res = await act()
+      expect(res.errors).toBeUndefined()
+      expect(globalReads).toEqual([])
+    },
+  )
+
+  it.each(writes)(
+    '%s: a household deleted after it was looked up gives FORBIDDEN, not an internal error',
+    async (_name, act) => {
+      // Given hh_h is deleted between `requireHousehold` and the lock
+      const updateMany = world.client.household.updateMany
+      vi.spyOn(world.client.household, 'updateMany').mockImplementation(async (args) => {
+        if ((args.where as { id?: unknown } | undefined)?.id === 'hh_h') return { count: 0 }
+        return updateMany(args)
+      })
+      const before = roleRows()
+
+      const res = await act()
+
+      expect(code(res)).toBe('FORBIDDEN')
+      expect(roleRows()).toEqual(before)
+      expect(seen).toEqual([])
+    },
+  )
+})
+
+describe('a role given while the person is removed from the household (Review Focus 3)', () => {
+  // `serialTransactions(true)` runs the transactions one after the other.
+  // That is what the household lock does on Postgres, because BOTH writes
+  // take it first. The queue does it here with or without the lock, so these
+  // two tests prove only that each order ends with no role row. The ORDER
+  // tests above ("the lock comes before every role read", and "nothing is
+  // read through the global client") are what prove that the role write
+  // takes the lock and then reads the membership inside it.
+
+  /**
+   * Start `first`, wait until its transaction has taken the household lock,
+   * then start `second`. With the queue on, `second`'s transaction can then
+   * only run after `first`'s has committed. Returns both answers, and which
+   * of the two took the lock in which order.
+   */
+  async function oneWhileTheOtherHoldsTheLock(
+    first: () => Promise<Result>,
+    second: () => Promise<Result>,
+  ) {
+    world.serialTransactions(true)
+    const locks: number[] = []
+    let current = 1
+    let lockTaken: () => void = () => undefined
+    const firstLock = new Promise<void>((resolve) => {
+      lockTaken = resolve
+    })
+    const updateMany = world.client.household.updateMany
+    vi.spyOn(world.client.household, 'updateMany').mockImplementation(async (args) => {
+      locks.push(current)
+      lockTaken()
+      return updateMany(args)
+    })
+    const a = first()
+    await firstLock
+    current = 2
+    const b = second()
+    const results = await Promise.all([a, b])
+    return { results, locks }
+  }
+
+  it('removal first: the role write sees B is not a member and is refused', async () => {
+    // Given BOB, a member of hh_h with a participant role on LOC_K
+    // When the owner removes BOB, and while the removal holds the lock the
+    // organizer makes BOB a viewer
+    const {
+      results: [removed, set],
+      locks,
+    } = await oneWhileTheOtherHoldsTheLock(
+      () => removeMember(OWEN, BOB),
+      () => setRole(BEA, LOC_K, BOB, 'viewer'),
+    )
+
+    // Then the removal took the lock first
+    expect(locks).toEqual([1, 2])
+    // And the removal worked, the role write was refused, and BOB has no role row
+    expect(ok(removed, 'removeMember')).toBe(true)
+    expect(code(set)).toBe('FORBIDDEN')
+    expect(world.households.state.locationMembers.filter((m) => m.userId === BOB)).toEqual([])
+    // And only the removal sent an event
+    expect(events()).toEqual([locationEvent('hh_h')])
+  })
+
+  it('role write first: the removal then deletes the new row (T11)', async () => {
+    // Given NOA, a member of hh_h with no role on LOC_K
+    // When the organizer gives NOA a role, and while that write holds the
+    // lock the owner removes NOA
+    const {
+      results: [set, removed],
+      locks,
+    } = await oneWhileTheOtherHoldsTheLock(
+      () => setRole(BEA, LOC_K, NOA, 'participant'),
+      () => removeMember(OWEN, NOA),
+    )
+
+    // Then both worked, in that order, and NOA has no role row left in hh_h
+    expect(locks).toEqual([1, 2])
+    expect(ok(set, 'setLocationRole')).toMatchObject({ userId: NOA, role: 'participant' })
+    expect(ok(removed, 'removeMember')).toBe(true)
+    expect(world.households.state.locationMembers.filter((m) => m.userId === NOA)).toEqual([])
+  })
+})
+
+describe('the three writes publish household-level LOCATION (decision T36)', () => {
+  it('setLocationRole: once, for the household, after the commit', async () => {
+    ok(await setRole(BEA, LOC_K, NOA, 'participant'), 'setLocationRole')
+    expect(events()).toEqual([locationEvent('hh_h')])
+    expect(seen.map((s) => s.depth)).toEqual([0])
+  })
+
+  it('removeLocationRole: once, for the household, after the commit', async () => {
+    ok(await removeRole(BEA, LOC_K, BOB), 'removeLocationRole')
+    expect(events()).toEqual([locationEvent('hh_h')])
+    expect(seen.map((s) => s.depth)).toEqual([0])
+  })
+
+  it('leaveLocation: once, for the household, after the commit', async () => {
+    ok(await leave(VIC, LOC_K), 'leaveLocation')
+    expect(events()).toEqual([locationEvent('hh_h')])
+    expect(seen.map((s) => s.depth)).toEqual([0])
+  })
+
+  it('a refusal publishes nothing', async () => {
+    await setRole(BEA, LOC_K, VIC, 'organizer')
+    await setRole(BOB, LOC_K, NOA, 'viewer')
+    await setRole(OWEN, LOC_K, PAM, 'viewer')
+    await removeRole(BOB, LOC_K, VIC)
+    await removeRole(OWEN, LOC_Z, BEA)
+    await leave(BEA, LOC_Z)
+    expect(seen).toEqual([])
   })
 })
