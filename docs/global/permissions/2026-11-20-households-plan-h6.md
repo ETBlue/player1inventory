@@ -687,7 +687,7 @@ early read for `deleteHousehold` and none for the other four writes.
 comment table), `apollo/cloudCache.ts` (a field policy), `lib/importData.ts` and its test
 (O33-A), `hooks/refetchPending.cloud.test.tsx`.
 
-- [ ] **Step 1: failing tests** (`MockedProvider`):
+- [x] **Step 1: failing tests** (`MockedProvider`):
   - `useHouseholdActivity()` returns entries, `isLoading`, `errorCode` (`FORBIDDEN` told
     apart from a network error), `loadMore()` (sends `before:` the last id and appends) and
     `hasMore` (false when a page has fewer than `first` rows);
@@ -700,15 +700,80 @@ comment table), `apollo/cloudCache.ts` (a field policy), `lib/importData.ts` and
     `canRemoveAllItems(locationId)` (organizer there); local mode: all `false`;
   - O33-A: after the last batch of an import, `recordImport` is called once with the counts;
     a failed `recordImport` does not fail the import (it is a log, not data).
-- [ ] **Step 2:** red.
-- [ ] **Step 3:** the documents and hooks. `householdActivity` gets `merge` and `keyArgs`
+- [x] **Step 2:** red.
+- [x] **Step 3:** the documents and hooks. `householdActivity` gets `merge` and `keyArgs`
   so "Load more" appends and a refetch after a live event replaces the first page (pin it in
   `apollo/client.test.ts`, as H5c pinned `locationPeople`).
-- [ ] **Step 4:** the full gate.
+- [x] **Step 4:** the full gate.
 
 **Mutation checks:** `awaitRefetchQueries: true` in one purge hook → "a failed refetch does
 not reject"; `canReadActivity` true for a member → its test; `loadMore` without `before` →
 the paging test; the field policy removed → the `client.test.ts` test.
+
+**Done (2026-11-20).** Web suite **3454 / 347 → 3519 / 349** (+65 tests, 2 new files:
+`hooks/useHouseholdActivity.test.tsx`, `hooks/usePurges.test.tsx`). Server suite unchanged
+at **2563 / 83**; no server change. What was built:
+
+| Part | Where | Note |
+|---|---|---|
+| 5 documents | `operations/activity.graphql` (new, `HouseholdActivity`), `locations.graphql` (`DeleteAllLocations`, `RemoveAllLocationItems`), `household.graphql` (`DeleteHousehold`), `import.graphql` (`RecordImport`) | `HouseholdActivity` selects every field of `HouseholdActivityEntry`, `importCounts` included |
+| the page policy | `apollo/cloudCache.ts`, `mergeActivityPage` | `keyArgs: false`. "Load more" (`before`) adds its page after that row; a late page whose `before` row is gone is dropped. A first page (a refetch) keeps the rows below its last row, or replaces the list when it shares no row with it. Rows are matched by `id`, never by `createdAt` |
+| `useHouseholdActivity()` | `hooks/useHouseholdActivity.ts` | `errorCode`, `hasMore`, `loadMore()` (never rejects, one at a time), `isLoadingMore`, `loadMoreFailed`, `refetch` |
+| 4 purge hooks | `hooks/usePurges.ts` | `useClearHousehold`, `useDeleteAllLocations`, `useRemoveAllLocationItems(locationId)`, `useDeleteHousehold` |
+| `refetchAfterWrite(client, 'active')` | `apollo/refetchAfterWrite.ts` | a new form: every active query, each read awaited on its own, never rejects. The three purge hooks use it |
+| `createOncePerKey()` | `lib/oncePerKey.ts` (new) | the double-press guard, moved out of `useLocationPeople.ts`; that file and `usePurges.ts` both use it |
+| `moveToCurrentHousehold(client)` | `hooks/useHouseholdMembers.ts` | moved out of `useLeaveHousehold`; `useDeleteHousehold` uses it too |
+| 3 permissions | `hooks/usePermissions.ts` | `canReadActivity` (owner, manager), `canPurgeHousehold` (owner), `canRemoveAllItems(id)` (organizer there) |
+| `recordImport` | `lib/importData.ts` | once per finished cloud import, before `resetStore`, with `countRowsSent` of the payloads the bulk passes walked. A failure is logged with `console.warn` and swallowed |
+| live updates | `apollo/liveUpdates.ts` | `HouseholdActivity` in `CATALOG`, `STOCK` and `CART` |
+
+**Decisions made here:**
+
+- **The lost-access mark is in the hooks, not in J.7.** `useClearHousehold`,
+  `useDeleteAllLocations` and `useDeleteHousehold` call `expectLocationLoss()` (every seen
+  location) before the write and take the mark back when the write fails, as
+  `useDeleteLocation` and the `clear` import do. `useRemoveAllLocationItems` marks nothing:
+  the location stays. So J.7 needs no `expectLocationLoss` call of its own.
+- **`useDeleteHousehold` moves the device itself.** After the write it runs
+  `moveToCurrentHousehold`, the same steps as `leave()`: `switchToHousehold(id, { to: '/' })`
+  for the other household, or `forgetHousehold()` and `location.replace('/')` for the
+  no-household screen. Both clear the in-memory Apollo cache and `Player1InventoryCloudCache`.
+  J.7 only shows the dialog and calls `deleteHousehold()`.
+- **The purges read every ACTIVE query again** (`'active'`), not a named list. A purge
+  changes the pantry, the carts, the switcher, the members' `hasLocationRole` and the log at
+  once, the same as the household-level `LOCATION` event does for other tabs. Skipped
+  (standby) queries are not read, so a `PantryData` parked on `'local'` sends nothing.
+- **`recordImport` lives in `lib/importData.ts`**, not in `ImportCard`. So the sign-in copy
+  (`usePostLoginMigration`, which also calls `importCloudData`) is logged too, and there is
+  one call site. It runs after the last batch and the last follow-up write (`UpdateShelf`,
+  `UpdateRecipe`, `DeleteLocation`), before `resetStore`. An import that fails in a batch is
+  not logged. A failed `recordImport` does not fail the import: the rows are written, and a
+  person told "the import failed" would run it again.
+- **`hasMore`** is remembered by the id of the last row when a short page came. A refetch
+  that replaces the list changes the last row, so "Load more" shows again.
+
+**Mutation checks run (2026-11-20).** Each file was copied aside first, broken, run, restored
+from the copy and compared with `diff -q`. Every row went red on an assertion, not on a load
+error.
+
+| # | Mutation | Red |
+|---|---|---|
+| 1 | `useDeleteAllLocations` with `refetchQueries` and `awaitRefetchQueries: true`, no `refetchAfterWrite` (the plan's check) | "a purge that worked resolves when the lists cannot be read again" (it rejected with the `INTERNAL_SERVER_ERROR` of the read) |
+| 2 | `canReadActivity` true for any known role (the plan's check) | "household member: canReadActivity false, canPurgeHousehold false" |
+| 3 | `loadMore` sends no `before` (the plan's check) | 3: "the next page is asked after the last row" (`expected { first: 50 } to deeply equal { before: 'act-0951', first: 50 }`), the end-of-log test, the failed Load more test |
+| 4 | the `householdActivity` field policy removed (the plan's check) | 4 in `client.test.ts` and "user can load more" in the hook test. The "replace" and "drop" tests stay green: the default policy also replaces. They are negative controls |
+| 5 | `mergeActivityPage` replaces the list on every first page | 3, among them "user sees a new row on top after a refetch, and keeps the pages already loaded" (`expected [ 'x', 'a' ] to deeply equal [ 'x', 'a', 'b', 'c', 'd' ]`) |
+| 6 | `recordImport` rethrows its error | "user whose import worked is not told it failed when the log cannot be written" |
+| 7 | `recordImport` not called on `replace` | "user's replace import is logged once …" (`expected [] to have a length of 1`) |
+| 8 | `replace` counts `toCreate` only, not `toUpsert` | the same test: the stock rows go to the upsert pass, so `itemStocks` differs |
+| 9 | `useClearHousehold` without `expectLocationLoss` | 2: "no lost-access toast …" and "a refused purge takes the mark back" |
+| 10 | `useDeleteHousehold` without `moveToCurrentHousehold` | 4: the move, the no-household screen, the failed read, the double press |
+| 11 | `useRemoveAllLocationItems` without the `once` guard | "a second press while the first runs sends nothing and shares its promise" |
+| 12 | `refetchAfterWrite(…, 'active')` awaits the `Promise.all` instead of each read | "reads every mounted query again, and waits for a slow one when another fails" |
+| 13 | `canRemoveAllItems` asks `participant` | 3: the three "canRemoveAllItems follows the location role only" rows |
+| 14 | `useRemoveAllLocationItems` reads nothing after the write | 3: "every list on screen is read again" and both `refetchPending` rows of that hook |
+| 15 | `useClearHousehold` reports `isPending: loading` (no `isRefetching`) | both `refetchPending` rows of that hook |
+| 16 | `HouseholdActivity` taken out of `QUERIES_BY_KIND.STOCK` | "STOCK refetches the two stock queries and the activity log" |
 
 **E2E:** none.
 
@@ -1275,6 +1340,12 @@ Filled in from the task reports and reviews.
 | J.4 | Step 1: the `deleteHouseholdData` test "with a tag that has a tag type"; the mutation table: "`tagType` before `tag`: nothing on the fake" | A small table fake in the new `lib/deleteHouseholdData.test.ts` models `Tag.type` as NoAction, so that mutation goes red there (P2003). Real SQL in J.8 is still the proof for Postgres |
 | J.4 | Facts: `verify-migration.ts` keeps a copy of `lockHousehold` | No code calls `lockHousehold` any more: its last two callers moved to `lockHouseholdOrForbid`. The function is kept for its long comment, with a note that says so. The script's copy is now the `updateMany` form, and both copied bodies read the household role after the lock. **That script change is unrun** (no subagent runs a database command) |
 | J.4 | `purge-coverage.test.ts` reads `clearAllData`'s body | It now reads `deleteHouseholdData`'s body (the path is labelled after the helper), and two new tests check that `clearAllData` and `deleteHousehold` hold no data delete of their own and call the helper |
+| J.5 | File map: the J.5 files | Four more files changed: `apollo/refetchAfterWrite.ts` (a new `'active'` form, for the purges), `lib/oncePerKey.ts` (new; the double-press guard moved out of `useLocationPeople.ts`), `hooks/useHouseholdMembers.ts` (`moveToCurrentHousehold`, moved out of `useLeaveHousehold` for `useDeleteHousehold`), and `apollo/liveUpdates.test.ts` |
+| J.5 | T57: `HouseholdActivity` is listed under `CATALOG` and `STOCK` | Also under `CART`: `removeAllLocationItems` sends only the kinds that changed (the J.4 row), so a location with cart rows and no stock sends `CART` alone. Two gaps stay: a `STOCK` or `CART` event is LOCATION-level, so an owner or manager with no role on that location does not get it, and their open Activity page shows the "removed all items" row only on its next read. `recordImport` publishes nothing, so an import's log row can come after the import's own events |
+| J.5 | File map: `recordImport` in `lib/importData.ts` and `components/settings/ImportCard/` | Only `lib/importData.ts` changed. `importCloudData` is shared by `ImportCard` and the sign-in copy (`usePostLoginMigration`), so both are logged from one call site. `ImportCard` needs nothing |
+| J.5 | J.7 Step 1: J.7 calls `expectLocationLoss` before **Delete all locations** and **Delete household** | The hooks do it (`usePurges.ts`), and also for **Clear household**. J.7 needs no call of its own |
+| J.5 | J.7 Step 1: after **Delete household** "the app shows the no-household screen or the person's other household" | `useDeleteHousehold` does the move (`moveToCurrentHousehold`, as `leave()`), and it clears the Apollo cache and `Player1InventoryCloudCache`. J.7 shows the dialog only |
+| J.5 | Step 1: `loadMore()` and `hasMore` | The hook also needed `isLoadingMore`, `loadMoreFailed` (a failed page must not reject, and must not hide the rows shown) and `refetch` (the page's Retry). `useDeleteHousehold` has an `isPending` of its own: it has no refetch, and it stays true until the move starts |
 
 ## Status
 
