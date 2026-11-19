@@ -1,5 +1,6 @@
 import { NetworkStatus } from '@apollo/client'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useRef } from 'react'
 import {
   createLocation,
   deleteLocation,
@@ -22,6 +23,7 @@ import {
 } from '@/generated/graphql'
 import { deserializeLocation } from '@/lib/deserialization'
 import { hasGraphQLErrorCode } from '@/lib/graphqlErrorCode'
+import { expectLocationLoss } from '@/lib/seenLocations'
 import type { Location } from '@/types'
 import { useDataMode } from './useDataMode'
 
@@ -60,6 +62,28 @@ export function useLocations() {
     fetchPolicy: 'cache-and-network',
   })
 
+  // `isFromServer`: `true` once the server has answered `GetLocations` in this
+  // mount (households H5c task H.7, decision T45). Until then `data` can be
+  // only the cache restored from IndexedDB, which can name a location the
+  // person lost since their last visit. `ActiveLocationProvider` counts a
+  // list as "seen" only when this is `true`.
+  //
+  // The rule: Apollo's status was `ready` once, with data. The restored cache
+  // never gives that on its own: with `cache-and-network` the first status is
+  // `loading` over the cached data, and a FAILED first leg (offline) gives
+  // `error` with the cached data still in `data` (measured on Apollo 4.1.6:
+  // 1 → 8). `ready` comes only after a network answer, or after a cache write
+  // made from another server answer in this visit (a location mutation).
+  // Both are the server's data. The flag never goes back to `false`: a later
+  // failed refetch keeps a list the server already sent.
+  //
+  // A ref written during render: it only goes from `false` to `true`, and a
+  // render React throws away still saw a real `ready` status.
+  const serverAnsweredRef = useRef(false)
+  if (isCloud && !!cloud.data && cloud.networkStatus === NetworkStatus.ready) {
+    serverAnsweredRef.current = true
+  }
+
   if (isCloud) {
     return {
       data: cloud.data?.locations.map((l) =>
@@ -74,15 +98,7 @@ export function useLocations() {
       // still holds the cached locations; calling that an error would let a
       // consumer put an error state in front of a list the user can read.
       isError: !!cloud.error && !cloud.data,
-      // `true` while `data` is only the cached list and the server has not
-      // answered yet in this mount (the first `cache-and-network` leg). The
-      // cache is restored from IndexedDB, so it can name a location the
-      // person lost since their last visit. `ActiveLocationProvider` does not
-      // count such a list as "seen" (households H5c task H.7, decision T45).
-      // A refetch over data the server already sent is `refetch`, not
-      // `loading`, so it is not "cache only".
-      isCacheOnly:
-        !!cloud.data && cloud.networkStatus === NetworkStatus.loading,
+      isFromServer: serverAnsweredRef.current,
     }
   }
 
@@ -90,7 +106,8 @@ export function useLocations() {
     data: local.data,
     isLoading: local.isPending ?? false,
     isError: local.isError,
-    isCacheOnly: false,
+    // Local data is read from Dexie, the only source there is.
+    isFromServer: true,
   }
 }
 
@@ -388,20 +405,33 @@ export function useDeleteLocation() {
       ],
     })
 
+  // The person deletes this location themselves, so its loss shows no
+  // "You no longer have access" toast (households H5c task H.7, review). The
+  // mark is set BEFORE the write, because the refetch of `GetLocations` lands
+  // inside the mutation. A refused delete takes the mark back, so a later
+  // removal by someone else still shows the toast.
+  const deleteExpectingLoss = (id: string) => {
+    const takeBack = expectLocationLoss([id])
+    return cloudDelete({ variables: { id } }).catch((err: unknown) => {
+      takeBack()
+      throw err
+    })
+  }
+
   if (mode === 'cloud') {
     return {
       mutate: (
         id: string,
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
-        cloudDelete({ variables: { id } }).then(
+        deleteExpectingLoss(id).then(
           () => options?.onSuccess?.(),
           (err) => {
             options?.onError?.(err)
           },
         ),
       mutateAsync: (id: string) =>
-        cloudDelete({ variables: { id } }).then((r) => r.data?.deleteLocation),
+        deleteExpectingLoss(id).then((r) => r.data?.deleteLocation),
       isPending: cloudDeleteLoading,
     }
   }

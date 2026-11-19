@@ -36,6 +36,7 @@ import {
   toVendorInput,
   withoutRefusedRows,
 } from './importData'
+import { registerSeenLocations } from './seenLocations'
 
 // --- Minimal fixture helpers ---
 
@@ -5763,6 +5764,82 @@ describe('importCloudData — the check before the first write (households H4 ta
     const ops = client.calls.map((c) => c.op)
     expect(ops.indexOf('ImportCheck')).toBe(0)
     expect(ops.indexOf('ImportCheck')).toBeLessThan(ops.indexOf('ClearAllData'))
+  })
+
+  // Households H5c task H.7, review: the person's own `clear` import deletes
+  // every location, the active one too. That is not "you no longer have
+  // access", so the import tells `ActiveLocationProvider` first.
+  describe('the clear strategy marks every location as an expected loss', () => {
+    let marks: string[][]
+    let takenBack: number
+    let unregister: () => void
+    let opsAtMark: string[] | undefined
+    let client: ReturnType<typeof makeClient> | undefined
+
+    beforeEach(() => {
+      marks = []
+      takenBack = 0
+      opsAtMark = undefined
+      client = undefined
+      unregister = registerSeenLocations({
+        expectLoss: (ids) => {
+          marks.push(ids ? [...ids] : ['<every seen location>'])
+          opsAtMark = client?.calls.map((c) => c.op)
+          return () => {
+            takenBack++
+          }
+        },
+        forget: () => {},
+      })
+    })
+
+    afterEach(() => {
+      unregister()
+    })
+
+    it('user running a clear import marks every location before ClearAllData', async () => {
+      // Given a clean check
+      client = makeClient()
+
+      // When the user imports with the clear strategy
+      await importCloudData(localFile(), 'clear', client as never)
+
+      // Then every seen location was marked once, BEFORE ClearAllData was sent
+      expect(marks).toEqual([['<every seen location>']])
+      expect(opsAtMark).toBeDefined()
+      expect(opsAtMark).not.toContain('ClearAllData')
+      expect(client.calls.map((c) => c.op)).toContain('ClearAllData')
+      // And the mark is kept: the locations really were deleted
+      expect(takenBack).toBe(0)
+    })
+
+    it('user whose clear is refused gets the mark taken back', async () => {
+      // Given ClearAllData is refused, so no location was deleted
+      client = makeClient({ failOn: 'ClearAllData' })
+
+      // When the user imports with the clear strategy
+      await expect(
+        importCloudData(localFile(), 'clear', client as never),
+      ).rejects.toBeDefined()
+
+      // Then the mark is taken back, so a later removal by someone else still
+      // shows the toast
+      expect(marks).toHaveLength(1)
+      expect(takenBack).toBe(1)
+    })
+
+    it('user running a skip import marks nothing', async () => {
+      // Given a clean check
+      client = makeClient()
+
+      // When the user imports with the skip strategy, which deletes nothing
+      await importCloudData(localFile(), 'skip', client as never, {
+        target: { locationId: 'cloud_home' },
+      })
+
+      // Then no location was marked
+      expect(marks).toEqual([])
+    })
   })
 
   it('user who is not an owner or manager is told so, and nothing is written', async () => {

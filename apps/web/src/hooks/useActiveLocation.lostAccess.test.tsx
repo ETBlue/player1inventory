@@ -11,13 +11,16 @@ import { StrictMode, useContext } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { refetchForKinds } from '@/apollo/liveUpdates'
 import { NoLocationsGate } from '@/components/location/NoLocationsGate'
+import { db } from '@/db'
 import {
   BootstrapCartsDocument,
+  DeleteLocationDocument,
   GetHouseholdDocument,
   GetLocationsDocument,
   LeaveLocationDocument,
   type LocationRole,
 } from '@/generated/graphql'
+import { expectLocationLoss, forgetSeenLocations } from '@/lib/seenLocations'
 import { DEFAULT_LOCATION_ID } from '@/types'
 import {
   ACTIVE_LOCATION_STORAGE_KEY,
@@ -27,6 +30,7 @@ import {
 } from './useActiveLocation'
 import * as dataModeHooks from './useDataMode'
 import { useLeaveLocation } from './useLocationPeople'
+import { useDeleteLocation } from './useLocations'
 import { usePermissions } from './usePermissions'
 
 // Households H5c task H.7: a person loses their role on the location they are
@@ -179,6 +183,7 @@ function Consumer() {
     useActiveLocation()
   const client = useContext(getApolloContext()).client
   const { leave } = useLeaveLocation()
+  const deleteLocation = useDeleteLocation()
   const permissions = usePermissions()
   return (
     <div>
@@ -205,6 +210,12 @@ function Consumer() {
       <button type="button" onClick={() => void leave(GARAGE_ID)}>
         leave garage
       </button>
+      <button
+        type="button"
+        onClick={() => deleteLocation.mutate(activeLocationId)}
+      >
+        delete active location
+      </button>
       <NoLocationsGate>
         <ProbeRows />
       </NoLocationsGate>
@@ -218,7 +229,7 @@ function renderProvider(mocks: Mocks, options: { cache?: InMemoryCache } = {}) {
   })
   // StrictMode on purpose: it runs every effect twice on mount, so a toast
   // shown from an effect with no guard would show twice.
-  return render(
+  const utils = render(
     <StrictMode>
       <MockedProvider
         mocks={mocks}
@@ -233,6 +244,7 @@ function renderProvider(mocks: Mocks, options: { cache?: InMemoryCache } = {}) {
       </MockedProvider>
     </StrictMode>,
   )
+  return { ...utils, queryClient }
 }
 
 function standardMocks(extra: Mocks = []) {
@@ -529,6 +541,147 @@ describe('ActiveLocationProvider — losing the role on the active location (hou
     await settle()
     expect(toastInfo).not.toHaveBeenCalled()
   })
+  it('user opening the app offline, then online, sees no toast for a location lost before this visit', async () => {
+    // Given the restored cache still lists GARAGE, and the first read of the
+    // list FAILS (offline). Apollo then reports an error status with the
+    // cached list still in `data`.
+    serverList = [HOME]
+    localStorage.setItem(activeLocationStorageKey('cloud'), GARAGE_ID)
+    const cache = new InMemoryCache()
+    cache.writeQuery({
+      query: GetLocationsDocument,
+      data: { locations: [HOME, GARAGE] },
+    })
+    const offline = {
+      request: { query: GetLocationsDocument },
+      error: new Error('Failed to fetch'),
+      // Twice: StrictMode mounts the query twice, and each mount sends.
+      maxUsageCount: 2,
+    }
+    // `standardMocks` puts its own `GetLocations` mock first, and MockLink
+    // answers with the first match, so this failing one goes in front.
+    const { mocks } = standardMocks()
+    renderProvider(
+      [
+        offline,
+        ...mocks.filter((m) => m.request.query !== GetLocationsDocument),
+        locationsMock(),
+      ],
+      {
+        cache,
+      },
+    )
+    // The cached list is on screen: the tab still shows GARAGE
+    await screen.findByText('my Garage row')
+
+    // When the device is online again and the list is read (the server no
+    // longer lists GARAGE)
+    await userEvent.click(screen.getByRole('button', { name: 'live LOCATION' }))
+
+    // Then the tab moves to HOME
+    await screen.findByText('Home row')
+    expect(activeId()).toBe(HOME_ID)
+    // And no toast: the server never sent GARAGE during this visit
+    await settle()
+    expect(toastInfo).not.toHaveBeenCalled()
+  })
+
+  it('user who deletes their own active location sees no toast', async () => {
+    // Given the tab shows GARAGE
+    const deleteMock = {
+      request: {
+        query: DeleteLocationDocument,
+        variables: { id: GARAGE_ID },
+      },
+      result: () => {
+        serverList = [HOME]
+        return { data: { deleteLocation: true } }
+      },
+    }
+    const { mocks } = standardMocks([deleteMock])
+    await openOnGarage(mocks)
+
+    // When they delete it themselves
+    await userEvent.click(
+      screen.getByRole('button', { name: 'delete active location' }),
+    )
+
+    // Then the tab moves to HOME
+    await screen.findByText('Home row')
+    expect(activeId()).toBe(HOME_ID)
+    // And no toast: they just pressed Delete
+    await settle()
+    expect(toastInfo).not.toHaveBeenCalled()
+  })
+
+  it('user whose own delete fails still sees the toast when someone else removes them later', async () => {
+    // Given the tab shows GARAGE, and the delete is refused
+    const deleteMock = {
+      request: {
+        query: DeleteLocationDocument,
+        variables: { id: GARAGE_ID },
+      },
+      result: {
+        errors: [{ message: 'Forbidden', extensions: { code: 'FORBIDDEN' } }],
+      },
+    }
+    const { mocks } = standardMocks([deleteMock])
+    await openOnGarage(mocks)
+    await userEvent.click(
+      screen.getByRole('button', { name: 'delete active location' }),
+    )
+    await settle()
+    expect(activeId()).toBe(GARAGE_ID)
+
+    // When an owner then removes their role there
+    serverList = [HOME]
+    await userEvent.click(screen.getByRole('button', { name: 'live LOCATION' }))
+
+    // Then the toast shows: the failed delete did not silence this loss
+    await screen.findByText('Home row')
+    await settle()
+    expect(toastInfo).toHaveBeenCalledTimes(1)
+    expect(toastInfo).toHaveBeenCalledWith(LOST_TOAST)
+  })
+
+  it('user running a clear import sees no toast when every location is replaced', async () => {
+    // Given the tab shows GARAGE
+    const { mocks } = standardMocks()
+    await openOnGarage(mocks)
+
+    // When their own `clear` import deletes every location and makes a new
+    // one. The import says so first (`importCloudData` calls it right before
+    // `clearAllData`).
+    act(() => {
+      expectLocationLoss()
+    })
+    serverList = [ATTIC]
+    await userEvent.click(screen.getByRole('button', { name: 'live LOCATION' }))
+
+    // Then the tab moves to the new location, with no toast
+    await screen.findByText('Attic row')
+    await settle()
+    expect(toastInfo).not.toHaveBeenCalled()
+  })
+
+  it('user who signs out and back in as another user sees no toast with the first user location', async () => {
+    // Given user A's tab shows GARAGE
+    const { mocks } = standardMocks()
+    await openOnGarage(mocks)
+
+    // When A signs out (`clearCache` forgets the seen locations) and B signs
+    // in with no reload; B's list does not hold GARAGE
+    act(() => {
+      forgetSeenLocations()
+    })
+    serverList = [ATTIC]
+    await userEvent.click(screen.getByRole('button', { name: 'live LOCATION' }))
+
+    // Then B's tab is on B's location, and no toast names A's location
+    await screen.findByText('Attic row')
+    await settle()
+    expect(toastInfo).not.toHaveBeenCalled()
+  })
 })
 
 describe('ActiveLocationProvider — the lost-access toast is cloud only', () => {
@@ -536,17 +689,49 @@ describe('ActiveLocationProvider — the lost-access toast is cloud only', () =>
     clearStoredIds()
   })
 
-  it('user in local mode whose stored location is gone sees no toast', async () => {
-    // Given local mode, with a stored id the local list does not hold
+  it('user in local mode whose active location is removed sees no toast', async () => {
+    // Given local mode, with two local locations, and the tab on the second.
+    // The tab SEES that location in a loaded list, so this test fails if the
+    // notice ever runs in local mode.
     mockMode('local')
     toastInfo.mockReset()
-    localStorage.setItem(activeLocationStorageKey('local'), 'loc-gone')
+    await db.locations.clear()
+    const now = new Date()
+    await db.locations.bulkPut([
+      {
+        id: DEFAULT_LOCATION_ID,
+        name: 'My Home',
+        order: 0,
+        isDefault: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'loc-garage',
+        name: 'Garage',
+        order: 1,
+        isDefault: false,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ])
+    localStorage.setItem(activeLocationStorageKey('local'), 'loc-garage')
+    const { queryClient } = renderProvider([
+      probeMock(DEFAULT_LOCATION_ID, 'My Home row'),
+      probeMock('loc-garage', 'Garage row'),
+    ])
+    await screen.findByText('Garage row')
 
-    // When the app opens
-    renderProvider([probeMock(DEFAULT_LOCATION_ID, 'My Home row')])
-    await waitFor(() => expect(activeId()).not.toBe('loc-gone'))
+    // When the location is removed while it is active
+    await db.locations.delete('loc-garage')
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: ['locations'] })
+    })
 
-    // Then no toast: local mode has no roles to lose
+    // Then the tab moves to the default location
+    await screen.findByText('My Home row')
+    expect(activeId()).toBe(DEFAULT_LOCATION_ID)
+    // And no toast: local mode has no roles to lose
     await settle()
     expect(toastInfo).not.toHaveBeenCalled()
   })
