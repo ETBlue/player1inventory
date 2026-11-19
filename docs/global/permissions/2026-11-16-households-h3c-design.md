@@ -4,7 +4,8 @@ Brainstorming: [2026-11-16-brainstorming-households-h3c.md](2026-11-16-brainstor
 Outline: the H3c section of [2026-10-31-households-plan.md](2026-10-31-households-plan.md).
 Branch `feature/households-h3c`, from `develop` at `082e18e3` (after #377).
 Status: designed 2026-11-16, approved section by section by the owner. **H3c-1 built 2026-11-16**
-on `feature/households-h3c`, not merged, not deployed (see *Result* at the end). H3c-2 not started.
+on `feature/households-h3c`, merged into `develop` (#379), not deployed (see *Result* at the end).
+**H3c-2 built 2026-11-16**, merged into `develop` (#380), not deployed.
 
 ## The problem
 
@@ -265,7 +266,7 @@ Merging deploys nothing. H3c goes out at a checkpoint release, with a runbook se
 
 Plan: [2026-11-16-households-plan-h3c-1.md](2026-11-16-households-plan-h3c-1.md). Deploy:
 [runbook](../backend/2026-11-16-deploy-runbook-households-h3c-1.md). Branch
-`feature/households-h3c`, not merged into `develop`, not deployed.
+`feature/households-h3c`, merged into `develop` (#379), not deployed.
 
 ### What was built
 
@@ -340,7 +341,7 @@ The "before" server and web numbers are those of root `CLAUDE.md` on 2026-11-15;
 Plan: [2026-11-16-households-plan-h3c-2.md](2026-11-16-households-plan-h3c-2.md) (its *What
 this plan got wrong* table has every correction). Deploy: section 9 of the
 [runbook](../backend/2026-11-16-deploy-runbook-households-h3c-1.md). Branch
-`feature/households-h3c-2`, not merged into `develop`, not deployed.
+`feature/households-h3c-2`, merged into `develop` (#380), not deployed.
 
 ### What the user gets
 
