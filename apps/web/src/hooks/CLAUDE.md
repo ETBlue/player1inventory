@@ -166,7 +166,7 @@ moment the other half mounts alone.
 
   | Hook | What |
   |---|---|
-  | `useLocationPeople(locationId)` | `{ data, isLoading, isError, errorCode }`. `cache-and-network`, the usual `isLoading` / `isError` pair. `errorCode` is the `extensions.code` of the last failed read (`FORBIDDEN` = no access, decision T41), or `undefined` for a network error. Skipped in local mode and while `locationId` is `undefined`. `LocationPerson` has no `id`, so `apollo/cloudCache.ts` sets `locationPeople: { keyArgs: ['locationId'], merge: false }` (pinned in `apollo/client.test.ts`) |
+  | `useLocationPeople(locationId)` | `{ data, isLoading, isError, errorCode, refetch }`. `refetch` is the people page's Retry (added in task H.5; it never rejects, pinned by the page's retry test). `cache-and-network`, the usual `isLoading` / `isError` pair. `errorCode` is the `extensions.code` of the last failed read (`FORBIDDEN` = no access, decision T41), or `undefined` for a network error. Skipped in local mode and while `locationId` is `undefined`. `LocationPerson` has no `id`, so `apollo/cloudCache.ts` sets `locationPeople: { keyArgs: ['locationId'], merge: false }` (pinned in `apollo/client.test.ts`) |
   | `useSetLocationRole()` | `setRole(locationId, userId, role)` resolves to the person's row. The same role again writes nothing on the server (decision T38) |
   | `useRemoveLocationRole()` | `remove(locationId, userId)` resolves to the server's Boolean; `false` = the person had no role there any more |
   | `useLeaveLocation()` | `leave(locationId)` resolves to the server's Boolean. Moving the screen off a location the caller just left is task H.7's (`ActiveLocationProvider`), not this hook's |
