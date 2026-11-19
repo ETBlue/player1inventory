@@ -14,6 +14,56 @@ import { useLocations } from './useLocations'
 
 export const MIGRATION_PROMPTED_KEY = 'migration-prompted'
 export const MIGRATION_STRATEGY_KEY = 'migration-strategy'
+/**
+ * The households where "Copy local data?" is never asked: a JSON list of
+ * household ids. The join page adds the household it joins (owner decision
+ * O12-A: local data is not copied into a household the person joins).
+ *
+ * It is a list of households, not a flag. Until 2026-11-19 the join set
+ * `MIGRATION_PROMPTED_KEY`, which turns the question off on this device for
+ * EVERY household, also one the person creates later as its owner
+ * (docs/global/bugs/2026-11-19-bug-join-turns-off-copy-prompt.md).
+ */
+export const MIGRATION_SKIP_HOUSEHOLDS_KEY = 'migration-skip-households'
+
+/** The skipped household ids. A missing or broken value is an empty list. */
+function readSkippedHouseholds(): string[] {
+  try {
+    const value: unknown = JSON.parse(
+      localStorage.getItem(MIGRATION_SKIP_HOUSEHOLDS_KEY) ?? '[]',
+    )
+    return Array.isArray(value)
+      ? value.filter((id): id is string => typeof id === 'string')
+      : []
+  } catch {
+    return []
+  }
+}
+
+/** Never ask "Copy local data?" in this household on this device. */
+export function skipCopyPromptIn(householdId: string): void {
+  const ids = readSkippedHouseholds()
+  if (ids.includes(householdId)) return
+  localStorage.setItem(
+    MIGRATION_SKIP_HOUSEHOLDS_KEY,
+    JSON.stringify([...ids, householdId]),
+  )
+}
+
+/**
+ * The pages where the question waits: the join page and the sign-in page.
+ *
+ * A person who opens an invite link is on their way into another household.
+ * A brand-new person already has a household of their own there (their
+ * first request made it), and a copy into it would keep it from being
+ * deleted when they join. The sign-in page is on the same path: Clerk
+ * reports "signed in" a moment before it leaves for the invite link. The
+ * question waits; it is not answered. If the person leaves without joining,
+ * it comes on the next page.
+ */
+export function isCopyPromptPausedPath(pathname: string): boolean {
+  return pathname.startsWith('/join/') || pathname === '/sign-in'
+}
 
 export type MigrationState =
   | 'idle'
@@ -77,8 +127,15 @@ export type MigrationAuth = {
   isSignedIn: boolean
 }
 
-/** The household a stored copy would go into: its name and the caller's role. */
-export type MigrationHousehold = { name: string; role: HouseholdRole }
+/**
+ * The household a copy would go into: its id, its name and the caller's role.
+ * The id is compared with `MIGRATION_SKIP_HOUSEHOLDS_KEY`.
+ */
+export type MigrationHousehold = {
+  id: string
+  name: string
+  role: HouseholdRole
+}
 
 /**
  * What the hook needs from its caller. `household` is `undefined` while the
@@ -87,6 +144,11 @@ export type MigrationHousehold = { name: string; role: HouseholdRole }
  */
 export type MigrationInput = MigrationAuth & {
   household: MigrationHousehold | undefined
+  /**
+   * `true` on a page where nothing may be asked yet (`isCopyPromptPausedPath`).
+   * The hook does nothing while it is `true`, and stores nothing.
+   */
+  paused?: boolean
 }
 
 /**
@@ -112,6 +174,7 @@ export function usePostLoginMigration({
   isLoaded,
   isSignedIn,
   household,
+  paused = false,
 }: MigrationInput) {
   const [state, setState] = useState<MigrationState>('idle')
   const [error, setError] = useState<MigrationError | null>(null)
@@ -146,6 +209,9 @@ export function usePostLoginMigration({
   // key stays stored, until they create or join one. A boolean for the same
   // reason as `locationsLoaded`: a rename must not re-fire the effect.
   const householdLoaded = household !== undefined
+  // The id, for the skip list. A string, so a rename does not re-fire the
+  // effect; a move to another household does.
+  const householdId = household?.id
   // The auto-import is one-shot.
   //
   // `locationsLoaded` is a dependency of the effect below and it is a BOOLEAN,
@@ -176,8 +242,20 @@ export function usePostLoginMigration({
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return
+    if (paused) return
     if (localStorage.getItem(MIGRATION_PROMPTED_KEY)) return
     if (importStarted.current) return
+
+    // A household the person joined is never offered the copy (owner
+    // decision O12-A). Check it before both paths: a manager could copy,
+    // so `canCopyInto` would not stop it, and the prompting path does not
+    // read the role at all. While some household is skipped, wait until the
+    // household is known: it may be that one.
+    const skipped = readSkippedHouseholds()
+    if (skipped.length > 0) {
+      if (householdId === undefined) return
+      if (skipped.includes(householdId)) return
+    }
 
     const storedStrategy = localStorage.getItem(
       MIGRATION_STRATEGY_KEY,
@@ -218,7 +296,14 @@ export function usePostLoginMigration({
         // 2026-11-18-bug-post-login-migration-unhandled-read.md).
         console.error('Could not read the local items to offer a copy', err)
       })
-  }, [isLoaded, isSignedIn, locationsLoaded, householdLoaded])
+  }, [
+    isLoaded,
+    isSignedIn,
+    paused,
+    locationsLoaded,
+    householdLoaded,
+    householdId,
+  ])
 
   // Copy here. Runs the stored copy, as it ran before the confirm existed:
   // "Import into which location?" for `skip` and `replace`, none for `clear`.

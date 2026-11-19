@@ -42,18 +42,33 @@ const isE2ETestMode = !!import.meta.env.VITE_E2E_TEST_USER_ID
  * The split below copies `DataModeCard`'s: one component that calls Clerk and
  * one that does not, chosen by the build-time flag.
  */
-export function PostLoginMigrationDialog() {
+type DialogProps = {
+  /**
+   * `true` on the join and sign-in pages (`isCopyPromptPausedPath`), where
+   * nothing may be asked yet. `__root.tsx` passes it from the router. A prop,
+   * not a router hook here, so the dialog renders without a router.
+   */
+  paused?: boolean
+}
+
+export function PostLoginMigrationDialog({ paused = false }: DialogProps) {
   return isE2ETestMode ? (
-    <PostLoginMigrationDialogE2E />
+    <PostLoginMigrationDialogE2E paused={paused} />
   ) : (
-    <PostLoginMigrationDialogWithClerk />
+    <PostLoginMigrationDialogWithClerk paused={paused} />
   )
 }
 
 // Inner component that calls useAuth() — only rendered when not in E2E mode
-function PostLoginMigrationDialogWithClerk() {
+function PostLoginMigrationDialogWithClerk({ paused }: { paused: boolean }) {
   const { isLoaded, isSignedIn } = useAuth()
-  return <MigrationDialogs isLoaded={isLoaded} isSignedIn={!!isSignedIn} />
+  return (
+    <MigrationDialogs
+      isLoaded={isLoaded}
+      isSignedIn={!!isSignedIn}
+      paused={paused}
+    />
+  )
 }
 
 // E2E shim — no Clerk context needed.
@@ -62,11 +77,15 @@ function PostLoginMigrationDialogWithClerk() {
 // `E2E_TEST_MODE` the server takes the `x-e2e-user-id` header as the identity
 // (`apps/web/src/apollo/client.ts`, `createApolloClientForE2E`), so every
 // request the migration makes is authenticated.
-function PostLoginMigrationDialogE2E() {
-  return <MigrationDialogs isLoaded isSignedIn />
+function PostLoginMigrationDialogE2E({ paused }: { paused: boolean }) {
+  return <MigrationDialogs isLoaded isSignedIn paused={paused} />
 }
 
-function MigrationDialogs({ isLoaded, isSignedIn }: MigrationAuth) {
+function MigrationDialogs({
+  isLoaded,
+  isSignedIn,
+  paused,
+}: MigrationAuth & { paused: boolean }) {
   // The household a stored copy would go into (owner decision O22-A).
   // `undefined` while it loads, and when the person is in no household: then
   // the stored copy waits. A cached household next to a NO_HOUSEHOLD error is
@@ -76,7 +95,11 @@ function MigrationDialogs({ isLoaded, isSignedIn }: MigrationAuth) {
   const household: MigrationHousehold | undefined =
     householdQuery.data !== undefined &&
     householdQuery.errorCode !== 'NO_HOUSEHOLD'
-      ? { name: householdQuery.data.name, role: householdQuery.data.role }
+      ? {
+          id: householdQuery.data.id,
+          name: householdQuery.data.name,
+          role: householdQuery.data.role,
+        }
       : undefined
   const {
     state,
@@ -93,6 +116,7 @@ function MigrationDialogs({ isLoaded, isSignedIn }: MigrationAuth) {
     isLoaded,
     isSignedIn,
     household,
+    paused,
   })
   const { t } = useTranslation()
   const choosingLocation = state === 'choosing-location'

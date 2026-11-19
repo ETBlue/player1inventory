@@ -13,9 +13,12 @@ import {
 } from './useActiveLocation'
 import {
   canCopyInto,
+  isCopyPromptPausedPath,
   MIGRATION_PROMPTED_KEY,
+  MIGRATION_SKIP_HOUSEHOLDS_KEY,
   MIGRATION_STRATEGY_KEY,
   type MigrationHousehold,
+  skipCopyPromptIn,
   usePostLoginMigration,
 } from './usePostLoginMigration'
 
@@ -117,7 +120,11 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
 // Since owner decision O22-A it also takes the household the stored copy would
 // go into. Most tests below are not about that confirm, so they act as the
 // OWNER of their household and press Copy here with `pressCopyHere`.
-const OWNER_HOUSEHOLD = { name: 'Our Home', role: 'owner' as const }
+const OWNER_HOUSEHOLD = {
+  id: 'household-own',
+  name: 'Our Home',
+  role: 'owner' as const,
+}
 const SIGNED_IN = {
   isLoaded: true,
   isSignedIn: true,
@@ -1089,6 +1096,162 @@ describe('usePostLoginMigration — a stored copy asks first (O22-A)', () => {
     expect(mockImportCloudData).not.toHaveBeenCalled()
     expect(localStorage.getItem(MIGRATION_STRATEGY_KEY)).toBe('replace')
     expect(localStorage.getItem(MIGRATION_PROMPTED_KEY)).toBeNull()
+  })
+})
+
+describe('usePostLoginMigration — a joined household is skipped, not every household', () => {
+  // Bug 2026-11-19 (docs/global/bugs/2026-11-19-bug-join-turns-off-copy-prompt.md).
+  // "Sign in to join" used to set `migration-prompted`, which turns the
+  // question off on this device for good. Now Join names the joined
+  // household in `migration-skip-households`, and the question still comes
+  // in any other household.
+  const JOINED = {
+    id: 'household-joined',
+    name: 'the Lin home',
+    role: 'manager' as const,
+  }
+
+  function seed() {
+    vi.mocked(getAllItems).mockResolvedValue([
+      { id: 'item-1', name: 'Milk' },
+    ] as unknown as Awaited<ReturnType<typeof getAllItems>>)
+    mockCloudLocations([{ id: CLOUD_HOME_ID, name: 'Home', order: 0 }])
+    localStorage.setItem('data-mode', 'cloud')
+  }
+
+  function renderWith(
+    household: MigrationHousehold | undefined,
+    paused = false,
+  ) {
+    return renderHook(
+      ({ h, p }: { h: MigrationHousehold | undefined; p: boolean }) =>
+        usePostLoginMigration({
+          isLoaded: true,
+          isSignedIn: true,
+          household: h,
+          paused: p,
+        }),
+      { wrapper, initialProps: { h: household, p: paused } },
+    )
+  }
+
+  async function drain() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+  }
+
+  it('user in the household they joined is not asked to copy, even as a manager', async () => {
+    // Given local items, and a device that joined this household. A manager
+    // could copy, so only the skip stops the question (owner decision O12-A)
+    seed()
+    skipCopyPromptIn(JOINED.id)
+
+    // When the hook mounts in that household
+    const { result } = renderWith(JOINED)
+    await drain()
+
+    // Then nothing is asked, and the question is not turned off for good
+    expect(result.current.state).toBe('idle')
+    expect(localStorage.getItem(MIGRATION_PROMPTED_KEY)).toBeNull()
+  })
+
+  it('user who joined a household is asked again in their own household', async () => {
+    // Given local items, and a device that joined ANOTHER household
+    seed()
+    skipCopyPromptIn(JOINED.id)
+
+    // When the hook mounts in the person's own household
+    const { result } = renderWith(OWNER_HOUSEHOLD)
+
+    // Then the question comes
+    await waitFor(() => expect(result.current.state).toBe('prompting'))
+  })
+
+  it('a stored copy does not ask in the household joined', async () => {
+    // Given a stored copy and a device that joined this household
+    seed()
+    skipCopyPromptIn(JOINED.id)
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
+
+    // When the hook mounts there
+    const { result } = renderWith(JOINED)
+    await drain()
+
+    // Then it does not ask, and the stored copy stays for a later household
+    expect(result.current.state).toBe('idle')
+    expect(localStorage.getItem(MIGRATION_STRATEGY_KEY)).toBe('skip')
+  })
+
+  it('with a household skipped, nothing is asked until the household is known', async () => {
+    // Given a device that joined a household, and a household still loading
+    seed()
+    skipCopyPromptIn(JOINED.id)
+    const { result, rerender } = renderWith(undefined)
+    await drain()
+
+    // Then nothing is asked yet: it may be the household joined
+    expect(result.current.state).toBe('idle')
+
+    // When the household loads and it is another one
+    rerender({ h: OWNER_HOUSEHOLD, p: false })
+
+    // Then the question comes
+    await waitFor(() => expect(result.current.state).toBe('prompting'))
+  })
+
+  it('nothing is asked on the join and sign-in pages', async () => {
+    // Given local items and no skip at all (a person on their way to join)
+    seed()
+
+    // When the hook mounts while paused
+    const { result, rerender } = renderWith(OWNER_HOUSEHOLD, true)
+    await drain()
+
+    // Then nothing is asked and nothing is stored
+    expect(result.current.state).toBe('idle')
+    expect(localStorage.getItem(MIGRATION_PROMPTED_KEY)).toBeNull()
+
+    // When the person leaves those pages without joining
+    rerender({ h: OWNER_HOUSEHOLD, p: false })
+
+    // Then the question comes in their own household
+    await waitFor(() => expect(result.current.state).toBe('prompting'))
+  })
+
+  it('a broken skip list is read as empty', async () => {
+    // Given a value that is not a JSON list
+    seed()
+    localStorage.setItem(MIGRATION_SKIP_HOUSEHOLDS_KEY, '{not json')
+
+    // When the hook mounts
+    const { result } = renderWith(OWNER_HOUSEHOLD)
+
+    // Then it asks as usual
+    await waitFor(() => expect(result.current.state).toBe('prompting'))
+  })
+})
+
+describe('skipCopyPromptIn', () => {
+  afterEach(() => localStorage.clear())
+
+  it('adds each household once', () => {
+    skipCopyPromptIn('a')
+    skipCopyPromptIn('b')
+    skipCopyPromptIn('a')
+    expect(
+      JSON.parse(localStorage.getItem(MIGRATION_SKIP_HOUSEHOLDS_KEY) ?? ''),
+    ).toEqual(['a', 'b'])
+  })
+})
+
+describe('isCopyPromptPausedPath', () => {
+  it('pauses on the join page and the sign-in page only', () => {
+    expect(isCopyPromptPausedPath('/join/abc')).toBe(true)
+    expect(isCopyPromptPausedPath('/sign-in')).toBe(true)
+    expect(isCopyPromptPausedPath('/')).toBe(false)
+    expect(isCopyPromptPausedPath('/joined')).toBe(false)
+    expect(isCopyPromptPausedPath('/settings/household/members')).toBe(false)
   })
 })
 
