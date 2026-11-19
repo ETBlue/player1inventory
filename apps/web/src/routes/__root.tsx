@@ -18,6 +18,7 @@ import { useIsOffline } from '@/hooks/useIsOffline'
 import { useItems } from '@/hooks/useItems'
 import { useLanguage } from '@/hooks/useLanguage'
 import { useNavigationTracker } from '@/hooks/useNavigationTracker'
+import { isCopyPromptPausedPath } from '@/hooks/usePostLoginMigration'
 import { useServiceWorkerUpdate } from '@/hooks/useServiceWorkerUpdate'
 import { useTags } from '@/hooks/useTags'
 import { useVendors } from '@/hooks/useVendors'
@@ -125,7 +126,9 @@ function RootComponent() {
         records why mounting a destructive path in every cloud spec is
         contained.
       */}
-      {mode === 'cloud' && <PostLoginMigrationDialog />}
+      {mode === 'cloud' && (
+        <PostLoginMigrationDialog paused={isCopyPromptPausedPath(pathname)} />
+      )}
       {/*
         HouseholdChangeGuard mounts in E2E test mode too, beside the dialog
         above: it calls no Clerk hook. When the server answers a different

@@ -149,14 +149,14 @@ vi.mock('@/hooks/useImportTargetLocations', () => ({
   }),
 }))
 
-function renderDialog() {
+function renderDialog({ paused = false }: { paused?: boolean } = {}) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
   return render(
     <QueryClientProvider client={queryClient}>
       <ActiveLocationProvider>
-        <PostLoginMigrationDialog />
+        <PostLoginMigrationDialog paused={paused} />
       </ActiveLocationProvider>
     </QueryClientProvider>,
   )
@@ -568,5 +568,64 @@ describe('PostLoginMigrationDialog — a stored copy asks first', () => {
     expect(screen.queryByRole('alertdialog')).toBeNull()
     expect(importCloudData).not.toHaveBeenCalled()
     expect(localStorage.getItem('migration-strategy')).toBe('clear')
+  })
+})
+
+// Bug 2026-11-19 (docs/global/bugs/2026-11-19-bug-join-turns-off-copy-prompt.md).
+// The join page used to turn the question off for good. Now the dialog skips
+// only the household joined, and waits on the join and sign-in pages.
+describe('PostLoginMigrationDialog — after joining a household', () => {
+  beforeEach(async () => {
+    setHousehold('manager')
+    await db.items.put(makeItem({ id: 'item-1', name: 'Milk' }))
+  })
+
+  afterEach(async () => {
+    localStorage.clear()
+    setHousehold('owner')
+    await db.items.clear()
+  })
+
+  async function drain() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+  }
+
+  it('user in the household they joined is not asked to copy', async () => {
+    // Given the household of this test ('hh-1') was joined on this device
+    localStorage.setItem('migration-skip-households', JSON.stringify(['hh-1']))
+
+    // When the dialog mounts there
+    renderDialog()
+    await drain()
+
+    // Then nothing is asked
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+  })
+
+  it('user who joined another household is still asked here', async () => {
+    // Given ANOTHER household was joined on this device
+    localStorage.setItem(
+      'migration-skip-households',
+      JSON.stringify(['hh-other']),
+    )
+
+    // When the dialog mounts in this one
+    renderDialog()
+
+    // Then the question comes
+    expect(
+      await screen.findByRole('button', { name: 'Import' }),
+    ).toBeInTheDocument()
+  })
+
+  it('nothing is asked while the dialog is paused', async () => {
+    // Given the person is on the join page
+    renderDialog({ paused: true })
+    await drain()
+
+    // Then nothing is asked
+    expect(screen.queryByRole('alertdialog')).toBeNull()
   })
 })

@@ -219,11 +219,14 @@ describe('join page, local mode', () => {
     // Then the app switches to cloud and reloads
     expect(localStorage.getItem('data-mode')).toBe('cloud')
     expect(reloadMock).toHaveBeenCalledOnce()
-    // And no copy of local data is started or offered after sign-in:
-    // `migration-strategy` would start a copy, and without
-    // `migration-prompted` the dialog would ask to copy the local item
+    // And no copy of local data is started: `migration-strategy` would
+    // start one. The question is not asked on the join and sign-in pages
+    // (`isCopyPromptPausedPath`), and never in the household joined
+    // (`migration-skip-households`, written by Join).
     expect(localStorage.getItem('migration-strategy')).toBeNull()
-    expect(localStorage.getItem('migration-prompted')).toBe('1')
+    // And the question is NOT turned off for good: `migration-prompted`
+    // would stop it in every later household too (bug 2026-11-19)
+    expect(localStorage.getItem('migration-prompted')).toBeNull()
     // And the local data is still there
     expect(await db.items.count()).toBe(1)
   })
@@ -314,6 +317,30 @@ describe('join page, cloud mode', () => {
       }),
     )
     expect(reloadMock).not.toHaveBeenCalled()
+  })
+
+  it('user who joins is not asked to copy local data into the joined household', async () => {
+    // Given a valid invite, and a device that was already told to skip
+    // the question in another household
+    localStorage.setItem(
+      'migration-skip-households',
+      JSON.stringify(['household-earlier']),
+    )
+    const user = userEvent.setup()
+    renderCloud([previewMock(VALID), joinSuccess()])
+
+    // When they press Join
+    await user.click(await screen.findByRole('button', { name: 'Join' }))
+
+    // Then the joined household is added to the households where the
+    // "Copy local data?" question is never asked (owner decision O12-A),
+    // before the device switches to it
+    await waitFor(() => expect(switchToHouseholdMock).toHaveBeenCalled())
+    expect(
+      JSON.parse(localStorage.getItem('migration-skip-households') ?? '[]'),
+    ).toEqual(['household-earlier', 'household-joined'])
+    // And the question is not turned off for every other household
+    expect(localStorage.getItem('migration-prompted')).toBeNull()
   })
 
   it('user who joins still ends on the pantry when the old cache cannot be cleared', async () => {

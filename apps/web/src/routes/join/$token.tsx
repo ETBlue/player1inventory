@@ -12,7 +12,7 @@ import {
   useJoinHouseholdMutation,
 } from '@/generated/graphql'
 import { useDataMode } from '@/hooks/useDataMode'
-import { MIGRATION_PROMPTED_KEY } from '@/hooks/usePostLoginMigration'
+import { skipCopyPromptIn } from '@/hooks/usePostLoginMigration'
 import { DATA_MODE_STORAGE_KEY } from '@/lib/dataMode'
 import { hasGraphQLErrorReason } from '@/lib/graphqlErrorCode'
 
@@ -52,16 +52,19 @@ function JoinRoute() {
  * It must NOT copy the local data (the `join.needsCloud` text promises
  * that), and must not touch it:
  * - `migration-strategy` stays unset, so no copy starts after sign-in;
- * - `migration-prompted` is set, so `PostLoginMigrationDialog` does not ask
- *   to copy either. The dialog asks whenever local items exist and this key
- *   is unset, with or without a strategy. "Switch without copying" in
- *   `DataModeCard` sets the same key for the same reason.
+ * - `PostLoginMigrationDialog` does not ask to copy on the sign-in page or
+ *   on this page (`isCopyPromptPausedPath`), and never in the household
+ *   joined: Join adds it to `migration-skip-households` (`CloudJoin`).
+ *
+ * It does NOT set `migration-prompted`. It did until 2026-11-19, and that
+ * key turns the question off on this device for every household, also one
+ * the person creates later as its owner
+ * (docs/global/bugs/2026-11-19-bug-join-turns-off-copy-prompt.md).
  */
 function LocalJoin() {
   const { t } = useTranslation()
 
   function handleSignIn() {
-    localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
     localStorage.setItem(DATA_MODE_STORAGE_KEY, 'cloud')
     window.location.reload()
   }
@@ -138,7 +141,12 @@ function CloudJoin({ token }: { token: string }) {
       else if (!(err instanceof OfflineWriteError)) toast.error(t('join.error'))
       return
     }
-    // The join is done. The server now answers for the joined household, so
+    // The join is done. Never offer to copy local data into the household
+    // joined (owner decision O12-A). Only this household: the question may
+    // still come in another one, for example the person's own. Written
+    // before the switch, which reloads; every tab reads the same storage.
+    skipCopyPromptIn(householdId)
+    // The server now answers for the joined household, so
     // clear the old household's cache (decision T23) and go to the pantry.
     // NOT a reload of this page: the invite is used now, so `invitePreview`
     // would answer INVALID and the person would read "This invite is no
