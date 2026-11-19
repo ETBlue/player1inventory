@@ -1,6 +1,6 @@
 import { GraphQLError } from 'graphql'
 import type { HouseholdRole, LocationRole, Prisma } from '@prisma/client'
-import { parseCartId } from '@p1i/types'
+import { LOCATION_ROLE_RANK, type LocationRoleName, parseCartId } from '@p1i/types'
 import { type Context, requireAuth } from '../context.js'
 import { ensureHousehold } from './household.js'
 import { prisma } from './prisma.js'
@@ -12,8 +12,19 @@ export type { HouseholdRole, LocationRole } from '@prisma/client'
 /** Higher is stronger. `owner` passes every household check. */
 const HOUSEHOLD_RANK: Record<HouseholdRole, number> = { member: 1, manager: 2, owner: 3 }
 
-/** Higher is stronger. `organizer` passes every location check. */
-const LOCATION_RANK: Record<LocationRole, number> = { viewer: 1, participant: 2, organizer: 3 }
+/**
+ * Higher is stronger. `organizer` passes every location check. The shared map
+ * in `@p1i/types` (households H5c, decision T33), so the web and the server
+ * rank roles the same way.
+ */
+const LOCATION_RANK: Record<LocationRole, number> = LOCATION_ROLE_RANK
+
+// The Prisma enum and the package type must be the same three strings. Each
+// line fails `tsc` when one side has a role the other does not.
+const _prismaRolesAreSharedRoles = 'viewer' as LocationRole satisfies LocationRoleName
+const _sharedRolesArePrismaRoles = 'viewer' as LocationRoleName satisfies LocationRole
+void _prismaRolesAreSharedRoles
+void _sharedRolesArePrismaRoles
 
 /**
  * The one refusal every role check uses. "Not a member", "role too low", "no
@@ -128,6 +139,33 @@ export async function requireLocationRole(
   }
 
   return { id: locationId, role: membership.role }
+}
+
+/**
+ * The caller's COUNTED role on one location (decision H18), or `null`.
+ *
+ * Unlike `requireLocationRole`, it never throws for a role: "no role", "a
+ * role that does not count any more", "another household's location" and "no
+ * such location" all give `null`. It is for a check that needs the role
+ * itself, such as `canChangeLocationRole` (`@p1i/types`), where no role is a
+ * valid input and not a refusal. It still throws `Unauthorized` when there is
+ * no signed-in user.
+ *
+ * `db` is the client to read with. Inside an interactive transaction, pass
+ * its `tx`, so the read uses the transaction's own connection (the same
+ * reason as `requireHouseholdRole`'s `db`).
+ */
+export async function locationRoleOf(
+  ctx: Context,
+  locationId: string,
+  db: { locationMember: Prisma.TransactionClient['locationMember'] } = prisma,
+): Promise<LocationRole | null> {
+  const userId = requireAuth(ctx)
+  const membership = await db.locationMember.findFirst({
+    where: { locationId, ...countedLocationRole(userId) },
+    select: { role: true },
+  })
+  return membership?.role ?? null
 }
 
 /**

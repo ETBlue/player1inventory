@@ -164,6 +164,7 @@ const {
   householdOfLocation,
   locationIdsWithOrganizer,
   locationIdsWithRole,
+  locationRoleOf,
   locationRolesByLocation,
   requireCatalogIds,
   requireCatalogRole,
@@ -338,6 +339,61 @@ describe('requireLocationRole', () => {
     await expect(requireLocationRole({ userId: null }, 'loc-1', 'viewer')).rejects.toThrow(
       /Unauthorized/,
     )
+    expect(findFirst).not.toHaveBeenCalled()
+  })
+})
+
+describe('locationRoleOf (households H5c task H.1)', () => {
+  it('gives the caller\'s counted role on the location', async () => {
+    // Given the caller is a participant on loc-1, while `other` organizes it
+    seed({ callerHouseholdRole: 'member', callerLocationRole: 'participant' })
+
+    // Then the caller's own role comes back, not other's
+    await expect(locationRoleOf(caller, 'loc-1')).resolves.toBe('participant')
+  })
+
+  it('gives null, and does not throw, when the caller has no role there', async () => {
+    // Given loc-2 is in the caller's household and only `other` has a role on it
+    seed({ callerHouseholdRole: 'owner' })
+
+    // Then a household owner still has no LOCATION role there
+    await expect(locationRoleOf(caller, 'loc-2')).resolves.toBeNull()
+    // Another household's location and an unknown id give null too
+    await expect(locationRoleOf(caller, 'loc-s')).resolves.toBeNull()
+    await expect(locationRoleOf(caller, 'loc-missing')).resolves.toBeNull()
+  })
+
+  it('gives null for a leftover row of a person no longer in the household (decision H18)', async () => {
+    // Given the caller still has an organizer row on loc-1 but no household
+    // row in hh-1. `other` is still in hh-1, so hh-1 has members.
+    seed({ callerHouseholdRole: null, callerLocationRole: 'organizer' })
+
+    // Then the leftover row does not count
+    await expect(locationRoleOf(caller, 'loc-1')).resolves.toBeNull()
+  })
+
+  it('reads through the db it is given, not the global client', async () => {
+    // Given a transaction-like client. Its model object is a COPY of the
+    // global one, made before the spies, so a spy on the global object does
+    // not see a read through the copy, and the other way round.
+    seed({ callerHouseholdRole: 'member', callerLocationRole: 'viewer' })
+    const tx = { locationMember: { ...prisma.locationMember } }
+    const txRead = vi.spyOn(tx.locationMember, 'findFirst')
+    const globalRead = vi.spyOn(prisma.locationMember, 'findFirst')
+
+    // When the role is read through tx
+    const role = await locationRoleOf(caller, 'loc-1', tx as never)
+
+    // Then tx was read, the global client was not, and the answer is right
+    expect(role).toBe('viewer')
+    expect(txRead).toHaveBeenCalledTimes(1)
+    expect(globalRead).not.toHaveBeenCalled()
+  })
+
+  it('an unauthenticated caller is rejected before any lookup', async () => {
+    seed({})
+    const findFirst = vi.spyOn(prisma.locationMember, 'findFirst')
+    await expect(locationRoleOf({ userId: null }, 'loc-1')).rejects.toThrow(/Unauthorized/)
     expect(findFirst).not.toHaveBeenCalled()
   })
 })
