@@ -63,6 +63,9 @@ const ROLE_WRITE_REFETCHES = [
  * rows: `data` is the old list, `isError` is `false`, and only `errorCode`
  * is `'FORBIDDEN'`. Pinned in `useLocationPeople.test.tsx`.
  *
+ * `refetch` reads the list again (the page's Retry after a network error).
+ * It never rejects: a failed read shows through `isError` / `errorCode`.
+ *
  * Skipped in local mode and while `locationId` is `undefined`. A skipped
  * query is still a mounted observer, and a refetch by DOCUMENT reaches it
  * too (Apollo 4.1.6 leaves out a `standby` query only for `'active'`). So
@@ -76,6 +79,7 @@ export function useLocationPeople(locationId: string | undefined): {
   isLoading: boolean
   isError: boolean
   errorCode: string | undefined
+  refetch: () => void
 } {
   const { mode } = useDataMode()
   const skip = mode !== 'cloud' || !locationId
@@ -84,12 +88,16 @@ export function useLocationPeople(locationId: string | undefined): {
     skip,
     fetchPolicy: 'cache-and-network',
   })
+  const refetch = () => {
+    if (!skip) cloud.refetch().catch(() => {})
+  }
   if (skip) {
     return {
       data: undefined,
       isLoading: false,
       isError: false,
       errorCode: undefined,
+      refetch,
     }
   }
   return {
@@ -97,6 +105,7 @@ export function useLocationPeople(locationId: string | undefined): {
     isLoading: cloud.loading && !cloud.data,
     isError: !!cloud.error && !cloud.data,
     errorCode: cloud.error ? graphQLErrorCode(cloud.error) : undefined,
+    refetch,
   }
 }
 

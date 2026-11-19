@@ -651,7 +651,31 @@
       "emptyDescription": "Add a location using the button above.",
       "noAccess": "No access",
       "noOrganizer": "No organizer",
-      "yourRole": "Your role:"
+      "yourRole": "Your role:",
+      "people": {
+        "title": "People",
+        "description": "People who have a role on this location",
+        "roleLabel": "Location role of {{name}}",
+        "add": "Add person",
+        "addPerson": "Person",
+        "addRole": "Role",
+        "noOneToAdd": "Everyone in this household already has a role here.",
+        "nobody": "Nobody has a role here yet.",
+        "removeLabel": "Remove {{name}} from this location",
+        "removeConfirm": "Remove {{name}} from {{location}}? They can no longer see its stock, carts or logs.",
+        "leave": "Leave location",
+        "leaveConfirm": "Leave {{location}}? You can no longer see its stock, carts or logs.",
+        "leaveOnlyOrganizer": "You are its only organizer. After you leave, only a household owner or manager can rename it or add people.",
+        "noOrganizerNote": "This location has no organizer. Only a household owner or manager can rename it or add people.",
+        "noOrganizerAction": "Give someone the Organizer role.",
+        "noAccess": "You do not have access to this location.",
+        "back": "Back to locations",
+        "leaving": "Leaving…",
+        "removing": "Removing…",
+        "loadError": "Could not load the people. Try again.",
+        "error": "Could not save the change. Try again.",
+        "retry": "Retry"
+      }
     },
     "shelves": {
       "label": "Shelves",

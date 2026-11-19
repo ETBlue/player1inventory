@@ -651,7 +651,31 @@
       "emptyDescription": "使用上方按鈕新增據點。",
       "noAccess": "無權限",
       "noOrganizer": "沒有據點王",
-      "yourRole": "你的角色："
+      "yourRole": "你的角色：",
+      "people": {
+        "title": "人員",
+        "description": "在這個據點有角色的人",
+        "roleLabel": "{{name}} 的據點角色",
+        "add": "新增人員",
+        "addPerson": "人員",
+        "addRole": "角色",
+        "noOneToAdd": "家庭裡的每個人在這裡都已經有角色了。",
+        "nobody": "這裡還沒有任何人有角色。",
+        "removeLabel": "把 {{name}} 移出這個據點",
+        "removeConfirm": "要把 {{name}} 移出{{location}}嗎？對方將無法再看到這個據點的庫存、購物車和紀錄。",
+        "leave": "離開據點",
+        "leaveConfirm": "要離開{{location}}嗎？你將無法再看到這個據點的庫存、購物車和紀錄。",
+        "leaveOnlyOrganizer": "你是這個據點唯一的據點王。你離開之後，只有家庭的擁有者或管理者可以重新命名這個據點或新增人員。",
+        "noOrganizerNote": "這個據點沒有據點王。只有家庭的擁有者或管理者可以重新命名這個據點或新增人員。",
+        "noOrganizerAction": "請把據點王的角色交給某個人。",
+        "noAccess": "你沒有這個據點的權限。",
+        "back": "回到據點列表",
+        "leaving": "離開中…",
+        "removing": "移除中…",
+        "loadError": "無法讀取人員，請再試一次。",
+        "error": "無法儲存變更，請再試一次。",
+        "retry": "再試一次"
+      }
     },
     "shelves": {
       "label": "貨架",
