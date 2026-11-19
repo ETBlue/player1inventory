@@ -60,7 +60,9 @@ opens the same Add Location dialog as the settings page.
   longer have access to {location}." / 「你已經沒有{location}的權限了。」. Only when this tab
   had shown that location during this page visit; never on a cold load with an old stored
   id. The leaving tab moves because `useLeaveLocation` reads `GetLocations` again; another
-  tab moves on the live `LOCATION` event. See `hooks/CLAUDE.md`, `useActiveLocation()`.
+  tab moves on the live `LOCATION` event. No toast for the person's own act: deleting the
+  location themselves, or a `clear` import, which replaces every location. See
+  `hooks/CLAUDE.md`, `useActiveLocation()`.
 - Local mode never gets here: its default location cannot be deleted.
 - Tested in `routes/noLocations.cloud.test.tsx` (all four pages, the dialog, and a
   one-location control), E2E in `e2e/tests/settings/locations.spec.ts` (cloud: delete the
