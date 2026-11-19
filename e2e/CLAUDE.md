@@ -842,7 +842,9 @@ with up to two browsers, in `local`'s `testIgnore` (local mode has no people pag
 redirects there). It is the first real-SQL run of `locationPeople`, `setLocationRole`,
 `removeLocationRole` and `leaveLocation`, and of their household-level `LOCATION` event.
 Page object: `e2e/pages/LocationPeoplePage.ts`. 9 tests, **9 passed in 3.8 min** (load
-average 2.7 at the start).
+average 2.7 at the start). Tests 1 to 4 carry `test.setTimeout` (90 s, 60 s, 60 s, 60 s):
+measured with `--timeout=120000` at load 2.1 to 2.8 they took 43.0 s, 29.8 s, 28.0 s and
+29.6 s. The other five took 20.9 s to 24.1 s and keep the 30 s default.
 
 The household: OWNER owns it ("Home" from first sign-in). CLEO and BEN join through
 `createInvite(…, [])` + `joinHousehold` with NO location role (plan decision T44). CLEO then
@@ -855,7 +857,7 @@ makes "Garage", so CLEO is its only organizer and OWNER has No access there.
 | 3 | Review Focus 2: BEN, active on Home, loses Home in OWNER's browser. BEN's tab moves to Garage (View only) with no reload, shows "You no longer have access to Home." once, and no Home card stays. Then losing Garage shows the empty screen |
 | 4 | Review Focus 5: CLEO, the only organizer, leaves Garage (the confirm warns); CLEO's list and switcher lose Garage; OWNER's list shows No access and No organizer; OWNER gives themselves Organizer and the note goes |
 | 5 | an owner who leaves their ACTIVE location stays on its page; the tab's active id moves to Home through the leave's own `GetLocations` read; the lost-access message shows (O27-A names leaving) |
-| 6 | Review Focus 4: an owner with No access opens Garage's page and sees CLEO; no stock shows, and every GraphQL request of the tab that names Garage is `LocationPeople`. After OWNER gives themselves Viewer, `itemStocks(Garage)` answers (the positive control of the `FORBIDDEN` before) |
+| 6 | Review Focus 4: an owner with No access opens Garage's page and sees CLEO. Until the people and the Add person button are on screen, every GraphQL REQUEST of the tab that names Garage is `LocationPeople` (it checks requests, not responses). After OWNER gives themselves Viewer, `itemStocks(Garage)` answers (the positive control of the `FORBIDDEN` before) |
 | 7 | Review Focus 3, as far as E2E can: `removeMember(BEN)` and `setLocationRole(BEN)` sent together; then BEN rejoins with no role and has no location. A `race order` annotation says which write went first. Then remove-then-set is `FORBIDDEN`. No browser |
 | 8, 9 | axe, light and dark: the Members page with the "No location roles" mark and its link, Settings › Locations with the name links, the people page with No organizer, Add person, the Remove and Leave confirms. These were owed by H.5 and H.6: `a11y.spec.ts` does not run in `cloud` |
 
