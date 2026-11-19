@@ -572,6 +572,46 @@ describe('Settings locations page — cloud roles (households H5 task F.3)', () 
     expect(mockReorderLocations).not.toHaveBeenCalled()
   })
 
+  it('user can open the people page with the keyboard, and the keys start no drag', async () => {
+    // Given an owner, so every row has a drag handle AND a name link. The
+    // drag listeners belong on the handle only. dnd-kit's KeyboardSensor
+    // starts a drag on Space or Enter on whatever element carries them, so
+    // this test fails if the link gets them too. A mouse click cannot show
+    // it: the PointerSensor waits for an 8 px move.
+    given('owner', [
+      row(LOC_A, 'Cloud Kitchen', 0, 'organizer'),
+      row(LOC_C, 'Cloud Shed', 1, null),
+    ])
+    const router = renderPage()
+    const main = await screen.findByRole('main')
+    const link = within(await rowNamed('Cloud Kitchen')).getByRole('link', {
+      name: 'Open Cloud Kitchen',
+    })
+    const user = userEvent.setup()
+
+    // When the user focuses the name and presses Space
+    link.focus()
+    await user.keyboard(' ')
+
+    // Then no drag started: the name shows once, with no drag overlay copy
+    expect(within(main).getAllByText('Cloud Kitchen')).toHaveLength(1)
+
+    // When the user presses Enter on the name
+    await user.keyboard('{Enter}')
+
+    // Then the app goes to the Kitchen's people page, and nothing was
+    // reordered
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(
+        `/settings/household/locations/${LOC_A}`,
+      ),
+    )
+    expect(
+      await screen.findByRole('link', { name: 'Back to locations' }),
+    ).toBeInTheDocument()
+    expect(mockReorderLocations).not.toHaveBeenCalled()
+  })
+
   it('household owner reorders every location of the household, the No access one included', async () => {
     // Given an owner with a role on the Kitchen and the Garage, and none on
     // the Shed between them

@@ -175,6 +175,8 @@ describe('LocationList links to the people page (households H5c task H.6)', () =
       // The visible text is the name as stored, with no capitalize
       expect(link).toHaveTextContent(name)
       expect(link.className).not.toMatch(/capitalize/)
+      // Underlined at rest, not only on hover, so it reads as a link
+      expect(link.className).toMatch(/(^|\s)underline(\s|$)/)
     }
     // The drag handle is still its own button, outside the link
     const handle = screen.getByRole('button', { name: 'Drag to reorder Shed' })

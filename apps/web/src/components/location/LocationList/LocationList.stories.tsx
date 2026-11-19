@@ -188,7 +188,8 @@ export const NoOrganizer: Story = {
  * location's people page, the Shed's too, where they have No access (owner
  * decision O24-A). The page passes `usePermissions().canOpenLocationPage`;
  * a household member gets a link only where they hold a role, and local mode
- * gets none. The drag handle stays a separate button.
+ * gets none. The drag handle stays a separate button. The name is
+ * underlined, so it reads as a link at rest.
  */
 export const ManagerWithPeopleLinks: Story = {
   decorators: [

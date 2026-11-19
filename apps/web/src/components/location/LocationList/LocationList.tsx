@@ -134,7 +134,8 @@ function LocationRow({
               handle keeps its own listeners, so a click on the link never
               starts a drag, and Rename and Delete stay separate buttons.
               The link is named "Open Kitchen", which holds the visible
-              name (WCAG 2.5.3). */}
+              name (WCAG 2.5.3). It is underlined at rest, like the links
+              in `MemberList`, so it reads as a link without a hover. */}
           {canOpen ? (
             <Link
               to="/settings/household/locations/$id"
@@ -142,7 +143,7 @@ function LocationRow({
               aria-label={t('settings.locations.open', {
                 name: location.name,
               })}
-              className="font-medium truncate underline-offset-4 hover:underline"
+              className="font-medium truncate underline underline-offset-4"
             >
               {location.name}
             </Link>
