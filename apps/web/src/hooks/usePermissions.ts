@@ -68,6 +68,25 @@ export interface Permissions {
     from: LocationRole | null,
     to: LocationRole | null,
   ): boolean
+  /**
+   * Cloud: household role `owner` or `manager`. Read the household activity
+   * log (households H6, decision T54). Local: `false`, local mode has no
+   * log.
+   */
+  canReadActivity: boolean
+  /**
+   * Cloud: household role `owner`. Clear the household, delete all its
+   * locations, delete the household (households H6, decisions T52 and T55,
+   * owner decision O38-A). Local: `false`; local mode clears through the
+   * import's `clear` strategy.
+   */
+  canPurgeHousehold: boolean
+  /**
+   * Cloud: location role `organizer` at that location, whatever the
+   * household role (households H6, decision T55: the server asks the
+   * location role). Remove every item from it. Local: `false`.
+   */
+  canRemoveAllItems(locationId: string): boolean
 }
 
 const LOCAL: Permissions = {
@@ -84,6 +103,10 @@ const LOCAL: Permissions = {
   // Local mode has one person, no roles and no people page (decision T41).
   canOpenLocationPage: () => false,
   canChangeRole: () => false,
+  // Local mode has no activity log and no danger zones (households H6).
+  canReadActivity: false,
+  canPurgeHousehold: false,
+  canRemoveAllItems: () => false,
 }
 
 /**
@@ -198,5 +221,8 @@ export function permissionsFor({
         from,
         to,
       }),
+    canReadActivity: canManage,
+    canPurgeHousehold: !isLoading && householdRole === 'owner',
+    canRemoveAllItems: (id) => atLeast(id, 'organizer'),
   }
 }
