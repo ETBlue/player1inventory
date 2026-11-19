@@ -6,7 +6,7 @@ import {
 } from '@tanstack/react-router'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import {
   createItem,
@@ -15,6 +15,7 @@ import {
   createVendor,
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+import { watchUnhandledRejections } from '@/test/unhandledRejections'
 import { TagColor } from '@/types'
 
 describe('Tag Detail - Items Tab', () => {
@@ -799,5 +800,43 @@ describe('Tag Detail - Items Tab', () => {
     expect(names[0]).toMatch(/apple/i)
     expect(names[1]).toMatch(/zucchini/i)
     expect(names[2]).toMatch(/almond/i)
+  })
+
+  // A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+  // Before the fix the write had a try/finally with no catch: an unhandled
+  // rejection, and nothing on screen said the change was not saved.
+  it('user sees a message when adding the tag to an item fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given a tag and an item, and a database that refuses the write
+      const tagType = await createTagType({
+        name: 'Category',
+        color: TagColor.blue,
+      })
+      const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
+      const item = await makeItem('Milk')
+      renderItemsTab(tag.id)
+      vi.spyOn(db.items, 'update').mockRejectedValueOnce(new Error('disk full'))
+      const user = userEvent.setup()
+
+      // When the user checks the item
+      await user.click(await screen.findByLabelText('Add Milk'))
+
+      // Then a message says the change was not saved
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      // And the row is unchanged and can be pressed again
+      await waitFor(() =>
+        expect(screen.getByLabelText('Add Milk')).toBeEnabled(),
+      )
+      expect(screen.getByLabelText('Add Milk')).not.toBeChecked()
+      expect((await db.items.get(item.id))?.tagIds).toEqual([])
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
   })
 })

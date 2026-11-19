@@ -19,6 +19,7 @@ import {
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
+import { showSaveError } from '@/lib/saveError'
 import { sortItems } from '@/lib/sortUtils'
 import type { Recipe, Vendor } from '@/types'
 
@@ -120,6 +121,9 @@ function TagItemsTab() {
         id: itemId,
         updates: { tagIds: newTagIds },
       })
+    } catch (err) {
+      // Shown, not left unhandled: this runs straight off a click
+      showSaveError(err)
     } finally {
       setSavingItemIds((prev) => {
         const next = new Set(prev)

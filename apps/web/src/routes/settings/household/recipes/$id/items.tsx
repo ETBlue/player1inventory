@@ -19,6 +19,7 @@ import {
   filterItemsByVendors,
 } from '@/lib/filterUtils'
 import { roundToStep } from '@/lib/quantityUtils'
+import { showSaveError } from '@/lib/saveError'
 import { sortItems } from '@/lib/sortUtils'
 import type { Recipe, Vendor } from '@/types'
 
@@ -240,6 +241,9 @@ function RecipeItemsTab() {
         id: recipeId,
         updates: { items: newRecipeItems },
       })
+    } catch (err) {
+      // Shown, not left unhandled: this runs straight off a click
+      showSaveError(err)
     } finally {
       setSavingItemIds((prev) => {
         const next = new Set(prev)
@@ -264,6 +268,9 @@ function RecipeItemsTab() {
         id: recipeId,
         updates: { items: newRecipeItems },
       })
+    } catch (err) {
+      // Shown, not left unhandled: this runs straight off a click
+      showSaveError(err)
     } finally {
       setSavingItemIds((prev) => {
         const next = new Set(prev)
