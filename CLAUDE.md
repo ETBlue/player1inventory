@@ -188,7 +188,7 @@ that really set up that role.
 >
 > | Field | Who | What it does |
 > |---|---|---|
-> | `householdMembers` | any household role (owner decision O13-A) | every person: `userId`, `displayName`, `role`, `joinedAt`, `isMe`. Owner first, then by `joinedAt`, then by `userId`. `HouseholdPerson` has NO e-mail field, and the name read selects `{ id, displayName }` only |
+> | `householdMembers` | any household role (owner decision O13-A) | every person: `userId`, `displayName`, `role`, `joinedAt`, `isMe`, and since households H5c task H.2 `hasLocationRole` (`true` when the person has a counted role on at least one location of this household; one read for the whole list, decision T40). Owner first, then by `joinedAt`, then by `userId`. `HouseholdPerson` has NO e-mail field, and the name read selects `{ id, displayName }` only. `setHouseholdRole` returns a `HouseholdPerson` too, so it reads `hasLocationRole` the same way, after the commit |
 > | `setHouseholdRole(userId, role)` | owner | `member` ↔ `manager`. `role: owner` and the owner's own row are `BAD_USER_INPUT`; a person not in the household is `FORBIDDEN`. The same role again changes no member row and publishes nothing (the lock's `UPDATE` still moves `Household.updatedAt`). Location roles and open invites stay (a demote is not a removal; owner decision O20) |
 > | `removeMember(userId)` | owner: anyone but themself (`BAD_USER_INPUT`); manager: only a `member` | deletes the person's `LocationMember` rows on THIS household's locations, revokes every open invite of THIS household they made (owner decision O20, which replaced O18-A; decision T30), then deletes their member row (decision T11). All in one transaction |
 > | `leaveHousehold` | manager or member; the owner gets `BAD_USER_INPUT` | the same deletes and the same invite revoke, for the household the caller acts in |
@@ -208,6 +208,34 @@ that really set up that role.
 > publish household-level `LOCATION` after the commit. **A removed or leaving person's open
 > tabs do not hear it**: `shouldDeliver` checks membership, and they are no longer members
 > (tested; the H5a known gap is still open). Their next request shows the right screen.
+>
+> **The location people page is built in H5c** (on `feature/households-h5c`, from `develop`
+> at `712f76f6`; not merged, not deployed; plan
+> `docs/global/permissions/2026-11-19-households-plan-h5c.md`; deploy notes in section 10 of
+> the H4 runbook). No migration. The new web bundle selects a new query and a new field, so
+> the **server deploys before the web**. What H5c adds:
+>
+> | Part | What |
+> |---|---|
+> | the rule (decision T33) | ONE pure function, `canChangeLocationRole({ householdRole, callerRole, from, to })` in `packages/types/src/locationRoles.ts`. A household owner or manager may make any change, to anyone, themselves too. A location organizer may give, change and remove `participant` and `viewer` only, never `organizer`, and never their own organizer row. The TARGET's household role does not count (owner decision O30-A). The server check and the web's buttons both call it. The location ladder (`LOCATION_ROLE_RANK`, `locationRoleAtLeast`) lives in the same file, and `lib/authz.ts` and `apps/web/src/lib/locationRole.ts` use it instead of their own copies (task H.1) |
+> | `locationRoleOf(ctx, locationId, db?)` | `lib/authz.ts`, task H.1. The caller's counted role on a location, or `null`. Unlike `requireLocationRole` it does not refuse: "no role" is a valid input to the rule. It does not check WHICH household the location is in, so a caller that must stay in one household checks that first |
+> | 1 query | `locationPeople(locationId)` (`resolvers/location.resolver.ts`, task H.2): every person with a COUNTED role on the location (decision H18 applied to each row), organizers first, then by name, then by id; `userId`, `displayName`, `role`, `isMe`, no e-mail. Who may read it (owner decision O24-A): anyone with a role there, and every household owner and manager, also on a No access location. They get names and roles only, never the location's stock, carts or logs. Anyone else, another household's location and an unknown id all get the same `FORBIDDEN` |
+> | 1 field | `HouseholdPerson.hasLocationRole` (task H.2), for the "No location roles" mark on the Members page (owner decision O28-A). See the `householdMembers` row above |
+> | 3 mutations | `setLocationRole(locationId, userId, role)`, `removeLocationRole(locationId, userId)`, `leaveLocation(locationId)` (`resolvers/location.resolver.ts`, task H.3). Each takes the household lock FIRST (`lockHouseholdOrForbid`, moved from `household.resolver.ts` to `lib/household.ts` in task H.1), then reads the location, the caller's roles and the target's membership through `tx` (decision T34). Only a location of the household the caller acts in (decision T35). Each publishes ONE household-level `LOCATION` after the commit, and only when something changed (decision T36), so the live guard holds **72** fields |
+> | "nothing to do" (decision T38) | `setLocationRole` with the role the person already has: no write, no event, the row comes back. `removeLocationRole` with no role row: `false`, but only to a caller who may read the location's people (O24-A); anyone else gets `FORBIDDEN`, so the answer cannot tell them who has a role. `leaveLocation` with no role: `false` |
+> | what a remove deletes (decision T42) | ONE `LocationMember` row. Carts, cart rows, stock and logs stay. Any role may leave, the only organizer too (owner decision O25-A); the location then shows **No organizer** |
+> | the race with `removeMember` | both writes take the household lock, so a role given at the same moment as a removal waits, then finds the person is not a member and refuses. Proved by call order in `location-people.resolver.test.ts` only: the Prisma fake has no row lock |
+> | web | the page `/settings/household/locations/$id` (cloud only; local mode redirects to the list), the name links on Settings › Locations, the Members page mark, the hooks in `hooks/useLocationPeople.ts`, `usePermissions().canOpenLocationPage` and `.canChangeRole`, and a toast when a tab loses its active location (owner decision O27-A). See `apps/web/src/routes/settings/household/locations/CLAUDE.md`, `apps/web/src/hooks/CLAUDE.md` and `apps/web/src/routes/CLAUDE.md` |
+> | E2E | `location-people.spec.ts`, 9 cloud tests, up to two browsers; see `e2e/CLAUDE.md` |
+>
+> **`refetchAfterWrite` now waits for each read on its own** (`apps/web/src/apollo/refetchAfterWrite.ts`,
+> fixed in task H.4). It waited for `client.refetchQueries()`, which is a `Promise.all`, so it
+> stopped waiting at the FIRST read that failed. After a participant leaves a location the
+> `LocationPeople` read is always `FORBIDDEN`, so `leave()` resolved and `isPending` went
+> false about 100 ms before `GetLocations` landed. It now waits for every read, and still
+> never rejects. This is a shared helper, so it changes the 7 older write hooks too, but only
+> when one read fails while another is still open. Tested in
+> `apps/web/src/apollo/refetchAfterWrite.test.ts`.
 >
 > **`removeItemFromLocation` needs `organizer`, not `participant`** (owner decision 2026-11-11, `f4d993db`). It deletes every log of the item at that location, including other members' logs.
 >
@@ -622,9 +650,11 @@ skips half the work. Nothing else in the gate checks `e2e/` formatting: `pnpm li
 `apps/server`'s build already carries a second pass for `scripts/`.
 
 **`pnpm test` runs both workspaces.** The root script is `pnpm -r test`, which recurses into
-every workspace package that defines a `test` script — today `apps/web` (**3102 tests**
-across 325 files) and `apps/server` (**2104** across 76). Measured 2026-11-18 on
-`feature/households-h5b`, after households H5b task G.10 (it said 2922 / 305 and 1820 / 70
+every workspace package that defines a `test` script — today `apps/web` (**3454 tests**
+across 347 files) and `apps/server` (**2401** across 78). Measured 2026-11-19 on
+`feature/households-h5c`, after households H5c task H.9 (it said 3319 / 337 and 2111 / 76
+at `develop` `712f76f6`, before H5c, 3102 / 325 and 2104 / 76 on 2026-11-18 on
+`feature/households-h5b`, after households H5b task G.10, 2922 / 305 and 1820 / 70
 on 2026-11-17 on `feature/households-h5`, after households H5a task F.9, 2678 / 283 and 1765 / 67
 earlier that day on `feature/households-h4`, after households H4, 2586 / 281 and 1566 / 64 on
 2026-11-16 after households H3c-2, 2577 / 281 and 1412 / 61

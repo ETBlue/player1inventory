@@ -914,10 +914,10 @@ H5c outline (points here), `docs/INDEX.md`, the H4 runbook (a new **section 10, 
 migration, server first, checks after deploy), and this plan's *What this plan got wrong*
 and *Status*.
 
-- [ ] Step 1: the docs above. Re-measure every count you write; do not copy one from here.
-- [ ] Step 2: the full gate from the repo root, then `pnpm test:e2e:all` (never the bare
+- [x] Step 1: the docs above. Re-measure every count you write; do not copy one from here.
+- [x] Step 2: the full gate from the repo root, then `pnpm test:e2e:all` (never the bare
   `pnpm test:e2e`, never `--grep`). Copy `test-results/` aside before re-running anything.
-- [ ] Step 3: `git status` clean; `git show --stat` for each commit.
+- [x] Step 3: `git status` clean; `git show --stat` for each commit.
 
 ---
 
@@ -939,11 +939,55 @@ and *Status*.
 
 ## What the user gets / What the developer gets
 
-See *Summary*. In one line each: the user can see and change who has which role on each
-location, leave a location, and find a member with no location role; the screen follows a
-lost role by itself. The developer gets one shared role rule for server and web, one lock
-order for every "who belongs where" write, and the last H5 gap closed; the cost is three
-more live events, one more page and one more cloud spec.
+See *Summary* for what was planned. **What was built (H.9, 2026-11-19).** Nothing reaches a
+user until the checkpoint release deploys the server and then the web.
+
+**What the user gets, once merged AND deployed:**
+
+- On **Settings › Household › Locations**, each location name is a link to its own page, for
+  anyone who may open it: a person with a role there, and every owner and manager (O24-A).
+- The page lists every person with a role there and their role. An owner or manager adds a
+  household member with **Add person**, changes a role with the picker on the row, and
+  removes a person (with a confirm). An organizer does the same for **搬運工** (participant)
+  and **圍觀的** (viewer) only.
+- Everyone with a role has **Leave location**. The only organizer is warned first (O25-A).
+  After that the list and the page show **No organizer**; only an owner or manager sees the
+  sentence that asks them to give the role, and the controls for it (O26-A).
+- An owner or manager on a **No access** location sees the names and roles there, and can
+  give themselves a role. They see no stock, carts or logs before that.
+- On the Members page an owner or manager sees **No location roles** next to a person with
+  none, with a **Give a location role** link to the locations list (O28-A).
+- When a person loses their role on the location their tab is showing (someone removed it,
+  they left, or the location was deleted by someone else), every open tab moves to their
+  next location, or to the empty screen, with no reload, and shows "You no longer have access
+  to {location}." once (O27-A). No message for their own delete or their own `clear` import.
+  Their own Leave does show it (open owner question).
+- Every change shows in the other open tabs of the household within about a second.
+
+**What the developer gets:**
+
+| DX gain | Specifics |
+|---|---|
+| Fewer ways to get it wrong | `canChangeLocationRole` and the location ladder (`LOCATION_ROLE_RANK`, `locationRoleAtLeast`) live once, in `packages/types/src/locationRoles.ts`. The server check, `usePermissions().canChangeRole` and the page's pickers all call it. `lib/authz.ts` and `apps/web/src/lib/locationRole.ts` re-use it instead of their own copies |
+| Fewer ways to get it wrong | One lock order for every write that changes who belongs where: `lockHouseholdOrForbid` (now in `lib/household.ts`) first, then every read through `tx`. `location-people.resolver.test.ts` counts the running transaction callbacks and fails on a global read made inside one, and checks that each event is published after the commit |
+| Less code to maintain | `displayNamesOf` in `lib/household.ts` replaces two private copies (`household.resolver.ts`, `invite.resolver.ts`). `src/test/routerContext.tsx` (`WithRouterContext`) is one helper for a story or test that renders a `<Link>` |
+| A failure that now has a name | `refetchAfterWrite` waits for each read on its own (bug below). A test file that reaches a Prisma model the world does not have now fails with the model's name, not a `TypeError` (the `tx` Proxy in `location-people.resolver.test.ts`). `householdFake` applies `distinct` on `locationMember.findMany` instead of throwing |
+| Real-SQL coverage | `location-people.spec.ts`: the first E2E where a location role changes after a join and is seen live in a second browser. It closes the H5a F.8 limit. It also carries the people page's axe scans, which `a11y.spec.ts` cannot run (it has no `cloud` project) |
+| Less to remember | "Remove and invite again" is no longer the only way to change a location role |
+| Honest documentation | The H5b known gap "location roles cannot be changed after they join" is closed. Stale "not merged" status lines in the H3c design and the households design (`chore/build-shared-types`) are corrected |
+
+**Costs, stated plainly:**
+
+- The live guard holds 72 mutation fields. Each new one sends a household-level `LOCATION`,
+  which refetches every active query in every open tab of the household. Role changes are
+  rare.
+- Tests: `apps/web` grew from 3319 tests in 337 files to 3454 in 347 (+135); `apps/server`
+  from 2111 in 76 files to 2401 in 78 (+290). `pnpm test` took 1 min 30 s on this machine.
+- `pnpm test:e2e:all` has one more cloud spec file (9 tests, about 4 minutes).
+- A change to the role rule in `packages/types` is a server change AND a web change. That is
+  the point, but it ties the two deploys: the server goes first.
+- `refetchAfterWrite` now waits for every read, also when one fails. A write hook whose read
+  fails while another read is slow now stays pending until the slow one lands.
 
 ## Rules every task brief must pass down
 
@@ -989,6 +1033,10 @@ more live events, one more page and one more cloud spec.
   when `ClearAllData` fails. If the server applied the clear and the answer was lost (a
   dropped connection), the locations are gone and the mark is gone too, so the person reads
   "You no longer have access to …" for their own import.
+- **The lost-access toast shows after the person's OWN Leave** (H.8, test 5). O27-A names
+  leaving, so it was kept. The review left out the toast for the person's own delete and own
+  `clear` import, not for a leave. Whether to hide it after a leave too is an open owner
+  question.
 - **The lost-access toast after a sign-out and a sign-in in the same household** (H.7). With
   no reload between them, the second person gets no toast for a location the first person
   had seen, until a reload.
@@ -1060,8 +1108,29 @@ Filled in from the task reports and reviews.
 | H.8 | Step: also run `settings/locations.spec.ts`, `location-switcher.spec.ts`, `shared-household.spec.ts`, `household-invites.spec.ts`, `settings-global-pages.spec.ts` | Not run in H.8: the task brief allowed only this spec, and H.8 changed no app code, only `e2e/`. H.9's `pnpm test:e2e:all` runs them |
 | H.8 | (review) Review Focus 4: "no stock, cart or log of that location reaches them" | The E2E check proves REQUESTS, not responses: until the page's people and members are on screen (the Add person button), the only request of the tab that names the location is `LocationPeople`. The first version took the snapshot after a `waitForLoadState('networkidle')`, which returns at once after a client-side navigation, so it proved only "nothing before `LocationPeople` answered". The snapshot is now taken right before the Add person click; the "page also reads `PantryData`" mutation is still red there |
 | H.8 | (review) the H.6 carry-over: `household-invites.spec.ts:899` reads `getByText('No location roles')` in all of `main` | Fixed in H.8: it is scoped to the open invite's row (`Created by Olivia Owner`), so a member row with the same mark cannot make it hit strict mode. The spec was run once in `cloud` after the change |
+| H.9 | Tests 5 to 9 keep the 30 s default (H.8) | A later run measured tests 6 and 7 at 24.4 s and 25.5 s. Too close to 30 s under the load of the full gate, so both got `test.setTimeout(60_000)`, like tests 2 to 4. Tests 5, 8 and 9 keep the default |
+| H.9 | The file list | It did not name three stale status lines outside H5c: the H3c design said H3c-1 and H3c-2 were "not merged" (they are, #379 and #380), the households design said `chore/build-shared-types` was "PR not merged" (it is, #376), and section 9 of the H4 runbook said H5b was "not merged" (it is, #385). All three corrected, status lines only |
+| H.9 | The sub-directory `CLAUDE.md` files need an H5c update | H.4 to H.7 had already written them. Only one fact was missing: the toast DOES show after the person's own Leave (`hooks/CLAUDE.md`) |
 
 ## Status
 
 **Plan written 2026-11-19** on `feature/households-h5c`, based on `develop` at `712f76f6`.
-Owner decisions O23–O31 answered 2026-11-19: all A. No task has started.
+Owner decisions O23–O31 answered 2026-11-19: all A.
+
+**Built 2026-11-19, tasks H.1 to H.9.** Not pushed, not merged, not deployed. The PR goes into
+`develop` and ships with H3a–H5b at the next checkpoint release: server first, then the web
+(section 10 of the H4 runbook). No migration.
+
+**The final gate (H.9), 2026-11-19, every command alone:**
+
+| Command | Result |
+|---|---|
+| `pnpm lint` | exit 0 (13 warnings in `e2e/`, the known ones) |
+| `pnpm build` | exit 0; `grep TS6385` finds nothing |
+| `(cd apps/web && pnpm build-storybook)` | exit 0 |
+| `pnpm check` | exit 0 (4 warnings in `apps/web`, 13 in `e2e/`, the known ones) |
+| `pnpm test` | exit 0: web **3454 / 347 files**, server **2401 / 78 files**, `scripts/spec` **70**. At `712f76f6` it was 3319 / 337, 2111 / 76 and 70 |
+| `pnpm test:e2e:all` | exit 0, no retry: `local` 178 passed / 11 skipped (3m38s), `cloud` 179 passed / 7 skipped (46m35s), `pwa` 73 passed (1m34s). Load average 5.67 at the start, 3.74 at the end |
+
+**Open owner question:** the lost-access toast shows after the person's own Leave (see
+*Known gaps*). Keep it, or hide it like the person's own delete?

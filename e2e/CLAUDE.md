@@ -154,6 +154,11 @@ The last E2E counts on the H3a branch, 2026-11-11, from **three separate runs** 
 `pnpm test:e2e:all`): `cloud` **126 passed / 7 skipped**, `local` **178 passed / 6 skipped**,
 `pwa` **73 passed**. Re-measure rather than quote.
 
+The last whole gate, `pnpm test:e2e:all` on `feature/households-h5c` on 2026-11-19 (households
+H5c task H.9), all three green with no retry: `local` **178 passed / 11 skipped** in 3m38s,
+`cloud` **179 passed / 7 skipped** in 46m35s, `pwa` **73 passed** in 1m34s. Load average 5.67
+at the start, 3.74 at the end. The `cloud` project is now most of the time.
+
 This was obscured for a while by a leftover `MONGODB_URI` from the MongoDB → Prisma
 migration, which made the config *look* isolated. The server never read it (Prisma reads
 `DATABASE_URL`/`DIRECT_URL`), so it was inert rather than erroring. Removed in PR #242;
@@ -844,7 +849,9 @@ redirects there). It is the first real-SQL run of `locationPeople`, `setLocation
 Page object: `e2e/pages/LocationPeoplePage.ts`. 9 tests, **9 passed in 3.8 min** (load
 average 2.7 at the start). Tests 1 to 4 carry `test.setTimeout` (90 s, 60 s, 60 s, 60 s):
 measured with `--timeout=120000` at load 2.1 to 2.8 they took 43.0 s, 29.8 s, 28.0 s and
-29.6 s. The other five took 20.9 s to 24.1 s and keep the 30 s default.
+29.6 s. Tests 6 and 7 carry 60 s too, since households H5c task H.9: a later run measured
+them at 24.4 s and 25.5 s, too close to 30 s under the load of the full gate. Tests 5, 8
+and 9 keep the 30 s default.
 
 The household: OWNER owns it ("Home" from first sign-in). CLEO and BEN join through
 `createInvite(…, [])` + `joinHousehold` with NO location role (plan decision T44). CLEO then
