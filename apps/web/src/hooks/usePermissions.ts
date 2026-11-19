@@ -1,3 +1,4 @@
+import { canChangeLocationRole } from '@p1i/types'
 import type { HouseholdRole, LocationRole } from '@/generated/graphql'
 import { locationRoleAtLeast } from '@/lib/locationRole'
 import { useDataMode } from './useDataMode'
@@ -47,6 +48,26 @@ export interface Permissions {
   canEditLocation(locationId: string): boolean
   /** `organizer` at that location. Rename it, remove an item from it. */
   isOrganizerAt(locationId: string): boolean
+  /**
+   * Cloud: may open the people page of that location (households H5c, owner
+   * decision O24-A). A household `owner` or `manager` may open every
+   * location's page, also one where they have no role ("No access"). Anyone
+   * else only a location they have a role on. Local: `false`, local mode has
+   * no people page (decision T41).
+   */
+  canOpenLocationPage(locationId: string): boolean
+  /**
+   * Cloud: may change one person's role on that location from `from` to `to`
+   * (`null` = no role). The answer of `canChangeLocationRole` from
+   * `@p1i/types`, the rule the server uses too (decision T33), with the
+   * caller's household role and their role on THIS location. `false` while
+   * the household role is not known. Local: `false`.
+   */
+  canChangeRole(
+    locationId: string,
+    from: LocationRole | null,
+    to: LocationRole | null,
+  ): boolean
 }
 
 const LOCAL: Permissions = {
@@ -60,6 +81,9 @@ const LOCAL: Permissions = {
   roleAt: () => 'organizer',
   canEditLocation: () => true,
   isOrganizerAt: () => true,
+  // Local mode has one person, no roles and no people page (decision T41).
+  canOpenLocationPage: () => false,
+  canChangeRole: () => false,
 }
 
 /**
@@ -159,5 +183,20 @@ export function permissionsFor({
     roleAt,
     canEditLocation: (id) => atLeast(id, 'participant'),
     isOrganizerAt: (id) => atLeast(id, 'organizer'),
+    // A role on the location is enough by itself, so this does not wait for
+    // the household role. An owner or manager may open every page (O24-A).
+    canOpenLocationPage: (id) => canManage || roleAt(id) !== null,
+    // Needs BOTH roles. An owner's answer depends on the household role, so
+    // nothing is offered until it is known (`roleKnown`), not even to an
+    // organizer. The server checks every write anyway.
+    canChangeRole: (id, from, to) =>
+      !isLoading &&
+      householdRole != null &&
+      canChangeLocationRole({
+        householdRole,
+        callerRole: roleAt(id),
+        from,
+        to,
+      }),
   }
 }
