@@ -576,7 +576,7 @@ Needs owner decisions **O34** and **O38**.
 `resolvers/location.resolver.test.ts`, `resolvers/live-publish.guard.test.ts`,
 `scripts/verify-migration.ts` (the copy of `clearAllData`).
 
-- [ ] **Step 1: failing tests.**
+- [x] **Step 1: failing tests.**
   - **Lock order (T52)**, for `clearAllData`, `renameHousehold`, `deleteAllLocations`,
     `deleteLocation` and (O38-A) `deleteHousehold`: `lockHouseholdOrForbid` is the FIRST
     call of the transaction, before the role read; the role read goes through `tx` (the
@@ -605,13 +605,13 @@ Needs owner decisions **O34** and **O38**.
     other member is then in no household (their next request: `NO_HOUSEHOLD`) or in their
     other household; retried once on `P2034`, the T16 exception (the household delete writes
     other people's `User.activeHouseholdId`).
-- [ ] **Step 2:** red.
-- [ ] **Step 3:** `deleteHouseholdData` in `lib/household.ts` (T64), moved out of
+- [x] **Step 2:** red.
+- [x] **Step 3:** `deleteHouseholdData` in `lib/household.ts` (T64), moved out of
   `clearAllData`. Update the copy in `verify-migration.ts` (`assertHouseholdLock`) so it is
   still the code that runs.
-- [ ] **Step 4:** the lock order in the five writes; the two (three with O38-A) mutations
+- [x] **Step 4:** the lock order in the five writes; the two (three with O38-A) mutations
   with comments naming this plan; their `publishes` entries.
-- [ ] **Step 5:** `pnpm codegen`, `oldBundleCompat.test.ts`, the full gate.
+- [x] **Step 5:** `pnpm codegen`, `oldBundleCompat.test.ts`, the full gate.
 
 **Mutation checks:**
 
@@ -625,6 +625,36 @@ Needs owner decisions **O34** and **O38**.
 | `removeAllLocationItems` asks `participant` | the participant test |
 | `deleteHouseholdData` deletes `tagType` before `tag` | nothing on the fake (it has no `NoAction`). Say so; J.8 and K.8 prove it on real SQL |
 | `lockHousehold` instead of `lockHouseholdOrForbid` in `deleteLocation` | "deleted household → `FORBIDDEN`" |
+
+**Done 2026-11-20** in three commits: `d82faa59` (the shared delete), `7d8927a9` (the lock
+order), `a6e1dd17` (the three new mutations). Tests: `lib/deleteHouseholdData.test.ts` (new),
+`resolvers/purges.resolver.test.ts` (new, 54 tests), and edits to
+`clearAllData.resolver.test.ts`, `location.resolver.test.ts`, `purge-coverage.test.ts`,
+`live-publish.guard.test.ts` and `test/userFake.test.ts`. Server suite **2500 / 81 → 2561 /
+83**. Web suite **3454 / 347**, no web change. The live guard holds **76** fields: 74 in
+`publishes`, 2 in `publishesNothing`.
+
+**Mutation checks run.** Each file was copied aside first, broken, run, restored from the
+copy and compared with `diff -q`. Every row went red on an assertion, not on a load error.
+
+| # | Mutation | Red |
+|---|---|---|
+| 1 | `deleteHouseholdData` deletes `tagType` before `tag` | 3 tests in `deleteHouseholdData.test.ts`, with `P2003 … Tag_typeId_fkey`. The plan said nothing on the fake could see this; the new table fake models NoAction, so it can |
+| 2 | `deleteHouseholdData`: `item.deleteMany({})` | "deletes every data row of one household and none of the other", and the `purge-coverage` filter check |
+| 3 | `clearAllData` checks the owner before the lock again | 5: its order test, "nothing reads the household role through the global client", the race test, and the two refusal tests in `clearAllData.resolver.test.ts` (they now expect the lock first) |
+| 4 | `lockHousehold` instead of `lockHouseholdOrForbid` in `deleteLocation` | 3: "deleted household → FORBIDDEN", the order test, and the lock test in `location.resolver.test.ts` |
+| 5 | `renameHousehold` reads the role before the lock | 3: its order test, the global-read test, the race test |
+| 6 | `deleteAllLocations` deletes by `location.deleteMany({})` | 3, among them "the other household keeps all of its rows" |
+| 7 | `removeAllLocationItems` deletes cart rows by `{ cart: { location: { householdId } } }` | 4, among them "a second location of the same household keeps its stock rows and cart rows" |
+| 8 | `removeAllLocationItems` also deletes `Cart` rows | "keeps the location, its carts with their last purchase date, …" |
+| 9 | `removeAllLocationItems` also deletes logs | the same test |
+| 10 | `removeAllLocationItems` asks `participant` | "location participant cannot remove all items" |
+| 11 | `removeAllLocationItems` finds the location by `id` only (no `householdId`) | "location organizer of a location in another household cannot empty it from the household they act in" |
+| 12 | `LOCATION_ITEMS_REMOVED` stored without `locationName` | 2 |
+| 13 | `deleteHousehold` without `retryOnceOnConflict` | both `P2034` tests |
+| 14 | `deleteHousehold` clears `User.activeHouseholdId` AFTER the lock | "writes the User rows that name the household BEFORE it takes the household lock" |
+| 15 | `deleteAllLocations` reads the owner role before the lock | its order test and its global-read test |
+| 16 | `deleteHousehold` without `deleteHouseholdData` (only the household delete and its cascade) | 2: "deletes the catalog through deleteHouseholdData" and the `purge-coverage` check. The "all its data" test stays GREEN for this one: the fake cascades locations from the household, as Postgres does. Only the `Tag.type` NoAction case needs the explicit list, and real SQL (J.8) proves that |
 
 **E2E:** none (J.8).
 
@@ -1217,6 +1247,15 @@ Filled in from the task reports and reviews.
 | J.3 | T54: `first` defaults to 50, at most 200 | It did not say what 0 or a negative number does. Both are `BAD_USER_INPUT` |
 | J.3 | Step 3: "extend `displayNamesOf` to return `deletedAt` too, or add a sibling" | A sibling, `accountNamesOf` in `lib/household.ts`, selects `{ id, displayName, deletedAt }`. `displayNamesOf` is unchanged, so its callers in three resolver files and their tests do not move |
 | J.3 | The cursor compares `id` | `id` is compared as text. Postgres uses the column's collation for both `ORDER BY` and `<`, so the two agree. The fake uses JavaScript string order for both. The order among rows with the same `createdAt` is by cuid, not by insert order, and no test expects insert order |
+| J.4 | T57: "the household delete publishes household-level `LOCATION`" | That event reaches nobody: `shouldDeliver` checks membership, and after the commit the household has no members. `deleteHousehold` publishes nothing and is in `publishesNothing`, with that reason. The owner's own tab gets `true` and must leave on its own (J.7: clear the Apollo cache and go to the next household or the no-household screen). Other members' open tabs find out on their next request, through the household guard or `NoHouseholdGate` |
+| J.4 | T55 / T57: `removeAllLocationItems` publishes `STOCK` and `CART` | It publishes only the kinds that changed rows: a location with stock rows and no cart rows sends `STOCK` only. The guard lists both kinds, as for other writes that send a kind only when it changed |
+| J.4 | T51: `LOCATION_ITEMS_REMOVED` stores `{ stockRows, cartRows }` | It stores `{ locationName, stockRows, cartRows }`, as the J.3 review row asked. `householdActivity` reads `locationName` |
+| J.4 | T55: `deleteAllLocations` is "`deleteMany` of the household's locations, which cascades" | Kept as one `deleteMany`. The test fake had no cascade from a location to logs, carts and cart rows, so `purges.resolver.test.ts` models it itself |
+| J.4 | T55 does not say how `removeAllLocationItems` checks its role | It takes the household lock first and reads the location and the role through `tx` (`locationRoleOf(ctx, id, tx)`), like the H5c role writes. So an organizer demoted at the same moment is refused. Cost: `Household.updatedAt` moves on every call |
+| J.4 | T60 / T16: a household delete writes other people's `User` rows, so it "retries once on `P2034`" | `deleteHousehold` also clears every `User.activeHouseholdId` that names the household BEFORE it takes the household lock, so the usual order (User rows, then households) holds. The cascade would make the same writes after the lock. The retry stays for other writers. `userFake` gained the `activeHouseholdId` where key for this |
+| J.4 | Step 1: the `deleteHouseholdData` test "with a tag that has a tag type"; the mutation table: "`tagType` before `tag`: nothing on the fake" | A small table fake in the new `lib/deleteHouseholdData.test.ts` models `Tag.type` as NoAction, so that mutation goes red there (P2003). Real SQL in J.8 is still the proof for Postgres |
+| J.4 | Facts: `verify-migration.ts` keeps a copy of `lockHousehold` | No code calls `lockHousehold` any more: its last two callers moved to `lockHouseholdOrForbid`. The function is kept for its long comment, with a note that says so. The script's copy is now the `updateMany` form, and both copied bodies read the household role after the lock. **That script change is unrun** (no subagent runs a database command) |
+| J.4 | `purge-coverage.test.ts` reads `clearAllData`'s body | It now reads `deleteHouseholdData`'s body (the path is labelled after the helper), and two new tests check that `clearAllData` and `deleteHousehold` hold no data delete of their own and call the helper |
 
 ## Status
 
