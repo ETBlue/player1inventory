@@ -1,3 +1,4 @@
+import { useApolloClient } from '@apollo/client/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   createMemoryHistory,
@@ -80,6 +81,8 @@ describe('Household settings - a failed cloud save', () => {
   })
 
   afterEach(() => {
+    // Back to the stub from `src/test/setup.ts` (one test replaces it)
+    vi.mocked(useApolloClient).mockReset()
     rejections.stop()
     localStorage.removeItem('data-mode')
     localStorage.removeItem(activeLocationStorageKey('cloud'))
@@ -466,5 +469,35 @@ describe('Household settings - a failed cloud save', () => {
     expect(cloudServer.calls.useCreateRecipeMutation).toHaveLength(1)
     expect(within(dialog).getByRole('textbox')).toHaveValue('Pasta')
     expect(router.state.location.pathname).toBe('/settings/household/recipes')
+  })
+
+  // A negative control. A failed REFRESH after a write that worked is not a
+  // failed save (docs/global/bugs/2026-11-18-bug-failed-refetch-rejects-saved-write.md),
+  // so no message may show.
+  it('user sees no message when the save works and only the refresh after it fails', async () => {
+    const user = userEvent.setup()
+    // Given a server that takes the recipe write, and a refresh that fails
+    const query = vi.fn().mockRejectedValue(new Error('network down'))
+    const original = vi.mocked(useApolloClient).getMockImplementation()
+    vi.mocked(useApolloClient).mockImplementation(
+      (...args: Parameters<typeof useApolloClient>) =>
+        ({
+          ...(original?.(...args) as object),
+          query,
+          refetchQueries: query,
+        }) as unknown as ReturnType<typeof useApolloClient>,
+    )
+    renderPage('/settings/household/recipes/recipe-soup/items')
+
+    // When the user checks Milk
+    await user.click(await screen.findByLabelText('Add Milk'))
+
+    // Then the write was sent and the refresh was tried
+    await waitFor(() => expect(query).toHaveBeenCalled())
+    expect(cloudServer.calls.useUpdateRecipeMutation).toHaveLength(1)
+    // And no message says the save failed
+    await rejections.settle()
+    expect(screen.queryByText(SAVE_FAILED)).not.toBeInTheDocument()
+    expect(rejections.list).toEqual([])
   })
 })
