@@ -58,11 +58,24 @@ function makeClient() {
 
 const subscriptions: { unsubscribe: () => void }[] = []
 
-/** Mount a query, so a refetch by document reaches it. */
+/**
+ * Mount a query, so a refetch by document reaches it. Returns a record of
+ * the errors the mounted query has seen, so a test can wait until a failing
+ * read has really been answered.
+ */
 function watch(client: ApolloClient, query: typeof FAILS) {
+  const seen = { errors: 0 }
   subscriptions.push(
-    client.watchQuery({ query }).subscribe({ next: () => {}, error: () => {} }),
+    client.watchQuery({ query }).subscribe({
+      next: (result) => {
+        if (result.error) seen.errors += 1
+      },
+      error: () => {
+        seen.errors += 1
+      },
+    }),
   )
+  return seen
 }
 
 afterEach(() => {
@@ -75,7 +88,7 @@ describe('refetchAfterWrite', () => {
   it('waits for a slow read even when another read fails', async () => {
     // Given two mounted queries, both loaded once
     const { client, hold } = makeClient()
-    watch(client, FAILS)
+    const failing = watch(client, FAILS)
     watch(client, SLOW)
     await vi.waitFor(() => {
       expect(client.readQuery({ query: FAILS })).toEqual({ fails: 1 })
@@ -93,8 +106,13 @@ describe('refetchAfterWrite', () => {
       done = true
     })
     await vi.waitFor(() => expect(hold.waiting('SlowAfterWrite')).toBe(1))
-    // (the failing read has been answered by now)
-    await new Promise((r) => setTimeout(r, 30))
+    // And the failing read has really been answered (no fixed wait: under
+    // load a fixed wait could end before the failure, and the test would
+    // then pass against a helper that stops at the first failure)
+    await vi.waitFor(() => expect(failing.errors).toBe(1))
+    // One more turn, so a helper that stops at the first failure has had
+    // the chance to resolve
+    await new Promise((r) => setTimeout(r, 0))
 
     // Then the call has NOT resolved: the slow read is still open
     expect(done).toBe(false)

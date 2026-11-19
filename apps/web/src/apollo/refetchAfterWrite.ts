@@ -26,8 +26,8 @@ export type RefetchAfterWrite =
 
 /**
  * Read the lists a write changed again, and wait for EACH of them, also when
- * another one fails. A read that FAILS is not reported: the write before it worked, so the call must not reject
- * with "could not save". A watched query keeps its own error, so the page
+ * another one fails. A read that FAILS is not reported: the write before it
+ * worked, so the call must not reject with "could not save". A watched query keeps its own error, so the page
  * shows a failed read the way it shows any failed read.
  *
  * Why not the mutation's own `refetchQueries` with `awaitRefetchQueries`:
