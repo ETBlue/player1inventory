@@ -1547,6 +1547,10 @@ Needs owner decisions O2, O3, O6, O7, O9, O12.
 
 ## H5c — the location people page (outline)
 
+> **This outline is replaced by the detailed plan
+> [`2026-11-19-households-plan-h5c.md`](2026-11-19-households-plan-h5c.md)** (written
+> 2026-11-19). Where the two differ, the detailed plan is right.
+
 - Route `/settings/household/locations/$id` (P6). Name (organizer edits), people and their
   roles, **Add person** (choose from household members), change and remove roles, **Leave
   location**, **No organizer** warning. The danger zone's *Remove all items* stays in H6.
@@ -1868,4 +1872,4 @@ its own detailed plan: `2026-11-18-households-plan-h5b.md`.
 `feature/households-h5b`). **It is merged into `develop` (#385, merge `938fa2aa`,
 2026-11-18). It is not deployed.** Its deploy notes are section 9 of the H4 runbook.
 Follow-ups merged after it: #386 (a failed refresh no longer fails a saved write), #387 (screens show save errors), #388 (the join keeps the copy question), #389 (the copy question names the household), #390 (`isPending` tests).
-H5c is next.
+H5c is next, with its own detailed plan: `2026-11-19-households-plan-h5c.md`.
