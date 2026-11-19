@@ -373,10 +373,10 @@ the recommended option everywhere, is the decided plan:
 `resolvers/purge-coverage.test.ts`, `e2e/helpers/cloudTeardown.ts`,
 `e2e/tests/cleanup-endpoint.spec.ts`, `src/lib/invite.ts`, `resolvers/invite-join.resolver.test.ts`.
 
-- [ ] **Step 0: measure the baseline.** On the unmodified tree, `pnpm test` from the repo
+- [x] **Step 0: measure the baseline.** On the unmodified tree, `pnpm test` from the repo
   root. Record web, server and `scripts/spec` counts. Count the live guard fields. If the web
   suite fails, check `uptime` and re-run the failing file alone before calling it real.
-- [ ] **Step 1: write the failing tests.**
+- [x] **Step 1: write the failing tests.**
   - `activity.test.ts`: `recordActivity(tx, entry)` writes one row through the `tx` it was
     given (a spy on the global client sees no call); it refuses an entry with no
     `householdId` or no `actorId` (a thrown `Error`, not a row with `undefined`, which Prisma
@@ -389,22 +389,22 @@ the recommended option everywhere, is the decided plan:
   - `purge-coverage.test.ts`: the filter text of the new call.
   - `invite-join.resolver.test.ts`: a joiner's own household that holds only activity rows
     is still deleted at the join (T49).
-- [ ] **Step 2:** run: red.
-- [ ] **Step 3: schema and migration** (T46). The migration creates the enum, the table, the
+- [x] **Step 2:** run: red.
+- [x] **Step 3: schema and migration** (T46). The migration creates the enum, the table, the
   foreign key to `Household` with `ON DELETE CASCADE`, and the index. It is additive: no
   backfill, no guard (`apps/server/prisma/CLAUDE.md`, *Adding a NULLABLE column*). Write in
   the SQL comment why `actorId`, `targetUserId` and `locationId` have no foreign key.
-- [ ] **Step 4:** add the migration to the `last` group of `migrationDeploys.ts`, after
+- [x] **Step 4:** add the migration to the `last` group of `migrationDeploys.ts`, after
   `20261118000000_add_household_invites`. In `verify-migration.ts`: the table exists; its
   columns and nullability are as T46; the foreign key to `Household` is `CASCADE`; there is
   NO foreign key from `actorId`, `targetUserId` or `locationId` (read from
   `information_schema`, not with `LIKE '%Id%'`: the H3a rehearsal trap); a row inserted then
   its household deleted leaves no row.
-- [ ] **Step 5:** `lib/activity.ts`, the fakes, the cleanup (20 models), the comment above
+- [x] **Step 5:** `lib/activity.ts`, the fakes, the cleanup (20 models), the comment above
   `emptyHouseholdWhere` (T49), `cloudTeardown.ts`'s key list, and one seeded row in
   `cleanup-endpoint.spec.ts` (written through a real logged mutation, for example
   `createInvite`, once J.2 exists; until then the E2E step waits for J.8).
-- [ ] **Step 6:** `pnpm --filter server exec prisma validate`, `pnpm codegen`, the full gate.
+- [x] **Step 6:** `pnpm --filter server exec prisma validate`, `pnpm codegen`, the full gate.
   **Do not run** `prisma migrate dev`, `verify:migration` or any command that reaches a
   database. Report that `verify:migration` is owed to the main session (J.9).
 
@@ -1141,6 +1141,11 @@ Filled in from the task reports and reviews.
 
 | Task | The plan said | What was true |
 |---|---|---|
+| J.1 | The T49 mutation check adds `householdActivity: { none: {} }` to `emptyHouseholdWhere` | The relation field on `Household` is named `activities` (the plan named none). The mutation used `activities: { none: {} }`. The fake models that key, so the test fails on the VALUE (`hh_p` is kept), not on an unknown-key throw |
+| J.1 | The fake applies `householdId`, `createdAt` (`lt`, `lte`), `id` and `OR` | T54's cursor also needs `id: { lt }` (rows with the same `createdAt`). Two new `where` kinds were added to `src/test/whereKeys.ts`, which the file map did not name: `dateCompare` (a `Date`, `{ lt }`, `{ lte }`) and `idCursor` (a string, `{ in }`, `{ lt }`) |
+| J.1 | `purge-coverage.test.ts`: "the filter text of the new call" | Two more edits were needed. `householdActivity` joins `clearAllData`'s `kept` list (a clear must keep the log), and its `/e2e/cleanup` filter is a path EXCEPTION, not a `MODEL_PATHS` entry: a `MODEL_PATHS` entry would make the guard demand that `clearAllData` delete the log too |
+| J.1 | T51 lists the H6b actions "in H6b"; K.1 does not say who adds them to the enum | J.1's migration creates all 19 values, H6b's included. So K.1 needs no `ALTER TYPE … ADD VALUE` (a value added that way cannot be used in the same transaction) |
+| J.1 | `cleanup-endpoint.spec.ts`: one seeded row, "written through a real logged mutation, for example `createInvite`, once J.2 exists" | The spec already calls the real `createInvite`. Once J.2 makes it log `INVITE_CREATED`, the activity row is seeded with no new step. Between J.1 and J.2 the spec reports `"householdActivities":0` and would fail. Only comments were changed; it is unrun until J.8 |
 
 ## Status
 
