@@ -1865,6 +1865,7 @@ and the server goes first (H4 runbook, section 8.3). The shim is built. H5b is n
 its own detailed plan: `2026-11-18-households-plan-h5b.md`.
 
 **H5b is built** (2026-11-18, tasks G.1–G.10 and the docs of G.11 of that plan, on
-`feature/households-h5b`). It is not merged and not deployed. The final gate (G.11 Step 3)
-is still to run. Its deploy notes are section 9 of the H4 runbook. H5c is
-next.
+`feature/households-h5b`). **It is merged into `develop` (#385, merge `938fa2aa`,
+2026-11-18). It is not deployed.** Its deploy notes are section 9 of the H4 runbook.
+Follow-ups merged after it: #386 (a failed refresh no longer fails a saved write), #387 (screens show save errors), #388 (the join keeps the copy question), #389 (the copy question names the household), #390 (`isPending` tests).
+H5c is next.

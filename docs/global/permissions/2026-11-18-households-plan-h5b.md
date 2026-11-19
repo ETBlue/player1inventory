@@ -1798,3 +1798,7 @@ unchanged cloud → cloud test PASSED. Mutation: `forgetDeletedHousehold` made a
 cloud → cloud test red with `locator.waitFor: Timeout 30000ms exceeded` on
 "Import complete.". No unit test: the app did what it should, and the bug was in the spec.
 See the row "G.7" of *What this plan got wrong*.
+
+**H5b is merged into `develop`** (PR #385, merge `938fa2aa`, 2026-11-18). It is not
+deployed. It deploys with H3a–H5a at the next checkpoint release (section 9 of the H4
+runbook). Follow-ups merged after it: #386 (a failed refresh no longer fails a saved write), #387 (screens show save errors), #388 (the join keeps the copy question), #389 (the copy question names the household), #390 (`isPending` tests). H5c is next.

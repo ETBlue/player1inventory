@@ -149,8 +149,8 @@ that really set up that role.
 > | `requireCatalogIds(ctx, householdId, model, ids)` | every id a write attaches is in the household (#273) |
 > | `requireOwnRowOrUnclaimed(ctx, model, id, targetHouseholdId)` | see the next paragraphs. The fourth argument is the household the write goes INTO, since H4 task E.1 |
 >
-> **Invites, join, members and the no-household screen are built in H5b** (on
-> `feature/households-h5b`; not merged, not deployed; plan
+> **Invites, join, members and the no-household screen are built in H5b** (merged into
+> `develop` as #385, merge `938fa2aa`, 2026-11-18; not deployed; plan
 > `docs/global/permissions/2026-11-18-households-plan-h5b.md`; deploy notes in section 9 of
 > the H4 runbook). One migration, `20261118000000_add_household_invites` (table
 > `HouseholdInvite`, column `User.activeHouseholdId`), deploys with the server. Since H5b a
