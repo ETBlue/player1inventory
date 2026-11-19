@@ -505,7 +505,7 @@ is unrun until J.8.
 **Files:** `apps/server/src/schema/activity.graphql` (new), `schema/index.ts`,
 `resolvers/activity.resolver.ts` and `activity.resolver.test.ts` (new), `resolvers/index.ts`.
 
-- [ ] **Step 1: failing tests** (two households; an owner, a manager, a member; a location the
+- [x] **Step 1: failing tests** (two households; an owner, a manager, a member; a location the
   caller has no role on; a deleted-account actor):
   - `user sees the household's activity, newest first` (owner and manager);
   - a `member` → `FORBIDDEN`; another household's rows never appear;
@@ -517,15 +517,35 @@ is unrun until J.8.
     account's name per O35;
   - no e-mail anywhere in the answer (the user read `select`s `id`, `displayName`,
     `deletedAt` only).
-- [ ] **Step 2:** red.
-- [ ] **Step 3:** schema (T53, T54) with plain-English comments; the resolver; names through
+- [x] **Step 2:** red.
+- [x] **Step 3:** schema (T53, T54) with plain-English comments; the resolver; names through
   `displayNamesOf` (extend it to return `deletedAt` too, or add a sibling; do not add a third
   private copy).
-- [ ] **Step 4:** `pnpm codegen` (check the output), `oldBundleCompat.test.ts`, the full gate.
+- [x] **Step 4:** `pnpm codegen` (check the output), `oldBundleCompat.test.ts`, the full gate.
 
 **Mutation checks:** drop the `householdId` filter → "another household's rows never
 appear"; ask `member` instead of `manager` → the member test; drop `id` from `orderBy` → the
 tie test; read `locationName` from `Location` → "after the location is deleted".
+
+**Mutation checks run (2026-11-20).** All in `activity.resolver.test.ts` (24 tests). Each file
+was copied aside first and restored from the copy (`diff -q` clean, 24 of 24 green again after
+each).
+
+| Mutation | Result |
+|---|---|
+| the `householdId` filter dropped from the page read | **red**, 9 tests, among them "another household's rows never appear" and "household manager in two households sees only the household they act in" |
+| `requireHouseholdRole(…, 'member')` instead of `'manager'` | **red**: "household member cannot read the activity, even as the organizer of a location", and "household member who owns another household reads only that one, when acting in it" |
+| the household is the caller's FIRST owner or manager membership, not `requireHousehold` | **red**, 3 tests: the two-households manager test and both member tests |
+| `id` dropped from `orderBy` | **red**, 6 tests, among them "two rows with the same createdAt keep one order, with id breaking the tie" |
+| the cursor uses `createdAt < cursor` only (the same-time branch dropped) | **red**: "paging one row at a time crosses two rows with the same createdAt without losing one" |
+| the cursor row is read without `householdId` | **red**: "an id of another household's row is BAD_USER_INPUT" |
+| no cap at 200 | **red**: "first defaults to 50, and a first above 200 is cut to 200" |
+| `first` of 0 or less accepted | **red**: "first of 0 or less is BAD_USER_INPUT" |
+| `locationName` read from the `Location` table (by `locationId`) | **red**: "user sees the location's name as it was when the change was logged, also after the location is deleted" |
+| `deleted` always `false` in `accountNamesOf` | **red**: "user sees a deleted account's stored name, marked as deleted" |
+| `email` added to `accountNamesOf`'s select | **red**: "reads names with id, displayName and deletedAt only, and answers no e-mail" |
+| `actorIsMe` always `false` | **red**: "user sees who acted, and whether it was them" |
+| `importCounts` always `null` | **red**, 2 tests |
 
 **E2E:** none (J.8).
 
@@ -1174,6 +1194,14 @@ Filled in from the task reports and reviews.
 | J.2 | The `joinHousehold` mutation check: "logs outside the retried callback" must turn the `P2034` test red | The new one-row `P2034` test stays green for that mutation. The fake's rollback restores the whole store, and a log written once, after the retry, still gives one row. What turns red is the join atomicity test, and the existing `P2034` test, which counts `$transaction` calls. The one-row test is kept as a check of the result, not as proof of where the call sits |
 | J.2 | T51 gives `LOCATION_ROLE_REMOVED` and `LOCATION_LEFT` no `details` | T53 needs `locationName` for every row about a location, and `fromRole` reads well for a removal. Both store `{ locationName, from }`. `INVITE_REVOKED`, `MEMBER_REMOVED` and `MEMBER_LEFT` store no `details` |
 | J.2 | `recordImport(counts: ImportCountsInput!)` names no fields | `ImportCountsInput` has 11 required `Int!` fields named after the backup file's keys: `items`, `tags`, `tagTypes`, `vendors`, `recipes`, `shelves`, `locations`, `itemStocks`, `inventoryLogs`, `shoppingCarts`, `cartItems`. A negative or non-integer count is `BAD_USER_INPUT`. The row stores `details: { counts }` |
+| J.3 | T53: `HouseholdActivityEntry` with `actorName`, `targetName` and the other fields; O35-A says a deleted account shows "(deleted account)" | T53 had no way to say that an account is deleted. The entry has `actorDeleted: Boolean!` and `targetDeleted: Boolean`; the web adds the localized text. Also `targetIsMe`, so the web can say "you" for the target as it can for the actor. An actor or target with no `User` row (only after `/e2e/cleanup`) gives the name `""` and `deleted: true` |
+| J.3 | T53: `count: Int` is the only number | `IMPORT` stores 11 counts in `details.counts`. The entry has `importCounts: ActivityImportCounts`, a type with the same 11 `Int!` fields as `ImportCountsInput`. A count missing from the stored row is 0; `details.counts` that is not an object gives `null` |
+| J.3 | T53 names `action: ActivityAction!` but no task adds the enum to GraphQL | J.3's `schema/activity.graphql` adds `enum ActivityAction` with all 19 values, H6b's included, the same list as the Prisma enum. So a stored `action` is always a valid GraphQL value, and the generated type matches Prisma's. (The whole enum is new since `main`, so `oldBundleCompat.test.ts` does not see it either way.) |
+| J.3 | T51 says `LOCATION_ITEMS_REMOVED` stores `{ stockRows, cartRows }`; T53 has only `count` | J.3 exposes `count` from `details.count` only. **J.4 must decide**: store `count` too, or add fields. Today such a row would show `count: null` |
+| J.3 | T53 does not say what `MEMBER_JOINED`'s `locationRoles` become | Not exposed. The entry carries `householdRole` only. If the Activity page should list the joiner's location roles, J.5/J.6 needs a new field |
+| J.3 | T54: `first` defaults to 50, at most 200 | It did not say what 0 or a negative number does. Both are `BAD_USER_INPUT` |
+| J.3 | Step 3: "extend `displayNamesOf` to return `deletedAt` too, or add a sibling" | A sibling, `accountNamesOf` in `lib/household.ts`, selects `{ id, displayName, deletedAt }`. `displayNamesOf` is unchanged, so its callers in three resolver files and their tests do not move |
+| J.3 | The cursor compares `id` | `id` is compared as text. Postgres uses the column's collation for both `ORDER BY` and `<`, so the two agree. The fake uses JavaScript string order for both. The order among rows with the same `createdAt` is by cuid, not by insert order, and no test expects insert order |
 
 ## Status
 
