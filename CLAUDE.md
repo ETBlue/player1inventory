@@ -194,7 +194,8 @@ that really set up that role.
 > | `leaveHousehold` | manager or member; the owner gets `BAD_USER_INPUT` | the same deletes and the same invite revoke, for the household the caller acts in |
 > | `createHousehold(name)` | a person in NO household (owner decision O16-A); else `BAD_USER_INPUT`, `extensions.reason` `ALREADY_IN_HOUSEHOLD` | `lockUser`, the first sign-in claim, the membership count, then `createHouseholdFor` (`lib/household.ts`, shared with first sign-in), then `activeHouseholdId`. It never calls `requireHousehold` (decision T22) |
 >
-> The first three take the household lock first (`lockOrForbid`, which uses `lockHouseholds`;
+> The first three take the household lock first (`lockHouseholdOrForbid` in `lib/household.ts`,
+> which uses `lockHouseholds`;
 > a household deleted since `requireHousehold` found it gives `FORBIDDEN`, not Prisma's
 > `P2025`) and NEVER write a `User` row (decision T16), so
 > the person's `activeHouseholdId` may still name the household they left. `ensureHousehold`

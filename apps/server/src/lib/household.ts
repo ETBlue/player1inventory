@@ -424,9 +424,9 @@ export async function lockUser(tx: Prisma.TransactionClient, userId: string): Pr
  *
  * `updateMany`, not `update`, so a missing row gives a count of 0 instead of
  * P2025. `setHouseholdRole`, `removeMember` and `leaveHousehold` (task G.5)
- * lock their one household through this too (`lockOrForbid` in
- * resolvers/household.resolver.ts), so a household deleted since
- * `requireHousehold` found it gives FORBIDDEN, not an internal error.
+ * lock their one household through this too (`lockHouseholdOrForbid` below),
+ * so a household deleted since `requireHousehold` found it gives FORBIDDEN,
+ * not an internal error.
  *
  * The same `UPDATE` as `lockHousehold`. The Prisma fake has no row lock, so
  * the unit tests prove only the order.
@@ -445,4 +445,32 @@ export async function lockHouseholds(
     if (count > 0) locked.add(id)
   }
   return locked
+}
+
+/**
+ * Take the household's row lock, FIRST in the transaction, for
+ * `setHouseholdRole`, `removeMember` and `leaveHousehold` (and, from
+ * households H5c, the three location role writes). The household
+ * can be deleted after `requireHousehold` found it (for example the owner
+ * joined another household in another tab, and the join deleted this one as
+ * empty). `lockHousehold` would then throw Prisma's P2025, which reaches the
+ * person as an internal error. `lockHouseholds` gives a count instead, and a
+ * missing household is FORBIDDEN: the caller holds no role in it any more.
+ *
+ * Moved here from resolvers/household.resolver.ts (where it was the private
+ * `lockOrForbid`) in households H5c task H.1, so other resolvers can use it.
+ *
+ * The error is the same as `forbidden()` in lib/authz.ts: message
+ * `Forbidden`, code `FORBIDDEN`. It is built here because lib/authz.ts
+ * imports this file, and importing `forbidden` back would make an import
+ * cycle.
+ */
+export async function lockHouseholdOrForbid(
+  tx: Prisma.TransactionClient,
+  householdId: string,
+): Promise<void> {
+  const locked = await lockHouseholds(tx, [householdId])
+  if (!locked.has(householdId)) {
+    throw new GraphQLError('Forbidden', { extensions: { code: 'FORBIDDEN' } })
+  }
 }
