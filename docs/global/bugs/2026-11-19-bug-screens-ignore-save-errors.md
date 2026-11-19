@@ -119,15 +119,53 @@ rethrows, `mutateAsync` put back to `mutate`, `onError` removed, the dialog clos
 failure) all went red, then green after restore. Four older tests pinned the old `mutate`
 calls or "no toast at all"; they now check the new contract.
 
+### Cloud mode
+
+The tests above make the local Dexie write fail. The cloud tests below make the SERVER refuse:
+the generated Apollo mutation rejects with a `CombinedGraphQLErrors` with the code `FORBIDDEN`,
+and the cloud branch of the app hook (`useUpdateItem`, `useCreateTag`, ...) passes it on to the
+screen. 61 new web tests (web 3222 / 329 files → 3283 / 335; server 2111 / 76 and spec 70
+unchanged).
+
+**How they run.** A new test helper, `apps/web/src/test/cloudServerStub.ts`, replaces only the
+generated hooks in `@/generated/graphql`. The app hooks above them stay real, so their
+`mode === 'cloud'` branch runs. A mutation named in `cloudServer.failing` rejects; every
+mutation records its variables in `cloudServer.calls`, and every test checks that list, so a
+test cannot pass when the write failed before it was sent. Its mutation hooks keep a real
+`loading` flag, so `isPending` goes true and false again as it does with Apollo. One test goes
+through real Apollo instead (`MockedProvider` answers with a GraphQL error), to prove the step
+the stub skips: Apollo's `mutate` rejects on a GraphQL error.
+
+| File | Places |
+|---|---|
+| `routes/items/$id/saveFailed.cloud.test.tsx` (11) | Info and Stock tab save, unit-switch confirm; Relation tabs: assign a tag, vendor or recipe; New Tag (create, and the assign after it), New Tag Type, New Recipe, assign a new vendor |
+| `components/item/NewItemDialog/NewItemDialog.cloud.test.tsx` (+2) | create, pick an existing item |
+| `components/pantry/saveFailed.cloud.test.tsx` (4) | quick update dialog; `ShelfDetailView` create from search and the shelf write after it; a search tail group action (Apply vendor) |
+| `hooks/useItemSearchTailWiring.cloud.test.tsx` (+1) | Add to location, through real Apollo |
+| `routes/settings/household/saveFailed.cloud.test.tsx` (22) | recipe, tag and vendor Info renames; the four Items tabs (check an item, create from search, the recipe default amount, the shelf write after a create); Add shelf; shelf Info save (selection and filter); shelf Filters tab; tags page New Tag Type, New Tag, Edit Tag Type; New Recipe; and one negative control: the write works and only the refresh after it fails, so NO message shows |
+| `routes/settings/household/deleteFailed.cloud.test.tsx` (12) | every delete through `DeleteButton` (10 pages) and both buttons of the "has child tags" dialog |
+| `routes/shopping/saveFailed.cloud.test.tsx` (6) | create from search, check, uncheck, amount, abandon, checkout (a refusal other than `CART_CHANGED`) |
+| `routes/settings/household/locations/saveFailed.cloud.test.tsx` (3) | Add, Rename, and Add on the empty `NoLocationsGate` screen |
+
+Every place was mutation checked: the message removed (`showSaveError` call or `onError`
+emptied), the catch made to rethrow, a delete put back to `mutate`, or the shelf write not
+awaited. 59 mutations, every one turned its cloud test red, and each file was restored from a
+copy. The negative control went red when the `.catch` in `refetchAfterWrite` was removed.
+
+No cloud branch was found that swallows an error: every cloud `mutateAsync` rejects, and every
+cloud `mutate` hands the error to the caller's `onError`.
+
 **Not covered:**
 
-- No cloud-mode test. All new tests make the local Dexie write fail. The cloud branches reject
-  the same way, but no test drives them.
-- `NoLocationsGate`'s Add runs only in cloud mode, so its fix has no test yet.
-- The shelves page drag-to-reorder fix has no test: jsdom has no layout, so a keyboard drag
-  finds no drop target and never calls the reorder.
+- The shelves page drag-to-reorder fix has no test, in either mode: jsdom has no layout, so a
+  keyboard drag finds no drop target and never calls the reorder.
 - After a successful checkout the cart page awaits `refetchItems()` with no catch. That is a
   failed refresh, not a failed save (the area of PR #386), so it is left as it is.
+- The cloud tests use a stubbed Apollo hook, not real Apollo, except the one search tail test.
+  So they do not prove the `refetchQueries` or cache options each hook passes to its mutation.
+- The other three pantry views (`VendorDetailView`, `RecipeDetailView`, `ShelfDetailView`) pass
+  the quick update dialog the same `try`/`finally` as `PantryListView`; only the last has a cloud
+  test.
 
 ## PR / commit
 
