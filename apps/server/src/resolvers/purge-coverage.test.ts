@@ -547,4 +547,10 @@ describe('purge filter form (issue #320)', () => {
     expect(deleteManyCalls(body)).toEqual([])
     expect(body).toContain('await deleteHouseholdData(tx, householdId)')
   })
+
+  it('deleteHousehold deletes through deleteHouseholdData, inside its transaction', () => {
+    const body = bodyAfter(read('./household.resolver.ts'), 'deleteHousehold: async')
+    expect(deleteManyCalls(body).map((c) => c.model)).toEqual(['household'])
+    expect(body).toContain('await deleteHouseholdData(tx, householdId)')
+  })
 })

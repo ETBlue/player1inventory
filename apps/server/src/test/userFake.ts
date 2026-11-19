@@ -18,7 +18,9 @@
 //     never applied.
 //   - Modelled `where` keys: `id` (a string or `{ in: [...] }`), `lastSeenAt`
 //     (`null` or `{ lt: Date }`), `householdSetupAt` (`null` only, for the
-//     first sign-in claim of decision H1), and `OR` (an array of the same).
+//     first sign-in claim of decision H1), `activeHouseholdId` (a string or
+//     `{ in: [...] }`; a null column matches nothing, as in SQL; households H6
+//     task J.4), and `OR` (an array of the same).
 //     The keys are checked ONCE per call by `checkWhere` (`whereKeys.ts`). `{ lt }` does NOT
 //     match a null column, as in SQL. That is why task 2.4's "not seen today"
 //     update needs `OR: [{ lastSeenAt: null }, { lastSeenAt: { lt } }]`.
@@ -184,6 +186,9 @@ const ROW_KEYS: WhereSpec = {
   lastSeenAt: 'nullableDateLt',
   // The first sign-in claim (decision H1) asks only "is it still unset?".
   householdSetupAt: 'null',
+  // `deleteHousehold` (households H6 task J.4) clears this column on every
+  // row that names the household, before it takes the household lock.
+  activeHouseholdId: 'in',
 }
 const USER_WHERE: WhereSpec = { ...ROW_KEYS, OR: { or: ROW_KEYS } }
 
@@ -223,6 +228,9 @@ export function userMatches(row: UserRow, where: Where): boolean {
         break
       case 'householdSetupAt':
         if (!matchesNullableDate(row.householdSetupAt, filter)) return false
+        break
+      case 'activeHouseholdId':
+        if (row.activeHouseholdId === null || !matchesId(row.activeHouseholdId, filter)) return false
         break
       case 'OR':
         // Prisma: an empty OR matches nothing.

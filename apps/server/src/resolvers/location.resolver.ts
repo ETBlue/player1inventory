@@ -11,11 +11,12 @@ import {
   requireHouseholdRole,
   requireLocationInHousehold,
   requireLocationRole,
+  roleAtLeast,
 } from '../lib/authz.js'
 import { displayNamesOf, lockHouseholdOrForbid } from '../lib/household.js'
 import { recordActivity } from '../lib/activity.js'
 import { prisma } from '../lib/prisma.js'
-import { publishHouseholdChange } from '../lib/publishChange.js'
+import { publishChange, publishHouseholdChange } from '../lib/publishChange.js'
 import type { Location, Resolvers } from '../generated/graphql.js'
 import type { LocationRole, Prisma, Location as PrismaLocation } from '@prisma/client'
 
@@ -446,6 +447,101 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
       // household is the caller's. Nothing moves to another location: the
       // rows of the deleted location are deleted, not reassigned.
       await publishHouseholdChange(ctx, ['LOCATION'], householdId)
+      return true
+    },
+
+    // ── The two location purges (households H6 task J.4, decision T55) ──
+    //
+    // Both take the household lock FIRST and read every role through `tx`
+    // after it (decision T52), like the H5c role writes. Each writes its
+    // activity row in the same transaction (decision T47), and only when it
+    // deleted something. `false`, with no row and no event, when there was
+    // nothing to delete.
+
+    // Household role `owner`. Every location of the caller's household goes.
+    // ItemStock, Cart (and through it CartItem), InventoryLog and
+    // LocationMember all go with their location by ON DELETE CASCADE, the
+    // same as `deleteLocation`. The catalog, the household and its people
+    // stay. No new "Home" is made (owner decision O34-A): Pantry, Shopping and
+    // Cooking then show "You have no locations in this household yet".
+    deleteAllLocations: async (_, __, ctx) => {
+      const userId = requireAuth(ctx)
+      const householdId = await requireHousehold(ctx)
+      // Prisma reads `{ householdId: undefined }` as NO filter: the delete
+      // below would take every household's locations.
+      if (!householdId) throw new Error('deleteAllLocations: no household id')
+
+      const count = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        await lockHouseholdOrForbid(tx, householdId)
+        await requireHouseholdRole(ctx, householdId, 'owner', tx)
+        const { count } = await tx.location.deleteMany({ where: { householdId } })
+        if (count === 0) return 0
+        await recordActivity(tx, {
+          householdId,
+          actorId: userId,
+          action: 'LOCATIONS_DELETED',
+          details: { count },
+        })
+        return count
+      })
+      if (count === 0) return false
+      // Household-level, like `deleteLocation`: a deleted location cannot
+      // pass `requireLocationRole`, so a location-level event would reach
+      // nobody. `LOCATION` refetches every query, so no `CART`, `STOCK` or
+      // `LOG` is sent for the deleted rows (decision Q4).
+      await publishHouseholdChange(ctx, ['LOCATION'], householdId)
+      return true
+    },
+
+    // Location role `organizer` on the location, which must be in the
+    // household the caller acts in. Deletes the location's `ItemStock` rows
+    // and the `CartItem` rows of its carts. KEEPS the `Cart` rows, so the
+    // shopping page still shows when each was last bought; an empty cart is
+    // what `vendorCart` would make again anyway. Keeps the logs, the role
+    // rows and the catalog.
+    //
+    // The household role does not count: a household owner with no role on
+    // the location is refused (the design gives this to the organizer).
+    removeAllLocationItems: async (_, { locationId }, ctx) => {
+      const userId = requireAuth(ctx)
+      const householdId = await requireHousehold(ctx)
+
+      const removed = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        await lockHouseholdOrForbid(tx, householdId)
+        // The location must be in the household the caller acts in. The same
+        // FORBIDDEN for "another household's" and "no such id".
+        const location = await tx.location.findFirst({
+          where: { id: locationId, householdId },
+          select: { id: true, name: true },
+        })
+        if (!location) throw forbidden()
+        const role = await locationRoleOf(ctx, locationId, tx)
+        if (!role || !roleAtLeast(role, 'organizer')) throw forbidden()
+
+        // Both filters name THIS location, never the household: a second
+        // location of the same household keeps its rows.
+        const stock = await tx.itemStock.deleteMany({ where: { locationId } })
+        const cartRows = await tx.cartItem.deleteMany({ where: { cart: { locationId } } })
+        if (stock.count === 0 && cartRows.count === 0) return null
+        // `locationName` is stored because the Activity page shows it
+        // ("removed all items from {{location}}"), and the location may be
+        // renamed or deleted later (decision T53).
+        await recordActivity(tx, {
+          householdId,
+          actorId: userId,
+          action: 'LOCATION_ITEMS_REMOVED',
+          locationId,
+          details: { locationName: location.name, stockRows: stock.count, cartRows: cartRows.count },
+        })
+        return { stock: stock.count, cartRows: cartRows.count }
+      })
+      if (!removed) return false
+      // Location-level: the location still exists, so its viewers get these.
+      // Only the kinds that changed rows.
+      const kinds: ('STOCK' | 'CART')[] = []
+      if (removed.stock > 0) kinds.push('STOCK')
+      if (removed.cartRows > 0) kinds.push('CART')
+      await publishChange(ctx, kinds, [{ locationId, householdId }])
       return true
     },
 

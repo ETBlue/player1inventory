@@ -27,14 +27,17 @@ import { type ChangeEvent, liveEvents } from '../lib/liveEvents.js'
 //
 // | Person | Households                | Location roles                       |
 // |--------|---------------------------|--------------------------------------|
-// | OWEN   | hh_1 owner, hh_2 member   | none                                 |
+// | OWEN   | hh_1 owner, hh_2 member   | LOC_Z organizer (in hh_2) only       |
 // | MIA    | hh_1 manager              | LOC_K organizer                      |
 // | BOB    | hh_1 member               | LOC_K participant                    |
 // | YUKI   | hh_2 owner                | LOC_Z organizer                      |
 //
 // OWEN acts in hh_1 unless a test moves him (`setActiveHousehold`). He is a
 // plain `member` of hh_2, so a write that read his role in the wrong
-// household would be told apart.
+// household would be told apart. He organizes LOC_Z, a location of hh_2, and
+// holds no role on any location of hh_1: so a location write that skipped
+// the "is it in the household you act in" check would let him empty LOC_Z
+// from hh_1, and an owner gets no location right from the household role.
 //
 // hh_1 has two locations, LOC_K and LOC_P. hh_2 has LOC_Z, with the same kind
 // of rows, so a write that is not scoped to one household or one location
@@ -219,6 +222,19 @@ function loc(id: string, householdId: string, order: number): FakeLocation {
   return { id, householdId, name: `${id} name`, order, createdAt: T0, updatedAt: T0 }
 }
 
+function activityRow(id: string, householdId: string, actorId: string) {
+  return {
+    id,
+    householdId,
+    actorId,
+    action: 'MEMBER_JOINED' as const,
+    targetUserId: null,
+    locationId: null,
+    details: null,
+    createdAt: T0,
+  }
+}
+
 function seed() {
   world.reset()
   world.stock.reset(
@@ -242,8 +258,15 @@ function seed() {
       locationMemberRow(LOC_K, MIA, 'organizer'),
       locationMemberRow(LOC_K, BOB, 'participant'),
       locationMemberRow(LOC_Z, YUKI, 'organizer'),
+      locationMemberRow(LOC_Z, OWEN, 'organizer'),
     ],
   })
+  // One older activity row in each household, so a write that deletes or
+  // keeps the log can be seen.
+  world.households.state.householdActivities.push(
+    activityRow('act_1', 'hh_1', MIA),
+    activityRow('act_2', 'hh_2', YUKI),
+  )
   for (const [id, hh] of [
     [OWEN, 'hh_1'],
     [MIA, 'hh_1'],
@@ -295,6 +318,10 @@ const renameHousehold = (userId = OWEN, name = 'Renamed') =>
   run('mutation ($name: String!) { renameHousehold(name: $name) { name } }', userId, { name })
 const deleteLocation = (userId = MIA, id = LOC_P) =>
   run('mutation ($id: ID!) { deleteLocation(id: $id) }', userId, { id })
+const deleteAllLocations = (userId = OWEN) => run('mutation { deleteAllLocations }', userId)
+const removeAllLocationItems = (userId = MIA, locationId = LOC_K) =>
+  run('mutation ($id: ID!) { removeAllLocationItems(locationId: $id) }', userId, { id: locationId })
+const deleteHousehold = (userId = OWEN) => run('mutation { deleteHousehold }', userId)
 
 /** Every event on the bus, with the transaction depth when it was published. */
 let seen: { event: ChangeEvent; depth: number }[] = []
@@ -325,7 +352,8 @@ function snapshot() {
     logs: extra.logs,
     carts: extra.carts,
     cartItems: extra.cartItems,
-    activity: world.households.state.householdActivities.map((a) => a.action),
+    activity: world.households.state.householdActivities.map((a) => a.id),
+    active: world.users.state.rows.map((r) => [r.id, r.activeHouseholdId]),
   })
 }
 
@@ -335,6 +363,8 @@ const writes: [string, () => Promise<Result>][] = [
   ['clearAllData', () => clearAllData()],
   ['renameHousehold', () => renameHousehold()],
   ['deleteLocation', () => deleteLocation()],
+  ['deleteAllLocations', () => deleteAllLocations()],
+  ['deleteHousehold', () => deleteHousehold()],
 ]
 
 describe('the household writes lock first and read the role after, through tx (decision T52)', () => {
@@ -475,7 +505,7 @@ describe('a write that races a demote (Review Focus 2)', () => {
     expect(after.stock).toEqual(before.stock)
     expect(after.logs).toEqual(before.logs)
     expect(after.cartItems).toEqual(before.cartItems)
-    expect(after.activity).toEqual([])
+    expect(after.activity).toEqual(before.activity)
     expect(seen).toEqual([])
   })
 
@@ -491,6 +521,37 @@ describe('a write that races a demote (Review Focus 2)', () => {
     )
     expect(code(res)).toBe('FORBIDDEN')
     expect(world.households.state.households.find((h) => h.id === 'hh_1')?.name).toBe('hh_1 name')
+    expect(seen).toEqual([])
+  })
+
+  it('deleteAllLocations by an owner who is demoted at the same moment is refused', async () => {
+    const res = await demoteThen(
+      'hh_1',
+      [
+        { userId: OWEN, role: 'manager' },
+        { userId: MIA, role: 'owner' },
+      ],
+      MIA,
+      () => deleteAllLocations(OWEN),
+    )
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(world.stock.state.locations.map((l) => l.id)).toEqual([LOC_K, LOC_P, LOC_Z])
+    expect(seen).toEqual([])
+  })
+
+  it('deleteHousehold by an owner who is demoted at the same moment is refused', async () => {
+    const res = await demoteThen(
+      'hh_1',
+      [
+        { userId: OWEN, role: 'manager' },
+        { userId: MIA, role: 'owner' },
+      ],
+      MIA,
+      () => deleteHousehold(OWEN),
+    )
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(world.households.state.households.map((h) => h.id)).toEqual(['hh_1', 'hh_2'])
+    expect(world.stock.state.locations.map((l) => l.id)).toEqual([LOC_K, LOC_P, LOC_Z])
     expect(seen).toEqual([])
   })
 
@@ -527,5 +588,410 @@ describe('the role is read in the household the caller acts in', () => {
   it('household manager can delete a location, and the other location and household stay', async () => {
     expect(ok(await deleteLocation(MIA, LOC_P), 'deleteLocation')).toBe(true)
     expect(world.stock.state.locations.map((l) => l.id)).toEqual([LOC_K, LOC_Z])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The three new mutations (decision T55, owner decisions O34-A and O38-A)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The activity rows written by this test, without the two seeded ones. */
+function newLogRows() {
+  return world.households.state.householdActivities
+    .filter((a) => !['act_1', 'act_2'].includes(a.id))
+    .map((a) => ({
+      householdId: a.householdId,
+      actorId: a.actorId,
+      action: a.action,
+      targetUserId: a.targetUserId,
+      locationId: a.locationId,
+      details: a.details,
+    }))
+}
+
+function events() {
+  return seen.map((s) => s.event)
+}
+
+/** The nine catalog models only record; none of them may be reached. */
+function catalogDeletes() {
+  const client = world.client as unknown as Record<string, { deleteMany?: ReturnType<typeof vi.fn> }>
+  return ['item', 'tag', 'tagType', 'vendor', 'shelf', 'recipe', 'recipeItem', 'itemTag', 'itemVendor'].flatMap(
+    (model) => (client[model]?.deleteMany?.mock.calls ?? []).map((call) => ({ model, arg: call[0] })),
+  )
+}
+
+/** Fail the next activity write, once. */
+function failTheLogWrite() {
+  vi.spyOn(world.client.householdActivity, 'create').mockRejectedValueOnce(new Error('the log write failed'))
+}
+
+describe('deleteAllLocations (decision T55, owner decision O34-A)', () => {
+  beforeEach(() => {
+    for (const model of ['item', 'tag', 'tagType', 'vendor', 'shelf', 'recipe', 'recipeItem', 'itemTag', 'itemVendor']) {
+      ;(world.client as unknown as Record<string, { deleteMany: ReturnType<typeof vi.fn> }>)[model]?.deleteMany.mockClear()
+    }
+  })
+
+  it('household owner can delete every location of the household; the other household keeps all of its rows', async () => {
+    // When the owner of hh_1 deletes all locations
+    const res = await deleteAllLocations(OWEN)
+
+    // Then it succeeds
+    expect(ok(res, 'deleteAllLocations')).toBe(true)
+
+    // And every location of hh_1 is gone, with its stock, logs, carts, cart
+    // rows and role rows
+    expect(world.stock.state.locations.map((l) => l.id)).toEqual([LOC_Z])
+    expect(world.stock.state.itemStocks.map((s) => s.id)).toEqual(['s_z'])
+    expect(extra.logs.map((l) => l.id)).toEqual(['log_z'])
+    expect(extra.carts.map((c) => c.id)).toEqual([`${LOC_Z}:no-vendor`])
+    expect(extra.cartItems.map((c) => c.id)).toEqual(['ci_z'])
+    expect(world.households.state.locationMembers.map((m) => [m.locationId, m.userId])).toEqual([
+      [LOC_Z, YUKI],
+      [LOC_Z, OWEN],
+    ])
+
+    // And no new "Home" is made (owner decision O34-A)
+    expect(world.stock.state.locations.filter((l) => l.householdId === 'hh_1')).toEqual([])
+
+    // And the catalog stays: no catalog model is reached
+    expect(catalogDeletes()).toEqual([])
+
+    // And the household, its people and their household roles stay
+    expect(world.households.state.households.map((h) => h.id)).toEqual(['hh_1', 'hh_2'])
+    expect(world.households.state.householdMembers).toHaveLength(5)
+  })
+
+  it('writes one LOCATIONS_DELETED row with the count, and keeps the older log', async () => {
+    ok(await deleteAllLocations(OWEN), 'deleteAllLocations')
+    expect(newLogRows()).toEqual([
+      {
+        householdId: 'hh_1',
+        actorId: OWEN,
+        action: 'LOCATIONS_DELETED',
+        targetUserId: null,
+        locationId: null,
+        details: { count: 2 },
+      },
+    ])
+    expect(world.households.state.householdActivities.map((a) => a.id).slice(0, 2)).toEqual(['act_1', 'act_2'])
+  })
+
+  it('publishes one household-level LOCATION event, after the commit', async () => {
+    ok(await deleteAllLocations(OWEN), 'deleteAllLocations')
+    expect(events()).toEqual([{ kind: 'LOCATION', householdId: 'hh_1', locationId: null, sourceClientId: 'tab-1' }])
+    expect(seen.map((s) => s.depth)).toEqual([0])
+  })
+
+  it('a household with no location gives false, with no row and no event', async () => {
+    // Given hh_1 has no location left
+    ok(await deleteAllLocations(OWEN), 'deleteAllLocations')
+    seen = []
+    const rowsBefore = world.households.state.householdActivities.length
+
+    // When the owner deletes all locations again
+    const res = await deleteAllLocations(OWEN)
+
+    // Then nothing was deleted, logged or sent
+    expect(ok(res, 'deleteAllLocations')).toBe(false)
+    expect(world.households.state.householdActivities).toHaveLength(rowsBefore)
+    expect(seen).toEqual([])
+    expect(world.stock.state.locations.map((l) => l.id)).toEqual([LOC_Z])
+  })
+
+  for (const [who, userId] of [
+    ['manager', MIA],
+    ['member', BOB],
+  ] as const) {
+    it(`household ${who} cannot delete all locations, and nothing changes`, async () => {
+      const before = snapshot()
+      const res = await deleteAllLocations(userId)
+      expect(code(res)).toBe('FORBIDDEN')
+      expect(snapshot()).toEqual(before)
+      expect(seen).toEqual([])
+    })
+  }
+
+  it('the delete and its log row roll back together when the log write fails', async () => {
+    const before = snapshot()
+    failTheLogWrite()
+    const res = await deleteAllLocations(OWEN)
+    expect(res.errors).toBeDefined()
+    expect(snapshot()).toEqual(before)
+    expect(seen).toEqual([])
+  })
+})
+
+describe('removeAllLocationItems (decision T55)', () => {
+  it('location organizer can remove all items: the stock rows and cart rows of that one location go', async () => {
+    // When MIA, organizer of LOC_K, removes all its items
+    const res = await removeAllLocationItems(MIA, LOC_K)
+
+    // Then it succeeds
+    expect(ok(res, 'removeAllLocationItems')).toBe(true)
+
+    // And LOC_K's stock row and cart row are gone
+    expect(world.stock.state.itemStocks.map((s) => s.id)).toEqual(['s_p', 's_z'])
+    expect(extra.cartItems.map((c) => c.id)).toEqual(['ci_p', 'ci_z'])
+  })
+
+  it('keeps the location, its carts with their last purchase date, its logs, its role rows and the catalog', async () => {
+    ok(await removeAllLocationItems(MIA, LOC_K), 'removeAllLocationItems')
+
+    expect(world.stock.state.locations.map((l) => l.id)).toEqual([LOC_K, LOC_P, LOC_Z])
+    expect(extra.carts).toEqual([
+      { id: `${LOC_K}:no-vendor`, locationId: LOC_K, lastPurchasedAt: BOUGHT },
+      { id: `${LOC_P}:no-vendor`, locationId: LOC_P, lastPurchasedAt: BOUGHT },
+      { id: `${LOC_Z}:no-vendor`, locationId: LOC_Z, lastPurchasedAt: BOUGHT },
+    ])
+    expect(extra.logs.map((l) => l.id)).toEqual(['log_k', 'log_p', 'log_z'])
+    expect(
+      world.households.state.locationMembers.filter((m) => m.locationId === LOC_K).map((m) => [m.userId, m.role]),
+    ).toEqual([
+      [MIA, 'organizer'],
+      [BOB, 'participant'],
+    ])
+    expect(catalogDeletes()).toEqual([])
+  })
+
+  it('a second location of the same household keeps its stock rows and cart rows', async () => {
+    ok(await removeAllLocationItems(MIA, LOC_K), 'removeAllLocationItems')
+    expect(world.stock.state.itemStocks.map((s) => s.id)).toContain('s_p')
+    expect(extra.cartItems.map((c) => c.id)).toContain('ci_p')
+  })
+
+  it('writes one LOCATION_ITEMS_REMOVED row with the location name', async () => {
+    ok(await removeAllLocationItems(MIA, LOC_K), 'removeAllLocationItems')
+    // `locationName` is what the Activity page shows ("removed all items
+    // from {{location}}"); see the J.3 review row of the plan.
+    expect(newLogRows()).toEqual([
+      {
+        householdId: 'hh_1',
+        actorId: MIA,
+        action: 'LOCATION_ITEMS_REMOVED',
+        targetUserId: null,
+        locationId: LOC_K,
+        details: { locationName: `${LOC_K} name`, stockRows: 1, cartRows: 1 },
+      },
+    ])
+  })
+
+  it('publishes STOCK and CART at that location only, after the commit', async () => {
+    ok(await removeAllLocationItems(MIA, LOC_K), 'removeAllLocationItems')
+    expect(events()).toEqual([
+      { kind: 'STOCK', householdId: 'hh_1', locationId: LOC_K, sourceClientId: 'tab-1' },
+      { kind: 'CART', householdId: 'hh_1', locationId: LOC_K, sourceClientId: 'tab-1' },
+    ])
+    expect(seen.map((s) => s.depth)).toEqual([0, 0])
+  })
+
+  it('publishes only STOCK when the location had stock rows but no cart rows', async () => {
+    extra.cartItems = extra.cartItems.filter((c) => c.id !== 'ci_k')
+    ok(await removeAllLocationItems(MIA, LOC_K), 'removeAllLocationItems')
+    expect(events().map((e) => e.kind)).toEqual(['STOCK'])
+    expect(newLogRows()[0]?.details).toEqual({ locationName: `${LOC_K} name`, stockRows: 1, cartRows: 0 })
+  })
+
+  it('a location with nothing to remove gives false, with no row and no event', async () => {
+    ok(await removeAllLocationItems(MIA, LOC_K), 'removeAllLocationItems')
+    seen = []
+    const rowsBefore = world.households.state.householdActivities.length
+
+    expect(ok(await removeAllLocationItems(MIA, LOC_K), 'removeAllLocationItems')).toBe(false)
+    expect(world.households.state.householdActivities).toHaveLength(rowsBefore)
+    expect(seen).toEqual([])
+  })
+
+  for (const [who, userId] of [
+    ['location participant', BOB],
+    ['household owner with no role on the location', OWEN],
+  ] as const) {
+    it(`${who} cannot remove all items, and nothing changes`, async () => {
+      const before = snapshot()
+      const res = await removeAllLocationItems(userId, LOC_K)
+      expect(code(res)).toBe('FORBIDDEN')
+      expect(snapshot()).toEqual(before)
+      expect(seen).toEqual([])
+    })
+  }
+
+  it('location organizer of a location in another household cannot empty it from the household they act in', async () => {
+    // Given OWEN acts in hh_1 and organizes LOC_Z, a location of hh_2
+    const before = snapshot()
+
+    // When he removes all items of LOC_Z
+    const res = await removeAllLocationItems(OWEN, LOC_Z)
+
+    // Then it is refused, and LOC_Z keeps its rows
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(snapshot()).toEqual(before)
+  })
+
+  it('location organizer can empty that location once they act in its household', async () => {
+    // The positive control for the test above: the same person, the same
+    // location, acting in hh_2.
+    world.setActiveHousehold(OWEN, 'hh_2')
+    expect(ok(await removeAllLocationItems(OWEN, LOC_Z), 'removeAllLocationItems')).toBe(true)
+    expect(world.stock.state.itemStocks.map((s) => s.id)).toEqual(['s_k', 's_p'])
+    expect(extra.cartItems.map((c) => c.id)).toEqual(['ci_k', 'ci_p'])
+  })
+
+  it('an unknown location gives FORBIDDEN, the same as another household\'s', async () => {
+    expect(code(await removeAllLocationItems(MIA, 'loc_nope'))).toBe('FORBIDDEN')
+  })
+
+  it('takes the household lock first, then reads the location and the role through tx', async () => {
+    const order: string[] = []
+    const updateMany = world.client.household.updateMany
+    vi.spyOn(world.client.household, 'updateMany').mockImplementation(async (args) => {
+      order.push('lock')
+      return updateMany(args)
+    })
+    const findFirst = world.client.locationMember.findFirst
+    vi.spyOn(world.client.locationMember, 'findFirst').mockImplementation(async (args) => {
+      order.push('role')
+      return findFirst(args)
+    })
+    ok(await removeAllLocationItems(MIA, LOC_K), 'removeAllLocationItems')
+    expect(order).toEqual(['lock', 'role'])
+  })
+
+  it('the delete and its log row roll back together when the log write fails', async () => {
+    const before = snapshot()
+    failTheLogWrite()
+    const res = await removeAllLocationItems(MIA, LOC_K)
+    expect(res.errors).toBeDefined()
+    expect(snapshot()).toEqual(before)
+    expect(seen).toEqual([])
+  })
+})
+
+describe('deleteHousehold (owner decision O38-A)', () => {
+  const HOUSEHOLD = 'query { household { id } }'
+
+  beforeEach(() => {
+    for (const model of ['item', 'tag', 'tagType', 'vendor', 'shelf', 'recipe', 'recipeItem', 'itemTag', 'itemVendor']) {
+      ;(world.client as unknown as Record<string, { deleteMany: ReturnType<typeof vi.fn> }>)[model]?.deleteMany.mockClear()
+    }
+  })
+
+  it('household owner can delete the household with all its data; the other household keeps all of its rows', async () => {
+    // When OWEN, owner of hh_1, deletes it
+    const res = await deleteHousehold(OWEN)
+
+    // Then it succeeds, and hh_1 is gone with its members, role rows,
+    // locations, stock, logs, carts, cart rows and activity log
+    expect(ok(res, 'deleteHousehold')).toBe(true)
+    expect(world.households.state.households.map((h) => h.id)).toEqual(['hh_2'])
+    expect(world.households.state.householdMembers.map((m) => [m.householdId, m.userId])).toEqual([
+      ['hh_2', YUKI],
+      ['hh_2', OWEN],
+    ])
+    expect(world.stock.state.locations.map((l) => l.id)).toEqual([LOC_Z])
+    expect(world.stock.state.itemStocks.map((s) => s.id)).toEqual(['s_z'])
+    expect(extra.logs.map((l) => l.id)).toEqual(['log_z'])
+    expect(extra.carts.map((c) => c.id)).toEqual([`${LOC_Z}:no-vendor`])
+    expect(extra.cartItems.map((c) => c.id)).toEqual(['ci_z'])
+    expect(world.households.state.locationMembers.map((m) => m.locationId)).toEqual([LOC_Z, LOC_Z])
+    expect(world.households.state.householdActivities.map((a) => a.id)).toEqual(['act_2'])
+  })
+
+  it('deletes the catalog through deleteHouseholdData, scoped to that household only', async () => {
+    ok(await deleteHousehold(OWEN), 'deleteHousehold')
+    // Every catalog delete names hh_1 and nothing else. The rows themselves
+    // are proved in deleteHouseholdData.test.ts.
+    const calls = catalogDeletes()
+    expect(calls.map((c) => c.model).sort()).toEqual(
+      ['item', 'itemTag', 'itemVendor', 'recipe', 'recipeItem', 'shelf', 'tag', 'tagType', 'vendor'],
+    )
+    expect(JSON.stringify(calls.map((c) => c.arg))).not.toContain('hh_2')
+    for (const call of calls) expect(JSON.stringify(call.arg)).toContain('hh_1')
+  })
+
+  it('everyone loses access: a person with no other household gets NO_HOUSEHOLD, the owner acts in their other household', async () => {
+    ok(await deleteHousehold(OWEN), 'deleteHousehold')
+
+    // MIA and BOB were only in hh_1
+    for (const userId of [MIA, BOB]) {
+      const res = await run(HOUSEHOLD, userId)
+      expect(code(res)).toBe('NO_HOUSEHOLD')
+    }
+    // OWEN is still a member of hh_2, so his next request acts there
+    expect(ok(await run(HOUSEHOLD, OWEN), 'household')).toEqual({ id: 'hh_2' })
+    // And nobody's active household names hh_1 any more
+    expect(world.users.state.rows.filter((r) => r.activeHouseholdId === 'hh_1')).toEqual([])
+    expect(world.users.state.rows.find((r) => r.id === YUKI)?.activeHouseholdId).toBe('hh_2')
+  })
+
+  it('writes the User rows that name the household BEFORE it takes the household lock (decision T16)', async () => {
+    const order: string[] = []
+    const userUpdateMany = world.client.user.updateMany
+    vi.spyOn(world.client.user, 'updateMany').mockImplementation(async (args) => {
+      order.push(`user:${String((args.where as { activeHouseholdId?: unknown }).activeHouseholdId)}`)
+      return userUpdateMany(args)
+    })
+    const updateMany = world.client.household.updateMany
+    vi.spyOn(world.client.household, 'updateMany').mockImplementation(async (args) => {
+      order.push('lock')
+      return updateMany(args)
+    })
+    ok(await deleteHousehold(OWEN), 'deleteHousehold')
+    expect(order).toEqual(['user:hh_1', 'lock'])
+  })
+
+  it('publishes nothing: the members went with the household, so no tab could receive it', async () => {
+    ok(await deleteHousehold(OWEN), 'deleteHousehold')
+    expect(seen).toEqual([])
+  })
+
+  for (const [who, userId] of [
+    ['manager', MIA],
+    ['member', BOB],
+  ] as const) {
+    it(`household ${who} cannot delete the household, and nothing changes`, async () => {
+      const before = snapshot()
+      const res = await deleteHousehold(userId)
+      expect(code(res)).toBe('FORBIDDEN')
+      expect(snapshot()).toEqual(before)
+    })
+  }
+
+  it('household member cannot delete the household they act in, even when they own another', async () => {
+    world.setActiveHousehold(OWEN, 'hh_2')
+    const before = snapshot()
+    expect(code(await deleteHousehold(OWEN))).toBe('FORBIDDEN')
+    expect(snapshot()).toEqual(before)
+  })
+
+  it('runs its whole transaction once more on P2034, a deadlock or write conflict (decision T16)', async () => {
+    // Given the first attempt fails at its household delete with P2034
+    const transaction = vi.spyOn(prisma, '$transaction')
+    vi.spyOn(world.client.household, 'deleteMany').mockRejectedValueOnce(
+      Object.assign(new Error('write conflict'), { code: 'P2034' }),
+    )
+
+    // When the owner deletes the household
+    const res = await deleteHousehold(OWEN)
+
+    // Then the second attempt deletes it
+    expect(ok(res, 'deleteHousehold')).toBe(true)
+    expect(transaction).toHaveBeenCalledTimes(2)
+    expect(world.households.state.households.map((h) => h.id)).toEqual(['hh_2'])
+  })
+
+  it('a second P2034 is not retried again, and nothing is deleted', async () => {
+    const transaction = vi.spyOn(prisma, '$transaction')
+    const conflict = () => Object.assign(new Error('write conflict'), { code: 'P2034' })
+    vi.spyOn(world.client.household, 'deleteMany')
+      .mockRejectedValueOnce(conflict())
+      .mockRejectedValueOnce(conflict())
+    const before = snapshot()
+
+    const res = await deleteHousehold(OWEN)
+
+    expect(res.errors).toBeDefined()
+    expect(transaction).toHaveBeenCalledTimes(2)
+    expect(snapshot()).toEqual(before)
   })
 })

@@ -90,6 +90,13 @@ const publishes: Record<string, { kinds: Kind[] }> = {
   // No CART, STOCK or LOG for the deleted location's rows (decision Q4):
   // nobody could pass the role check for them, and LOCATION refetches all.
   deleteLocation: { kinds: ['LOCATION'] },
+  // Households H6 task J.4 (decision T57). Household-level, for the same
+  // reason as `deleteLocation`. Nothing when the household had no location.
+  deleteAllLocations: { kinds: ['LOCATION'] },
+  // At that one location, which still exists. Only the kinds that changed
+  // rows: STOCK for stock rows, CART for cart rows. Tested in
+  // purges.resolver.test.ts.
+  removeAllLocationItems: { kinds: ['STOCK', 'CART'] },
   // Once per household a location was written in; nothing for skipped rows.
   bulkCreateLocations: { kinds: ['LOCATION'] },
   bulkUpsertLocations: { kinds: ['LOCATION'] },
@@ -179,6 +186,13 @@ const publishes: Record<string, { kinds: Kind[] }> = {
 const publishesNothing: Record<string, string> = {
   recordImport:
     "writes only an activity row; the import's own mutations already published",
+  // Households H6 task J.4 (owner decision O38-A). The plan's decision T57
+  // said household-level LOCATION. But `shouldDeliver` sends a
+  // household-level event only to members of the household, and after the
+  // delete it has none, so the event would reach nobody. The deleting tab
+  // leaves on its own; other tabs learn on their next request.
+  deleteHousehold:
+    'the household and all its members are gone after the commit, so a household-level event reaches nobody',
 }
 
 type Lists = {

@@ -94,6 +94,19 @@ extend type Mutation {
   # Household role `manager`. Any location of the caller's household, the
   # last one too (since households H5 task F.7; before, LAST_LOCATION).
   deleteLocation(id: ID!): Boolean!
+  # Household role `owner` (households H6 task J.4, decision T55). Deletes
+  # every location of the caller's household, with its stock, logs, carts,
+  # cart rows and role rows. The catalog, the household and its people stay.
+  # No new location is made (owner decision O34-A). `false` when the
+  # household had no location; then nothing is logged or sent.
+  deleteAllLocations: Boolean!
+  # Location role `organizer` on that location, which must be in the
+  # household the caller acts in (FORBIDDEN otherwise, also for an unknown
+  # id). Deletes the location's stock rows and the rows of its carts. The
+  # location, its carts (with their last purchase date), its logs, its role
+  # rows and the catalog stay (households H6 task J.4, decision T55).
+  # `false` when there was nothing to delete.
+  removeAllLocationItems(locationId: ID!): Boolean!
   # Household role `manager`. The list must hold EVERY location of the
   # household, each once (households H5 task F.2, decision T6): a repeated id
   # or a subset is BAD_USER_INPUT, an id of another household or of no

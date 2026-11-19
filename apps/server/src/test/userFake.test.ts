@@ -517,6 +517,33 @@ describe('userFake models activeHouseholdId (households H5b, decision T14)', () 
     // Then it is stored
     expect(fake.state.rows[0]?.activeHouseholdId).toBe('h_b')
   })
+
+  it('updateMany can find rows BY activeHouseholdId (households H6 task J.4)', async () => {
+    // `deleteHousehold` clears the column on every row that names the
+    // household, BEFORE it takes the household lock (decision T16). Given
+    // three users: two name h_a, one names h_b, and one names none
+    const fake = createUserFake([
+      userRow('user_a', { activeHouseholdId: 'h_a' }),
+      userRow('user_b', { activeHouseholdId: 'h_b' }),
+      userRow('user_c', { activeHouseholdId: 'h_a' }),
+      userRow('user_d'),
+    ])
+
+    // When the rows that name h_a are cleared
+    const { count } = await fake.client.updateMany({
+      where: { activeHouseholdId: 'h_a' },
+      data: { activeHouseholdId: null },
+    })
+
+    // Then only those two changed
+    expect(count).toBe(2)
+    expect(fake.state.rows.map((r) => [r.id, r.activeHouseholdId])).toEqual([
+      ['user_a', null],
+      ['user_b', 'h_b'],
+      ['user_c', null],
+      ['user_d', null],
+    ])
+  })
 })
 
 describe('userFake findUnique applies select (households H5b, decision T14)', () => {

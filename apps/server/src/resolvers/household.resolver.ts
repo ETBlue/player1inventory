@@ -5,6 +5,7 @@ import { forbidden, requireHousehold, requireHouseholdRole } from '../lib/authz.
 import {
   alreadyInHousehold,
   createHouseholdFor,
+  deleteHouseholdData,
   displayNamesOf,
   firstLocationName,
   firstSignInNames,
@@ -16,6 +17,7 @@ import {
 import { recordActivity } from '../lib/activity.js'
 import { prisma } from '../lib/prisma.js'
 import { publishHouseholdChange } from '../lib/publishChange.js'
+import { retryOnceOnConflict } from './invite.resolver.js'
 import type { Resolvers } from '../generated/graphql.js'
 
 // The caller's household: its name, and the caller's role in it (households
@@ -216,6 +218,65 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // For the SAVED row's household. After the commit.
       await publishHouseholdChange(ctx, ['CATALOG'], row.id)
       return { id: row.id, name: row.name, role }
+    },
+
+    // Household role `owner` (households H6 task J.4, owner decision O38-A).
+    // Deletes the household the caller acts in, with everything in it.
+    // Everyone loses access. Each person's next request acts in their other
+    // household (`ensureHousehold` picks their oldest membership), or gets
+    // NO_HOUSEHOLD. The web asks the owner to type the household name first;
+    // the server checks only the role (decision T56).
+    //
+    // ONE transaction, run ONCE more on P2034 (`retryOnceOnConflict`):
+    //
+    //   1. The `User` rows whose `activeHouseholdId` names this household are
+    //      set to null FIRST. The household delete would do this anyway
+    //      (`onDelete: SetNull`), but then it would write `User` rows while
+    //      holding the household lock, the opposite of the one lock order
+    //      (`User` rows, then households; decision T16 of the H5b plan).
+    //      Doing it first takes those row locks in the right order. Two
+    //      writes can still meet in the other order (for example a join
+    //      that deletes an empty household), so the retry stays.
+    //   2. The household lock (`lockHouseholdOrForbid`), then the owner
+    //      check through `tx` (decision T52). A refusal rolls step 1 back.
+    //   3. `deleteHouseholdData`, the same ordered delete as `clearAllData`
+    //      (decision T64). `Tag.type` is NoAction, so the catalog is not left
+    //      to the cascade.
+    //   4. The household row. Its members, invites and activity log go with
+    //      it by ON DELETE CASCADE.
+    //
+    // No activity row: the log is deleted with the household, so a row about
+    // the delete would be deleted at once.
+    //
+    // No live event, on purpose. `shouldDeliver` sends a household-level
+    // event only to MEMBERS of the household, and after the commit it has
+    // none. So an event would reach nobody, and it is listed in
+    // `publishesNothing` in live-publish.guard.test.ts. The owner's own tab
+    // gets `true` and must leave the household on its own (the web, task
+    // J.7). Every other member's open tab finds out on its next request: the
+    // household guard sees another household id, or the no-household screen
+    // shows.
+    deleteHousehold: async (_, __, ctx) => {
+      const householdId = await requireHousehold(ctx)
+      // Prisma reads `undefined` as NO filter in the deletes below.
+      if (!householdId) throw new Error('deleteHousehold: no household id')
+
+      await retryOnceOnConflict(() =>
+        prisma.$transaction(
+          async (tx) => {
+            await tx.user.updateMany({
+              where: { activeHouseholdId: householdId },
+              data: { activeHouseholdId: null },
+            })
+            await lockHouseholdOrForbid(tx, householdId)
+            await requireHouseholdRole(ctx, householdId, 'owner', tx)
+            await deleteHouseholdData(tx, householdId)
+            await tx.household.deleteMany({ where: { id: householdId } })
+          },
+          { timeout: HOUSEHOLD_MOVE_TIMEOUT_MS },
+        ),
+      )
+      return true
     },
 
     // ── setHouseholdRole, removeMember, leaveHousehold (task G.5) ──
