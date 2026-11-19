@@ -1,0 +1,91 @@
+# The household activity log (households H6, task J.3; decisions T51, T53 and
+# T54 of docs/global/permissions/2026-11-20-households-plan-h6.md).
+
+# What happened. One value per kind of logged change (decision T51). The
+# OWNERSHIP_* values, HANDOVER_STARTED and ACCOUNT_DELETED are written from
+# H6b on.
+enum ActivityAction {
+  LOCATION_ROLE_SET
+  LOCATION_ROLE_REMOVED
+  LOCATION_LEFT
+  HOUSEHOLD_ROLE_CHANGED
+  INVITE_CREATED
+  INVITE_REVOKED
+  MEMBER_JOINED
+  MEMBER_LEFT
+  MEMBER_REMOVED
+  HOUSEHOLD_CLEARED
+  LOCATIONS_DELETED
+  LOCATION_ITEMS_REMOVED
+  IMPORT
+  OWNERSHIP_OFFERED
+  OWNERSHIP_OFFER_CANCELLED
+  OWNERSHIP_DECLINED
+  OWNERSHIP_ACCEPTED
+  HANDOVER_STARTED
+  ACCOUNT_DELETED
+}
+
+# How many rows of each kind one import sent. Only on an IMPORT entry. The
+# names are the backup file's keys, the same as `ImportCountsInput`. A count
+# the stored row does not have is 0.
+type ActivityImportCounts {
+  items: Int!
+  tags: Int!
+  tagTypes: Int!
+  vendors: Int!
+  recipes: Int!
+  shelves: Int!
+  locations: Int!
+  itemStocks: Int!
+  inventoryLogs: Int!
+  shoppingCarts: Int!
+  cartItems: Int!
+}
+
+# One row of the log, ready for one translated sentence on the web. Every
+# field below `createdAt` is null when the action has no such part. No field
+# carries an e-mail address.
+type HouseholdActivityEntry {
+  id: ID!
+  action: ActivityAction!
+  # ISO 8601, for example "2026-11-20T10:07:00.000Z".
+  createdAt: String!
+  # The stored display name of the person who acted. For a deleted account
+  # it is still the stored name; `actorDeleted` is true, and the web adds
+  # "(deleted account)" (owner decision O35-A). An actor with no `User` row
+  # at all (only possible after /e2e/cleanup) gives "" and `actorDeleted`.
+  actorName: String!
+  actorIsMe: Boolean!
+  actorDeleted: Boolean!
+  # The person the change was about, by the same rules as the actor. All
+  # three are null when the action is about nobody.
+  targetName: String
+  targetIsMe: Boolean
+  targetDeleted: Boolean
+  # The location's name as it was when the change was logged. Read from the
+  # log row, never from the location, which may be renamed or deleted since.
+  locationName: String
+  # The role before and after. A household role or a location role,
+  # depending on the action. `fromRole` is null when the person had no role.
+  fromRole: String
+  toRole: String
+  # The household role an invite gives, or a joiner got.
+  householdRole: HouseholdRole
+  # How many, for LOCATIONS_DELETED.
+  count: Int
+  # Only on an IMPORT entry.
+  importCounts: ActivityImportCounts
+}
+
+extend type Query {
+  # The caller's household's log, newest first: by `createdAt`, then by `id`
+  # when two rows have the same time. Household owner or manager only; anyone
+  # else gets FORBIDDEN, also an organizer of a location (decision T54).
+  #
+  # `first` is how many rows to give: 50 when not given, at most 200 (a
+  # larger number is cut to 200). 0 or less is BAD_USER_INPUT.
+  # `before` is the id of an entry from an earlier page: the rows after it.
+  # An id that is unknown, or of another household, is BAD_USER_INPUT.
+  householdActivity(before: ID, first: Int): [HouseholdActivityEntry!]!
+}

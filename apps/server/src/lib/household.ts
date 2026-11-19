@@ -493,3 +493,29 @@ export async function displayNamesOf(userIds: string[]): Promise<Map<string, str
   })
   return new Map(rows.map((row) => [row.id, row.displayName]))
 }
+
+/** A person's stored name, and whether their account is deleted. */
+export interface AccountName {
+  displayName: string
+  deleted: boolean
+}
+
+/**
+ * Like `displayNamesOf`, and also whether each account is deleted
+ * (`User.deletedAt` is set). For the activity log (households H6, task J.3),
+ * which shows a deleted account's stored name with "(deleted account)" after
+ * it (owner decision O35-A).
+ *
+ * One read. The select names `id`, `displayName` and `deletedAt`, and never
+ * `email`. An id with no `User` row is not in the map.
+ */
+export async function accountNamesOf(userIds: string[]): Promise<Map<string, AccountName>> {
+  if (userIds.length === 0) return new Map()
+  const rows = await prisma.user.findMany({
+    where: { id: { in: [...new Set(userIds)] } },
+    select: { id: true, displayName: true, deletedAt: true },
+  })
+  return new Map(
+    rows.map((row) => [row.id, { displayName: row.displayName, deleted: row.deletedAt !== null }]),
+  )
+}
