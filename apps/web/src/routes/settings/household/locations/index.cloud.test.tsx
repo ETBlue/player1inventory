@@ -94,6 +94,21 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
                 ),
             },
           },
+    // The people page (households H5c task H.5), which a click on a
+    // location's name opens (task H.6). It only needs to mount: the people
+    // stay loading.
+    useLocationPeopleQuery: () => ({
+      ...emptyQuery,
+      loading: true,
+      refetch: () => Promise.resolve(),
+    }),
+    useHouseholdMembersQuery: () => ({
+      ...emptyQuery,
+      refetch: () => Promise.resolve(),
+    }),
+    useSetLocationRoleMutation: () => [vi.fn(), { loading: false }],
+    useRemoveLocationRoleMutation: () => [vi.fn(), { loading: false }],
+    useLeaveLocationMutation: () => [vi.fn(), { loading: false }],
     useCreateLocationMutation: () => [vi.fn(), { loading: false }],
     useUpdateLocationMutation: () => [vi.fn(), { loading: false }],
     useDeleteLocationMutation: () => [mockDeleteLocation, { loading: false }],
@@ -391,8 +406,12 @@ describe('Settings locations page — cloud roles (households H5 task F.3)', () 
     // Then the Shed is on the list, marked No access
     const shed = await rowNamed('Cloud Shed')
     expect(within(shed).getByText('No access')).toBeInTheDocument()
-    // And it is not a link into its data
-    expect(within(shed).queryByRole('link')).not.toBeInTheDocument()
+    // And its name links to the Shed's people page (households H5c task
+    // H.6, owner decision O24-A), where the manager sees names and roles,
+    // never the Shed's stock, carts or logs
+    expect(
+      within(shed).getByRole('link', { name: 'Open Cloud Shed' }),
+    ).toHaveAttribute('href', `/settings/household/locations/${LOC_C}`)
     // And the manager may delete and move it, but not rename it
     expect(
       within(shed).getByRole('button', { name: 'Delete Cloud Shed' }),
@@ -495,6 +514,64 @@ describe('Settings locations page — cloud roles (households H5 task F.3)', () 
     ).toBeInTheDocument()
   })
 
+  it('household member sees a link only on the locations they have a role on', async () => {
+    // Given a household member who organizes the Kitchen and helps in the
+    // Garage. The Shed, where they have no role, is in the list too: the
+    // server never sends it to a member, but it is the row that shows
+    // whether the page reads the member's role or links every row.
+    given('member', [
+      row(LOC_A, 'Cloud Kitchen', 0, 'organizer'),
+      row(LOC_B, 'Cloud Garage', 1, 'participant'),
+      row(LOC_C, 'Cloud Shed', 2, null),
+    ])
+    renderPage()
+
+    // Then the Kitchen and the Garage link to their people pages
+    for (const [id, name] of [
+      [LOC_A, 'Cloud Kitchen'],
+      [LOC_B, 'Cloud Garage'],
+    ] as const) {
+      expect(
+        within(await rowNamed(name)).getByRole('link', {
+          name: `Open ${name}`,
+        }),
+      ).toHaveAttribute('href', `/settings/household/locations/${id}`)
+    }
+    // And the Shed is not a link: the member may not open its page (O24-A)
+    expect(
+      within(await rowNamed('Cloud Shed')).queryByRole('link'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('user can open the people page of a location from its name', async () => {
+    // Given an owner who organizes the Kitchen
+    given('owner', [
+      row(LOC_A, 'Cloud Kitchen', 0, 'organizer'),
+      row(LOC_C, 'Cloud Shed', 1, null),
+    ])
+    const router = renderPage()
+
+    // When the owner clicks the Shed's name, a No access row
+    const user = userEvent.setup()
+    await user.click(
+      within(await rowNamed('Cloud Shed')).getByRole('link', {
+        name: 'Open Cloud Shed',
+      }),
+    )
+
+    // Then the app goes to the Shed's people page, and no drag started:
+    // nothing was reordered
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(
+        `/settings/household/locations/${LOC_C}`,
+      ),
+    )
+    expect(
+      await screen.findByRole('link', { name: 'Back to locations' }),
+    ).toBeInTheDocument()
+    expect(mockReorderLocations).not.toHaveBeenCalled()
+  })
+
   it('household owner reorders every location of the household, the No access one included', async () => {
     // Given an owner with a role on the Kitchen and the Garage, and none on
     // the Shed between them
@@ -505,6 +582,13 @@ describe('Settings locations page — cloud roles (households H5 task F.3)', () 
     ])
     stubRowLayout()
     renderPage()
+    // The names are links (households H5c task H.6). The drag handle is a
+    // separate button, so the link must not get in the way of a reorder.
+    expect(
+      within(await rowNamed('Cloud Kitchen')).getByRole('link', {
+        name: 'Open Cloud Kitchen',
+      }),
+    ).toBeInTheDocument()
 
     // When the owner moves the Kitchen down one place with the keyboard
     await moveDownOne('Cloud Kitchen')

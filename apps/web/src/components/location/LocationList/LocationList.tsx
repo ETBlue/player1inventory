@@ -17,6 +17,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { Link } from '@tanstack/react-router'
 import { GripVertical, Lock, MapPin, Pencil, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -53,6 +54,14 @@ interface LocationListProps {
   canRename?: (location: LocationListItem) => boolean
   /** Show the caller's role and the "No organizer" mark. Cloud only. */
   showRoles?: boolean
+  /**
+   * Whether the row's name is a link to the location's people page,
+   * `/settings/household/locations/$id` (households H5c, task H.6). The page
+   * passes `usePermissions().canOpenLocationPage`. Default: no row is a link,
+   * so local mode, which has no people page (decision T41), shows none. A
+   * list with a link needs the router in context.
+   */
+  canOpen?: (location: LocationListItem) => boolean
 }
 
 // ----- Sortable / static location row -----
@@ -63,6 +72,7 @@ interface LocationRowProps {
   canManage: boolean
   canRename: boolean
   showRoles: boolean
+  canOpen: boolean
   onRename: () => void
   onDelete: () => void
 }
@@ -73,6 +83,7 @@ function LocationRow({
   canManage,
   canRename,
   showRoles,
+  canOpen,
   onRename,
   onDelete,
 }: LocationRowProps) {
@@ -119,7 +130,25 @@ function LocationRow({
 
         <CardTitle className="flex items-center gap-2 truncate">
           <MapPin className="h-4 w-4 shrink-0 text-foreground-muted" />
-          <span className="font-medium truncate">{location.name}</span>
+          {/* The name only is the link, never the whole row: the drag
+              handle keeps its own listeners, so a click on the link never
+              starts a drag, and Rename and Delete stay separate buttons.
+              The link is named "Open Kitchen", which holds the visible
+              name (WCAG 2.5.3). */}
+          {canOpen ? (
+            <Link
+              to="/settings/household/locations/$id"
+              params={{ id: location.id }}
+              aria-label={t('settings.locations.open', {
+                name: location.name,
+              })}
+              className="font-medium truncate underline-offset-4 hover:underline"
+            >
+              {location.name}
+            </Link>
+          ) : (
+            <span className="font-medium truncate">{location.name}</span>
+          )}
           {isDefault && (
             <span className="text-xs font-normal text-foreground-muted">
               {t('settings.locations.defaultHint')}
@@ -194,6 +223,7 @@ export function LocationList({
   canManage = true,
   canRename = () => true,
   showRoles = false,
+  canOpen = () => false,
 }: LocationListProps) {
   const { t } = useTranslation()
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -262,6 +292,7 @@ export function LocationList({
               canManage={canManage}
               canRename={canRename(location)}
               showRoles={showRoles}
+              canOpen={canOpen(location)}
               onRename={() => onRename(location)}
               onDelete={() => onDelete(location)}
             />

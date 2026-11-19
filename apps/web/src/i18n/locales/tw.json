@@ -652,6 +652,7 @@
       "noAccess": "無權限",
       "noOrganizer": "沒有據點王",
       "yourRole": "你的角色：",
+      "open": "開啟{{name}}",
       "people": {
         "title": "人員",
         "description": "在這個據點有角色的人",

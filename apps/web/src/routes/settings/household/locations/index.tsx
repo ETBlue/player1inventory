@@ -40,7 +40,8 @@ export function LocationSettingsPage() {
   // While the first load runs there is no list yet. The page shows a spinner,
   // not "No locations yet", so the empty state does not flash.
   const { data: locations = [], isLoading } = useHouseholdLocations()
-  const { canManageLocations, isOrganizerAt } = usePermissions()
+  const { canManageLocations, isOrganizerAt, canOpenLocationPage } =
+    usePermissions()
   const createLocation = useCreateLocation()
   const updateLocation = useUpdateLocation()
   const deleteLocation = useDeleteLocation()
@@ -181,6 +182,10 @@ export function LocationSettingsPage() {
             canManage={canManageLocations}
             canRename={(location) => isOrganizerAt(location.id)}
             showRoles={mode === 'cloud'}
+            // The name links to the people page (households H5c, task H.6,
+            // owner decision O24-A). `canOpenLocationPage` is `false` in
+            // local mode, which has no people page.
+            canOpen={(location) => canOpenLocationPage(location.id)}
             onRename={openRename}
             onDelete={handleDelete}
           />

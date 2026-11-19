@@ -166,6 +166,23 @@ describe('Settings locations page', () => {
     }
   })
 
+  it('user sees no link to a people page in local mode', async () => {
+    // Given the default location and one other. Local mode has one person
+    // and no people page (households H5c decision T41), so a name must not
+    // link to `/settings/household/locations/$id`, which only redirects back.
+    await createLocation('Office')
+    renderPage()
+    await waitFor(() =>
+      expect(inMain().getByText('Office')).toBeInTheDocument(),
+    )
+
+    // Then no name in the list is a link
+    expect(inMain().getByRole('list')).toBeInTheDocument()
+    expect(within(inMain().getByRole('list')).queryAllByRole('link')).toEqual(
+      [],
+    )
+  })
+
   // A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
   // Before the fix Add and Rename used `mutate` with no `onError`: the dialog
   // stayed open and nothing on screen said the save failed.

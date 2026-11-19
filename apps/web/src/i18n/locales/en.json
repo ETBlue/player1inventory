@@ -652,6 +652,7 @@
       "noAccess": "No access",
       "noOrganizer": "No organizer",
       "yourRole": "Your role:",
+      "open": "Open {{name}}",
       "people": {
         "title": "People",
         "description": "People who have a role on this location",

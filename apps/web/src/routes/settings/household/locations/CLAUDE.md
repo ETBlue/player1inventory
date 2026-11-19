@@ -29,6 +29,7 @@ role). What each row shows and allows:
 | drag handle and Delete | household `owner` or `manager` (`canManageLocations`) | `usePermissions()` |
 | Rename | `organizer` of THAT location (`isOrganizerAt`) | `usePermissions()` |
 | Add | everyone (the server asks household `member`) | — |
+| the name is a link to the people page, `/settings/household/locations/$id`, named "Open {name}" (`settings.locations.open`) | cloud: a household `owner` or `manager` on every row, "No access" rows too (owner decision O24-A); anyone else only where they hold a role. Local: never (no people page, decision T41) | `usePermissions().canOpenLocationPage`, passed as `LocationList`'s `canOpen` (households H5c task H.6) |
 
 **A reorder sends every row of this list.** Since H5 task F.2 the server refuses a list
 that leaves out a location of the household (`BAD_USER_INPUT`), so an owner or manager
@@ -38,7 +39,7 @@ cached `GetHouseholdLocations` rows in the order that was sent, because the answ
 only the caller's own locations. Create, rename and delete refetch
 `GetHouseholdLocations` by name.
 
-Rows are not links yet, so a "No access" row opens nothing. Task H.6 of the H5c plan adds the link to the people page below. Location names render as stored.
+**Only the NAME is a link, not the whole row** (households H5c task H.6). The drag handle, Rename and Delete stay separate buttons, and the handle carries the drag listeners, so a click on the name never starts a drag. An owner's or manager's "No access" row links too: its page shows names and roles, never the location's stock, carts or logs (O24-A). A household `member` never gets a "No access" row from the server; if one came, it would not be a link. Location names render as stored, in the link too.
 The role text has a visually hidden prefix, `settings.locations.yourRole` ("Your role:"), so
 a screen reader says "Kitchen, Your role: Viewer", not "Kitchen Viewer". The `<ul>` has no
 `role="list"`: Biome refuses it (`noRedundantRoles`), so Safari with VoiceOver may not
@@ -107,7 +108,7 @@ Global `Item`s are **not** touched — an item stocked only in the deleted locat
 
 **i18n**: `settings.locations.*` in `src/i18n/locales/{en,tw}.json`.
 
-**Tests**: `src/routes/settings/household/locations/index.test.tsx` (route, local, incl. no role text in local mode), `index.cloud.test.tsx` (route, cloud: deleting the last location, an older server's `LAST_LOCATION` getting the general toast, the general one, no second toast when offline, the roles of H5 task F.3, the reorder refusal and the loading state), `index.stories.tsx` + `index.stories.test.tsx` (stories + smoke), location operations/cascade in `src/db/operations.test.ts`, E2E in `e2e/tests/location-switcher.spec.ts` and `e2e/tests/settings/locations.spec.ts`.
+**Tests**: `src/routes/settings/household/locations/index.test.tsx` (route, local, incl. no role text and no link in local mode), `index.cloud.test.tsx` (route, cloud: deleting the last location, an older server's `LAST_LOCATION` getting the general toast, the general one, no second toast when offline, the roles of H5 task F.3, the reorder refusal and the loading state, and since H5c task H.6 the links: a manager's "No access" row links, a member's links follow their roles, a click opens the people page and starts no drag, and a reorder still works with links on every row), `components/location/LocationList/LocationList.stories.test.tsx` (story `ManagerWithPeopleLinks`; a list with no `canOpen` has no link), `index.stories.tsx` + `index.stories.test.tsx` (stories + smoke), location operations/cascade in `src/db/operations.test.ts`, E2E in `e2e/tests/location-switcher.spec.ts` and `e2e/tests/settings/locations.spec.ts`.
 
 ### The people page of one location (cloud, households H5c task H.5)
 
