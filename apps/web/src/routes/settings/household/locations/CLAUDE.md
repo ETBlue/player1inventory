@@ -121,8 +121,9 @@ Global `Item`s are **not** touched — an item stocked only in the deleted locat
 It is a household detail page, so it is full-screen on every screen size
 (`isFullscreenPage`), with its own **Back to locations** link.
 
-Top to bottom: Back and the location name (as stored, no `capitalize`), a Rename button for
-an organizer of the location; the **No organizer** note; **People**; **Add person**;
+Top to bottom: Back and the location name (as stored, no `capitalize`; `people.unnamed`,
+"Location", when the name is not known: a member with no role, an unknown id, or a failed
+`GetHouseholdLocations`), a Rename button for an organizer of the location; the **No organizer** note; **People**; **Add person**;
 **Leave location**.
 
 | Who | Sees |
@@ -139,14 +140,22 @@ an organizer of the location; the **No organizer** note; **People**; **Add perso
 - **No organizer** (`hasOrganizer: false` on the `GetHouseholdLocations` row): the title
   `settings.locations.noOrganizer` and `people.noOrganizerNote` for everyone who sees the
   page (O26-A); `people.noOrganizerAction` only for an owner or manager.
+- **A role change** shows the picked role at once, and the picker is disabled until the
+  change and its reads are done (`pendingRoles`). Before the review of H.5 the picker jumped
+  back to the old role until the list was read again, and a second pick could be sent.
 - **Add person** shows when the caller may give at least one role. It lists the household
   members (`HouseholdMembers`, read only then) who are not on the people list, in the members
-  list's order (T43). With nobody left: `people.noOneToAdd`, and no button.
+  list's order (T43). With nobody left: `people.noOneToAdd`, and no button. When
+  `HouseholdMembers` fails: `people.membersLoadError` and Retry, not silence. The dialog's
+  Person select starts on the placeholder `people.choosePerson`.
 - **Leave location** shows when `roleAt(id) !== null` (the switcher's list). The only
   organizer's confirm adds `people.leaveOnlyOrganizer` (O25-A). After the leave an owner or
-  manager stays on the page; anyone else goes to the list.
+  manager stays on the page, and focus moves to the **People** heading (the Leave button
+  is gone); anyone else goes to the list.
 - **States**: the people loading → `LoadingSpinner`; `errorCode === 'FORBIDDEN'` → no access
-  (the CODE, not `isError`: after a leave Apollo keeps the old rows next to the error); any
+  (the CODE, not `isError`: after a leave, or a live event after someone else removed the
+  caller, Apollo keeps the old rows next to the error; pinned by "user who loses their role
+  in another tab sees no access, and no old names"); any
   other failed read → `people.loadError` and **Retry** (`people.retry`).
 - **Errors**: a refused write shows one toast, `people.error`, through `showSaveError` (none
   offline). A remove or leave the server answers `false` (already gone, decision T38) shows
