@@ -319,6 +319,69 @@ export async function createFirstLocation(
 }
 
 /**
+ * Delete every DATA row of one household, inside the caller's transaction
+ * (households H6 task J.4, decision T64): its logs, carts and cart rows,
+ * recipes and their lines, item links, stock, items, tags, tag types,
+ * vendors, shelves and locations. The `LocationMember` rows go with their
+ * location (ON DELETE CASCADE).
+ *
+ * It keeps the household row, its members, their household roles, its
+ * invites and its activity log. The caller decides what comes next:
+ * `clearAllData` makes "Home" again (decision H17), and `deleteHousehold`
+ * deletes the household row itself.
+ *
+ * One list, so the two callers cannot drift apart. Before J.4 it was the
+ * body of `clearAllData`.
+ *
+ * ── THE ORDER ──
+ *
+ * Children before parents. Most of these rows would also go by ON DELETE
+ * CASCADE, but one would not: `Tag.type` is `onDelete: NoAction`
+ * (schema.prisma), so a tag type that a tag still points at cannot be
+ * deleted. Tags go first. The explicit list also keeps
+ * `purge-coverage.test.ts` able to read which models are deleted.
+ *
+ * ── THE SCOPE ──
+ *
+ * Every filter is the household, or goes through the location, the item, the
+ * recipe or the cart. NONE goes by `userId` (issue #320): a log or a cart a
+ * co-member wrote goes too. Prisma reads `{ householdId: undefined }` as NO
+ * filter, so a missing id would empty every table for every household. It is
+ * refused before the first delete.
+ *
+ * Take the household lock (`lockHouseholdOrForbid`) BEFORE calling this.
+ *
+ * `scripts/verify-migration.ts` (`assertHouseholdLock`) keeps a copy of
+ * these statements. Change both together.
+ */
+export async function deleteHouseholdData(
+  tx: Prisma.TransactionClient,
+  householdId: string,
+): Promise<void> {
+  if (typeof householdId !== 'string' || householdId === '') {
+    throw new Error('deleteHouseholdData: no household id')
+  }
+  await tx.inventoryLog.deleteMany({ where: { location: { householdId } } })
+  await tx.cartItem.deleteMany({ where: { cart: { location: { householdId } } } })
+  await tx.cart.deleteMany({ where: { location: { householdId } } })
+  await tx.recipeItem.deleteMany({ where: { recipe: { householdId } } })
+  await tx.recipe.deleteMany({ where: { householdId } })
+  await tx.itemTag.deleteMany({ where: { item: { householdId } } })
+  await tx.itemVendor.deleteMany({ where: { item: { householdId } } })
+  // Before both `item` and `location`: ItemStock has a foreign key to each,
+  // both ON DELETE CASCADE.
+  await tx.itemStock.deleteMany({ where: { location: { householdId } } })
+  await tx.item.deleteMany({ where: { householdId } })
+  // Tags before tag types: `Tag.type` is NoAction.
+  await tx.tag.deleteMany({ where: { householdId } })
+  await tx.tagType.deleteMany({ where: { householdId } })
+  await tx.vendor.deleteMany({ where: { householdId } })
+  await tx.shelf.deleteMany({ where: { householdId } })
+  // Its `LocationMember` rows go by ON DELETE CASCADE.
+  await tx.location.deleteMany({ where: { householdId } })
+}
+
+/**
  * Take the `Household` row's lock for the rest of this transaction. Call it
  * FIRST in the transaction, before any other read or write.
  *

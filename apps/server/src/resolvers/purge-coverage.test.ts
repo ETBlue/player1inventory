@@ -6,7 +6,9 @@
  *
  * `clearAllData` (import.resolver.ts) and the E2E-only `DELETE /e2e/cleanup`
  * endpoint (lib/e2eCleanup.ts) each hand-maintain a list of `deleteMany`
- * calls. Nothing links those lists to `prisma/schema.prisma`, so adding a
+ * calls. Since households H6 task J.4 the first list is the body of
+ * `deleteHouseholdData` (lib/household.ts), which `clearAllData` and
+ * `deleteHousehold` both call, so that path is labelled after the helper. Nothing links those lists to `prisma/schema.prisma`, so adding a
  * model is an edit in two places that no compiler checks. When `Shelf` was
  * added, the resolvers were updated but their test mocks were not, and had a
  * mock been permissive, a path could have silently SKIPPED a table and left
@@ -36,7 +38,7 @@
  * A TEXT CHECK CANNOT SEE A VALUE. `{ where: { householdId } }` passes here
  * even when `householdId` is `undefined` at run time, and Prisma reads that as
  * NO filter. So `clearAllData` throws before its transaction when the id is
- * missing, `clearAllData.resolver.test.ts` and `lib/e2eCleanup.test.ts` pin the
+ * missing (and `deleteHouseholdData` throws too, before its first delete), `clearAllData.resolver.test.ts` and `lib/e2eCleanup.test.ts` pin the
  * exact values, and e2e/tests/purge-two-households.spec.ts checks the rows
  * against real Postgres.
  */
@@ -209,6 +211,7 @@ function bodyAfter(source: string, marker: string): string {
 }
 
 const importResolverSource = read('./import.resolver.ts')
+const householdLibSource = read('../lib/household.ts')
 const cleanupSource = read('../lib/e2eCleanup.ts')
 
 /** The 14 data models both paths delete through the scope, sorted. */
@@ -274,8 +277,12 @@ interface PurgePath extends FilterRules {
 
 const PURGE_PATHS: readonly PurgePath[] = [
   {
-    label: 'clearAllData',
-    purgeSource: bodyAfter(importResolverSource, 'clearAllData: async'),
+    // `clearAllData` and `deleteHousehold` both delete through this one
+    // helper since households H6 task J.4 (decision T64). Its body is what is
+    // read. The test "clearAllData deletes through deleteHouseholdData" below
+    // checks that the resolver holds no delete of its own.
+    label: 'deleteHouseholdData',
+    purgeSource: bodyAfter(householdLibSource, 'export async function deleteHouseholdData('),
     client: 'tx',
     models: DATA_MODELS,
     // Clear household keeps the household, its members and their household
@@ -364,7 +371,7 @@ describe('purge coverage against prisma/schema.prisma', () => {
   })
 
   it('knows about both purge paths', () => {
-    expect(PURGE_PATHS.map((p) => p.label)).toEqual(['clearAllData', 'e2eCleanup'])
+    expect(PURGE_PATHS.map((p) => p.label)).toEqual(['deleteHouseholdData', 'e2eCleanup'])
     for (const path of PURGE_PATHS) expect(path.purgeSource.length).toBeGreaterThan(0)
   })
 
@@ -392,8 +399,8 @@ describe('purge coverage against prisma/schema.prisma', () => {
   // count. It does not match a client held under another name for the
   // model, such as `const users = prisma.user` and then `users.delete(`.
   const DELETES_USER_ROW = /\.user\.delete(Many)?\(/
-  it('clearAllData does not delete the User row', () => {
-    expect(rulesOf('clearAllData').purgeSource).not.toMatch(DELETES_USER_ROW)
+  it('deleteHouseholdData does not delete the User row', () => {
+    expect(rulesOf('deleteHouseholdData').purgeSource).not.toMatch(DELETES_USER_ROW)
   })
 
   it('e2eCleanup does delete the User row', () => {
@@ -452,7 +459,7 @@ describe('purge filter form (issue #320)', () => {
       'tx.cartItem.deleteMany({ where: { location: { householdId } } })',
     ].join('\n')
 
-    expect(badFilters(deleteManyCalls(source), rulesOf('clearAllData'))).toEqual([
+    expect(badFilters(deleteManyCalls(source), rulesOf('deleteHouseholdData'))).toEqual([
       'tag: {}',
       'tag: (no argument)',
       "tag: { where: { id: 'x' } }",
@@ -477,7 +484,7 @@ describe('purge filter form (issue #320)', () => {
     }
     // And one by name, as the plan asks: a catalog model
     expect(
-      badFilters(deleteManyCalls('tx.item.deleteMany({ where: { userId } })'), rulesOf('clearAllData')),
+      badFilters(deleteManyCalls('tx.item.deleteMany({ where: { userId } })'), rulesOf('deleteHouseholdData')),
     ).toEqual(['item: { where: { userId } }'])
   })
 
@@ -487,7 +494,7 @@ describe('purge filter form (issue #320)', () => {
     const memberByUser = 'prisma.tag.deleteMany({ where: { OR: [{ userId }, { householdId: owned }] } })'
 
     expect(badFilters(deleteManyCalls(userRow), rulesOf('e2eCleanup'))).toEqual([])
-    expect(badFilters(deleteManyCalls(userRow), rulesOf('clearAllData'))).toEqual([
+    expect(badFilters(deleteManyCalls(userRow), rulesOf('deleteHouseholdData'))).toEqual([
       'user: { where: { id: userId } }',
     ])
     expect(badFilters(deleteManyCalls(otherModel), rulesOf('e2eCleanup'))).toEqual([
@@ -505,7 +512,7 @@ describe('purge filter form (issue #320)', () => {
       'tx.tag.deleteMany({ where: { householdId } })\nprisma.item.deleteMany({ where: { householdId } })',
     )
     expect(calls.map((c) => c.client)).toEqual(['tx', 'prisma'])
-    const wrong = calls.filter((c) => c.client !== rulesOf('clearAllData').client)
+    const wrong = calls.filter((c) => c.client !== rulesOf('deleteHouseholdData').client)
     expect(wrong.map((c) => c.model)).toEqual(['item'])
   })
 
@@ -521,15 +528,23 @@ describe('purge filter form (issue #320)', () => {
 
     // Then it reads back as the one-line form, and passes the check
     expect(calls).toEqual([{ client: 'tx', model: 'cartItem', arg: filter }])
-    expect(badFilters(calls, rulesOf('clearAllData'))).toEqual([])
+    expect(badFilters(calls, rulesOf('deleteHouseholdData'))).toEqual([])
   })
 
-  it('reads only the clearAllData body out of import.resolver.ts', () => {
-    // The file has other deleteMany calls, in the bulk import resolvers.
-    const whole = deleteManyCalls(importResolverSource)
-    const body = deleteManyCalls(bodyAfter(importResolverSource, 'clearAllData: async'))
-
-    expect(whole.length).toBeGreaterThan(body.length)
+  it('reads only the deleteHouseholdData body out of lib/household.ts', () => {
+    // The body ends at its own closing brace, so nothing after it counts.
+    const body = deleteManyCalls(rulesOf('deleteHouseholdData').purgeSource)
     expect(body).toHaveLength(14)
+    expect(rulesOf('deleteHouseholdData').purgeSource).not.toContain('export async function')
+  })
+
+  // Since households H6 task J.4 the two resolvers that delete a household's
+  // data call `deleteHouseholdData` and hold no delete of their own. If one
+  // of them got a `deleteMany` back, this guard would not read it, so these
+  // tests refuse it.
+  it('clearAllData deletes through deleteHouseholdData, inside its transaction', () => {
+    const body = bodyAfter(importResolverSource, 'clearAllData: async')
+    expect(deleteManyCalls(body)).toEqual([])
+    expect(body).toContain('await deleteHouseholdData(tx, householdId)')
   })
 })

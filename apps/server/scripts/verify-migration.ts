@@ -1960,7 +1960,10 @@ async function assertHouseholdLock(): Promise<void> {
   //
   // The statements are clearAllData's, in its order, with the same Prisma
   // calls (src/resolvers/import.resolver.ts, `clearAllData`, the body of its
-  // `prisma.$transaction`). Each line below names the resolver line it mirrors.
+  // `prisma.$transaction`). Since households H6 task J.4 the fourteen deletes
+  // live in `deleteHouseholdData` (src/lib/household.ts), which clearAllData
+  // calls; the copy below is of that function's body, unchanged. Each line
+  // below names the source line it mirrors.
   // The owner check before the transaction (requireHouseholdRole) is left
   // out: it takes no lock.
   {

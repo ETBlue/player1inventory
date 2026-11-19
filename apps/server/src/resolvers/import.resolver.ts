@@ -11,7 +11,12 @@ import {
   requireOwnRowOrUnclaimed,
 } from '../lib/authz.js'
 import { parseCartId } from '@p1i/types'
-import { createFirstLocation, firstLocationName, lockHousehold } from '../lib/household.js'
+import {
+  createFirstLocation,
+  deleteHouseholdData,
+  firstLocationName,
+  lockHousehold,
+} from '../lib/household.js'
 import { recordActivity } from '../lib/activity.js'
 import { prisma } from '../lib/prisma.js'
 import { type ChangedLocation, publishChange, publishHouseholdChange } from '../lib/publishChange.js'
@@ -2299,12 +2304,10 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     //   person can start again at once. If making it fails, every delete is
     //   rolled back.
     //
-    // The order of the deletes is children before parents, as before.
-    // `ItemStock`, `Cart`, `InventoryLog` and `LocationMember` would also go
-    // by ON DELETE CASCADE with their location, and the junction rows with
-    // their item; the explicit deletes keep the list complete for
-    // `purge-coverage.test.ts`, and nothing here depends on the cascades.
-    // `LocationMember` has no explicit delete: it goes with its location.
+    // The deletes themselves are `deleteHouseholdData` in lib/household.ts
+    // (households H6 task J.4, decision T64), shared with `deleteHousehold`.
+    // Its comment says why the order is children before parents.
+    // `purge-coverage.test.ts` reads that function's body.
     clearAllData: async (_, __, ctx) => {
       const userId = requireAuth(ctx)
       const householdId = await requireHousehold(ctx)
@@ -2317,23 +2320,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
 
       await prisma.$transaction(async (tx) => {
         await lockHousehold(tx, householdId)
-        await tx.inventoryLog.deleteMany({ where: { location: { householdId } } })
-        await tx.cartItem.deleteMany({ where: { cart: { location: { householdId } } } })
-        await tx.cart.deleteMany({ where: { location: { householdId } } })
-        await tx.recipeItem.deleteMany({ where: { recipe: { householdId } } })
-        await tx.recipe.deleteMany({ where: { householdId } })
-        await tx.itemTag.deleteMany({ where: { item: { householdId } } })
-        await tx.itemVendor.deleteMany({ where: { item: { householdId } } })
-        // Before both `item` and `location`: ItemStock has a foreign key to
-        // each, both ON DELETE CASCADE.
-        await tx.itemStock.deleteMany({ where: { location: { householdId } } })
-        await tx.item.deleteMany({ where: { householdId } })
-        await tx.tag.deleteMany({ where: { householdId } })
-        await tx.tagType.deleteMany({ where: { householdId } })
-        await tx.vendor.deleteMany({ where: { householdId } })
-        await tx.shelf.deleteMany({ where: { householdId } })
-        // Its `LocationMember` rows go by ON DELETE CASCADE.
-        await tx.location.deleteMany({ where: { householdId } })
+        // The ordered delete of every data row of the household (decision
+        // T64 of the H6 plan). Shared with `deleteHousehold`.
+        await deleteHouseholdData(tx, householdId)
         await createFirstLocation(tx, {
           householdId,
           userId,
