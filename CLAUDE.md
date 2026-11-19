@@ -209,8 +209,8 @@ that really set up that role.
 > tabs do not hear it**: `shouldDeliver` checks membership, and they are no longer members
 > (tested; the H5a known gap is still open). Their next request shows the right screen.
 >
-> **The location people page is built in H5c** (on `feature/households-h5c`, from `develop`
-> at `712f76f6`; not merged, not deployed; plan
+> **The location people page is built in H5c** (merged into `develop` as #391, merge
+> `7dbaeca9`, 2026-11-20; branched from `develop` at `712f76f6`; not deployed; plan
 > `docs/global/permissions/2026-11-19-households-plan-h5c.md`; deploy notes in section 10 of
 > the H4 runbook). No migration. The new web bundle selects a new query and a new field, so
 > the **server deploys before the web**. What H5c adds:
