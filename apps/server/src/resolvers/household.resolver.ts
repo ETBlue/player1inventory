@@ -1,10 +1,11 @@
 import { GraphQLError } from 'graphql'
-import type { HouseholdRole } from '@prisma/client'
+import type { HouseholdRole, Prisma } from '@prisma/client'
 import { requireAuth } from '../context.js'
 import { forbidden, requireHousehold, requireHouseholdRole } from '../lib/authz.js'
 import {
   alreadyInHousehold,
   createHouseholdFor,
+  displayNamesOf,
   firstLocationName,
   firstSignInNames,
   HOUSEHOLD_MOVE_TIMEOUT_MS,
@@ -51,6 +52,7 @@ function person(
   row: { userId: string; role: HouseholdRole; joinedAt: Date },
   names: Map<string, string>,
   callerId: string,
+  withLocationRole: Set<string>,
 ) {
   return {
     userId: row.userId,
@@ -60,21 +62,43 @@ function person(
     joinedAt: row.joinedAt.toISOString(),
     // Not an authorization check: it only marks the caller's own row.
     isMe: row.userId === callerId,
+    hasLocationRole: withLocationRole.has(row.userId),
   }
 }
 
 /**
- * The display names of some people, by id. Names ONLY: the select never
- * names `email`, so no role can read an address through this list (owner
- * decision O13-A).
+ * The people, of `userIds`, who hold a role on at least one location of
+ * `householdId` (households H5c, decision T40, owner decision O28-A).
+ *
+ * ONE read for the whole list, not one per person. The two relation filters
+ * keep it to THIS household:
+ *
+ * - `location: { householdId }`: a role on a location of another household
+ *   does not count.
+ * - `user: { householdMemberships: { some: { householdId } } }`: the row's
+ *   person is still a member of the household (decision H18). The ids come
+ *   from this household's member list, so this only matters for a person
+ *   removed between the two reads. It is kept so every `LocationMember` read
+ *   carries H18.
+ *
+ * `db` is the client to read with, for a call inside a transaction.
  */
-async function displayNames(userIds: string[]): Promise<Map<string, string>> {
-  if (userIds.length === 0) return new Map()
-  const rows = await prisma.user.findMany({
-    where: { id: { in: [...new Set(userIds)] } },
-    select: { id: true, displayName: true },
+async function peopleWithLocationRole(
+  householdId: string,
+  userIds: string[],
+  db: { locationMember: Prisma.TransactionClient['locationMember'] } = prisma,
+): Promise<Set<string>> {
+  if (userIds.length === 0) return new Set()
+  const rows = await db.locationMember.findMany({
+    where: {
+      userId: { in: [...new Set(userIds)] },
+      location: { householdId },
+      user: { householdMemberships: { some: { householdId } } },
+    },
+    select: { userId: true },
+    distinct: ['userId'],
   })
-  return new Map(rows.map((row) => [row.id, row.displayName]))
+  return new Set(rows.map((row) => row.userId))
 }
 
 /**
@@ -150,8 +174,12 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           a.joinedAt.getTime() - b.joinedAt.getTime() ||
           (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0),
       )
-      const names = await displayNames(rows.map((row) => row.userId))
-      return rows.map((row) => person(row, names, userId))
+      const ids = rows.map((row) => row.userId)
+      const [names, withLocationRole] = await Promise.all([
+        displayNamesOf(ids),
+        peopleWithLocationRole(householdId, ids),
+      ])
+      return rows.map((row) => person(row, names, userId, withLocationRole))
     },
   },
 
@@ -241,8 +269,14 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         return { row: saved, changed: true }
       })
       if (result.changed) await publishHouseholdChange(ctx, ['LOCATION'], householdId)
-      const names = await displayNames([target])
-      return person(result.row, names, callerId)
+      // Read after the commit: a role change in the household does not touch
+      // location roles (owner decision O20), so this is the same answer the
+      // list gives.
+      const [names, withLocationRole] = await Promise.all([
+        displayNamesOf([target]),
+        peopleWithLocationRole(householdId, [target]),
+      ])
+      return person(result.row, names, callerId, withLocationRole)
     },
 
     // The owner removes anyone but themself. A manager removes only a

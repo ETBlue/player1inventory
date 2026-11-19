@@ -132,6 +132,11 @@ type HouseholdPerson {
   joinedAt: String!
   # True only on the caller's own row.
   isMe: Boolean!
+  # True when the person has a role on at least one location of THIS
+  # household (households H5c, decision T40, owner decision O28-A). It does
+  # not say which location. Roles in another household do not count. The
+  # Members page shows "No location roles" when it is false.
+  hasLocationRole: Boolean!
 }
 
 extend type Query {

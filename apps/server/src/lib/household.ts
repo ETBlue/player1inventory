@@ -474,3 +474,22 @@ export async function lockHouseholdOrForbid(
     throw new GraphQLError('Forbidden', { extensions: { code: 'FORBIDDEN' } })
   }
 }
+
+/**
+ * The display names of some people, by id. One read, names ONLY: the select
+ * names `id` and `displayName` and never `email`, so no list built on it can
+ * show an address (owner decision O13-A of the H5b plan, decision T39 of the
+ * H5c plan).
+ *
+ * Moved here in households H5c task H.2. Before that, `household.resolver.ts`
+ * and `invite.resolver.ts` each had a private copy, and `locationPeople` would
+ * have needed a third.
+ */
+export async function displayNamesOf(userIds: string[]): Promise<Map<string, string>> {
+  if (userIds.length === 0) return new Map()
+  const rows = await prisma.user.findMany({
+    where: { id: { in: [...new Set(userIds)] } },
+    select: { id: true, displayName: true },
+  })
+  return new Map(rows.map((row) => [row.id, row.displayName]))
+}

@@ -61,6 +61,31 @@ extend type Query {
   householdLocations: [Location!]!
 }
 
+# One person with a role on a location (households H5c, decision T32). It
+# has no e-mail address, on purpose: the name is `User.displayName` only.
+type LocationPerson {
+  userId: ID!
+  displayName: String!
+  role: LocationRole!
+  # True only on the caller's own row.
+  isMe: Boolean!
+}
+
+extend type Query {
+  # Households H5c. See the plan, decisions T39 and O24.
+  #
+  # Every person whose role on this location still counts: they are still a
+  # member of the location's household (decision H18). Organizers first, then
+  # participants, then viewers. Inside one role by name, then by id.
+  #
+  # Who may read it (owner decision O24-A): anyone with a role on the
+  # location, and every household owner and manager, also on a location where
+  # they have no role. They see names and roles only, never the location's
+  # stock, carts or logs. A household `member` with no role there, a location
+  # of another household, and an unknown id all get the same FORBIDDEN.
+  locationPeople(locationId: ID!): [LocationPerson!]!
+}
+
 extend type Mutation {
   # Household role `member`. The caller becomes the new location's organizer.
   createLocation(name: String!): Location!

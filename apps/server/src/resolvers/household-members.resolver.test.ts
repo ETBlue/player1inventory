@@ -395,7 +395,8 @@ describe('householdMembers', () => {
     const res = await run(`query { __type(name: "HouseholdPerson") { fields { name } } }`, {}, BEA)
     const type = res.data?.__type as { fields: { name: string }[] } | null
     expect(type?.fields.map((f) => f.name).sort()).toEqual(
-      ['displayName', 'isMe', 'joinedAt', 'role', 'userId'].sort(),
+      // `hasLocationRole` since households H5c task H.2 (decision T40).
+      ['displayName', 'hasLocationRole', 'isMe', 'joinedAt', 'role', 'userId'].sort(),
     )
   })
 

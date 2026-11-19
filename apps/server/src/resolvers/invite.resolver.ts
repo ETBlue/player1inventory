@@ -2,7 +2,12 @@ import { GraphQLError } from 'graphql'
 import type { Prisma } from '@prisma/client'
 import { requireAuth } from '../context.js'
 import { forbidden, requireHousehold, requireHouseholdRole } from '../lib/authz.js'
-import { HOUSEHOLD_MOVE_TIMEOUT_MS, lockHouseholds, lockUser } from '../lib/household.js'
+import {
+  displayNamesOf,
+  HOUSEHOLD_MOVE_TIMEOUT_MS,
+  lockHouseholds,
+  lockUser,
+} from '../lib/household.js'
 import {
   alreadyMember,
   emptyHouseholdWhere,
@@ -59,20 +64,6 @@ function namedRoles(json: unknown, names: Map<string, string>): NamedLocationRol
     if (locationName !== undefined) out.push({ ...entry, locationName })
   }
   return out
-}
-
-/**
- * The display names of some people, by id. One read, names only (no e-mail).
- * `HouseholdInvite.createdById` is a foreign key, so every creator has a
- * row; `''` is a fallback that should never show.
- */
-async function displayNames(userIds: string[]): Promise<Map<string, string>> {
-  if (userIds.length === 0) return new Map()
-  const rows = await prisma.user.findMany({
-    where: { id: { in: [...new Set(userIds)] } },
-    select: { id: true, displayName: true },
-  })
-  return new Map(rows.map((row) => [row.id, row.displayName]))
 }
 
 /** An invite row is open while it is not used, not revoked and not expired. */
@@ -148,7 +139,7 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       )
       const [names, people] = await Promise.all([
         locationNames(householdId),
-        displayNames(rows.map((row) => row.createdById)),
+        displayNamesOf(rows.map((row) => row.createdById)),
       ])
       return rows.map((row) => ({
         id: row.id,
@@ -192,7 +183,7 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           select: { role: true },
         }),
         prisma.household.findUnique({ where: { id: row.householdId }, select: { name: true } }),
-        displayNames([row.createdById]),
+        displayNamesOf([row.createdById]),
         locationNames(row.householdId),
       ])
       return {
@@ -258,7 +249,7 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       await publishHouseholdChange(ctx, ['LOCATION'], householdId)
       const [names, people] = await Promise.all([
         locationNames(householdId),
-        displayNames([userId]),
+        displayNamesOf([userId]),
       ])
       return {
         id: row.id,

@@ -1,15 +1,18 @@
 import { GraphQLError } from 'graphql'
+import { LOCATION_ROLE_RANK } from '@p1i/types'
 import { type Context, requireAuth } from '../context.js'
 import {
   forbidden,
   locationIdsWithOrganizer,
   locationIdsWithRole,
+  locationRoleOf,
   locationRolesByLocation,
   requireHousehold,
   requireHouseholdRole,
+  requireLocationInHousehold,
   requireLocationRole,
 } from '../lib/authz.js'
-import { lockHousehold } from '../lib/household.js'
+import { displayNamesOf, lockHousehold } from '../lib/household.js'
 import { prisma } from '../lib/prisma.js'
 import { publishHouseholdChange } from '../lib/publishChange.js'
 import type { Location, Resolvers } from '../generated/graphql.js'
@@ -113,6 +116,43 @@ function firstLocationIdOf(ctx: Context, householdId: string): Promise<string | 
   return lookup
 }
 
+/** Plain code-point order, the same on every machine (no locale). */
+function byText(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
+/**
+ * The people of one location (households H5c, decision T39): every role row
+ * whose person is still a member of `householdId` (decision H18, the
+ * `countedOrganizerIn` shape in lib/authz.ts with no role filter). Sorted by
+ * role, organizer first, then by display name, then by id.
+ *
+ * It checks no role of the caller. `locationPeople` does that first.
+ */
+async function peopleOfLocation(ctx: Context, locationId: string, householdId: string) {
+  const callerId = requireAuth(ctx)
+  const rows = await prisma.locationMember.findMany({
+    where: { locationId, user: { householdMemberships: { some: { householdId } } } },
+    select: { userId: true, role: true },
+  })
+  const names = await displayNamesOf(rows.map((row) => row.userId))
+  return rows
+    .map((row) => ({
+      userId: row.userId,
+      // Every role row has a `User` row (a foreign key). `''` should never show.
+      displayName: names.get(row.userId) ?? '',
+      role: row.role,
+      // Not an authorization check: it only marks the caller's own row.
+      isMe: row.userId === callerId,
+    }))
+    .sort(
+      (a, b) =>
+        LOCATION_ROLE_RANK[b.role] - LOCATION_ROLE_RANK[a.role] ||
+        byText(a.displayName, b.displayName) ||
+        byText(a.userId, b.userId),
+    )
+}
+
 // ── LIVE EVENTS (households H3c-2 task D.3) ──
 //
 // Every mutation here publishes one household-level `LOCATION` event
@@ -156,6 +196,35 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
         orderBy: [{ order: 'asc' }, { id: 'asc' }],
       })
       return (rows as unknown as PrismaLocation[]).map(toGraphQL)
+    },
+
+    // The people page of one location (households H5c, decision T39, owner
+    // decision O24-A). The checks, in this order:
+    //
+    //   1. The caller's household (`requireHousehold`). Only a location of
+    //      THAT household (decision T35). It is checked in SQL by
+    //      `requireLocationInHousehold`, BEFORE any role is read: a person in
+    //      two households has real roles on the other household's locations,
+    //      and `locationRoleOf` would return them.
+    //   2. The caller's household role. An owner or manager may read the
+    //      people of every location of the household, also one where they
+    //      have no role (No access). They get names and roles only, never the
+    //      location's stock, carts or logs.
+    //   3. Anyone else needs a counted role on the location (`locationRoleOf`,
+    //      decision H18). Any role is enough: a viewer may read it.
+    //
+    // Every refusal is the same FORBIDDEN: an unknown id, another
+    // household's location, and a member with no role there.
+    //
+    // No lock: it is a read.
+    locationPeople: async (_, { locationId }, ctx) => {
+      const householdId = await requireHousehold(ctx)
+      await requireLocationInHousehold(ctx, locationId, householdId)
+      const householdRole = await requireHouseholdRole(ctx, householdId, 'member')
+      if (householdRole === 'member' && (await locationRoleOf(ctx, locationId)) === null) {
+        throw forbidden()
+      }
+      return peopleOfLocation(ctx, locationId, householdId)
     },
   },
 
