@@ -113,3 +113,53 @@ export const cloudStock = (
 })
 
 export type CloudStock = ReturnType<typeof cloudStock>
+
+// Catalog rows in the shape the cloud read queries select
+// (`apollo/operations/tags.graphql`, `vendors.graphql`, `recipes.graphql`,
+// `shelves.graphql`).
+export const cloudTagType = (id: string, name: string, color = 'blue') => ({
+  __typename: 'TagType' as const,
+  id,
+  name,
+  color,
+})
+
+export const cloudTag = (
+  id: string,
+  name: string,
+  typeId: string,
+  parentId: string | null = null,
+) => ({ __typename: 'Tag' as const, id, name, typeId, parentId })
+
+export const cloudVendor = (id: string, name: string) => ({
+  __typename: 'Vendor' as const,
+  id,
+  name,
+})
+
+export const cloudRecipe = (
+  id: string,
+  name: string,
+  items: { itemId: string; defaultAmount: number }[] = [],
+) => ({
+  __typename: 'Recipe' as const,
+  id,
+  name,
+  items: items.map((i) => ({ __typename: 'RecipeItem' as const, ...i })),
+  lastCookedAt: null,
+})
+
+export const cloudShelf = (
+  id: string,
+  name: string,
+  overrides: Record<string, unknown> = {},
+) => ({
+  __typename: 'Shelf' as const,
+  id,
+  name,
+  type: 'selection',
+  order: 0,
+  filterConfig: null,
+  itemIds: [] as string[],
+  ...overrides,
+})

@@ -7,7 +7,9 @@ import {
   ActiveLocationProvider,
   activeLocationStorageKey,
 } from '@/hooks/useActiveLocation'
+import { forbiddenError } from '@/test/cloudServerStub'
 import { callArgs } from '@/test/narrow'
+import { watchUnhandledRejections } from '@/test/unhandledRejections'
 import { NewItemDialog } from './NewItemDialog'
 
 // The dialog is MODE-AGNOSTIC since PR 2 Task 9b. It used to be create-only in
@@ -198,7 +200,9 @@ describe('NewItemDialog — cloud mode', () => {
     await db.items.clear()
     await db.itemStocks.clear()
     mockNavigate.mockClear()
-    mockCreateItem.mockClear()
+    // `mockReset`, not `mockClear`: a test below makes it reject, and that
+    // must not reach the next test.
+    mockCreateItem.mockReset()
     mockAddItemToLocation.mockReset()
     mockAddItemToLocation.mockResolvedValue({
       data: {
@@ -347,5 +351,88 @@ describe('NewItemDialog — cloud mode', () => {
     expect(
       await screen.findByRole('option', { name: /create .*sparkling water/i }),
     ).toBeInTheDocument()
+  })
+
+  // A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md),
+  // in cloud: the server refuses, so the generated mutation rejects the way
+  // Apollo does, and the cloud branch of `useCreateItem` /
+  // `useAddItemToLocation` passes the error on to the dialog.
+  describe('when the server refuses the save', () => {
+    let rejections: ReturnType<typeof watchUnhandledRejections>
+    beforeEach(() => {
+      rejections = watchUnhandledRejections()
+    })
+    afterEach(() => {
+      rejections.stop()
+    })
+
+    it('user sees a message when the server refuses a new item, and can try again', async () => {
+      // Given the server refuses the create
+      mockCreateItem.mockRejectedValue(forbiddenError())
+      const user = userEvent.setup()
+      const onOpenChange = vi.fn()
+      renderDialog(<NewItemDialog open={true} onOpenChange={onOpenChange} />)
+
+      // When the user types a new name and presses Create
+      await user.type(
+        await screen.findByRole('combobox', { name: /name/i }),
+        'Sparkling Water',
+      )
+      await user.click(await screen.findByRole('button', { name: /create/i }))
+
+      // Then the request was sent, and the dialog says it was not created
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Could not create Sparkling Water. Please try again.',
+      )
+      expect(mockCreateItem).toHaveBeenCalledTimes(1)
+      // And it stays open with the name kept and Create enabled again
+      expect(onOpenChange).not.toHaveBeenCalled()
+      expect(mockNavigate).not.toHaveBeenCalled()
+      expect(screen.getByRole('combobox', { name: /name/i })).toHaveValue(
+        'Sparkling Water',
+      )
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /create/i })).toBeEnabled(),
+      )
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    })
+
+    it('user sees a message when the server refuses to add an existing item here', async () => {
+      // Given Flour is stocked only in the Garage, and the server refuses
+      // to stock it in the Kitchen
+      mockAddItemToLocation.mockReset()
+      mockAddItemToLocation.mockRejectedValue(forbiddenError())
+      const user = userEvent.setup()
+      const onOpenChange = vi.fn()
+      const onSuccess = vi.fn()
+      renderDialog(
+        <NewItemDialog
+          open={true}
+          onOpenChange={onOpenChange}
+          onSuccess={onSuccess}
+        />,
+      )
+
+      // When the user picks Flour
+      await user.type(
+        await screen.findByRole('combobox', { name: /name/i }),
+        'Flour',
+      )
+      await user.click(await screen.findByRole('option', { name: /flour/i }))
+
+      // Then the request was sent, and the dialog says it was not added
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        /could not add flour to kitchen/i,
+      )
+      expect(mockAddItemToLocation).toHaveBeenCalledTimes(1)
+      expect(onOpenChange).not.toHaveBeenCalled()
+      expect(onSuccess).not.toHaveBeenCalled()
+      expect(screen.getByRole('combobox', { name: /name/i })).toHaveValue(
+        'Flour',
+      )
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    })
   })
 })
