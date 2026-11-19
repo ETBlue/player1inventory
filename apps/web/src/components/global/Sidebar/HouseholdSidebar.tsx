@@ -2,6 +2,7 @@ import { Link, useRouter } from '@tanstack/react-router'
 import {
   ArrowLeft,
   ChefHat,
+  History,
   MapPin,
   ShelvingUnit,
   SlidersHorizontal,
@@ -13,6 +14,7 @@ import { useTranslation } from 'react-i18next'
 import { HouseholdLabel } from '@/components/settings/HouseholdLabel'
 import { Button } from '@/components/ui/button'
 import { useDataMode } from '@/hooks/useDataMode'
+import { usePermissions } from '@/hooks/usePermissions'
 import { lastAppPage } from '@/lib/layoutRules'
 import { loadNavigationHistory } from '@/lib/sessionStorage'
 
@@ -32,6 +34,7 @@ const householdLinks = [
     icon: SlidersHorizontal,
     exact: true,
     cloudOnly: false,
+    readsActivity: false,
   },
   {
     to: '/settings/household/members',
@@ -39,6 +42,7 @@ const householdLinks = [
     icon: Users,
     exact: false,
     cloudOnly: true,
+    readsActivity: false,
   },
   {
     to: '/settings/household/locations',
@@ -46,6 +50,7 @@ const householdLinks = [
     icon: MapPin,
     exact: false,
     cloudOnly: false,
+    readsActivity: false,
   },
   {
     to: '/settings/household/shelves',
@@ -53,6 +58,7 @@ const householdLinks = [
     icon: ShelvingUnit,
     exact: false,
     cloudOnly: false,
+    readsActivity: false,
   },
   {
     to: '/settings/household/vendors',
@@ -60,6 +66,7 @@ const householdLinks = [
     icon: Store,
     exact: false,
     cloudOnly: false,
+    readsActivity: false,
   },
   {
     to: '/settings/household/recipes',
@@ -67,6 +74,7 @@ const householdLinks = [
     icon: ChefHat,
     exact: false,
     cloudOnly: false,
+    readsActivity: false,
   },
   {
     to: '/settings/household/tags',
@@ -74,6 +82,15 @@ const householdLinks = [
     icon: Tags,
     exact: false,
     cloudOnly: false,
+    readsActivity: false,
+  },
+  {
+    to: '/settings/household/activity',
+    labelKey: 'settings.household.activity.title',
+    icon: History,
+    exact: false,
+    cloudOnly: true,
+    readsActivity: true,
   },
 ] as const
 
@@ -88,8 +105,11 @@ export function HouseholdSidebar() {
   const router = useRouter()
   const { t } = useTranslation()
   const { mode } = useDataMode()
+  const { canReadActivity } = usePermissions()
   const links = householdLinks.filter(
-    (link) => mode === 'cloud' || !link.cloudOnly,
+    (link) =>
+      (mode === 'cloud' || !link.cloudOnly) &&
+      (canReadActivity || !link.readsActivity),
   )
 
   const goBack = () => {

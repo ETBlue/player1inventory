@@ -1,6 +1,7 @@
 import { createFileRoute, Navigate } from '@tanstack/react-router'
 import {
   ChefHat,
+  History,
   Home,
   MapPin,
   ShelvingUnit,
@@ -26,6 +27,7 @@ import {
 } from '@/components/ui/accordion'
 import { useDataMode } from '@/hooks/useDataMode'
 import { useIsDesktop } from '@/hooks/useIsDesktop'
+import { usePermissions } from '@/hooks/usePermissions'
 
 export const Route = createFileRoute('/settings/')({
   component: Settings,
@@ -43,6 +45,7 @@ function Settings() {
 function SettingsAccordion() {
   const { t } = useTranslation()
   const { mode } = useDataMode()
+  const { canReadActivity } = usePermissions()
 
   return (
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
@@ -111,6 +114,16 @@ function SettingsAccordion() {
                 description={t('settings.tags.description')}
                 to="/settings/household/tags"
               />
+              {/* Eighth, after Tags. Owner and managers in cloud only:
+                  local mode has no log (households H6 task J.6). */}
+              {mode === 'cloud' && canReadActivity && (
+                <SettingsNavCard
+                  icon={History}
+                  label={t('settings.household.activity.title')}
+                  description={t('settings.household.activity.description')}
+                  to="/settings/household/activity"
+                />
+              )}
             </AccordionContent>
           </AccordionItem>
 

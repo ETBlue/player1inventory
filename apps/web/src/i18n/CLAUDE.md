@@ -41,6 +41,7 @@ import { formatDate } from '@/lib/formatDate'
 import { formatRelativeTime } from '@/lib/formatRelativeTime'
 
 formatDate(date, language)         // EN: "Mar 9, 2026"  TW: "2026年3月9日"
+formatDateTime(date, language)     // date and time; '' for an invalid date (the activity log)
 formatRelativeTime(date, language) // EN: "yesterday"    TW: "昨天"
 ```
 Both use native `Intl` APIs — no extra library dependency.

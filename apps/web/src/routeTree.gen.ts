@@ -27,6 +27,7 @@ import { Route as SettingsHouseholdShelvesRouteImport } from './routes/settings/
 import { Route as SettingsHouseholdRecipesRouteImport } from './routes/settings/household/recipes'
 import { Route as SettingsHouseholdMembersRouteImport } from './routes/settings/household/members'
 import { Route as SettingsHouseholdLocationsRouteImport } from './routes/settings/household/locations'
+import { Route as SettingsHouseholdActivityRouteImport } from './routes/settings/household/activity'
 import { Route as ItemsIdStockRouteImport } from './routes/items/$id/stock'
 import { Route as ItemsIdRelationRouteImport } from './routes/items/$id/relation'
 import { Route as ItemsIdLogRouteImport } from './routes/items/$id/log'
@@ -147,6 +148,12 @@ const SettingsHouseholdLocationsRoute =
   SettingsHouseholdLocationsRouteImport.update({
     id: '/settings/household/locations',
     path: '/settings/household/locations',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const SettingsHouseholdActivityRoute =
+  SettingsHouseholdActivityRouteImport.update({
+    id: '/settings/household/activity',
+    path: '/settings/household/activity',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ItemsIdStockRoute = ItemsIdStockRouteImport.update({
@@ -312,6 +319,7 @@ export interface FileRoutesByFullPath {
   '/items/$id/log': typeof ItemsIdLogRoute
   '/items/$id/relation': typeof ItemsIdRelationRouteWithChildren
   '/items/$id/stock': typeof ItemsIdStockRoute
+  '/settings/household/activity': typeof SettingsHouseholdActivityRoute
   '/settings/household/locations': typeof SettingsHouseholdLocationsRouteWithChildren
   '/settings/household/members': typeof SettingsHouseholdMembersRoute
   '/settings/household/recipes': typeof SettingsHouseholdRecipesRouteWithChildren
@@ -355,6 +363,7 @@ export interface FileRoutesByTo {
   '/shopping': typeof ShoppingIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
   '/items/$id/stock': typeof ItemsIdStockRoute
+  '/settings/household/activity': typeof SettingsHouseholdActivityRoute
   '/settings/household/members': typeof SettingsHouseholdMembersRoute
   '/items/$id': typeof ItemsIdIndexRoute
   '/settings/household': typeof SettingsHouseholdIndexRoute
@@ -393,6 +402,7 @@ export interface FileRoutesById {
   '/items/$id/log': typeof ItemsIdLogRoute
   '/items/$id/relation': typeof ItemsIdRelationRouteWithChildren
   '/items/$id/stock': typeof ItemsIdStockRoute
+  '/settings/household/activity': typeof SettingsHouseholdActivityRoute
   '/settings/household/locations': typeof SettingsHouseholdLocationsRouteWithChildren
   '/settings/household/members': typeof SettingsHouseholdMembersRoute
   '/settings/household/recipes': typeof SettingsHouseholdRecipesRouteWithChildren
@@ -441,6 +451,7 @@ export interface FileRouteTypes {
     | '/items/$id/log'
     | '/items/$id/relation'
     | '/items/$id/stock'
+    | '/settings/household/activity'
     | '/settings/household/locations'
     | '/settings/household/members'
     | '/settings/household/recipes'
@@ -484,6 +495,7 @@ export interface FileRouteTypes {
     | '/shopping'
     | '/items/$id/log'
     | '/items/$id/stock'
+    | '/settings/household/activity'
     | '/settings/household/members'
     | '/items/$id'
     | '/settings/household'
@@ -521,6 +533,7 @@ export interface FileRouteTypes {
     | '/items/$id/log'
     | '/items/$id/relation'
     | '/items/$id/stock'
+    | '/settings/household/activity'
     | '/settings/household/locations'
     | '/settings/household/members'
     | '/settings/household/recipes'
@@ -563,6 +576,7 @@ export interface RootRouteChildren {
   ItemsIdRoute: typeof ItemsIdRouteWithChildren
   JoinTokenRoute: typeof JoinTokenRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
+  SettingsHouseholdActivityRoute: typeof SettingsHouseholdActivityRoute
   SettingsHouseholdLocationsRoute: typeof SettingsHouseholdLocationsRouteWithChildren
   SettingsHouseholdMembersRoute: typeof SettingsHouseholdMembersRoute
   SettingsHouseholdRecipesRoute: typeof SettingsHouseholdRecipesRouteWithChildren
@@ -698,6 +712,13 @@ declare module '@tanstack/react-router' {
       path: '/settings/household/locations'
       fullPath: '/settings/household/locations'
       preLoaderRoute: typeof SettingsHouseholdLocationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/household/activity': {
+      id: '/settings/household/activity'
+      path: '/settings/household/activity'
+      fullPath: '/settings/household/activity'
+      preLoaderRoute: typeof SettingsHouseholdActivityRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/items/$id/stock': {
@@ -1094,6 +1115,7 @@ const rootRouteChildren: RootRouteChildren = {
   ItemsIdRoute: ItemsIdRouteWithChildren,
   JoinTokenRoute: JoinTokenRoute,
   SettingsIndexRoute: SettingsIndexRoute,
+  SettingsHouseholdActivityRoute: SettingsHouseholdActivityRoute,
   SettingsHouseholdLocationsRoute: SettingsHouseholdLocationsRouteWithChildren,
   SettingsHouseholdMembersRoute: SettingsHouseholdMembersRoute,
   SettingsHouseholdRecipesRoute: SettingsHouseholdRecipesRouteWithChildren,
