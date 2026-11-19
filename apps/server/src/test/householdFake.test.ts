@@ -1558,3 +1558,74 @@ describe('householdFake: household.updateMany (households H5b, task G.4)', () =>
     ).rejects.toBeInstanceOf(UnknownWhereKeyError)
   })
 })
+
+describe('householdFake applies distinct on locationMember.findMany (households H5c, task H.2)', () => {
+  it('keeps one row per userId, and only rows the where matches', async () => {
+    // Given the caller and SECOND on KITCHEN, the caller also on GARAGE, and
+    // STRANGER on SHED
+    const fake = fixture()
+    await fake.client.locationMember.create({
+      data: { locationId: GARAGE, userId: CALLER, role: 'viewer' },
+    })
+
+    // When the rows of OUR household are read with distinct userId
+    const rows = await fake.client.locationMember.findMany({
+      where: { location: { householdId: OURS } },
+      distinct: ['userId'],
+    })
+
+    // Then the caller is there once, SECOND once, and STRANGER not at all
+    expect(rows.map((r) => r.userId).sort()).toEqual([CALLER, SECOND])
+    // And the caller's kept row is the first in store order (KITCHEN)
+    expect(rows.find((r) => r.userId === CALLER)?.locationId).toBe(KITCHEN)
+  })
+
+  it('without distinct, every matching row comes back', async () => {
+    // Given the caller on two locations of our household
+    const fake = fixture()
+    await fake.client.locationMember.create({
+      data: { locationId: GARAGE, userId: CALLER, role: 'viewer' },
+    })
+
+    // When the rows are read with no distinct
+    const rows = await fake.client.locationMember.findMany({
+      where: { location: { householdId: OURS } },
+    })
+
+    // Then the caller's two rows are both there
+    expect(rows.filter((r) => r.userId === CALLER)).toHaveLength(2)
+  })
+
+  it('accepts a single column name as a string', async () => {
+    // Given the fixture
+    const fake = fixture()
+
+    // When distinct names one column as a string
+    const rows = await fake.client.locationMember.findMany({ distinct: 'locationId' })
+
+    // Then one row per location
+    expect(rows.map((r) => r.locationId).sort()).toEqual([KITCHEN, SHED])
+  })
+
+  it('throws on a distinct key that is not a column', async () => {
+    // Given the fixture
+    const fake = fixture()
+
+    // When distinct names a relation
+    // Then it throws
+    await expect(
+      fake.client.locationMember.findMany({ distinct: ['location'] }),
+    ).rejects.toThrow(HouseholdFakeUnsupportedError)
+  })
+
+  it('distinct still throws on the other models', async () => {
+    // Given the fixture
+    const fake = fixture()
+
+    // When distinct is passed to householdMember.findMany
+    // Then it throws as an unknown option
+    await expect(
+      fake.client.householdMember.findMany({ distinct: ['userId'] } as never),
+    ).rejects.toThrow(/the option 'distinct'/)
+  })
+})

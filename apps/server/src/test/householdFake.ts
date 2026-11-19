@@ -125,8 +125,16 @@
 //   - `select` on `Household`, `HouseholdMember` and `LocationMember`.
 //     Accepted and IGNORED: whole rows come back. (It IS applied on
 //     `HouseholdInvite`, see above.)
-//   - `include`, `orderBy`, `take`, `skip`, `distinct`. All throw as unknown
-//     options, so no test can rest on something this file never applied.
+//   - `include`, `orderBy`, `take`, `skip`. All throw as unknown options, so
+//     no test can rest on something this file never applied. `distinct`
+//     throws too, except on `locationMember.findMany` (below).
+//
+// ── `distinct` ON `locationMember.findMany` (households H5c, task H.2) ──
+//
+// `HouseholdPerson.hasLocationRole` reads `distinct: ['userId']` (decision
+// T40). It is APPLIED: the first row of each combination of the named
+// columns is kept, in store order, as Prisma keeps one row per value. A
+// string or an array of `LocationMember` columns; any other key throws.
 //   - Nested writes, such as `household.create({ data: { members: { create }
 //     } })`, and update operators such as `{ set }`. A `data` value that is a
 //     plain object throws. Write each row with its own call.
@@ -334,6 +342,24 @@ function refuseUnknownOptions(model: string, method: string, args: object, allow
       throw new HouseholdFakeUnsupportedError(model, `the option '${key}' on ${method}`)
     }
   }
+}
+
+/** The columns of `LocationMember` that `distinct` may name. */
+const LOCATION_MEMBER_COLUMNS = ['locationId', 'userId', 'role', 'createdAt']
+
+/**
+ * The columns a `distinct` names, checked. `undefined` names none. A key that
+ * is not a `LocationMember` column throws, as Prisma refuses it.
+ */
+function distinctColumns(distinct: string | string[] | undefined): string[] {
+  if (distinct === undefined) return []
+  const columns = Array.isArray(distinct) ? distinct : [distinct]
+  for (const column of columns) {
+    if (!LOCATION_MEMBER_COLUMNS.includes(column)) {
+      throw new HouseholdFakeUnsupportedError('LocationMember', `the distinct key '${column}'`)
+    }
+  }
+  return columns
 }
 
 /** Nested writes and update operators arrive as plain objects. Neither is modelled. */
@@ -1058,11 +1084,22 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
       const row = state.locationMembers.find((m) => locationMemberMatches(m, args.where ?? {}))
       return row ? copy(row) : null
     },
-    findMany: async (args: { where?: Where; select?: Where } = {}) => {
-      refuseUnknownOptions('LocationMember', 'findMany', args, READ)
+    findMany: async (
+      args: { where?: Where; select?: Where; distinct?: string | string[] } = {},
+    ) => {
+      refuseUnknownOptions('LocationMember', 'findMany', args, [...READ, 'distinct'])
       checkLocationMemberWhere(args.where)
-      return state.locationMembers
-        .filter((m) => locationMemberMatches(m, args.where ?? {}))
+      const columns = distinctColumns(args.distinct)
+      const rows = state.locationMembers.filter((m) => locationMemberMatches(m, args.where ?? {}))
+      if (columns.length === 0) return rows.map(copy)
+      const seen = new Set<string>()
+      return rows
+        .filter((m) => {
+          const key = JSON.stringify(columns.map((c) => (m as unknown as Where)[c]))
+          if (seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
         .map(copy)
     },
     count: async (args: { where?: Where } = {}) => {
