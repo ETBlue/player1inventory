@@ -1409,11 +1409,13 @@ plan's *What this plan got wrong* and *Status*.
   **H7**). The question names that household and offers Copy here or Don't copy. Choosing
   another household the person is in, or a new one, needs Switch to… and a household input
   on the import mutations. See the H7 outline in `2026-10-31-households-plan.md`.
-- **The manual prompt "Import local data to cloud?" does not name the household** (O22-A
-  covers the STORED copy only). It shows when local items exist and `migration-prompted` is
-  unset, and the person presses Import on purpose, then answers "Import into which
-  location?", which lists that household's locations. A member pressing Import still gets
-  the role error after the location question.
+- ~~**The manual prompt "Import local data to cloud?" does not name the household**~~
+  **Fixed 2026-11-19** (`docs/global/bugs/2026-11-19-bug-manual-import-names-no-household.md`).
+  The question with no stored strategy now asks "Copy your offline data into {household}?"
+  like the stored copy, waits for the household, and offers no copy to a member (who gets
+  the sentence and Done, before any location question). The text that was here: it named no
+  household, and a member pressing Import got the role error only after "Import into which
+  location?".
 - Carried over from H5a, still open: the old-bundle shim removal, the deleted-organizer
   `hasOrganizer` fix (H6), the keyboard gap on `role="button"` badges, and the other items
   in the H5 plan's *Known gaps*.

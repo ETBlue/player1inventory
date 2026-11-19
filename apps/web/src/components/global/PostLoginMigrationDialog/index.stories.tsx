@@ -32,8 +32,11 @@ import { PostLoginMigrationDialog } from '.'
 // Idle story: set 'migration-prompted' in localStorage so the hook returns early.
 //   No db access occurs. Dialog stays closed.
 //
-// Prompting story: seed db with one item and clear 'migration-prompted'.
+// Prompting stories: seed db with one item and clear 'migration-prompted'.
 //   The hook finds local items → sets state to 'prompting' → dialog opens.
+//   They run in cloud mode with a household (`MockedProvider`), because the
+//   question names the household and reads the role, and waits until it has
+//   loaded (docs/global/bugs/2026-11-19-bug-manual-import-names-no-household.md).
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false } },
@@ -102,8 +105,32 @@ function PromptingStory() {
   return <PostLoginMigrationDialog />
 }
 
+// The owner: "Copy your offline data into Our Home?" with Copy here.
 export const Prompting: Story = {
-  name: 'Prompting — local data found, import dialog open',
+  name: 'Prompting — owner, local data found, copy question open',
+  decorators: [
+    (Story) => (
+      <MockedProvider mocks={cloudMocks('owner')}>
+        <Story />
+      </MockedProvider>
+    ),
+  ],
+  beforeEach: cloudMode,
+  render: () => <PromptingStory />,
+}
+
+// A member: the same question names the household, says who can copy, and
+// offers only Done. The location question never opens.
+export const PromptingMember: Story = {
+  name: 'PromptingMember — member, told up front, only Done',
+  decorators: [
+    (Story) => (
+      <MockedProvider mocks={cloudMocks('member')}>
+        <Story />
+      </MockedProvider>
+    ),
+  ],
+  beforeEach: cloudMode,
   render: () => <PromptingStory />,
 }
 
@@ -152,6 +179,11 @@ function cloudMocks(role: 'owner' | 'manager' | 'member') {
     },
   ]
   return mocks
+}
+
+function cloudMode() {
+  localStorage.setItem('data-mode', 'cloud')
+  return () => localStorage.removeItem('data-mode')
 }
 
 function storedCopy(strategy: 'skip' | 'clear') {

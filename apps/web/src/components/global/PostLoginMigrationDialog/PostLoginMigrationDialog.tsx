@@ -128,7 +128,7 @@ function MigrationDialogs({
   //
   // Cloud locations PR 4b deleted that dialog, because the copy keeps every
   // location now and the warning stopped being true. So the Import button
-  // calls `importData('append')` directly, and the whole read behind the
+  // (Copy here since 2026-11-19) calls `importData('append')` directly, and the whole read behind the
   // warning went with it: a TanStack Query over the LOCAL `locations` table
   // plus `resolveLocalActiveLocationId`, which existed only to name the
   // location being copied and the ones being left behind. Nothing is left
@@ -139,6 +139,18 @@ function MigrationDialogs({
     household !== undefined &&
     waitingStrategy !== null
   const canCopy = confirming && canCopyInto(household.role, waitingStrategy)
+
+  // The question with no stored strategy (local items, `migration-prompted`
+  // unset) asks the same way, naming the household
+  // (docs/global/bugs/2026-11-19-bug-manual-import-names-no-household.md).
+  // Its Copy here runs `importData('append')`, which is the `skip` strategy,
+  // so a manager may copy and a member may not. A member gets the sentence
+  // and Done, like the stored copy, and never reaches "Import into which
+  // location?". The hook waits for the household before it asks, so
+  // `household` is set here; the check keeps the dialog shut if it is not.
+  const prompting =
+    (state === 'prompting' || state === 'importing') && household !== undefined
+  const canPromptCopy = prompting && canCopyInto(household.role, 'skip')
 
   return (
     <>
@@ -215,43 +227,67 @@ function MigrationDialogs({
         />
       )}
 
-      {/* Manual import prompt dialog */}
-      <AlertDialog open={state === 'prompting' || state === 'importing'}>
+      {/* "Copy your offline data into {household}?" with no stored
+          strategy. Copy here copies with `skip`, after "Import into which
+          location?". Don't copy sets `migration-prompted`. A member gets
+          the sentence and one Done button, which does the same as Don't
+          copy. The server still checks the role; a refusal shows the error
+          dialog below. */}
+      <AlertDialog open={prompting}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {t('settings.postLoginMigration.title')}
+              {t('settings.postLoginMigration.confirmTitle', {
+                household: household?.name ?? '',
+              })}
             </AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription>
-            {t('settings.postLoginMigration.description')}
+            {canPromptCopy ? (
+              <>
+                {t('settings.postLoginMigration.confirmDescription')}
+                {household?.role !== 'owner' && (
+                  <> {t('settings.postLoginMigration.confirmShared')}</>
+                )}
+              </>
+            ) : (
+              t('settings.postLoginMigration.cannotCopyMember')
+            )}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={dismiss}
-              disabled={state === 'importing'}
-            >
-              {t('settings.postLoginMigration.skip')}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => importData('append')}
-              disabled={state === 'importing'}
-            >
-              {state === 'importing'
-                ? '...'
-                : t('settings.postLoginMigration.import')}
-            </AlertDialogAction>
+            {canPromptCopy ? (
+              <>
+                <AlertDialogCancel
+                  onClick={dismiss}
+                  disabled={state === 'importing'}
+                >
+                  {t('settings.postLoginMigration.dontCopy')}
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => importData('append')}
+                  disabled={state === 'importing'}
+                >
+                  {state === 'importing'
+                    ? '...'
+                    : t('settings.postLoginMigration.copyHere')}
+                </AlertDialogAction>
+              </>
+            ) : (
+              <AlertDialogAction onClick={dismiss}>
+                {t('common.done')}
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       {/* The copy failed.
           Both failing paths land here — the auto-import after a stored
-          strategy, and the Import button above. Before this dialog existed the
+          strategy, and Copy here in the question above. Before this dialog existed the
           first one set 'done' and said nothing, and the second one left an
           unhandled rejection with the prompt stuck on '...'.
-          The prompting dialog's `open` condition stays
-          'prompting' || 'importing', so these two never show at once. */}
+          The question above opens only on 'prompting' || 'importing', so
+          these two never show at once. */}
       <AlertDialog open={state === 'error'}>
         <AlertDialogContent>
           <AlertDialogHeader>

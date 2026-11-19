@@ -140,7 +140,9 @@ export type MigrationHousehold = {
 /**
  * What the hook needs from its caller. `household` is `undefined` while the
  * household is loading, and while the person is in no household
- * (`NO_HOUSEHOLD`). Then a stored copy waits and nothing is shown.
+ * (`NO_HOUSEHOLD`). Then both questions wait and nothing is shown: the
+ * stored copy's, and the one with no stored strategy (since
+ * docs/global/bugs/2026-11-19-bug-manual-import-names-no-household.md).
  */
 export type MigrationInput = MigrationAuth & {
   household: MigrationHousehold | undefined
@@ -157,9 +159,11 @@ export type MigrationInput = MigrationAuth & {
  * except `clear`: that deletes the household's data first, and the server
  * allows it to the `owner` only (`importCheck` with `forClear`).
  *
- * The confirm dialog reads this so it never offers a copy the server will
- * refuse (owner decision O22-A). The server still checks; this only picks
- * what the dialog shows.
+ * Both copy questions read this so they never offer a copy the server will
+ * refuse: the stored copy's (owner decision O22-A) with its stored strategy,
+ * and the one with no stored strategy with `skip`, the strategy its Copy here
+ * runs (docs/global/bugs/2026-11-19-bug-manual-import-names-no-household.md).
+ * The server still checks; this only picks what the dialog shows.
  */
 export function canCopyInto(
   role: HouseholdRole,
@@ -248,9 +252,8 @@ export function usePostLoginMigration({
 
     // A household the person joined is never offered the copy (owner
     // decision O12-A). Check it before both paths: a manager could copy,
-    // so `canCopyInto` would not stop it, and the prompting path does not
-    // read the role at all. While some household is skipped, wait until the
-    // household is known: it may be that one.
+    // so `canCopyInto` would not stop it. While some household is skipped,
+    // wait until the household is known: it may be that one.
     const skipped = readSkippedHouseholds()
     if (skipped.length > 0) {
       if (householdId === undefined) return
@@ -262,9 +265,8 @@ export function usePostLoginMigration({
     ) as ImportStrategy | null
 
     if (storedStrategy) {
-      // Only the stored copy is gated: it is one-shot and destructive on the
-      // cloud side. The prompting path below merely decides whether to show
-      // the dialog.
+      // Only the stored copy waits for the location list: it is one-shot and
+      // destructive on the cloud side. Both paths wait for the household.
       if (!locationsLoaded || !householdLoaded) return
       // Ask before copying (owner decision O22-A). The strategy may have
       // been chosen long ago, while the person was in no household, and the
@@ -275,6 +277,12 @@ export function usePostLoginMigration({
       setState('confirming')
       return
     }
+
+    // The question with no stored strategy names the household and reads the
+    // role too (docs/global/bugs/2026-11-19-bug-manual-import-names-no-household.md),
+    // so it waits for the household the same way. Nothing is stored while it
+    // waits, so a person in no household is asked once they are in one.
+    if (!householdLoaded) return
 
     getAllItems()
       .then((items) => {
@@ -352,8 +360,9 @@ export function usePostLoginMigration({
 
   // Don't copy (and the one button a person who cannot copy gets). The
   // stored strategy is removed, so the copy never runs. MIGRATION_PROMPTED_KEY
-  // is set, the same as Skip, so the next load does not ask again with
-  // "Import local data to cloud?". Local data on the device is not touched.
+  // is set, the same as `dismiss`, so the next load does not ask again with
+  // the question that has no stored strategy. Local data on the device is
+  // not touched.
   // A copy is still possible later, from Settings (`ImportCard`).
   function declineCopy() {
     setWaiting(null)

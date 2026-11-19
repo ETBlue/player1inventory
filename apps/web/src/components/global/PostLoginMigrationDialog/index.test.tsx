@@ -1,6 +1,6 @@
 import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
@@ -153,13 +153,16 @@ function renderDialog({ paused = false }: { paused?: boolean } = {}) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
-  return render(
+  const tree = () => (
     <QueryClientProvider client={queryClient}>
       <ActiveLocationProvider>
         <PostLoginMigrationDialog paused={paused} />
       </ActiveLocationProvider>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   )
+  const result = render(tree())
+  // Renders the same tree again, so a changed mock (the household) is read.
+  return { ...result, rerenderDialog: () => result.rerender(tree()) }
 }
 
 async function seedLocations(...entries: Array<[string, string]>) {
@@ -206,6 +209,15 @@ describe('PostLoginMigrationDialog — signing in copies the local pantry', () =
   })
 
   afterEach(async () => {
+    // Unmount FIRST. Testing Library's own cleanup runs after this hook, so
+    // without it the dialog is still mounted while the lines below clear
+    // localStorage and change the household, and its late effects and
+    // dialog can reach the NEXT test. Measured 2026-11-19: "user who joined
+    // another household is still asked here", run with the test before it,
+    // failed 1 run in 3 (and once on the code before that day's fix) with
+    // the dialog either missing or marked `aria-hidden`. With this line it
+    // passed 15 runs in a row. Which late write causes it was not proven.
+    cleanup()
     localStorage.clear()
     setHousehold('owner')
     vi.mocked(importCloudData).mockClear()
@@ -228,7 +240,7 @@ describe('PostLoginMigrationDialog — signing in copies the local pantry', () =
     renderDialog()
 
     // When the user accepts the import prompt
-    await user.click(await screen.findByRole('button', { name: 'Import' }))
+    await user.click(await screen.findByRole('button', { name: 'Copy here' }))
 
     // Then the copy asks where, with Home checked, and has not run yet
     expect(
@@ -256,7 +268,7 @@ describe('PostLoginMigrationDialog — signing in copies the local pantry', () =
     renderDialog()
 
     // When the user accepts the import prompt and the location question
-    await user.click(await screen.findByRole('button', { name: 'Import' }))
+    await user.click(await screen.findByRole('button', { name: 'Copy here' }))
     await screen.findByRole('heading', { name: 'Import into which location?' })
     await user.click(screen.getByRole('button', { name: 'Import' }))
 
@@ -285,7 +297,7 @@ describe('PostLoginMigrationDialog — signing in copies the local pantry', () =
     renderDialog()
 
     // When the user accepts the import prompt and the location question
-    await user.click(await screen.findByRole('button', { name: 'Import' }))
+    await user.click(await screen.findByRole('button', { name: 'Copy here' }))
     await screen.findByRole('heading', { name: 'Import into which location?' })
     await user.click(screen.getByRole('button', { name: 'Import' }))
 
@@ -415,6 +427,8 @@ describe('PostLoginMigrationDialog — a stored copy asks first', () => {
   })
 
   afterEach(() => {
+    // Unmount first; see the first afterEach in this file.
+    cleanup()
     localStorage.clear()
     setHousehold('owner')
     vi.mocked(importCloudData).mockClear()
@@ -571,6 +585,162 @@ describe('PostLoginMigrationDialog — a stored copy asks first', () => {
   })
 })
 
+// Bug 2026-11-19 (docs/global/bugs/2026-11-19-bug-manual-import-names-no-household.md).
+// The question with NO stored strategy (local items, `migration-prompted`
+// unset) used to read "Import local data to cloud?": it named no household,
+// and a member was taken through "Import into which location?" before the
+// server refused. It now asks like the stored copy (owner decision O22-A).
+// This copy always runs `skip` (`importData('append')`), so `canCopyInto`
+// lets an owner and a manager copy, and never a member. A manager with
+// `clear` cannot happen on this path.
+describe('PostLoginMigrationDialog — the copy question names the household', () => {
+  beforeEach(async () => {
+    localStorage.removeItem('migration-prompted')
+    // A local pantry is what puts the hook into the 'prompting' state.
+    await db.items.put(makeItem({ id: 'item-1', name: 'Milk' }))
+  })
+
+  afterEach(async () => {
+    // Unmount first; see the first afterEach in this file.
+    cleanup()
+    localStorage.clear()
+    setHousehold('owner')
+    vi.mocked(importCloudData).mockReset()
+    vi.mocked(importCloudData).mockResolvedValue({
+      skipped: { locationNames: [], rowCount: 0 },
+    })
+    await db.items.clear()
+  })
+
+  async function drain() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+  }
+
+  it('user who owns the household is asked, by name, with no shared line', async () => {
+    // Given the owner of "Our Home" with local items
+    setHousehold('owner')
+
+    // When the dialog mounts
+    renderDialog()
+
+    // Then it names Our Home and offers the copy
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Copy your offline data into Our Home?',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Copy here' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: "Don't copy" }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/This household is shared/)).toBeNull()
+  })
+
+  it('user who is a manager is told the household is shared, and can copy', async () => {
+    // Given a manager of "Our Home"
+    setHousehold('manager')
+    const user = userEvent.setup()
+    renderDialog()
+
+    // Then the shared line shows
+    expect(
+      await screen.findByText(
+        /This household is shared, and you are not its owner/,
+      ),
+    ).toBeInTheDocument()
+
+    // When the manager presses Copy here and picks the location
+    await user.click(screen.getByRole('button', { name: 'Copy here' }))
+    await screen.findByRole('heading', { name: 'Import into which location?' })
+    await user.click(screen.getByRole('button', { name: 'Import' }))
+
+    // Then the copy runs with `skip`, the strategy this question always uses
+    await waitFor(() => expect(importCloudData).toHaveBeenCalledTimes(1))
+    expect(callArgs(vi.mocked(importCloudData).mock, 0)[1]).toBe('skip')
+  })
+
+  it('user who is a member is told up front and never asked where', async () => {
+    // Given a member of "Our Home" (decision O1: a member cannot import)
+    setHousehold('member')
+    const user = userEvent.setup()
+    renderDialog()
+
+    // Then the question names the household and says who can copy
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Copy your offline data into Our Home?',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        /Only the owner or a manager of this household can copy data into it/,
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Copy here' })).toBeNull()
+
+    // When the member presses Done
+    await user.click(screen.getByRole('button', { name: 'Done' }))
+
+    // Then nothing is copied, the location question never opens, and the
+    // question is not asked again on this device
+    await drain()
+    expect(
+      screen.queryByRole('heading', { name: 'Import into which location?' }),
+    ).toBeNull()
+    expect(importCloudData).not.toHaveBeenCalled()
+    expect(localStorage.getItem('migration-prompted')).toBe('1')
+  })
+
+  it('nothing is asked while the household is loading, and the question comes once it loads', async () => {
+    // Given local items and a household that has not loaded
+    setHousehold('loading')
+    const { rerenderDialog } = renderDialog()
+    await drain()
+
+    // Then nothing is asked yet, and nothing is stored
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(localStorage.getItem('migration-prompted')).toBeNull()
+
+    // When the household loads
+    setHousehold('owner')
+    rerenderDialog()
+
+    // Then the question comes, naming it
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Copy your offline data into Our Home?',
+      }),
+    ).toBeInTheDocument()
+  })
+
+  it('user still sees the role sentence when the server refuses anyway', async () => {
+    // Given a manager (offered the copy) whose role the server refuses, for
+    // example because an owner changed it a moment ago
+    setHousehold('manager')
+    vi.mocked(importCloudData).mockRejectedValueOnce(
+      new ImportRefusedError('role'),
+    )
+    const user = userEvent.setup()
+    renderDialog()
+
+    // When the manager copies
+    await user.click(await screen.findByRole('button', { name: 'Copy here' }))
+    await screen.findByRole('heading', { name: 'Import into which location?' })
+    await user.click(screen.getByRole('button', { name: 'Import' }))
+
+    // Then the role sentence is shown
+    expect(
+      await screen.findByText(
+        /Only the owner or a manager of your household can copy data into it/,
+      ),
+    ).toBeInTheDocument()
+  })
+})
+
 // Bug 2026-11-19 (docs/global/bugs/2026-11-19-bug-join-turns-off-copy-prompt.md).
 // The join page used to turn the question off for good. Now the dialog skips
 // only the household joined, and waits on the join and sign-in pages.
@@ -581,6 +751,8 @@ describe('PostLoginMigrationDialog — after joining a household', () => {
   })
 
   afterEach(async () => {
+    // Unmount first; see the first afterEach in this file.
+    cleanup()
     localStorage.clear()
     setHousehold('owner')
     await db.items.clear()
@@ -616,7 +788,7 @@ describe('PostLoginMigrationDialog — after joining a household', () => {
 
     // Then the question comes
     expect(
-      await screen.findByRole('button', { name: 'Import' }),
+      await screen.findByRole('button', { name: 'Copy here' }),
     ).toBeInTheDocument()
   })
 
