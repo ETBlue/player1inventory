@@ -865,6 +865,22 @@ restored from the copy and compared with `diff -q`. Every row went red on an ass
 | 12 | no "(deleted account)" | 4: the per-action test, the deleted-account test, the tw test, the `DeletedAccount` smoke test |
 | 13 | Load more shown when `hasMore` is false | "user can load more, and Load more is gone at the end of the log" and the empty-log test |
 
+**Review of J.6 (2026-11-20).** One bug found and fixed. A person who had been a manager on
+this device, and is now a household `member`, saw the old log rows when they opened the
+page by URL. The rows came from the Apollo cache (it is stored in IndexedDB), and
+`cache-and-network` shows cached data at once. They stayed on screen until the server
+answered `FORBIDDEN`, and for good when the device was offline (a network error gives no
+`errorCode`). The page now also shows the no-access text when `usePermissions()` knows the
+household role and it is below manager (`roleKnown && !canReadActivity`). A role still
+loading does not hide the rows. Review mutation checks:
+
+| # | Mutation | Result |
+|---|---|---|
+| R1 | the role check removed from the page (the bug) | **red**: "household member never sees rows still in the cache, before or without an answer from the server" |
+| R2 | `roleKnown &&` dropped from the role check | **red**: "user sees the rows while the household role is still loading" |
+| R3 | `mergeActivityPage` always replaces on a first-page read | **red**: 2 hook tests ("a short first page still means the end …", "the end of the log is remembered …") |
+| R4 | `roleName` reads the location ladder for a household role too | **red**: 2 in `ActivityList.test.tsx` (the per-action test, the "You" test) |
+
 ---
 
 ## Task J.7 — web: the danger zones
@@ -1400,6 +1416,7 @@ Filled in from the task reports and reviews.
 | J.6 | O39 lists the texts | It has no text for the caller ("You"), for a missing name, location or role, for an unknown action, for one deleted location, or for the page's errors and link back. 13 texts were added; see the J.6 report |
 | J.6 | Files: no shared fixtures | The page story and the list story need the same 19 rows, and a named export in a `.stories.tsx` becomes a broken story. They live in a new module, `src/test/activityFixtures.ts` |
 | J.6 | Facts: "use the app's date helpers" | `formatDate` shows no time. A log row needs one, so `formatDateTime` was added beside it |
+| J.6 (review) | Step 1: "a `FORBIDDEN` … shows the no-access state"; the page read only the server's answer | With `cache-and-network`, rows cached during an earlier manager session showed until `FORBIDDEN` arrived, and for good offline. The page also checks the known household role (`usePermissions().canReadActivity`) |
 | J.5 | Step 1: `loadMore()` and `hasMore` | The hook also needed `isLoadingMore`, `loadMoreFailed` (a failed page must not reject, and must not hide the rows shown) and `refetch` (the page's Retry). `useDeleteHousehold` has an `isPending` of its own: it has no refetch, and it stays true until the move starts |
 
 ## Status
