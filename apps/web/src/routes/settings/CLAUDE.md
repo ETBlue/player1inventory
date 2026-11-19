@@ -6,7 +6,7 @@ Since households phase H1, every settings page except `/settings` itself lives u
 | Route | File | What it shows |
 |---|---|---|
 | `/settings` | `settings/index.tsx` | Desktop: `<Navigate to="/settings/household">`. Mobile: an accordion with two items. The household item (open), labelled by `HouseholdLabel`, holds six `SettingsNavCard` links, seven in cloud mode: **Members** is second there (households H5b task G.9). An owner or manager in cloud mode gets an eighth, **Activity**, after Tags (households H6 task J.6, `usePermissions().canReadActivity`). "Preferences" (closed) holds `UserSettingsPanel`. |
-| `/settings/household` | `settings/household/index.tsx` | Title `HouseholdLabel`, then `HouseholdNameCard` (cloud only), `ExportCard` and `ImportCard` |
+| `/settings/household` | `settings/household/index.tsx` | Title `HouseholdLabel`, then `HouseholdNameCard` (cloud only), `ExportCard`, `ImportCard` and, for the cloud owner only, `HouseholdDangerZone` (households H6 task J.7: Clear household, Delete all locations, Delete household, each confirmed by typing the household name exactly as stored) |
 
 **The household name (households H3a task 3.13).** In cloud mode the 🏠 sidebar link, the
 household sidebar heading, the household page title and the mobile accordion trigger all

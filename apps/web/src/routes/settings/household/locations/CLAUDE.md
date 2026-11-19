@@ -125,7 +125,8 @@ It is a household detail page, so it is full-screen on every screen size
 Top to bottom: Back and the location name (as stored, no `capitalize`; `people.unnamed`,
 "Location", when the name is not known: a member with no role, an unknown id, or a failed
 `GetHouseholdLocations`), a Rename button for an organizer of the location; the **No organizer** note; **People**; **Add person**;
-**Leave location**.
+**Leave location**; the **Danger zone** with **Remove all items** (organizers only, households
+H6 task J.7).
 
 | Who | Sees |
 |---|---|
@@ -153,6 +154,16 @@ Top to bottom: Back and the location name (as stored, no `capitalize`; `people.u
   organizer's confirm adds `people.leaveOnlyOrganizer` (O25-A). After the leave an owner or
   manager stays on the page, and focus moves to the **People** heading (the Leave button
   is gone); anyone else goes to the list.
+- **Remove all items** (households H6 task J.7, decision T55) is in a **Danger zone**
+  section at the bottom (`components/location/LocationDangerZone`). It shows to an
+  ORGANIZER of this location only (`usePermissions().canRemoveAllItems`), whatever the
+  household role: an owner or manager with no role here does not see it. It shows only when
+  the page knows the location's stored name, because the confirm asks the person to type it
+  exactly (case and spaces). It deletes the stock rows and cart rows of this location; the
+  location, its carts, people, roles, logs and the catalog stay. A refused remove keeps the
+  dialog open with `common.deleteFailed` inside it. The hook (`useRemoveAllLocationItems`)
+  reads every active list again and marks no lost location. Tested in
+  `$id.cloud.test.tsx` (*Remove all items*) and the component's own test.
 - **States**: the people loading → `LoadingSpinner`; `errorCode === 'FORBIDDEN'` → no access
   (the CODE, not `isError`: after a leave, or a live event after someone else removed the
   caller, Apollo keeps the old rows next to the error; pinned by "user who loses their role

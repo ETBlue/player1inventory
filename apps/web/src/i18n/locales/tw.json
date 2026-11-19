@@ -574,6 +574,16 @@
         "ownershipAccepted": "{{actor}} 成為了擁有者",
         "handoverStarted": "{{actor}} 的帳號已刪除，家庭需要新的擁有者",
         "accountDeleted": "{{actor}} 的帳號已刪除"
+      },
+      "danger": {
+        "title": "危險區域",
+        "clear": "清空家庭",
+        "clearDescription": "刪除目錄和所有據點及其內容，並建立新的「Home」。成員和他們的家庭角色會保留。",
+        "deleteLocations": "刪除所有據點",
+        "deleteLocationsDescription": "刪除所有據點及其庫存、購物車、紀錄和角色。目錄會保留，也不會建立新的據點。",
+        "deleteHousehold": "刪除家庭",
+        "deleteHouseholdDescription": "刪除家庭和裡面的所有東西。所有人都會失去存取權。",
+        "typeName": "請輸入 {{name}} 以確認"
       }
     },
     "user": {
@@ -721,6 +731,11 @@
         "unnamed": "據點",
         "choosePerson": "選擇一個人",
         "membersLoadError": "無法讀取家庭成員，請再試一次。"
+      },
+      "danger": {
+        "title": "危險區域",
+        "removeAll": "移除所有物品",
+        "removeAllDescription": "刪除這個據點的庫存和購物車裡的物品。據點、人員、紀錄和目錄會保留。"
       }
     },
     "shelves": {

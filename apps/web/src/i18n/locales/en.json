@@ -574,6 +574,16 @@
         "ownershipAccepted": "{{actor}} became the owner",
         "handoverStarted": "{{actor}}'s account was deleted. The household needs a new owner",
         "accountDeleted": "{{actor}}'s account was deleted"
+      },
+      "danger": {
+        "title": "Danger zone",
+        "clear": "Clear household",
+        "clearDescription": "Deletes the catalog and every location with everything in it. A new \"Home\" is made. People and their household roles stay.",
+        "deleteLocations": "Delete all locations",
+        "deleteLocationsDescription": "Deletes every location with its stock, carts, logs and roles. The catalog stays. No new location is made.",
+        "deleteHousehold": "Delete household",
+        "deleteHouseholdDescription": "Deletes the household and everything in it. Everyone loses access.",
+        "typeName": "Type {{name}} to confirm"
       }
     },
     "user": {
@@ -721,6 +731,11 @@
         "unnamed": "Location",
         "choosePerson": "Choose a person",
         "membersLoadError": "Could not load the household members. Try again."
+      },
+      "danger": {
+        "title": "Danger zone",
+        "removeAll": "Remove all items",
+        "removeAllDescription": "Deletes this location's stock and the items in its carts. The location, its people, its logs and the catalog stay."
       }
     },
     "shelves": {
