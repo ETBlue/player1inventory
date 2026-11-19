@@ -457,3 +457,27 @@ describe('checkWhere models dateGt (households H5b, the invite claim)', () => {
     }
   })
 })
+
+describe('checkWhere models the activity cursor (households H6, task J.1, decision T54)', () => {
+  const at = new Date('2026-11-20T12:00:00.000Z')
+
+  it('dateCompare accepts a Date, { lt: Date } and { lte: Date }, and nothing else', () => {
+    const spec = { createdAt: 'dateCompare' } as const
+    for (const value of [at, { lt: at }, { lte: at }]) {
+      expect(() => checkWhere('probe', { createdAt: value }, spec)).not.toThrow()
+    }
+    for (const value of [null, '2026-11-20', { gt: at }, { gte: at }, { lt: at, lte: at }, { lt: '2026' }]) {
+      expect(() => checkWhere('probe', { createdAt: value }, spec)).toThrow(UnsupportedWhereFilterError)
+    }
+  })
+
+  it('idCursor accepts a string, { in: [...] } and { lt: string }, and nothing else', () => {
+    const spec = { id: 'idCursor' } as const
+    for (const value of ['a', { in: ['a'] }, { lt: 'a' }]) {
+      expect(() => checkWhere('probe', { id: value }, spec)).not.toThrow()
+    }
+    for (const value of [null, 1, { gt: 'a' }, { lt: 1 }, { lt: 'a', in: ['a'] }, { not: 'a' }]) {
+      expect(() => checkWhere('probe', { id: value }, spec)).toThrow(UnsupportedWhereFilterError)
+    }
+  })
+})

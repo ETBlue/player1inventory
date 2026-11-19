@@ -71,6 +71,10 @@ export class UnsupportedWhereFilterError extends Error {
  * - `nullableDateLt` — `null`, or `{ lt: Date }` and nothing else.
  * - `dateGt` — `{ gt: Date }` and nothing else. For "not expired yet", such as
  *   `HouseholdInvite.expiresAt` in the invite claim (households H5b, T17).
+ * - `dateCompare` — a `Date`, or `{ lt: Date }`, or `{ lte: Date }`. For the
+ *   activity log's cursor (households H6, decision T54).
+ * - `idCursor` — a string, `{ in: [...] }`, or `{ lt: string }`. The other
+ *   half of that cursor: rows with the same `createdAt` are ordered by `id`.
  * - `{ nested }` — a relation filter or a compound unique key: an object whose
  *   own keys are checked against `nested`.
  * - `{ or }` — Prisma's `OR`: an array of `where` objects, each checked
@@ -84,6 +88,8 @@ export type WhereKeyKind =
   | 'null'
   | 'nullableDateLt'
   | 'dateGt'
+  | 'dateCompare'
+  | 'idCursor'
   | { nested: WhereSpec }
   | { or: WhereSpec }
 
@@ -154,6 +160,25 @@ function checkValue(label: string, key: string, value: unknown, kind: WhereKeyKi
         Object.keys(value).length === 1 &&
         value.gt instanceof Date
       if (!ok) refuse('{ gt: Date }')
+      return
+    }
+    case 'dateCompare': {
+      if (value instanceof Date) return
+      const keys = isPlainObject(value) ? Object.keys(value) : []
+      const ok =
+        keys.length === 1 &&
+        (keys[0] === 'lt' || keys[0] === 'lte') &&
+        (value as Record<string, unknown>)[keys[0]] instanceof Date
+      if (!ok) refuse('a Date, { lt: Date } or { lte: Date }')
+      return
+    }
+    case 'idCursor': {
+      if (typeof value === 'string' || isInFilter(value)) return
+      const ok =
+        isPlainObject(value) &&
+        Object.keys(value).length === 1 &&
+        typeof value.lt === 'string'
+      if (!ok) refuse('a string, { in: [...] } or { lt: string }')
       return
     }
     case 'number': {

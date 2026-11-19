@@ -240,4 +240,42 @@ describe('householdWorld: household.deleteMany cascades across the fakes (househ
     ).rejects.toThrow('boom')
     expect(world.contents.rows.items).toEqual([])
   })
+
+  it('has the householdActivity model; its rows roll back with a transaction and go with their household (H6 task J.1)', async () => {
+    // Given two households
+    const world = createHouseholdWorld()
+    world.seedHouseholds({
+      households: [household('hh-1', 'u1'), household('hh-2', 'u2')],
+      householdMembers: [
+        { householdId: 'hh-1', userId: 'u1', role: 'owner', joinedAt: T },
+        { householdId: 'hh-2', userId: 'u2', role: 'owner', joinedAt: T },
+      ],
+    })
+    await world.client.householdActivity.create({
+      data: { householdId: 'hh-1', actorId: 'u1', action: 'MEMBER_JOINED' },
+    })
+    await world.client.householdActivity.create({
+      data: { householdId: 'hh-2', actorId: 'u2', action: 'MEMBER_JOINED' },
+    })
+
+    // When a transaction writes a row and then throws
+    await expect(
+      world.client.$transaction(async (tx: typeof world.client) => {
+        await tx.householdActivity.create({
+          data: { householdId: 'hh-1', actorId: 'u1', action: 'MEMBER_LEFT' },
+        })
+        throw new Error('boom')
+      }),
+    ).rejects.toThrow('boom')
+
+    // Then its row is gone
+    expect(world.households.state.householdActivities.map((r) => r.action)).toEqual([
+      'MEMBER_JOINED',
+      'MEMBER_JOINED',
+    ])
+
+    // And deleting hh-1 deletes hh-1's row only
+    await world.client.household.deleteMany({ where: { id: 'hh-1' } })
+    expect(world.households.state.householdActivities.map((r) => r.householdId)).toEqual(['hh-2'])
+  })
 })

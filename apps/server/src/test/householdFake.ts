@@ -71,6 +71,35 @@
 //     a read that would not return it. A key that is not a column (a relation
 //     such as `household`, or a typo) throws.
 //
+// ── HouseholdActivity (households H6, task J.1, decision T46) ──
+//
+//   - `create` honours `data.id` (else it makes one) and raises P2002 on a
+//     taken id. It needs `householdId`, `actorId` and `action` (NOT NULL with
+//     no default), checks `action` against the `ActivityAction` enum, and
+//     raises P2003 for a household this fake does not hold. `targetUserId`,
+//     `locationId` and `details` start null; `details` is stored as a copy.
+//     `actorId`, `targetUserId` and `locationId` have NO foreign key, as in
+//     the migration, so they are not checked.
+//   - `where` takes the keys of the Activity page's cursor (decision T54) and
+//     no other: `id` (a value, `{ in }` or `{ lt }`), `householdId` (a value
+//     or `{ in }`), `createdAt` (a `Date`, `{ lt }` or `{ lte }`) and `OR`
+//     over those three. Any other key, such as `action` or `actorId`,
+//     THROWS. Add it on purpose, with a test, when a resolver needs it.
+//   - `orderBy` on `createdAt` and `id`, `asc` or `desc`, one object or a
+//     list, applied in order. `take` is a count of 0 or more, applied after
+//     the order. Any other column or a negative `take` throws.
+//   - `select` is applied on the columns, as on invites.
+//   - `findUnique` must name `id` and nothing else, as a plain string.
+//   - The rows live in `state`, so they roll back with `runInTransaction`,
+//     and `household.deleteMany` deletes them with their household
+//     (`onDelete: Cascade`).
+//   - The household `where` takes `activities: { none: {} }`. Decision T49
+//     says the join does NOT ask it; it is modelled so a test can SEE a
+//     join that asks it (the household is then kept), rather than throw.
+//   - `id` `{ lt }` compares strings in JavaScript order. Postgres compares
+//     by the database collation. For the `cuid()` ids the server makes
+//     (lower-case letters and digits) the two orders agree.
+//
 // ── household.deleteMany AND "IS IT EMPTY" (households H5b, task G.4) ──
 //
 // `joinHousehold` deletes the joiner's own household only when it is empty,
@@ -153,7 +182,14 @@
 // columns is kept, in store order, as Prisma keeps one row per value. A
 // string or an array of `LocationMember` columns; any other key throws.
 
-import type { Household, HouseholdInvite, HouseholdMember, LocationMember } from '@prisma/client'
+import {
+  ActivityAction,
+  type Household,
+  type HouseholdActivity,
+  type HouseholdInvite,
+  type HouseholdMember,
+  type LocationMember,
+} from '@prisma/client'
 import { OwnedRowNotFoundError } from './ownedRowFake.js'
 import { checkWhere, type WhereKeyKind, type WhereSpec } from './whereKeys.js'
 
@@ -161,6 +197,7 @@ export type HouseholdRow = Household
 export type HouseholdMemberRow = HouseholdMember
 export type LocationMemberRow = LocationMember
 export type HouseholdInviteRow = HouseholdInvite
+export type HouseholdActivityRow = HouseholdActivity
 
 /** What the fake needs to know about a location: its id and its household. */
 export interface LocationRef {
@@ -254,6 +291,8 @@ const HOUSEHOLD_WHERE: WhereSpec = {
   vendors: NONE,
   recipes: NONE,
   shelves: NONE,
+  // Read from this fake's own activity store (H6 task J.1). See the head.
+  activities: NONE,
   locations: {
     nested: {
       every: {
@@ -313,6 +352,16 @@ const INVITE_WHERE: WhereSpec = {
   revokedAt: 'null',
   expiresAt: 'dateGt',
 }
+
+// The keys of the Activity page's cursor (decision T54), and no other.
+const ACTIVITY_CURSOR: WhereSpec = {
+  id: 'idCursor',
+  householdId: 'in',
+  createdAt: 'dateCompare',
+}
+const ACTIVITY_WHERE: WhereSpec = { ...ACTIVITY_CURSOR, OR: { or: ACTIVITY_CURSOR } }
+
+const ACTIVITY_ACTIONS: readonly string[] = Object.values(ActivityAction)
 
 // ── Small helpers ──
 
@@ -436,11 +485,81 @@ function selectInvite(row: HouseholdInviteRow, select: Where | undefined): Recor
   return out
 }
 
+const ACTIVITY_COLUMNS = [
+  'id',
+  'householdId',
+  'actorId',
+  'action',
+  'targetUserId',
+  'locationId',
+  'details',
+  'createdAt',
+] as const
+
+// A row used only to check a `select` before a write or a read.
+const placeholderActivity = Object.fromEntries(
+  ACTIVITY_COLUMNS.map((c) => [c, null]),
+) as unknown as HouseholdActivityRow
+
+/**
+ * A row as Prisma returns it for `select`: only the columns set to `true`,
+ * each copied. With no `select`, a copy of the whole row. A key that is not a
+ * column throws.
+ */
+function selectColumns(
+  model: string,
+  columns: readonly string[],
+  row: object,
+  select: Where | undefined,
+): Record<string, unknown> {
+  if (select === undefined) return copy(row) as Record<string, unknown>
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(select)) {
+    if (!columns.includes(key)) {
+      throw new HouseholdFakeUnsupportedError(
+        model,
+        `the select key '${key}' (only the columns are modelled, no relation)`,
+      )
+    }
+    if (value === true) out[key] = copy((row as Record<string, unknown>)[key])
+    else if (value !== false && value !== undefined) {
+      throw new HouseholdFakeUnsupportedError(model, `the select value of '${key}'`)
+    }
+  }
+  return out
+}
+
+/**
+ * An `orderBy` on `HouseholdActivity`, checked, as a list of
+ * `[column, direction]`. One object or a list of objects, each with ONE key:
+ * `createdAt` or `id`, `asc` or `desc`. Anything else throws.
+ */
+function activityOrder(orderBy: unknown): [('createdAt' | 'id'), ('asc' | 'desc')][] {
+  if (orderBy === undefined) return []
+  const list = Array.isArray(orderBy) ? orderBy : [orderBy]
+  return list.map((entry) => {
+    const pairs = isPlainObject(entry) ? Object.entries(entry) : []
+    const [column, direction] = pairs[0] ?? []
+    if (
+      pairs.length !== 1 ||
+      (column !== 'createdAt' && column !== 'id') ||
+      (direction !== 'asc' && direction !== 'desc')
+    ) {
+      throw new HouseholdFakeUnsupportedError(
+        'HouseholdActivity',
+        `the orderBy ${JSON.stringify(entry)} (only createdAt and id, asc or desc)`,
+      )
+    }
+    return [column, direction]
+  })
+}
+
 export interface HouseholdFakeState {
   households: HouseholdRow[]
   householdMembers: HouseholdMemberRow[]
   locationMembers: LocationMemberRow[]
   householdInvites: HouseholdInviteRow[]
+  householdActivities: HouseholdActivityRow[]
 }
 
 /**
@@ -466,6 +585,7 @@ export interface HouseholdFakeOptions {
   householdMembers?: HouseholdMemberRow[]
   locationMembers?: LocationMemberRow[]
   householdInvites?: HouseholdInviteRow[]
+  householdActivities?: HouseholdActivityRow[]
   /**
    * The location rows, read on every call that needs one: the foreign key of
    * a `LocationMember` write, and the `location` relation filter. Pass a
@@ -490,6 +610,7 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     householdMembers: (options.householdMembers ?? []).map(copy),
     locationMembers: (options.locationMembers ?? []).map(copy),
     householdInvites: (options.householdInvites ?? []).map(copy),
+    householdActivities: (options.householdActivities ?? []).map(copy),
   }
   let seq = 0
 
@@ -602,6 +723,11 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
         if (!everyLocation(row.id, filter as Where)) return false
         continue
       }
+      if (key === 'activities') {
+        const own = (a: HouseholdActivityRow) => a.householdId === row.id
+        if (!noneOf(filter as Where, state.householdActivities, own)) return false
+        continue
+      }
       if (!matchesScalar((row as unknown as Where)[key], filter)) return false
     }
     return true
@@ -675,11 +801,43 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     return true
   }
 
+  /** `HouseholdActivity`: the cursor keys, and `OR` over them. The shape was checked already. */
+  function activityMatches(row: HouseholdActivityRow, where: Where): boolean {
+    for (const [key, filter] of Object.entries(where)) {
+      if (filter === undefined) continue
+      if (key === 'OR') {
+        if (!(filter as Where[]).some((branch) => activityMatches(row, branch))) return false
+        continue
+      }
+      if (key === 'createdAt') {
+        const time = row.createdAt.getTime()
+        if (filter instanceof Date) {
+          if (time !== filter.getTime()) return false
+          continue
+        }
+        const f = filter as { lt?: Date; lte?: Date }
+        if (f.lt !== undefined && !(time < f.lt.getTime())) return false
+        if (f.lte !== undefined && !(time <= f.lte.getTime())) return false
+        continue
+      }
+      if (key === 'id' && typeof filter === 'object' && filter !== null && 'lt' in filter) {
+        if (!(row.id < (filter as { lt: string }).lt)) return false
+        continue
+      }
+      if (!matchesScalar((row as unknown as Where)[key], filter)) return false
+    }
+    return true
+  }
+
   // ── Once-per-call checks ──
 
   function checkInviteWhere(where: Where | undefined) {
     checkWhere('householdFake(HouseholdInvite)', where, INVITE_WHERE)
     checkRoleFilter('HouseholdInvite', where?.householdRole, HOUSEHOLD_ROLES)
+  }
+
+  function checkActivityWhere(where: Where | undefined) {
+    checkWhere('householdFake(HouseholdActivity)', where, ACTIVITY_WHERE)
   }
 
   function checkHouseholdWhere(where: Where | undefined) {
@@ -874,6 +1032,39 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     return row
   }
 
+  function insertActivity(data: Data): HouseholdActivityRow {
+    const model = 'HouseholdActivity'
+    // `details` is JSON, so it is not refused as a nested write.
+    const { details, ...rest } = data
+    refuseNestedData(model, rest)
+    for (const column of ['householdId', 'actorId', 'action']) {
+      if (typeof rest[column] !== 'string') throw new HouseholdFakeMissingColumnError(model, column)
+    }
+    if (!ACTIVITY_ACTIONS.includes(rest.action as string)) {
+      throw new HouseholdFakeUnsupportedError(
+        model,
+        `the action ${JSON.stringify(rest.action)}, which is not in the ActivityAction enum`,
+      )
+    }
+    const id = (rest.id as string | undefined) ?? `activity-${++seq}`
+    if (state.householdActivities.some((a) => a.id === id)) {
+      throw new HouseholdFakeUniqueError(model, 'HouseholdActivity_pkey', id)
+    }
+    if (!state.households.some((h) => h.id === rest.householdId)) {
+      throw new HouseholdFakeForeignKeyError(model, 'householdId', rest.householdId as string)
+    }
+    const row = {
+      targetUserId: null,
+      locationId: null,
+      createdAt: new Date(),
+      ...stripUndefined(rest),
+      id,
+      details: details === undefined ? null : copy(details),
+    } as HouseholdActivityRow
+    state.householdActivities.push(row)
+    return row
+  }
+
   // ── Updates. Each builds the new row, checks it, then writes it. ──
 
   function updateHouseholdRow(row: HouseholdRow, data: Data): HouseholdRow {
@@ -997,6 +1188,7 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
       state.households = state.households.filter((h) => !ids.has(h.id))
       state.householdMembers = state.householdMembers.filter((m) => !ids.has(m.householdId))
       state.householdInvites = state.householdInvites.filter((i) => !ids.has(i.householdId))
+      state.householdActivities = state.householdActivities.filter((a) => !ids.has(a.householdId))
       state.locationMembers = state.locationMembers.filter((m) => !locationIds.has(m.locationId))
       return { count: ids.size }
     },
@@ -1203,7 +1395,84 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     },
   }
 
-  const client = { household, householdMember, locationMember, householdInvite }
+  /** The rows that match `where`, in the order `orderBy` asks, cut to `take`. */
+  function readActivities(args: { where?: Where; orderBy?: unknown; take?: unknown }) {
+    checkActivityWhere(args.where)
+    const order = activityOrder(args.orderBy)
+    if (args.take !== undefined && !(Number.isInteger(args.take) && (args.take as number) >= 0)) {
+      throw new HouseholdFakeUnsupportedError('HouseholdActivity', `the take ${JSON.stringify(args.take)}`)
+    }
+    const rows = state.householdActivities.filter((a) => activityMatches(a, args.where ?? {}))
+    rows.sort((a, b) => {
+      for (const [column, direction] of order) {
+        const x = column === 'createdAt' ? a.createdAt.getTime() : a.id
+        const y = column === 'createdAt' ? b.createdAt.getTime() : b.id
+        if (x === y) continue
+        const less = x < y ? -1 : 1
+        return direction === 'asc' ? less : -less
+      }
+      return 0
+    })
+    return args.take === undefined ? rows : rows.slice(0, args.take as number)
+  }
+
+  const activityRead = ['where', 'select', 'orderBy', 'take']
+
+  const householdActivity = {
+    findUnique: async (args: { where: Where; select?: Where }) => {
+      refuseUnknownOptions('HouseholdActivity', 'findUnique', args, READ)
+      checkActivityWhere(args.where)
+      const keys = Object.keys(args.where).filter((k) => args.where[k] !== undefined)
+      if (keys.length !== 1 || keys[0] !== 'id' || typeof args.where.id !== 'string') {
+        throw new HouseholdFakeUnsupportedError(
+          'HouseholdActivity',
+          "a findUnique that does not name exactly 'id' as a plain string",
+        )
+      }
+      const row = state.householdActivities.find((a) => a.id === args.where.id)
+      // biome-ignore lint/suspicious/noExplicitAny: the shape depends on `select`, as in Prisma
+      return (row ? selectColumns('HouseholdActivity', ACTIVITY_COLUMNS, row, args.select) : null) as any
+    },
+    findFirst: async (
+      args: { where?: Where; select?: Where; orderBy?: unknown; take?: unknown } = {},
+    ) => {
+      refuseUnknownOptions('HouseholdActivity', 'findFirst', args, activityRead)
+      const row = readActivities(args)[0]
+      // biome-ignore lint/suspicious/noExplicitAny: the shape depends on `select`, as in Prisma
+      return (row ? selectColumns('HouseholdActivity', ACTIVITY_COLUMNS, row, args.select) : null) as any
+    },
+    findMany: async (
+      args: { where?: Where; select?: Where; orderBy?: unknown; take?: unknown } = {},
+    ) => {
+      refuseUnknownOptions('HouseholdActivity', 'findMany', args, activityRead)
+      if (args.select !== undefined) {
+        selectColumns('HouseholdActivity', ACTIVITY_COLUMNS, placeholderActivity, args.select)
+      }
+      return readActivities(args).map((row) =>
+        selectColumns('HouseholdActivity', ACTIVITY_COLUMNS, row, args.select),
+        // biome-ignore lint/suspicious/noExplicitAny: the shape depends on `select`, as in Prisma
+      ) as any[]
+    },
+    create: async (args: { data: Data; select?: Where }) => {
+      refuseUnknownOptions('HouseholdActivity', 'create', args, ['data', 'select'])
+      if (args.select !== undefined) {
+        selectColumns('HouseholdActivity', ACTIVITY_COLUMNS, placeholderActivity, args.select)
+      }
+      // biome-ignore lint/suspicious/noExplicitAny: the shape depends on `select`, as in Prisma
+      return selectColumns('HouseholdActivity', ACTIVITY_COLUMNS, insertActivity(args.data), args.select) as any
+    },
+    deleteMany: async (args: { where?: Where } = {}) => {
+      refuseUnknownOptions('HouseholdActivity', 'deleteMany', args, ['where'])
+      checkActivityWhere(args.where)
+      const before = state.householdActivities.length
+      state.householdActivities = state.householdActivities.filter(
+        (a) => !activityMatches(a, args.where ?? {}),
+      )
+      return { count: before - state.householdActivities.length }
+    },
+  }
+
+  const client = { household, householdMember, locationMember, householdInvite, householdActivity }
 
   /** Replace the store's contents. The rows are copied. */
   function reset(next: Omit<HouseholdFakeOptions, 'locations'> = {}) {
@@ -1211,6 +1480,7 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     state.householdMembers = (next.householdMembers ?? []).map(copy)
     state.locationMembers = (next.locationMembers ?? []).map(copy)
     state.householdInvites = (next.householdInvites ?? []).map(copy)
+    state.householdActivities = (next.householdActivities ?? []).map(copy)
     seq = 0
   }
 

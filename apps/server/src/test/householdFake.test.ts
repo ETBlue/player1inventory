@@ -1629,3 +1629,313 @@ describe('householdFake applies distinct on locationMember.findMany (households 
     ).rejects.toThrow(/the option 'distinct'/)
   })
 })
+
+describe('householdFake models HouseholdActivity (households H6, task J.1, decision T46)', () => {
+  const A = new Date('2026-11-20T10:00:00.000Z')
+  const B = new Date('2026-11-20T11:00:00.000Z')
+  const C = new Date('2026-11-20T12:00:00.000Z')
+
+  /** One row of each household, plus two rows of ours with the SAME createdAt. */
+  async function seeded() {
+    const fake = fixture()
+    const add = (id: string, householdId: string, createdAt: Date) =>
+      fake.client.householdActivity.create({
+        data: { id, householdId, actorId: CALLER, action: 'MEMBER_JOINED', createdAt },
+      })
+    await add('act_a', OURS, A)
+    await add('act_b1', OURS, B)
+    await add('act_b2', OURS, B)
+    await add('act_c', OURS, C)
+    await add('act_theirs', THEIRS, C)
+    return fake
+  }
+
+  async function ids(fake: Awaited<ReturnType<typeof seeded>>, args: Record<string, unknown>) {
+    return (await fake.client.householdActivity.findMany(args as never)).map((r) => r.id)
+  }
+
+  it('create fills the defaults and returns a copy', async () => {
+    // Given the fixture
+    const fake = fixture()
+
+    // When a row is created with only the NOT NULL columns
+    const row = await fake.client.householdActivity.create({
+      data: { householdId: OURS, actorId: CALLER, action: 'HOUSEHOLD_CLEARED' },
+    })
+
+    // Then the defaults are filled in
+    expect(row).toMatchObject({
+      householdId: OURS,
+      actorId: CALLER,
+      action: 'HOUSEHOLD_CLEARED',
+      targetUserId: null,
+      locationId: null,
+      details: null,
+    })
+    expect(typeof row.id).toBe('string')
+    expect(row.createdAt).toBeInstanceOf(Date)
+    // And the answer is a copy: changing it does not change the store
+    row.actorId = 'changed'
+    expect(fake.state.householdActivities[0]?.actorId).toBe(CALLER)
+  })
+
+  it('create stores details as a copy of the JSON it was given', async () => {
+    const fake = fixture()
+    const details = { locationName: 'Kitchen', from: 'viewer', to: 'participant' }
+    await fake.client.householdActivity.create({
+      data: { householdId: OURS, actorId: CALLER, action: 'LOCATION_ROLE_SET', details },
+    })
+    details.to = 'changed'
+    expect(fake.state.householdActivities[0]?.details).toEqual({
+      locationName: 'Kitchen',
+      from: 'viewer',
+      to: 'participant',
+    })
+  })
+
+  it('create raises P2003 for a household this fake does not hold', async () => {
+    const fake = fixture()
+    await expect(
+      fake.client.householdActivity.create({
+        data: { householdId: 'household_gone', actorId: CALLER, action: 'MEMBER_LEFT' },
+      }),
+    ).rejects.toBeInstanceOf(HouseholdFakeForeignKeyError)
+    expect(fake.state.householdActivities).toEqual([])
+  })
+
+  it('create raises P2002 on a taken id', async () => {
+    const fake = await seeded()
+    await expect(
+      fake.client.householdActivity.create({
+        data: { id: 'act_a', householdId: OURS, actorId: CALLER, action: 'MEMBER_LEFT' },
+      }),
+    ).rejects.toBeInstanceOf(HouseholdFakeUniqueError)
+  })
+
+  it.each(['householdId', 'actorId', 'action'])(
+    'create throws when the NOT NULL column %s is missing',
+    async (column) => {
+      const fake = fixture()
+      const data: Record<string, unknown> = {
+        householdId: OURS,
+        actorId: CALLER,
+        action: 'MEMBER_LEFT',
+      }
+      delete data[column]
+      await expect(
+        fake.client.householdActivity.create({ data } as never),
+      ).rejects.toBeInstanceOf(HouseholdFakeMissingColumnError)
+      expect(fake.state.householdActivities).toEqual([])
+    },
+  )
+
+  it('create throws on an action that is not in the ActivityAction enum', async () => {
+    const fake = fixture()
+    await expect(
+      fake.client.householdActivity.create({
+        data: { householdId: OURS, actorId: CALLER, action: 'NOT_AN_ACTION' } as never,
+      }),
+    ).rejects.toThrow(/ActivityAction/)
+  })
+
+  it('applies householdId as a value or { in: [...] }', async () => {
+    const fake = await seeded()
+    expect((await ids(fake, { where: { householdId: THEIRS } })).sort()).toEqual(['act_theirs'])
+    expect(
+      (await ids(fake, { where: { householdId: { in: [OURS] } } })).sort(),
+    ).toEqual(['act_a', 'act_b1', 'act_b2', 'act_c'])
+  })
+
+  it('applies createdAt as a Date, { lt } and { lte }', async () => {
+    const fake = await seeded()
+    const ours = { householdId: OURS }
+    expect((await ids(fake, { where: { ...ours, createdAt: B } })).sort()).toEqual([
+      'act_b1',
+      'act_b2',
+    ])
+    expect(await ids(fake, { where: { ...ours, createdAt: { lt: B } } })).toEqual(['act_a'])
+    expect((await ids(fake, { where: { ...ours, createdAt: { lte: B } } })).sort()).toEqual([
+      'act_a',
+      'act_b1',
+      'act_b2',
+    ])
+  })
+
+  it('applies id as a value, { in } and { lt }', async () => {
+    const fake = await seeded()
+    expect(await ids(fake, { where: { id: 'act_c' } })).toEqual(['act_c'])
+    expect((await ids(fake, { where: { id: { in: ['act_a', 'act_c'] } } })).sort()).toEqual([
+      'act_a',
+      'act_c',
+    ])
+    expect((await ids(fake, { where: { householdId: OURS, id: { lt: 'act_b2' } } })).sort()).toEqual([
+      'act_a',
+      'act_b1',
+    ])
+  })
+
+  it('applies OR with the cursor shape of decision T54, and orders by createdAt then id, newest first', async () => {
+    // Given the page "after act_b2", by (createdAt, id) descending
+    const fake = await seeded()
+    const where = {
+      householdId: OURS,
+      OR: [{ createdAt: { lt: B } }, { createdAt: B, id: { lt: 'act_b2' } }],
+    }
+    const orderBy = [{ createdAt: 'desc' }, { id: 'desc' }]
+
+    // Then act_b1 (same createdAt, smaller id) comes before act_a
+    expect(await ids(fake, { where, orderBy })).toEqual(['act_b1', 'act_a'])
+    // And without a where the whole household reads newest first, the tie
+    // broken by id
+    expect(await ids(fake, { where: { householdId: OURS }, orderBy })).toEqual([
+      'act_c',
+      'act_b2',
+      'act_b1',
+      'act_a',
+    ])
+    // And ascending order works too
+    expect(
+      await ids(fake, { where: { householdId: OURS }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }),
+    ).toEqual(['act_a', 'act_b1', 'act_b2', 'act_c'])
+  })
+
+  it('applies take after the order', async () => {
+    const fake = await seeded()
+    expect(
+      await ids(fake, {
+        where: { householdId: OURS },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 2,
+      }),
+    ).toEqual(['act_c', 'act_b2'])
+  })
+
+  it('throws on a negative take and on an orderBy column it does not model', async () => {
+    const fake = await seeded()
+    await expect(ids(fake, { take: -1 })).rejects.toBeInstanceOf(HouseholdFakeUnsupportedError)
+    await expect(ids(fake, { orderBy: [{ action: 'desc' }] })).rejects.toBeInstanceOf(
+      HouseholdFakeUnsupportedError,
+    )
+    await expect(ids(fake, { orderBy: [{ createdAt: 'down' }] })).rejects.toBeInstanceOf(
+      HouseholdFakeUnsupportedError,
+    )
+  })
+
+  it.each([
+    ['actorId', { actorId: CALLER }],
+    ['action', { action: 'MEMBER_JOINED' }],
+    ['locationId', { locationId: KITCHEN }],
+    ['a key inside OR', { OR: [{ actorId: CALLER }] }],
+  ])('throws on the where key %s it does not model, even on an empty store', async (_, where) => {
+    // An empty store never calls a per-row matcher, so the check must run
+    // once per call.
+    const fake = fixture()
+    await expect(fake.client.householdActivity.findMany({ where } as never)).rejects.toBeInstanceOf(
+      UnknownWhereKeyError,
+    )
+    await expect(fake.client.householdActivity.findFirst({ where } as never)).rejects.toBeInstanceOf(
+      UnknownWhereKeyError,
+    )
+    await expect(fake.client.householdActivity.deleteMany({ where } as never)).rejects.toBeInstanceOf(
+      UnknownWhereKeyError,
+    )
+  })
+
+  it.each([
+    ['createdAt: { gt }', { createdAt: { gt: A } }],
+    ['createdAt as a string', { createdAt: '2026-11-20' }],
+    ['id: { gt }', { id: { gt: 'act_a' } }],
+    ['householdId: { not }', { householdId: { not: OURS } }],
+  ])('throws on the filter shape %s it does not model', async (_, where) => {
+    const fake = await seeded()
+    await expect(fake.client.householdActivity.findMany({ where } as never)).rejects.toBeInstanceOf(
+      UnsupportedWhereFilterError,
+    )
+  })
+
+  it('findUnique needs exactly the id, and findFirst returns the first match in order', async () => {
+    const fake = await seeded()
+    expect((await fake.client.householdActivity.findUnique({ where: { id: 'act_b1' } }))?.id).toBe(
+      'act_b1',
+    )
+    expect(await fake.client.householdActivity.findUnique({ where: { id: 'act_none' } })).toBeNull()
+    await expect(
+      fake.client.householdActivity.findUnique({ where: { householdId: OURS } } as never),
+    ).rejects.toBeInstanceOf(HouseholdFakeUnsupportedError)
+    const first = await fake.client.householdActivity.findFirst({
+      where: { householdId: OURS },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    })
+    expect(first?.id).toBe('act_c')
+  })
+
+  it('select returns only the columns set to true, and refuses a relation', async () => {
+    const fake = await seeded()
+    const row = await fake.client.householdActivity.findUnique({
+      where: { id: 'act_a' },
+      select: { id: true, householdId: true, createdAt: true },
+    })
+    expect(row).toEqual({ id: 'act_a', householdId: OURS, createdAt: A })
+    await expect(
+      fake.client.householdActivity.findMany({ select: { household: true } } as never),
+    ).rejects.toBeInstanceOf(HouseholdFakeUnsupportedError)
+  })
+
+  it('deleteMany deletes the matching rows only and returns a count', async () => {
+    const fake = await seeded()
+    expect(await fake.client.householdActivity.deleteMany({ where: { householdId: { in: [OURS] } } })).toEqual({
+      count: 4,
+    })
+    expect(fake.state.householdActivities.map((r) => r.id)).toEqual(['act_theirs'])
+  })
+
+  it('household.deleteMany cascades to the household’s activity rows, and no others', async () => {
+    // Given activity rows in both households, and the empty check's contents
+    const fake = await seeded()
+    const withContents = createHouseholdFake({
+      households: fake.state.households,
+      householdMembers: fake.state.householdMembers,
+      locationMembers: fake.state.locationMembers,
+      householdActivities: fake.state.householdActivities,
+      locations: () => LOCATIONS,
+    })
+
+    // When THEIRS is deleted
+    await withContents.client.household.deleteMany({ where: { id: THEIRS } })
+
+    // Then its activity row is gone, as ON DELETE CASCADE does, and ours stay
+    expect(withContents.state.householdActivities.map((r) => r.id).sort()).toEqual([
+      'act_a',
+      'act_b1',
+      'act_b2',
+      'act_c',
+    ])
+  })
+
+  it('activities: { none: {} } on the household where is false for a household with a row', async () => {
+    // A household that holds only log rows. Decision T49 says the join does
+    // NOT ask this, but the key is modelled so a test can see it if it does.
+    const fake = await seeded()
+    const ids = (await fake.client.household.findMany({ where: { activities: { none: {} } } })).map(
+      (h) => h.id,
+    )
+    expect(ids).toEqual([])
+    fake.state.householdActivities = fake.state.householdActivities.filter((r) => r.householdId !== THEIRS)
+    expect(
+      (await fake.client.household.findMany({ where: { activities: { none: {} } } })).map((h) => h.id),
+    ).toEqual([THEIRS])
+  })
+
+  it('rolls back with runInTransaction, because the rows live in `state`', async () => {
+    const fake = await seeded()
+    await expect(
+      runInTransaction([fake.state as never], fake.client, async (tx: typeof fake.client) => {
+        await tx.householdActivity.create({
+          data: { householdId: OURS, actorId: CALLER, action: 'MEMBER_LEFT' },
+        })
+        throw new Error('later step')
+      }),
+    ).rejects.toThrow('later step')
+    expect(fake.state.householdActivities).toHaveLength(5)
+  })
+})
