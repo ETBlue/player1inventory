@@ -365,6 +365,14 @@ test.describe('Import into which location? (decisions O3, O6)', () => {
     request,
     baseURL,
   }) => {
+    // 60 s, not the default 30 s. Measured 2026-11-19 with this spec run
+    // alone in `cloud` (load average 2.3 to 4.2): 32.6 s and 29.1 s. The
+    // other tests in this file, which import little or nothing, took 17 to
+    // 25 s in the same runs: each one makes six `/e2e/cleanup` calls in its
+    // hooks against the remote test database. This test also imports the
+    // whole local backup. No step looked wasteful; it is simply too close to
+    // 30 s for a busy machine.
+    test.setTimeout(60000)
     const user = makeGql(request, E2E_USER_ID)
     const settings = new SettingsPage(page)
 
@@ -420,6 +428,11 @@ test.describe('Import into which location? (decisions O3, O6)', () => {
     request,
     baseURL,
   }) => {
+    // 60 s, not the default 30 s. Measured 2026-11-19 with this spec run
+    // alone in `cloud` (load average 2.3 to 4.2): 31.6 s and 30.5 s. The
+    // reason is the same as in the test above: the hooks, plus the import of
+    // the whole local backup.
+    test.setTimeout(60000)
     const user = makeGql(request, E2E_USER_ID)
     const settings = new SettingsPage(page)
 
