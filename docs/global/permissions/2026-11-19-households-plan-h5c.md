@@ -984,6 +984,14 @@ more live events, one more page and one more cloud spec.
   The other household's locations wait for H7's switch. O21 (a stale tab writing into the
   other household) is still owed to H7.
 - **Remove all items** (the location danger zone) is H6.
+- **The lost-access toast can show for the person's own `clear` import** (H.7). The import
+  marks every location as an expected loss before `ClearAllData`, and takes the mark back
+  when `ClearAllData` fails. If the server applied the clear and the answer was lost (a
+  dropped connection), the locations are gone and the mark is gone too, so the person reads
+  "You no longer have access to …" for their own import.
+- **The lost-access toast after a sign-out and a sign-in in the same household** (H.7). With
+  no reload between them, the second person gets no toast for a location the first person
+  had seen, until a reload.
 - Carried over, still open: the old-bundle shim removal, the keyboard gap on `role="button"`
   badges, and the other items in the H5 and H5b plans' *Known gaps*.
 
@@ -1038,6 +1046,7 @@ Filled in from the task reports and reviews.
 | H.7 | Mutation "toast keyed on the id, not on the loss event → not two toasts" | A guard that takes the id out of the seen set after the toast is never reached: the toast is in the effect run that moves the tab, so a second read (or StrictMode) finds the tab already moved. Removing that guard left all 11 tests green, so it was removed (and put back in the review, see below). What CAN give two toasts is a toast outside that effect run. The mutation "toast from the render body" turns 5 tests red under StrictMode, "not two toasts" among them |
 | H.7 | Step 1: the tests go in `useActiveLocation.test.tsx` | They are in a new file, `useActiveLocation.lostAccess.test.tsx`. They need the real `@apollo/client/react` (the leave hook refetches through `useApolloClient`, which `setup.ts` stubs), a `sonner` mock and StrictMode; the old file needs none of them |
 | H.7 | Step 1: "the pantry query for K is no longer active" | `PantryData` selects about 30 fields, too many for a `MockedProvider` fixture here. A small `ProbeRows(locationId)` query, gated like every location-scoped read on the active location being in the list, stands in for it. Its row is asserted PRESENT for the new location before the old row is asserted ABSENT |
+| H.7 | (re-review) "`ready` with data" means the server answered `GetLocations` | Not always. After a failed first read (status 8), a cache write by ANOTHER answer (`GetHouseholdLocations` writing `Location.myRole`) makes Apollo 4.1.6 read the cache again (`reobserveCacheFirst`) and give `ready` (7) with the RESTORED list. `isFromServer` now counts a `ready` only right after `loading` or `refetch` in this mount. Test "offline … after another answer writes into the cached list"; the old rule turns it red. Test "opened the app offline … once the list was read online"; leaving out `refetch` turns it red |
 | H.7 | O27 / T45: the toast for every loss of the active location | They did not name the person's OWN destructive acts. Chosen (review of H.7): no toast when the person deletes the location themselves, and none for a `clear` import, which replaces every location with a new one (the ImportCard `clear` and the post-login copy with `clear`). `lib/seenLocations.ts` (`expectLocationLoss`) marks the ids first; a failed write takes the mark back. A removal or a delete by SOMEONE ELSE still shows the toast. Sign-out (`clearCache`) forgets the seen ids. Known gap: after a sign-out and a sign-in of another person in the SAME household with no reload, that person gets no toast for a location the first person had seen, until a reload |
 | H.7 | The mutation list | It had no check for the `mode === 'cloud'` guard. The first local test could not fail: its stored id was never in a list, so `if (true)` left all 11 tests green (review). The test now seeds two local locations, shows the second, then removes it while active; the same mutation turns it red |
 | H.7 | (review) the `seen.delete` guard | Put back after the toast, with a comment: it covers a render of higher priority committing before the fallback update lands, which no test can easily show |
