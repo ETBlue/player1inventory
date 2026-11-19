@@ -176,8 +176,14 @@ describe('HouseholdDangerZone — the confirm', () => {
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
   })
 
-  it('while one purge runs, no other purge can be started', () => {
-    purges.pending.clear = true
+  it.each([
+    'clear',
+    'deleteAll',
+    'deleteHousehold',
+  ] as const)('while the %s purge runs, no other purge can be started', (running) => {
+    // Each of the three, not only the first: a lock that reads one hook's
+    // `isPending` alone must fail here.
+    purges.pending[running] = true
     renderAs('cloud', 'owner')
     for (const [label] of BUTTONS) {
       expect(screen.getByRole('button', { name: label })).toBeDisabled()

@@ -139,8 +139,13 @@ export function DeleteButton({
           <AlertDialogDescription>{dialogDescription}</AlertDialogDescription>
           {typedMode && (
             <div className="space-y-1">
-              {/* The name as stored: no `capitalize` (Name Display Convention). */}
-              <label htmlFor={fieldId} className="block text-sm">
+              {/* The name as stored: no `capitalize` (Name Display Convention).
+                  `whitespace-pre-wrap` shows every space of the name, because
+                  the match is exact: HTML would show "a  b " as "a b". */}
+              <label
+                htmlFor={fieldId}
+                className="block whitespace-pre-wrap text-sm"
+              >
                 {confirmNameLabel}
               </label>
               <Input

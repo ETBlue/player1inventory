@@ -365,6 +365,36 @@ describe('DeleteButton — typed-name confirm', () => {
     )
   })
 
+  it('user sees the spaces of the name as stored, so a name with double spaces can be typed', async () => {
+    // Given a stored name with two spaces inside and one at the end. The
+    // server trims only the ends of a household name, and an imported
+    // location name is not trimmed at all.
+    const spaced = 'the  Lin home '
+    const user = userEvent.setup()
+    render(
+      <DeleteButton
+        trigger="Clear household"
+        confirmLabel="Clear household"
+        confirmName={spaced}
+        confirmNameLabel={`Type ${spaced} to confirm`}
+        onDelete={vi.fn().mockResolvedValue(undefined)}
+      />,
+    )
+
+    // When the confirm opens
+    await user.click(screen.getByRole('button', { name: 'Clear household' }))
+    const dialog = await screen.findByRole('alertdialog')
+
+    // Then the label keeps every space. Without `white-space: pre-wrap` the
+    // browser shows "the Lin home" and the person can never type the name.
+    // jsdom has no Tailwind CSS, so this pins the class that does it.
+    const label = within(dialog).getByText(`Type ${spaced} to confirm`, {
+      normalizer: (s) => s,
+    })
+    expect(label.tagName).toBe('LABEL')
+    expect(label).toHaveClass('whitespace-pre-wrap')
+  })
+
   it('the field is empty again when the dialog opens a second time', async () => {
     const user = userEvent.setup()
     renderTyped(vi.fn().mockResolvedValue(undefined))
