@@ -10,6 +10,7 @@ import { useTagItemCounts } from '@/hooks/useTagItemCounts'
 import { useTagsWithDepth, useTagTypes } from '@/hooks/useTags'
 import { useVendorItemCounts } from '@/hooks/useVendorItemCounts'
 import { useVendors } from '@/hooks/useVendors'
+import { showSaveError } from '@/lib/saveError'
 import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute(
@@ -68,7 +69,11 @@ function ShelfFiltersTab() {
           ? { recipeIds: base.recipeIds }
           : {}),
     }
-    updateShelf.mutate({ id: shelf.id, data: { filterConfig: merged } })
+    // Before, a failed save showed nothing
+    updateShelf.mutate(
+      { id: shelf.id, data: { filterConfig: merged } },
+      { onError: (err) => showSaveError(err) },
+    )
   }
 
   const toggleTag = (tagId: string) => {

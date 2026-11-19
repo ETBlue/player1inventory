@@ -26,6 +26,7 @@ import {
   useTagTypes,
   useUpdateTag,
 } from '@/hooks/useTags'
+import { showSaveError } from '@/lib/saveError'
 import { getTagAndDescendantIds } from '@/lib/tagUtils'
 import type { Tag } from '@/types'
 
@@ -80,17 +81,21 @@ function TagInfoTab() {
     goBack()
   }
 
-  const handleDeleteCascade = async () => {
-    await deleteTag.mutateAsync({ id, deleteChildren: true })
+  // The two choices of the "has child tags" dialog. It is not a
+  // `DeleteButton`, so each catches its own failure. Before, a failed delete
+  // was an unhandled rejection with nothing on screen.
+  const deleteWithChildren = async (deleteChildren: boolean) => {
+    try {
+      await deleteTag.mutateAsync({ id, deleteChildren })
+    } catch (err) {
+      showSaveError(err, t('common.deleteFailed'))
+      return
+    }
     setParentDeleteOpen(false)
     goBack()
   }
-
-  const handleDeleteOrphan = async () => {
-    await deleteTag.mutateAsync({ id, deleteChildren: false })
-    setParentDeleteOpen(false)
-    goBack()
-  }
+  const handleDeleteCascade = () => deleteWithChildren(true)
+  const handleDeleteOrphan = () => deleteWithChildren(false)
 
   // Don't render until we have both tag and tagTypes loaded
   // This prevents Radix Select from clearing the value when options aren't available yet
@@ -129,7 +134,17 @@ function TagInfoTab() {
                     : { parentId: undefined }),
                 } as Parameters<typeof updateTag.mutateAsync>[0]['updates'],
               })
-              .then(() => goBack())
+              // A failed save shows a toast and keeps the page, so the
+              // person can try again. Before, it was an unhandled rejection
+              // with nothing on screen. The error is passed on so the form
+              // marks the edit as unsaved again; the form catches it.
+              .then(
+                () => goBack(),
+                (err: unknown) => {
+                  showSaveError(err)
+                  throw err
+                },
+              )
           }
           isPending={updateTag.isPending}
           onDirtyChange={registerDirtyState}

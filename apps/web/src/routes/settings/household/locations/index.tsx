@@ -21,6 +21,7 @@ import {
 } from '@/hooks/useLocations'
 import { usePermissions } from '@/hooks/usePermissions'
 import { hasGraphQLErrorCode } from '@/lib/graphqlErrorCode'
+import { showSaveError } from '@/lib/saveError'
 import type { Location } from '@/types'
 
 export const Route = createFileRoute('/settings/household/locations/')({
@@ -60,6 +61,9 @@ export function LocationSettingsPage() {
         setAddName('')
         setAddOpen(false)
       },
+      // The dialog stays open with the name. Before, nothing on screen said
+      // the location was not created.
+      onError: (err) => showSaveError(err),
     })
   }
 
@@ -128,6 +132,9 @@ export function LocationSettingsPage() {
           setRenameTarget(null)
           setRenameName('')
         },
+        // The dialog stays open with the name. Before, nothing on screen
+        // said the rename failed.
+        onError: (err) => showSaveError(err),
       },
     )
   }

@@ -23,6 +23,11 @@ vi.mock('./useItems', () => ({
   useAddItemToLocation: vi.fn(),
 }))
 
+const toastError = vi.fn()
+vi.mock('sonner', () => ({
+  toast: { error: (...args: unknown[]) => toastError(...args) },
+}))
+
 // The household role (households H5 task F.5). The real hook reads the
 // location list, which this file does not provide. Each test sets the role
 // through the real rules (`permissionsFor`); unset means local, where every
@@ -171,9 +176,67 @@ describe('useItemSearchTailWiring', () => {
       await result.current.tailProps.groupAction?.onAction(milk)
     })
 
-    // Then the pending id still clears — the caller's mutation owns
-    // surfacing the error, but pending state must not get stuck
+    // Then the pending id still clears, so the row does not spin forever
     expect(result.current.tailProps.groupAction?.pendingItemId).toBeNull()
+  })
+
+  // A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+  // Before the fix the wrapper caught every error and showed nothing.
+  it('user sees a message when a group action fails', async () => {
+    // Given a group action that rejects
+    toastError.mockClear()
+    mockMode('local')
+    mockActiveLocation(homeLocation)
+    mockSearchTail({ inLocation: [milk], notStockedHere: [] })
+    mockAddItemToLocation()
+    const onAction = vi.fn().mockRejectedValue(new Error('mutation failed'))
+    const { result } = renderHook(() =>
+      useItemSearchTailWiring({
+        inGroupIds: new Set(),
+        query: 'milk',
+        renderItem: () => null,
+        groupAction: { label: 'Apply Costco', onAction },
+      }),
+    )
+
+    // When the user presses the row action and it fails
+    await act(async () => {
+      await result.current.tailProps.groupAction?.onAction(milk)
+    })
+
+    // Then a toast says the change was not saved
+    expect(toastError).toHaveBeenCalledWith(
+      'Could not save the change. Please try again.',
+    )
+  })
+
+  it('user sees a message when Add to location fails', async () => {
+    // Given an item not stocked here, and an add that rejects
+    toastError.mockClear()
+    mockMode('local')
+    mockActiveLocation(homeLocation)
+    mockSearchTail({ inLocation: [], notStockedHere: [bread] })
+    mockAddItemToLocation(vi.fn().mockRejectedValue(new Error('disk full')))
+    const { result } = renderHook(() =>
+      useItemSearchTailWiring({
+        inGroupIds: new Set(),
+        query: 'bread',
+        renderItem: () => null,
+      }),
+    )
+
+    // When the user presses "Add to My Home" and it fails
+    await act(async () => {
+      await result.current.tailProps.addToLocationAction?.onAction(bread)
+    })
+
+    // Then a toast names the item and the location, and the row clears
+    expect(toastError).toHaveBeenCalledWith(
+      'Could not add Bread to My Home. Please try again.',
+    )
+    expect(
+      result.current.tailProps.addToLocationAction?.pendingItemId,
+    ).toBeNull()
   })
 
   it('offers addToLocationAction in cloud mode too', () => {

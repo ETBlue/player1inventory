@@ -5,7 +5,8 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import {
   createItem,
@@ -16,6 +17,7 @@ import {
   createVendor,
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+import { watchUnhandledRejections } from '@/test/unhandledRejections'
 
 describe('Shelf Detail - Filters Tab item counts', () => {
   let queryClient: QueryClient
@@ -158,5 +160,38 @@ describe('Shelf Detail - Filters Tab item counts', () => {
     expect(
       await screen.findByRole('button', { name: /water \(0\)/i }),
     ).toBeInTheDocument()
+  })
+
+  // A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+  // Before the fix the write was a `mutate` with no `onError`, so nothing on
+  // screen said the filter was not saved.
+  it('user sees a message when changing a filter fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given a filter shelf and a tag, and a database that refuses the write
+      const tagType = await createTagType({ name: 'Category' })
+      await createTag({ name: 'Dairy', typeId: tagType.id })
+      const shelf = await makeFilterShelf()
+      renderFiltersTab(shelf.id)
+      const badge = await screen.findByRole('button', { name: /dairy \(0\)/i })
+      vi.spyOn(db.shelves, 'update').mockRejectedValueOnce(
+        new Error('disk full'),
+      )
+      const user = userEvent.setup()
+
+      // When the user selects the tag
+      await user.click(badge)
+
+      // Then a message says the change was not saved
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      expect((await db.shelves.get(shelf.id))?.filterConfig).toEqual({})
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
   })
 })

@@ -11,6 +11,7 @@ import {
   useRecipes,
   useUpdateRecipe,
 } from '@/hooks/useRecipes'
+import { showSaveError } from '@/lib/saveError'
 
 export const Route = createFileRoute('/settings/household/recipes/$id/')({
   component: RecipeInfoTab,
@@ -60,7 +61,17 @@ function RecipeInfoTab() {
           onSave={(data) =>
             updateRecipe
               .mutateAsync({ id: recipe.id, updates: data })
-              .then(() => goBack())
+              // A failed save shows a toast and keeps the page, so the
+              // person can try again. Before, it was an unhandled rejection
+              // with nothing on screen. The error is passed on so the form
+              // marks the edit as unsaved again; the form catches it.
+              .then(
+                () => goBack(),
+                (err: unknown) => {
+                  showSaveError(err)
+                  throw err
+                },
+              )
           }
           isPending={updateRecipe.isPending}
           onDirtyChange={registerDirtyState}

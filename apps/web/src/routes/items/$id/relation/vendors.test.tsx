@@ -12,6 +12,7 @@ import { createItem, createVendor } from '@/db/operations'
 import * as hooksModule from '@/hooks'
 import * as vendorsHooksModule from '@/hooks/useVendors'
 import { routeTree } from '@/routeTree.gen'
+import { watchUnhandledRejections } from '@/test/unhandledRejections'
 
 // `useUpdateItem` returns a UNION of its two data-mode branches: local mode's
 // TanStack `UseMutationResult`, and the cloud branch's hand-built
@@ -374,5 +375,95 @@ describe('Vendors Tab', () => {
       )
       expect(screen.getByRole('dialog')).toBeInTheDocument()
     })
+  })
+
+  // A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+  // Before the fix a failed write showed nothing.
+  it('user sees a message when assigning a vendor fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given an item, a vendor, and a database that refuses the write
+      const item = await createItem({
+        name: 'Test Item',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+      })
+      await createVendor('Costco')
+      vi.spyOn(db.items, 'update').mockRejectedValueOnce(new Error('disk full'))
+      toastError.mockClear()
+      renderVendorsTab(item.id)
+      const user = userEvent.setup()
+
+      // When the user presses the vendor badge
+      await user.click(await screen.findByRole('button', { name: /costco/i }))
+
+      // Then a message says the change was not saved
+      await waitFor(() =>
+        expect(toastError).toHaveBeenCalledWith(
+          'Could not save the change. Please try again.',
+        ),
+      )
+      // And the badge is still unpressed and the item unchanged
+      expect(
+        screen.getByRole('button', { name: /costco/i, pressed: false }),
+      ).toBeInTheDocument()
+      expect((await db.items.get(item.id))?.vendorIds ?? []).toEqual([])
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
+  })
+
+  // A failed assign after a new vendor is created
+  // (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md). Before the
+  // fix the assign was a `mutate` with no `onError`, so nothing on screen said so.
+  it('user sees a message when assigning a newly created vendor fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given an item, and a database that refuses the item write
+      const item = await createItem({
+        name: 'Test Item',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+      })
+      vi.spyOn(db.items, 'update').mockRejectedValueOnce(new Error('disk full'))
+      toastError.mockClear()
+      renderVendorsTab(item.id)
+      const user = userEvent.setup()
+
+      // When the user adds a vendor named "Costco"
+      await user.click(
+        await screen.findByRole('button', { name: /new vendor/i }),
+      )
+      await user.type(screen.getByLabelText(/name/i), 'Costco')
+      await user.click(screen.getByRole('button', { name: /add vendor/i }))
+
+      // Then a message says the change was not saved
+      await waitFor(() =>
+        expect(toastError).toHaveBeenCalledWith(
+          'Could not save the change. Please try again.',
+        ),
+      )
+      // And the vendor exists but is not on the item
+      expect(await db.vendors.count()).toBe(1)
+      expect((await db.items.get(item.id))?.vendorIds ?? []).toEqual([])
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
   })
 })

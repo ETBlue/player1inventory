@@ -12,7 +12,8 @@ interface RecipeCardProps {
    * Left out for a household member, who may not delete recipes (households
    * H5 task F.5). The card then has no Delete button.
    */
-  onDelete?: () => void
+  /** Return the delete's promise, so `DeleteButton` can show a failure */
+  onDelete?: () => void | Promise<void>
 }
 
 export function RecipeCard({ recipe, itemCount, onDelete }: RecipeCardProps) {

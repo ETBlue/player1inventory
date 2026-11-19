@@ -20,6 +20,7 @@ import {
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
+import { showSaveError } from '@/lib/saveError'
 import { sortItems } from '@/lib/sortUtils'
 import type { Recipe, Vendor } from '@/types'
 
@@ -123,6 +124,9 @@ function ShelfItemsTab() {
     setSavingItemIds((prev) => new Set(prev).add(itemId))
     try {
       await updateShelf.mutateAsync({ id: shelf.id, data: { itemIds: newIds } })
+    } catch (err) {
+      // Shown, not left unhandled: this runs straight off a click
+      showSaveError(err)
     } finally {
       setSavingItemIds((prev) => {
         const next = new Set(prev)
@@ -180,8 +184,10 @@ function ShelfItemsTab() {
         id: shelf.id,
         data: { itemIds: [...currentIds, newItem.id] },
       })
-    } catch {
-      // input stays populated for retry
+    } catch (err) {
+      // The typed name stays in the search box, so the user can try again.
+      // Before, this catch showed nothing.
+      showSaveError(err)
     }
   }
 

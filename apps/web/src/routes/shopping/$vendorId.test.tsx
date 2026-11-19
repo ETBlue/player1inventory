@@ -6,7 +6,7 @@ import {
 } from '@tanstack/react-router'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db, ensureDefaultLocationRow } from '@/db'
 import {
   addToCart,
@@ -16,6 +16,7 @@ import {
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { defined } from '@/test/narrow'
+import { watchUnhandledRejections } from '@/test/unhandledRejections'
 import { cartIdFor, DEFAULT_LOCATION_ID } from '@/types'
 
 describe('Vendor cart page', () => {
@@ -793,6 +794,179 @@ describe('Vendor cart page', () => {
         screen.queryByRole('button', { name: /^Apply /i }),
       ).not.toBeInTheDocument()
       expect(screen.queryByText(/^Apply /)).not.toBeInTheDocument()
+    })
+  })
+
+  // A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+  // Before the fix each of these writes either caught the error and showed
+  // nothing, or used `mutate` with an `onError` that only cleared the
+  // pending row. Each test makes the local Dexie write fail.
+  describe('a failed save', () => {
+    const SAVE_FAILED = 'Could not save the change. Please try again.'
+    let rejections: ReturnType<typeof watchUnhandledRejections>
+
+    beforeEach(() => {
+      rejections = watchUnhandledRejections()
+    })
+
+    afterEach(() => {
+      rejections.stop()
+      vi.restoreAllMocks()
+    })
+
+    const makeMilk = (vendorId: string) =>
+      createItem({
+        name: 'Milk',
+        tagIds: [],
+        vendorIds: [vendorId],
+        targetUnit: 'package',
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      })
+
+    const expectMessageAndNoRejection = async () => {
+      expect(await screen.findByText(SAVE_FAILED)).toBeInTheDocument()
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    }
+
+    it('user sees a message when creating an item from search fails', async () => {
+      // Given a vendor cart searched for a name nothing matches, and a
+      // database that refuses the new item
+      const vendor = await createVendor('Costco')
+      renderVendorCart(vendor.id, 'Butter')
+      const create = await screen.findByRole('button', { name: 'Create item' })
+      vi.spyOn(db.items, 'add').mockRejectedValueOnce(new Error('disk full'))
+
+      // When the user presses Create
+      await userEvent.click(create)
+
+      // Then a message says the change was not saved, and nothing was created
+      await expectMessageAndNoRejection()
+      expect(await db.items.count()).toBe(0)
+      expect(screen.getByRole('button', { name: 'Create item' })).toBeEnabled()
+    })
+
+    it('user sees a message when adding an item to the cart fails', async () => {
+      // Given an item not in the cart, and a database that refuses the write
+      const vendor = await createVendor('Costco')
+      await makeMilk(vendor.id)
+      renderVendorCart(vendor.id)
+      const checkbox = await screen.findByRole('checkbox', { name: /milk/i })
+      await waitFor(() => expect(checkbox).toBeEnabled())
+      vi.spyOn(db.cartItems, 'add').mockRejectedValueOnce(
+        new Error('disk full'),
+      )
+
+      // When the user checks the item
+      await userEvent.click(checkbox)
+
+      // Then a message says so, and the row is unchanged and usable again
+      await expectMessageAndNoRejection()
+      await waitFor(() =>
+        expect(screen.getByRole('checkbox', { name: /milk/i })).toBeEnabled(),
+      )
+      expect(screen.getByRole('checkbox', { name: /milk/i })).not.toBeChecked()
+      expect(await db.cartItems.count()).toBe(0)
+    })
+
+    it('user sees a message when removing an item from the cart fails', async () => {
+      // Given an item in the cart, and a database that refuses the delete
+      const vendor = await createVendor('Costco')
+      const item = await makeMilk(vendor.id)
+      await addToCart(cartIdFor(DEFAULT_LOCATION_ID, vendor.id), item.id, 1)
+      renderVendorCart(vendor.id)
+      await waitFor(() =>
+        expect(screen.getByRole('checkbox', { name: /milk/i })).toBeChecked(),
+      )
+      const checkbox = screen.getByRole('checkbox', { name: /milk/i })
+      vi.spyOn(db.cartItems, 'delete').mockRejectedValueOnce(
+        new Error('disk full'),
+      )
+
+      // When the user unchecks the item
+      await userEvent.click(checkbox)
+
+      // Then a message says so, and the item is still in the cart
+      await expectMessageAndNoRejection()
+      await waitFor(() =>
+        expect(screen.getByRole('checkbox', { name: /milk/i })).toBeEnabled(),
+      )
+      expect(screen.getByRole('checkbox', { name: /milk/i })).toBeChecked()
+      expect(await db.cartItems.count()).toBe(1)
+    })
+
+    it('user sees a message when changing an amount in the cart fails', async () => {
+      // Given an item in the cart, and a database that refuses the write
+      const vendor = await createVendor('Costco')
+      const item = await makeMilk(vendor.id)
+      await addToCart(cartIdFor(DEFAULT_LOCATION_ID, vendor.id), item.id, 1)
+      renderVendorCart(vendor.id)
+      const plus = await screen.findByRole('button', {
+        name: 'Increase quantity of Milk',
+      })
+      await waitFor(() => expect(plus).toBeEnabled())
+      vi.spyOn(db.cartItems, 'update').mockRejectedValueOnce(
+        new Error('disk full'),
+      )
+
+      // When the user presses +
+      await userEvent.click(plus)
+
+      // Then a message says so, and the amount is unchanged
+      await expectMessageAndNoRejection()
+      const rows = await db.cartItems.toArray()
+      expect(rows.map((r) => r.quantity)).toEqual([1])
+    })
+
+    it('user sees a message when abandoning the cart fails', async () => {
+      // Given an item in the cart, and a database that refuses the delete
+      const vendor = await createVendor('Costco')
+      const item = await makeMilk(vendor.id)
+      await addToCart(cartIdFor(DEFAULT_LOCATION_ID, vendor.id), item.id, 1)
+      renderVendorCart(vendor.id)
+      await userEvent.click(
+        await screen.findByRole('button', { name: /cancel/i }),
+      )
+      await screen.findByText(/abandon this shopping trip/i)
+      vi.spyOn(db.Collection.prototype, 'delete').mockRejectedValueOnce(
+        new Error('disk full'),
+      )
+
+      // When the user confirms
+      await userEvent.click(screen.getByRole('button', { name: /confirm/i }))
+
+      // Then a message says so, and the dialog stays open to try again
+      await expectMessageAndNoRejection()
+      expect(
+        screen.getByText(/abandon this shopping trip/i),
+      ).toBeInTheDocument()
+      expect(await db.cartItems.count()).toBe(1)
+    })
+
+    it('user sees a message when checking out fails', async () => {
+      // Given an item in the cart, and a database that refuses the write
+      const vendor = await createVendor('Costco')
+      const item = await makeMilk(vendor.id)
+      await addToCart(cartIdFor(DEFAULT_LOCATION_ID, vendor.id), item.id, 1)
+      renderVendorCart(vendor.id)
+      await userEvent.click(
+        await screen.findByRole('button', { name: /done/i }),
+      )
+      await screen.findByText(/complete shopping trip/i)
+      vi.spyOn(db.shoppingCarts, 'update').mockRejectedValueOnce(
+        new Error('disk full'),
+      )
+
+      // When the user confirms
+      await userEvent.click(screen.getByRole('button', { name: /confirm/i }))
+
+      // Then a message says so, and the dialog stays open to try again
+      await expectMessageAndNoRejection()
+      expect(screen.getByText(/complete shopping trip/i)).toBeInTheDocument()
     })
   })
 })

@@ -15,6 +15,7 @@ import {
 } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Toaster } from '@/components/ui/sonner'
 import { db } from '@/db'
 import {
   createItem,
@@ -24,6 +25,7 @@ import {
   createVendor,
 } from '@/db/operations'
 import { activeLocationStorageKey } from '@/hooks/useActiveLocation'
+import { watchUnhandledRejections } from '@/test/unhandledRejections'
 import { renderWithRouter } from '@/test/utils'
 import { DEFAULT_LOCATION_ID, TagColor } from '@/types'
 import { ShelfDetailView } from './ShelfDetailView'
@@ -238,6 +240,8 @@ const renderSearching = async (shelfId: string, query: string) => {
   const Wrapper = () => (
     <QueryClientProvider client={queryClient}>
       <ShelfDetailView shelfId={shelfId} />
+      {/* For the failed-save messages (a toast) */}
+      <Toaster />
     </QueryClientProvider>
   )
   const rootRoute = createRootRoute({ component: Wrapper })
@@ -663,5 +667,91 @@ describe('ShelfDetailView filter shelf picker', () => {
     expect(
       screen.queryByRole('button', { name: /add to shelf/i }),
     ).not.toBeInTheDocument()
+  })
+})
+
+// A failed create from search
+// (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md). Before the
+// fix the create's catch showed nothing, and the shelf write after it was a
+// `mutate` whose error nobody read.
+describe('ShelfDetailView create from search', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.shelves.clear()
+    await db.locations.clear()
+    sessionStorage.clear()
+    localStorage.clear()
+    shelfGate.hold = false
+    shelfGate.release = null
+  })
+
+  it('user sees a message when creating an item from search fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given a selection shelf, and a database that refuses the new item
+      const shelf = await createShelf({
+        name: 'Fridge',
+        type: 'selection',
+        order: 0,
+        itemIds: [],
+      })
+      await renderSearching(shelf.id, 'Butter')
+      vi.spyOn(db.items, 'add').mockRejectedValueOnce(new Error('disk full'))
+      const user = userEvent.setup()
+
+      // When the user presses Create
+      await user.click(
+        await screen.findByRole('button', { name: 'Create item' }),
+      )
+
+      // Then a message says the change was not saved
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      // And Create can be pressed again
+      expect(screen.getByRole('button', { name: 'Create item' })).toBeEnabled()
+      expect(await db.items.count()).toBe(0)
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('user sees a message when adding the new item to the shelf fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given a selection shelf, and a database that refuses the shelf write
+      const shelf = await createShelf({
+        name: 'Fridge',
+        type: 'selection',
+        order: 0,
+        itemIds: [],
+      })
+      await renderSearching(shelf.id, 'Butter')
+      vi.spyOn(db.shelves, 'update').mockRejectedValueOnce(
+        new Error('disk full'),
+      )
+      const user = userEvent.setup()
+
+      // When the user presses Create
+      await user.click(
+        await screen.findByRole('button', { name: 'Create item' }),
+      )
+
+      // Then a message says the change was not saved
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      // And the shelf is unchanged
+      expect((await db.shelves.get(shelf.id))?.itemIds).toEqual([])
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
   })
 })

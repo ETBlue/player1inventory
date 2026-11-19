@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { useItem, useUpdateItem, useVendors } from '@/hooks'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useCreateVendor } from '@/hooks/useVendors'
+import { showSaveError } from '@/lib/saveError'
 import { showVendorCreateError } from '@/lib/vendorCreateError'
 
 export const Route = createFileRoute('/items/$id/relation/vendors')({
@@ -43,7 +44,12 @@ function VendorsTab() {
       : [...currentVendorIds, vendorId]
 
     setTogglingVendorId(vendorId)
-    updateItem.mutate({ id, updates: { vendorIds: newVendorIds } })
+    // `mutate` never rejects, so the failure comes in through `onError`.
+    // Before, it was ignored and a failed save showed nothing.
+    updateItem.mutate(
+      { id, updates: { vendorIds: newVendorIds } },
+      { onError: (err) => showSaveError(err) },
+    )
   }
 
   const handleAddVendor = async () => {
@@ -59,12 +65,16 @@ function VendorsTab() {
       return
     }
     if (newVendor?.id) {
-      // Immediately assign to current item
+      // Immediately assign to current item. The vendor exists now, so the
+      // dialog closes even if this fails; the toast says so.
       const currentVendorIds = item?.vendorIds ?? []
-      updateItem.mutate({
-        id,
-        updates: { vendorIds: [...currentVendorIds, newVendor.id] },
-      })
+      updateItem.mutate(
+        {
+          id,
+          updates: { vendorIds: [...currentVendorIds, newVendor.id] },
+        },
+        { onError: (err) => showSaveError(err) },
+      )
     }
     setNewVendorName('')
     setShowDialog(false)

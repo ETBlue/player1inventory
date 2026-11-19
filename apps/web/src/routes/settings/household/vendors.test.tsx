@@ -96,13 +96,13 @@ const mockVendors: Vendor[] = [
 // that shape and need no cast.
 //
 // What the page reads: `vendors/index.tsx:22` reads `useVendors().data` and
-// `.isLoading`; `:24` and `:77` read `useDeleteVendor().mutate(id)`;
+// `.isLoading`; the delete button awaits `useDeleteVendor().mutateAsync(id)`;
 // `NewVendorDialog` reads `useCreateVendor().mutateAsync` and `.isPending`.
 const setupMocks = (
   vendors: Vendor[] = mockVendors,
   vendorCounts: Map<string, number> = new Map(),
 ) => {
-  const mutate = vi.fn(async (_id: string) => {})
+  const mutate = vi.fn(async (_id: string) => true)
   const goBack = vi.fn()
   vi.mocked(useVendors).mockReturnValue({
     data: vendors,
@@ -110,8 +110,8 @@ const setupMocks = (
     isError: false,
   })
   vi.mocked(useDeleteVendor).mockReturnValue({
-    mutate,
-    mutateAsync: vi.fn(async (_id: string) => true),
+    mutate: vi.fn(async (_id: string) => {}),
+    mutateAsync: mutate,
     isPending: false,
   })
   vi.mocked(useVendorItemCounts).mockReturnValue(vendorCounts)

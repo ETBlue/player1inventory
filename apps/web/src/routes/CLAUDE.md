@@ -327,7 +327,7 @@ Row 2 (ItemListToolbar):
 
 **Checkout:** `logKey` is always `'shopping.log.purchasedAt'`; `logParams` is `{ vendor: vendor?.name ?? t('shopping.noVendor') }`. After checkout → navigate to `/shopping`.
 
-**Cloud checkout sends what the screen showed (households H3b task B.5).** The page sends every row of the cart being bought (`isBeingBought`), as `{ cartItemId, quantity }`, and no stock total. A cart is shared at its location, so a co-member may change it after this screen loaded; the server then refuses with `CART_CHANGED` and writes nothing. `useCheckout` reloads the cart's rows, and the page closes the dialog and shows the toast `shopping.cartChanged` ("This cart changed. Please check and try again."). Any other failure keeps the dialog open, as before. See `hooks/CLAUDE.md`, `useCheckout()`.
+**Cloud checkout sends what the screen showed (households H3b task B.5).** The page sends every row of the cart being bought (`isBeingBought`), as `{ cartItemId, quantity }`, and no stock total. A cart is shared at its location, so a co-member may change it after this screen loaded; the server then refuses with `CART_CHANGED` and writes nothing. `useCheckout` reloads the cart's rows, and the page closes the dialog and shows the toast `shopping.cartChanged` ("This cart changed. Please check and try again."). Any other failure keeps the dialog open and shows `common.saveFailed` (since 2026-11-19; before, it showed nothing). Abandon, create-from-search, and checking, unchecking or changing the amount of a row show the same toast when the write fails (`docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md`). See `hooks/CLAUDE.md`, `useCheckout()`.
 
 **Abandon:** After abandoning → navigate to `/shopping`.
 

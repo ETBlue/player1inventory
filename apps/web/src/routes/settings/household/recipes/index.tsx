@@ -76,7 +76,9 @@ function RecipeSettings() {
               recipe={recipe}
               itemCount={recipe.items.length}
               {...(canEditCatalog && {
-                onDelete: () => deleteRecipe.mutate(recipe.id),
+                onDelete: async () => {
+                  await deleteRecipe.mutateAsync(recipe.id)
+                },
               })}
             />
           ))

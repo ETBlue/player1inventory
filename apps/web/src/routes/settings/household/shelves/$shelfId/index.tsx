@@ -15,6 +15,7 @@ import {
   useShelfQuery,
   useUpdateShelfMutation,
 } from '@/hooks/useShelves'
+import { showSaveError } from '@/lib/saveError'
 
 export const Route = createFileRoute('/settings/household/shelves/$shelfId/')({
   component: ShelfInfoTab,
@@ -83,7 +84,9 @@ function ShelfInfoTab() {
             },
           },
         },
-        { onSuccess: () => goBack() },
+        // Before, a failed save showed nothing. The page stays, so the user
+        // can try again.
+        { onSuccess: () => goBack(), onError: (err) => showSaveError(err) },
       )
     } else {
       updateShelf.mutate(
@@ -93,7 +96,9 @@ function ShelfInfoTab() {
             name: name.trim(),
           },
         },
-        { onSuccess: () => goBack() },
+        // Before, a failed save showed nothing. The page stays, so the user
+        // can try again.
+        { onSuccess: () => goBack(), onError: (err) => showSaveError(err) },
       )
     }
   }
@@ -141,11 +146,10 @@ function ShelfInfoTab() {
             buttonClassName="mt-2 w-full"
             dialogTitle={`Delete "${shelf.name}"?`}
             dialogDescription="Items will move to Unsorted."
-            onDelete={() => {
-              deleteShelf.mutate(shelf.id, {
-                onSuccess: () =>
-                  navigate({ to: '/settings/household/shelves' }),
-              })
+            // Awaited, so `DeleteButton` sees a failure and says so
+            onDelete={async () => {
+              await deleteShelf.mutateAsync(shelf.id)
+              navigate({ to: '/settings/household/shelves' })
             }}
           />
         </>

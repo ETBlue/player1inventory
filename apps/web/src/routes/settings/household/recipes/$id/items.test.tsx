@@ -16,6 +16,7 @@ import {
   createVendor,
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+import { watchUnhandledRejections } from '@/test/unhandledRejections'
 import { TagColor } from '@/types'
 
 describe('Recipe Detail - Items Tab', () => {
@@ -874,5 +875,115 @@ describe('Recipe Detail - Items Tab', () => {
     await act(async () => {
       await Promise.resolve()
     })
+  })
+
+  // A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+  // Before the fix the write had a try/finally with no catch: an unhandled
+  // rejection, and nothing on screen said the change was not saved.
+  it('user sees a message when adding an item to the recipe fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given a recipe and an item, and a database that refuses the write
+      const recipe = await makeRecipe('Pasta')
+      await makeItem('Noodles')
+      renderItemsTab(recipe.id)
+      vi.spyOn(db.recipes, 'update').mockRejectedValueOnce(
+        new Error('disk full'),
+      )
+      const user = userEvent.setup()
+
+      // When the user checks the item
+      await user.click(await screen.findByLabelText('Add Noodles'))
+
+      // Then a message says the change was not saved
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      // And the row is unchanged and can be pressed again
+      await waitFor(() =>
+        expect(screen.getByLabelText('Add Noodles')).toBeEnabled(),
+      )
+      expect(screen.getByLabelText('Add Noodles')).not.toBeChecked()
+      expect((await db.recipes.get(recipe.id))?.items).toEqual([])
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('user sees a message when changing the default amount fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given a recipe with an item, and a database that refuses the write
+      const item = await makeItem('Noodles')
+      const recipe = await makeRecipe('Pasta', [
+        { itemId: item.id, defaultAmount: 1 },
+      ])
+      renderItemsTab(recipe.id)
+      vi.spyOn(db.recipes, 'update').mockRejectedValueOnce(
+        new Error('disk full'),
+      )
+      const user = userEvent.setup()
+
+      // When the user presses +
+      await user.click(
+        await screen.findByLabelText('Increase quantity of Noodles'),
+      )
+
+      // Then a message says the change was not saved, and the amount stays
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      await waitFor(() =>
+        expect(
+          screen.getByLabelText('Increase quantity of Noodles'),
+        ).toBeEnabled(),
+      )
+      expect((await db.recipes.get(recipe.id))?.items[0]?.defaultAmount).toBe(1)
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
+  })
+
+  // A failed create from search
+  // (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md). Before
+  // the fix the catch kept the typed name but showed nothing.
+  it('user sees a message when creating an item from search fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given a recipe, and a database that refuses the new item
+      const recipe = await makeRecipe('Pasta')
+      renderItemsTab(recipe.id)
+      vi.spyOn(db.items, 'add').mockRejectedValueOnce(new Error('disk full'))
+      const user = userEvent.setup()
+
+      // When the user types a new name and presses Enter
+      await user.click(
+        await screen.findByRole('button', { name: /toggle search/i }),
+      )
+      await user.type(
+        await screen.findByPlaceholderText(/search items/i),
+        'Butter',
+      )
+      await user.keyboard('{Enter}')
+
+      // Then a message says the change was not saved
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      // And the typed name is kept, so the user can try again
+      expect(screen.getByPlaceholderText(/search items/i)).toHaveValue('Butter')
+      expect(await db.items.count()).toBe(0)
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
   })
 })

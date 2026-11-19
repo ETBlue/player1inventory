@@ -6,10 +6,11 @@ import {
 } from '@tanstack/react-router'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { createRecipe } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+import { watchUnhandledRejections } from '@/test/unhandledRejections'
 
 describe('Recipe List - Delete Dialog', () => {
   let queryClient: QueryClient
@@ -324,5 +325,65 @@ describe('Recipe Detail - Info Tab', () => {
 
     // And name input shows original value
     expect(screen.getByLabelText(/name/i)).toHaveValue('Test Recipe')
+  })
+})
+
+// A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+// Before the fix the page chained `.then(goBack)` with no catch: a failed write
+// was an unhandled rejection and nothing on screen said so.
+describe('Recipe Detail - a failed save', () => {
+  let queryClient: QueryClient
+  let rejections: ReturnType<typeof watchUnhandledRejections>
+
+  beforeEach(async () => {
+    await db.recipes.clear()
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    sessionStorage.clear()
+    rejections = watchUnhandledRejections()
+  })
+
+  afterEach(() => {
+    rejections.stop()
+    vi.restoreAllMocks()
+  })
+
+  it('user sees a message when saving the name fails, and the name is kept', async () => {
+    // Given a recipe, and a database that refuses the write
+    const recipe = await createRecipe({ name: 'Pasta Dinner' })
+    vi.spyOn(db.recipes, 'update').mockRejectedValueOnce(new Error('disk full'))
+    const history = createMemoryHistory({
+      initialEntries: [`/settings/household/recipes/${recipe.id}`],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    const user = userEvent.setup()
+
+    // When the user renames it and saves
+    const nameInput = await screen.findByLabelText('Name')
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Pasta Carbonara')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then a message says the change was not saved
+    expect(
+      await screen.findByText('Could not save the change. Please try again.'),
+    ).toBeInTheDocument()
+    // And the page stays, with the typed name and Save enabled again
+    expect(router.state.location.pathname).toBe(
+      `/settings/household/recipes/${recipe.id}`,
+    )
+    expect(screen.getByLabelText('Name')).toHaveValue('Pasta Carbonara')
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /save/i })).toBeEnabled(),
+    )
+    expect((await db.recipes.get(recipe.id))?.name).toBe('Pasta Dinner')
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
   })
 })

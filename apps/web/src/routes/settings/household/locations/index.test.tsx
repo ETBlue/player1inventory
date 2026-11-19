@@ -7,11 +7,12 @@ import {
 } from '@tanstack/react-router'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { createLocation } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
+import { watchUnhandledRejections } from '@/test/unhandledRejections'
 import { DEFAULT_LOCATION_ID } from '@/types'
 
 describe('Settings locations page', () => {
@@ -162,6 +163,76 @@ describe('Settings locations page', () => {
       'No organizer',
     ]) {
       expect(inMain().queryByText(text)).not.toBeInTheDocument()
+    }
+  })
+
+  // A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+  // Before the fix Add and Rename used `mutate` with no `onError`: the dialog
+  // stayed open and nothing on screen said the save failed.
+  it('user sees a message when creating a location fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given the locations page, and a database that refuses the new location
+      renderPage()
+      const user = userEvent.setup()
+      await waitFor(() =>
+        expect(inMain().getByText('My Home')).toBeInTheDocument(),
+      )
+      vi.spyOn(db.locations, 'add').mockRejectedValueOnce(
+        new Error('disk full'),
+      )
+
+      // When the user adds a location named "Office"
+      await user.click(screen.getByRole('button', { name: /add location/i }))
+      await user.type(await screen.findByLabelText('Name'), 'Office')
+      await user.click(screen.getByRole('button', { name: /^add$/i }))
+
+      // Then a message says so, and the dialog keeps the name
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      expect(screen.getByLabelText('Name')).toHaveValue('Office')
+      expect(await db.locations.count()).toBe(1)
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('user sees a message when renaming a location fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given a location, and a database that refuses the write
+      const office = await createLocation('Office')
+      renderPage()
+      const user = userEvent.setup()
+      await waitFor(() =>
+        expect(screen.getByText('Office')).toBeInTheDocument(),
+      )
+      vi.spyOn(db.locations, 'update').mockRejectedValueOnce(
+        new Error('disk full'),
+      )
+
+      // When the user renames it to "Studio"
+      await user.click(screen.getByRole('button', { name: /rename office/i }))
+      const input = await screen.findByLabelText('Name')
+      await user.clear(input)
+      await user.type(input, 'Studio')
+      await user.click(screen.getByRole('button', { name: /save/i }))
+
+      // Then a message says so, and the dialog keeps the name
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      expect(screen.getByLabelText('Name')).toHaveValue('Studio')
+      expect((await db.locations.get(office.id))?.name).toBe('Office')
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
     }
   })
 })

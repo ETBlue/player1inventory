@@ -12,6 +12,7 @@ import {
   useUpdateVendor,
   useVendors,
 } from '@/hooks/useVendors'
+import { showSaveError } from '@/lib/saveError'
 
 export const Route = createFileRoute('/settings/household/vendors/$id/')({
   component: VendorInfoTab,
@@ -36,11 +37,9 @@ function VendorInfoTab() {
 
   const handleDelete = async () => {
     if (!vendor) return
-    deleteVendor.mutate(id, {
-      onSuccess: () => {
-        goBack()
-      },
-    })
+    // Awaited, so `DeleteButton` sees a failure and says so
+    await deleteVendor.mutateAsync(id)
+    goBack()
   }
 
   if (!vendor) return null
@@ -65,7 +64,13 @@ function VendorInfoTab() {
           onSave={(data) =>
             updateVendor
               .mutateAsync({ id: vendor.id, updates: data })
-              .then(() => goBack())
+              // A failed save shows a toast and keeps the page, so the
+              // person can try again. Without the second callback it was an
+              // unhandled rejection with nothing on screen.
+              .then(
+                () => goBack(),
+                (err: unknown) => showSaveError(err),
+              )
           }
           isPending={updateVendor.isPending}
           onDirtyChange={registerDirtyState}

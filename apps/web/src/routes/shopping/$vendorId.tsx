@@ -55,6 +55,7 @@ import { useSortFilter } from '@/hooks/useSortFilter'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { filterItems, filterItemsByRecipes } from '@/lib/filterUtils'
 import { isInactiveHere, isStockedHere } from '@/lib/quantityUtils'
+import { showSaveError } from '@/lib/saveError'
 import { sortItems } from '@/lib/sortUtils'
 import { isBeingBought, type PantryItem } from '@/types'
 
@@ -117,8 +118,10 @@ function VendorCart() {
         packedQuantity: 0,
         unpackedQuantity: 0,
       })
-    } catch {
-      // input stays populated for retry
+    } catch (err) {
+      // The typed name stays in the search box, so the user can try again.
+      // Before, this catch showed nothing.
+      showSaveError(err)
     }
   }
 
@@ -357,16 +360,21 @@ function VendorCart() {
         s.delete(item.id)
         return s
       })
+    // Before, a failed write only cleared the pending row and said nothing
+    const failed = (err: unknown) => {
+      clearPending()
+      showSaveError(err)
+    }
     setPendingItemIds((prev) => new Set(prev).add(item.id))
     if (ci) {
       removeFromCart.mutate(ci.id, {
         onSuccess: clearPending,
-        onError: clearPending,
+        onError: failed,
       })
     } else if (cart) {
       addToCart.mutate(
         { cartId: cart.id, itemId: item.id, quantity: 1 },
-        { onSuccess: clearPending, onError: clearPending },
+        { onSuccess: clearPending, onError: failed },
       )
     } else {
       clearPending()
@@ -385,7 +393,14 @@ function VendorCart() {
       setPendingItemIds((prev) => new Set(prev).add(item.id))
       updateCartItem.mutate(
         { cartItemId: ci.id, quantity: qty },
-        { onSuccess: clearPending, onError: clearPending },
+        {
+          onSuccess: clearPending,
+          // Before, a failed write only cleared the pending row
+          onError: (err) => {
+            clearPending()
+            showSaveError(err)
+          },
+        },
       )
     }
   }
@@ -611,8 +626,10 @@ function VendorCart() {
                       replace: true,
                     })
                     setShowAbandonDialog(false)
-                  } catch {
-                    // mutation failed; dialog stays open so user can retry
+                  } catch (err) {
+                    // The dialog stays open so the user can retry. Before,
+                    // nothing on screen said the cart was not abandoned.
+                    showSaveError(err)
                   }
                 }
               }}
@@ -675,9 +692,11 @@ function VendorCart() {
                     if (isCartChangedError(err)) {
                       setShowCheckoutDialog(false)
                       toast.error(t('shopping.cartChanged'))
+                    } else {
+                      // Any other failure: the dialog stays open so the user
+                      // can retry. Before, nothing on screen said so.
+                      showSaveError(err)
                     }
-                    // Any other failure: the dialog stays open so the user
-                    // can retry, as before.
                     return
                   }
                   setIsCheckoutRefetching(true)

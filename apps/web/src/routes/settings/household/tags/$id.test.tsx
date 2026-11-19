@@ -6,10 +6,11 @@ import {
 } from '@tanstack/react-router'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { createItem, createTag, createTagType } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+import { watchUnhandledRejections } from '@/test/unhandledRejections'
 import { TagColor } from '@/types'
 
 describe('Tag Detail - Info Tab', () => {
@@ -690,5 +691,70 @@ describe('Tag Detail Page - Delete Dialog', () => {
     const stillExists = await db.tags.get(tag.id)
     expect(stillExists).toBeDefined()
     expect(stillExists?.name).toBe('Dairy')
+  })
+})
+
+// A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+// Before the fix the page chained `.then(goBack)` with no catch: a failed write
+// was an unhandled rejection and nothing on screen said so.
+describe('Tag Detail - a failed save', () => {
+  let queryClient: QueryClient
+  let rejections: ReturnType<typeof watchUnhandledRejections>
+
+  beforeEach(async () => {
+    await db.tags.clear()
+    await db.tagTypes.clear()
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    sessionStorage.clear()
+    rejections = watchUnhandledRejections()
+  })
+
+  afterEach(() => {
+    rejections.stop()
+    vi.restoreAllMocks()
+  })
+
+  it('user sees a message when saving the name fails, and the name is kept', async () => {
+    // Given a tag, and a database that refuses the write
+    const tagType = await createTagType({
+      name: 'Category',
+      color: TagColor.blue,
+    })
+    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
+    vi.spyOn(db.tags, 'update').mockRejectedValueOnce(new Error('disk full'))
+    const history = createMemoryHistory({
+      initialEntries: [`/settings/household/tags/${tag.id}`],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    const user = userEvent.setup()
+
+    // When the user renames it and saves
+    const nameInput = await screen.findByLabelText('Name')
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Milk Products')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then a message says the change was not saved
+    expect(
+      await screen.findByText('Could not save the change. Please try again.'),
+    ).toBeInTheDocument()
+    // And the page stays, with the typed name and Save enabled again
+    expect(router.state.location.pathname).toBe(
+      `/settings/household/tags/${tag.id}`,
+    )
+    expect(screen.getByLabelText('Name')).toHaveValue('Milk Products')
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /save/i })).toBeEnabled(),
+    )
+    expect((await db.tags.get(tag.id))?.name).toBe('Dairy')
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
   })
 })
