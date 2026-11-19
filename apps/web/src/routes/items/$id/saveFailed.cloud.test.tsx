@@ -259,6 +259,33 @@ describe('Item pages - a failed cloud save', () => {
       )
     })
 
+    it('user sees a message when the server refuses to assign a new tag, and the dialog closes', async () => {
+      const user = userEvent.setup()
+      // Given a server that creates the tag but refuses the item write
+      cloudServer.results.useCreateTagMutation = (vars) => ({
+        createTag: cloudTag('tag-dairy', String(vars.name), 'type-label'),
+      })
+      cloudServer.failing.add('useUpdateItemMutation')
+      renderPage('/items/item-flour/relation/tags')
+
+      // When the user adds a tag named "dairy"
+      await user.click(await screen.findByRole('button', { name: /new tag$/i }))
+      await user.type(screen.getByLabelText(/name/i), 'dairy')
+      await user.click(screen.getByRole('button', { name: /^add tag$/i }))
+
+      // Then both writes were sent, and a message says the assign failed
+      await expectSaveFailedAndNoRejection()
+      expect(cloudServer.calls.useCreateTagMutation).toHaveLength(1)
+      expect(cloudServer.calls.useUpdateItemMutation).toEqual([
+        expect.objectContaining({
+          input: expect.objectContaining({ tagIds: ['tag-dairy'] }),
+        }),
+      ])
+      // And the dialog has closed: the tag exists now, so trying again would
+      // create it a second time
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+
     it('user sees a message when the server refuses a new tag type, and the dialog keeps the name', async () => {
       const user = userEvent.setup()
       // Given a household with no tag types (the button shows only then), and
