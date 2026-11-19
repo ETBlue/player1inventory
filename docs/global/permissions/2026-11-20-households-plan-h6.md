@@ -941,6 +941,17 @@ difference, not a separate run). The known flaky `routes/shopping/index.stories.
 (Offline) failed once at load average 16 and passed alone and in the next full run. Commits
 `3c893dea` (`DeleteButton`'s typed-name mode) and `542afb2b` (the danger zones).
 
+**Review of J.7 (2026-11-20).** Two fixes, each with a test that went red without it.
+
+| Finding | Fix | Mutation | Red |
+|---|---|---|---|
+| The confirm label showed the name with HTML's normal white space, so `the  Lin home ` (two spaces inside, one at the end) showed as `the Lin home`. The match is exact, so the person could never type the name. The server trims only the ends of a household name; an imported location name is not trimmed at all | `whitespace-pre-wrap` on the label (`DeleteButton.tsx`) | the class removed | 1: "user sees the spaces of the name as stored, so a name with double spaces can be typed" (`DeleteButton.test.tsx`) |
+| "while one purge runs, no other purge can be started" set only `clear` as pending, so `running = clearing` alone passed it | the test now runs once for each of the three hooks | `const running = clearing` (`HouseholdDangerZone.tsx`) | 2: the `deleteAll` and `deleteHousehold` cases. Before the change: 0 |
+
+Two more checks by the reviewer, both red as expected: `e.preventDefault()` also on the PLAIN
+path of `DeleteButton` → 1, "user sees a message when the delete fails" (so the old path is
+still pinned); all three purge buttons always on → 1, the `clear` case of the test above.
+
 **E2E:** none (J.8).
 
 ---
@@ -1443,6 +1454,7 @@ Filled in from the task reports and reviews.
 | J.7 | Step 1: "after it, the pantry of that location is empty and its logs are still on the item log tab"; "Delete household … then the app shows the no-household screen" | A web unit test cannot show either: the server does the delete, and the move is `useDeleteHousehold`'s (pinned in `usePurges.test.tsx`). The page tests check that the right mutation is sent once and that the dialog closes. Both screens are left to J.8 (tests 4 and 5) |
 | J.7 | O39: `…danger.removeAllDescription` "The location, its people and its logs stay." | The brief asked that the text say the catalog stays too: "The location, its people, its logs and the catalog stay." `…deleteLocationsDescription` also says "No new location is made." (O34-A). O39 had no title for the location's zone: `settings.locations.danger.title` was added. The location confirm reuses `settings.household.danger.typeName` |
 | J.7 | Files: `$id.stories.tsx` | Unchanged: its `OrganizerView` already shows the zone; its smoke test now checks for Remove all items. `routes/settings/household/index.stories.tsx` gained `CloudOwner` |
+| J.7 (review) | Step 1: "the confirm button stays disabled until the field equals the household name exactly (case and spaces as stored)" | Exact spaces need the label to SHOW them. HTML folds runs of spaces and drops a trailing one, so a name like `a  b` could never be confirmed. The label now has `whitespace-pre-wrap` |
 
 ## Status
 
