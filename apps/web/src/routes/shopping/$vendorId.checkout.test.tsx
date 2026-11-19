@@ -153,9 +153,11 @@ describe('Vendor cart page checkout', () => {
     )
   })
 
-  it('any other failure keeps the dialog open and shows no cart-changed message', async () => {
-    // A negative control for the test above: the message belongs to
-    // CART_CHANGED only.
+  it('user sees the general failed-save message, not the cart-changed one, when checkout fails for another reason', async () => {
+    // The cart-changed message belongs to CART_CHANGED only. Any other
+    // failure keeps the dialog open and shows common.saveFailed (since
+    // docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md; before,
+    // it showed nothing).
     const { vendor } = await seedCart()
     mockCheckoutAsync.mockRejectedValue(new Error('network down'))
     const errorToast = vi.spyOn(toast, 'error')
@@ -165,6 +167,13 @@ describe('Vendor cart page checkout', () => {
 
     await waitFor(() => expect(mockCheckoutAsync).toHaveBeenCalledTimes(1))
     expect(screen.getByText(/complete shopping trip/i)).toBeInTheDocument()
-    expect(errorToast).not.toHaveBeenCalled()
+    await waitFor(() =>
+      expect(errorToast).toHaveBeenCalledWith(
+        'Could not save the change. Please try again.',
+      ),
+    )
+    expect(errorToast).not.toHaveBeenCalledWith(
+      'This cart changed. Please check and try again.',
+    )
   })
 })
