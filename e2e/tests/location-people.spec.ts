@@ -665,6 +665,9 @@ test.describe('the people of a location', () => {
     browser,
     request,
   }) => {
+    // Measured 24.4 s on 2026-11-19 (households H5c task H.8), close to the
+    // 30 s default. Under the load of the full gate that is too close
+    test.setTimeout(60_000)
     // Given Garage, made and stocked by CLEO; OWNER has no role there
     const seed = await seedHousehold(request)
     // And the server refuses OWNER Garage's stock (a negative control: it
@@ -731,6 +734,9 @@ test.describe('the people of a location', () => {
   test('user removed from the household keeps no location role, even when a role is given at the same moment', async ({
     request,
   }) => {
+    // Measured 25.5 s on 2026-11-19 (households H5c task H.8), close to the
+    // 30 s default. Under the load of the full gate that is too close
+    test.setTimeout(60_000)
     // Given BEN is a participant of Home
     const seed = await seedHousehold(request)
     await setRole(seed.owner, seed.home, BEN, 'participant')
