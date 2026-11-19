@@ -295,14 +295,13 @@ test.afterEach(async ({ request, baseURL }) => {
 })
 
 test.describe('the people of a location', () => {
-  // 90 s: up to two browsers, four cleanups per hook, a seed of about
-  // fifteen requests, and live updates (household-invites.spec.ts).
-  test.describe.configure({ timeout: 90_000 })
-
   test('household owner can give a role, and the member sees the location without a reload', async ({
     browser,
     request,
   }) => {
+    // Measured 43.0 s on 2026-11-19 (load average 2.1 to 2.8, the whole spec
+    // run with `--timeout=120000`), over or at the 30 s default
+    test.setTimeout(90_000)
     // Given BEN, a member with no location role, sees the empty screen,
     // and BEN's live socket works
     const seed = await seedHousehold(request)
@@ -369,6 +368,9 @@ test.describe('the people of a location', () => {
     browser,
     request,
   }) => {
+    // Measured 29.8 s on 2026-11-19 (load average 2.1 to 2.8, the whole spec
+    // run with `--timeout=120000`), over or at the 30 s default
+    test.setTimeout(60_000)
     // Given Garage has two organizers: CLEO, and OWNER, who gives
     // themselves the role (an owner may make any change)
     const seed = await seedHousehold(request)
@@ -413,7 +415,8 @@ test.describe('the people of a location', () => {
     await expect(
       cleoPage.getByRole('option', { name: 'Organizer', exact: true }),
     ).toHaveCount(0)
-    await cleoPage.getByRole('option', { name: 'Viewer', exact: true }).click()
+    await cleoPage.keyboard.press('Escape')
+    await people.setRole(BEN_NAME, 'Viewer')
 
     // Then the server has BEN as a viewer
     await expect
@@ -447,6 +450,9 @@ test.describe('the people of a location', () => {
     browser,
     request,
   }) => {
+    // Measured 28.0 s on 2026-11-19 (load average 2.1 to 2.8, the whole spec
+    // run with `--timeout=120000`), over or at the 30 s default
+    test.setTimeout(60_000)
     // Given BEN is a participant of Home and a viewer of Garage, and BEN's
     // pantry shows Home
     const seed = await seedHousehold(request)
@@ -513,6 +519,9 @@ test.describe('the people of a location', () => {
     browser,
     request,
   }) => {
+    // Measured 29.6 s on 2026-11-19 (load average 2.1 to 2.8, the whole spec
+    // run with `--timeout=120000`), over or at the 30 s default
+    test.setTimeout(60_000)
     // Given CLEO, the only organizer of Garage, is also a viewer of Home,
     // and CLEO's tab is on Garage's page
     const seed = await seedHousehold(request)
@@ -615,8 +624,21 @@ test.describe('the people of a location', () => {
     // When OWNER leaves Garage on its page
     await people.leaveLocation()
 
-    // Then OWNER stays on the page (an owner may still read it), without
-    // Leave, and with CLEO still listed
+    // Then OWNER stays on the page (an owner may still read it). The people
+    // list was read again after the leave: Add person now offers OWNER, which
+    // it does only for a person NOT on the list (decision T43). That is a
+    // presence check, so the absence checks below cannot pass on a render
+    // from before the read
+    await people.openAddPerson()
+    await people
+      .addDialog()
+      .getByRole('combobox', { name: 'Person', exact: true })
+      .click()
+    await expect(
+      ownerPage.getByRole('option', { name: OWNER_NAME, exact: true }),
+    ).toBeVisible()
+    await ownerPage.keyboard.press('Escape')
+    await people.addDialog().getByRole('button', { name: 'Cancel' }).click()
     await expect(people.personRow(CLEO_NAME)).toBeVisible()
     await expect(people.personRow(OWNER_NAME)).toHaveCount(0)
     await expect(
@@ -673,12 +695,18 @@ test.describe('the people of a location', () => {
     // change, so the row has a picker)
     await expect(people.heading()).toHaveText('Garage')
     await expect(people.rolePicker(CLEO_NAME)).toHaveText('Organizer')
-    // And no stock of Garage
-    await expect(people.main().getByText(NAILS)).toHaveCount(0)
-    // And the only request that named Garage was LocationPeople (Review
-    // Focus 4): no stock, cart or log of Garage reached OWNER
-    await ownerPage.waitForLoadState('networkidle')
-    const namingGarage = sent.filter((r) => r.body.includes(seed.garage))
+    // And the Add person section has rendered, so `HouseholdMembers` has
+    // answered too: every read the page makes on its own has been sent
+    await expect(
+      people.main().getByRole('button', { name: 'Add person', exact: true }),
+    ).toBeVisible()
+
+    // And until now the only REQUEST of the tab that named Garage was
+    // LocationPeople (Review Focus 4). This checks requests, not responses:
+    // a read of Garage's stock, carts or logs would have to be SENT first,
+    // and none was. It covers the page from its first render to the point
+    // where its people and members are on screen, not any later moment
+    const namingGarage = [...sent].filter((r) => r.body.includes(seed.garage))
     expect(namingGarage.length).toBeGreaterThan(0)
     expect([...new Set(namingGarage.map((r) => r.operationName))]).toEqual([
       'LocationPeople',
@@ -781,7 +809,9 @@ test.describe('the people of a location', () => {
     // there, so OWNER sees Leave and a Remove on BEN's row. CLEO now has no
     // location role, so the Members page marks CLEO.
     const seed = await seedHousehold(request)
-    await seed.cleo(LEAVE_LOCATION, { locationId: seed.garage })
+    expect(
+      await seed.cleo(LEAVE_LOCATION, { locationId: seed.garage }),
+    ).toEqual({ leaveLocation: true })
     await setRole(seed.owner, seed.garage, OWNER, 'viewer')
     await setRole(seed.owner, seed.garage, BEN, 'viewer')
 
@@ -800,13 +830,16 @@ test.describe('the people of a location', () => {
       })
     }
 
+    // Each scan waits for what it scans to be ON SCREEN, not for
+    // `waitForLoadState('networkidle')`: after a client-side navigation that
+    // call returns at once, because the load state was reached long before.
+
     // The Members page, with "No location roles" and its link on CLEO's row
     const members = new MembersPage(page)
     await members.navigateTo()
     await expect(members.memberRow(CLEO_NAME)).toContainText(
       'No location roles',
     )
-    await page.waitForLoadState('networkidle')
     await scan()
 
     // Settings › Locations, with a name link on each row
@@ -815,7 +848,6 @@ test.describe('the people of a location', () => {
     await expect(
       page.getByRole('main').getByRole('link', { name: 'Open Home' }),
     ).toBeVisible()
-    await page.waitForLoadState('networkidle')
     await scan()
 
     // Garage's page, with the No organizer note
@@ -826,7 +858,9 @@ test.describe('the people of a location', () => {
     const people = new LocationPeoplePage(page)
     await expect(people.noOrganizerNote()).toBeVisible()
     await expect(people.rolePicker(BEN_NAME)).toHaveText('Viewer')
-    await page.waitForLoadState('networkidle')
+    await expect(
+      people.main().getByRole('button', { name: 'Add person', exact: true }),
+    ).toBeVisible()
     await scan()
 
     // Add person, the Remove confirm and the Leave confirm

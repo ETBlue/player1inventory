@@ -24,10 +24,16 @@ export class LocationPeoplePage {
     withSteps(this)
   }
 
+  /**
+   * The route `/settings/household/locations/$id` (`createFileRoute` in
+   * apps/web/src/routes/settings/household/locations/$id.tsx:47). In local
+   * mode it redirects to the list.
+   */
   async navigateTo(locationId: string) {
     await this.page.goto(`/settings/household/locations/${locationId}`)
   }
 
+  /** The app's `<main>` (apps/web/src/components/global/Layout/Layout.tsx:36). */
   main(): Locator {
     return this.page.getByRole('main')
   }
@@ -124,7 +130,11 @@ export class LocationPeoplePage {
     await expect(this.addDialog()).toHaveCount(0)
   }
 
-  /** Change the role of `name` with the row's picker. */
+  /**
+   * Change the role of `name` with the row's picker: the `SelectTrigger`
+   * and its `onValueChange` (components/location/LocationPeopleList/
+   * LocationPeopleList.tsx:126-138).
+   */
   async setRole(name: string, role: LocationRoleText) {
     await this.rolePicker(name).click()
     await this.page.getByRole('option', { name: role, exact: true }).click()
@@ -136,7 +146,11 @@ export class LocationPeoplePage {
     await expect(this.confirmDialog()).toBeVisible()
   }
 
-  /** Remove `name`: the row's button, then Remove in the confirm. */
+  /**
+   * Remove `name`: the row's button, then Remove in the confirm. The
+   * confirm's button is `settings.household.members.remove`, "Remove"
+   * (LocationPeopleList.tsx:169).
+   */
   async removePerson(name: string) {
     await this.openRemove(name)
     await this.confirmDialog()
@@ -152,13 +166,20 @@ export class LocationPeoplePage {
     await expect(this.confirmDialog()).toBeVisible()
   }
 
-  /** Close an open confirm with Cancel. */
+  /**
+   * Close an open confirm with Cancel: `AlertDialogCancel`, `common.cancel`
+   * (components/shared/DeleteButton/DeleteButton.tsx:88).
+   */
   async cancelConfirm() {
     await this.confirmDialog().getByRole('button', { name: 'Cancel' }).click()
     await expect(this.confirmDialog()).toHaveCount(0)
   }
 
-  /** Leave the location: the button, then Leave location in the confirm. */
+  /**
+   * Leave the location: the button, then Leave location in the confirm.
+   * The confirm's button is `settings.locations.people.leave`, "Leave
+   * location" (`$id.tsx:271`).
+   */
   async leaveLocation() {
     await this.openLeave()
     await this.confirmDialog()
