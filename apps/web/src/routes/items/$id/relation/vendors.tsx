@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { useItem, useUpdateItem, useVendors } from '@/hooks'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useCreateVendor } from '@/hooks/useVendors'
+import { showSaveError } from '@/lib/saveError'
 import { showVendorCreateError } from '@/lib/vendorCreateError'
 
 export const Route = createFileRoute('/items/$id/relation/vendors')({
@@ -43,7 +44,12 @@ function VendorsTab() {
       : [...currentVendorIds, vendorId]
 
     setTogglingVendorId(vendorId)
-    updateItem.mutate({ id, updates: { vendorIds: newVendorIds } })
+    // `mutate` never rejects, so the failure comes in through `onError`.
+    // Before, it was ignored and a failed save showed nothing.
+    updateItem.mutate(
+      { id, updates: { vendorIds: newVendorIds } },
+      { onError: (err) => showSaveError(err) },
+    )
   }
 
   const handleAddVendor = async () => {

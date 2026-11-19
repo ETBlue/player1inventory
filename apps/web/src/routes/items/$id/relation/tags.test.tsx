@@ -6,10 +6,11 @@ import {
 } from '@tanstack/react-router'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { createItem, createTag, createTagType } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+import { watchUnhandledRejections } from '@/test/unhandledRejections'
 import { TagColor } from '@/types'
 
 describe('Tags Tab - Add Tag Functionality', () => {
@@ -260,5 +261,59 @@ describe('Tags Tab - Add Tag Functionality', () => {
         screen.getByRole('button', { name: /dairy/i, pressed: true }),
       ).toBeInTheDocument()
     })
+  })
+
+  // A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+  // Before the fix a failed write showed nothing.
+  it('user sees a message when assigning a tag fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given an item, a tag, and a database that refuses the write
+      const tagType = await createTagType({
+        name: 'Label',
+        color: TagColor.teal,
+      })
+      await createTag({ name: 'frozen', typeId: tagType.id })
+      const item = await createItem({
+        name: 'Fish Fillet',
+        tagIds: [],
+        targetQuantity: 2,
+        refillThreshold: 1,
+      })
+      vi.spyOn(db.items, 'update').mockRejectedValueOnce(new Error('disk full'))
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      })
+      const history = createMemoryHistory({
+        initialEntries: [`/items/${item.id}/relation/tags`],
+      })
+      const router = createRouter({ routeTree, history })
+      render(
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>,
+      )
+      const user = userEvent.setup()
+
+      // When the user presses the tag badge
+      await user.click(await screen.findByRole('button', { name: /frozen/i }))
+
+      // Then a message says the change was not saved
+      expect(
+        await screen.findByText('Could not save the change. Please try again.'),
+      ).toBeInTheDocument()
+      // And the badge is still unpressed and the item unchanged
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: /frozen/i, pressed: false }),
+        ).toBeInTheDocument(),
+      )
+      expect((await db.items.get(item.id))?.tagIds).toEqual([])
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
   })
 })

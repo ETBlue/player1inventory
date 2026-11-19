@@ -13,6 +13,7 @@ import {
   useRecipes,
   useUpdateRecipe,
 } from '@/hooks/useRecipes'
+import { showSaveError } from '@/lib/saveError'
 import type { RecipeItem } from '@/types'
 
 export const Route = createFileRoute('/items/$id/relation/recipes')({
@@ -47,7 +48,12 @@ function RecipesTab() {
       : [...recipe.items, { itemId: id, defaultAmount: 0 }]
 
     setTogglingRecipeId(recipe.id)
-    updateRecipe.mutate({ id: recipe.id, updates: { items: newItems } })
+    // `mutate` never rejects, so the failure comes in through `onError`.
+    // Before, it was ignored and a failed save showed nothing.
+    updateRecipe.mutate(
+      { id: recipe.id, updates: { items: newItems } },
+      { onError: (err) => showSaveError(err) },
+    )
   }
 
   const handleAddRecipe = () => {

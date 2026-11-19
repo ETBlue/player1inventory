@@ -15,6 +15,7 @@ import {
 } from '@/hooks'
 import { useAddTagType } from '@/hooks/useAddTagType'
 import { usePermissions } from '@/hooks/usePermissions'
+import { showSaveError } from '@/lib/saveError'
 import type { TagColor } from '@/types'
 
 export const Route = createFileRoute('/items/$id/relation/tags')({
@@ -160,6 +161,9 @@ function TagsTab() {
     setLoadingTagId(tagId)
     try {
       await updateItem.mutateAsync({ id, updates: { tagIds: newTagIds } })
+    } catch (err) {
+      // Shown, not left unhandled: this runs straight off a click
+      showSaveError(err)
     } finally {
       setLoadingTagId(null)
     }
