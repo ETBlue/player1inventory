@@ -67,6 +67,7 @@ export const LIVE_BATCH_MS = 300
  * | `VendorCart`, `AllCarts` | cart `id`, `lastPurchasedAt`             | CART             |
  * | `CartItems`, `AllCartItems` | `cartId`, `itemId`, `quantity`        | CART             |
  * | `CartItemCountByItem`  | a count of cart rows                       | CART             |
+ * | `HouseholdActivity`    | the household log (households H6)          | LOCATION, CATALOG, STOCK, CART |
  *
  * Every `LOCATION` row above is covered by `'all'` anyway. A role change
  * (households H5b, H5c) must publish `LOCATION`, so `myRole` and
@@ -96,6 +97,19 @@ export const LIVE_BATCH_MS = 300
  * mutation publishes household-level `LOCATION` (decision T19), and
  * `LOCATION` refetches every active query.
  *
+ * `HouseholdActivity` (the Activity page, households H6 task J.5; decision
+ * T57) is in `CATALOG`, `STOCK` and `CART`, and `LOCATION` covers it as
+ * `'all'`. Every write that writes a log row publishes one of those kinds:
+ * the role, member and invite writes and `deleteAllLocations` send
+ * `LOCATION`, `clearAllData` sends `LOCATION` and `CATALOG`, and
+ * `removeAllLocationItems` sends `STOCK`, `CART` or both, only the kinds
+ * whose rows changed. Two gaps, both by design of the server: (1) a `STOCK`
+ * or `CART` event is location-level, so an owner or manager with no role on
+ * that location does not get it, and their open Activity page shows the
+ * "removed all items" row on its next read; (2) `recordImport` publishes
+ * nothing, and the import's own events can arrive before its log row is
+ * written.
+ *
  * `LocationPeople` (the location people page, households H5c task H.4) needs
  * no entry either: `setLocationRole`, `removeLocationRole` and
  * `leaveLocation` publish household-level `LOCATION` (decision T36). So do
@@ -108,8 +122,9 @@ export const QUERIES_BY_KIND: Record<ChangeKind, readonly string[] | 'all'> = {
     'CartItems',
     'AllCartItems',
     'CartItemCountByItem',
+    'HouseholdActivity',
   ],
-  STOCK: ['PantryData', 'ItemStocksForItem'],
+  STOCK: ['PantryData', 'ItemStocksForItem', 'HouseholdActivity'],
   LOG: ['ItemLogs', 'InventoryLogCountByItem', 'LastPurchaseDates'],
   LOCATION: 'all',
   CATALOG: [
@@ -129,6 +144,7 @@ export const QUERIES_BY_KIND: Record<ChangeKind, readonly string[] | 'all'> = {
     'TagCountByType',
     'GetVendors',
     'GetHousehold',
+    'HouseholdActivity',
   ],
 }
 

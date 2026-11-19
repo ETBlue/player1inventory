@@ -1,0 +1,38 @@
+# The household activity log (households H6, tasks J.3 and J.5). Owner or
+# manager only; anyone else gets FORBIDDEN (decision T54).
+#
+# Newest first. `first` rows (50 when not given, at most 200). `before` is the
+# id of the last row of the page already shown: the rows after it. The
+# `householdActivity` field policy in `apollo/cloudCache.ts` joins the pages
+# into one list.
+query HouseholdActivity($before: ID, $first: Int) {
+  householdActivity(before: $before, first: $first) {
+    id
+    action
+    createdAt
+    actorName
+    actorIsMe
+    actorDeleted
+    targetName
+    targetIsMe
+    targetDeleted
+    locationName
+    fromRole
+    toRole
+    householdRole
+    count
+    importCounts {
+      items
+      tags
+      tagTypes
+      vendors
+      recipes
+      shelves
+      locations
+      itemStocks
+      inventoryLogs
+      shoppingCarts
+      cartItems
+    }
+  }
+}

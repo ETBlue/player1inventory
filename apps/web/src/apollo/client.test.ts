@@ -637,3 +637,121 @@ describe('createCache — locationPeople is replaced, not merged', () => {
     expect(read('loc-g')).toEqual(['b', 'c'])
   })
 })
+
+// Households H6, task J.5: the activity log comes in pages (decision T54).
+// "Load more" sends `before:` the last id and must ADD its rows. A refetch
+// after a live event sends the first page again (the watched query keeps its
+// first variables) and must put the new rows on top, without losing the
+// pages already loaded and without showing a row twice.
+describe('createCache — householdActivity joins its pages', () => {
+  const ACTIVITY = gql`
+    query HouseholdActivity($before: ID, $first: Int) {
+      householdActivity(before: $before, first: $first) {
+        id
+        createdAt
+      }
+    }
+  `
+  // Newest first. Rows `a` and `b` have the SAME time, as two writes in one
+  // millisecond would; the server orders them by id.
+  const TIMES: Record<string, string> = {
+    x: '2026-11-20T10:09:00.000Z',
+    y: '2026-11-20T10:08:00.000Z',
+    a: '2026-11-20T10:07:00.000Z',
+    b: '2026-11-20T10:07:00.000Z',
+    c: '2026-11-20T10:06:00.000Z',
+    d: '2026-11-20T10:05:00.000Z',
+    e: '2026-11-20T10:04:00.000Z',
+  }
+  const row = (id: string) => ({
+    __typename: 'HouseholdActivityEntry',
+    id,
+    createdAt: TIMES[id],
+  })
+
+  function write(
+    cache: ReturnType<typeof createCache>,
+    variables: { before?: string; first: number },
+    ids: string[],
+  ) {
+    cache.writeQuery({
+      query: ACTIVITY,
+      variables,
+      data: { householdActivity: ids.map(row) },
+    })
+  }
+
+  function read(cache: ReturnType<typeof createCache>) {
+    return cache
+      .readQuery<{ householdActivity: { id: string }[] }>({
+        query: ACTIVITY,
+        variables: { first: 2 },
+      })
+      ?.householdActivity.map((r) => r.id)
+  }
+
+  it('user can load more and sees the next page after the first', () => {
+    const cache = createCache()
+    write(cache, { first: 2 }, ['a', 'b'])
+    write(cache, { before: 'b', first: 2 }, ['c', 'd'])
+    expect(read(cache)).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('user sees a new row on top after a refetch, and keeps the pages already loaded', () => {
+    // Given two pages are shown
+    const cache = createCache()
+    write(cache, { first: 2 }, ['a', 'b'])
+    write(cache, { before: 'b', first: 2 }, ['c', 'd'])
+
+    // When a live event reads the first page again, and one row is new
+    write(cache, { first: 2 }, ['x', 'a'])
+
+    // Then the new row is on top, and no row is lost or shown twice
+    expect(read(cache)).toEqual(['x', 'a', 'b', 'c', 'd'])
+  })
+
+  it('a refetch with the same rows changes nothing', () => {
+    const cache = createCache()
+    write(cache, { first: 2 }, ['a', 'b'])
+    write(cache, { before: 'b', first: 2 }, ['c'])
+    write(cache, { first: 2 }, ['a', 'b'])
+    expect(read(cache)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('a refetch that is all new rows replaces the list, so there is no gap', () => {
+    // Given one page [a, b] is shown
+    const cache = createCache()
+    write(cache, { first: 2 }, ['a', 'b'])
+
+    // When two new rows arrived, so the first page is now [x, y]. The rows
+    // between y and a are not known, so a and b cannot stay below y.
+    write(cache, { first: 2 }, ['x', 'y'])
+
+    // Then the list is the new page; "Load more" brings a and b back
+    expect(read(cache)).toEqual(['x', 'y'])
+  })
+
+  it('a page loaded after a refetch goes after the row it was asked for', () => {
+    // Given [x, a, b] after a refetch
+    const cache = createCache()
+    write(cache, { first: 2 }, ['a', 'b'])
+    write(cache, { first: 2 }, ['x', 'a'])
+    expect(read(cache)).toEqual(['x', 'a', 'b'])
+
+    // When the next two pages arrive
+    write(cache, { before: 'b', first: 2 }, ['c', 'd'])
+    write(cache, { before: 'd', first: 2 }, ['e'])
+
+    // Then every row shows once, in order
+    expect(read(cache)).toEqual(['x', 'a', 'b', 'c', 'd', 'e'])
+  })
+
+  it('a page asked after a row the list no longer holds is dropped, so there is no gap', () => {
+    // A late "Load more" answer that arrives after a refetch replaced the
+    // list: its `before` row is gone, so the rows between are not known.
+    const cache = createCache()
+    write(cache, { first: 2 }, ['x', 'y'])
+    write(cache, { before: 'b', first: 2 }, ['c', 'd'])
+    expect(read(cache)).toEqual(['x', 'y'])
+  })
+})
