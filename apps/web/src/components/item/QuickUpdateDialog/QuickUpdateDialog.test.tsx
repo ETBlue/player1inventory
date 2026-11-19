@@ -806,3 +806,37 @@ describe('QuickUpdateDialog — progress row button size', () => {
     expect(sizeClasses(fill)).toEqual(sizeClasses(increase))
   })
 })
+
+// A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+// Before the fix the dialog caught the rejection and showed nothing, so it
+// looked frozen.
+describe('QuickUpdateDialog — a failed save', () => {
+  it('user sees a message when the update fails, and the numbers are kept', async () => {
+    // Given the dialog, and a save that fails
+    const user = userEvent.setup()
+    const onSubmit = vi.fn<(updates: QuickUpdatePayload) => Promise<void>>(
+      async () => {
+        throw new Error('disk full')
+      },
+    )
+    renderDialog(makeItem(), onSubmit)
+
+    // When the user changes the packed quantity and presses Update
+    await user.click(screen.getByRole('button', { name: 'Increase packed' }))
+    await user.click(screen.getByRole('button', { name: 'Update' }))
+
+    // Then the dialog says the change was not saved
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not save the change. Please try again.',
+    )
+    // And the typed numbers stay, and Update can be pressed again
+    expect(packedInput()).toHaveValue(2)
+    expect(screen.getByRole('button', { name: 'Update' })).toBeEnabled()
+
+    // When the next try works, the message goes away
+    onSubmit.mockImplementationOnce(async () => {})
+    await user.click(screen.getByRole('button', { name: 'Update' }))
+    expect(onSubmit).toHaveBeenCalledTimes(2)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+})

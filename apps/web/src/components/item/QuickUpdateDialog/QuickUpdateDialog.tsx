@@ -64,6 +64,10 @@ export function QuickUpdateDialog({
     : ''
   const [localDueDate, setLocalDueDate] = useState(itemDueDateString)
   const [isPending, setIsPending] = useState(false)
+  // Shown inline when a save fails, the same way `ShelfFilterPicksDialog`
+  // does. The dialog stays open with the numbers kept, so the person can try
+  // again.
+  const [saveFailed, setSaveFailed] = useState(false)
 
   // Reset local state when dialog opens
   useEffect(() => {
@@ -203,6 +207,7 @@ export function QuickUpdateDialog({
 
   async function handleSubmit() {
     setIsPending(true)
+    setSaveFailed(false)
     try {
       await onSubmit({
         packedQuantity: localPacked,
@@ -219,7 +224,10 @@ export function QuickUpdateDialog({
       })
       // onClose() is called by the parent on success — don't call it here
     } catch {
-      // Keep dialog open on error
+      // Keep the dialog open and say why. Until 2026-11-19 this showed
+      // nothing, so the dialog looked frozen
+      // (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+      setSaveFailed(true)
     } finally {
       setIsPending(false)
     }
@@ -486,6 +494,14 @@ export function QuickUpdateDialog({
               {t('pantry.quickUpdate.refillHint')}
             </span>
           </div>
+          {saveFailed && (
+            <p
+              role="alert"
+              className="mt-4 text-sm text-status-error-foreground"
+            >
+              {t('common.saveFailed')}
+            </p>
+          )}
         </DialogMain>
 
         <DialogFooter>
