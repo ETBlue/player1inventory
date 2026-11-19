@@ -68,20 +68,40 @@ export function useLocations() {
   // person lost since their last visit. `ActiveLocationProvider` counts a
   // list as "seen" only when this is `true`.
   //
-  // The rule: Apollo's status was `ready` once, with data. The restored cache
-  // never gives that on its own: with `cache-and-network` the first status is
-  // `loading` over the cached data, and a FAILED first leg (offline) gives
-  // `error` with the cached data still in `data` (measured on Apollo 4.1.6:
-  // 1 → 8). `ready` comes only after a network answer, or after a cache write
-  // made from another server answer in this visit (a location mutation).
-  // Both are the server's data. The flag never goes back to `false`: a later
+  // The rule: a `ready` status that comes right after `loading` or `refetch`
+  // in this mount. That is the end of a network read of `GetLocations`, and
+  // it answered.
+  //
+  // `ready` alone is not enough (measured on Apollo 4.1.6, review of H.7):
+  // - with `cache-and-network` the first status is `loading` over the
+  //   restored cache, and a FAILED first leg (offline) gives `error` (1 → 8)
+  //   with the cached list still in `data`;
+  // - after that `error`, a cache write by ANOTHER answer (for example
+  //   `GetHouseholdLocations` writing `Location.myRole`) makes Apollo read
+  //   the cache again (`reobserveCacheFirst`) and give `ready` (8 → 7) with
+  //   the RESTORED list. That write is server data for the entity's fields,
+  //   not for the `locations` list.
+  // So a `ready` that follows `error` (or follows `ready`) does not count.
+  //
+  // If React ever skipped the render with `refetch` and went straight from
+  // `error` to `ready`, the read would not count. That only costs a toast,
+  // never shows a wrong one. The flag never goes back to `false`: a later
   // failed refetch keeps a list the server already sent.
   //
-  // A ref written during render: it only goes from `false` to `true`, and a
-  // render React throws away still saw a real `ready` status.
+  // Refs written during render: `serverAnsweredRef` only goes from `false` to
+  // `true`, and both refs record statuses Apollo really gave.
   const serverAnsweredRef = useRef(false)
-  if (isCloud && !!cloud.data && cloud.networkStatus === NetworkStatus.ready) {
-    serverAnsweredRef.current = true
+  const lastStatusRef = useRef<NetworkStatus | undefined>(undefined)
+  if (isCloud) {
+    const before = lastStatusRef.current
+    if (
+      !!cloud.data &&
+      cloud.networkStatus === NetworkStatus.ready &&
+      (before === NetworkStatus.loading || before === NetworkStatus.refetch)
+    ) {
+      serverAnsweredRef.current = true
+    }
+    lastStatusRef.current = cloud.networkStatus
   }
 
   if (isCloud) {
@@ -407,9 +427,11 @@ export function useDeleteLocation() {
 
   // The person deletes this location themselves, so its loss shows no
   // "You no longer have access" toast (households H5c task H.7, review). The
-  // mark is set BEFORE the write, because the refetch of `GetLocations` lands
-  // inside the mutation. A refused delete takes the mark back, so a later
-  // removal by someone else still shows the toast.
+  // mark is set BEFORE the write. The `GetLocations` read in `refetchQueries`
+  // starts when the server answers, and `awaitRefetchQueries` is off, so it
+  // can land before or after the mutation's promise resolves; marking first
+  // covers both. A refused delete takes the mark back, so a later removal by
+  // someone else still shows the toast.
   const deleteExpectingLoss = (id: string) => {
     const takeBack = expectLocationLoss([id])
     return cloudDelete({ variables: { id } }).catch((err: unknown) => {

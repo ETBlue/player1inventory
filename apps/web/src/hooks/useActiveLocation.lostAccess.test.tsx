@@ -163,6 +163,12 @@ function probeMock(locationId: string, label: string) {
   }
 }
 
+const MyRoleFragment = gql`
+  fragment H7MyRole on Location {
+    myRole
+  }
+`
+
 function ProbeRows() {
   const { activeLocationId, activeLocation } = useActiveLocation()
   const { data } = useQuery<{ probeRows: { id: string; label: string }[] }>(
@@ -203,6 +209,20 @@ function Consumer() {
         }}
       >
         live LOCATION
+      </button>
+      {/* Another server answer that writes a field of a cached location,
+          as `GetHouseholdLocations` does with `myRole`. */}
+      <button
+        type="button"
+        onClick={() =>
+          client?.cache.writeFragment({
+            id: `Location:${GARAGE_ID}`,
+            fragment: MyRoleFragment,
+            data: { __typename: 'Location', myRole: null },
+          })
+        }
+      >
+        write garage role
       </button>
       <button type="button" onClick={() => setActiveLocationId(GARAGE_ID)}>
         switch to garage
@@ -584,6 +604,90 @@ describe('ActiveLocationProvider — losing the role on the active location (hou
     // And no toast: the server never sent GARAGE during this visit
     await settle()
     expect(toastInfo).not.toHaveBeenCalled()
+  })
+
+  it('user opening the app offline sees no toast after another answer writes into the cached list', async () => {
+    // Given the restored cache lists GARAGE, and the first read of the list
+    // FAILS (offline, status 8)
+    serverList = [HOME]
+    localStorage.setItem(activeLocationStorageKey('cloud'), GARAGE_ID)
+    const cache = new InMemoryCache()
+    cache.writeQuery({
+      query: GetLocationsDocument,
+      data: { locations: [HOME, GARAGE] },
+    })
+    const offline = {
+      request: { query: GetLocationsDocument },
+      error: new Error('Failed to fetch'),
+      maxUsageCount: 2,
+    }
+    const { mocks } = standardMocks()
+    renderProvider(
+      [
+        offline,
+        ...mocks.filter((m) => m.request.query !== GetLocationsDocument),
+        locationsMock(),
+      ],
+      { cache },
+    )
+    await screen.findByText('my Garage row')
+
+    // When another server answer writes a field of a cached location. Apollo
+    // then gives `GetLocations` the status `ready` (7) again, with the
+    // RESTORED list (measured on Apollo 4.1.6, `reobserveCacheFirst`).
+    await userEvent.click(
+      screen.getByRole('button', { name: 'write garage role' }),
+    )
+    await settle()
+    // And then the list is read from the server, which no longer has GARAGE
+    await userEvent.click(screen.getByRole('button', { name: 'live LOCATION' }))
+
+    // Then the tab moves to HOME, with no toast: the restored list was never
+    // an answer to `GetLocations` in this visit
+    await screen.findByText('Home row')
+    expect(activeId()).toBe(HOME_ID)
+    await settle()
+    expect(toastInfo).not.toHaveBeenCalled()
+  })
+
+  it('user who opened the app offline sees the toast for a loss once the list was read online', async () => {
+    // Given the first read of the list FAILS (offline), over a restored cache
+    serverList = [HOME, GARAGE]
+    localStorage.setItem(activeLocationStorageKey('cloud'), GARAGE_ID)
+    const cache = new InMemoryCache()
+    cache.writeQuery({
+      query: GetLocationsDocument,
+      data: { locations: [HOME, GARAGE] },
+    })
+    const offline = {
+      request: { query: GetLocationsDocument },
+      error: new Error('Failed to fetch'),
+      maxUsageCount: 2,
+    }
+    const { mocks } = standardMocks()
+    renderProvider(
+      [
+        offline,
+        ...mocks.filter((m) => m.request.query !== GetLocationsDocument),
+        locationsMock(),
+      ],
+      { cache },
+    )
+    await screen.findByText('my Garage row')
+    // And then, online, a refetch reads the list (it still has GARAGE). That
+    // refetch is the first answer the server gives in this visit.
+    await userEvent.click(screen.getByRole('button', { name: 'live LOCATION' }))
+    await settle()
+
+    // When an owner then removes their role at GARAGE
+    serverList = [HOME]
+    await userEvent.click(screen.getByRole('button', { name: 'live LOCATION' }))
+
+    // Then the tab moves, and the toast shows: GARAGE came from the server
+    await screen.findByText('Home row')
+    await settle()
+    expect(toastInfo).toHaveBeenCalledTimes(1)
+    expect(toastInfo).toHaveBeenCalledWith(LOST_TOAST)
   })
 
   it('user who deletes their own active location sees no toast', async () => {

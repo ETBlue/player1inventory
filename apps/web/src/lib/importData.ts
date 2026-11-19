@@ -3447,8 +3447,11 @@ export async function importCloudData(
       session.completedBatchKeys.clear()
       // The person's own import deletes every location, the active one
       // included. That is not "you no longer have access", so no toast for
-      // those losses (households H5c task H.7, review). A refused clear
-      // deleted nothing, so the mark is taken back.
+      // those losses (households H5c task H.7, review). When the clear
+      // fails, the mark is taken back, because usually nothing was deleted.
+      // Not always: the server may apply the clear and the answer be lost
+      // (a dropped connection). Then the locations are gone, and the person
+      // sees the toast for their own import. Accepted; a plan known gap.
       const takeBackExpectedLoss = expectLocationLoss()
       try {
         await client.mutate({ mutation: ClearAllDataDocument })
