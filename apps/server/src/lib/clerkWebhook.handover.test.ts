@@ -547,6 +547,59 @@ describe('a deleted manager or member', () => {
   })
 })
 
+// Owner decision O37-A: the last LIVE person of a household that has no live
+// owner takes the household with them. `leaveHousehold` deletes it; an
+// account deletion must too, or the household stays with nobody who can ever
+// reach its data (O37 option C, which the owner rejected).
+describe('a deleted manager or member who was the last live person', () => {
+  it('a household with no owner: it is deleted with its data, and gets no event', async () => {
+    // Given hh_3 has no owner (a hand-over nobody accepted); MIA (manager)
+    // has its only offer; DEX is a member whose account is already deleted;
+    // LOC_3 holds stock
+    seed({
+      extraHouseholds: [{ ...householdRow('hh_3', PAT), ownerId: null, ownerGoneAt: GONE }],
+      extraMembers: [householdMemberRow('hh_3', MIA, 'manager'), householdMemberRow('hh_3', DEX, 'member')],
+      extraUsers: [user(MIA, { activeHouseholdId: 'hh_3' })],
+      offers: [offer('off_mia', 'hh_3', MIA, 'handover')],
+    })
+    world.stock.state.itemStocks.push(makeStock({ id: 'st_3', itemId: 'item_3', locationId: LOC_3 }))
+    world.contents.rows.items.push({ householdId: 'hh_3' })
+    const hh2 = rowsOf('hh_2')
+
+    // When MIA's account is deleted
+    await deleteAccount(MIA)
+
+    // Then hh_3 and its data are gone, through the ordered delete
+    expect(world.households.state.households.map((h) => h.id).sort()).toEqual(['hh_1', 'hh_2'])
+    expect(world.stock.state.locations.some((l) => l.id === LOC_3)).toBe(false)
+    expect(world.stock.state.itemStocks.some((s) => s.locationId === LOC_3)).toBe(false)
+    expect(world.contents.rows.items).toEqual([])
+    expect(calls.deletes.map((d) => d.model)).toContain('item')
+    // And no offer to DEX, and hh_2 is untouched
+    expect(world.households.state.ownershipOffers.some((o) => o.toUserId === DEX)).toBe(false)
+    expect(rowsOf('hh_2')).toEqual(hh2)
+    // And no event: hh_3 no longer exists
+    expect(seen).toEqual([])
+  })
+
+  it('a household whose owner account was deleted before the hand-over existed: the same', async () => {
+    // Given hh_3 still names PAT as owner, but PAT's account is deleted (an
+    // account deleted before H6, so no hand-over ran); MIA is the only live member
+    seed({
+      extraHouseholds: [householdRow('hh_3', PAT)],
+      extraMembers: [householdMemberRow('hh_3', PAT, 'owner'), householdMemberRow('hh_3', MIA, 'member')],
+      extraUsers: [user(PAT, { deletedAt: GONE }), user(MIA)],
+    })
+
+    // When MIA's account is deleted
+    await deleteAccount(MIA)
+
+    // Then hh_3 is gone, and nothing is sent
+    expect(world.households.state.households.map((h) => h.id).sort()).toEqual(['hh_1', 'hh_2'])
+    expect(seen).toEqual([])
+  })
+})
+
 describe('a person in two households', () => {
   it('owner of one and manager of another: both handled in one transaction, User row first, households sorted', async () => {
     // Given OWEN owns hh_1 (with MIA, a manager) and is a manager of hh_2

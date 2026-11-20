@@ -203,8 +203,8 @@ async function byTable(
  *
  * | Their role | What happens |
  * |---|---|
+ * | any role, and no OTHER member whose account is live | `deleteHouseholdData`, then the household row (its members, invites, offers and log go by cascade). Owner decision O37-A, the same rule as `leaveHousehold`. For a manager or member this happens only when the household has no live owner |
  * | `manager` or `member` | `removeFromHousehold` (location roles, the open invites they made, the offers TO them, the member row; T62 when it deleted the last offer) and one `ACCOUNT_DELETED` row |
- * | `owner`, and no OTHER member whose account is live | `deleteHouseholdData`, then the household row (its members, invites, offers and log go by cascade) |
  * | `owner`, other live members | their location roles and member row go; `ownerId: null`, `ownerGoneAt: now`; every offer of the household goes (a pending transfer too, T63); `startHandover` makes the `handover` offers by the design's table and writes `HANDOVER_STARTED` |
  *
  * "Live" means `User.deletedAt` is null (decision T61, Y12): a member whose
@@ -256,13 +256,12 @@ export async function handOverDeletedAccount(
     // Left or was removed between the first read and the lock.
     if (!row) continue
 
-    if (row.role !== 'owner') {
-      await removeFromHousehold(tx, householdId, userId, userId)
-      await recordActivity(tx, { householdId, actorId: userId, action: 'ACCOUNT_DELETED' })
-      changed.push(householdId)
-      continue
-    }
-
+    // The same rule for every role (owner decision O37-A, as in
+    // `leaveHousehold`): when no OTHER member with a live account is left,
+    // the household goes with all its data. For an owner that is the design's
+    // "only person" row. For a manager or member it happens only when the
+    // household has no live owner: a hand-over nobody accepted, or an owner
+    // whose account was deleted before H6.
     const live = await tx.householdMember.findMany({
       where: { householdId, user: { deletedAt: null } },
       select: { userId: true },
@@ -270,6 +269,13 @@ export async function handOverDeletedAccount(
     if (!live.some((m) => m.userId !== userId)) {
       await deleteHouseholdData(tx, householdId)
       await tx.household.deleteMany({ where: { id: householdId } })
+      continue
+    }
+
+    if (row.role !== 'owner') {
+      await removeFromHousehold(tx, householdId, userId, userId)
+      await recordActivity(tx, { householdId, actorId: userId, action: 'ACCOUNT_DELETED' })
+      changed.push(householdId)
       continue
     }
 
