@@ -196,6 +196,8 @@ export default defineConfig({
       // cloud mode only. location-people.spec.ts tests the people page of a
       // location (households H5c task H.8), which is cloud only: local mode
       // has one person and no roles, and the page redirects there.
+      // household-activity-purges.spec.ts tests the Activity page and the
+      // danger zones (households H6 task J.8), which are cloud only too.
       testIgnore: [
         '**/settings/import-export-cloud.spec.ts',
         '**/pwa-offline.spec.ts',
@@ -214,6 +216,7 @@ export default defineConfig({
         '**/shared-household.spec.ts',
         '**/household-invites.spec.ts',
         '**/location-people.spec.ts',
+        '**/household-activity-purges.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'], baseURL: LOCAL_WEB_URL },
     },
@@ -273,6 +276,7 @@ export default defineConfig({
         '**/shared-household.spec.ts',
         '**/household-invites.spec.ts',
         '**/location-people.spec.ts',
+        '**/household-activity-purges.spec.ts',
       ],
     },
     {

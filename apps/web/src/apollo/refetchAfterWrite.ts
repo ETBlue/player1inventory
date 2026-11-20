@@ -42,11 +42,27 @@ export type RefetchAfterWrite =
  * `{ query, variables }` entries go through `client.query` with
  * `network-only`, not through `client.refetchQueries`: Apollo's public type
  * for `include` accepts only names and documents.
+ *
+ * `'active'` instead of a list reads again every query a mounted component
+ * watches (households H6 task J.5, the purges).
  */
 export async function refetchAfterWrite(
   client: ApolloClient,
-  refetches: readonly RefetchAfterWrite[],
+  refetches: readonly RefetchAfterWrite[] | 'active',
 ): Promise<void> {
+  if (refetches === 'active') {
+    // Every ACTIVE query: one a mounted component watches, not a skipped one
+    // (households H6 task J.5). For a write that changes every list on
+    // screen, the way the household-level `LOCATION` event does for other
+    // tabs: the purges. The same rule as below: wait for each read on its
+    // own, and never reject.
+    const all = client.refetchQueries({ include: 'active' })
+    all.catch(() => {})
+    await Promise.all(
+      all.results.map((read) => Promise.resolve(read).catch(() => {})),
+    )
+    return
+  }
   const include: (string | DocumentNode)[] = []
   const reads: Promise<unknown>[] = []
   for (const entry of refetches) {
@@ -94,7 +110,7 @@ export function useRefetchAfterWrite() {
   const client = useApolloClient()
   const [running, setRunning] = useState(0)
   const run = useCallback(
-    async (refetches: readonly RefetchAfterWrite[]) => {
+    async (refetches: readonly RefetchAfterWrite[] | 'active') => {
       setRunning((n) => n + 1)
       try {
         await refetchAfterWrite(client, refetches)

@@ -1665,12 +1665,31 @@ async function assertDropUserScope(): Promise<void> {
 // main() calls this at the very end. It writes its own users, households and
 // locations, so it does not depend on the fixture above.
 
-// The lock, written exactly as lockHousehold in src/lib/household.ts writes
-// it. scripts/ must not import from src (see the no-overlap note in the root
-// CLAUDE.md), so the call is repeated here. If lockHousehold changes, change
-// this one too, or these proofs stop being about the code that runs.
-const lockHouseholdCopy = (tx: Prisma.TransactionClient, householdId: string) =>
-  tx.household.update({ where: { id: householdId }, data: { updatedAt: new Date() } })
+// The lock, written exactly as `lockHouseholdOrForbid` in src/lib/household.ts
+// runs it (through `lockHouseholds`): one `updateMany`, and a count of 0 means
+// the household is gone. Since households H6 task J.4 (decision T52) that is
+// the lock `deleteLocation` and `clearAllData` take; until then it was
+// `lockHousehold`, an `update` of the same row. Both take the same row lock.
+// scripts/ must not import from src (see the no-overlap note in the root
+// CLAUDE.md), so the call is repeated here. If the lock changes, change this
+// one too, or these proofs stop being about the code that runs.
+const lockHouseholdCopy = async (tx: Prisma.TransactionClient, householdId: string) => {
+  const { count } = await tx.household.updateMany({
+    where: { id: householdId },
+    data: { updatedAt: new Date() },
+  })
+  if (count === 0) throw new Error(`FAIL: the household ${householdId} to lock is gone`)
+}
+
+// The household role read both bodies make AFTER the lock, through `tx`
+// (`requireHouseholdRole(ctx, householdId, role, tx)` in src/lib/authz.ts;
+// households H6 task J.4, decision T52). It takes no lock; it is here so the
+// statements are the ones that run. The fixture's user is the owner.
+const householdRoleCopy = (tx: Prisma.TransactionClient, householdId: string, userId: string) =>
+  tx.householdMember.findUnique({
+    where: { householdId_userId: { householdId, userId } },
+    select: { role: true },
+  })
 
 async function backendPidOf(tx: Prisma.TransactionClient): Promise<number> {
   const rows = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`
@@ -1854,7 +1873,8 @@ async function makeTwoLocationHousehold(
  * The body of deleteLocation's transaction, in the same order, with the same
  * Prisma calls (src/resolvers/location.resolver.ts, `deleteLocation`):
  *
- *   lockHouseholdCopy    ← `await lockHousehold(tx, householdId)`
+ *   lockHouseholdCopy    ← `await lockHouseholdOrForbid(tx, householdId)`
+ *   householdRoleCopy    ← `await requireHouseholdRole(ctx, householdId, 'manager', tx)`
  *   location.findFirst   ← `tx.location.findFirst({ where: { id, householdId }, … })`
  *   location.delete      ← `tx.location.delete({ where: { id } })`
  *
@@ -1871,11 +1891,14 @@ async function makeTwoLocationHousehold(
 async function deleteLocationBody(
   tx: Prisma.TransactionClient,
   householdId: string,
+  userId: string,
   id: string,
   hold?: () => Promise<void>,
 ): Promise<{ outcome: 'deleted' | 'forbidden' }> {
   await lockHouseholdCopy(tx, householdId)
   if (hold) await hold()
+  const role = await householdRoleCopy(tx, householdId, userId)
+  if (!role || role.role === 'member') return { outcome: 'forbidden' }
   const location = await tx.location.findFirst({ where: { id, householdId }, select: { id: true } })
   if (!location) return { outcome: 'forbidden' }
   await tx.location.delete({ where: { id } })
@@ -1905,18 +1928,18 @@ async function assertHouseholdLock(): Promise<void> {
   // location 1 (not committed yet): 1. `overlapTwoTransactions` would also
   // report that B was never blocked.
   {
-    const { householdId, locationIds } = await makeTwoLocationHousehold('delete-delete')
+    const { userId, householdId, locationIds } = await makeTwoLocationHousehold('delete-delete')
     const [loc1, loc2] = locationIds
     const { first, second } = await overlapTwoTransactions(
       'two deleteLocation at once',
       async (tx, hold) => {
-        const result = await deleteLocationBody(tx, householdId, loc1)
+        const result = await deleteLocationBody(tx, householdId, userId, loc1)
         // Hold AFTER the delete, so B would see location 1 if it did not wait.
         await hold()
         return result
       },
       async (tx) => {
-        const result = await deleteLocationBody(tx, householdId, loc2)
+        const result = await deleteLocationBody(tx, householdId, userId, loc2)
         // Not a statement of the resolver: an observation, read inside B's
         // transaction after its delete.
         const seenAfter = await tx.location.count({ where: { householdId } })
@@ -1960,17 +1983,23 @@ async function assertHouseholdLock(): Promise<void> {
   //
   // The statements are clearAllData's, in its order, with the same Prisma
   // calls (src/resolvers/import.resolver.ts, `clearAllData`, the body of its
-  // `prisma.$transaction`). Each line below names the resolver line it mirrors.
-  // The owner check before the transaction (requireHouseholdRole) is left
-  // out: it takes no lock.
+  // `prisma.$transaction`). Since households H6 task J.4 the fourteen deletes
+  // live in `deleteHouseholdData` (src/lib/household.ts), which clearAllData
+  // calls; the copy below is of that function's body, unchanged. Each line
+  // below names the source line it mirrors.
+  // Since J.4 the owner check is inside the transaction, after the lock
+  // (decision T52), so it is copied too. It takes no lock.
   {
     const { userId, householdId, locationIds } = await makeTwoLocationHousehold('clear-delete')
     const [, loc2] = locationIds
     const { first, second } = await overlapTwoTransactions(
       'clearAllData and deleteLocation at once',
       async (tx, hold) => {
-        // `await lockHousehold(tx, householdId)`
+        // `await lockHouseholdOrForbid(tx, householdId)`
         await lockHouseholdCopy(tx, householdId)
+        // `await requireHouseholdRole(ctx, householdId, 'owner', tx)`
+        const role = await householdRoleCopy(tx, householdId, userId)
+        if (role?.role !== 'owner') throw new Error(`FAIL: the fixture user is not the owner (read: ${role?.role})`)
         // `await tx.inventoryLog.deleteMany({ where: { location: { householdId } } })`
         await tx.inventoryLog.deleteMany({ where: { location: { householdId } } })
         // `await tx.cartItem.deleteMany({ where: { cart: { location: { householdId } } } })`
@@ -2014,7 +2043,7 @@ async function assertHouseholdLock(): Promise<void> {
         })
         return { locationsDeleted, homeId: home.id }
       },
-      (tx) => deleteLocationBody(tx, householdId, loc2),
+      (tx) => deleteLocationBody(tx, householdId, userId, loc2),
     )
     assert(
       first.locationsDeleted === 2,
@@ -2043,6 +2072,7 @@ const HOUSEHOLDS_MIGRATION = '20261104000000_add_households'
 const DROP_USER_SCOPE_MIGRATION = '20261111000000_drop_user_scope'
 const SHARED_CARTS_MIGRATION = '20261114000000_shared_carts'
 const HOUSEHOLD_INVITES_MIGRATION = '20261118000000_add_household_invites'
+const HOUSEHOLD_ACTIVITY_MIGRATION = '20261120000000_add_household_activity'
 
 const PARKED_ROOT = join(SERVER_DIR, '.migration-under-test')
 const migrationDir = (name: string) => join(SERVER_DIR, 'prisma/migrations', name)
@@ -2564,6 +2594,222 @@ async function assertHouseholdInvites(): Promise<void> {
   await prisma.$executeRaw`DELETE FROM "User" WHERE "id" LIKE 'hi-%'`
 }
 
+// The 19 values of "ActivityAction", in the order the migration creates them
+// (households H6, decision T51). The H6b values are in it from the start.
+const ACTIVITY_ACTIONS = [
+  'LOCATION_ROLE_SET',
+  'LOCATION_ROLE_REMOVED',
+  'LOCATION_LEFT',
+  'HOUSEHOLD_ROLE_CHANGED',
+  'INVITE_CREATED',
+  'INVITE_REVOKED',
+  'MEMBER_JOINED',
+  'MEMBER_LEFT',
+  'MEMBER_REMOVED',
+  'HOUSEHOLD_CLEARED',
+  'LOCATIONS_DELETED',
+  'LOCATION_ITEMS_REMOVED',
+  'IMPORT',
+  'OWNERSHIP_OFFERED',
+  'OWNERSHIP_OFFER_CANCELLED',
+  'OWNERSHIP_DECLINED',
+  'OWNERSHIP_ACCEPTED',
+  'HANDOVER_STARTED',
+  'ACCOUNT_DELETED',
+] as const
+
+// add_household_activity (households H6, task J.1, decision T46). Written on
+// 2026-11-20 and NOT run yet when it was written: no subagent may reach a
+// database. The main session runs it with the owner's consent.
+async function assertHouseholdActivity(): Promise<void> {
+  console.log('add_household_activity — the shape:')
+
+  // ── 1. The table, its columns, types and nullability ──
+  const expected: Record<string, { type: string; nullable: 'YES' | 'NO' }> = {
+    id: { type: 'text', nullable: 'NO' },
+    householdId: { type: 'text', nullable: 'NO' },
+    actorId: { type: 'text', nullable: 'NO' },
+    action: { type: 'USER-DEFINED', nullable: 'NO' },
+    targetUserId: { type: 'text', nullable: 'YES' },
+    locationId: { type: 'text', nullable: 'YES' },
+    details: { type: 'jsonb', nullable: 'YES' },
+    createdAt: { type: 'timestamp without time zone', nullable: 'NO' },
+  }
+  const columns = await columnNamesOf('HouseholdActivity')
+  assert(
+    columns.size === Object.keys(expected).length,
+    `"HouseholdActivity" has exactly ${Object.keys(expected).length} columns (read: ${[...columns].sort().join(', ') || 'no table'})`,
+  )
+  for (const [column, want] of Object.entries(expected)) {
+    const meta = await columnMetaOf('HouseholdActivity', column)
+    assert(
+      meta?.dataType === want.type && meta.isNullable === want.nullable,
+      `"HouseholdActivity"."${column}" is ${want.type}, nullable=${want.nullable} (read: ${meta ? `${meta.dataType}, nullable=${meta.isNullable}` : 'column missing'})`,
+    )
+  }
+
+  // `data_type` says only USER-DEFINED for an enum; `udt_name` names it.
+  const actionType = await prisma.$queryRaw<{ udt_name: string }[]>`
+    SELECT udt_name::text AS udt_name FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name::text = 'HouseholdActivity'
+      AND column_name::text = 'action'
+  `
+  assert(
+    actionType[0]?.udt_name === 'ActivityAction',
+    `"HouseholdActivity"."action" is of the type "ActivityAction" (read: ${actionType[0]?.udt_name ?? 'column missing'})`,
+  )
+
+  // ── 2. The enum holds the 19 values of decision T51, in order ──
+  const enumValues = await prisma.$queryRaw<{ value: string }[]>`
+    SELECT e.enumlabel::text AS value
+    FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+    WHERE t.typname = 'ActivityAction'
+    ORDER BY e.enumsortorder
+  `
+  assert(
+    enumValues.map((v) => v.value).join(',') === ACTIVITY_ACTIONS.join(','),
+    `"ActivityAction" holds exactly the ${ACTIVITY_ACTIONS.length} values of decision T51, H6b's included (read: ${enumValues.map((v) => v.value).join(', ') || 'no type'})`,
+  )
+
+  // ── 3. Foreign keys: ONE, on "householdId", to "Household", CASCADE ──
+  //
+  // Read from information_schema by COLUMN NAME, never with
+  // `LIKE '%Id%'`: the H3a rehearsal matched an unrelated foreign key that
+  // way and reported a false FAIL (apps/server/prisma/CLAUDE.md).
+  const foreignKeys = await prisma.$queryRaw<
+    { column_name: string; foreign_table: string; delete_rule: string }[]
+  >`
+    SELECT kcu.column_name::text AS column_name,
+           ccu.table_name::text AS foreign_table,
+           rc.delete_rule::text AS delete_rule
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON kcu.constraint_name = tc.constraint_name AND kcu.table_schema = tc.table_schema
+    JOIN information_schema.referential_constraints rc
+      ON rc.constraint_name = tc.constraint_name AND rc.constraint_schema = tc.table_schema
+    JOIN information_schema.constraint_column_usage ccu
+      ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
+    WHERE tc.table_schema = 'public'
+      AND tc.table_name::text = 'HouseholdActivity'
+      AND tc.constraint_type = 'FOREIGN KEY'
+  `
+  const fkText = foreignKeys.map((f) => `${f.column_name}->${f.foreign_table} ${f.delete_rule}`).join(', ')
+  assert(
+    foreignKeys.length === 1 &&
+      foreignKeys[0]?.column_name === 'householdId' &&
+      foreignKeys[0]?.foreign_table === 'Household' &&
+      foreignKeys[0]?.delete_rule === 'CASCADE',
+    `"HouseholdActivity" has exactly one foreign key: "householdId" to "Household", ON DELETE CASCADE (read: ${fkText || 'none'})`,
+  )
+  for (const column of ['actorId', 'targetUserId', 'locationId']) {
+    assert(
+      !foreignKeys.some((f) => f.column_name === column),
+      `"HouseholdActivity"."${column}" has NO foreign key — a log outlives the person and the location it names (read: ${fkText || 'none'})`,
+    )
+  }
+
+  // ── 4. The index the Activity page reads ──
+  const indexes = await prisma.$queryRaw<{ indexname: string; indexdef: string }[]>`
+    SELECT indexname::text AS indexname, indexdef
+    FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'HouseholdActivity'
+  `
+  const pageIndex = indexes.find(
+    (i) => i.indexname === 'HouseholdActivity_householdId_createdAt_id_idx',
+  )?.indexdef
+  // "id" is lower case, so Postgres prints it with no quotes (the H5b run
+  // found the same for "token").
+  assert(
+    !!pageIndex &&
+      !pageIndex.includes('UNIQUE') &&
+      pageIndex.includes('("householdId", "createdAt" DESC, id)'),
+    `"HouseholdActivity_householdId_createdAt_id_idx" is a plain index on ("householdId", "createdAt" DESC, id) (read: ${pageIndex ?? 'missing'})`,
+  )
+
+  // ── Fixture: two households, no "User" rows at all ──
+  await prisma.$executeRaw`
+    INSERT INTO "Household" ("id","name","createdAt","updatedAt") VALUES
+      ('ha-house-1','Activity One',NOW(),NOW()),
+      ('ha-house-2','Activity Two',NOW(),NOW())
+  `
+
+  console.log('add_household_activity — the writes and the deletes:')
+
+  // ── 5. Ids that name no row are accepted: no hidden foreign key ──
+  //
+  // Neither "ha-nobody" nor "ha-no-location" is a row anywhere. A foreign key
+  // on any of the three columns would refuse this insert with 23503.
+  const plainIds = await postgresCodeOf(
+    () => prisma.$executeRaw`
+      INSERT INTO "HouseholdActivity" ("id","householdId","actorId","action","targetUserId","locationId","details")
+      VALUES ('ha-act-1','ha-house-1','ha-nobody','LOCATION_ROLE_SET'::"ActivityAction",
+              'ha-nobody-else','ha-no-location','{"locationName":"Gone","from":null,"to":"viewer"}'::jsonb)
+    `,
+  )
+  assert(
+    plainIds === undefined,
+    `a row whose actor, target and location name no row is accepted (read: ${plainIds ?? 'no error'})`,
+  )
+
+  // ── 6. Defaults, and NULL for the optional columns ──
+  await prisma.$executeRaw`
+    INSERT INTO "HouseholdActivity" ("id","householdId","actorId","action")
+    VALUES ('ha-act-2','ha-house-1','ha-nobody','HOUSEHOLD_CLEARED'::"ActivityAction"),
+           ('ha-act-3','ha-house-2','ha-nobody','MEMBER_JOINED'::"ActivityAction")
+  `
+  const bare = await prisma.$queryRaw<
+    { targetUserId: string | null; locationId: string | null; details: unknown; createdAt: Date | null }[]
+  >`
+    SELECT "targetUserId", "locationId", "details", "createdAt" FROM "HouseholdActivity" WHERE "id" = 'ha-act-2'
+  `
+  assert(
+    bare.length === 1 &&
+      bare[0]?.targetUserId === null &&
+      bare[0]?.locationId === null &&
+      bare[0]?.details === null &&
+      bare[0]?.createdAt instanceof Date,
+    `a row with no optional column reads them back NULL, and "createdAt" is filled in (read: ${JSON.stringify(bare)})`,
+  )
+
+  // ── 7. The enum refuses a value it does not hold ──
+  const badAction = await postgresCodeOf(
+    () => prisma.$executeRaw`
+      INSERT INTO "HouseholdActivity" ("id","householdId","actorId","action")
+      VALUES ('ha-act-bad','ha-house-1','ha-nobody','NOT_AN_ACTION'::"ActivityAction")
+    `,
+  )
+  assert(
+    badAction !== undefined,
+    `an action outside "ActivityAction" is refused (read: ${badAction ?? 'no error'})`,
+  )
+
+  // ── 8. A household that does not exist is refused ──
+  const unknownHousehold = await postgresCodeOf(
+    () => prisma.$executeRaw`
+      INSERT INTO "HouseholdActivity" ("id","householdId","actorId","action")
+      VALUES ('ha-act-orphan','ha-no-such-house','ha-nobody','MEMBER_LEFT'::"ActivityAction")
+    `,
+  )
+  assert(
+    unknownHousehold === '23503',
+    `a row for a household that does not exist is refused with 23503 (read: ${unknownHousehold ?? 'no error'})`,
+  )
+
+  // ── 9. Deleting a household deletes its rows, and no others ──
+  await prisma.$executeRaw`DELETE FROM "Household" WHERE "id" = 'ha-house-1'`
+  const left = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT "id" FROM "HouseholdActivity" WHERE "id" LIKE 'ha-%' ORDER BY "id"
+  `
+  assert(
+    left.map((r) => r.id).join(',') === 'ha-act-3',
+    `deleting a household deletes its activity rows and keeps another household's (read: ${left.map((r) => r.id).join(', ') || 'none'})`,
+  )
+
+  // ── Clean up every row this block wrote ──
+  await prisma.$executeRaw`DELETE FROM "HouseholdActivity" WHERE "id" LIKE 'ha-%'`
+  await prisma.$executeRaw`DELETE FROM "Household" WHERE "id" LIKE 'ha-%'`
+}
+
 async function main(): Promise<void> {
   // Self-heal: if a previous run was killed between parking and restoring,
   // recover instead of throwing on the renameSync below.
@@ -2651,6 +2897,9 @@ async function main(): Promise<void> {
   // NULL must run before anything writes "activeHouseholdId".
   console.log(`Asserting, after ${HOUSEHOLD_INVITES_MIGRATION}...`)
   await assertHouseholdInvites()
+
+  console.log(`Asserting, after ${HOUSEHOLD_ACTIVITY_MIGRATION}...`)
+  await assertHouseholdActivity()
 
   // ══════════════════════════════════════════════════════════════════════
   // PR 5 — Item's five stock state columns are gone, ItemStock's are not

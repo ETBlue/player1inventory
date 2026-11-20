@@ -390,19 +390,22 @@ model Household {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  members   HouseholdMember[]
-  locations Location[]
-  items     Item[]
-  tags      Tag[]
-  tagTypes  TagType[]
-  vendors   Vendor[]
-  recipes   Recipe[]
-  shelves   Shelf[]
+  members    HouseholdMember[]
+  locations  Location[]
+  items      Item[]
+  tags       Tag[]
+  tagTypes   TagType[]
+  vendors    Vendor[]
+  recipes    Recipe[]
+  shelves    Shelf[]
   // People whose active household this is (decision T14). Named, because
   // "HouseholdOwner" already joins Household and User.
-  activeFor User[]            @relation("ActiveHousehold")
+  activeFor  User[]              @relation("ActiveHousehold")
   // Open, used and revoked invites. Deleted with the household (Cascade).
-  invites   HouseholdInvite[]
+  invites    HouseholdInvite[]
+  // Who changed what in the household (H6). Deleted with the household
+  // (Cascade).
+  activities HouseholdActivity[]
 
   // Finds "the households this person owns", and serves the ON DELETE SET
   // NULL above, which Postgres runs as a lookup by ownerId.
@@ -483,4 +486,68 @@ model HouseholdInvite {
 
   // Lists a household's invites, and serves the ON DELETE CASCADE above.
   @@index([householdId])
+}
+
+// What a row of the household activity log records (households H6, decision
+// T51 of docs/global/permissions/2026-11-20-households-plan-h6.md). An enum,
+// so a typo fails at `tsc` (decision H14). The H6b values are here too, so H6b
+// needs no `ALTER TYPE ... ADD VALUE`.
+enum ActivityAction {
+  LOCATION_ROLE_SET
+  LOCATION_ROLE_REMOVED
+  LOCATION_LEFT
+  HOUSEHOLD_ROLE_CHANGED
+  INVITE_CREATED
+  INVITE_REVOKED
+  MEMBER_JOINED
+  MEMBER_LEFT
+  MEMBER_REMOVED
+  HOUSEHOLD_CLEARED
+  LOCATIONS_DELETED
+  LOCATION_ITEMS_REMOVED
+  IMPORT
+  OWNERSHIP_OFFERED
+  OWNERSHIP_OFFER_CANCELLED
+  OWNERSHIP_DECLINED
+  OWNERSHIP_ACCEPTED
+  HANDOVER_STARTED
+  ACCOUNT_DELETED
+}
+
+// One row of the household activity log (households H6, decision T46). Owners
+// and managers read it, newest first. Written only by `recordActivity`
+// (lib/activity.ts), inside the transaction of the change it describes
+// (decision T47).
+//
+// Only `householdId` is a foreign key. A log must outlive the person and the
+// location it names, so `actorId`, `targetUserId` and `locationId` are plain
+// strings:
+//   - a foreign key to `Location` would delete the row with the location
+//     (Cascade), lose which location it was (SetNull), or block the delete
+//     (Restrict);
+//   - a foreign key to `User` would block `/e2e/cleanup`, which deletes
+//     `User` rows, whenever a row in ANOTHER household names the person.
+// The location's name is stored in `details` at write time, for the same
+// reason.
+model HouseholdActivity {
+  id           String         @id @default(cuid())
+  householdId  String
+  // The person who acted. For a hand-over (H6b) it is the deleted person
+  // (decision T50).
+  actorId      String
+  action       ActivityAction
+  // The person the change is about, when there is one.
+  targetUserId String?
+  // The location the change is about, when there is one.
+  locationId   String?
+  // Extra facts for the sentence on the Activity page, such as
+  // `{ from, to }` or `locationName`. Shape per action: decision T51.
+  details      Json?
+  createdAt    DateTime       @default(now())
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  // The Activity page reads one household, newest first, with `id` to break
+  // a tie (decision T54). It also serves the ON DELETE CASCADE.
+  @@index([householdId, createdAt(sort: Desc), id])
 }

@@ -12,7 +12,8 @@ import { makeGql } from '../utils/cloud'
 //
 // Since households H3a task 3.10 the route deletes by the households the
 // user OWNS, plus the user's own role rows, and returns 18 counts (19 since
-// households H5b task G.6 added `householdInvites`). The seed
+// households H5b task G.6 added `householdInvites`, 20 since households H6
+// task J.1 added `householdActivities`). The seed
 // below makes the user's household on the first request (first sign-in), so
 // the three new counts — `locationMembers`, `householdMembers` and
 // `households` — are at least 1 too. The rule "never delete a household the
@@ -271,6 +272,12 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     // BEFORE the cleanup only: `householdInvites` runs first sign-in like
     // `locations`, so after the cleanup it would read a brand-new, empty
     // household. Its `deleted` count below is the check on the delete.
+    //
+    // HouseholdActivity — no seed step of its own. Since households H6 task
+    // J.2, `createInvite` writes an INVITE_CREATED row in the user's own
+    // household, so this one call also seeds the activity row that the
+    // `householdActivities` count below needs. It is read back just below,
+    // through the real `householdActivity` query (task J.3).
     const token = await createInvite(request, E2E_USER_ID, 'member', [
       { locationId: home.id, role: 'viewer' },
     ])
@@ -278,6 +285,12 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
       householdInvites: { token: string }[]
     }>(`query { householdInvites { token } }`)
     expect(householdInvites.map((invite) => invite.token)).toEqual([token])
+    const { householdActivity } = await gql<{
+      householdActivity: { action: string }[]
+    }>(`query { householdActivity { action } }`)
+    expect(householdActivity.map((row) => row.action)).toContain(
+      'INVITE_CREATED',
+    )
 
     // ── The seed really wrote rows ───────────────────────────────────────────
     //
@@ -323,6 +336,9 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
       zero,
       `models that deleted nothing: ${JSON.stringify(deleted)}`,
     ).toEqual([])
+    // Named on its own too, for the model households H6 task J.1 added (the
+    // check above already covers it; this line says so in the report).
+    expect(deleted.householdActivities).toBeGreaterThanOrEqual(1)
 
     // ── And nothing of the user's is left ────────────────────────────────────
     const after = await gql<ReadBack>(READ_BACK, { itemId })

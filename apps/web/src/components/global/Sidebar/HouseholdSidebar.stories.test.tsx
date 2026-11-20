@@ -64,5 +64,10 @@ describe('HouseholdSidebar stories smoke tests', () => {
         name: 'The Lin family household on Roosevelt Road',
       }),
     ).toBeInTheDocument()
+    // The caller is the owner, so the Activity item shows
+    expect(screen.getByRole('link', { name: 'Activity' })).toHaveAttribute(
+      'href',
+      '/settings/household/activity',
+    )
   })
 })

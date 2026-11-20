@@ -305,9 +305,12 @@ test('user sees My data and Preferences pinned to the bottom of the sidebar, and
   await sidebar.getByRole('link', { name: homeLabel }).click()
 
   // Then the household config page opens, and the sidebar shows the
-  // household view: Back, the heading, and six links, seven in cloud, where
-  // Members is second (src/components/global/Sidebar/HouseholdSidebar.tsx;
-  // Members is `cloudOnly` since households H5b task G.9)
+  // household view: Back, the heading, and six links, eight in cloud, where
+  // Members is second and Activity is last
+  // (src/components/global/Sidebar/HouseholdSidebar.tsx; Members is
+  // `cloudOnly` since households H5b task G.9, Activity since households H6
+  // task J.6, and Activity shows only to an owner or manager. This spec's
+  // user owns their household, so it shows)
   await expect(page).toHaveURL(/\/settings\/household$/)
   await expect(sidebar.getByRole('button', { name: 'Back' })).toBeVisible()
   await expect(
@@ -321,6 +324,7 @@ test('user sees My data and Preferences pinned to the bottom of the sidebar, and
     'Vendors',
     'Recipes',
     'Tags',
+    ...(baseURL === CLOUD_WEB_URL ? ['Activity'] : []),
   ])
   // General is the active item on `/settings/household` itself
   await expect(sidebar.getByRole('link', { name: 'General' })).toHaveAttribute(

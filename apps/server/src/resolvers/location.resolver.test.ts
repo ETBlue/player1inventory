@@ -477,7 +477,10 @@ describe('deleteLocation', () => {
     // delete still runs. `world.client.location` is its own object (a spread
     // of stockFake's, plus the cascading delete), so the spies go on it, not
     // on `world.stock.client.location`.
-    const lock = vi.spyOn(world.client.household, 'update')
+    // Since households H6 task J.4 the lock is `lockHouseholdOrForbid`, an
+    // `updateMany` (decision T52); `purges.resolver.test.ts` pins that the
+    // role read comes after it.
+    const lock = vi.spyOn(world.client.household, 'updateMany')
     const read = vi.spyOn(world.client.location, 'findFirst')
 
     // When the caller deletes a location

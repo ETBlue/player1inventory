@@ -4,7 +4,8 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { routeTree } from '@/routeTree.gen'
 import { mockScreen } from '@/test/viewport'
@@ -24,6 +25,9 @@ const { state } = vi.hoisted(() => ({
     household: undefined as
       | { id: string; name: string; role: 'owner' | 'manager' | 'member' }
       | undefined,
+    // The purge mutations the danger zone sends (households H6, task J.7)
+    clearAllData: vi.fn(),
+    deleteAllLocations: vi.fn(),
   },
 }))
 
@@ -44,6 +48,14 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     if (key.endsWith('Mutation')) stubbed[key] = mutationStub
     else if (key.endsWith('Query')) stubbed[key] = queryStub
   }
+  stubbed.useClearAllDataMutation = () => [
+    state.clearAllData,
+    { loading: false },
+  ]
+  stubbed.useDeleteAllLocationsMutation = () => [
+    state.deleteAllLocations,
+    { loading: false },
+  ]
   stubbed.useGetHouseholdQuery = (options?: { skip?: boolean }) => {
     const household = options?.skip ? undefined : state.household
     return {
@@ -68,6 +80,12 @@ describe('Household name — cloud mode', () => {
     // it closed.
     localStorage.setItem('migration-prompted', '1')
     state.household = { id: 'household-1', name: NAME, role: 'owner' }
+    state.clearAllData
+      .mockReset()
+      .mockResolvedValue({ data: { clearAllData: true } })
+    state.deleteAllLocations
+      .mockReset()
+      .mockResolvedValue({ data: { deleteAllLocations: true } })
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
@@ -165,5 +183,99 @@ describe('Household name — cloud mode', () => {
     expect(
       screen.queryByRole('button', { name: /My data/ }),
     ).not.toBeInTheDocument()
+  })
+})
+
+// The household danger zone on the household page (households H6, task J.7).
+describe('Household danger zone — cloud mode', () => {
+  let queryClient: QueryClient
+
+  beforeEach(() => {
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem('migration-prompted', '1')
+    state.household = { id: 'household-1', name: NAME, role: 'owner' }
+    state.clearAllData
+      .mockReset()
+      .mockResolvedValue({ data: { clearAllData: true } })
+    state.deleteAllLocations
+      .mockReset()
+      .mockResolvedValue({ data: { deleteAllLocations: true } })
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+  })
+
+  afterEach(() => {
+    localStorage.removeItem('data-mode')
+    localStorage.removeItem('migration-prompted')
+    vi.restoreAllMocks()
+  })
+
+  function renderPage() {
+    const router = createRouter({
+      routeTree,
+      history: createMemoryHistory({
+        initialEntries: ['/settings/household'],
+      }),
+      context: { queryClient },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('household owner sees the danger zone on the household page', async () => {
+    renderPage()
+    const main = await screen.findByRole('main')
+    const zone = await within(main).findByRole('region', {
+      name: 'Danger zone',
+    })
+    expect(
+      within(zone).getByRole('button', { name: 'Delete household' }),
+    ).toBeInTheDocument()
+  })
+
+  it.each([
+    'manager',
+    'member',
+  ] as const)('household %s does not see the danger zone', async (role) => {
+    state.household = { id: 'household-1', name: NAME, role }
+    renderPage()
+    const main = await screen.findByRole('main')
+    // The page has loaded the role: the name card shows it as text
+    expect(
+      await within(main).findByText(
+        'Only the household owner can change the name.',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      within(main).queryByRole('region', { name: 'Danger zone' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['Clear household', 'clearAllData'],
+    ['Delete all locations', 'deleteAllLocations'],
+  ] as const)('household owner can %s, and its mutation is sent once', async (label, mutation) => {
+    const user = userEvent.setup()
+    renderPage()
+    const main = await screen.findByRole('main')
+    await user.click(await within(main).findByRole('button', { name: label }))
+    const dialog = await screen.findByRole('alertdialog')
+    await user.type(
+      within(dialog).getByRole('textbox', { name: `Type ${NAME} to confirm` }),
+      NAME,
+    )
+    await user.click(within(dialog).getByRole('button', { name: label }))
+
+    await waitFor(() => expect(state[mutation]).toHaveBeenCalledTimes(1))
+    const other =
+      mutation === 'clearAllData' ? 'deleteAllLocations' : 'clearAllData'
+    expect(state[other]).not.toHaveBeenCalled()
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    )
   })
 })

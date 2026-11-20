@@ -139,3 +139,49 @@ describe('refetchAfterWrite', () => {
     await expect(call).resolves.toBeUndefined()
   })
 })
+
+// Households H6, task J.5: a purge changes every list on screen, the way the
+// household-level `LOCATION` event does for other tabs. So the purge hooks
+// pass `'active'`: every mounted query is read again, with the same rules.
+describe("refetchAfterWrite — 'active'", () => {
+  it('reads every mounted query again, and waits for a slow one when another fails', async () => {
+    const { client, hold } = makeClient()
+    const failing = watch(client, FAILS)
+    watch(client, SLOW)
+    await vi.waitFor(() => {
+      expect(client.readQuery({ query: FAILS })).toEqual({ fails: 1 })
+      expect(client.readQuery({ query: SLOW })).toEqual({ slow: 1 })
+    })
+    failNext = true
+    slowValue = 2
+    hold.hold('SlowAfterWrite')
+
+    let done = false
+    const call = refetchAfterWrite(client, 'active').then(() => {
+      done = true
+    })
+    await vi.waitFor(() => expect(hold.waiting('SlowAfterWrite')).toBe(1))
+    await vi.waitFor(() => expect(failing.errors).toBe(1))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(done).toBe(false)
+
+    hold.release('SlowAfterWrite')
+    await call
+    expect(client.readQuery({ query: SLOW })).toEqual({ slow: 2 })
+  })
+
+  it('does not reject when every read fails', async () => {
+    const { client, hold } = makeClient()
+    watch(client, FAILS)
+    watch(client, SLOW)
+    await vi.waitFor(() =>
+      expect(client.readQuery({ query: SLOW })).toEqual({ slow: 1 }),
+    )
+    failNext = true
+    hold.hold('SlowAfterWrite')
+    const call = refetchAfterWrite(client, 'active')
+    await vi.waitFor(() => expect(hold.waiting('SlowAfterWrite')).toBe(1))
+    hold.fail('SlowAfterWrite')
+    await expect(call).resolves.toBeUndefined()
+  })
+})

@@ -3,6 +3,7 @@ import {
   type MockedProviderProps,
 } from '@apollo/client/testing/react'
 import type { Meta, StoryObj } from '@storybook/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -47,7 +48,9 @@ const cloudMocks: NonNullable<MockedProviderProps['mocks']> = [
 // at any canvas width (`Sidebar` shows it only on desktop).
 //
 // The heading is `HouseholdLabel`, which calls an Apollo hook in both modes
-// (skipped in local), so every story needs a `MockedProvider`.
+// (skipped in local), so every story needs a `MockedProvider`. The Activity
+// item reads `usePermissions`, whose location list is a TanStack query in
+// local mode, so every story needs a `QueryClientProvider` too.
 function HouseholdSidebarStory({
   path,
   mocks = [],
@@ -55,6 +58,7 @@ function HouseholdSidebarStory({
   path: string
   mocks?: NonNullable<MockedProviderProps['mocks']>
 }) {
+  const [queryClient] = useState(() => new QueryClient())
   const [router] = useState(() =>
     createRouter({
       routeTree: createRootRoute({
@@ -72,7 +76,9 @@ function HouseholdSidebarStory({
   )
   return (
     <MockedProvider mocks={mocks}>
-      <RouterProvider router={router} />
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
     </MockedProvider>
   )
 }
@@ -87,7 +93,8 @@ export const TagsActive: Story = {
   render: () => <HouseholdSidebarStory path="/settings/household/tags" />,
 }
 
-// Cloud mode: the heading is the household's name, and a long name wraps
+// Cloud mode: the heading is the household's name, and a long name wraps.
+// The caller is the owner, so Activity is the eighth item.
 export const CloudHouseholdName: Story = {
   beforeEach() {
     localStorage.setItem('data-mode', 'cloud')

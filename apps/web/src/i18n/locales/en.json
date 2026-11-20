@@ -534,6 +534,56 @@
         "invitesLoadError": "Could not load the open invites. Try again.",
         "locationsLoadError": "Could not load the locations. Try again.",
         "noLocations": "This household has no locations yet."
+      },
+      "activity": {
+        "title": "Activity",
+        "description": "Who changed what in this household",
+        "empty": "Nothing has happened here yet.",
+        "loadMore": "Load more",
+        "noAccess": "Only the owner and managers can see the activity.",
+        "back": "Back to the household",
+        "loadError": "Could not load the activity. Try again.",
+        "loadMoreError": "Could not load more. Try again.",
+        "retry": "Retry",
+        "you": "You",
+        "youTarget": "you",
+        "someone": "Someone",
+        "someoneTarget": "someone",
+        "unknownLocation": "a location",
+        "unknownRole": "(unknown role)",
+        "deletedAccount": "{{name}} (deleted account)",
+        "unknownAction": "{{actor}} made a change",
+        "locationRoleSet": "{{actor}} gave {{target}} the {{role}} role on {{location}}",
+        "locationRoleRemoved": "{{actor}} removed {{target}} from {{location}}",
+        "locationLeft": "{{actor}} left {{location}}",
+        "householdRoleChanged": "{{actor}} made {{target}} {{role}}",
+        "inviteCreated": "{{actor}} created an invite for a {{role}}",
+        "inviteRevoked": "{{actor}} revoked an invite",
+        "memberJoined": "{{actor}} joined the household",
+        "memberLeft": "{{actor}} left the household",
+        "memberRemoved": "{{actor}} removed {{target}} from the household",
+        "householdCleared": "{{actor}} cleared the household",
+        "locationsDeleted_one": "{{actor}} deleted the only location",
+        "locationsDeleted_other": "{{actor}} deleted all {{count}} locations",
+        "locationsDeletedNoCount": "{{actor}} deleted all locations",
+        "locationItemsRemoved": "{{actor}} removed all items from {{location}}",
+        "import": "{{actor}} imported data",
+        "ownershipOffered": "{{actor}} offered the household to {{target}}",
+        "ownershipOfferCancelled": "{{actor}} took back the offer to {{target}}",
+        "ownershipDeclined": "{{actor}} declined to become the owner",
+        "ownershipAccepted": "{{actor}} became the owner",
+        "handoverStarted": "{{actor}}'s account was deleted. The household needs a new owner",
+        "accountDeleted": "{{actor}}'s account was deleted"
+      },
+      "danger": {
+        "title": "Danger zone",
+        "clear": "Clear household",
+        "clearDescription": "Deletes the catalog and every location with everything in it. A new \"Home\" is made. People and their household roles stay.",
+        "deleteLocations": "Delete all locations",
+        "deleteLocationsDescription": "Deletes every location with its stock, carts, logs and roles. The catalog stays. No new location is made.",
+        "deleteHousehold": "Delete household",
+        "deleteHouseholdDescription": "Deletes the household and everything in it. Everyone loses access.",
+        "typeName": "Type {{name}} to confirm"
       }
     },
     "user": {
@@ -681,6 +731,11 @@
         "unnamed": "Location",
         "choosePerson": "Choose a person",
         "membersLoadError": "Could not load the household members. Try again."
+      },
+      "danger": {
+        "title": "Danger zone",
+        "removeAll": "Remove all items",
+        "removeAllDescription": "Deletes this location's stock and the items in its carts. The location, its people, its logs and the catalog stay."
       }
     },
     "shelves": {

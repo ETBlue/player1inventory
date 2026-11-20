@@ -8,6 +8,7 @@ import { ArrowLeft, Info, LogOut, Pencil, UserPlus } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AddLocationPersonDialog } from '@/components/location/AddLocationPersonDialog'
+import { LocationDangerZone } from '@/components/location/LocationDangerZone'
 import {
   LocationPeopleList,
   type LocationPersonRow,
@@ -37,6 +38,7 @@ import { showSaveError } from '@/lib/saveError'
 // | household owner or manager | every location's page, also with No access (owner decision O24-A); a role picker with every role and Remove on every other row; Add person; the No organizer action sentence |
 // | location organizer (household member) | the people; a picker with participant and viewer on participant and viewer rows, and Remove there; nothing on an organizer's row, their own included; Add person (participant or viewer); Rename |
 // | location participant or viewer | the people and roles, and Leave location (O24-A). No other control |
+// | location organizer, any household role | also the danger zone with Remove all items (households H6, task J.7). A household owner or manager with no role here does not get it |
 // | anyone else | "You do not have access to this location." (decision T41) |
 //
 // The rights come from `usePermissions()` (`canChangeRole`, the shared rule of
@@ -273,6 +275,14 @@ export function LocationPeoplePage({ locationId }: { locationId: string }) {
               />
             )}
           </div>
+        )}
+
+        {/* Only with the stored name: the person types it to confirm. */}
+        {location && (
+          <LocationDangerZone
+            locationId={locationId}
+            locationName={location.name}
+          />
         )}
       </>
     )

@@ -26,7 +26,11 @@ import { forgetSeenToday } from './userRow.js'
 //    invite the user made as a manager of another household would block the
 //    `User` delete. An invite the user only USED is not deleted: its
 //    `usedById` is SET NULL, so Postgres clears it when the `User` row goes.
-// 4. The `User` row, last.
+// 4. Every activity log row of an owned household (households H6, task
+//    J.1). A log row in a household the user does NOT own stays, even when
+//    it names the user: `actorId` and `targetUserId` have no foreign key
+//    (decision T46), so it does not block the `User` delete.
+// 5. The `User` row, last.
 //
 // **It never deletes a household the user only belongs to.** Two-user specs
 // run this route once for each user. If the first call emptied a household
@@ -38,7 +42,8 @@ import { forgetSeenToday } from './userRow.js'
 
 /**
  * The one key per model in the `deleted` object this route returns, in the
- * order the transaction deletes them. 19 models. The names match
+ * order the transaction deletes them. 20 models (19 until households H6
+ * task J.1 added `householdActivities`). The names match
  * `CLEANUP_MODEL_KEYS` in e2e/helpers/cloudTeardown.ts, which checks that
  * every one of them is present in the body.
  */
@@ -59,6 +64,7 @@ export const CLEANUP_MODEL_KEYS = [
   'locationMembers',
   'locations',
   'householdInvites',
+  'householdActivities',
   'householdMembers',
   'households',
   'users',
@@ -105,7 +111,7 @@ export async function e2eCleanupHandler(req: Request, res: Response): Promise<vo
   // table before `household`: `householdId` is ON DELETE CASCADE on all of
   // them, `HouseholdInvite` included.
   //
-  // This is the ARRAY form of `$transaction`: Prisma runs the 19 statements
+  // This is the ARRAY form of `$transaction`: Prisma runs the 20 statements
   // in this order, in one transaction, and returns their results in the
   // same order.
   const [
@@ -125,6 +131,7 @@ export async function e2eCleanupHandler(req: Request, res: Response): Promise<vo
     locationMembers,
     locations,
     householdInvites,
+    householdActivities,
     householdMembers,
     households,
     users,
@@ -161,6 +168,12 @@ export async function e2eCleanupHandler(req: Request, res: Response): Promise<vo
     prisma.householdInvite.deleteMany({
       where: { OR: [{ householdId: owned }, { createdById: userId }] },
     }),
+    // Every activity row of the owned households (households H6, task J.1).
+    // BEFORE `household`, for the count: `householdId` is ON DELETE CASCADE,
+    // so after the household delete the rows would be gone already and the
+    // count would read 0. Only the owned households: a log row elsewhere
+    // that names this user stays with its household (no foreign key).
+    prisma.householdActivity.deleteMany({ where: { householdId: owned } }),
     // Every member row of the owned households (anybody's), and the user's
     // own member rows in households they do not own.
     prisma.householdMember.deleteMany({ where: { OR: [{ userId }, { householdId: owned }] } }),
@@ -198,6 +211,7 @@ export async function e2eCleanupHandler(req: Request, res: Response): Promise<vo
     locationMembers: locationMembers.count,
     locations: locations.count,
     householdInvites: householdInvites.count,
+    householdActivities: householdActivities.count,
     householdMembers: householdMembers.count,
     households: households.count,
     users: users.count,

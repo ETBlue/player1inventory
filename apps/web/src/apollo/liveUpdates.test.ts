@@ -157,18 +157,25 @@ afterEach(() => {
 })
 
 describe('QUERIES_BY_KIND', () => {
-  it('CART refetches the five cart queries', () => {
+  it('CART refetches the five cart queries and the activity log', () => {
     expect(QUERIES_BY_KIND.CART).toEqual([
       'VendorCart',
       'AllCarts',
       'CartItems',
       'AllCartItems',
       'CartItemCountByItem',
+      // `removeAllLocationItems` logs a row and may send CART alone
+      // (households H6, decision T57)
+      'HouseholdActivity',
     ])
   })
 
-  it('STOCK refetches the two stock queries', () => {
-    expect(QUERIES_BY_KIND.STOCK).toEqual(['PantryData', 'ItemStocksForItem'])
+  it('STOCK refetches the two stock queries and the activity log', () => {
+    expect(QUERIES_BY_KIND.STOCK).toEqual([
+      'PantryData',
+      'ItemStocksForItem',
+      'HouseholdActivity',
+    ])
   })
 
   it('LOG refetches the three log queries', () => {
@@ -200,6 +207,8 @@ describe('QUERIES_BY_KIND', () => {
         'GetTags',
         'GetTagsByType',
         'GetVendors',
+        // Households H6, decision T57
+        'HouseholdActivity',
         'ItemCountByRecipe',
         'ItemCountByTag',
         'ItemCountByVendor',
@@ -214,8 +223,12 @@ describe('QUERIES_BY_KIND', () => {
     // changes carts sends CART itself (decision Q1 of the H3c-2 plan).
     const names = queriesFor(['CATALOG'])
     if (names === 'all') throw new Error('CATALOG must not refetch everything')
+    // `HouseholdActivity` is in CART, STOCK and CATALOG on purpose (households
+    // H6, decision T57), so it is left out here.
     for (const name of [
-      ...(QUERIES_BY_KIND.CART as readonly string[]),
+      ...(QUERIES_BY_KIND.CART as readonly string[]).filter(
+        (n) => n !== 'HouseholdActivity',
+      ),
       'ItemStocksForItem',
       ...(QUERIES_BY_KIND.LOG as readonly string[]),
     ]) {

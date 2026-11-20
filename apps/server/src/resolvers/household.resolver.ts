@@ -5,6 +5,7 @@ import { forbidden, requireHousehold, requireHouseholdRole } from '../lib/authz.
 import {
   alreadyInHousehold,
   createHouseholdFor,
+  deleteHouseholdData,
   displayNamesOf,
   firstLocationName,
   firstSignInNames,
@@ -13,8 +14,10 @@ import {
   lockHouseholdOrForbid,
   lockUser,
 } from '../lib/household.js'
+import { recordActivity } from '../lib/activity.js'
 import { prisma } from '../lib/prisma.js'
 import { publishHouseholdChange } from '../lib/publishChange.js'
+import { retryOnceOnConflict } from './invite.resolver.js'
 import type { Resolvers } from '../generated/graphql.js'
 
 // The caller's household: its name, and the caller's role in it (households
@@ -188,28 +191,104 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     // name is checked, so a manager or member gets FORBIDDEN whatever name
     // they send.
     //
-    // No `lockHousehold` here, on purpose. The rename is one `UPDATE` of one
-    // row, and Postgres runs a single statement atomically, so two renames at
-    // once end with one of the two names, never a mix. `lockHousehold` exists
-    // for a read-then-write that must not interleave (`deleteLocation` counts
-    // and then deletes). This mutation reads nothing that the write depends
-    // on. The one gap: the role is read before the `UPDATE`, so an owner who
-    // hands the household over (H6) at the same moment could still rename it
-    // once. H6 decides whether that matters.
+    // The household lock FIRST, then the owner check through `tx`, then the
+    // write (households H6 task J.4, decision T52). Until J.4 this read the
+    // role and then wrote with no lock. A rename is one `UPDATE`, so two
+    // renames never mix. The gap was the role: it was read before the write,
+    // so an owner who hands the household over (H6b) at the same moment
+    // could still rename it once. The transfer takes the same lock, so now
+    // the two run one after the other, and the rename reads the role the
+    // transfer left. A household deleted since `requireHousehold` found it
+    // gives FORBIDDEN.
     renameHousehold: async (_, { name }, ctx) => {
       const householdId = await requireHousehold(ctx)
-      const role = await requireHouseholdRole(ctx, householdId, 'owner')
-      const clean = cleanHouseholdName(name)
-      const row = await prisma.household.update({
-        where: { id: householdId },
-        data: { name: clean },
-        select: { id: true, name: true },
+      const { row, role } = await prisma.$transaction(async (tx) => {
+        await lockHouseholdOrForbid(tx, householdId)
+        const role = await requireHouseholdRole(ctx, householdId, 'owner', tx)
+        const clean = cleanHouseholdName(name)
+        const row = await tx.household.update({
+          where: { id: householdId },
+          data: { name: clean },
+          select: { id: true, name: true },
+        })
+        return { row, role }
       })
       // `CATALOG` (households H3c-2 task D.4): the name is in every member's
       // sidebar, and on the web `GetHousehold` is refetched for `CATALOG`.
-      // For the SAVED row's household.
+      // For the SAVED row's household. After the commit.
       await publishHouseholdChange(ctx, ['CATALOG'], row.id)
       return { id: row.id, name: row.name, role }
+    },
+
+    // Household role `owner` (households H6 task J.4, owner decision O38-A).
+    // Deletes the household the caller acts in, with everything in it.
+    // Everyone loses access. Each person's next request acts in their other
+    // household (`ensureHousehold` picks their oldest membership), or gets
+    // NO_HOUSEHOLD. The web asks the owner to type the household name first;
+    // the server checks only the role (decision T56).
+    //
+    // ONE transaction, run ONCE more on P2034 (`retryOnceOnConflict`):
+    //
+    //   1. The `User` rows whose `activeHouseholdId` names this household are
+    //      set to null FIRST. The household delete would do this anyway
+    //      (`onDelete: SetNull`), but then it would write `User` rows while
+    //      holding the household lock, the opposite of the one lock order
+    //      (`User` rows, then households; decision T16 of the H5b plan).
+    //      Doing it first takes those row locks in the right order. Two
+    //      writes can still meet in the other order (for example a join
+    //      that deletes an empty household), so the retry stays.
+    //   2. The household lock (`lockHouseholdOrForbid`), then the owner
+    //      check through `tx` (decision T52). A refusal rolls step 1 back.
+    //      Before the transaction there is also an early owner check (see
+    //      below), so a manager or member never reaches step 1.
+    //   3. `deleteHouseholdData`, the same ordered delete as `clearAllData`
+    //      (decision T64). `Tag.type` is NoAction, so the catalog is not left
+    //      to the cascade.
+    //   4. The household row. Its members, invites and activity log go with
+    //      it by ON DELETE CASCADE.
+    //
+    // No activity row: the log is deleted with the household, so a row about
+    // the delete would be deleted at once.
+    //
+    // No live event, on purpose. `shouldDeliver` sends a household-level
+    // event only to MEMBERS of the household, and after the commit it has
+    // none. So an event would reach nobody, and it is listed in
+    // `publishesNothing` in live-publish.guard.test.ts. The owner's own tab
+    // gets `true` and must leave the household on its own (the web, task
+    // J.7). Every other member's open tab finds out on its next request: the
+    // household guard sees another household id, or the no-household screen
+    // shows.
+    deleteHousehold: async (_, __, ctx) => {
+      const householdId = await requireHousehold(ctx)
+      // Prisma reads `undefined` as NO filter in the deletes below.
+      if (!householdId) throw new Error('deleteHousehold: no household id')
+
+      // An EARLY refusal, outside the transaction. It is not the check that
+      // counts: that one is step 2, after the lock, through `tx`. It is here
+      // because step 1 writes OTHER people's `User` rows. Without it, a
+      // manager or member would take those row locks before being refused,
+      // and could push another person's join (which holds its own `User`
+      // row and then wants this household's lock) into P2034. A role read
+      // here can be stale only in the safe direction: an owner demoted
+      // after this read is still refused in step 2.
+      await requireHouseholdRole(ctx, householdId, 'owner')
+
+      await retryOnceOnConflict(() =>
+        prisma.$transaction(
+          async (tx) => {
+            await tx.user.updateMany({
+              where: { activeHouseholdId: householdId },
+              data: { activeHouseholdId: null },
+            })
+            await lockHouseholdOrForbid(tx, householdId)
+            await requireHouseholdRole(ctx, householdId, 'owner', tx)
+            await deleteHouseholdData(tx, householdId)
+            await tx.household.deleteMany({ where: { id: householdId } })
+          },
+          { timeout: HOUSEHOLD_MOVE_TIMEOUT_MS },
+        ),
+      )
+      return true
     },
 
     // ── setHouseholdRole, removeMember, leaveHousehold (task G.5) ──
@@ -230,6 +309,9 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     //   3. The target's member row in THIS household. None → FORBIDDEN, the
     //      same answer as a person the caller may not touch.
     //   4. The writes.
+    //
+    //   5. The activity row (households H6 task J.2), through `tx`, after
+    //      the writes. Only when something changed.
     //
     // None of them takes `lockUser` or writes a `User` row (decision T16):
     // that keeps the one lock order (`User`, then `Household`). So a removed
@@ -266,6 +348,14 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           data: { role },
           select: { userId: true, role: true, joinedAt: true },
         })
+        // Logged only when the role changed (households H6 task J.2).
+        await recordActivity(tx, {
+          householdId,
+          actorId: callerId,
+          action: 'HOUSEHOLD_ROLE_CHANGED',
+          targetUserId: target,
+          details: { from: row.role, to: saved.role },
+        })
         return { row: saved, changed: true }
       })
       if (result.changed) await publishHouseholdChange(ctx, ['LOCATION'], householdId)
@@ -300,6 +390,12 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         if (!row) throw forbidden()
         if (callerRole === 'manager' && row.role !== 'member') throw forbidden()
         await removeFromHousehold(tx, householdId, target)
+        await recordActivity(tx, {
+          householdId,
+          actorId: callerId,
+          action: 'MEMBER_REMOVED',
+          targetUserId: target,
+        })
       })
       await publishHouseholdChange(ctx, ['LOCATION'], householdId)
       return true
@@ -318,6 +414,7 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           throw badInput('The owner cannot leave. Handing over the household comes later.')
         }
         await removeFromHousehold(tx, householdId, callerId)
+        await recordActivity(tx, { householdId, actorId: callerId, action: 'MEMBER_LEFT' })
       })
       // To the household LEFT: its other members' tabs refetch the list.
       await publishHouseholdChange(ctx, ['LOCATION'], householdId)

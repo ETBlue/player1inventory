@@ -186,4 +186,61 @@ export class LocationPeoplePage {
       .getByRole('button', { name: 'Leave location', exact: true })
       .click()
   }
+
+  // ── The location danger zone (households H6 task J.7) ──────────────────
+
+  /**
+   * The danger zone of the location: a `<section aria-labelledby>` named by
+   * its `<h2>` "Danger zone" (`settings.locations.danger.title`,
+   * apps/web/src/components/location/LocationDangerZone/LocationDangerZone.tsx:41-48),
+   * so its role is `region`. It shows to an ORGANIZER of this location only.
+   */
+  dangerZone(): Locator {
+    return this.main().getByRole('region', { name: 'Danger zone' })
+  }
+
+  /**
+   * The "Remove all items" trigger (`settings.locations.danger.removeAll`,
+   * LocationDangerZone.tsx:50-63). The confirm's button has the same name.
+   */
+  removeAllButton(): Locator {
+    return this.dangerZone().getByRole('button', {
+      name: 'Remove all items',
+      exact: true,
+    })
+  }
+
+  /**
+   * The text field of the typed-name confirm, labelled "Type {name} to
+   * confirm" (`settings.household.danger.typeName`,
+   * apps/web/src/components/shared/DeleteButton/DeleteButton.tsx:145-162).
+   */
+  confirmNameField(): Locator {
+    return this.confirmDialog().getByRole('textbox')
+  }
+
+  /** The confirm's own "Remove all items" (`AlertDialogAction`, DeleteButton.tsx:177-197). */
+  removeAllConfirmButton(): Locator {
+    return this.confirmDialog().getByRole('button', {
+      name: 'Remove all items',
+      exact: true,
+    })
+  }
+
+  /** Open the Remove all items confirm. */
+  async openRemoveAll() {
+    await this.removeAllButton().click()
+    await expect(this.confirmDialog()).toBeVisible()
+  }
+
+  /**
+   * Remove all items: type the location name, confirm, and wait for the
+   * dialog to close. It closes only when the write has resolved
+   * (`handleTypedConfirm`, DeleteButton.tsx:90-104).
+   */
+  async removeAllItems(locationName: string) {
+    await this.confirmNameField().fill(locationName)
+    await this.removeAllConfirmButton().click()
+    await expect(this.confirmDialog()).toHaveCount(0, { timeout: 15_000 })
+  }
 }

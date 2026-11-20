@@ -27,6 +27,13 @@ extend type Mutation {
   # blank name, or one longer than 100 characters, is refused with the error
   # code BAD_USER_INPUT.
   renameHousehold(name: String!): Household!
+  # Household role `owner` (households H6 task J.4, owner decision O38-A).
+  # Deletes the household the caller acts in, with all its data, its people's
+  # memberships, its invites and its activity log. Everyone loses access:
+  # each person's next request acts in their other household, or gets
+  # NO_HOUSEHOLD. The web asks the owner to type the name first; the server
+  # checks only the role (decision T56).
+  deleteHousehold: Boolean!
 }
 
 # ── Invites (households H5b, task G.3) ──

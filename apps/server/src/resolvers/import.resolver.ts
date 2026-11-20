@@ -11,7 +11,13 @@ import {
   requireOwnRowOrUnclaimed,
 } from '../lib/authz.js'
 import { parseCartId } from '@p1i/types'
-import { createFirstLocation, firstLocationName, lockHousehold } from '../lib/household.js'
+import {
+  createFirstLocation,
+  deleteHouseholdData,
+  firstLocationName,
+  lockHouseholdOrForbid,
+} from '../lib/household.js'
+import { recordActivity } from '../lib/activity.js'
 import { prisma } from '../lib/prisma.js'
 import { type ChangedLocation, publishChange, publishHouseholdChange } from '../lib/publishChange.js'
 import { type Context, requireAuth } from '../context.js'
@@ -2283,7 +2289,8 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     // household roles. Then makes "Home" again (decision H17).
     //
     // - Household role `owner` only: *Clear household* is owner only, and so
-    //   is the `clear` import strategy that calls this (decision H17).
+    //   is the `clear` import strategy that calls this (decision H17). The
+    //   role is read inside the transaction, after the lock (decision T52).
     // - Every filter is the household, or goes through the location, the
     //   item, the recipe or the cart. NONE goes by `userId`: "no path deletes
     //   rows because of who created them" (issue #320). So a log or a cart a
@@ -2298,46 +2305,42 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     //   person can start again at once. If making it fails, every delete is
     //   rolled back.
     //
-    // The order of the deletes is children before parents, as before.
-    // `ItemStock`, `Cart`, `InventoryLog` and `LocationMember` would also go
-    // by ON DELETE CASCADE with their location, and the junction rows with
-    // their item; the explicit deletes keep the list complete for
-    // `purge-coverage.test.ts`, and nothing here depends on the cascades.
-    // `LocationMember` has no explicit delete: it goes with its location.
+    // The deletes themselves are `deleteHouseholdData` in lib/household.ts
+    // (households H6 task J.4, decision T64), shared with `deleteHousehold`.
+    // Its comment says why the order is children before parents.
+    // `purge-coverage.test.ts` reads that function's body.
     clearAllData: async (_, __, ctx) => {
       const userId = requireAuth(ctx)
       const householdId = await requireHousehold(ctx)
       // Prisma reads `{ householdId: undefined }` as NO filter, so every
       // delete below would empty its table for EVERY household. No text check
-      // can see an `undefined` value, so refuse it here, before the role
-      // check and before the transaction.
+      // can see an `undefined` value, so refuse it here, before the
+      // transaction.
       if (!householdId) throw new Error('clearAllData: no household id')
-      await requireHouseholdRole(ctx, householdId, 'owner')
 
       await prisma.$transaction(async (tx) => {
-        await lockHousehold(tx, householdId)
-        await tx.inventoryLog.deleteMany({ where: { location: { householdId } } })
-        await tx.cartItem.deleteMany({ where: { cart: { location: { householdId } } } })
-        await tx.cart.deleteMany({ where: { location: { householdId } } })
-        await tx.recipeItem.deleteMany({ where: { recipe: { householdId } } })
-        await tx.recipe.deleteMany({ where: { householdId } })
-        await tx.itemTag.deleteMany({ where: { item: { householdId } } })
-        await tx.itemVendor.deleteMany({ where: { item: { householdId } } })
-        // Before both `item` and `location`: ItemStock has a foreign key to
-        // each, both ON DELETE CASCADE.
-        await tx.itemStock.deleteMany({ where: { location: { householdId } } })
-        await tx.item.deleteMany({ where: { householdId } })
-        await tx.tag.deleteMany({ where: { householdId } })
-        await tx.tagType.deleteMany({ where: { householdId } })
-        await tx.vendor.deleteMany({ where: { householdId } })
-        await tx.shelf.deleteMany({ where: { householdId } })
-        // Its `LocationMember` rows go by ON DELETE CASCADE.
-        await tx.location.deleteMany({ where: { householdId } })
+        // The lock FIRST, then the owner check through `tx` (households H6
+        // task J.4, decision T52). A role read before the lock could be stale
+        // by the time the deletes run: an owner who hands the household over
+        // (H6b) at the same moment could still clear it. The transfer takes
+        // the same lock, so the two run one after the other. A household
+        // deleted since `requireHousehold` found it gives FORBIDDEN, not
+        // Prisma's P2025 (the H5b known gap).
+        await lockHouseholdOrForbid(tx, householdId)
+        await requireHouseholdRole(ctx, householdId, 'owner', tx)
+        // The ordered delete of every data row of the household (decision
+        // T64 of the H6 plan). Shared with `deleteHousehold`.
+        await deleteHouseholdData(tx, householdId)
         await createFirstLocation(tx, {
           householdId,
           userId,
           name: firstLocationName(ctx.language ?? 'en'),
         })
+        // The activity row (households H6 task J.2, decision T51), LAST, in
+        // this transaction. The log is not in the delete list above, so the
+        // clear keeps older rows. The organizer row on the new "Home" is part
+        // of this one row and gets none of its own.
+        await recordActivity(tx, { householdId, actorId: userId, action: 'HOUSEHOLD_CLEARED' })
       })
       // ── THE LIVE EVENT (households H3c-2 task D.3) ──
       //
@@ -2348,6 +2351,36 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       // changed (decision Q1). No `CART`, `STOCK` or `LOG`: their locations
       // are gone (decision Q4).
       await publishHouseholdChange(ctx, ['LOCATION', 'CATALOG'], householdId)
+      return true
+    },
+
+    // -------------------------------------------------------------------------
+    // Log a finished import (households H6 task J.2, owner decision O33-A)
+    // -------------------------------------------------------------------------
+    //
+    // One `IMPORT` activity row with the counts the web sends. The same role
+    // as the 22 import mutations (`manager` or higher, decision O7), checked
+    // first. The counts are only shown in the log: every imported row was
+    // already checked by the mutation that wrote it. It publishes nothing, so
+    // it is in `publishesNothing` in `live-publish.guard.test.ts`.
+    recordImport: async (_, { counts }, ctx) => {
+      const userId = requireAuth(ctx)
+      const householdId = await requireCatalogRole(ctx, 'manager')
+      for (const [key, value] of Object.entries(counts)) {
+        if (!Number.isInteger(value) || value < 0) {
+          throw new GraphQLError(`recordImport: the count "${key}" must be 0 or more.`, {
+            extensions: { code: 'BAD_USER_INPUT' },
+          })
+        }
+      }
+      await prisma.$transaction(async (tx) => {
+        await recordActivity(tx, {
+          householdId,
+          actorId: userId,
+          action: 'IMPORT',
+          details: { counts: { ...counts } },
+        })
+      })
       return true
     },
   },

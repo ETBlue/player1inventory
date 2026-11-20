@@ -29,6 +29,7 @@ import {
   LeaveLocationDocument,
   LocationPeopleDocument,
   type LocationRole,
+  RemoveAllLocationItemsDocument,
   RemoveLocationRoleDocument,
   SetLocationRoleDocument,
 } from '@/generated/graphql'
@@ -96,6 +97,8 @@ interface Server {
   setCalls: Record<string, unknown>[]
   removeCalls: Record<string, unknown>[]
   leaveCalls: Record<string, unknown>[]
+  /** `RemoveAllLocationItems` calls (households H6, task J.7). */
+  removeAllCalls: Record<string, unknown>[]
   peopleCalls: number
 }
 
@@ -301,6 +304,18 @@ function dynamicMocks(): NonNullable<MockedProviderProps['mocks']> {
       },
     },
     {
+      request: {
+        query: RemoveAllLocationItemsDocument,
+        variables: () => true,
+      },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+      delay: 100,
+      result: (variables: Record<string, unknown>) => {
+        server.removeAllCalls.push(variables)
+        return { data: { removeAllLocationItems: true } }
+      },
+    },
+    {
       request: { query: LeaveLocationDocument, variables: () => true },
       maxUsageCount: Number.POSITIVE_INFINITY,
       delay: 100,
@@ -397,6 +412,7 @@ beforeEach(() => {
     setCalls: [],
     removeCalls: [],
     leaveCalls: [],
+    removeAllCalls: [],
     peopleCalls: 0,
   }
 })
@@ -982,5 +998,78 @@ describe('location people page — review fixes', () => {
     expect(
       await within(page).findByRole('button', { name: 'Add person' }),
     ).toBeInTheDocument()
+  })
+})
+
+// Remove all items (households H6, task J.7, decision T55). For an ORGANIZER
+// of this location only. The fixture has a second organizer location
+// (Garage, for Pia below), an owner and a manager with no role on the
+// Kitchen, so a rule that reads the household role or "organizer anywhere"
+// shows the button where it must not.
+describe('location people page — Remove all items', () => {
+  it('location organizer can remove all items after typing the location name', async () => {
+    server.me = 'u-ola'
+    const user = userEvent.setup()
+    renderPage(KITCHEN)
+    const page = await main()
+
+    const zone = await within(page).findByRole('region', {
+      name: 'Danger zone',
+    })
+    await user.click(
+      within(zone).getByRole('button', { name: 'Remove all items' }),
+    )
+    const dialog = await screen.findByRole('alertdialog')
+    const confirm = within(dialog).getByRole('button', {
+      name: 'Remove all items',
+    })
+    expect(confirm).toBeDisabled()
+    await user.type(
+      within(dialog).getByRole('textbox', {
+        name: 'Type my Kitchen to confirm',
+      }),
+      'my Kitchen',
+    )
+    await user.click(confirm)
+    // A second press while it runs sends nothing more
+    await user.click(confirm)
+
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    )
+    expect(server.removeAllCalls).toEqual([{ locationId: KITCHEN }])
+  })
+
+  it.each([
+    ['participant', 'u-pia'],
+    ['viewer', 'u-vic'],
+  ])('location %s does not see Remove all items', async (_role, me) => {
+    server.me = me
+    // Pia and Vic each organize the Garage, so "organizer anywhere" would
+    // show the button here
+    server.roles[GARAGE] = { [me]: 'organizer' }
+    renderPage(KITCHEN)
+    const page = await main()
+    await rowOf('vic')
+    expect(
+      within(page).queryByRole('button', { name: 'Remove all items' }),
+    ).toBeNull()
+  })
+
+  it.each([
+    ['owner', 'u-olive'],
+    ['manager', 'u-mona'],
+  ])('household %s with no role on the location does not see Remove all items', async (_role, me) => {
+    server.me = me
+    server.roles[GARAGE] = { [me]: 'organizer' }
+    renderPage(KITCHEN)
+    const page = await main()
+    // The owner and manager can read the page (Add person shows)
+    expect(
+      await within(page).findByRole('button', { name: 'Add person' }),
+    ).toBeInTheDocument()
+    expect(
+      within(page).queryByRole('region', { name: 'Danger zone' }),
+    ).toBeNull()
   })
 })

@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { ExportCard } from '@/components/settings/ExportCard'
+import { HouseholdDangerZone } from '@/components/settings/HouseholdDangerZone'
 import { HouseholdLabel } from '@/components/settings/HouseholdLabel'
 import { HouseholdNameCard } from '@/components/settings/HouseholdNameCard'
 import { ImportCard } from '@/components/settings/ImportCard'
@@ -12,7 +13,7 @@ export const Route = createFileRoute('/settings/household/')({
 // The household config page. The title is the household's name in cloud mode
 // and "My data" in local mode (households H3a task 3.13). The name card shows
 // in cloud mode only: the owner can rename the household there. The danger
-// zone arrives with the purges in H6.
+// zone (households H6, task J.7) shows to the cloud owner only, last.
 function HouseholdConfig() {
   return (
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
@@ -27,6 +28,7 @@ function HouseholdConfig() {
         <HouseholdNameCard />
         <ExportCard />
         <ImportCard />
+        <HouseholdDangerZone />
       </div>
     </div>
   )

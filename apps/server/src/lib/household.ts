@@ -319,8 +319,79 @@ export async function createFirstLocation(
 }
 
 /**
+ * Delete every DATA row of one household, inside the caller's transaction
+ * (households H6 task J.4, decision T64): its logs, carts and cart rows,
+ * recipes and their lines, item links, stock, items, tags, tag types,
+ * vendors, shelves and locations. The `LocationMember` rows go with their
+ * location (ON DELETE CASCADE).
+ *
+ * It keeps the household row, its members, their household roles, its
+ * invites and its activity log. The caller decides what comes next:
+ * `clearAllData` makes "Home" again (decision H17), and `deleteHousehold`
+ * deletes the household row itself.
+ *
+ * One list, so the two callers cannot drift apart. Before J.4 it was the
+ * body of `clearAllData`.
+ *
+ * ── THE ORDER ──
+ *
+ * Children before parents. Most of these rows would also go by ON DELETE
+ * CASCADE, but one would not: `Tag.type` is `onDelete: NoAction`
+ * (schema.prisma), so a tag type that a tag still points at cannot be
+ * deleted. Tags go first. The explicit list also keeps
+ * `purge-coverage.test.ts` able to read which models are deleted.
+ *
+ * ── THE SCOPE ──
+ *
+ * Every filter is the household, or goes through the location, the item, the
+ * recipe or the cart. NONE goes by `userId` (issue #320): a log or a cart a
+ * co-member wrote goes too. Prisma reads `{ householdId: undefined }` as NO
+ * filter, so a missing id would empty every table for every household. It is
+ * refused before the first delete.
+ *
+ * Take the household lock (`lockHouseholdOrForbid`) BEFORE calling this.
+ *
+ * `scripts/verify-migration.ts` (`assertHouseholdLock`) keeps a copy of
+ * these statements. Change both together.
+ */
+export async function deleteHouseholdData(
+  tx: Prisma.TransactionClient,
+  householdId: string,
+): Promise<void> {
+  if (typeof householdId !== 'string' || householdId === '') {
+    throw new Error('deleteHouseholdData: no household id')
+  }
+  await tx.inventoryLog.deleteMany({ where: { location: { householdId } } })
+  await tx.cartItem.deleteMany({ where: { cart: { location: { householdId } } } })
+  await tx.cart.deleteMany({ where: { location: { householdId } } })
+  await tx.recipeItem.deleteMany({ where: { recipe: { householdId } } })
+  await tx.recipe.deleteMany({ where: { householdId } })
+  await tx.itemTag.deleteMany({ where: { item: { householdId } } })
+  await tx.itemVendor.deleteMany({ where: { item: { householdId } } })
+  // Before both `item` and `location`: ItemStock has a foreign key to each,
+  // both ON DELETE CASCADE.
+  await tx.itemStock.deleteMany({ where: { location: { householdId } } })
+  await tx.item.deleteMany({ where: { householdId } })
+  // Tags before tag types: `Tag.type` is NoAction.
+  await tx.tag.deleteMany({ where: { householdId } })
+  await tx.tagType.deleteMany({ where: { householdId } })
+  await tx.vendor.deleteMany({ where: { householdId } })
+  await tx.shelf.deleteMany({ where: { householdId } })
+  // Its `LocationMember` rows go by ON DELETE CASCADE.
+  await tx.location.deleteMany({ where: { householdId } })
+}
+
+/**
  * Take the `Household` row's lock for the rest of this transaction. Call it
  * FIRST in the transaction, before any other read or write.
+ *
+ * NO CODE CALLS THIS SINCE HOUSEHOLDS H6 TASK J.4. `deleteLocation` and
+ * `clearAllData`, its last two callers, moved to `lockHouseholdOrForbid`
+ * below, which runs the same lock as an `updateMany` and gives FORBIDDEN
+ * instead of Prisma's P2025 when the household is gone (decision T52). The
+ * function is kept for now because this comment is the one place that
+ * explains the lock, and many comments and `scripts/verify-migration.ts`
+ * point here. New code must use `lockHouseholdOrForbid`.
  *
  * Why it exists. Until households H5 task F.7, `deleteLocation` counted the
  * household's locations and refused the last one (decision H13). Two deletes
@@ -450,7 +521,9 @@ export async function lockHouseholds(
 /**
  * Take the household's row lock, FIRST in the transaction, for
  * `setHouseholdRole`, `removeMember` and `leaveHousehold` (and, from
- * households H5c, the three location role writes). The household
+ * households H5c, the three location role writes; from households H6 task
+ * J.4, `clearAllData`, `renameHousehold`, `deleteLocation` and the purges,
+ * decision T52). Read the caller's role AFTER it, through `tx`. The household
  * can be deleted after `requireHousehold` found it (for example the owner
  * joined another household in another tab, and the join deleted this one as
  * empty). `lockHousehold` would then throw Prisma's P2025, which reaches the
@@ -492,4 +565,30 @@ export async function displayNamesOf(userIds: string[]): Promise<Map<string, str
     select: { id: true, displayName: true },
   })
   return new Map(rows.map((row) => [row.id, row.displayName]))
+}
+
+/** A person's stored name, and whether their account is deleted. */
+export interface AccountName {
+  displayName: string
+  deleted: boolean
+}
+
+/**
+ * Like `displayNamesOf`, and also whether each account is deleted
+ * (`User.deletedAt` is set). For the activity log (households H6, task J.3),
+ * which shows a deleted account's stored name with "(deleted account)" after
+ * it (owner decision O35-A).
+ *
+ * One read. The select names `id`, `displayName` and `deletedAt`, and never
+ * `email`. An id with no `User` row is not in the map.
+ */
+export async function accountNamesOf(userIds: string[]): Promise<Map<string, AccountName>> {
+  if (userIds.length === 0) return new Map()
+  const rows = await prisma.user.findMany({
+    where: { id: { in: [...new Set(userIds)] } },
+    select: { id: true, displayName: true, deletedAt: true },
+  })
+  return new Map(
+    rows.map((row) => [row.id, { displayName: row.displayName, deleted: row.deletedAt !== null }]),
+  )
 }

@@ -534,6 +534,56 @@
         "invitesLoadError": "無法讀取尚未使用的邀請，請再試一次。",
         "locationsLoadError": "無法讀取據點，請再試一次。",
         "noLocations": "這個家庭還沒有任何據點。"
+      },
+      "activity": {
+        "title": "動態",
+        "description": "誰在這個家庭裡改了什麼",
+        "empty": "這裡還沒有任何動態。",
+        "loadMore": "載入更多",
+        "noAccess": "只有擁有者和管理者可以看到動態。",
+        "back": "回到家庭",
+        "loadError": "無法載入動態，請再試一次。",
+        "loadMoreError": "無法載入更多，請再試一次。",
+        "retry": "重試",
+        "you": "你",
+        "youTarget": "你",
+        "someone": "某人",
+        "someoneTarget": "某人",
+        "unknownLocation": "某個據點",
+        "unknownRole": "（不明的角色）",
+        "deletedAccount": "{{name}}（已刪除的帳號）",
+        "unknownAction": "{{actor}} 做了一項變更",
+        "locationRoleSet": "{{actor}} 把 {{location}} 的{{role}}角色給了 {{target}}",
+        "locationRoleRemoved": "{{actor}} 把 {{target}} 移出了 {{location}}",
+        "locationLeft": "{{actor}} 離開了 {{location}}",
+        "householdRoleChanged": "{{actor}} 把 {{target}} 設為{{role}}",
+        "inviteCreated": "{{actor}} 建立了一個{{role}}的邀請",
+        "inviteRevoked": "{{actor}} 撤銷了一個邀請",
+        "memberJoined": "{{actor}} 加入了家庭",
+        "memberLeft": "{{actor}} 離開了家庭",
+        "memberRemoved": "{{actor}} 把 {{target}} 移出了家庭",
+        "householdCleared": "{{actor}} 清空了家庭",
+        "locationsDeleted_one": "{{actor}} 刪除了唯一的據點",
+        "locationsDeleted_other": "{{actor}} 刪除了全部 {{count}} 個據點",
+        "locationsDeletedNoCount": "{{actor}} 刪除了所有據點",
+        "locationItemsRemoved": "{{actor}} 移除了 {{location}} 的所有物品",
+        "import": "{{actor}} 匯入了資料",
+        "ownershipOffered": "{{actor}} 想把家庭交給 {{target}}",
+        "ownershipOfferCancelled": "{{actor}} 收回了給 {{target}} 的交接",
+        "ownershipDeclined": "{{actor}} 拒絕成為擁有者",
+        "ownershipAccepted": "{{actor}} 成為了擁有者",
+        "handoverStarted": "{{actor}} 的帳號已刪除，家庭需要新的擁有者",
+        "accountDeleted": "{{actor}} 的帳號已刪除"
+      },
+      "danger": {
+        "title": "危險區域",
+        "clear": "清空家庭",
+        "clearDescription": "刪除目錄和所有據點及其內容，並建立新的「Home」。成員和他們的家庭角色會保留。",
+        "deleteLocations": "刪除所有據點",
+        "deleteLocationsDescription": "刪除所有據點及其庫存、購物車、紀錄和角色。目錄會保留，也不會建立新的據點。",
+        "deleteHousehold": "刪除家庭",
+        "deleteHouseholdDescription": "刪除家庭和裡面的所有東西。所有人都會失去存取權。",
+        "typeName": "請輸入 {{name}} 以確認"
       }
     },
     "user": {
@@ -681,6 +731,11 @@
         "unnamed": "據點",
         "choosePerson": "選擇一個人",
         "membersLoadError": "無法讀取家庭成員，請再試一次。"
+      },
+      "danger": {
+        "title": "危險區域",
+        "removeAll": "移除所有物品",
+        "removeAllDescription": "刪除這個據點的庫存和購物車裡的物品。據點、人員、紀錄和目錄會保留。"
       }
     },
     "shelves": {

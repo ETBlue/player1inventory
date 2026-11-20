@@ -470,8 +470,8 @@ inviting one.
 - A member who creates a location becomes its organizer.
 - Anyone leaves a location from its page.
 
-**Built in H5c** (2026-11-19, [plan](2026-11-19-households-plan-h5c.md), not merged, not
-deployed). As written above, with these owner answers: an organizer may also change or remove
+**Built in H5c** (2026-11-19, [plan](2026-11-19-households-plan-h5c.md), merged into `develop`
+as #391, not deployed). As written above, with these owner answers: an organizer may also change or remove
 a participant or viewer who is a household owner or manager (O30-A); the only organizer may
 leave, after a warning, and the location then shows **No organizer** (O25-A); role changes are
 not logged until H6 (O29-A).
@@ -627,12 +627,46 @@ the source. The plan must:
    before H3, and the phase plan put it in H6. H3a changes the filters, so the test must exist
    when they change.
 
+**Built in H6a** (2026-11-20, [plan](2026-11-20-households-plan-h6.md), tasks J.4 and J.7;
+on `feature/households-h6a`, not merged, not deployed). All three purges in the table, plus
+**Delete household** (owner decision O38-A), in a danger zone on the household page (owner)
+and on the location's page (organizer). With these answers and choices:
+
+- **Delete all locations** makes no new "Home" (O34-A). The household then shows the empty
+  locations screen. **Clear household** still re-creates "Home" (H17).
+- **Remove all items** deletes the location's stock rows and the rows in its carts. It keeps
+  the `Cart` rows, so "last purchased" stays (decision T55).
+- **The typed name is checked in the web only** (decision T56). The server checks the role.
+- Each purge, and **Delete household**, takes the household lock FIRST and reads the role
+  after it (decision T52). One ordered delete, `deleteHouseholdData`, is shared by **Clear
+  household** and **Delete household** (decision T64).
+- Each purge writes one activity row. **Delete household** writes none: the log goes with
+  the household.
+- Real SQL: `purge-two-households.spec.ts` has two more tests, one per new purge, each with
+  two households.
+
 ### Activity log
 
 `HouseholdActivity` records: location role given or removed, household role changed, invite
 created or revoked, joined, left, removed, ownership offered, accepted or declined, every purge,
 and every import. Each row has who acted, what, on whom or which location, and when. Owner and
 managers read it, newest first. Stock changes are not in it — they are in `InventoryLog`.
+
+**Built in H6a** (2026-11-20, [plan](2026-11-20-households-plan-h6.md), tasks J.1 to J.3,
+J.5 and J.6; on `feature/households-h6a`, not merged, not deployed). The table
+`HouseholdActivity` and the page **Settings › Household › Activity** (owner and manager,
+cloud only). How it differs from the text above:
+
+- **Ownership rows come in H6b.** The enum already holds their values.
+- **An import is one row** (owner decision O33-A). The web calls `recordImport` with the
+  counts once the import ends.
+- **A deleted account shows its stored name with "(deleted account)" after it**, not
+  "Deleted user" (O35-A). The *Purge* table above still says "Deleted user".
+- **Not logged** (decision T51): the organizer role `createLocation` gives its creator, the
+  organizer role on the new "Home" after **Clear household**, `createHousehold`, and renames.
+- **No foreign key on the person or the location** a row names, so the row outlives both.
+  The location's name is stored in the row. Only the household is a foreign key, and the
+  log is deleted with the household. There is no retention limit (T48).
 
 ## Screens
 
@@ -711,7 +745,7 @@ dates come from Clerk's `useUser()`.
 roles with **Add person** (organizer, owner, manager), danger zone with **Remove all items**
 (organizer), and **Leave location**.
 
-**Built in H5c** (2026-11-19, not merged, not deployed), except **Remove all items**, which is
+**Built in H5c** (2026-11-19, merged into `develop` as #391, not deployed), except **Remove all items**, which is
 H6. The name links to this page from the list for anyone who may open it. Who may open it
 (owner decision O24-A): anyone with a role on the location, and every owner and manager, also
 on a **No access** location; they see names and roles, never the location's stock, carts or
@@ -954,8 +988,8 @@ and the owner agreed to the order below. Detail:
 | `chore/build-shared-types` | ✅ Merged into `develop` 2026-11-13 (#376), not deployed. The server build bundles with esbuild, so the server can import shared code from `@p1i/types` at runtime (needed by H3b, decision H7). The server's own copies of `cartIdFor`, `parseCartId` and `isBeingBought` are deleted. [Design](../backend/2026-11-13-build-shared-types-design.md) | No |
 | **H3b** | Shared carts: `@@unique([cartId, itemId])` (decision H8), the 15 `CartItem.userId` filters, `Cart.userId` dropped, checkout and `consumeRecipes` in one transaction with a server-computed total. Fixes #358. **Must merge before H5 starts** | No (one person per household) |
 | H4 | ✅ **Merged into `develop` 2026-11-17 (#382, merge `bf87e839`), not deployed.** Import and export: the new id rule, and `requireOwnRowOrUnclaimed` moved to the target household scope (#327 itself is already fixed by #354). Replaces H3a's import fallback location (decision H12) | The "Import into which location?" dialog |
-| H5 | Split in three PRs (H5 decision O1), [plan](2026-11-17-households-plan-h5.md). **H5a ✅ merged into `develop` (#384, merge `4307d30a`, 2026-11-18), not deployed:** `Location.myRole`, `Location.hasOrganizer`, the `householdLocations` query, a location viewer reads carts, `usePermissions` and read-only views for a household `member` and a location `viewer`, the **View only** badge in the switcher (the switcher already listed only locations with a role, so there was nothing to filter), H13 lifted with an empty locations screen, and a browser context per test user in E2E. **H5b ✅ merged into `develop` (#385, merge `938fa2aa`, 2026-11-18), not deployed** ([plan](2026-11-18-households-plan-h5b.md)): one migration (`HouseholdInvite`, `User.activeHouseholdId`), invite links, the join page, the Members page, leave and remove, a fixed rule for a person in two households, and the no-household screen with **Create a household**. Follow-ups merged after it: #386 (a failed refresh no longer fails a saved write), #387 (screens show save errors), #388 (the join keeps the copy question), #389 (the copy question names the household), #390 (`isPending` tests). **H5c ✅ built 2026-11-19 on `feature/households-h5c`, not merged, not deployed** ([plan](2026-11-19-households-plan-h5c.md)): no migration; the `locationPeople` query, `HouseholdPerson.hasLocationRole`, `setLocationRole`, `removeLocationRole` and `leaveLocation`; one shared rule for who may change a role (`canChangeLocationRole` in `@p1i/types`); the page `/settings/household/locations/$id`; name links on the locations list; the **No location roles** mark on the Members page; a short message when a tab loses its active location; `location-people.spec.ts` (9 cloud tests). Owner decisions O23–O31 all A | H5a alone: the last location can be deleted. **H5a + H5b + H5c: sharing works** |
-| H6 | Transfer, hand-over, offers banner, purges, activity log | Yes: story 2 |
+| H5 | Split in three PRs (H5 decision O1), [plan](2026-11-17-households-plan-h5.md). **H5a ✅ merged into `develop` (#384, merge `4307d30a`, 2026-11-18), not deployed:** `Location.myRole`, `Location.hasOrganizer`, the `householdLocations` query, a location viewer reads carts, `usePermissions` and read-only views for a household `member` and a location `viewer`, the **View only** badge in the switcher (the switcher already listed only locations with a role, so there was nothing to filter), H13 lifted with an empty locations screen, and a browser context per test user in E2E. **H5b ✅ merged into `develop` (#385, merge `938fa2aa`, 2026-11-18), not deployed** ([plan](2026-11-18-households-plan-h5b.md)): one migration (`HouseholdInvite`, `User.activeHouseholdId`), invite links, the join page, the Members page, leave and remove, a fixed rule for a person in two households, and the no-household screen with **Create a household**. Follow-ups merged after it: #386 (a failed refresh no longer fails a saved write), #387 (screens show save errors), #388 (the join keeps the copy question), #389 (the copy question names the household), #390 (`isPending` tests). **H5c ✅ merged into `develop` (#391, merge `7dbaeca9`, 2026-11-20), not deployed** ([plan](2026-11-19-households-plan-h5c.md)): no migration; the `locationPeople` query, `HouseholdPerson.hasLocationRole`, `setLocationRole`, `removeLocationRole` and `leaveLocation`; one shared rule for who may change a role (`canChangeLocationRole` in `@p1i/types`); the page `/settings/household/locations/$id`; name links on the locations list; the **No location roles** mark on the Members page; a short message when a tab loses its active location; `location-people.spec.ts` (9 cloud tests). Owner decisions O23–O31 all A | H5a alone: the last location can be deleted. **H5a + H5b + H5c: sharing works** |
+| H6 | Transfer, hand-over, offers banner, purges, activity log. Split in two PRs (owner decision O32-A), [plan](2026-11-20-households-plan-h6.md). **H6a ✅ built 2026-11-20 on `feature/households-h6a`, not merged, not deployed:** one additive migration (`HouseholdActivity`), the activity log and its page, the purges **Delete all locations** and **Remove all items**, **Delete household** (O38-A), the danger zones, and the household lock taken first by every owner-only write. **H6b** (transfer, hand-over, deleted accounts) not started | Yes: story 2 (H6b) |
 | H7 | Personal location order and sort, household switch and create. Now also `LocationPreference`, `UserPreference` and `dataUpdatedAt` (decision H6), and the end of the shared `Location.order` (decision H5) | Yes |
 
 **H3a's GraphQL change is breaking, so deploy order matters** (issue #359). Six types declare

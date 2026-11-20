@@ -559,8 +559,8 @@ rollback.
 
 ## 10. Households H5c (the location people page)
 
-Added 2026-11-19 by H5c task H.9. **H5c is built on `feature/households-h5c`. It is not
-merged and not deployed.** Plan:
+Added 2026-11-19 by H5c task H.9. **H5c is merged into `develop` (#391, merge
+`7dbaeca9`, 2026-11-20). It is not deployed.** Plan:
 [`../permissions/2026-11-19-households-plan-h5c.md`](../permissions/2026-11-19-households-plan-h5c.md),
 *Deploy notes* and *Known gaps*.
 
@@ -619,6 +619,155 @@ Result: `TBD on deploy day`.
 itself. Role changes made in the meantime are ordinary `LocationMember` rows and stay. But
 roll back the web FIRST (or together): an H5c bundle on an H5b server fails on the Members
 page (10.2). Role changes made between H5c and H6 are not logged (owner decision O29-A).
+
+## 11. Households H6a (activity log, purges, danger zones)
+
+Added 2026-11-20 by H6 task J.9. **H6a is built on `feature/households-h6a`, from `develop`
+at `7dbaeca9`. It is not merged and not deployed.** Plan:
+[`../permissions/2026-11-20-households-plan-h6.md`](../permissions/2026-11-20-households-plan-h6.md),
+*Deploy notes*, *Known gaps* and *Status*.
+
+In short: **one additive migration, the server first, then the web, then the checks below.**
+
+### 11.1 What changes
+
+| Part | What is new |
+|---|---|
+| Database | **one migration**, `20261120000000_add_household_activity`. It adds one enum, `"ActivityAction"` (19 values; the six H6b values are already in it), and one empty table, `"HouseholdActivity"`. Additive only: no row is changed, nothing is dropped, no backfill |
+| Server env, web build env, Clerk | nothing new |
+| GraphQL schema | 1 new query (`householdActivity`), 3 new types (`HouseholdActivityEntry`, `ActivityImportCounts`, the enum `ActivityAction`), 1 new input (`ImportCountsInput`) and 4 new mutations (`deleteAllLocations`, `removeAllLocationItems`, `deleteHousehold`, `recordImport`). No field, argument or input field is removed or changed. `oldBundleCompat.test.ts` still passes with the same list of known changes (in `pnpm test`, 2026-11-20) |
+| Live updates | `deleteAllLocations` sends one household-level `LOCATION` event; `removeAllLocationItems` sends `STOCK` and `CART` at that location, each only when it changed rows. `recordImport` and `deleteHousehold` send nothing. The live guard holds 76 mutation fields: 74 in `publishes`, 2 in `publishesNothing` |
+| Server behaviour | 13 kinds of write now add one activity row inside their own transaction (decision T51). `createInvite` and `revokeInvite` became transactions. `clearAllData`, `renameHousehold`, `deleteLocation` and the new owner-only writes take the household lock FIRST and read the role after it, so a household deleted at the same moment gives `FORBIDDEN`, not a raw `P2025` |
+| Web behaviour | **Settings › Household › Activity** (owner and manager, cloud only), a danger zone on the household page (owner: **Clear household**, **Delete all locations**, **Delete household**), and one on a location's people page (organizer: **Remove all items**). Every purge asks for the name, typed exactly |
+
+### 11.2 The migration deploys with the server
+
+The migration runs in Railway's release command, like every other one. In the households
+release it is the **fifth** migration, so the numbers in section 9.2 grow by one:
+
+| Runbook step | Section 9.2 says | With H6a in the release |
+|---|---|---|
+| H3b runbook 3.1 (the pending list) | exactly four pending migrations | **exactly five**: the four in 9.2, then `20261120000000_add_household_activity`. If it lists more, stop and find out why |
+| H3b runbook 4.2 (the release log) | four `Applying migration` lines | **five** lines, the fifth `Applying migration \`20261120000000_add_household_activity\`` |
+| H3b runbook 5, check 1 | H3a 5 query 1 with `LIMIT 5` | `LIMIT 6`: all five new migrations have `finished_at` and no `rolled_back_at` |
+
+**Proved on the test database on 2026-11-20.** The main session ran
+`pnpm --filter server verify:migration` against the TEST database, with the owner's explicit
+consent (given after Prisma's AI-agent warning). Result: "Migration verified.", every line
+`ok`. The checks for `add_household_activity`:
+
+| Check | Result |
+|---|---|
+| `"HouseholdActivity"` has exactly 8 columns, with the right types | ok |
+| `"ActivityAction"` holds exactly the 19 values, H6b's included | ok |
+| exactly one foreign key: `householdId` → `Household`, `ON DELETE CASCADE` | ok |
+| no foreign key on `actorId`, `targetUserId` or `locationId` | ok |
+| index `HouseholdActivity_householdId_createdAt_id_idx` on `("householdId", "createdAt" DESC, id)` | ok |
+| a row naming no real actor, target or location is accepted | ok |
+| the optional columns read back `NULL`, and `createdAt` is filled in | ok |
+| an unknown action is refused (`22P02`) | ok |
+| an unknown household is refused (`23503`) | ok |
+| deleting a household deletes its activity rows and keeps another household's | ok |
+
+The earlier groups passed again too: the household delete across 17 tables and the
+household lock tests. That proves the migration on a database built from the committed
+history. It does NOT prove it on production data. That is 11.3.
+
+### 11.3 Rehearse on a FRESH Neon branch of production
+
+**Main session, with the owner's consent.** Do this inside the release rehearsal of the H3a
+and H3b runbooks, on the same fresh branch, in the same run, after all five migrations are
+applied. The rules of 9.3 hold: only `prisma migrate deploy` and read-only SQL, never
+`verify:migration` against a copy of production, prove the env override first, and never
+paste a host or a connection string anywhere.
+
+```sql
+-- H6a-1. The new table exists and holds nothing. Expect 0.
+SELECT count(*) AS activity_rows FROM "HouseholdActivity";
+
+-- H6a-2. The enum has 19 values. Expect 19.
+SELECT count(*) AS actions
+FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+WHERE t.typname = 'ActivityAction';
+
+-- H6a-3. The one foreign key and what it does on delete.
+--        Expect exactly one row: HouseholdActivity_householdId_fkey  c  (CASCADE)
+SELECT conname, confdeltype
+FROM pg_constraint
+WHERE conrelid = '"HouseholdActivity"'::regclass AND contype = 'f';
+
+-- H6a-4. The index. Expect one row, with "createdAt" DESC.
+SELECT indexname, indexdef
+FROM pg_indexes
+WHERE indexname = 'HouseholdActivity_householdId_createdAt_id_idx';
+```
+
+| Check | Expected | Result |
+|---|---|---|
+| H6a-1 | 0 | `TBD after rehearsal` |
+| H6a-2 | 19 | `TBD after rehearsal` |
+| H6a-3 | one row, `c` | `TBD after rehearsal` |
+| H6a-4 | one row, `"createdAt" DESC` | `TBD after rehearsal` |
+
+**Stop rule:** any other answer means the migration did not apply as written. Do not
+deploy. Find out why with the main session.
+
+### 11.4 The order: server first, then the web
+
+This is already the order of the whole households release (section 8.3). H6a does not
+change it.
+
+- **New web on an old server does not work.** The new bundle selects `householdActivity`
+  and calls the new mutations. An old server fails GraphQL validation, so the Activity page
+  and the danger zones fail. The end of every import also calls `recordImport`. On an old
+  server that call fails, but the web swallows the error on purpose (`recordImport` in
+  `apps/web/src/lib/importData.ts`): the import still succeeds, and only its log row is
+  missing.
+- **Old web on the new server works.** `main`'s bundle selects none of the new fields.
+
+### 11.5 Checks after the deploy
+
+**Owner, after the web deploy.** Use two real devices and two accounts in one TEST
+household, not the real one. Device B's person is a household `member`.
+
+1. Device A, as the owner: open a location's people page and give B's person **Viewer**.
+2. Device A: **Settings › Household › Activity**. The newest row says that you gave B the
+   Viewer role on that location.
+3. Device B: the Activity item is not in the household sidebar.
+4. Device A: on the TEST household's page, scroll to the danger zone. Press **Delete all
+   locations**. The button in the dialog stays disabled until the household name is typed
+   exactly. Do NOT press it on a household with real data.
+5. Device A, on a TEST location with one item in stock: open its people page, **Remove all
+   items**, type the location name, confirm. The pantry of that location is empty. The
+   item's log tab still shows its logs. The Activity page shows the row.
+
+Result: `TBD on deploy day`.
+
+### 11.6 Before the release: count accounts that are already deleted
+
+Owner decision O36-A. This is for H6b, but run it at the same release if H6b ships with it.
+On production, read-only:
+
+```sql
+SELECT count(*) FROM "User" WHERE "deletedAt" IS NOT NULL;
+```
+
+If it is 0, nothing more. If it is not 0, stop: H6b must add a one-off hand-over script
+first. Result: `TBD`.
+
+### 11.7 If something is wrong
+
+| Symptom | Likely cause | What to do |
+|---|---|---|
+| The release log stops at `add_household_activity` with an error | the migration failed. It runs as its own transaction (H3a runbook 7.1), so nothing of it is applied; the migrations before it stay applied | the old server keeps serving. Read the error, then follow H3a runbook 7.1, with `20261120000000_add_household_activity` as the name to mark `--rolled-back` |
+| The Activity page or a danger zone shows an error for everyone | the web is new and the server is old, or the server was rolled back | check the Railway deployment is the new commit |
+| An import succeeds, but the Activity page has no row for it, and the browser console says "Could not write the import to the activity log" | `recordImport` failed: the server is old, the network failed, or the person lost the owner or manager role during the import | nothing to repair: the data is written. Only the log row is missing |
+
+**Rollback.** The migration only adds. To roll back the server alone, redeploy the previous
+server deployment; the old server ignores the new table. Log rows written in the meantime
+stay. But roll back the web FIRST (or together): an H6a bundle on an older server fails on
+the Activity page and the danger zones, and imports write no log row (11.4). For a full
+rollback use H3a runbook 7.2.
 
 ## Where this file lives, and why
 

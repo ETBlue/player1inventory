@@ -35,7 +35,7 @@ describe('Location people page stories smoke tests', () => {
     ).toBeInTheDocument()
   })
 
-  it('OrganizerView shows Leave and no picker on the other organizer', async () => {
+  it('OrganizerView shows Leave, Remove all items and no picker on the other organizer', async () => {
     onTestFinished(cloudRoleStorySetup())
     render(<OrganizerView />)
     const page = await main()
@@ -45,6 +45,10 @@ describe('Location people page stories smoke tests', () => {
     expect(
       within(page).queryByRole('combobox', { name: 'Location role of oz' }),
     ).toBeNull()
+    // The danger zone (households H6, task J.7): organizers only
+    expect(
+      within(page).getByRole('button', { name: 'Remove all items' }),
+    ).toBeInTheDocument()
   })
 
   it('ParticipantView shows Leave and no picker', async () => {

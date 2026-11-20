@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatDate } from './formatDate'
+import { formatDate, formatDateTime } from './formatDate'
 
 describe('formatDate', () => {
   const date = new Date('2026-03-09T00:00:00Z')
@@ -32,5 +32,29 @@ describe('formatDate', () => {
     // When formatted in both languages
     // Then the results are different
     expect(formatDate(date, 'en')).not.toBe(formatDate(date, 'tw'))
+  })
+})
+
+describe('formatDateTime', () => {
+  const date = new Date('2026-03-09T14:05:00Z')
+
+  it('formats the date and the time in English', () => {
+    // The minutes are the same in every time zone the tests may run in
+    const result = formatDateTime(date, 'en')
+    expect(result).toMatch(/2026/)
+    expect(result).toMatch(/Mar/)
+    expect(result).toMatch(/:05/)
+  })
+
+  it('formats the date and the time in Traditional Chinese', () => {
+    const result = formatDateTime(date, 'tw')
+    expect(result).toMatch(/2026年/)
+    expect(result).toMatch(/:05/)
+  })
+
+  it('gives an empty text for a date that is not valid', () => {
+    // Intl throws a RangeError for an invalid date; a log row must not
+    // break the page for that
+    expect(formatDateTime(new Date('not a date'), 'en')).toBe('')
   })
 })

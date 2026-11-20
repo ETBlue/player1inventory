@@ -49,11 +49,13 @@ import {
   type ImportCheckInput,
   type ImportCheckQuery,
   type ImportCheckQueryVariables,
+  type ImportCountsInput,
   InventoryLogsDocument,
   type InventoryLogsQuery,
   type ItemInput,
   ItemStockIdsAtLocationDocument,
   type ItemStockIdsAtLocationQuery,
+  RecordImportDocument,
   ShoppingCartsDocument,
   type ShoppingCartsQuery,
   UpdateRecipeDocument,
@@ -2673,7 +2675,9 @@ interface EntitySpec {
   // Also the MIDDLE term of the batch key recorded in
   // `ImportSession.completedBatchKeys` (`${mode}:${entityType}:${batchIndex}`),
   // so renaming one makes a resumed session re-send that entity's batches.
-  entityType: string
+  // Typed as a key of `ImportCountsInput`, so `recordImport`'s counts and
+  // this list cannot name different kinds (households H6 task J.5).
+  entityType: keyof ImportCountsInput
   select: (data: ExportPayload) => unknown[]
   create: (client: ApolloClient, batch: unknown[]) => Promise<void>
   upsert: (client: ApolloClient, batch: unknown[]) => Promise<void>
@@ -3035,6 +3039,61 @@ function bulkCreate(args: BatchedBulkArgs): Promise<number> {
 
 function bulkUpsert(args: BatchedBulkArgs): Promise<number> {
   return runBulkBatches(args, 'upsert')
+}
+
+/**
+ * How many rows of each kind an import sends: the rows of every payload the
+ * bulk passes walk (`skip` and `clear` one, `replace` two). Read from the same
+ * `ENTITY_SPECS` the passes walk, so a count can never name a kind that was
+ * not sent. A resumed import counts the rows of its earlier attempt too: the
+ * log row is about the whole import.
+ */
+function countRowsSent(...payloads: ExportPayload[]): ImportCountsInput {
+  const counts: ImportCountsInput = {
+    items: 0,
+    tags: 0,
+    tagTypes: 0,
+    vendors: 0,
+    recipes: 0,
+    shelves: 0,
+    locations: 0,
+    itemStocks: 0,
+    inventoryLogs: 0,
+    shoppingCarts: 0,
+    cartItems: 0,
+  }
+  for (const payload of payloads) {
+    for (const spec of ENTITY_SPECS) {
+      counts[spec.entityType] += spec.select(payload).length
+    }
+  }
+  return counts
+}
+
+/**
+ * Write ONE activity row for a cloud import that has finished (households H6
+ * task J.5, owner decision O33-A). Sent once, after the last batch and the
+ * last follow-up write, before the cache is reset.
+ *
+ * **It never fails the import.** Every row is already written when it runs,
+ * and the log row is not data: a person told "the import failed" would run it
+ * again. So a failure is logged to the console and swallowed. It can fail
+ * for a network error, or because the person lost the owner or manager role
+ * in the middle of the import (the server asks the same role as the import
+ * mutations). Then the log has no row for this import (a plan known gap).
+ */
+async function recordImport(
+  client: ApolloClient,
+  counts: ImportCountsInput,
+): Promise<void> {
+  try {
+    await client.mutate({
+      mutation: RecordImportDocument,
+      variables: { counts },
+    })
+  } catch (err) {
+    console.warn('Could not write the import to the activity log', err)
+  }
 }
 
 // Derived from the SAME list the two passes walk, so a new entity can never be
@@ -3474,6 +3533,7 @@ export async function importCloudData(
         totalBatches: computeTotalBatches(payload),
       })
       await deleteHomeIfUnused(client, payload, home)
+      await recordImport(client, countRowsSent(payload))
       await resetStoreAfterImport(client)
       return { skipped }
     }
@@ -3589,6 +3649,7 @@ export async function importCloudData(
       }
 
       const switchTo = await showAfter()
+      await recordImport(client, countRowsSent(toCreate))
       await resetStoreAfterImport(client)
       return withSwitch(skipped, switchTo)
     }
@@ -3619,6 +3680,7 @@ export async function importCloudData(
       totalBatches,
     })
     const switchTo = await showAfter()
+    await recordImport(client, countRowsSent(toCreate, toUpsert))
     await resetStoreAfterImport(client)
     return withSwitch(skipped, switchTo)
   } catch (err) {

@@ -13,6 +13,7 @@ import { shelfResolvers } from './shelf.resolver.js'
 import { householdResolvers } from './household.resolver.js'
 import { inviteResolvers } from './invite.resolver.js'
 import { liveResolvers } from './live.resolver.js'
+import { activityResolvers } from './activity.resolver.js'
 import { forgetRolesAroundEach } from '../lib/mutationRoleCache.js'
 
 const resolversObject: Resolvers = {
@@ -30,6 +31,7 @@ const resolversObject: Resolvers = {
     ...householdResolvers.Query,
     ...inviteResolvers.Query,
     ...importCheckResolvers.Query,
+    ...activityResolvers.Query,
   },
   // Every root mutation field forgets the role caches before and after it
   // runs (lib/mutationRoleCache.ts), so no resolver has to remember to.

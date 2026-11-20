@@ -1,6 +1,6 @@
 // One Prisma double for the code that reads households and roles: `User`
-// (userFake), `Household`, `HouseholdMember` and `LocationMember`
-// (householdFake), and `Location` and `ItemStock` (stockFake), joined into one
+// (userFake), `Household`, `HouseholdMember`, `LocationMember`,
+// `HouseholdInvite` and `HouseholdActivity` (householdFake), and `Location` and `ItemStock` (stockFake), joined into one
 // client with one `$transaction` (households H3a, task 3.5).
 //
 // `householdFake` reads the CURRENT location rows from `stockFake`, so a
@@ -90,6 +90,10 @@ export function createHouseholdWorld() {
     // The invite store (households H5b). It lives in `households.state`, so
     // it rolls back with the rest.
     householdInvite: households.client.householdInvite,
+    // The activity log (households H6, task J.1). Its rows live in
+    // `households.state` too, so they roll back with the rest, and
+    // `household.deleteMany` deletes them with their household.
+    householdActivity: households.client.householdActivity,
     location: {
       ...stock.client.location,
       delete: deleteLocation,

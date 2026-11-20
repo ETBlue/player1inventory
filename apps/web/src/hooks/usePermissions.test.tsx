@@ -410,3 +410,85 @@ describe('usePermissions — the location people page', () => {
     expect(p.canChangeRole('local', null, 'viewer')).toBe(false)
   })
 })
+
+// Households H6, task J.5: the Activity page and the purges. Each right gets
+// a different answer from at least one role, so a check that reads the wrong
+// role fails one of the rows.
+describe('usePermissions — activity and purges', () => {
+  it.each([
+    ['owner', true, true],
+    ['manager', true, false],
+    ['member', false, false],
+  ] as const)('household %s: canReadActivity %s, canPurgeHousehold %s', (role, read, purge) => {
+    mockHousehold.mockReturnValue(household(role))
+    mockLocations.mockReturnValue(locations([...ROLE_ROWS]))
+
+    const p = render()
+
+    expect(p.canReadActivity).toBe(read)
+    expect(p.canPurgeHousehold).toBe(purge)
+  })
+
+  it.each([
+    'owner',
+    'manager',
+    'member',
+  ] as const)('household %s: canRemoveAllItems follows the location role only', (role) => {
+    // Given an organizer of K, a participant of P, a viewer of V, no role on X
+    mockHousehold.mockReturnValue(household(role))
+    mockLocations.mockReturnValue(locations([...ROLE_ROWS]))
+
+    const p = render()
+
+    // Then only the organizer may remove all items, whatever the household
+    // role: the server asks the location role (decision T55)
+    expect(p.canRemoveAllItems('K')).toBe(true)
+    expect(p.canRemoveAllItems('P')).toBe(false)
+    expect(p.canRemoveAllItems('V')).toBe(false)
+    expect(p.canRemoveAllItems('X')).toBe(false)
+  })
+
+  it('cloud allows no activity read and no household purge while the household role is loading', () => {
+    mockHousehold.mockReturnValue({ data: undefined, loading: true })
+    mockLocations.mockReturnValue(locations([...ROLE_ROWS]))
+
+    const p = render()
+
+    expect(p.canReadActivity).toBe(false)
+    expect(p.canPurgeHousehold).toBe(false)
+  })
+
+  it('cloud allows no activity read and no household purge when GetHousehold failed with nothing cached', () => {
+    mockHousehold.mockReturnValue({
+      data: undefined,
+      loading: false,
+      error: new Error('network'),
+    })
+    mockLocations.mockReturnValue(locations([...ROLE_ROWS]))
+
+    const p = render()
+
+    expect(p.canReadActivity).toBe(false)
+    expect(p.canPurgeHousehold).toBe(false)
+  })
+
+  it('cloud allows no remove all items while the location list is loading', () => {
+    mockHousehold.mockReturnValue(household('owner'))
+    mockLocations.mockReturnValue({ data: undefined, loading: true })
+
+    const p = render()
+
+    expect(p.canRemoveAllItems('K')).toBe(false)
+    // And the owner's household rights wait for the list too
+    expect(p.canPurgeHousehold).toBe(false)
+  })
+
+  it('local mode has no activity page and no purges', () => {
+    // Local mode has no roles and no log; it clears through the import
+    localStorage.setItem('data-mode', 'local')
+    const p = render()
+    expect(p.canReadActivity).toBe(false)
+    expect(p.canPurgeHousehold).toBe(false)
+    expect(p.canRemoveAllItems('local')).toBe(false)
+  })
+})
