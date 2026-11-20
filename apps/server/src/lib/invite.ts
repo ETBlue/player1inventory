@@ -142,7 +142,8 @@ export function alreadyMember(): GraphQLError {
  * (`OwnershipOffer`, households H6b task K.1). An offer is made TO another
  * member, so an offer in a one-person household cannot exist: it would need
  * someone else in it. If one were ever left behind, it would go with the
- * household (ON DELETE CASCADE). The household fake has no
+ * household (ON DELETE CASCADE). `invite-join.resolver.test.ts` pins it
+ * ("an ownership offer does not keep it"). The household fake also has no
  * `ownershipOffers` key, so a join that asked it would throw in every join
  * test.
  */
