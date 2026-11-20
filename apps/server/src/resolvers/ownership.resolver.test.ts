@@ -707,6 +707,33 @@ describe('declineOwnershipOffer', () => {
     ])
   })
 
+  it('with no other manager and no organizer here, every other live member gets the offer (the table\'s last row)', async () => {
+    // Given hh_1 has no owner, and only MIA, its one manager, has an offer
+    ownerless([MIA])
+    // And no live member organizes a location of hh_1: BEA's organizer row
+    // moves from LOC_2 (hh_1) to LOC_Z (hh_2). DEX still organizes LOC_2,
+    // but DEX's account is deleted. So an organizer read that is not scoped
+    // to hh_1 would pick BEA alone.
+    const s = world.households.state
+    s.locationMembers = s.locationMembers.filter(
+      (m) => !(m.userId === BEA && (m.locationId === LOC_2 || m.locationId === LOC_Z)),
+    )
+    s.locationMembers.push(locationMemberRow(LOC_Z, BEA, 'organizer'))
+
+    // When MIA declines
+    ok(await decline(MIA, `off_${MIA}`), 'declineOwnershipOffer')
+
+    // Then every other live member gets an offer: BEA and BOB, not DEX
+    expect(offers().filter((o) => o.startsWith('hh_1:'))).toEqual([
+      `hh_1:${BEA}:handover:-`,
+      `hh_1:${BOB}:handover:-`,
+    ])
+    expect(activity().map((a) => a.details)).toEqual([
+      { kind: 'handover' },
+      { offeredTo: [BEA, BOB] },
+    ])
+  })
+
   it('when nobody else is left, the person who declined gets the offer back, already dismissed', async () => {
     // hh_3: PAT is the only live person; DEX's account is deleted
     ok(await decline(PAT, 'off_hh3'), 'declineOwnershipOffer')
