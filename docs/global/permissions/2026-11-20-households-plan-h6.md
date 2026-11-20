@@ -2151,11 +2151,10 @@ with a link here), `docs/INDEX.md`, the H4 runbook (a new **section 12, H6b**: o
 migration, server first, the O36 count before the release, checks after deploy), and this
 plan's *What this plan got wrong* and *Status*.
 
-- [ ] Step 1: the docs. Re-measure every count.
-- [ ] Step 2: the main session runs `verify:migration` with the owner's consent.
-- [ ] Step 3: the full gate from the repo root (the same block as J.9 Step 3), then
-  `pnpm test:e2e:all`.
-- [ ] Step 4: `git status` clean; `git show --stat` for each commit.
+- [x] Step 1: the docs. Re-measure every count. **Done 2026-11-20** (`a90d8772`, `9b43c292`, `e610d508`, `1eff6ec4`): root `CLAUDE.md` (H6b block and Counts table), `apps/server/prisma/CLAUDE.md`, `apps/web/src/routes/settings/CLAUDE.md` (K.8's axe scans), `e2e/CLAUDE.md` (the gate; the cleanup count was already 21 from K.8), the design (*Transfer ownership*, *Owner's account is deleted*, *Sequencing* H6), the phase plan's H6 outline, the H5 and H5c plans' *Known gaps*, `docs/INDEX.md`, and section 12 of the H4 runbook. `components/CLAUDE.md` and `hooks/CLAUDE.md` were already current from K.5–K.7b.
+- [x] Step 2: `verify:migration` was NOT run again. The main session ran it before K.8 (top of the K.8 section), and `git log --oneline e0b7f585..HEAD -- apps/server/prisma/` is empty at `5cd82bf4`.
+- [x] Step 3: the full gate, then `pnpm test:e2e:all`. Results in *Status*.
+- [x] Step 4: `git status` clean; `git show --stat` for each of the four commits.
 
 ---
 
@@ -2365,6 +2364,11 @@ Filled in from the task reports and reviews.
 | K.8 review | The warm-up "cannot show a later step" | It waited for its own tab's refetch only. `CATALOG` also refetches `GetHousehold` and `MyOwnershipOffers` in every other open tab. It now waits for all of them |
 | K.8 review | `rescueOrphans`: "each spec user accepts any open offer" | Only MIA, BEN and MAX do. No other spec user ever gets an offer |
 | K.8 review | Axe "light and dark" | The dark scans did not check that the page was dark. They do now |
+| K.9 | J.9's Counts table: live guard fields "76" with one `awk` command | The command counts the `publishes` list only: 74 at H6a (measured at `c0f096ed`), 78 after H6b. The `publishesNothing` list needs its own command (3 after H6b). Root `CLAUDE.md` now gives both |
+| K.9 (brief) | the live guard command gives "around 81" | It gives 78. 81 = 78 in `publishes` + 3 in `publishesNothing` |
+| K.9 (brief) | `e2e/CLAUDE.md`: "fix the cleanup model count" | K.8 had already changed all three places to 21. Only the gate result was added |
+| K.9 | O44: a one-off script if the O36 count is not 0 | Not written. `apps/server/scripts/` must not import from `src`, so it would need a copy of `handOverDeletedAccount` and its helpers. Runbook 12.6 says it does not exist yet and what it must do |
+| K.9 | (not in the plan) the gate's first `pnpm test` | `apps/server/src/lib/e2eUsers.test.ts` failed 9 of 9 with `expected 401 to be 200`, and web did not run. The file passed alone, and the next full `pnpm test`, run alone, passed. Not investigated; recorded in *Known gaps* |
 
 ## Status
 
@@ -2393,8 +2397,18 @@ with the owner's consent (J.9 Step 2).
 After the fix, `pnpm check:e2e`, `pnpm lint:e2e` and `pnpm typecheck:e2e` were run again:
 exit 0. The rest of the gate was not re-run: the fix changed one `e2e/` spec only.
 
-**H6b, on `feature/households-h6b`:** K.0–K.7 and K.4b done (K.7 on 2026-11-20, `96e0f8e1`).
-K.8 (E2E) and K.9 (docs, deploy notes, final gate) are next.
+**H6b built 2026-11-20, tasks K.0 to K.9 (with K.4b and K.7b)**, on `feature/households-h6b`, from `develop` after H6a (#392). **Not merged, not deployed.** One additive migration, `20261120100000_add_ownership_offers`, proved on the test database before K.8. Deploy notes: section 12 of the H4 runbook. Before the release: the O36 count, and the O44 script if the count is not 0.
+
+**The final gate (K.9), 2026-11-20, Node 22.17.1, every command alone, at `5cd82bf4`:**
+
+| Command | Result |
+|---|---|
+| `pnpm lint` | exit 0 (4 warnings in `apps/web`, 13 in `e2e/`, the known ones) |
+| `pnpm build` | exit 0, 21s; `grep TS6385` finds nothing. Server bundle 254.0 KiB, 15 `.graphql` files, start check 4401 in 489 ms |
+| `(cd apps/web && pnpm build-storybook)` | exit 0 |
+| `pnpm check` | exit 0 |
+| `pnpm test` | run 1: exit 1, `e2eUsers.test.ts` 9 × `expected 401 to be 200` (passed alone right after). Run 2, alone: exit 0, web **3729 / 364**, server **2689 / 85**, `scripts/spec` **70**. At H6a: 3607 / 360, 2563 / 83, 70 |
+| `pnpm test:e2e:all` | **exit 0 on the first run, no retry, no flaky test**: `local` 178 passed / 11 skipped (3m39s), `cloud` 197 passed / 7 skipped (58m43s), `pwa` 73 passed (1m34s); 63m56s in all. Load 2.70 at the start, 2.81 at the end |
 
 ---
 
