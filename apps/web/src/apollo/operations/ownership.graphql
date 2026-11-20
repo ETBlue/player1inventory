@@ -1,0 +1,71 @@
+# Ownership offers: transfer and hand-over (households H6b, task K.5; server
+# in `apps/server/src/schema/ownership.graphql`, task K.3). Cloud only.
+#
+# An offer asks ONE person to become the owner of ONE household. The offer
+# may be for the person's OTHER household, so it names the household.
+# Accepting does not switch households (decision T65).
+
+fragment OwnershipOfferFields on OwnershipOffer {
+  id
+  householdId
+  householdName
+  kind
+  toUserId
+  toName
+  fromName
+  createdAt
+  dismissedAt
+}
+
+# Every open offer TO the caller, in every household, oldest first. Dismissed
+# offers too ("Not now"): the banner (task K.6) hides them, the Members page
+# (task K.7) still shows them.
+query MyOwnershipOffers {
+  myOwnershipOffers {
+    ...OwnershipOfferFields
+  }
+}
+
+# Household owner only. An open transfer offer to another person is replaced.
+# The same person again returns the open offer and changes nothing.
+mutation OfferOwnership($userId: ID!) {
+  offerOwnership(userId: $userId) {
+    ...OwnershipOfferFields
+  }
+}
+
+# Household owner only. `false` when there is no open transfer offer.
+mutation CancelOwnershipOffer {
+  cancelOwnershipOffer
+}
+
+# Only the person the offer is for. The answer is the OFFER's household, which
+# may not be the one the person acts in. It selects the same fields as
+# `GetHousehold`, so the cached `Household` entry is complete.
+#
+# Refusals: BAD_USER_INPUT with `extensions.reason` OFFER_GONE when another
+# accept at the same moment won; FORBIDDEN for an offer that is already gone
+# (or was never the caller's).
+mutation AcceptOwnershipOffer($id: ID!) {
+  acceptOwnershipOffer(id: $id) {
+    id
+    name
+    role
+    hasOwner
+    pendingTransfer {
+      ...OwnershipOfferFields
+    }
+  }
+}
+
+# Only the person the offer is for. `false` when it is already gone.
+mutation DeclineOwnershipOffer($id: ID!) {
+  declineOwnershipOffer(id: $id)
+}
+
+# "Not now". Only the person the offer is for. `false` when it is already
+# gone. The server publishes NO live event for it: only this person's own
+# tabs show the banner.
+mutation DismissOwnershipOffer($id: ID!) {
+  dismissOwnershipOffer(id: $id)
+}

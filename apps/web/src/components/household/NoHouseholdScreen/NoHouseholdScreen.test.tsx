@@ -153,7 +153,15 @@ describe('NoHouseholdScreen', () => {
       createRefusal('BAD_USER_INPUT', 'ALREADY_IN_HOUSEHOLD'),
       {
         request: { query: GetHouseholdDocument },
-        result: { data: { household: household('household-other', 'x') } },
+        result: {
+          data: {
+            household: {
+              ...household('household-other', 'x'),
+              hasOwner: true,
+              pendingTransfer: null,
+            },
+          },
+        },
       },
     ])
     const toastError = vi.spyOn(toast, 'error')

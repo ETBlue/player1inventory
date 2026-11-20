@@ -54,6 +54,8 @@ function setRole(role: 'owner' | 'manager' | 'member') {
       id: 'hh-1',
       name: 'The Lin home',
       role,
+      hasOwner: true,
+      pendingTransfer: null,
     },
   }
 }

@@ -16,6 +16,8 @@ const household = {
   // Lower case on purpose: the name is shown as stored, never capitalized.
   name: "et's household",
   role: 'owner' as const,
+  hasOwner: true,
+  pendingTransfer: null,
 }
 
 const cloudMocks: NonNullable<MockedProviderProps['mocks']> = [

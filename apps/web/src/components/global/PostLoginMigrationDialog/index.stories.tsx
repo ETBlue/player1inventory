@@ -153,6 +153,8 @@ function cloudMocks(role: 'owner' | 'manager' | 'member') {
             id: 'household-1',
             name: 'Our Home',
             role,
+            hasOwner: true,
+            pendingTransfer: null,
           },
         },
       },

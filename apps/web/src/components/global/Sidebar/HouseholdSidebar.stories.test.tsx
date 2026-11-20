@@ -20,6 +20,8 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
               id: 'household-1',
               name: 'The Lin family household on Roosevelt Road',
               role: 'owner',
+              hasOwner: true,
+              pendingTransfer: null,
             },
           },
       loading: false,

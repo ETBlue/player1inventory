@@ -87,6 +87,14 @@ export interface Permissions {
    * location role). Remove every item from it. Local: `false`.
    */
   canRemoveAllItems(locationId: string): boolean
+  /**
+   * Cloud: household role `owner`. Offer the household to another member,
+   * and take the offer back (households H6b, task K.5; decisions T58, T59).
+   * Answering an offer needs no role: only the person the offer is for may
+   * answer it, and the server checks that. Local: `false`, local mode has
+   * one person and no owner.
+   */
+  canTransferOwnership: boolean
 }
 
 const LOCAL: Permissions = {
@@ -107,6 +115,8 @@ const LOCAL: Permissions = {
   canReadActivity: false,
   canPurgeHousehold: false,
   canRemoveAllItems: () => false,
+  // Local mode has one person and no owner (households H6b).
+  canTransferOwnership: false,
 }
 
 /**
@@ -224,5 +234,6 @@ export function permissionsFor({
     canReadActivity: canManage,
     canPurgeHousehold: !isLoading && householdRole === 'owner',
     canRemoveAllItems: (id) => atLeast(id, 'organizer'),
+    canTransferOwnership: !isLoading && householdRole === 'owner',
   }
 }

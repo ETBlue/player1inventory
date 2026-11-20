@@ -205,6 +205,8 @@ const viewOnlyMocks: NonNullable<MockedProviderProps['mocks']> = [
           id: 'household-1',
           name: 'Home',
           role: 'member',
+          hasOwner: true,
+          pendingTransfer: null,
         },
       },
     },

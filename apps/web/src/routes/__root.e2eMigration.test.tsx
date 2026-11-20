@@ -83,6 +83,8 @@ vi.mock('@/hooks/useHousehold', () => ({
       id: 'hh-1',
       name: 'Our Home',
       role: 'owner',
+      hasOwner: true,
+      pendingTransfer: null,
     },
     isLoading: false,
     isError: false,

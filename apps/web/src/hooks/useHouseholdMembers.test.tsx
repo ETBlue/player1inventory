@@ -65,6 +65,8 @@ function wrapper({ children }: { children: ReactNode }) {
                 id: 'household-next',
                 name: 'Next',
                 role: 'owner',
+                hasOwner: true,
+                pendingTransfer: null,
               },
             },
           },

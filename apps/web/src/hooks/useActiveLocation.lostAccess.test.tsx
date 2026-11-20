@@ -132,6 +132,8 @@ const householdMock = {
         id: 'hh-lin',
         name: 'Lin',
         role: 'member' as const,
+        hasOwner: true,
+        pendingTransfer: null,
       },
     },
   },

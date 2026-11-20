@@ -125,6 +125,8 @@ const OLD_HOUSEHOLD: CloudHousehold = {
   id: 'household-old',
   name: 'Old home',
   role: 'member',
+  hasOwner: true,
+  pendingTransfer: null,
 }
 
 function noHousehold(data?: CloudHousehold): HouseholdResult {

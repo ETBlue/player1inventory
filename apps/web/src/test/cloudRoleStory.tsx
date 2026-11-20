@@ -51,6 +51,8 @@ export function cloudRoleBaseMocks(
             id: ROLE_STORY_HOUSEHOLD,
             name: 'The Lin home',
             role: householdRole,
+            hasOwner: true,
+            pendingTransfer: null,
           },
         },
       },

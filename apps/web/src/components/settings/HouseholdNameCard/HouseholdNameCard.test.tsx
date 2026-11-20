@@ -33,7 +33,14 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
 function household(role: 'owner' | 'manager' | 'member', name = 'Our Home') {
   return {
     data: {
-      household: { __typename: 'Household', id: 'h1', name, role },
+      household: {
+        __typename: 'Household',
+        id: 'h1',
+        name,
+        role,
+        hasOwner: true,
+        pendingTransfer: null,
+      },
     },
     loading: false,
   }

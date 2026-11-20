@@ -1,8 +1,17 @@
+# `hasOwner` and `pendingTransfer` since households H6b task K.5: `false`
+# while nobody owns the household (the owner's account was deleted and nobody
+# has accepted the hand-over yet); the open transfer offer, for the owner
+# only (anyone else gets null). Every mock of this query must carry both, or
+# Apollo reads the answer back as incomplete.
 query GetHousehold {
   household {
     id
     name
     role
+    hasOwner
+    pendingTransfer {
+      ...OwnershipOfferFields
+    }
   }
 }
 

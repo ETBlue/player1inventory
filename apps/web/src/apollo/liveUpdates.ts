@@ -60,7 +60,7 @@ export const LIVE_BATCH_MS = 300
  * | `GetShelves`, `GetShelf` | shelves                                  | CATALOG          |
  * | `GetTagTypes`, `GetTags`, `GetTagsByType`, `TagCountByType` | tags  | CATALOG          |
  * | `GetVendors`           | vendors                                    | CATALOG          |
- * | `GetHousehold`         | the household `name` (and the caller's `role`) | CATALOG      |
+ * | `GetHousehold`         | the household `name` (and the caller's `role`, `hasOwner`, `pendingTransfer`) | CATALOG, LOCATION |
  * | `HouseholdMembers`     | every person, their household role, `hasLocationRole` | LOCATION |
  * | `HouseholdInvites`     | the open invites                           | LOCATION         |
  * | `LocationPeople`       | the people of one location and their role  | LOCATION         |
@@ -68,6 +68,7 @@ export const LIVE_BATCH_MS = 300
  * | `CartItems`, `AllCartItems` | `cartId`, `itemId`, `quantity`        | CART             |
  * | `CartItemCountByItem`  | a count of cart rows                       | CART             |
  * | `HouseholdActivity`    | the household log (households H6)          | LOCATION, CATALOG, STOCK, CART |
+ * | `MyOwnershipOffers`    | the caller's offers, with each `householdName` (households H6b) | LOCATION, CATALOG |
  *
  * Every `LOCATION` row above is covered by `'all'` anyway. A role change
  * (households H5b, H5c) must publish `LOCATION`, so `myRole` and
@@ -110,6 +111,18 @@ export const LIVE_BATCH_MS = 300
  * nothing, and the import's own events can arrive before its log row is
  * written.
  *
+ * `MyOwnershipOffers` (the offer banner, households H6b task K.5) is in
+ * `CATALOG`, because each offer carries its household's NAME, and
+ * `renameHousehold` publishes `CATALOG` only. Every offer write publishes
+ * household-level `LOCATION` (`'all'`), and so does the hand-over after an
+ * account is deleted (`clerkWebhook.ts`). `dismissOwnershipOffer` publishes
+ * nothing: it changes only the caller's own banner, so the person's other
+ * tabs hide it on their next read. An offer may be in the person's OTHER
+ * household; the server delivers a household-level event to every member of
+ * that household (`shouldDeliver`), not only to people who act in it, so the
+ * banner still hears it. `GetHousehold`'s `hasOwner` and `pendingTransfer`
+ * change only with those `LOCATION` events.
+ *
  * `LocationPeople` (the location people page, households H5c task H.4) needs
  * no entry either: `setLocationRole`, `removeLocationRole` and
  * `leaveLocation` publish household-level `LOCATION` (decision T36). So do
@@ -145,6 +158,7 @@ export const QUERIES_BY_KIND: Record<ChangeKind, readonly string[] | 'all'> = {
     'GetVendors',
     'GetHousehold',
     'HouseholdActivity',
+    'MyOwnershipOffers',
   ],
 }
 

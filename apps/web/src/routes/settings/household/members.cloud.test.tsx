@@ -167,6 +167,8 @@ function dynamicMocks(): NonNullable<MockedProviderProps['mocks']> {
               id: h.id,
               name: 'The Lin home',
               role: h.role,
+              hasOwner: true,
+              pendingTransfer: null,
             },
           },
         }
