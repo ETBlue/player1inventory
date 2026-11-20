@@ -23,6 +23,16 @@ import { makeGql } from '../utils/cloud'
 // `{ cart: { location: { householdId } } }` can be written correctly and
 // still match more than meant, and only real SQL shows that.
 //
+// ── THE TWO LOCATION PURGES (households H6 task J.8) ─────────────────────────
+//
+// Two more tests, in the second `describe`, check the purges of task J.4 the
+// same way: `deleteAllLocations` and `removeAllLocationItems`
+// (apps/server/src/resolvers/location.resolver.ts). Each household has
+// "Home" and "Garage", each with a stock row, a cart row and a log, and a
+// tag with a tag type on the one item. Garage is what lets the
+// `removeAllLocationItems` test fail: with one location, "this location's
+// rows" and "the household's rows" are the same rows.
+//
 // ── WHAT IT DOES NOT PROVE ───────────────────────────────────────────────────
 //
 // - **Nothing about a SHARED household.** Each user is alone in their own.
@@ -283,5 +293,233 @@ test.describe('clearAllData clears one household only', () => {
     expect(afterA.allCarts).toEqual([])
     expect(afterA.allCartItems).toEqual([])
     expect(afterA.itemStocksForItem).toEqual([])
+  })
+})
+
+// ── The two location purges (households H6 task J.8) ────────────────────────
+
+const DELETE_ALL_LOCATIONS = `mutation { deleteAllLocations }`
+const REMOVE_ALL_LOCATION_ITEMS = `mutation ($locationId: ID!) {
+  removeAllLocationItems(locationId: $locationId)
+}`
+
+/** Everything at the two locations, and the catalog, read in one request. */
+const LOCATION_SNAPSHOT = `query {
+  locations { id name }
+  items { id tagIds }
+  tags { id }
+  tagTypes { id }
+  allItemStocks { id locationId }
+  allCarts { id }
+  allCartItems { id cartId }
+  inventoryLogs { id locationId }
+}`
+
+type LocationSnapshot = {
+  locations: { id: string; name: string }[]
+  items: { id: string; tagIds: string[] }[]
+  tags: Row[]
+  tagTypes: Row[]
+  allItemStocks: { id: string; locationId: string }[]
+  allCarts: Row[]
+  allCartItems: { id: string; cartId: string }[]
+  inventoryLogs: { id: string; locationId: string }[]
+}
+
+type TwoLocations = { home: string; garage: string; itemId: string }
+
+/**
+ * One household with "Home" (first sign-in) and "Garage". The one item,
+ * tagged with a tag that has a tag type, is stocked at both, has a cart row
+ * at both and a log at both.
+ */
+async function seedTwoLocations(
+  gql: Gql,
+  label: string,
+): Promise<TwoLocations> {
+  const { locations } = await gql<{ locations: { id: string }[] }>(LOCATIONS)
+  const home = locations[0]?.id
+  if (!home) throw new Error(`${label}: no location after first sign-in`)
+  const garage = (
+    await gql<{ createLocation: Row }>(CREATE_LOCATION, { name: 'Garage' })
+  ).createLocation.id
+
+  const { createTagType } = await gql<{ createTagType: Row }>(CREATE_TAG_TYPE, {
+    name: `${label} Category`,
+    color: 'orange',
+  })
+  const { createTag } = await gql<{ createTag: Row }>(CREATE_TAG, {
+    name: `${label} Dairy`,
+    typeId: createTagType.id,
+  })
+  const { createItem } = await gql<{ createItem: Row }>(CREATE_ITEM, {
+    input: { name: `${label} Milk`, tagIds: [createTag.id] },
+  })
+  const itemId = createItem.id
+
+  for (const locationId of [home, garage]) {
+    await gql(UPSERT_STOCK, {
+      itemId,
+      locationId,
+      input: {
+        targetQuantity: 4,
+        refillThreshold: 1,
+        packedQuantity: 3,
+        unpackedQuantity: 0,
+      },
+    })
+    const { vendorCart } = await gql<{ vendorCart: Row }>(VENDOR_CART, {
+      vendorId: null,
+      locationId,
+    })
+    await gql(ADD_TO_CART, { cartId: vendorCart.id, itemId, quantity: 2 })
+    await gql(ADD_LOG, {
+      itemId,
+      delta: 2,
+      quantity: 5,
+      occurredAt: new Date().toISOString(),
+      locationId,
+    })
+  }
+  return { home, garage, itemId }
+}
+
+/** The snapshot with every list sorted by id, so two reads compare equal. */
+async function locationSnapshot(gql: Gql): Promise<LocationSnapshot> {
+  const data = await gql<LocationSnapshot>(LOCATION_SNAPSHOT)
+  const byId = <T extends { id: string }>(rows: T[]) =>
+    [...rows].sort((a, b) => a.id.localeCompare(b.id))
+  return {
+    locations: byId(data.locations),
+    items: byId(data.items),
+    tags: byId(data.tags),
+    tagTypes: byId(data.tagTypes),
+    allItemStocks: byId(data.allItemStocks),
+    allCarts: byId(data.allCarts),
+    allCartItems: byId(data.allCartItems),
+    inventoryLogs: byId(data.inventoryLogs),
+  }
+}
+
+/** The rows of one location: its stock, its cart rows and its logs. */
+function rowsAt(snap: LocationSnapshot, locationId: string) {
+  return {
+    stock: snap.allItemStocks.filter((row) => row.locationId === locationId),
+    // A cart id starts with its location id (`cartIdFor` in @p1i/types)
+    cartItems: snap.allCartItems.filter((row) =>
+      row.cartId.startsWith(`${locationId}:`),
+    ),
+    carts: snap.allCarts.filter((row) => row.id.startsWith(`${locationId}:`)),
+    logs: snap.inventoryLogs.filter((row) => row.locationId === locationId),
+  }
+}
+
+/** Each location of a fresh seed has exactly one row of each kind. */
+function expectFullLocation(snap: LocationSnapshot, locationId: string) {
+  const rows = rowsAt(snap, locationId)
+  expect(rows.stock).toHaveLength(1)
+  expect(rows.cartItems).toHaveLength(1)
+  expect(rows.carts).toHaveLength(1)
+  expect(rows.logs).toHaveLength(1)
+}
+
+test.describe('the location purges touch one household only', () => {
+  test("household owner can delete all locations, and the catalog and another household's data stay", async ({
+    request,
+  }) => {
+    const gqlA = makeGql(request, USER_A)
+    const gqlB = makeGql(request, USER_B)
+
+    // Given A and B each have Home and Garage with stock, a cart row and a
+    // log at each, and a tagged item
+    const seedA = await seedTwoLocations(gqlA, 'A')
+    const seedB = await seedTwoLocations(gqlB, 'B')
+
+    // And both households really hold those rows. Without this, an empty B
+    // would make "B's rows survive" pass for any `deleteAllLocations`.
+    const beforeA = await locationSnapshot(gqlA)
+    const beforeB = await locationSnapshot(gqlB)
+    for (const [snap, seed] of [
+      [beforeA, seedA],
+      [beforeB, seedB],
+    ] as const) {
+      expect(snap.locations).toHaveLength(2)
+      expectFullLocation(snap, seed.home)
+      expectFullLocation(snap, seed.garage)
+      expect(snap.items).toHaveLength(1)
+      expect(snap.tags).toHaveLength(1)
+      expect(snap.tagTypes).toHaveLength(1)
+    }
+
+    // When A, the owner, deletes all locations
+    const result = await gqlA<{ deleteAllLocations: boolean }>(
+      DELETE_ALL_LOCATIONS,
+    )
+    expect(result.deleteAllLocations).toBe(true)
+
+    // Then every one of B's rows is still there, with the same ids
+    expect(await locationSnapshot(gqlB)).toEqual(beforeB)
+
+    // And A has no location, and so no stock, cart, cart row or log. No new
+    // "Home" is made (owner decision O34-A).
+    const afterA = await locationSnapshot(gqlA)
+    expect(afterA.locations).toEqual([])
+    expect(afterA.allItemStocks).toEqual([])
+    expect(afterA.allCarts).toEqual([])
+    expect(afterA.allCartItems).toEqual([])
+    expect(afterA.inventoryLogs).toEqual([])
+
+    // And A's catalog stays: the item, its tag and the tag's type
+    expect(afterA.items).toEqual(beforeA.items)
+    expect(afterA.tags).toEqual(beforeA.tags)
+    expect(afterA.tagTypes).toEqual(beforeA.tagTypes)
+  })
+
+  test("location organizer can remove all items from one location, and the other location and another household's data stay", async ({
+    request,
+  }) => {
+    const gqlA = makeGql(request, USER_A)
+    const gqlB = makeGql(request, USER_B)
+
+    // Given A and B each have Home and Garage with stock, a cart row and a
+    // log at each. A organizes both of A's locations (A made them).
+    const seedA = await seedTwoLocations(gqlA, 'A')
+    const seedB = await seedTwoLocations(gqlB, 'B')
+    const beforeA = await locationSnapshot(gqlA)
+    const beforeB = await locationSnapshot(gqlB)
+    expectFullLocation(beforeA, seedA.home)
+    expectFullLocation(beforeA, seedA.garage)
+    expectFullLocation(beforeB, seedB.home)
+    expectFullLocation(beforeB, seedB.garage)
+
+    // When A removes all items from A's Home
+    const result = await gqlA<{ removeAllLocationItems: boolean }>(
+      REMOVE_ALL_LOCATION_ITEMS,
+      { locationId: seedA.home },
+    )
+    expect(result.removeAllLocationItems).toBe(true)
+
+    // Then Home has no stock and no cart rows
+    const afterA = await locationSnapshot(gqlA)
+    const home = rowsAt(afterA, seedA.home)
+    expect(home.stock).toEqual([])
+    expect(home.cartItems).toEqual([])
+
+    // But Home's cart and its log are still there, with the same ids
+    const homeBefore = rowsAt(beforeA, seedA.home)
+    expect(home.carts).toEqual(homeBefore.carts)
+    expect(home.logs).toEqual(homeBefore.logs)
+
+    // And Garage is untouched
+    expect(rowsAt(afterA, seedA.garage)).toEqual(rowsAt(beforeA, seedA.garage))
+
+    // And the location and the catalog stay
+    expect(afterA.locations).toEqual(beforeA.locations)
+    expect(afterA.items).toEqual(beforeA.items)
+    expect(afterA.tags).toEqual(beforeA.tags)
+    expect(afterA.tagTypes).toEqual(beforeA.tagTypes)
+
+    // And every one of B's rows is still there
+    expect(await locationSnapshot(gqlB)).toEqual(beforeB)
   })
 })
