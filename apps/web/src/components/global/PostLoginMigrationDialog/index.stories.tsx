@@ -212,6 +212,22 @@ export const AskBeforeCopy: Story = {
   beforeEach: storedCopy('skip'),
 }
 
+// The owner with a stored `clear` copy. Copy here opens a second confirm that
+// asks for the household name, typed exactly (owner decision O40, households
+// H6 task K.0), because `clear` deletes the household's catalog and
+// locations first.
+export const AskBeforeClear: Story = {
+  name: 'AskBeforeClear — owner, a clear copy asks for the household name',
+  decorators: [
+    (Story) => (
+      <MockedProvider mocks={cloudMocks('owner')}>
+        <Story />
+      </MockedProvider>
+    ),
+  ],
+  beforeEach: storedCopy('clear'),
+}
+
 // A manager: the same question, plus the line that the household is shared.
 export const AskBeforeCopyShared: Story = {
   name: 'AskBeforeCopyShared — manager, the household is shared',

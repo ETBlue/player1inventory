@@ -1341,8 +1341,16 @@ The order is therefore: `page.goto('/')` → write `data-mode=local` → `page.r
 After the reload the copy no longer starts by itself. `PostLoginMigrationDialog` first asks
 "Copy your offline data into {household}?", naming the household, once `GetHousehold` and
 `GetLocations` have both loaded. The spec waits for that heading, checks the "shared" line is
-absent (the E2E user owns its household), and presses **Copy here**. Only then does
-"Copying local data to cloud…" show.
+absent (the E2E user owns its household), and presses **Copy here**. The stored strategy is
+`clear`, so since households H6 task K.0 (owner decision O40) a second confirm opens: its own
+**Copy here** is disabled until the household name is typed exactly. The spec reads the name
+with `query { household { name } }`, checks the cloud seed is still there, types it and
+confirms. Only then does "Copying local data to cloud…" show.
+
+**`ImportCard`'s "Clear & import" asks for the household name too, in cloud.** Use
+`SettingsPage.chooseClearAndImport(householdName)`: it presses the button, checks the typed-name
+confirm (`role="alertdialog"`) is disabled, types the name and confirms. Pass `null` in local
+mode, which has no household and still imports on the first press.
 
 ### Do NOT set `data-mode` in `page.addInitScript`
 

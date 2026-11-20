@@ -2,6 +2,7 @@ import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { useApolloClient } from '@apollo/client/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { userEvent } from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
@@ -856,5 +857,125 @@ describe('ImportCard — Import into which location? (households H4 task E.4)', 
     expect(
       screen.queryByRole('heading', { name: 'Import into which location?' }),
     ).not.toBeInTheDocument()
+  })
+})
+
+// Owner decision O40 (households H6 task K.0): "Clear & import" deletes the
+// same catalog as Clear household before it imports, so in cloud mode it asks
+// for the household name, typed exactly, like every other purge. Local mode
+// has no household and keeps its one-press button.
+describe('ImportCard — Clear & import asks for the household name (O40)', () => {
+  afterEach(async () => {
+    localStorage.clear()
+    householdRole.current = undefined
+    vi.mocked(importCloudData).mockClear()
+    vi.mocked(importLocalData).mockClear()
+    vi.mocked(useApolloClient).mockRestore?.()
+    await db.items.clear()
+    await db.locations.clear()
+  })
+
+  async function openClearConfirm() {
+    localStorage.setItem('data-mode', 'cloud')
+    householdRole.current = 'owner'
+    vi.mocked(useApolloClient).mockReturnValue(cloudClientWithMilk() as never)
+    const user = userEvent.setup()
+    const { container } = renderCard()
+    await uploadPayload(container, v15Payload())
+    await user.click(
+      await screen.findByRole('button', { name: 'Clear & import' }),
+    )
+    return user
+  }
+
+  it('user who owns the household cannot clear and import until the name is typed exactly', async () => {
+    // Given the owner of "The Lins" pressed Clear & import in the conflict
+    // dialog
+    const user = await openClearConfirm()
+
+    // Then nothing is cleared or imported by that press alone
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(importCloudData).not.toHaveBeenCalled()
+
+    // And a field asks for the household name, and the confirm is off
+    const field = await screen.findByLabelText('Type The Lins to confirm')
+    const confirm = screen.getByRole('button', { name: 'Clear & import' })
+    expect(confirm).toBeDisabled()
+
+    // When the name is typed with the wrong case
+    await user.type(field, 'the lins')
+
+    // Then the confirm is still off, and nothing was cleared or imported
+    expect(confirm).toBeDisabled()
+    expect(importCloudData).not.toHaveBeenCalled()
+
+    // When the name is typed exactly as stored
+    await user.clear(field)
+    await user.type(field, 'The Lins')
+
+    // Then the confirm works, and the import runs with `clear`
+    expect(confirm).toBeEnabled()
+    await user.click(confirm)
+    await waitFor(() => expect(importCloudData).toHaveBeenCalledTimes(1))
+    expect(callArgs(vi.mocked(importCloudData).mock, 0)[1]).toBe('clear')
+  })
+
+  it('user who presses Enter before the name is typed has nothing cleared', async () => {
+    // Given the typed-name confirm is open with a wrong name in the field
+    const user = await openClearConfirm()
+    const field = await screen.findByLabelText('Type The Lins to confirm')
+    await user.type(field, 'The Lin')
+
+    // When the user presses Enter
+    await user.keyboard('{Enter}')
+
+    // Then nothing is cleared or imported
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(importCloudData).not.toHaveBeenCalled()
+  })
+
+  it('user who cancels the typed-name confirm is back at the conflict choices', async () => {
+    // Given the typed-name confirm is open
+    const user = await openClearConfirm()
+    await screen.findByLabelText('Type The Lins to confirm')
+
+    // When the user presses Cancel
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    // Then the conflict choices are there again, and nothing ran
+    expect(
+      await screen.findByRole('button', { name: 'Replace matches' }),
+    ).toBeInTheDocument()
+    expect(importCloudData).not.toHaveBeenCalled()
+  })
+
+  it('user in local mode clears and imports with one press, with no name to type', async () => {
+    // Given local mode and a local item the backup also has
+    await db.items.put({
+      id: 'item-1',
+      name: 'Milk',
+      tagIds: [],
+      targetUnit: 'package',
+      consumeAmount: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })
+    const user = userEvent.setup()
+    const { container } = renderCard()
+    await uploadPayload(container, v15Payload())
+
+    // When the user presses Clear & import
+    await user.click(
+      await screen.findByRole('button', { name: 'Clear & import' }),
+    )
+
+    // Then the local import runs with `clear`, and no name was asked for
+    await waitFor(() => expect(importLocalData).toHaveBeenCalledTimes(1))
+    expect(callArgs(vi.mocked(importLocalData).mock, 0)[1]).toBe('clear')
+    expect(screen.queryByLabelText(/to confirm$/)).not.toBeInTheDocument()
   })
 })

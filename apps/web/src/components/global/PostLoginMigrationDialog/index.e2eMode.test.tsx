@@ -131,8 +131,14 @@ describe('PostLoginMigrationDialog — the E2E branch needs no ClerkProvider', (
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
 
     // When the dialog mounts in E2E test mode, and the user presses Copy here
+    // and types the household name (owner decision O40: a `clear` copy asks
+    // for it)
     await renderE2EDialog()
     fireEvent.click(await screen.findByRole('button', { name: 'Copy here' }))
+    fireEvent.change(await screen.findByLabelText('Type Our Home to confirm'), {
+      target: { value: 'Our Home' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Copy here' }))
 
     // Then the copy runs with that strategy
     await waitFor(() => expect(importCloudData).toHaveBeenCalledTimes(1))

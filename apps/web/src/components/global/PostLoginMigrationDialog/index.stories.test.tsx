@@ -69,6 +69,7 @@ const {
   Prompting,
   PromptingMember,
   AskBeforeCopy,
+  AskBeforeClear,
   AskBeforeCopyShared,
   MemberCannotCopy,
 } = composeStories(stories)
@@ -148,6 +149,18 @@ describe('PostLoginMigrationDialog stories smoke tests', () => {
       expect(
         await screen.findByText('Copying local data to cloud…'),
       ).toBeInTheDocument()
+    })
+
+    it('AskBeforeClear asks for the household name before a clear copy', async () => {
+      state.role = 'owner'
+      localStorage.setItem('migration-strategy', 'clear')
+      render(<AskBeforeClear />)
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Copy here' }))
+      expect(
+        await screen.findByLabelText('Type Our Home to confirm'),
+      ).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Copy here' })).toBeDisabled()
     })
 
     it('AskBeforeCopyShared says the household is shared', async () => {

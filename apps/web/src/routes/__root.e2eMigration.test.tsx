@@ -144,9 +144,14 @@ describe('root route in E2E test mode', () => {
     // Given cloud mode, E2E test mode, and a strategy stored by DataModeCard
     localStorage.setItem('migration-strategy', 'clear')
 
-    // When the root route renders, and the user presses Copy here
+    // When the root route renders, and the user presses Copy here and types
+    // the household name (owner decision O40: a `clear` copy asks for it)
     await renderRootInE2ECloudMode()
     fireEvent.click(await screen.findByRole('button', { name: 'Copy here' }))
+    fireEvent.change(await screen.findByLabelText('Type Our Home to confirm'), {
+      target: { value: 'Our Home' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Copy here' }))
 
     // Then PostLoginMigrationDialog is mounted and runs the copy
     await waitFor(() => expect(importCloudData).toHaveBeenCalledTimes(1))

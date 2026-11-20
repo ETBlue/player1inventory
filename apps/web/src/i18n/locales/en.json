@@ -844,7 +844,9 @@
       "copyHere": "Copy here",
       "dontCopy": "Don't copy",
       "cannotCopyMember": "Only the owner or a manager of this household can copy data into it. The data on this device stays as it is.",
-      "cannotCopyClear": "Only the owner of this household can clear it and copy data into it. The data on this device stays as it is."
+      "cannotCopyClear": "Only the owner of this household can clear it and copy data into it. The data on this device stays as it is.",
+      "clearConfirmTitle": "Clear {{household}} first?",
+      "clearConfirmDescription": "Copy here first deletes the catalog and every location of {{household}}, with everything in them. Then it copies your offline data. People and their household roles stay."
     },
     "export": {
       "label": "Download my data",
@@ -898,6 +900,7 @@
         "skip": "Skip conflicts",
         "replace": "Replace matches",
         "clear": "Clear & import",
+        "clearConfirmDescription": "This deletes the household's catalog and every location, with everything in them. Then it imports the file. People and their household roles stay.",
         "idMatch": "ID",
         "nameMatch": "name",
         "bothMatch": "ID + name",

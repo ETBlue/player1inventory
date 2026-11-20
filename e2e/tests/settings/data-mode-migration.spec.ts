@@ -317,6 +317,26 @@ test('user can switch from offline to cloud mode and clear & import their local 
   // t('settings.postLoginMigration.copyHere') = "Copy here"
   await page.getByRole('button', { name: 'Copy here' }).click()
 
+  // ── A `clear` copy asks for the household name (owner decision O40) ────────
+  // Copy here opens a second confirm, `DeleteButton`'s typed-name mode in
+  // `PostLoginMigrationDialog`. Its own "Copy here" stays disabled until the
+  // household name is typed exactly, and nothing is cleared before.
+  const { household } = await makeGql(request)<{
+    household: { name: string }
+  }>(`query { household { name } }`)
+  const nameConfirm = page.getByRole('alertdialog')
+  // t('settings.household.danger.typeName') = "Type {{name}} to confirm"
+  await expect(
+    nameConfirm.getByLabel(`Type ${household.name} to confirm`),
+  ).toBeVisible()
+  const copyConfirm = nameConfirm.getByRole('button', { name: 'Copy here' })
+  await expect(copyConfirm).toBeDisabled()
+  expect(await readCloudItemNamesById(request)).toEqual({
+    [CLOUD_ONLY_ITEM_ID]: CLOUD_ONLY_ITEM_NAME,
+  })
+  await nameConfirm.getByRole('textbox').fill(household.name)
+  await copyConfirm.click()
+
   // ── Then the auto-import branch runs, and it is SEEN running ─────────────────
   // ASSERTING THE MECHANISM, NOT ONLY THE OUTCOME. This dialog renders only
   // while `usePostLoginMigration`'s state is `auto-importing`
