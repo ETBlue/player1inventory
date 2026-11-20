@@ -1096,7 +1096,7 @@
   "ownership": {
     "banner": {
       "label": "擁有權邀請",
-      "handover": "{{household}} 的擁有者已經不在了。你要成為擁有者嗎？",
+      "handover": "{{household}} 的擁有者已刪除帳號。你要成為擁有者嗎？",
       "transfer": "{{name}} 想讓你成為 {{household}} 的擁有者。"
     },
     "accept": "接受",

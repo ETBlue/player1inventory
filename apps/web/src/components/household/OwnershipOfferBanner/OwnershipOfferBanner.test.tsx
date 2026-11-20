@@ -16,6 +16,7 @@ import {
   type OwnershipOfferFieldsFragment,
   useMyOwnershipOffersQuery,
 } from '@/generated/graphql'
+import i18n from '@/i18n'
 import { OwnershipOfferBanner } from './OwnershipOfferBanner'
 
 // The offer banner (households H6b, task K.6). Real Apollo through
@@ -276,7 +277,7 @@ describe('OwnershipOfferBanner', () => {
   })
 
   it('user sees a hand-over offer with Accept and Not now, never Decline', async () => {
-    // Given the owner of the person's other household is gone
+    // Given the owner of the person's other household deleted their account
     offers = [HANDOVER]
 
     // When the banner renders
@@ -284,7 +285,7 @@ describe('OwnershipOfferBanner', () => {
 
     // Then it names that household and offers Accept and Not now
     await screen.findByText(
-      'The owner of Beach house is gone. Do you want to become the owner?',
+      'The owner of Beach house deleted their account. Do you want to become the owner?',
     )
     expect(
       within(banner()).getByRole('button', { name: 'Accept' }),
@@ -308,7 +309,7 @@ describe('OwnershipOfferBanner', () => {
     await screen.findByText('Lin wants to make you the owner of the Lin home.')
     expect(
       screen.getByText(
-        'The owner of Beach house is gone. Do you want to become the owner?',
+        'The owner of Beach house deleted their account. Do you want to become the owner?',
       ),
     ).toBeInTheDocument()
     expect(
@@ -334,7 +335,7 @@ describe('OwnershipOfferBanner', () => {
       'Lin wants to make you the owner of the Lin home.',
     )
     expect(second).toHaveAccessibleDescription(
-      'The owner of Beach house is gone. Do you want to become the owner?',
+      'The owner of Beach house deleted their account. Do you want to become the owner?',
     )
     expect(
       within(banner()).getByRole('button', { name: 'Decline' }),
@@ -344,7 +345,7 @@ describe('OwnershipOfferBanner', () => {
     expect(
       within(banner()).getByRole('button', { name: 'Not now' }),
     ).toHaveAccessibleDescription(
-      'The owner of Beach house is gone. Do you want to become the owner?',
+      'The owner of Beach house deleted their account. Do you want to become the owner?',
     )
   })
 
@@ -370,7 +371,7 @@ describe('OwnershipOfferBanner', () => {
     const user = userEvent.setup()
     offers = [HANDOVER]
     renderBanner()
-    await screen.findByText(/The owner of Beach house is gone/)
+    await screen.findByText(/The owner of Beach house deleted their account/)
 
     // When the person presses Accept
     await user.click(within(banner()).getByRole('button', { name: 'Accept' }))
@@ -396,7 +397,7 @@ describe('OwnershipOfferBanner', () => {
     const user = userEvent.setup()
     offers = [HANDOVER]
     renderBanner(<OfferCountProbe />)
-    await screen.findByText(/The owner of Beach house is gone/)
+    await screen.findByText(/The owner of Beach house deleted their account/)
 
     // When the person presses Not now
     await user.click(within(banner()).getByRole('button', { name: 'Not now' }))
@@ -549,5 +550,17 @@ describe('OwnershipOfferBanner', () => {
     expect(
       screen.queryByRole('region', { name: 'Ownership offers' }),
     ).not.toBeInTheDocument()
+  })
+
+  it('the hand-over text says the owner deleted their account, in both languages (O45)', () => {
+    // Owner decision O45: "is gone" / 「已經不在了」 can read as "has died".
+    // jsdom renders English only, so the tw text is checked here.
+    const vars = { household: 'Beach house' }
+    expect(i18n.getFixedT('en')('ownership.banner.handover', vars)).toBe(
+      'The owner of Beach house deleted their account. Do you want to become the owner?',
+    )
+    expect(i18n.getFixedT('tw')('ownership.banner.handover', vars)).toBe(
+      'Beach house 的擁有者已刪除帳號。你要成為擁有者嗎？',
+    )
   })
 })

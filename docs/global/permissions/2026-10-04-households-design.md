@@ -509,7 +509,7 @@ The Clerk `user.deleted` webhook arrives for a household owner.
 | No managers, some members organize a location | Those members get the offer |
 | No managers, no member organizes a location | All remaining members get the offer |
 
-Each person sees: "The owner of *ET's Household* is gone. Do you want to become the owner?" —
+Each person sees: "The owner of *ET's Household* deleted their account. Do you want to become the owner?" —
 **Accept** / **Not now**. The **first** to accept becomes owner, and every other offer is
 deleted. "Not now" hides the banner for that person. They can still accept from the Members
 page.
@@ -774,7 +774,7 @@ and shows "You no longer have access to {location}." once (O27-A).
 
 A banner at the top of the app shows each open `OwnershipOffer`:
 
-- `handover`: "The owner of *ET's Household* is gone. Do you want to become the owner?" —
+- `handover`: "The owner of *ET's Household* deleted their account. Do you want to become the owner?" —
   **Accept** / **Not now**
 - `transfer`: "*ET* wants to make you the owner of *ET's Household*." — **Accept** / **Decline**
 

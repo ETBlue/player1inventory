@@ -1096,7 +1096,7 @@
   "ownership": {
     "banner": {
       "label": "Ownership offers",
-      "handover": "The owner of {{household}} is gone. Do you want to become the owner?",
+      "handover": "The owner of {{household}} deleted their account. Do you want to become the owner?",
       "transfer": "{{name}} wants to make you the owner of {{household}}."
     },
     "accept": "Accept",

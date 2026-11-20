@@ -26,7 +26,7 @@ describe('OwnershipOfferBanner stories smoke tests', () => {
     await Handover.run()
     const banner = await findBanner()
     expect(banner).toHaveTextContent(
-      'The owner of Beach house is gone. Do you want to become the owner?',
+      'The owner of Beach house deleted their account. Do you want to become the owner?',
     )
     expect(
       within(banner).getByRole('button', { name: 'Not now' }),
