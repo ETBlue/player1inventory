@@ -273,12 +273,11 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     // `locations`, so after the cleanup it would read a brand-new, empty
     // household. Its `deleted` count below is the check on the delete.
     //
-    // HouseholdActivity — no seed step of its own. From households H6 task
+    // HouseholdActivity — no seed step of its own. Since households H6 task
     // J.2, `createInvite` writes an INVITE_CREATED row in the user's own
     // household, so this one call also seeds the activity row that the
-    // `householdActivities` count below needs. Between H6 tasks J.1 and J.2
-    // nothing writes an activity row, so this spec reports
-    // `"householdActivities":0` and fails. H6 task J.8 runs it.
+    // `householdActivities` count below needs. It is read back just below,
+    // through the real `householdActivity` query (task J.3).
     const token = await createInvite(request, E2E_USER_ID, 'member', [
       { locationId: home.id, role: 'viewer' },
     ])
@@ -286,6 +285,12 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
       householdInvites: { token: string }[]
     }>(`query { householdInvites { token } }`)
     expect(householdInvites.map((invite) => invite.token)).toEqual([token])
+    const { householdActivity } = await gql<{
+      householdActivity: { action: string }[]
+    }>(`query { householdActivity { action } }`)
+    expect(householdActivity.map((row) => row.action)).toContain(
+      'INVITE_CREATED',
+    )
 
     // ── The seed really wrote rows ───────────────────────────────────────────
     //
@@ -331,6 +336,9 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
       zero,
       `models that deleted nothing: ${JSON.stringify(deleted)}`,
     ).toEqual([])
+    // Named on its own too, for the model households H6 task J.1 added (the
+    // check above already covers it; this line says so in the report).
+    expect(deleted.householdActivities).toBeGreaterThanOrEqual(1)
 
     // ── And nothing of the user's is left ────────────────────────────────────
     const after = await gql<ReadBack>(READ_BACK, { itemId })
