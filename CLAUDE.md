@@ -1945,9 +1945,10 @@ same answer. `item-stock-pager.spec.ts` seeds several and is.
 `cleanup-endpoint.spec.ts` joined on 2026-09-25 (issue #319) — 1 cloud test case, no
 browser, like `location-scoped-writes.spec.ts`. It is not resolver coverage: its subject is
 the `DELETE /e2e/cleanup` route, whose handler is in `apps/server/src/lib/e2eCleanup.ts`
-(`index.ts` only mounts it). It seeds one row of all 19 models that route deletes (14
+(`index.ts` only mounts it). It seeds one row of all 20 models that route deletes (14
 before households task 2.6 added the `User` row, 15 before households H3a task 3.10 added
-the three household tables, 18 before households H5b task G.6 added `HouseholdInvite`), calls it, and asserts every returned deleted count is at least
+the three household tables, 18 before households H5b task G.6 added `HouseholdInvite`, 19
+before households H6 task J.1 added `HouseholdActivity`), calls it, and asserts every returned deleted count is at least
 1. `purge-coverage.test.ts` guards the same route but only as SOURCE TEXT. Since issue #320
 it checks the filter's TEXT against one allowed form per model, but it still cannot see a
 value, so a filter whose variable is wrong or `undefined` passes it. See `e2e/CLAUDE.md`

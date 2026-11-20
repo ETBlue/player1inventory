@@ -967,7 +967,7 @@ method cites the aria-label and the source line; the constructor ends with `with
 Read `e2e/CLAUDE.md` first: ports, the 409 order, `forgetDeletedHousehold` after a mid-test
 cleanup, `cleanupCloudData` for every user AND for `E2E_USER_ID`.
 
-- [ ] **`purge-two-households.spec.ts` gains two tests** (real SQL, no browser, through
+- [x] **`purge-two-households.spec.ts` gains two tests** (real SQL, no browser, through
   `makeGql`). Household A has "Home" and "Garage", each with stock, a cart row and a log, and
   a tag WITH a tag type. Household B has the same shape.
   - `deleteAllLocations` as A's owner: A has no location; A's catalog is still there; B's
@@ -976,7 +976,7 @@ cleanup, `cleanupCloudData` for every user AND for `E2E_USER_ID`.
     its `Cart` rows and logs are still there; Garage is untouched; B is untouched.
   - **Mutation check on real SQL:** drop the household (or location) scope from each purge's
     stock delete, run, see it red with "B's rows are gone" (or "Garage's"), restore.
-- [ ] **`household-activity-purges.spec.ts`** (two browsers, `newUserContext`):
+- [x] **`household-activity-purges.spec.ts`** (two browsers, `newUserContext`):
   1. `household owner sees role changes in the activity log`: the owner gives B a role on
      the people page; the Activity page shows "{owner} gave {B} the 搬運工 role on Home" (or
      the English text) without a reload in a SECOND tab of the owner.
@@ -990,13 +990,52 @@ cleanup, `cleanupCloudData` for every user AND for `E2E_USER_ID`.
      no-household screen on B's next request (it gets no live event: the household has no
      members left, see *Known gaps*).
   6. Axe scans of the Activity page and of both danger-zone dialogs, light and dark.
-- [ ] `cleanup-endpoint.spec.ts`: seed one activity row (through a logged mutation) and
+- [x] `cleanup-endpoint.spec.ts`: seed one activity row (through a logged mutation) and
   expect a count of at least 1 for the new key.
-- [ ] Run only these three spec files in `cloud`. Copy `test-results/` aside before any re-run.
+- [x] Run only these three spec files in `cloud`. Copy `test-results/` aside before any re-run.
 
 **Mutation checks (E2E):** the purge scopes above; `recordActivity` removed from
 `setLocationRole` → test 1; the confirm enabled always → test 3 (assert the button is
 disabled BEFORE typing).
+
+
+**Done 2026-11-20** (Node 22.17.1, `--project=cloud`, the three spec files only). The
+first run was green: **11 passed in 3.8 min** (load average 2.8). After the mutations, the
+same run again: **11 passed in 3.9 min** (load average 2.8 at the end). After the seed
+gained the tag with a tag type (for mutation 8), once more: **11 passed in 4.1 min**. The new file has 7
+tests, not 6: the axe scans are two tests, light and dark. `cloud` now lists **195 tests in
+37 files**; `local` still collects 189 in 23 (the new file is in its `testIgnore`).
+
+| File | Change |
+|---|---|
+| `e2e/tests/purge-two-households.spec.ts` | 2 tests in a new `describe`. Each household has Home and Garage, each with a stock row, a cart row and a log, and an item with a tag that has a tag type. One snapshot query (`allItemStocks`, `allCarts`, `allCartItems`, `inventoryLogs`, the catalog) read before and after |
+| `e2e/tests/household-activity-purges.spec.ts` | new, 7 tests, two browsers (OWNER and BEA, a member who joins with no location role) |
+| `e2e/pages/HouseholdPage.ts`, `e2e/pages/ActivityPage.ts` | new |
+| `e2e/pages/LocationPeoplePage.ts` | gained the location danger zone (Remove all items and its typed-name confirm) |
+| `e2e/tests/cleanup-endpoint.spec.ts` | reads the `INVITE_CREATED` row back before the cleanup, and names `householdActivities >= 1` on its own line |
+| `e2e/playwright.config.ts` | the new file in `cloud`'s `testMatch` and `local`'s `testIgnore` |
+
+**Mutation checks on real SQL.** Each was made in the source, run as `<file>:<line>`,
+restored from a copy, and checked with `diff -q`. `test-results/` was copied aside before
+every re-run. **No mutation could match rows outside this spec's two households**: on the
+shared test database, a delete with its scope simply dropped would delete every household's
+locations or stock. So each "dropped scope" was replaced by a WIDER scope that still names
+only this spec's users.
+
+| # | Mutation (`apps/server/src/resolvers/location.resolver.ts` unless named) | Red |
+|---|---|---|
+| 1 | `deleteAllLocations`: `where: { OR: [{ householdId }, { household: { members: { some: { userId: { startsWith: 'e2e-test-user-2-purge-' } } } } }] }` (A's AND B's locations) | purge test 1, "B's rows are still there": B's `locations` received `[]` |
+| 2 | `removeAllLocationItems`: the stock delete scoped to the household, `{ location: { householdId } }` | purge test 2, "Garage is untouched": Garage's `stock` received `[]` |
+| 3 | `removeAllLocationItems`: the cart-row delete also matches B's household (`OR` with `{ cart: { location: { household: { members: { some: { userId: 'e2e-test-user-2-purge-b' } } } } } }`) | purge test 2, "B's rows are still there": B's `allCartItems` received `[]` |
+| 4 | `setLocationRole` writes no activity row (`recordActivity` never called) | activity test 1: the row "You gave Bea Member the Participant role on Home" not found |
+| 5 | `setLocationRole` publishes nothing | activity test 1, the same line: the row did not arrive without a reload |
+| 6 | `nameMatches` always `true` (`apps/web/src/components/shared/DeleteButton/DeleteButton.tsx`) | activity test 3, the first `toBeDisabled()` (before typing): `unexpected value "enabled"` |
+| 7 | `removeAllLocationItems` also deletes the location's logs | activity test 4: the log tab's entry not found |
+| 8 | `deleteHouseholdData` deletes tag types BEFORE tags (`apps/server/src/lib/household.ts`) | activity tests 3 and 5: the confirm stays open with "Could not delete. Please try again." (`Tag.type` is NoAction). This is the real-SQL proof the J.4 table asked for; the seed carries a tag with a tag type for it |
+
+Not mutated: activity test 2 (member, no access) and test 5 (delete household, the
+no-household screen). Both were covered by mutation in the web unit tests of J.6 and J.5;
+here they are only run.
 
 ---
 
@@ -1455,6 +1494,12 @@ Filled in from the task reports and reviews.
 | J.7 | O39: `…danger.removeAllDescription` "The location, its people and its logs stay." | The brief asked that the text say the catalog stays too: "The location, its people, its logs and the catalog stay." `…deleteLocationsDescription` also says "No new location is made." (O34-A). O39 had no title for the location's zone: `settings.locations.danger.title` was added. The location confirm reuses `settings.household.danger.typeName` |
 | J.7 | Files: `$id.stories.tsx` | Unchanged: its `OrganizerView` already shows the zone; its smoke test now checks for Remove all items. `routes/settings/household/index.stories.tsx` gained `CloudOwner` |
 | J.7 (review) | Step 1: "the confirm button stays disabled until the field equals the household name exactly (case and spaces as stored)" | Exact spaces need the label to SHOW them. HTML folds runs of spaces and drops a trailing one, so a name like `a  b` could never be confirmed. The label now has `whitespace-pre-wrap` |
+| J.8 | Files: `e2e/pages/HouseholdPage.ts` "new or extended" | It did not exist; it is new. The location danger zone sits on the people page, so `e2e/pages/LocationPeoplePage.ts` (not in the file list) was extended for Remove all items |
+| J.8 | Mutation check: "drop the household (or location) scope from each purge's stock delete" | On the shared test database a dropped scope deletes every household's rows, which the brief forbade. Each mutation WIDENED the scope to this spec's two users instead. Also, `deleteAllLocations` has no stock delete: it deletes the locations, and the stock goes by cascade. Its mutation widened the location delete |
+| J.8 | `cleanup-endpoint.spec.ts`: "expect a count of at least 1 for the new key" | The spec already checked every key of `CLEANUP_MODEL_KEYS` with one loop, so the key was covered since J.1. J.8 added a readback of the `INVITE_CREATED` row before the cleanup and an explicit line for the key |
+| J.8 | Test 1: "{owner} gave {B} the 搬運工 role on Home" | The owner reads their own row, so the actor is "You" (`actorIsMe`), and the E2E build is English: "You gave Bea Member the Participant role on Home" |
+| J.8 | Test 6: one axe test | Two tests, light and dark, like `location-people.spec.ts`. The new file has 7 tests |
+| J.8 (brief) | `CLAUDE.md` and `e2e/CLAUDE.md` say the cleanup route deletes 19 models | 20 (`HouseholdActivity`, J.1). Counted from the distinct `prisma.<model>.deleteMany` in `lib/e2eCleanup.ts`. Updated |
 
 ## Status
 
