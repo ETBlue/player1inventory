@@ -2,6 +2,7 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { HouseholdRole } from '@/generated/graphql'
+import i18n from '@/i18n'
 import { WithRouterContext } from '@/test/routerContext'
 import { MemberList, type MemberRow, memberActions } from '.'
 
@@ -250,6 +251,22 @@ describe('MemberList', () => {
           name: /Transfer ownership/,
         }),
       ).toBeNull()
+    })
+
+    it('the Transfer and Cancel buttons are named with their visible words, in both languages', () => {
+      // WCAG 2.5.3 Label in Name: a person using voice control says what
+      // they see, so the accessible name must contain the visible word.
+      // jsdom renders English only, so the tw texts are checked here.
+      for (const lng of ['en', 'tw']) {
+        const t = i18n.getFixedT(lng)
+        const k = 'settings.household.members'
+        expect(t(`${k}.transferLabel`, { name: 'Mia' })).toContain(
+          t(`${k}.transfer`),
+        )
+        expect(t(`${k}.cancelOfferLabel`, { name: 'Mia' })).toContain(
+          t(`${k}.cancelOffer`),
+        )
+      }
     })
 
     it('Transfer ownership asks first, and sends only after the confirm', async () => {

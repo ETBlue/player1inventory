@@ -535,7 +535,7 @@
         "locationsLoadError": "無法讀取據點，請再試一次。",
         "noLocations": "這個家庭還沒有任何據點。",
         "transfer": "轉移擁有權",
-        "transferLabel": "把擁有權轉移給 {{name}}",
+        "transferLabel": "轉移擁有權給 {{name}}",
         "transferConfirm": "要把 {{household}} 交給 {{name}} 嗎？對方接受後，你會變成管理者。",
         "waiting": "等待 {{name}} 接受",
         "cancelOffer": "取消",
