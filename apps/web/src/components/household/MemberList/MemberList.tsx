@@ -136,6 +136,14 @@ export interface MemberListProps {
    * deletes it (owner decision O37-A), and the Leave confirm says so.
    */
   lastPerson?: boolean
+  /**
+   * Leave shows but cannot be pressed (owner decision O48). The page sets it
+   * until the server has answered the member list: a list from the cache
+   * restored from IndexedDB may be stale, and then `lastPerson` could be
+   * wrong. A wrong `false` hides the warning while the server deletes the
+   * household (O37-A).
+   */
+  leaveDisabled?: boolean
 }
 
 /**
@@ -158,6 +166,7 @@ export function MemberList({
   pendingTransfer,
   transferBusy = false,
   lastPerson = false,
+  leaveDisabled = false,
 }: MemberListProps) {
   const { t } = useTranslation()
   const pendingRowShown =
@@ -303,6 +312,7 @@ export function MemberList({
                       : 'settings.household.members.leaveConfirm',
                   )}
                   confirmLabel={t('settings.household.members.leave')}
+                  disabled={leaveDisabled}
                   onDelete={onLeave}
                 />
               )}

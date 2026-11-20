@@ -52,6 +52,7 @@ import { copyText } from '@/lib/copyText'
 // | everyone, when `hasOwner` is false | "This household has no owner." |
 // | a person with an open offer for THIS household | Become the owner. Also after "Not now" (the offer is dismissed, not gone), and after a decline that left nobody else (owner decision O42-A) |
 // | the last live person | a Leave confirm that says the household and everything in it will be deleted (owner decision O37-A) |
+// | everyone with Leave | Leave is off until the server has answered the member list (owner decision O48, task K.7b): a list from the restored cache may be stale |
 //
 // The server checks every write; this page only hides what it would refuse.
 export const Route = createFileRoute('/settings/household/members')({
@@ -270,6 +271,12 @@ export function MembersPage() {
               }
               transferBusy={offering || cancelling}
               lastPerson={lastPerson}
+              // Owner decision O48: the list may be the cache restored from
+              // IndexedDB, and `lastPerson` read from a stale list could hide
+              // the warning while the server deletes the household. So Leave
+              // waits for the server's answer. Offline it stays off; a leave
+              // could not be sent then anyway.
+              leaveDisabled={!members.isFromServer}
             />
             {ownerAlone && (
               <Note text={t('settings.household.members.alone')} />

@@ -1,3 +1,5 @@
+import { ApolloLink } from '@apollo/client'
+import { MockLink } from '@apollo/client/testing'
 import { MockedProvider } from '@apollo/client/testing/react'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
@@ -11,6 +13,7 @@ import {
   RemoveMemberDocument,
   SetHouseholdRoleDocument,
 } from '@/generated/graphql'
+import { createHoldLink, type HoldLink } from '@/test/holdLink'
 import {
   useHouseholdMembers,
   useLeaveHousehold,
@@ -241,5 +244,99 @@ describe('household writes whose refetch fails', () => {
     expect(
       result.current.list.data?.find((p) => p.userId === 'u-mia')?.role,
     ).toBe('manager')
+  })
+})
+
+// Owner decision O48 (households H6b task K.7b). The list can come from the
+// cache restored from IndexedDB before the server answers. `isFromServer`
+// says the server has answered in this mount, so the Members page can keep
+// Leave off until then: a stale list could hide the "last person" warning.
+describe('useHouseholdMembers isFromServer', () => {
+  function cachedWrapper(hold: HoldLink, cached: Person[] | null) {
+    const cache = createCache()
+    if (cached)
+      cache.writeQuery({
+        query: HouseholdMembersDocument,
+        data: { householdMembers: cached },
+      })
+    const link = ApolloLink.from([
+      hold.link,
+      new MockLink(
+        [
+          {
+            request: { query: HouseholdMembersDocument },
+            maxUsageCount: Number.POSITIVE_INFINITY,
+            result: () => ({ data: { householdMembers: members } }),
+          },
+        ],
+        { defaultOptions: { delay: 0 } },
+      ),
+    ])
+    return ({ children }: { children: ReactNode }) => (
+      <MockedProvider cache={cache} link={link}>
+        {children}
+      </MockedProvider>
+    )
+  }
+
+  beforeEach(() => {
+    members = [person('u-mia', 'member')]
+  })
+
+  it('is false while only the cached list is shown, and true once the server answers', async () => {
+    // Given a cached list of two people, and a server that now has one
+    const hold = createHoldLink()
+    hold.hold('HouseholdMembers')
+    const { result } = renderHook(() => useHouseholdMembers(), {
+      wrapper: cachedWrapper(hold, [
+        person('u-olive', 'owner'),
+        person('u-mia', 'member'),
+      ]),
+    })
+
+    // Then the cached list shows at once, not from the server
+    await waitFor(() => expect(hold.waiting('HouseholdMembers')).toBe(1))
+    expect(result.current.data).toHaveLength(2)
+    expect(result.current.isFromServer).toBe(false)
+
+    // When the server answers
+    hold.release('HouseholdMembers')
+
+    // Then the list is the server's, and it says so
+    await waitFor(() => expect(result.current.data).toHaveLength(1))
+    expect(result.current.isFromServer).toBe(true)
+  })
+
+  it('stays false when the read fails over a cached list', async () => {
+    // Given a cached list, and a read that fails (offline)
+    const hold = createHoldLink()
+    hold.hold('HouseholdMembers')
+    const { result } = renderHook(() => useHouseholdMembers(), {
+      wrapper: cachedWrapper(hold, [
+        person('u-olive', 'owner'),
+        person('u-mia', 'member'),
+      ]),
+    })
+    await waitFor(() => expect(hold.waiting('HouseholdMembers')).toBe(1))
+
+    // When the read fails
+    hold.fail('HouseholdMembers')
+
+    // Then the cached list stays, and it is still not from the server
+    await waitFor(() => expect(hold.waiting('HouseholdMembers')).toBe(0))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(result.current.data).toHaveLength(2)
+    expect(result.current.isError).toBe(false)
+    expect(result.current.isFromServer).toBe(false)
+  })
+
+  it('is true after the first answer when nothing was cached', async () => {
+    // A control: with no cache the first list is the server's
+    const hold = createHoldLink()
+    const { result } = renderHook(() => useHouseholdMembers(), {
+      wrapper: cachedWrapper(hold, null),
+    })
+    await waitFor(() => expect(result.current.data).toHaveLength(1))
+    expect(result.current.isFromServer).toBe(true)
   })
 })

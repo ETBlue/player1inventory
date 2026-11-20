@@ -11,6 +11,7 @@ const {
   AsOwnerWithNoLocationRoles,
   AsOwnerWaitingForAccept,
   AsLastPerson,
+  AsMemberLeaveWaitsForServer,
 } = composeStories(stories)
 
 describe('MemberList stories smoke tests', () => {
@@ -79,5 +80,12 @@ describe('MemberList stories smoke tests', () => {
     expect(screen.getByRole('alertdialog')).toHaveTextContent(
       'Leaving deletes the household and everything in it.',
     )
+  })
+
+  it('AsMemberLeaveWaitsForServer shows Leave switched off', () => {
+    render(<AsMemberLeaveWaitsForServer />)
+    expect(
+      screen.getByRole('button', { name: 'Leave household' }),
+    ).toBeDisabled()
   })
 })

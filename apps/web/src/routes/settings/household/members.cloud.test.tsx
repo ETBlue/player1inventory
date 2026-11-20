@@ -1,3 +1,6 @@
+import { ApolloLink } from '@apollo/client'
+import type { ApolloCache } from '@apollo/client/cache'
+import { MockLink } from '@apollo/client/testing'
 import {
   MockedProvider,
   type MockedProviderProps,
@@ -39,6 +42,7 @@ import {
 } from '@/generated/graphql'
 import { routeTree } from '@/routeTree.gen'
 import { cloudRoleBaseMocks, cloudRoleStorySetup } from '@/test/cloudRoleStory'
+import { createHoldLink, type HoldLink } from '@/test/holdLink'
 
 // The Members page in cloud mode (households H5b, task G.9), on the REAL
 // route tree, with the real generated hooks and `MockedProvider` answering.
@@ -284,6 +288,10 @@ function dynamicMocks(): NonNullable<MockedProviderProps['mocks']> {
 function renderPage(
   role: HouseholdRole,
   extra: NonNullable<MockedProviderProps['mocks']> = [],
+  // `cache`: start from a cache that already holds answers (the copy
+  // restored from IndexedDB). `hold`: put a hold link in front of the mocks,
+  // so a test decides when an answer comes.
+  options: { cache?: ApolloCache; hold?: HoldLink } = {},
 ) {
   server.household = { id: 'household-role-story', role }
   const queryClient = new QueryClient({
@@ -300,10 +308,18 @@ function renderPage(
   const base = cloudRoleBaseMocks(role).filter(
     (m) => m.request.query !== GetHouseholdDocument,
   )
+  const mocks = [...dynamicMocks(), ...base, ...extra]
+  const link = options.hold
+    ? ApolloLink.from([
+        options.hold.link,
+        new MockLink(mocks, { defaultOptions: { delay: 0 } }),
+      ])
+    : undefined
   render(
     <MockedProvider
-      mocks={[...dynamicMocks(), ...base, ...extra]}
-      cache={createCache()}
+      mocks={mocks}
+      cache={options.cache ?? createCache()}
+      {...(link ? { link } : {})}
     >
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
@@ -1732,5 +1748,87 @@ describe('Members page — the last person leaves (O37-A)', () => {
       'Leave this household? You lose access to all its locations.',
     )
     expect(dialog).not.toHaveTextContent('last person')
+  })
+
+  // Owner decision O48 (households H6b task K.7b). The member list can come
+  // first from the cache restored from IndexedDB. If the last other person
+  // left since then, that stale list hides the warning while the server will
+  // delete the household. So Leave waits for the server's answer.
+  it('Leave cannot be used until the server has answered, so a stale list cannot hide the warning (O48)', async () => {
+    // Given the cache from an earlier visit holds Mona and Mia, but Mia has
+    // left since: the server now has only Mona
+    const cache = createCache()
+    cache.writeQuery({
+      query: HouseholdMembersDocument,
+      data: {
+        householdMembers: [
+          person('u-mona', 'Mona', 'manager', true),
+          person('u-mia', 'Mia', 'member'),
+        ],
+      },
+    })
+    server.members = [person('u-mona', 'Mona', 'manager', true)]
+    server.hasOwner = false
+    const hold = createHoldLink()
+    hold.hold('HouseholdMembers')
+    renderPage('manager', [], { cache, hold })
+    const user = userEvent.setup()
+
+    // When the page shows the cached list, before the server answers
+    await rowOf('Mia')
+    await waitFor(() => expect(hold.waiting('HouseholdMembers')).toBe(1))
+
+    // Then Leave is there but cannot be used
+    const leave = within(await rowOf('Mona')).getByRole('button', {
+      name: 'Leave household',
+    })
+    expect(leave).toBeDisabled()
+
+    // When the server answers with Mona alone
+    hold.release('HouseholdMembers')
+    await waitFor(() =>
+      expect(screen.queryByText('Mia')).not.toBeInTheDocument(),
+    )
+
+    // Then Leave works, and its confirm gives the last-person warning
+    const ready = within(await rowOf('Mona')).getByRole('button', {
+      name: 'Leave household',
+    })
+    await waitFor(() => expect(ready).toBeEnabled())
+    await user.click(ready)
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent(
+      'You are the last person here. Leaving deletes the household and everything in it.',
+    )
+  })
+
+  it('Leave stays off when the list could only be read from the cache (O48)', async () => {
+    // Given a cached list, and a read of it that fails (offline)
+    const cache = createCache()
+    cache.writeQuery({
+      query: HouseholdMembersDocument,
+      data: {
+        householdMembers: [
+          person('u-mona', 'Mona', 'manager', true),
+          person('u-mia', 'Mia', 'member'),
+        ],
+      },
+    })
+    const hold = createHoldLink()
+    hold.hold('HouseholdMembers')
+    renderPage('manager', [], { cache, hold })
+    await rowOf('Mia')
+    await waitFor(() => expect(hold.waiting('HouseholdMembers')).toBe(1))
+
+    // When the read fails
+    hold.fail('HouseholdMembers')
+    await waitFor(() => expect(hold.waiting('HouseholdMembers')).toBe(0))
+
+    // Then the cached list stays, and Leave is still off
+    expect(await rowOf('Mia')).toBeInTheDocument()
+    expect(
+      within(await rowOf('Mona')).getByRole('button', {
+        name: 'Leave household',
+      }),
+    ).toBeDisabled()
   })
 })

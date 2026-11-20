@@ -425,5 +425,24 @@ describe('MemberList', () => {
       )
       expect(dialog).not.toHaveTextContent('last person')
     })
+
+    it('with leaveDisabled, Leave shows but cannot be pressed (O48)', async () => {
+      const onLeave = vi.fn(async () => {})
+      render(
+        <MemberList
+          members={alone}
+          callerRole="manager"
+          onSetRole={vi.fn()}
+          onRemove={vi.fn(async () => {})}
+          onLeave={onLeave}
+          leaveDisabled
+        />,
+      )
+      const leave = screen.getByRole('button', { name: 'Leave household' })
+      expect(leave).toBeDisabled()
+      await userEvent.setup().click(leave)
+      expect(screen.queryByRole('alertdialog')).toBeNull()
+      expect(onLeave).not.toHaveBeenCalled()
+    })
   })
 })

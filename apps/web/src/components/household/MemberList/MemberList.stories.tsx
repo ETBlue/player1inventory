@@ -118,3 +118,16 @@ export const AsLastPerson: Story = {
     lastPerson: true,
   },
 }
+
+/**
+ * Households H6b task K.7b, owner decision O48: the list shown is still the
+ * cached copy, and the server has not answered yet. Leave shows but cannot be
+ * pressed, so a stale list cannot hide the last-person warning.
+ */
+export const AsMemberLeaveWaitsForServer: Story = {
+  args: {
+    members: people('u-mia'),
+    callerRole: 'member',
+    leaveDisabled: true,
+  },
+}

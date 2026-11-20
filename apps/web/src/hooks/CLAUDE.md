@@ -149,7 +149,7 @@ moment the other half mounts alone.
 
   | Hook | Refetches after | Note |
   |---|---|---|
-  | `useHouseholdMembers()` | — | every role reads it (O13-A). `cache-and-network`, the usual `isLoading` / `isError` pair, and `refetch` (never rejects; the location people page's Retry under Add person, since the review of households H5c task H.5). `HouseholdPerson` has no `id`, so `apollo/cloudCache.ts` sets `householdMembers: { merge: false }`: without it a shorter list after a removal makes Apollo warn "Cache data may be lost" (pinned in `apollo/client.test.ts`) |
+  | `useHouseholdMembers()` | — | every role reads it (O13-A). `cache-and-network`, the usual `isLoading` / `isError` pair, `isFromServer` (since households H6b task K.7b, owner decision O48: `true` once the server has answered the list in this mount, the same rule as `useLocations().isFromServer`; it stays `false` when the read fails over a cached list; the Members page keeps Leave off until then), and `refetch` (never rejects; the location people page's Retry under Add person, since the review of households H5c task H.5). `HouseholdPerson` has no `id`, so `apollo/cloudCache.ts` sets `householdMembers: { merge: false }`: without it a shorter list after a removal makes Apollo warn "Cache data may be lost" (pinned in `apollo/client.test.ts`) |
   | `useHouseholdInvites({ enabled })` | — | pass `enabled: canManageMembers`: a household `member` gets `FORBIDDEN` |
   | `useCreateInvite()` | `HouseholdInvites` | `create(role, locationRoles)` resolves to the invite with its `token` |
   | `useRevokeInvite()` | `HouseholdInvites` | `revoke(id)` resolves to the server's Boolean. `false` = "no longer open": the page shows no success message |
