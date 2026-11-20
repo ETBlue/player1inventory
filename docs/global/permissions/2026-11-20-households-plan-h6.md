@@ -1448,6 +1448,20 @@ copy; `diff -q` gave 0 every time. The race tests rest on `serialTransactions(tr
 has no row lock, so they show that each order ends right, not that Postgres waits (K.8 proves
 that on real SQL).
 
+**Review (2026-11-20).** No blocking issue. One test gap, fixed in the review commit:
+
+| Gap | Fix |
+|---|---|
+| The LAST row of the hand-over table ("no manager, nobody organizes → every member") was reached by no test. Making that branch `return []` left all 840 tests of `src/resolvers` and `src/lib` green: the one test that came near (PAT in hh_3) has nobody else, so `byTable` returns early | New test in `ownership.resolver.test.ts`: "with no other manager and no organizer here, every other live member gets the offer". BEA organizes only LOC_Z of hh_2, DEX (deleted) organizes LOC_2; MIA declines; BEA and BOB get offers, DEX does not |
+
+| # | Mutation | Red |
+|---|---|---|
+| R1 | the last row of `byTable` returns `[]` (`lib/handover.ts`) | 1, the new test: `expected [ 'hh_1:user_mia:handover:-' ] to deeply equal [ 'hh_1:user_bea:handover:-', …(1) ]` (MIA got her offer back, dismissed) |
+| R2 | `countedOrganizerIn` without `location: { householdId }` (`lib/authz.ts`) | in `ownership.resolver.test.ts`, 1, the new test: `expected [ 'hh_1:user_bea:handover:-' ] to deeply equal [ 'hh_1:user_bea:handover:-', …(1) ]`. No earlier K.3 test saw it |
+| R3 | `leaveHousehold`'s last-person path without its `tx.user.updateMany` (`household.resolver.ts:414`) | **0 of 1556** in `src/resolvers`. Not a bug: `User.activeHouseholdId` is `onDelete: SetNull`, so the household delete clears the same rows, in the fake and in Postgres. The explicit write is redundant, not wrong |
+
+Server **2666 / 84 → 2667 / 84**.
+
 ---
 
 ## Task K.4 — the hand-over in `handleClerkEvent`
