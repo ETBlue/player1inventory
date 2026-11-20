@@ -1226,6 +1226,29 @@ warnings in `e2e/`, the known ones); `pnpm build` exit 0, no `TS6385`, the serve
 database does not have the table yet, so every cloud cleanup would fail until the main
 session runs `verify:migration`.
 
+**Review of K.1, 2026-11-20.** No blocking defect. Checked with no database:
+
+| Check | Result |
+|---|---|
+| `prisma migrate diff --from-schema-datamodel <schema at d69080f8> --to-schema-datamodel prisma/schema.prisma --script` | the same statements as `migration.sql`, comments and blank lines left out (`diff` empty) |
+| `verify-migration.ts` | each assertion fails on a wrong migration: RESTRICT or a third foreign key changes the one `fkText` string; a missing unique index fails both the index check and the `23505` check. Every `oo-` row is deleted at the end; no other block uses the prefix. Read only, NOT run |
+| "Delete household" | `deleteHousehold` ends with `tx.household.deleteMany`; the offers go by `ON DELETE CASCADE` on `householdId` (the fake models the same) |
+
+One change: a join test for T49, `invite-join.resolver.test.ts` "an ownership offer does not
+keep it, and goes with it (H6b decision T49)". It seeds an offer in PAT's empty household and
+one in `hh_x`, joins, and checks only `hh_x`'s offer is left. Mutations, each restored from a
+copy (`diff -q` clean):
+
+| # | Mutation | Red |
+|---|---|---|
+| R1 | `ownershipOffers: { none: {} }` added to `emptyHouseholdWhere` (`lib/invite.ts`) | the new test: `AssertionError: expected [ { …(4) } ] to be undefined` (the fake's throw comes back in `res.errors`) |
+| R2 | `checkOfferKind(row.kind)` removed from `checkOfferRow` (`householdFake.ts`) | 1: "create throws on a kind that is not in the OfferKind enum" |
+
+**For K.3:** T49's claim "an offer in a one-person household cannot exist" holds only if
+`removeMember` and `leaveHousehold` (`removeFromHousehold`) delete the offers TO the person
+who goes. K.3 already plans it ("`removeFromHousehold` also deletes offers TO the person",
+with a mutation check); this is one more reason it must not be dropped.
+
 ---
 
 ## Task K.2 — a deleted account does not count
@@ -1637,7 +1660,7 @@ Filled in from the task reports and reviews.
 | K.0 | Files: `ImportCard/`, its tests and stories, "the E2E spec that presses Clear & import in cloud" | The button lives in `ConflictDialog`, not `ImportCard`; `ImportCard` only passes the name. Three E2E specs press it, not one (`import-strategies.spec.ts`, which runs in `local` too, `import-households.spec.ts`, `data-mode-migration.spec.ts`). The plan missed a second path with the same purge: a stored `clear` copy after the switch to cloud (`PostLoginMigrationDialog`), which now asks for the name too. That needed `__root.e2eMigration.test.tsx`, `index.e2eMode.test.tsx` and the migration dialog's stories to change as well |
 | K.1 | Step 1: the fake applies `where` keys `id`, `householdId`, `toUserId`, `kind`, `dismissedAt: null` | Applied as listed. The plan did not say which methods K.3 needs, so the store has all eight a resolver may call (`create`, `findUnique`, `findFirst`, `findMany`, `update`, `updateMany`, `delete`, `deleteMany`). `findUnique`, `update` and `delete` take `id` only; a compound `householdId_toUserId` key is not modelled. No `orderBy`: if `myOwnershipOffers` (T65) sorts, K.3 adds it with a test |
 | K.1 | T58 does not name the relation fields | `Household.ownershipOffers` and `User.ownershipOffers` (the offers TO the person). K.3 uses these names in any relation filter |
-| K.1 | T49: "a test in `invite-join.resolver.test.ts` pins it" (for activity rows, J.1) | No join test was added for offers. The household fake does not model an `ownershipOffers` key at all, so a join that asked it throws in every join test (mutation 4: 31 red). That is a stronger guard than a value test, but its failure text names the fake, not the rule |
+| K.1 | T49: "a test in `invite-join.resolver.test.ts` pins it" (for activity rows, J.1) | No join test was added for offers. The household fake does not model an `ownershipOffers` key at all, so a join that asked it throws in every join test (mutation 4: 31 red). Its failure text names the fake, not the rule, and it stops guarding the day someone models the key in the fake. **The K.1 review added the join test** ("an ownership offer does not keep it, and goes with it"), like J.1's |
 | K.1 | Cleanup: "offers TO the user and offers of owned households are deleted before `householdMember`" | Placed right after `householdActivity`. Both foreign keys cascade, so the delete is there for the COUNT, not to unblock anything. An offer the user MADE in another household stays (`fromUserId` has no foreign key) |
 | K.1 | `cleanup-endpoint.spec.ts`: "one row seeded, count at least 1" (Global Constraints) | No mutation can make an offer before K.3, and `offerOwnership` needs a second member. The spec's loop over `CLEANUP_MODEL_KEYS` now fails on `"ownershipOffers":0` until **K.8** seeds an offer through the real mutation. Only comments changed; the spec is unrun (no E2E in K.1). The same happened to `householdActivities` between J.1 and J.2 |
 | K.1 | Files: no doc | Root `CLAUDE.md` and `e2e/CLAUDE.md` still say `/e2e/cleanup` deletes **20** models (dated, measured after J.1). K.9 must update them to 21, with the count command |
