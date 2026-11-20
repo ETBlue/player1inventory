@@ -203,8 +203,13 @@ than trusting a number here — it said **four** when there were seven.
   there (it needs the `HouseholdRole` type of `add_households`). The `last` group is applied
   after `restoreIfParked`, so it is everything still parked at that point. **Ten** entries
   since G.1 (`20261118000000_add_household_invites`, in the `last` group with `shared_carts`).
-  So the **fourth** `migrate deploy` now applies two migrations, `shared_carts` and then
+  So the **fourth** `migrate deploy` applied two migrations, `shared_carts` and then
   `add_household_invites` (measured 2026-11-18 by the G.1 Step 7 run on the test database).
+  **Eleven** entries since households H6 task J.1 (`20261120000000_add_household_activity`,
+  also in the `last` group: it needs no seed step and names only `"Household"`). So the
+  fourth `migrate deploy` now applies three migrations. The main session ran the script on
+  the test database on 2026-11-20, with the owner's consent: "Migration verified.", every
+  line `ok` (H6 plan, task J.9 Step 2).
   The history below said the list was in `scripts/verify-migration.ts`, as a `MIGRATIONS` list —
   **nine** entries since households H3b task B.3 (2026-11-15; eight on 2026-11-11). The
   ninth, `20261114000000_shared_carts`, is applied in a **fourth** `migrate deploy`, after
@@ -226,7 +231,7 @@ than trusting a number here — it said **four** when there were seven.
   old server could write between the two deploys (`seedBetweenDeploys`).
   **Count the array rather than trusting this line.** It said **four** until 2026-10-08:
   ```bash
-  grep -o "'2026[0-9]*_[a-z_]*'" apps/server/scripts/migrationDeploys.ts | wc -l   # 10 since H5b task G.1
+  grep -o "'2026[0-9]*_[a-z_]*'" apps/server/scripts/migrationDeploys.ts | wc -l   # 11 since H6 task J.1 (10 since H5b task G.1)
   ```
   (The command was `grep -c "^  '2026" apps/server/scripts/verify-migration.ts` until G.1. It
   prints 0 now.)
@@ -327,9 +332,11 @@ than trusting a number here — it said **four** when there were seven.
   about the code that runs. Since households H6 task J.4 the lock copy is the `updateMany`
   of `lockHouseholdOrForbid` (it was the `update` of `lockHousehold`), both bodies read the
   household role after the lock, and `clearAllData`'s fourteen deletes are copied from
-  `deleteHouseholdData` in `src/lib/household.ts`. That change to the script has not been
-  run against a database. The lock proof was written on 2026-11-11 and has not been run
-  yet at the time of writing; check the H3a runbook, section 8, for its result.
+  `deleteHouseholdData` in `src/lib/household.ts`. **That changed script was run against the
+  test database on 2026-11-20** (the main session, with the owner's consent, H6 plan task
+  J.9 Step 2): the household delete across 17 tables and the household lock tests passed
+  again, every line `ok`. (The lock proof was written on 2026-11-11; see the H3a runbook,
+  section 8, for its first result.)
 - **`RAISE NOTICE` lines do not show in its output.** Measured 2026-11-11: the `RAISE NOTICE`
   counts of `drop_user_scope` step 3 did not appear when the script ran `migrate deploy`. A
   rehearsal must count with plain SQL queries instead. The H3a runbook gives one query per

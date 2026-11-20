@@ -35,6 +35,11 @@ and Cooking (`/cooking`) show `NoLocationsEmptyState`: "You have no locations in
 household yet." / 「你在這個家庭還沒有據點。」 and **Create a location** / 「建立據點」, which
 opens the same Add Location dialog as the settings page.
 
+**Since households H6a, an owner can also get here on purpose**: **Delete all locations**
+in the household danger zone deletes every location and makes no new "Home" (owner
+decision O34-A). The catalog stays, so **Create a location** starts again with it. The
+**Clear household** purge is different: it re-creates "Home" with the owner as organizer.
+
 - **`NoLocationsGate`** (`components/location/NoLocationsGate/`) wraps each of the four
   route components (`PantryRoute`, `ShoppingIndexRoute`, `VendorCartRoute`,
   `CookingRoute`), and since the review of F.7 the item page's Stock tab (`ItemStockTab`)
@@ -504,7 +509,11 @@ screen clears them (see *No household* below). The join page calls `switchToHous
 
 ### No household (cloud, households H5b task G.8)
 
-**A cloud person can be in NO household** after they leave or are removed. A brand-new
+**A cloud person can be in NO household** after they leave or are removed, and since
+households H6a also after the owner deletes the household (owner decision O38-A). The owner's
+own tab moves at once (`useDeleteHousehold`); every other member gets no live event (the
+household has no members left to deliver to) and sees this screen on their next request,
+unless they are in another household. A brand-new
 person never is: their first request makes a household. The server then answers
 `NO_HOUSEHOLD` (a `GraphQLError` code), and every page shows `NoHouseholdScreen`: "You are
 not in any household." and three actions (owner decision O19): **Create a household**
