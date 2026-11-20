@@ -103,8 +103,8 @@ export class SettingsPage {
    *
    * The labels are `settings.import.conflictDialog.{cancel,skip,replace,clear}`
    * in apps/web/src/i18n/locales/en.json. They are typed as a union so a typo
-   * is a compile error in an editor, even though nothing in the verification
-   * gate type-checks this directory (issue #322).
+   * is a compile error. The root `pnpm build` type-checks this directory
+   * (`pnpm typecheck:e2e`, since issue #322).
    */
   async chooseConflictStrategy(
     label: 'Cancel' | 'Skip conflicts' | 'Replace matches' | 'Clear & import',
