@@ -1727,6 +1727,8 @@ and one test-only override in shipped code.
   a location whose only organizer deleted their account gets no "No organizer" warning. It
   may wait for a later phase, but it must be fixed; it is in the H6 section of
   `2026-10-31-households-plan.md`.
+  **Fixed in H6b** (task K.2, `8989cc7f`, on `feature/households-h6b`, not merged): see the
+  [H6 plan](2026-11-20-households-plan-h6.md), task K.2. `countedOrganizerIn` adds `deletedAt: null`.
 - **A viewer is not always told why the "not stocked here" rows have no action.** The rows
   have no button and no row note (follow-up to F.6, below). The pantry list and shelf view
   show `common.locationViewOnly` under the search row only when Create would have been
