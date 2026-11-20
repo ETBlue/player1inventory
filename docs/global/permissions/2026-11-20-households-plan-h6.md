@@ -2031,6 +2031,15 @@ captured); the next 7 runs were green. K.9's gate should watch for it.
 
 ## Task K.8 — E2E: transfer and hand-over on real SQL
 
+**`verify:migration` before K.8, 2026-11-20.** The main session ran it on the TEST database,
+with no subagent working, after the owner's consent given after Prisma's warning
+("yes, reset the test database and run verify:migration"). Result: **"Migration verified."**,
+every line `ok`. That includes the new `assertOwnershipOffers` checks: 7 columns,
+`OfferKind` = `transfer, handover`, the two `CASCADE` foreign keys and none on
+`fromUserId`, the unique pair and the `toUserId` index, `23505`, `22P02`, the two `23503`
+refusals, and the three deletes. The test database now has the `OwnershipOffer` table, so
+cloud E2E can run.
+
 **Files:** `e2e/tests/household-ownership.spec.ts` (new), `e2e/pages/MembersPage.ts`,
 `e2e/playwright.config.ts`, `e2e/CLAUDE.md`.
 
