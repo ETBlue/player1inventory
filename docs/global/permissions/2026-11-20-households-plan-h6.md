@@ -326,6 +326,9 @@ the recommended option everywhere, is the decided plan:
 | O39 | A. The texts as written; the owner may still correct them in the PR |
 | O40 | Asked after J.9, answered 2026-11-20: **"Clear & import" asks for the typed household name too**, the same as every other purge. Built in H6b as task K.0 |
 | O41 | Asked after J.9, answered 2026-11-20: **role names keep their capital inside log sentences** ("the Participant role"). They then match the labels on the people page and in the role pickers, and English needs no second set of texts |
+| O42 | Asked after K.3, answered 2026-11-20: **A.** After a person DECLINES a hand-over offer, the design's table is applied to everyone ELSE. If nobody else is left, the person who declined gets the offer back already dismissed (no banner; the Members page still lets them take the household). This is what K.3 built |
+| O43 | Asked after K.4, answered 2026-11-20: **yes.** When an OWNER's account is deleted, the open invites they made are revoked, the same as for a removed manager (O20) and for a deleted manager or member (K.4). Built as task K.4b |
+| O44 | Asked after K.4, answered 2026-11-20: **yes.** If the O36 count of accounts deleted before H6 is not 0, the one-off script runs the same `handOverDeletedAccount` for each of them. With the K.4 review fix, this also deletes a household where no live person is left (O37-A). Goes into K.9's deploy notes |
 
 ---
 
