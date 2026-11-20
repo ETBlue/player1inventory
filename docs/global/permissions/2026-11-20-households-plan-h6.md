@@ -1336,7 +1336,7 @@ Gaps the review found, for K.4 or the O36 step:
 `resolvers/live-publish.guard.test.ts`, `resolvers/purges.resolver.test.ts` (the race, with
 the real accept).
 
-- [ ] **Step 1: failing tests** (two households; owner, manager, member; a person in both
+- [x] **Step 1: failing tests** (two households; owner, manager, member; a person in both
   households):
   - `household owner can offer the household to a member` → one `transfer` offer, one
     `OWNERSHIP_OFFERED` row, one `LOCATION` event; a second offer to someone else REPLACES
@@ -1370,14 +1370,14 @@ the real accept).
   - `Household.hasOwner` and `.pendingTransfer` (owner only; a manager gets `null`).
   - `myOwnershipOffers`: offers to the caller in every household; another person's offers
     never.
-- [ ] **Step 2:** red.
-- [ ] **Step 3:** schema (T58, T59, T65) with comments; the resolvers; the texts in
+- [x] **Step 2:** red.
+- [x] **Step 3:** schema (T58, T59, T65) with comments; the resolvers; the texts in
   `household.resolver.ts`.
-- [ ] **Step 4:** the five mutations in the live guard: `offerOwnership`,
+- [x] **Step 4:** the five mutations in the live guard: `offerOwnership`,
   `cancelOwnershipOffer`, `acceptOwnershipOffer`, `declineOwnershipOffer` → `publishes`
   `['LOCATION']`; `dismissOwnershipOffer` → `publishesNothing` ("only the caller's own
   banner changes; their other tabs update on the next refetch").
-- [ ] **Step 5:** `pnpm codegen` (check the output), `oldBundleCompat.test.ts`, the full gate.
+- [x] **Step 5:** `pnpm codegen` (check the output), `oldBundleCompat.test.ts`, the full gate.
 
 **Mutation checks:**
 
@@ -1390,6 +1390,63 @@ the real accept).
 | `removeFromHousehold` keeps offers to the person | its test |
 | `startHandover` not called when the last offer goes | the T62 test |
 | the lock after the role read in `offerOwnership` | its order test |
+
+**Done 2026-11-20** (commit `88e86e02`). Server only: no web document, hook or text changed
+(those are K.5 and K.7). What was built:
+
+| Place | What it does now |
+|---|---|
+| `schema/ownership.graphql` (new, the 15th `.graphql` file) | `enum OfferKind`, `type OwnershipOffer` (`id`, `householdId`, `householdName`, `kind`, `toUserId`, `toName`, `fromName`, `createdAt`, `dismissedAt`; names only, no e-mail), `extend type Household { hasOwner, pendingTransfer }`, `myOwnershipOffers`, and the five mutations. Only additions: `oldBundleCompat.test.ts` stays green |
+| `resolvers/ownership.resolver.ts` (new) | the five mutations, `myOwnershipOffers`, and the two `Household` field resolvers. Every write: `lockHouseholdOrForbid` first, then the role and the offer read through `tx`, then the writes, then `recordActivity`. Accept, decline and dismiss read the offer once with the global client, ONLY to learn which household to lock, and again through `tx` after the lock; that second read is the one that counts |
+| `lib/handover.ts` (new) | `removeFromHousehold` (moved from `household.resolver.ts`, now also deletes the offers TO the person, and calls `restartHandoverIfNeeded` when it deleted one), `restartHandoverIfNeeded` (T62), `startHandover` (the design's table, live accounts only; K.4 will call it) |
+| `lib/authz.ts` | `countedOrganizerIds(householdId, tx)`: the people who organize a location, through `countedOrganizerIn` (H18, T61). The hand-over table reads it |
+| `household.resolver.ts` | the texts "Transfer ownership first." (owner leaves) and "Use Transfer ownership." (`setHouseholdRole(role: owner)`); the last live person's leave deletes the household (O37-A, see *What this plan got wrong*). `household`, `renameHousehold` and `createHousehold` return through `householdAnswer` |
+| `invite.resolver.ts` | `joinHousehold` returns through `householdAnswer` (a cast; the two new fields come from field resolvers) |
+| `live-publish.guard.test.ts` | `offerOwnership`, `cancelOwnershipOffer`, `acceptOwnershipOffer`, `declineOwnershipOffer` in `publishes` (`LOCATION`), `dismissOwnershipOffer` in `publishesNothing`. **81** fields: 78 and 3 (it was 76: 74 and 2) |
+
+Rules the code follows that the plan did not spell out:
+
+| Case | Answer |
+|---|---|
+| `offerOwnership` to the person who already has the open transfer offer | that offer back; no row, no event (like H5c T38) |
+| `offerOwnership` to a member whose account is deleted | `FORBIDDEN`, the same as a non-member (T61) |
+| accept, decline or dismiss of an offer deleted BEFORE the request | `FORBIDDEN`, the same as an unknown id. Only an offer that is there before the lock and gone after it gives `OFFER_GONE` (accept) or `false` (decline, dismiss) |
+| `OWNERSHIP_ACCEPTED` | `targetUserId` = the old owner (null for a hand-over), `details: { kind }` |
+| `OWNERSHIP_OFFERED`, `OWNERSHIP_OFFER_CANCELLED` | `targetUserId` = the person offered, `details: { kind: 'transfer' }` |
+| `OWNERSHIP_DECLINED` | `targetUserId` = the owner who offered (null for a hand-over), `details: { kind }` |
+| a second dismiss | `true`, keeps the first `dismissedAt` |
+| `myOwnershipOffers` order | oldest first by `createdAt`, then `id`, sorted in the resolver (the fake has no `orderBy`) |
+| `Household.pendingTransfer` | reads the `role` the parent resolver already read for this caller; `null` unless it is `owner` |
+
+Tests: `ownership.resolver.test.ts` (new, **63**) and 3 in `purges.resolver.test.ts` (the race
+with the REAL accept, both orders). Fixture: three households; OWEN owns hh_1, MIA manager,
+BOB member, BEA member of hh_1 and manager of hh_2 (acts in hh_1), DEX a member with a deleted
+account who organizes a location, YUKI owns hh_2 with an open transfer offer to BEA, hh_3 has
+no owner and one live person (PAT). Server **2600 / 83 → 2666 / 84**. Web unchanged at
+**3615 / 360**, `scripts/spec` **70**.
+
+| # | Mutation (file) | Red |
+|---|---|---|
+| M1 | promote before demote in accept (`ownership.resolver.ts`) | 9 (6 in the new file, 3 race tests): the order test fails with `Unique constraint failed: HouseholdMember_one_owner_key — HouseholdMember (hh_1)` |
+| M2 | accept skips the "offer still exists" read after the lock | 1: "the first accept wins; the second gets OFFER_GONE", `expected undefined to be 'BAD_USER_INPUT'` (BEA became the owner) |
+| M3 | accept leaves the other offers | 4, among them "user can accept the household" and the `OFFER_GONE` race |
+| M4 | any member may accept (`toUserId` dropped from both offer reads) | 3: "… cannot accept, decline or dismiss it: the same FORBIDDEN as an unknown id" (owner, manager, stranger) |
+| M5 | `removeFromHousehold` keeps the offers to the person (`lib/handover.ts`) | 5: the leave and removal tests, and the three T62 tests |
+| M6 | `removeFromHousehold` does not call `restartHandoverIfNeeded` | 2: T62 after a leave and after a removal, `expected [] to deeply equal [ 'hh_1:user_bea:handover:-' ]` |
+| M7 | `declineOwnershipOffer` does not call `restartHandoverIfNeeded` | 2: T62 after a decline, and the "nobody else is left" case |
+| M8 | the lock after the role read in `offerOwnership` | 1: its order test, `Expected: "lock:hh_1" / Received: "role"` |
+| M9 | `startHandover` counts deleted accounts (`deletedAt: null` dropped) | 1: "when nobody else is left …" (DEX got the offer) |
+| M10 | the last person's leave never deletes (O37-A) | 1: "household manager who is the last live person deletes it by leaving" |
+| M11 | the replace in `offerOwnership` not scoped to the household | 6: hh_2's offer to BEA is deleted |
+| M12 | `pendingTransfer` for every role | 2: the manager and member cases |
+| M13 | a decline restarts the hand-over WITHOUT skipping the decliner | 2: MIA got her own offer back |
+| M14 | accept leaves `ownerGoneAt` set | 3, among them "user can accept a hand-over: ownerGoneAt goes back to null" |
+
+Each mutation was applied by a script to the file, run against `ownership.resolver.test.ts`,
+`purges.resolver.test.ts` and `household-members.resolver.test.ts`, and undone from a saved
+copy; `diff -q` gave 0 every time. The race tests rest on `serialTransactions(true)`: the fake
+has no row lock, so they show that each order ends right, not that Postgres waits (K.8 proves
+that on real SQL).
 
 ---
 
@@ -1723,6 +1780,12 @@ Filled in from the task reports and reviews.
 | K.2 | T61: "the Add person list" gets the same filter | There is no server read for it. The web builds it from `householdMembers` (decision T43), so the `householdMembers` filter covers it. No web file changed, so no story, smoke test or i18n text changed. The activity log already shows "(deleted account)" (J.3, J.6) |
 | K.2 | (not in the plan) the order of the two `user` filters in the fake | The fake first read `deletedAt`, then the membership. The H18 test "does not count an organizer who left the household" then threw: that person was removed from every household before any read, so `userFake` had no implied `User` row for them. In Postgres the row exists. The fake now reads the membership first. Both must pass, so the answer is the same. A fake test pins it |
 | K.2 | (not in the plan) a deleted OWNER | `householdMembers` hides a deleted owner too. Until K.4's hand-over runs for an account deleted before H6, the Members page of that household shows no owner row. K.4 or K.5 should check that the web copes with a list that has no owner |
+| K.3 | Files: `removeFromHousehold` and `startHandover` in `lib/household.ts` | They are in a new file, `lib/handover.ts`. `startHandover` must read organizers through `lib/authz.ts` (H18), and `lib/authz.ts` imports `lib/household.ts`; importing it back would make the import cycle that file already avoids. K.4 imports both from `lib/handover.ts` |
+| K.3 | Step 1: "the second accept gets `OFFER_GONE`" | True only for two accepts at the same moment. Accept first reads the offer outside the transaction to know which household to lock. An accept sent AFTER the first one committed finds no offer there and gets `FORBIDDEN`, the same as an unknown id (the plan's own rule for a stranger). Tested both ways |
+| K.3 | T62: "the remaining members get new `handover` offers by the same table" after a DECLINE | Applied as written, the table gives the offer straight back to the person who declined (for example the only manager). The code applies the table to everyone ELSE. When nobody else is left, the person gets it back already dismissed, so the banner stays hidden and the Members page still lets them take the household. Not in the plan; the owner may want another rule |
+| K.3 | O37-A is "needed before K.3 and K.7", but no K.3 step names it | Built in K.3, in `leaveHousehold`: when no OTHER member with a live account is left, the household is deleted with `deleteHouseholdData`. The rule is "no other live person", not "no owner": a household whose owner's account was deleted before H6 keeps `ownerId` set, and its last live person is also last. The delete writes `User` rows after the household lock, so the leave now retries once on `P2034` and has the 15 s timeout. No activity row and no event when it deletes. The web warning is K.7 |
+| K.3 | `Household.hasOwner: Boolean!` added "with the resolvers" | The generated `Household` type now requires `hasOwner`, so the four resolvers that return a `Household` (`household`, `renameHousehold`, `createHousehold`, `joinHousehold`) no longer type-check. They return through `householdAnswer`, one cast in `ownership.resolver.ts`; the field resolvers fill the two new fields |
+| K.3 | (not in the plan) the web's own leave text | `apps/web/src/i18n/locales/en.json` (`ownerCannotLeave`) and `members.cloud.test.tsx:429` still say "Handing over the household comes in a later version." The server text changed; the web's is K.7's |
 | K.0 | Mutation check: "the confirm always enabled" | That mutation lives in the shared `DeleteButton`, so it also proves nothing K.0-specific is wired. Two more were needed to pin the wiring: `ConflictDialog` ignoring the name, and the migration dialog never taking its `clear` branch. Under the first one the first web test failed only on a missing label, so the tests now also check that the first press started nothing (`importCloudData` not called), and fail on that value |
 
 ## Status
