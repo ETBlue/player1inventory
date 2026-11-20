@@ -42,7 +42,11 @@ describe('ShoppingIndex page stories smoke tests', () => {
       render(<Offline />)
       const banner = await screen.findByRole('status')
       expect(banner).toHaveTextContent(/offline/i)
-      expect(banner).toHaveTextContent(/hours ago/i)
+      // `waitFor`, not a bare `expect`: the banner exists before its sync
+      // time is read (`getLastSyncedAt` in a `useEffect`), so a synchronous
+      // check races that read and loses under load. Same fix and reason as
+      // routes/index.stories.test.tsx (63f3b919).
+      await waitFor(() => expect(banner).toHaveTextContent(/hours ago/i))
     })
 
     it('does not open PostLoginMigrationDialog on top of the page', async () => {
