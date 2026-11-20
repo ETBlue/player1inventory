@@ -318,6 +318,36 @@ describe('OwnershipOfferBanner', () => {
     expect(banner()).not.toHaveTextContent('Old flat')
   })
 
+  it('user of a screen reader hears which household each answer is for', async () => {
+    // Given two open offers, so there are two "Accept" buttons
+    offers = [TRANSFER, HANDOVER]
+
+    // When the banner renders
+    renderBanner()
+    await screen.findByText('Lin wants to make you the owner of the Lin home.')
+
+    // Then each button keeps its short name and is described by its offer
+    const [first, second] = within(banner()).getAllByRole('button', {
+      name: 'Accept',
+    })
+    expect(first).toHaveAccessibleDescription(
+      'Lin wants to make you the owner of the Lin home.',
+    )
+    expect(second).toHaveAccessibleDescription(
+      'The owner of Beach house is gone. Do you want to become the owner?',
+    )
+    expect(
+      within(banner()).getByRole('button', { name: 'Decline' }),
+    ).toHaveAccessibleDescription(
+      'Lin wants to make you the owner of the Lin home.',
+    )
+    expect(
+      within(banner()).getByRole('button', { name: 'Not now' }),
+    ).toHaveAccessibleDescription(
+      'The owner of Beach house is gone. Do you want to become the owner?',
+    )
+  })
+
   it('user who only has a dismissed offer sees no banner', async () => {
     // Given the only offer was put off with "Not now"
     offers = [DISMISSED]

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { OfflineWriteError } from '@/apollo/offlineWriteLink'
 import { Button } from '@/components/ui/button'
@@ -114,6 +114,7 @@ function OfferRow({
   const { decline, isPending: declining } = useDeclineOwnershipOffer()
   const { dismiss, isPending: dismissing } = useDismissOwnershipOffer()
   const [failed, setFailed] = useState(false)
+  const textId = useId()
   const busy = accepting || declining || dismissing
 
   // `send` resolves to the notice to show, or `null` for none.
@@ -150,9 +151,21 @@ function OfferRow({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <p className="text-foreground min-w-0 flex-1">{text}</p>
+      {/*
+        Each button is described by the offer text. With two offers there are
+        two "Accept" buttons, and the description tells a screen reader user
+        which household each one is for. The visible text stays the name.
+      */}
+      <p id={textId} className="text-foreground min-w-0 flex-1">
+        {text}
+      </p>
       <div className="flex gap-2">
-        <Button size="sm" disabled={busy} onClick={onAccept}>
+        <Button
+          size="sm"
+          disabled={busy}
+          aria-describedby={textId}
+          onClick={onAccept}
+        >
           {t('ownership.accept')}
         </Button>
         {offer.kind === 'handover' ? (
@@ -160,6 +173,7 @@ function OfferRow({
             size="sm"
             variant="neutral-outline"
             disabled={busy}
+            aria-describedby={textId}
             onClick={onDismiss}
           >
             {t('ownership.notNow')}
@@ -169,6 +183,7 @@ function OfferRow({
             size="sm"
             variant="neutral-outline"
             disabled={busy}
+            aria-describedby={textId}
             onClick={onDecline}
           >
             {t('ownership.decline')}
