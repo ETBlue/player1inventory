@@ -1125,15 +1125,47 @@ one click. Owner decision **O40** makes the two the same.
 **Files:** `apps/web/src/components/settings/ImportCard/` (and its tests and stories), the
 locale files if a new text is needed, the E2E spec that presses "Clear & import" in cloud.
 
-- [ ] **Step 1: failing tests.** In cloud, the "Clear & import" confirm is disabled until the
+- [x] **Step 1: failing tests.** In cloud, the "Clear & import" confirm is disabled until the
   household name is typed exactly; it is enabled after; the import is not started before.
   Local mode has no household: decide and record what it asks for there (keep today's
   confirm, or the same `DeleteButton` typed mode with no name). Say which in the report.
-- [ ] **Step 2:** red.
-- [ ] **Step 3:** reuse `DeleteButton`'s typed-name mode (`confirmName`), as `HouseholdDangerZone` does.
-- [ ] **Step 4:** green; update every E2E spec that clicks "Clear & import" (grep `e2e/` for it).
+- [x] **Step 2:** red.
+- [x] **Step 3:** reuse `DeleteButton`'s typed-name mode (`confirmName`), as `HouseholdDangerZone` does.
+- [x] **Step 4:** green; update every E2E spec that clicks "Clear & import" (grep `e2e/` for it).
 
 **Mutation checks:** the confirm always enabled → the "disabled before typing" test.
+
+**Done 2026-11-20** (commit `d71b15c3`). What was built:
+
+| Place | What it does now |
+|---|---|
+| `ConflictDialog` | new prop `clearConfirmName`. When set, Clear & import is a `DeleteButton` in typed-name mode: a second confirm opens on top, and its own Clear & import works only when the name is typed exactly. `ImportCard` passes the household name in cloud mode only |
+| local mode | **keeps the one-press button.** Local mode has no household, so there is no name to type, and none of the H6a purges exists there either. The rule O40 makes the same is the cloud rule. The local `clear` empties this device only |
+| `PostLoginMigrationDialog` | **also changed.** `DataModeCard`'s switch to cloud can store `clear`; after sign-in, Copy here runs `clearAllData` on the household. That is the same purge, so for the owner Copy here now opens the same typed-name confirm (`settings.postLoginMigration.clearConfirmTitle` / `clearConfirmDescription`). `skip` and `replace` copies are unchanged. `DataModeCard`'s own "Clear & import" button stays one press: it runs in LOCAL mode, before sign-in, when no household is known, and it only stores the strategy |
+| texts | `settings.import.conflictDialog.clearConfirmDescription`, `settings.postLoginMigration.clearConfirmTitle`, `…clearConfirmDescription`, in `en` and `tw`. The field label reuses `settings.household.danger.typeName` |
+| E2E | `SettingsPage.chooseClearAndImport(name | null)`; `import-strategies.spec.ts` (local and cloud; in cloud it also reads back that the seed is still there while the confirm waits), `import-households.spec.ts`, `data-mode-migration.spec.ts` |
+
+Each mutation was made in the source, the named tests went red, the file was restored from a
+copy in the scratchpad (`k0-green/`), and `diff -q` was clean:
+
+| # | Mutation (file) | Red |
+|---|---|---|
+| 1 | `clearConfirmName` ignored, the old one-press button always (`ConflictDialog.tsx`) | 4 web tests: "cannot clear and import until the name is typed exactly" (`expected "vi.fn()" to not be called at all, but actually been called 1 times`), the Enter and Cancel tests and `ClearAsksHouseholdName` (no `Type The Lins to confirm` label). E2E, `cloud`, `import-strategies.spec.ts:280`: red, `getByRole('alertdialog').getByLabel('Type e2e-test-user\'s Household to confirm')`, element(s) not found |
+| 2 | the `clear` branch never taken (`PostLoginMigrationDialog.tsx`) | 6: "cannot clear and copy until the name is typed exactly" (`importCloudData` called 1 time), "pressing Copy here has the stored copy run", the two refusal tests, `AskBeforeClear`, the E2E-mode test (no label) |
+| 3 | the plan's mutation: the confirm always enabled, `const nameMatches = true` (`DeleteButton.tsx`) | 5: four with `expect(element).toBeDisabled()` / `Received element is not disabled` (both "until the name is typed exactly" tests and both new smoke tests), and the Enter test (`importCloudData` called) |
+| 4 | the name passed in local mode too (`clearConfirmName={household?.name ?? 'My data'}`, `ImportCard.tsx`) | 1: "user in local mode clears and imports with one press" (`expected "vi.fn()" to be called 1 times, but got 0 times`) |
+
+Two tests are negative controls and stay green under every mutation above: "user copying with
+a stored skip is not asked for the name" and the manager "is not offered Clear & import".
+
+**The gate, 2026-11-20, Node 22.17.1, each command alone:** `pnpm lint` exit 0; `pnpm build`
+exit 0, no `TS6385`; `(cd apps/web && pnpm build-storybook)` exit 0, with the story ids
+`components-settings-conflictdialog--clear-asks-household-name` and
+`components-global-postloginmigrationdialog--ask-before-clear`; `pnpm check` exit 0;
+`pnpm test` exit 0: web **3615 / 360** (baseline at `292bcea7`: 3607 / 360), server
+**2563 / 83**, `scripts/spec` **70**. E2E: `local` `import-strategies.spec.ts` 2 passed
+(4.2s); `cloud` `import-strategies.spec.ts`, `import-households.spec.ts` and
+`data-mode-migration.spec.ts` 11 passed (4.4m). The whole `pnpm test:e2e:all` waits for K.9.
 
 ---
 
@@ -1569,6 +1601,8 @@ Filled in from the task reports and reviews.
 | J.9 (brief) | "the `requireCatalogRole` call count (believed 23)" | 23 is not the call count. It is `grep -c "await requireCatalogRole(ctx, 'manager')" apps/server/src/resolvers/import.resolver.ts`: the 22 bulk import mutations plus `recordImport`. Root `CLAUDE.md` said 22 there. Lines that contain `requireCatalogRole(` outside `lib/authz.ts` and test files, comments included: **63** in 8 resolver files (`import.resolver.ts` 25, 2 of them comments; `tag` 10, `item` 8, `shelf` 8, `recipe` 6, `vendor` 4, `importCheck` 1, `itemStock` 1). Root `CLAUDE.md` now gives the 23 with its command |
 | J.6, J.8 | J.6 adds the Activity item to the sidebar; J.8 runs "only these three spec files in `cloud`" | `settings-global-pages.spec.ts` lists every household sidebar link, and nobody ran it in `cloud` after J.6. The first J.9 gate failed there: `cloud` 1 failed / 7 skipped / 187 passed, with `Received + "Activity"` (a value difference, not a timeout). The spec now expects Activity last in cloud. Mutation check: hiding Activity in `HouseholdSidebar.tsx` turns it red with `Expected - "Activity"`. A task that adds a sidebar link must grep `e2e/` for the link list |
 | J.9 | Files: the listed docs | Four more stale lines were found by re-measuring: the server build copies **14** `.graphql` files, not 12; the bundle is **236.0 KiB**, not about 129; the `cloud` project covers **37 of 41** spec files, not 36 of 40; and section 10 of the H4 runbook still said H5c was "not merged". All updated |
+| K.0 | Files: `ImportCard/`, its tests and stories, "the E2E spec that presses Clear & import in cloud" | The button lives in `ConflictDialog`, not `ImportCard`; `ImportCard` only passes the name. Three E2E specs press it, not one (`import-strategies.spec.ts`, which runs in `local` too, `import-households.spec.ts`, `data-mode-migration.spec.ts`). The plan missed a second path with the same purge: a stored `clear` copy after the switch to cloud (`PostLoginMigrationDialog`), which now asks for the name too. That needed `__root.e2eMigration.test.tsx`, `index.e2eMode.test.tsx` and the migration dialog's stories to change as well |
+| K.0 | Mutation check: "the confirm always enabled" | That mutation lives in the shared `DeleteButton`, so it also proves nothing K.0-specific is wired. Two more were needed to pin the wiring: `ConflictDialog` ignoring the name, and the migration dialog never taking its `clear` branch. Under the first one the first web test failed only on a missing label, so the tests now also check that the first press started nothing (`importCloudData` not called), and fail on that value |
 
 ## Status
 
