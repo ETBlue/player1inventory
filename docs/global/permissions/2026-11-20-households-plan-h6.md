@@ -1258,18 +1258,45 @@ with a mutation check); this is one more reason it must not be dropped.
 (`householdMembers`, `peopleWithLocationRole`), their tests, the fakes if `deletedAt` on the
 `user` relation filter is not modelled.
 
-- [ ] **Step 1: failing tests** (T61). A household with an organizer whose `User.deletedAt` is
+- [x] **Step 1: failing tests** (T61). A household with an organizer whose `User.deletedAt` is
   set and whose member rows still exist (the pre-H6 shape, Y8):
   - `Location.hasOrganizer` is `false` for that location (`locationIdsWithOrganizer`); a
     second location with a live organizer stays `true`;
   - `locationPeople` and `householdMembers` do not list the deleted person;
   - a live organizer next to the deleted one keeps `hasOrganizer: true`.
-- [ ] **Step 2:** red. **Step 3:** add `deletedAt: null` to the `user` filter in
-  `countedOrganizerIn`, and the same filter to the two lists. **Step 4:** the full gate.
+- [x] **Step 2:** red. **Step 3:** ✅ add `deletedAt: null` to the `user` filter in
+  `countedOrganizerIn`, and the same filter to the two lists. **Step 4:** ✅ the full gate.
 
 **Mutation checks:** remove `deletedAt: null` from `countedOrganizerIn` → the `hasOrganizer`
 test; from `peopleOfLocation` → its list test. (The owner's 2026-11-17 decision names the
 first one; both must go red.)
+
+**Done 2026-11-20** (commit `8989cc7f`). What was built:
+
+| Place | What it does now |
+|---|---|
+| `countedOrganizerIn` (`lib/authz.ts`) | `user: { deletedAt: null, householdMemberships: { some: { householdId } } }`. `Location.hasOrganizer` is `false` for a location whose only organizer deleted their account |
+| `peopleOfLocation` (`location.resolver.ts`) | the same `deletedAt: null` filter. `locationPeople` leaves out a deleted account |
+| `householdMembers` (`household.resolver.ts`) | `where: { householdId, user: { deletedAt: null } }`. The Add person list on the location page is built on the web from this list (`AddPersonSection` in `routes/settings/household/locations/$id.tsx`), so it needs no change of its own |
+| `roleOfPerson` (`location.resolver.ts`) | NOT changed, on purpose: a role write must see the role row that is really there, so a deleted person's leftover role can still be removed. Its comment says so |
+| `householdFake` | models `user: { deletedAt: null }` on `LocationMember` (beside `householdMemberships`) and on `HouseholdMember` (a new key). Only `null` is accepted. The `User` rows come from a new `users` option; `householdWorld` passes `userFake`'s new `readableRows()`. It throws, once per call, when built without `users`, and for a row whose person has no `User` row |
+| root `CLAUDE.md` | the `locationIdsWithOrganizer`, `householdMembers` and `locationPeople` rows name the filter |
+
+Tests: 1 in `lib/authz.test.ts` (two locations in one household: one whose only organizer is
+deleted, one with a live organizer beside the deleted one; plus a check before the delete), 3
+in `location-people.resolver.test.ts` (each deletes ONE person and keeps a live person with
+the same role: BOB beside AAA, also "Bob"; VIC on the members list; BEA, the only organizer
+of LOC_K, beside NOA on LOC_G), 7 in `householdFake.test.ts`. Server **2589 → 2600** tests,
+83 files. Web unchanged at **3615 / 360**.
+
+| # | Mutation (file) | Red |
+|---|---|---|
+| M1 | `deletedAt: null` removed from `countedOrganizerIn` (`lib/authz.ts`) | 2: the authz test, `expected [ 'loc-a', 'loc-a-view' ] to deeply equal [ 'loc-a' ]`, and "a location whose only organizer deleted their account shows No organizer" (`hasOrganizer` of `loc_kitchen` stays `true`) |
+| M2 | `deletedAt: null` removed from `peopleOfLocation` (`location.resolver.ts`) | 1: "user does not see a deleted account among the people of a location", `expected [ 'user_bea:organizer', …(4) ] to deeply equal [ 'user_bea:organizer', …(3) ]` |
+| M3 | `user: { deletedAt: null }` removed from `householdMembers` (`household.resolver.ts`) | 1: "user does not see a deleted account on the members list", `expected [ 'user_owen', 'user_aaa', …(6) ] to not include 'user_vic'` |
+| M4 | the fake's `accountLive` always returns `true` (`householdFake.ts`) | 7: the 4 tests above and 3 fake tests. A fake that ignores the key lets the resolver tests pass against wrong code |
+
+Each mutation was undone from a saved copy and checked with `diff -q`.
 
 ---
 
@@ -1664,6 +1691,11 @@ Filled in from the task reports and reviews.
 | K.1 | Cleanup: "offers TO the user and offers of owned households are deleted before `householdMember`" | Placed right after `householdActivity`. Both foreign keys cascade, so the delete is there for the COUNT, not to unblock anything. An offer the user MADE in another household stays (`fromUserId` has no foreign key) |
 | K.1 | `cleanup-endpoint.spec.ts`: "one row seeded, count at least 1" (Global Constraints) | No mutation can make an offer before K.3, and `offerOwnership` needs a second member. The spec's loop over `CLEANUP_MODEL_KEYS` now fails on `"ownershipOffers":0` until **K.8** seeds an offer through the real mutation. Only comments changed; the spec is unrun (no E2E in K.1). The same happened to `householdActivities` between J.1 and J.2 |
 | K.1 | Files: no doc | Root `CLAUDE.md` and `e2e/CLAUDE.md` still say `/e2e/cleanup` deletes **20** models (dated, measured after J.1). K.9 must update them to 21, with the count command |
+| K.2 | Files: `household.resolver.ts` (`householdMembers`, `peopleWithLocationRole`) | `peopleWithLocationRole` (`hasLocationRole`) was NOT changed. It marks a person who is already on the list; it counts nobody. With `householdMembers` filtered, a deleted person never reaches it, so a filter there could not be proved by a mutation. `roleOfPerson` was left alone too (see the K.2 table) |
+| K.2 | "the fakes if `deletedAt` on the `user` relation filter is not modelled" | It was not, and more was missing than the key. `HouseholdMember` had no `user` key at all, and the household fake could not see `User` rows (they live in `userFake`). It got a `users` option, and `userFake` exposes `readableRows()`, which includes the rows `rowForEveryMember` implies |
+| K.2 | T61: "the Add person list" gets the same filter | There is no server read for it. The web builds it from `householdMembers` (decision T43), so the `householdMembers` filter covers it. No web file changed, so no story, smoke test or i18n text changed. The activity log already shows "(deleted account)" (J.3, J.6) |
+| K.2 | (not in the plan) the order of the two `user` filters in the fake | The fake first read `deletedAt`, then the membership. The H18 test "does not count an organizer who left the household" then threw: that person was removed from every household before any read, so `userFake` had no implied `User` row for them. In Postgres the row exists. The fake now reads the membership first. Both must pass, so the answer is the same. A fake test pins it |
+| K.2 | (not in the plan) a deleted OWNER | `householdMembers` hides a deleted owner too. Until K.4's hand-over runs for an account deleted before H6, the Members page of that household shows no owner row. K.4 or K.5 should check that the web copes with a list that has no owner |
 | K.0 | Mutation check: "the confirm always enabled" | That mutation lives in the shared `DeleteButton`, so it also proves nothing K.0-specific is wired. Two more were needed to pin the wiring: `ConflictDialog` ignoring the name, and the migration dialog never taking its `clear` branch. Under the first one the first web test failed only on a missing label, so the tests now also check that the first press started nothing (`importCloudData` not called), and fail on that value |
 
 ## Status
