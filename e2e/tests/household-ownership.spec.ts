@@ -52,7 +52,7 @@ import { makeGql } from '../utils/cloud'
 // |      | item, stock, a cart row, a log). A member whose account was       |
 // |      | deleted BEFORE does not count as a person                         |
 // | 6    | two managers accept the hand-over at the same moment: exactly one |
-// |      | wins, the other gets BAD_USER_INPUT, reason OFFER_GONE            |
+// |      | wins, the other gets OFFER_GONE (or FORBIDDEN, by timing)         |
 // | 7    | owner decision O37-A: the last live person LEAVES a household     |
 // |      | with no owner, and the household is deleted                       |
 // | 8, 9 | axe (WCAG AA), light and dark: both banner kinds, the Members     |
@@ -102,7 +102,8 @@ import { makeGql } from '../utils/cloud'
 //
 // A test that FAILS before its last step can leave a household with no
 // owner. `rescueOrphans` runs before every cleanup, in both hooks: each
-// spec user accepts any open offer they have (so they own the household
+// spec user who can hold an offer (MIA, BEN, MAX) accepts any open offer
+// they have (so they own the household
 // and their cleanup deletes it), and GHOST's deletion is sent again (a
 // household where GHOST is the only member left is deleted by it, the
 // same as test 5). Both are no-ops when there is nothing to rescue.
@@ -111,9 +112,15 @@ import { makeGql } from '../utils/cloud'
 //
 // - A change made through `makeGql` or the E2E `user.deleted` route sends no
 //   `x-client-id`, so the server sends its event to EVERY open tab.
-// - The warm-up's own event (`CATALOG`) refetches `MyOwnershipOffers`
-//   (households H6b task K.5). Tests 1 and 3 wait for that refetch BEFORE
-//   the change under test, so it cannot show the banner by accident.
+// - A tab's FIRST socket connect refetches nothing, so a tab that only
+//   loaded the page can miss an event sent before its subscription is
+//   registered. Every tab whose live update a test checks (tests 1, 2 and
+//   3) is opened with `openLive`, and that tab is checked with
+//   `stillSameDocument` after the update shows.
+// - The warm-up's own event (`CATALOG`) refetches `MyOwnershipOffers` and
+//   `GetHousehold` (households H6b task K.5) in EVERY open tab. `openLive`
+//   waits for those refetches in this tab and in the tabs already open, so
+//   none is in flight when the change under test commits.
 // - An absence can be satisfied by the loading state. Every "not there"
 //   check below comes after a check that the page or the server answered.
 //
@@ -121,10 +128,14 @@ import { makeGql } from '../utils/cloud'
 //
 // - `Household.ownerGoneAt`. No GraphQL field and no E2E route reads it.
 //   Test 3 checks `hasOwner`, which reads `ownerId` only.
-// - That the two accepts of test 6 overlapped inside Postgres. They are sent
-//   together; if the second one's first read came AFTER the first commit,
-//   it would get FORBIDDEN, not OFFER_GONE, and the test would fail (it
-//   asserts OFFER_GONE on purpose). It records the winner as an annotation.
+// - That the two accepts of test 6 overlapped inside Postgres, on every
+//   run. They are sent together. When the loser's first read comes BEFORE
+//   the winner's commit, it waits at the lock and gets OFFER_GONE; when it
+//   comes AFTER, it gets FORBIDDEN. Both are correct, so the test accepts
+//   both and records which one ran (annotation `loser answer`). Only an
+//   OFFER_GONE run exercises the lock, so mutation M2 can go red only on
+//   such a run. Until the K.8 review it asserted OFFER_GONE alone, which
+//   would fail correct code on a FORBIDDEN run.
 // - That `countedOrganizerIn`'s `deletedAt` filter matters on real SQL.
 //   Test 4 stays green without it, because the hand-over already removed
 //   BEN's role rows (a negative control, plan K.8). K.2's unit test is the
@@ -356,27 +367,67 @@ async function openAs(
   return context.newPage()
 }
 
+/** A tab and the `CATALOG` queries it has mounted (`liveUpdates.ts`). */
+type LiveTab = { page: Page; operations: string[] }
+
+/** The `CATALOG` queries the banner reads. It is mounted on every page. */
+const BANNER_QUERIES = ['MyOwnershipOffers']
+/** The `CATALOG` queries of the Members page: the banner, and the
+ * household's `hasOwner` and `pendingTransfer` (`useHousehold`). */
+const MEMBERS_QUERIES = ['MyOwnershipOffers', 'GetHousehold']
+const MEMBERS_PATH = '/settings/household/members'
+
 /**
- * Open `/` as `userId` with the live socket warmed up, so the next event
- * is heard. The warm-up's own `CATALOG` event refetches `MyOwnershipOffers`,
- * and the warm-up waits for that refetch, so it cannot show a later step.
+ * Open `path` as `userId` with the live socket warmed up, so the next event
+ * is heard. The FIRST connect of a tab refetches nothing
+ * (`apps/web/src/apollo/liveUpdates.ts`), so an event sent before the
+ * subscription is registered is lost for good, and a tab that only loaded
+ * the page could miss the change under test.
+ *
+ * The warm-up's own `CATALOG` event refetches this tab's `operations`, and
+ * the event reaches every tab already open too. The warm-up waits for ALL
+ * of those refetches (this tab's, and each `others` tab's), so none of them
+ * can still be in flight when the change under test commits and show it
+ * without a live event.
  */
-async function openLive(browser: Browser, userId: string, owner: Gql) {
+async function openLive(
+  browser: Browser,
+  userId: string,
+  owner: Gql,
+  options: { path?: string; operations?: string[]; others?: LiveTab[] } = {},
+): Promise<Page> {
+  const { path = '/', operations = BANNER_QUERIES, others = [] } = options
   const page = await openAs(browser, userId)
   const socket = await routeLiveSocket(page)
-  await page.goto('/')
+  await page.goto(path)
   await expect.poll(() => connects(page), { timeout: 15_000 }).toBe(1)
+  const tabs: LiveTab[] = [{ page, operations }, ...others]
   await warmUpLiveSocket(socket, {
     key: HOUSEHOLD_EVENT_KEY,
     change: (attempt) =>
       owner(CREATE_TAG_TYPE, {
-        name: `Ownership Warm-up ${attempt}`,
+        name: `Ownership Warm-up ${userId} ${attempt}`,
         color: 'blue',
       }),
-    refetch: () => operationResponse(page, 'MyOwnershipOffers', 10_000),
+    refetch: () =>
+      Promise.all(
+        tabs.flatMap((tab) =>
+          tab.operations.map((name) =>
+            operationResponse(tab.page, name, 10_000),
+          ),
+        ),
+      ),
   })
   await markDocument(page)
   return page
+}
+
+/** The page shows dark mode, or light mode. A scan of the wrong one
+ * would prove nothing about the other. */
+async function expectTheme(page: Page, dark: boolean) {
+  const html = page.locator('html')
+  if (dark) await expect(html).toHaveClass(/(^|\s)dark(\s|$)/)
+  else await expect(html).not.toHaveClass(/(^|\s)dark(\s|$)/)
 }
 
 /** A row of Settings › Locations, found by the location's name. */
@@ -406,17 +457,22 @@ test.describe('household ownership', () => {
     request,
   }) => {
     test.setTimeout(90_000)
-    // Given MIA, a manager, has the app open, and the tab's socket works
+    // Given the owner has the Members page open, and MIA, a manager, has
+    // the app open; both tabs' sockets work
     const seed = await seedHousehold(request, { ben: false })
     const otto = await seedOtherHousehold(request)
-    const miaPage = await openLive(browser, MIA, seed.owner)
+    const ownerPage = await openLive(browser, OWNER, seed.owner, {
+      path: MEMBERS_PATH,
+      operations: MEMBERS_QUERIES,
+    })
+    const miaPage = await openLive(browser, MIA, seed.owner, {
+      others: [{ page: ownerPage, operations: MEMBERS_QUERIES }],
+    })
     const banner = new OwnershipBanner(miaPage)
     await expect(banner.region()).toHaveCount(0)
 
     // When the owner transfers the household to MIA on the Members page
-    const ownerPage = await openAs(browser, OWNER)
     const members = new MembersPage(ownerPage)
-    await members.navigateTo()
     await members.transferTo(MIA_NAME)
     await expect(members.waitingNote(MIA_NAME)).toBeVisible()
 
@@ -440,6 +496,7 @@ test.describe('household ownership', () => {
     })
     await expect(members.memberRow(OWNER_NAME)).toContainText('Manager')
     await expect(members.waitingNote(MIA_NAME)).toHaveCount(0)
+    await stillSameDocument(ownerPage)
     await expectOtherHouseholdUntouched(otto)
   })
 
@@ -450,9 +507,11 @@ test.describe('household ownership', () => {
     const seed = await seedHousehold(request, { ben: false })
     const otto = await seedOtherHousehold(request)
     await seed.owner(OFFER, { userId: MIA })
-    const ownerPage = await openAs(browser, OWNER)
+    const ownerPage = await openLive(browser, OWNER, seed.owner, {
+      path: MEMBERS_PATH,
+      operations: MEMBERS_QUERIES,
+    })
     const members = new MembersPage(ownerPage)
-    await members.navigateTo()
     await expect(members.waitingNote(MIA_NAME)).toBeVisible()
     await expect(members.transferButton(MIA_NAME)).toHaveCount(0)
 
@@ -478,6 +537,7 @@ test.describe('household ownership', () => {
       timeout: 15_000,
     })
     await expect(members.waitingNote(MIA_NAME)).toHaveCount(0)
+    await stillSameDocument(ownerPage)
     // And MIA's banner is gone too
     await expect(banner.region()).toHaveCount(0)
     await expectOtherHouseholdUntouched(otto)
@@ -488,17 +548,21 @@ test.describe('household ownership', () => {
     request,
   }) => {
     test.setTimeout(90_000)
-    // Given MIA (manager) has the app open with a working socket, and BEN
-    // (member) has the Members page open
+    // Given BEN (member) has the Members page open, and MIA (manager) has
+    // the app open; both tabs' sockets work
     const seed = await seedHousehold(request)
     const otto = await seedOtherHousehold(request)
-    const miaPage = await openLive(browser, MIA, seed.owner)
+    const benPage = await openLive(browser, BEN, seed.owner, {
+      path: MEMBERS_PATH,
+      operations: MEMBERS_QUERIES,
+    })
+    const benMembers = new MembersPage(benPage)
+    await expect(benMembers.memberRow(OWNER_NAME)).toBeVisible()
+    const miaPage = await openLive(browser, MIA, seed.owner, {
+      others: [{ page: benPage, operations: MEMBERS_QUERIES }],
+    })
     const miaBanner = new OwnershipBanner(miaPage)
     await expect(miaBanner.region()).toHaveCount(0)
-    const benPage = await openAs(browser, BEN)
-    const benMembers = new MembersPage(benPage)
-    await benMembers.navigateTo()
-    await expect(benMembers.memberRow(OWNER_NAME)).toBeVisible()
 
     // When the owner's account is deleted
     await sendFakeUserDeleted(request, OWNER)
@@ -510,6 +574,7 @@ test.describe('household ownership', () => {
     await stillSameDocument(miaPage)
     // And BEN's Members page says there is no owner, and the owner is gone
     await expect(benMembers.noOwnerNote()).toBeVisible({ timeout: 15_000 })
+    await stillSameDocument(benPage)
     await expect(benMembers.memberRow(MIA_NAME)).toBeVisible()
     await expect(benMembers.memberRow(OWNER_NAME)).toHaveCount(0)
     // And BEN, a member, gets no offer: the table offers managers first
@@ -665,20 +730,43 @@ test.describe('household ownership', () => {
       makeGql(request, MAX)(ACCEPT, { id: maxOffer.id }),
     ])
 
-    // Then exactly one wins, and the other gets OFFER_GONE
+    // Then exactly one wins, and the other is refused with one of the two
+    // answers for "the offer is gone" (see the note below)
     const won = results.flatMap((r, i) =>
       r.status === 'fulfilled' ? [i === 0 ? MIA : MAX] : [],
     )
     const lost = results.flatMap((r) =>
       r.status === 'rejected' ? [String(r.reason)] : [],
     )
-    test
-      .info()
-      .annotations.push({ type: 'race winner', description: won.join() })
     expect(won).toHaveLength(1)
     expect(lost).toHaveLength(1)
-    expect(lost[0]).toContain('"code":"BAD_USER_INPUT"')
-    expect(lost[0]).toContain('"reason":"OFFER_GONE"')
+    // Which answer the loser gets depends on timing, not on the code:
+    //
+    // | The loser's first read (`householdOfMyOffer`, outside the lock) | Answer       |
+    // |------------------------------------------------------------------|--------------|
+    // | before the winner's commit: it then waits for the lock, and its  | OFFER_GONE   |
+    // | read after the lock finds the offer gone                         |              |
+    // | after the winner's commit: the offer is already gone             | FORBIDDEN    |
+    //
+    // Both are correct, so the test accepts both. Any OTHER answer fails it:
+    // a P2002 from two owner rows, a deadlock, or an internal error. The
+    // annotation says which path ran. Only OFFER_GONE shows that the two
+    // accepts met at the lock; a FORBIDDEN run proves one owner, not the lock.
+    const loserAnswer = lost[0]?.includes('"reason":"OFFER_GONE"')
+      ? 'OFFER_GONE'
+      : lost[0]?.includes('"code":"FORBIDDEN"')
+        ? 'FORBIDDEN'
+        : 'other'
+    test
+      .info()
+      .annotations.push(
+        { type: 'race winner', description: won.join() },
+        { type: 'loser answer', description: loserAnswer },
+      )
+    expect(loserAnswer, lost[0]).not.toBe('other')
+    if (loserAnswer === 'OFFER_GONE') {
+      expect(lost[0]).toContain('"code":"BAD_USER_INPUT"')
+    }
     // And the household has one owner, the winner
     const winner = won[0] === MIA ? MIA : MAX
     const loser = winner === MIA ? MAX : MIA
@@ -773,6 +861,7 @@ test.describe('household ownership', () => {
     const members = new MembersPage(ownerPage)
     await members.navigateTo()
     await expect(members.transferButton(MIA_NAME)).toBeVisible()
+    await expectTheme(ownerPage, dark)
     await members.openTransfer(MIA_NAME)
     await scan(ownerPage, '[role="alertdialog"]')
     await members.confirmTransfer()
@@ -788,6 +877,7 @@ test.describe('household ownership', () => {
       banner.transferText(OWNER_NAME, seed.household.name),
     ).toBeVisible()
     await expect(miaMembers.becomeOwnerButton()).toBeVisible()
+    await expectTheme(miaPage, dark)
     await scan(miaPage)
 
     // The banner with a hand-over offer, and "no owner" on the page
