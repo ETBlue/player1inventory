@@ -126,7 +126,8 @@ function byText(a: string, b: string): number {
 /**
  * The people of one location (households H5c, decision T39): every role row
  * whose person is still a member of `householdId` (decision H18, the
- * `countedOrganizerIn` shape in lib/authz.ts with no role filter). Sorted by
+ * `countedOrganizerIn` shape in lib/authz.ts with no role filter), and whose
+ * account is not deleted (households H6 task K.2, decision T61). Sorted by
  * role, organizer first, then by display name, then by id.
  *
  * It checks no role of the caller. `locationPeople` does that first.
@@ -134,7 +135,12 @@ function byText(a: string, b: string): number {
 async function peopleOfLocation(ctx: Context, locationId: string, householdId: string) {
   const callerId = requireAuth(ctx)
   const rows = await prisma.locationMember.findMany({
-    where: { locationId, user: { householdMemberships: { some: { householdId } } } },
+    // `deletedAt: null`: a deleted account is not listed (households H6 task
+    // K.2, decision T61), even while its role row is still there.
+    where: {
+      locationId,
+      user: { deletedAt: null, householdMemberships: { some: { householdId } } },
+    },
     select: { userId: true, role: true },
   })
   const names = await displayNamesOf(rows.map((row) => row.userId))
@@ -158,7 +164,10 @@ async function peopleOfLocation(ctx: Context, locationId: string, householdId: s
 /**
  * The role of `userId` on the location, read through `db`, or `null`. Only a
  * row that still counts: the person must be a member of `householdId`
- * (decision H18, the same filter as `peopleOfLocation`). Its two callers,
+ * (decision H18, the same membership filter as `peopleOfLocation`). It does
+ * NOT leave out a deleted account the way `peopleOfLocation` does (households
+ * H6 task K.2): a role write must see the role row that is really there, so
+ * a deleted person's leftover role can still be removed. Its two callers,
  * `setLocationRole` and `removeLocationRole` (through `lockAndReadRoles`),
  * check the person's membership first, so today the filter changes nothing
  * for them. It is there so every `LocationMember` read carries H18.

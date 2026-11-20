@@ -177,7 +177,11 @@
 //   - `user: { householdMemberships: { some: { householdId, role } } }` on
 //     `LocationMember` — "the person on this row is in that household"
 //     (households H5 task F.1, `hasOrganizer`). Read from this fake's own
-//     `HouseholdMember` store.
+//     `HouseholdMember` store. It may also name `deletedAt: null`.
+//   - `user: { deletedAt: null }` on `LocationMember` and `HouseholdMember` —
+//     "the person on this row has not deleted their account" (households H6
+//     task K.2, decision T61). Read from the `users` option (the `User` rows
+//     live in `userFake`). Only `null` is accepted.
 //
 // Note that Prisma's `some` matches when AT LEAST ONE related row passes. So
 // `members: { some: { userId: X } }` is true for a household with X in it,
@@ -351,6 +355,9 @@ const HOUSEHOLD_MEMBER_WHERE: WhereSpec = {
   userId: 'in',
   role: 'in',
   householdId_userId: { nested: { householdId: 'equals', userId: 'equals' } },
+  // "The person on this row has not deleted their account" (households H6
+  // task K.2, decision T61). Read from the `users` option.
+  user: { nested: { deletedAt: 'null' } },
 }
 
 const LOCATION_MEMBER_WHERE: WhereSpec = {
@@ -372,6 +379,9 @@ const LOCATION_MEMBER_WHERE: WhereSpec = {
       householdMemberships: {
         nested: { some: { nested: { householdId: 'in', role: 'in' } } },
       },
+      // A deleted account does not count (households H6 task K.2, decision
+      // T61). Read from the `users` option.
+      deletedAt: 'null',
     },
   },
 }
@@ -665,6 +675,15 @@ export interface HouseholdFakeOptions {
    * without it throws.
    */
   contents?: () => HouseholdContents
+  /**
+   * The `User` rows, read for the `user: { deletedAt: null }` relation filter
+   * (households H6 task K.2, decision T61). Pass a function so the fake sees
+   * the CURRENT rows, for example the readable rows of `userFake`. A filter
+   * on `deletedAt` with no `users` option throws, and so does a row whose
+   * person has no `User` row: in Postgres the foreign key makes that row
+   * impossible, so the fake does not guess an answer for it.
+   */
+  users?: () => readonly { id: string; deletedAt: Date | null }[]
 }
 
 export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
@@ -690,6 +709,16 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     return options.locations()
   }
 
+  function users(model: string): readonly { id: string; deletedAt: Date | null }[] {
+    if (!options.users) {
+      throw new HouseholdFakeUnsupportedError(
+        model,
+        'a `user: { deletedAt }` filter, because it was built with no `users` option',
+      )
+    }
+    return options.users()
+  }
+
   function contents(): HouseholdContents {
     if (!options.contents) {
       throw new HouseholdFakeUnsupportedError(
@@ -708,6 +737,10 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
       if (key === 'householdId_userId') {
         const k = filter as { householdId: string; userId: string }
         if (row.householdId !== k.householdId || row.userId !== k.userId) return false
+        continue
+      }
+      if (key === 'user') {
+        if (!userMatches(row.userId, filter as Where)) return false
         continue
       }
       if (!matchesScalar((row as unknown as Where)[key], filter)) return false
@@ -828,8 +861,35 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
   function userMatches(userId: string, where: Where): boolean {
     const memberships = where.householdMemberships as Where | undefined
     const some = memberships?.some as Where | undefined
-    if (some === undefined) return true
-    return state.householdMembers.some((m) => m.userId === userId && memberMatches(m, some))
+    if (
+      some !== undefined &&
+      !state.householdMembers.some((m) => m.userId === userId && memberMatches(m, some))
+    ) {
+      return false
+    }
+    // `deletedAt` is read AFTER the membership. Both must pass, so the order
+    // does not change the answer. It does change which `User` rows must exist:
+    // `userFake`'s `rowForEveryMember` implies a row only for a person a
+    // member row has named while it was read. A person removed from every
+    // household before any read has no implied row, and reading `deletedAt`
+    // for them first would throw on a row that Postgres would have.
+    return where.deletedAt === undefined || accountLive(userId)
+  }
+
+  /**
+   * `user: { deletedAt: null }`: the person's `User` row has no `deletedAt`
+   * (households H6 task K.2). The spec allows only `null` for the key, so
+   * this is the one question it can ask.
+   */
+  function accountLive(userId: string): boolean {
+    const row = users('User').find((u) => u.id === userId)
+    if (!row) {
+      throw new HouseholdFakeUnsupportedError(
+        'User',
+        `a role or member row whose person has no User row ('${userId}'). The foreign key makes it impossible in Postgres`,
+      )
+    }
+    return row.deletedAt === null
   }
 
   function locationMemberMatches(row: LocationMemberRow, where: Where): boolean {
@@ -963,6 +1023,8 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     if (!where) return
     checkRoleFilter('HouseholdMember', where.role, HOUSEHOLD_ROLES)
     checkCompound('HouseholdMember', where, 'householdId_userId', ['householdId', 'userId'])
+    // Fail now, not only when a row reaches the matcher.
+    if ((where.user as Where | undefined)?.deletedAt !== undefined) users('HouseholdMember')
   }
 
   function checkLocationMemberWhere(where: Where | undefined) {
@@ -980,6 +1042,7 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     checkRoleFilter('LocationMember', userSome?.role, HOUSEHOLD_ROLES)
     // Fail now, not only when a row reaches the matcher.
     if (location !== undefined) locations('LocationMember')
+    if (user?.deletedAt !== undefined) users('LocationMember')
   }
 
   /**

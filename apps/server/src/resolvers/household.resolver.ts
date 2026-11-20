@@ -167,8 +167,13 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       const userId = requireAuth(ctx)
       const householdId = await requireHousehold(ctx)
       await requireHouseholdRole(ctx, householdId, 'member')
+      // `deletedAt: null`: a deleted account is not listed (households H6
+      // task K.2, decision T61). Its member row may still be there: the
+      // hand-over removes it from H6 on, but not for an account deleted
+      // before H6 deploys. The Add person list on the location page is built
+      // from this list, so a deleted account is not offered there either.
       const rows = await prisma.householdMember.findMany({
-        where: { householdId },
+        where: { householdId, user: { deletedAt: null } },
         select: { userId: true, role: true, joinedAt: true },
       })
       rows.sort(

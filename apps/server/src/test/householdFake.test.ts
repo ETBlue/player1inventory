@@ -2200,3 +2200,102 @@ describe('householdFake models OwnershipOffer (households H6b, task K.1, decisio
     expect(fake.state.ownershipOffers).toEqual([])
   })
 })
+
+describe('householdFake models user: { deletedAt: null } (households H6b, task K.2, decision T61)', () => {
+  // The second person's account is deleted. The caller's is not. So a filter
+  // that ignores `deletedAt` keeps both, and one that reads the wrong
+  // person's row drops the wrong one.
+  function withUsers(users: { id: string; deletedAt: Date | null }[]) {
+    return createHouseholdFake({
+      households: [household(OURS, CALLER), household(THEIRS, STRANGER)],
+      householdMembers: [
+        member(OURS, CALLER, 'owner'),
+        member(OURS, SECOND, 'manager'),
+        member(THEIRS, STRANGER, 'owner'),
+      ],
+      locationMembers: [
+        locMember(KITCHEN, CALLER, 'organizer'),
+        locMember(KITCHEN, SECOND, 'organizer'),
+        locMember(SHED, STRANGER, 'organizer'),
+      ],
+      locations: () => LOCATIONS,
+      users: () => users,
+    })
+  }
+  const LIVE_AND_DELETED = [
+    { id: CALLER, deletedAt: null },
+    { id: SECOND, deletedAt: T0 },
+    { id: STRANGER, deletedAt: null },
+  ]
+
+  it('drops a role row whose person deleted their account', async () => {
+    const fake = withUsers(LIVE_AND_DELETED)
+    const rows = await fake.client.locationMember.findMany({
+      where: { locationId: KITCHEN, user: { deletedAt: null } },
+    })
+    expect(rows.map((r) => r.userId)).toEqual([CALLER])
+  })
+
+  it('works beside householdMemberships in the same user filter', async () => {
+    const fake = withUsers(LIVE_AND_DELETED)
+    const rows = await fake.client.locationMember.findMany({
+      where: {
+        locationId: KITCHEN,
+        user: { deletedAt: null, householdMemberships: { some: { householdId: OURS } } },
+      },
+    })
+    expect(rows.map((r) => r.userId)).toEqual([CALLER])
+  })
+
+  it('drops a member row whose person deleted their account', async () => {
+    const fake = withUsers(LIVE_AND_DELETED)
+    const rows = await fake.client.householdMember.findMany({
+      where: { householdId: OURS, user: { deletedAt: null } },
+    })
+    expect(rows.map((r) => r.userId)).toEqual([CALLER])
+    // And with no filter both rows are there (a negative control)
+    const all = await fake.client.householdMember.findMany({ where: { householdId: OURS } })
+    expect(all.map((r) => r.userId).sort()).toEqual([CALLER, SECOND].sort())
+  })
+
+  it('accepts only null for deletedAt', async () => {
+    const fake = withUsers(LIVE_AND_DELETED)
+    await expect(
+      fake.client.householdMember.findMany({ where: { user: { deletedAt: { not: null } } } }),
+    ).rejects.toBeInstanceOf(UnsupportedWhereFilterError)
+  })
+
+  it('throws, once per call, when it was built with no users option', async () => {
+    // Given the plain fixture, with no `users` option, and an EMPTY store, so
+    // a per-row check would never run
+    const fake = createHouseholdFake({ locations: () => LOCATIONS })
+    await expect(
+      fake.client.locationMember.findMany({ where: { user: { deletedAt: null } } }),
+    ).rejects.toBeInstanceOf(HouseholdFakeUnsupportedError)
+    await expect(
+      fake.client.householdMember.findMany({ where: { user: { deletedAt: null } } }),
+    ).rejects.toBeInstanceOf(HouseholdFakeUnsupportedError)
+  })
+
+  it('reads deletedAt only for a row whose person passes householdMemberships', async () => {
+    // Given the stranger has no User row in `users`. Their shed row fails the
+    // membership filter (they are not in ours), so deletedAt is never read.
+    const fake = withUsers([
+      { id: CALLER, deletedAt: null },
+      { id: SECOND, deletedAt: null },
+    ])
+    const rows = await fake.client.locationMember.findMany({
+      where: { user: { deletedAt: null, householdMemberships: { some: { householdId: OURS } } } },
+    })
+    expect(rows.map((r) => `${r.locationId}:${r.userId}`).sort()).toEqual(
+      [`${KITCHEN}:${CALLER}`, `${KITCHEN}:${SECOND}`].sort(),
+    )
+  })
+
+  it('throws for a row whose person has no User row (the foreign key makes it impossible)', async () => {
+    const fake = withUsers([{ id: CALLER, deletedAt: null }])
+    await expect(
+      fake.client.householdMember.findMany({ where: { householdId: OURS, user: { deletedAt: null } } }),
+    ).rejects.toBeInstanceOf(HouseholdFakeUnsupportedError)
+  })
+})

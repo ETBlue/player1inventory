@@ -319,12 +319,19 @@ export function forgetLocationRoles(ctx: Context): void {
  * `user` relation. Asking `location.household.members.some` with no `userId`
  * would be wrong: it is true whenever ANYONE is still in the household, so an
  * organizer who left would still count.
+ *
+ * An organizer whose account is deleted (`User.deletedAt` set) does not count
+ * either (decision T61), so their location shows **No organizer**.
  */
 function countedOrganizerIn(householdId: string) {
   return {
     role: 'organizer' as const,
     location: { householdId },
-    user: { householdMemberships: { some: { householdId } } },
+    // `deletedAt: null`: a deleted account does not count as an organizer
+    // (households H6 task K.2, decision T61). The hand-over (K.4) removes a
+    // deleted person's rows from H6 on. This filter covers the rows of
+    // accounts deleted before H6 deploys, and a webhook that is late.
+    user: { deletedAt: null, householdMemberships: { some: { householdId } } },
   }
 }
 

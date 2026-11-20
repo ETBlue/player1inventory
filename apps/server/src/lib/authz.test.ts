@@ -856,6 +856,29 @@ function seedTwoHouseholds() {
 }
 
 /** The caller, with "the caller's household" pinned to `householdId`. */
+/**
+ * Set `User.deletedAt` for `userId`, as the `user.deleted` webhook does,
+ * and keep every member and role row (the pre-H6 shape, Y8 of the H6 plan).
+ */
+function markAccountDeleted(userId: string) {
+  const row = world.users.state.rows.find((r) => r.id === userId)
+  if (row) {
+    row.deletedAt = T
+    return
+  }
+  world.users.state.rows.push({
+    id: userId,
+    displayName: userId,
+    email: null,
+    lastSeenAt: null,
+    deletedAt: T,
+    householdSetupAt: T,
+    activeHouseholdId: null,
+    createdAt: T,
+    updatedAt: T,
+  })
+}
+
 function callerIn(householdId: string): Context {
   return { userId: 'caller', requestCache: { householdId: Promise.resolve(householdId) } }
 }
@@ -972,6 +995,39 @@ describe('locationIdsWithOrganizer (H5 task F.1)', () => {
 
     // Then loc-a-view has no counted organizer
     expect([...ids]).toEqual(['loc-a'])
+  })
+
+  it('does not count an organizer whose account is deleted (households H6b K.2, decision T61)', async () => {
+    // Given the pre-H6 shape (Y8): other's account is deleted, and their
+    // member row and role rows are still there. other is the ONLY organizer
+    // of loc-a-view, and organizes loc-a beside the caller, whose account is
+    // live.
+    await world.households.client.locationMember.create({
+      data: { locationId: 'loc-a-view', userId: 'other', role: 'organizer' },
+    })
+    await world.households.client.locationMember.update({
+      where: { locationId_userId: { locationId: 'loc-a', userId: 'other' } },
+      data: { role: 'organizer' },
+    })
+    // A negative control: before the delete, both locations count
+    expect([...(await locationIdsWithOrganizer(callerIn('hh-a'), 'hh-a'))].sort()).toEqual([
+      'loc-a',
+      'loc-a-view',
+    ])
+    markAccountDeleted('other')
+
+    // When the locations with an organizer are read, in a new request
+    const ids = await locationIdsWithOrganizer(callerIn('hh-a'), 'hh-a')
+
+    // Then loc-a-view has no organizer, and loc-a keeps the caller
+    expect([...ids]).toEqual(['loc-a'])
+    // And other's member row is still there: it is the filter, not a
+    // removal, that leaves them out
+    expect(
+      world.households.state.householdMembers.some(
+        (m) => m.householdId === 'hh-a' && m.userId === 'other',
+      ),
+    ).toBe(true)
   })
 
   it('reads once per household per request', async () => {

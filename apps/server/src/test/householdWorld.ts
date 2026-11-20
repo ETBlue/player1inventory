@@ -65,6 +65,9 @@ export function createHouseholdWorld() {
   const households = createHouseholdFake({
     locations: () => stock.state.locations,
     contents: () => ({ ...contents.rows, itemStocks: stock.state.itemStocks }),
+    // The `user: { deletedAt: null }` filter (households H6 task K.2). Read
+    // at call time, so `users`, made just below, exists by then.
+    users: () => users.readableRows(),
   })
   // `user.findUnique` can select `householdMemberships` (decision T14 of the
   // H5b plan: `ensureHousehold` reads the person and their memberships in
