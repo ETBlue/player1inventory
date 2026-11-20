@@ -1737,18 +1737,77 @@ Needs owner decision **O39** (texts).
 **Files:** `apps/web/src/components/household/OwnershipOfferBanner/` (component, `index.ts`,
 stories, smoke, unit test), `routes/__root.tsx`, the locale files, `components/CLAUDE.md`.
 
-- [ ] **Step 1: failing tests:** a `handover` offer shows "The owner of {household} is gone.
+- [x] **Step 1: failing tests:** a `handover` offer shows "The owner of {household} is gone.
   Do you want to become the owner?" with **Accept** and **Not now**; a `transfer` offer
   shows "{name} wants to make you the owner of {household}." with **Accept** and
   **Decline**; a dismissed offer does not show; two offers show two banners; Accept then
   shows a short success message; a failed write shows the error and keeps the banner; cloud
   only; nothing in local mode; the banner is a `role="region"` with a label, so axe finds it.
-- [ ] **Step 2:** red. **Step 3:** the component beside `OfflineBanner` in `__root.tsx`.
-- [ ] **Step 4:** stories (handover, transfer, two offers, error) and smoke tests; the full
+- [x] **Step 2:** red. **Step 3:** the component beside `OfflineBanner` in `__root.tsx`.
+- [x] **Step 4:** stories (handover, transfer, two offers, error) and smoke tests; the full
   gate.
 
 **Mutation checks:** dismissed offers shown → its test; **Decline** on a `handover` offer →
 the handover test (it must say **Not now**).
+
+**Done 2026-11-20** (`fee8368f`). What was built:
+
+| Part | What |
+|---|---|
+| `components/household/OwnershipOfferBanner/` (new) | the component, `index.ts`, a unit test (17 tests), 4 stories and their smoke test (4 tests) |
+| `routes/__root.tsx` | `{mode === 'cloud' && <OwnershipOfferBanner />}` beside `OfflineBanner`, outside `NoHouseholdGate` |
+| `routes/__root.ownershipOffer.test.tsx` (new) | 2 tests: mounted in cloud, not in local |
+| `i18n/locales/en.json`, `tw.json` | `ownership.*`, 10 keys each: the 6 O39 texts and 4 new ones (`banner.label`, `gone`, `failed`, `close`) |
+| `test/setup.ts` and 4 test files | stubs for `useMyOwnershipOffersQuery` and the accept, decline and dismiss mutation hooks |
+| `components/CLAUDE.md` | the banner, the trap with per-file factories, the `<Suspense>` need |
+
+What the banner does after an answer:
+
+| Result | Shows |
+|---|---|
+| accept worked | the notice `ownership.accepted` with the household name from the server's answer |
+| decline or Not now worked | nothing; the offer leaves the list |
+| gone: `isOfferGoneError` (accept, decline, Not now), or `false` from decline or Not now | the notice `ownership.gone` |
+| `OfflineWriteError` | nothing (the offline link already showed a toast) |
+| any other error | `ownership.failed` as `role="alert"` under the offer; the offer stays |
+
+A notice is an `<output>` (role `status`) that takes the focus, with a **Close** button. The
+region is a `<section aria-label="Ownership offers">`. While an answer is sent, all buttons
+of that offer are disabled.
+
+Tests: web **3668 / 361 → 3691 / 364** (+17 unit, +4 smoke, +2 root). Server unchanged at
+**2689 / 85**, `scripts/spec` **70**. Measured at `1eb52de5` before and on the K.6 tree
+after, each `pnpm test` run alone. The component was written before its tests in this task,
+so Step 2's "red" is the mutation table below, not a first run.
+
+**Mutation checks**, each applied by a script with an exact unique match, run against its
+test file, and undone from a saved copy (`diff -q` / `filecmp` clean every time):
+
+| # | Mutation (`OwnershipOfferBanner.tsx` unless named) | Red |
+|---|---|---|
+| M1 | dismissed offers shown (no `dismissedAt === null` filter) | 3: "one row per open offer … not the dismissed one", "only has a dismissed offer sees no banner", "can say Not now …" |
+| M2 | Decline on a `handover` offer (the kind check never matches) | 4: "hand-over offer with Accept and Not now, never Decline", "can say Not now …", both "Not now on an offer that is gone" cases |
+| M3 | a gone error is treated as any other error | 4: the four `FORBIDDEN` / `OFFER_GONE` cases (Accept ×2, Decline, Not now) |
+| M4 | decline's `false` shows no notice | 1: "Decline on an offer that is gone (false)" |
+| M4b | Not now's `false` shows no notice | 1: "Not now on an offer that is gone (false)" |
+| M5 | `OfflineWriteError` shows the inline error | 1: "user who is offline sees no second error here" |
+| M6 | buttons never disabled | 1: "user cannot press the answers again while one is being sent" |
+| M7 | the notice does not take the focus | 7: the accept test and the six "gone" cases |
+| M8 | the banner's own `mode !== 'cloud'` check removed | **0 — stays green.** `useMyOwnershipOffers` skips its query in local mode, so the list is empty either way. The check is a second guard; it also keeps the three mutation hooks from mounting in local mode. Recorded, not counted as coverage |
+| M9 | `__root.tsx` mounts the banner in local mode too | 1: "is not mounted in local mode" (`__root.ownershipOffer.test.tsx`) |
+| M10 | accept shows no notice | 2: "can accept an offer and is told …", "cannot press the answers again …" (its end waits for the notice). The first run also failed 2 unrelated tests at load average ~8; run again alone at ~3, only these 2 |
+
+The "only a dismissed offer" and "local mode" tests check the absence AFTER a probe of the
+same query shows the list has loaded (`OfferCountProbe`), so a loading state cannot pass them.
+
+**The gate (K.6), 2026-11-20, Node 22.17.1, each command alone:** `pnpm lint` exit 0 (13
+warnings in `e2e/`, the known ones); `pnpm build` exit 0 (first run: exit 2, `TS2322` in the
+new test, mock `query` typed `unknown`; fixed to `DocumentNode`), `grep TS6385` finds nothing;
+`(cd apps/web && pnpm build-storybook)` exit 0, and `storybook-static/index.json` lists
+`components-household-ownershipofferbanner--handover`, `--transfer`, `--two-offers`,
+`--accept-fails`; `pnpm check` exit 0 (first run: 3 format errors in the new files, fixed);
+`pnpm test` exit 0 (numbers above). The "Could not find client" warning count in the full run
+is 6, the same as before. No E2E (K.8).
 
 ---
 
@@ -2013,6 +2072,12 @@ Filled in from the task reports and reviews.
 | K.5 | (not in the plan) `dismissOwnershipOffer` and other tabs | It publishes nothing (the K.3 row), so a person's other open tabs keep the banner until their next read of `MyOwnershipOffers` (a resume, a mount, any `LOCATION` event). Written in the hook's comment; K.6 should not promise more |
 | K.5 | (the K.5 row above) "Decline and dismiss answer `false` and need no special case" | False for the common case. An offer already gone when the call arrives is `FORBIDDEN` (`householdOfMyOffer` reads before the lock, and an unknown id is `FORBIDDEN`). `false` is only the race between that read and the lock. Fixed in the review (`838b2f45`): decline and dismiss read the three lists on `isOfferGoneError`, then reject |
 | K.3 | `schema/ownership.graphql`: decline and dismiss are "False when it is already gone" | Same mistake in the server schema comment. The resolver header was right. Corrected after the K.5 review |
+| K.6 | O39 lists the banner texts | It has no text for the region's label, for "no longer open", for a failed answer, or for closing a notice. 4 keys were added: `ownership.banner.label` ("Ownership offers" / 擁有權邀請), `ownership.gone` ("This offer is no longer open." / 這個邀請已經失效。), `ownership.failed` ("Could not send your answer. Please try again." / 無法送出你的回覆，請再試一次。), `ownership.close` ("Close" / 關閉) |
+| K.6 | Files: the component, `__root.tsx`, the locales, `components/CLAUDE.md` | `src/test/setup.ts` and **4** test files with their own `@/generated/graphql` factory needed stubs for `useMyOwnershipOffersQuery` and the 3 answer hooks (`cooking.cloud.test.tsx`, `items/$id/stock.test.tsx`, `settings/household/locations/index.cloud.test.tsx`, `shopping/index.cloud.test.tsx`). Without them **51 tests in 7 files** failed with `Could not find "client"`; 3 of the 7 files have no factory of their own and were fixed by `setup.ts`. Also a new `routes/__root.ownershipOffer.test.tsx` for the mount |
+| K.6 | Step 1: "Accept then shows a short success message" | The hooks read the offer list again BEFORE they resolve, so the offer's row is unmounted by the time the answer comes back. The message must live in the banner, not in the row. When the last offer goes, the `<section>` unmounts and mounts again with the notice, so a test that kept the old region element saw nothing (8 tests red at first) |
+| K.6 | Step 1: "a failed write shows the error and keeps the banner" | True for a server error. For a GONE offer the banner cannot keep it: the hooks have already read the list without it. That case shows "This offer is no longer open." instead, for Accept, Decline and Not now. An `OfflineWriteError` shows nothing extra (the offline link shows a toast) |
+| K.6 | (not in the plan) a test of the banner with `MockedProvider` | It renders an empty `<div />` with no error unless a `<Suspense>` sits inside `MockedProvider`, the same unexplained trap `HouseholdNameCard.apollo.test.tsx` records. The stories have the boundary too |
+| K.6 | Mutation check list | The plan's two (dismissed shown, Decline on hand-over) both went red. The banner's own local-mode check cannot go red (M8): the hook already skips the query in local mode |
 
 ## Status
 
