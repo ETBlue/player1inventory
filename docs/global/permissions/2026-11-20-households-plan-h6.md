@@ -324,6 +324,8 @@ the recommended option everywhere, is the decided plan:
 | O37 | A. The last person leaving an ownerless household deletes it, after a warning |
 | O38 | A. "Delete the household" is built in H6a, in the household danger zone |
 | O39 | A. The texts as written; the owner may still correct them in the PR |
+| O40 | Asked after J.9, answered 2026-11-20: **"Clear & import" asks for the typed household name too**, the same as every other purge. Built in H6b as task K.0 |
+| O41 | Asked after J.9, answered 2026-11-20: **role names keep their capital inside log sentences** ("the Participant role"). They then match the labels on the people page and in the role pickers, and English needs no second set of texts |
 
 ---
 
@@ -1113,6 +1115,27 @@ first, checks after deploy), and this plan's *What this plan got wrong* and *Sta
 ---
 
 # Part 2 — H6b: transfer, hand-over, deleted accounts
+
+## Task K.0 — "Clear & import" asks for the typed household name (O40)
+
+**Why:** H6a made every purge ask the owner to type the household name. "Clear & import"
+deletes the same catalog as **Clear household** before it imports, but it still confirms with
+one click. Owner decision **O40** makes the two the same.
+
+**Files:** `apps/web/src/components/settings/ImportCard/` (and its tests and stories), the
+locale files if a new text is needed, the E2E spec that presses "Clear & import" in cloud.
+
+- [ ] **Step 1: failing tests.** In cloud, the "Clear & import" confirm is disabled until the
+  household name is typed exactly; it is enabled after; the import is not started before.
+  Local mode has no household: decide and record what it asks for there (keep today's
+  confirm, or the same `DeleteButton` typed mode with no name). Say which in the report.
+- [ ] **Step 2:** red.
+- [ ] **Step 3:** reuse `DeleteButton`'s typed-name mode (`confirmName`), as `HouseholdDangerZone` does.
+- [ ] **Step 4:** green; update every E2E spec that clicks "Clear & import" (grep `e2e/` for it).
+
+**Mutation checks:** the confirm always enabled → the "disabled before typing" test.
+
+---
 
 ## Task K.1 — the `OwnershipOffer` table, fakes and cleanup
 
