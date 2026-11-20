@@ -336,6 +336,29 @@ function countedOrganizerIn(householdId: string) {
 }
 
 /**
+ * The people who are a counted organizer of at least one location of
+ * `householdId` (`countedOrganizerIn`: decision H18 applied to the row's own
+ * person, and not a deleted account). For the hand-over table (households
+ * H6b task K.3, `startHandover` in lib/handover.ts): "no managers, some
+ * members organize a location".
+ *
+ * `db` is the transaction client: the hand-over runs inside the transaction
+ * that holds the household lock. No cache: a write must read the rows as
+ * they are now.
+ */
+export async function countedOrganizerIds(
+  householdId: string,
+  db: { locationMember: Prisma.TransactionClient['locationMember'] },
+): Promise<Set<string>> {
+  const rows = await db.locationMember.findMany({
+    where: countedOrganizerIn(householdId),
+    select: { userId: true },
+    distinct: ['userId'],
+  })
+  return new Set(rows.map((r) => r.userId))
+}
+
+/**
  * The ids of the locations of `householdId` that have at least one organizer
  * who still counts (`countedOrganizerIn`). `Location.hasOrganizer` reads it
  * (households H5 task F.1). The settings list warns "No organizer" for a

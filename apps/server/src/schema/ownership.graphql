@@ -1,0 +1,85 @@
+# Ownership offers: transfer and hand-over (households H6b, task K.3;
+# decisions T58, T59, T62 and T65 of
+# docs/global/permissions/2026-11-20-households-plan-h6.md).
+#
+# An offer asks ONE person to become the owner of ONE household. Nobody
+# becomes the owner without accepting (design, *Transfer ownership*).
+#
+#   transfer: the owner offered the household to one member. At most one
+#             transfer offer per household at a time.
+#   handover: the household has no owner (the owner's account was deleted,
+#             task K.4), and the household is offered to the people the
+#             design's table names. The first accept wins.
+#
+# This file only ADDS types, fields, queries and mutations. Nothing here
+# changes an existing field (the old-bundle shim, `oldBundleCompat.test.ts`).
+
+enum OfferKind {
+  transfer
+  handover
+}
+
+# One open offer. Names only, never an e-mail address.
+type OwnershipOffer {
+  id: ID!
+  householdId: ID!
+  # The household's name now. The offer may be for the person's OTHER
+  # household, so the banner names it.
+  householdName: String!
+  kind: OfferKind!
+  # The person who may accept. Their stored name.
+  toUserId: ID!
+  toName: String!
+  # The owner who made a transfer offer. Null for a hand-over.
+  fromName: String
+  # ISO 8601.
+  createdAt: String!
+  # Set by "Not now" (`dismissOwnershipOffer`). The offer stays open; the
+  # banner hides it, and the Members page still shows it. ISO 8601.
+  dismissedAt: String
+}
+
+extend type Household {
+  # False while nobody owns the household: after the owner's account was
+  # deleted, until someone accepts the hand-over.
+  hasOwner: Boolean!
+  # The open transfer offer of this household. Only the owner sees it;
+  # anyone else gets null.
+  pendingTransfer: OwnershipOffer
+}
+
+extend type Query {
+  # Every open offer TO the caller, in every household they are in, oldest
+  # first. Dismissed offers too: the web hides them from the banner only.
+  myOwnershipOffers: [OwnershipOffer!]!
+}
+
+extend type Mutation {
+  # Household owner only. Offers the household the caller acts in to
+  # `userId`, a member of it. An open transfer offer to another person is
+  # replaced (at most one at a time). The same person again returns their
+  # open offer and changes nothing. The caller themself is BAD_USER_INPUT; a
+  # person who is not a member (or whose account is deleted) is FORBIDDEN.
+  offerOwnership(userId: ID!): OwnershipOffer!
+
+  # Household owner only. Deletes the open transfer offer. False when there
+  # is none.
+  cancelOwnershipOffer: Boolean!
+
+  # Only the person the offer is for. Makes them the owner of the OFFER's
+  # household (which may be their other household, not the one they act
+  # in). The old owner becomes a manager. Every offer of the household is
+  # deleted. An offer deleted by another accept at the same moment is
+  # BAD_USER_INPUT with `extensions.reason` OFFER_GONE. Anyone else, and an
+  # unknown id, get the same FORBIDDEN.
+  acceptOwnershipOffer(id: ID!): Household!
+
+  # Only the person the offer is for. Deletes the offer. False when it is
+  # already gone. When the last hand-over offer goes, the other people of the
+  # household get new hand-over offers (decision T62).
+  declineOwnershipOffer(id: ID!): Boolean!
+
+  # Only the person the offer is for. "Not now": sets `dismissedAt`, and the
+  # offer stays. False when it is already gone.
+  dismissOwnershipOffer(id: ID!): Boolean!
+}

@@ -15,9 +15,11 @@ import {
   lockUser,
 } from '../lib/household.js'
 import { recordActivity } from '../lib/activity.js'
+import { removeFromHousehold } from '../lib/handover.js'
 import { prisma } from '../lib/prisma.js'
 import { publishHouseholdChange } from '../lib/publishChange.js'
 import { retryOnceOnConflict } from './invite.resolver.js'
+import { householdAnswer } from './ownership.resolver.js'
 import type { Resolvers } from '../generated/graphql.js'
 
 // The caller's household: its name, and the caller's role in it (households
@@ -104,46 +106,6 @@ async function peopleWithLocationRole(
   return new Set(rows.map((row) => row.userId))
 }
 
-/**
- * Remove one person from one household, inside the caller's transaction:
- *
- * 1. Their location roles on the household's locations (decision T11: a
- *    leftover row would come back on a re-invite, D9). The
- *    `location: { householdId }` filter keeps their roles in any OTHER
- *    household.
- * 2. Revoke every invite of THIS household they made that is not used and
- *    not revoked yet (owner decision O20). A manager can see the token of
- *    every open invite, so without this a removed manager could rejoin
- *    through an invite they made. Expired invites are revoked too: they
- *    cannot be used anyway, and the `where` stays the same as
- *    `revokeInvite`'s. An invite revoked earlier keeps its date. The
- *    household and the creator are in the `where`, so invites of their
- *    other household stay open.
- * 3. Their member row.
- *
- * It never writes a `User` row (decision T16), so the person's
- * `activeHouseholdId` may still name this household. `ensureHousehold`
- * ignores an active household the person is no longer a member of.
- *
- * Nothing extra is published for the invites: the caller publishes a
- * household-level `LOCATION`, and the Members page reads the invite list
- * again on `LOCATION` (`apps/web/src/apollo/liveUpdates.ts`).
- */
-async function removeFromHousehold(
-  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
-  householdId: string,
-  userId: string,
-): Promise<void> {
-  await tx.locationMember.deleteMany({ where: { userId, location: { householdId } } })
-  await tx.householdInvite.updateMany({
-    where: { householdId, createdById: userId, usedAt: null, revokedAt: null },
-    data: { revokedAt: new Date() },
-  })
-  await tx.householdMember.delete({
-    where: { householdId_userId: { householdId, userId } },
-  })
-}
-
 export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
   Query: {
     // Any household role may read the name: `member` is the lowest. First
@@ -158,7 +120,7 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // Unreachable while the caller holds a role in it: `HouseholdMember`
       // has a foreign key to the household.
       if (!row) throw new Error('household: the household row of the caller is gone')
-      return { id: row.id, name: row.name, role }
+      return householdAnswer({ id: row.id, name: row.name, role })
     },
 
     // Any household role (owner decision O13-A): a member sees every person's
@@ -222,7 +184,7 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // sidebar, and on the web `GetHousehold` is refetched for `CATALOG`.
       // For the SAVED row's household. After the commit.
       await publishHouseholdChange(ctx, ['CATALOG'], row.id)
-      return { id: row.id, name: row.name, role }
+      return householdAnswer({ id: row.id, name: row.name, role })
     },
 
     // Household role `owner` (households H6 task J.4, owner decision O38-A).
@@ -321,6 +283,13 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     // None of them takes `lockUser` or writes a `User` row (decision T16):
     // that keeps the one lock order (`User`, then `Household`). So a removed
     // or leaving person's `activeHouseholdId` stays as it was, on purpose.
+    // One exception since households H6b task K.3: the LAST person's leave
+    // deletes the household (owner decision O37-A), and that writes `User`
+    // rows. See `leaveHousehold`.
+    //
+    // A removal or a leave also deletes the ownership offers TO the person,
+    // and may start the hand-over again (decision T62). See
+    // `removeFromHousehold` in lib/handover.ts.
     //
     // After the commit, household-level `LOCATION` for this household
     // (decision T19). The removed or leaving person no longer passes
@@ -334,9 +303,10 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       const result = await prisma.$transaction(async (tx) => {
         await lockHouseholdOrForbid(tx, householdId)
         await requireHouseholdRole(ctx, householdId, 'owner', tx)
-        if (role === 'owner') {
-          throw badInput('Handing over the household is not possible yet.')
-        }
+        // A new owner must agree first (design, *Transfer ownership*): the
+        // owner makes an offer, and the person accepts it
+        // (`offerOwnership`, households H6b task K.3).
+        if (role === 'owner') throw badInput('Use Transfer ownership.')
         if (target === callerId) throw badInput('The owner’s own role cannot be changed.')
         const row = await tx.householdMember.findUnique({
           where: { householdId_userId: { householdId, userId: target } },
@@ -394,7 +364,7 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         })
         if (!row) throw forbidden()
         if (callerRole === 'manager' && row.role !== 'member') throw forbidden()
-        await removeFromHousehold(tx, householdId, target)
+        await removeFromHousehold(tx, householdId, target, callerId)
         await recordActivity(tx, {
           householdId,
           actorId: callerId,
@@ -407,22 +377,57 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     },
 
     // A manager or member leaves the household they act in. The owner
-    // cannot: handing the household over comes in H6. Their open invites in
-    // this household are revoked (owner decision O20, `removeFromHousehold`).
+    // cannot: they transfer the household first (households H6b task K.3).
+    // Their open invites and the offers to them in this household go
+    // (owner decision O20, `removeFromHousehold`).
+    //
+    // ── THE LAST PERSON (owner decision O37-A, households H6b task K.3) ──
+    //
+    // When no other member with a live account is left, the household is
+    // deleted with all its data, the same as `deleteHousehold`. This happens
+    // only in a household with no owner (a hand-over nobody accepted), or one
+    // whose owner's account was deleted before H6: a live owner is always
+    // "another member". Members whose accounts are deleted do not count as
+    // people (decision T60, Y12); their rows go with the household. The web
+    // warns first (task K.7); the server does not ask.
+    //
+    // The delete writes other people's `User` rows AFTER the household lock
+    // (`activeHouseholdId` is `onDelete: SetNull`): the one exception to the
+    // lock order that cannot be avoided (decision T16). The whole transaction
+    // runs once more on P2034 (`retryOnceOnConflict`), as `deleteHousehold`
+    // does. No activity row and no event when the household is deleted: the
+    // log goes with it, and no member is left to hear an event.
     leaveHousehold: async (_, __, ctx) => {
       const callerId = requireAuth(ctx)
       const householdId = await requireHousehold(ctx)
-      await prisma.$transaction(async (tx) => {
-        await lockHouseholdOrForbid(tx, householdId)
-        const role = await requireHouseholdRole(ctx, householdId, 'member', tx)
-        if (role === 'owner') {
-          throw badInput('The owner cannot leave. Handing over the household comes later.')
-        }
-        await removeFromHousehold(tx, householdId, callerId)
-        await recordActivity(tx, { householdId, actorId: callerId, action: 'MEMBER_LEFT' })
-      })
+      const deleted = await retryOnceOnConflict(() =>
+        prisma.$transaction(
+          async (tx) => {
+            await lockHouseholdOrForbid(tx, householdId)
+            const role = await requireHouseholdRole(ctx, householdId, 'member', tx)
+            if (role === 'owner') throw badInput('Transfer ownership first.')
+            const live = await tx.householdMember.findMany({
+              where: { householdId, user: { deletedAt: null } },
+              select: { userId: true },
+            })
+            if (!live.some((m) => m.userId !== callerId)) {
+              await tx.user.updateMany({
+                where: { activeHouseholdId: householdId },
+                data: { activeHouseholdId: null },
+              })
+              await deleteHouseholdData(tx, householdId)
+              await tx.household.deleteMany({ where: { id: householdId } })
+              return true
+            }
+            await removeFromHousehold(tx, householdId, callerId, callerId)
+            await recordActivity(tx, { householdId, actorId: callerId, action: 'MEMBER_LEFT' })
+            return false
+          },
+          { timeout: HOUSEHOLD_MOVE_TIMEOUT_MS },
+        ),
+      )
       // To the household LEFT: its other members' tabs refetch the list.
-      await publishHouseholdChange(ctx, ['LOCATION'], householdId)
+      if (!deleted) await publishHouseholdChange(ctx, ['LOCATION'], householdId)
       return true
     },
 
@@ -484,7 +489,7 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         // against a remote database.
       }, { timeout: HOUSEHOLD_MOVE_TIMEOUT_MS })
       await publishHouseholdChange(ctx, ['LOCATION'], created.id)
-      return { id: created.id, name: created.name, role: 'owner' as const }
+      return householdAnswer({ id: created.id, name: created.name, role: 'owner' })
     },
   },
 }

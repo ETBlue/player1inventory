@@ -21,6 +21,7 @@ import {
 import { recordActivity } from '../lib/activity.js'
 import { prisma } from '../lib/prisma.js'
 import { publishHouseholdChange } from '../lib/publishChange.js'
+import { householdAnswer } from './ownership.resolver.js'
 import type { Resolvers } from '../generated/graphql.js'
 
 // Create, list, preview and revoke household invites (households H5b, task
@@ -456,7 +457,7 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       }, { timeout: HOUSEHOLD_MOVE_TIMEOUT_MS }))
 
       await publishHouseholdChange(ctx, ['LOCATION'], joined.id)
-      return joined
+      return householdAnswer(joined)
     },
 
     // Owner or manager. ONE conditional write, so a revoke and a join at the

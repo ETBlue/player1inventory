@@ -141,6 +141,14 @@ const publishes: Record<string, { kinds: Kind[] }> = {
   setLocationRole: { kinds: ['LOCATION'] },
   removeLocationRole: { kinds: ['LOCATION'] },
   leaveLocation: { kinds: ['LOCATION'] },
+  // Households H6b task K.3 (decision T59): household-level `LOCATION` for
+  // the offer's household, after the commit, and only when something
+  // changed (the same person offered again, no offer to cancel, or an offer
+  // already gone sends nothing). Tested in `ownership.resolver.test.ts`.
+  offerOwnership: { kinds: ['LOCATION'] },
+  cancelOwnershipOffer: { kinds: ['LOCATION'] },
+  acceptOwnershipOffer: { kinds: ['LOCATION'] },
+  declineOwnershipOffer: { kinds: ['LOCATION'] },
   createItem: { kinds: ['CATALOG'] },
   updateItem: { kinds: ['CATALOG'] },
   createTag: { kinds: ['CATALOG'] },
@@ -193,6 +201,9 @@ const publishesNothing: Record<string, string> = {
   // leaves on its own; other tabs learn on their next request.
   deleteHousehold:
     'the household and all its members are gone after the commit, so a household-level event reaches nobody',
+  // Households H6b task K.3. "Not now" on the banner sets `dismissedAt`.
+  dismissOwnershipOffer:
+    "only the caller's own banner changes; their other tabs update on the next refetch",
 }
 
 type Lists = {
