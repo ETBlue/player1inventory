@@ -63,12 +63,15 @@ import { useDataMode } from './useDataMode'
 // the screen showed. When it is gone (another person accepted the hand-over
 // first, the owner cancelled the transfer, the person left the household),
 // the server refuses an accept with `OFFER_GONE` (an accept at the same
-// moment) or `FORBIDDEN` (an accept after the other one committed), and
-// answers decline and dismiss with `false`. In each case the hook reads the
-// three lists again BEFORE it rejects or resolves, so the banner and the
-// Members page show what is true now. A refusal is passed on as it is; the
-// caller shows the message (`isOfferGoneError` tells the two cases apart from
-// any other error).
+// moment) or `FORBIDDEN` (an accept after the other one committed).
+// Decline and dismiss get `FORBIDDEN` too for an offer that was already gone
+// when the call arrived: the server reads the offer BEFORE its lock and
+// answers an unknown id with `FORBIDDEN` (`householdOfMyOffer`). Only an offer
+// that goes between that read and the lock gives `false`. In each case the
+// hook reads the three lists again BEFORE it rejects or resolves, so the
+// banner and the Members page show what is true now. A refusal is passed on
+// as it is; the caller shows the message (`isOfferGoneError` tells the gone
+// cases apart from any other error).
 
 export type OwnershipOffer = MyOwnershipOffersQuery['myOwnershipOffers'][number]
 
@@ -83,10 +86,13 @@ const OFFER_REFETCHES: readonly RefetchAfterWrite[] = [
 ]
 
 /**
- * `true` when an accept was refused because the offer is gone: `OFFER_GONE`
- * (another accept won at the same moment) or `FORBIDDEN` (it was already
- * gone, or was never the caller's). The banner and the Members page show
- * "This offer is no longer open." for it.
+ * `true` when an accept, decline or dismiss was refused because the offer is
+ * gone: `OFFER_GONE` (another accept won at the same moment) or `FORBIDDEN`
+ * (it was already gone, or was never the caller's). The banner and the
+ * Members page show "This offer is no longer open." for it.
+ *
+ * Only for those three. For `offer` and `cancel`, `FORBIDDEN` means the
+ * caller is not the owner, or the person is not a member: not "gone".
  */
 export function isOfferGoneError(err: unknown): boolean {
   return (
@@ -126,6 +132,23 @@ export function useMyOwnershipOffers(): {
     isLoading: cloud.loading && !cloud.data,
     isError: !!cloud.error && !cloud.data,
     refetch,
+  }
+}
+
+/**
+ * Send an answer to an offer. When the server refuses it because the offer
+ * is gone (`isOfferGoneError`), read the three offer lists again FIRST, then
+ * pass the refusal on. Any other refusal reads nothing.
+ */
+async function answerOffer<T>(
+  send: () => Promise<T>,
+  refetchAfterWrite: (refetches: readonly RefetchAfterWrite[]) => Promise<void>,
+): Promise<T> {
+  try {
+    return await send()
+  } catch (err) {
+    if (isOfferGoneError(err)) await refetchAfterWrite(OFFER_REFETCHES)
+    throw err
   }
 }
 
@@ -191,17 +214,13 @@ export function useAcceptOwnershipOffer() {
   return {
     accept: (id: string): Promise<AcceptedHousehold> =>
       once(`accept:${id}`, async () => {
-        let household: AcceptedHousehold
-        try {
+        const household = await answerOffer(async () => {
           const result = await acceptOwnershipOffer({ variables: { id } })
           const answer = result.data?.acceptOwnershipOffer
           if (!answer)
             throw new Error('acceptOwnershipOffer returned no household')
-          household = answer
-        } catch (err) {
-          if (isOfferGoneError(err)) await refetchAfterWrite(OFFER_REFETCHES)
-          throw err
-        }
+          return answer
+        }, refetchAfterWrite)
         await refetchAfterWrite('active')
         return household
       }),
@@ -210,8 +229,11 @@ export function useAcceptOwnershipOffer() {
 }
 
 /**
- * Say no to an offer. Resolves to the server's answer: `false` means it was
- * already gone. The lists are read again either way. After a decline of the
+ * Say no to an offer. Resolves to the server's answer: `false` means it went
+ * while the server was answering. An offer already gone when the call arrives
+ * is refused with `FORBIDDEN` (`isOfferGoneError`); the lists are read again
+ * first, then the refusal is passed on. The lists are read again in every
+ * case but another refusal. After a decline of the
  * last hand-over offer the server offers the household to the other people
  * (decision T62); they hear it through the `LOCATION` event.
  */
@@ -222,7 +244,10 @@ export function useDeclineOwnershipOffer() {
   return {
     decline: (id: string): Promise<boolean> =>
       once(`decline:${id}`, async () => {
-        const result = await declineOwnershipOffer({ variables: { id } })
+        const result = await answerOffer(
+          () => declineOwnershipOffer({ variables: { id } }),
+          refetchAfterWrite,
+        )
         await refetchAfterWrite(OFFER_REFETCHES)
         return result.data?.declineOwnershipOffer === true
       }),
@@ -233,7 +258,8 @@ export function useDeclineOwnershipOffer() {
 /**
  * "Not now": hide the offer from the banner. The offer stays open, and the
  * Members page still offers it. Resolves to the server's answer: `false`
- * means it was already gone. The lists are read again either way. The server
+ * means it went while the server was answering. An offer already gone when
+ * the call arrives is refused with `FORBIDDEN`, as for `decline`. The server
  * sends no live event, so the person's OTHER tabs hide the banner only on
  * their next read of `MyOwnershipOffers`.
  */
@@ -244,7 +270,10 @@ export function useDismissOwnershipOffer() {
   return {
     dismiss: (id: string): Promise<boolean> =>
       once(`dismiss:${id}`, async () => {
-        const result = await dismissOwnershipOffer({ variables: { id } })
+        const result = await answerOffer(
+          () => dismissOwnershipOffer({ variables: { id } }),
+          refetchAfterWrite,
+        )
         await refetchAfterWrite(OFFER_REFETCHES)
         return result.data?.dismissOwnershipOffer === true
       }),

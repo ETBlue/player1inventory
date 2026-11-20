@@ -58,13 +58,15 @@ mutation AcceptOwnershipOffer($id: ID!) {
   }
 }
 
-# Only the person the offer is for. `false` when it is already gone.
+# Only the person the offer is for. An offer already gone when the call
+# arrives is FORBIDDEN (the same answer as an unknown id); `false` only when it
+# went while the server was answering.
 mutation DeclineOwnershipOffer($id: ID!) {
   declineOwnershipOffer(id: $id)
 }
 
-# "Not now". Only the person the offer is for. `false` when it is already
-# gone. The server publishes NO live event for it: only this person's own
+# "Not now". Only the person the offer is for. A gone offer is FORBIDDEN or
+# `false`, as for decline. The server publishes NO live event for it: only this person's own
 # tabs show the banner.
 mutation DismissOwnershipOffer($id: ID!) {
   dismissOwnershipOffer(id: $id)

@@ -490,6 +490,61 @@ describe.each([
   })
 })
 
+// `false` above is only the narrow case: the offer was there when the server
+// first looked and gone after its lock. An offer that was ALREADY gone when
+// the call arrived (the owner cancelled, another person accepted the
+// hand-over) is refused with FORBIDDEN: the server answers an unknown id and
+// another person's offer the same way (`householdOfMyOffer` in
+// `apps/server/src/resolvers/ownership.resolver.ts`). That is the common case
+// for a stale banner, so decline and dismiss must read the lists then too.
+describe.each([
+  {
+    name: 'useDeclineOwnershipOffer',
+    use: () => {
+      const h = useDeclineOwnershipOffer()
+      return () => h.decline('offer-1')
+    },
+  },
+  {
+    name: 'useDismissOwnershipOffer',
+    use: () => {
+      const h = useDismissOwnershipOffer()
+      return () => h.dismiss('offer-1')
+    },
+  },
+])('$name when the offer was gone before the call', (c) => {
+  it('user who answers a gone offer sees the lists read again, then the refusal', async () => {
+    const result = await renderListsAnd(c.use)
+    writeAnswer = 'forbidden'
+    // The server no longer lists the offer
+    offersData = { myOwnershipOffers: [] }
+
+    let error: unknown
+    await act(async () => {
+      error = await result.current.write().catch((e: unknown) => e)
+    })
+
+    // Then the refusal is passed on, and the caller can tell it apart
+    expect(error).toBeInstanceOf(Error)
+    expect(isOfferGoneError(error)).toBe(true)
+    // And before it, the three offer lists were read again, so the banner
+    // loses the offer at once
+    expect(reads).toEqual(OFFER_LISTS_ONCE)
+    await waitFor(() => expect(result.current.offers.data).toEqual([]))
+  })
+
+  it('another refusal reads nothing', async () => {
+    const result = await renderListsAnd(c.use)
+    writeAnswer = 'error'
+    let error: unknown
+    await act(async () => {
+      error = await result.current.write().catch((e: unknown) => e)
+    })
+    expect(isOfferGoneError(error)).toBe(false)
+    expect(reads).toEqual({})
+  })
+})
+
 describe('useAcceptOwnershipOffer', () => {
   function useAccept() {
     const h = useAcceptOwnershipOffer()
