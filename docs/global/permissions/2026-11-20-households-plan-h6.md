@@ -1809,6 +1809,36 @@ new test, mock `query` typed `unknown`; fixed to `DocumentNode`), `grep TS6385` 
 `pnpm test` exit 0 (numbers above). The "Could not find client" warning count in the full run
 is 6, the same as before. No E2E (K.8).
 
+**Review (2026-11-20, `985ee365`, `aca278d5`).** Approved after two fixes.
+
+1. **Same button names.** With two offers, two buttons were both named "Accept", and nothing
+   said which household each was for. Each Accept, Decline and Not now button now has
+   `aria-describedby` pointing at its offer text. The name stays the visible word. 1 new test.
+2. **False stub comment.** The `setup.ts` comment said every cloud root render reaches the four
+   offer hooks. Only the query stub is reached. The stubs return no offer, so the three
+   mutation stubs are called by no test. The comment and `components/CLAUDE.md` are corrected.
+   The stubs stay.
+
+Web 3691 / 364 → 3692 / 364. Server 2689 / 85. `scripts/spec` 70.
+
+| # | Mutation | Red |
+|---|---|---|
+| R1 | `setup.ts` query stub throws | 23 in 7 files |
+| R2 | `setup.ts` accept stub throws | **0**: not reached (recorded, not coverage) |
+| R3 | the 4 per-file query stubs throw | 37 in 4 files |
+| R4 | the 4 per-file accept stubs throw | **0**: not reached |
+| R5 | M7 again: the notice does not take the focus | 7 |
+| R6 | Accept loses `aria-describedby` | 1: "user of a screen reader hears which household each answer is for" |
+| R7 | the offer text loses its `id` | 1: the same test |
+| R8 | no `setFailed(false)` before an answer | **0**: gap, not tested |
+| R9 | Accept not disabled while Not now runs | **0**: gap, not tested |
+
+Checked and fine: the mount outside `NoHouseholdGate` (a person in no household has no
+offers); the banner sits in `<main>` like `OfflineBanner`; focus moves to the notice after the
+region unmounts and mounts again; the O39 texts match; M8 stays green for the stated reason.
+Owner question O45 (the hand-over wording "is gone" / 「已經不在了」, which can read as "has
+died") was asked after this review.
+
 ---
 
 ## Task K.7 — web: the Members page
@@ -2078,6 +2108,8 @@ Filled in from the task reports and reviews.
 | K.6 | Step 1: "a failed write shows the error and keeps the banner" | True for a server error. For a GONE offer the banner cannot keep it: the hooks have already read the list without it. That case shows "This offer is no longer open." instead, for Accept, Decline and Not now. An `OfflineWriteError` shows nothing extra (the offline link shows a toast) |
 | K.6 | (not in the plan) a test of the banner with `MockedProvider` | It renders an empty `<div />` with no error unless a `<Suspense>` sits inside `MockedProvider`, the same unexplained trap `HouseholdNameCard.apollo.test.tsx` records. The stories have the boundary too |
 | K.6 | Mutation check list | The plan's two (dismissed shown, Decline on hand-over) both went red. The banner's own local-mode check cannot go red (M8): the hook already skips the query in local mode |
+| K.6 | Step 1: "the banner is a `role="region"` with a label, so axe finds it" | No axe scan includes the banner. No E2E seeds an offer. It needs an a11y scan in K.8 |
+| K.6 | The commit and `setup.ts` said the four hook stubs are needed because every cloud root render reaches them | Only the query stub is reached (23 tests in 7 files, plus 37 in the 4 per-file factories). The three mutation stubs are reached by no test |
 
 ## Status
 
