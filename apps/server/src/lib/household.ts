@@ -464,7 +464,7 @@ export async function lockHousehold(
  * step, the delete of an empty own household, can write a `User` row while
  * the join holds household locks. Two joins can then deadlock. That is why
  * `joinHousehold` retries ONCE on Prisma's `P2034` (a write conflict or a
- * deadlock): see `retryOnceOnConflict` in resolvers/invite.resolver.ts.
+ * deadlock): see `retryOnceOnConflict` below.
  *
  * The cost: `User.updatedAt` moves on every call.
  *
@@ -591,4 +591,39 @@ export async function accountNamesOf(userIds: string[]): Promise<Map<string, Acc
   return new Map(
     rows.map((row) => [row.id, { displayName: row.displayName, deleted: row.deletedAt !== null }]),
   )
+}
+
+/** True for Prisma's "write conflict or deadlock" (P2034). */
+function isWriteConflict(err: unknown): boolean {
+  return (
+    typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'P2034'
+  )
+}
+
+/**
+ * Run `work` (a whole transaction), and run it ONCE more when it fails with
+ * P2034, the error Prisma gives for a Postgres deadlock (`40P01`) or a write
+ * conflict. A second failure is thrown as it is. Postgres has rolled the
+ * first attempt back, so the second starts from a clean state.
+ *
+ * Why `joinHousehold` needs it: deleting an empty own household also sets
+ * `User.activeHouseholdId` to null on every `User` row that still names it
+ * (`onDelete: SetNull`), so a join can write another person's `User` row
+ * while it holds household locks. Two joins at once can then wait on each
+ * other. Also two people who join each other's household at the same moment.
+ * Postgres breaks the wait by failing one of them; one retry turns that into
+ * a normal join (or a normal refusal, when the invite is gone by then).
+ *
+ * `deleteHousehold`, the last person's `leaveHousehold` and the account
+ * hand-over (`handleClerkEvent`, households H6b task K.4) use it for the same
+ * reason. Moved here from resolvers/invite.resolver.ts in task K.4, so
+ * lib/clerkWebhook.ts does not import a resolver.
+ */
+export async function retryOnceOnConflict<T>(work: () => Promise<T>): Promise<T> {
+  try {
+    return await work()
+  } catch (err) {
+    if (!isWriteConflict(err)) throw err
+    return work()
+  }
 }

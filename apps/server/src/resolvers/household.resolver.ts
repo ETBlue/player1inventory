@@ -13,12 +13,12 @@ import {
   HOUSEHOLD_NAME_MAX_LENGTH,
   lockHouseholdOrForbid,
   lockUser,
+  retryOnceOnConflict,
 } from '../lib/household.js'
 import { recordActivity } from '../lib/activity.js'
 import { removeFromHousehold } from '../lib/handover.js'
 import { prisma } from '../lib/prisma.js'
 import { publishHouseholdChange } from '../lib/publishChange.js'
-import { retryOnceOnConflict } from './invite.resolver.js'
 import { householdAnswer } from './ownership.resolver.js'
 import type { Resolvers } from '../generated/graphql.js'
 
