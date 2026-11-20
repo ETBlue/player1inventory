@@ -965,7 +965,7 @@ up to two browsers, in `local`'s `testIgnore`. The first real-SQL run of `offerO
 | 3 | the owner's account is deleted; MIA (manager) gets the hand-over banner with no reload; BEN (member) gets none and sees "This household has no owner."; MIA accepts; `hasOwner` is true again |
 | 4 | BEN, Garage's only organizer, deletes their account: `hasOrganizer` false, "No organizer" on the list, BEN gone from Members and from Garage's people |
 | 5 | the only live person deletes their account: the household goes with a tag WITH a tag type, an item, stock, a cart row and a log (T64, the `NoAction` order on real SQL) |
-| 6 | two managers accept the hand-over together through `makeGql`: exactly one wins, the other gets `BAD_USER_INPUT` with `reason` `OFFER_GONE`. The only real-row-lock proof |
+| 6 | two managers accept the hand-over together through `makeGql`: exactly one wins and the household has one owner. The loser gets `OFFER_GONE` when its first read came before the winner's commit (it then waited at the lock), or `FORBIDDEN` when it came after. Both are accepted; any other answer fails. The `loser answer` annotation says which ran. Only an `OFFER_GONE` run exercises the row lock |
 | 7 | owner decision O37-A: the last live person leaves a household with no owner; the confirm warns, and the household is deleted |
 | 8, 9 | axe, light and dark: the transfer confirm, the Members page with a waiting offer, the banner with a transfer offer and with a hand-over offer |
 
@@ -981,9 +981,18 @@ session, so a deleted account can still send requests here.
 **The cleanup trap.** `/e2e/cleanup` deletes the households a user OWNS. A household whose
 owner's account was deleted has no owner row until someone accepts, so no cleanup deletes it.
 Each test ends with an accept, a delete, or a live owner (the table is in the spec header).
-`rescueOrphans` runs before the cleanups in both hooks: each spec user accepts any open
-offer, and GHOST's deletion is sent again (a household where GHOST is the only member left is
+`rescueOrphans` runs before the cleanups in both hooks: each spec user who can hold an offer
+(MIA, BEN, MAX) accepts any open offer, and GHOST's deletion is sent again (a household where GHOST is the only member left is
 deleted by it). That covers a test that fails part way, and every mutation run below.
+
+**A tab whose live update is checked is opened with `openLive`.** A tab's FIRST socket
+connect refetches nothing (`connects > 1` in `apps/web/src/apollo/liveUpdates.ts`), so an
+event sent before the subscription is registered is lost for good. Until the review of K.8,
+the owner's tab in tests 1 and 2 and BEN's tab in test 3 only loaded the page; test 3 sent
+the `user.deleted` event about one second after BEN's page showed. `openLive` warms each
+such tab up, waits for the warm-up's `CATALOG` refetches (`MyOwnershipOffers`, and
+`GetHousehold` on the Members page) in that tab AND in the tabs already open, and the test
+ends with `stillSameDocument` on that tab.
 
 **Where to read the result back.** Test 5 and test 7 read `User.activeHouseholdId` through
 `GET /e2e/users/:id`. It is `onDelete: SetNull`, so it goes null only when the household row is
