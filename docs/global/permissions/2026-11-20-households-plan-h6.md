@@ -1567,6 +1567,26 @@ Not proved by any unit test: the role read again AFTER the lock (the fake has no
 so no test can put a change between the two reads), and that Postgres really waits on the
 `User` row and the household rows. K.8 runs the hand-over on real SQL.
 
+**K.4 review (2026-11-20).** One fix. The "no other live person" rule ran for the OWNER
+only. A deleted manager or member who was the last live person of a household with no live
+owner (a hand-over nobody accepted, or an owner whose account was deleted before H6) was
+removed, and the household stayed with nobody live in it and no way to get an owner: O37
+option C, which the owner rejected. `leaveHousehold` already deletes in that case (O37-A,
+K.3). Now `handOverDeletedAccount` checks the live people FIRST, for every role, and deletes
+the household with `deleteHouseholdData` when nobody else is live; no event, as for the
+owner. Two new tests in `clerkWebhook.handover.test.ts` (an ownerless household; a household
+whose owner account was deleted before H6). The existing T62 test (PAT is still live) is the
+negative control and stays green. Server tests **17 → 19** in that file.
+
+| # | Mutation (file) | Red |
+|---|---|---|
+| R1 | the live check only for the owner again: `row.role === 'owner' && !live.some(…)` (`handover.ts`) | 2: both new tests, `expected [ 'hh_1', 'hh_2', 'hh_3' ] to deeply equal [ 'hh_1', 'hh_2' ]` |
+| R2 | the owner branch without `tx.locationMember.deleteMany` (`handover.ts`) | 1: the managers row, `expected true to be false` |
+| R3 | the event published with a `clientId` (`clerkWebhook.ts`) | 6: every test that expects an event, because the event then carries `sourceClientId` |
+
+The reviewer agrees M3a cannot go red: the table only offers to members of the household,
+and every member passes the H18 membership clause on that household's own locations.
+
 **Owner questions after K.4** (nothing below was built; the code keeps the behaviour shown):
 
 | # | Question | What the code does now |
