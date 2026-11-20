@@ -389,7 +389,7 @@ describe('the owner was the only person', () => {
 describe('the owner leaves other people', () => {
   it('with managers: every manager gets a hand-over offer, members get none', async () => {
     // Given hh_1 with two managers (KAI, MIA) and a member (BOB) who
-    // organizes LOC_2, and an open invite OWEN made
+    // organizes LOC_2
     seed({
       members: [
         { userId: MIA, role: 'manager' },
@@ -492,6 +492,109 @@ describe('the owner leaves other people', () => {
 
     // Then BOB has one offer, of kind handover
     expect(offersOf('hh_1')).toEqual(['hh_1:user_bob:handover:-'])
+  })
+})
+
+// Owner decision O43 (households H6b task K.4b): a deleted OWNER's open
+// invites are revoked, the same as a removed manager's (O20) and a deleted
+// manager's or member's (task K.4, through `removeFromHousehold`).
+describe("a deleted owner's invites (O43)", () => {
+  const USED = new Date('2026-11-10T00:00:00.000Z')
+
+  function ownerInvites() {
+    return [
+      // OWEN's open invite of hh_1: revoked
+      invite('inv_owen', 'hh_1', OWEN),
+      // MIA's open invite of hh_1: stays open
+      invite('inv_mia', 'hh_1', MIA),
+      // OWEN's used invite of hh_1: unchanged
+      { ...invite('inv_owen_used', 'hh_1', OWEN), usedAt: USED, usedById: BOB },
+      // OWEN's invite of hh_1 revoked earlier: keeps its first date
+      { ...invite('inv_owen_revoked', 'hh_1', OWEN), revokedAt: GONE },
+      // OWEN's open invite of hh_2, where OWEN is only a manager: revoked
+      // through `removeFromHousehold` (task K.4)
+      invite('inv_owen_hh2', 'hh_2', OWEN),
+      // OWEN's open invite of hh_3, a household OWEN is no longer in: a write
+      // for hh_1 must not reach it
+      invite('inv_owen_hh3', 'hh_3', OWEN),
+    ]
+  }
+
+  function seedOwnerWithInvites() {
+    seed({
+      members: [
+        { userId: MIA, role: 'manager' },
+        { userId: BOB, role: 'member' },
+      ],
+      extraHouseholds: [householdRow('hh_3', PAT)],
+      extraMembers: [householdMemberRow('hh_2', OWEN, 'manager'), householdMemberRow('hh_3', PAT, 'owner')],
+      extraUsers: [user(PAT)],
+      invites: ownerInvites(),
+    })
+  }
+
+  const revokedAtOf = (id: string) => world.households.state.householdInvites.find((i) => i.id === id)?.revokedAt
+
+  it('the household is handed over: only the open invites the owner made in it are revoked', async () => {
+    // Given OWEN owns hh_1 (with MIA and BOB), is a manager of hh_2, and made
+    // the invites above
+    seedOwnerWithInvites()
+    const before = structuredClone(world.households.state.householdInvites)
+
+    // When OWEN's account is deleted
+    await deleteAccount(OWEN)
+
+    // Then hh_1 is handed over (the owner branch ran)
+    expect(offersOf('hh_1')).toEqual(['hh_1:user_mia:handover:-'])
+    // And OWEN's open invites of hh_1 and hh_2 are revoked, now
+    expect(revokedAtOf('inv_owen')).toEqual(NOW)
+    expect(revokedAtOf('inv_owen_hh2')).toEqual(NOW)
+    // And every other invite is exactly as it was: MIA's and BEA's stay
+    // open, the used one is not revoked, the revoked one keeps its date,
+    // and hh_3's stays open
+    const changed = new Set(['inv_owen', 'inv_owen_hh2'])
+    expect(world.households.state.householdInvites.filter((i) => !changed.has(i.id))).toEqual(
+      before.filter((i) => !changed.has(i.id)),
+    )
+    expect(revokedAtOf('inv_mia')).toBeNull()
+    expect(revokedAtOf('inv_bea')).toBeNull()
+    expect(revokedAtOf('inv_owen_used')).toBeNull()
+    expect(revokedAtOf('inv_owen_revoked')).toEqual(GONE)
+    expect(revokedAtOf('inv_owen_hh3')).toBeNull()
+  })
+
+  it('a repeat delivery keeps the first revokedAt', async () => {
+    // Given the hand-over already ran at NOW
+    seedOwnerWithInvites()
+    await deleteAccount(OWEN)
+
+    // When the event arrives again an hour later
+    vi.setSystemTime(new Date(NOW.getTime() + 3_600_000))
+    await deleteAccount(OWEN)
+
+    // Then the revoked invites keep the first date, and the open ones stay open
+    expect(revokedAtOf('inv_owen')).toEqual(NOW)
+    expect(revokedAtOf('inv_owen_hh2')).toEqual(NOW)
+    expect(revokedAtOf('inv_mia')).toBeNull()
+    expect(revokedAtOf('inv_owen_hh3')).toBeNull()
+  })
+
+  it('the household is deleted: its invites go with it (cascade), other households keep theirs', async () => {
+    // Given OWEN alone in hh_1 (no DEX), with an open invite there, and a
+    // manager of hh_2 with an open invite there
+    seed({
+      noDex: true,
+      extraMembers: [householdMemberRow('hh_2', OWEN, 'manager')],
+      invites: [invite('inv_owen', 'hh_1', OWEN), invite('inv_owen_hh2', 'hh_2', OWEN)],
+    })
+
+    // When OWEN's account is deleted
+    await deleteAccount(OWEN)
+
+    // Then hh_1's invite is gone with hh_1, and OWEN's hh_2 invite is revoked
+    expect(world.households.state.householdInvites.map((i) => i.id).sort()).toEqual(['inv_bea', 'inv_owen_hh2'])
+    expect(revokedAtOf('inv_owen_hh2')).toEqual(NOW)
+    expect(revokedAtOf('inv_bea')).toBeNull()
   })
 })
 

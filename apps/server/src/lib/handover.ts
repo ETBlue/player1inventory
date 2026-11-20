@@ -205,7 +205,7 @@ async function byTable(
  * |---|---|
  * | any role, and no OTHER member whose account is live | `deleteHouseholdData`, then the household row (its members, invites, offers and log go by cascade). Owner decision O37-A, the same rule as `leaveHousehold`. For a manager or member this happens only when the household has no live owner |
  * | `manager` or `member` | `removeFromHousehold` (location roles, the open invites they made, the offers TO them, the member row; T62 when it deleted the last offer) and one `ACCOUNT_DELETED` row |
- * | `owner`, other live members | their location roles and member row go; `ownerId: null`, `ownerGoneAt: now`; every offer of the household goes (a pending transfer too, T63); `startHandover` makes the `handover` offers by the design's table and writes `HANDOVER_STARTED` |
+ * | `owner`, other live members | their location roles go; the open invites they made in this household are revoked (owner decision O43, the same write as `removeFromHousehold`); their member row goes; `ownerId: null`, `ownerGoneAt: now`; every offer of the household goes (a pending transfer too, T63); `startHandover` makes the `handover` offers by the design's table and writes `HANDOVER_STARTED` |
  *
  * "Live" means `User.deletedAt` is null (decision T61, Y12): a member whose
  * own account is already deleted is not a person who can take the household.
@@ -220,10 +220,12 @@ async function byTable(
  * SAFE TO REPEAT. Svix may deliver the same event again. By then the person
  * has no membership, so step 1 finds nothing and nothing is written.
  *
+ * Invites: every role's open invites in a household that stays are revoked
+ * (O20 and O43). A deleted household's invites go with it (`onDelete:
+ * Cascade` on `HouseholdInvite.household`), so that row needs no extra write.
+ *
  * NOT DONE HERE (not decided in the plan, see the K.4 notes in the plan):
  *
- * - The open invites a deleted OWNER made stay open. A manager's or
- *   member's are revoked by `removeFromHousehold` (owner decision O20).
  * - Rows of accounts deleted BEFORE this code ran. No event comes for them
  *   again. That is the O36 step.
  *
@@ -280,6 +282,16 @@ export async function handOverDeletedAccount(
     }
 
     await tx.locationMember.deleteMany({ where: { userId, location: { householdId } } })
+    // Owner decision O43: the open invites the owner made in THIS household
+    // are revoked, the same write as `removeFromHousehold` (O20). Without it
+    // people could still join through them, and `invitePreview` would name a
+    // deleted account as the inviter. Revoked, not deleted: the invite list
+    // keeps its history. An invite revoked earlier keeps its date, and a
+    // used one is not touched.
+    await tx.householdInvite.updateMany({
+      where: { householdId, createdById: userId, usedAt: null, revokedAt: null },
+      data: { revokedAt: now },
+    })
     await tx.householdMember.delete({
       where: { householdId_userId: { householdId, userId } },
     })
