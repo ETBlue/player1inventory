@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client'
 import { recordActivity } from './activity.js'
 import { countedOrganizerIds } from './authz.js'
+import { deleteHouseholdData, lockHouseholds } from './household.js'
 
 // Removing a person from a household, and the hand-over offers (households
 // H6b, task K.3; decisions T11, T30, T60 and T62 of
@@ -12,9 +13,11 @@ import { countedOrganizerIds } from './authz.js'
 // Importing authz back into household.ts would make an import cycle, which
 // lib/household.ts already avoids on purpose (see `lockHouseholdOrForbid`).
 //
-// Every function here runs INSIDE the caller's transaction, after the caller
-// took the household lock (`lockHouseholdOrForbid`). None takes a lock, and
-// none writes a `User` row (decision T16).
+// Every function here runs INSIDE the caller's transaction. All but
+// `handOverDeletedAccount` run after the caller took the household lock
+// (`lockHouseholdOrForbid`), take no lock themselves, and write no `User`
+// row (decision T16). `handOverDeletedAccount` (task K.4) takes the household
+// locks itself, AFTER its caller wrote the deleted person's `User` row.
 
 type Tx = Prisma.TransactionClient
 
@@ -184,4 +187,105 @@ async function byTable(
   const organizing = candidates.filter((p) => organizers.has(p.userId))
   if (organizing.length > 0) return organizing.map((p) => p.userId)
   return candidates.map((p) => p.userId)
+}
+
+/**
+ * The hand-over when a Clerk account is deleted (households H6b task K.4,
+ * decisions T60, T61 and T63). `handleClerkEvent` calls it inside ONE
+ * transaction, AFTER it wrote the person's `User` row (that write is the
+ * `lockUser` of decision T16), so the lock order is: the `User` row, then the
+ * households, sorted by id.
+ *
+ * 1. Read the person's memberships, and lock all those households, sorted
+ *    (`lockHouseholds`).
+ * 2. Per household, in sorted order, read the person's role again through
+ *    `tx` (after the lock, so a role changed meanwhile is seen):
+ *
+ * | Their role | What happens |
+ * |---|---|
+ * | `manager` or `member` | `removeFromHousehold` (location roles, the open invites they made, the offers TO them, the member row; T62 when it deleted the last offer) and one `ACCOUNT_DELETED` row |
+ * | `owner`, and no OTHER member whose account is live | `deleteHouseholdData`, then the household row (its members, invites, offers and log go by cascade) |
+ * | `owner`, other live members | their location roles and member row go; `ownerId: null`, `ownerGoneAt: now`; every offer of the household goes (a pending transfer too, T63); `startHandover` makes the `handover` offers by the design's table and writes `HANDOVER_STARTED` |
+ *
+ * "Live" means `User.deletedAt` is null (decision T61, Y12): a member whose
+ * own account is already deleted is not a person who can take the household.
+ *
+ * Every row written has the deleted person as its actor (decision T50).
+ *
+ * Returns the ids of the households that still exist and changed, sorted.
+ * The caller publishes one household-level `LOCATION` for each, AFTER the
+ * commit. A deleted household gets no event: it has no members left to hear
+ * it (the same as `deleteHousehold`).
+ *
+ * SAFE TO REPEAT. Svix may deliver the same event again. By then the person
+ * has no membership, so step 1 finds nothing and nothing is written.
+ *
+ * NOT DONE HERE (not decided in the plan, see the K.4 notes in the plan):
+ *
+ * - The open invites a deleted OWNER made stay open. A manager's or
+ *   member's are revoked by `removeFromHousehold` (owner decision O20).
+ * - Rows of accounts deleted BEFORE this code ran. No event comes for them
+ *   again. That is the O36 step.
+ *
+ * The household delete also writes OTHER people's `User` rows
+ * (`activeHouseholdId` is `onDelete: SetNull`) while this transaction holds
+ * household locks. That breaks the one lock order in the same way
+ * `joinHousehold` and `deleteHousehold` do, so the caller retries once on
+ * P2034 (`retryOnceOnConflict`).
+ */
+export async function handOverDeletedAccount(
+  tx: Tx,
+  userId: string,
+  now: Date,
+): Promise<string[]> {
+  const memberships = await tx.householdMember.findMany({
+    where: { userId },
+    select: { householdId: true },
+  })
+  if (memberships.length === 0) return []
+  const locked = await lockHouseholds(
+    tx,
+    memberships.map((m) => m.householdId),
+  )
+  const changed: string[] = []
+  for (const householdId of [...locked].sort()) {
+    const row = await tx.householdMember.findUnique({
+      where: { householdId_userId: { householdId, userId } },
+      select: { role: true },
+    })
+    // Left or was removed between the first read and the lock.
+    if (!row) continue
+
+    if (row.role !== 'owner') {
+      await removeFromHousehold(tx, householdId, userId, userId)
+      await recordActivity(tx, { householdId, actorId: userId, action: 'ACCOUNT_DELETED' })
+      changed.push(householdId)
+      continue
+    }
+
+    const live = await tx.householdMember.findMany({
+      where: { householdId, user: { deletedAt: null } },
+      select: { userId: true },
+    })
+    if (!live.some((m) => m.userId !== userId)) {
+      await deleteHouseholdData(tx, householdId)
+      await tx.household.deleteMany({ where: { id: householdId } })
+      continue
+    }
+
+    await tx.locationMember.deleteMany({ where: { userId, location: { householdId } } })
+    await tx.householdMember.delete({
+      where: { householdId_userId: { householdId, userId } },
+    })
+    await tx.household.update({
+      where: { id: householdId },
+      data: { ownerId: null, ownerGoneAt: now },
+    })
+    // `startHandover` deletes every offer of the household too. Done here
+    // as well, so this step does not depend on that detail of it (T63).
+    await tx.ownershipOffer.deleteMany({ where: { householdId } })
+    await startHandover(tx, householdId, userId)
+    changed.push(householdId)
+  }
+  return changed
 }
