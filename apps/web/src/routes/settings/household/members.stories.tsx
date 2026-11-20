@@ -8,6 +8,8 @@ import {
   HouseholdMembersDocument,
   type HouseholdMembersQuery,
   type HouseholdRole,
+  MyOwnershipOffersDocument,
+  type MyOwnershipOffersQuery,
 } from '@/generated/graphql'
 import { CloudRolePage, cloudRoleStorySetup } from '@/test/cloudRoleStory'
 
@@ -25,6 +27,28 @@ type Story = StoryObj<typeof meta>
 
 type Person = HouseholdMembersQuery['householdMembers'][number]
 type Invite = HouseholdInvitesQuery['householdInvites'][number]
+type Offer = MyOwnershipOffersQuery['myOwnershipOffers'][number]
+
+/** An open offer of the story household to `toUserId`. */
+function storyOffer(
+  kind: 'transfer' | 'handover',
+  toUserId: string,
+  toName: string,
+  dismissedAt: string | null = null,
+): Offer {
+  return {
+    __typename: 'OwnershipOffer',
+    id: `offer-${toUserId}`,
+    householdId: 'household-role-story',
+    householdName: 'The Lin home',
+    kind,
+    toUserId,
+    toName,
+    fromName: kind === 'transfer' ? 'Olive Lin' : null,
+    createdAt: '2026-11-20T00:00:00.000Z',
+    dismissedAt,
+  }
+}
 
 /** `withoutLocationRole`: people who joined with no location role (O14-A). */
 function people(me: string, withoutLocationRole: string[] = []): Person[] {
@@ -76,14 +100,23 @@ function pageMocks(
   me: string,
   invites: Invite[],
   withoutLocationRole: string[] = [],
+  {
+    offers = [],
+    members = people(me, withoutLocationRole),
+  }: { offers?: Offer[]; members?: Person[] } = {},
 ): NonNullable<MockedProviderProps['mocks']> {
   return [
     {
       request: { query: HouseholdMembersDocument },
       maxUsageCount: Number.POSITIVE_INFINITY,
       result: {
-        data: { householdMembers: people(me, withoutLocationRole) },
+        data: { householdMembers: members },
       },
+    },
+    {
+      request: { query: MyOwnershipOffersDocument },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+      result: { data: { myOwnershipOffers: offers } },
     },
     {
       request: { query: HouseholdInvitesDocument },
@@ -201,5 +234,71 @@ export const InviteDialogOpen: Story = {
       await screen.findByRole('button', { name: 'Invite someone' }),
     )
     await screen.findByRole('combobox', { name: 'my Kitchen' })
+  },
+}
+
+/**
+ * Households H6b task K.7: the owner offered the household to mia. Her row
+ * says "Waiting for mia to accept", with Cancel. No row offers a transfer
+ * while the offer is open.
+ */
+export const OwnerWaitingForAccept: Story = {
+  beforeEach: cloudRoleStorySetup,
+  render: () => (
+    <CloudRolePage
+      path={PATH}
+      householdRole="owner"
+      ownership={{ pendingTransfer: storyOffer('transfer', 'u-mia', 'mia') }}
+      mocks={pageMocks('u-olive', [])}
+    />
+  ),
+}
+
+/**
+ * Households H6b task K.7: the owner's account was deleted, so the household
+ * has no owner and the owner's row is gone. Mona has a hand-over offer she
+ * put off with "Not now" (the banner hides it), so this page still offers
+ * **Become the owner** (owner decision O42-A).
+ */
+export const NoOwnerBecomeOwner: Story = {
+  beforeEach: cloudRoleStorySetup,
+  render: () => (
+    <CloudRolePage
+      path={PATH}
+      householdRole="manager"
+      ownership={{ hasOwner: false }}
+      mocks={pageMocks('u-mona', [], [], {
+        offers: [
+          storyOffer('handover', 'u-mona', 'Mona', '2026-11-20T01:00:00.000Z'),
+        ],
+        members: people('u-mona').filter((p) => p.role !== 'owner'),
+      })}
+    />
+  ),
+}
+
+/**
+ * Households H6b task K.7, owner decision O37-A: Mona is the last person in
+ * a household with no owner. The Leave confirm is open: it says the household
+ * and everything in it will be deleted.
+ */
+export const LastPersonLeaves: Story = {
+  beforeEach: cloudRoleStorySetup,
+  render: () => (
+    <CloudRolePage
+      path={PATH}
+      householdRole="manager"
+      ownership={{ hasOwner: false }}
+      mocks={pageMocks('u-mona', [], [], {
+        members: people('u-mona').filter((p) => p.userId === 'u-mona'),
+      })}
+    />
+  ),
+  play: async () => {
+    const user = userEvent.setup()
+    await user.click(
+      await screen.findByRole('button', { name: 'Leave household' }),
+    )
+    await screen.findByRole('alertdialog')
   },
 }

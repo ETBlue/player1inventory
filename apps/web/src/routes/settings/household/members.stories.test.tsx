@@ -19,6 +19,9 @@ const {
   WithOpenInvites,
   InviteDialogOpen,
   OwnerSeesNoLocationRoles,
+  OwnerWaitingForAccept,
+  NoOwnerBecomeOwner,
+  LastPersonLeaves,
 } = composeStories(stories)
 
 // composeStories does not run a story's `beforeEach`, so each test runs it.
@@ -86,5 +89,33 @@ describe('Members page stories smoke tests', () => {
     const row = link.closest('li') as HTMLElement
     expect(row).toHaveTextContent('mia')
     expect(within(row).getByText('No location roles')).toBeInTheDocument()
+  })
+
+  it('OwnerWaitingForAccept shows the waiting row with Cancel', async () => {
+    onTestFinished(cloudRoleStorySetup())
+    render(<OwnerWaitingForAccept />)
+    const cancel = await screen.findByRole('button', {
+      name: 'Cancel the offer to mia',
+    })
+    expect(cancel.closest('li')).toHaveTextContent('Waiting for mia to accept')
+    expect(
+      screen.queryByRole('button', { name: /^Transfer ownership to / }),
+    ).toBeNull()
+  })
+
+  it('NoOwnerBecomeOwner says there is no owner and offers the button', async () => {
+    onTestFinished(cloudRoleStorySetup())
+    render(<NoOwnerBecomeOwner />)
+    expect(
+      await screen.findByRole('button', { name: 'Become the owner' }),
+    ).toHaveAccessibleDescription('This household has no owner.')
+  })
+
+  it('LastPersonLeaves warns that leaving deletes the household', async () => {
+    onTestFinished(cloudRoleStorySetup())
+    await LastPersonLeaves.run()
+    expect(screen.getByRole('alertdialog')).toHaveTextContent(
+      'You are the last person here. Leaving deletes the household and everything in it.',
+    )
   })
 })

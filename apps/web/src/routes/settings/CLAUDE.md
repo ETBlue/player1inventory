@@ -34,7 +34,7 @@ Plan: `docs/global/permissions/2026-11-18-households-plan-h5b.md`, Task G.9. Ser
 
 | Household role | Sees |
 |---|---|
-| owner | every person; on every other row the role control (`member` ↔ `manager`) and Remove; **Invite someone** (member or manager); every open invite with Copy link and Revoke; the `ownerCannotLeave` note instead of Leave |
+| owner | every person; on every other row the role control (`member` ↔ `manager`), Remove and **Transfer ownership**; **Invite someone** (member or manager); every open invite with Copy link and Revoke; `ownerCannotLeave` on their own row instead of Leave |
 | manager | every person; Remove on `member` rows; Leave on their own row; Invite (member only, O3-A); the `member` invites, Copy link and Revoke |
 | member | every person and role, no e-mail; Leave on their own row; no invites (O13-A) |
 
@@ -46,8 +46,18 @@ Plan: `docs/global/permissions/2026-11-18-households-plan-h5b.md`, Task G.9. Ser
 - A failed invites read shows `invitesLoadError`, not "No open invites.".
 - **"No location roles"** (households H5c task H.6, owner decision O28-A): an owner or manager (`canManageMembers`) sees `noLocationRoles` and a link, **Give a location role** (`giveLocationRole`), on the row of a person with `hasLocationRole: false` (a person who joined with no location role, O14-A). The link goes to Settings › Locations; the role is given on a location's page with **Add person**. A member sees no mark: they cannot give a location role.
 - Leave: see `useLeaveHousehold` in `hooks/CLAUDE.md`.
+- **Ownership (households H6b task K.7).** Hooks: `hooks/useOwnershipOffers.ts`. Components: `MemberList` (`components/CLAUDE.md`).
+
+  | Who | Sees |
+  |---|---|
+  | owner (`canTransferOwnership`) | **Transfer ownership** on every other row. It asks first: "Offer {household} to {name}? You become a manager when they accept." After it, that row says "Waiting for {name} to accept" with **Cancel**, and no row offers a transfer (one offer at a time; `GetHousehold.pendingTransfer`). A Cancel that answers `false` (the person answered first) shows the toast `ownership.gone`. A refused write shows `members.error`. Focus moves to the page heading after either |
+  | everyone, when `GetHousehold.hasOwner` is `false` | "This household has no owner." above the list |
+  | a person with an open offer for THIS household | **Become the owner** above the list, described by the text above it: the "no owner" note for a hand-over, `ownership.banner.transfer` for a transfer. `MyOwnershipOffers` holds offers of every household, so the page filters by `householdId`. A dismissed offer ("Not now") counts, also after a decline that left nobody else (owner decision O42-A). Toasts: `ownership.accepted`, `ownership.gone` (`isOfferGoneError`), `ownership.failed`; none for an `OfflineWriteError` |
+  | the last live person | the Leave confirm says `lastLeaveWarning`: leaving deletes the household and everything in it (owner decision O37-A). "Last" is "only me in `householdMembers`", which lists live accounts only, the same rule as the server's `leaveHousehold` |
+
+  The page has no Decline and no Not now: a person answers no from the banner (`OwnershipOfferBanner`).
 - Mobile: not full-screen, like Locations; the page has its own Back button (`lg:hidden`).
-- Tests: `members.cloud.test.tsx` (the real route tree, real Apollo hooks, `MockedProvider`; every fixture holds all three roles), `members.test.tsx` (local mode), `components/household/MemberList/MemberList.test.tsx` (every caller × row pair), `lib/copyText.test.ts`. Stories: `Owner`, `Manager`, `Member`, `WithOpenInvites`, `InviteDialogOpen`, `OwnerSeesNoLocationRoles`. The axe scans (light and dark) belong to G.10's cloud spec, because `a11y.spec.ts` does not run in cloud.
+- Tests: `members.cloud.test.tsx` (the real route tree, real Apollo hooks, `MockedProvider`; every fixture holds all three roles), `members.test.tsx` (local mode), `components/household/MemberList/MemberList.test.tsx` (every caller × row pair), `lib/copyText.test.ts`. Stories: `Owner`, `Manager`, `Member`, `WithOpenInvites`, `InviteDialogOpen`, `OwnerSeesNoLocationRoles`, and since K.7 `OwnerWaitingForAccept`, `NoOwnerBecomeOwner`, `LastPersonLeaves` (`CloudRolePage`'s `ownership` prop sets `hasOwner` and `pendingTransfer`). The axe scans (light and dark) belong to G.10's cloud spec, because `a11y.spec.ts` does not run in cloud.
 
 ### The Activity page (cloud, households H6 task J.6)
 

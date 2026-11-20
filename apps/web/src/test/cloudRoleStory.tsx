@@ -13,6 +13,7 @@ import { LAST_HOUSEHOLD_ID_KEY } from '@/apollo/householdGuard'
 import {
   BootstrapCartsDocument,
   GetHouseholdDocument,
+  type GetHouseholdQuery,
   GetLocationsDocument,
   type HouseholdRole,
 } from '@/generated/graphql'
@@ -36,9 +37,20 @@ export const ROLE_STORY_LOCATION = 'clw3rolestory0a00s9f8h7g6d5'
 /** The household id `cloudRoleBaseMocks` answers. */
 const ROLE_STORY_HOUSEHOLD = 'household-role-story'
 
+type StoryHousehold = NonNullable<GetHouseholdQuery['household']>
+
+/**
+ * The ownership fields of the story household (households H6b task K.7):
+ * `hasOwner` and `pendingTransfer`. Default: it has an owner, and no offer.
+ */
+export type StoryOwnership = Partial<
+  Pick<StoryHousehold, 'hasOwner' | 'pendingTransfer'>
+>
+
 /** The mocks every page needs, for a person with `householdRole`. */
 export function cloudRoleBaseMocks(
   householdRole: HouseholdRole,
+  ownership: StoryOwnership = {},
 ): NonNullable<MockedProviderProps['mocks']> {
   return [
     {
@@ -51,8 +63,8 @@ export function cloudRoleBaseMocks(
             id: ROLE_STORY_HOUSEHOLD,
             name: 'The Lin home',
             role: householdRole,
-            hasOwner: true,
-            pendingTransfer: null,
+            hasOwner: ownership.hasOwner ?? true,
+            pendingTransfer: ownership.pendingTransfer ?? null,
           },
         },
       },
@@ -112,10 +124,13 @@ export function CloudRolePage({
   path,
   householdRole,
   mocks,
+  ownership,
 }: {
   path: string
   householdRole: HouseholdRole
   mocks: NonNullable<MockedProviderProps['mocks']>
+  /** See `StoryOwnership`. */
+  ownership?: StoryOwnership
 }) {
   const [queryClient] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
@@ -128,7 +143,9 @@ export function CloudRolePage({
     }),
   )
   return (
-    <MockedProvider mocks={[...cloudRoleBaseMocks(householdRole), ...mocks]}>
+    <MockedProvider
+      mocks={[...cloudRoleBaseMocks(householdRole, ownership), ...mocks]}
+    >
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
       </QueryClientProvider>

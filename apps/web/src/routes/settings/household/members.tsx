@@ -1,6 +1,6 @@
 import { createFileRoute, Navigate } from '@tanstack/react-router'
 import { ArrowLeft, Info, UserPlus } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { OfflineWriteError } from '@/apollo/offlineWriteLink'
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import type { HouseholdRole } from '@/generated/graphql'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useDataMode } from '@/hooks/useDataMode'
+import { useHousehold } from '@/hooks/useHousehold'
 import {
   useCreateInvite,
   useHouseholdInvites,
@@ -24,6 +25,14 @@ import {
   useSetHouseholdRole,
 } from '@/hooks/useHouseholdMembers'
 import { useHouseholdLocations } from '@/hooks/useLocations'
+import {
+  isOfferGoneError,
+  type OwnershipOffer,
+  useAcceptOwnershipOffer,
+  useCancelOwnershipOffer,
+  useMyOwnershipOffers,
+  useOfferOwnership,
+} from '@/hooks/useOwnershipOffers'
 import { usePermissions } from '@/hooks/usePermissions'
 import { copyText } from '@/lib/copyText'
 
@@ -31,9 +40,18 @@ import { copyText } from '@/lib/copyText'
 //
 // | Household role | Sees |
 // |---|---|
-// | owner | every person, the role control and Remove on every other row, Invite, open invites with Copy link and Revoke |
+// | owner | every person, the role control, Remove and Transfer ownership on every other row, Invite, open invites with Copy link and Revoke |
 // | manager | every person, Remove on `member` rows, their own Leave, Invite (as `member` only), the `member` invites |
 // | member | every person and role, their own Leave (owner decision O13-A). No e-mail, no invites |
+//
+// Ownership (households H6b task K.7):
+//
+// | Who | Sees |
+// |---|---|
+// | owner | Transfer ownership on every other row (asks first). While an offer is open: "Waiting for {name} to accept" and Cancel on that row, and no Transfer anywhere (one offer at a time). Their own row: "The owner cannot leave. Transfer ownership first." |
+// | everyone, when `hasOwner` is false | "This household has no owner." |
+// | a person with an open offer for THIS household | Become the owner. Also after "Not now" (the offer is dismissed, not gone), and after a decline that left nobody else (owner decision O42-A) |
+// | the last live person | a Leave confirm that says the household and everything in it will be deleted (owner decision O37-A) |
 //
 // The server checks every write; this page only hides what it would refuse.
 export const Route = createFileRoute('/settings/household/members')({
@@ -60,7 +78,12 @@ function reportError(err: unknown, message: string) {
 export function MembersPage() {
   const { t } = useTranslation()
   const { goBack } = useAppNavigation('/settings')
-  const { canManageMembers, isHouseholdOwner, roleKnown } = usePermissions()
+  const {
+    canManageMembers,
+    isHouseholdOwner,
+    roleKnown,
+    canTransferOwnership,
+  } = usePermissions()
   const callerRole: HouseholdRole | undefined = isHouseholdOwner
     ? 'owner'
     : canManageMembers
@@ -91,6 +114,9 @@ export function MembersPage() {
   const { leave } = useLeaveHousehold()
   const { create } = useCreateInvite()
   const { revoke } = useRevokeInvite()
+  const household = useHousehold()
+  const { offer, isPending: offering } = useOfferOwnership()
+  const { cancel, isPending: cancelling } = useCancelOwnershipOffer()
 
   const errorText = t('settings.household.members.error')
 
@@ -126,6 +152,26 @@ export function MembersPage() {
       reportError(err, errorText)
     }
   }
+  // After a transfer or a cancel the pressed button goes away (the row then
+  // waits, or offers Transfer again), so focus moves to the heading.
+  const handleTransfer = async (person: MemberRow) => {
+    try {
+      await offer(person.userId)
+      titleRef.current?.focus()
+    } catch (err) {
+      reportError(err, errorText)
+    }
+  }
+  const handleCancelTransfer = async () => {
+    try {
+      // `false`: there was no open offer any more (the person accepted or
+      // declined first). The lists are read again either way.
+      if (!(await cancel())) toast(t('ownership.gone'))
+      titleRef.current?.focus()
+    } catch (err) {
+      reportError(err, errorText)
+    }
+  }
   const handleCopy = async (token: string): Promise<boolean> => {
     const ok = await copyText(inviteLink(token))
     if (ok) toast.success(t('settings.household.members.copied'))
@@ -148,6 +194,11 @@ export function MembersPage() {
   const rows = members.data ?? []
   const me = rows.find((p) => p.isMe)
   const ownerAlone = rows.length === 1 && me?.role === 'owner'
+  // The server deletes the household when no OTHER live person is left
+  // (O37-A). `householdMembers` lists live accounts only, so "only me in the
+  // list" is the same rule. An owner alone cannot leave at all.
+  const lastPerson = rows.length === 1 && !!me && me.role !== 'owner'
+  const pending = household.data?.pendingTransfer
 
   return (
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
@@ -184,6 +235,13 @@ export function MembersPage() {
           </output>
         ) : (
           <section className="space-y-px">
+            {household.data && (
+              <OwnershipNotes
+                householdId={household.data.id}
+                hasOwner={household.data.hasOwner}
+                onAccepted={() => titleRef.current?.focus()}
+              />
+            )}
             <MemberList
               members={rows}
               callerRole={callerRole}
@@ -196,10 +254,23 @@ export function MembersPage() {
               // only: they are the ones who can give the role (households
               // H5c, task H.6, owner decision O28-A).
               showLocationRoleMarks={canManageMembers}
+              householdName={household.data?.name}
+              // Transfer ownership is for the owner only; the server asks
+              // the owner role too.
+              {...(canTransferOwnership
+                ? {
+                    onTransfer: handleTransfer,
+                    onCancelTransfer: handleCancelTransfer,
+                  }
+                : {})}
+              pendingTransfer={
+                pending
+                  ? { toUserId: pending.toUserId, toName: pending.toName }
+                  : null
+              }
+              transferBusy={offering || cancelling}
+              lastPerson={lastPerson}
             />
-            {me?.role === 'owner' && (
-              <Note text={t('settings.household.members.ownerCannotLeave')} />
-            )}
             {ownerAlone && (
               <Note text={t('settings.household.members.alone')} />
             )}
@@ -252,11 +323,85 @@ function InviteDialogWithLocations(
   return <InviteDialog {...props} locations={data} locationsError={isError} />
 }
 
-function Note({ text }: { text: string }) {
+function Note({ text, id }: { text: string; id?: string }) {
   return (
     <p className="flex items-start gap-2 px-4 py-2 text-sm text-foreground-muted">
       <Info aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
-      <span>{text}</span>
+      <span id={id}>{text}</span>
     </p>
+  )
+}
+
+/**
+ * Above the list (households H6b task K.7): "This household has no owner."
+ * when nobody owns it, and **Become the owner** for a person with an open
+ * offer for THIS household. `MyOwnershipOffers` lists offers of every
+ * household the person is in, so it is filtered by `householdId`. A dismissed
+ * offer ("Not now") counts: the banner hides it, this page does not.
+ *
+ * The button is described by the text above it, so a screen reader says what
+ * it is for. After an answer the offer list is read again before the hook
+ * resolves, so the button is gone: the message is a toast.
+ */
+function OwnershipNotes({
+  householdId,
+  hasOwner,
+  onAccepted,
+}: {
+  householdId: string
+  hasOwner: boolean
+  onAccepted: () => void
+}) {
+  const { t } = useTranslation()
+  const offers = useMyOwnershipOffers()
+  const { accept, isPending } = useAcceptOwnershipOffer()
+  const noteId = useId()
+  const myOffer: OwnershipOffer | undefined = offers.data?.find(
+    (o) => o.householdId === householdId,
+  )
+
+  const handleAccept = async (offerId: string) => {
+    try {
+      const answer = await accept(offerId)
+      toast.success(t('ownership.accepted', { household: answer.name }))
+      onAccepted()
+    } catch (err) {
+      if (err instanceof OfflineWriteError) return
+      if (isOfferGoneError(err)) toast(t('ownership.gone'))
+      else toast.error(t('ownership.failed'))
+    }
+  }
+
+  // The text the button is described by: the transfer sentence for a
+  // transfer offer, else the "no owner" note.
+  const offerText =
+    myOffer?.kind === 'transfer'
+      ? t('ownership.banner.transfer', {
+          name: myOffer.fromName ?? '',
+          household: myOffer.householdName,
+        })
+      : undefined
+  if (hasOwner && !myOffer) return null
+  return (
+    <div className="space-y-px">
+      {!hasOwner && (
+        <Note
+          text={t('settings.household.members.noOwner')}
+          {...(offerText ? {} : { id: noteId })}
+        />
+      )}
+      {offerText && <Note text={offerText} id={noteId} />}
+      {myOffer && (
+        <div className="px-4 py-2">
+          <Button
+            aria-describedby={noteId}
+            disabled={isPending}
+            onClick={() => handleAccept(myOffer.id)}
+          >
+            {t('settings.household.members.becomeOwner')}
+          </Button>
+        </div>
+      )}
+    </div>
   )
 }

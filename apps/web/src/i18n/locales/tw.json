@@ -525,7 +525,7 @@
         "removeConfirmManager": "其他人建立的尚未使用的邀請仍然有效。如果對方可能複製過其中的連結，請撤銷該邀請。",
         "leave": "離開家庭",
         "leaveConfirm": "要離開這個家庭嗎？你會失去所有據點的權限。",
-        "ownerCannotLeave": "擁有者不能離開。轉讓家庭的功能之後才會有。",
+        "ownerCannotLeave": "擁有者不能離開。請先轉移擁有權。",
         "alone": "這個家庭只有你一個人。如果這個家庭沒有任何資料，而你用邀請加入另一個家庭，這個家庭會被刪除。",
         "loadError": "無法讀取成員，請再試一次。",
         "error": "無法儲存變更，請再試一次。",
@@ -533,7 +533,16 @@
         "removing": "移除中…",
         "invitesLoadError": "無法讀取尚未使用的邀請，請再試一次。",
         "locationsLoadError": "無法讀取據點，請再試一次。",
-        "noLocations": "這個家庭還沒有任何據點。"
+        "noLocations": "這個家庭還沒有任何據點。",
+        "transfer": "轉移擁有權",
+        "transferLabel": "把擁有權轉移給 {{name}}",
+        "transferConfirm": "要把 {{household}} 交給 {{name}} 嗎？對方接受後，你會變成管理者。",
+        "waiting": "等待 {{name}} 接受",
+        "cancelOffer": "取消",
+        "cancelOfferLabel": "取消給 {{name}} 的邀請",
+        "becomeOwner": "成為擁有者",
+        "noOwner": "這個家庭沒有擁有者。",
+        "lastLeaveWarning": "你是這裡的最後一個人。離開會刪除這個家庭和裡面的所有東西。"
       },
       "activity": {
         "title": "動態",

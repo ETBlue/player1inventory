@@ -1,7 +1,19 @@
 import { Link } from '@tanstack/react-router'
-import { LogOut, UserMinus } from 'lucide-react'
+import { Crown, LogOut, UserMinus } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DeleteButton } from '@/components/shared/DeleteButton'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Button } from '@/components/ui/button'
 import { Card, CardTitle } from '@/components/ui/card'
 import {
   Select,
@@ -31,33 +43,48 @@ export interface MemberRow {
  * *Household roles*). The server checks every one of these again; this only
  * hides a button that would be refused.
  *
- * | Caller | Role control | Remove | Leave |
- * |---|---|---|---|
- * | owner | on every row but the owner's | every row but their own | never (the owner cannot leave) |
- * | manager | never | only on `member` rows | on their own row |
- * | member | never | never | on their own row |
+ * | Caller | Role control | Remove | Leave | Transfer ownership |
+ * |---|---|---|---|---|
+ * | owner | on every row but the owner's | every row but their own | never (the owner cannot leave) | every row but their own (households H6b task K.7) |
+ * | manager | never | only on `member` rows | on their own row | never |
+ * | member | never | never | on their own row | never |
  *
  * `callerRole` is `undefined` while the role loads: then nothing is offered.
+ * The list also hides Transfer while an offer is pending (one at a time):
+ * that is the `pendingTransfer` prop, not this table.
  */
 export function memberActions(
   callerRole: HouseholdRole | undefined,
   person: MemberRow,
-): { canSetRole: boolean; canRemove: boolean; canLeave: boolean } {
+): {
+  canSetRole: boolean
+  canRemove: boolean
+  canLeave: boolean
+  canTransfer: boolean
+} {
   const canLeave =
     callerRole !== undefined && person.isMe && person.role !== 'owner'
-  if (person.isMe) return { canSetRole: false, canRemove: false, canLeave }
+  const none = { canSetRole: false, canRemove: false, canTransfer: false }
+  if (person.isMe) return { ...none, canLeave }
   if (callerRole === 'owner') {
     const notOwner = person.role !== 'owner'
-    return { canSetRole: notOwner, canRemove: notOwner, canLeave }
-  }
-  if (callerRole === 'manager') {
     return {
-      canSetRole: false,
-      canRemove: person.role === 'member',
+      canSetRole: notOwner,
+      canRemove: notOwner,
       canLeave,
+      canTransfer: notOwner,
     }
   }
-  return { canSetRole: false, canRemove: false, canLeave }
+  if (callerRole === 'manager') {
+    return { ...none, canRemove: person.role === 'member', canLeave }
+  }
+  return { ...none, canLeave }
+}
+
+/** The open transfer offer of the household (`GetHousehold.pendingTransfer`). */
+export interface PendingTransfer {
+  toUserId: string
+  toName: string
 }
 
 export interface MemberListProps {
@@ -86,6 +113,29 @@ export interface MemberListProps {
    * needs the router in context.
    */
   showLocationRoleMarks?: boolean
+  /** The household's name, for the transfer confirm. `undefined` while it loads. */
+  householdName?: string | undefined
+  /**
+   * Owner only: offer the household to this person (households H6b task
+   * K.7). Asks first. Must not reject: it reports its own error. Without it
+   * no row shows Transfer ownership.
+   */
+  onTransfer?: (person: MemberRow) => Promise<void>
+  /** Owner only: take the pending offer back. Must not reject. */
+  onCancelTransfer?: () => Promise<void>
+  /**
+   * The open transfer offer. Its row says "Waiting for {name} to accept"
+   * with Cancel, and no row shows Transfer ownership: one offer at a time.
+   * When the person is not in the list, the same line shows under it.
+   */
+  pendingTransfer?: PendingTransfer | null
+  /** An offer or a cancel is running: Transfer and Cancel are off. */
+  transferBusy?: boolean
+  /**
+   * The caller is the last live person of the household. Leaving then
+   * deletes it (owner decision O37-A), and the Leave confirm says so.
+   */
+  lastPerson?: boolean
 }
 
 /**
@@ -102,15 +152,34 @@ export function MemberList({
   leaving = false,
   removingUserIds,
   showLocationRoleMarks = false,
+  householdName,
+  onTransfer,
+  onCancelTransfer,
+  pendingTransfer,
+  transferBusy = false,
+  lastPerson = false,
 }: MemberListProps) {
   const { t } = useTranslation()
+  const pendingRowShown =
+    !!pendingTransfer &&
+    members.some((p) => p.userId === pendingTransfer.toUserId)
+  const waiting = (pending: PendingTransfer) =>
+    onCancelTransfer && (
+      <WaitingForAccept
+        name={pending.toName}
+        onCancel={onCancelTransfer}
+        disabled={transferBusy}
+      />
+    )
   return (
     <ul className="flex flex-col gap-px">
       {members.map((person) => {
-        const { canSetRole, canRemove, canLeave } = memberActions(
+        const { canSetRole, canRemove, canLeave, canTransfer } = memberActions(
           callerRole,
           person,
         )
+        const waitsForThisPerson =
+          !!pendingTransfer && pendingTransfer.toUserId === person.userId
         return (
           <li key={person.userId}>
             <Card className="flex flex-wrap items-center gap-x-4 gap-y-2 py-2">
@@ -167,6 +236,21 @@ export function MemberList({
                   {t(`roles.household.${person.role}`)}
                 </span>
               )}
+              {person.isMe && person.role === 'owner' && (
+                // Why the owner's row has no Leave (households H6b task K.7).
+                <span className="text-sm text-foreground-muted">
+                  {t('settings.household.members.ownerCannotLeave')}
+                </span>
+              )}
+              {waitsForThisPerson && waiting(pendingTransfer)}
+              {canTransfer && onTransfer && !pendingTransfer && (
+                <TransferButton
+                  name={person.displayName}
+                  householdName={householdName ?? ''}
+                  disabled={transferBusy}
+                  onConfirm={() => onTransfer(person)}
+                />
+              )}
               {canRemove && removingUserIds?.has(person.userId) && (
                 <output className="text-sm text-foreground-muted">
                   {t('settings.household.members.removing')}
@@ -214,7 +298,9 @@ export function MemberList({
                   buttonVariant="destructive-outline"
                   dialogTitle={t('settings.household.members.leave')}
                   dialogDescription={t(
-                    'settings.household.members.leaveConfirm',
+                    lastPerson
+                      ? 'settings.household.members.lastLeaveWarning'
+                      : 'settings.household.members.leaveConfirm',
                   )}
                   confirmLabel={t('settings.household.members.leave')}
                   onDelete={onLeave}
@@ -224,6 +310,110 @@ export function MemberList({
           </li>
         )
       })}
+      {pendingTransfer && !pendingRowShown && (
+        // The offer is for a person this list does not show (the list was
+        // read before they joined, or after they left). The owner must still
+        // be able to take it back.
+        <li>
+          <Card className="flex flex-wrap items-center gap-x-4 gap-y-2 py-2">
+            {waiting(pendingTransfer)}
+          </Card>
+        </li>
+      )}
     </ul>
+  )
+}
+
+/**
+ * "Transfer ownership" with its confirm. The button's name says which person
+ * it is for ("Transfer ownership to Mia"); the visible word stays in it
+ * (WCAG 2.5.3). Not a `DeleteButton`: nothing is deleted, so the confirm is
+ * not red.
+ */
+function TransferButton({
+  name,
+  householdName,
+  disabled,
+  onConfirm,
+}: {
+  name: string
+  householdName: string
+  disabled: boolean
+  onConfirm: () => Promise<void>
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <Button
+        type="button"
+        variant="neutral-outline"
+        size="sm"
+        aria-label={t('settings.household.members.transferLabel', { name })}
+        disabled={disabled}
+        onClick={() => setOpen(true)}
+      >
+        <Crown />
+        {t('settings.household.members.transfer')}
+      </Button>
+      <AlertDialog open={open} onOpenChange={setOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('settings.household.members.transfer')}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t('settings.household.members.transferConfirm', {
+              household: householdName,
+              name,
+            })}
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                // The page catches its own errors (see `onTransfer`).
+                void onConfirm()
+              }}
+            >
+              {t('settings.household.members.transfer')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
+}
+
+/** "Waiting for {name} to accept" and Cancel, for the owner. */
+function WaitingForAccept({
+  name,
+  onCancel,
+  disabled,
+}: {
+  name: string
+  onCancel: () => Promise<void>
+  disabled: boolean
+}) {
+  const { t } = useTranslation()
+  return (
+    <span className="flex items-center gap-2 text-sm">
+      <span className="text-foreground-muted">
+        {t('settings.household.members.waiting', { name })}
+      </span>
+      <Button
+        type="button"
+        variant="neutral-ghost"
+        size="sm"
+        aria-label={t('settings.household.members.cancelOfferLabel', { name })}
+        disabled={disabled}
+        onClick={() => {
+          void onCancel()
+        }}
+      >
+        {t('settings.household.members.cancelOffer')}
+      </Button>
+    </span>
   )
 }

@@ -19,6 +19,8 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createCache } from '@/apollo/cloudCache'
 import {
+  AcceptOwnershipOfferDocument,
+  CancelOwnershipOfferDocument,
   CreateInviteDocument,
   GetHouseholdDocument,
   GetHouseholdLocationsDocument,
@@ -28,6 +30,9 @@ import {
   type HouseholdMembersQuery,
   type HouseholdRole,
   LeaveHouseholdDocument,
+  MyOwnershipOffersDocument,
+  type MyOwnershipOffersQuery,
+  OfferOwnershipDocument,
   RemoveMemberDocument,
   RevokeInviteDocument,
   SetHouseholdRoleDocument,
@@ -70,6 +75,29 @@ const originalLocation = window.location
 
 type Person = HouseholdMembersQuery['householdMembers'][number]
 type Invite = HouseholdInvitesQuery['householdInvites'][number]
+type Offer = MyOwnershipOffersQuery['myOwnershipOffers'][number]
+
+function offer(
+  id: string,
+  kind: 'transfer' | 'handover',
+  toUserId: string,
+  toName: string,
+  extra: Partial<Offer> = {},
+): Offer {
+  return {
+    __typename: 'OwnershipOffer',
+    id,
+    householdId: 'household-role-story',
+    householdName: 'The Lin home',
+    kind,
+    toUserId,
+    toName,
+    fromName: kind === 'transfer' ? 'Olive' : null,
+    createdAt: '2026-11-20T00:00:00.000Z',
+    dismissedAt: null,
+    ...extra,
+  }
+}
 
 function person(
   userId: string,
@@ -129,6 +157,13 @@ interface Server {
   household: { id: string; role: HouseholdRole } | 'NO_HOUSEHOLD' | 'FAILS'
   membersCalls: number
   invitesCalls: number
+  /** `GetHousehold.hasOwner` (households H6b). */
+  hasOwner: boolean
+  /** `GetHousehold.pendingTransfer`: only the owner gets one. */
+  pendingTransfer: Offer | null
+  /** `MyOwnershipOffers`: the caller's offers, in every household. */
+  offers: Offer[]
+  offersCalls: number
   /** When set, `HouseholdMembers` / `HouseholdInvites` answer an error. */
   membersFail?: boolean
   invitesFail?: boolean
@@ -167,8 +202,8 @@ function dynamicMocks(): NonNullable<MockedProviderProps['mocks']> {
               id: h.id,
               name: 'The Lin home',
               role: h.role,
-              hasOwner: true,
-              pendingTransfer: null,
+              hasOwner: server.hasOwner,
+              pendingTransfer: server.pendingTransfer,
             },
           },
         }
@@ -206,6 +241,14 @@ function dynamicMocks(): NonNullable<MockedProviderProps['mocks']> {
             ],
           }
         return { data: { householdInvites: server.invites } }
+      },
+    },
+    {
+      request: { query: MyOwnershipOffersDocument },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+      result: () => {
+        server.offersCalls += 1
+        return { data: { myOwnershipOffers: server.offers } }
       },
     },
     {
@@ -298,6 +341,10 @@ beforeEach(() => {
     household: { id: 'household-role-story', role: 'owner' },
     membersCalls: 0,
     invitesCalls: 0,
+    hasOwner: true,
+    pendingTransfer: null,
+    offers: [],
+    offersCalls: 0,
   }
   Object.defineProperty(window, 'location', {
     value: { ...originalLocation, reload: reloadMock, replace: replaceMock },
@@ -425,12 +472,12 @@ describe('Members page — who sees which control', () => {
     server.members = people('u-olive')
     renderPage('owner')
 
-    // Then the note says the owner cannot leave
-    expect(
-      await screen.findByText(
-        'The owner cannot leave. Handing over the household comes in a later version.',
-      ),
-    ).toBeInTheDocument()
+    // Then their own row says the owner cannot leave, and what to do
+    // (households H6b task K.7: no longer "comes in a later version")
+    expect(await rowOf('Olive')).toHaveTextContent(
+      'The owner cannot leave. Transfer ownership first.',
+    )
+    expect(screen.queryByText(/later version/)).toBeNull()
     // And no Leave anywhere
     expect(
       within(await screen.findByRole('main')).queryByRole('button', {
@@ -1322,5 +1369,368 @@ describe('Members page — role, remove and leave', () => {
     expect(switchToHouseholdMock).not.toHaveBeenCalled()
     expect(forgetHouseholdMock).not.toHaveBeenCalled()
     expect(replaceMock).not.toHaveBeenCalled()
+  })
+})
+
+// Households H6b task K.7. Transfer (the owner), the ownerless household
+// (hand-over), and the O37-A warning for the last person.
+describe('Members page — transfer ownership', () => {
+  it('household owner can offer the household to a member after a confirm, and the row then waits for them', async () => {
+    // Given the owner, with no pending offer
+    server.members = people('u-olive')
+    // Only an offer for Mia matches this mock; any other `userId` gets no
+    // answer, and the row would never wait
+    let sent = 0
+    renderPage('owner', [
+      {
+        request: {
+          query: OfferOwnershipDocument,
+          variables: { userId: 'u-mia' },
+        },
+        result: () => {
+          sent += 1
+          // The server now has the pending offer
+          server.pendingTransfer = offer('off-1', 'transfer', 'u-mia', 'Mia')
+          return { data: { offerOwnership: server.pendingTransfer } }
+        },
+      },
+    ])
+    const user = userEvent.setup()
+
+    // When they press Transfer ownership on Mia's row, it asks first
+    await user.click(
+      await within(await rowOf('Mia')).findByRole('button', {
+        name: 'Transfer ownership to Mia',
+      }),
+    )
+    expect(sent).toBe(0)
+    const dialog = await screen.findByRole('alertdialog', {
+      name: 'Transfer ownership',
+    })
+    expect(dialog).toHaveTextContent(
+      'Offer The Lin home to Mia? You become a manager when they accept.',
+    )
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Transfer ownership' }),
+    )
+
+    // Then the offer is sent for Mia
+    await waitFor(() => expect(sent).toBe(1))
+    // And Mia's row says it waits for her, with Cancel
+    const mia = await rowOf('Mia')
+    await waitFor(() =>
+      expect(mia).toHaveTextContent('Waiting for Mia to accept'),
+    )
+    expect(
+      within(mia).getByRole('button', { name: 'Cancel the offer to Mia' }),
+    ).toBeInTheDocument()
+    // And no other row offers a transfer now (one at a time)
+    expect(
+      within(await screen.findByRole('main')).queryByRole('button', {
+        name: /^Transfer ownership to /,
+      }),
+    ).toBeNull()
+  })
+
+  it('household owner can cancel the pending offer', async () => {
+    // Given a pending offer to Mona
+    server.members = people('u-olive')
+    server.pendingTransfer = offer('off-1', 'transfer', 'u-mona', 'Mona')
+    let cancels = 0
+    renderPage('owner', [
+      {
+        request: { query: CancelOwnershipOfferDocument },
+        result: () => {
+          cancels += 1
+          server.pendingTransfer = null
+          return { data: { cancelOwnershipOffer: true } }
+        },
+      },
+    ])
+    const user = userEvent.setup()
+
+    const mona = await rowOf('Mona')
+    await waitFor(() =>
+      expect(mona).toHaveTextContent('Waiting for Mona to accept'),
+    )
+    await user.click(
+      within(mona).getByRole('button', { name: 'Cancel the offer to Mona' }),
+    )
+
+    // Then the offer is taken back, and every row offers a transfer again
+    await waitFor(() => expect(cancels).toBe(1))
+    expect(
+      await within(await rowOf('Mona')).findByRole('button', {
+        name: 'Transfer ownership to Mona',
+      }),
+    ).toBeInTheDocument()
+    expect(await rowOf('Mona')).not.toHaveTextContent('Waiting for')
+  })
+
+  it('a cancel that finds no offer says the offer is no longer open', async () => {
+    server.members = people('u-olive')
+    server.pendingTransfer = offer('off-1', 'transfer', 'u-mona', 'Mona')
+    renderPage('owner', [
+      {
+        request: { query: CancelOwnershipOfferDocument },
+        result: () => {
+          server.pendingTransfer = null
+          return { data: { cancelOwnershipOffer: false } }
+        },
+      },
+    ])
+    const user = userEvent.setup()
+    const mona = await rowOf('Mona')
+    await user.click(
+      await within(mona).findByRole('button', {
+        name: 'Cancel the offer to Mona',
+      }),
+    )
+    expect(
+      await screen.findByText('This offer is no longer open.'),
+    ).toBeInTheDocument()
+  })
+
+  it('a refused offer shows an error and the rows stay as they were', async () => {
+    server.members = people('u-olive')
+    renderPage('owner', [
+      {
+        request: {
+          query: OfferOwnershipDocument,
+          variables: { userId: 'u-milo' },
+        },
+        result: {
+          errors: [{ message: 'no', extensions: { code: 'FORBIDDEN' } }],
+        },
+      },
+    ])
+    const user = userEvent.setup()
+    await user.click(
+      await within(await rowOf('Milo')).findByRole('button', {
+        name: 'Transfer ownership to Milo',
+      }),
+    )
+    await user.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: 'Transfer ownership',
+      }),
+    )
+    expect(
+      await screen.findByText('Could not save the change. Try again.'),
+    ).toBeInTheDocument()
+    expect(await rowOf('Milo')).not.toHaveTextContent('Waiting for')
+  })
+
+  it('household manager sees no Transfer ownership', async () => {
+    // Given a manager; the owner's row is there, so the page has loaded
+    server.members = people('u-max')
+    renderPage('manager')
+    expect(await rowOf('Olive')).toHaveTextContent('Owner')
+    expect(
+      within(await screen.findByRole('main')).queryByRole('button', {
+        name: /Transfer ownership/,
+      }),
+    ).toBeNull()
+  })
+})
+
+describe('Members page — a household with no owner', () => {
+  // The owner's account was deleted (task K.4): the owner's row is gone
+  function ownerless(me: string): Person[] {
+    return people(me).filter((p) => p.role !== 'owner')
+  }
+
+  it('user sees "This household has no owner." when nobody owns it', async () => {
+    server.members = ownerless('u-milo')
+    server.hasOwner = false
+    renderPage('member')
+    expect(
+      await screen.findByText('This household has no owner.'),
+    ).toBeInTheDocument()
+    // And with no offer, no button to take it
+    await waitFor(() => expect(server.offersCalls).toBeGreaterThan(0))
+    expect(
+      screen.queryByRole('button', { name: 'Become the owner' }),
+    ).toBeNull()
+  })
+
+  it('user sees no such note while the household has an owner', async () => {
+    // A presence check first: the page has loaded the household and the list
+    server.members = people('u-milo')
+    renderPage('member')
+    expect(await rowOf('Olive')).toHaveTextContent('Owner')
+    await waitFor(() => expect(server.offersCalls).toBeGreaterThan(0))
+    expect(screen.queryByText('This household has no owner.')).toBeNull()
+  })
+
+  it('user with a hand-over offer they put off with "Not now" can still become the owner here (O42)', async () => {
+    // Given Mona has a hand-over offer for this household, already dismissed,
+    // and another offer for her OTHER household
+    server.members = ownerless('u-mona')
+    server.hasOwner = false
+    server.offers = [
+      offer('off-other', 'handover', 'u-mona', 'Mona', {
+        householdId: 'household-other',
+        householdName: 'Beach house',
+      }),
+      offer('off-1', 'handover', 'u-mona', 'Mona', {
+        dismissedAt: '2026-11-20T01:00:00.000Z',
+      }),
+    ]
+    // Only an accept of THIS household's offer (off-1) matches this mock
+    let accepted = 0
+    renderPage('manager', [
+      {
+        request: {
+          query: AcceptOwnershipOfferDocument,
+          variables: { id: 'off-1' },
+        },
+        result: () => {
+          accepted += 1
+          server.offers = server.offers.filter((o) => o.id !== 'off-1')
+          server.hasOwner = true
+          server.household = { id: 'household-role-story', role: 'owner' }
+          return {
+            data: {
+              acceptOwnershipOffer: {
+                __typename: 'Household',
+                id: 'household-role-story',
+                name: 'The Lin home',
+                role: 'owner',
+                hasOwner: true,
+                pendingTransfer: null,
+              },
+            },
+          }
+        },
+      },
+    ])
+    const user = userEvent.setup()
+
+    // When she presses Become the owner
+    const button = await screen.findByRole('button', {
+      name: 'Become the owner',
+    })
+    // And the button says which household it is for
+    expect(button).toHaveAccessibleDescription('This household has no owner.')
+    await user.click(button)
+
+    // Then THIS household's offer is accepted, not the other one
+    await waitFor(() => expect(accepted).toBe(1))
+    expect(
+      await screen.findByText('You are now the owner of The Lin home.'),
+    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: 'Become the owner' }),
+      ).toBeNull(),
+    )
+  })
+
+  it('user whose hand-over offer is gone is told so', async () => {
+    server.members = ownerless('u-mona')
+    server.hasOwner = false
+    server.offers = [offer('off-1', 'handover', 'u-mona', 'Mona')]
+    renderPage('manager', [
+      {
+        request: {
+          query: AcceptOwnershipOfferDocument,
+          variables: { id: 'off-1' },
+        },
+        result: () => {
+          server.offers = []
+          return {
+            errors: [{ message: 'gone', extensions: { code: 'FORBIDDEN' } }],
+          }
+        },
+      },
+    ])
+    const user = userEvent.setup()
+    // The banner (__root) has its own Accept; this is the page's button
+    await user.click(
+      await screen.findByRole('button', { name: 'Become the owner' }),
+    )
+    expect(
+      await screen.findByText('This offer is no longer open.'),
+    ).toBeInTheDocument()
+  })
+
+  it('a failed accept says the answer could not be sent', async () => {
+    server.members = ownerless('u-mona')
+    server.hasOwner = false
+    server.offers = [offer('off-1', 'handover', 'u-mona', 'Mona')]
+    renderPage('manager', [
+      {
+        request: {
+          query: AcceptOwnershipOfferDocument,
+          variables: { id: 'off-1' },
+        },
+        result: {
+          errors: [
+            { message: 'down', extensions: { code: 'INTERNAL_SERVER_ERROR' } },
+          ],
+        },
+      },
+    ])
+    const user = userEvent.setup()
+    await user.click(
+      await screen.findByRole('button', { name: 'Become the owner' }),
+    )
+    expect(
+      await screen.findByText('Could not send your answer. Please try again.'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Become the owner' }),
+    ).toBeInTheDocument()
+  })
+
+  it('user with a transfer offer sees who offered it, and can become the owner here', async () => {
+    // Given Mia has a transfer offer from the owner, Olive
+    server.members = people('u-mia')
+    server.offers = [offer('off-1', 'transfer', 'u-mia', 'Mia')]
+    renderPage('member')
+    const button = await screen.findByRole('button', {
+      name: 'Become the owner',
+    })
+    expect(button).toHaveAccessibleDescription(
+      'Olive wants to make you the owner of The Lin home.',
+    )
+    // The household has an owner, so no "no owner" note
+    expect(screen.queryByText('This household has no owner.')).toBeNull()
+  })
+})
+
+describe('Members page — the last person leaves (O37-A)', () => {
+  it('the last person of a household with no owner is warned that leaving deletes it', async () => {
+    // Given Mona is the only live person left
+    server.members = [person('u-mona', 'Mona', 'manager', true)]
+    server.hasOwner = false
+    renderPage('manager')
+    const user = userEvent.setup()
+
+    await user.click(
+      await within(await rowOf('Mona')).findByRole('button', {
+        name: 'Leave household',
+      }),
+    )
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent(
+      'You are the last person here. Leaving deletes the household and everything in it.',
+    )
+  })
+
+  it('a person who is not the last gets the usual leave text', async () => {
+    server.members = people('u-mia')
+    renderPage('member')
+    const user = userEvent.setup()
+    await user.click(
+      await within(await rowOf('Mia')).findByRole('button', {
+        name: 'Leave household',
+      }),
+    )
+    const dialog = await screen.findByRole('alertdialog')
+    expect(dialog).toHaveTextContent(
+      'Leave this household? You lose access to all its locations.',
+    )
+    expect(dialog).not.toHaveTextContent('last person')
   })
 })
