@@ -1576,8 +1576,7 @@ Filled in from the task reports and reviews.
 Owner decisions O32–O39: all A (2026-11-20). H6a (J.1–J.9) comes first.
 
 **H6a built 2026-11-20, tasks J.1 to J.9**, on `feature/households-h6a` (the plan said
-`feature/households-h6`), from `develop` at `7dbaeca9`. Not pushed, not merged, not
-deployed. The PR goes into `develop` and ships with H3a–H5c at the next checkpoint release:
+`feature/households-h6`), from `develop` at `7dbaeca9`. **Merged into `develop` on 2026-11-20 as #392 (merge `c0f096ed`), not deployed.** The PR ships with H3a–H5c at the next checkpoint release:
 server first, then the web (section 11 of the H4 runbook). One additive migration,
 `20261120000000_add_household_activity`, proved on the test database by the main session
 with the owner's consent (J.9 Step 2).

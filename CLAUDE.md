@@ -238,7 +238,7 @@ that really set up that role.
 > `apps/web/src/apollo/refetchAfterWrite.test.ts`.
 >
 > **The activity log, the purges and the danger zones are built in H6a** (on
-> `feature/households-h6a`, from `develop` at `7dbaeca9`; not merged, not deployed; plan
+> `feature/households-h6a`, from `develop` at `7dbaeca9`; merged into `develop` (2026-11-20, #392, merge `c0f096ed`), not deployed; plan
 > `docs/global/permissions/2026-11-20-households-plan-h6.md`, tasks J.1 to J.9; deploy notes
 > in section 11 of the H4 runbook). **One additive migration**,
 > `20261120000000_add_household_activity`: one enum (`ActivityAction`, 19 values, H6b's six

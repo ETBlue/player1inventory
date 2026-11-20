@@ -623,7 +623,7 @@ page (10.2). Role changes made between H5c and H6 are not logged (owner decision
 ## 11. Households H6a (activity log, purges, danger zones)
 
 Added 2026-11-20 by H6 task J.9. **H6a is built on `feature/households-h6a`, from `develop`
-at `7dbaeca9`. It is not merged and not deployed.** Plan:
+at `7dbaeca9`. It is merged into `develop` (2026-11-20, #392, merge `c0f096ed`), not deployed.** Plan:
 [`../permissions/2026-11-20-households-plan-h6.md`](../permissions/2026-11-20-households-plan-h6.md),
 *Deploy notes*, *Known gaps* and *Status*.
 
