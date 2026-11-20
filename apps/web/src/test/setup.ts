@@ -81,9 +81,13 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     ...original,
     // The ownership offer banner (households H6b, task K.6) is mounted in
     // `__root.tsx` in cloud mode, so every cloud test that renders the root
-    // route reaches these four hooks. The real ones need an ApolloProvider.
-    // No offers, so the banner renders nothing. A test file with its OWN
-    // `@/generated/graphql` factory replaces this one and must stub them too.
+    // route reaches `useMyOwnershipOffersQuery` (the real one needs an
+    // ApolloProvider). It returns no offers, so the banner renders no row, and
+    // the three mutation stubs below are reached by NO test today: an offer
+    // row calls them. Measured in the K.6 review by making each one throw.
+    // They are here for a future test that returns an offer. A test file with
+    // its OWN `@/generated/graphql` factory replaces this one and must stub
+    // them too.
     useMyOwnershipOffersQuery: () => ({
       data: undefined,
       loading: false,
