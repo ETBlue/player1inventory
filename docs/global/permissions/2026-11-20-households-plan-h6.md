@@ -2047,34 +2047,34 @@ Setup: OWNER owns household H with "Home" and "Garage". M joins as `manager`, B 
 with 據點王 on Garage (through `createInvite` + `joinHousehold`). A second household H2 of
 another user, with the same shape, must stay as it is in every test.
 
-- [ ] **Test 1 — `household owner can transfer the household, and the other person accepts`**
+- [x] **Test 1 — `household owner can transfer the household, and the other person accepts`**
   (two browsers): OWNER transfers to M; M's browser shows the banner without a reload; M
   accepts; OWNER's Members page shows OWNER as manager and M as owner; read back through
   `makeGql` with `expect.poll`.
-- [ ] **Test 2 — `user can decline a transfer`** and the owner sees no waiting row.
-- [ ] **Test 3 — `manager becomes the owner after the owner's account is deleted`:**
+- [x] **Test 2 — `user can decline a transfer`** and the owner sees no waiting row.
+- [x] **Test 3 — `manager becomes the owner after the owner's account is deleted`:**
   `POST /e2e/users/<OWNER>/deleted`; M's browser shows the hand-over banner without a
   reload; B (a member) shows none; M accepts; M is owner; `Household.ownerGoneAt` is null
   again.
-- [ ] **Test 4 — `a deleted organizer no longer counts`:** B's account is deleted; Garage
+- [x] **Test 4 — `a deleted organizer no longer counts`:** B's account is deleted; Garage
   shows **No organizer** on the locations list; B is gone from the Members page and from
   Garage's people page.
-- [ ] **Test 5 — `the household of a deleted only person is deleted with its data`:** a user
+- [x] **Test 5 — `the household of a deleted only person is deleted with its data`:** a user
   with a tag WITH a tag type, an item, stock, a cart row and a log, alone in their household;
   `POST …/deleted`; every row of theirs is gone (read back through a cleanup-style count or
   `GET /e2e/users/:id`); H2 is untouched. This is the real-SQL proof of T64 and the
   `NoAction` trap.
-- [ ] **Test 6 — `two people accept a hand-over at once`:** two managers send
+- [x] **Test 6 — `two people accept a hand-over at once`:** two managers send
   `acceptOwnershipOffer` together through `makeGql`; exactly one is owner, the other gets
   `OFFER_GONE`. (Real Postgres, real row locks: the only place this is proved.)
-- [ ] Axe scans of the banner (both kinds) and the Members page with an offer, light and
+- [x] Axe scans of the banner (both kinds) and the Members page with an offer, light and
   dark.
-- [ ] **Cleanup trap:** `/e2e/cleanup` deletes households by the OWNER row. A household whose
+- [x] **Cleanup trap:** `/e2e/cleanup` deletes households by the OWNER row. A household whose
   owner was deleted and where nobody accepted has NO owner row, so no cleanup deletes it.
   Every test that deletes an owner ends with an accept (or the only-person delete). If one
   cannot, it deletes the household itself with a direct cleanup call for the accepting
   user. Say which in the spec.
-- [ ] Run only this spec and `location-people.spec.ts`, `household-invites.spec.ts` in
+- [x] Run only this spec and `location-people.spec.ts`, `household-invites.spec.ts` in
   `cloud`. Copy `test-results/` aside before any re-run.
 
 **Mutation checks (E2E):** the K.4 "only person" count without `deletedAt` → test 5. With
@@ -2083,6 +2083,42 @@ member whose account was deleted FIRST; then the mutation turns test 5 red. The 
 without the "still exists" read → test 6; `countedOrganizerIn` without `deletedAt: null` → test 4 only if the hand-over did not
 already remove B's rows. **It did**, so test 4 cannot go red on that mutation. Record it as a
 negative control, not coverage; K.2's unit test is the proof (the pre-H6 shape).
+
+**Done 2026-11-20** (commits `0df2b901`, `255b8b8c`, `d3893502`). `household-ownership.spec.ts`
+has 9 cloud tests: tests 1–6 above, test 7 (not in the plan) `the last person who leaves a
+household with no owner deletes it` (O37-A), and tests 8 and 9, the axe scans light and dark
+(the banner of both kinds, the Members page with a waiting offer, and the transfer confirm,
+with `checkDialogA11y`). Test 2: the owner's open page shows Transfer again, with no waiting
+row. Test 3 checks `hasOwner` is true again; `ownerGoneAt` cannot be read (see *What this plan
+got wrong*). Tests 5 and 7 use GHOST, a member whose account was deleted first. Every test
+ends with an accept, a delete or a live owner, and `rescueOrphans` runs before every cleanup
+for a test that fails part way. `cleanup-endpoint.spec.ts` now seeds a real transfer offer,
+so all 21 counts are at least 1 (it was red since K.1 on `ownershipOffers: 0`). The `cloud`
+project collects **204 tests in 38 files** (195 before); `local` still 189 in 23.
+
+Run: `pnpm test:e2e --project=cloud` on this spec, `cleanup-endpoint.spec.ts`,
+`location-people.spec.ts` and `household-invites.spec.ts`: **27 passed in 16.6 min**, 0
+flaky, load 1.5–2.5. Test 6 alone with `--repeat-each=3`: 3 passed. Lint, build (no
+`TS6385`) and check exit 0. Cost: about 6.5 minutes more in the `cloud` project (each test
+38–48 s; budgets 60–90 s).
+
+| # | Mutation | Test | Result | Failure text |
+|---|---|---|---|---|
+| M1 | `handOverDeletedAccount`'s "live" read without `user: { deletedAt: null }` (`lib/handover.ts:268`) | 5 | red | `toBeNull()` received GHOST's `activeHouseholdId` |
+| M2 | `acceptOwnershipOffer` without `if (!offer) throw offerGone()` | 6 | red | `toHaveLength` expected 1, received 2 owners |
+| M3 | `countedOrganizerIn` without `deletedAt: null` | 4 | **green**, negative control as planned | passed in 48.7 s |
+| M4 | the cleanup's offer delete narrowed to `{ toUserId: userId }` | cleanup-endpoint | red | `models that deleted nothing: {… "ownershipOffers":0 …}` |
+| M5 | `offerOwnership` publishes nothing | 1 | red | the transfer banner text not found |
+| M6 | `handleClerkEvent` publishes nothing after the hand-over | 3 | red | the hand-over banner text not found |
+| M7 | `leaveHousehold`'s "live" read without `deletedAt: null` (`household.resolver.ts:410`) | 7 | red | `toBeNull()` received MIA's `activeHouseholdId` |
+
+M1 and M7 go red only because GHOST is in the fixture. Test 6 asserts `OFFER_GONE`, which
+needs both accepts to pass the first read before the first commit; otherwise the answer is
+`FORBIDDEN`. Measured 4 of 4 `OFFER_GONE`.
+
+**Not covered by E2E:** "Not now" (`dismissOwnershipOffer`), the T62 restart after a declined
+hand-over, Cancel on the waiting row, the "This offer is no longer open." notice, and
+`countedOrganizerIn`'s `deletedAt` filter on real SQL (test 4 is a negative control).
 
 ---
 
@@ -2297,6 +2333,15 @@ Filled in from the task reports and reviews.
 | K.7 | Files: `MemberList` and the page only | `test/cloudRoleStory.tsx` also changed: `CloudRolePage` always answered `GetHousehold` with `hasOwner: true` and no pending offer, so no story could show the new states. It takes an optional `ownership` override now |
 | K.7 | `transferLabel` tw 「把擁有權轉移給 {{name}}」 "holds the visible word (WCAG 2.5.3)" | True in English only. In tw the visible 「轉移擁有權」 was not inside the name. Fixed in `30fe4d5d` to 「轉移擁有權給 {{name}}」, with a two-language test |
 | K.7 (known gaps) | A stale cached member list can hide the O37-A warning, and "the window is one round trip" | True only when the read works. When the read fails while online, Apollo keeps the cached list with no time limit, and Leave could still be sent. Since K.7b, Leave stays off until a read succeeds |
+| K.8 | Test 3: "`Household.ownerGoneAt` is null again" | The column exists (`schema.prisma:392`; accept writes `ownerGoneAt: null`), but no GraphQL field and no E2E route reads it. The test checks `hasOwner` instead. The K.8 brief said the column does not exist; that was wrong too |
+| K.8 | Mutation checks: "the fixture needs a second member whose account was deleted FIRST" | No real event makes that state: since K.4 `user.deleted` removes the person from every household. The spec marks GHOST deleted while in no household, then GHOST joins through a real invite (the E2E server checks no Clerk session) |
+| K.8 | Test 5: read back "through a cleanup-style count or `GET /e2e/users/:id`" | The deleted person's data cannot be read (`NO_HOUSEHOLD`), and their cleanup counts are the same either way. The readback is GHOST's `User.activeHouseholdId`, which is `onDelete: SetNull` |
+| K.8 | Setup: "B as `member` with organizer on Garage" | If OWNER creates Garage, OWNER is its organizer too, and "No organizer" never shows. BEN creates Garage |
+| K.8 | Tests with the default budget | Each test takes 38–48 s with hooks (7 users cleaned twice). Test 5 failed at 30 s. Budgets are 60–90 s |
+| K.8 | (not in the plan) the O37-A leave | No planned test reached it. Test 7 was added, with GHOST, so M7 can go red |
+| K.8 | (not in the plan) `cleanup-endpoint.spec.ts` | Red since K.1 (`ownershipOffers: 0`). It now seeds a real offer to a second member |
+| K.8 | Axe list: "the banner (both kinds) and the Members page with an offer" | The transfer confirm dialog was missing. It is scanned with `checkDialogA11y` |
+| K.8 | Test 6: "the other gets `OFFER_GONE`" | Only when the second accept's first read runs before the first commit; otherwise `FORBIDDEN`. Measured 4 of 4 `OFFER_GONE` |
 
 ## Status
 
