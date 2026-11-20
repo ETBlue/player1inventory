@@ -264,10 +264,49 @@ that really set up that role.
 >
 > | Count | Value | Command |
 > |---|---|---|
-> | live guard fields | **76**: 74 in `publishes`, 2 in `publishesNothing` (`recordImport`, `deleteHousehold`) | `awk '/^const publishes: /,/^}/' apps/server/src/resolvers/live-publish.guard.test.ts \| grep -cE '^  [a-zA-Z]+: \{'` |
+> | live guard fields | **76**: 74 in `publishes`, 2 in `publishesNothing` (`recordImport`, `deleteHousehold`) | `awk '/^const publishes: /,/^}/' apps/server/src/resolvers/live-publish.guard.test.ts \| grep -cE '^  [a-zA-Z]+: \{'` gives the `publishes` part only (74 then). See the H6b table below for both commands |
 > | models `/e2e/cleanup` deletes | **20** | `grep -o 'prisma\.[a-zA-Z]*\.deleteMany' apps/server/src/lib/e2eCleanup.ts \| sort -u \| wc -l` |
 > | `await requireCatalogRole(ctx, 'manager')` in `import.resolver.ts` | **23**: the 22 bulk import mutations and `recordImport` | `grep -c "await requireCatalogRole(ctx, 'manager')" apps/server/src/resolvers/import.resolver.ts` |
 > | `.graphql` schema files | **14** (`activity.graphql` is new) | `ls apps/server/src/schema/*.graphql \| wc -l` |
+>
+> **Transfer, the hand-over and deleted accounts are built in H6b** (on
+> `feature/households-h6b`, from `develop` after H6a #392; **not merged, not deployed**; plan
+> `docs/global/permissions/2026-11-20-households-plan-h6.md`, tasks K.0 to K.9; deploy notes
+> in section 12 of the H4 runbook). **One additive migration**,
+> `20261120100000_add_ownership_offers`: one enum (`OfferKind`: `transfer`, `handover`) and
+> one table (`OwnershipOffer`). It deploys with the server, and the **server deploys before
+> the web**. Owner decisions O40 to O48. What H6b adds:
+>
+> | Part | What |
+> |---|---|
+> | the table (decision T58, task K.1) | `OwnershipOffer`: `id`, `householdId` (`ON DELETE CASCADE`), `toUserId` (a foreign key to `User`, `ON DELETE CASCADE`, so `/e2e/cleanup` can delete a `User` row), `fromUserId` (NO foreign key: the offer outlives the person who made it), `kind`, `createdAt`, `dismissedAt`. Unique `(householdId, toUserId)`: one offer per person per household. NOT in `emptyHouseholdWhere` (T49). `Household.ownerGoneAt` is older (H3a); H6b is the first code that writes it |
+> | `schema/ownership.graphql` (task K.3) | type `OwnershipOffer` (`householdName`, `toName`, `fromName`; names only, no e-mail), `Household.hasOwner` and `Household.pendingTransfer` (owner only, else `null`), the query `myOwnershipOffers` (offers TO the caller in EVERY household they are in, dismissed ones too) |
+> | 5 mutations (`resolvers/ownership.resolver.ts`, T59) | `offerOwnership(userId)` (owner; replaces any other open transfer offer), `cancelOwnershipOffer` (owner; `false` when none), `acceptOwnershipOffer(id)` (only the offer's `toUserId`; demotes the old owner to `manager` FIRST, then promotes, then sets `Household.ownerId` and clears `ownerGoneAt`, then deletes every offer of the household), `declineOwnershipOffer(id)`, `dismissOwnershipOffer(id)` (the banner's "Not now": sets `dismissedAt`, the offer stays). Each write takes `lockHouseholdOrForbid` first and reads the role and the offer through `tx`. Accept, decline and dismiss read the offer once BEFORE the lock, only to learn which household to lock; an offer gone at that read is `FORBIDDEN` (the same as an unknown id), an offer gone between that read and the lock is `OFFER_GONE` (accept) or `false`. The first four publish household-level `LOCATION`; `dismissOwnershipOffer` is in `publishesNothing` |
+> | `lib/handover.ts` (tasks K.3, K.4, K.4b) | `removeFromHousehold` (moved from `household.resolver.ts`; also deletes offers TO the person), `startHandover` (the design's table, live accounts only), `restartHandoverIfNeeded` (T62: when the last hand-over offer goes and nobody owns the household, the next people get offers), `handOverDeletedAccount` |
+> | the hand-over on `user.deleted` (T60, task K.4) | `handleClerkEvent` (`lib/clerkWebhook.ts`): ONE transaction, retried once on `P2034`. First the `User` upsert (the `lockUser` of T16; `deletedAt` is set only when still null, so a repeated event keeps the first date), then `handOverDeletedAccount`: `lockHouseholds` on every household of the person, sorted. When no OTHER live person is left in a household (any role), `deleteHouseholdData` and the household delete. Else a manager or member is removed (`ACCOUNT_DELETED`), and an owner's roles go, their open invites are revoked (owner decision O43, task K.4b), `ownerId: null`, `ownerGoneAt: now`, every offer of the household goes, and `startHandover` writes `handover` offers and `HANDOVER_STARTED`. After the commit, one household-level `LOCATION` per household that still exists, with no `sourceClientId`. A second delivery finds no membership and does nothing |
+> | a deleted account does not count (T61, task K.2) | `user: { deletedAt: null }` in `countedOrganizerIn` (`lib/authz.ts`, so `Location.hasOrganizer`), in `peopleOfLocation` (`locationPeople`) and in `householdMembers` (and so in the web's Add person list). `roleOfPerson` is NOT filtered on purpose: a role write must see the row that is really there |
+> | the last person leaves (owner decision O37-A, task K.3) | `leaveHousehold` deletes the household with `deleteHouseholdData` when no OTHER live person is left. The rule is "no other live person", not "no owner". It retries once on `P2034` |
+> | owner texts (task K.3) | the owner's leave: "Transfer ownership first."; `setHouseholdRole(role: owner)`: "Use Transfer ownership." (both `BAD_USER_INPUT`) |
+> | web (tasks K.0, K.5 to K.7b) | `OwnershipOfferBanner` in `__root.tsx` (cloud only; Accept and Decline for a transfer, Accept and **Not now** for a hand-over), the Members page (**Transfer ownership** with a confirm, "Waiting for {name} to accept" with **Cancel**, "This household has no owner." with **Become the owner**, the O37-A warning on the last person's Leave, and Leave off until the server has answered the list, O48). Hooks in `hooks/useOwnershipOffers.ts`; `usePermissions().canTransferOwnership`. "Clear & import" in cloud asks for the typed household name (O40, task K.0). See `apps/web/src/components/CLAUDE.md`, `apps/web/src/hooks/CLAUDE.md` and `apps/web/src/routes/settings/CLAUDE.md` |
+> | E2E (task K.8) | `household-ownership.spec.ts`, 9 cloud tests, up to two browsers: transfer, decline, the hand-over, a deleted organizer, the deleted only person (the first real-SQL run of `deleteHouseholdData` through the webhook), two accepts at once, the O37-A leave, and two axe scans. `cleanup-endpoint.spec.ts` now seeds a real offer. See `e2e/CLAUDE.md` |
+>
+> **Counts after H6b**, measured 2026-11-20 on `feature/households-h6b` at `5cd82bf4`.
+> Count them again rather than quote them:
+>
+> | Count | Value | Command |
+> |---|---|---|
+> | live guard fields in `publishes` | **78** (74 after H6a; the four offer writes) | `awk '/^const publishes: /,/^}/' apps/server/src/resolvers/live-publish.guard.test.ts \| grep -cE '^  [a-zA-Z]+: \{'` |
+> | live guard fields in `publishesNothing` | **3**: `recordImport`, `deleteHousehold`, `dismissOwnershipOffer` | `awk '/^const publishesNothing: /,/^}/' apps/server/src/resolvers/live-publish.guard.test.ts \| grep -cE '^  [a-zA-Z]+:'` |
+> | models `/e2e/cleanup` deletes | **21** (`OwnershipOffer` is new) | `grep -o 'prisma\.[a-zA-Z]*\.deleteMany' apps/server/src/lib/e2eCleanup.ts \| sort -u \| wc -l` |
+> | `.graphql` schema files | **15** (`ownership.graphql` is new) | `ls apps/server/src/schema/*.graphql \| wc -l` |
+> | migration folders | **21** | `ls apps/server/prisma/migrations \| grep -c _` |
+> | server bundle | **254.0 KiB**, 15 `.graphql` files copied | the `esbuild:` line of `pnpm build` |
+> | tests | web **3729 / 364 files**, server **2689 / 85**, `scripts/spec` **70** | `pnpm test` |
+> | cloud spec files | **38 of 42** in `e2e/tests/` | the two commands under *Proving a Test Works* |
+>
+> **The H6a table's live guard row was wrong about its own command.** The `awk` command
+> counts the `publishes` list only; it gave 74 at H6a, not 76. The H6a total of 76 was right,
+> but only with the `publishesNothing` count added. That is why there are two rows above.
 >
 > **`removeItemFromLocation` needs `organizer`, not `participant`** (owner decision 2026-11-11, `f4d993db`). It deletes every log of the item at that location, including other members' logs.
 >
@@ -398,7 +437,7 @@ that really set up that role.
 > | `CART` | location | cart mutations, `checkout`, `removeItemFromLocation`, `deleteItem`, `createVendor`, `deleteVendor`, `removeAllLocationItems` (H6a) | the 5 cart queries |
 > | `STOCK` | location | `upsertItemStock`, `addItemToLocation`, `checkout`, `consumeRecipes`, `applyUnitSwitch`, stock imports, `deleteItem`, `removeAllLocationItems` (H6a) | `PantryData`, `ItemStocksForItem` |
 > | `LOG` | location | `addInventoryLog`, `checkout`, `consumeRecipes`, log imports, `deleteItem` | `ItemLogs`, `InventoryLogCountByItem`, `LastPurchaseDates` |
-> | `LOCATION` | household (`locationId: null`) | the location mutations and imports, `clearAllData`, `deleteAllLocations` (H6a), the household and member mutations (H5b, H5c) | **every active query** (`'all'`) |
+> | `LOCATION` | household (`locationId: null`) | the location mutations and imports, `clearAllData`, `deleteAllLocations` (H6a), the household and member mutations (H5b, H5c), the four offer writes and the `user.deleted` hand-over (H6b) | **every active query** (`'all'`) |
 > | `CATALOG` | household (`locationId: null`) | every catalog mutation and import, `renameHousehold`, `clearAllData` | `PantryData` and the 15 catalog queries |
 >
 > **Why `LOCATION` and `CATALOG` are household-level:** a deleted location cannot pass
@@ -436,9 +475,12 @@ that really set up that role.
 >
 > **Every `Mutation` field must be in one of two lists** in
 > `apps/server/src/resolvers/live-publish.guard.test.ts`: `publishes` (with its kinds) or
-> `publishesNothing` (with a reason). A new mutation in no list fails the test. Today: 76
-> fields, 74 in `publishes` and 2 in `publishesNothing` (measured 2026-11-20 after
-> households H6a; count with the command in the H6a *Counts* table above). H6a added
+> `publishesNothing` (with a reason). A new mutation in no list fails the test. Today: 81
+> fields, 78 in `publishes` and 3 in `publishesNothing` (measured 2026-11-20 after
+> households H6b; count with the two commands in the H6b *Counts* table above). H6b added
+> `offerOwnership`, `cancelOwnershipOffer`, `acceptOwnershipOffer` and
+> `declineOwnershipOffer` to `publishes` (household-level `LOCATION`) and
+> `dismissOwnershipOffer` to `publishesNothing`. Before H6b: 76, 74 and 2. H6a added
 > `deleteAllLocations` and `removeAllLocationItems` to `publishes`, and `recordImport` and
 > `deleteHousehold` to `publishesNothing`, each with its reason. Before H6a: 72, all in
 > `publishes` (62 until households H5b task
@@ -686,9 +728,10 @@ skips half the work. Nothing else in the gate checks `e2e/` formatting: `pnpm li
 `apps/server`'s build already carries a second pass for `scripts/`.
 
 **`pnpm test` runs both workspaces.** The root script is `pnpm -r test`, which recurses into
-every workspace package that defines a `test` script — today `apps/web` (**3607 tests**
-across 360 files) and `apps/server` (**2563** across 83). Measured 2026-11-20 on
-`feature/households-h6a`, after households H6a task J.9 (it said 3454 / 347 and 2401 / 78 on
+every workspace package that defines a `test` script — today `apps/web` (**3729 tests**
+across 364 files) and `apps/server` (**2689** across 85). Measured 2026-11-20 on
+`feature/households-h6b`, after households H6b task K.9 (it said 3607 / 360 and 2563 / 83
+the same day on `feature/households-h6a`, after households H6a task J.9, 3454 / 347 and 2401 / 78 on
 2026-11-19 on `feature/households-h5c`, after households H5c task H.9, 3319 / 337 and 2111 / 76
 at `develop` `712f76f6`, before H5c, 3102 / 325 and 2104 / 76 on 2026-11-18 on
 `feature/households-h5b`, after households H5b task G.10, 2922 / 305 and 1820 / 70
@@ -1128,8 +1171,8 @@ each file is checked once.
   read the source, so none of them saw it. Now the server imports `cartIdFor`, `parseCartId`
   and `isBeingBought` from `@p1i/types`, and its own copies are deleted.
 - **`scripts/build.mjs`** bundles `src/index.ts` into `dist/index.js` (about 129 KiB when this was written, 236.0 KiB on
-  2026-11-20 after households H6a, plus a source map). It bundles `workspace:` packages and keeps every other dependency external.
-  It copies the `.graphql` files (14 since H6a; 12 when this was written) **flat** into `dist/`, not `dist/schema/`, because
+  2026-11-20 after households H6a, 254.0 KiB the same day after households H6b, plus a source map). It bundles `workspace:` packages and keeps every other dependency external.
+  It copies the `.graphql` files (15 since H6b, 14 since H6a; 12 when this was written) **flat** into `dist/`, not `dist/schema/`, because
   `src/schema/index.ts` reads them from the folder of the running file. `dist/` no longer
   holds the 46 `*.test.js` files the old `tsc` emit shipped.
 - **`scripts/check-start.mjs`** runs `node --enable-source-maps dist/index.js` with
@@ -1910,8 +1953,9 @@ Note also that **no *unit* test executes the resolvers against real SQL** — ev
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
 Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
 branch), but only for the spec files listed in the `cloud` project's `testMatch` in
-`e2e/playwright.config.ts` — that list is opt-in and covers **37 of the 41 spec files in
-`e2e/tests/`** (measured 2026-11-20, after households H6a task J.8 added
+`e2e/playwright.config.ts` — that list is opt-in and covers **38 of the 42 spec files in
+`e2e/tests/`** (measured 2026-11-20, after households H6b task K.8 added
+`household-ownership.spec.ts`; 37 of 41 earlier that day, after households H6a task J.8 added
 `household-activity-purges.spec.ts`; 36 of 40 on 2026-11-19, after households H5c task H.8 added
 `location-people.spec.ts`; 35 of 39 on 2026-11-18, after households H5b task G.10 added
 `household-invites.spec.ts`; 34 of 38 on 2026-11-17, after households H5 task F.8 added
@@ -1983,10 +2027,11 @@ same answer. `item-stock-pager.spec.ts` seeds several and is.
 `cleanup-endpoint.spec.ts` joined on 2026-09-25 (issue #319) — 1 cloud test case, no
 browser, like `location-scoped-writes.spec.ts`. It is not resolver coverage: its subject is
 the `DELETE /e2e/cleanup` route, whose handler is in `apps/server/src/lib/e2eCleanup.ts`
-(`index.ts` only mounts it). It seeds one row of all 20 models that route deletes (14
+(`index.ts` only mounts it). It seeds one row of all 21 models that route deletes (14
 before households task 2.6 added the `User` row, 15 before households H3a task 3.10 added
 the three household tables, 18 before households H5b task G.6 added `HouseholdInvite`, 19
-before households H6 task J.1 added `HouseholdActivity`), calls it, and asserts every returned deleted count is at least
+before households H6 task J.1 added `HouseholdActivity`, 20 before households H6b task K.1
+added `OwnershipOffer`; the offer is seeded by a real `offerOwnership` since task K.8), calls it, and asserts every returned deleted count is at least
 1. `purge-coverage.test.ts` guards the same route but only as SOURCE TEXT. Since issue #320
 it checks the filter's TEXT against one allowed form per model, but it still cannot see a
 value, so a filter whose variable is wrong or `undefined` passes it. See `e2e/CLAUDE.md`

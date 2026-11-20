@@ -210,6 +210,16 @@ than trusting a number here — it said **four** when there were seven.
   fourth `migrate deploy` now applies three migrations. The main session ran the script on
   the test database on 2026-11-20, with the owner's consent: "Migration verified.", every
   line `ok` (H6 plan, task J.9 Step 2).
+  **Twelve** entries since households H6b task K.1 (`20261120100000_add_ownership_offers`,
+  in the `last` group too: one enum and one empty table that names only `"Household"` and
+  `"User"`). So the fourth `migrate deploy` now applies four migrations. Its
+  `assertOwnershipOffers` checks the 7 columns, the `OfferKind` values, the two `CASCADE`
+  foreign keys (`householdId`, `toUserId`) and none on `fromUserId`, the unique
+  `(householdId, toUserId)` and the `toUserId` index, the `23505`, `22P02` and `23503`
+  refusals, and the three deletes. The main session ran the script on the test database on
+  2026-11-20, before task K.8, with the owner's consent: "Migration verified.", every line
+  `ok` (H6 plan, the top of task K.8). No file under `apps/server/prisma/` changed after that
+  run (`git log --oneline e0b7f585..HEAD -- apps/server/prisma/` is empty at `5cd82bf4`).
   The history below said the list was in `scripts/verify-migration.ts`, as a `MIGRATIONS` list —
   **nine** entries since households H3b task B.3 (2026-11-15; eight on 2026-11-11). The
   ninth, `20261114000000_shared_carts`, is applied in a **fourth** `migrate deploy`, after
@@ -231,7 +241,7 @@ than trusting a number here — it said **four** when there were seven.
   old server could write between the two deploys (`seedBetweenDeploys`).
   **Count the array rather than trusting this line.** It said **four** until 2026-10-08:
   ```bash
-  grep -o "'2026[0-9]*_[a-z_]*'" apps/server/scripts/migrationDeploys.ts | wc -l   # 11 since H6 task J.1 (10 since H5b task G.1)
+  grep -o "'2026[0-9]*_[a-z_]*'" apps/server/scripts/migrationDeploys.ts | wc -l   # 12 since H6b task K.1 (11 since H6 task J.1, 10 since H5b task G.1)
   ```
   (The command was `grep -c "^  '2026" apps/server/scripts/verify-migration.ts` until G.1. It
   prints 0 now.)
