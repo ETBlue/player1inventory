@@ -278,4 +278,38 @@ describe('householdWorld: household.deleteMany cascades across the fakes (househ
     await world.client.household.deleteMany({ where: { id: 'hh-1' } })
     expect(world.households.state.householdActivities.map((r) => r.householdId)).toEqual(['hh-2'])
   })
+  it('has the ownershipOffer model; its rows roll back with a transaction and go with their household (H6b task K.1)', async () => {
+    // Given two households, each with an offer
+    const world = createHouseholdWorld()
+    world.seedHouseholds({
+      households: [household('hh-1', 'u1'), household('hh-2', 'u2')],
+      householdMembers: [
+        { householdId: 'hh-1', userId: 'u1', role: 'owner', joinedAt: T },
+        { householdId: 'hh-1', userId: 'u3', role: 'member', joinedAt: T },
+        { householdId: 'hh-2', userId: 'u2', role: 'owner', joinedAt: T },
+        { householdId: 'hh-2', userId: 'u3', role: 'member', joinedAt: T },
+      ],
+    })
+    await world.client.ownershipOffer.create({
+      data: { householdId: 'hh-1', toUserId: 'u3', fromUserId: 'u1', kind: 'transfer' },
+    })
+    await world.client.ownershipOffer.create({
+      data: { householdId: 'hh-2', toUserId: 'u3', fromUserId: 'u2', kind: 'transfer' },
+    })
+
+    // When a transaction deletes one and then throws
+    await expect(
+      world.client.$transaction(async (tx: typeof world.client) => {
+        await tx.ownershipOffer.deleteMany({ where: { householdId: 'hh-1' } })
+        throw new Error('boom')
+      }),
+    ).rejects.toThrow('boom')
+
+    // Then it is back
+    expect(world.households.state.ownershipOffers.map((r) => r.householdId)).toEqual(['hh-1', 'hh-2'])
+
+    // And deleting hh-1 deletes hh-1's offer only
+    await world.client.household.deleteMany({ where: { id: 'hh-1' } })
+    expect(world.households.state.ownershipOffers.map((r) => r.householdId)).toEqual(['hh-2'])
+  })
 })

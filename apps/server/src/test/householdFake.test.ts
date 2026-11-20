@@ -1939,3 +1939,264 @@ describe('householdFake models HouseholdActivity (households H6, task J.1, decis
     expect(fake.state.householdActivities).toHaveLength(5)
   })
 })
+
+describe('householdFake models OwnershipOffer (households H6b, task K.1, decision T58)', () => {
+  /** One open transfer offer in ours (to SECOND), one handover offer in theirs (to CALLER). */
+  async function seeded() {
+    const fake = fixture()
+    await fake.client.ownershipOffer.create({
+      data: { id: 'offer_ours', householdId: OURS, toUserId: SECOND, fromUserId: CALLER, kind: 'transfer' },
+    })
+    await fake.client.ownershipOffer.create({
+      data: { id: 'offer_theirs', householdId: THEIRS, toUserId: CALLER, kind: 'handover' },
+    })
+    return fake
+  }
+
+  async function ids(fake: Awaited<ReturnType<typeof seeded>>, where: Record<string, unknown>) {
+    return (await fake.client.ownershipOffer.findMany({ where } as never)).map((r) => r.id).sort()
+  }
+
+  it('create fills the defaults and returns a copy', async () => {
+    const fake = fixture()
+    const row = await fake.client.ownershipOffer.create({
+      data: { householdId: OURS, toUserId: SECOND, kind: 'transfer' },
+    })
+    expect(row).toMatchObject({
+      householdId: OURS,
+      toUserId: SECOND,
+      fromUserId: null,
+      kind: 'transfer',
+      dismissedAt: null,
+    })
+    expect(typeof row.id).toBe('string')
+    expect(row.createdAt).toBeInstanceOf(Date)
+    row.toUserId = 'changed'
+    expect(fake.state.ownershipOffers[0]?.toUserId).toBe(SECOND)
+  })
+
+  it('create raises P2002 on a second offer to the same person in the same household', async () => {
+    // Given an offer to SECOND in ours
+    const fake = await seeded()
+
+    // When a second offer to SECOND in ours is created, of the OTHER kind
+    const second = fake.client.ownershipOffer.create({
+      data: { householdId: OURS, toUserId: SECOND, kind: 'handover' },
+    })
+
+    // Then the unique (householdId, toUserId) refuses it, and nothing is written
+    await expect(second).rejects.toBeInstanceOf(HouseholdFakeUniqueError)
+    await expect(second).rejects.toMatchObject({
+      code: 'P2002',
+      constraint: 'OwnershipOffer_householdId_toUserId_key',
+    })
+    expect(fake.state.ownershipOffers).toHaveLength(2)
+  })
+
+  it('the same person may have one offer in EACH household, and one household offers to several people', async () => {
+    const fake = await seeded()
+    // SECOND in theirs: another household, same person
+    await fake.client.ownershipOffer.create({
+      data: { householdId: THEIRS, toUserId: SECOND, kind: 'handover' },
+    })
+    // STRANGER in ours: same household, another person
+    await fake.client.ownershipOffer.create({
+      data: { householdId: OURS, toUserId: STRANGER, kind: 'handover' },
+    })
+    expect(fake.state.ownershipOffers).toHaveLength(4)
+  })
+
+  it('an update that moves an offer onto a taken (householdId, toUserId) raises P2002', async () => {
+    const fake = await seeded()
+    await fake.client.ownershipOffer.create({
+      data: { id: 'offer_2', householdId: OURS, toUserId: STRANGER, kind: 'handover' },
+    })
+    await expect(
+      fake.client.ownershipOffer.update({ where: { id: 'offer_2' }, data: { toUserId: SECOND } }),
+    ).rejects.toMatchObject({ code: 'P2002' })
+    expect(fake.state.ownershipOffers.find((o) => o.id === 'offer_2')?.toUserId).toBe(STRANGER)
+  })
+
+  it('create raises P2002 on a taken id', async () => {
+    const fake = await seeded()
+    await expect(
+      fake.client.ownershipOffer.create({
+        data: { id: 'offer_ours', householdId: THEIRS, toUserId: SECOND, kind: 'handover' },
+      }),
+    ).rejects.toMatchObject({ code: 'P2002', constraint: 'OwnershipOffer_pkey' })
+  })
+
+  it('create raises P2003 for a household this fake does not hold', async () => {
+    const fake = fixture()
+    await expect(
+      fake.client.ownershipOffer.create({
+        data: { householdId: 'household_gone', toUserId: SECOND, kind: 'transfer' },
+      }),
+    ).rejects.toBeInstanceOf(HouseholdFakeForeignKeyError)
+    expect(fake.state.ownershipOffers).toEqual([])
+  })
+
+  it.each(['householdId', 'toUserId', 'kind'])(
+    'create throws when the NOT NULL column %s is missing',
+    async (column) => {
+      const fake = fixture()
+      const data: Record<string, unknown> = { householdId: OURS, toUserId: SECOND, kind: 'transfer' }
+      delete data[column]
+      await expect(fake.client.ownershipOffer.create({ data } as never)).rejects.toBeInstanceOf(
+        HouseholdFakeMissingColumnError,
+      )
+      expect(fake.state.ownershipOffers).toEqual([])
+    },
+  )
+
+  it('create throws on a kind that is not in the OfferKind enum', async () => {
+    const fake = fixture()
+    await expect(
+      fake.client.ownershipOffer.create({
+        data: { householdId: OURS, toUserId: SECOND, kind: 'owner' } as never,
+      }),
+    ).rejects.toThrow(/OfferKind/)
+  })
+
+  it('applies id, householdId and toUserId as a value or { in: [...] }', async () => {
+    const fake = await seeded()
+    expect(await ids(fake, { id: 'offer_ours' })).toEqual(['offer_ours'])
+    expect(await ids(fake, { householdId: THEIRS })).toEqual(['offer_theirs'])
+    expect(await ids(fake, { householdId: { in: [OURS, THEIRS] } })).toEqual([
+      'offer_ours',
+      'offer_theirs',
+    ])
+    expect(await ids(fake, { toUserId: CALLER })).toEqual(['offer_theirs'])
+    expect(await ids(fake, { toUserId: { in: [SECOND] } })).toEqual(['offer_ours'])
+    // Two keys together: both must pass
+    expect(await ids(fake, { householdId: OURS, toUserId: CALLER })).toEqual([])
+  })
+
+  it('applies kind, and refuses a kind outside the enum in a where', async () => {
+    const fake = await seeded()
+    expect(await ids(fake, { kind: 'transfer' })).toEqual(['offer_ours'])
+    expect(await ids(fake, { kind: { in: ['handover'] } })).toEqual(['offer_theirs'])
+    await expect(ids(fake, { kind: 'owner' })).rejects.toThrow(/OfferKind/)
+  })
+
+  it('applies dismissedAt: null, and nothing else for dismissedAt', async () => {
+    const fake = await seeded()
+    await fake.client.ownershipOffer.update({
+      where: { id: 'offer_theirs' },
+      data: { dismissedAt: T0 },
+    })
+    expect(await ids(fake, { dismissedAt: null })).toEqual(['offer_ours'])
+    await expect(ids(fake, { dismissedAt: { lt: T0 } })).rejects.toBeInstanceOf(
+      UnsupportedWhereFilterError,
+    )
+  })
+
+  it.each([
+    ['fromUserId', CALLER],
+    ['createdAt', T0],
+    ['household', { ownerId: CALLER }],
+    ['OR', [{ toUserId: SECOND }]],
+  ])('throws on the where key %s, even on an empty store', async (key, value) => {
+    // The empty store matters: a per-row check would never run here
+    const fake = fixture()
+    const where = { [key]: value }
+    await expect(fake.client.ownershipOffer.findMany({ where } as never)).rejects.toBeInstanceOf(
+      UnknownWhereKeyError,
+    )
+    await expect(fake.client.ownershipOffer.findFirst({ where } as never)).rejects.toBeInstanceOf(
+      UnknownWhereKeyError,
+    )
+    await expect(fake.client.ownershipOffer.deleteMany({ where } as never)).rejects.toBeInstanceOf(
+      UnknownWhereKeyError,
+    )
+    await expect(
+      fake.client.ownershipOffer.updateMany({ where, data: { dismissedAt: T0 } } as never),
+    ).rejects.toBeInstanceOf(UnknownWhereKeyError)
+  })
+
+  it('findUnique names exactly id, as a plain string', async () => {
+    const fake = await seeded()
+    expect((await fake.client.ownershipOffer.findUnique({ where: { id: 'offer_ours' } }))?.toUserId).toBe(
+      SECOND,
+    )
+    expect(await fake.client.ownershipOffer.findUnique({ where: { id: 'offer_none' } })).toBeNull()
+    await expect(
+      fake.client.ownershipOffer.findUnique({ where: { householdId: OURS } } as never),
+    ).rejects.toBeInstanceOf(HouseholdFakeUnsupportedError)
+    await expect(
+      fake.client.ownershipOffer.findUnique({ where: { id: { in: ['offer_ours'] } } } as never),
+    ).rejects.toBeInstanceOf(HouseholdFakeUnsupportedError)
+  })
+
+  it('applies select on the columns, and refuses a relation', async () => {
+    const fake = await seeded()
+    const rows = await fake.client.ownershipOffer.findMany({
+      where: { householdId: OURS },
+      select: { id: true, kind: true },
+    })
+    expect(rows).toEqual([{ id: 'offer_ours', kind: 'transfer' }])
+    await expect(
+      fake.client.ownershipOffer.findMany({ select: { household: true } } as never),
+    ).rejects.toBeInstanceOf(HouseholdFakeUnsupportedError)
+  })
+
+  it('update and delete act on one row by id and raise P2025 when none matches', async () => {
+    const fake = await seeded()
+    const updated = await fake.client.ownershipOffer.update({
+      where: { id: 'offer_ours' },
+      data: { dismissedAt: T0 },
+    })
+    expect(updated.dismissedAt).toEqual(T0)
+    await expect(
+      fake.client.ownershipOffer.update({ where: { id: 'offer_none' }, data: { dismissedAt: T0 } }),
+    ).rejects.toMatchObject({ code: 'P2025' })
+    const deleted = await fake.client.ownershipOffer.delete({ where: { id: 'offer_ours' } })
+    expect(deleted.id).toBe('offer_ours')
+    await expect(
+      fake.client.ownershipOffer.delete({ where: { id: 'offer_ours' } }),
+    ).rejects.toMatchObject({ code: 'P2025' })
+    expect(fake.state.ownershipOffers.map((o) => o.id)).toEqual(['offer_theirs'])
+  })
+
+  it('updateMany and deleteMany return a count and never throw for no match', async () => {
+    const fake = await seeded()
+    expect(
+      await fake.client.ownershipOffer.updateMany({
+        where: { householdId: OURS, kind: 'transfer' },
+        data: { dismissedAt: T0 },
+      }),
+    ).toEqual({ count: 1 })
+    expect(await fake.client.ownershipOffer.deleteMany({ where: { toUserId: STRANGER } })).toEqual({
+      count: 0,
+    })
+    expect(await fake.client.ownershipOffer.deleteMany({ where: { householdId: OURS } })).toEqual({
+      count: 1,
+    })
+    expect(fake.state.ownershipOffers.map((o) => o.id)).toEqual(['offer_theirs'])
+  })
+
+  it('household.deleteMany deletes the offers of that household only (ON DELETE CASCADE)', async () => {
+    const fake = await seeded()
+    await fake.client.household.deleteMany({ where: { id: OURS } })
+    expect(fake.state.ownershipOffers.map((o) => o.id)).toEqual(['offer_theirs'])
+  })
+
+  it('rolls back with runInTransaction, because the rows live in `state`', async () => {
+    const fake = await seeded()
+    await expect(
+      runInTransaction([fake.state as never], fake.client, async (tx: typeof fake.client) => {
+        await tx.ownershipOffer.create({
+          data: { householdId: OURS, toUserId: STRANGER, kind: 'handover' },
+        })
+        throw new Error('later step')
+      }),
+    ).rejects.toThrow('later step')
+    expect(fake.state.ownershipOffers).toHaveLength(2)
+  })
+
+  it('reset empties the store and seeds it from the options', async () => {
+    const fake = await seeded()
+    fake.reset()
+    expect(fake.state.ownershipOffers).toEqual([])
+  })
+})

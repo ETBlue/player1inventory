@@ -100,6 +100,40 @@
 //     by the database collation. For the `cuid()` ids the server makes
 //     (lower-case letters and digits) the two orders agree.
 //
+// ── OwnershipOffer (households H6b, task K.1, decision T58) ──
+//
+//   - `create` honours `data.id` (else it makes one) and raises P2002 on a
+//     taken id (`OwnershipOffer_pkey`), and on a second offer to the same
+//     person in the same household (`OwnershipOffer_householdId_toUserId_key`).
+//     The unique pair is checked on `update` too, so an update cannot move an
+//     offer onto a taken pair. One offer per person per household is what
+//     keeps "the first accept wins" simple.
+//   - `create` needs `householdId`, `toUserId` and `kind` (NOT NULL with no
+//     default), checks `kind` against the `OfferKind` enum, and raises P2003
+//     for a household this fake does not hold. `fromUserId` and `dismissedAt`
+//     start null.
+//   - `where` takes `id`, `householdId` and `toUserId` (a value or `{ in }`),
+//     `kind` (a value or `{ in }`; a value outside the enum throws) and
+//     `dismissedAt: null`. Any other key, such as `fromUserId`, `createdAt`,
+//     a relation or `OR`, THROWS. Add it on purpose, with a test, when a
+//     resolver needs it.
+//   - `findUnique`, `update` and `delete` must name `id` and nothing else,
+//     as a plain string. `update` and `delete` raise P2025 when no row
+//     matches. `updateMany` and `deleteMany` return a count.
+//   - `select` is applied on the columns, as on invites. `orderBy`, `take`
+//     and `include` throw as unknown options.
+//   - The rows live in `state`, so they roll back with `runInTransaction`,
+//     and `household.deleteMany` deletes them with their household
+//     (`onDelete: Cascade`).
+//   - NOT modelled: the foreign key from `toUserId` to `User` and its ON
+//     DELETE CASCADE. `User` lives in `userFake`, and nothing in the server
+//     deletes a `User` row except `/e2e/cleanup`, which deletes the offers to
+//     the person first (`lib/e2eCleanup.ts`). Real SQL proves the cascade:
+//     `assertOwnershipOffers` in `scripts/verify-migration.ts`.
+//   - The household `where` does NOT take an `ownershipOffers` key. Decision
+//     T49 keeps offers out of `emptyHouseholdWhere`, so a join that asked it
+//     would throw here, and the join tests would go red.
+//
 // ── household.deleteMany AND "IS IT EMPTY" (households H5b, task G.4) ──
 //
 // `joinHousehold` deletes the joiner's own household only when it is empty,
@@ -189,6 +223,8 @@ import {
   type HouseholdInvite,
   type HouseholdMember,
   type LocationMember,
+  OfferKind,
+  type OwnershipOffer,
 } from '@prisma/client'
 import { OwnedRowNotFoundError } from './ownedRowFake.js'
 import { checkWhere, type WhereKeyKind, type WhereSpec } from './whereKeys.js'
@@ -198,6 +234,7 @@ export type HouseholdMemberRow = HouseholdMember
 export type LocationMemberRow = LocationMember
 export type HouseholdInviteRow = HouseholdInvite
 export type HouseholdActivityRow = HouseholdActivity
+export type OwnershipOfferRow = OwnershipOffer
 
 /** What the fake needs to know about a location: its id and its household. */
 export interface LocationRef {
@@ -363,6 +400,17 @@ const ACTIVITY_WHERE: WhereSpec = { ...ACTIVITY_CURSOR, OR: { or: ACTIVITY_CURSO
 
 const ACTIVITY_ACTIONS: readonly string[] = Object.values(ActivityAction)
 
+// The keys of the offer writes and reads of H6b (decision T58), and no other.
+const OFFER_WHERE: WhereSpec = {
+  id: 'in',
+  householdId: 'in',
+  toUserId: 'in',
+  kind: 'in',
+  dismissedAt: 'null',
+}
+
+const OFFER_KINDS: readonly string[] = Object.values(OfferKind)
+
 // ── Small helpers ──
 
 /** A plain value or `{ in: [...] }`, or `null`. The shape was checked already. */
@@ -496,6 +544,21 @@ const ACTIVITY_COLUMNS = [
   'createdAt',
 ] as const
 
+const OFFER_COLUMNS = [
+  'id',
+  'householdId',
+  'toUserId',
+  'fromUserId',
+  'kind',
+  'createdAt',
+  'dismissedAt',
+] as const
+
+// A row used only to check a `select` before a write or a read.
+const placeholderOffer = Object.fromEntries(
+  OFFER_COLUMNS.map((c) => [c, null]),
+) as unknown as OwnershipOfferRow
+
 // A row used only to check a `select` before a write or a read.
 const placeholderActivity = Object.fromEntries(
   ACTIVITY_COLUMNS.map((c) => [c, null]),
@@ -560,6 +623,7 @@ export interface HouseholdFakeState {
   locationMembers: LocationMemberRow[]
   householdInvites: HouseholdInviteRow[]
   householdActivities: HouseholdActivityRow[]
+  ownershipOffers: OwnershipOfferRow[]
 }
 
 /**
@@ -586,6 +650,7 @@ export interface HouseholdFakeOptions {
   locationMembers?: LocationMemberRow[]
   householdInvites?: HouseholdInviteRow[]
   householdActivities?: HouseholdActivityRow[]
+  ownershipOffers?: OwnershipOfferRow[]
   /**
    * The location rows, read on every call that needs one: the foreign key of
    * a `LocationMember` write, and the `location` relation filter. Pass a
@@ -611,6 +676,7 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     locationMembers: (options.locationMembers ?? []).map(copy),
     householdInvites: (options.householdInvites ?? []).map(copy),
     householdActivities: (options.householdActivities ?? []).map(copy),
+    ownershipOffers: (options.ownershipOffers ?? []).map(copy),
   }
   let seq = 0
 
@@ -829,6 +895,15 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     return true
   }
 
+  /** `OwnershipOffer`: values, `{ in }` and `dismissedAt: null`. The shape was checked already. */
+  function offerMatches(row: OwnershipOfferRow, where: Where): boolean {
+    for (const [key, filter] of Object.entries(where)) {
+      if (filter === undefined) continue
+      if (!matchesScalar((row as unknown as Where)[key], filter)) return false
+    }
+    return true
+  }
+
   // ── Once-per-call checks ──
 
   function checkInviteWhere(where: Where | undefined) {
@@ -838,6 +913,36 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
 
   function checkActivityWhere(where: Where | undefined) {
     checkWhere('householdFake(HouseholdActivity)', where, ACTIVITY_WHERE)
+  }
+
+  function checkOfferWhere(where: Where | undefined) {
+    checkWhere('householdFake(OwnershipOffer)', where, OFFER_WHERE)
+    checkOfferKind(where?.kind)
+  }
+
+  /** A `kind`, in a where or a write, must be a value of the `OfferKind` enum. */
+  function checkOfferKind(filter: unknown) {
+    if (filter === undefined) return
+    const values = typeof filter === 'object' && filter !== null ? (filter as { in: unknown[] }).in : [filter]
+    for (const value of values) {
+      if (!OFFER_KINDS.includes(value as string)) {
+        throw new HouseholdFakeUnsupportedError(
+          'OwnershipOffer',
+          `the kind ${JSON.stringify(value)}, which is not in the OfferKind enum (${OFFER_KINDS.join(', ')})`,
+        )
+      }
+    }
+  }
+
+  /** `findUnique`, `update` and `delete` on an offer name exactly `id`, as a plain string. */
+  function requireOfferId(method: string, where: Where) {
+    const keys = Object.keys(where).filter((k) => where[k] !== undefined)
+    if (keys.length !== 1 || keys[0] !== 'id' || typeof where.id !== 'string') {
+      throw new HouseholdFakeUnsupportedError(
+        'OwnershipOffer',
+        `a ${method} that does not name exactly 'id' as a plain string`,
+      )
+    }
   }
 
   function checkHouseholdWhere(where: Where | undefined) {
@@ -974,6 +1079,27 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     }
   }
 
+  function checkOfferRow(row: OwnershipOfferRow, others: OwnershipOfferRow[]) {
+    const model = 'OwnershipOffer'
+    for (const column of ['householdId', 'toUserId', 'kind'] as const) {
+      if (typeof row[column] !== 'string') throw new HouseholdFakeMissingColumnError(model, column)
+    }
+    checkOfferKind(row.kind)
+    if (!state.households.some((h) => h.id === row.householdId)) {
+      throw new HouseholdFakeForeignKeyError(model, 'householdId', row.householdId)
+    }
+    if (others.some((o) => o.id === row.id)) {
+      throw new HouseholdFakeUniqueError(model, 'OwnershipOffer_pkey', row.id)
+    }
+    if (others.some((o) => o.householdId === row.householdId && o.toUserId === row.toUserId)) {
+      throw new HouseholdFakeUniqueError(
+        model,
+        'OwnershipOffer_householdId_toUserId_key',
+        `${row.householdId}, ${row.toUserId}`,
+      )
+    }
+  }
+
   // ── Inserts ──
 
   function insertHousehold(data: Data): HouseholdRow {
@@ -1065,6 +1191,20 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     return row
   }
 
+  function insertOffer(data: Data): OwnershipOfferRow {
+    refuseNestedData('OwnershipOffer', data)
+    const row = {
+      fromUserId: null,
+      dismissedAt: null,
+      createdAt: new Date(),
+      ...stripUndefined(data),
+      id: (data.id as string | undefined) ?? `offer-${++seq}`,
+    } as OwnershipOfferRow
+    checkOfferRow(row, state.ownershipOffers)
+    state.ownershipOffers.push(row)
+    return row
+  }
+
   // ── Updates. Each builds the new row, checks it, then writes it. ──
 
   function updateHouseholdRow(row: HouseholdRow, data: Data): HouseholdRow {
@@ -1116,6 +1256,20 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     checkInviteRow(
       next,
       state.householdInvites.filter((i) => i !== row),
+    )
+    Object.assign(row, next)
+    return row
+  }
+
+  function updateOfferRow(row: OwnershipOfferRow, data: Data): OwnershipOfferRow {
+    refuseNestedData('OwnershipOffer', data)
+    if (data.id !== undefined && data.id !== row.id) {
+      throw new HouseholdFakeUnsupportedError('OwnershipOffer', 'an update that changes the id')
+    }
+    const next = { ...row, ...stripUndefined(data) } as OwnershipOfferRow
+    checkOfferRow(
+      next,
+      state.ownershipOffers.filter((o) => o !== row),
     )
     Object.assign(row, next)
     return row
@@ -1189,6 +1343,7 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
       state.householdMembers = state.householdMembers.filter((m) => !ids.has(m.householdId))
       state.householdInvites = state.householdInvites.filter((i) => !ids.has(i.householdId))
       state.householdActivities = state.householdActivities.filter((a) => !ids.has(a.householdId))
+      state.ownershipOffers = state.ownershipOffers.filter((o) => !ids.has(o.householdId))
       state.locationMembers = state.locationMembers.filter((m) => !locationIds.has(m.locationId))
       return { count: ids.size }
     },
@@ -1472,7 +1627,92 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     },
   }
 
-  const client = { household, householdMember, locationMember, householdInvite, householdActivity }
+  const offerSelect = (row: OwnershipOfferRow, select: Where | undefined) =>
+    selectColumns('OwnershipOffer', OFFER_COLUMNS, row, select)
+
+  const ownershipOffer = {
+    findUnique: async (args: { where: Where; select?: Where }) => {
+      refuseUnknownOptions('OwnershipOffer', 'findUnique', args, READ)
+      checkOfferWhere(args.where)
+      requireOfferId('findUnique', args.where)
+      const row = state.ownershipOffers.find((o) => o.id === args.where.id)
+      // biome-ignore lint/suspicious/noExplicitAny: the shape depends on `select`, as in Prisma
+      return (row ? offerSelect(row, args.select) : null) as any
+    },
+    findFirst: async (args: { where?: Where; select?: Where } = {}) => {
+      refuseUnknownOptions('OwnershipOffer', 'findFirst', args, READ)
+      checkOfferWhere(args.where)
+      if (args.select !== undefined) offerSelect(placeholderOffer, args.select)
+      const row = state.ownershipOffers.find((o) => offerMatches(o, args.where ?? {}))
+      // biome-ignore lint/suspicious/noExplicitAny: the shape depends on `select`, as in Prisma
+      return (row ? offerSelect(row, args.select) : null) as any
+    },
+    findMany: async (args: { where?: Where; select?: Where } = {}) => {
+      refuseUnknownOptions('OwnershipOffer', 'findMany', args, READ)
+      checkOfferWhere(args.where)
+      if (args.select !== undefined) offerSelect(placeholderOffer, args.select)
+      return state.ownershipOffers
+        .filter((o) => offerMatches(o, args.where ?? {}))
+        // biome-ignore lint/suspicious/noExplicitAny: the shape depends on `select`, as in Prisma
+        .map((o) => offerSelect(o, args.select)) as any[]
+    },
+    create: async (args: { data: Data; select?: Where }) => {
+      refuseUnknownOptions('OwnershipOffer', 'create', args, ['data', 'select'])
+      // The select is checked BEFORE the insert, so a bad one writes nothing.
+      if (args.select !== undefined) offerSelect(placeholderOffer, args.select)
+      // biome-ignore lint/suspicious/noExplicitAny: the shape depends on `select`, as in Prisma
+      return offerSelect(insertOffer(args.data), args.select) as any
+    },
+    update: async (args: { where: Where; data: Data; select?: Where }) => {
+      refuseUnknownOptions('OwnershipOffer', 'update', args, ['where', 'data', 'select'])
+      checkOfferWhere(args.where)
+      requireOfferId('update', args.where)
+      if (args.select !== undefined) offerSelect(placeholderOffer, args.select)
+      const row = state.ownershipOffers.find((o) => o.id === args.where.id)
+      if (!row) throw new OwnedRowNotFoundError('OwnershipOffer', args.where)
+      // biome-ignore lint/suspicious/noExplicitAny: the shape depends on `select`, as in Prisma
+      return offerSelect(updateOfferRow(row, args.data), args.select) as any
+    },
+    updateMany: async (args: { where?: Where; data: Data }) => {
+      refuseUnknownOptions('OwnershipOffer', 'updateMany', args, ['where', 'data'])
+      checkOfferWhere(args.where)
+      let count = 0
+      for (const row of state.ownershipOffers) {
+        if (!offerMatches(row, args.where ?? {})) continue
+        updateOfferRow(row, args.data)
+        count++
+      }
+      return { count }
+    },
+    delete: async (args: { where: Where; select?: Where }) => {
+      refuseUnknownOptions('OwnershipOffer', 'delete', args, READ)
+      checkOfferWhere(args.where)
+      requireOfferId('delete', args.where)
+      const row = state.ownershipOffers.find((o) => o.id === args.where.id)
+      if (!row) throw new OwnedRowNotFoundError('OwnershipOffer', args.where)
+      state.ownershipOffers = state.ownershipOffers.filter((o) => o !== row)
+      // biome-ignore lint/suspicious/noExplicitAny: the shape depends on `select`, as in Prisma
+      return offerSelect(row, args.select) as any
+    },
+    deleteMany: async (args: { where?: Where } = {}) => {
+      refuseUnknownOptions('OwnershipOffer', 'deleteMany', args, ['where'])
+      checkOfferWhere(args.where)
+      const before = state.ownershipOffers.length
+      state.ownershipOffers = state.ownershipOffers.filter(
+        (o) => !offerMatches(o, args.where ?? {}),
+      )
+      return { count: before - state.ownershipOffers.length }
+    },
+  }
+
+  const client = {
+    household,
+    householdMember,
+    locationMember,
+    householdInvite,
+    householdActivity,
+    ownershipOffer,
+  }
 
   /** Replace the store's contents. The rows are copied. */
   function reset(next: Omit<HouseholdFakeOptions, 'locations'> = {}) {
@@ -1481,6 +1721,7 @@ export function createHouseholdFake(options: HouseholdFakeOptions = {}) {
     state.locationMembers = (next.locationMembers ?? []).map(copy)
     state.householdInvites = (next.householdInvites ?? []).map(copy)
     state.householdActivities = (next.householdActivities ?? []).map(copy)
+    state.ownershipOffers = (next.ownershipOffers ?? []).map(copy)
     seq = 0
   }
 
