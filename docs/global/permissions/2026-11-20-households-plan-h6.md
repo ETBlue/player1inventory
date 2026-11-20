@@ -329,6 +329,10 @@ the recommended option everywhere, is the decided plan:
 | O42 | Asked after K.3, answered 2026-11-20: **A.** After a person DECLINES a hand-over offer, the design's table is applied to everyone ELSE. If nobody else is left, the person who declined gets the offer back already dismissed (no banner; the Members page still lets them take the household). This is what K.3 built |
 | O43 | Asked after K.4, answered 2026-11-20: **yes.** When an OWNER's account is deleted, the open invites they made are revoked, the same as for a removed manager (O20) and for a deleted manager or member (K.4). Built as task K.4b |
 | O44 | Asked after K.4, answered 2026-11-20: **yes.** If the O36 count of accounts deleted before H6 is not 0, the one-off script runs the same `handOverDeletedAccount` for each of them. With the K.4 review fix, this also deletes a household where no live person is left (O37-A). Goes into K.9's deploy notes |
+| O45 | Asked after K.6, answered 2026-11-20: **change the hand-over text.** "The owner of {{household}} deleted their account. Do you want to become the owner?" / 「{{household}} 的擁有者已刪除帳號。你要成為擁有者嗎？」 ("is gone" / 「已經不在了」 can read as "has died"). Built in task K.7b |
+| O46 | Asked after K.7, answered 2026-11-20: **keep as built.** While a transfer offer is open, Transfer is hidden; the owner cancels first |
+| O47 | Asked after K.7, answered 2026-11-20: **keep as built.** The owner's row says "The owner cannot leave. Transfer ownership first." |
+| O48 | Asked after the K.7 review, answered 2026-11-20: **A.** Leave cannot be used until the member list has a fresh answer from the server, so a stale cached list can never hide the O37-A warning. Built in task K.7b |
 
 ---
 
