@@ -237,6 +237,12 @@ const OWNED_SCOPE = '{ householdId: owned }'
  * - `householdActivity` (households H6, task J.1): the activity rows of the
  *   owned households. The scope on the row itself, but listed here and not
  *   in `MODEL_PATHS`, because `clearAllData` must keep the log.
+ * - `ownershipOffer` (households H6b, task K.1, decision T58): every offer
+ *   of the owned households, and every offer TO the user anywhere else.
+ *   `toUserId` is ON DELETE CASCADE, so the `User` delete would remove the
+ *   second half anyway; the route deletes them first so the count shows them.
+ *   The `{ toUserId: userId }` half is allowed here and nowhere else.
+ *   `fromUserId` has no foreign key, so an offer the user MADE elsewhere stays.
  * - `household`: the owned households themselves, by their `id`.
  * - `user`: the User row. Its key is `id`, because the row IS the user. The
  *   same filter on any other model would compare that model's id with a user
@@ -259,6 +265,11 @@ const CLEANUP_EXCEPTIONS: readonly FilterException[] = [
   // Not in `MODEL_PATHS`: `clearAllData` keeps the log (see its `kept`), so
   // the form is allowed on this path only.
   { model: 'householdActivity', arg: '{ where: { householdId: owned } }' },
+  // Not in `MODEL_PATHS` either: `deleteHouseholdData` keeps the offers.
+  {
+    model: 'ownershipOffer',
+    arg: '{ where: { OR: [{ householdId: owned }, { toUserId: userId }] } }',
+  },
   { model: 'household', arg: '{ where: { id: owned } }' },
   { model: 'user', arg: '{ where: { id: userId } }' },
 ]
@@ -296,12 +307,17 @@ const PURGE_PATHS: readonly PurgePath[] = [
     // `householdActivity` (H6 task J.1) is kept: the log says who cleared the
     // household, so a clear must not delete it. J.2 writes the
     // HOUSEHOLD_CLEARED row after the deletes, in the same transaction.
+    //
+    // `ownershipOffer` (H6b task K.1) is kept: an offer is about who will own
+    // the household, not about its data. A clear keeps the household and its
+    // members, so an open offer stays valid.
     kept: [
       'household',
       'householdActivity',
       'householdInvite',
       'householdMember',
       'locationMember',
+      'ownershipOffer',
       'user',
     ],
     scope: '{ householdId }',
@@ -321,6 +337,7 @@ const PURGE_PATHS: readonly PurgePath[] = [
       'householdInvite',
       'householdMember',
       'locationMember',
+      'ownershipOffer',
       'user',
     ].sort(),
     // Nothing is kept: the route deletes every model. `householdInvite` was
@@ -359,6 +376,7 @@ describe('purge coverage against prisma/schema.prisma', () => {
         'itemVendor',
         'location',
         'locationMember',
+        'ownershipOffer',
         'recipe',
         'recipeItem',
         'shelf',

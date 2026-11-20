@@ -357,6 +357,9 @@ model User {
   // Named, because HouseholdInvite points at User twice.
   invitesCreated       HouseholdInvite[] @relation("InviteCreatedBy")
   invitesUsed          HouseholdInvite[] @relation("InviteUsedBy")
+  // Offers to take over a household, made TO this person (households H6b,
+  // decision T58). Deleted with this row (Cascade).
+  ownershipOffers      OwnershipOffer[]
 
   // Serves the ON DELETE SET NULL on activeHouseholdId, which Postgres runs
   // as a lookup by that column when a household is deleted.
@@ -390,22 +393,25 @@ model Household {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  members    HouseholdMember[]
-  locations  Location[]
-  items      Item[]
-  tags       Tag[]
-  tagTypes   TagType[]
-  vendors    Vendor[]
-  recipes    Recipe[]
-  shelves    Shelf[]
+  members         HouseholdMember[]
+  locations       Location[]
+  items           Item[]
+  tags            Tag[]
+  tagTypes        TagType[]
+  vendors         Vendor[]
+  recipes         Recipe[]
+  shelves         Shelf[]
   // People whose active household this is (decision T14). Named, because
   // "HouseholdOwner" already joins Household and User.
-  activeFor  User[]              @relation("ActiveHousehold")
+  activeFor       User[]              @relation("ActiveHousehold")
   // Open, used and revoked invites. Deleted with the household (Cascade).
-  invites    HouseholdInvite[]
+  invites         HouseholdInvite[]
   // Who changed what in the household (H6). Deleted with the household
   // (Cascade).
-  activities HouseholdActivity[]
+  activities      HouseholdActivity[]
+  // Open offers to take over this household (H6b). Deleted with the
+  // household (Cascade).
+  ownershipOffers OwnershipOffer[]
 
   // Finds "the households this person owns", and serves the ON DELETE SET
   // NULL above, which Postgres runs as a lookup by ownerId.
@@ -550,4 +556,51 @@ model HouseholdActivity {
   // The Activity page reads one household, newest first, with `id` to break
   // a tie (decision T54). It also serves the ON DELETE CASCADE.
   @@index([householdId, createdAt(sort: Desc), id])
+}
+
+// Why an ownership offer exists (households H6b, decision T58).
+//   transfer: the owner offered the household to one member.
+//   handover: the owner's account was deleted, and the household is offered
+//             to the members the design's table names (decision T60).
+enum OfferKind {
+  transfer
+  handover
+}
+
+// An open offer to become the owner of a household (households H6b,
+// decision T58 of docs/global/permissions/2026-11-20-households-plan-h6.md).
+// The person named by `toUserId` accepts, declines or dismisses it.
+//
+// `@@unique([householdId, toUserId])`: at most one offer per person per
+// household, so "the first accept wins" stays simple.
+//
+// Foreign keys:
+//   - `householdId` to `Household`, Cascade: the offers go with the household.
+//   - `toUserId` to `User`, Cascade: `/e2e/cleanup` deletes `User` rows, and
+//     an offer to that person must not block it. Production never deletes a
+//     `User` row (H2 sets `deletedAt`), so in production this never fires.
+//   - `fromUserId` is a plain string, NOT a foreign key. It is the owner who
+//     made a `transfer` offer, and null for a `handover`. A key to `User`
+//     would block `/e2e/cleanup` of the person who MADE the offer, when the
+//     offer sits in a household that person does not own.
+//
+// NOT in `emptyHouseholdWhere` (lib/invite.ts, decision T49): an offer in a
+// one-person household cannot exist.
+model OwnershipOffer {
+  id          String    @id @default(cuid())
+  householdId String
+  toUserId    String
+  fromUserId  String?
+  kind        OfferKind
+  createdAt   DateTime  @default(now())
+  // Set by "Not now" on the banner. The offer stays open; the banner hides it.
+  dismissedAt DateTime?
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  toUser    User      @relation(fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@unique([householdId, toUserId])
+  // Lists the offers TO one person (`myOwnershipOffers`, decision T65), and
+  // serves the ON DELETE CASCADE from `User`.
+  @@index([toUserId])
 }

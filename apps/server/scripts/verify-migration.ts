@@ -2073,6 +2073,7 @@ const DROP_USER_SCOPE_MIGRATION = '20261111000000_drop_user_scope'
 const SHARED_CARTS_MIGRATION = '20261114000000_shared_carts'
 const HOUSEHOLD_INVITES_MIGRATION = '20261118000000_add_household_invites'
 const HOUSEHOLD_ACTIVITY_MIGRATION = '20261120000000_add_household_activity'
+const OWNERSHIP_OFFERS_MIGRATION = '20261120100000_add_ownership_offers'
 
 const PARKED_ROOT = join(SERVER_DIR, '.migration-under-test')
 const migrationDir = (name: string) => join(SERVER_DIR, 'prisma/migrations', name)
@@ -2810,6 +2811,237 @@ async function assertHouseholdActivity(): Promise<void> {
   await prisma.$executeRaw`DELETE FROM "Household" WHERE "id" LIKE 'ha-%'`
 }
 
+// add_ownership_offers (households H6b, task K.1, decision T58). Written on
+// 2026-11-20 and NOT run yet when it was written: no subagent may reach a
+// database. The main session runs it with the owner's consent.
+async function assertOwnershipOffers(): Promise<void> {
+  console.log('add_ownership_offers — the shape:')
+
+  // ── 1. The table, its columns, types and nullability ──
+  const expected: Record<string, { type: string; nullable: 'YES' | 'NO' }> = {
+    id: { type: 'text', nullable: 'NO' },
+    householdId: { type: 'text', nullable: 'NO' },
+    toUserId: { type: 'text', nullable: 'NO' },
+    fromUserId: { type: 'text', nullable: 'YES' },
+    kind: { type: 'USER-DEFINED', nullable: 'NO' },
+    createdAt: { type: 'timestamp without time zone', nullable: 'NO' },
+    dismissedAt: { type: 'timestamp without time zone', nullable: 'YES' },
+  }
+  const columns = await columnNamesOf('OwnershipOffer')
+  assert(
+    columns.size === Object.keys(expected).length,
+    `"OwnershipOffer" has exactly ${Object.keys(expected).length} columns (read: ${[...columns].sort().join(', ') || 'no table'})`,
+  )
+  for (const [column, want] of Object.entries(expected)) {
+    const meta = await columnMetaOf('OwnershipOffer', column)
+    assert(
+      meta?.dataType === want.type && meta.isNullable === want.nullable,
+      `"OwnershipOffer"."${column}" is ${want.type}, nullable=${want.nullable} (read: ${meta ? `${meta.dataType}, nullable=${meta.isNullable}` : 'column missing'})`,
+    )
+  }
+
+  // `data_type` says only USER-DEFINED for an enum; `udt_name` names it.
+  const kindType = await prisma.$queryRaw<{ udt_name: string }[]>`
+    SELECT udt_name::text AS udt_name FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name::text = 'OwnershipOffer'
+      AND column_name::text = 'kind'
+  `
+  assert(
+    kindType[0]?.udt_name === 'OfferKind',
+    `"OwnershipOffer"."kind" is of the type "OfferKind" (read: ${kindType[0]?.udt_name ?? 'column missing'})`,
+  )
+
+  // ── 2. The enum holds exactly transfer and handover, in that order ──
+  const enumValues = await prisma.$queryRaw<{ value: string }[]>`
+    SELECT e.enumlabel::text AS value
+    FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+    WHERE t.typname = 'OfferKind'
+    ORDER BY e.enumsortorder
+  `
+  assert(
+    enumValues.map((v) => v.value).join(',') === 'transfer,handover',
+    `"OfferKind" holds exactly transfer, handover (read: ${enumValues.map((v) => v.value).join(', ') || 'no type'})`,
+  )
+
+  // ── 3. Foreign keys: TWO, both CASCADE, and none on "fromUserId" ──
+  //
+  // Read from information_schema by COLUMN NAME, never with `LIKE '%Id%'`:
+  // the H3a rehearsal matched an unrelated foreign key that way and reported
+  // a false FAIL (apps/server/prisma/CLAUDE.md).
+  const foreignKeys = await prisma.$queryRaw<
+    { column_name: string; foreign_table: string; delete_rule: string }[]
+  >`
+    SELECT kcu.column_name::text AS column_name,
+           ccu.table_name::text AS foreign_table,
+           rc.delete_rule::text AS delete_rule
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON kcu.constraint_name = tc.constraint_name AND kcu.table_schema = tc.table_schema
+    JOIN information_schema.referential_constraints rc
+      ON rc.constraint_name = tc.constraint_name AND rc.constraint_schema = tc.table_schema
+    JOIN information_schema.constraint_column_usage ccu
+      ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
+    WHERE tc.table_schema = 'public'
+      AND tc.table_name::text = 'OwnershipOffer'
+      AND tc.constraint_type = 'FOREIGN KEY'
+    ORDER BY kcu.column_name
+  `
+  const fkText = foreignKeys.map((f) => `${f.column_name}->${f.foreign_table} ${f.delete_rule}`).join(', ')
+  assert(
+    fkText === 'householdId->Household CASCADE, toUserId->User CASCADE',
+    `"OwnershipOffer" has exactly two foreign keys: "householdId" to "Household" and "toUserId" to "User", both ON DELETE CASCADE (read: ${fkText || 'none'})`,
+  )
+  assert(
+    !foreignKeys.some((f) => f.column_name === 'fromUserId'),
+    `"OwnershipOffer"."fromUserId" has NO foreign key — it only names who offered (read: ${fkText || 'none'})`,
+  )
+
+  // ── 4. The unique pair and the index by person ──
+  const indexes = await prisma.$queryRaw<{ indexname: string; indexdef: string }[]>`
+    SELECT indexname::text AS indexname, indexdef
+    FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'OwnershipOffer'
+  `
+  const pairIndex = indexes.find((i) => i.indexname === 'OwnershipOffer_householdId_toUserId_key')?.indexdef
+  assert(
+    !!pairIndex &&
+      pairIndex.includes('UNIQUE') &&
+      pairIndex.includes('("householdId", "toUserId")'),
+    `"OwnershipOffer_householdId_toUserId_key" is a UNIQUE index on ("householdId", "toUserId") (read: ${pairIndex ?? 'missing'})`,
+  )
+  const personIndex = indexes.find((i) => i.indexname === 'OwnershipOffer_toUserId_idx')?.indexdef
+  assert(
+    !!personIndex && !personIndex.includes('UNIQUE') && personIndex.includes('("toUserId")'),
+    `"OwnershipOffer_toUserId_idx" is a plain index on ("toUserId") (read: ${personIndex ?? 'missing'})`,
+  )
+
+  // ── Fixture: two households, three people ──
+  await prisma.$executeRaw`
+    INSERT INTO "Household" ("id","name","createdAt","updatedAt") VALUES
+      ('oo-house-1','Offers One',NOW(),NOW()),
+      ('oo-house-2','Offers Two',NOW(),NOW())
+  `
+  await prisma.$executeRaw`
+    INSERT INTO "User" ("id","displayName","createdAt","updatedAt") VALUES
+      ('oo-owner','Owner',NOW(),NOW()),
+      ('oo-taker','Taker',NOW(),NOW()),
+      ('oo-other','Other',NOW(),NOW())
+  `
+
+  console.log('add_ownership_offers — the writes and the deletes:')
+
+  // ── 5. Defaults, and a "fromUserId" that names no row is accepted ──
+  const plainFrom = await postgresCodeOf(
+    () => prisma.$executeRaw`
+      INSERT INTO "OwnershipOffer" ("id","householdId","toUserId","fromUserId","kind")
+      VALUES ('oo-offer-1','oo-house-1','oo-taker','oo-nobody','transfer'::"OfferKind")
+    `,
+  )
+  assert(
+    plainFrom === undefined,
+    `an offer whose "fromUserId" names no row is accepted (read: ${plainFrom ?? 'no error'})`,
+  )
+  const bare = await prisma.$queryRaw<{ dismissedAt: Date | null; createdAt: Date | null }[]>`
+    SELECT "dismissedAt", "createdAt" FROM "OwnershipOffer" WHERE "id" = 'oo-offer-1'
+  `
+  assert(
+    bare.length === 1 && bare[0]?.dismissedAt === null && bare[0]?.createdAt instanceof Date,
+    `a new offer reads "dismissedAt" NULL and "createdAt" filled in (read: ${JSON.stringify(bare)})`,
+  )
+
+  // ── 6. One offer per person per household ──
+  const samePair = await postgresCodeOf(
+    () => prisma.$executeRaw`
+      INSERT INTO "OwnershipOffer" ("id","householdId","toUserId","kind")
+      VALUES ('oo-offer-dup','oo-house-1','oo-taker','handover'::"OfferKind")
+    `,
+  )
+  assert(
+    samePair === '23505',
+    `a second offer to the same person in the same household is refused with 23505, whatever its kind (read: ${samePair ?? 'no error'})`,
+  )
+  const otherPairs = await postgresCodeOf(
+    () => prisma.$executeRaw`
+      INSERT INTO "OwnershipOffer" ("id","householdId","toUserId","fromUserId","kind") VALUES
+        ('oo-offer-2','oo-house-2','oo-taker','oo-owner','transfer'::"OfferKind"),
+        ('oo-offer-3','oo-house-1','oo-other',NULL,'handover'::"OfferKind"),
+        ('oo-offer-4','oo-house-2','oo-other','oo-owner','transfer'::"OfferKind")
+    `,
+  )
+  assert(
+    otherPairs === undefined,
+    `the same person in another household, and another person in the same household, are accepted (read: ${otherPairs ?? 'no error'})`,
+  )
+
+  // ── 7. The enum and the two foreign keys refuse what they must ──
+  const badKind = await postgresCodeOf(
+    () => prisma.$executeRaw`
+      INSERT INTO "OwnershipOffer" ("id","householdId","toUserId","kind")
+      VALUES ('oo-offer-bad','oo-house-2','oo-owner','owner'::"OfferKind")
+    `,
+  )
+  assert(badKind !== undefined, `a kind outside "OfferKind" is refused (read: ${badKind ?? 'no error'})`)
+  const noHousehold = await postgresCodeOf(
+    () => prisma.$executeRaw`
+      INSERT INTO "OwnershipOffer" ("id","householdId","toUserId","kind")
+      VALUES ('oo-offer-orphan','oo-no-such-house','oo-taker','transfer'::"OfferKind")
+    `,
+  )
+  assert(
+    noHousehold === '23503',
+    `an offer in a household that does not exist is refused with 23503 (read: ${noHousehold ?? 'no error'})`,
+  )
+  const noPerson = await postgresCodeOf(
+    () => prisma.$executeRaw`
+      INSERT INTO "OwnershipOffer" ("id","householdId","toUserId","kind")
+      VALUES ('oo-offer-nobody','oo-house-2','oo-no-such-user','transfer'::"OfferKind")
+    `,
+  )
+  assert(
+    noPerson === '23503',
+    `an offer to a person with no "User" row is refused with 23503 (read: ${noPerson ?? 'no error'})`,
+  )
+
+  // ── 8. The cascades, and the absence of one ──
+  const offerIds = async () =>
+    (
+      await prisma.$queryRaw<{ id: string }[]>`
+        SELECT "id" FROM "OwnershipOffer" WHERE "id" LIKE 'oo-%' ORDER BY "id"
+      `
+    )
+      .map((r) => r.id)
+      .join(',')
+
+  // The person who MADE two offers goes: both offers stay (no foreign key).
+  await prisma.$executeRaw`DELETE FROM "User" WHERE "id" = 'oo-owner'`
+  const afterFrom = await offerIds()
+  assert(
+    afterFrom === 'oo-offer-1,oo-offer-2,oo-offer-3,oo-offer-4',
+    `deleting the "User" who made an offer keeps the offer (read: ${afterFrom || 'none'})`,
+  )
+
+  // The person an offer is made TO goes: their offers go, in both households.
+  await prisma.$executeRaw`DELETE FROM "User" WHERE "id" = 'oo-taker'`
+  const afterTo = await offerIds()
+  assert(
+    afterTo === 'oo-offer-3,oo-offer-4',
+    `deleting the "User" an offer is made to deletes their offers in every household, and no other (read: ${afterTo || 'none'})`,
+  )
+
+  // A household goes: its offers go, the other household's stay.
+  await prisma.$executeRaw`DELETE FROM "Household" WHERE "id" = 'oo-house-1'`
+  const afterHousehold = await offerIds()
+  assert(
+    afterHousehold === 'oo-offer-4',
+    `deleting a household deletes its offers and keeps another household's (read: ${afterHousehold || 'none'})`,
+  )
+
+  // ── Clean up every row this block wrote ──
+  await prisma.$executeRaw`DELETE FROM "OwnershipOffer" WHERE "id" LIKE 'oo-%'`
+  await prisma.$executeRaw`DELETE FROM "Household" WHERE "id" LIKE 'oo-%'`
+  await prisma.$executeRaw`DELETE FROM "User" WHERE "id" LIKE 'oo-%'`
+}
+
 async function main(): Promise<void> {
   // Self-heal: if a previous run was killed between parking and restoring,
   // recover instead of throwing on the renameSync below.
@@ -2900,6 +3132,9 @@ async function main(): Promise<void> {
 
   console.log(`Asserting, after ${HOUSEHOLD_ACTIVITY_MIGRATION}...`)
   await assertHouseholdActivity()
+
+  console.log(`Asserting, after ${OWNERSHIP_OFFERS_MIGRATION}...`)
+  await assertOwnershipOffers()
 
   // ══════════════════════════════════════════════════════════════════════
   // PR 5 — Item's five stock state columns are gone, ItemStock's are not

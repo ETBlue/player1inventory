@@ -13,7 +13,8 @@ import { makeGql } from '../utils/cloud'
 // Since households H3a task 3.10 the route deletes by the households the
 // user OWNS, plus the user's own role rows, and returns 18 counts (19 since
 // households H5b task G.6 added `householdInvites`, 20 since households H6
-// task J.1 added `householdActivities`). The seed
+// task J.1 added `householdActivities`, 21 since households H6b task K.1
+// added `ownershipOffers`). The seed
 // below makes the user's household on the first request (first sign-in), so
 // the three new counts — `locationMembers`, `householdMembers` and
 // `households` — are at least 1 too. The rule "never delete a household the
@@ -278,6 +279,14 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     // household, so this one call also seeds the activity row that the
     // `householdActivities` count below needs. It is read back just below,
     // through the real `householdActivity` query (task J.3).
+    //
+    // OwnershipOffer — NOT seeded yet (households H6b, task K.1). No real
+    // mutation can make an offer until task K.3 adds `offerOwnership`, and
+    // an offer needs a second member of the household to be made TO. So
+    // until H6b task K.8 seeds one here (through the real mutation, to a
+    // second member), this spec reports `"ownershipOffers":0` and FAILS at
+    // the "models that deleted nothing" check below. It is not run before
+    // K.8. The same happened to `householdActivities` between J.1 and J.2.
     const token = await createInvite(request, E2E_USER_ID, 'member', [
       { locationId: home.id, role: 'viewer' },
     ])
