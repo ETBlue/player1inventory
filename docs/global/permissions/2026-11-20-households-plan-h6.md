@@ -1704,6 +1704,30 @@ the full web run prints **0** such warnings.
 exit 0; `pnpm check` exit 0 (first run: 1 import-order error in `useOwnershipOffers.ts`,
 fixed); `pnpm test` exit 0 (numbers above). No E2E (K.8).
 
+**Review (2026-11-20, `838b2f45`).** One bug fixed. Decline and dismiss of an offer that
+was already gone rejected with `FORBIDDEN` and read nothing, so the banner kept the offer.
+The server reads the offer before its lock (`householdOfMyOffer`) and answers an unknown
+id with `FORBIDDEN`. Only an offer that goes between that read and the lock gives
+`false`. New helper `answerOffer` in `useOwnershipOffers.ts`: on `isOfferGoneError` it
+reads the three offer lists, then rethrows. Accept, decline and dismiss use it.
+`isOfferGoneError` is for those three only. For `offer` and `cancel`, `FORBIDDEN` means
+"not the owner" or "not a member". 4 new tests. Web 3664 / 361 → 3668 / 361.
+
+| # | Mutation (file) | Red |
+|---|---|---|
+| R1 | `answerOffer` reads nothing on a gone error | 4: decline, dismiss, and both accept "gone" tests |
+| R2 | decline without `answerOffer` | 1: "user who answers a gone offer sees the lists read again, then the refusal" (decline) |
+
+Checked and fine: a person offered their OTHER household gets the `LOCATION` event
+(`shouldDeliver` checks membership of the event's household), so the K.6 banner updates
+live. The accept answer and `GetHousehold` select the same fields. The 40 mock edits match
+the generated type. The 4 files without `hasOwner` stub `useGetHouseholdQuery` with
+`data: undefined`. The server schema comment that said "False when it is already gone"
+was corrected after the review.
+
+K.6 and K.7: show "no longer open" when Decline or Not now rejects with
+`isOfferGoneError`, not only Accept.
+
 ---
 
 ## Task K.6 — web: the offer banner
@@ -1987,6 +2011,8 @@ Filled in from the task reports and reviews.
 | K.5 | Step 3: "grep every `GetHousehold` mock" | 40 files needed the two fields; `tsc` found 2 of them (the typed mocks). Two literals of type `Household` are NOT `GetHousehold` answers and were left alone: the `JoinHousehold` answer in `join/$token.test.tsx` and the `CreateHousehold` answer in `noHousehold.cloud.test.tsx`. Those documents do not select the new fields |
 | K.5 | (not in the plan) `src/test/setup.ts` | Not changed. Its `@/generated/graphql` factory spreads the real module, so the new hooks are real in every test. K.6 must stub `useMyOwnershipOffersQuery` in any test file whose OWN factory replaces the module and renders `__root.tsx` (root `CLAUDE.md`, *A per-file `vi.mock` factory REPLACES …*) |
 | K.5 | (not in the plan) `dismissOwnershipOffer` and other tabs | It publishes nothing (the K.3 row), so a person's other open tabs keep the banner until their next read of `MyOwnershipOffers` (a resume, a mount, any `LOCATION` event). Written in the hook's comment; K.6 should not promise more |
+| K.5 | (the K.5 row above) "Decline and dismiss answer `false` and need no special case" | False for the common case. An offer already gone when the call arrives is `FORBIDDEN` (`householdOfMyOffer` reads before the lock, and an unknown id is `FORBIDDEN`). `false` is only the race between that read and the lock. Fixed in the review (`838b2f45`): decline and dismiss read the three lists on `isOfferGoneError`, then reject |
+| K.3 | `schema/ownership.graphql`: decline and dismiss are "False when it is already gone" | Same mistake in the server schema comment. The resolver header was right. Corrected after the K.5 review |
 
 ## Status
 
