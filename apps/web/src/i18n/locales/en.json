@@ -525,7 +525,7 @@
         "removeConfirmManager": "Open invites made by others stay open. If this person may have copied one, revoke it.",
         "leave": "Leave household",
         "leaveConfirm": "Leave this household? You lose access to all its locations.",
-        "ownerCannotLeave": "The owner cannot leave. Handing over the household comes in a later version.",
+        "ownerCannotLeave": "The owner cannot leave. Transfer ownership first.",
         "alone": "You are the only person in this household. If you join another household with an invite while this one holds no data, this one is deleted.",
         "loadError": "Could not load the members. Try again.",
         "error": "Could not save the change. Try again.",
@@ -533,7 +533,16 @@
         "removing": "Removing…",
         "invitesLoadError": "Could not load the open invites. Try again.",
         "locationsLoadError": "Could not load the locations. Try again.",
-        "noLocations": "This household has no locations yet."
+        "noLocations": "This household has no locations yet.",
+        "transfer": "Transfer ownership",
+        "transferLabel": "Transfer ownership to {{name}}",
+        "transferConfirm": "Offer {{household}} to {{name}}? You become a manager when they accept.",
+        "waiting": "Waiting for {{name}} to accept",
+        "cancelOffer": "Cancel",
+        "cancelOfferLabel": "Cancel the offer to {{name}}",
+        "becomeOwner": "Become the owner",
+        "noOwner": "This household has no owner.",
+        "lastLeaveWarning": "You are the last person here. Leaving deletes the household and everything in it."
       },
       "activity": {
         "title": "Activity",
@@ -844,7 +853,9 @@
       "copyHere": "Copy here",
       "dontCopy": "Don't copy",
       "cannotCopyMember": "Only the owner or a manager of this household can copy data into it. The data on this device stays as it is.",
-      "cannotCopyClear": "Only the owner of this household can clear it and copy data into it. The data on this device stays as it is."
+      "cannotCopyClear": "Only the owner of this household can clear it and copy data into it. The data on this device stays as it is.",
+      "clearConfirmTitle": "Clear {{household}} first?",
+      "clearConfirmDescription": "Copy here first deletes the catalog and every location of {{household}}, with everything in them. Then it copies your offline data. People and their household roles stay."
     },
     "export": {
       "label": "Download my data",
@@ -898,6 +909,7 @@
         "skip": "Skip conflicts",
         "replace": "Replace matches",
         "clear": "Clear & import",
+        "clearConfirmDescription": "This deletes the household's catalog and every location, with everything in them. Then it imports the file. People and their household roles stay.",
         "idMatch": "ID",
         "nameMatch": "name",
         "bothMatch": "ID + name",
@@ -1080,5 +1092,19 @@
     "useLocalModeHint": "Data is stored on this device only. You stay signed in.",
     "signInToAnotherAccount": "Sign in to another account",
     "signOutError": "Could not sign out. Try again."
+  },
+  "ownership": {
+    "banner": {
+      "label": "Ownership offers",
+      "handover": "The owner of {{household}} deleted their account. Do you want to become the owner?",
+      "transfer": "{{name}} wants to make you the owner of {{household}}."
+    },
+    "accept": "Accept",
+    "notNow": "Not now",
+    "decline": "Decline",
+    "accepted": "You are now the owner of {{household}}.",
+    "gone": "This offer is no longer open.",
+    "failed": "Could not send your answer. Please try again.",
+    "close": "Close"
   }
 }

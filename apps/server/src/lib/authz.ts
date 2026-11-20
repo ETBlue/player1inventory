@@ -319,13 +319,43 @@ export function forgetLocationRoles(ctx: Context): void {
  * `user` relation. Asking `location.household.members.some` with no `userId`
  * would be wrong: it is true whenever ANYONE is still in the household, so an
  * organizer who left would still count.
+ *
+ * An organizer whose account is deleted (`User.deletedAt` set) does not count
+ * either (decision T61), so their location shows **No organizer**.
  */
 function countedOrganizerIn(householdId: string) {
   return {
     role: 'organizer' as const,
     location: { householdId },
-    user: { householdMemberships: { some: { householdId } } },
+    // `deletedAt: null`: a deleted account does not count as an organizer
+    // (households H6 task K.2, decision T61). The hand-over (K.4) removes a
+    // deleted person's rows from H6 on. This filter covers the rows of
+    // accounts deleted before H6 deploys, and a webhook that is late.
+    user: { deletedAt: null, householdMemberships: { some: { householdId } } },
   }
+}
+
+/**
+ * The people who are a counted organizer of at least one location of
+ * `householdId` (`countedOrganizerIn`: decision H18 applied to the row's own
+ * person, and not a deleted account). For the hand-over table (households
+ * H6b task K.3, `startHandover` in lib/handover.ts): "no managers, some
+ * members organize a location".
+ *
+ * `db` is the transaction client: the hand-over runs inside the transaction
+ * that holds the household lock. No cache: a write must read the rows as
+ * they are now.
+ */
+export async function countedOrganizerIds(
+  householdId: string,
+  db: { locationMember: Prisma.TransactionClient['locationMember'] },
+): Promise<Set<string>> {
+  const rows = await db.locationMember.findMany({
+    where: countedOrganizerIn(householdId),
+    select: { userId: true },
+    distinct: ['userId'],
+  })
+  return new Set(rows.map((r) => r.userId))
 }
 
 /**

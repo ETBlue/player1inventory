@@ -30,7 +30,16 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
 
 function household(role: 'owner' | 'manager' | 'member'): Query {
   return {
-    data: { household: { __typename: 'Household', id: 'hh', name: 'H', role } },
+    data: {
+      household: {
+        __typename: 'Household',
+        id: 'hh',
+        name: 'H',
+        role,
+        hasOwner: true,
+        pendingTransfer: null,
+      },
+    },
     loading: false,
   }
 }
@@ -430,6 +439,30 @@ describe('usePermissions — activity and purges', () => {
   })
 
   it.each([
+    ['owner', true],
+    ['manager', false],
+    ['member', false],
+  ] as const)('household %s: canTransferOwnership %s (households H6b, task K.5)', (role, transfer) => {
+    mockHousehold.mockReturnValue(household(role))
+    mockLocations.mockReturnValue(locations([...ROLE_ROWS]))
+
+    // Then only the owner may offer the household to someone else
+    expect(render().canTransferOwnership).toBe(transfer)
+  })
+
+  it('cloud allows no transfer while the household role loads, or when it failed', () => {
+    mockLocations.mockReturnValue(locations([...ROLE_ROWS]))
+    mockHousehold.mockReturnValue({ data: undefined, loading: true })
+    expect(render().canTransferOwnership).toBe(false)
+    mockHousehold.mockReturnValue({
+      data: undefined,
+      loading: false,
+      error: new Error('network'),
+    })
+    expect(render().canTransferOwnership).toBe(false)
+  })
+
+  it.each([
     'owner',
     'manager',
     'member',
@@ -490,5 +523,7 @@ describe('usePermissions — activity and purges', () => {
     expect(p.canReadActivity).toBe(false)
     expect(p.canPurgeHousehold).toBe(false)
     expect(p.canRemoveAllItems('local')).toBe(false)
+    // Nor an owner to hand the data over to (households H6b)
+    expect(p.canTransferOwnership).toBe(false)
   })
 })

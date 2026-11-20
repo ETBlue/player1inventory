@@ -46,7 +46,7 @@ force-push, and a merge breaks the repo's rebase-only rule.
 | H3 Households, roles, data migration, read scoping | Outline. Split into H3a, H3b and H3c; detailed plan for H3a: [2026-11-04-households-plan-h3a.md](2026-11-04-households-plan-h3a.md); design for H3b: [2026-11-14-households-h3b-design.md](2026-11-14-households-h3b-design.md), plan: [2026-11-14-households-plan-h3b.md](2026-11-14-households-plan-h3b.md) | 3 (now H3a ✅ merged into `develop` #375, `chore/build-shared-types` ✅ merged into `develop` #376, H3b ✅ merged into `develop` #377, H3c designed 2026-11-16: [design](2026-11-16-households-h3c-design.md); H3c-1 ✅ merged into `develop` #379: [plan](2026-11-16-households-plan-h3c-1.md); H3c-2 ✅ merged into `develop` #380: [plan](2026-11-16-households-plan-h3c-2.md)) |
 | H4 Import and export | Outline. Detailed plan: [2026-11-16-households-plan-h4.md](2026-11-16-households-plan-h4.md) ✅ merged into `develop` (#382, merge `bf87e839`), not deployed; deploy: [runbook](../backend/2026-11-17-deploy-runbook-households-h4.md) | 4 |
 | H5 Invites, join, members, read-only views | Outline. Split into H5a, H5b and H5c; detailed plan for H5a: [2026-11-17-households-plan-h5.md](2026-11-17-households-plan-h5.md) (H5a ✅ merged into `develop` (#384, merge `4307d30a`), not deployed; H5b ✅ merged into `develop` (#385, merge `938fa2aa`), not deployed: [2026-11-18-households-plan-h5b.md](2026-11-18-households-plan-h5b.md); H5c ✅ merged into `develop` (#391, merge `7dbaeca9`), not deployed: [2026-11-19-households-plan-h5c.md](2026-11-19-households-plan-h5c.md)) | 5 |
-| H6 Transfer, hand-over, purges, activity | Outline. Detailed plan: [2026-11-20-households-plan-h6.md](2026-11-20-households-plan-h6.md), split into H6a and H6b (O32-A). H6a ✅ built 2026-11-20 on `feature/households-h6a`, not merged, not deployed; H6b not started | 6 |
+| H6 Transfer, hand-over, purges, activity | Outline. Detailed plan: [2026-11-20-households-plan-h6.md](2026-11-20-households-plan-h6.md), split into H6a and H6b (O32-A). H6a ✅ merged into `develop` (2026-11-20, #392, merge `c0f096ed`), not deployed; H6b ✅ built 2026-11-20 on `feature/households-h6b`, not merged, not deployed | 6 |
 | H7 Personal location order, household switch and create | Outline | 7 |
 
 **Why only H1 and H2 are detailed now.** H3–H7 will change code that H1 and H2 have not
@@ -786,14 +786,17 @@ switcher already listed only locations with a role (H3a task 3.6).
   a location whose only organizer deleted their account shows no "No organizer" warning.
   The fix belongs with the `user.deleted` hand-over branch above. Recorded in the H5 plan's
   *Known gaps* (`2026-11-17-households-plan-h5.md`). **Goes to H6b** (tasks K.2 and K.4).
+  **Fixed in H6b task K.2** (`8989cc7f`): `countedOrganizerIn` adds `deletedAt: null`, and
+  so do `locationPeople` and `householdMembers`. K.4's hand-over removes the rows of every
+  account deleted from now on.
 
 **Detailed plan:** [2026-11-20-households-plan-h6.md](2026-11-20-households-plan-h6.md).
 Owner decisions O32–O39: all A. Split in two PRs (O32-A):
 
 | Part | Content | State |
 |---|---|---|
-| **H6a** (tasks J.1–J.9) | one additive migration (`HouseholdActivity`); `recordActivity`; the `householdActivity` query and the Activity page; `deleteAllLocations`, `removeAllLocationItems`, `deleteHousehold` (O38-A) and `recordImport` (O33-A); the two danger zones; the household lock taken first by every owner-only write; the two new purges in `purge-two-households.spec.ts` and `household-activity-purges.spec.ts` | ✅ built 2026-11-20 on `feature/households-h6a`, not merged, not deployed. Deploy notes: section 11 of the [H4 runbook](../backend/2026-11-17-deploy-runbook-households-h4.md) |
-| **H6b** (tasks K.1–K.9) | `OwnershipOffer`, the banner, transfer, the `user.deleted` hand-over, a deleted account no longer counting | not started |
+| **H6a** (tasks J.1–J.9) | one additive migration (`HouseholdActivity`); `recordActivity`; the `householdActivity` query and the Activity page; `deleteAllLocations`, `removeAllLocationItems`, `deleteHousehold` (O38-A) and `recordImport` (O33-A); the two danger zones; the household lock taken first by every owner-only write; the two new purges in `purge-two-households.spec.ts` and `household-activity-purges.spec.ts` | ✅ built 2026-11-20 on `feature/households-h6a`; merged into `develop` as #392 (merge `c0f096ed`), not deployed. Deploy notes: section 11 of the [H4 runbook](../backend/2026-11-17-deploy-runbook-households-h4.md) |
+| **H6b** (tasks K.0–K.9, K.4b, K.7b) | one additive migration (`OwnershipOffer`); the five offer mutations and `myOwnershipOffers`; the offer banner and the Members page controls; the `user.deleted` hand-over (`lib/handover.ts`), with the owner's invites revoked (O43); a deleted account no longer counting (T61); the last live person's leave deleting an ownerless household (O37-A); "Clear & import" asking for the typed name (O40); `household-ownership.spec.ts` | ✅ built 2026-11-20 on `feature/households-h6b`, not merged, not deployed. Deploy notes: section 12 of the [H4 runbook](../backend/2026-11-17-deploy-runbook-households-h4.md). Before the release: the O36 count, and the O44 script if it is not 0 |
 
 ### H7 — Personal order, household switch and create
 

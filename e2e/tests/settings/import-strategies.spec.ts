@@ -325,8 +325,24 @@ test('user can clear existing data and import a backup over it', async ({
   await expect(dialog).toContainText('Items (1):')
   await expect(dialog).toContainText(COLLIDING_ITEM_BACKUP_NAME)
 
-  // And "Clear & import" is pressed
-  await settings.chooseConflictStrategy('Clear & import')
+  // And "Clear & import" is pressed. In cloud it asks for the household
+  // name first, typed exactly (owner decision O40, households H6 task K.0):
+  // its confirm is disabled until then, and nothing is cleared before. Local
+  // mode has no household, so the first press runs the import.
+  const householdName = isCloud(baseURL)
+    ? (
+        await makeGql(request)<{ household: { name: string } }>(
+          `query { household { name } }`,
+        )
+      ).household.name
+    : null
+  await settings.chooseClearAndImport(householdName, async () => {
+    // While the confirm waits for the name, the seed is still all there
+    expect(await readItemNamesById(page, request, baseURL)).toEqual({
+      [COLLIDING_ITEM_ID]: COLLIDING_ITEM_SEED_NAME,
+      [SEED_ONLY_ITEM_ID]: SEED_ONLY_ITEM_NAME,
+    })
+  })
   await settings.waitForImportDone(mode)
 
   // Then the account holds EXACTLY the backup's two items. This is the whole

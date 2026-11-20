@@ -79,6 +79,33 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
   return {
     ...original,
+    // The ownership offer banner (households H6b, task K.6) is mounted in
+    // `__root.tsx` in cloud mode, so every cloud test that renders the root
+    // route reaches `useMyOwnershipOffersQuery` (the real one needs an
+    // ApolloProvider). It returns no offers, so the banner renders no row, and
+    // the three mutation stubs below are reached by NO test today: an offer
+    // row calls them. Measured in the K.6 review by making each one throw.
+    // They are here for a future test that returns an offer. A test file with
+    // its OWN `@/generated/graphql` factory replaces this one and must stub
+    // them too.
+    useMyOwnershipOffersQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+      refetch: () => Promise.resolve(),
+    }),
+    useAcceptOwnershipOfferMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useDeclineOwnershipOfferMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useDismissOwnershipOfferMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     useGetItemQuery: () => ({
       data: undefined,
       loading: false,

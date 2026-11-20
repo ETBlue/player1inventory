@@ -498,6 +498,23 @@ still shows their name.
 3. On accept, they become owner and the old owner becomes manager. Location roles do not change.
 4. The owner can cancel before it is accepted.
 
+**Built in H6b** (2026-11-20, [plan](2026-11-20-households-plan-h6.md), tasks K.1, K.3, K.5
+to K.7b; on `feature/households-h6b`, not merged, not deployed). How it differs from the
+steps above:
+
+- **One open transfer offer at a time** (decision T59). A second **Transfer** replaces the
+  first on the server. The Members page hides **Transfer** while an offer is open, so the
+  owner presses **Cancel** first (owner decision O46).
+- **The offer can be accepted from the person's other household.** The banner lists offers
+  from every household the person is in. Accepting does not switch households.
+- **On accept the old owner becomes manager FIRST**, then the person becomes owner. The
+  database allows only one owner row per household, so no other order works. Every other
+  offer of the household is deleted.
+- **The owner's own row says "The owner cannot leave. Transfer ownership first."** (O47).
+- **Each step writes an activity row**: offered, cancelled, declined, accepted.
+- **The Members page shows only Accept** (**Become the owner**) for an offer. Decline and
+  **Not now** are on the banner only. See the plan's *Known gaps*.
+
 ### Owner's account is deleted
 
 The Clerk `user.deleted` webhook arrives for a household owner.
@@ -509,7 +526,7 @@ The Clerk `user.deleted` webhook arrives for a household owner.
 | No managers, some members organize a location | Those members get the offer |
 | No managers, no member organizes a location | All remaining members get the offer |
 
-Each person sees: "The owner of *ET's Household* is gone. Do you want to become the owner?" —
+Each person sees: "The owner of *ET's Household* deleted their account. Do you want to become the owner?" —
 **Accept** / **Not now**. The **first** to accept becomes owner, and every other offer is
 deleted. "Not now" hides the banner for that person. They can still accept from the Members
 page.
@@ -520,6 +537,34 @@ When a person who is **not** an owner is deleted, their household and location r
 removed. Their `User` row stays with `deletedAt` set, and logs show them as "Deleted user".
 
 Only account deletion starts a hand-over in this phase. See *Postponed*.
+
+**Built in H6b** (2026-11-20, [plan](2026-11-20-households-plan-h6.md), tasks K.2 to K.4b;
+on `feature/households-h6b`, not merged, not deployed). The `user.deleted` webhook runs the
+hand-over in one transaction with the `User` row (`handOverDeletedAccount` in
+`apps/server/src/lib/handover.ts`). How it differs from the text above:
+
+- **"Only person" means only LIVE person** (decision T60). A member whose own account is
+  already deleted does not count. The rule applies to every role, not only the owner: when
+  no other live person is left, the household and all its data are deleted.
+- **The owner's open invites are revoked** (owner decision O43), the same as for a removed
+  manager or member.
+- **A pending transfer offer is dropped**, and the table above decides who gets a hand-over
+  offer (decision T63).
+- **The first to accept wins.** A second accept at the same moment gets `OFFER_GONE`;
+  one sent later gets `FORBIDDEN`, the same as an unknown offer.
+- **When every hand-over offer goes** (each person declined, left, was removed or deleted
+  their account), the next people get offers by the same table (decision T62). A person who
+  declines is skipped; when nobody else is left, they get the offer back already dismissed
+  (owner decision O42).
+- **The last live person who leaves an ownerless household deletes it**, after a warning
+  (owner decision O37-A).
+- **A deleted account does not count** as an organizer, on the Members page, on a location's
+  people page or in Add person (decision T61). This also hides the rows of accounts deleted
+  before H6. Those accounts were never handed over: the release counts them first and, if
+  the count is not 0, runs the same hand-over for each (owner decisions O36-A and O44).
+- **The log shows the stored name with "(deleted account)"** (O35-A), not "Deleted user".
+- **The banner text** is the one above (owner decision O45). It said "The owner of … is
+  gone" until 2026-11-20, which can read as "has died".
 
 ### Create and delete a household
 
@@ -628,7 +673,7 @@ the source. The plan must:
    when they change.
 
 **Built in H6a** (2026-11-20, [plan](2026-11-20-households-plan-h6.md), tasks J.4 and J.7;
-on `feature/households-h6a`, not merged, not deployed). All three purges in the table, plus
+on `feature/households-h6a`; merged into `develop` as #392, not deployed). All three purges in the table, plus
 **Delete household** (owner decision O38-A), in a danger zone on the household page (owner)
 and on the location's page (organizer). With these answers and choices:
 
@@ -653,11 +698,12 @@ and every import. Each row has who acted, what, on whom or which location, and w
 managers read it, newest first. Stock changes are not in it — they are in `InventoryLog`.
 
 **Built in H6a** (2026-11-20, [plan](2026-11-20-households-plan-h6.md), tasks J.1 to J.3,
-J.5 and J.6; on `feature/households-h6a`, not merged, not deployed). The table
+J.5 and J.6; on `feature/households-h6a`; merged into `develop` as #392, not deployed). The table
 `HouseholdActivity` and the page **Settings › Household › Activity** (owner and manager,
 cloud only). How it differs from the text above:
 
-- **Ownership rows come in H6b.** The enum already holds their values.
+- **Ownership rows are written since H6b** (on `feature/households-h6b`, not merged):
+  offered, cancelled, declined, accepted, hand-over started, and account deleted.
 - **An import is one row** (owner decision O33-A). The web calls `recordImport` with the
   counts once the import ends.
 - **A deleted account shows its stored name with "(deleted account)" after it**, not
@@ -774,7 +820,7 @@ and shows "You no longer have access to {location}." once (O27-A).
 
 A banner at the top of the app shows each open `OwnershipOffer`:
 
-- `handover`: "The owner of *ET's Household* is gone. Do you want to become the owner?" —
+- `handover`: "The owner of *ET's Household* deleted their account. Do you want to become the owner?" —
   **Accept** / **Not now**
 - `transfer`: "*ET* wants to make you the owner of *ET's Household*." — **Accept** / **Decline**
 
@@ -989,7 +1035,7 @@ and the owner agreed to the order below. Detail:
 | **H3b** | Shared carts: `@@unique([cartId, itemId])` (decision H8), the 15 `CartItem.userId` filters, `Cart.userId` dropped, checkout and `consumeRecipes` in one transaction with a server-computed total. Fixes #358. **Must merge before H5 starts** | No (one person per household) |
 | H4 | ✅ **Merged into `develop` 2026-11-17 (#382, merge `bf87e839`), not deployed.** Import and export: the new id rule, and `requireOwnRowOrUnclaimed` moved to the target household scope (#327 itself is already fixed by #354). Replaces H3a's import fallback location (decision H12) | The "Import into which location?" dialog |
 | H5 | Split in three PRs (H5 decision O1), [plan](2026-11-17-households-plan-h5.md). **H5a ✅ merged into `develop` (#384, merge `4307d30a`, 2026-11-18), not deployed:** `Location.myRole`, `Location.hasOrganizer`, the `householdLocations` query, a location viewer reads carts, `usePermissions` and read-only views for a household `member` and a location `viewer`, the **View only** badge in the switcher (the switcher already listed only locations with a role, so there was nothing to filter), H13 lifted with an empty locations screen, and a browser context per test user in E2E. **H5b ✅ merged into `develop` (#385, merge `938fa2aa`, 2026-11-18), not deployed** ([plan](2026-11-18-households-plan-h5b.md)): one migration (`HouseholdInvite`, `User.activeHouseholdId`), invite links, the join page, the Members page, leave and remove, a fixed rule for a person in two households, and the no-household screen with **Create a household**. Follow-ups merged after it: #386 (a failed refresh no longer fails a saved write), #387 (screens show save errors), #388 (the join keeps the copy question), #389 (the copy question names the household), #390 (`isPending` tests). **H5c ✅ merged into `develop` (#391, merge `7dbaeca9`, 2026-11-20), not deployed** ([plan](2026-11-19-households-plan-h5c.md)): no migration; the `locationPeople` query, `HouseholdPerson.hasLocationRole`, `setLocationRole`, `removeLocationRole` and `leaveLocation`; one shared rule for who may change a role (`canChangeLocationRole` in `@p1i/types`); the page `/settings/household/locations/$id`; name links on the locations list; the **No location roles** mark on the Members page; a short message when a tab loses its active location; `location-people.spec.ts` (9 cloud tests). Owner decisions O23–O31 all A | H5a alone: the last location can be deleted. **H5a + H5b + H5c: sharing works** |
-| H6 | Transfer, hand-over, offers banner, purges, activity log. Split in two PRs (owner decision O32-A), [plan](2026-11-20-households-plan-h6.md). **H6a ✅ built 2026-11-20 on `feature/households-h6a`, not merged, not deployed:** one additive migration (`HouseholdActivity`), the activity log and its page, the purges **Delete all locations** and **Remove all items**, **Delete household** (O38-A), the danger zones, and the household lock taken first by every owner-only write. **H6b** (transfer, hand-over, deleted accounts) not started | Yes: story 2 (H6b) |
+| H6 | Transfer, hand-over, offers banner, purges, activity log. Split in two PRs (owner decision O32-A), [plan](2026-11-20-households-plan-h6.md). **H6a ✅ built 2026-11-20, merged into `develop` (2026-11-20, #392, merge `c0f096ed`), not deployed:** one additive migration (`HouseholdActivity`), the activity log and its page, the purges **Delete all locations** and **Remove all items**, **Delete household** (O38-A), the danger zones, and the household lock taken first by every owner-only write. **H6b built 2026-11-20 on `feature/households-h6b`, not merged, not deployed:** one additive migration (`OwnershipOffer`), transfer with the offer banner and the Members page, the hand-over on `user.deleted`, a deleted account no longer counting, the last person's leave deleting an ownerless household (O37-A), and "Clear & import" asking for the typed name (O40) | Yes: story 2 (H6b) |
 | H7 | Personal location order and sort, household switch and create. Now also `LocationPreference`, `UserPreference` and `dataUpdatedAt` (decision H6), and the end of the shared `Location.order` (decision H5) | Yes |
 
 **H3a's GraphQL change is breaking, so deploy order matters** (issue #359). Six types declare

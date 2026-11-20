@@ -56,6 +56,8 @@ export const MIGRATION_DEPLOYS = [
     // it rides in the same deploy, after shared_carts by name.
     // add_household_activity (H6 task J.1) needs no seed step either: it
     // only adds an enum and an empty table, and it names only "Household".
+    // add_ownership_offers (H6b task K.1) is the same: one enum and one empty
+    // table, naming only "Household" and "User".
     // This deploy runs AFTER the `finally` in main(), where restoreIfParked
     // has put back every parked migration. So the LAST group is whatever is
     // still parked at that point, and it must be the last group here.
@@ -64,6 +66,7 @@ export const MIGRATION_DEPLOYS = [
       '20261114000000_shared_carts',
       '20261118000000_add_household_invites',
       '20261120000000_add_household_activity',
+      '20261120100000_add_ownership_offers',
     ],
   },
 ] as const

@@ -25,6 +25,8 @@ function mocksFor(
             id: 'household-1',
             name,
             role,
+            hasOwner: true,
+            pendingTransfer: null,
           },
         },
       },

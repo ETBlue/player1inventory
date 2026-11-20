@@ -100,6 +100,8 @@ function householdMocks(role: 'owner' | 'manager' | 'member') {
             id: 'household-1',
             name: 'The Lins',
             role,
+            hasOwner: true,
+            pendingTransfer: null,
           },
         },
       },

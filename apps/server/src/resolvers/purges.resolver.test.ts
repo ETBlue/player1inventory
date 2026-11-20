@@ -567,6 +567,96 @@ describe('a write that races a demote (Review Focus 2)', () => {
   })
 })
 
+describe('a write that races the REAL acceptOwnershipOffer (Review Focus 2, households H6b task K.3)', () => {
+  // The same idea as the block above, with the real transfer. OWEN offered
+  // hh_1 to MIA. MIA's accept is held right after it took the household
+  // lock (on its first offer read through tx). `serialTransactions(true)`
+  // makes OWEN's write wait for it, as the lock does on Postgres.
+
+  const accept = (userId: string, id: string) =>
+    run('mutation ($id: ID!) { acceptOwnershipOffer(id: $id) { id role } }', userId, { id })
+
+  beforeEach(() => {
+    world.households.state.ownershipOffers.push({
+      id: 'off_mia',
+      householdId: 'hh_1',
+      toUserId: MIA,
+      fromUserId: OWEN,
+      kind: 'transfer',
+      createdAt: T0,
+      dismissedAt: null,
+    })
+  })
+
+  async function acceptThen(write: () => Promise<Result>) {
+    world.serialTransactions(true)
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let locked: () => void = () => undefined
+    const firstRead = new Promise<void>((resolve) => {
+      locked = resolve
+    })
+    const findFirst = world.client.ownershipOffer.findFirst
+    let calls = 0
+    vi.spyOn(world.client.ownershipOffer, 'findFirst').mockImplementation(async (args) => {
+      if (++calls === 1) {
+        locked()
+        await gate
+      }
+      return findFirst(args)
+    })
+    const accepted = accept(MIA, 'off_mia')
+    await firstRead
+    const second = write()
+    // Give a role read OUTSIDE the lock time to run while the accept waits.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    release()
+    expect(ok(await accepted, 'acceptOwnershipOffer')).toEqual({ id: 'hh_1', role: 'owner' })
+    return second
+  }
+
+  it('clearAllData by the old owner while the accept holds the lock is refused, and nothing is deleted', async () => {
+    const before = snapshot()
+
+    const res = await acceptThen(() => clearAllData(OWEN))
+
+    expect(code(res)).toBe('FORBIDDEN')
+    const after = snapshot()
+    expect(after.locations).toEqual(before.locations)
+    expect(after.stock).toEqual(before.stock)
+    expect(after.logs).toEqual(before.logs)
+    expect(after.cartItems).toEqual(before.cartItems)
+    // Only the accept's own event
+    expect(seen.map((s) => s.event.kind)).toEqual(['LOCATION'])
+  })
+
+  it('renameHousehold by the old owner while the accept holds the lock is refused', async () => {
+    const res = await acceptThen(() => renameHousehold(OWEN, 'Too late'))
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(world.households.state.households.find((h) => h.id === 'hh_1')?.name).toBe('hh_1 name')
+  })
+
+  it('the other order: the clear commits first, then the accept works on the cleared household', async () => {
+    // Given OWEN clears hh_1 before MIA accepts
+    ok(await clearAllData(OWEN), 'clearAllData')
+    expect(world.stock.state.locations.map((l) => l.id)).not.toContain(LOC_K)
+
+    // When MIA accepts
+    expect(ok(await accept(MIA, 'off_mia'), 'acceptOwnershipOffer')).toEqual({ id: 'hh_1', role: 'owner' })
+
+    // Then MIA owns the cleared household, and OWEN is a manager
+    const roles = world.households.state.householdMembers
+      .filter((m) => m.householdId === 'hh_1')
+      .map((m) => `${m.userId}:${m.role}`)
+      .sort()
+    expect(roles).toEqual([`${BOB}:member`, `${MIA}:owner`, `${OWEN}:manager`])
+    // And the "Home" that the clear made is still there, in hh_1
+    expect(world.stock.state.locations.filter((l) => l.householdId === 'hh_1')).toHaveLength(1)
+  })
+})
+
 describe('the role is read in the household the caller acts in', () => {
   // OWEN owns hh_1 and is a plain member of hh_2.
   it('household member cannot clear, rename or delete a location of the household they act in, even when they own another', async () => {

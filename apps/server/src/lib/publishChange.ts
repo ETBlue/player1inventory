@@ -105,6 +105,11 @@ export async function publishChange(
  * The same rules as `publishChange`: call it after the write has committed,
  * it never throws, and it carries `ctx.clientId` as `sourceClientId` (left
  * out when the request had none).
+ *
+ * Only `ctx.clientId` is read. The Clerk webhook's account hand-over
+ * (households H6b task K.4) is not a request from a tab or a person, so it
+ * passes `{ userId: null }`, and its events carry no `sourceClientId`: every
+ * open tab hears them.
  */
 export async function publishHouseholdChange(
   ctx: Context,

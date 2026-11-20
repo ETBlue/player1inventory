@@ -455,6 +455,12 @@ export function ImportCard() {
           onClear={handleClear}
           onClose={closeConflictDialog}
           allowClear={allowClear}
+          // Cloud: "Clear & import" asks for the household name, typed
+          // exactly, like every other purge (owner decision O40). Local mode
+          // has no household, so it keeps the one-press button.
+          {...(mode === 'cloud' && household !== undefined
+            ? { clearConfirmName: household.name }
+            : {})}
         />
       )}
 

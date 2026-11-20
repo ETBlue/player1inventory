@@ -144,4 +144,72 @@ export class MembersPage {
       .click()
     await this.page.getByRole('option', { name: role, exact: true }).click()
   }
+
+  // ── Ownership (households H6b task K.7) ─────────────────────────────────
+
+  /**
+   * The row's "Transfer ownership" button. Its accessible name says who it
+   * is for: "Transfer ownership to {name}" (`transferLabel`, MemberList).
+   * Shown to the owner only, and only while no offer is open.
+   */
+  transferButton(name: string): Locator {
+    return this.main().getByRole('button', {
+      name: `Transfer ownership to ${name}`,
+      exact: true,
+    })
+  }
+
+  /**
+   * Open the transfer confirm of `name`. It is an `AlertDialog` titled
+   * "Transfer ownership" (`TransferButton` in MemberList), not a
+   * `DeleteButton`.
+   */
+  async openTransfer(name: string) {
+    await this.transferButton(name).click()
+    await expect(this.confirmDialog()).toBeVisible()
+  }
+
+  /** Press "Transfer ownership" inside the open confirm. */
+  async confirmTransfer() {
+    await this.confirmDialog()
+      .getByRole('button', { name: 'Transfer ownership', exact: true })
+      .click()
+    await expect(this.confirmDialog()).toHaveCount(0)
+  }
+
+  /** Transfer the household to `name`: the row's button, then the confirm. */
+  async transferTo(name: string) {
+    await this.openTransfer(name)
+    await this.confirmTransfer()
+  }
+
+  /** "Waiting for {name} to accept" (`settings.household.members.waiting`). */
+  waitingNote(name: string): Locator {
+    return this.main().getByText(`Waiting for ${name} to accept`, {
+      exact: true,
+    })
+  }
+
+  /** The Cancel of the open offer: "Cancel the offer to {name}". */
+  cancelOfferButton(name: string): Locator {
+    return this.main().getByRole('button', {
+      name: `Cancel the offer to ${name}`,
+      exact: true,
+    })
+  }
+
+  /** "This household has no owner." (`settings.household.members.noOwner`). */
+  noOwnerNote(): Locator {
+    return this.main().getByText('This household has no owner.', {
+      exact: true,
+    })
+  }
+
+  /** "Become the owner", above the list, for a person with an open offer. */
+  becomeOwnerButton(): Locator {
+    return this.main().getByRole('button', {
+      name: 'Become the owner',
+      exact: true,
+    })
+  }
 }

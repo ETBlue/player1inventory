@@ -1,6 +1,6 @@
 // One Prisma double for the code that reads households and roles: `User`
 // (userFake), `Household`, `HouseholdMember`, `LocationMember`,
-// `HouseholdInvite` and `HouseholdActivity` (householdFake), and `Location` and `ItemStock` (stockFake), joined into one
+// `HouseholdInvite`, `HouseholdActivity` and `OwnershipOffer` (householdFake), and `Location` and `ItemStock` (stockFake), joined into one
 // client with one `$transaction` (households H3a, task 3.5).
 //
 // `householdFake` reads the CURRENT location rows from `stockFake`, so a
@@ -65,6 +65,9 @@ export function createHouseholdWorld() {
   const households = createHouseholdFake({
     locations: () => stock.state.locations,
     contents: () => ({ ...contents.rows, itemStocks: stock.state.itemStocks }),
+    // The `user: { deletedAt: null }` filter (households H6 task K.2). Read
+    // at call time, so `users`, made just below, exists by then.
+    users: () => users.readableRows(),
   })
   // `user.findUnique` can select `householdMemberships` (decision T14 of the
   // H5b plan: `ensureHousehold` reads the person and their memberships in
@@ -94,6 +97,10 @@ export function createHouseholdWorld() {
     // `households.state` too, so they roll back with the rest, and
     // `household.deleteMany` deletes them with their household.
     householdActivity: households.client.householdActivity,
+    // The ownership offers (households H6b, task K.1). Also in
+    // `households.state`: they roll back with the rest, and
+    // `household.deleteMany` deletes them with their household.
+    ownershipOffer: households.client.ownershipOffer,
     location: {
       ...stock.client.location,
       delete: deleteLocation,

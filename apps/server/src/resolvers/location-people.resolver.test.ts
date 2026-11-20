@@ -414,6 +414,78 @@ describe('locationPeople (households H5c, decision T39, owner decision O24-A)', 
 
 // ─── HouseholdPerson.hasLocationRole ────────────────────────────────────────
 
+// ─── a deleted account (households H6b, task K.2, decision T61) ─────────────
+//
+// The pre-H6 shape (Y8 of the H6 plan): the account is deleted
+// (`User.deletedAt` set), and the person's member row and role rows are
+// still there. Each test deletes ONE person and keeps a live person beside
+// them with the same role, so a filter that drops everyone, or no one, gives
+// a different answer.
+
+function markAccountDeleted(userId: string) {
+  const row = world.users.state.rows.find((r) => r.id === userId)
+  if (!row) throw new Error(`no User row for ${userId}`)
+  row.deletedAt = T0
+}
+
+const LOCATIONS = `query { householdLocations { id hasOrganizer } }`
+
+describe('a deleted account does not count (households H6b, task K.2, decision T61)', () => {
+  it('user does not see a deleted account among the people of a location', async () => {
+    // Given BOB deleted their account. AAA, also "Bob" and a participant, did not.
+    markAccountDeleted(BOB)
+
+    // When the organizer reads LOC_K's people
+    const rows = list(await people(BEA, LOC_K))
+
+    // Then BOB is left out, and everyone else is still listed in order
+    expect(short(rows)).toEqual(LOC_K_PEOPLE.filter((p) => !p.startsWith(`${BOB}:`)))
+    // And BOB's role row is still in the store: the read leaves it out
+    expect(
+      world.households.state.locationMembers.some((m) => m.locationId === LOC_K && m.userId === BOB),
+    ).toBe(true)
+  })
+
+  it('user does not see a deleted account on the members list', async () => {
+    // Given VIC deleted their account
+    markAccountDeleted(VIC)
+
+    // When the owner reads the household's members
+    const res = await run(MEMBERS, {}, OWEN)
+    if (res.errors) throw new Error(JSON.stringify(res.errors))
+    const ids = (res.data?.householdMembers as { userId: string }[]).map((m) => m.userId)
+
+    // Then VIC is left out, and the seven live members are listed
+    expect(ids).not.toContain(VIC)
+    expect([...ids].sort()).toEqual([OWEN, MIA, BEA, BOB, AAA, CARL, NOA].sort())
+  })
+
+  it('a location whose only organizer deleted their account shows No organizer', async () => {
+    // Given BEA, the only organizer of LOC_K, deleted their account. NOA,
+    // the organizer of LOC_G, did not.
+    const before = await run(LOCATIONS, {}, OWEN)
+    expect(before.data?.householdLocations).toEqual(
+      expect.arrayContaining([
+        { id: LOC_K, hasOrganizer: true },
+        { id: LOC_G, hasOrganizer: true },
+      ]),
+    )
+    markAccountDeleted(BEA)
+
+    // When the owner reads the household's locations
+    const res = await run(LOCATIONS, {}, OWEN)
+    if (res.errors) throw new Error(JSON.stringify(res.errors))
+
+    // Then LOC_K has no organizer, and LOC_G keeps NOA
+    expect(res.data?.householdLocations).toEqual(
+      expect.arrayContaining([
+        { id: LOC_K, hasOrganizer: false },
+        { id: LOC_G, hasOrganizer: true },
+      ]),
+    )
+  })
+})
+
 describe('HouseholdPerson.hasLocationRole (households H5c, decision T40, owner decision O28-A)', () => {
   async function marks(actor: string) {
     const res = await run(MEMBERS, {}, actor)

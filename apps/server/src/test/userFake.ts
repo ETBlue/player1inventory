@@ -527,7 +527,9 @@ export function createUserFake(rows: UserRow[] = [], options: UserFakeOptions = 
     everNamed.clear()
   }
 
-  return { state, client, reset }
+  // `readableRows` is for the household fake's `user: { deletedAt: null }`
+  // filter (households H6 task K.2): it sees the implied rows too.
+  return { state, client, reset, readableRows }
 }
 
 function stripUndefined(data: Data): Data {

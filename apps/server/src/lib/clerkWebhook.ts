@@ -1,7 +1,10 @@
 import type { Request, Response } from 'express'
 import type { WebhookEvent } from '@clerk/express/webhooks'
 import { verifyWebhook } from '@clerk/express/webhooks'
+import { handOverDeletedAccount } from './handover.js'
+import { HOUSEHOLD_MOVE_TIMEOUT_MS, retryOnceOnConflict } from './household.js'
 import { prisma } from './prisma.js'
+import { publishHouseholdChange } from './publishChange.js'
 import type { ClerkUserJSON } from './userRow.js'
 import { userRowFromClerk } from './userRow.js'
 
@@ -48,11 +51,18 @@ export const DELETED_USER_DISPLAY_NAME = 'Deleted user'
  *
  * - `user.created`, `user.updated`: write the name and email. `deletedAt` is
  *   not in either payload, so these events never clear it.
- * - `user.deleted`: set `deletedAt`. The stored name and email stay, so logs
- *   can still name the person. For an id with no row, create the row already
- *   deleted, named "Deleted user" (plan P13). Otherwise the request-path
- *   safety net (task 2.4) would create it later as a live user.
- *   H6 adds the household hand-over here.
+ * - `user.deleted`: set `deletedAt`, once: a later delivery keeps the first
+ *   date. The stored name and email stay, so logs can still name the person.
+ *   For an id with no row, create the row already deleted, named "Deleted
+ *   user" (plan P13). Otherwise the request-path safety net (task 2.4) would
+ *   create it later as a live user. Then, in the SAME transaction, the
+ *   household hand-over (households H6b task K.4, decision T60,
+ *   `handOverDeletedAccount` in lib/handover.ts): the person leaves every
+ *   household, and a household they owned is handed over or deleted.
+ *   The transaction runs once more on P2034 (`retryOnceOnConflict`). After
+ *   the commit, one household-level `LOCATION` per household that still
+ *   exists and changed. A repeated event finds no membership, writes nothing
+ *   but the `User` row's lock, and sends nothing.
  * - Any other event: do nothing.
  */
 export async function handleClerkEvent(evt: ClerkEvent): Promise<void> {
@@ -72,12 +82,31 @@ export async function handleClerkEvent(evt: ClerkEvent): Promise<void> {
       // Clerk's type allows a deleted object with no id. There is no row to
       // mark, so there is nothing to do.
       if (!id) return
-      const deletedAt = new Date()
-      await prisma.user.upsert({
-        where: { id },
-        create: { id, displayName: DELETED_USER_DISPLAY_NAME, deletedAt },
-        update: { deletedAt },
-      })
+      const changed = await retryOnceOnConflict(() =>
+        prisma.$transaction(
+          async (tx) => {
+            const now = new Date()
+            // The FIRST write of the transaction, and a real UPDATE on an
+            // existing row: it takes the `User` row lock before any household
+            // lock (decision T16, the `lockUser` of T60 step 1). `deletedAt`
+            // is not in `update`, so a repeated event keeps the first date.
+            const row = await tx.user.upsert({
+              where: { id },
+              create: { id, displayName: DELETED_USER_DISPLAY_NAME, deletedAt: now },
+              update: { updatedAt: now },
+            })
+            if (row.deletedAt === null) {
+              await tx.user.update({ where: { id }, data: { deletedAt: now } })
+            }
+            return handOverDeletedAccount(tx, id, now)
+          },
+          { timeout: HOUSEHOLD_MOVE_TIMEOUT_MS },
+        ),
+      )
+      // After the commit. Not a tab's request, so no `sourceClientId`.
+      for (const householdId of changed) {
+        await publishHouseholdChange({ userId: null }, ['LOCATION'], householdId)
+      }
       return
     }
     default:

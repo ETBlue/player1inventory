@@ -7,17 +7,23 @@ import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createCache } from '@/apollo/cloudCache'
 import {
+  AcceptOwnershipOfferDocument,
   AddItemToLocationDocument,
   ApplyShelfFilterPicksDocument,
   ApplyUnitSwitchDocument,
+  CancelOwnershipOfferDocument,
   ClearAllDataDocument,
   CreateItemDocument,
+  DeclineOwnershipOfferDocument,
   DeleteAllLocationsDocument,
+  DismissOwnershipOfferDocument,
   GetHouseholdLocationsDocument,
   GetItemsDocument,
   GetRecipeDocument,
   GetRecipesDocument,
   LeaveLocationDocument,
+  MyOwnershipOffersDocument,
+  OfferOwnershipDocument,
   PantryDataDocument,
   RemoveAllLocationItemsDocument,
   RemoveItemFromLocationDocument,
@@ -26,6 +32,7 @@ import {
   UpdateRecipeDocument,
   UpsertItemStockDocument,
   useGetHouseholdLocationsQuery,
+  useMyOwnershipOffersQuery,
 } from '@/generated/graphql'
 import {
   bootstrapCartsMock,
@@ -56,6 +63,13 @@ import {
   useSetLocationRole,
 } from './useLocationPeople'
 import {
+  useAcceptOwnershipOffer,
+  useCancelOwnershipOffer,
+  useDeclineOwnershipOffer,
+  useDismissOwnershipOffer,
+  useOfferOwnership,
+} from './useOwnershipOffers'
+import {
   useClearHousehold,
   useDeleteAllLocations,
   useRemoveAllLocationItems,
@@ -63,8 +77,9 @@ import {
 import { useUpdateRecipe } from './useRecipes'
 
 // Every hook that reports `isPending: loading || isRefetching` (PR #386,
-// since households H5c task H.4 the three location role hooks, and since
-// households H6 task J.5 the three purge hooks, `apollo/refetchAfterWrite.ts`). Callers read `isPending` as "the write AND
+// since households H5c task H.4 the three location role hooks, since
+// households H6 task J.5 the three purge hooks, and since households H6b
+// task K.5 the five ownership offer hooks, `apollo/refetchAfterWrite.ts`). Callers read `isPending` as "the write AND
 // the reads after it are done": the search tail re-enables a row after it, and
 // the recipe relation tab keeps a badge busy on it. So for each hook:
 //
@@ -109,6 +124,19 @@ const without = (source: Record<string, unknown>, keys: string[]) =>
   Object.fromEntries(Object.entries(source).filter(([k]) => !keys.includes(k)))
 
 const any = () => true
+
+const OFFER = {
+  __typename: 'OwnershipOffer',
+  id: 'offer-1',
+  householdId: 'hh-lin',
+  householdName: 'The Lin home',
+  kind: 'transfer',
+  toUserId: 'u-mia',
+  toName: 'Mia',
+  fromName: 'Lin',
+  createdAt: '2026-11-20T08:00:00.000Z',
+  dismissedAt: null,
+}
 
 const MOCKS = [
   bootstrapCartsMock,
@@ -265,6 +293,55 @@ const MOCKS = [
       }),
   },
   {
+    request: { query: MyOwnershipOffersDocument },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: { data: { myOwnershipOffers: [OFFER] } },
+  },
+  {
+    request: { query: OfferOwnershipDocument, variables: any },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: () => answer('OfferOwnership', { data: { offerOwnership: OFFER } }),
+  },
+  {
+    request: { query: CancelOwnershipOfferDocument },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: () =>
+      answer('CancelOwnershipOffer', { data: { cancelOwnershipOffer: true } }),
+  },
+  {
+    request: { query: AcceptOwnershipOfferDocument, variables: any },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: () =>
+      answer('AcceptOwnershipOffer', {
+        data: {
+          acceptOwnershipOffer: {
+            __typename: 'Household',
+            id: 'hh-lin',
+            name: 'The Lin home',
+            role: 'owner',
+            hasOwner: true,
+            pendingTransfer: null,
+          },
+        },
+      }),
+  },
+  {
+    request: { query: DeclineOwnershipOfferDocument, variables: any },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: () =>
+      answer('DeclineOwnershipOffer', {
+        data: { declineOwnershipOffer: true },
+      }),
+  },
+  {
+    request: { query: DismissOwnershipOfferDocument, variables: any },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: () =>
+      answer('DismissOwnershipOffer', {
+        data: { dismissOwnershipOffer: true },
+      }),
+  },
+  {
     request: { query: UpdateRecipeDocument, variables: any },
     maxUsageCount: Number.POSITIVE_INFINITY,
     result: () =>
@@ -328,6 +405,20 @@ function withHouseholdLocations<H extends Pending>(use: () => H) {
 }
 
 const listLoaded = (h: Pending) => (h as WithList<Pending>).listLoaded
+
+/**
+ * An ownership offer hook, with `MyOwnershipOffers` mounted beside it. Four
+ * of the hooks read their lists again by DOCUMENT, and `accept` reads every
+ * active query, so the mounted offer list is read by all five.
+ */
+function withMyOffers<H extends Pending>(use: () => H) {
+  return (): WithList<H> => {
+    const list = useMyOwnershipOffersQuery({ fetchPolicy: 'cache-and-network' })
+    return { ...use(), listLoaded: !!list.data && !list.loading }
+  }
+}
+
+type Started<F extends (...args: never[]) => unknown> = ReturnType<F>
 
 type MutateAsync<V> = { mutateAsync: (vars: V) => Promise<unknown> }
 
@@ -476,6 +567,55 @@ const CASES: Case[] = [
     firstWrite: 'RemoveAllLocationItems',
     lastWrite: 'RemoveAllLocationItems',
     read: 'GetHouseholdLocations',
+    loaded: listLoaded,
+  },
+  // The ownership offer hooks (households H6b task K.5).
+  {
+    hook: 'useOfferOwnership',
+    use: withMyOffers(useOfferOwnership),
+    start: (h) => (h as Started<typeof useOfferOwnership>).offer('u-mia'),
+    firstWrite: 'OfferOwnership',
+    lastWrite: 'OfferOwnership',
+    read: 'MyOwnershipOffers',
+    loaded: listLoaded,
+  },
+  {
+    hook: 'useCancelOwnershipOffer',
+    use: withMyOffers(useCancelOwnershipOffer),
+    start: (h) => (h as Started<typeof useCancelOwnershipOffer>).cancel(),
+    firstWrite: 'CancelOwnershipOffer',
+    lastWrite: 'CancelOwnershipOffer',
+    read: 'MyOwnershipOffers',
+    loaded: listLoaded,
+  },
+  {
+    hook: 'useAcceptOwnershipOffer',
+    use: withMyOffers(useAcceptOwnershipOffer),
+    start: (h) =>
+      (h as Started<typeof useAcceptOwnershipOffer>).accept('offer-1'),
+    firstWrite: 'AcceptOwnershipOffer',
+    lastWrite: 'AcceptOwnershipOffer',
+    read: 'MyOwnershipOffers',
+    loaded: listLoaded,
+  },
+  {
+    hook: 'useDeclineOwnershipOffer',
+    use: withMyOffers(useDeclineOwnershipOffer),
+    start: (h) =>
+      (h as Started<typeof useDeclineOwnershipOffer>).decline('offer-1'),
+    firstWrite: 'DeclineOwnershipOffer',
+    lastWrite: 'DeclineOwnershipOffer',
+    read: 'MyOwnershipOffers',
+    loaded: listLoaded,
+  },
+  {
+    hook: 'useDismissOwnershipOffer',
+    use: withMyOffers(useDismissOwnershipOffer),
+    start: (h) =>
+      (h as Started<typeof useDismissOwnershipOffer>).dismiss('offer-1'),
+    firstWrite: 'DismissOwnershipOffer',
+    lastWrite: 'DismissOwnershipOffer',
+    read: 'MyOwnershipOffers',
     loaded: listLoaded,
   },
 ]

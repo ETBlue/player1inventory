@@ -189,6 +189,19 @@ function forbiddenError() {
   })
 }
 
+// Owner decision O40 (households H6 task K.0): a stored `clear` copy deletes
+// the household's catalog and locations first, so its Copy here opens a
+// second confirm that asks for the household name, typed exactly. This
+// presses Copy here, types the name and confirms.
+async function confirmClearCopy(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('button', { name: 'Copy here' }))
+  await user.type(
+    await screen.findByLabelText('Type Our Home to confirm'),
+    'Our Home',
+  )
+  await user.click(screen.getByRole('button', { name: 'Copy here' }))
+}
+
 // REWRITTEN BY CLOUD LOCATIONS PR 4b TASK 7. This file held two describes and
 // 5 its, all about `MigrationLocationWarningDialog`: the warning named the one
 // local location whose stock would be copied and listed the ones left behind,
@@ -350,10 +363,10 @@ describe('PostLoginMigrationDialog — signing in copies the local pantry', () =
     localStorage.setItem('migration-strategy', 'clear')
     vi.mocked(importCloudData).mockRejectedValueOnce(forbiddenError())
 
-    // When the user presses Copy here after sign-in
+    // When the user presses Copy here after sign-in, and types the name
     const user = userEvent.setup()
     renderDialog()
-    await user.click(await screen.findByRole('button', { name: 'Copy here' }))
+    await confirmClearCopy(user)
 
     // Then the refusal is explained, rather than the dialog closing as if the
     // copy had worked or sitting on 'Copying…' for ever
@@ -390,10 +403,10 @@ describe('PostLoginMigrationDialog — signing in copies the local pantry', () =
       new ImportRefusedError('role'),
     )
 
-    // When the user presses Copy here after sign-in
+    // When the user presses Copy here after sign-in, and types the name
     const user = userEvent.setup()
     renderDialog()
-    await user.click(await screen.findByRole('button', { name: 'Copy here' }))
+    await confirmClearCopy(user)
 
     // Then the role sentence is shown, not the household one
     expect(
@@ -485,13 +498,68 @@ describe('PostLoginMigrationDialog — a stored copy asks first', () => {
     ).toBeInTheDocument()
   })
 
+  it('user who owns the household cannot clear and copy until the name is typed exactly', async () => {
+    // Given the question is open for a stored `clear` copy into "Our Home"
+    const user = userEvent.setup()
+    renderDialog()
+
+    // When the owner presses Copy here
+    await user.click(await screen.findByRole('button', { name: 'Copy here' }))
+
+    // Then nothing is cleared or copied by that press alone
+    await drain()
+    expect(importCloudData).not.toHaveBeenCalled()
+
+    // And a field asks for the household name, and the confirm is off
+    const field = await screen.findByLabelText('Type Our Home to confirm')
+    const confirm = screen.getByRole('button', { name: 'Copy here' })
+    expect(confirm).toBeDisabled()
+
+    // When the name is typed with the wrong case
+    await user.type(field, 'our home')
+    await drain()
+
+    // Then the confirm is still off, and nothing was cleared or copied
+    expect(confirm).toBeDisabled()
+    expect(importCloudData).not.toHaveBeenCalled()
+
+    // When the name is typed exactly as stored and confirmed
+    await user.clear(field)
+    await user.type(field, 'Our Home')
+    expect(confirm).toBeEnabled()
+    await user.click(confirm)
+
+    // Then the copy runs with `clear`
+    await waitFor(() => expect(importCloudData).toHaveBeenCalledTimes(1))
+    expect(callArgs(vi.mocked(importCloudData).mock, 0)[1]).toBe('clear')
+  })
+
+  it('user copying with a stored skip is not asked for the name', async () => {
+    // Given the question is open for a stored `skip` copy, which deletes
+    // nothing, and the local data has no location that needs a choice
+    localStorage.setItem('migration-strategy', 'skip')
+    const user = userEvent.setup()
+    renderDialog()
+
+    // When the owner presses Copy here
+    await user.click(await screen.findByRole('button', { name: 'Copy here' }))
+
+    // Then no name is asked for: the copy goes on to its next step
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Import into which location?',
+      }),
+    ).toBeInTheDocument()
+    expect(screen.queryByLabelText('Type Our Home to confirm')).toBeNull()
+  })
+
   it('user pressing Copy here has the stored copy run', async () => {
     // Given the question is open for a stored `clear` copy
     const user = userEvent.setup()
     renderDialog()
 
-    // When the user presses Copy here
-    await user.click(await screen.findByRole('button', { name: 'Copy here' }))
+    // When the user presses Copy here and types the household name
+    await confirmClearCopy(user)
 
     // Then the copy runs with the stored strategy
     await waitFor(() => expect(importCloudData).toHaveBeenCalledTimes(1))

@@ -204,6 +204,8 @@ describe('no-household screen, cloud mode', () => {
                     id: 'household-other-tab',
                     name: 'Other tab',
                     role: 'owner',
+                    hasOwner: true,
+                    pendingTransfer: null,
                   },
                 },
               }

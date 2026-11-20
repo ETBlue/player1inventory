@@ -623,7 +623,7 @@ page (10.2). Role changes made between H5c and H6 are not logged (owner decision
 ## 11. Households H6a (activity log, purges, danger zones)
 
 Added 2026-11-20 by H6 task J.9. **H6a is built on `feature/households-h6a`, from `develop`
-at `7dbaeca9`. It is not merged and not deployed.** Plan:
+at `7dbaeca9`. It is merged into `develop` (2026-11-20, #392, merge `c0f096ed`), not deployed.** Plan:
 [`../permissions/2026-11-20-households-plan-h6.md`](../permissions/2026-11-20-households-plan-h6.md),
 *Deploy notes*, *Known gaps* and *Status*.
 
@@ -768,6 +768,199 @@ server deployment; the old server ignores the new table. Log rows written in the
 stay. But roll back the web FIRST (or together): an H6a bundle on an older server fails on
 the Activity page and the danger zones, and imports write no log row (11.4). For a full
 rollback use H3a runbook 7.2.
+
+## 12. Households H6b (transfer, hand-over, deleted accounts)
+
+Added 2026-11-20 by H6 task K.9. **H6b is built on `feature/households-h6b`, from `develop`
+after H6a (#392). It is NOT merged and NOT deployed.** Plan:
+[`../permissions/2026-11-20-households-plan-h6.md`](../permissions/2026-11-20-households-plan-h6.md),
+tasks K.0 to K.9, *Deploy notes*, *Known gaps* and *Status*.
+
+In short: **one additive migration, the server first, then the web. No new env value and no
+Clerk change. Before the release, count the accounts that were deleted before H6 (12.6),
+and if the count is not 0, a one-off script must exist first.**
+
+### 12.1 What changes
+
+| Part | What is new |
+|---|---|
+| Database | **one migration**, `20261120100000_add_ownership_offers`. It adds one enum, `"OfferKind"` (`transfer`, `handover`), and one empty table, `"OwnershipOffer"`, with two foreign keys (`householdId` → `Household` and `toUserId` → `User`, both `ON DELETE CASCADE`). Additive only: no row is changed, nothing is dropped, no backfill. `Household.ownerGoneAt` is not new (H3a); H6b is the first code that writes it |
+| Server env, web build env | nothing new |
+| Clerk | nothing new. The endpoint already sends `user.deleted` (since H2), and `CLERK_WEBHOOK_SIGNING_SECRET` is already set. Check both are still true (12.4) |
+| GraphQL schema | 1 new query (`myOwnershipOffers`), 1 new type (`OwnershipOffer`), 1 new enum (`OfferKind`), 2 new fields on `Household` (`hasOwner`, `pendingTransfer`) and 5 new mutations (`offerOwnership`, `cancelOwnershipOffer`, `acceptOwnershipOffer`, `declineOwnershipOffer`, `dismissOwnershipOffer`). Nothing is removed or changed. `oldBundleCompat.test.ts` still passes with the same list of known changes (in `pnpm test`, 2026-11-20) |
+| Live updates | the four offer writes send one household-level `LOCATION` event; `dismissOwnershipOffer` sends nothing. The `user.deleted` hand-over sends one household-level `LOCATION` per household that still exists. The live guard holds 81 mutation fields: 78 in `publishes`, 3 in `publishesNothing` |
+| Server behaviour | `user.deleted` now runs the household hand-over in the same transaction as the `User` row (decision T60). A deleted account no longer counts as an organizer and is not listed (T61). The last live person who leaves a household with no owner deletes it (O37-A). The owner's leave text is "Transfer ownership first." |
+| Web behaviour | the offer banner at the top of every cloud page; on **Settings › Household › Members**: **Transfer ownership**, the waiting row with **Cancel**, "This household has no owner." with **Become the owner**, a warning on the last person's Leave; "Clear & import" in cloud asks for the typed household name |
+
+### 12.2 The migration deploys with the server
+
+The migration runs in Railway's release command, like every other one. In the households
+release it is the **sixth** migration, so the numbers in 11.2 grow by one more:
+
+| Runbook step | Section 11.2 says | With H6b in the release |
+|---|---|---|
+| H3b runbook 3.1 (the pending list) | exactly five pending migrations | **exactly six**: the five in 11.2, then `20261120100000_add_ownership_offers`. If it lists more, stop and find out why |
+| H3b runbook 4.2 (the release log) | five `Applying migration` lines | **six** lines, the sixth `Applying migration \`20261120100000_add_ownership_offers\`` |
+| H3b runbook 5, check 1 | `LIMIT 6` | `LIMIT 7`: all six new migrations have `finished_at` and no `rolled_back_at` |
+
+**Proved on the test database on 2026-11-20.** The main session ran
+`pnpm --filter server verify:migration` against the TEST database before task K.8, with the
+owner's explicit consent (given after Prisma's AI-agent warning). Result: "Migration
+verified.", every line `ok`. The checks for `add_ownership_offers` (`assertOwnershipOffers`):
+
+| Check | Result |
+|---|---|
+| `"OwnershipOffer"` has exactly 7 columns | ok |
+| `"OfferKind"` holds exactly `transfer, handover` | ok |
+| exactly two foreign keys, `householdId` → `Household` and `toUserId` → `User`, both `CASCADE`; none on `fromUserId` | ok |
+| the unique `(householdId, toUserId)` and the `toUserId` index | ok |
+| a second offer to one person in one household is refused (`23505`); an unknown kind (`22P02`); an unknown household or person (`23503`) | ok |
+| the person who MADE an offer is deleted: the offer stays. The person it is made TO is deleted: their offers go. A household is deleted: only its offers go | ok |
+
+No file under `apps/server/prisma/` changed after that run (checked in task K.9 with
+`git log --oneline e0b7f585..HEAD -- apps/server/prisma/`, which is empty). That proves the
+migration on a database built from the committed history. It does NOT prove it on
+production data. That is 12.3.
+
+### 12.3 Rehearse on a FRESH Neon branch of production
+
+**Main session, with the owner's consent.** Do this inside the same release rehearsal as
+11.3, on the same fresh branch, after all six migrations are applied. The rules of 9.3
+hold.
+
+```sql
+-- H6b-1. The new table exists and holds nothing. Expect 0.
+SELECT count(*) AS offers FROM "OwnershipOffer";
+
+-- H6b-2. The enum. Expect two rows: transfer, handover.
+SELECT e.enumlabel
+FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+WHERE t.typname = 'OfferKind' ORDER BY e.enumsortorder;
+
+-- H6b-3. The two foreign keys. Expect exactly two rows, both confdeltype c (CASCADE):
+--        OwnershipOffer_householdId_fkey and OwnershipOffer_toUserId_fkey
+SELECT conname, confdeltype
+FROM pg_constraint
+WHERE conrelid = '"OwnershipOffer"'::regclass AND contype = 'f'
+ORDER BY conname;
+
+-- H6b-4. The two indexes. Expect OwnershipOffer_householdId_toUserId_key (UNIQUE)
+--        and OwnershipOffer_toUserId_idx.
+SELECT indexname, indexdef
+FROM pg_indexes
+WHERE tablename = 'OwnershipOffer' AND indexname <> 'OwnershipOffer_pkey'
+ORDER BY indexname;
+```
+
+| Check | Expected | Result |
+|---|---|---|
+| H6b-1 | 0 | `TBD after rehearsal` |
+| H6b-2 | `transfer`, `handover` | `TBD after rehearsal` |
+| H6b-3 | two rows, both `c` | `TBD after rehearsal` |
+| H6b-4 | two rows, one `UNIQUE` | `TBD after rehearsal` |
+
+**Stop rule:** any other answer means the migration did not apply as written. Do not
+deploy. Find out why with the main session.
+
+### 12.4 The order: server first, then the web
+
+This is the order of the whole households release (section 8.3). H6b does not change it.
+
+- **New web on an old server does not work.** The new bundle selects `myOwnershipOffers`,
+  `Household.hasOwner` and `Household.pendingTransfer`. An old server fails GraphQL
+  validation, so the banner query fails on every cloud page, and `GetHousehold` fails, which
+  breaks the household page and the Members page.
+- **Old web on the new server works.** `main`'s bundle selects none of the new fields.
+- **The webhook runs the hand-over only after the server deploy.** A `user.deleted` that an
+  old server answers only sets `deletedAt`. 12.6 covers that account too, if the count is
+  run after the server deploy as well.
+- **Before the server deploy, check the Clerk side has not changed** (Owner, in the
+  production Clerk Dashboard): the webhook endpoint is still there and still lists
+  `user.deleted`. On Railway, `CLERK_WEBHOOK_SIGNING_SECRET` is still set (check that the
+  name is there; do not copy the value anywhere).
+
+### 12.5 Checks after the deploy
+
+**Owner, after the web deploy.** Use two real devices and two TEST accounts in one TEST
+household, not the real one. Device A is the owner; device B's person is a `manager` or
+`member`. Do NOT delete a real account to test the hand-over.
+
+1. Open the Members page on device B and leave it open.
+2. Device A, **Settings › Household › Members**: press **Transfer ownership** on B's row.
+   The confirm names the household and B. Confirm. A's row for B shows "Waiting for B to
+   accept" with **Cancel**.
+3. Device B, with NO reload: within a few seconds the banner shows "A wants to make you the
+   owner of …" with **Accept** and **Decline**. This is the live arrival check.
+4. Device B: press **Accept**. The banner says "You are now the owner of …".
+5. Device A, with no reload: A's own row is now **Manager** and B's is **Owner**. The
+   Activity page shows "offered" and "became the owner".
+6. Optional, to undo: device B transfers back to A, and device A accepts.
+
+Result: `TBD on deploy day`.
+
+### 12.6 Before the release: accounts deleted before H6 (owner decisions O36-A and O44)
+
+**Main session, read-only, with the owner's consent, on a COPY of production** (the
+rehearsal branch of 12.3 is fine: it is a fresh branch of production). Never on production
+itself, and never print an e-mail or a name; the query returns a count only.
+
+```sql
+-- H6b-O36. Accounts deleted before H6 that still have a household membership.
+--          Expect 0. Each one counted here was never handed over.
+SELECT count(DISTINCT u.id) AS deleted_with_membership
+FROM "User" u
+JOIN "HouseholdMember" m ON m."userId" = u.id
+WHERE u."deletedAt" IS NOT NULL;
+```
+
+(Section 11.6 counts every deleted account. This query counts only those that still have a
+`HouseholdMember` row, which are the ones that need the hand-over.)
+
+| Check | Expected | Result |
+|---|---|---|
+| H6b-O36 | 0 | `TBD before the release` |
+
+**If the count is 0:** nothing more. **If it is not 0** (owner decision O44): a one-off
+script must run `handOverDeletedAccount` (`apps/server/src/lib/handover.ts`) for each such
+account, after the server deploy. That also deletes a household where no live person is
+left (O37-A).
+
+**That script does not exist yet.** It must be written and reviewed before the release,
+and only if the count is not 0. What it must do:
+
+- default to a dry run that prints, per account, only the household ids and what would
+  happen (handed over, or deleted); write only with an explicit flag;
+- run each account in its own transaction, the same way `handleClerkEvent` does (the `User`
+  row first, `retryOnceOnConflict`), and publish nothing (no tab of a deleted person is
+  open, and a live event after a script is not needed);
+- never print an e-mail or a connection string.
+
+It was not written in task K.9 on purpose: `apps/server/scripts/` must not import from
+`src` (root `CLAUDE.md`, the no-overlap rule of `tsconfig.scripts.json`), so a script there
+would need a copy of `handOverDeletedAccount` and its helpers. That is too large to write
+without a count that says it is needed. Run the count again right after the server deploy:
+a `user.deleted` answered by the old server during the deploy is not handed over either.
+
+### 12.7 If something is wrong
+
+| Symptom | Likely cause | What to do |
+|---|---|---|
+| The release log stops at `add_ownership_offers` with an error | the migration failed. It runs as its own transaction, so nothing of it is applied; the migrations before it stay applied | the old server keeps serving. Read the error, then follow H3a runbook 7.1, with `20261120100000_add_ownership_offers` as the name to mark `--rolled-back` |
+| Every cloud page shows an error, and the Members page does not load | the web is new and the server is old, or the server was rolled back | check the Railway deployment is the new commit |
+| The banner does not appear on device B until a reload | the live socket is not connected on B, or the event was sent before B's socket subscribed | reload B: the banner shows, so the offer itself is fine. Check the browser console for the socket close code (root `CLAUDE.md`, *Close codes*) |
+| A Clerk account was deleted, and the household still shows the old owner | the webhook did not arrive (endpoint, secret), or an old server answered it | check the Clerk Dashboard's webhook log for that event and its answer. Then run the 12.6 count again |
+
+**Rollback.** The migration only adds. To roll back the server alone, redeploy the previous
+server deployment; the old server ignores the new table, and `user.deleted` only sets
+`deletedAt` again. Offers written in the meantime stay, and a household that was handed
+over keeps `ownerId: null` until someone accepts, which the old server cannot do. So roll
+back the web FIRST (or together), and do not roll back the server while a hand-over is open
+unless it is needed. For a full rollback use H3a runbook 7.2.
+
+**Known gaps** (from the plan): no E2E for **Not now**, for the T62 restart after a
+declined hand-over, for **Cancel** on the waiting row, or for the "This offer is no longer
+open." notice; the Members page has no Decline or Not now. Check 12.5 covers the transfer
+path only.
 
 ## Where this file lives, and why
 

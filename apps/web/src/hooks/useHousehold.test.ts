@@ -30,6 +30,8 @@ const HOUSEHOLD = {
   id: 'household-1',
   name: 'The Lab',
   role: 'owner' as const,
+  hasOwner: true,
+  pendingTransfer: null,
 }
 
 beforeEach(() => {

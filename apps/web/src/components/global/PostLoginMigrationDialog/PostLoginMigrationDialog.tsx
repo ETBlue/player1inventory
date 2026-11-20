@@ -1,6 +1,7 @@
 import { useAuth } from '@clerk/react'
 import { useTranslation } from 'react-i18next'
 import { ImportLocationDialog } from '@/components/settings/ImportLocationDialog'
+import { DeleteButton } from '@/components/shared/DeleteButton'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -189,9 +190,38 @@ function MigrationDialogs({
                 <AlertDialogCancel onClick={declineCopy}>
                   {t('settings.postLoginMigration.dontCopy')}
                 </AlertDialogCancel>
-                <AlertDialogAction onClick={confirmCopy}>
-                  {t('settings.postLoginMigration.copyHere')}
-                </AlertDialogAction>
+                {waitingStrategy === 'clear' && household !== undefined ? (
+                  // A stored `clear` copy deletes the household's catalog
+                  // and every location first, the same as Clear household.
+                  // So Copy here opens `DeleteButton`'s typed-name confirm,
+                  // which works only when the household name is typed
+                  // EXACTLY (owner decision O40, households H6 task K.0).
+                  // `canCopyInto` lets only the owner copy with `clear`.
+                  <DeleteButton
+                    trigger={t('settings.postLoginMigration.copyHere')}
+                    buttonVariant="destructive"
+                    dialogTitle={t(
+                      'settings.postLoginMigration.clearConfirmTitle',
+                      { household: household.name },
+                    )}
+                    dialogDescription={t(
+                      'settings.postLoginMigration.clearConfirmDescription',
+                      { household: household.name },
+                    )}
+                    confirmLabel={t('settings.postLoginMigration.copyHere')}
+                    confirmName={household.name}
+                    confirmNameLabel={t('settings.household.danger.typeName', {
+                      name: household.name,
+                    })}
+                    // `confirmCopy` only starts the copy. The progress and
+                    // error dialogs below show the rest.
+                    onDelete={confirmCopy}
+                  />
+                ) : (
+                  <AlertDialogAction onClick={confirmCopy}>
+                    {t('settings.postLoginMigration.copyHere')}
+                  </AlertDialogAction>
+                )}
               </>
             ) : (
               <AlertDialogAction onClick={declineCopy}>

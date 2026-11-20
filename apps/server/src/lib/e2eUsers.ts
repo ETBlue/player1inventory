@@ -8,7 +8,7 @@ import { prisma } from './prisma.js'
 // | Route | What it does |
 // |---|---|
 // | `POST /e2e/users` | upsert a `User` row from `{ id, displayName, email? }` |
-// | `POST /e2e/users/:id/deleted` | apply a `user.deleted` event, as if Clerk had sent it |
+// | `POST /e2e/users/:id/deleted` | apply a `user.deleted` event, as if Clerk had sent it (with the household hand-over, since H6b task K.4) |
 // | `GET /e2e/users/:id` | read the row back, for `e2e/tests/cloud-user-row.spec.ts` (task 2.7) |
 //
 // The GraphQL schema has no `User` type yet, so a spec has no other way to
@@ -92,6 +92,11 @@ export async function e2eCreateUserHandler(req: Request, res: Response): Promise
 /**
  * `POST /e2e/users/:id/deleted`. Applies a `user.deleted` event for `:id`
  * through `handleClerkEvent`, the same function the real webhook calls.
+ * Since households H6b task K.4 that includes the household hand-over: the
+ * person leaves every household, and a household they owned is handed over
+ * to the people who remain, or deleted with its data when nobody live is
+ * left. A spec that deletes an owner must clean up the household it leaves
+ * with no owner row (see the H6 plan, task K.8, *Cleanup trap*).
  */
 export async function e2eUserDeletedHandler(
   req: Request<{ id: string }>,

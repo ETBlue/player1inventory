@@ -1,7 +1,11 @@
 import { expect, test } from '@playwright/test'
-import { E2E_USER_ID } from '../constants'
+import { E2E_SECOND_USER_ID, E2E_USER_ID } from '../constants'
 import { CLEANUP_MODEL_KEYS, cleanupCloudData } from '../helpers/cloudTeardown'
-import { createCloudUser, createInvite } from '../helpers/cloudUsers'
+import {
+  createCloudUser,
+  createInvite,
+  joinHousehold,
+} from '../helpers/cloudUsers'
 import { makeGql } from '../utils/cloud'
 
 // ── WHAT THIS FILE COVERS ────────────────────────────────────────────────────
@@ -13,7 +17,8 @@ import { makeGql } from '../utils/cloud'
 // Since households H3a task 3.10 the route deletes by the households the
 // user OWNS, plus the user's own role rows, and returns 18 counts (19 since
 // households H5b task G.6 added `householdInvites`, 20 since households H6
-// task J.1 added `householdActivities`). The seed
+// task J.1 added `householdActivities`, 21 since households H6b task K.1
+// added `ownershipOffers`). The seed
 // below makes the user's household on the first request (first sign-in), so
 // the three new counts — `locationMembers`, `householdMembers` and
 // `households` — are at least 1 too. The rule "never delete a household the
@@ -75,6 +80,9 @@ import { makeGql } from '../utils/cloud'
 // database empty for the next spec.
 
 type Row = { id: string }
+
+/** The member the seed's ownership offer is made TO (households H6b K.8). */
+const OFFER_MEMBER = `${E2E_SECOND_USER_ID}-cleanup-offer`
 
 const LOCATIONS = `query { locations { id name } }`
 const CREATE_LOCATION = `mutation ($name: String!) { createLocation(name: $name) { id } }`
@@ -139,10 +147,12 @@ type ReadBack = {
 
 test.beforeEach(async ({ request }) => {
   // Guards against a previous run that crashed before its teardown.
+  await cleanupCloudData(request, OFFER_MEMBER)
   await cleanupCloudData(request)
 })
 
 test.afterEach(async ({ request }) => {
+  await cleanupCloudData(request, OFFER_MEMBER)
   await cleanupCloudData(request)
 })
 
@@ -278,6 +288,7 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     // household, so this one call also seeds the activity row that the
     // `householdActivities` count below needs. It is read back just below,
     // through the real `householdActivity` query (task J.3).
+    //
     const token = await createInvite(request, E2E_USER_ID, 'member', [
       { locationId: home.id, role: 'viewer' },
     ])
@@ -291,6 +302,31 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     expect(householdActivity.map((row) => row.action)).toContain(
       'INVITE_CREATED',
     )
+
+    // OwnershipOffer — a real transfer offer (households H6b task K.8). An
+    // offer is made TO a member, so OFFER_MEMBER joins first, through a
+    // second invite, then the user (the owner) offers the household with the
+    // real `offerOwnership` mutation (task K.3). The offer is in the user's
+    // OWN household and is TO someone else, so only the `householdId: owned`
+    // half of the cleanup's filter can delete it: the `toUserId` half names
+    // the user, and the household delete would cascade it away before the
+    // count. So this seed is what lets `ownershipOffers` read at least 1.
+    // OFFER_MEMBER is cleaned in both hooks: the user's cleanup deletes
+    // their member row (the household is the user's), theirs the `User` row.
+    await createCloudUser(request, OFFER_MEMBER, 'Cleanup Offer Member')
+    await joinHousehold(
+      request,
+      OFFER_MEMBER,
+      await createInvite(request, E2E_USER_ID, 'member', []),
+    )
+    await gql(
+      `mutation ($userId: ID!) { offerOwnership(userId: $userId) { id } }`,
+      { userId: OFFER_MEMBER },
+    )
+    const { household } = await gql<{
+      household: { pendingTransfer: { toUserId: string } | null }
+    }>(`query { household { pendingTransfer { toUserId } } }`)
+    expect(household.pendingTransfer?.toUserId).toBe(OFFER_MEMBER)
 
     // ── The seed really wrote rows ───────────────────────────────────────────
     //
@@ -339,6 +375,8 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     // Named on its own too, for the model households H6 task J.1 added (the
     // check above already covers it; this line says so in the report).
     expect(deleted.householdActivities).toBeGreaterThanOrEqual(1)
+    // And for the model households H6b task K.1 added.
+    expect(deleted.ownershipOffers).toBeGreaterThanOrEqual(1)
 
     // ── And nothing of the user's is left ────────────────────────────────────
     const after = await gql<ReadBack>(READ_BACK, { itemId })

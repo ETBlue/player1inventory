@@ -36,6 +36,8 @@ const cloudMocks: NonNullable<MockedProviderProps['mocks']> = [
           id: 'household-1',
           name: 'The Lin family household on Roosevelt Road',
           role: 'owner',
+          hasOwner: true,
+          pendingTransfer: null,
         },
       },
     },

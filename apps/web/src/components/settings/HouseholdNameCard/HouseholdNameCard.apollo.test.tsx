@@ -36,6 +36,8 @@ const HOUSEHOLD = {
   __typename: 'Household' as const,
   id: 'household-1',
   role: 'owner' as const,
+  hasOwner: true,
+  pendingTransfer: null,
 }
 
 function mocks(): NonNullable<MockedProviderProps['mocks']> {

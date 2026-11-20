@@ -92,6 +92,8 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
                 id: 'hh-1',
                 name: 'Home',
                 role: mockHouseholdRole(),
+                hasOwner: true,
+                pendingTransfer: null,
               },
             },
             loading: false,

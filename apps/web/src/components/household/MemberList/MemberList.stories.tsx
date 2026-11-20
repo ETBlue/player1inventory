@@ -13,6 +13,9 @@ const meta = {
     onSetRole: fn(),
     onRemove: fn(async () => {}),
     onLeave: fn(async () => {}),
+    householdName: 'The Lin home',
+    onTransfer: fn(async () => {}),
+    onCancelTransfer: fn(async () => {}),
   },
 } satisfies Meta<typeof MemberList>
 
@@ -42,7 +45,10 @@ function people(me: string): MemberRow[] {
   ]
 }
 
-/** The owner: the role control and Remove on every other row. */
+/**
+ * The owner: the role control, Remove and Transfer ownership on every other
+ * row. Their own row says why they cannot leave.
+ */
 export const AsOwner: Story = {
   args: { members: people('u-olive'), callerRole: 'owner' },
 }
@@ -78,5 +84,50 @@ export const AsOwnerWithNoLocationRoles: Story = {
     })),
     callerRole: 'owner',
     showLocationRoleMarks: true,
+  },
+}
+
+/**
+ * Households H6b task K.7: the owner offered the household to Mona. Her row
+ * waits for her, with Cancel, and no row offers a transfer (one at a time).
+ */
+export const AsOwnerWaitingForAccept: Story = {
+  args: {
+    members: people('u-olive'),
+    callerRole: 'owner',
+    pendingTransfer: { toUserId: 'u-mona', toName: 'Mona' },
+  },
+}
+
+/**
+ * Households H6b task K.7, owner decision O37-A: Mona is the last person
+ * left. Her Leave confirm says the household and everything in it will be
+ * deleted.
+ */
+export const AsLastPerson: Story = {
+  args: {
+    members: [
+      {
+        userId: 'u-mona',
+        displayName: 'Mona',
+        role: 'manager',
+        isMe: true,
+      },
+    ],
+    callerRole: 'manager',
+    lastPerson: true,
+  },
+}
+
+/**
+ * Households H6b task K.7b, owner decision O48: the list shown is still the
+ * cached copy, and the server has not answered yet. Leave shows but cannot be
+ * pressed, so a stale list cannot hide the last-person warning.
+ */
+export const AsMemberLeaveWaitsForServer: Story = {
+  args: {
+    members: people('u-mia'),
+    callerRole: 'member',
+    leaveDisabled: true,
   },
 }

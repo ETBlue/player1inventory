@@ -60,7 +60,14 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     const household = options?.skip ? undefined : state.household
     return {
       data: household
-        ? { household: { __typename: 'Household', ...household } }
+        ? {
+            household: {
+              __typename: 'Household',
+              hasOwner: true,
+              pendingTransfer: null,
+              ...household,
+            },
+          }
         : undefined,
       loading: !options?.skip && !household,
       error: undefined,

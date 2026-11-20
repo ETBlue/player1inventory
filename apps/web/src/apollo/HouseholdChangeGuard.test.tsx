@@ -39,7 +39,14 @@ const reloadMock = vi.fn()
 const originalLocation = window.location
 
 function household(id: string): CloudHousehold {
-  return { __typename: 'Household', id, name: `Home ${id}`, role: 'member' }
+  return {
+    __typename: 'Household',
+    id,
+    name: `Home ${id}`,
+    role: 'member',
+    hasOwner: true,
+    pendingTransfer: null,
+  }
 }
 
 function setHousehold(next: Partial<typeof householdState.value>) {

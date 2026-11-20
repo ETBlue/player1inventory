@@ -588,7 +588,12 @@ test('user restoring a cloud backup with Clear & import gets no extra empty Home
   // When the backup is restored over it with "Clear & import"
   await settings.navigateTo()
   await settings.triggerImport(downloadPath)
-  await settings.chooseConflictStrategy('Clear & import')
+  // In cloud "Clear & import" asks for the household name, typed exactly
+  // (owner decision O40, households H6 task K.0)
+  const { household } = await user<{ household: { name: string } }>(
+    `query { household { name } }`,
+  )
+  await settings.chooseClearAndImport(household.name)
   await settings.waitForImportDone('cloud')
 
   // Then both locations are back under their own ids, with their own stock

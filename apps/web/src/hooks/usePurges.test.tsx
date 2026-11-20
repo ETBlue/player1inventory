@@ -145,6 +145,8 @@ function wrapper({ children }: { children: ReactNode }) {
                   id: 'household-next',
                   name: 'Next',
                   role: 'member',
+                  hasOwner: true,
+                  pendingTransfer: null,
                 },
               },
             }

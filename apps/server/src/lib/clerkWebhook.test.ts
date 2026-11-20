@@ -6,11 +6,15 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 // The webhook writes through `prisma.user`. Here that is the stateful `User`
 // double from src/test/userFake.ts, so each test can read back exactly which
-// rows exist after an event.
+// rows exist after an event. Since households H6b task K.4, `user.deleted`
+// runs a transaction over the household models too (the hand-over), so the
+// double is the whole household world. These tests seed no household, so the
+// hand-over finds no membership. Its own tests are in
+// clerkWebhook.handover.test.ts.
 vi.mock('./prisma.js', async () => {
-  const { createUserFake } = await import('../test/userFake.js')
-  const userFake = createUserFake()
-  return { prisma: { user: userFake.client, $userFake: userFake } }
+  const { createHouseholdWorld } = await import('../test/householdWorld.js')
+  const world = createHouseholdWorld()
+  return { prisma: { ...world.client, $userFake: world.users } }
 })
 
 import { prisma } from './prisma.js'

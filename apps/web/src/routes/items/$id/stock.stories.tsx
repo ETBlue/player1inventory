@@ -362,6 +362,8 @@ function CloudStockHarness() {
             id: 'household-stock-story',
             name: 'The Lin home',
             role: 'owner',
+            hasOwner: true,
+            pendingTransfer: null,
           },
         },
       },

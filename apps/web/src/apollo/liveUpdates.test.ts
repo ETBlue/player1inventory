@@ -209,6 +209,8 @@ describe('QUERIES_BY_KIND', () => {
         'GetVendors',
         // Households H6, decision T57
         'HouseholdActivity',
+        // Households H6b task K.5: each offer names its household
+        'MyOwnershipOffers',
         'ItemCountByRecipe',
         'ItemCountByTag',
         'ItemCountByVendor',
@@ -577,6 +579,8 @@ describe('a GetHousehold that failed with NO_HOUSEHOLD (households H5b, task G.8
                     id: 'household-new',
                     name: 'New home',
                     role: 'owner',
+                    hasOwner: true,
+                    pendingTransfer: null,
                   },
                 },
               }

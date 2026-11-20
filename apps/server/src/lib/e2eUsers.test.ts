@@ -5,11 +5,14 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 // All three routes use `prisma.user`. Here that is the stateful `User`
 // double from src/test/userFake.ts, so a test can read back exactly which
-// rows exist after a request.
+// rows exist after a request. Since households H6b task K.4 the `/deleted`
+// route runs the household hand-over in a transaction, so the double is the
+// whole household world. No household is seeded here, so the hand-over finds
+// no membership (its tests: clerkWebhook.handover.test.ts).
 vi.mock('./prisma.js', async () => {
-  const { createUserFake } = await import('../test/userFake.js')
-  const userFake = createUserFake()
-  return { prisma: { user: userFake.client, $userFake: userFake } }
+  const { createHouseholdWorld } = await import('../test/householdWorld.js')
+  const world = createHouseholdWorld()
+  return { prisma: { ...world.client, $userFake: world.users } }
 })
 
 import { prisma } from './prisma.js'

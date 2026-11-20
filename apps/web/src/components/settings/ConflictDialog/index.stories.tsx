@@ -118,3 +118,19 @@ export const WithoutClear: Story = {
     },
   },
 }
+
+/**
+ * What the household owner sees in cloud mode: "Clear & import" opens a
+ * second confirm that asks for the household name, typed exactly (owner
+ * decision O40, households H6 task K.0). Local mode passes no name and keeps
+ * the one-press button.
+ */
+export const ClearAsksHouseholdName: Story = {
+  args: {
+    clearConfirmName: 'The Lins',
+    conflicts: {
+      ...emptyConflicts,
+      items: [{ id: 'item-1', name: 'Milk', matchReasons: ['id'] }],
+    },
+  },
+}

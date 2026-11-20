@@ -7,6 +7,7 @@ import {
   HOUSEHOLD_MOVE_TIMEOUT_MS,
   lockHouseholds,
   lockUser,
+  retryOnceOnConflict,
 } from '../lib/household.js'
 import {
   alreadyMember,
@@ -21,6 +22,7 @@ import {
 import { recordActivity } from '../lib/activity.js'
 import { prisma } from '../lib/prisma.js'
 import { publishHouseholdChange } from '../lib/publishChange.js'
+import { householdAnswer } from './ownership.resolver.js'
 import type { Resolvers } from '../generated/graphql.js'
 
 // Create, list, preview and revoke household invites (households H5b, task
@@ -75,36 +77,6 @@ function isOpen(
   // Strict, as the list's `expiresAt: { gt: now }` and G.4's claim: an
   // invite that expires at exactly `now` is no longer open.
   return row.usedAt === null && row.revokedAt === null && row.expiresAt.getTime() > now.getTime()
-}
-
-/** True for Prisma's "write conflict or deadlock" (P2034). */
-function isWriteConflict(err: unknown): boolean {
-  return (
-    typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'P2034'
-  )
-}
-
-/**
- * Run `work` (a whole transaction), and run it ONCE more when it fails with
- * P2034, the error Prisma gives for a Postgres deadlock (`40P01`) or a write
- * conflict. A second failure is thrown as it is. Postgres has rolled the
- * first attempt back, so the second starts from a clean state.
- *
- * Why `joinHousehold` needs it: deleting an empty own household also sets
- * `User.activeHouseholdId` to null on every `User` row that still names it
- * (`onDelete: SetNull`), so a join can write another person's `User` row
- * while it holds household locks. Two joins at once can then wait on each
- * other. Also two people who join each other's household at the same moment.
- * Postgres breaks the wait by failing one of them; one retry turns that into
- * a normal join (or a normal refusal, when the invite is gone by then).
- */
-export async function retryOnceOnConflict<T>(work: () => Promise<T>): Promise<T> {
-  try {
-    return await work()
-  } catch (err) {
-    if (!isWriteConflict(err)) throw err
-    return work()
-  }
 }
 
 const INVALID_PREVIEW = {
@@ -456,7 +428,7 @@ export const inviteResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       }, { timeout: HOUSEHOLD_MOVE_TIMEOUT_MS }))
 
       await publishHouseholdChange(ctx, ['LOCATION'], joined.id)
-      return joined
+      return householdAnswer(joined)
     },
 
     // Owner or manager. ONE conditional write, so a revoke and a join at the

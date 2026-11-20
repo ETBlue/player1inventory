@@ -21,7 +21,14 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
 function withName(name: string): QueryResult {
   return {
     data: {
-      household: { __typename: 'Household', id: 'h1', name, role: 'member' },
+      household: {
+        __typename: 'Household',
+        id: 'h1',
+        name,
+        role: 'member',
+        hasOwner: true,
+        pendingTransfer: null,
+      },
     },
     loading: false,
   }

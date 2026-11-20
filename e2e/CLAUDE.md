@@ -147,15 +147,23 @@ session ran `verify:migration` there, which applies `drop_user_scope`: `Location
 catalog models have no `userId` column, and `Location` has no `isDefault`. So **`main`'s
 cloud E2E cannot run on this database until H3a merges**: `main`'s server writes and reads
 those columns. A cloud location is no longer "the default" (see below), and `/e2e/cleanup`
-deletes **20** models since households H6 task J.1 added `HouseholdActivity` (19 since
-households H5b task G.6 added `HouseholdInvite`; count the distinct `deleteMany` models in
-`lib/e2eCleanup.ts`, measured 20 on 2026-11-20).
+deletes **21** models since households H6b task K.1 added `OwnershipOffer` (20 since
+households H6 task J.1 added `HouseholdActivity`, 19 since households H5b task G.6 added
+`HouseholdInvite`; count the distinct `deleteMany` models in `lib/e2eCleanup.ts`, measured
+21 on 2026-11-20).
 
 The last E2E counts on the H3a branch, 2026-11-11, from **three separate runs** (not one
 `pnpm test:e2e:all`): `cloud` **126 passed / 7 skipped**, `local` **178 passed / 6 skipped**,
 `pwa` **73 passed**. Re-measure rather than quote.
 
-The last whole gate, `pnpm test:e2e:all` on `feature/households-h6a` on 2026-11-20 (households
+The last whole gate, `pnpm test:e2e:all` on `feature/households-h6b` at `5cd82bf4` on
+2026-11-20 (households H6b task K.9), all three green on the first run, no retry, no flaky
+test: `local` **178 passed / 11 skipped** in 3m39s, `cloud` **197 passed / 7 skipped** in
+58m43s, `pwa` **73 passed** in 1m34s; 63m56s in all. Load average 2.70 at the start, 2.81 at
+the end, between 1.2 and 1.9 during the `cloud` run. `cloud` grew by 9 tests
+(`household-ownership.spec.ts`) and by about 8.5 minutes.
+
+The gate before it, `pnpm test:e2e:all` on `feature/households-h6a` on 2026-11-20 (households
 H6 task J.9), all three green with no retry: `local` **178 passed / 11 skipped** in 3m36s,
 `cloud` **188 passed / 7 skipped** in 50m22s, `pwa` **73 passed** in 1m34s; 55m32s in all.
 Load average 1.73 at the start, 2.64 at the end. The `cloud` project is now most of the time.
@@ -303,7 +311,11 @@ specs below run against real Postgres.
 ## `cleanup-endpoint.spec.ts` — the behavioural guard on `/e2e/cleanup`
 
 `e2e/tests/cleanup-endpoint.spec.ts` (added 2026-09-25, one cloud test) seeds **one row of
-every model `/e2e/cleanup` deletes** — all 20 since households H6 task J.1 (the activity
+every model `/e2e/cleanup` deletes** — all 21 since households H6b task K.8 (the
+ownership offer is a real `offerOwnership` from the user, the owner, to a second member who
+joined through a second invite; it is in the user's own household and TO someone else, so
+only the `householdId: owned` half of the offer filter can delete it), 20 since households
+H6 task J.1 (the activity
 row is written by the same `createInvite` call, read back through `householdActivity`, and
 first run on real SQL in task J.8), 19 since households H5b task G.6 (the invite
 is made with the real `createInvite` mutation), 18 since households H3a task 3.10, 15 since
@@ -316,9 +328,11 @@ and asserts empty. It is cloud-only and has no browser: it is in the `cloud` pro
 `{ count }`; `index.ts` used to throw those away and answer `{ ok: true }`. It now answers
 `{ ok: true, deleted: { inventoryLogs, cartItems, carts, itemTags, itemVendors,
 recipeItems, itemStocks, items, tags, tagTypes, vendors, recipes, shelves,
-locationMembers, locations, householdInvites, householdActivities, householdMembers,
-households, users } }` — 20 keys since households H6 task J.1, 19 since households H5b task
-G.6, 18 since households H3a task 3.10.
+locationMembers, locations, householdInvites, householdActivities, ownershipOffers,
+householdMembers, households, users } }` — 21 keys since households H6b task K.1, 20 since
+households H6 task J.1, 19 since households H5b task G.6, 18 since households H3a task 3.10.
+Between K.1 and K.8 the spec reported `"ownershipOffers":0` and failed, because nothing
+seeded an offer; it was not run in that window.
 
 **The invite statement runs BEFORE `household` and BEFORE `user`.** `HouseholdInvite.householdId`
 is `ON DELETE CASCADE`, so after the household delete the count would read 0.
@@ -944,6 +958,64 @@ locations or stock. So the J.8 mutations widened the scope to this spec's users 
 (for example `{ household: { members: { some: { userId: { startsWith:
 'e2e-test-user-2-purge-' } } } } }`). The mutation table is in the H6 plan, task J.8.
 
+**`household-ownership.spec.ts` joined on 2026-11-20 (households H6b task K.8).** Cloud only,
+up to two browsers, in `local`'s `testIgnore`. The first real-SQL run of `offerOwnership`,
+`acceptOwnershipOffer`, `declineOwnershipOffer`, the hand-over in `handleClerkEvent` (through
+`POST /e2e/users/:id/deleted`), and the O37-A delete in `leaveHousehold`. Page objects:
+`e2e/pages/MembersPage.ts` (the transfer methods are new) and `e2e/pages/OwnershipBanner.ts`
+(new). 9 tests:
+
+| Test | What it proves |
+|---|---|
+| 1 | the owner transfers to MIA on the Members page; MIA's open tab shows the banner with no reload; MIA accepts; the owner is a manager and MIA the owner, on the owner's open page too |
+| 2 | MIA declines from the banner; the offer is gone, the owner still owns, and the owner's open page offers Transfer again |
+| 3 | the owner's account is deleted; MIA (manager) gets the hand-over banner with no reload; BEN (member) gets none and sees "This household has no owner."; MIA accepts; `hasOwner` is true again |
+| 4 | BEN, Garage's only organizer, deletes their account: `hasOrganizer` false, "No organizer" on the list, BEN gone from Members and from Garage's people |
+| 5 | the only live person deletes their account: the household goes with a tag WITH a tag type, an item, stock, a cart row and a log (T64, the `NoAction` order on real SQL) |
+| 6 | two managers accept the hand-over together through `makeGql`: exactly one wins and the household has one owner. The loser gets `OFFER_GONE` when its first read came before the winner's commit (it then waited at the lock), or `FORBIDDEN` when it came after. Both are accepted; any other answer fails. The `loser answer` annotation says which ran. Only an `OFFER_GONE` run exercises the row lock |
+| 7 | owner decision O37-A: the last live person leaves a household with no owner; the confirm warns, and the household is deleted |
+| 8, 9 | axe, light and dark: the transfer confirm, the Members page with a waiting offer, the banner with a transfer offer and with a hand-over offer |
+
+Every test except 8 and 9 also checks that ANOTHER household (OTTO's) is untouched.
+
+**GHOST: a member whose account is already deleted.** Since K.4 a `user.deleted` event
+removes the person from every household, so no real event leaves a deleted account in a
+household. Tests 5 and 7 need one: without it the "only person" counts give the same answer
+with or without their `deletedAt` filter. The spec marks GHOST deleted while GHOST is in no
+household, and THEN GHOST joins through a real invite. The E2E server checks no Clerk
+session, so a deleted account can still send requests here.
+
+**The cleanup trap.** `/e2e/cleanup` deletes the households a user OWNS. A household whose
+owner's account was deleted has no owner row until someone accepts, so no cleanup deletes it.
+Each test ends with an accept, a delete, or a live owner (the table is in the spec header).
+`rescueOrphans` runs before the cleanups in both hooks: each spec user who can hold an offer
+(MIA, BEN, MAX) accepts any open offer, and GHOST's deletion is sent again (a household where GHOST is the only member left is
+deleted by it). That covers a test that fails part way, and every mutation run below.
+
+**A tab whose live update is checked is opened with `openLive`.** A tab's FIRST socket
+connect refetches nothing (`connects > 1` in `apps/web/src/apollo/liveUpdates.ts`), so an
+event sent before the subscription is registered is lost for good. Until the review of K.8,
+the owner's tab in tests 1 and 2 and BEN's tab in test 3 only loaded the page; test 3 sent
+the `user.deleted` event about one second after BEN's page showed. `openLive` warms each
+such tab up, waits for the warm-up's `CATALOG` refetches (`MyOwnershipOffers`, and
+`GetHousehold` on the Members page) in that tab AND in the tabs already open, and the test
+ends with `stillSameDocument` on that tab.
+
+**Where to read the result back.** Test 5 and test 7 read `User.activeHouseholdId` through
+`GET /e2e/users/:id`. It is `onDelete: SetNull`, so it goes null only when the household row is
+deleted; a leave writes no `User` row (decision T16), and a hand-over keeps it.
+`Household.ownerGoneAt` has no GraphQL field and no E2E route, so no test reads it.
+
+**Timing.** Measured on 2026-11-20 with each test run alone: tests 4, 5 and 7 took 48.7 s,
+42.1 s and 48.7 s, hooks included (the hooks clean 7 users twice). So 1, 3, 4, 5, 7, 8 and 9
+carry 90 s, 2 and 6 carry 60 s. The first run failed test 5 at the 30 s default; alone, with
+a longer budget, it passed.
+
+Proved by mutation on 2026-11-20, each in `cloud`, restored from a copy and checked with
+`diff -q`. The table is in the H6 plan, task K.8. One stayed green on purpose:
+`countedOrganizerIn` without `deletedAt: null` leaves test 4 green, because the hand-over
+already deleted BEN's role rows. That is a negative control, not coverage.
+
 **`DataModeCard`'s Switch flow renders in E2E mode — since households H4 task E.6.** A
 production change made for a test, like `PostLoginMigrationDialog`'s below. The cloud
 section used to be left out in E2E mode because its Sign Out flow calls `useClerk()`.
@@ -977,7 +1049,8 @@ What the number has been, so you can see how fast it moves rather than reuse a f
 | 2026-11-17 | `feature/households-h5`, after task F.8 | 168 |
 | 2026-11-18 | `feature/households-h5b`, after task G.10. G.10 added 8 (`household-invites.spec.ts`); the other 1 came from an earlier H5b task and is not attributed here | 177 |
 | 2026-11-19 | `feature/households-h5c`, after task H.8 (`location-people.spec.ts`, 9). `local` still collects 189 in 23 files | 186 |
-| 2026-11-20 | `feature/households-h6a`, after task J.8 (`household-activity-purges.spec.ts`, 7; `purge-two-households.spec.ts`, 2 more). `local` still collects 189 in 23 files | **195** |
+| 2026-11-20 | `feature/households-h6a`, after task J.8 (`household-activity-purges.spec.ts`, 7; `purge-two-households.spec.ts`, 2 more). `local` still collects 189 in 23 files | 195 |
+| 2026-11-20 | `feature/households-h6b`, after task K.8 (`household-ownership.spec.ts`, 9). `local` still collects 189 in 23 files | **204** (38 files) |
 
 H5a added 9 tests and removed 1. All of them RUN only in `cloud`; the six in the two
 shared spec files are also collected (and skipped) in `local`, which went 184 → 189: 3 in `location-switcher.spec.ts` (task
@@ -1341,8 +1414,16 @@ The order is therefore: `page.goto('/')` → write `data-mode=local` → `page.r
 After the reload the copy no longer starts by itself. `PostLoginMigrationDialog` first asks
 "Copy your offline data into {household}?", naming the household, once `GetHousehold` and
 `GetLocations` have both loaded. The spec waits for that heading, checks the "shared" line is
-absent (the E2E user owns its household), and presses **Copy here**. Only then does
-"Copying local data to cloud…" show.
+absent (the E2E user owns its household), and presses **Copy here**. The stored strategy is
+`clear`, so since households H6 task K.0 (owner decision O40) a second confirm opens: its own
+**Copy here** is disabled until the household name is typed exactly. The spec reads the name
+with `query { household { name } }`, checks the cloud seed is still there, types it and
+confirms. Only then does "Copying local data to cloud…" show.
+
+**`ImportCard`'s "Clear & import" asks for the household name too, in cloud.** Use
+`SettingsPage.chooseClearAndImport(householdName)`: it presses the button, checks the typed-name
+confirm (`role="alertdialog"`) is disabled, types the name and confirms. Pass `null` in local
+mode, which has no household and still imports on the first press.
 
 ### Do NOT set `data-mode` in `page.addInitScript`
 

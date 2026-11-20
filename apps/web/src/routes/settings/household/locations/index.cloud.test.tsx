@@ -61,6 +61,27 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
   return {
     ...original,
+    // The ownership offer banner in `__root.tsx` (households H6b, task K.6)
+    // calls these in cloud mode. This factory replaces `src/test/setup.ts`'s,
+    // so they are stubbed here too: the real hooks need an ApolloProvider.
+    useMyOwnershipOffersQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+      refetch: () => Promise.resolve(),
+    }),
+    useAcceptOwnershipOfferMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useDeclineOwnershipOfferMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useDismissOwnershipOfferMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     // `useItems` reads the catalog from `GetItems` in a household with no
     // location (households H5, review of task F.7). This factory replaces
     // setup.ts's, so it must stub that hook too: the real one needs an
@@ -138,6 +159,8 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
           id: 'hh-1',
           name: 'Home',
           role: mockHouseholdRole(),
+          hasOwner: true,
+          pendingTransfer: null,
         },
       },
     }),

@@ -180,6 +180,8 @@ export function seedCloudHousehold(locations: readonly object[]) {
       id: 'hh-1',
       name: 'Home',
       role: 'owner',
+      hasOwner: true,
+      pendingTransfer: null,
     },
   }
 }

@@ -1,5 +1,6 @@
-import type { ApolloClient } from '@apollo/client'
+import { type ApolloClient, NetworkStatus } from '@apollo/client'
 import { useApolloClient } from '@apollo/client/react'
+import { useRef } from 'react'
 import { forgetHousehold, switchToHousehold } from '@/apollo/householdGuard'
 import { refetchAfterWrite } from '@/apollo/refetchAfterWrite'
 import {
@@ -43,6 +44,13 @@ export function useHouseholdMembers(): {
   data: HouseholdPerson[] | undefined
   isLoading: boolean
   isError: boolean
+  /**
+   * `true` once the server has answered this list in this mount (owner
+   * decision O48). Before that, `data` may be only the cache restored from
+   * IndexedDB, also after a failed read (offline). Never goes back to
+   * `false`: later changes come through refetches.
+   */
+  isFromServer: boolean
   /** Read the list again (a Retry). Never rejects. */
   refetch: () => void
 } {
@@ -52,10 +60,30 @@ export function useHouseholdMembers(): {
     skip,
     fetchPolicy: 'cache-and-network',
   })
+  // The same rule as `useLocations().isFromServer`: a `ready` status with
+  // data that comes right after `loading` or `refetch` is a network answer.
+  // A `ready` right after `error` is not: Apollo can read the restored cache
+  // again after another write and report `ready` (re-review of H5c H.7).
+  // Refs written during render: the flag only goes from `false` to `true`,
+  // and both refs record statuses Apollo really gave.
+  const serverAnsweredRef = useRef(false)
+  const lastStatusRef = useRef<NetworkStatus | undefined>(undefined)
+  if (!skip) {
+    const before = lastStatusRef.current
+    if (
+      !!cloud.data &&
+      cloud.networkStatus === NetworkStatus.ready &&
+      (before === NetworkStatus.loading || before === NetworkStatus.refetch)
+    ) {
+      serverAnsweredRef.current = true
+    }
+    lastStatusRef.current = cloud.networkStatus
+  }
   return {
     data: cloud.data?.householdMembers,
     isLoading: cloud.loading && !cloud.data,
     isError: !!cloud.error && !cloud.data,
+    isFromServer: serverAnsweredRef.current,
     refetch: () => {
       if (!skip) cloud.refetch().catch(() => {})
     },

@@ -559,6 +559,28 @@ describe('joinHousehold keeps the joiner’s own household when it is not empty'
     ).toEqual(['hh_x'])
   })
 
+  it('an ownership offer does not keep it, and goes with it (H6b decision T49)', async () => {
+    // Given PAT's own household holds only "Home" and one ownership offer.
+    // An offer is about who will own the household, not data a person would
+    // lose, so the join must still delete the household (decision T49), and
+    // the offer goes with it (ON DELETE CASCADE).
+    await world.client.ownershipOffer.create({
+      data: { householdId: 'hh_p', toUserId: PAT, kind: 'handover' },
+    })
+    // And one offer of another household, which must stay
+    await world.client.ownershipOffer.create({
+      data: { householdId: 'hh_x', toUserId: PAT, fromUserId: YUKI, kind: 'transfer' },
+    })
+
+    // When PAT joins hh_h
+    const res = await join(MAIN, PAT)
+
+    // Then the join succeeds and hh_p is deleted, with its offer
+    expect(res.errors).toBeUndefined()
+    expect(householdIds()).not.toContain('hh_p')
+    expect(world.households.state.ownershipOffers.map((o) => o.householdId)).toEqual(['hh_x'])
+  })
+
   it("another household's data does not keep it", async () => {
     // A control for the cases above: rows that belong to hh_x only.
     world.contents.rows.items.push({ householdId: 'hh_x' })
