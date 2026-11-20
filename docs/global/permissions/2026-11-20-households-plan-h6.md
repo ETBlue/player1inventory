@@ -1971,6 +1971,64 @@ Known gaps found in review:
 
 ---
 
+## Task K.7b — the hand-over text (O45) and Leave waits for the server (O48)
+
+Needs owner decisions **O45** and **O48** (answered 2026-11-20).
+
+**Files:** `i18n/locales/en.json`, `tw.json`, `OwnershipOfferBanner.test.tsx`,
+`OwnershipOfferBanner.stories.test.tsx`, `docs/global/permissions/2026-10-04-households-design.md`
+(O45); `hooks/useHouseholdMembers.ts` and its test, `components/household/MemberList/` (list,
+test, story, smoke test), `routes/settings/household/members.tsx`, `members.cloud.test.tsx`,
+`components/CLAUDE.md`, `hooks/CLAUDE.md`, `routes/settings/CLAUDE.md` (O48).
+
+- [x] **Step 1: failing tests:**
+  - the `en` and `tw` hand-over texts are the O45 texts (jsdom renders English only, so the
+    tw text is checked through `i18n.getFixedT('tw')`); the banner tests quote the new text;
+  - `useHouseholdMembers().isFromServer` is `false` while only the cached list shows, `true`
+    after the server answers, `false` after a failed read over a cached list, `true` after the
+    first answer with no cache;
+  - the page: a cached list of Mona and Mia, the server answers Mona alone (held by
+    `createHoldLink`). Before the answer Leave is disabled; after it Mia is gone, Leave works
+    and its confirm gives `lastLeaveWarning`. After a failed read Leave stays off;
+  - `MemberList` with `leaveDisabled`: Leave shows, cannot be pressed, no confirm.
+- [x] **Step 2:** red (7 O45, 3 hook, 2 page, 1 list). **Step 3:** the texts;
+  `isFromServer` (the `useLocations` rule: `ready` with data right after `loading` or
+  `refetch`); `MemberList.leaveDisabled`; the page passes `!members.isFromServer`.
+  **Step 4:** story `AsMemberLeaveWaitsForServer` and its smoke test, the docs, the gate.
+
+**Done 2026-11-20** (`5cb7cfdc` O45, `eed468b5` O48).
+
+| Key / part | What |
+|---|---|
+| `ownership.banner.handover` (O45) | The owner of {{household}} deleted their account. Do you want to become the owner? / {{household}} 的擁有者已刪除帳號。你要成為擁有者嗎？ |
+| `useHouseholdMembers().isFromServer` (O48) | `true` once the server has answered the list in this mount; never back to `false` |
+| `MemberList.leaveDisabled` (O48) | Leave shows but cannot be pressed |
+| `members.tsx` (O48) | `leaveDisabled={!members.isFromServer}`. Offline, Leave stays off; a leave could not be sent then anyway |
+
+Other buttons were checked for the same risk: Remove, the role change and Transfer on a
+stale list only target a person who left, and the server refuses them with an error toast.
+None deletes without a warning, so they are unchanged.
+
+Tests: web **3721 / 364 → 3729 / 364** (+8). Server **2689 / 85**, `scripts/spec` **70**.
+
+**Mutation checks** (restored from a saved copy, `diff -q` identical each time):
+
+| # | Mutation | Red |
+|---|---|---|
+| O45-M1 | `tw` handover set back to 「…已經不在了。…」 | 1: the text test |
+| O48-M1 | the page passes `leaveDisabled={false}` | 2: both page O48 tests, `Received element is not disabled` |
+| O48-M2 | `isFromServer: !!cloud.data` | 4: 2 hook tests, 2 page tests |
+| O48-M3 | `MemberList` ignores `leaveDisabled` | 4: the list test, the smoke test, 2 page tests |
+| O48-M4 | the latch reads `networkStatus === ready` only | **0, stays green.** The "ready right after error" case (a cache re-read) is not reachable here. Recorded, not counted |
+
+**The gate (K.7b), 2026-11-20, Node 22.17.1, each command alone:** `pnpm lint` exit 0;
+`pnpm build` exit 0, `grep TS6385` finds nothing; `build-storybook` exit 0; `pnpm check` exit 0
+(after fixing 1 import order and 2 format errors); `pnpm test` exit 0. No E2E. Known gap: at
+load about 6, 2 of 3 runs of the two `OwnershipOfferBanner` test files had 1 failing test (not
+captured); the next 7 runs were green. K.9's gate should watch for it.
+
+---
+
 ## Task K.8 — E2E: transfer and hand-over on real SQL
 
 **Files:** `e2e/tests/household-ownership.spec.ts` (new), `e2e/pages/MembersPage.ts`,
@@ -2229,6 +2287,7 @@ Filled in from the task reports and reviews.
 | K.7 | (not in the plan) a Decline or Not now on the page | Not built. The page offers only **Become the owner**; saying no is done from the banner. A person who pressed Not now and then wants to decline has no button for it (the banner hides a dismissed offer). See *Known gaps* |
 | K.7 | Files: `MemberList` and the page only | `test/cloudRoleStory.tsx` also changed: `CloudRolePage` always answered `GetHousehold` with `hasOwner: true` and no pending offer, so no story could show the new states. It takes an optional `ownership` override now |
 | K.7 | `transferLabel` tw 「把擁有權轉移給 {{name}}」 "holds the visible word (WCAG 2.5.3)" | True in English only. In tw the visible 「轉移擁有權」 was not inside the name. Fixed in `30fe4d5d` to 「轉移擁有權給 {{name}}」, with a two-language test |
+| K.7 (known gaps) | A stale cached member list can hide the O37-A warning, and "the window is one round trip" | True only when the read works. When the read fails while online, Apollo keeps the cached list with no time limit, and Leave could still be sent. Since K.7b, Leave stays off until a read succeeds |
 
 ## Status
 
@@ -2384,7 +2443,7 @@ English first, then the first `tw` version.
 | `…danger.typeName` | Type {{name}} to confirm | 請輸入 {{name}} 以確認 |
 | `settings.locations.danger.removeAll` | Remove all items | 移除所有物品 |
 | `…danger.removeAllDescription` | Deletes this location's stock and the items in its carts. The location, its people and its logs stay. | 刪除這個據點的庫存和購物車裡的物品。據點、人員和紀錄會保留。 |
-| `ownership.banner.handover` | The owner of {{household}} is gone. Do you want to become the owner? | {{household}} 的擁有者已經不在了。你要成為擁有者嗎？ |
+| `ownership.banner.handover` | ~~The owner of {{household}} is gone.~~ Replaced by O45: The owner of {{household}} deleted their account. Do you want to become the owner? | ~~{{household}} 的擁有者已經不在了。~~ O45: {{household}} 的擁有者已刪除帳號。你要成為擁有者嗎？ |
 | `ownership.banner.transfer` | {{name}} wants to make you the owner of {{household}}. | {{name}} 想讓你成為 {{household}} 的擁有者。 |
 | `ownership.accept` | Accept | 接受 |
 | `ownership.notNow` | Not now | 稍後再說 |
