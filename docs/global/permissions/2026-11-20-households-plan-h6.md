@@ -2397,7 +2397,7 @@ with the owner's consent (J.9 Step 2).
 After the fix, `pnpm check:e2e`, `pnpm lint:e2e` and `pnpm typecheck:e2e` were run again:
 exit 0. The rest of the gate was not re-run: the fix changed one `e2e/` spec only.
 
-**H6b built 2026-11-20, tasks K.0 to K.9 (with K.4b and K.7b)**, on `feature/households-h6b`, from `develop` after H6a (#392). **Not merged, not deployed.** One additive migration, `20261120100000_add_ownership_offers`, proved on the test database before K.8. Deploy notes: section 12 of the H4 runbook. Before the release: the O36 count, and the O44 script if the count is not 0.
+**H6b built 2026-11-20, tasks K.0 to K.9 (with K.4b and K.7b)**, on `feature/households-h6b`, from `develop` after H6a (#392). **Merged into `develop` (2026-11-21, #393, merge `9701ddff`), not deployed.** One additive migration, `20261120100000_add_ownership_offers`, proved on the test database before K.8. Deploy notes: section 12 of the H4 runbook. Before the release: the O36 count, and the O44 script if the count is not 0.
 
 **The final gate (K.9), 2026-11-20, Node 22.17.1, every command alone, at `5cd82bf4`:**
 

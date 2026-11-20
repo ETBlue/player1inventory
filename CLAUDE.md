@@ -270,7 +270,7 @@ that really set up that role.
 > | `.graphql` schema files | **14** (`activity.graphql` is new) | `ls apps/server/src/schema/*.graphql \| wc -l` |
 >
 > **Transfer, the hand-over and deleted accounts are built in H6b** (on
-> `feature/households-h6b`, from `develop` after H6a #392; **not merged, not deployed**; plan
+> `feature/households-h6b`, from `develop` after H6a #392; **merged into `develop` (2026-11-21, #393, merge `9701ddff`), not deployed**; plan
 > `docs/global/permissions/2026-11-20-households-plan-h6.md`, tasks K.0 to K.9; deploy notes
 > in section 12 of the H4 runbook). **One additive migration**,
 > `20261120100000_add_ownership_offers`: one enum (`OfferKind`: `transfer`, `handover`) and
