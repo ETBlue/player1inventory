@@ -156,7 +156,14 @@ The last E2E counts on the H3a branch, 2026-11-11, from **three separate runs** 
 `pnpm test:e2e:all`): `cloud` **126 passed / 7 skipped**, `local` **178 passed / 6 skipped**,
 `pwa` **73 passed**. Re-measure rather than quote.
 
-The last whole gate, `pnpm test:e2e:all` on `feature/households-h6a` on 2026-11-20 (households
+The last whole gate, `pnpm test:e2e:all` on `feature/households-h6b` at `5cd82bf4` on
+2026-11-20 (households H6b task K.9), all three green on the first run, no retry, no flaky
+test: `local` **178 passed / 11 skipped** in 3m39s, `cloud` **197 passed / 7 skipped** in
+58m43s, `pwa` **73 passed** in 1m34s; 63m56s in all. Load average 2.70 at the start, 2.81 at
+the end, between 1.2 and 1.9 during the `cloud` run. `cloud` grew by 9 tests
+(`household-ownership.spec.ts`) and by about 8.5 minutes.
+
+The gate before it, `pnpm test:e2e:all` on `feature/households-h6a` on 2026-11-20 (households
 H6 task J.9), all three green with no retry: `local` **178 passed / 11 skipped** in 3m36s,
 `cloud` **188 passed / 7 skipped** in 50m22s, `pwa` **73 passed** in 1m34s; 55m32s in all.
 Load average 1.73 at the start, 2.64 at the end. The `cloud` project is now most of the time.
