@@ -299,6 +299,18 @@ test.describe('the activity log and the danger zones', () => {
     await expect(
       sidebar.getByRole('link', { name: 'Tags', exact: true }),
     ).toBeVisible()
+    // The Activity link is also hidden while the household role LOADS
+    // (`canReadActivity` is false then), so its absence proves nothing until
+    // the role is known. The import card's member line ("Only the owner or a
+    // manager can import data.", `settings.import.memberNotice`,
+    // ImportCard.tsx:430-435) shows only once `GetHousehold` has answered
+    // `member`. Without this wait the check below passed with
+    // `canReadActivity` given to every known role (J.8 review).
+    await expect(
+      page.getByText('Only the owner or a manager can import data.', {
+        exact: true,
+      }),
+    ).toBeVisible()
     await expect(activity.sidebarLink()).toHaveCount(0)
 
     // And the Activity URL shows the no-access text and no row
