@@ -1849,7 +1849,7 @@ Needs owner decisions **O37** and **O39**.
 `routes/settings/household/members.tsx`, `members.cloud.test.tsx`, `members.stories.tsx`, the
 locale files, `routes/settings/CLAUDE.md`.
 
-- [ ] **Step 1: failing tests:**
+- [x] **Step 1: failing tests:**
   - an owner sees **Transfer ownership** on every other row; it asks first; after it, the row
     shows "Waiting for {name} to accept" and **Cancel**;
   - a person with an offer in this household sees **Become the owner** (also after "Not
@@ -1859,11 +1859,85 @@ locale files, `routes/settings/CLAUDE.md`.
   - the owner's own row says why they cannot leave ("Transfer ownership first");
   - with O37-A, the LAST person of a household with no owner sees a Leave confirm that says
     the household and its data will be deleted.
-- [ ] **Step 2:** red. **Step 3:** the controls; `memberActions` gains the transfer column;
+- [x] **Step 2:** red. **Step 3:** the controls; `memberActions` gains the transfer column;
   its comment table is updated. **Step 4:** stories and the full gate.
 
 **Mutation checks:** Transfer shown to a manager → its test; the waiting row without Cancel
 → its test; the no-owner note shown when there is an owner → its test.
+
+**Done 2026-11-20** (`96e0f8e1`). What was built:
+
+| Part | What |
+|---|---|
+| `components/household/MemberList/MemberList.tsx` | `memberActions` returns `canTransfer` (owner, every row but their own). New props `householdName`, `onTransfer`, `onCancelTransfer`, `pendingTransfer`, `transferBusy`, `lastPerson`. A `TransferButton` (an `AlertDialog`, not a `DeleteButton`: nothing is deleted) and a `WaitingForAccept` line with Cancel. While an offer is pending, no row shows Transfer. A pending offer to a person not in the list shows in an extra row, so the owner can still cancel it. The owner's own row says `ownerCannotLeave`. With `lastPerson`, the Leave confirm says `lastLeaveWarning` |
+| `routes/settings/household/members.tsx` | reads `useHousehold()` (`name`, `hasOwner`, `pendingTransfer`), `useMyOwnershipOffers()`, the offer, cancel and accept hooks, and `canTransferOwnership`. `OwnershipNotes` above the list: "This household has no owner." and **Become the owner** for an offer of THIS household (filtered by `householdId`; a dismissed offer counts, O42-A). Answers are toasts: `ownership.accepted`, `ownership.gone`, `ownership.failed`, none for `OfflineWriteError`. A cancel that answers `false` shows `ownership.gone`. `lastPerson` is "only me in `householdMembers`" (live accounts only), the server's O37-A rule |
+| `i18n/locales/en.json`, `tw.json` | `settings.household.members.*`: 9 new keys, 1 changed (`ownerCannotLeave`) |
+| `test/cloudRoleStory.tsx` | `cloudRoleBaseMocks(role, ownership)` and `CloudRolePage`'s `ownership` prop set `hasOwner` and `pendingTransfer` |
+| stories | `MemberList`: `AsOwnerWaitingForAccept`, `AsLastPerson`. Page: `OwnerWaitingForAccept`, `NoOwnerBecomeOwner`, `LastPersonLeaves` (with a `play` that opens the Leave confirm) |
+| `routes/settings/CLAUDE.md`, `components/CLAUDE.md` | the ownership table on the Members page, the new `MemberList` props |
+
+Texts (O39-A where O39 had them):
+
+| Key (`settings.household.members.`) | English | `tw` |
+|---|---|---|
+| `transfer` (O39) | Transfer ownership | 轉移擁有權 |
+| `transferLabel` (new: the button's name) | Transfer ownership to {{name}} | 把擁有權轉移給 {{name}} |
+| `transferConfirm` (O39) | Offer {{household}} to {{name}}? You become a manager when they accept. | 要把 {{household}} 交給 {{name}} 嗎？對方接受後，你會變成管理者。 |
+| `waiting` (O39) | Waiting for {{name}} to accept | 等待 {{name}} 接受 |
+| `cancelOffer` (O39) | Cancel | 取消 |
+| `cancelOfferLabel` (new: the button's name) | Cancel the offer to {{name}} | 取消給 {{name}} 的邀請 |
+| `becomeOwner` (O39) | Become the owner | 成為擁有者 |
+| `noOwner` (O39) | This household has no owner. | 這個家庭沒有擁有者。 |
+| `ownerCannotLeave` (changed; O39 said "Transfer ownership first.") | The owner cannot leave. Transfer ownership first. | 擁有者不能離開。請先轉移擁有權。 |
+| `lastLeaveWarning` (O39, O37-A) | You are the last person here. Leaving deletes the household and everything in it. | 你是這裡的最後一個人。離開會刪除這個家庭和裡面的所有東西。 |
+
+Reused: `ownership.banner.transfer`, `ownership.accepted`, `ownership.gone`, `ownership.failed`,
+`common.cancel`. O45 (the hand-over wording "is gone") is not touched: the page shows the
+"no owner" note for a hand-over, not `ownership.banner.handover`.
+
+Tests: web **3692 / 364 → 3720 / 364** (+28: 10 in `MemberList.test.tsx`, 13 in
+`members.cloud.test.tsx`, 2 + 3 smoke tests). One old test changed: the owner note now sits on
+the owner's row and the "later version" text is gone (`members.cloud.test.tsx`). Server
+unchanged at **2689 / 85**, `scripts/spec` **70**. Measured at `b5d588ac` before and on the
+K.7 tree after, each `pnpm test` run alone. The tests were written first and ran red: 31
+failing (12 `memberActions` rows, 7 list tests, 12 page tests).
+
+**Mutation checks**, each applied by a script with an exact unique match, run against
+`components/household/MemberList` and `routes/settings/household/members*`, and undone from a
+saved copy (`filecmp` identical every time):
+
+| # | Mutation (file) | Red |
+|---|---|---|
+| M1 | `memberActions` gives a manager `canTransfer: true` (`MemberList.tsx`) | 4: three `memberActions` manager rows, "a manager sees no Transfer ownership and no owner note" |
+| M1b | the page passes `onTransfer` to every role (`members.tsx`) | **0 — stays green.** `memberActions` is a second guard: a manager's rows have `canTransfer: false`. M1 is what covers that guard. Recorded, not counted as coverage. The page test "household manager sees no Transfer ownership" goes red only when both are broken |
+| M2 | the waiting row has no Cancel | 8: 4 list tests, 3 page tests (offer, cancel, cancel `false`), both `…WaitingForAccept` smoke tests |
+| M3 | `hasOwner` forced `false` on the page (the note shown with an owner) | 2: "user sees no such note while the household has an owner", "user with a transfer offer sees who offered it …" |
+| M4 | Transfer not hidden while an offer is pending | 4: the pending list test, the page offer test, both `…WaitingForAccept` smoke tests |
+| M5 | the Leave confirm never gives the warning (`MemberList.tsx`) | 4: the list test, the page test, both last-person smoke tests |
+| M5b | the page never marks the last person | 2: the page test, `LastPersonLeaves` |
+| M6 | a dismissed offer not offered on the page | 2: the O42 test, `NoOwnerBecomeOwner` |
+| M7 | offers not filtered by household | 1: the O42 test (it accepts the OTHER household's offer, and no mock answers that id) |
+| M8 | Transfer sends at once, with no confirm | 4: "asks first", "Cancel in the confirm sends nothing", the page offer test, "a refused offer …" |
+| M9 | a gone accept treated as any other error | 1: "user whose hand-over offer is gone is told so" |
+| M10 | a cancel that answers `false` says nothing | 1: "a cancel that finds no offer …" |
+| M11 | **Become the owner** loses `aria-describedby` | 3: the O42 test, the transfer-offer test, `NoOwnerBecomeOwner` |
+| M12 | the owner's row loses the cannot-leave text | 2: the list test, "household owner sees no Leave, and the note" |
+| M13 | no extra row for a pending offer to a person not in the list | 1: "a pending offer to a person not in the list still shows, with Cancel" |
+| M14 | Transfer not disabled while a write runs | 1: "while an offer or a cancel runs, the buttons are off" |
+| M15 | **Become the owner** shown with no offer when there is no owner | 1: "user sees "This household has no owner." when nobody owns it" |
+
+The three absence checks ("no such note", "no Become the owner", the manager's "no Transfer")
+come after a presence check: a loaded row, or `MyOwnershipOffers` asked at least once.
+
+**The gate (K.7), 2026-11-20, Node 22.17.1, each command alone:** `pnpm lint` exit 0 (4
+warnings in `apps/web`, 13 in `e2e/`, the known ones); `pnpm build` exit 0 (first run: exit 2,
+`TS2375` in `members.tsx`, `householdName` may be `undefined` under
+`exactOptionalPropertyTypes`; fixed in the prop type), `grep TS6385` finds nothing;
+`(cd apps/web && pnpm build-storybook)` exit 0, and `storybook-static/index.json` lists
+`components-household-memberlist--as-owner-waiting-for-accept`, `--as-last-person`,
+`pages-settings-household-members--owner-waiting-for-accept`, `--no-owner-become-owner`,
+`--last-person-leaves`; `pnpm check` exit 0 (first run: 1 format error in `members.tsx`,
+fixed); `pnpm test` exit 0 (numbers above). No E2E (K.8).
 
 ---
 
@@ -1998,6 +2072,12 @@ plan's *What this plan got wrong* and *Status*.
   lock order of every other write is proved by call order in unit tests, as in H5b and H5c.
 - **Accounts deleted before H6** keep their rows until the O36 step runs. T61's filter hides
   them as organizers and in the lists, but their households are not handed over.
+- **No Decline after "Not now"** (K.7). The Members page offers only **Become the owner**.
+  A person who dismissed an offer and later wants to decline it has no button: the banner
+  hides a dismissed offer. Accepting or leaving still works.
+- **No axe scan of the new Members page states yet** (K.7): the waiting row, the
+  "no owner" note with **Become the owner**, and the transfer confirm. They belong to K.8's
+  cloud spec, because `a11y.spec.ts` does not run in cloud.
 - Carried over, still open: the old-bundle shim removal, the keyboard gap on `role="button"`
   badges, O21 (H7), and the other items in the H5, H5b and H5c plans' *Known gaps*.
 
@@ -2110,6 +2190,14 @@ Filled in from the task reports and reviews.
 | K.6 | Mutation check list | The plan's two (dismissed shown, Decline on hand-over) both went red. The banner's own local-mode check cannot go red (M8): the hook already skips the query in local mode |
 | K.6 | Step 1: "the banner is a `role="region"` with a label, so axe finds it" | No axe scan includes the banner. No E2E seeds an offer. It needs an a11y scan in K.8 |
 | K.6 | The commit and `setup.ts` said the four hook stubs are needed because every cloud root render reaches them | Only the query stub is reached (23 tests in 7 files, plus 37 in the 4 per-file factories). The three mutation stubs are reached by no test |
+| K.7 | O39: `ownerCannotLeave` is "Transfer ownership first." | Shown alone on the owner's row, it does not say what it is about. Built as "The owner cannot leave. Transfer ownership first." / 「擁有者不能離開。請先轉移擁有權。」. The owner may change it in the PR |
+| K.7 | O39 has one text per button | With several people, "Transfer ownership" and "Cancel" would have the same name on every row. Two keys were added for the buttons' accessible names: `transferLabel` ("Transfer ownership to {{name}}") and `cancelOfferLabel` ("Cancel the offer to {{name}}"). Each holds the visible word (WCAG 2.5.3) |
+| K.7 | Step 1: "the LAST person of a household with no owner" sees the warning | The server's rule (K.3) is "no OTHER live person", not "no owner". The page uses "only me in `householdMembers`", which lists live accounts only, so it matches the server. An owner whose account was deleted before H6 keeps `hasOwner: true` and is not in the list: that household's last live person is warned too |
+| K.7 | Step 1: the owner "sees Transfer ownership on every other row" | Not while an offer is open. The server REPLACES an open offer (T59), so a second Transfer would work, but the page hides it: one offer at a time is shown, and the owner cancels first. The owner may want Transfer on every row with a confirm that says it replaces the offer |
+| K.7 | (not in the plan) a pending offer to a person who is not in the list | Possible when the list was read before they joined or after they left. Without a line for it the owner would have no Transfer (hidden) and no Cancel. An extra row shows "Waiting for {name} to accept" with Cancel |
+| K.7 | (not in the plan) what the page shows after an accept, a gone offer or a failed answer | The banner keeps its notices in the banner. The page uses toasts, like every other message on the Members page: `ownership.accepted`, `ownership.gone`, `ownership.failed` (reused from K.6). The button is gone by then, so focus moves to the page heading after an accept, a transfer and a cancel |
+| K.7 | (not in the plan) a Decline or Not now on the page | Not built. The page offers only **Become the owner**; saying no is done from the banner. A person who pressed Not now and then wants to decline has no button for it (the banner hides a dismissed offer). See *Known gaps* |
+| K.7 | Files: `MemberList` and the page only | `test/cloudRoleStory.tsx` also changed: `CloudRolePage` always answered `GetHousehold` with `hasOwner: true` and no pending offer, so no story could show the new states. It takes an optional `ownership` override now |
 
 ## Status
 
@@ -2137,6 +2225,9 @@ with the owner's consent (J.9 Step 2).
 
 After the fix, `pnpm check:e2e`, `pnpm lint:e2e` and `pnpm typecheck:e2e` were run again:
 exit 0. The rest of the gate was not re-run: the fix changed one `e2e/` spec only.
+
+**H6b, on `feature/households-h6b`:** K.0–K.7 and K.4b done (K.7 on 2026-11-20, `96e0f8e1`).
+K.8 (E2E) and K.9 (docs, deploy notes, final gate) are next.
 
 ---
 
