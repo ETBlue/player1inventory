@@ -1599,6 +1599,28 @@ and every member passes the H18 membership clause on that household's own locati
 
 ---
 
+## Task K.4b — revoke a deleted owner's open invites (owner decision O43)
+
+**Files:** `apps/server/src/lib/handover.ts`, `apps/server/src/lib/clerkWebhook.handover.test.ts`. Commit `17c80c59`.
+
+- [x] **Step 1: failing tests.** New block `a deleted owner's invites (O43)`, 3 tests. Hand-over branch fixture: OWEN's open, used and earlier-revoked invites in hh_1; MIA's open invite in hh_1; OWEN's open invite in hh_2 (OWEN is a manager there); OWEN's open invite in hh_3 (OWEN is not a member); BEA's invite in hh_2. Repeat delivery keeps the first `revokedAt`. Household-deleted branch: a cascade negative control. Result: 2 red, 1 green (the control).
+- [x] **Step 2:** in the owner branch of `handOverDeletedAccount`, after the location roles and before the member row: `tx.householdInvite.updateMany({ where: { householdId, createdById: userId, usedAt: null, revokedAt: null }, data: { revokedAt: now } })`. The household-deleted branch needs no write: `HouseholdInvite.household` is `onDelete: Cascade`.
+- [x] **Step 3:** the role table in the comment names the revoke in the owner row; the "NOT DONE HERE" item is gone.
+- [x] **Step 4: mutation checks**, each red, then restored from a copy:
+
+| Mutation | Red tests |
+|---|---|
+| `createdById` dropped from the owner-branch `where` | 2 |
+| `householdId` dropped | 2 |
+| `revokedAt: null` dropped | 1 |
+| `usedAt: null` dropped | 1 |
+| the owner-branch revoke deleted | 2 |
+| the revoke in `removeFromHousehold` deleted | 4 (the hh_2 path stays guarded) |
+
+- [x] **Step 5: gate.** Root `pnpm lint`, `pnpm build` (no `TS6385`), `pnpm check`, `pnpm test`: server 2689 / 85, web 3664 / 361, spec 70.
+
+---
+
 ## Task K.5 — web: documents, hooks and permissions for offers
 
 **Files:** `apps/web/src/apollo/operations/ownership.graphql` (new),
@@ -1956,6 +1978,9 @@ Filled in from the task reports and reviews.
 | K.4 | (not in the plan) the two older webhook test files | `clerkWebhook.test.ts` and `e2eUsers.test.ts` mocked `prisma` as `{ user }` only. `user.deleted` now opens a transaction, so both failed with `prisma.$transaction is not a function`. Their mock is now the household world; no test changed |
 | K.4 | (not in the plan) the K.2 gaps | K.4 removes a deleted person's rows from now on. It does nothing for accounts deleted before it runs (no second event comes). A deleted manager's or member's open invites are revoked (`removeFromHousehold`, O20); a deleted OWNER's stay open. Both are owner questions after K.4 |
 | K.0 | Mutation check: "the confirm always enabled" | That mutation lives in the shared `DeleteButton`, so it also proves nothing K.0-specific is wired. Two more were needed to pin the wiring: `ConflictDialog` ignoring the name, and the migration dialog never taking its `clear` branch. Under the first one the first web test failed only on a missing label, so the tests now also check that the first press started nothing (`importCloudData` not called), and fail on that value |
+| K.4 | test "with managers: every manager gets a hand-over offer": its Given comment named "an open invite OWEN made" | No such invite was seeded, so the comment claimed coverage that did not exist. Removed in K.4b; K.4b's tests cover owner invites |
+| K.4 | (not decided) the owner branch and the owner's open invites | It left them open ("NOT DONE HERE" in the code comment). Decided as O43 and built in K.4b |
+| K.4b | testing the household scope of an invite revoke | A fixture where the person's other-household invite is revoked anyway (through `removeFromHousehold`) cannot see a revoke with no `householdId`. K.4b adds an invite in a household the person is no longer in |
 | K.5 | Step 1: every write refetches `MyOwnershipOffers`, `GetHousehold`, `HouseholdMembers` | True for four of the five. `accept` reads EVERY active query (`'active'`): becoming the owner changes the caller's household role, and with it the settings locations list (an owner sees every location), the open invites and the activity log, none of which the three cover. Pinned by M4 |
 | K.5 | (not in the plan) what a gone offer does on the web | `accept` reads the three lists again on `OFFER_GONE` AND on `FORBIDDEN`, then rejects; `isOfferGoneError` is true for both. The K.3 row above says why both: only a same-moment accept gets `OFFER_GONE`. Decline and dismiss answer `false` and need no special case. K.6 and K.7 show "no longer open" for `isOfferGoneError` |
 | K.5 | Files: `liveUpdates.ts` "(comment table)" only | The MAP changed too: `MyOwnershipOffers` is in `CATALOG`. Each offer carries `householdName`, and `renameHousehold` publishes `CATALOG` only, so without it a rename would leave an old name on the banner. Pinned by M8 |
