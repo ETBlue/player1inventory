@@ -2120,6 +2120,24 @@ needs both accepts to pass the first read before the first commit; otherwise the
 hand-over, Cancel on the waiting row, the "This offer is no longer open." notice, and
 `countedOrganizerIn`'s `deletedAt` filter on real SQL (test 4 is a negative control).
 
+
+**Review of K.8 (2026-11-20).** Commits `2e5d8e35` (spec) and `6ab019ea` (`e2e/CLAUDE.md`).
+Four changes to `household-ownership.spec.ts`:
+
+| Change | Why |
+|---|---|
+| The owner's tab (tests 1, 2) and BEN's tab (test 3) open with `openLive`, and each ends with `stillSameDocument` | A tab's first socket connect refetches nothing (`connects > 1` in `liveUpdates.ts`), so an event sent before its subscription is registered is lost |
+| `openLive` waits for the warm-up refetches (`MyOwnershipOffers`, and `GetHousehold` on the Members page) in its own tab AND in the tabs already open | A refetch still in flight in another tab could show the change without a live event |
+| Test 6 accepts `OFFER_GONE` or `FORBIDDEN`, fails on any other answer, and adds a `loser answer` annotation | `acceptOwnershipOffer` reads the offer outside the lock first, so `FORBIDDEN` is correct when the loser's first read comes after the winner's commit. M2 can go red only on an `OFFER_GONE` run |
+| The dark scans assert the `dark` class on `html` first | A scan of a light page proves nothing about dark mode |
+
+Result: 9 passed in 6.5 min. Test 6 `--repeat-each=3`: 3 passed, 3 × `OFFER_GONE`. M6
+re-run on the new test 3: red (the hand-over banner text not found in MIA's tab). Checked
+and unchanged: the GHOST fixture leaves nothing behind; no failing path found that leaves a
+household with no owner; every delete is scoped to the spec's own ids; the 60–90 s budgets
+are mostly hook time (8 user ids cleaned per hook). Gaps: BEN's `noOwnerNote` check alone is
+not proved by mutation (M6 goes red first on MIA's banner); test 6 proves the lock only on an
+`OFFER_GONE` run.
 ---
 
 ## Task K.9 — H6b docs, deploy notes and the final gate
@@ -2342,6 +2360,11 @@ Filled in from the task reports and reviews.
 | K.8 | (not in the plan) `cleanup-endpoint.spec.ts` | Red since K.1 (`ownershipOffers: 0`). It now seeds a real offer to a second member |
 | K.8 | Axe list: "the banner (both kinds) and the Members page with an offer" | The transfer confirm dialog was missing. It is scanned with `checkDialogA11y` |
 | K.8 | Test 6: "the other gets `OFFER_GONE`" | Only when the second accept's first read runs before the first commit; otherwise `FORBIDDEN`. Measured 4 of 4 `OFFER_GONE` |
+| K.8 review | Test 6: "the other gets `OFFER_GONE`", "measured 4 of 4" | `acceptOwnershipOffer` reads the offer outside the lock first, so correct code can answer `FORBIDDEN`. The test now accepts both and records which one ran |
+| K.8 review | Tests 1 and 3: "shows … with no reload" on the owner's and BEN's page | Those tabs had no warm-up (a first connect refetches nothing) and no `stillSameDocument`. Both were added |
+| K.8 review | The warm-up "cannot show a later step" | It waited for its own tab's refetch only. `CATALOG` also refetches `GetHousehold` and `MyOwnershipOffers` in every other open tab. It now waits for all of them |
+| K.8 review | `rescueOrphans`: "each spec user accepts any open offer" | Only MIA, BEN and MAX do. No other spec user ever gets an offer |
+| K.8 review | Axe "light and dark" | The dark scans did not check that the page was dark. They do now |
 
 ## Status
 
