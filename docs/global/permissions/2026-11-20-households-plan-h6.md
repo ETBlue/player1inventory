@@ -1939,6 +1939,32 @@ warnings in `apps/web`, 13 in `e2e/`, the known ones); `pnpm build` exit 0 (firs
 `--last-person-leaves`; `pnpm check` exit 0 (first run: 1 format error in `members.tsx`,
 fixed); `pnpm test` exit 0 (numbers above). No E2E (K.8).
 
+**Review of K.7, 2026-11-20.** Verdict: approve after one fix (`30fe4d5d`).
+
+Bug fixed: the `tw` `transferLabel` was 「把擁有權轉移給 {{name}}」. The button shows
+「轉移擁有權」, which was not inside the name, so WCAG 2.5.3 (Label in Name) failed in
+Chinese. It is now 「轉移擁有權給 {{name}}」. A new test in `MemberList.test.tsx` checks
+`transferLabel` ⊇ `transfer` and `cancelOfferLabel` ⊇ `cancelOffer` in `en` and `tw`.
+jsdom renders English only, so no page test could see it. Web 3720 → 3721 / 364.
+
+| # | Mutation | Red |
+|---|---|---|
+| R1 | `lastPerson = !!me && me.role !== 'owner'` (`members.tsx`) | 6: "a person who is not the last gets the usual leave text" and 5 leave tests |
+| R2 | `offer(person.displayName)` (`members.tsx`): the wrong id | 1: "household owner can offer…", `expected +0 to be 1` |
+| R3 | the extra row shown even when the person is in the list (`MemberList.tsx`) | 2: "while an offer or a cancel runs, the buttons are off", `OwnerWaitingForAccept` smoke test |
+| fix | `tw` `transferLabel` before the fix | 1: `expected '把擁有權轉移給 Mia' to contain '轉移擁有權'` |
+
+M1b staying green is agreed: `memberActions` is the second guard and M1 covers it.
+
+Known gaps found in review:
+- A stale cached member list (restored from IndexedDB, shown before the network answer) can
+  hide the O37-A warning while the server will delete the household. The window is one round
+  trip. Asked as owner question O48.
+- The transfer confirm says "Offer  to {name}?" while the household name loads.
+- After a refused offer, or a "gone" accept, focus is not moved anywhere.
+- Text suggestion (not changed): `cancelOfferLabel` tw 「取消給 {{name}} 的擁有權邀請」, so 邀請
+  is not read as an invite link. It fits with O45.
+
 ---
 
 ## Task K.8 — E2E: transfer and hand-over on real SQL
@@ -2198,6 +2224,7 @@ Filled in from the task reports and reviews.
 | K.7 | (not in the plan) what the page shows after an accept, a gone offer or a failed answer | The banner keeps its notices in the banner. The page uses toasts, like every other message on the Members page: `ownership.accepted`, `ownership.gone`, `ownership.failed` (reused from K.6). The button is gone by then, so focus moves to the page heading after an accept, a transfer and a cancel |
 | K.7 | (not in the plan) a Decline or Not now on the page | Not built. The page offers only **Become the owner**; saying no is done from the banner. A person who pressed Not now and then wants to decline has no button for it (the banner hides a dismissed offer). See *Known gaps* |
 | K.7 | Files: `MemberList` and the page only | `test/cloudRoleStory.tsx` also changed: `CloudRolePage` always answered `GetHousehold` with `hasOwner: true` and no pending offer, so no story could show the new states. It takes an optional `ownership` override now |
+| K.7 | `transferLabel` tw 「把擁有權轉移給 {{name}}」 "holds the visible word (WCAG 2.5.3)" | True in English only. In tw the visible 「轉移擁有權」 was not inside the name. Fixed in `30fe4d5d` to 「轉移擁有權給 {{name}}」, with a two-language test |
 
 ## Status
 
