@@ -198,6 +198,8 @@ export default defineConfig({
       // has one person and no roles, and the page redirects there.
       // household-activity-purges.spec.ts tests the Activity page and the
       // danger zones (households H6 task J.8), which are cloud only too.
+      // household-ownership.spec.ts tests the ownership transfer and the
+      // hand-over (households H6b task K.8): local mode has no owner.
       testIgnore: [
         '**/settings/import-export-cloud.spec.ts',
         '**/pwa-offline.spec.ts',
@@ -217,6 +219,7 @@ export default defineConfig({
         '**/household-invites.spec.ts',
         '**/location-people.spec.ts',
         '**/household-activity-purges.spec.ts',
+        '**/household-ownership.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'], baseURL: LOCAL_WEB_URL },
     },
@@ -277,6 +280,7 @@ export default defineConfig({
         '**/household-invites.spec.ts',
         '**/location-people.spec.ts',
         '**/household-activity-purges.spec.ts',
+        '**/household-ownership.spec.ts',
       ],
     },
     {
