@@ -1178,20 +1178,53 @@ exit 0, no `TS6385`; `(cd apps/web && pnpm build-storybook)` exit 0, with the st
 `e2e/tests/cleanup-endpoint.spec.ts`, `src/lib/invite.ts` (the T49 comment names the second
 model).
 
-- [ ] **Step 0:** measure the baseline again (H6a has changed it).
-- [ ] **Step 1: failing tests.** The fake's `ownershipOffer` store: the unique
+- [x] **Step 0:** measure the baseline again (H6a has changed it).
+- [x] **Step 1: failing tests.** The fake's `ownershipOffer` store: the unique
   `(householdId, toUserId)` raises `P2002`; `where` keys `id`, `householdId`, `toUserId`,
   `kind`, `dismissedAt: null` are applied and any other key throws. Cleanup: 21 keys; offers
   TO the user and offers of owned households are deleted before `householdMember`.
-- [ ] **Step 2:** red.
-- [ ] **Step 3:** schema (T58) and the additive migration. SQL comment: why `toUserId`
+- [x] **Step 2:** red.
+- [x] **Step 3:** schema (T58) and the additive migration. SQL comment: why `toUserId`
   cascades and `fromUserId` has no foreign key.
-- [ ] **Step 4:** the `last` group; `verify-migration.ts` assertions: the table, the unique
+- [x] **Step 4:** the `last` group; `verify-migration.ts` assertions: the table, the unique
   index, the two foreign keys and their `ON DELETE` rules, no foreign key on `fromUserId`.
-- [ ] **Step 5:** fakes, cleanup, teardown keys. Full gate. No database command.
+- [x] **Step 5:** fakes, cleanup, teardown keys. Full gate. No database command.
 
 **Mutation checks:** the unique index left out of the fake → the `P2002` test;
 `ownershipOffer.deleteMany` removed from the cleanup → the key count.
+
+**Done 2026-11-20** (commits `8f3f35d7`, `fba62fcc`). What was built:
+
+| Place | What it does now |
+|---|---|
+| schema | `enum OfferKind { transfer handover }` and `model OwnershipOffer` as T58. Relation fields: `Household.ownershipOffers`, `User.ownershipOffers` (the offers TO the person) |
+| migration | `20261120100000_add_ownership_offers`, written by hand. Its SQL is the same as `prisma migrate diff --from-schema-datamodel <schema at HEAD> --to-schema-datamodel prisma/schema.prisma --script` (compared line by line; no database). In the `last` deploy group, after `add_household_activity` |
+| `verify-migration.ts` | `assertOwnershipOffers`: 7 columns, `OfferKind` = `transfer, handover`, exactly two foreign keys (`householdId` → `Household` and `toUserId` → `User`, both `CASCADE`, read from `information_schema`), none on `fromUserId`, the unique pair and the `toUserId` index, `23505` for a second offer to one person in one household, `23503` for an unknown household or person, and the three deletes: the person who MADE an offer goes and the offer stays; the person it is made TO goes and their offers go in both households; a household goes and only its offers go. **Not run**: the main session runs `verify:migration` |
+| fake | `householdFake`'s `ownershipOffer` store (create, findUnique, findFirst, findMany, update, updateMany, delete, deleteMany), in `state`; `householdWorld` exposes it |
+| `/e2e/cleanup` | 21 models. `ownershipOffer.deleteMany({ where: { OR: [{ householdId: owned }, { toUserId: userId }] } })`, after `householdActivity`, before `householdMember`. The key `ownershipOffers` in both `CLEANUP_MODEL_KEYS` lists |
+| `purge-coverage.test.ts` | `ownershipOffer` is kept by `deleteHouseholdData` (a clear keeps the household and its members, so an open offer stays valid). Its cleanup filter is a path exception, like `householdActivity` |
+| `cleanup-endpoint.spec.ts` | comments only. No mutation can make an offer before K.3. **Until K.8 seeds one, this spec reports `"ownershipOffers":0` and fails** |
+| `invite.ts` | the T49 comment names `OwnershipOffer` |
+
+Each mutation was made in the source, the named tests went red, the file was restored from a
+copy in the scratchpad (`k1-green/`), and `diff -q` was clean:
+
+| # | Mutation (file) | Red |
+|---|---|---|
+| 1 | the plan's: the unique pair left out of the fake (`householdFake.ts`, `checkOfferRow`) | 2: "create raises P2002 on a second offer to the same person in the same household" and "an update that moves an offer onto a taken (householdId, toUserId) raises P2002", both `promise resolved "{ fromUserId: null, …(6) }" instead of rejecting` |
+| 2 | the plan's: `ownershipOffer.deleteMany` and its key removed from the cleanup (`e2eCleanup.ts`) | 6: the order test (`expected [ 'read:owners', …(22) ] to deeply equal [ 'read:owners', …(23) ]`), the owns-nothing test, the counts test, the key list against `cloudTeardown.ts`, and two `purge-coverage` tests (`expected [ 'ownershipOffer' ] to deeply equal []`) |
+| 3 | the cleanup filter without its `toUserId` half (`e2eCleanup.ts`) | 3: the order test (`ownershipOffer: expected [ [ { where: { …(1) } } ] ] to strictly equal …`), the owns-nothing test, the `purge-coverage` filter form test |
+| 4 | `ownershipOffers: { none: {} }` added to `emptyHouseholdWhere` (`invite.ts`, T49) | 31 tests in 2 resolver files, all on `householdFake(Household) was given a where key it does not model: 'ownershipOffers'`. It fails on a THROW, not on a value: the fake has no such key on purpose (see *What this plan got wrong*) |
+| 5 | `household.deleteMany` no longer cascades to offers (`householdFake.ts`) | 2: the fake's cascade test and the `householdWorld` test |
+| 6 | the offer `where` no longer checked (`householdFake.ts`, `checkOfferWhere`) | 5: the four "throws on the where key …" tests and the `dismissedAt: { lt }` refusal |
+
+**The gate, 2026-11-20, Node 22.17.1, each command alone:** `pnpm lint` exit 0 (13
+warnings in `e2e/`, the known ones); `pnpm build` exit 0, no `TS6385`, the server bundle
+236.6 KiB and 14 `.graphql` files; `pnpm check` exit 0; `pnpm test` exit 0: web
+**3615 / 360** (unchanged), server **2588 / 83** (baseline at `d69080f8`: 2563 / 83),
+`scripts/spec` **70**. `build-storybook` was not run: no web file changed. No E2E: the test
+database does not have the table yet, so every cloud cleanup would fail until the main
+session runs `verify:migration`.
 
 ---
 
@@ -1602,6 +1635,12 @@ Filled in from the task reports and reviews.
 | J.6, J.8 | J.6 adds the Activity item to the sidebar; J.8 runs "only these three spec files in `cloud`" | `settings-global-pages.spec.ts` lists every household sidebar link, and nobody ran it in `cloud` after J.6. The first J.9 gate failed there: `cloud` 1 failed / 7 skipped / 187 passed, with `Received + "Activity"` (a value difference, not a timeout). The spec now expects Activity last in cloud. Mutation check: hiding Activity in `HouseholdSidebar.tsx` turns it red with `Expected - "Activity"`. A task that adds a sidebar link must grep `e2e/` for the link list |
 | J.9 | Files: the listed docs | Four more stale lines were found by re-measuring: the server build copies **14** `.graphql` files, not 12; the bundle is **236.0 KiB**, not about 129; the `cloud` project covers **37 of 41** spec files, not 36 of 40; and section 10 of the H4 runbook still said H5c was "not merged". All updated |
 | K.0 | Files: `ImportCard/`, its tests and stories, "the E2E spec that presses Clear & import in cloud" | The button lives in `ConflictDialog`, not `ImportCard`; `ImportCard` only passes the name. Three E2E specs press it, not one (`import-strategies.spec.ts`, which runs in `local` too, `import-households.spec.ts`, `data-mode-migration.spec.ts`). The plan missed a second path with the same purge: a stored `clear` copy after the switch to cloud (`PostLoginMigrationDialog`), which now asks for the name too. That needed `__root.e2eMigration.test.tsx`, `index.e2eMode.test.tsx` and the migration dialog's stories to change as well |
+| K.1 | Step 1: the fake applies `where` keys `id`, `householdId`, `toUserId`, `kind`, `dismissedAt: null` | Applied as listed. The plan did not say which methods K.3 needs, so the store has all eight a resolver may call (`create`, `findUnique`, `findFirst`, `findMany`, `update`, `updateMany`, `delete`, `deleteMany`). `findUnique`, `update` and `delete` take `id` only; a compound `householdId_toUserId` key is not modelled. No `orderBy`: if `myOwnershipOffers` (T65) sorts, K.3 adds it with a test |
+| K.1 | T58 does not name the relation fields | `Household.ownershipOffers` and `User.ownershipOffers` (the offers TO the person). K.3 uses these names in any relation filter |
+| K.1 | T49: "a test in `invite-join.resolver.test.ts` pins it" (for activity rows, J.1) | No join test was added for offers. The household fake does not model an `ownershipOffers` key at all, so a join that asked it throws in every join test (mutation 4: 31 red). That is a stronger guard than a value test, but its failure text names the fake, not the rule |
+| K.1 | Cleanup: "offers TO the user and offers of owned households are deleted before `householdMember`" | Placed right after `householdActivity`. Both foreign keys cascade, so the delete is there for the COUNT, not to unblock anything. An offer the user MADE in another household stays (`fromUserId` has no foreign key) |
+| K.1 | `cleanup-endpoint.spec.ts`: "one row seeded, count at least 1" (Global Constraints) | No mutation can make an offer before K.3, and `offerOwnership` needs a second member. The spec's loop over `CLEANUP_MODEL_KEYS` now fails on `"ownershipOffers":0` until **K.8** seeds an offer through the real mutation. Only comments changed; the spec is unrun (no E2E in K.1). The same happened to `householdActivities` between J.1 and J.2 |
+| K.1 | Files: no doc | Root `CLAUDE.md` and `e2e/CLAUDE.md` still say `/e2e/cleanup` deletes **20** models (dated, measured after J.1). K.9 must update them to 21, with the count command |
 | K.0 | Mutation check: "the confirm always enabled" | That mutation lives in the shared `DeleteButton`, so it also proves nothing K.0-specific is wired. Two more were needed to pin the wiring: `ConflictDialog` ignoring the name, and the migration dialog never taking its `clear` branch. Under the first one the first web test failed only on a missing label, so the tests now also check that the first press started nothing (`importCloudData` not called), and fail on that value |
 
 ## Status
