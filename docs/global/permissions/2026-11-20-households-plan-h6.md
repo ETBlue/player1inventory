@@ -1603,19 +1603,81 @@ and every member passes the H18 membership clause on that household's own locati
 `hooks/useOwnershipOffers.ts` and test (new), `hooks/usePermissions.ts` and test,
 `hooks/CLAUDE.md`, `apollo/liveUpdates.ts` (comment table), `hooks/refetchPending.cloud.test.tsx`.
 
-- [ ] **Step 1: failing tests:** `useMyOwnershipOffers()`; the five write hooks (variables,
+- [x] **Step 1: failing tests:** `useMyOwnershipOffers()`; the five write hooks (variables,
   `refetchAfterWrite` of `MyOwnershipOffers`, `GetHousehold`, `HouseholdMembers`; a failed
   refetch does not reject; a shared promise per arguments; `isPending` until the refetch
   lands); `usePermissions().canTransferOwnership` (owner, cloud); `hasOwner` exposed.
-- [ ] **Step 2:** red.
-- [ ] **Step 3:** the documents and hooks. `GetHousehold` gains two fields, so **grep every
+- [x] **Step 2:** red.
+- [x] **Step 3:** the documents and hooks. `GetHousehold` gains two fields, so **grep every
   `GetHousehold` mock** in the web tests and stories and add them (an Apollo result missing
   a selected field reads back as incomplete: the H5a F.1 trap; `tsc` does not see an untyped
   mock, root `CLAUDE.md`).
-- [ ] **Step 4:** the full gate.
+- [x] **Step 4:** the full gate.
 
 **Mutation checks:** `awaitRefetchQueries: true` → "a failed refetch does not reject"; no
 shared promise → the double-press test; `canTransferOwnership` true for a manager → its test.
+
+**Done 2026-11-20** (`93d6941f`). What was built:
+
+| Part | What |
+|---|---|
+| `apollo/operations/ownership.graphql` (new) | fragment `OwnershipOfferFields`, query `MyOwnershipOffers`, mutations `OfferOwnership`, `CancelOwnershipOffer`, `AcceptOwnershipOffer`, `DeclineOwnershipOffer`, `DismissOwnershipOffer`. The accept answer selects the same fields as `GetHousehold` |
+| `GetHousehold` | `hasOwner` and `pendingTransfer { ...OwnershipOfferFields }` |
+| `hooks/useOwnershipOffers.ts` (new) | `useMyOwnershipOffers`, the five write hooks, `isOfferGoneError` |
+| `hooks/usePermissions.ts` | `canTransferOwnership`: household `owner`, cloud, not while the role loads |
+| `apollo/liveUpdates.ts` | `MyOwnershipOffers` in `CATALOG`; the comment table has its row and `GetHousehold`'s new fields |
+| `hooks/CLAUDE.md` | the offer hooks, `useHousehold`'s new fields, `canTransferOwnership`, eighteen `isPending` hooks |
+| 40 test and story files | every `GetHousehold` mock carries `hasOwner: true, pendingTransfer: null` |
+
+What each write reads again (the acting tab gets no live event):
+
+| Hook | Reads again | A gone offer |
+|---|---|---|
+| `offer(userId)`, `cancel()`, `decline(id)`, `dismiss(id)` | `MyOwnershipOffers`, `GetHousehold`, `HouseholdMembers`, as documents (mounted ones only) | decline and dismiss: `false`, lists read anyway |
+| `accept(id)` | every active query (`'active'`) | `OFFER_GONE` or `FORBIDDEN`: the three lists, THEN the rejection; any other refusal reads nothing |
+
+`hasOwner` is exposed through `useHousehold().data` (two real-cache tests in
+`useOwnershipOffers.test.tsx`), not through `usePermissions`: K.7 reads it as data, and no
+right depends on it.
+
+Tests: `hooks/useOwnershipOffers.test.tsx` (new, **35**, real Apollo through
+`MockedProvider`, with `GetLocations` mounted as a list that is NOT an offer list), 10 in
+`hooks/refetchPending.cloud.test.tsx` (5 hooks × 2), 4 in `hooks/usePermissions.test.tsx`, 1
+line in `apollo/liveUpdates.test.ts`. Web **3615 / 360 → 3664 / 361**. Server unchanged at
+**2686 / 85**, `scripts/spec` **70**. Measured at `406738e6` before and on the K.5 tree
+after, each `pnpm test` run alone. (The "before" run overlapped one `pnpm codegen` of the new
+documents; it was fully green, so nothing it could have changed is hidden.)
+
+The hooks were written before their tests in this task, so Step 2's "red" is the mutation
+table below, not a first run.
+
+**Mutation checks**, each applied by a script with an exact unique match, run against its
+test file, and undone from a saved copy (`diff -q` clean every time):
+
+| # | Mutation (file) | Red |
+|---|---|---|
+| M1 | decline through the mutation's `refetchQueries` with `awaitRefetchQueries: true`, no `refetchAfterWrite` | 1: "a write that worked resolves when the lists cannot be read again" (decline) |
+| M2 | accept without `once` | 1: "a second press while the first runs sends nothing and shares its promise" (accept) |
+| M3 | `canTransferOwnership` true for a manager (`usePermissions.ts`) | 1: "household manager: canTransferOwnership false" |
+| M3b | `canTransferOwnership` true while the role loads | 1: "cloud allows no transfer while the household role loads, or when it failed" |
+| M4 | accept reads only the three lists, not `'active'` | 1: "user can accept an offer, and every list on screen is read again" |
+| M5 | a gone accept reads nothing | 2: both "user who accepts a gone offer …" tests (`OFFER_GONE` and `FORBIDDEN`) |
+| M6 | `isOfferGoneError` ignores `FORBIDDEN` | 1: the `FORBIDDEN` case of the same test |
+| M7 | `offer` reports `isPending: loading` only | 2: both `useOfferOwnership` cases in `refetchPending.cloud.test.tsx` |
+| M8 | `MyOwnershipOffers` taken out of `CATALOG` (`liveUpdates.ts`) | 1: "CATALOG refetches every query that selects a catalog field" |
+| M9 | dismiss reads nothing after the write | 2: "sends the write once …, then reads the three offer lists again" and "… when the offer is already gone" (dismiss) |
+
+The missing-field trap, measured (the two fields removed from one file at a time, then
+restored): `HouseholdNameCard.apollo.test.tsx` **1 of 1 red**; `useActiveLocation.lostAccess.test.tsx`
+(18 green, 32 `Missing field 'hasOwner'` warnings), `locations/$id.cloud.test.tsx` (31 green,
+166 warnings), `useLocations.test.tsx` (23 green, 5 warnings) and `members.cloud.test.tsx`
+(33 green, no warning). So a missing field is usually a warning, not a red test. After K.5
+the full web run prints **0** such warnings.
+
+**The gate (K.5), 2026-11-20, Node 22.17.1, each command alone:** `pnpm lint` exit 0;
+`pnpm build` exit 0, `grep TS6385` finds nothing; `(cd apps/web && pnpm build-storybook)`
+exit 0; `pnpm check` exit 0 (first run: 1 import-order error in `useOwnershipOffers.ts`,
+fixed); `pnpm test` exit 0 (numbers above). No E2E (K.8).
 
 ---
 
@@ -1891,6 +1953,12 @@ Filled in from the task reports and reviews.
 | K.4 | (not in the plan) the two older webhook test files | `clerkWebhook.test.ts` and `e2eUsers.test.ts` mocked `prisma` as `{ user }` only. `user.deleted` now opens a transaction, so both failed with `prisma.$transaction is not a function`. Their mock is now the household world; no test changed |
 | K.4 | (not in the plan) the K.2 gaps | K.4 removes a deleted person's rows from now on. It does nothing for accounts deleted before it runs (no second event comes). A deleted manager's or member's open invites are revoked (`removeFromHousehold`, O20); a deleted OWNER's stay open. Both are owner questions after K.4 |
 | K.0 | Mutation check: "the confirm always enabled" | That mutation lives in the shared `DeleteButton`, so it also proves nothing K.0-specific is wired. Two more were needed to pin the wiring: `ConflictDialog` ignoring the name, and the migration dialog never taking its `clear` branch. Under the first one the first web test failed only on a missing label, so the tests now also check that the first press started nothing (`importCloudData` not called), and fail on that value |
+| K.5 | Step 1: every write refetches `MyOwnershipOffers`, `GetHousehold`, `HouseholdMembers` | True for four of the five. `accept` reads EVERY active query (`'active'`): becoming the owner changes the caller's household role, and with it the settings locations list (an owner sees every location), the open invites and the activity log, none of which the three cover. Pinned by M4 |
+| K.5 | (not in the plan) what a gone offer does on the web | `accept` reads the three lists again on `OFFER_GONE` AND on `FORBIDDEN`, then rejects; `isOfferGoneError` is true for both. The K.3 row above says why both: only a same-moment accept gets `OFFER_GONE`. Decline and dismiss answer `false` and need no special case. K.6 and K.7 show "no longer open" for `isOfferGoneError` |
+| K.5 | Files: `liveUpdates.ts` "(comment table)" only | The MAP changed too: `MyOwnershipOffers` is in `CATALOG`. Each offer carries `householdName`, and `renameHousehold` publishes `CATALOG` only, so without it a rename would leave an old name on the banner. Pinned by M8 |
+| K.5 | Step 3: "grep every `GetHousehold` mock" | 40 files needed the two fields; `tsc` found 2 of them (the typed mocks). Two literals of type `Household` are NOT `GetHousehold` answers and were left alone: the `JoinHousehold` answer in `join/$token.test.tsx` and the `CreateHousehold` answer in `noHousehold.cloud.test.tsx`. Those documents do not select the new fields |
+| K.5 | (not in the plan) `src/test/setup.ts` | Not changed. Its `@/generated/graphql` factory spreads the real module, so the new hooks are real in every test. K.6 must stub `useMyOwnershipOffersQuery` in any test file whose OWN factory replaces the module and renders `__root.tsx` (root `CLAUDE.md`, *A per-file `vi.mock` factory REPLACES …*) |
+| K.5 | (not in the plan) `dismissOwnershipOffer` and other tabs | It publishes nothing (the K.3 row), so a person's other open tabs keep the banner until their next read of `MyOwnershipOffers` (a resume, a mount, any `LOCATION` event). Written in the hook's comment; K.6 should not promise more |
 
 ## Status
 
