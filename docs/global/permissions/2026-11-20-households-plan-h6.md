@@ -1069,10 +1069,32 @@ the design (*Purge*, *Activity log*, *Sequencing* row H6), the phase plan's H6 o
 `docs/INDEX.md`, the H4 runbook (a new **section 11, H6a**: one additive migration, server
 first, checks after deploy), and this plan's *What this plan got wrong* and *Status*.
 
-- [ ] Step 1: the docs above. Re-measure every count you write; do not copy one from here.
-- [ ] Step 2: **the main session**, not a subagent, runs `verify:migration` on the test
+- [x] Step 1: the docs above. Re-measure every count you write; do not copy one from here.
+- [x] Step 2: **the main session**, not a subagent, runs `verify:migration` on the test
   database with the owner's consent (`apps/server/prisma/CLAUDE.md`), and records the result.
-- [ ] Step 3: the full gate from the repo root, every command alone:
+  **Done 2026-11-20** by the main session, with the owner's explicit Prisma consent given
+  after Prisma's AI-agent warning: `pnpm --filter server verify:migration` against the TEST
+  database. Result: "Migration verified.", every line `ok`. The new checks for
+  `20261120000000_add_household_activity`:
+
+  | Check | Result |
+  |---|---|
+  | `"HouseholdActivity"` has exactly 8 columns, with the right types | ok |
+  | `"ActivityAction"` holds exactly the 19 values, H6b's included | ok |
+  | exactly one foreign key: `householdId` → `Household`, `ON DELETE CASCADE` | ok |
+  | no foreign key on `actorId`, `targetUserId` or `locationId` | ok |
+  | index `HouseholdActivity_householdId_createdAt_id_idx` on `("householdId", "createdAt" DESC, id)` | ok |
+  | a row naming no real actor, target or location is accepted | ok |
+  | the optional columns read back `NULL`, and `createdAt` is filled in | ok |
+  | an unknown action is refused (`22P02`) | ok |
+  | an unknown household is refused (`23503`) | ok |
+  | deleting a household deletes its activity rows and keeps another household's | ok |
+
+  The earlier groups passed again too: the household delete across 17 tables, and the
+  household lock tests. So J.4's change to the script's copies (the `updateMany` lock and
+  `deleteHouseholdData`'s deletes) has now run on real SQL. Also recorded in section 11.2 of
+  the H4 runbook and in `apps/server/prisma/CLAUDE.md`.
+- [x] Step 3: the full gate from the repo root, every command alone:
 
   ```bash
   pnpm lint
@@ -1085,8 +1107,8 @@ first, checks after deploy), and this plan's *What this plan got wrong* and *Sta
   ```
 
   Never the bare `pnpm test:e2e`, never `--grep`. Copy `test-results/` aside before
-  re-running anything.
-- [ ] Step 4: `git status` clean; `git show --stat` for each commit.
+  re-running anything. **Done 2026-11-20**; the results are in *Status*.
+- [x] Step 4: `git status` clean; `git show --stat` for each commit.
 
 ---
 
@@ -1519,11 +1541,39 @@ Filled in from the task reports and reviews.
 | J.8 | Test 1: "{owner} gave {B} the 搬運工 role on Home" | The owner reads their own row, so the actor is "You" (`actorIsMe`), and the E2E build is English: "You gave Bea Member the Participant role on Home" |
 | J.8 | Test 6: one axe test | Two tests, light and dark, like `location-people.spec.ts`. The new file has 7 tests |
 | J.8 (brief) | `CLAUDE.md` and `e2e/CLAUDE.md` say the cleanup route deletes 19 models | 20 (`HouseholdActivity`, J.1). Counted from the distinct `prisma.<model>.deleteMany` in `lib/e2eCleanup.ts`. Updated |
+| J.9 | The header and *Status*: branch `feature/households-h6` | The H6a branch is `feature/households-h6a`. The docs written in J.9 name that branch |
+| J.9 | *Facts*: the live guard lists **72** fields, 0 in `publishesNothing` | Root `CLAUDE.md` still said 72 after J.4. Measured in J.9: **76**, 74 in `publishes` and 2 in `publishesNothing` (`recordImport`, `deleteHousehold`). Updated, with the command |
+| J.9 (brief) | "the `requireCatalogRole` call count (believed 23)" | 23 is not the call count. It is `grep -c "await requireCatalogRole(ctx, 'manager')" apps/server/src/resolvers/import.resolver.ts`: the 22 bulk import mutations plus `recordImport`. Root `CLAUDE.md` said 22 there. Lines that contain `requireCatalogRole(` outside `lib/authz.ts` and test files, comments included: **63** in 8 resolver files (`import.resolver.ts` 25, 2 of them comments; `tag` 10, `item` 8, `shelf` 8, `recipe` 6, `vendor` 4, `importCheck` 1, `itemStock` 1). Root `CLAUDE.md` now gives the 23 with its command |
+| J.6, J.8 | J.6 adds the Activity item to the sidebar; J.8 runs "only these three spec files in `cloud`" | `settings-global-pages.spec.ts` lists every household sidebar link, and nobody ran it in `cloud` after J.6. The first J.9 gate failed there: `cloud` 1 failed / 7 skipped / 187 passed, with `Received + "Activity"` (a value difference, not a timeout). The spec now expects Activity last in cloud. Mutation check: hiding Activity in `HouseholdSidebar.tsx` turns it red with `Expected - "Activity"`. A task that adds a sidebar link must grep `e2e/` for the link list |
+| J.9 | Files: the listed docs | Four more stale lines were found by re-measuring: the server build copies **14** `.graphql` files, not 12; the bundle is **236.0 KiB**, not about 129; the `cloud` project covers **37 of 41** spec files, not 36 of 40; and section 10 of the H4 runbook still said H5c was "not merged". All updated |
 
 ## Status
 
 **Plan written 2026-11-20** on `feature/households-h6`, based on `develop` at `7dbaeca9`.
 Owner decisions O32–O39: all A (2026-11-20). H6a (J.1–J.9) comes first.
+
+**H6a built 2026-11-20, tasks J.1 to J.9**, on `feature/households-h6a` (the plan said
+`feature/households-h6`), from `develop` at `7dbaeca9`. Not pushed, not merged, not
+deployed. The PR goes into `develop` and ships with H3a–H5c at the next checkpoint release:
+server first, then the web (section 11 of the H4 runbook). One additive migration,
+`20261120000000_add_household_activity`, proved on the test database by the main session
+with the owner's consent (J.9 Step 2).
+
+**The final gate (J.9), 2026-11-20, Node 22.17.1, every command alone:**
+
+| Command | Result |
+|---|---|
+| `pnpm lint` | exit 0 (13 warnings in `e2e/`, the known ones) |
+| `pnpm build` | exit 0, 19s; `grep TS6385` finds nothing. The server bundle is 236.0 KiB and copies 14 `.graphql` files |
+| `(cd apps/web && pnpm build-storybook)` | exit 0 |
+| `pnpm check` | exit 0 (4 warnings in `apps/web`, 13 in `e2e/`, the known ones) |
+| `pnpm test` | exit 0, 97s: web **3607 / 360 files**, server **2563 / 83 files**, `scripts/spec` **70**. At `7dbaeca9` it was 3454 / 347, 2401 / 78 and 70 |
+| `pnpm test:e2e:all`, run 1 (at `38b6432c`) | **exit 1**: `local` 178 passed / 11 skipped (3m36s), `cloud` **1 failed** / 7 skipped / 187 passed (50m49s), `pwa` 73 passed (1m33s); 55m58s in all. The failure: `settings-global-pages.spec.ts:216`, `Received + "Activity"` (see *What this plan got wrong*, J.6, J.8). `test-results/` was copied aside before any re-run |
+| the fixed spec alone | `cloud` 2 passed (27.4s), `local` 2 passed (3.8s). Mutation (Activity hidden in `HouseholdSidebar.tsx`): red, `Expected - "Activity"`; restored from a copy |
+| `pnpm test:e2e:all`, run 2 (at `63a82eee`, with the fix) | **exit 0, no retry**: `local` 178 passed / 11 skipped (3m36s), `cloud` 188 passed / 7 skipped (50m22s), `pwa` 73 passed (1m34s); 55m32s in all. Load average 1.73 at the start, 2.64 at the end |
+
+After the fix, `pnpm check:e2e`, `pnpm lint:e2e` and `pnpm typecheck:e2e` were run again:
+exit 0. The rest of the gate was not re-run: the fix changed one `e2e/` spec only.
 
 ---
 

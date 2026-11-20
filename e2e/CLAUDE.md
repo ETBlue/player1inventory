@@ -155,10 +155,15 @@ The last E2E counts on the H3a branch, 2026-11-11, from **three separate runs** 
 `pnpm test:e2e:all`): `cloud` **126 passed / 7 skipped**, `local` **178 passed / 6 skipped**,
 `pwa` **73 passed**. Re-measure rather than quote.
 
-The last whole gate, `pnpm test:e2e:all` on `feature/households-h5c` on 2026-11-19 (households
-H5c task H.9), all three green with no retry: `local` **178 passed / 11 skipped** in 3m38s,
-`cloud` **179 passed / 7 skipped** in 46m35s, `pwa` **73 passed** in 1m34s. Load average 5.67
-at the start, 3.74 at the end. The `cloud` project is now most of the time.
+The last whole gate, `pnpm test:e2e:all` on `feature/households-h6a` on 2026-11-20 (households
+H6 task J.9), all three green with no retry: `local` **178 passed / 11 skipped** in 3m36s,
+`cloud` **188 passed / 7 skipped** in 50m22s, `pwa` **73 passed** in 1m34s; 55m32s in all.
+Load average 1.73 at the start, 2.64 at the end. The `cloud` project is now most of the time.
+The run before it failed one `cloud` test, `settings-global-pages.spec.ts`, which lists
+every household sidebar link and did not expect the new **Activity** link. **A task that
+adds a sidebar link must update that list.** (Before: on `feature/households-h5c` on
+2026-11-19, `local` 178 / 11 skipped in 3m38s, `cloud` 179 / 7 skipped in 46m35s, `pwa` 73
+in 1m34s.)
 
 This was obscured for a while by a leftover `MONGODB_URI` from the MongoDB → Prisma
 migration, which made the config *look* isolated. The server never read it (Prisma reads
