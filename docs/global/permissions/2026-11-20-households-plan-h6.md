@@ -1298,6 +1298,33 @@ of LOC_K, beside NOA on LOC_G), 7 in `householdFake.test.ts`. Server **2589 → 
 
 Each mutation was undone from a saved copy and checked with `diff -q`.
 
+**Review of K.2 (2026-11-20): approved.** No change to the K.2 code. What the review checked:
+
+| Question | Answer |
+|---|---|
+| Other server reads that list or count people | None needs the filter. `requireHouseholdRole`, `requireLocationRole`, `locationRoleOf`, `locationRolesByLocation` and `shouldDeliver` read the CALLER's own rows; a deleted account cannot sign in. `setHouseholdRole`, `removeMember` and `roleOfPerson` must see a deleted person's row, or it can never be removed. `joinHousehold` reads the joiner's own memberships. `peopleWithLocationRole` only marks people already on the filtered list. `e2eCleanup` and `e2eHouseholds` are test routes |
+| Web lists of people | Add person (`AddPersonSection` in `routes/settings/household/locations/$id.tsx`) is built from `householdMembers` minus `locationPeople`. No other source |
+| A list with no owner row (a deleted owner) | Nothing crashes. `MemberList` and `memberActions` look at each row on its own; the page reads only `me`. The caller's own role comes from `usePermissions`, not from the list. A manager still sees Remove on `member` rows only |
+| The fake | `user: { deletedAt: null }` is the only `deletedAt` value it accepts; `{ not: null }` throws. Prisma treats an `undefined` key as not named, and so does the fake. Re-ran mutation M1: 2 red, as reported. Re-ran the order: reading `deletedAt` BEFORE the membership turns 2 tests red, both with "no User row" throws (`authz.test.ts` "does not count an organizer who left the household (decision H18)" and the fake's own order test). So the order is a workaround for a `userFake` limit (an implied `User` row exists only for a person a member row has named during a read), not a semantic choice. It is harmless: both filters must pass, and a missing row throws, it never gives a wrong answer |
+
+Fixed during the review, not part of K.2 (commit `92588efb`): the Offline story tests of
+`routes/shopping/index.stories.test.tsx` and `routes/cooking.stories.test.tsx` asserted
+`/hours ago/i` without `waitFor`. The banner reads its sync time in a `useEffect`, after
+`findByRole('status')` has already resolved, so the check raced that read and lost under load.
+It does not depend on the clock: 2 hours back rounds to "2 hours ago" in any timezone and on
+any date. `routes/index.stories.test.tsx` got the same fix in `63f3b919`. Mutation:
+`OfflineBanner` made to never show the stored time turns both tests red.
+
+Gaps the review found, for K.4 or the O36 step:
+
+- **A deleted person's leftover rows cannot be removed from the web.** They are hidden from
+  the Members page and from the location people page, so there is no Remove button. They
+  count for nothing that T61 covers, but they still make the household "not empty" for a
+  join, and they keep the "only person" count of `ownerAlone` honest only because the list
+  is filtered. K.4's hand-over and the O36 step remove them.
+- **An open invite made by a deleted person still works**, and `invitePreview` shows their
+  stored name as the inviter. K.4 should decide whether the hand-over revokes them.
+
 ---
 
 ## Task K.3 — transfer: the offer mutations
