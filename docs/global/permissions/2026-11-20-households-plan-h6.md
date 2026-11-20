@@ -1037,6 +1037,25 @@ Not mutated: activity test 2 (member, no access) and test 5 (delete household, t
 no-household screen). Both were covered by mutation in the web unit tests of J.6 and J.5;
 here they are only run.
 
+**Review of J.8 (2026-11-20).** One fix, in activity test 2.
+
+- **The sidebar check could pass on the loading state.** `canReadActivity` is `false`
+  while the household role loads, so the Activity link is absent then too. The test
+  checked "Tags is visible" (not role-gated) and then `toHaveCount(0)` on the Activity
+  link, which passed at the first paint. Measured: with `canReadActivity` given to every
+  KNOWN role (`!isLoading && householdRole != null` in `permissionsFor`,
+  `apps/web/src/hooks/usePermissions.ts`), test 2 **passed** (1 passed, 25.3 s). The
+  no-access text still showed, because the server answered `FORBIDDEN`.
+- **Fix:** before the absence check, the test waits for the import card's member line
+  "Only the owner or a manager can import data." (`ImportCard.tsx`, `role === 'member'`),
+  which shows only once `GetHousehold` has answered. With the same mutation the test is now
+  **red**: `toHaveCount` `Expected: 0 / Received: 1` at the sidebar link. Restored from a
+  copy (`diff -q` clean): green, 1 passed in 24.6 s.
+- **Re-run of author mutation 5** (`setLocationRole` publishes nothing): red, the row
+  "You gave Bea Member the Participant role on Home" not found within 15 s. It holds.
+- After the fix, the three spec files in `cloud` (Node 22.17.1): **11 passed in 4.2 min**,
+  load average 1.8 at the start and 1.6 at the end.
+
 ---
 
 ## Task J.9 — H6a docs, deploy notes and the final gate
