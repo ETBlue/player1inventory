@@ -74,12 +74,16 @@ extend type Mutation {
   # unknown id, get the same FORBIDDEN.
   acceptOwnershipOffer(id: ID!): Household!
 
-  # Only the person the offer is for. Deletes the offer. False when it is
-  # already gone. When the last hand-over offer goes, the other people of the
-  # household get new hand-over offers (decision T62).
+  # Only the person the offer is for. Deletes the offer. An offer already
+  # gone, another person's offer and an unknown id get FORBIDDEN. False only
+  # when the offer goes between the first read and the household lock. When
+  # the last hand-over offer goes, the other people of the household get new
+  # hand-over offers (decision T62).
   declineOwnershipOffer(id: ID!): Boolean!
 
   # Only the person the offer is for. "Not now": sets `dismissedAt`, and the
-  # offer stays. False when it is already gone.
+  # offer stays. An offer already gone, another person's offer and an
+  # unknown id get FORBIDDEN. False only when the offer goes between the first
+  # read and the household lock.
   dismissOwnershipOffer(id: ID!): Boolean!
 }
