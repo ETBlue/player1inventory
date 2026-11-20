@@ -1470,7 +1470,7 @@ Server **2666 / 84 → 2667 / 84**.
 `lib/household.ts` (`startHandover`, `deleteHouseholdData`), `lib/e2eUsers.ts` (comment only),
 `src/test/householdWorld.ts` if a `User` store with `deletedAt` is missing.
 
-- [ ] **Step 1: failing tests**, one per row of the design's table (T60), each with a SECOND
+- [x] **Step 1: failing tests**, one per row of the design's table (T60), each with a SECOND
   household that must not change:
   - the owner was the only person → the household and all its data are gone (a tag with a
     tag type, an item, stock, a log, a cart row); the other household is untouched;
@@ -1494,10 +1494,10 @@ Server **2666 / 84 → 2667 / 84**.
   - events: one household-level `LOCATION` per household that still exists, after the
     commit, with no `sourceClientId`;
   - the webhook HTTP handler still answers 200 / 400 / 500 as before (the existing tests).
-- [ ] **Step 2:** red.
-- [ ] **Step 3:** the branch, through `startHandover` and `deleteHouseholdData`. Update the
+- [x] **Step 2:** red.
+- [x] **Step 3:** the branch, through `startHandover` and `deleteHouseholdData`. Update the
   comment of `handleClerkEvent` (it says "H6 adds the household hand-over here").
-- [ ] **Step 4:** the full gate.
+- [x] **Step 4:** the full gate.
 
 **Mutation checks:**
 
@@ -1510,6 +1510,69 @@ Server **2666 / 84 → 2667 / 84**.
 | the household delete through `household.delete` alone, no `deleteHouseholdData` | nothing on the fake. Say so; K.8 proves it on real SQL |
 | `ownerGoneAt` not set | the managers row |
 | no idempotence guard (offers created again) | the "same event twice" test |
+
+**Done 2026-11-20** (commits `9c23604a`, `0d78f5bc`). Server only: no schema, no
+migration, no web file. The tests were written FIRST: 15 of the 17 new tests were red
+against the old code. The other 2 ("the same event twice" and "an id with no `User` row")
+passed against the old code too, because the old code did nothing with households. They
+are negative controls; mutations M7 and M8 below are what make them evidence.
+
+| Place | What it does now |
+|---|---|
+| `lib/clerkWebhook.ts` | `user.deleted`: ONE transaction, run once more on `P2034` (`retryOnceOnConflict`), with the 15 s timeout. Its first write is the `User` upsert (the `lockUser` of T16): `update` writes only `updatedAt`, and `deletedAt` is set only when it is still null, so a repeated event keeps the first date. Then `handOverDeletedAccount`. After the commit, one household-level `LOCATION` per household it returns, through `publishHouseholdChange({ userId: null }, …)`, so no `sourceClientId` |
+| `lib/handover.ts` | `handOverDeletedAccount(tx, userId, now)`: reads the person's memberships, `lockHouseholds` on all (sorted), then per household in sorted order reads the role again through `tx`. Manager or member: `removeFromHousehold` + `ACCOUNT_DELETED`. Owner with no other member whose account is live: `deleteHouseholdData` + `household.deleteMany`, no event. Owner with others: their location roles and member row go, `ownerId: null`, `ownerGoneAt: now`, every offer of the household goes, `startHandover` (offers + `HANDOVER_STARTED`). Returns the households that still exist and changed |
+| `lib/household.ts` | `retryOnceOnConflict` moved here from `resolvers/invite.resolver.ts`, so a lib file does not import a resolver |
+| `lib/publishChange.ts`, `lib/e2eUsers.ts` | comments only |
+| `clerkWebhook.test.ts`, `e2eUsers.test.ts` | their `prisma` mock is now the household world, because `user.deleted` opens a transaction. No test changed |
+
+Rules the code follows that the plan did not spell out:
+
+| Case | Answer |
+|---|---|
+| the `ACCOUNT_DELETED` row | `actorId` = the deleted person (T50), `targetUserId: null`, no `details` (T51 gives no shape) |
+| the deleted OWNER's open invites | they stay open. Not decided; see *Owner questions after K.4* below |
+| a deleted manager who had the LAST hand-over offer of an ownerless household | `removeFromHousehold` runs T62, so the next people get offers, and the log gets `HANDOVER_STARTED` as well as `ACCOUNT_DELETED`, in the same transaction, same `createdAt` |
+| the person left a household between the first read and the lock | that household is skipped |
+| `deletedAt` on a repeated event | the first date stays (H2 used to move it to the time of each delivery) |
+
+Tests: `lib/clerkWebhook.handover.test.ts` (new, **17**). Fixture: hh_2 (YUKI owner, BEA
+manager, an open transfer offer to BEA, an open invite by BEA) must not change; hh_1 is built
+per test with OWEN as owner and DEX, a member whose account is already deleted and who
+organizes LOC_1; hh_3 has no owner for the T62 case. Server **2667 / 84 → 2684 / 85**. Web
+unchanged at **3615 / 360**, `scripts/spec` **70**.
+
+Each mutation was applied by a script with an exact unique match or a line number, run
+against `clerkWebhook.handover.test.ts`, `clerkWebhook.test.ts`, `e2eUsers.test.ts` and
+`ownership.resolver.test.ts` (121 tests), and undone from a saved copy; `diff -q` gave 0
+every time.
+
+| # | Mutation (file) | Red |
+|---|---|---|
+| M1 | the "only person" count without `user: { deletedAt: null }` (`handover.ts`) | 1: "the owner was the only LIVE person …", `expected [ 'hh_1', 'hh_2' ] to deeply equal [ 'hh_2' ]` |
+| M2 | offers to every candidate when managers exist (`byTable`) | 3: the managers row, the T63 row, and K.3's T62 test |
+| M3a | `countedOrganizerIn` without the H18 membership (`authz.ts`) | **0 of 121**. See *What this plan got wrong*: this mutation cannot change the hand-over's answer |
+| M3b | `countedOrganizerIn` without `location: { householdId }` | 3: the two "no managers" rows (CAL organizes a location of hh_2) and K.3's last-row test |
+| M4 | the hand-over before the `User` upsert (`clerkWebhook.ts`) | 1: the lock-order test, `expected [ 'lock:hh_1', 'lock:hh_2', … ] to deeply equal [ 'user:user_owen', 'lock:hh_1', … ]` |
+| M5 | the household delete without `deleteHouseholdData` | 1: "the household and all its data are deleted", `expected [] to deeply equal ArrayContaining{…}`. Red only on the RECORDED calls: the world's `household.deleteMany` cascades the rows itself, so the data assertions alone stay green. K.8 proves the delete on real SQL |
+| M6 | `ownerGoneAt` not set | 1: the managers row, `to match object { ownerId: null, …(1) }` |
+| M7 | the owner's member row kept (no idempotence guard: a second event hands over again) | 3, among them "the same event twice", `expected { users: …, … } to deeply equal …` |
+| M8 | `deletedAt` written on every delivery | 1: "a later delivery keeps the first deletedAt", `expected 2026-11-20T13:00:00.000Z to deeply equal 2026-11-20T12:00:00.000Z` |
+| M9 | no retry on `P2034` | 1: "on the first try: one retry, one set of rows", `Error: write conflict` |
+| M10 | an event for a deleted household too | 3: both "only person" tests and "the only person of one household and a manager of another" |
+| M11 | no `ACCOUNT_DELETED` row | 3 |
+| M12 | `lockHouseholds` without `.sort()` (`household.ts`) | 1: the lock-order test, `[ 'user:user_owen', 'lock:hh_2', … ]` (the member rows are seeded hh_2 first on purpose) |
+| M13 | the per-household loop in reverse order | 1: the same test, on the order of the two events |
+
+Not proved by any unit test: the role read again AFTER the lock (the fake has no row lock,
+so no test can put a change between the two reads), and that Postgres really waits on the
+`User` row and the household rows. K.8 runs the hand-over on real SQL.
+
+**Owner questions after K.4** (nothing below was built; the code keeps the behaviour shown):
+
+| # | Question | What the code does now |
+|---|---|---|
+| (new, after O42) | When the OWNER's account is deleted and the household is handed over, should the open invites the owner made be revoked, like a removed manager's (O20)? | They stay open. A person can still join with one, and `invitePreview` shows the deleted owner's stored name as the inviter. |
+| (new) | Accounts deleted BEFORE this code runs: no event comes again, so their member rows, location roles, open invites and owner rows stay (the K.2 review gaps). Does the O36 step remove them by running the same hand-over for each? | Nothing. T61 hides them from every list and count, but they keep a joiner's household "not empty" (`emptyHouseholdWhere`), their invites still work, and a household whose owner was deleted before H6 keeps `ownerId` set and is never handed over |
 
 ---
 
@@ -1800,6 +1863,13 @@ Filled in from the task reports and reviews.
 | K.3 | O37-A is "needed before K.3 and K.7", but no K.3 step names it | Built in K.3, in `leaveHousehold`: when no OTHER member with a live account is left, the household is deleted with `deleteHouseholdData`. The rule is "no other live person", not "no owner": a household whose owner's account was deleted before H6 keeps `ownerId` set, and its last live person is also last. The delete writes `User` rows after the household lock, so the leave now retries once on `P2034` and has the 15 s timeout. No activity row and no event when it deletes. The web warning is K.7 |
 | K.3 | `Household.hasOwner: Boolean!` added "with the resolvers" | The generated `Household` type now requires `hasOwner`, so the four resolvers that return a `Household` (`household`, `renameHousehold`, `createHousehold`, `joinHousehold`) no longer type-check. They return through `householdAnswer`, one cast in `ownership.resolver.ts`; the field resolvers fill the two new fields |
 | K.3 | (not in the plan) the web's own leave text | `apps/web/src/i18n/locales/en.json` (`ownerCannotLeave`) and `members.cloud.test.tsx:429` still say "Handing over the household comes in a later version." The server text changed; the web's is K.7's |
+| K.4 | Files: `lib/household.ts` (`startHandover`, `deleteHouseholdData`) | `startHandover` is in `lib/handover.ts` (K.3), and so is the new `handOverDeletedAccount`. Only `deleteHouseholdData`, `lockHouseholds` and now `retryOnceOnConflict` are in `lib/household.ts` |
+| K.4 | Mutation check: "'organizes' read without H18 (a removed person's organizer row counts) → the organizer row" | It cannot go red. The table only offers the household to its own MEMBERS, and a member's organizer row on a location of the same household always passes H18. A leftover row of a person who left is ignored anyway, because that person is not a candidate. Measured: 0 of 121 red (M3a). The part of `countedOrganizerIn` the hand-over CAN see is `location: { householdId }` (a member who organizes a location of another household): M3b, 3 red |
+| K.4 | Mutation check: "the household delete through `household.delete` alone, no `deleteHouseholdData` → nothing on the fake" | Red here (M5), but only because the test records each `deleteMany` of the catalog models. The world's own household delete cascades the rows, so the data assertions alone stay green, as the plan said |
+| K.4 | T60 step 1: "upsert the `User` row with `deletedAt`" | Written as H2 had it, `update: { deletedAt }`, a second delivery moves `deletedAt` to the time of that delivery, so "a second delivery does nothing" is false for the `User` row. The upsert writes only `updatedAt` (still a real `UPDATE`, so still the lock), and `deletedAt` is set only when it is null |
+| K.4 | T60: "retried once on `P2034`" | The helper was in `resolvers/invite.resolver.ts`. Moved to `lib/household.ts` (`9c23604a`), so `lib/clerkWebhook.ts` imports no resolver |
+| K.4 | (not in the plan) the two older webhook test files | `clerkWebhook.test.ts` and `e2eUsers.test.ts` mocked `prisma` as `{ user }` only. `user.deleted` now opens a transaction, so both failed with `prisma.$transaction is not a function`. Their mock is now the household world; no test changed |
+| K.4 | (not in the plan) the K.2 gaps | K.4 removes a deleted person's rows from now on. It does nothing for accounts deleted before it runs (no second event comes). A deleted manager's or member's open invites are revoked (`removeFromHousehold`, O20); a deleted OWNER's stay open. Both are owner questions after K.4 |
 | K.0 | Mutation check: "the confirm always enabled" | That mutation lives in the shared `DeleteButton`, so it also proves nothing K.0-specific is wired. Two more were needed to pin the wiring: `ConflictDialog` ignoring the name, and the migration dialog never taking its `clear` branch. Under the first one the first web test failed only on a missing label, so the tests now also check that the first press started nothing (`importCloudData` not called), and fail on that value |
 
 ## Status

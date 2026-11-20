@@ -366,7 +366,7 @@ that really set up that role.
 >
 > | Path | Where | What it does |
 > |---|---|---|
-> | Clerk webhook | `POST /webhooks/clerk` → `clerkWebhookHandler` in `apps/server/src/lib/clerkWebhook.ts` | checks the Svix signature with `verifyWebhook` and `CLERK_WEBHOOK_SIGNING_SECRET` (unset → 500, bad signature → 400, nothing written). `user.created` / `user.updated` upsert the name and email; `user.deleted` sets `deletedAt` and keeps the name |
+> | Clerk webhook | `POST /webhooks/clerk` → `clerkWebhookHandler` in `apps/server/src/lib/clerkWebhook.ts` | checks the Svix signature with `verifyWebhook` and `CLERK_WEBHOOK_SIGNING_SECRET` (unset → 500, bad signature → 400, nothing written). `user.created` / `user.updated` upsert the name and email; `user.deleted` sets `deletedAt` once and keeps the name, then, in the same transaction, runs the household hand-over (`handOverDeletedAccount` in `lib/handover.ts`, households H6b task K.4): the person leaves every household, and a household they owned is handed over to the live people left, or deleted with its data when none is left |
 > | request-path safety net | `ensureUserOrLog` in `apps/server/src/lib/userRow.ts`, called from the GraphQL context in `index.ts`, in both the Clerk branch and the E2E branch | creates a missing row (name from Clerk, with fallback values if Clerk fails or takes over 3 s) and sets `lastSeenAt` once per UTC day |
 >
 > **The webhook route is mounted ABOVE `app.use(express.json(…))`, with `express.raw`.** The signature covers the raw bytes Clerk sent. Below the JSON parser the body is already an object, and the check runs on re-serialized JSON. `apps/server/src/webhookRouteOrder.test.ts` reads `index.ts` as text and fails if the order changes.
