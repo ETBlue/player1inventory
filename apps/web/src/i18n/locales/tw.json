@@ -1083,5 +1083,19 @@
     "useLocalModeHint": "資料僅儲存在此裝置上，你仍會保持登入。",
     "signInToAnotherAccount": "登入其他帳號",
     "signOutError": "無法登出，請再試一次。"
+  },
+  "ownership": {
+    "banner": {
+      "label": "擁有權邀請",
+      "handover": "{{household}} 的擁有者已經不在了。你要成為擁有者嗎？",
+      "transfer": "{{name}} 想讓你成為 {{household}} 的擁有者。"
+    },
+    "accept": "接受",
+    "notNow": "稍後再說",
+    "decline": "拒絕",
+    "accepted": "你現在是 {{household}} 的擁有者了。",
+    "gone": "這個邀請已經失效。",
+    "failed": "無法送出你的回覆，請再試一次。",
+    "close": "關閉"
   }
 }

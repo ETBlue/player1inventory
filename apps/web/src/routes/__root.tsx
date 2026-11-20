@@ -11,6 +11,7 @@ import { Layout } from '@/components/global/Layout'
 import { OfflineBanner } from '@/components/global/OfflineBanner'
 import { PostLoginMigrationDialog } from '@/components/global/PostLoginMigrationDialog'
 import { NoHouseholdGate } from '@/components/household/NoHouseholdGate'
+import { OwnershipOfferBanner } from '@/components/household/OwnershipOfferBanner'
 import { Toaster } from '@/components/ui/sonner'
 import { ActiveLocationProvider } from '@/hooks/useActiveLocation'
 import { useDataMode } from '@/hooks/useDataMode'
@@ -138,6 +139,14 @@ function RootComponent() {
       {mode === 'cloud' && <HouseholdChangeGuard />}
       <Layout>
         {mode === 'cloud' && <OfflineBanner />}
+        {/*
+          Asks the person to become the owner of a household: an owner's
+          transfer offer, or a hand-over after the owner's account was
+          deleted (households H6b, task K.6). Outside `NoHouseholdGate`, like
+          the offline banner: an offer may be for the person's OTHER
+          household. It shows nothing when there is no open offer.
+        */}
+        {mode === 'cloud' && <OwnershipOfferBanner />}
         {/*
           In cloud mode, a person in NO household (after a leave or a
           removal) sees the no-household screen instead of the page

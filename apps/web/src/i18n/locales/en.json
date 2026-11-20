@@ -1083,5 +1083,19 @@
     "useLocalModeHint": "Data is stored on this device only. You stay signed in.",
     "signInToAnotherAccount": "Sign in to another account",
     "signOutError": "Could not sign out. Try again."
+  },
+  "ownership": {
+    "banner": {
+      "label": "Ownership offers",
+      "handover": "The owner of {{household}} is gone. Do you want to become the owner?",
+      "transfer": "{{name}} wants to make you the owner of {{household}}."
+    },
+    "accept": "Accept",
+    "notNow": "Not now",
+    "decline": "Decline",
+    "accepted": "You are now the owner of {{household}}.",
+    "gone": "This offer is no longer open.",
+    "failed": "Could not send your answer. Please try again.",
+    "close": "Close"
   }
 }
