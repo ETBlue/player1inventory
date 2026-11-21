@@ -507,6 +507,36 @@ and `householdGuard.test.ts`, `apollo/operations/household.graphql`, a new
 
 **E2E:** L.6.
 
+### Review of L.1–L.3
+
+An independent review (2026-11-21) found no must-fix defect: a stale tab cannot reach the
+other household through any field that calls `requireHousehold`. It found five problems to
+fix (fixed below, each proved first) and two notes (F6, F7) recorded in *Known gaps*.
+
+| Finding | Verdict | Fix |
+|---|---|---|
+| F1: the notice key in `localStorage` is shared by every tab; another tab could show or remove it | true | `a3097db4`: the notice lives in `sessionStorage` (one tab, survives its reload); every access in try/catch |
+| F2: `HouseholdChangeGuard` compared with `getLastHouseholdId()`; with page `hh-a`, key `hh-b` and answer `hh-b` it did nothing | true (probe reproduced as a red test) | `52cb5136`: compares with `getShownHouseholdId()`; the guard tests reset the page state in `beforeEach` |
+| F3: "a header sent twice arrives as an array" | true: Node 22.17.1 gives `"A, B"`; only `headersDistinct` gives an array | `02598166`: `householdIdFrom` treats a comma or whitespace as missing (not a refusal: no header already skips the compare, and old bundles must keep working); comments fixed, also on `clientIdFrom` |
+| F5: `switchToHousehold` clears the cache before the page id changes, so the refetches are refused and the recovery stores a false notice and switches again | true | `6eca4351`: `switchToHousehold` and `forgetHousehold` set the recovery flag before `clearCache()`; switch keeps it on success and puts it back on failure; forget puts it back when it ends |
+| F8: `clearCache` called `localStorage.removeItem` with no try/catch | true | `a0862c04`: wrapped. `useActiveLocation.tsx` is not on the switch path, so it is unchanged |
+
+Mutation checks, each restored from a copy and checked with `cmp`:
+
+| Mutation | Result |
+|---|---|
+| `householdIdFrom` accepts a comma or whitespace | red, 7 tests |
+| `clearCache` removeItem unwrapped | red, 1 test |
+| the notice back in `localStorage` | red, 10 tests |
+| `switchToHousehold` does not set the flag | red, 1 test |
+| `switchToHousehold` does not put the flag back on failure | red, 1 test |
+| `forgetHousehold` does not set the flag | red, 1 test |
+| `forgetHousehold` does not put the flag back | red, 1 test |
+| the guard back to `getLastHouseholdId()` | red, 1 test |
+| (extra) the guard drops `seenId` | green, 9 of 9: `seenId` is no longer pinned (known gap) |
+
+Gate after the fixes: web 3772 / 367 (+8), server 2767 / 87 (+7), spec 70. Build: server bundle 260.2 KiB, no TS6385.
+
 ---
 
 ## Task L.4 — web: **Switch to…** and **Create new**
@@ -952,6 +982,16 @@ deploy), and this plan's *What this plan got wrong* and *Status*.
 
 ## Known gaps (expected after H7)
 
+- **Location-scoped fields never answer `HOUSEHOLD_CHANGED`** (review F6). `cartItems`,
+  `addToCart`, `updateCartItem`, `removeFromCart`, `abandonCart`, the stock writes and the
+  log writes go through `requireLocationRole`, not `requireHousehold`. After a switch, a
+  stale tab's cart, stock and log writes still land in the household the tab SHOWS (not the
+  other one), and the tab recovers only on its next catalog read. After a leave they get
+  `FORBIDDEN`, not `HOUSEHOLD_CHANGED`, so the recovery waits for a catalog read too.
+- **`setActiveHousehold` at the same moment as `deleteHousehold`** can return a raw P2003
+  error instead of `FORBIDDEN` (review F7, read only). The next request recovers.
+- **`seenId` in `HouseholdChangeGuard` is pinned by no test** since the F2 fix. It matters
+  only after `forgetHousehold`, when the page id is `null`.
 - **An old bundle has no stale-tab check** (T66). It sends no header, so O21 stays open for
   it until it reloads into the new bundle.
 - **`makeGql` in E2E sends no header**, so E2E seeds are never refused. On purpose: a seed
@@ -991,6 +1031,10 @@ Filled in from the task reports and reviews.
 | L.3 | O51: no tw text for "another household" | `你目前在 {{household}}。這個頁面還停留在另一個家庭，所以剛才的變更沒有儲存。` |
 | L.3 | file map: `hooks/useHousehold.ts` changes | nothing changed there. The new hooks are in `hooks/useMyHouseholds.ts` |
 | L.3 | not named | `MyHouseholds` must be in `CATALOG` in `QUERIES_BY_KIND` (a rename publishes `CATALOG` only), and in `liveUpdates.test.ts` |
+| L.1 | `householdIdFrom`: "a header sent twice arrives as an array" | Node joins it into one string, `"A, B"` (Node 22.17.1); only `headersDistinct` gives an array. A value with a comma or whitespace is now treated as missing |
+| L.3 | T72: the notice key in `localStorage` | `sessionStorage`: the notice is for the one tab that recovered, and `localStorage` is shared by every tab |
+| L.3 | not named: which id `HouseholdChangeGuard` compares with | `getShownHouseholdId()`, the id this page sends; `getLastHouseholdId()` may already hold another tab's new id |
+| L.3 | T72: "once per page load (a module flag)" | a deliberate move must block it too: `clearCache()` resets the cache, the watched queries refetch with the old id and are refused. `switchToHousehold` and `forgetHousehold` set the flag before the clear |
 
 ## Status
 
