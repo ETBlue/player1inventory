@@ -1,5 +1,5 @@
 import { gql, InMemoryCache } from '@apollo/client'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { registerSeenLocations } from '@/lib/seenLocations'
 import { cacheDb } from './cacheDb'
 import { cloudCache } from './cloudCache'
@@ -140,6 +140,26 @@ describe('cache persistence', () => {
     // Then the provider forgot every seen location, so the next person to
     // sign in never gets a toast naming this person's location
     expect(forgotten).toBe(1)
+  })
+
+  it('clears the cache even when storage throws', async () => {
+    // Given a saved cache, and storage that throws (a private window,
+    // blocked site data)
+    await saveCache(cacheWithOneItem(), 'user-a')
+    const remove = vi
+      .spyOn(Storage.prototype, 'removeItem')
+      .mockImplementation(() => {
+        throw new Error('SecurityError')
+      })
+    try {
+      // When the cache is cleared (a sign-out, or a household switch)
+      // Then it does not fail: `switchToHousehold` waits for it, and a
+      // rejection would keep a stale tab where it is
+      await expect(clearCache()).resolves.toBeUndefined()
+      expect(await cacheDb.snapshots.count()).toBe(0)
+    } finally {
+      remove.mockRestore()
+    }
   })
 
   it('sign-out keeps the last signed-in user id', async () => {
