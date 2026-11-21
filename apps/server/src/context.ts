@@ -39,6 +39,29 @@ export function clientIdFrom(value: unknown): string | undefined {
     : undefined
 }
 
+/** The longest household id the server accepts. See `householdIdFrom`. */
+export const HOUSEHOLD_ID_MAX_LENGTH = 64
+
+/**
+ * The household a tab shows, from the `x-household-id` header (households H7
+ * task L.1, decision T66). The web sends the household id it last saw
+ * (`localStorage['last-household-id']`) on every HTTP request.
+ *
+ * `requireHousehold` (lib/authz.ts) compares it with the household the person
+ * acts in now, and refuses with `HOUSEHOLD_CHANGED` when the two differ. It is
+ * never used to CHOOSE a household, and it grants nothing.
+ *
+ * A value that is not a string, is empty, or is longer than
+ * `HOUSEHOLD_ID_MAX_LENGTH` is treated as missing. A header sent twice arrives
+ * as an array and is treated as missing too. Missing means "compare nothing",
+ * which is what an old web bundle and `makeGql` in E2E send.
+ */
+export function householdIdFrom(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 && value.length <= HOUSEHOLD_ID_MAX_LENGTH
+    ? value
+    : undefined
+}
+
 /**
  * Values worked out once per request and then reused. The GraphQL context
  * function in `index.ts` creates a new, empty object for every request, so
@@ -83,6 +106,12 @@ export interface Context {
    * web bundle. A change published without it reaches every tab.
    */
   clientId?: string
+  /**
+   * The household the tab shows (`householdIdFrom`, households H7 task L.1).
+   * Missing when the request had no valid `x-household-id` header: an old web
+   * bundle, `makeGql` in E2E, or a tab that has not seen a household yet.
+   */
+  shownHouseholdId?: string
   requestCache?: RequestCache
 }
 
