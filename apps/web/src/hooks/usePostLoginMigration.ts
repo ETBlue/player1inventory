@@ -1,5 +1,6 @@
 import { useApolloClient } from '@apollo/client/react'
 import { useEffect, useRef, useState } from 'react'
+import { getShownHouseholdId } from '@/apollo/householdGuard'
 import { getAllItems } from '@/db/operations'
 import type { HouseholdRole } from '@/generated/graphql'
 import { type ExportPayload, fetchLocalPayload } from '@/lib/exportData'
@@ -11,6 +12,10 @@ import {
   needsImportLocation,
 } from '@/lib/importData'
 import { useLocations } from './useLocations'
+import {
+  useCreateAnotherHousehold,
+  useSwitchHousehold,
+} from './useMyHouseholds'
 
 export const MIGRATION_PROMPTED_KEY = 'migration-prompted'
 export const MIGRATION_STRATEGY_KEY = 'migration-strategy'
@@ -26,8 +31,61 @@ export const MIGRATION_STRATEGY_KEY = 'migration-strategy'
  */
 export const MIGRATION_SKIP_HOUSEHOLDS_KEY = 'migration-skip-households'
 
+/**
+ * The household a copy waits for, across one reload (households H7 task L.5,
+ * decision T73, owner decision O22-A). The person chose ANOTHER household
+ * for their offline data. The page must move there first, because the reload
+ * is what clears the old household's cache, and `importCloudData` reads that
+ * cache to find conflicts. So the hook stores the chosen id here, the page
+ * moves, and after the reload the stored copy runs at once, without the
+ * question, in that household only.
+ *
+ * The rules, the same as `HOUSEHOLD_CHANGED_NOTICE_KEY`'s:
+ * - `sessionStorage`, not `localStorage`: the choice was made in ONE tab, and
+ *   only that tab may run the copy. `sessionStorage` survives the tab's
+ *   reload and its `location.replace`.
+ * - Every access is in try/catch (`takeCopyIntoHousehold`,
+ *   `storeCopyIntoHousehold`). Storage that throws means "no choice stored":
+ *   the question shows again.
+ * - It is read ONCE and removed at that moment, before the copy starts. So
+ *   a second reload, or a reload in the middle of the copy, cannot copy
+ *   twice. It then only asks the question again.
+ * - The copy runs only when the id is the household the page really shows:
+ *   the `household` answer AND `getShownHouseholdId()`. Never the shared
+ *   `last-household-id` key, which another tab may have changed.
+ */
+export const COPY_INTO_HOUSEHOLD_KEY = 'copy-into-household'
+
+function storeCopyIntoHousehold(householdId: string): void {
+  try {
+    sessionStorage.setItem(COPY_INTO_HOUSEHOLD_KEY, householdId)
+  } catch {
+    // Lost: after the reload the question shows again.
+  }
+}
+
+function forgetCopyIntoHousehold(): void {
+  try {
+    sessionStorage.removeItem(COPY_INTO_HOUSEHOLD_KEY)
+  } catch {
+    // Nothing to do.
+  }
+}
+
+/** Read the stored id and remove it, or `null`. Never throws. */
+function takeCopyIntoHousehold(): string | null {
+  let value: string | null = null
+  try {
+    value = sessionStorage.getItem(COPY_INTO_HOUSEHOLD_KEY)
+  } catch {
+    return null
+  }
+  forgetCopyIntoHousehold()
+  return value
+}
+
 /** The skipped household ids. A missing or broken value is an empty list. */
-function readSkippedHouseholds(): string[] {
+export function readSkippedHouseholds(): string[] {
   try {
     const value: unknown = JSON.parse(
       localStorage.getItem(MIGRATION_SKIP_HOUSEHOLDS_KEY) ?? '[]',
@@ -110,6 +168,15 @@ function toMigrationError(
     message: err instanceof Error ? err.message : String(err),
   }
 }
+
+/**
+ * Where the person chose to copy, when it is not the household the page
+ * shows: another household they are in, or a new one (task L.5). A new
+ * household's blank name is sent as `null`, so the server picks the default.
+ */
+export type CopyElsewhere =
+  | { householdId: string }
+  | { newHouseholdName: string }
 
 /** A copy that waits for "Import into which location?". */
 type PendingCopy = { payload: ExportPayload; strategy: ImportStrategy }
@@ -216,6 +283,8 @@ export function usePostLoginMigration({
   // The id, for the skip list. A string, so a rename does not re-fire the
   // effect; a move to another household does.
   const householdId = household?.id
+  // The role, for the copy that runs after a move (task L.5). A string too.
+  const householdRole = household?.role
   // The auto-import is one-shot.
   //
   // `locationsLoaded` is a dependency of the effect below and it is a BOOLEAN,
@@ -268,11 +337,26 @@ export function usePostLoginMigration({
       // Only the stored copy waits for the location list: it is one-shot and
       // destructive on the cloud side. Both paths wait for the household.
       if (!locationsLoaded || !householdLoaded) return
+      // `importStarted` is set here already, so a re-run of the effect cannot
+      // ask twice or start a copy.
+      importStarted.current = true
+      // The person already chose this household, in this tab, before the
+      // page moved here (task L.5). Run the copy without asking again. The
+      // stored id is removed now, whatever it names.
+      const chosen = takeCopyIntoHousehold()
+      if (
+        chosen !== null &&
+        chosen === householdId &&
+        chosen === getShownHouseholdId() &&
+        householdRole !== undefined &&
+        canCopyInto(householdRole, storedStrategy)
+      ) {
+        runStoredCopyRef.current(storedStrategy)
+        return
+      }
       // Ask before copying (owner decision O22-A). The strategy may have
       // been chosen long ago, while the person was in no household, and the
-      // household they are in now may be shared. `importStarted` is set here
-      // already, so a re-run of the effect cannot ask twice or start a copy.
-      importStarted.current = true
+      // household they are in now may be shared.
       setWaiting(storedStrategy)
       setState('confirming')
       return
@@ -283,6 +367,9 @@ export function usePostLoginMigration({
     // so it waits for the household the same way. Nothing is stored while it
     // waits, so a person in no household is asked once they are in one.
     if (!householdLoaded) return
+    // A stored choice with no stored strategy is left over (the strategy was
+    // removed, for example by a copy in another tab). Drop it.
+    takeCopyIntoHousehold()
 
     getAllItems()
       .then((items) => {
@@ -311,13 +398,19 @@ export function usePostLoginMigration({
     locationsLoaded,
     householdLoaded,
     householdId,
+    householdRole,
   ])
 
   // Copy here. Runs the stored copy, as it ran before the confirm existed:
   // "Import into which location?" for `skip` and `replace`, none for `clear`.
   function confirmCopy() {
     if (waiting === null) return
-    const storedStrategy = waiting
+    runStoredCopy(waiting)
+  }
+
+  // The stored copy, into the household the page shows. Called by Copy here,
+  // and by the effect after the page moved to the household the person chose.
+  function runStoredCopy(storedStrategy: ImportStrategy) {
     setWaiting(null)
     setState('auto-importing')
     fetchLocalPayload()
@@ -357,6 +450,72 @@ export function usePostLoginMigration({
         setState('error')
       })
   }
+
+  // Copy into another household, or a new one (task L.5, decision T73).
+  // The page moves there first; the copy runs after the reload (see
+  // `COPY_INTO_HOUSEHOLD_KEY`). Nothing is copied before the move. The
+  // strategy is the stored one, or `skip` for the question with no stored
+  // strategy (what its Copy here runs); it is stored for the reload.
+  //
+  // `beforeSwitch` runs after the server has answered, so nothing is stored
+  // for a refused move. When the move fails after that (the cache could not
+  // be cleared), the stored id goes again, and so does a strategy this call
+  // stored. The dialog stays open and says the move failed.
+  const { switchTo } = useSwitchHousehold()
+  const { createAndSwitch } = useCreateAnotherHousehold()
+  const [moving, setMoving] = useState(false)
+  const [moveFailed, setMoveFailed] = useState(false)
+
+  async function copyElsewhere(target: CopyElsewhere): Promise<void> {
+    if (moving) return
+    const strategy: ImportStrategy | null =
+      state === 'confirming' ? waiting : state === 'prompting' ? 'skip' : null
+    if (strategy === null) return
+    const storesStrategy = state === 'prompting'
+    // No effect run may start a copy or ask again while the page moves.
+    importStarted.current = true
+    setMoving(true)
+    setMoveFailed(false)
+    let stored = false
+    const beforeSwitch = (id: string) => {
+      stored = true
+      storeCopyIntoHousehold(id)
+      if (storesStrategy) {
+        try {
+          localStorage.setItem(MIGRATION_STRATEGY_KEY, strategy)
+        } catch {
+          // Lost: after the reload nothing is copied and nothing is asked.
+        }
+      }
+    }
+    try {
+      if ('householdId' in target) {
+        await switchTo(target.householdId, { beforeSwitch })
+      } else {
+        await createAndSwitch(target.newHouseholdName, { beforeSwitch })
+      }
+      // The page is about to load again: stay "moving".
+    } catch (err) {
+      if (stored) {
+        forgetCopyIntoHousehold()
+        if (storesStrategy) {
+          try {
+            localStorage.removeItem(MIGRATION_STRATEGY_KEY)
+          } catch {
+            // Nothing to do.
+          }
+        }
+      }
+      console.error('Could not move to the household for the copy', err)
+      setMoving(false)
+      setMoveFailed(true)
+    }
+  }
+
+  // The effect calls the newest `runStoredCopy` through this ref. As a
+  // dependency the function would re-run the effect on every render.
+  const runStoredCopyRef = useRef(runStoredCopy)
+  runStoredCopyRef.current = runStoredCopy
 
   // Don't copy (and the one button a person who cannot copy gets). The
   // stored strategy is removed, so the copy never runs. MIGRATION_PROMPTED_KEY
@@ -442,5 +601,10 @@ export function usePostLoginMigration({
     chooseLocation,
     cancelLocation,
     pendingPayload: pending?.payload,
+    copyElsewhere,
+    // `true` while the page moves to the chosen household (task L.5).
+    moving,
+    // `true` after a move for the copy failed. The page did not move.
+    moveFailed,
   }
 }

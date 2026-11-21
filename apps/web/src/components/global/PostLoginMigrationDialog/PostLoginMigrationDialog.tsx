@@ -1,4 +1,5 @@
 import { useAuth } from '@clerk/react'
+import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ImportLocationDialog } from '@/components/settings/ImportLocationDialog'
 import { DeleteButton } from '@/components/shared/DeleteButton'
@@ -12,15 +13,24 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import type { HouseholdRole } from '@/generated/graphql'
 import { useHousehold } from '@/hooks/useHousehold'
 import { useImportTargetLocations } from '@/hooks/useImportTargetLocations'
+import { type HouseholdChoice, useMyHouseholds } from '@/hooks/useMyHouseholds'
 import {
+  type CopyElsewhere,
   canCopyInto,
   type MigrationAuth,
   type MigrationHousehold,
   usePostLoginMigration,
 } from '@/hooks/usePostLoginMigration'
-import { defaultImportLocationName } from '@/lib/importData'
+import {
+  defaultImportLocationName,
+  type ImportStrategy,
+} from '@/lib/importData'
 
 // E2E test mode. `VITE_E2E_TEST_USER_ID` makes `main.tsx` render the cloud tree
 // with NO `ClerkProvider`, so `useAuth()` throws there.
@@ -82,6 +92,115 @@ function PostLoginMigrationDialogE2E({ paused }: { paused: boolean }) {
   return <MigrationDialogs isLoaded isSignedIn paused={paused} />
 }
 
+// The radio value of "A new household". Not a household id: a server id is
+// a cuid and never starts with a space.
+const NEW_HOUSEHOLD = ' new'
+
+/** One row of the household choice (task L.5). */
+type CopyTargetOption = { id: string; name: string; role: HouseholdRole }
+
+/**
+ * The households the copy may go into, in the order the choice lists them
+ * (households H7 task L.5, decision T73):
+ *
+ * 1. the household the page shows, when the role there allows the copy;
+ * 2. every other household of `myHouseholds` where it does, in that list's
+ *    order (oldest membership first).
+ *
+ * `canCopyInto(role, strategy)` alone decides, the same rule as the server:
+ * a member never, a manager not for `clear`. A household the person joined
+ * on this device (`migration-skip-households`) IS listed when the role
+ * allows it (owner decision O57-B, applied in task L.7). That list only
+ * stops the automatic question after sign-in (owner decision O12-A, in
+ * `usePostLoginMigration`); a person who opens this choice has asked to
+ * copy, so it does not hide a household here. An empty list means the person
+ * may copy nowhere they are now. Then the dialog shows today's sentence and
+ * Done, and does not offer "A new household" either.
+ */
+export function copyTargetOptions(
+  current: MigrationHousehold,
+  households: HouseholdChoice[] | undefined,
+  strategy: ImportStrategy,
+): CopyTargetOption[] {
+  const options: CopyTargetOption[] = []
+  if (canCopyInto(current.role, strategy)) options.push(current)
+  for (const other of households ?? []) {
+    if (other.id === current.id) continue
+    if (!canCopyInto(other.role, strategy)) continue
+    options.push({ id: other.id, name: other.name, role: other.role })
+  }
+  return options
+}
+
+/**
+ * The household choice: a radio group of `options`, then "A new household"
+ * with a name field when it is picked. Household names render as stored,
+ * with no `capitalize`. Each radio's name is its visible label: the
+ * household name and the person's role there.
+ */
+function CopyTargetChoice({
+  options,
+  selected,
+  onSelect,
+  newName,
+  onNewName,
+  disabled,
+}: {
+  options: CopyTargetOption[]
+  selected: string
+  onSelect: (value: string) => void
+  newName: string
+  onNewName: (value: string) => void
+  disabled: boolean
+}) {
+  const { t } = useTranslation()
+  const id = useId()
+  return (
+    <div className="space-y-2">
+      <p id={`${id}-label`} className="text-sm font-medium text-foreground">
+        {t('settings.postLoginMigration.chooseLabel')}
+      </p>
+      <RadioGroup
+        aria-labelledby={`${id}-label`}
+        value={selected}
+        onValueChange={onSelect}
+        disabled={disabled}
+        className="max-h-64 overflow-y-auto"
+      >
+        {options.map((option) => (
+          <div key={option.id} className="flex items-center gap-2">
+            <RadioGroupItem value={option.id} id={`${id}-${option.id}`} />
+            <Label
+              htmlFor={`${id}-${option.id}`}
+              className="min-w-0 cursor-pointer break-words font-normal"
+            >
+              <span>{option.name}</span>{' '}
+              <span className="text-foreground-muted">
+                ({t(`roles.household.${option.role}`)})
+              </span>
+            </Label>
+          </div>
+        ))}
+        <div className="flex items-center gap-2">
+          <RadioGroupItem value={NEW_HOUSEHOLD} id={`${id}-new`} />
+          <Label htmlFor={`${id}-new`} className="cursor-pointer font-normal">
+            {t('settings.postLoginMigration.newHousehold')}
+          </Label>
+        </div>
+      </RadioGroup>
+      {selected === NEW_HOUSEHOLD && (
+        <Input
+          aria-label={t('settings.postLoginMigration.newHouseholdName')}
+          placeholder={t('settings.postLoginMigration.newHouseholdName')}
+          value={newName}
+          disabled={disabled}
+          onChange={(event) => onNewName(event.target.value)}
+        />
+      )}
+    </div>
+  )
+}
+
 function MigrationDialogs({
   isLoaded,
   isSignedIn,
@@ -113,6 +232,9 @@ function MigrationDialogs({
     chooseLocation,
     cancelLocation,
     pendingPayload,
+    copyElsewhere,
+    moving,
+    moveFailed,
   } = usePostLoginMigration({
     isLoaded,
     isSignedIn,
@@ -139,7 +261,6 @@ function MigrationDialogs({
     state === 'confirming' &&
     household !== undefined &&
     waitingStrategy !== null
-  const canCopy = confirming && canCopyInto(household.role, waitingStrategy)
 
   // The question with no stored strategy (local items, `migration-prompted`
   // unset) asks the same way, naming the household
@@ -151,7 +272,103 @@ function MigrationDialogs({
   // `household` is set here; the check keeps the dialog shut if it is not.
   const prompting =
     (state === 'prompting' || state === 'importing') && household !== undefined
-  const canPromptCopy = prompting && canCopyInto(household.role, 'skip')
+
+  // The household choice (households H7 task L.5, decision T73). Both
+  // questions show it: the stored copy's (`confirming`, its stored strategy)
+  // and the one with no stored strategy (`prompting`, `skip`). The household
+  // the page shows is selected first. Picking another one, or "A new
+  // household", moves the page there first; the copy runs after the reload.
+  const myHouseholds = useMyHouseholds()
+  const [choice, setChoice] = useState<string | null>(null)
+  const [newName, setNewName] = useState('')
+  const choiceStrategy: ImportStrategy | null =
+    state === 'confirming'
+      ? waitingStrategy
+      : state === 'prompting' || state === 'importing'
+        ? 'skip'
+        : null
+  const options =
+    household !== undefined && choiceStrategy !== null
+      ? copyTargetOptions(household, myHouseholds.data, choiceStrategy)
+      : []
+  // Derived, not copied into state: the list of households arrives after the
+  // first render. A pick that is no longer listed falls back to the first.
+  const selected =
+    choice !== null &&
+    (choice === NEW_HOUSEHOLD || options.some((o) => o.id === choice))
+      ? choice
+      : (options[0]?.id ?? null)
+  const selectedOption = options.find((o) => o.id === selected)
+  const isNew = selected === NEW_HOUSEHOLD
+  // `true` when the copy goes into the household the page shows: today's
+  // path, unchanged.
+  const isHere = household !== undefined && selected === household.id
+  const elsewhere: CopyElsewhere | null = isNew
+    ? { newHouseholdName: newName }
+    : selectedOption !== undefined && !isHere
+      ? { householdId: selectedOption.id }
+      : null
+
+  const canCopy = confirming && options.length > 0
+  const canPromptCopy = prompting && options.length > 0
+
+  // The title names where the copy goes.
+  const title = isNew
+    ? t('settings.postLoginMigration.newHouseholdTitle')
+    : t('settings.postLoginMigration.confirmTitle', {
+        household: selectedOption?.name ?? household?.name ?? '',
+      })
+
+  // What the copy does, for the selected target.
+  function copyDescription() {
+    if (isNew) return t('settings.postLoginMigration.newHouseholdNote')
+    return (
+      <>
+        {t('settings.postLoginMigration.confirmDescription')}
+        {selectedOption?.role !== 'owner' && (
+          <> {t('settings.postLoginMigration.confirmShared')}</>
+        )}
+        {!isHere && selectedOption !== undefined && (
+          <>
+            {' '}
+            {t('settings.postLoginMigration.moveNote', {
+              household: selectedOption.name,
+            })}
+          </>
+        )}
+      </>
+    )
+  }
+
+  // The button: Copy here for the household the page shows; for another
+  // one or a new one the page moves first, and the label says so.
+  const copyLabel = isHere
+    ? t('settings.postLoginMigration.copyHere')
+    : t('settings.postLoginMigration.moveAndCopy')
+  function copyThere() {
+    if (elsewhere !== null) void copyElsewhere(elsewhere)
+  }
+
+  const choiceBlock = (
+    <>
+      <CopyTargetChoice
+        options={options}
+        selected={selected ?? NEW_HOUSEHOLD}
+        onSelect={setChoice}
+        newName={newName}
+        onNewName={setNewName}
+        disabled={moving}
+      />
+      {moveFailed && (
+        <p
+          role="alert"
+          className="text-sm text-importance-destructive-foreground"
+        >
+          {t('settings.postLoginMigration.moveError')}
+        </p>
+      )}
+    </>
+  )
 
   return (
     <>
@@ -164,19 +381,10 @@ function MigrationDialogs({
       <AlertDialog open={confirming}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t('settings.postLoginMigration.confirmTitle', {
-                household: household?.name ?? '',
-              })}
-            </AlertDialogTitle>
+            <AlertDialogTitle>{title}</AlertDialogTitle>
           </AlertDialogHeader>
           {canCopy ? (
-            <AlertDialogDescription>
-              {t('settings.postLoginMigration.confirmDescription')}
-              {household?.role !== 'owner' && (
-                <> {t('settings.postLoginMigration.confirmShared')}</>
-              )}
-            </AlertDialogDescription>
+            <AlertDialogDescription>{copyDescription()}</AlertDialogDescription>
           ) : (
             <AlertDialogDescription>
               {waitingStrategy === 'clear' && household?.role === 'manager'
@@ -184,42 +392,51 @@ function MigrationDialogs({
                 : t('settings.postLoginMigration.cannotCopyMember')}
             </AlertDialogDescription>
           )}
+          {canCopy && choiceBlock}
           <AlertDialogFooter>
             {canCopy ? (
               <>
-                <AlertDialogCancel onClick={declineCopy}>
+                <AlertDialogCancel onClick={declineCopy} disabled={moving}>
                   {t('settings.postLoginMigration.dontCopy')}
                 </AlertDialogCancel>
-                {waitingStrategy === 'clear' && household !== undefined ? (
+                {waitingStrategy === 'clear' && selectedOption !== undefined ? (
                   // A stored `clear` copy deletes the household's catalog
                   // and every location first, the same as Clear household.
                   // So Copy here opens `DeleteButton`'s typed-name confirm,
                   // which works only when the household name is typed
                   // EXACTLY (owner decision O40, households H6 task K.0).
                   // `canCopyInto` lets only the owner copy with `clear`.
+                  // For another household the name is typed BEFORE the page
+                  // moves there, because after the reload the copy runs at
+                  // once (task L.5). "A new household" has nothing to
+                  // delete, so it asks no name.
                   <DeleteButton
-                    trigger={t('settings.postLoginMigration.copyHere')}
+                    trigger={copyLabel}
                     buttonVariant="destructive"
+                    disabled={moving}
                     dialogTitle={t(
                       'settings.postLoginMigration.clearConfirmTitle',
-                      { household: household.name },
+                      { household: selectedOption.name },
                     )}
                     dialogDescription={t(
                       'settings.postLoginMigration.clearConfirmDescription',
-                      { household: household.name },
+                      { household: selectedOption.name },
                     )}
-                    confirmLabel={t('settings.postLoginMigration.copyHere')}
-                    confirmName={household.name}
+                    confirmLabel={copyLabel}
+                    confirmName={selectedOption.name}
                     confirmNameLabel={t('settings.household.danger.typeName', {
-                      name: household.name,
+                      name: selectedOption.name,
                     })}
                     // `confirmCopy` only starts the copy. The progress and
                     // error dialogs below show the rest.
-                    onDelete={confirmCopy}
+                    onDelete={isHere ? confirmCopy : copyThere}
                   />
                 ) : (
-                  <AlertDialogAction onClick={confirmCopy}>
-                    {t('settings.postLoginMigration.copyHere')}
+                  <AlertDialogAction
+                    onClick={isHere ? confirmCopy : copyThere}
+                    disabled={moving}
+                  >
+                    {copyLabel}
                   </AlertDialogAction>
                 )}
               </>
@@ -266,40 +483,28 @@ function MigrationDialogs({
       <AlertDialog open={prompting}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t('settings.postLoginMigration.confirmTitle', {
-                household: household?.name ?? '',
-              })}
-            </AlertDialogTitle>
+            <AlertDialogTitle>{title}</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription>
-            {canPromptCopy ? (
-              <>
-                {t('settings.postLoginMigration.confirmDescription')}
-                {household?.role !== 'owner' && (
-                  <> {t('settings.postLoginMigration.confirmShared')}</>
-                )}
-              </>
-            ) : (
-              t('settings.postLoginMigration.cannotCopyMember')
-            )}
+            {canPromptCopy
+              ? copyDescription()
+              : t('settings.postLoginMigration.cannotCopyMember')}
           </AlertDialogDescription>
+          {canPromptCopy && choiceBlock}
           <AlertDialogFooter>
             {canPromptCopy ? (
               <>
                 <AlertDialogCancel
                   onClick={dismiss}
-                  disabled={state === 'importing'}
+                  disabled={state === 'importing' || moving}
                 >
                   {t('settings.postLoginMigration.dontCopy')}
                 </AlertDialogCancel>
                 <AlertDialogAction
-                  onClick={() => importData('append')}
-                  disabled={state === 'importing'}
+                  onClick={isHere ? () => importData('append') : copyThere}
+                  disabled={state === 'importing' || moving}
                 >
-                  {state === 'importing'
-                    ? '...'
-                    : t('settings.postLoginMigration.copyHere')}
+                  {state === 'importing' ? '...' : copyLabel}
                 </AlertDialogAction>
               </>
             ) : (

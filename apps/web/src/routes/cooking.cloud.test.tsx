@@ -47,6 +47,23 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
   return {
     ...original,
+    // `PostLoginMigrationDialog` in `__root.tsx` offers the copy into another
+    // household (households H7 task L.5), so in cloud mode it calls these.
+    // This factory replaces `src/test/setup.ts`'s, so they are stubbed here
+    // too: the real hooks need an ApolloProvider.
+    useMyHouseholdsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useSetActiveHouseholdMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useCreateHouseholdMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     // The ownership offer banner in `__root.tsx` (households H6b, task K.6)
     // calls these in cloud mode. This factory replaces `src/test/setup.ts`'s,
     // so they are stubbed here too: the real hooks need an ApolloProvider.

@@ -204,6 +204,12 @@ const publishesNothing: Record<string, string> = {
   // Households H6b task K.3. "Not now" on the banner sets `dismissedAt`.
   dismissOwnershipOffer:
     "only the caller's own banner changes; their other tabs update on the next refetch",
+  // Households H7 task L.2 (decision T68). It writes only the caller's own
+  // `User.activeHouseholdId`. A household-level event to the new household
+  // would make every member there refetch everything for one person's
+  // choice.
+  setActiveHousehold:
+    "only the caller's own active household changes; their other tabs learn on their next request (HOUSEHOLD_CHANGED or the household guard)",
 }
 
 type Lists = {

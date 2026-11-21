@@ -47,6 +47,63 @@ vi.mock('@/lib/importData', async (importOriginal) => {
   return { ...actual, importCloudData: vi.fn().mockResolvedValue(undefined) }
 })
 
+// The household choice (households H7 task L.5). `householdServer` answers
+// `MyHouseholds`, `SetActiveHousehold` and `CreateHousehold` through the
+// factory below. The move itself (clear the cache, reload) is a spy, so the
+// test sees WHEN it is called and nothing reloads; it is tested in
+// `apollo/householdGuard.test.ts`.
+type ChoiceRow = {
+  __typename: 'HouseholdChoice'
+  id: string
+  name: string
+  role: 'owner' | 'manager' | 'member'
+  isActive: boolean
+}
+const { householdServer, switchMock } = vi.hoisted(() => ({
+  householdServer: {
+    myHouseholds: undefined as ChoiceRow[] | undefined,
+    setActive: vi.fn(),
+    create: vi.fn(),
+  },
+  switchMock: vi.fn(async (_id: string, _options?: { to?: string }) => {}),
+}))
+vi.mock('@/apollo/householdGuard', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@/apollo/householdGuard')>()
+  return { ...actual, switchToHousehold: switchMock }
+})
+
+function resetHouseholdServer() {
+  householdServer.myHouseholds = undefined
+  householdServer.setActive.mockReset()
+  householdServer.setActive.mockImplementation(
+    async ({ variables }: { variables: { householdId: string } }) => ({
+      data: {
+        setActiveHousehold: {
+          __typename: 'Household',
+          id: variables.householdId,
+          name: 'unused',
+          role: 'owner',
+        },
+      },
+    }),
+  )
+  householdServer.create.mockReset()
+  householdServer.create.mockResolvedValue({
+    data: {
+      createHousehold: {
+        __typename: 'Household',
+        id: 'hh-new',
+        name: 'Camp',
+        role: 'owner',
+      },
+    },
+  })
+  switchMock.mockReset()
+  switchMock.mockResolvedValue(undefined)
+}
+beforeEach(resetHouseholdServer)
+
 // A STABLE apollo client, for the same reason `usePostLoginMigration.test.ts`
 // stubs one: `src/test/setup.ts`'s `useApolloClient` returns a NEW object on
 // every call, and that object is a dependency of the hook's effect. So the
@@ -110,6 +167,17 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     useReorderLocationsMutation: mutationStub,
     // `ActiveLocationProvider` calls this on every render (Rules of Hooks).
     useBootstrapCartsMutation: mutationStub,
+    // The household choice (task L.5). `householdServer` in this file
+    // answers them; see there.
+    useMyHouseholdsQuery: () => ({
+      data: householdServer.myHouseholds
+        ? { myHouseholds: householdServer.myHouseholds }
+        : undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useSetActiveHouseholdMutation: () => [householdServer.setActive, {}],
+    useCreateHouseholdMutation: () => [householdServer.create, {}],
   }
 })
 
@@ -867,5 +935,379 @@ describe('PostLoginMigrationDialog — after joining a household', () => {
 
     // Then nothing is asked
     expect(screen.queryByRole('alertdialog')).toBeNull()
+  })
+})
+
+// Households H7 task L.5 (decision T73, owner decision O22-A). The person is
+// in several households; "Our Home" (`hh-1`) is the one the page shows. The
+// choice lists only households where `canCopyInto` allows the copy, the one
+// shown first, plus "A new household". Picking another one moves the page
+// there and copies nothing into the household shown.
+describe('PostLoginMigrationDialog — the copy can go into another household', () => {
+  function choices(
+    ...rows: Array<[string, string, 'owner' | 'manager' | 'member']>
+  ) {
+    householdServer.myHouseholds = rows.map(([id, name, role]) => ({
+      __typename: 'HouseholdChoice',
+      id,
+      name,
+      role,
+      isActive: id === 'hh-1',
+    }))
+  }
+
+  function storedCopy(strategy: 'skip' | 'clear') {
+    const now = new Date()
+    vi.mocked(getLocations).mockResolvedValue([
+      {
+        id: 'local',
+        name: 'My Home',
+        order: 0,
+        isDefault: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ])
+    localStorage.setItem('migration-strategy', strategy)
+  }
+
+  // Cloud mode: `useMyHouseholds` reads nothing in local mode. In cloud mode
+  // `useLocations` reads the cloud list, so it is served here.
+  beforeEach(() => {
+    localStorage.setItem('data-mode', 'cloud')
+    mockCloudLocations([{ id: 'cloud_home', name: 'Home' }])
+  })
+
+  afterEach(async () => {
+    // Unmount first; see the first afterEach in this file.
+    cleanup()
+    mockGetLocationsQuery.mockReturnValue({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    })
+    localStorage.clear()
+    sessionStorage.clear()
+    setHousehold('owner')
+    vi.mocked(importCloudData).mockClear()
+    vi.mocked(getLocations).mockReset()
+    await db.items.clear()
+  })
+
+  async function drain() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+  }
+
+  function radioNames() {
+    const group = screen.getByRole('radiogroup', { name: 'Copy into' })
+    return Array.from(group.querySelectorAll('[role="radio"]')).map((radio) => {
+      const label = group.querySelector(`label[for="${radio.id}"]`)
+      return [label?.textContent, radio.getAttribute('aria-checked')]
+    })
+  }
+
+  it('user sees the households they may copy into, the one shown first, and a new household', async () => {
+    // Given a stored skip copy, owner of Our Home, manager of Chen flat,
+    // member of Lee house
+    storedCopy('skip')
+    setHousehold('owner')
+    choices(
+      ['hh-1', 'Our Home', 'owner'],
+      ['hh-chen', 'Chen flat', 'manager'],
+      ['hh-lee', 'Lee house', 'member'],
+    )
+
+    // When the dialog mounts
+    renderDialog()
+
+    // Then the member household is not offered, and Our Home is selected
+    await screen.findByRole('radiogroup', { name: 'Copy into' })
+    expect(radioNames()).toEqual([
+      ['Our Home (Owner)', 'true'],
+      ['Chen flat (Manager)', 'false'],
+      ['A new household', 'false'],
+    ])
+    expect(
+      screen.getByRole('radio', { name: 'Chen flat (Manager)' }),
+    ).toBeInTheDocument()
+  })
+
+  it('user copying with clear is offered only the households they own', async () => {
+    // Given a stored clear copy, owner of Our Home and of Camp, manager of
+    // Chen flat
+    storedCopy('clear')
+    setHousehold('owner')
+    choices(
+      ['hh-1', 'Our Home', 'owner'],
+      ['hh-chen', 'Chen flat', 'manager'],
+      ['hh-camp', 'Camp', 'owner'],
+    )
+
+    // When the dialog mounts
+    renderDialog()
+
+    // Then Chen flat is not offered
+    await screen.findByRole('radiogroup', { name: 'Copy into' })
+    expect(radioNames().map(([name]) => name)).toEqual([
+      'Our Home (Owner)',
+      'Camp (Owner)',
+      'A new household',
+    ])
+  })
+
+  it('user picking another household has the page move there, and nothing copied here', async () => {
+    // Given a stored skip copy and two households
+    storedCopy('skip')
+    setHousehold('owner')
+    choices(['hh-1', 'Our Home', 'owner'], ['hh-chen', 'Chen flat', 'manager'])
+    const user = userEvent.setup()
+    renderDialog()
+
+    // When the user picks Chen flat and presses Move there and copy
+    await user.click(
+      await screen.findByRole('radio', { name: 'Chen flat (Manager)' }),
+    )
+    expect(
+      screen.getByRole('heading', {
+        name: 'Copy your offline data into Chen flat?',
+      }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/This page moves to Chen flat first/)).toBeVisible()
+    await user.click(
+      screen.getByRole('button', { name: 'Move there and copy' }),
+    )
+    await drain()
+
+    // Then the server is told, the page moves to Chen flat, and nothing is
+    // copied into Our Home
+    expect(householdServer.setActive).toHaveBeenCalledWith({
+      variables: { householdId: 'hh-chen' },
+    })
+    expect(switchMock).toHaveBeenCalledWith('hh-chen', { to: '/' })
+    expect(sessionStorage.getItem('copy-into-household')).toBe('hh-chen')
+    expect(importCloudData).not.toHaveBeenCalled()
+  })
+
+  it('user picking the household shown copies here, as before', async () => {
+    // Given a stored skip copy and two households
+    storedCopy('skip')
+    setHousehold('owner')
+    choices(['hh-1', 'Our Home', 'owner'], ['hh-chen', 'Chen flat', 'manager'])
+    const user = userEvent.setup()
+    renderDialog()
+
+    // When the user presses Copy here with Our Home selected
+    await user.click(await screen.findByRole('button', { name: 'Copy here' }))
+
+    // Then the page does not move, and the location question opens
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Import into which location?',
+      }),
+    ).toBeInTheDocument()
+    expect(householdServer.setActive).not.toHaveBeenCalled()
+    expect(switchMock).not.toHaveBeenCalled()
+  })
+
+  it('user picking a new household names it, and it is created before the move', async () => {
+    // Given the plain question (no stored strategy) and one household
+    localStorage.removeItem('migration-prompted')
+    await db.items.put(makeItem({ id: 'item-1', name: 'Milk' }))
+    setHousehold('owner')
+    choices(['hh-1', 'Our Home', 'owner'])
+    const user = userEvent.setup()
+    renderDialog()
+
+    // When the user picks A new household, names it Camp, and confirms
+    await user.click(
+      await screen.findByRole('radio', { name: 'A new household' }),
+    )
+    expect(
+      screen.getByRole('heading', {
+        name: 'Copy your offline data into a new household?',
+      }),
+    ).toBeInTheDocument()
+    await user.type(
+      screen.getByRole('textbox', { name: 'Name of the new household' }),
+      'Camp',
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Move there and copy' }),
+    )
+    await drain()
+
+    // Then it is created, and the page moves there with skip waiting
+    expect(householdServer.create).toHaveBeenCalledWith({
+      variables: { name: 'Camp', alsoWhenMember: true },
+    })
+    expect(switchMock).toHaveBeenCalledWith('hh-new', { to: '/' })
+    expect(localStorage.getItem('migration-strategy')).toBe('skip')
+    expect(importCloudData).not.toHaveBeenCalled()
+  })
+
+  it('user who is a member here but a manager elsewhere has the other household selected', async () => {
+    // Given a stored skip copy, a member of Our Home, a manager of Chen flat
+    storedCopy('skip')
+    setHousehold('member')
+    choices(['hh-1', 'Our Home', 'member'], ['hh-chen', 'Chen flat', 'manager'])
+
+    // When the dialog mounts
+    renderDialog()
+
+    // Then Our Home is not offered, and Chen flat is selected and named
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Copy your offline data into Chen flat?',
+      }),
+    ).toBeInTheDocument()
+    expect(radioNames()).toEqual([
+      ['Chen flat (Manager)', 'true'],
+      ['A new household', 'false'],
+    ])
+    expect(
+      screen.getByRole('button', { name: 'Move there and copy' }),
+    ).toBeInTheDocument()
+  })
+
+  it('user who is a member everywhere sees the sentence and Done, with no choice', async () => {
+    // Given a stored skip copy and member roles only
+    storedCopy('skip')
+    setHousehold('member')
+    choices(['hh-1', 'Our Home', 'member'], ['hh-lee', 'Lee house', 'member'])
+
+    // When the dialog mounts
+    renderDialog()
+
+    // Then today's sentence and Done, and no household list
+    expect(
+      await screen.findByRole('button', { name: 'Done' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/Only the owner or a manager/)).toBeVisible()
+    expect(screen.queryByRole('radiogroup')).toBeNull()
+  })
+
+  it('user sees a household they joined on this device offered when they manage it', async () => {
+    // Given Chen flat is in the skip list (joined here, owner decision O12-A)
+    // and the person is a manager there
+    storedCopy('skip')
+    setHousehold('owner')
+    choices(['hh-1', 'Our Home', 'owner'], ['hh-chen', 'Chen flat', 'manager'])
+    localStorage.setItem(
+      'migration-skip-households',
+      JSON.stringify(['hh-chen']),
+    )
+
+    // When the dialog mounts
+    renderDialog()
+
+    // Then Chen flat is listed: the role decides, not the skip list
+    // (owner decision O57-B)
+    await screen.findByRole('radiogroup', { name: 'Copy into' })
+    expect(radioNames().map(([name]) => name)).toEqual([
+      'Our Home (Owner)',
+      'Chen flat (Manager)',
+      'A new household',
+    ])
+  })
+
+  it('a household joined on this device where the person is a member is not offered', async () => {
+    // Given Chen flat is in the skip list and the person is only a member
+    // there, and Camp is a joined household they manage
+    storedCopy('skip')
+    setHousehold('owner')
+    choices(
+      ['hh-1', 'Our Home', 'owner'],
+      ['hh-chen', 'Chen flat', 'member'],
+      ['hh-camp', 'Camp', 'manager'],
+    )
+    localStorage.setItem(
+      'migration-skip-households',
+      JSON.stringify(['hh-chen', 'hh-camp']),
+    )
+
+    // When the dialog mounts
+    renderDialog()
+
+    // Then Camp is listed and Chen flat is not: a member may never copy
+    await screen.findByRole('radiogroup', { name: 'Copy into' })
+    expect(radioNames().map(([name]) => name)).toEqual([
+      'Our Home (Owner)',
+      'Camp (Manager)',
+      'A new household',
+    ])
+  })
+
+  it('user copying with clear into another household types THAT household name first', async () => {
+    // Given a stored clear copy, owner of Our Home and of Camp
+    storedCopy('clear')
+    setHousehold('owner')
+    choices(['hh-1', 'Our Home', 'owner'], ['hh-camp', 'Camp', 'owner'])
+    const user = userEvent.setup()
+    renderDialog()
+
+    // When the user picks Camp and presses Move there and copy
+    await user.click(await screen.findByRole('radio', { name: 'Camp (Owner)' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Move there and copy' }),
+    )
+
+    // Then the page does not move until "Camp" is typed
+    const field = await screen.findByLabelText('Type Camp to confirm')
+    expect(switchMock).not.toHaveBeenCalled()
+    await user.type(field, 'Camp')
+    await user.click(
+      screen.getByRole('button', { name: 'Move there and copy' }),
+    )
+    await drain()
+    expect(switchMock).toHaveBeenCalledWith('hh-camp', { to: '/' })
+    expect(importCloudData).not.toHaveBeenCalled()
+  })
+
+  it('user sees an alert when the move fails, and the dialog stays', async () => {
+    // Given a server that refuses the switch
+    storedCopy('skip')
+    setHousehold('owner')
+    choices(['hh-1', 'Our Home', 'owner'], ['hh-chen', 'Chen flat', 'manager'])
+    householdServer.setActive.mockRejectedValue(forbiddenError())
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const user = userEvent.setup()
+    renderDialog()
+
+    // When the user tries to move to Chen flat
+    await user.click(
+      await screen.findByRole('radio', { name: 'Chen flat (Manager)' }),
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Move there and copy' }),
+    )
+
+    // Then an alert says so, the page stays, and nothing is copied
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not move to that household',
+    )
+    expect(switchMock).not.toHaveBeenCalled()
+    expect(importCloudData).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole('button', { name: 'Move there and copy' }),
+    ).toBeEnabled()
+  })
+
+  it('household names render as stored, with no capitalize', async () => {
+    // Given a household name with intentional casing
+    storedCopy('skip')
+    setHousehold('owner')
+    choices(['hh-1', 'Our Home', 'owner'], ['hh-x', 'the iHerb flat', 'owner'])
+
+    // When the dialog mounts
+    renderDialog()
+
+    // Then no ancestor of the name carries capitalize
+    let node: HTMLElement | null = await screen.findByText('the iHerb flat')
+    while (node) {
+      expect(node.className).not.toMatch(/\bcapitalize\b/)
+      node = node.parentElement
+    }
   })
 })

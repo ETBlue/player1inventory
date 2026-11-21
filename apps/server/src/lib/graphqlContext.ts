@@ -1,5 +1,5 @@
 import type { IncomingHttpHeaders } from 'node:http'
-import { appLanguageFrom, type Context, clientIdFrom } from '../context.js'
+import { appLanguageFrom, type Context, clientIdFrom, householdIdFrom } from '../context.js'
 
 /**
  * What the GraphQL context function needs from the outside. `index.ts` passes
@@ -55,8 +55,10 @@ export async function identifyCaller(input: {
  * function (`lib/wsServer.ts`).
  *
  * The context also carries `x-app-language` (households H3a, decision H3)
- * and the tab id from `x-client-id` (households H3c-1, decision P4).
- * `graphqlContext.test.ts` checks both, in E2E mode and in Clerk mode.
+ * the tab id from `x-client-id` (households H3c-1, decision P4), and the
+ * household the tab shows from `x-household-id` (households H7 task L.1,
+ * decision T66). `graphqlContext.test.ts` checks all three, in E2E mode and
+ * in Clerk mode.
  *
  * Every request gets a new, empty `requestCache`, so a value worked out for
  * one request is never seen by another.
@@ -73,6 +75,7 @@ export function createGraphQLContext(deps: GraphQLContextDeps) {
       userId,
       language: appLanguageFrom(req.headers['x-app-language']),
       clientId: clientIdFrom(req.headers['x-client-id']),
+      shownHouseholdId: householdIdFrom(req.headers['x-household-id']),
       requestCache: {},
     }
   }

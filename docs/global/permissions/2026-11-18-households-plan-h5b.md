@@ -1312,12 +1312,18 @@ plan's *What this plan got wrong* and *Status*.
 - **Nothing pushes a removed member's open tab.** Live events stop reaching them. Their
   NEXT request now leads to the right screen (G.7's guard, G.8's screen), but a tab that
   sends nothing stays stale.
-- **A tab that still shows a household the person left can WRITE into their other
-  household** (owner decision O21, owed to **H7**). A person in A and B: tab 1 leaves A, or
+- ~~**A tab that still shows a household the person left can WRITE into their other
+  household**~~ **Fixed in H7a** (owner decision O21; tasks L.1 and L.3 of
+  [the H7 plan](2026-11-21-households-plan-h7.md); not merged, not deployed). The web sends
+  the household this page shows in the header `x-household-id`, and `requireHousehold`
+  refuses a mismatch with `HOUSEHOLD_CHANGED`. The tab then reloads into the household the
+  person is in now and shows a message once (O51-A, wording O56-A). Proved on real SQL by
+  `household-switch.spec.ts` test 3. Still open, see the H7 plan's *Known gaps*: an old web
+  bundle sends no header, and fields that check only a location role
+  (`requireLocationRole`) never answer `HOUSEHOLD_CHANGED`.
+  The original gap: a person in A and B: tab 1 leaves A, or
   someone removes them from A. Tab 2 still shows A, because no event reaches it. A write
   from tab 2 goes to B through `requireHousehold` (T14), and tab 2 shows nothing about it.
-  The fix is for H7: the web sends the household id it shows, and the server refuses a
-  write when it does not match.
 - **A removed manager may have copied an invite made by someone else** (O20). Their own
   open invites are revoked with the removal, but any other open `member` invite they saw
   stays open. The remove confirm tells the owner to revoke one if needed. Nothing does it
@@ -1405,10 +1411,12 @@ plan's *What this plan got wrong* and *Status*.
   not set, so the next load tries again. The code is from `4bd17a75` (2026-03-12). Found
   this session while finding the `DatabaseClosedError` of `8d48b999` (*Status*, G.10). Not
   fixed here; it needs a `.catch` and a test.
-- **A stored copy can only go into the household the person acts in now** (O22-A, owed to
-  **H7**). The question names that household and offers Copy here or Don't copy. Choosing
-  another household the person is in, or a new one, needs Switch to… and a household input
-  on the import mutations. See the H7 outline in `2026-10-31-households-plan.md`.
+- ~~**A stored copy can only go into the household the person acts in now**~~ **Fixed in
+  H7a** (O22-A; task L.5 of [the H7 plan](2026-11-21-households-plan-h7.md), decision T73;
+  not merged, not deployed). The question lists every household where the person may copy
+  (`canCopyInto`), a household joined on this device included (O57-B), and **A new
+  household**. Another household moves the page there first; the copy runs after the
+  reload. No household input on the import mutations was needed (H7 decision T71).
 - ~~**The manual prompt "Import local data to cloud?" does not name the household**~~
   **Fixed 2026-11-19** (`docs/global/bugs/2026-11-19-bug-manual-import-names-no-household.md`).
   The question with no stored strategy now asks "Copy your offline data into {household}?"

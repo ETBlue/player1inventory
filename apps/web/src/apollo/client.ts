@@ -1,5 +1,7 @@
 import { ApolloClient, ApolloLink } from '@apollo/client'
+import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { SetContextLink } from '@apollo/client/link/context'
+import { ErrorLink } from '@apollo/client/link/error'
 import { HttpLink } from '@apollo/client/link/http'
 import { GraphQLWsLink } from '@apollo/client/link/subscriptions'
 import { getMainDefinition } from '@apollo/client/utilities'
@@ -9,6 +11,10 @@ import i18n from '@/i18n'
 import { CLIENT_ID } from './clientId'
 import { cloudCache, createCache } from './cloudCache'
 import { DEFAULT_GRAPHQL_HTTP_URL, DEFAULT_GRAPHQL_WS_URL } from './constants'
+import {
+  getShownHouseholdId,
+  recoverFromHouseholdChange,
+} from './householdGuard'
 import { registerLiveSocket } from './liveSocket'
 import { offlineWriteLink } from './offlineWriteLink'
 import { createStaleReadRetryLink } from './staleReadRetryLink'
@@ -104,6 +110,58 @@ const clientIdLink = new SetContextLink(({ headers }) => ({
 }))
 
 /**
+ * Sends the household THIS PAGE shows with every HTTP request, in the
+ * `x-household-id` header (households H7 task L.3, decision T66). The server
+ * refuses a request with `HOUSEHOLD_CHANGED` when the person now acts in
+ * another household (T67), so a stale tab cannot read or write the wrong
+ * household. See `getShownHouseholdId` for why this is a per-page value and
+ * not the shared `last-household-id`.
+ *
+ * No id yet: no header at all, never an empty string. The socket sends
+ * nothing new: the server checks membership for every live event.
+ */
+const householdIdLink = new SetContextLink(({ headers }) => {
+  const householdId = getShownHouseholdId()
+  return {
+    headers: {
+      ...headers,
+      ...(householdId ? { 'x-household-id': householdId } : {}),
+    },
+  }
+})
+
+/**
+ * Starts the recovery when the server answers `HOUSEHOLD_CHANGED`
+ * (households H7 task L.3, decision T72). It returns nothing, so the error
+ * still reaches the caller and the refused operation is not sent again.
+ * `recoverFromHouseholdChange` acts only on the first refusal of a page load.
+ */
+const householdChangedLink = new ErrorLink(({ error, operation }) => {
+  if (
+    CombinedGraphQLErrors.is(error) &&
+    error.errors.some((e) => e.extensions?.code === 'HOUSEHOLD_CHANGED')
+  ) {
+    void recoverFromHouseholdChange(operation.client)
+  }
+})
+
+/**
+ * The HTTP half of both clients: the four header links, the
+ * `HOUSEHOLD_CHANGED` link, then the network. `identityLink` is the Clerk
+ * token or the E2E user id.
+ */
+function httpChain(identityLink: ApolloLink): ApolloLink {
+  return ApolloLink.from([
+    languageLink,
+    clientIdLink,
+    householdIdLink,
+    identityLink,
+    householdChangedLink,
+    httpLink,
+  ])
+}
+
+/**
  * The live-updates socket (households H3c-1). Same URL and path as HTTP.
  *
  * `connectionParams` runs again for every new socket, including each
@@ -149,11 +207,12 @@ export function createApolloClientForE2E(userId: string) {
   const splitLink = ApolloLink.split(
     isSubscription,
     new GraphQLWsLink(socket),
-    languageLink.concat(clientIdLink).concat(e2eLink).concat(httpLink),
+    httpChain(e2eLink),
   )
   const client = new ApolloClient({
-    // The same stale-read guard, language header, tab id and socket as the
-    // production client, so cloud E2E runs the code users run.
+    // The same stale-read guard, headers (language, tab id, shown
+    // household), `HOUSEHOLD_CHANGED` link and socket as the production
+    // client, so cloud E2E runs the code users run.
     link: createStaleReadRetryLink().concat(splitLink),
     cache: createCache(),
   })
@@ -180,7 +239,7 @@ export function createApolloClient(getToken: () => Promise<string | null>) {
   const splitLink = ApolloLink.split(
     isSubscription,
     new GraphQLWsLink(socket),
-    languageLink.concat(clientIdLink).concat(authLink).concat(httpLink),
+    httpChain(authLink),
   )
 
   const client = new ApolloClient({

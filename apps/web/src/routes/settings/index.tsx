@@ -12,6 +12,7 @@ import {
   Users,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { HouseholdSwitcher } from '@/components/household/HouseholdSwitcher'
 import { HouseholdLabel } from '@/components/settings/HouseholdLabel'
 import { SettingsNavCard } from '@/components/settings/SettingsNavCard'
 import {
@@ -124,6 +125,10 @@ function SettingsAccordion() {
                   to="/settings/household/activity"
                 />
               )}
+              {/* Ninth, **Switch to…** (households H7 task L.4). It opens
+                  the dropdown, not a page. Cloud only, every role: it
+                  renders nothing in local mode. */}
+              <HouseholdSwitcher variant="card" />
             </AccordionContent>
           </AccordionItem>
 

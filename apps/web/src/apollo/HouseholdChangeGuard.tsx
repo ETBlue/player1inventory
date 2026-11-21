@@ -2,7 +2,7 @@ import { NetworkStatus } from '@apollo/client'
 import { useEffect, useRef } from 'react'
 import { useGetHouseholdQuery } from '@/generated/graphql'
 import {
-  getLastHouseholdId,
+  getShownHouseholdId,
   setLastHouseholdId,
   switchToHousehold,
 } from './householdGuard'
@@ -31,12 +31,15 @@ import {
  * acting on it would reload for nothing and store a wrong id for a moment.
  *
  * What it compares the new id with:
- * - the id THIS page saw first, when it has seen one. A person's other tab
- *   must clear too, but the tab that changed household has already stored
- *   the new id in `localStorage`, which every tab shares. So the stored id
- *   alone would say "nothing changed" in the other tab.
- * - else the stored id (`last-household-id`), the household this device
- *   showed last time.
+ * - the id THIS page saw first, when it has seen one.
+ * - else `getShownHouseholdId()`: the household THIS PAGE shows, read from
+ *   `last-household-id` once, on the page's first request (households H7
+ *   task L.3; review of L.3, F2). It is NOT `getLastHouseholdId()`, which
+ *   reads the key again now. Every tab shares `localStorage`, and a tab that
+ *   moves stores the new id before it reloads. If that happens before this
+ *   page's first server answer, the key already holds the new id, the
+ *   compare would say "nothing changed", and this page would show the new
+ *   household's name and role over the old household's rows.
  *
  * No previous id: store it, nothing else. A different id:
  * `switchToHousehold` with no target (clear the cache, forget the active
@@ -58,7 +61,7 @@ export function HouseholdChangeGuard() {
 
   useEffect(() => {
     if (!id) return
-    const previous = seenId.current ?? getLastHouseholdId()
+    const previous = seenId.current ?? getShownHouseholdId()
     seenId.current = id
     if (previous === null) setLastHouseholdId(id)
     if (previous === null || previous === id) return

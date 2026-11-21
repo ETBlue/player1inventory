@@ -855,7 +855,15 @@
       "cannotCopyMember": "Only the owner or a manager of this household can copy data into it. The data on this device stays as it is.",
       "cannotCopyClear": "Only the owner of this household can clear it and copy data into it. The data on this device stays as it is.",
       "clearConfirmTitle": "Clear {{household}} first?",
-      "clearConfirmDescription": "Copy here first deletes the catalog and every location of {{household}}, with everything in them. Then it copies your offline data. People and their household roles stay."
+      "clearConfirmDescription": "Copy here first deletes the catalog and every location of {{household}}, with everything in them. Then it copies your offline data. People and their household roles stay.",
+      "chooseLabel": "Copy into",
+      "newHousehold": "A new household",
+      "newHouseholdName": "Name of the new household",
+      "newHouseholdTitle": "Copy your offline data into a new household?",
+      "newHouseholdNote": "A new household is made, and you are its owner. This page moves to it first, then the copy starts. The data on this device stays as it is.",
+      "moveNote": "This page moves to {{household}} first, then the copy starts.",
+      "moveAndCopy": "Move there and copy",
+      "moveError": "Could not move to that household. Nothing was copied. Try again."
     },
     "export": {
       "label": "Download my data",
@@ -1065,6 +1073,11 @@
     "offlineNeverSynced": "Showing no data. Connect to load your items.",
     "writeBlocked": "You are offline. Changes cannot be saved right now."
   },
+  "householdChanged": {
+    "notice": "You are now in {{household}}. This page still showed {{oldHousehold}}, so it was reloaded. If you were saving a change, it was not saved.",
+    "noticeNoOldName": "You are now in {{household}}. This page still showed another household, so it was reloaded. If you were saving a change, it was not saved.",
+    "close": "Close"
+  },
   "noLocations": {
     "title": "You have no locations in this household yet.",
     "create": "Create a location"
@@ -1092,6 +1105,21 @@
     "useLocalModeHint": "Data is stored on this device only. You stay signed in.",
     "signInToAnotherAccount": "Sign in to another account",
     "signOutError": "Could not sign out. Try again."
+  },
+  "householdSwitcher": {
+    "trigger": "Switch to…",
+    "description": "Move to another household, or create one",
+    "createNew": "Create new",
+    "loading": "Loading households…",
+    "loadError": "Could not load your households.",
+    "switchError": "Could not switch the household. Try again."
+  },
+  "createHouseholdDialog": {
+    "title": "Create a new household",
+    "nameLabel": "Household name",
+    "nameHint": "Leave it empty to use the default name. You become its owner and move into it.",
+    "create": "Create",
+    "error": "Could not create the household. Try again."
   },
   "ownership": {
     "banner": {

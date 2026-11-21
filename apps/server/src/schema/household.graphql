@@ -167,10 +167,52 @@ extend type Mutation {
   # A manager or member leaves the household they act in, with their location
   # roles there (decision T11). The owner cannot leave (BAD_USER_INPUT).
   leaveHousehold: Boolean!
-  # Only for a person in NO household (owner decision O16-A); anyone else gets
-  # BAD_USER_INPUT with extensions.reason ALREADY_IN_HOUSEHOLD. Makes a
+  # By default only for a person in NO household (owner decision O16-A);
+  # anyone else gets BAD_USER_INPUT with extensions.reason
+  # ALREADY_IN_HOUSEHOLD. The no-household screen relies on that refusal when
+  # a second tab created or joined first. With `alsoWhenMember: true`
+  # (households H7 task L.2, decision T70) a person who is already in a
+  # household may create one too: "Switch to… › Create new" sends it. Makes a
   # household with the caller as owner and one location, "Home", the same as
-  # first sign-in. The name is trimmed, and checked like `renameHousehold`'s.
-  # With no name, the first sign-in name ("<name>'s Household").
-  createHousehold(name: String): Household!
+  # first sign-in, and makes it the household the caller acts in. The name is
+  # trimmed, and checked like `renameHousehold`'s. With no name, the first
+  # sign-in name ("<name>'s Household").
+  createHousehold(name: String, alsoWhenMember: Boolean = false): Household!
+}
+
+# ── Switching households (households H7 task L.2) ──
+
+# One household the caller is a member of, for "Switch to…" (decision T69).
+# A type of its own, not `Household`: the Apollo cache keeps `Household` by
+# `id`, and the `role` here would then be mixed up with the active
+# household's entry.
+type HouseholdChoice {
+  id: ID!
+  name: String!
+  # The caller's role in this household.
+  role: HouseholdRole!
+  # True on the household the caller acts in now: the active household while
+  # they are still a member there, else the oldest membership. The same rule
+  # every other field uses.
+  isActive: Boolean!
+}
+
+extend type Query {
+  # Every household the caller is a member of, the oldest membership first
+  # (then by household id). Any signed-in person. A person in no household
+  # gets an empty list, not an error, and no household is made for them.
+  # It answers even when the tab's `x-household-id` names another household,
+  # so a stale tab can list the households and switch.
+  myHouseholds: [HouseholdChoice!]!
+}
+
+extend type Mutation {
+  # Makes `householdId` the household the caller acts in, on every device
+  # (owner decision O50-A, decision T68). Any household role. It writes only
+  # the caller's own `User.activeHouseholdId`. A household the caller is not a
+  # member of, and an unknown id, both get FORBIDDEN. It answers even when the
+  # tab's `x-household-id` names another household. Returns the household
+  # with the caller's role there. It sends no live event and writes no
+  # activity row.
+  setActiveHousehold(householdId: ID!): Household!
 }

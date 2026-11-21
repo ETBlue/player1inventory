@@ -531,6 +531,104 @@ describe('requireHousehold', () => {
   })
 })
 
+// ── The shown household (households H7 task L.1, decision T67) ──
+//
+// The caller is in hh-1 AND hh-2 and acts in hh-2 (`activeHouseholdId`). A
+// tab still showing hh-1 sends `shownHouseholdId: 'hh-1'`. With the person in
+// one household only, "the shown household" and "the household they act in"
+// could only ever be the same id, so the refusal could never be seen.
+describe('requireHousehold with a shown household (H7 task L.1)', () => {
+  function seedTwoHouseholds() {
+    seed({ callerHouseholdRole: 'owner' })
+    world.households.state.householdMembers.push({
+      householdId: 'hh-2',
+      userId: 'caller',
+      role: 'member',
+      joinedAt: new Date('2026-11-02T00:00:00.000Z'),
+    })
+    world.setActiveHousehold('caller', 'hh-2')
+  }
+
+  async function refusal(promise: Promise<unknown>): Promise<GraphQLError> {
+    const error = await promise.then(
+      () => null,
+      (e: unknown) => e,
+    )
+    if (!(error instanceof GraphQLError)) throw new Error('expected a GraphQLError')
+    return error
+  }
+
+  it('with no shown household the answer is as before', async () => {
+    seedTwoHouseholds()
+    await expect(requireHousehold({ userId: 'caller' })).resolves.toBe('hh-2')
+  })
+
+  it('with the same shown household the answer is as before', async () => {
+    seedTwoHouseholds()
+    await expect(requireHousehold({ userId: 'caller', shownHouseholdId: 'hh-2' })).resolves.toBe('hh-2')
+  })
+
+  it('with the same shown household and a request cache, every call gets the id', async () => {
+    seedTwoHouseholds()
+    const ctx: Context = { userId: 'caller', shownHouseholdId: 'hh-2', requestCache: {} }
+    await expect(requireHousehold(ctx)).resolves.toBe('hh-2')
+    await expect(requireHousehold(ctx)).resolves.toBe('hh-2')
+  })
+
+  it('with another shown household it refuses with HOUSEHOLD_CHANGED', async () => {
+    seedTwoHouseholds()
+    const error = await refusal(requireHousehold({ userId: 'caller', shownHouseholdId: 'hh-1' }))
+    expect(error.extensions.code).toBe('HOUSEHOLD_CHANGED')
+  })
+
+  it('the refusal names no household id', async () => {
+    seedTwoHouseholds()
+    const error = await refusal(requireHousehold({ userId: 'caller', shownHouseholdId: 'hh-1' }))
+    expect(error.message).not.toMatch(/hh-/)
+    expect(JSON.stringify(error.extensions)).not.toMatch(/hh-/)
+    expect(Object.keys(error.extensions)).toEqual(['code'])
+  })
+
+  it('refuses every call of one request, also after the id is cached', async () => {
+    seedTwoHouseholds()
+    const ctx: Context = { userId: 'caller', shownHouseholdId: 'hh-1', requestCache: {} }
+    expect((await refusal(requireHousehold(ctx))).extensions.code).toBe('HOUSEHOLD_CHANGED')
+    expect((await refusal(requireHousehold(ctx))).extensions.code).toBe('HOUSEHOLD_CHANGED')
+  })
+
+  it('keeps the household id in the cache, not the refusal', async () => {
+    // Given one request that is refused for its shown household
+    seedTwoHouseholds()
+    const ctx: Context = { userId: 'caller', shownHouseholdId: 'hh-1', requestCache: {} }
+    await refusal(requireHousehold(ctx))
+
+    // Then the cache holds the true household, so `ignoreShown` still reads it
+    await expect(ctx.requestCache?.householdId).resolves.toBe('hh-2')
+    await expect(requireHousehold(ctx, { ignoreShown: true })).resolves.toBe('hh-2')
+  })
+
+  it('with ignoreShown and another shown household the answer is as before', async () => {
+    seedTwoHouseholds()
+    await expect(
+      requireHousehold({ userId: 'caller', shownHouseholdId: 'hh-1' }, { ignoreShown: true }),
+    ).resolves.toBe('hh-2')
+  })
+
+  it('a person who left the shown household is refused', async () => {
+    // Given the caller left hh-1 and is a member of hh-2 only (owner decision O21)
+    seedTwoHouseholds()
+    world.households.state.householdMembers = world.households.state.householdMembers.filter(
+      (m) => !(m.householdId === 'hh-1' && m.userId === 'caller'),
+    )
+
+    // When a tab that still shows hh-1 asks
+    const error = await refusal(requireHousehold({ userId: 'caller', shownHouseholdId: 'hh-1' }))
+
+    // Then it is refused
+    expect(error.extensions.code).toBe('HOUSEHOLD_CHANGED')
+  })
+})
+
 describe('locationIdsWithRole', () => {
   it("returns the caller's own location roles only, not another person's", async () => {
     // Given the caller is a viewer on loc-1. `other` organizes loc-1 and

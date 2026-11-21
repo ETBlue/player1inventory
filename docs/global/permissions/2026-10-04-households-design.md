@@ -456,7 +456,7 @@ inviting one.
 | Who revokes an invite? | The owner revokes any. A manager revokes `member` invites only (O15-A), the same line as inviting |
 | What does a `member` see on the Members page? | Every person's name and household role, and their own **Leave**. No e-mail, no invites (O13-A) |
 | An invite made by a manager who is later removed or demoted | Removed or left: every open invite of that household the person made is revoked in the same transaction (O20, which replaced O18-A on 2026-11-18). Demoted: it stays open; a demoted manager is still a member. Invites made by OTHERS stay open; the remove confirm for a manager tells the owner to revoke one the person may have copied |
-| The joiner's own household | Deleted at the join when it holds no data (decision T21). Kept when it holds data, but not reachable from the screen until H7's switch (O2-A) |
+| The joiner's own household | Deleted at the join when it holds no data (decision T21). Kept when it holds data, but not reachable from the screen until H7's switch (O2-A). Since H7a it is reachable through **Switch to…** |
 | A person in two households | Acts in `User.activeHouseholdId` while still a member there, else in the oldest membership (decision T14). The join sets it to the joined household |
 | The link | 32 random bytes, base64url (T12). Single use, 7 days. A wrong, used, revoked or expired link gets ONE answer, `INVITE_INVALID`, so a caller learns nothing about a token (T18) |
 | A signed-out person | `/sign-in?redirect=/join/<token>`; Clerk returns to the link after sign-in AND sign-up (T24). A device in local mode is told that joining uses cloud sync and offers **Sign in to join**; local data is not copied |
@@ -582,6 +582,16 @@ hand-over in one transaction with the `User` row (`handOverDeletedAccount` in
     phase in *Sequencing* names the no household screen yet".
   - **Until H7, `createHousehold` is only for a person in NO household** (owner decision
     O16-A). Anyone else gets `ALREADY_IN_HOUSEHOLD`. The **Switch to…** entry above is H7.
+  - **Built in H7a** (on `feature/households-h7a`, not merged, not deployed; plan
+    [2026-11-21-households-plan-h7.md](2026-11-21-households-plan-h7.md), tasks L.1–L.7).
+    **Switch to… › Create new** sends `createHousehold(name, alsoWhenMember: true)` (decision
+    T70): the membership count is skipped, so a person who is already in a household can make
+    another one. Without the argument nothing changed: the no-household screen still sends
+    none, so two tabs on that screen still cannot make two households. The person becomes
+    owner and organizer of "Home", and the page moves into the new household.
+    `myHouseholds` lists every household the person is in, with their role there, and
+    `setActiveHousehold(householdId)` moves them (decisions T68, T69). The active household
+    is per person, not per device (owner decision O50-A).
 
 ### Checkout with a shared cart
 
@@ -702,7 +712,7 @@ J.5 and J.6; on `feature/households-h6a`; merged into `develop` as #392, not dep
 `HouseholdActivity` and the page **Settings › Household › Activity** (owner and manager,
 cloud only). How it differs from the text above:
 
-- **Ownership rows are written since H6b** (on `feature/households-h6b`, not merged):
+- **Ownership rows are written since H6b** (merged into `develop` (2026-11-21, #393, merge `9701ddff`), not deployed):
   offered, cancelled, declined, accepted, hand-over started, and account deleted.
 - **An import is one row** (owner decision O33-A). The web calls `recordImport` with the
   counts once the import ends.
@@ -730,7 +740,7 @@ The Settings area is rebuilt in **both** modes.
   household name (local keeps "My data"). While the name is loading it shows "My data", so the
   label never flashes empty (H3a plan task 3.13). Members, Activity, Switch to…, the danger
   zone and `/settings/household/locations/$id` are not shown until the phase that builds them
-  (H5, H6, H7, H6 and H5).
+  (H5, H6, H7, H6 and H5). **Switch to… is built in H7a** (task L.4), cloud only.
 
 **Main sidebar.** The top half does not change: app name, location switcher, Pantry, Shopping,
 Cooking. At the bottom, **Settings** is replaced by:
@@ -756,6 +766,13 @@ render in the main area.
 - The sidebar shown is decided by the URL: any `/settings/household/*` route shows it.
 - **Back** goes to the last Pantry, Shopping or Cooking page visited.
 - The item-9 dropdown looks as much as possible like the location switcher's dropdown.
+- **Item 9 is built in H7a** (task L.4, not merged, not deployed), cloud only, in the
+  household sidebar and in the mobile accordion. `HouseholdSwitcher` lists each household
+  with its name as stored and the person's role, marks the current one (`menuitemradio`,
+  `aria-checked`), and ends with **Create new** (`CreateHouseholdDialog`). Choosing another
+  household calls `setActiveHousehold`, then `switchToHousehold`: the Apollo cache in memory
+  and in `Player1InventoryCloudCache` is cleared, the active location id is removed, and the
+  page reloads into the new household. Local mode does not show it.
 - Detail pages (one tag, vendor, recipe, shelf, or an item) stay full-screen with no sidebar, as
   today.
 - On desktop, `/settings` redirects to `/settings/household`. On mobile it shows the accordion
@@ -1035,8 +1052,8 @@ and the owner agreed to the order below. Detail:
 | **H3b** | Shared carts: `@@unique([cartId, itemId])` (decision H8), the 15 `CartItem.userId` filters, `Cart.userId` dropped, checkout and `consumeRecipes` in one transaction with a server-computed total. Fixes #358. **Must merge before H5 starts** | No (one person per household) |
 | H4 | ✅ **Merged into `develop` 2026-11-17 (#382, merge `bf87e839`), not deployed.** Import and export: the new id rule, and `requireOwnRowOrUnclaimed` moved to the target household scope (#327 itself is already fixed by #354). Replaces H3a's import fallback location (decision H12) | The "Import into which location?" dialog |
 | H5 | Split in three PRs (H5 decision O1), [plan](2026-11-17-households-plan-h5.md). **H5a ✅ merged into `develop` (#384, merge `4307d30a`, 2026-11-18), not deployed:** `Location.myRole`, `Location.hasOrganizer`, the `householdLocations` query, a location viewer reads carts, `usePermissions` and read-only views for a household `member` and a location `viewer`, the **View only** badge in the switcher (the switcher already listed only locations with a role, so there was nothing to filter), H13 lifted with an empty locations screen, and a browser context per test user in E2E. **H5b ✅ merged into `develop` (#385, merge `938fa2aa`, 2026-11-18), not deployed** ([plan](2026-11-18-households-plan-h5b.md)): one migration (`HouseholdInvite`, `User.activeHouseholdId`), invite links, the join page, the Members page, leave and remove, a fixed rule for a person in two households, and the no-household screen with **Create a household**. Follow-ups merged after it: #386 (a failed refresh no longer fails a saved write), #387 (screens show save errors), #388 (the join keeps the copy question), #389 (the copy question names the household), #390 (`isPending` tests). **H5c ✅ merged into `develop` (#391, merge `7dbaeca9`, 2026-11-20), not deployed** ([plan](2026-11-19-households-plan-h5c.md)): no migration; the `locationPeople` query, `HouseholdPerson.hasLocationRole`, `setLocationRole`, `removeLocationRole` and `leaveLocation`; one shared rule for who may change a role (`canChangeLocationRole` in `@p1i/types`); the page `/settings/household/locations/$id`; name links on the locations list; the **No location roles** mark on the Members page; a short message when a tab loses its active location; `location-people.spec.ts` (9 cloud tests). Owner decisions O23–O31 all A | H5a alone: the last location can be deleted. **H5a + H5b + H5c: sharing works** |
-| H6 | Transfer, hand-over, offers banner, purges, activity log. Split in two PRs (owner decision O32-A), [plan](2026-11-20-households-plan-h6.md). **H6a ✅ built 2026-11-20, merged into `develop` (2026-11-20, #392, merge `c0f096ed`), not deployed:** one additive migration (`HouseholdActivity`), the activity log and its page, the purges **Delete all locations** and **Remove all items**, **Delete household** (O38-A), the danger zones, and the household lock taken first by every owner-only write. **H6b built 2026-11-20 on `feature/households-h6b`, not merged, not deployed:** one additive migration (`OwnershipOffer`), transfer with the offer banner and the Members page, the hand-over on `user.deleted`, a deleted account no longer counting, the last person's leave deleting an ownerless household (O37-A), and "Clear & import" asking for the typed name (O40) | Yes: story 2 (H6b) |
-| H7 | Personal location order and sort, household switch and create. Now also `LocationPreference`, `UserPreference` and `dataUpdatedAt` (decision H6), and the end of the shared `Location.order` (decision H5) | Yes |
+| H6 | Transfer, hand-over, offers banner, purges, activity log. Split in two PRs (owner decision O32-A), [plan](2026-11-20-households-plan-h6.md). **H6a ✅ built 2026-11-20, merged into `develop` (2026-11-20, #392, merge `c0f096ed`), not deployed:** one additive migration (`HouseholdActivity`), the activity log and its page, the purges **Delete all locations** and **Remove all items**, **Delete household** (O38-A), the danger zones, and the household lock taken first by every owner-only write. **H6b ✅ built 2026-11-20, merged into `develop` (2026-11-21, #393, merge `9701ddff`), not deployed:** one additive migration (`OwnershipOffer`), transfer with the offer banner and the Members page, the hand-over on `user.deleted`, a deleted account no longer counting, the last person's leave deleting an ownerless household (O37-A), and "Clear & import" asking for the typed name (O40) | Yes: story 2 (H6b) |
+| H7 | Personal location order and sort, household switch and create. Now also `LocationPreference`, `UserPreference` and `dataUpdatedAt` (decision H6), and the end of the shared `Location.order` (decision H5). Split in two PRs (owner decision O49-A), [plan](2026-11-21-households-plan-h7.md). **H7a ✅ built 2026-11-21 on `feature/households-h7a`, not merged, not deployed:** no migration; **Switch to…** and **Create new**; the `x-household-id` header and `HOUSEHOLD_CHANGED`, so a stale tab cannot read or write the other household (O21); the reload message (O51-A, wording O56-A); copying offline data into a chosen household or a new one (O22-A, O57-B). **H7b** (personal location order and the four sorts, one migration) is not built yet | H7a: yes, the switch, create and the copy choice |
 
 **H3a's GraphQL change is breaking, so deploy order matters** (issue #359). Six types declare
 `userId: String!`: `Item`, `TagType`, `Tag`, `Vendor`, `Recipe`, `Shelf`. Removing a field that a
@@ -1093,7 +1110,11 @@ The root `CLAUDE.md` rules apply. Points special to this design:
   the app.
 - **`UserPreference` may be merged into `User`.** Left for the plan. The table moved to H7
   (decision H6), so H7's plan decides.
-- **Household switch shows the previous household's cart — confirmed, must be designed for.**
+- **Household switch shows the previous household's cart — FIXED in H7a** (task L.3 reuses
+  H5b's `switchToHousehold`; E2E `household-switch.spec.ts` test 1 switches with a cart in
+  the old household and finds no old cart row on the page or in the saved cache). The
+  requirement below is what it meets. The original note:
+  **Household switch shows the previous household's cart — confirmed, must be designed for.**
   `main` now documents this in `apps/web/src/hooks/useLocations.ts` (the comment on
   `useDeleteLocation`). `AllCarts` and `AllCartItems` are safe today only because their readers
   filter by `activeLocationId`. A household switch changes the household, not the location, so

@@ -75,7 +75,15 @@ export async function clearCache(): Promise<void> {
   // the reset, so no render re-records this account's list from the cache.
   forgetSeenLocations()
   await cacheDb.snapshots.clear()
-  localStorage.removeItem(LAST_SYNCED_AT_KEY)
+  // `localStorage` can throw (a private window, blocked site data). That must
+  // not fail the clear: `switchToHousehold` waits for this function, and a
+  // rejection there keeps a stale tab on the old household. A sync time left
+  // behind only makes the offline banner show an old time.
+  try {
+    localStorage.removeItem(LAST_SYNCED_AT_KEY)
+  } catch {
+    // Nothing to do.
+  }
   // LAST_USER_ID_KEY is NOT removed here, on purpose (plan decision P7).
   // It keeps the ApolloWrapper purge guard armed. Sign-out lives in the user
   // sidebar, so it can happen on any page, including the pantry, item and

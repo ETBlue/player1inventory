@@ -108,7 +108,22 @@ const HOUSEHOLD_CHOICE = {
   },
 } satisfies Prisma.UserSelect
 
-type HouseholdChoice = Prisma.UserGetPayload<{ select: typeof HOUSEHOLD_CHOICE }>
+/**
+ * The order of a person's memberships: the oldest first, then by
+ * `householdId`. `ensureHousehold` falls back to the first one, and
+ * `myHouseholds` (households H7 task L.2, decision T69) lists them in this
+ * order. Both read this one constant, so the list and the fallback agree.
+ */
+export const MEMBERSHIP_ORDER = HOUSEHOLD_CHOICE.householdMemberships.orderBy
+
+/**
+ * What `pickHousehold` needs: the active household and the memberships, in
+ * `MEMBERSHIP_ORDER`. More columns may be selected; they are ignored.
+ */
+export interface HouseholdChoice {
+  activeHouseholdId: string | null
+  householdMemberships: readonly { householdId: string }[]
+}
 
 /**
  * The household a person acts in (decision T14 of the H5b plan):
@@ -123,9 +138,10 @@ type HouseholdChoice = Prisma.UserGetPayload<{ select: typeof HOUSEHOLD_CHOICE }
  * checks the membership list, and rule 2 is the answer then.
  *
  * Both reads in `ensureHousehold` use this one function, so the two cannot
- * drift apart.
+ * drift apart. `myHouseholds` uses it too, to mark the household a request
+ * acts in (`isActive`, households H7 task L.2).
  */
-function pickHousehold(row: HouseholdChoice): string | null {
+export function pickHousehold(row: HouseholdChoice): string | null {
   const ids = row.householdMemberships.map((m) => m.householdId)
   if (row.activeHouseholdId !== null && ids.includes(row.activeHouseholdId)) {
     return row.activeHouseholdId
@@ -278,8 +294,11 @@ export async function createHouseholdFor(
 
 /**
  * `createHousehold` refuses a person who is already in a household (owner
- * decision O16-A, decision T18 of the H5b plan). H7 lifts this with
- * "Switch to… › Create new".
+ * decision O16-A, decision T18 of the H5b plan). This is still the default.
+ * Since households H7 task L.2 (decision T70) the caller can pass
+ * `alsoWhenMember: true` to skip it: "Switch to… › Create new" does that.
+ * The no-household screen does not, so a second tab that created or joined
+ * first still gets this refusal there.
  */
 export function alreadyInHousehold(): GraphQLError {
   return new GraphQLError('You are already in a household.', {

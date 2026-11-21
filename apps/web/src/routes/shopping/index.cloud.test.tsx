@@ -100,6 +100,23 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     useReorderLocationsMutation: mutationStub,
     // `ActiveLocationProvider` calls this on every render (Rules of Hooks).
     useBootstrapCartsMutation: mutationStub,
+    // `PostLoginMigrationDialog` in `__root.tsx` offers the copy into another
+    // household (households H7 task L.5), so in cloud mode it calls these.
+    // This factory replaces `src/test/setup.ts`'s, so they are stubbed here
+    // too: the real hooks need an ApolloProvider.
+    useMyHouseholdsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useSetActiveHouseholdMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useCreateHouseholdMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     // The sidebar's 🏠 entry reads the household name (`HouseholdLabel`).
     useGetHouseholdQuery: () => emptyQuery,
     usePantryDataQuery: () => mockUsePantryDataQuery(),

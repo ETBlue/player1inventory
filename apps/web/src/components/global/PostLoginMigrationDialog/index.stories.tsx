@@ -7,7 +7,11 @@ import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
-import { GetHouseholdDocument, GetLocationsDocument } from '@/generated/graphql'
+import {
+  GetHouseholdDocument,
+  GetLocationsDocument,
+  MyHouseholdsDocument,
+} from '@/generated/graphql'
 import { noopApolloClient } from '@/test/apolloStub'
 import { PostLoginMigrationDialog } from '.'
 
@@ -142,8 +146,31 @@ export const PromptingMember: Story = {
 // `GetHousehold` and `GetLocations` are answered by `MockedProvider` (in real
 // Storybook only; the smoke test stubs the two hooks itself, because
 // `src/test/setup.ts` replaces every generated Apollo hook).
-function cloudMocks(role: 'owner' | 'manager' | 'member') {
+type Role = 'owner' | 'manager' | 'member'
+
+// The households the person is in (`MyHouseholds`, households H7 task L.5).
+// By default only the one shown, "Our Home".
+function cloudMocks(
+  role: Role,
+  others: Array<{ id: string; name: string; role: Role }> = [],
+) {
   const mocks: NonNullable<MockedProviderProps['mocks']> = [
+    {
+      request: { query: MyHouseholdsDocument },
+      result: {
+        data: {
+          myHouseholds: [
+            { id: 'household-1', name: 'Our Home', role },
+            ...others,
+          ].map((h) => ({
+            __typename: 'HouseholdChoice',
+            ...h,
+            isActive: h.id === 'household-1',
+          })),
+        },
+      },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+    },
     {
       request: { query: GetHouseholdDocument },
       result: {
@@ -249,6 +276,43 @@ export const MemberCannotCopy: Story = {
   decorators: [
     (Story) => (
       <MockedProvider mocks={cloudMocks('member')}>
+        <Story />
+      </MockedProvider>
+    ),
+  ],
+  beforeEach: storedCopy('skip'),
+}
+
+// Stories 7 and 8: the household choice (households H7 task L.5, decision
+// T73). The copy may go into the household shown, another household where
+// the person's role allows it, or a new one. A member household is not
+// listed. Picking another one moves the page there before the copy.
+
+// Owner of Our Home, manager of Chen flat, member of Lee house: Our Home and
+// Chen flat are offered, then "A new household".
+export const ChooseHouseholdTwo: Story = {
+  name: 'ChooseHouseholdTwo — two households to copy into, and a new one',
+  decorators: [
+    (Story) => (
+      <MockedProvider
+        mocks={cloudMocks('owner', [
+          { id: 'household-chen', name: 'Chen flat', role: 'manager' },
+          { id: 'household-lee', name: 'Lee house', role: 'member' },
+        ])}
+      >
+        <Story />
+      </MockedProvider>
+    ),
+  ],
+  beforeEach: storedCopy('skip'),
+}
+
+// Only Our Home: it is offered, with "A new household".
+export const ChooseHouseholdOne: Story = {
+  name: 'ChooseHouseholdOne — one household to copy into, and a new one',
+  decorators: [
+    (Story) => (
+      <MockedProvider mocks={cloudMocks('owner')}>
         <Story />
       </MockedProvider>
     ),

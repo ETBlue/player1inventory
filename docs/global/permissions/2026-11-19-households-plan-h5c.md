@@ -1017,11 +1017,11 @@ user until the checkpoint release deploys the server and then the web.
   reads a location and leaves again leaves no trace before H6.
 - **A deleted organizer still counts for `hasOrganizer`** (owed to H6). So a location whose
   only organizer deleted their account shows no **No organizer**.
-  **Fixed in H6b** (task K.2, `8989cc7f`, on `feature/households-h6b`, not merged; [H6 plan](2026-11-20-households-plan-h6.md)).
+  **Fixed in H6b** (task K.2, `8989cc7f`, merged into `develop` as #393; [H6 plan](2026-11-20-households-plan-h6.md)).
 - **A deleted account still shows in Add person and on the people page** with its stored
   name, until H6's hand-over decides what a deleted person is. Nothing in H5c reads
   `User.deletedAt`.
-  **Fixed in H6b** (task K.2, `8989cc7f`, not merged; [H6 plan](2026-11-20-households-plan-h6.md)): `locationPeople` and
+  **Fixed in H6b** (task K.2, `8989cc7f`, merged as #393; [H6 plan](2026-11-20-households-plan-h6.md)): `locationPeople` and
   `householdMembers` leave out a deleted account, and Add person is built from
   `householdMembers`. Task K.4's hand-over removes the rows of an account deleted from now on.
 - **An owner or manager sees the names on a No access location's page** (O24-A). Not its

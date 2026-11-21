@@ -156,7 +156,28 @@ The last E2E counts on the H3a branch, 2026-11-11, from **three separate runs** 
 `pnpm test:e2e:all`): `cloud` **126 passed / 7 skipped**, `local` **178 passed / 6 skipped**,
 `pwa` **73 passed**. Re-measure rather than quote.
 
-The last whole gate, `pnpm test:e2e:all` on `feature/households-h6b` at `5cd82bf4` on
+The last whole gate, `pnpm test:e2e:all` on `feature/households-h7a` at `82426224` on
+2026-11-21 (households H7 task L.7), first run: `local` **178 passed / 11 skipped** in
+3m42s, `cloud` **201 passed / 7 skipped / 2 failed** in 67m53s, `pwa` **73 passed** in
+1m34s. Load average between 1.7 and 3.4 during the run. Neither failure was caused by H7a:
+
+| Failed test | Error | Alone |
+|---|---|---|
+| `location-switcher.spec.ts:168` ("Manage" navigates…) | `toBeVisible` on `getByRole('main').getByText('Home')` timed out at 5 s; the page snapshot at the failure shows the row | the file passed 17 of 17 once; another run failed a DIFFERENT test of the file (`:121`) on the same line of `seedOfficeLocation` |
+| `shared-household.spec.ts:338` | `apiRequestContext.delete: socket hang up` on `DELETE /e2e/cleanup`, in the `afterEach` | passed |
+
+**`location-switcher.spec.ts` waits close to Playwright's 5 s `expect` budget for the cloud
+locations list**, right after first sign-in. Measured with `--trace on`, the same `expect`
+took 3.9 s and 2.9 s on this branch, and 3.9 s and 5.0 s on `develop` at `9701ddff`, before
+H7a. So the wait is older than H7a, and a slow answer from the Neon test branch is enough to
+fail it. Not fixed here.
+
+The second whole gate on the same branch, at `ef8982fb` (the same code; only docs after
+`82426224`), 2026-11-21, first try, no retry: `local` **178 passed / 11 skipped** in 3m40s,
+`cloud` **203 passed / 7 skipped** in 63m00s, `pwa` **73 passed** in 1m34s, all green. Load
+average 2.0 to 2.3.
+
+The gate before it, `pnpm test:e2e:all` on `feature/households-h6b` at `5cd82bf4` on
 2026-11-20 (households H6b task K.9), all three green on the first run, no retry, no flaky
 test: `local` **178 passed / 11 skipped** in 3m39s, `cloud` **197 passed / 7 skipped** in
 58m43s, `pwa` **73 passed** in 1m34s; 63m56s in all. Load average 2.70 at the start, 2.81 at
@@ -619,9 +640,10 @@ reconcile finds nothing to remove and creates every row the fixture lists. No ed
 loop was needed in 4b or in PR 5 — which is the whole argument for reading state back
 instead of predicting it.
 
-**The `cloud` project's `testMatch` is 37 files today** (`e2e/playwright.config.ts`,
-measured 2026-11-20, after households H6 task J.8; 36 on 2026-11-19, 35 on 2026-11-18, 29
-on 2026-11-04 and 13 on 2026-09-23). **Count the array rather than reusing that 37** — it
+**The `cloud` project's `testMatch` is 39 files today** (`e2e/playwright.config.ts`,
+measured 2026-11-21, after households H7 task L.6; 38 after H6b task K.8, 37 on 2026-11-20
+after households H6 task J.8; 36 on 2026-11-19, 35 on 2026-11-18, 29
+on 2026-11-04 and 13 on 2026-09-23). **Count the array rather than reusing that 39** — it
 grows most weeks:
 
 ```bash
@@ -1016,6 +1038,68 @@ Proved by mutation on 2026-11-20, each in `cloud`, restored from a copy and chec
 `countedOrganizerIn` without `deletedAt: null` leaves test 4 green, because the hand-over
 already deleted BEN's role rows. That is a negative control, not coverage.
 
+**`household-switch.spec.ts` joined on 2026-11-21 (households H7 task L.6).** Cloud only,
+one browser, in `local`'s `testIgnore`. The first real-SQL run of `myHouseholds`,
+`setActiveHousehold`, `createHousehold(alsoWhenMember: true)`, the `x-household-id` compare
+in `requireHousehold` (`HOUSEHOLD_CHANGED`, owner decision O21) and the copy into a chosen
+household (owner decision O22-A). Page object: `e2e/pages/HouseholdSwitcher.ts` (new); it is
+the one place that matches the text of the one-time "household changed" message, by its
+role (`status`) and the two household names, not by the whole sentence. The sentence did
+change once (owner decision O56-A, task L.7) and no spec needed an edit. 6 tests:
+
+| Test | What it proves |
+|---|---|
+| 1 | PAT, owner of A and a member of B, chooses B in **Switch to…**; the page loads `/` again; the stored active location is gone at the start of that load, and so is the saved cache copy; the cart page shows B's row and not A's (a negative control); A's cart row is still in A |
+| 2 | PAT, in A only, uses **Create new**; the server makes the household and PAT acts in it; the page loads `/`; A and its item are still there |
+| 3 | O21: a tab that shows A, after PAT moved to B through `makeGql` ("another device"), creates a tag type; the server answers `HOUSEHOLD_CHANGED`; no tag type in A or B; the tab reloads into B and shows the message |
+| 4 | O22-A: PAT copies offline data with `skip` from a page that showed A, picks B (manager) in "Copy into", and **Move there and copy**; after the reload "Import into which location?" asks; the item lands in B only, and the page did reload with PAT active in B |
+| 5, 6 | axe, light and dark: the page with the menu closed, the open menu alone, and the Create new dialog |
+
+**No test covers O57-B** (a household joined on this device is offered in "Copy into" when
+the role allows it). The spec joins through `joinHousehold` in `e2e/helpers/`, an API call,
+so `migration-skip-households` is never set on the page. Unit tests in
+`components/global/PostLoginMigrationDialog/index.test.tsx` cover it.
+
+**Every test seeds PAT's own household with one row BEFORE the join.** `joinHousehold`
+deletes the joiner's household when it is empty (decision T21). The join makes the joined
+household active, so the seed ends with `setActiveHousehold(A)` through `makeGql`, which
+sends no `x-household-id` and so is never refused.
+
+**Two things E2E cannot see on its own, and how test 1 gets round them:**
+
+- **Nothing writes `Player1InventoryCloudCache` in E2E.** The E2E build does not mount
+  `ApolloWrapper` (the only saver), and its client uses a fresh `createCache()`, not
+  `cloudCache`. So "the saved copy is gone after the switch" is true with or without
+  `clearCache()`. Test 1 writes the copy itself (one snapshot row for PAT, plus
+  `cloud-cache-user-id`, which makes `restoreCache` keep the row at every load), the state a
+  production device is in.
+- **`ActiveLocationProvider` rewrites the stored active location** as soon as the new
+  household's locations load. A read after the page has loaded sees the new id whether
+  `switchToHousehold` removed the old one or not. An init script records the value at the
+  START of each page load (`window.__bootActiveLocation`), before the app runs.
+
+**A whole-page axe scan with the menu open fails `aria-hidden-focus`** on the app root
+`.h-dvh` (measured 2026-11-21, 1 node, light and dark), the same Radix modal-portal effect
+`location-switcher.spec.ts` records. Scan the page with the menu closed, then
+`[role="menu"]` alone.
+
+**Read a refused write back AFTER the server answered it.** Test 3 waits for the
+`CreateTagType` response (`operationResponse`) before it reads the tag types. A read right
+after the click finds nothing whether the write was refused or not.
+
+Proved by mutation on 2026-11-21, each in `cloud`, run as `household-switch.spec.ts:<line>`,
+restored from a copy and checked with `cmp`. The table is in the H7 plan, task L.6. Two
+measured limits:
+
+- **`runStoredCopy` called before the move stays GREEN in test 4.** A `skip` copy stops at
+  "Import into which location?" before it writes anything, and the reload throws it away.
+  Only a `clear` copy into another household writes at once, and that needs the owner of
+  the target; no test here runs one. The unit test pins it.
+- **The cart page check of test 1 is a negative control**: with both `clearCache()` and the
+  active-location removal taken out of `switchToHousehold` (and the two checks for them
+  turned off), it stays green, because the page reloads and the cart page filters by the
+  active location.
+
 **`DataModeCard`'s Switch flow renders in E2E mode — since households H4 task E.6.** A
 production change made for a test, like `PostLoginMigrationDialog`'s below. The cloud
 section used to be left out in E2E mode because its Sign Out flow calls `useClerk()`.
@@ -1050,7 +1134,8 @@ What the number has been, so you can see how fast it moves rather than reuse a f
 | 2026-11-18 | `feature/households-h5b`, after task G.10. G.10 added 8 (`household-invites.spec.ts`); the other 1 came from an earlier H5b task and is not attributed here | 177 |
 | 2026-11-19 | `feature/households-h5c`, after task H.8 (`location-people.spec.ts`, 9). `local` still collects 189 in 23 files | 186 |
 | 2026-11-20 | `feature/households-h6a`, after task J.8 (`household-activity-purges.spec.ts`, 7; `purge-two-households.spec.ts`, 2 more). `local` still collects 189 in 23 files | 195 |
-| 2026-11-20 | `feature/households-h6b`, after task K.8 (`household-ownership.spec.ts`, 9). `local` still collects 189 in 23 files | **204** (38 files) |
+| 2026-11-20 | `feature/households-h6b`, after task K.8 (`household-ownership.spec.ts`, 9). `local` still collects 189 in 23 files | 204 (38 files) |
+| 2026-11-21 | `feature/households-h7a`, after task L.6 (`household-switch.spec.ts`, 6). `local` still collects 189 in 23 files | **210** (39 of 43 files) |
 
 H5a added 9 tests and removed 1. All of them RUN only in `cloud`; the six in the two
 shared spec files are also collected (and skipped) in `local`, which went 184 → 189: 3 in `location-switcher.spec.ts` (task

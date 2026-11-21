@@ -962,6 +962,79 @@ declined hand-over, for **Cancel** on the waiting row, or for the "This offer is
 open." notice; the Members page has no Decline or Not now. Check 12.5 covers the transfer
 path only.
 
+## 13. Households H7a (household switch, create, the stale-tab fix, the copy choice)
+
+Added 2026-11-21 by H7 task L.7. **H7a is built on `feature/households-h7a`. It is not
+merged and not deployed.** Plan:
+[`../permissions/2026-11-21-households-plan-h7.md`](../permissions/2026-11-21-households-plan-h7.md),
+*Deploy notes* and *Known gaps*.
+
+### 13.1 What changes
+
+| Part | What is new |
+|---|---|
+| Database | **no migration**. `User.activeHouseholdId` exists since H5b. `git log --oneline 9701ddff..HEAD -- apps/server/prisma/` is empty (checked 2026-11-21) |
+| Server env, web build env, Clerk | nothing new |
+| HTTP | the web sends a new header, `x-household-id`: the household this page shows. The server's `cors()` sets no `allowedHeaders`, so it allows every header the browser asks for, the new one included. The old server ignores it |
+| GraphQL schema | 1 new type (`HouseholdChoice`), 1 new query (`myHouseholds`), 1 new mutation (`setActiveHousehold`), 1 new optional argument (`createHousehold(alsoWhenMember: Boolean = false)`), 1 new error code (`HOUSEHOLD_CHANGED`). No field, argument or input field is removed or changed. `oldBundleCompat.test.ts` passes with the same list of known changes (in `pnpm test`, 2026-11-21) |
+| Server behaviour | `requireHousehold` compares the header with the household the person acts in. When the header names another household, every field that calls it answers `HOUSEHOLD_CHANGED`, and nothing is read or written. No header: no compare, the same as before |
+| Live updates | `setActiveHousehold` sends nothing (`publishesNothing`). The live guard holds 82 mutation fields: 78 in `publishes`, 4 in `publishesNothing` |
+| Web behaviour | **Switch to…** in the household sidebar and the mobile settings accordion (cloud only), with **Create new**; a tab that gets `HOUSEHOLD_CHANGED` reloads into the household the person is in now and shows one message (owner decisions O51-A and O56-A); the copy of offline data lists every household where the person may copy, a household joined on this device included (O57-B), and **A new household** (O22-A) |
+
+### 13.2 The order: server first, then the web
+
+This is the order of the whole households release (section 8.3). H7a does not change it.
+
+- **New web on an old server works only in part.** The new bundle selects `myHouseholds`
+  and may send `createHousehold(alsoWhenMember:)`. An old server fails GraphQL validation
+  on both. **Switch to…** then shows its error row, **Create new** fails, and the copy
+  choice offers only the household shown. The header itself does no harm: the old server
+  ignores it, so the stale-tab check is simply not there.
+- **Old web on the new server works.** `main`'s bundle sends no `x-household-id`, so
+  nothing is compared. **The O21 hole stays open for an old bundle** until it reloads into
+  the new one (plan *Known gaps*).
+
+### 13.3 Checks after the deploy
+
+**Owner, after the web deploy.** Use one TEST person who is in two TEST households (A and
+B), not the real household. Use two tabs in one browser, or two devices.
+
+1. Tab 1, **Settings › Household**: open **Switch to…**. Both households are listed with
+   the person's role, and the current one is marked.
+2. Tab 1: choose B. The page reloads; the household name in the sidebar is B; the pantry
+   and the carts show only B's data.
+3. Tab 2 still shows A (do not reload it). Make a change there, for example create a tag
+   type. Expected: the change is NOT saved. Tab 2 reloads into B and shows "You are now in
+   B. This page still showed A, so it was reloaded. If you were saving a change, it was not
+   saved." Check that the tag type is in neither A nor B.
+4. Tab 1: **Switch to… › Create new**, give a test name, press **Create**. The page reloads
+   into the new household, which has one location, "Home". The person is its owner.
+5. Optional: delete the test household from step 4 (**Delete household** in its danger
+   zone).
+
+Result: `TBD on deploy day`.
+
+### 13.4 If something is wrong
+
+| Symptom | Likely cause | What to do |
+|---|---|---|
+| **Switch to…** shows an error row for everyone, and **Create new** fails | the web is new and the server is old, or the server was rolled back | check the Railway deployment is the new commit |
+| A tab keeps reloading, or shows the message after every load | the message is read from `sessionStorage` once and removed; a loop means the server answers `HOUSEHOLD_CHANGED` to the household it also names as active | read the browser console and the network tab: `GetHousehold` must answer the household the header names. Report it as a bug; roll back the web if it hits real people |
+| A stale tab still saves into the other household | an old web bundle (no header), or a field that checks only a location role (cart, stock and log writes; plan *Known gaps*, review F6) | reload the tab. A location-scoped write lands in the household the tab SHOWS, not the other one |
+
+**Rollback.** No migration, so the server can go back by itself. But roll back the web
+FIRST (or together): an H7a bundle on an older server loses **Switch to…** and **Create
+new** (13.2). Households made with **Create new** stay, and `User.activeHouseholdId` stays
+on the household chosen last. The older server still reads it (H5b decision T14), so the
+person keeps acting in that household.
+
+**Known gaps** (from the plan): cart, stock and log writes never answer
+`HOUSEHOLD_CHANGED` (they check a location role); an old bundle has no stale-tab check;
+the person's other tabs learn of a switch only on their next request;
+`CreateHouseholdDialog` shows the name rule ("Enter a name of 1 to 100 characters") for
+every `BAD_USER_INPUT`, so an `ALREADY_IN_HOUSEHOLD` refusal would show that text (no
+current server path sends it to this dialog).
+
 ## Where this file lives, and why
 
 In `docs/global/backend/`, beside the H3a, H3b and H3c-1 runbooks. A person who opens a

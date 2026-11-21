@@ -495,7 +495,9 @@ root in cloud mode, in the Clerk tree and the E2E tree. It acts only on a `GetHo
 answer from the SERVER (`networkStatus === ready`): the query is `cache-and-network`, and
 the first answer may come from the cache restored from `Player1InventoryCloudCache`. When
 the server answers a household id other than the one this tab saw first (or, before it has
-seen one, the stored `last-household-id`), it calls `switchToHousehold` with no target:
+seen one, the household this PAGE shows: `getShownHouseholdId()`, read from
+`last-household-id` once on the page's first request; not the key read again now, which
+another tab may already have changed — review of H7 task L.3, F2), it calls `switchToHousehold` with no target:
 `clearCache()` (memory and the saved copy; `LAST_USER_ID_KEY` stays), remove
 `active-location-id:cloud`, store the id, reload this page. If the cache cannot be cleared
 it logs and does not reload.
@@ -506,6 +508,43 @@ a second household. **A leave or a removal that leaves the person in NO househol
 reach it**: `GetHousehold` then fails with `NO_HOUSEHOLD`, there is no id, and the old
 household's rows stay in memory and in `Player1InventoryCloudCache`. The no-household
 screen clears them (see *No household* below). The join page calls `switchToHousehold` itself.
+
+### Switching household and the stale tab (cloud, households H7a)
+
+**Switch to…** (`HouseholdSwitcher`, see `components/CLAUDE.md`) is the household sidebar's
+item 9 and an item of the mobile `/settings` accordion, cloud only. Choosing another
+household calls `setActiveHousehold`, then `switchToHousehold(id)`: the same one step as
+above (cache in memory and in `Player1InventoryCloudCache` cleared, `active-location-id:cloud`
+removed, reload). So no cart row, stock or name of the old household stays on screen
+(the design's known gap "Household switch shows the previous household's cart" is closed;
+`household-switch.spec.ts` test 1). **Create new** sends
+`createHousehold(name, alsoWhenMember: true)` and switches the same way.
+
+**A stale tab cannot read or write the other household** (owner decision O21, decisions
+T66, T67, T72). Every HTTP request carries `x-household-id`: the id this PAGE shows
+(`getShownHouseholdId()`), read once per page load and changed only by
+`setLastHouseholdId` and `forgetHousehold`. When the person switched or left in another
+tab or on another device, the server answers `HOUSEHOLD_CHANGED` to every field that calls
+`requireHousehold`, and nothing is written. The error link in `apollo/client.ts` then runs
+`recoverFromHouseholdChange()` once per page load: it asks `GetHousehold` (`no-cache`), stores
+the message for this tab in `sessionStorage`, and calls `switchToHousehold` (or
+`forgetHousehold` on `NO_HOUSEHOLD`). The failed write is not sent again. After the reload
+`HouseholdChangedNotice` (beside `OfflineBanner` in `__root.tsx`) shows, once:
+
+| Language | Text (owner decisions O51-A and O56-A) |
+|---|---|
+| en | "You are now in {household}. This page still showed {oldHousehold}, so it was reloaded. If you were saving a change, it was not saved." |
+| tw | 「你目前在 {household}。這個頁面還停留在 {oldHousehold}，所以重新載入了。如果你剛才在儲存變更，那筆變更沒有儲存。」 |
+
+Without the old name (the cache did not hold it) the text says "another household" /
+「另一個家庭」 (`householdChanged.noticeNoOldName`).
+
+**What this does not cover** (H7 plan, *Known gaps*): cart, stock and log fields check a
+location role (`requireLocationRole`), not `requireHousehold`, so they never answer
+`HOUSEHOLD_CHANGED`. A stale tab's cart, stock and log writes land in the household the tab
+SHOWS (not the other one); the tab recovers on its next catalog read. An old bundle sends no
+header and has no check. The person's other tabs learn of a switch only on their next
+request.
 
 ### No household (cloud, households H5b task G.8)
 
@@ -548,7 +587,9 @@ not in any household." and three actions (owner decision O19): **Create a househ
   account again does not count), the gate remounts with a fresh state, shows the page, and
   refetches `GetHousehold`. Only that fresh answer can show the screen. The E2E build has no
   Clerk and one account per page load, so it skips this.
-- **Create a household** sends `createHousehold(name)`. An empty field sends `name: null`
+- **Create a household** sends `createHousehold(name)`, with no `alsoWhenMember` (so a
+  second tab that created or joined first still gets `ALREADY_IN_HOUSEHOLD`; **Switch to… ›
+  Create new** sends `alsoWhenMember: true` since H7a). An empty field sends `name: null`
   (the server's default name); never `""`, which the server refuses as a blank name. On
   success: `switchToHousehold(id, { to: '/' })`, because the server sends the creating tab
   no live event. `ALREADY_IN_HOUSEHOLD` (another tab created or joined first) asks

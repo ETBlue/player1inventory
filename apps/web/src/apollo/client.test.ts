@@ -1,6 +1,6 @@
 import type { InMemoryCache } from '@apollo/client'
 import { gql } from '@apollo/client'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import i18n from '@/i18n'
 import {
   createApolloClient,
@@ -9,6 +9,20 @@ import {
 } from './client'
 import { CLIENT_ID } from './clientId'
 import { createCache } from './cloudCache'
+import {
+  LAST_HOUSEHOLD_ID_KEY,
+  resetHouseholdGuardForTests,
+  setLastHouseholdId,
+} from './householdGuard'
+
+// The recovery itself is tested in `householdGuard.test.ts`. Here only the
+// question "does the link call it" matters, so it is a spy. The rest of the
+// module (the shown household id) stays real.
+const recoverMock = vi.hoisted(() => vi.fn(async () => {}))
+vi.mock('./householdGuard', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./householdGuard')>()
+  return { ...actual, recoverFromHouseholdChange: recoverMock }
+})
 
 // Mirrors the `itemStocks` selection of the PantryData operation
 // (`apollo/operations/itemStocks.graphql`), trimmed to the fields the cache
@@ -753,5 +767,191 @@ describe('createCache — householdActivity joins its pages', () => {
     write(cache, { first: 2 }, ['x', 'y'])
     write(cache, { before: 'b', first: 2 }, ['c', 'd'])
     expect(read(cache)).toEqual(['x', 'y'])
+  })
+})
+
+describe('both Apollo clients send the shown household (households H7 task L.3)', () => {
+  // Decision T66: the server compares this header with the household the
+  // person acts in, and refuses a stale tab with HOUSEHOLD_CHANGED (T67).
+  const HOUSEHOLD_PROBE = gql`
+    query HouseholdProbe {
+      householdProbe
+    }
+  `
+
+  function okFetch() {
+    return vi.fn(
+      async () =>
+        new Response(JSON.stringify({ data: { householdProbe: 'ok' } }), {
+          headers: { 'content-type': 'application/json' },
+        }),
+    )
+  }
+
+  function householdHeaders(fetchMock: ReturnType<typeof vi.fn>) {
+    return (fetchMock.mock.calls as unknown as [string, RequestInit][]).map(
+      (call) => new Headers(call[1].headers).get('x-household-id'),
+    )
+  }
+
+  // Earlier tests in this file already sent requests, and the shown id is
+  // read once per page load. Start each test as a new page load.
+  beforeEach(() => {
+    localStorage.clear()
+    resetHouseholdGuardForTests()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    localStorage.clear()
+    resetHouseholdGuardForTests()
+  })
+
+  it.each([
+    ['production', () => createApolloClient(async () => null)],
+    ['e2e', () => createApolloClientForE2E('e2e-user')],
+  ])('%s client sends x-household-id from the stored id', async (_name, makeClient) => {
+    // Given this device last showed household A
+    localStorage.setItem(LAST_HOUSEHOLD_ID_KEY, 'hh-a')
+    const fetchMock = okFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    setOnLine(true)
+    const client = makeClient()
+    try {
+      // When the client sends a query
+      await client.query({
+        query: HOUSEHOLD_PROBE,
+        fetchPolicy: 'network-only',
+      })
+
+      // Then the request names household A
+      expect(householdHeaders(fetchMock)).toEqual(['hh-a'])
+    } finally {
+      await client.clearStore()
+    }
+  })
+
+  it.each([
+    ['production', () => createApolloClient(async () => null)],
+    ['e2e', () => createApolloClientForE2E('e2e-user')],
+  ])('%s client sends no x-household-id when no id is stored', async (_name, makeClient) => {
+    // Given a device that has shown no household yet
+    const fetchMock = okFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    setOnLine(true)
+    const client = makeClient()
+    try {
+      await client.query({
+        query: HOUSEHOLD_PROBE,
+        fetchPolicy: 'network-only',
+      })
+
+      // Then there is no such header at all, not an empty one
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(householdHeaders(fetchMock)).toEqual([null])
+    } finally {
+      await client.clearStore()
+    }
+  })
+
+  it('keeps the household this page showed when another tab stores a new one', async () => {
+    // Given this page loaded showing household A
+    localStorage.setItem(LAST_HOUSEHOLD_ID_KEY, 'hh-a')
+    const fetchMock = okFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    setOnLine(true)
+    const client = createApolloClient(async () => null)
+    try {
+      await client.query({
+        query: HOUSEHOLD_PROBE,
+        fetchPolicy: 'network-only',
+      })
+
+      // When another tab switches to B (it writes the shared key, then
+      // reloads itself)
+      localStorage.setItem(LAST_HOUSEHOLD_ID_KEY, 'hh-b')
+      await client.query({
+        query: HOUSEHOLD_PROBE,
+        fetchPolicy: 'network-only',
+      })
+
+      // Then this page still says it shows A, so the server can refuse it.
+      // Sending B would make the server answer B's data to a page of A.
+      expect(householdHeaders(fetchMock)).toEqual(['hh-a', 'hh-a'])
+
+      // And when this page itself moves to C, the header follows
+      setLastHouseholdId('hh-c')
+      await client.query({
+        query: HOUSEHOLD_PROBE,
+        fetchPolicy: 'network-only',
+      })
+      expect(householdHeaders(fetchMock)).toEqual(['hh-a', 'hh-a', 'hh-c'])
+    } finally {
+      await client.clearStore()
+    }
+  })
+})
+
+describe('both Apollo clients start the recovery on HOUSEHOLD_CHANGED (households H7 task L.3)', () => {
+  const REFUSED_PROBE = gql`
+    query RefusedProbe {
+      refusedProbe
+    }
+  `
+
+  function refusingFetch(code: string) {
+    return vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: null,
+            errors: [{ message: 'refused', extensions: { code } }],
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+    )
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    recoverMock.mockClear()
+  })
+
+  it.each([
+    ['production', () => createApolloClient(async () => null)],
+    ['e2e', () => createApolloClientForE2E('e2e-user')],
+  ])('%s client calls the recovery once for a HOUSEHOLD_CHANGED answer', async (_name, makeClient) => {
+    vi.stubGlobal('fetch', refusingFetch('HOUSEHOLD_CHANGED'))
+    setOnLine(true)
+    const client = makeClient()
+    try {
+      // When the server refuses a query because the household changed
+      await expect(
+        client.query({ query: REFUSED_PROBE, fetchPolicy: 'network-only' }),
+      ).rejects.toThrow('refused')
+
+      // Then the recovery runs once, with this client, and the error still
+      // reaches the caller (the operation is not sent again)
+      expect(recoverMock).toHaveBeenCalledTimes(1)
+      expect(recoverMock).toHaveBeenCalledWith(client)
+    } finally {
+      await client.clearStore()
+    }
+  })
+
+  it('does not call the recovery for FORBIDDEN', async () => {
+    vi.stubGlobal('fetch', refusingFetch('FORBIDDEN'))
+    setOnLine(true)
+    const client = createApolloClient(async () => null)
+    try {
+      await expect(
+        client.query({ query: REFUSED_PROBE, fetchPolicy: 'network-only' }),
+      ).rejects.toThrow('refused')
+
+      // A low role is not a household change
+      expect(recoverMock).not.toHaveBeenCalled()
+    } finally {
+      await client.clearStore()
+    }
   })
 })

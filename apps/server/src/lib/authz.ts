@@ -35,6 +35,31 @@ export function forbidden(): GraphQLError {
   return new GraphQLError('Forbidden', { extensions: { code: 'FORBIDDEN' } })
 }
 
+/** Options of `requireHousehold`. */
+export interface RequireHouseholdOptions {
+  /**
+   * Skip the shown-household compare (households H7 task L.1, decision T67).
+   * Only for a field that must tell the web the TRUE household so a stale tab
+   * can recover: the `household` query. `myHouseholds` and `setActiveHousehold`
+   * (task L.2) do not call `requireHousehold` at all, so they need no option.
+   * Every other caller leaves it out.
+   */
+  ignoreShown?: boolean
+}
+
+/**
+ * The refusal for a tab that shows another household than the one the person
+ * acts in now (households H7 task L.1, decision T67). A code of its own, not
+ * `FORBIDDEN`, so the web can tell "your household changed" from "your role
+ * is too low". It names no household id: the web asks the `household` query
+ * for the true one.
+ */
+export function householdChanged(): GraphQLError {
+  return new GraphQLError('The household on this screen is not the one you are in now.', {
+    extensions: { code: 'HOUSEHOLD_CHANGED' },
+  })
+}
+
 /**
  * The caller's household id. A new person gets their household, and their
  * first location, here (`ensureHousehold`, lib/household.ts).
@@ -44,15 +69,44 @@ export function forbidden(): GraphQLError {
  * without one (most tests) works it out on every call. The PROMISE is kept,
  * not the id, so resolvers that run in parallel in one request share one
  * lookup.
+ *
+ * ── THE SHOWN HOUSEHOLD (households H7 task L.1, decision T67) ──
+ *
+ * A tab sends the household it shows in `x-household-id`
+ * (`ctx.shownHouseholdId`). When it names another household than the one
+ * worked out here, this refuses with `HOUSEHOLD_CHANGED` (owner decision
+ * O21). So a tab that still shows household A, after the person switched to
+ * B or left A, can neither read nor write B. Every read and write that calls
+ * this function gets the check, with no change at the call site.
+ *
+ * This compare is NOT an authorization check. Both ids belong to the same
+ * person: one is the household they act in, the other is the one their own
+ * tab shows. It grants nothing and chooses nothing. The role checks
+ * (`requireHouseholdRole`, `requireLocationRole`, ...) still run after it, as
+ * before.
+ *
+ * The compare runs AFTER the cached lookup, so the cache holds the household
+ * id, never the refusal. A field that passes `{ ignoreShown: true }` in the
+ * same request still gets the id. No header (an old web bundle, `makeGql` in
+ * E2E) means nothing is compared.
  */
-export function requireHousehold(ctx: Context): Promise<string> {
+export function requireHousehold(
+  ctx: Context,
+  options: RequireHouseholdOptions = {},
+): Promise<string> {
   const userId = requireAuth(ctx)
   const cache = ctx.requestCache
-  const known = cache?.householdId
-  if (known) return known
-  const lookup = ensureHousehold(userId, ctx.language ?? 'en')
-  if (cache) cache.householdId = lookup
-  return lookup
+  let lookup = cache?.householdId
+  if (!lookup) {
+    lookup = ensureHousehold(userId, ctx.language ?? 'en')
+    if (cache) cache.householdId = lookup
+  }
+  const shown = ctx.shownHouseholdId
+  if (options.ignoreShown || shown === undefined) return lookup
+  return lookup.then((householdId) => {
+    if (householdId !== shown) throw householdChanged()
+    return householdId
+  })
 }
 
 /**
@@ -524,8 +578,11 @@ function catalogDelegate(model: CatalogModel): CatalogDelegate {
  * `requireHousehold(ctx)`, because a person can be a member of two
  * households, and then "the caller's household" has no fixed answer. Every
  * call site passes the id `requireCatalogRole` (or, for the import helpers
- * until H4 task E.3, `requireHousehold`) returned. H7's household switch will
- * fill it in.
+ * until H4 task E.3, `requireHousehold`) returned. Since H7 (decision T71)
+ * that IS the household the person acts in: there is no other target. To
+ * write into another household, the person switches to it first
+ * (`setActiveHousehold`), and `requireHousehold` refuses a tab that still
+ * shows the old one (`HOUSEHOLD_CHANGED`, decision T67).
  *
  * "A row the caller may write" means, since H4 task E.1 (decision T5), with
  * `writable` = the locations of the target household where the caller is

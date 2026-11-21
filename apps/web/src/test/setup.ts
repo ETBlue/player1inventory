@@ -410,6 +410,23 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
+    // **Switch to…** (households H7 task L.4) is in the household sidebar and
+    // the mobile /settings accordion in cloud mode, so a cloud test that
+    // renders either reaches these. No households, and writes that answer
+    // nothing. The switcher's own tests use real Apollo.
+    useMyHouseholdsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useSetActiveHouseholdMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useCreateHouseholdMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
   }
 })
 
