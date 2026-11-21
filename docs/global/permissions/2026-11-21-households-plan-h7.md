@@ -916,6 +916,21 @@ and tests, `routes/settings/household/locations/index.tsx` and its tests and sto
 
 **E2E:** M.5.
 
+**Done 2026-11-22** at `a8712a6d` (two commits: `45b57843` the feature, `a8712a6d` the area guides).
+
+- **Counts.** Baseline at `82d35f56`: web 3840 / 373. After: web **3899 / 378**, server 2834 / 89 (unchanged), `scripts/spec` 70. The full gate is green without E2E; esbuild `dist/index.js 266.6 KiB`, 15 `.graphql` files.
+- **Sort.** `sortLocations` (`lib/locationSort.ts`) sorts both lists. Names use `localeCompare` in the app language (`zh-TW` for `tw`) with `sensitivity: 'base'`. Dates go newest first, `null` last. Ties go by name, then id.
+- **`useLocationSort()`.** Cloud: `myLocationSort`, and `setLocationSort` with an optimistic answer. Local: `localStorage['location-sort']` through `useSyncExternalStore`, `name` or `custom` only; anything else gives `custom`. Both give `sorted(list)`.
+- **Settings › Locations** has `LocationSortSelect` in the toolbar.
+- **Drag handles** show for every household role (`usePermissions().canReorderLocations`) and only with Custom. Delete stays `canManageLocations`.
+- **`LocationSwitcher`** uses the same sort (O53-A).
+- **Visits.** `ActiveLocationProvider` sends `markLocationVisited` once per change of the active id, in cloud only, and only for an id in the loaded list. The first active location after a load counts (O55-A). An answer of `true` sets the cached `lastVisitedAt`.
+- **List-position order.** In cloud, `useLocations` and `useHouseholdLocations` set `order` to the row's place in the list the server sent. Both lists share one cached `Location`, and a single `Location` from create, rename or import carries the shared order. Create, rename and delete already refetch both lists; an import ends with `resetStore()`.
+- **`FORBIDDEN` reorder.** It now reloads both lists and `GetHousehold`, and the page shows `reorderError` ("The location list changed…").
+- **Test stubs.** The three new hooks are stubbed in `setup.ts` and in 9 per-file factories. `markLocationVisitedMock` is in `cloudFixtures.ts`. `dataUpdatedAt` and `lastVisitedAt` were added to every real-Apollo Location fixture; without them, 17 tests read incomplete cache data.
+- **Mutations.** All red except M11: name without `base` (case-tie test), `null` first, handles for every sort, reorder still manager, switcher by `order` only, local ignores the stored sort, local offers four, no visit, visit in local, visit not gated, cached `order` used, `FORBIDDEN` reloads only the role, `FORBIDDEN` general message, no optimistic answer, local store tells no listener, no `lastVisitedAt` write, `canDrag` from `canManage`. M11 (`visitedRef` removed) stays green; the code comment says so.
+- **Not done:** "Last updated" does not move live, because location lists refetch only on `LOCATION`. A cloud export now writes the caller's personal order as `order`.
+
 ---
 
 ## Task M.5 — E2E: personal order and the sorts on real SQL
@@ -1113,6 +1128,11 @@ Filled in from the task reports and reviews.
 | T77 | `order` is 0 to n−1 "over the list being returned" | true for `locations`, `householdLocations` and `reorderLocations`. A single row from `createLocation`, `updateLocation` or an import carries the stored shared `order`, which can overwrite the cached personal one until the next list read |
 | M.3 | step 4: the comment at `location.resolver.ts:557–559` | it was at line 568 after M.2. The live-events header above the resolver map also named `reorderLocations` as a publisher, and M.2 had left the `setLocationRole` comment above `markLocationVisited` |
 | M.3 | Bea's `[B, A, C]`: "`FORBIDDEN` or `BAD_USER_INPUT`" | `FORBIDDEN`: C is not in Bea's list, and one answer for "not yours" and "unknown" stops a member from learning which ids are locations of their household |
+| M.4 mutation table | "`name` sort without `sensitivity: 'base'` → the Apple/banana test" | ICU ignores case at its first level, so Apple/banana stays green. Only a case-only tie ("apple" and "Apple", broken by id) goes red |
+| M.4 Step 3 | "`canReorderLocations` … (it was `manager`)" | No such field existed. Reorder used `canManageLocations`, which also gates Delete. M.4 added `canReorderLocations` and kept the other for Delete |
+| M.3 / M.4 | the gap was "a single `Location` from a write overwrites the cached `order`" | The larger race is between the two LIST queries. Since T77 each gives a position in its own list, and both write one cached `Location`. M.4 reads `order` from the array position instead |
+| M.4 | nothing about refusals | Once every role may reorder, `FORBIDDEN` means "your list is out of date", not "no right". The hook and the page had to change |
+| M.4 | nothing about live updates | "Last updated" needs the location lists to refetch on `STOCK`, `CART` and `LOG`. Not done; asked as O58 |
 
 ## Status
 
