@@ -684,24 +684,26 @@ marked fixed, with a link here), `docs/INDEX.md`, the H4 runbook (a new **sectio
 no migration, server first, what an old bundle sees, checks after deploy), and this plan's
 *What this plan got wrong* and *Status*.
 
-- [ ] Step 1: the docs. Re-measure every count you write; do not copy one from here.
-- [ ] Step 2: no migration in H7a, so no `verify:migration`. Check with
-  `git log --oneline 9701ddff..HEAD -- apps/server/prisma/` (empty).
-- [ ] Step 3: the full gate from the repo root, every command alone:
+- [x] Step 1: the docs. Done in `9c53c186` (the CLAUDE.md files), `c2fcdecf` (design, phase plan, H5b known gaps, INDEX), `041a5af7` (H4 runbook section 13), `972b2dad` (e2e/CLAUDE.md, the gate). Every count re-measured with its command. Before them, the two owner answers: `62c28086` (O56-A, the message wording) and `82426224` (O57-B, `copyTargetOptions` decided by `canCopyInto` alone; the `skipped` parameter removed).
+- [x] Step 2: `git log --oneline 9701ddff..HEAD -- apps/server/prisma/` is empty.
+- [x] Step 3: at `82426224`, each command alone: `pnpm lint` exit 0 (13 known warnings); `pnpm build` exit 0, server bundle 260.2 KiB, 15 `.graphql` files; no TS6385; `build-storybook` exit 0; `pnpm check` exit 0; `pnpm test` web 3840 / 373, server 2767 / 87, spec 70. `pnpm test:e2e:all`: local 178 passed / 11 skipped (3m42s), cloud 201 passed / 7 skipped / 2 failed (67m53s), pwa 73 passed (1m34s), load 1.7–3.4. The two failures are not caused by H7a (see below). A green whole gate is still owed before the push.
+- [x] Step 4: `git status` clean; `git show --stat` checked for each commit.
 
-  ```bash
-  pnpm lint
-  pnpm build 2>&1 | tee /tmp/p1i-build.log
-  (cd apps/web && pnpm build-storybook)
-  pnpm check
-  grep 'TS6385' /tmp/p1i-build.log && echo "FAIL: deprecated imports found" || echo "OK: no deprecated imports"
-  pnpm test
-  pnpm test:e2e:all
-  ```
+**Done 2026-11-21.** Commits `62c28086`, `82426224`, `9c53c186`, `c2fcdecf`, `041a5af7`, `972b2dad`. Mutation checks, each restored from a copy and checked with `cmp`:
 
-  Never the bare `pnpm test:e2e`, never `--grep`. Copy `test-results/` aside before
-  re-running anything.
-- [ ] Step 4: `git status` clean; `git show --stat` for each commit.
+| Mutation | Result |
+|---|---|
+| the old O56 texts back in en and tw | red, 4 tests |
+| the O57 skip back in `copyTargetOptions` | red, 2 tests (the managed joined household; the member joined household) |
+| `canCopyInto` removed for other households | red, 5 tests |
+| the O12-A skip removed from the automatic question | red, 3 tests (the auto skip is still pinned) |
+
+E2E failures, each with all three proofs:
+
+| Test | Error | Run alone |
+|---|---|---|
+| `location-switcher.spec.ts:168` | `toBeVisible` on the locations list ("Home") timed out at 5 s; the snapshot shows the row | another test of the file (`:121`, the same wait) failed once, then 17 of 17 passed. With `--trace on` the wait took 3.9 s and 2.9 s here, and 3.9 s and 5.0 s on `develop` at `9701ddff`: an older wait close to its budget |
+| `shared-household.spec.ts:338` | `socket hang up` on `DELETE /e2e/cleanup` in `afterEach` | passed |
 
 ---
 
@@ -1075,12 +1077,20 @@ Filled in from the task reports and reviews.
 | L.6 | test 4 mutation "the copy starts before the switch" goes red | green: a `skip` copy writes nothing before "Import into which location?"; only `clear` writes at once, and needs the owner of the target |
 | L.6 | test 5: scan the open dropdown | a whole-page scan with the menu open fails `aria-hidden-focus` on `.h-dvh` (Radix modal portal); scan the page closed, then `[role="menu"]` alone |
 | L.6 | files: spec, page object, config | also `e2e/CLAUDE.md`; 6 tests (the scan in light and dark) |
+| L.7 | files: "`hooks/CLAUDE.md` (the G.9 `keyFields` note is not needed …)" | there was no such note in `hooks/CLAUDE.md`; it is only in the H5b plan. One line now says it is not needed |
+| Summary | "38 `requireHousehold(ctx` … lines" | 37 on 2026-11-21 with the same command |
+| L.6 | e2e/CLAUDE.md: the notice "may still change (owner question O56)" | it did change (O56-A); no spec needed an edit, because the page object matches the two names only |
+| O57 | the copy list skips a household joined on this device | owner decision O57-B: the list is decided by `canCopyInto` alone; the skip list stops only the automatic question (O12-A). No E2E covers it: the spec joins through an API helper |
+| L.7 | step 3 ends with a green `pnpm test:e2e:all` | the first run failed 2 cloud tests, neither caused by H7a; `location-switcher.spec.ts` waits 3–5 s of a 5 s budget on `develop` too |
+| L.7 | "Copy `test-results/` aside before re-running" | `run-all.sh` runs `pwa` right after `cloud`, and that deletes the cloud `test-results/`. A cloud failure late in the run survives only in the log, unless you copy the folder while the gate is still running |
 
 ## Status
 
 **Plan written 2026-11-21** on `feature/households-h7`, based on `develop` at `9701ddff`
 (plus `5cc4e741`, which records H6b as merged). Owner decisions O49–O55 answered 2026-11-21: all A, except **O54-B** (Name and Custom in
 local mode, saved on the device). Nothing built.
+
+**H7a built 2026-11-21** on `feature/households-h7a` (tasks L.1–L.7), not merged, not deployed. Owner decisions O56-A and O57-B applied in L.7. No migration. Deploy notes: section 13 of the H4 runbook. One green `pnpm test:e2e:all` is still owed before the push (the first run failed 2 cloud tests not caused by H7a; see L.7). H7b (M.1–M.6) not built.
 
 ---
 
