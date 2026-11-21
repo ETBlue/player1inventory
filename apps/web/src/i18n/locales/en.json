@@ -1065,6 +1065,11 @@
     "offlineNeverSynced": "Showing no data. Connect to load your items.",
     "writeBlocked": "You are offline. Changes cannot be saved right now."
   },
+  "householdChanged": {
+    "notice": "You are now in {{household}}. Your last change was not saved, because this page still showed {{oldHousehold}}.",
+    "noticeNoOldName": "You are now in {{household}}. Your last change was not saved, because this page showed another household.",
+    "close": "Close"
+  },
   "noLocations": {
     "title": "You have no locations in this household yet.",
     "create": "Create a location"

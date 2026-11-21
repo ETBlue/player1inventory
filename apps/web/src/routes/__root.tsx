@@ -7,6 +7,7 @@ import {
 } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { HouseholdChangeGuard } from '@/apollo/HouseholdChangeGuard'
+import { HouseholdChangedNotice } from '@/components/global/HouseholdChangedNotice'
 import { Layout } from '@/components/global/Layout'
 import { OfflineBanner } from '@/components/global/OfflineBanner'
 import { PostLoginMigrationDialog } from '@/components/global/PostLoginMigrationDialog'
@@ -139,6 +140,13 @@ function RootComponent() {
       {mode === 'cloud' && <HouseholdChangeGuard />}
       <Layout>
         {mode === 'cloud' && <OfflineBanner />}
+        {/*
+          The one-time message after this tab was moved to another household
+          because the server refused it with HOUSEHOLD_CHANGED (households H7
+          task L.3, owner decision O51-A). It shows nothing on every other
+          load.
+        */}
+        {mode === 'cloud' && <HouseholdChangedNotice />}
         {/*
           Asks the person to become the owner of a household: an owner's
           transfer offer, or a hand-over after the owner's account was
