@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { usePermissions } from './usePermissions'
+import { permissionsFor, usePermissions } from './usePermissions'
 
 // `usePermissions` (households H5, decision T9) over stubbed generated hooks.
 //
@@ -525,5 +525,41 @@ describe('usePermissions — activity and purges', () => {
     expect(p.canRemoveAllItems('local')).toBe(false)
     // Nor an owner to hand the data over to (households H6b)
     expect(p.canTransferOwnership).toBe(false)
+  })
+})
+
+// ── Households H7b task M.4: reorder for every household role ──
+//
+// The location order is the person's own since H7b (decision T78), so every
+// household role may drag, a member too. Delete stays owner and manager.
+describe('permissionsFor — canReorderLocations', () => {
+  it.each([
+    ['owner', true],
+    ['manager', true],
+    ['member', true],
+  ] as const)('household %s may reorder their own list', (householdRole, expected) => {
+    const p = permissionsFor({ mode: 'cloud', householdRole })
+    expect(p.canReorderLocations).toBe(expected)
+  })
+
+  it('household member may reorder but not delete', () => {
+    const p = permissionsFor({ mode: 'cloud', householdRole: 'member' })
+    expect(p.canReorderLocations).toBe(true)
+    expect(p.canManageLocations).toBe(false)
+  })
+
+  it('nobody may reorder while the household role loads, or when it is unknown', () => {
+    expect(
+      permissionsFor({ mode: 'cloud', isLoading: true, householdRole: 'owner' })
+        .canReorderLocations,
+    ).toBe(false)
+    expect(
+      permissionsFor({ mode: 'cloud', householdRole: undefined })
+        .canReorderLocations,
+    ).toBe(false)
+  })
+
+  it('local mode may reorder', () => {
+    expect(permissionsFor({ mode: 'local' }).canReorderLocations).toBe(true)
   })
 })

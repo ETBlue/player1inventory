@@ -11,10 +11,11 @@ const {
   DefaultOnly,
   ManagerWithNoAccessRow,
   ManagerWithPeopleLinks,
-  MemberReadOnly,
+  MemberOwnOrder,
   MixedCaseNames,
   MultipleLocations,
   NoOrganizer,
+  SortedByName,
 } = composeStories(stories)
 
 describe('LocationList stories smoke tests', () => {
@@ -135,15 +136,25 @@ describe('LocationList roles (households H5 task F.3)', () => {
     }
   })
 
-  it('MemberReadOnly shows the role and no Delete or drag handle', () => {
-    render(<MemberReadOnly />)
+  it('MemberOwnOrder shows the role, drag handles and no Delete', () => {
+    render(<MemberOwnOrder />)
     expect(screen.getByText('Participant')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Delete / })).toBeNull()
+    expect(
+      screen.getAllByRole('button', { name: /^Drag to reorder / }),
+    ).toHaveLength(2)
+    expect(
+      screen.getByRole('button', { name: 'Rename Kitchen' }),
+    ).toBeInTheDocument()
+  })
+
+  it('SortedByName has Delete but no drag handle', () => {
+    render(<SortedByName />)
     expect(
       screen.queryByRole('button', { name: /^Drag to reorder / }),
     ).toBeNull()
     expect(
-      screen.getByRole('button', { name: 'Rename Kitchen' }),
+      screen.getByRole('button', { name: 'Delete Attic' }),
     ).toBeInTheDocument()
   })
 

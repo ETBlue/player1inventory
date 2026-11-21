@@ -253,3 +253,137 @@ describe('Settings locations page', () => {
     }
   })
 })
+
+// ── Households H7b task M.4: Sort by in local mode (owner decision O54-B) ──
+//
+// Local mode offers Name and Custom only, saved on the device in
+// `localStorage['location-sort']`, with no Dexie change. The order is My
+// Home, Cellar, Attic. By name it is Attic, Cellar, My Home.
+describe('Settings locations page — Sort by in local mode', () => {
+  let queryClient: QueryClient
+
+  beforeEach(async () => {
+    localStorage.removeItem('location-sort')
+    await db.locations.clear()
+    const now = new Date()
+    await db.locations.bulkPut([
+      {
+        id: DEFAULT_LOCATION_ID,
+        name: 'My Home',
+        order: 0,
+        isDefault: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'loc-cellar',
+        name: 'Cellar',
+        order: 1,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'loc-attic',
+        name: 'Attic',
+        order: 2,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ])
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    sessionStorage.clear()
+  })
+
+  const renderPage = () => {
+    const router = createRouter({
+      routeTree,
+      history: createMemoryHistory({
+        initialEntries: ['/settings/household/locations'],
+      }),
+      context: { queryClient },
+    })
+    return render(
+      <ApolloProvider client={noopApolloClient}>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </ApolloProvider>,
+    )
+  }
+
+  /** The names of the list in <main>, top to bottom. */
+  async function listedNames() {
+    const main = await screen.findByRole('main')
+    const list = await within(main).findByRole('list')
+    return within(list)
+      .getAllByRole('listitem')
+      .map(
+        (r) =>
+          ['My Home', 'Cellar', 'Attic'].find(
+            (n) => within(r).queryByText(n) !== null,
+          ) ?? '?',
+      )
+  }
+
+  it('user sees Sort by with two choices only, on Custom, with drag handles', async () => {
+    renderPage()
+    const user = userEvent.setup()
+
+    // Then the list is in the custom order, and can be dragged
+    await waitFor(async () =>
+      expect(await listedNames()).toEqual(['My Home', 'Cellar', 'Attic']),
+    )
+    expect(
+      screen.getByRole('button', { name: 'Drag to reorder Cellar' }),
+    ).toBeInTheDocument()
+
+    // And the control offers Custom and Name only
+    const control = screen.getByRole('combobox', { name: 'Sort by' })
+    expect(control).toHaveTextContent('Custom')
+    await user.click(control)
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Custom',
+      'Name',
+    ])
+  })
+
+  it('user can sort locations by name, and it survives a reload', async () => {
+    // Given the page in the custom order
+    const first = renderPage()
+    const user = userEvent.setup()
+    await waitFor(async () =>
+      expect(await listedNames()).toEqual(['My Home', 'Cellar', 'Attic']),
+    )
+
+    // When the user picks Name
+    await user.click(screen.getByRole('combobox', { name: 'Sort by' }))
+    await user.click(screen.getByRole('option', { name: 'Name' }))
+
+    // Then the list is by name at once, with no drag handles
+    await waitFor(async () =>
+      expect(await listedNames()).toEqual(['Attic', 'Cellar', 'My Home']),
+    )
+    expect(
+      screen.queryByRole('button', { name: /^Drag to reorder/ }),
+    ).not.toBeInTheDocument()
+    // And the choice is saved on the device, not in Dexie
+    expect(localStorage.getItem('location-sort')).toBe('name')
+
+    // When the page is opened again
+    first.unmount()
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    renderPage()
+
+    // Then it is still by name
+    await waitFor(async () =>
+      expect(await listedNames()).toEqual(['Attic', 'Cellar', 'My Home']),
+    )
+    expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveTextContent(
+      'Name',
+    )
+  })
+})

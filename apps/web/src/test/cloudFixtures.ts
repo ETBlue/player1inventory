@@ -12,6 +12,7 @@
 import {
   BootstrapCartsDocument,
   GetLocationsDocument,
+  MarkLocationVisitedDocument,
 } from '@/generated/graphql'
 
 export const LOC_A = 'clw3loc0a0000s9f8h7g6d5e4' // Cloud Kitchen — the first location (order 0), active first
@@ -26,6 +27,11 @@ export const cloudLocation = (id: string, name: string, order: number) => ({
   updatedAt: '2026-08-02T11:00:00.000Z',
   // `GetLocations` selects the caller's role (households H5 task F.1).
   myRole: 'organizer' as const,
+  // And, since households H7b task M.4, the two dates the sorts read. A
+  // cached answer that lacks a selected field is incomplete, and Apollo
+  // reads it as missing.
+  dataUpdatedAt: null as string | null,
+  lastVisitedAt: null as string | null,
 })
 
 export const CLOUD_LOCATIONS = [
@@ -55,6 +61,21 @@ export const bootstrapCartsMock = {
   },
   maxUsageCount: Number.POSITIVE_INFINITY,
   result: { data: { bootstrapCarts: [] } },
+}
+
+// `ActiveLocationProvider` also records a visit in CLOUD mode whenever the
+// active location changes (households H7b task M.4, decision T80). Like
+// `bootstrapCartsMock`, every cloud test that mounts the provider on a
+// `MockedProvider` needs it, or each mount logs "No more mocked responses".
+// The answer `false` means "under 60 seconds since the last visit", so the
+// provider writes nothing into the cache.
+export const markLocationVisitedMock = {
+  request: {
+    query: MarkLocationVisitedDocument,
+    variables: () => true,
+  },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+  result: { data: { markLocationVisited: false } },
 }
 
 // The cloud `Item` is CONFIGURATION ONLY since cloud locations PR 5 dropped the

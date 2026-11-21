@@ -9,6 +9,8 @@ query GetLocations {
     createdAt
     updatedAt
     myRole
+    dataUpdatedAt
+    lastVisitedAt
   }
 }
 
@@ -22,6 +24,8 @@ query GetHouseholdLocations {
     order
     myRole
     hasOrganizer
+    dataUpdatedAt
+    lastVisitedAt
   }
 }
 
@@ -40,6 +44,8 @@ mutation CreateLocation($name: String!) {
     updatedAt
     myRole
     hasOrganizer
+    dataUpdatedAt
+    lastVisitedAt
   }
 }
 
@@ -52,6 +58,8 @@ mutation UpdateLocation($id: ID!, $input: UpdateLocationInput!) {
     updatedAt
     myRole
     hasOrganizer
+    dataUpdatedAt
+    lastVisitedAt
   }
 }
 
@@ -68,7 +76,30 @@ mutation ReorderLocations($orderedIds: [ID!]!) {
     updatedAt
     myRole
     hasOrganizer
+    dataUpdatedAt
+    lastVisitedAt
   }
+}
+
+# ── Sort and visits (households H7b, task M.4) ──
+
+# The caller's own sort of their location lists (decision T74). `custom`
+# when they never chose one (owner decision O52-A). Not live: it changes
+# only by this person's own `setLocationSort`.
+query MyLocationSort {
+  myLocationSort
+}
+
+# Saves the caller's sort. Publishes nothing.
+mutation SetLocationSort($sort: LocationSort!) {
+  setLocationSort(sort: $sort)
+}
+
+# Records that the caller opened a location (decision T80, owner decision
+# O55-A). `false` when the last visit is under 60 seconds old; nothing is
+# written then. Publishes nothing.
+mutation MarkLocationVisited($locationId: ID!) {
+  markLocationVisited(locationId: $locationId)
 }
 
 # ── Location roles (households H5c, task H.4) ──

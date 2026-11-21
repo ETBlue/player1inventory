@@ -28,6 +28,7 @@ import {
   getLocationsMock,
   LOC_A,
   LOC_B,
+  markLocationVisitedMock,
 } from '@/test/cloudFixtures'
 import { DEFAULT_LOCATION_ID } from '@/types'
 import {
@@ -247,6 +248,7 @@ const applyUnitSwitchMock = {
 
 const MOCKS = [
   bootstrapCartsMock,
+  markLocationVisitedMock,
   getLocationsMock,
   getItemsMock,
   pantryMock(LOC_A),
@@ -765,6 +767,7 @@ describe('cloud stock writes whose refresh fails', () => {
     const { result } = renderHook(() => useUpdateItem(), {
       wrapper: makeWrapper([
         bootstrapCartsMock,
+        markLocationVisitedMock,
         getLocationsMock,
         pantryMock(LOC_A),
         refused,

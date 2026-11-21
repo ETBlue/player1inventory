@@ -153,16 +153,37 @@ export const ManagerWithNoAccessRow: Story = {
 
 /**
  * A household member. They see only their own locations, with their role.
- * No drag handles and no Delete; Rename only where they organize.
+ * No Delete; Rename only where they organize. Since households H7b the
+ * order is their own (decision T78), so they get drag handles.
  */
-export const MemberReadOnly: Story = {
+export const MemberOwnOrder: Story = {
   args: {
     showRoles: true,
     canManage: false,
+    canReorder: true,
     canRename: (location) => location.myRole === 'organizer',
     locations: [
       cloudRow('cloud-kitchen', 'Kitchen', 0, 'organizer'),
       cloudRow('cloud-garage', 'Garage', 1, 'participant'),
+    ],
+  },
+}
+
+/**
+ * Households H7b: a sort other than Custom (here Name). The page passes the
+ * rows already sorted and `canReorder: false`, so no row can be dragged: a
+ * drag would save an order the person cannot see. Delete stays.
+ */
+export const SortedByName: Story = {
+  args: {
+    showRoles: true,
+    canManage: true,
+    canReorder: false,
+    canRename: (location) => location.myRole === 'organizer',
+    locations: [
+      cloudRow('cloud-attic', 'Attic', 2, 'organizer'),
+      cloudRow('cloud-garage', 'Garage', 0, 'viewer'),
+      cloudRow('cloud-kitchen', 'Kitchen', 1, 'organizer'),
     ],
   },
 }

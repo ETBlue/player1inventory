@@ -17,6 +17,7 @@ import {
   getLocationsMock,
   LOC_A,
   LOC_B,
+  markLocationVisitedMock,
 } from '@/test/cloudFixtures'
 import { elementAt } from '@/test/narrow'
 import { DEFAULT_LOCATION_ID, type PantryItem } from '@/types'
@@ -178,6 +179,7 @@ const addLogMock = (locationId: string) => ({
 
 const MOCKS = [
   bootstrapCartsMock,
+  markLocationVisitedMock,
   getLocationsMock,
   itemLogsMock(LOC_A),
   itemLogsMock(LOC_B),

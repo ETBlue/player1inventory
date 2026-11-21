@@ -91,6 +91,10 @@ const loc = (
   createdAt: '2026-08-01T10:00:00.000Z',
   updatedAt: '2026-08-02T11:00:00.000Z',
   myRole,
+  // Selected by `GetLocations` since households H7b. A cached answer that
+  // lacks them is incomplete, and Apollo reads it as missing.
+  dataUpdatedAt: null,
+  lastVisitedAt: null,
 })
 
 const HOME = loc(HOME_ID, 'Home', 0, 'viewer')

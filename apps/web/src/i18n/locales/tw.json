@@ -714,6 +714,13 @@
       "noOrganizer": "沒有據點王",
       "yourRole": "你的角色：",
       "open": "開啟{{name}}",
+      "sortBy": "排序依據",
+      "sort": {
+        "custom": "自訂",
+        "name": "名稱",
+        "lastUpdated": "最近更新",
+        "lastVisited": "最近造訪"
+      },
       "people": {
         "title": "人員",
         "description": "在這個據點有角色的人",

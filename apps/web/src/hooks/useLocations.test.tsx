@@ -71,6 +71,9 @@ const cloudLocation = (id: string, name: string, order: number) => ({
   updatedAt: '2026-08-02T11:00:00.000Z',
   // `GetLocations` selects the caller's role (households H5 task F.1).
   myRole: 'organizer' as const,
+  // And the two dates the sorts read (households H7b task M.4).
+  dataUpdatedAt: null,
+  lastVisitedAt: null,
 })
 
 // Named rather than read back out of the array. `noUncheckedIndexedAccess` is
@@ -393,6 +396,8 @@ const settingsRow = (
   order,
   myRole,
   hasOrganizer,
+  dataUpdatedAt: null,
+  lastVisitedAt: null,
 })
 const SETTINGS_ROWS = [
   settingsRow(CLOUD_FIRST_ID, 'Cloud Warehouse', 0, 'organizer'),
@@ -408,6 +413,36 @@ const getHouseholdLocationsMock = {
 describe('useHouseholdLocations', () => {
   beforeEach(async () => {
     await seedLocalLocations()
+  })
+
+  it('each list gives every row its own place as `order`, though both lists share one cached Location', async () => {
+    // Given two lists that place the Office differently (households H7b,
+    // decision T77): 1 of 2 in the switcher's list, 2 of 3 in the settings
+    // list, which also holds the "No access" Shed. Both answers write
+    // `order` into the SAME cached `Location:Office`, so the last one wins.
+    mockMode('cloud')
+    const { result } = renderHook(
+      () => ({ switcher: useLocations(), settings: useHouseholdLocations() }),
+      { wrapper: makeWrapper([getLocationsMock, getHouseholdLocationsMock]) },
+    )
+
+    // Then each list still numbers its own rows 0, 1, 2 in the order the
+    // server sent them, whichever answer wrote the cache last
+    await waitFor(() => {
+      expect(
+        result.current.switcher.data?.map((l) => [l.name, l.order]),
+      ).toEqual([
+        ['Cloud Warehouse', 0],
+        ['Cloud Office', 1],
+      ])
+      expect(
+        result.current.settings.data?.map((l) => [l.name, l.order]),
+      ).toEqual([
+        ['Cloud Warehouse', 0],
+        ['Cloud Shed', 1],
+        ['Cloud Office', 2],
+      ])
+    })
   })
 
   it('household owner sees every location in cloud mode, with No access where they have no role', async () => {
@@ -709,7 +744,7 @@ describe('the settings list is fetched again after a write', () => {
   // | Refusal | Reloads |
   // |---|---|
   // | `BAD_USER_INPUT` (the list was not the household's full set) | both location lists |
-  // | `FORBIDDEN` (the caller is no longer an owner or manager) | the household role |
+  // | `FORBIDDEN` (the list held a location that is not in the caller's list any more; since households H7b) | both location lists and the household role |
   // | offline, or a network error | nothing |
   //
   // `refetchQueries` is watched on the real client the `MockedProvider` makes,
@@ -785,14 +820,16 @@ describe('the settings list is fetched again after a write', () => {
     )
   }
 
-  it('household manager who lost the role gets the household role again after a FORBIDDEN reorder, and the lists are not reloaded', async () => {
-    // Given an owner whose role was lowered to member in another tab, so the
-    // server refuses the reorder with FORBIDDEN
+  it('household manager whose role went down gets both lists and the household role again after a FORBIDDEN reorder', async () => {
+    // Given an owner whose role was lowered to member in another tab. Since
+    // households H7b a member may reorder too, but only their OWN list,
+    // which has no "No access" rows. So the server refuses this list, sent
+    // from the old owner's list, with FORBIDDEN.
     const { result, orderedIds, refetchSpy } = renderReorderHarness({
       result: {
         errors: [
           {
-            message: 'You do not have the household role this needs.',
+            message: 'Not allowed.',
             extensions: { code: 'FORBIDDEN' },
           },
         ],
@@ -810,13 +847,15 @@ describe('the settings list is fetched again after a write', () => {
     })
     expect(onError).toHaveBeenCalledTimes(1)
 
-    // Then only the household role is asked for again, and it now says member
-    expect(refetchedNames(refetchSpy)).toEqual([['GetHousehold']])
+    // Then both location lists and the household role are asked for again
+    expect(refetchedNames(refetchSpy)).toEqual([
+      ['GetHouseholdLocations', 'GetLocations', 'GetHousehold'],
+    ])
     await waitFor(() =>
       expect(result.current.household.data?.role).toBe('member'),
     )
-    // And the settings list was not reloaded: it still has its three rows
-    expect(result.current.settings.data).toHaveLength(3)
+    // And the settings list is the server's new answer (here with the Attic)
+    await waitFor(() => expect(result.current.settings.data).toHaveLength(4))
   })
 
   it('user whose reorder fails with a network error gets no reload', async () => {

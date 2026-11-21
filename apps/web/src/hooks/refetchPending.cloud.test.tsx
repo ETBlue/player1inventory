@@ -41,6 +41,7 @@ import {
   cloudStock,
   getLocationsMock,
   LOC_A,
+  markLocationVisitedMock,
 } from '@/test/cloudFixtures'
 import { createHoldLink, type HoldLink } from '@/test/holdLink'
 import type { PantryItem } from '@/types'
@@ -140,6 +141,7 @@ const OFFER = {
 
 const MOCKS = [
   bootstrapCartsMock,
+  markLocationVisitedMock,
   getLocationsMock,
   {
     request: { query: PantryDataDocument, variables: any },
@@ -241,6 +243,8 @@ const MOCKS = [
             order: 0,
             myRole: 'organizer',
             hasOrganizer: true,
+            dataUpdatedAt: null,
+            lastVisitedAt: null,
           },
         ],
       },

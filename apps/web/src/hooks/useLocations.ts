@@ -106,9 +106,19 @@ export function useLocations() {
 
   if (isCloud) {
     return {
-      data: cloud.data?.locations.map((l) =>
-        deserializeLocation(l as Record<string, unknown>),
-      ),
+      // `order` is the row's place in THIS list, not the cached field. Since
+      // households H7b (decision T77) the server answers the caller's own
+      // order, as a position in the list it returns. `GetLocations` and
+      // `GetHouseholdLocations` share one normalized `Location` entity, and
+      // their positions differ when the settings list holds "No access"
+      // rows. A single `Location` from `createLocation`, `updateLocation` or
+      // an import even carries the stored SHARED order. Each of these writes
+      // `order` over the other in the cache. The array itself keeps the
+      // order the server sent, so the index is always right for this list.
+      data: cloud.data?.locations.map((l, index) => ({
+        ...deserializeLocation(l as Record<string, unknown>),
+        order: index,
+      })),
       // `&& !cloud.data` — with `cache-and-network` Apollo keeps
       // `loading: true` over cached data. Reporting that as loading puts a
       // spinner in front of a list the user can already read. See `useItems`.
@@ -174,9 +184,13 @@ export function useHouseholdLocations(): {
 
   if (isCloud) {
     return {
-      data: cloud.data?.householdLocations.map((l) => ({
-        // The query selects no dates; the list does not show them.
+      data: cloud.data?.householdLocations.map((l, index) => ({
+        // The query selects no `createdAt` / `updatedAt`; the list does not
+        // show them.
         ...deserializeLocation(l as Record<string, unknown>),
+        // The row's place in THIS list; see `useLocations` for why the
+        // cached `order` field cannot be trusted (households H7b).
+        order: index,
         myRole: l.myRole ?? null,
         hasOrganizer: l.hasOrganizer,
       })),
@@ -514,13 +528,18 @@ export function useReorderLocations() {
 
   // A refused reorder reloads only what can explain the refusal:
   //
-  // - `BAD_USER_INPUT`: both location lists. Since H5 task F.2 the server
-  //   refuses a list that is not the household's full set. Another member
-  //   created or deleted a location while this tab's list was out of date.
-  //   The reload gives the next drag the right set.
-  // - `FORBIDDEN`: the household role (`GetHousehold`). The caller is no
-  //   longer an owner or manager. Once the role says so, `usePermissions`
-  //   hides the drag handles.
+  // - `BAD_USER_INPUT`: both location lists. The server refuses a list that
+  //   is not exactly the caller's settings list (H5 task F.2, and per person
+  //   since households H7b, decision T78). Another member created or
+  //   deleted a location while this tab's list was out of date. The reload
+  //   gives the next drag the right set.
+  // - `FORBIDDEN`: both location lists AND the household role
+  //   (`GetHousehold`). Since H7b every household role may reorder its own
+  //   list, so `FORBIDDEN` means the list held an id that is not in the
+  //   caller's settings list any more: they lost a role on a location, or
+  //   their household role went down and the "No access" rows left their
+  //   list. (Until H7b it meant "no longer an owner or manager", and only
+  //   the role was reloaded.)
   // - offline (`OfflineWriteError`), a network error, anything else: nothing.
   //   The lists are not wrong, and offline there is nothing to reload from.
   //   An `OfflineWriteError` carries no GraphQL code, so it needs no check of
@@ -532,7 +551,7 @@ export function useReorderLocations() {
     const include = hasGraphQLErrorCode(err, 'BAD_USER_INPUT')
       ? [...LOCATION_LISTS_AFTER_REFUSAL]
       : hasGraphQLErrorCode(err, 'FORBIDDEN')
-        ? [HOUSEHOLD_ROLE_REFETCH]
+        ? [...LOCATION_LISTS_AFTER_REFUSAL, HOUSEHOLD_ROLE_REFETCH]
         : null
     if (!include) return
     client

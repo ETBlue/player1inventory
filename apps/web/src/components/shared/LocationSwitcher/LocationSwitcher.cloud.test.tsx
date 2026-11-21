@@ -47,18 +47,33 @@ function row(id: string, name: string, order: number, myRole: Role) {
     createdAt: '2026-11-01T00:00:00.000Z',
     updatedAt: '2026-11-01T00:00:00.000Z',
     myRole,
+    dataUpdatedAt: null as string | null,
+    lastVisitedAt: null as string | null,
   }
 }
 
+// The order is Kitchen, Garage, Pantry. By name it is Garage, Kitchen,
+// Pantry, and by last visit Pantry, Kitchen, Garage (no visit), so each sort
+// gives another order (households H7b task M.4).
 const WITH_ROLES = [
-  row(KITCHEN, 'Cloud Kitchen', 0, 'viewer'),
+  {
+    ...row(KITCHEN, 'Cloud Kitchen', 0, 'viewer'),
+    lastVisitedAt: '2026-11-01T00:00:00.000Z',
+  },
   row(GARAGE, 'Cloud Garage', 1, 'organizer'),
-  row(PANTRY, 'Cloud Pantry', 2, 'participant'),
+  {
+    ...row(PANTRY, 'Cloud Pantry', 2, 'participant'),
+    lastVisitedAt: '2026-11-02T00:00:00.000Z',
+  },
 ]
 const SHED_ROW = row(SHED, 'Cloud Shed', 3, null)
 
 const mockHouseholdRole = vi.fn<() => string>()
 const mockHouseholdLoading = vi.fn<() => boolean>()
+// The caller's saved sort, and the visit the provider records (households
+// H7b task M.4).
+const mockMyLocationSort = vi.fn<() => string | undefined>()
+const mockMarkVisited = vi.fn()
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
@@ -103,6 +118,20 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
+    // Households H7b task M.4: the switcher's sort and the visit.
+    useMyLocationSortQuery: () => {
+      const sort = mockMyLocationSort()
+      return {
+        data: sort ? { myLocationSort: sort } : undefined,
+        loading: false,
+        error: undefined,
+      }
+    },
+    useSetLocationSortMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useMarkLocationVisitedMutation: () => [mockMarkVisited, {}],
   }
 })
 
@@ -151,6 +180,8 @@ describe('LocationSwitcher in cloud — View only (households H5 task F.4)', () 
     localStorage.setItem('data-mode', 'cloud')
     mockHouseholdRole.mockReturnValue('member')
     mockHouseholdLoading.mockReturnValue(false)
+    mockMyLocationSort.mockReturnValue(undefined)
+    mockMarkVisited.mockResolvedValue({ data: { markLocationVisited: true } })
   })
 
   afterEach(() => {
@@ -299,5 +330,106 @@ describe('LocationSwitcher in cloud — View only (households H5 task F.4)', () 
 
     const button = await trigger('Cloud Kitchen')
     expect(within(button).getByText('View only')).toBeInTheDocument()
+  })
+})
+
+describe('LocationSwitcher in cloud — the sort and the visit (households H7b task M.4)', () => {
+  beforeEach(() => {
+    localStorage.setItem('data-mode', 'cloud')
+    mockHouseholdRole.mockReturnValue('member')
+    mockHouseholdLoading.mockReturnValue(false)
+    mockMyLocationSort.mockReturnValue(undefined)
+    mockMarkVisited.mockResolvedValue({ data: { markLocationVisited: true } })
+  })
+
+  afterEach(() => {
+    localStorage.removeItem('data-mode')
+    localStorage.removeItem(activeLocationStorageKey('cloud'))
+    vi.clearAllMocks()
+  })
+
+  /** The location rows of the open menu, top to bottom. */
+  async function menuNames() {
+    const items = await screen.findAllByRole('menuitem')
+    return items
+      .map(
+        (i) =>
+          ['Cloud Kitchen', 'Cloud Garage', 'Cloud Pantry'].find(
+            (n) => within(i).queryByText(n) !== null,
+          ) ?? null,
+      )
+      .filter((n) => n !== null)
+  }
+
+  it.each([
+    ['custom', ['Cloud Kitchen', 'Cloud Garage', 'Cloud Pantry']],
+    ['name', ['Cloud Garage', 'Cloud Kitchen', 'Cloud Pantry']],
+    ['lastVisited', ['Cloud Pantry', 'Cloud Kitchen', 'Cloud Garage']],
+  ])('user sees the switcher in their %s sort (owner decision O53-A)', async (sort, expected) => {
+    // Given the person's saved sort
+    mockMyLocationSort.mockReturnValue(sort)
+    activate(GARAGE)
+    renderSwitcher('full')
+
+    // When they open the switcher
+    await userEvent.setup().click(await trigger('Cloud Garage'))
+
+    // Then the rows follow that sort
+    expect(await menuNames()).toEqual(expected)
+  })
+
+  it('user opening the app records a visit to the active location once', async () => {
+    // Given the Garage is the active location from an earlier visit
+    activate(GARAGE)
+    renderSwitcher('full')
+    await trigger('Cloud Garage')
+
+    // Then one visit is sent for it (owner decision O55-A: the first active
+    // location after a load counts)
+    expect(mockMarkVisited).toHaveBeenCalledTimes(1)
+    expect(mockMarkVisited).toHaveBeenCalledWith(
+      expect.objectContaining({ variables: { locationId: GARAGE } }),
+    )
+  })
+
+  it('user picking another location records one visit to it', async () => {
+    activate(GARAGE)
+    renderSwitcher('full')
+    const user = userEvent.setup()
+    await user.click(await trigger('Cloud Garage'))
+    mockMarkVisited.mockClear()
+
+    // When they pick the Pantry
+    await user.click(await menuRow('Cloud Pantry'))
+    await trigger('Cloud Pantry')
+
+    // Then exactly one visit is sent, for the Pantry
+    expect(mockMarkVisited).toHaveBeenCalledTimes(1)
+    expect(mockMarkVisited).toHaveBeenCalledWith(
+      expect.objectContaining({ variables: { locationId: PANTRY } }),
+    )
+  })
+
+  it('no visit is sent for a stored id that names no location here', async () => {
+    // Given a stored id from another household. The provider falls back to
+    // the first location, and only that one is visited.
+    activate('clw3gone0000s9f8h7g6d5e9')
+    renderSwitcher('full')
+    await trigger('Cloud Kitchen')
+
+    expect(
+      mockMarkVisited.mock.calls.map(
+        (c) => (c[0] as { variables: { locationId: string } }).variables,
+      ),
+    ).toEqual([{ locationId: KITCHEN }])
+  })
+
+  it('local mode never records a visit', async () => {
+    localStorage.setItem('data-mode', 'local')
+    renderSwitcher('full')
+    // Once the local default location from the Dexie seed is active, the
+    // provider's effects have run with a known location
+    await trigger('My Home')
+    expect(mockMarkVisited).not.toHaveBeenCalled()
   })
 })
