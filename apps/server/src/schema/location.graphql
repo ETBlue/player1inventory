@@ -13,6 +13,18 @@ type Location {
   # its household (decision H18 applied to the ORGANIZER). The settings list
   # shows "No organizer" when it is false.
   hasOrganizer: Boolean!
+  # When this location's stock, carts or logs last changed, as an ISO date,
+  # or null when nothing has changed since the column was added (households
+  # H7b, decisions T79 and T82). The same value for everyone. Set by every
+  # STOCK, CART or LOG event the server sends for the location. Renaming or
+  # reordering the location does not set it. The web's "Last updated" sort
+  # reads it.
+  dataUpdatedAt: String
+  # When the CALLER last made this location their active location, as an ISO
+  # date, or null when they never did (households H7b, decisions T80 and T82).
+  # Each person sees only their own value. Written by `markLocationVisited`.
+  # The web's "Last visited" sort reads it.
+  lastVisitedAt: String
   # OLD-BUNDLE SHIM. Remove in the release after households.
   #
   # H3a dropped the `isDefault` column. `main`'s web bundle (before the
@@ -112,6 +124,15 @@ extend type Mutation {
   # or a subset is BAD_USER_INPUT, an id of another household or of no
   # location is FORBIDDEN, and nothing is written. Returns `locations`.
   reorderLocations(orderedIds: [ID!]!): [Location!]!
+  # Location role `viewer` or higher, on a location of the household the
+  # caller acts in. Another household's location, an unknown id and no role
+  # all get the same FORBIDDEN (households H7b, decision T80). Saves "now" as
+  # the caller's `lastVisitedAt` for the location. The web calls it when the
+  # location becomes the active one (owner decision O55-A). `false`, and
+  # nothing written, when the saved visit is under 60 seconds old, so many
+  # quick switches write once. Sends no live event: only the caller sees the
+  # value, and their own tab already knows it.
+  markLocationVisited(locationId: ID!): Boolean!
 
   # ── Location roles (households H5c, task H.3, decisions T32–T38) ──
   #

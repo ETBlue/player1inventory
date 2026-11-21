@@ -325,8 +325,9 @@ export function locationRolesByLocation(
 /**
  * Forget the role caches of this request: `householdId`
  * (`requireHousehold`), `locationRoles` (`locationRolesByLocation`),
- * `organizedLocations` (`locationIdsWithOrganizer`) and, until the old-bundle
- * shim goes,
+ * `organizedLocations` (`locationIdsWithOrganizer`), `locationPreferences`
+ * (`locationPreferencesOf` in lib/locationPreferences.ts, households H7b) and,
+ * until the old-bundle shim goes,
  * `firstLocationIds` (`firstLocationIdOf` in resolvers/location.resolver.ts).
  * A create, delete or reorder changes which location is first, so the old
  * bundle's `isDefault` must be read again after one.
@@ -360,6 +361,10 @@ export function forgetLocationRoles(ctx: Context): void {
   delete cache.organizedLocations
   // OLD-BUNDLE SHIM. Remove with `Location.isDefault`.
   delete cache.firstLocationIds
+  // The caller's own location preferences (households H7b, decision T77).
+  // `markLocationVisited` writes one, and a later root field of the same
+  // mutation must read the new value.
+  delete cache.locationPreferences
 }
 
 /**

@@ -210,6 +210,11 @@ const publishesNothing: Record<string, string> = {
   // choice.
   setActiveHousehold:
     "only the caller's own active household changes; their other tabs learn on their next request (HOUSEHOLD_CHANGED or the household guard)",
+  // Households H7b task M.2 (decision T80). It writes only the caller's own
+  // `LocationPreference.lastVisitedAt`, which nobody else can read. It does
+  // not set `Location.dataUpdatedAt`: a visit is not a change of data.
+  markLocationVisited:
+    "only the caller's own last visit changes, and only they can read it; their other tabs see it on the next refetch",
 }
 
 type Lists = {

@@ -17,6 +17,7 @@ import { displayNamesOf, lockHouseholdOrForbid } from '../lib/household.js'
 import { recordActivity } from '../lib/activity.js'
 import { prisma } from '../lib/prisma.js'
 import { publishChange, publishHouseholdChange } from '../lib/publishChange.js'
+import { locationPreferencesOf, VISIT_INTERVAL_MS } from '../lib/locationPreferences.js'
 import type { Location, Resolvers } from '../generated/graphql.js'
 import type { LocationRole, Prisma, Location as PrismaLocation } from '@prisma/client'
 
@@ -31,11 +32,15 @@ import type { LocationRole, Prisma, Location as PrismaLocation } from '@prisma/c
 // `itemStock.resolver.ts` and `shelf.resolver.ts` import `item.resolver.ts`'s
 // `toGraphQL` instead of copying it: a second copy is a second place for the
 // ISO-string bug to come back.
+//
+// `dataUpdatedAt` is nullable (households H7b, decision T82). `?? null` also
+// covers a test fake's fixture row that leaves the column out.
 export function toGraphQL(row: PrismaLocation): Location {
   return {
     ...row,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    dataUpdatedAt: row.dataUpdatedAt?.toISOString() ?? null,
   } as unknown as Location
 }
 
@@ -332,6 +337,12 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
       const organized = await locationIdsWithOrganizer(ctx, householdId)
       return organized.has(parent.id)
     },
+    // The CALLER's own last visit (households H7b, decision T80). Read from
+    // the caller's preference rows, once per request.
+    lastVisitedAt: async (parent, _, ctx) => {
+      const preferences = await locationPreferencesOf(ctx)
+      return preferences.get(parent.id)?.lastVisitedAt?.toISOString() ?? null
+    },
     // OLD-BUNDLE SHIM. Remove in the release after households, with the
     // field in `location.graphql` (see the comment there for why it exists).
     //
@@ -626,6 +637,36 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
 
     // Adds a role or changes it. The same role again writes nothing, sends
     // nothing, and returns the row (decision T38).
+    // Location role `viewer`, on a location of the household the caller acts
+    // in (households H7b, decision T80). Writes only the caller's own row.
+    // No transaction and no lock: the row belongs to one person, and two
+    // visits at the same moment write the same kind of value. Publishes
+    // nothing (`publishesNothing` in live-publish.guard.test.ts).
+    markLocationVisited: async (_, { locationId }, ctx) => {
+      const userId = requireAuth(ctx)
+      const householdId = await requireHousehold(ctx)
+      // In the household the caller acts in, then a counted role there. Both
+      // refuse with the same FORBIDDEN, so an id cannot be probed.
+      await requireLocationInHousehold(ctx, locationId, householdId)
+      await requireLocationRole(ctx, locationId, 'viewer')
+
+      const now = new Date()
+      const key = { userId_locationId: { userId, locationId } }
+      const saved = await prisma.locationPreference.findUnique({
+        where: key,
+        select: { lastVisitedAt: true },
+      })
+      if (saved?.lastVisitedAt && now.getTime() - saved.lastVisitedAt.getTime() < VISIT_INTERVAL_MS) {
+        return false
+      }
+      await prisma.locationPreference.upsert({
+        where: key,
+        create: { userId, locationId, lastVisitedAt: now },
+        update: { lastVisitedAt: now },
+      })
+      return true
+    },
+
     setLocationRole: async (_, { locationId, userId: target, role }, ctx) => {
       const callerId = requireAuth(ctx)
       const householdId = await requireHousehold(ctx)
