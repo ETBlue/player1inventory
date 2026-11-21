@@ -645,14 +645,26 @@ before an absence (root `CLAUDE.md`, *An absence … can be satisfied by the loa
 | 4 | `user can copy offline data into another household they manage` (O22-A) | P owner of A (active) and manager of B; local data seeded in Dexie; P switches to cloud and picks B | the copy starts before the switch: the items land in A (readback of `items` with P active in A) |
 | 5 | axe scan of the open **Switch to…** dropdown and the Create dialog, light and dark | — | (a scan; no mutation) |
 
-- [ ] Step 1: write the spec, then run it alone: `pnpm test:e2e --project=cloud
-  e2e/tests/household-switch.spec.ts`.
-- [ ] Step 2: run each mutation above. Copy the source file aside first; restore from the
-  copy. Record red or green for each, and name the negative control as one.
-- [ ] Step 3: `a11y.spec.ts` does not run in `cloud`, so the scans live in this spec, as in
-  H6b's `household-ownership.spec.ts`.
-- [ ] Step 4: count the cloud spec files with the two commands under *Proving a Test Works*
-  in root `CLAUDE.md`.
+- [x] Step 1: done in `f5aab45d`. `e2e/tests/household-switch.spec.ts` (6 tests: the plan's 5, the axe scan split into light and dark), `e2e/pages/HouseholdSwitcher.ts`, `e2e/playwright.config.ts` (`cloud` `testMatch`, `local` `testIgnore`). Run alone: 6 passed in 2.3 min, twice (test 1 25.2 / 31.0 s, test 4 27.5 / 29.7 s, the others 15–22 s), load average 1.9–2.6. Tests 1 and 4 carry 90 s, the others 60 s.
+- [x] Step 2: every mutation below, each restored from a copy and checked with `cmp`.
+- [x] Step 3: the scans are in this spec: the page with the menu closed, the open menu alone (`[role="menu"]`), and the Create new dialog (`checkDialogA11y`), light and dark.
+- [x] Step 4: `cloud` `testMatch` 39 of 43 spec files; `cloud` collects 210 tests in 39 files (204 in 38 before); `local` still 189 in 23 files. `e2e/CLAUDE.md` in `9a3147fa`.
+
+**Done 2026-11-21.** Commits `f5aab45d`, `9a3147fa`. Gate: `pnpm lint`, `pnpm check`, `pnpm typecheck:e2e` exit 0 (13 Biome warnings, unchanged); `pnpm test` web 3839 / 373, server 2767 / 87, spec 70 (unchanged). No `pnpm build` or `pnpm test:e2e:all` (L.7).
+
+| Mutation | Test | Result |
+|---|---|---|
+| (a) `clearCache()` removed from `switchToHousehold` | 1 | red: the seeded saved copy still holds "Old Milk" |
+| (b) the removal of `active-location-id:cloud` dropped | 1 | red: `__bootActiveLocation` is A's Home id, not null |
+| (a) and (b) together, both checks off | 1 | green: the cart-page check is a negative control |
+| `createHousehold` ignores `alsoWhenMember` | 2 | red: `myHouseholds` has no new active household |
+| the compare in `requireHousehold` removed | 3 | red: "Stale Kind" is in B |
+| (extra, L.3) `householdIdLink` not in `httpChain` | 3 | red: "Stale Kind" is in B |
+| (extra) `householdChangedLink` not in `httpChain` | 3 | red: no "household changed" message |
+| the copy starts before the switch (`runStoredCopy` at the top of `copyElsewhere`) | 4 | **green**: a `skip` copy stops at "Import into which location?" before it writes, and the reload throws it away. The unit test pins it |
+| (extra) `copyThere` runs `confirmCopy` (the household shown) | 4 | red: B has no item |
+
+Found, not fixed: `CreateHouseholdDialog` maps every `BAD_USER_INPUT` to the name rule, so an `ALREADY_IN_HOUSEHOLD` refusal would show "Enter a name of 1 to 100 characters." No current server sends that answer to this dialog.
 
 ---
 
@@ -1056,6 +1068,11 @@ Filled in from the task reports and reviews.
 | L.5 | not named | a household in `migration-skip-households` (O12-A) is left out of the list. Asked as O57 |
 | L.5 | "No household where the person may copy, and no wish for a new one" | ambiguous. Built as: no copyable household means the old sentence and Done, and no "A new household" either |
 | L.5 | file map | also `hooks/useMyHouseholds.ts` (`beforeSwitch`) and 3 route tests that render `__root.tsx` with their own factory (`cooking.cloud`, `items/$id/stock`, `shopping/index.cloud`) |
+| L.6 | test 1 (a): read `Player1InventoryCloudCache` after the switch | in E2E nothing writes it (`ApolloWrapper` is not mounted, the E2E client uses a fresh `createCache()`, `restoreCache` deletes a snapshot with no `cloud-cache-user-id`); the test writes the saved copy itself |
+| L.6 | test 1 (b): "the stored id still names LA right after the reload" | `ActiveLocationProvider` rewrites it once B's locations load; an init script reads it at the start of the page load |
+| L.6 | test 4 mutation "the copy starts before the switch" goes red | green: a `skip` copy writes nothing before "Import into which location?"; only `clear` writes at once, and needs the owner of the target |
+| L.6 | test 5: scan the open dropdown | a whole-page scan with the menu open fails `aria-hidden-focus` on `.h-dvh` (Radix modal portal); scan the page closed, then `[role="menu"]` alone |
+| L.6 | files: spec, page object, config | also `e2e/CLAUDE.md`; 6 tests (the scan in light and dark) |
 
 ## Status
 
