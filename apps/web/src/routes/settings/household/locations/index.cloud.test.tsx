@@ -82,6 +82,21 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
+    // **Switch to…** in the household sidebar (households H7 task L.4)
+    // calls these in cloud mode. Stubbed for the same reason.
+    useMyHouseholdsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useSetActiveHouseholdMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useCreateHouseholdMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     // `useItems` reads the catalog from `GetItems` in a household with no
     // location (households H5, review of task F.7). This factory replaces
     // setup.ts's, so it must stub that hook too: the real one needs an

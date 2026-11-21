@@ -71,5 +71,15 @@ describe('HouseholdSidebar stories smoke tests', () => {
       'href',
       '/settings/household/activity',
     )
+    // Item 9 (households H7 task L.4)
+    expect(
+      screen.getByRole('button', { name: /Switch to…/ }),
+    ).toBeInTheDocument()
+  })
+
+  it('General in local mode has no Switch to…', async () => {
+    render(<General />)
+    await screen.findByRole('heading', { name: 'My data' })
+    expect(screen.queryByRole('button', { name: /Switch to…/ })).toBeNull()
   })
 })

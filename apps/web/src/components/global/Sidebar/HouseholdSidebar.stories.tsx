@@ -11,7 +11,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { useState } from 'react'
-import { GetHouseholdDocument } from '@/generated/graphql'
+import { GetHouseholdDocument, MyHouseholdsDocument } from '@/generated/graphql'
 import { HouseholdSidebar } from './HouseholdSidebar'
 
 const meta = {
@@ -39,6 +39,31 @@ const cloudMocks: NonNullable<MockedProviderProps['mocks']> = [
           hasOwner: true,
           pendingTransfer: null,
         },
+      },
+    },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+  },
+  // **Switch to…** (item 9, households H7 task L.4) lists these.
+  {
+    request: { query: MyHouseholdsDocument },
+    result: {
+      data: {
+        myHouseholds: [
+          {
+            __typename: 'HouseholdChoice',
+            id: 'household-1',
+            name: 'The Lin family household on Roosevelt Road',
+            role: 'owner',
+            isActive: true,
+          },
+          {
+            __typename: 'HouseholdChoice',
+            id: 'household-2',
+            name: 'Chen flat',
+            role: 'member',
+            isActive: false,
+          },
+        ],
       },
     },
     maxUsageCount: Number.POSITIVE_INFINITY,
@@ -96,7 +121,8 @@ export const TagsActive: Story = {
 }
 
 // Cloud mode: the heading is the household's name, and a long name wraps.
-// The caller is the owner, so Activity is the eighth item.
+// The caller is the owner, so Activity is the eighth item. **Switch to…** is
+// the ninth, and opens a list of two households.
 export const CloudHouseholdName: Story = {
   beforeEach() {
     localStorage.setItem('data-mode', 'cloud')

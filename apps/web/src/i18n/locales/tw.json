@@ -1098,6 +1098,21 @@
     "signInToAnotherAccount": "登入其他帳號",
     "signOutError": "無法登出，請再試一次。"
   },
+  "householdSwitcher": {
+    "trigger": "切換到…",
+    "description": "移到另一個家庭，或建立新的家庭",
+    "createNew": "建立新家庭",
+    "loading": "正在載入家庭…",
+    "loadError": "無法載入你的家庭。",
+    "switchError": "無法切換家庭，請再試一次。"
+  },
+  "createHouseholdDialog": {
+    "title": "建立新家庭",
+    "nameLabel": "家庭名稱",
+    "nameHint": "留空就會使用預設名稱。你會成為擁有者，並移到這個家庭。",
+    "create": "建立",
+    "error": "無法建立家庭，請再試一次。"
+  },
   "ownership": {
     "banner": {
       "label": "擁有權邀請",

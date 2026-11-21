@@ -1098,6 +1098,21 @@
     "signInToAnotherAccount": "Sign in to another account",
     "signOutError": "Could not sign out. Try again."
   },
+  "householdSwitcher": {
+    "trigger": "Switch to…",
+    "description": "Move to another household, or create one",
+    "createNew": "Create new",
+    "loading": "Loading households…",
+    "loadError": "Could not load your households.",
+    "switchError": "Could not switch the household. Try again."
+  },
+  "createHouseholdDialog": {
+    "title": "Create a new household",
+    "nameLabel": "Household name",
+    "nameHint": "Leave it empty to use the default name. You become its owner and move into it.",
+    "create": "Create",
+    "error": "Could not create the household. Try again."
+  },
   "ownership": {
     "banner": {
       "label": "Ownership offers",

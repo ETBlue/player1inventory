@@ -11,6 +11,7 @@ import {
   Users,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { HouseholdSwitcher } from '@/components/household/HouseholdSwitcher'
 import { HouseholdLabel } from '@/components/settings/HouseholdLabel'
 import { Button } from '@/components/ui/button'
 import { useDataMode } from '@/hooks/useDataMode'
@@ -20,9 +21,10 @@ import { loadNavigationHistory } from '@/lib/sessionStorage'
 
 // The household items, in the order the design lists them. Members (H5b task
 // G.9) is second, and cloud only: local mode has no members (design, *Local
-// mode*). Activity (H6) and "Switch to" (H7) are added by the phase that
-// builds their pages (plan decision P4). The icons match the cards on the
-// mobile /settings accordion.
+// mode*). Activity (H6 task J.6) is eighth, for an owner or manager in cloud.
+// Item 9, **Switch to…** (H7 task L.4), is not a link: `HouseholdSwitcher`
+// renders it after this list, in cloud for every role, and nothing in local
+// mode. The icons match the cards on the mobile /settings accordion.
 //
 // `exact` decides when an item is marked active. General is active only on
 // `/settings/household` itself; a section is active on its list path (detail
@@ -152,6 +154,8 @@ export function HouseholdSidebar() {
             <span>{t(labelKey)}</span>
           </Link>
         ))}
+        {/* Item 9. Renders nothing in local mode. */}
+        <HouseholdSwitcher />
       </div>
     </>
   )
