@@ -547,24 +547,11 @@ Gate after the fixes: web 3772 / 367 (+8), server 2767 / 87 (+7), spec 70. Build
 and tests and stories, `routes/settings/index.tsx` (the mobile accordion) and tests,
 `i18n/locales/en.json`, `tw.json`.
 
-- [ ] **Step 1: write the failing tests.**
-  - `HouseholdSwitcher.test.tsx`: lists every household from `myHouseholds` with its name as
-    stored (no `capitalize` on any ancestor, checked like `Sidebar.cloud.test.tsx`) and the
-    person's role; a check mark on `isActive`; choosing another household calls `switchTo`;
-    choosing the current one does nothing; **Create new** opens the dialog. While
-    `switchTo` runs, the menu items are disabled.
-  - `CreateHouseholdDialog`: a name field; **Create** calls `createAndSwitch` with the trimmed
-    name, or with `null` when the field is empty (the server's default name); the button is
-    disabled while it runs; a server error shows in the dialog.
-  - `HouseholdSidebar.test.tsx`: item 9 shows in cloud for every role, and not in local mode.
-    The mobile accordion: the same.
-- [ ] **Step 2:** run: red.
-- [ ] **Step 3:** the components. The dropdown looks like the location switcher's dropdown
-  (design, *Desktop*). One household and nothing else is still a list: the current one and
-  **Create new**.
-- [ ] **Step 4:** stories with one household, two households, a long name, and the dialog
-  open. Smoke tests assert a role or a name, not `container.firstChild`.
-- [ ] **Step 5:** update the comment at `HouseholdSidebar.tsx:23`. The full gate.
+- [x] **Step 1: write the failing tests.** Done: 13 in `HouseholdSwitcher.test.tsx` (every household with its name as stored and its role, no `capitalize` ancestor; the current one `aria-checked`; another calls `switchTo`; the current one does nothing; every row disabled while it runs; a toast on failure; one household is a list; Create new opens the dialog with focus on the name; focus back on the trigger; loading row; error row; the card's name; nothing in local mode), 6 in `CreateHouseholdDialog.test.tsx` (trimmed name; empty name; Create and Cancel off while it runs; a server error in the dialog; the name rule and focus on `BAD_USER_INPUT`; nothing more offline), 4 in `HouseholdSidebar.switcher.test.tsx` and 4 in `routes/settings/index.switcher.test.tsx` (owner, manager, member in cloud; not in local).
+- [x] **Step 2:** written alongside the code; the mutations below prove each one.
+- [x] **Step 3:** done in `d9f314e3`. `HouseholdSwitcher` (`variant: 'sidebar' | 'card'`) and `CreateHouseholdDialog`. Rows are `menuitemradio` with `aria-checked`. A switch keeps the menu open (`preventDefault`) with every row disabled. Create new opens the dialog in the menu's `onCloseAutoFocus`.
+- [x] **Step 4:** stories `OneHousehold`, `TwoHouseholds`, `LongName`, `Loading`, `LoadError`, `Switching`, `CreateDialogOpen`, `Card`; `CreateHouseholdDialog` `Open`, `Creating`, `ServerError`; `HouseholdSidebar` `CloudHouseholdName` now lists two households. Smoke tests assert roles and names.
+- [x] **Step 5:** the comment at `HouseholdSidebar.tsx:23` updated; `components/CLAUDE.md` in `0941e6a1`. Full gate green. Before: web 3772 / 367, server 2767 / 87, spec 70. After: web 3811 / 373 (+39), server 2767 / 87, spec 70. Build: server bundle 260.2 KiB, no TS6385. Storybook: 11 new story ids. No E2E run (L.6).
 
 **Mutation checks:**
 
@@ -574,7 +561,26 @@ and tests and stories, `routes/settings/index.tsx` (the mobile accordion) and te
 | the item shown in local mode | the local sidebar test |
 | `capitalize` added to the household name | the ancestor test |
 
-**E2E:** L.6 tests 1, 2 and 5.
+**Done 2026-11-21.** Commits `d9f314e3`, `0941e6a1`. Mutation checks, each restored from a copy and checked with `cmp`:
+
+| Mutation | Result |
+|---|---|
+| choosing the current household calls `switchTo` | red, 1 test ("choosing the current household does nothing") |
+| the item shown in local mode | red, 4 tests (component, sidebar, accordion, sidebar story) |
+| `capitalize` added to the household name | red, 1 test (the ancestor test) |
+| (extra) `capitalize` on the menu | red, 1 test |
+| (extra) rows not disabled while switching | red, 2 tests (unit, `Switching` story) |
+| (extra) `aria-checked` removed | red, 2 tests (unit, `TwoHouseholds` story) |
+| (extra) the dialog opened in `onSelect` | red, 1 test (focus on the name field) |
+| (extra) focus not put back on the trigger | red, 1 test |
+| (extra) no toast on a failed switch | red, 1 test |
+| (extra) the name not trimmed | red, 1 test |
+| (extra) Create not disabled while pending | red, 2 tests (unit, `Creating` story) |
+| (extra) a server error not shown | red, 2 tests (unit, `ServerError` story) |
+| (extra) no focus after a refused name | red, 1 test |
+| (extra) the general error shown offline | red, 1 test |
+
+**E2E:** L.6 tests 1, 2 and 5 (the axe scans of the menu and the dialog are there, not in L.4).
 
 ---
 
@@ -1035,6 +1041,11 @@ Filled in from the task reports and reviews.
 | L.3 | T72: the notice key in `localStorage` | `sessionStorage`: the notice is for the one tab that recovered, and `localStorage` is shared by every tab |
 | L.3 | not named: which id `HouseholdChangeGuard` compares with | `getShownHouseholdId()`, the id this page sends; `getLastHouseholdId()` may already hold another tab's new id |
 | L.3 | T72: "once per page load (a module flag)" | a deliberate move must block it too: `clearCache()` resets the cache, the watched queries refetch with the old id and are refused. `switchToHousehold` and `forgetHousehold` set the flag before the clear |
+| L.4 | step 1: Create calls `createAndSwitch` "with the trimmed name, or with `null`" | the hook takes a string and turns `""` into `null`; the dialog sends `name.trim()` |
+| L.4 | step 1: the sidebar test in `HouseholdSidebar.test.tsx` | every role needs a `usePermissions` mock, so the tests are in `HouseholdSidebar.switcher.test.tsx` and `routes/settings/index.switcher.test.tsx` |
+| L.4 | not named | `setup.ts` and `routes/settings/household/locations/index.cloud.test.tsx` must stub `useMyHouseholdsQuery`, `useSetActiveHouseholdMutation`, `useCreateHouseholdMutation`; without them 22 tests there fail with "Could not find client" |
+| L.4 | not named | a dialog opened from a menu's `onSelect` gets focus on a Radix focus guard; open it in the menu's `onCloseAutoFocus` |
+| L.4 | "While `switchTo` runs, the menu items are disabled" | true only if the menu stays open (`preventDefault` in `onSelect`) |
 
 ## Status
 
