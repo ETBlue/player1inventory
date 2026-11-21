@@ -978,13 +978,12 @@ household write any more), `components/CLAUDE.md`, the design (*Data model*, *Wr
 **section 14, H7b**: one additive migration with one backfill, server first, checks after
 deploy), and this plan's *What this plan got wrong* and *Status*.
 
-- [ ] Step 1: the docs. Re-measure every count.
-- [ ] Step 2: **the main session**, not a subagent, runs `pnpm --filter server
-  verify:migration` against the TEST database, with the owner's consent, and records each
-  new check in a table here and in section 14 of the runbook. Run it BEFORE M.5, so the E2E
-  runs on a proved schema.
-- [ ] Step 3: the full gate, then `pnpm test:e2e:all`.
-- [ ] Step 4: `git status` clean; `git show --stat` for each commit.
+- [x] Step 1: the docs. Done in `d1ae170a` (prisma guide), `babd8321` (root and routes guides), `606e2296` (e2e guide), `bbc8f4a1` (design, phase plan, INDEX), `1729056e` (H4 runbook section 14), `74c21fd1` (the E2E gate in the e2e guide). Every count re-measured with its command.
+- [x] Step 2: done by the main session before M.5 (see the M.1 *Done* block). Copied into section 14.2 of the H4 runbook. `git log --oneline 415cbf02..HEAD -- apps/server/prisma/ apps/server/scripts/` is empty.
+- [x] Step 3: the full gate, then `pnpm test:e2e:all`, at `14f9501c`. All green on the first try.
+- [x] Step 4: `git status` clean; `git show --stat` checked for each commit.
+
+**Done 2026-11-22** at `74c21fd1` (six docs commits; no source change). Counts at `14f9501c`: web 3899 / 378, server 2834 / 89, `scripts/spec` 70 (before M.1: 3840 / 373, 2767 / 87, 70). Live guard 77 in `publishes`, 7 in `publishesNothing`; `/e2e/cleanup` 22 models; 22 migration folders; 15 `.graphql` files; esbuild `dist/index.js 266.6 KiB`. `--list`: local 190 in 23 files, cloud 218 in 40, pwa 73 in 2; cloud spec files 40 of 44. Gate, each command alone: `pnpm lint`, `pnpm build`, `build-storybook`, `pnpm check` exit 0; no `TS6385`; `pnpm test` exit 0. `pnpm test:e2e:all` at `14f9501c`, first try, no retry, all green: local 179 passed / 11 skipped (3m46s), cloud 210 passed / 8 skipped (65m39s), pwa 73 passed (1m36s). Load 11.2 at the start (falling, from `pnpm test`), then 1.6 to 2.9. Deploy notes: section 14 of the H4 runbook.
 
 ---
 
@@ -1142,6 +1141,10 @@ Filled in from the task reports and reviews.
 | M.5 | *Files*: "`e2e/pages/LocationsPage.ts` (or the existing page object)" | there was none; the new one is `e2e/pages/settings/LocationsPage.ts` |
 | M.5 | step 3: "Fix a cloud test that expected a shared order" | none needed a change: the only cloud reorder test reads back the person's own order after a reload |
 | M.5 | not named | reading the switcher's rows with `allTextContents()` right after the click once gave `[]`; the page object waits for each expected row first |
+| M.6 | *Files*: the CLAUDE.md files to update | `apps/web/src/routes/CLAUDE.md` was not named; it now says the switcher uses the chosen sort and records visits. `hooks/CLAUDE.md` and `components/CLAUDE.md` were already done in M.4 (`a8712a6d`) |
+| M.6 (brief) | find stale claims with `git grep -n reorderLocations -- '*.md'` | two stale claims in the root `CLAUDE.md` do not name the field: "an empty reorder" in the "changes nothing" sentence, and the `LOCATION` row's "the location mutations". A grep for `reorder` found them |
+| *Deploy notes* | "The backfill `UPDATE` touches every `Location` row once" | only locations with at least one stock row. The others keep `NULL` |
+| M.6 | (not said) | the rehearsal check "`dataUpdatedAt` equals the newest stock time" holds only right after the migration; a cart or log write moves it later. The runbook runs it before any server points at the branch |
 
 ## Status
 
@@ -1149,7 +1152,8 @@ Filled in from the task reports and reviews.
 (plus `5cc4e741`, which records H6b as merged). Owner decisions O49–O55 answered 2026-11-21: all A, except **O54-B** (Name and Custom in
 local mode, saved on the device). Nothing built.
 
-**H7a built 2026-11-21** on `feature/households-h7a` (tasks L.1–L.7), merged into `develop` (2026-11-22, #394, merge `bf71f485`), not deployed. Owner decisions O56-A and O57-B applied in L.7. No migration. Deploy notes: section 13 of the H4 runbook. The first `pnpm test:e2e:all` failed 2 cloud tests not caused by H7a; the second, at `ef8982fb`, was green in all three projects (see L.7). H7b (M.1–M.6) not built.
+**H7a built 2026-11-21** on `feature/households-h7a` (tasks L.1–L.7), merged into `develop` (2026-11-22, #394, merge `bf71f485`), not deployed. Owner decisions O56-A and O57-B applied in L.7. No migration. Deploy notes: section 13 of the H4 runbook. The first `pnpm test:e2e:all` failed 2 cloud tests not caused by H7a; the second, at `ef8982fb`, was green in all three projects (see L.7).
+**H7b built 2026-11-22** on `feature/households-h7b` (tasks M.1–M.6), from `develop` at `bf71f485`. Not merged, not deployed. One additive migration with one backfill, `20261122000000_add_location_preferences`, proved by `verify:migration` on the TEST database (main session, 2026-11-22, 284 `ok`, 0 failed). Owner decision O58-A added 2026-11-22. Deploy notes: section 14 of the H4 runbook. `pnpm test:e2e:all` at `14f9501c` was green on the first try in all three projects (see M.6).
 
 ---
 
