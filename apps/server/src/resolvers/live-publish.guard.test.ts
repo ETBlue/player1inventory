@@ -85,8 +85,6 @@ const publishes: Record<string, { kinds: Kind[] }> = {
   // LOCATION refetches every active query (decision Q3).
   createLocation: { kinds: ['LOCATION'] },
   updateLocation: { kinds: ['LOCATION'] },
-  // Not for an empty list, which writes nothing.
-  reorderLocations: { kinds: ['LOCATION'] },
   // No CART, STOCK or LOG for the deleted location's rows (decision Q4):
   // nobody could pass the role check for them, and LOCATION refetches all.
   deleteLocation: { kinds: ['LOCATION'] },
@@ -215,6 +213,16 @@ const publishesNothing: Record<string, string> = {
   // not set `Location.dataUpdatedAt`: a visit is not a change of data.
   markLocationVisited:
     "only the caller's own last visit changes, and only they can read it; their other tabs see it on the next refetch",
+  // Households H7b task M.3 (decision T78). Until H7 it wrote the shared
+  // order and published household-level LOCATION. Now it writes only the
+  // caller's own `LocationPreference.customOrder`. An event would make every
+  // member refetch every query for a change only one person sees.
+  reorderLocations:
+    "only the caller's own order changes, and only they see it; their other tabs show it on the next read of the list",
+  // Households H7b task M.3 (decision T74). It writes only the caller's own
+  // `User.locationSort`.
+  setLocationSort:
+    "only the caller's own sort choice changes; their other tabs see it on the next refetch",
 }
 
 type Lists = {

@@ -44,3 +44,10 @@ export function locationPreferencesOf(ctx: Context): Promise<Map<string, Locatio
  * T80, owner decision O55-A: at most once a minute).
  */
 export const VISIT_INTERVAL_MS = 60_000
+
+/**
+ * The sort a person gets when `User.locationSort` is null (households H7b,
+ * decision T74, owner decision O52-A: Custom). Kept here, not in the
+ * migration, so it can change later with no data step.
+ */
+export const DEFAULT_LOCATION_SORT = 'custom' as const

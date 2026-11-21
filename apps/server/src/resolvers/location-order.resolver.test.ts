@@ -270,3 +270,262 @@ describe('markLocationVisited (decision T80)', () => {
     expect(world.stock.state.locations.find((l) => l.id === 'loc-k')?.dataUpdatedAt).toEqual(DATA_TIME)
   })
 })
+
+// ── TASK M.3: THE PERSONAL ORDER AND THE SORT SETTING ──
+//
+// Decisions T74, T76, T77 and T78, owner decision O52-A. A fixture of its
+// own, so the shared `order` of hh-1 is C, A, B: not by id and not by name.
+//
+// | Person | Households                       | Location roles                         |
+// |--------|----------------------------------|----------------------------------------|
+// | MIA    | hh-1 owner (active), hh-2 member | loc-c, loc-a, loc-b organizer; loc-d viewer |
+// | BEA    | hh-1 member                      | loc-a participant, loc-b viewer        |
+// | SAM    | hh-2 owner                       | loc-d organizer                        |
+//
+// | Location | Household | Shared `order` | Name     |
+// |----------|-----------|----------------|----------|
+// | loc-c    | hh-1      | 0              | Cellar   |
+// | loc-a    | hh-1      | 1              | Attic    |
+// | loc-b    | hh-1      | 2              | Basement |
+// | loc-d    | hh-2      | 0              | Den      |
+
+function seedOrder() {
+  world.reset()
+  const loc = (id: string, householdId: string, order: number, name: string): FakeLocation => ({
+    id,
+    householdId,
+    name,
+    order,
+    createdAt: T,
+    updatedAt: T,
+    dataUpdatedAt: null,
+  })
+  world.stock.reset(
+    [
+      loc('loc-c', 'hh-1', 0, 'Cellar'),
+      loc('loc-a', 'hh-1', 1, 'Attic'),
+      loc('loc-b', 'hh-1', 2, 'Basement'),
+      loc('loc-d', 'hh-2', 0, 'Den'),
+    ],
+    [],
+  )
+  const household = (id: string, ownerId: string) => ({
+    id,
+    name: `${id} name`,
+    ownerId,
+    ownerGoneAt: null,
+    createdAt: T,
+    updatedAt: T,
+  })
+  world.seedHouseholds({
+    households: [household('hh-1', MIA), household('hh-2', SAM)],
+    householdMembers: [
+      { householdId: 'hh-1', userId: MIA, role: 'owner', joinedAt: T },
+      { householdId: 'hh-1', userId: BEA, role: 'member', joinedAt: T },
+      { householdId: 'hh-2', userId: SAM, role: 'owner', joinedAt: T },
+      { householdId: 'hh-2', userId: MIA, role: 'member', joinedAt: T },
+    ],
+    locationMembers: [
+      { locationId: 'loc-c', userId: MIA, role: 'organizer', createdAt: T },
+      { locationId: 'loc-a', userId: MIA, role: 'organizer', createdAt: T },
+      { locationId: 'loc-b', userId: MIA, role: 'organizer', createdAt: T },
+      { locationId: 'loc-d', userId: MIA, role: 'viewer', createdAt: T },
+      { locationId: 'loc-a', userId: BEA, role: 'participant', createdAt: T },
+      { locationId: 'loc-b', userId: BEA, role: 'viewer', createdAt: T },
+      { locationId: 'loc-d', userId: SAM, role: 'organizer', createdAt: T },
+    ],
+  })
+  world.setActiveHousehold(MIA, 'hh-1')
+}
+
+const REORDER = `mutation R($ids: [ID!]!) { reorderLocations(orderedIds: $ids) { id order } }`
+const ORDERED = `query { locations { id order } }`
+
+/** The ids and orders as one list, for short assertions. */
+function listed(rows: unknown): string[] {
+  return (rows as Array<{ id: string; order: number }>).map((r) => `${r.id}:${r.order}`)
+}
+
+function sharedOrders(): Record<string, number | undefined> {
+  return Object.fromEntries(world.stock.state.locations.map((l) => [l.id, l.order]))
+}
+
+const SHARED = { 'loc-c': 0, 'loc-a': 1, 'loc-b': 2, 'loc-d': 0 }
+
+describe('the personal location order (decisions T76, T77, T78)', () => {
+  beforeEach(() => {
+    seedOrder()
+  })
+
+  it('user sees the shared order, numbered 0 to n-1, before they reorder', async () => {
+    const mia = await run(ORDERED, MIA)
+    const bea = await run(ORDERED, BEA)
+
+    expect(mia.errors).toBeUndefined()
+    expect(listed(mia.data?.locations)).toEqual(['loc-c:0', 'loc-a:1', 'loc-b:2'])
+    // BEA's own list is A, B: numbered over THEIR list, not the household's.
+    expect(listed(bea.data?.locations)).toEqual(['loc-a:0', 'loc-b:1'])
+  })
+
+  it("user can reorder their own list, and another person's order does not move", async () => {
+    const res = await run(REORDER, MIA, { ids: ['loc-b', 'loc-c', 'loc-a'] })
+
+    expect(res.errors).toBeUndefined()
+    expect(listed(res.data?.reorderLocations)).toEqual(['loc-b:0', 'loc-c:1', 'loc-a:2'])
+    expect(listed((await run(ORDERED, MIA)).data?.locations)).toEqual(['loc-b:0', 'loc-c:1', 'loc-a:2'])
+    // BEA still gets A, B from the shared order.
+    expect(listed((await run(ORDERED, BEA)).data?.locations)).toEqual(['loc-a:0', 'loc-b:1'])
+    // The shared `Location.order` is not written.
+    expect(sharedOrders()).toEqual(SHARED)
+    // One row per location, MIA's own, with `customOrder` = the index.
+    expect(
+      world.locationPreferences.state.rows.map((r) => [r.userId, r.locationId, r.customOrder]),
+    ).toEqual(
+      expect.arrayContaining([
+        [MIA, 'loc-b', 0],
+        [MIA, 'loc-c', 1],
+        [MIA, 'loc-a', 2],
+      ]),
+    )
+    expect(world.locationPreferences.state.rows).toHaveLength(3)
+  })
+
+  it('household member can reorder the locations they have a role on', async () => {
+    const res = await run(REORDER, BEA, { ids: ['loc-b', 'loc-a'] })
+
+    expect(res.errors).toBeUndefined()
+    expect(listed(res.data?.reorderLocations)).toEqual(['loc-b:0', 'loc-a:1'])
+    expect(listed((await run(ORDERED, MIA)).data?.locations)).toEqual(['loc-c:0', 'loc-a:1', 'loc-b:2'])
+    expect(sharedOrders()).toEqual(SHARED)
+  })
+
+  it('household member is FORBIDDEN a location they have no role on, and nothing is written', async () => {
+    // loc-c is in BEA's household, but not in their list. The same answer as
+    // an unknown id, so the request cannot tell them that loc-c exists.
+    const res = await run(REORDER, BEA, { ids: ['loc-b', 'loc-a', 'loc-c'] })
+
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(world.locationPreferences.state.rows).toEqual([])
+  })
+
+  it('a repeated id is BAD_USER_INPUT, and nothing is written', async () => {
+    // Three ids for a list of three, so only the repeat check can refuse it:
+    // the size check alone would let it write loc-b twice and leave loc-a out.
+    const res = await run(REORDER, MIA, { ids: ['loc-b', 'loc-b', 'loc-c'] })
+
+    expect(code(res)).toBe('BAD_USER_INPUT')
+    expect(world.locationPreferences.state.rows).toEqual([])
+  })
+
+  it("a location of the person's other household is FORBIDDEN, though they have a role there", async () => {
+    const res = await run(REORDER, MIA, { ids: ['loc-b', 'loc-c', 'loc-a', 'loc-d'] })
+
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(world.locationPreferences.state.rows).toEqual([])
+  })
+
+  it('an unknown id is FORBIDDEN, the same answer', async () => {
+    const res = await run(REORDER, MIA, { ids: ['loc-b', 'loc-c', 'loc-a', 'loc-nope'] })
+
+    expect(code(res)).toBe('FORBIDDEN')
+    expect(world.locationPreferences.state.rows).toEqual([])
+  })
+
+  it('a list that leaves out a location of their list is BAD_USER_INPUT, and nothing is written', async () => {
+    const res = await run(REORDER, MIA, { ids: ['loc-b', 'loc-c'] })
+
+    expect(code(res)).toBe('BAD_USER_INPUT')
+    expect(world.locationPreferences.state.rows).toEqual([])
+  })
+
+  it('user sees a location made after their reorder at the END of their list', async () => {
+    expect((await run(REORDER, MIA, { ids: ['loc-b', 'loc-c', 'loc-a'] })).errors).toBeUndefined()
+
+    const created = await run(`mutation { createLocation(name: "Garage") { id } }`, MIA)
+    expect(created.errors).toBeUndefined()
+    const garage = (created.data?.createLocation as { id: string }).id
+
+    expect(listed((await run(ORDERED, MIA)).data?.locations)).toEqual([
+      'loc-b:0',
+      'loc-c:1',
+      'loc-a:2',
+      `${garage}:3`,
+    ])
+  })
+
+  it('user sees the same personal order in the settings list, a No access row included', async () => {
+    // loc-n is in hh-1, and nobody has a role on it. MIA, the owner, sees it
+    // in the settings list as No access, so their reorder must name it.
+    world.stock.state.locations.push({
+      id: 'loc-n',
+      householdId: 'hh-1',
+      name: 'Nook',
+      order: 3,
+      createdAt: T,
+      updatedAt: T,
+      dataUpdatedAt: null,
+    })
+
+    const res = await run(REORDER, MIA, { ids: ['loc-b', 'loc-n', 'loc-c', 'loc-a'] })
+    expect(res.errors).toBeUndefined()
+
+    const settings = await run(`query { householdLocations { id order myRole } }`, MIA)
+    expect(settings.errors).toBeUndefined()
+    expect(settings.data?.householdLocations).toEqual([
+      { id: 'loc-b', order: 0, myRole: 'organizer' },
+      { id: 'loc-n', order: 1, myRole: null },
+      { id: 'loc-c', order: 2, myRole: 'organizer' },
+      { id: 'loc-a', order: 3, myRole: 'organizer' },
+    ])
+    // The switcher's list leaves loc-n out, and numbers its own rows.
+    expect(listed(res.data?.reorderLocations)).toEqual(['loc-b:0', 'loc-c:1', 'loc-a:2'])
+  })
+
+  it('a second reorder in the same request sees the first one (the preference cache is cleared)', async () => {
+    // `a` reads the preferences after its write and fills the request's
+    // cache. `b` writes again. Without the clear in `forgetLocationRoles`,
+    // `b` answers with the order `a` wrote.
+    const res = await run(
+      `mutation {
+        a: reorderLocations(orderedIds: ["loc-a", "loc-b", "loc-c"]) { id order }
+        b: reorderLocations(orderedIds: ["loc-b", "loc-c", "loc-a"]) { id order }
+      }`,
+      MIA,
+    )
+
+    expect(res.errors).toBeUndefined()
+    expect(listed(res.data?.a)).toEqual(['loc-a:0', 'loc-b:1', 'loc-c:2'])
+    expect(listed(res.data?.b)).toEqual(['loc-b:0', 'loc-c:1', 'loc-a:2'])
+  })
+
+  it('sends no live event: only the caller sees the order', async () => {
+    const res = await run(REORDER, MIA, { ids: ['loc-b', 'loc-c', 'loc-a'] })
+
+    expect(res.errors).toBeUndefined()
+    expect(seen).toEqual([])
+  })
+})
+
+describe('myLocationSort and setLocationSort (decision T74, owner decision O52-A)', () => {
+  beforeEach(() => {
+    seedOrder()
+  })
+
+  it('user sees Custom when they never chose a sort', async () => {
+    const res = await run(`query { myLocationSort }`, MIA)
+
+    expect(res.errors).toBeUndefined()
+    expect(res.data).toEqual({ myLocationSort: 'custom' })
+  })
+
+  it('user can choose a sort, and reads it back; another person keeps the default; no event', async () => {
+    const set = await run(`mutation { setLocationSort(sort: name) }`, MIA)
+
+    expect(set.errors).toBeUndefined()
+    expect(set.data).toEqual({ setLocationSort: 'name' })
+    expect(world.users.state.rows.find((r) => r.id === MIA)?.locationSort).toBe('name')
+    expect((await run(`query { myLocationSort }`, MIA)).data).toEqual({ myLocationSort: 'name' })
+    expect((await run(`query { myLocationSort }`, BEA)).data).toEqual({ myLocationSort: 'custom' })
+    expect(seen).toEqual([])
+  })
+})
