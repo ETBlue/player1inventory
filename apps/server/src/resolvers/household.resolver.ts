@@ -13,6 +13,8 @@ import {
   HOUSEHOLD_NAME_MAX_LENGTH,
   lockHouseholdOrForbid,
   lockUser,
+  MEMBERSHIP_ORDER,
+  pickHousehold,
   retryOnceOnConflict,
 } from '../lib/household.js'
 import { recordActivity } from '../lib/activity.js'
@@ -126,6 +128,54 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // has a foreign key to the household.
       if (!row) throw new Error('household: the household row of the caller is gone')
       return householdAnswer({ id: row.id, name: row.name, role })
+    },
+
+    // Every household the caller is in, for "Switch to…" (households H7 task
+    // L.2, decision T69). Any signed-in person.
+    //
+    // It does NOT call `requireHousehold`, on purpose:
+    //
+    // - `requireHousehold` runs first sign-in (`ensureHousehold`). For a
+    //   person in no household that would make a household, or throw
+    //   NO_HOUSEHOLD. This list must answer `[]` for them and write nothing.
+    // - `requireHousehold` refuses a tab whose `x-household-id` names another
+    //   household (decision T67). A stale tab must still be able to list the
+    //   households and switch. Leaving `requireHousehold` out skips that
+    //   compare too, with no `ignoreShown` needed.
+    //
+    // It reads only the caller's own memberships, so it needs no role check.
+    // `isActive` uses `pickHousehold`, the same rule as `ensureHousehold`, so
+    // it marks the household every other field acts in.
+    //
+    // Two reads. First the `User` row with its memberships, in the same shape
+    // and order `ensureHousehold` reads, so `pickHousehold` can run on it.
+    // Then the household names. A deleted household takes its member rows
+    // with it (ON DELETE CASCADE), so it is never listed.
+    myHouseholds: async (_, __, ctx) => {
+      const userId = requireAuth(ctx)
+      const person = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          activeHouseholdId: true,
+          householdMemberships: {
+            orderBy: MEMBERSHIP_ORDER,
+            select: { householdId: true, role: true },
+          },
+        },
+      })
+      if (!person || person.householdMemberships.length === 0) return []
+      const active = pickHousehold(person)
+      const rows = await prisma.household.findMany({
+        where: { id: { in: person.householdMemberships.map((m) => m.householdId) } },
+        select: { id: true, name: true },
+      })
+      const names = new Map(rows.map((row) => [row.id, row.name]))
+      return person.householdMemberships.flatMap((m) => {
+        const name = names.get(m.householdId)
+        // Only when the household was deleted between the two reads.
+        if (name === undefined) return []
+        return [{ id: m.householdId, name, role: m.role, isActive: m.householdId === active }]
+      })
     },
 
     // Any household role (owner decision O13-A): a member sees every person's
@@ -436,9 +486,65 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       return true
     },
 
-    // Only for a person in NO household (owner decision O16-A). It must NOT
-    // call `requireHousehold` (decision T22): that throws NO_HOUSEHOLD for
-    // exactly this person. ONE transaction:
+    // Makes `householdId` the household the caller acts in (households H7
+    // task L.2, decision T68, owner decision O50-A: one active household per
+    // person, on every device).
+    //
+    // It does NOT call `requireHousehold`. A tab that shows the old household
+    // must be able to switch, so the shown-household compare (decision T67)
+    // must not refuse it. And the caller does not act in a household here:
+    // they choose one.
+    //
+    // ONE transaction:
+    //
+    //   1. `lockUser` FIRST, and no household lock at all (decision T16: the
+    //      `User` row before any household row). Two switches by one person
+    //      run one after the other, and a join or create in another tab,
+    //      which also takes `lockUser`, cannot mix with it.
+    //   2. The caller's member row in that household, read through `tx`
+    //      after the lock. None → FORBIDDEN, the same answer for an unknown
+    //      household id, so the answer says nothing about other households.
+    //   3. `User.activeHouseholdId`. This is not an authorization check: it
+    //      only chooses which of the caller's own households later requests
+    //      use. `ensureHousehold` still checks the membership on every
+    //      request, so a person removed later falls back to their oldest
+    //      membership.
+    //
+    // No activity row (H6 decision T51 lists no such action) and no live
+    // event: it is in `publishesNothing` in live-publish.guard.test.ts. The
+    // caller's other tabs find out on their next request, through the
+    // shown-household compare or `HouseholdChangeGuard`. A household-level
+    // event to the new household would make every member there refetch
+    // everything for one person's choice.
+    setActiveHousehold: async (_, { householdId }, ctx) => {
+      const userId = requireAuth(ctx)
+      return prisma.$transaction(async (tx) => {
+        await lockUser(tx, userId)
+        const member = await tx.householdMember.findUnique({
+          where: { householdId_userId: { householdId, userId } },
+          select: { role: true },
+        })
+        if (!member) throw forbidden()
+        await tx.user.update({ where: { id: userId }, data: { activeHouseholdId: householdId } })
+        const row = await tx.household.findUnique({
+          where: { id: householdId },
+          select: { id: true, name: true },
+        })
+        // Unreachable: the member row has a foreign key to the household.
+        if (!row) throw forbidden()
+        return householdAnswer({ id: row.id, name: row.name, role: member.role })
+      })
+    },
+
+    // By default only for a person in NO household (owner decision O16-A).
+    // `alsoWhenMember: true` (households H7 task L.2, decision T70) lets a
+    // person who is already in a household create one too ("Switch to… ›
+    // Create new"). The default must stay: the no-household screen relies on
+    // ALREADY_IN_HOUSEHOLD when a second tab created or joined first
+    // (`useHousehold.ts`), so two clicks there still make one household.
+    //
+    // It must NOT call `requireHousehold` (decision T22): that throws
+    // NO_HOUSEHOLD for a person in no household. ONE transaction:
     //
     //   1. `lockUser` FIRST (decision T16). Two creates by one person (two
     //      tabs) run one after the other, so the second sees the first one's
@@ -447,7 +553,8 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     //      null, as `joinHousehold` does. Then a first request racing this
     //      create cannot make a second household, and a later leave gives
     //      NO_HOUSEHOLD instead of a new household.
-    //   3. Any membership at all → ALREADY_IN_HOUSEHOLD.
+    //   3. Any membership at all → ALREADY_IN_HOUSEHOLD. Skipped only when
+    //      `alsoWhenMember` is `true`.
     //   4. The same writes as first sign-in (`createHouseholdFor`).
     //   5. `activeHouseholdId` → the new household. The User lock is held.
     //
@@ -456,7 +563,7 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     //
     // After the commit, household-level `LOCATION` for the new household
     // (decision T19). The caller is its member, so their other tabs hear it.
-    createHousehold: async (_, { name }, ctx) => {
+    createHousehold: async (_, { name, alsoWhenMember }, ctx) => {
       const userId = requireAuth(ctx)
       const language = ctx.language ?? 'en'
       // Checked before any read or write: a blank name writes nothing.
@@ -467,8 +574,12 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           where: { id: userId, householdSetupAt: null },
           data: { householdSetupAt: new Date() },
         })
-        const memberships = await tx.householdMember.count({ where: { userId } })
-        if (memberships > 0) throw alreadyInHousehold()
+        // `=== true`: a `null` sent on purpose means the default, as Prisma
+        // and GraphQL treat a missing argument.
+        if (alsoWhenMember !== true) {
+          const memberships = await tx.householdMember.count({ where: { userId } })
+          if (memberships > 0) throw alreadyInHousehold()
+        }
 
         let householdName = cleanName
         if (householdName === null) {
