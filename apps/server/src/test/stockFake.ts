@@ -93,6 +93,9 @@ export interface FakeLocation {
   // rows may still leave them out, since no assertion reads them.
   createdAt?: Date
   updatedAt?: Date
+  // Nullable (households H7b, decision T79). `publishChange` sets it when a
+  // location's stock, carts or logs change. A created row starts with null.
+  dataUpdatedAt?: Date | null
 }
 
 export interface FakeStock {
@@ -183,7 +186,17 @@ export class UnknownLocationColumnError extends Error {
 }
 
 // The columns a `Location` write may name. Any other key throws.
-const LOCATION_COLUMNS = new Set(['id', 'name', 'order', 'householdId', 'createdAt', 'updatedAt'])
+// `dataUpdatedAt` since households H7b task M.2: `publishChange` writes it
+// with `location.updateMany`.
+const LOCATION_COLUMNS = new Set([
+  'id',
+  'name',
+  'order',
+  'householdId',
+  'createdAt',
+  'updatedAt',
+  'dataUpdatedAt',
+])
 
 function checkLocationData(data: Record<string, unknown>): void {
   for (const key of Object.keys(data)) {
@@ -558,6 +571,7 @@ export function createStockFake() {
       order: data.order as number,
       createdAt: (data.createdAt as Date | undefined) ?? now,
       updatedAt: (data.updatedAt as Date | undefined) ?? now,
+      dataUpdatedAt: (data.dataUpdatedAt as Date | null | undefined) ?? null,
     }
     state.locations.push(row)
     return row
@@ -580,6 +594,7 @@ export function createStockFake() {
     }
     if ('createdAt' in data) row.createdAt = data.createdAt as Date
     if ('updatedAt' in data) row.updatedAt = data.updatedAt as Date
+    if ('dataUpdatedAt' in data) row.dataUpdatedAt = data.dataUpdatedAt as Date | null
     return row
   }
 
@@ -629,6 +644,20 @@ export function createStockFake() {
         applyLocationUpdate(row, data)
         if (!('updatedAt' in data)) row.updatedAt = new Date()
         return copy(row)
+      },
+      // Every matching row (households H7b task M.2: `publishChange` sets
+      // `dataUpdatedAt` this way). Matching nothing is not an error: the
+      // count is 0, as in Prisma. `updatedAt` moves unless the writer names
+      // it, because Prisma's `updateMany` also sets an `@updatedAt` column.
+      updateMany: async ({ where = {}, data }: { where?: Where; data: Record<string, unknown> }) => {
+        checkLocationWhere(where)
+        checkLocationData(data)
+        const rows = state.locations.filter((l) => matchesLocation(l, where))
+        for (const row of rows) {
+          applyLocationUpdate(row, data)
+          if (!('updatedAt' in data)) row.updatedAt = new Date()
+        }
+        return { count: rows.length }
       },
       // One row, and its stock rows with it: `ItemStock.locationId` is
       // `onDelete: Cascade`. The `LocationMember` cascade is in

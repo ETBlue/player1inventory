@@ -134,6 +134,12 @@ vi.mock('../lib/prisma.js', async () => {
         .filter((l) => where.householdId === undefined || l.householdId === where.householdId)
         .map((l) => ({ ...l }))
     },
+    // `publishChange` sets `dataUpdatedAt` after `deleteVendor`'s CART event
+    // (households H7b task M.2). This file does not test that write, so it
+    // only counts the rows. Without it the write fails and is logged.
+    updateMany: async ({ where }: { where: { id: { in: string[] } } }) => ({
+      count: locationRows.filter((l) => where.id.in.includes(l.id)).length,
+    }),
   }
   const { runInTransaction } = await import('../test/stockFake.js')
   const client: Record<string, unknown> = {
