@@ -811,6 +811,8 @@ their tests), `src/lib/e2eCleanup.ts` and test, `resolvers/purge-coverage.test.t
 
 **E2E:** M.5 tests 2 and 3.
 
+**Done 2026-11-22** at `41abcbee` (two commits: `e8c50e33` `publishChange` and `stockFake`, `41abcbee` the fields and the mutation). Baseline at `20d8dc00`: server 2795 / 88. After: web 3840 / 373, server 2820 / 89, `scripts/spec` 70. The full gate is green without E2E; esbuild `dist/index.js 263.7 KiB`, 15 `.graphql` files. Live guard: 78 in `publishes`, **5** in `publishesNothing` (`markLocationVisited` added). `publishChange` sets `dataUpdatedAt = now` with ONE `location.updateMany` when `kinds` holds `STOCK`, `CART` or `LOG`. It runs in `finally`, after the events, in its own guard (it logs `publishChange: could not set dataUpdatedAt: <name>`), and it still runs when the household lookup fails. `stockFake` got `location.updateMany` and the `dataUpdatedAt` column (3 tests). Five writers are proved through their resolvers in `stock-live-publish.resolver.test.ts`: `upsertItemStock`, `addToCart`, `addInventoryLog`, `bulkCreateItemStocks`, `removeAllLocationItems`. Each moves only its own location. `Location.dataUpdatedAt` is set in `toGraphQL`. `Location.lastVisitedAt` reads `locationPreferencesOf(ctx)` (new `lib/locationPreferences.ts`), cached as `RequestCache.locationPreferences`, ONE read of the caller's own rows per request, cleared by `forgetLocationRoles`. `markLocationVisited` runs `requireHousehold`, `requireLocationInHousehold`, then `requireLocationRole(viewer)`; it writes nothing and answers `false` under 60 seconds (`VISIT_INTERVAL_MS`), and its `upsert` updates `lastVisitedAt` only. The new `location-order.resolver.test.ts` has 10 tests. Mutations, all red: every kind sets it; `updateMany` before the events and allowed to throw; the 60-second skip removed; no `userId` filter on the preference read; `publishChange` never sets it; `updateMany` on every location; `requireLocationInHousehold` removed; the role check removed; `toGraphQL` always null; the fake's `updateMany` ignores `where`. **Not tested yet: the cache clear in `forgetLocationRoles`** (no M.2 mutation returns a `Location`); M.3's two-root-fields test must cover it.
+
 ---
 
 ## Task M.3 — server: personal order, `reorderLocations`, the sort setting
@@ -1099,6 +1101,10 @@ Filled in from the task reports and reviews.
 | M.1 | step 4: "a location with stock rows has `dataUpdatedAt` equal to its newest `ItemStock.updatedAt`" | the fixture had no stock rows with known times before the last deploy; a seed step (`seedLocationPreferenceBackfill`) writes them, and the check runs first after the deploy |
 | M.1 | step 2 "run: red" | the `deleteHouseholdData` coverage case is green at once, because the model goes into its `kept` list |
 | M.2 | not named | `stockFake`'s `LOCATION_COLUMNS` has no `dataUpdatedAt`; `publishChange`'s `updateMany` needs it added |
+| T77 | the preferences are read "once per request per household" | M.2 reads them once per request for the caller (`where: { userId }`), keyed by location id. A per-household read needs one more query for the household's location ids, because the fake refuses a `location: { householdId }` filter, and the rows are the caller's own anyway. M.3 filters this one map |
+| T79 | (not said) | Prisma's `updateMany` also sets `Location.updatedAt` (`@updatedAt`), so every STOCK, CART or LOG write now moves `Location.updatedAt` too. `stockFake.location.updateMany` models it |
+| M.2 *Files* | the writer tests go in `location-order.resolver.test.ts` | they are in `stock-live-publish.resolver.test.ts`, which already models every writer. The new file tests the fields and `markLocationVisited` |
+| M.1 note, `stockFake` | (M.1 Done) | `stockFake` lacked both `dataUpdatedAt` in `LOCATION_COLUMNS` and `location.updateMany`. M.2 added both. A hand-made `location` mock without `updateMany` only logs, so `catalog-ownership.resolver.test.ts` got a counting `updateMany` |
 
 ## Status
 
