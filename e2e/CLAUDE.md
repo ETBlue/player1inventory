@@ -1023,8 +1023,8 @@ one browser, in `local`'s `testIgnore`. The first real-SQL run of `myHouseholds`
 in `requireHousehold` (`HOUSEHOLD_CHANGED`, owner decision O21) and the copy into a chosen
 household (owner decision O22-A). Page object: `e2e/pages/HouseholdSwitcher.ts` (new); it is
 the one place that matches the text of the one-time "household changed" message, by its
-role (`status`) and the two household names, because the sentence may still change (owner
-question O56). 6 tests:
+role (`status`) and the two household names, not by the whole sentence. The sentence did
+change once (owner decision O56-A, task L.7) and no spec needed an edit. 6 tests:
 
 | Test | What it proves |
 |---|---|
@@ -1033,6 +1033,11 @@ question O56). 6 tests:
 | 3 | O21: a tab that shows A, after PAT moved to B through `makeGql` ("another device"), creates a tag type; the server answers `HOUSEHOLD_CHANGED`; no tag type in A or B; the tab reloads into B and shows the message |
 | 4 | O22-A: PAT copies offline data with `skip` from a page that showed A, picks B (manager) in "Copy into", and **Move there and copy**; after the reload "Import into which location?" asks; the item lands in B only, and the page did reload with PAT active in B |
 | 5, 6 | axe, light and dark: the page with the menu closed, the open menu alone, and the Create new dialog |
+
+**No test covers O57-B** (a household joined on this device is offered in "Copy into" when
+the role allows it). The spec joins through `joinHousehold` in `e2e/helpers/`, an API call,
+so `migration-skip-households` is never set on the page. Unit tests in
+`components/global/PostLoginMigrationDialog/index.test.tsx` cover it.
 
 **Every test seeds PAT's own household with one row BEFORE the join.** `joinHousehold`
 deletes the joiner's household when it is empty (decision T21). The join makes the joined

@@ -135,7 +135,7 @@ that really set up that role.
 >
 > | Helper | What it does |
 > |---|---|
-> | `requireHousehold(ctx)` | the caller's household id. Also first sign-in: it calls `ensureHousehold` (`lib/household.ts`), which makes the household and its first location, "Home", once, guarded by the `User.householdSetupAt` claim. Since H5b task G.2 a person in several households gets one fixed answer (decision T14): `User.activeHouseholdId` while they are still a member there, else the oldest membership by `joinedAt`, then `householdId`. One `user.findUnique` on the common path |
+> | `requireHousehold(ctx)` | the caller's household id. Also first sign-in: it calls `ensureHousehold` (`lib/household.ts`), which makes the household and its first location, "Home", once, guarded by the `User.householdSetupAt` claim. Since H5b task G.2 a person in several households gets one fixed answer (decision T14): `User.activeHouseholdId` while they are still a member there, else the oldest membership by `joinedAt`, then `householdId`. One `user.findUnique` on the common path. **Since H7a task L.1 it also compares** that id with `ctx.shownHouseholdId` (the `x-household-id` header, the household the tab shows) and throws `HOUSEHOLD_CHANGED` when they differ (owner decision O21). No header: no compare. `requireHousehold(ctx, { ignoreShown: true })` skips the compare; only the `household` query uses it |
 > | `requireHouseholdRole(ctx, householdId, role, db?)` | refuses with `FORBIDDEN` unless the caller's household role is `role` or stronger. Inside an interactive transaction pass its `tx` as `db` (since H5b task G.5), so the read uses the transaction's connection |
 > | `requireCatalogRole(ctx, role)` | both of the above; returns the household id. Catalog reads ask `member`, writes `manager` |
 > | `requireLocationRole(ctx, locationId, role)` | refuses unless the caller has `role` or stronger on that location. A location role counts only while the matching `HouseholdMember` row exists (decision H18) |
@@ -308,6 +308,38 @@ that really set up that role.
 > counts the `publishes` list only; it gave 74 at H6a, not 76. The H6a total of 76 was right,
 > but only with the `publishesNothing` count added. That is why there are two rows above.
 >
+> **Household switch, Create new, the stale-tab fix and the copy choice are built in H7a**
+> (on `feature/households-h7a`, from `develop` at `9701ddff`; **not merged, not deployed**;
+> plan `docs/global/permissions/2026-11-21-households-plan-h7.md`, tasks L.1 to L.7; deploy
+> notes in section 13 of the H4 runbook). **No migration.** The new web bundle selects a new
+> query and sends a new argument, so the **server deploys before the web**. Owner decisions
+> O49 to O57 (O54-B, O57-B, the others A). What H7a adds:
+>
+> | Part | What |
+> |---|---|
+> | the shown household (decisions T66, T67, task L.1) | the web sends `x-household-id`, the household THIS PAGE shows (`getShownHouseholdId()` in `apollo/householdGuard.ts`, read once per page load; not `last-household-id` read again, which another tab may have changed). The server reads it with `householdIdFrom` (`src/context.ts`: 1 to 64 characters; a comma or whitespace counts as missing) into `ctx.shownHouseholdId`. `requireHousehold` throws `GraphQLError` code `HOUSEHOLD_CHANGED` when it names another household (exported as `householdChanged()` from `lib/authz.ts`). No call site changed: every catalog read and write, the import mutations and `clearAllData` get the check through `requireHousehold`. No header (`makeGql` in E2E, an old bundle): no compare |
+> | 1 query (T69, task L.2) | `myHouseholds: [HouseholdChoice!]!`: `id`, `name`, `role` (the caller's), `isActive`, oldest membership first. Any signed-in person; a person in no household gets `[]`, and no household is made. It does NOT call `requireHousehold` (that runs first sign-in). Its own type, not `Household`, so the Apollo cache does not mix up `role` |
+> | 1 mutation (T68) | `setActiveHousehold(householdId)`: `lockUser`, the membership read through `tx` (`FORBIDDEN` when not a member, the same as an unknown id), then `User.activeHouseholdId`. Per person, not per device (O50-A). Does not call `requireHousehold`, so a stale tab can switch. In `publishesNothing`, not logged |
+> | 1 argument (T70) | `createHousehold(name, alsoWhenMember: Boolean = false)`. With `true` the membership count is skipped, so a person in a household can make another one. **Switch to… › Create new** sends it; the no-household screen does not, so its guard against two tabs stays |
+> | web: the recovery (T72, task L.3) | `householdChangedLink` in `apollo/client.ts` (both the Clerk and the E2E client) calls `recoverFromHouseholdChange()` once per page load: it asks `GetHousehold` (`no-cache`), stores the message in `sessionStorage`, and calls `switchToHousehold`; with `NO_HOUSEHOLD` it calls `forgetHousehold()`. The failed write is NOT sent again. `switchToHousehold` and `forgetHousehold` set the same flag before they clear the cache, so the refetches a clear starts do not start a second recovery. After the reload `HouseholdChangedNotice` (in `__root.tsx`) shows once: "You are now in {household}. This page still showed {oldHousehold}, so it was reloaded. If you were saving a change, it was not saved." (O51-A, wording O56-A) |
+> | web: the switch (task L.4) | `HouseholdSwitcher` (**Switch to…**, item 9 of the household sidebar and of the mobile accordion, cloud only) and `CreateHouseholdDialog`. Hooks `useMyHouseholds`, `useSwitchHousehold`, `useCreateAnotherHousehold` (`hooks/useMyHouseholds.ts`). The switch reuses H5b's `switchToHousehold`: it clears the Apollo cache in memory and in `Player1InventoryCloudCache`, removes `active-location-id:cloud`, and reloads |
+> | web: the copy choice (T73, task L.5) | both copy questions list every household where `canCopyInto(role, strategy)` allows the copy, plus **A new household** (O22-A). A household joined on this device is listed too when the role allows it (O57-B); `migration-skip-households` still stops only the AUTOMATIC question after sign-in (O12-A). Another household: the page moves there first, and the copy runs after the reload (`sessionStorage['copy-into-household']`). No household argument on the import mutations (T71) |
+> | E2E (task L.6) | `household-switch.spec.ts`, 6 cloud tests: switch with a cart in the old household, Create new, the stale tab (O21) on real SQL, the copy into a managed household, and two axe scans. See `e2e/CLAUDE.md` |
+>
+> **Counts after H7a**, measured 2026-11-21 on `feature/households-h7a`. Count them again
+> rather than quote them (the commands are in the H6b table above):
+>
+> | Count | Value |
+> |---|---|
+> | live guard fields in `publishes` | **78** (unchanged) |
+> | live guard fields in `publishesNothing` | **4**: `recordImport`, `deleteHousehold`, `dismissOwnershipOffer`, `setActiveHousehold` |
+> | models `/e2e/cleanup` deletes | **21** (unchanged) |
+> | `.graphql` schema files | **15** (unchanged; the new fields are in `household.graphql`) |
+> | migration folders | **21** (unchanged; `git log --oneline 9701ddff..HEAD -- apps/server/prisma/` is empty) |
+> | server bundle | **260.2 KiB**, 15 `.graphql` files copied |
+> | tests | web **3840 / 373 files**, server **2767 / 87**, `scripts/spec` **70** |
+> | cloud spec files | **39 of 43** in `e2e/tests/`; the `cloud` project collects **210** tests |
+>
 > **`removeItemFromLocation` needs `organizer`, not `participant`** (owner decision 2026-11-11, `f4d993db`). It deletes every log of the item at that location, including other members' logs.
 >
 > **`ItemStock` carries no `userId` column at all**, by design from before households. It is scoped *through* its location: `requireLocationRole` for one location, `locationIdsWithRole` for several. Do not add a `userId` column there.
@@ -342,7 +374,7 @@ that really set up that role.
 > | a location id `'local'` or containing `:` | `BAD_USER_INPUT`, before any read |
 > | an existing location of another household | `FORBIDDEN` (it was skipped, or renamed by `bulkUpsertLocations`, when the caller held a role there) |
 >
-> Tested in `apps/server/src/resolvers/import-role-gate.resolver.test.ts`, with one person in two households and the target chosen by that person's `User.activeHouseholdId` (since H5b task G.2; a pin on `ctx.requestCache.householdId` is forgotten before every `Mutation` field, decision T15). **A test cannot yet tell "the target household" from "the caller's household"**: until H7's household switch both are `requireHousehold(ctx)`. What the tests do prove is that the location and the item must be in the SAME household as the target.
+> Tested in `apps/server/src/resolvers/import-role-gate.resolver.test.ts`, with one person in two households and the target chosen by that person's `User.activeHouseholdId` (since H5b task G.2; a pin on `ctx.requestCache.householdId` is forgotten before every `Mutation` field, decision T15). **The target household IS the household the person acts in, and that is a rule, not a gap** (since H7a, decision T71). There is no household argument on the import mutations: to copy into another household the web moves the person first (`setActiveHousehold`, then `switchToHousehold`), and the copy runs after the reload. If the household changes in the middle of an import (another tab switches), every later batch is refused with `HOUSEHOLD_CHANGED` (the `x-household-id` check in `requireHousehold`). What the tests prove is that the location and the item must be in the SAME household as the target. (Until H7a this said "A test cannot yet tell the target household from the caller's household". Both are still `requireHousehold(ctx)`, on purpose.)
 >
 > **The `importCheck` query (households H4 task E.2, decision T1).** A refused import used to be refused per batch of 50, so the batches sent before it stayed written and "Nothing was imported" was not true. Now the web asks first. `importCheck(ids: ImportCheckInput!, forClear: Boolean): ImportCheck!` (`apps/server/src/resolvers/importCheck.resolver.ts`) is read-only. It starts with `requireCatalogRole(ctx, forClear ? 'owner' : 'manager')`, takes the file's ids per model plus `locationRefs` and `itemRefs` (the location and item ids that rows POINT at), at most **1000** ids per call (the web sends chunks and joins the answers, `checkImportIds` in `apps/web/src/lib/importData.ts`). It answers `anotherHousehold`, `blockedLocationIds` (below `participant`), `renameBlockedLocationIds`, `missingLocationIds`, `missingItemIds` and `blockedRows`. When `anotherHousehold` is true the web stops before `clearAllData` and before the first batch, so nothing is written. Otherwise the web leaves out the blocked and missing rows and names the skipped locations after the import (decision O5). **It is a convenience, not a guard** (decision T2): a client can skip it, and the 22 mutations still check every row. It compares households in SQL, inside the resolver; no call site compares a `householdId`. Like the cart guard, it reads a cart id only when its prefix is a location the caller may write (or one the file creates). The web also uses it to list the locations "Import into which location?" offers (`fetchImportTargetLocations`). It did this because the web did not know location roles in H4. Since H5 task F.1 `GetLocations` carries `myRole`, but the dialog still asks `importCheck`: its answer also leaves out a location deleted since the list was read. **A new web bundle against an older server cannot import at all**, because the query fails GraphQL validation; that is why H4 deploys the server first (decision T9).
 >
@@ -382,10 +414,10 @@ that really set up that role.
 >
 > | Id | Mutations | Checked against | An id that does not pass |
 > |---|---|---|---|
-> | `tagIds`, `vendorIds` | both item mutations | the target household (the caller's household before H4 task E.3; the same household until H7) | that edge is skipped |
-> | `typeId` | `bulkCreateTags`; `bulkUpsertTags` since 3.9 | the target household (the caller's household before H4 task E.3; the same household until H7) | the tag is skipped |
+> | `tagIds`, `vendorIds` | both item mutations | the target household (the caller's household before H4 task E.3; the household the person acts in, since H7a also checked against the tab's `x-household-id`) | that edge is skipped |
+> | `typeId` | `bulkCreateTags`; `bulkUpsertTags` since 3.9 | the target household (the caller's household before H4 task E.3; the household the person acts in, since H7a also checked against the tab's `x-household-id`) | the tag is skipped |
 > | `parentId` | `bulkUpsertTags` since 3.9 | the target household (the caller's household before H4 task E.3), or a tag of the same payload written first | the tag is skipped |
-> | recipe item ids | both recipe mutations | the target household (the caller's household before H4 task E.3; the same household until H7) | that ingredient is skipped |
+> | recipe item ids | both recipe mutations | the target household (the caller's household before H4 task E.3; the household the person acts in, since H7a also checked against the tab's `x-household-id`) | that ingredient is skipped |
 > | `itemId` | both log mutations | the target household, which is also the log's location's household since H4 task E.3 (the caller's household, not the location's, before) | the log is skipped |
 > | `cartId` | both cart item mutations | the cart must be at a location of the TARGET household where the caller is `participant` or higher (the target only since H4 task E.3, any household before; by location role since H3b task B.7; by `Cart.userId` before task B.3) | the row is skipped, a viewer's included (until task B.7 a viewer got `FORBIDDEN` for the whole batch) |
 > | `itemId` | both cart item mutations | the target household, which is the cart's household since H4 task E.3 (the household of the CART's location since 3.9) | the row is skipped |
@@ -475,9 +507,11 @@ that really set up that role.
 >
 > **Every `Mutation` field must be in one of two lists** in
 > `apps/server/src/resolvers/live-publish.guard.test.ts`: `publishes` (with its kinds) or
-> `publishesNothing` (with a reason). A new mutation in no list fails the test. Today: 81
-> fields, 78 in `publishes` and 3 in `publishesNothing` (measured 2026-11-20 after
-> households H6b; count with the two commands in the H6b *Counts* table above). H6b added
+> `publishesNothing` (with a reason). A new mutation in no list fails the test. Today: 82
+> fields, 78 in `publishes` and 4 in `publishesNothing` (measured 2026-11-21 after
+> households H7a; count with the two commands in the H6b *Counts* table above). H7a added
+> `setActiveHousehold` to `publishesNothing`: the person's other tabs learn of a switch on
+> their next request. Before H7a: 81, 78 and 3. H6b added
 > `offerOwnership`, `cancelOwnershipOffer`, `acceptOwnershipOffer` and
 > `declineOwnershipOffer` to `publishes` (household-level `LOCATION`) and
 > `dismissOwnershipOffer` to `publishesNothing`. Before H6b: 76, 74 and 2. H6a added
