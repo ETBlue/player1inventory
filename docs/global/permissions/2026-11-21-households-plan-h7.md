@@ -387,38 +387,13 @@ The server deploys before the web. `main`'s bundle knows nothing of households.
 `resolvers/household.resolver.ts`, a new `resolvers/household-shown.resolver.test.ts`,
 `resolvers/import.resolver.ts` (comment only).
 
-- [ ] **Step 0: measure the baseline.** On the unmodified tree, `pnpm test` from the repo
-  root. Record web, server and `scripts/spec` counts. Count the live guard fields with the
-  two commands under *Global Constraints*. If the web suite fails, check `uptime` and re-run
-  the failing file alone before calling it real.
-- [ ] **Step 1: write the failing tests.**
-  - `graphqlContext.test.ts`: `x-household-id` becomes `ctx.shownHouseholdId`; a missing
-    header, an empty string, a value over 64 characters and an array give `undefined`.
-  - `authz.test.ts`, `requireHousehold`: with no `shownHouseholdId`, the answer is as today;
-    with the same id, the answer is as today; with another id, `HOUSEHOLD_CHANGED`; the error
-    names no household id (check `message` and `extensions`); with `{ ignoreShown: true }`
-    and another id, the answer is as today. The fixture: one person in two households A and
-    B, `activeHouseholdId` = B, header A.
-  - `household-shown.resolver.test.ts`, the person in A and B with `activeHouseholdId` = B
-    and header A, through the executable schema (as `mutationRoleCache.test.ts` does):
-    `createTag` is refused with `HOUSEHOLD_CHANGED` and the tag store is unchanged in BOTH
-    households; `items` is refused; `createLocation` is refused and no location is written;
-    one bulk import mutation (`bulkCreateItems`) and `clearAllData` are refused and write
-    nothing; the `household` query answers B. Header B: all of them work as today. No
-    header: all of them work in B (the old bundle).
-  - The same file: a person who LEFT A (no membership in A, member of B), header A: `createTag`
-    is refused. This is the O21 case exactly.
-- [ ] **Step 2:** run: red.
-- [ ] **Step 3:** `householdIdFrom` in `context.ts`, `shownHouseholdId` on `Context`, the
-  header read in `graphqlContext.ts` (both the Clerk branch and the E2E branch).
-- [ ] **Step 4:** in `requireHousehold(ctx, options?)`, compare AFTER the cached promise
-  resolves, so the per-request cache still holds the id and not the refusal. Do not add a
-  query. `household` passes `{ ignoreShown: true }`. Write a comment that says the compare
-  is not an authorization check: both ids belong to the same person, and the role checks
-  still run after it.
-- [ ] **Step 5:** rewrite the comments that say "until H7" at `authz.ts:527` and
-  `import.resolver.ts:898`: the target household IS the household the person acts in (T71).
-- [ ] **Step 6:** the full gate.
+- [x] **Step 0: measure the baseline.** Done 2026-11-21 at `7879369f`: web 3729 / 364, server 2689 / 85, `scripts/spec` 70; live guard 78 `publishes`, 3 `publishesNothing`.
+- [x] **Step 1: write the failing tests.** Done: 18 in `graphqlContext.test.ts`, 9 in `authz.test.ts` (`requireHousehold with a shown household`), 19 in the new `resolvers/household-shown.resolver.test.ts` (header A, header B, no header, and the person who left A).
+- [x] **Step 2:** red. Done: the refusal tests were red; the "works as today" tests were already green (they describe old behaviour; the mutations below prove them).
+- [x] **Step 3:** done in `6df3d53d`.
+- [x] **Step 4:** done in `4bc9abeb`. `householdChanged()` is exported from `lib/authz.ts`.
+- [x] **Step 5:** done in `2c375e24` (comments only).
+- [x] **Step 6:** full gate green. After: web 3729 / 364, server 2735 / 86 (+46), spec 70. Build: server bundle 255.0 KiB, no TS6385.
 
 **Mutation checks** (copy each file aside first; restore from the copy, never with
 `git checkout --`):
@@ -429,6 +404,16 @@ The server deploys before the web. `main`'s bundle knows nothing of households.
 | the compare moved before the cached promise, comparing `undefined` | the "same id works" test |
 | `household` without `{ ignoreShown: true }` | "the `household` query answers B" |
 | `householdIdFrom` returns the raw value with no length check | the 65-character test |
+
+**Done 2026-11-21.** Commits `6df3d53d`, `4bc9abeb`, `2c375e24`. Mutation checks, each restored from a copy:
+
+| Mutation | Result |
+|---|---|
+| the compare deleted | red, 11 tests, the O21 left-household tests included |
+| the compare before the cached lookup, comparing `undefined` | red, 8 tests, "same id works" included |
+| `household` without `{ ignoreShown: true }` | red, 1 test ("answers B") |
+| `householdIdFrom` with no length check | red, 3 tests (65 characters) |
+| (extra) the checked promise cached instead of the lookup | red, 1 test ("keeps the household id in the cache") |
 
 **E2E:** none in this task (L.6 test 3).
 
@@ -1000,7 +985,9 @@ Filled in from the task reports and reviews.
 
 | Task | The plan said | What was true |
 |---|---|---|
-| | | |
+| L.1 | test "as `mutationRoleCache.test.ts` does" | the fitting pattern is `import-role-gate.resolver.test.ts` (`executeOperation` with stateful fakes) |
+| L.1 | step 2 "run: red" for every test of step 1 | the "header B", "no header" and "household answers B" tests are green before the code; only the mutations prove them |
+| L.1 | no fixture work named | `clearAllData` through `deleteHouseholdData` needs recorder doubles for the 6 relation-filtered models, because `ownedRowFake` throws on `{ location: { householdId } }` |
 
 ## Status
 
