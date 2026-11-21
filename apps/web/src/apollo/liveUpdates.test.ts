@@ -211,6 +211,8 @@ describe('QUERIES_BY_KIND', () => {
         'HouseholdActivity',
         // Households H6b task K.5: each offer names its household
         'MyOwnershipOffers',
+        // Households H7 task L.3: the household list shows names
+        'MyHouseholds',
         'ItemCountByRecipe',
         'ItemCountByTag',
         'ItemCountByVendor',

@@ -69,6 +69,7 @@ export const LIVE_BATCH_MS = 300
  * | `CartItemCountByItem`  | a count of cart rows                       | CART             |
  * | `HouseholdActivity`    | the household log (households H6)          | LOCATION, CATALOG, STOCK, CART |
  * | `MyOwnershipOffers`    | the caller's offers, with each `householdName` (households H6b) | LOCATION, CATALOG |
+ * | `MyHouseholds`         | every household of the caller, its `name` and the caller's `role` (households H7) | LOCATION, CATALOG |
  *
  * Every `LOCATION` row above is covered by `'all'` anyway. A role change
  * (households H5b, H5c) must publish `LOCATION`, so `myRole` and
@@ -123,6 +124,12 @@ export const LIVE_BATCH_MS = 300
  * banner still hears it. `GetHousehold`'s `hasOwner` and `pendingTransfer`
  * change only with those `LOCATION` events.
  *
+ * `MyHouseholds` (households H7 task L.3) is in `CATALOG` for the same
+ * reason as `MyOwnershipOffers`: it shows household NAMES, and
+ * `renameHousehold` publishes `CATALOG` only. A role change publishes
+ * `LOCATION`, which is `'all'`. `setActiveHousehold` publishes nothing; it
+ * changes no name and no role.
+ *
  * `LocationPeople` (the location people page, households H5c task H.4) needs
  * no entry either: `setLocationRole`, `removeLocationRole` and
  * `leaveLocation` publish household-level `LOCATION` (decision T36). So do
@@ -159,6 +166,7 @@ export const QUERIES_BY_KIND: Record<ChangeKind, readonly string[] | 'all'> = {
     'GetHousehold',
     'HouseholdActivity',
     'MyOwnershipOffers',
+    'MyHouseholds',
   ],
 }
 

@@ -54,8 +54,14 @@ mutation JoinHousehold($token: String!) {
 # household (owner decision O16-A). Anyone else gets BAD_USER_INPUT with
 # extensions.reason ALREADY_IN_HOUSEHOLD. Send `name: null` for the default
 # name, never "": an empty string is a blank name and is refused.
-mutation CreateHousehold($name: String) {
-  createHousehold(name: $name) {
+#
+# `alsoWhenMember` (households H7 task L.3, decision T70): `true` lets a
+# person who is already in a household create another one ("Create new",
+# `useCreateAnotherHousehold`). The no-household screen never sends it, so
+# it keeps the ALREADY_IN_HOUSEHOLD refusal it relies on when a second tab
+# created or joined first.
+mutation CreateHousehold($name: String, $alsoWhenMember: Boolean) {
+  createHousehold(name: $name, alsoWhenMember: $alsoWhenMember) {
     id
     name
     role
@@ -147,4 +153,33 @@ mutation LeaveHousehold {
 # other household, or to the no-household screen.
 mutation DeleteHousehold {
   deleteHousehold
+}
+
+# ── Switching households (households H7 task L.3, decisions T68, T69) ──
+
+# Every household the caller is in, the oldest membership first. An empty
+# list for a person in no household. The server answers it even when this
+# tab's `x-household-id` names another household, so a stale tab can still
+# list and switch. `HouseholdChoice` is its own type, not `Household`, so its
+# `role` never mixes with the active household's cache entry.
+query MyHouseholds {
+  myHouseholds {
+    id
+    name
+    role
+    isActive
+  }
+}
+
+# Makes `householdId` the household the caller acts in, on every device
+# (owner decision O50-A). FORBIDDEN for a household the caller is not in.
+# It sends no live event: the person's other tabs learn on their next
+# request (`HOUSEHOLD_CHANGED`) or through `HouseholdChangeGuard`. The web
+# then calls `switchToHousehold`, which clears the cache and reloads.
+mutation SetActiveHousehold($householdId: ID!) {
+  setActiveHousehold(householdId: $householdId) {
+    id
+    name
+    role
+  }
 }
