@@ -93,6 +93,28 @@ export function getShownHouseholdId(): string | null {
 }
 
 /**
+ * `true` while this page is moving to another household, or has moved and is
+ * about to reload. While it is `true`, `recoverFromHouseholdChange` does
+ * nothing. Two things set it:
+ *
+ * - The first `HOUSEHOLD_CHANGED` of this page load. A stale tab often gets
+ *   several refusals at once (every active query refetched after a live
+ *   event), and each one reaches the error link. Only the first may start a
+ *   recovery, or the page would clear the cache and reload once per refusal.
+ * - A deliberate move: `switchToHousehold` and `forgetHousehold` (review of
+ *   H7 task L.3, F5). `clearCache()` resets the Apollo cache, so every watched
+ *   query refetches while the page still sends the OLD household id. The
+ *   server refuses those with `HOUSEHOLD_CHANGED`. Without the flag the
+ *   recovery would store a false "your last change was not saved" notice and
+ *   start a second switch.
+ *
+ * It goes back to `false` when a move fails (the page stays, and may still be
+ * stale), and when `forgetHousehold` ends (the page stays; it sends no header
+ * after that, so no later refusal can be caused by the move).
+ */
+let recovering = false
+
+/**
  * Move this device to another household: forget everything stored for the
  * old one, then reload.
  *
@@ -123,7 +145,17 @@ export async function switchToHousehold(
   id: string,
   options: { to?: string } = {},
 ): Promise<void> {
-  await clearCache()
+  // Block the recovery BEFORE the clear: the clear makes the watched queries
+  // refetch with the old id (see `recovering`). On success it stays blocked,
+  // because the page is about to load again.
+  const wasRecovering = recovering
+  recovering = true
+  try {
+    await clearCache()
+  } catch (err) {
+    recovering = wasRecovering
+    throw err
+  }
   removeStorage(activeLocationStorageKey('cloud'))
   setLastHouseholdId(id)
   if (options.to === undefined) window.location.reload()
@@ -146,10 +178,20 @@ export async function switchToHousehold(
  * `HouseholdChangeGuard` simply stores the next household it sees.
  */
 export async function forgetHousehold(): Promise<void> {
-  await clearCache()
-  removeStorage(activeLocationStorageKey('cloud'))
-  removeStorage(LAST_HOUSEHOLD_ID_KEY)
-  pageHouseholdId = null
+  // The same reason as in `switchToHousehold`: no recovery while the clear
+  // makes the watched queries refetch with the old id. The page stays, so
+  // the flag goes back to what it was. Called from the recovery itself
+  // (`NO_HOUSEHOLD`), it was `true` and stays `true` until the reload.
+  const wasRecovering = recovering
+  recovering = true
+  try {
+    await clearCache()
+    removeStorage(activeLocationStorageKey('cloud'))
+    removeStorage(LAST_HOUSEHOLD_ID_KEY)
+    pageHouseholdId = null
+  } finally {
+    recovering = wasRecovering
+  }
 }
 
 /**
@@ -201,13 +243,6 @@ export function clearHouseholdChangedNotice(): void {
   removeStorage(HOUSEHOLD_CHANGED_NOTICE_KEY, 'session')
 }
 
-// `true` from the first `HOUSEHOLD_CHANGED` of this page load until the page
-// reloads. A stale tab often gets several refusals at once (every active
-// query refetched after a live event), and each one reaches the error link.
-// Only the first may start a recovery, or the page would clear the cache and
-// reload once per refusal.
-let recovering = false
-
 /** Tests only: forget the page's state, as a new page load would. */
 export function resetHouseholdGuardForTests(): void {
   recovering = false
@@ -218,7 +253,8 @@ export function resetHouseholdGuardForTests(): void {
  * The web's answer to `HOUSEHOLD_CHANGED` (households H7 task L.3, decision
  * T72, owner decision O51-A). The error link in `client.ts` calls it for
  * every refusal with that code; only the first call of a page load does
- * anything.
+ * anything, and no call while `switchToHousehold` or `forgetHousehold` runs
+ * (see `recovering`).
  *
  * 1. Ask the server which household the person is in now (`GetHousehold`,
  *    which the server answers whatever the header says). `no-cache`, not

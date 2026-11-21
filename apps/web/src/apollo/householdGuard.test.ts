@@ -78,6 +78,74 @@ describe('switchToHousehold', () => {
   })
 })
 
+describe('a deliberate move does not start the recovery (review of L.3, F5)', () => {
+  // `clearCache` resets the Apollo cache, and every watched query refetches
+  // while the page still sends the OLD household id. The server refuses
+  // those with HOUSEHOLD_CHANGED. Each mock below sends one such refusal from
+  // inside the clear, the way the refetches do.
+  function refusingClient() {
+    return fakeClient({
+      cached: household('h-old', 'Old home'),
+      answer: async () => household('h-new', 'New home'),
+    })
+  }
+
+  it('switchToHousehold: a refusal during or after the clear stores no notice and switches once', async () => {
+    const { client, query } = refusingClient()
+    clearCacheMock.mockImplementationOnce(async () => {
+      await recoverFromHouseholdChange(client)
+    })
+
+    // When the page moves on purpose
+    await switchToHousehold('h-new')
+    // And one more refusal arrives before the page has unloaded
+    await recoverFromHouseholdChange(client)
+
+    // Then no recovery ran: no question, no false "not saved" notice, and
+    // one clear and one reload, not two
+    expect(query).not.toHaveBeenCalled()
+    expect(sessionStorage.getItem(HOUSEHOLD_CHANGED_NOTICE_KEY)).toBeNull()
+    expect(clearCacheMock).toHaveBeenCalledOnce()
+    expect(reloadMock).toHaveBeenCalledOnce()
+    expect(localStorage.getItem(LAST_HOUSEHOLD_ID_KEY)).toBe('h-new')
+  })
+
+  it('switchToHousehold that fails lets a later refusal recover', async () => {
+    // Given a move that could not clear the cache, so the page stays
+    const { client, query } = refusingClient()
+    clearCacheMock.mockRejectedValueOnce(new Error('IndexedDB blocked'))
+    await expect(switchToHousehold('h-new')).rejects.toThrow(
+      'IndexedDB blocked',
+    )
+
+    // When a refusal arrives later
+    await recoverFromHouseholdChange(client)
+
+    // Then the recovery runs: the page is still stale
+    expect(query).toHaveBeenCalledOnce()
+    expect(reloadMock).toHaveBeenCalledOnce()
+  })
+
+  it('forgetHousehold: a refusal during the clear does nothing, and a later one can recover', async () => {
+    const { client, query } = refusingClient()
+    clearCacheMock.mockImplementationOnce(async () => {
+      await recoverFromHouseholdChange(client)
+    })
+
+    // When the page forgets its household on purpose
+    await forgetHousehold()
+
+    // Then the refusal during the clear started nothing
+    expect(query).not.toHaveBeenCalled()
+    expect(sessionStorage.getItem(HOUSEHOLD_CHANGED_NOTICE_KEY)).toBeNull()
+    expect(clearCacheMock).toHaveBeenCalledOnce()
+
+    // And the page stays, so a later refusal may still recover
+    await recoverFromHouseholdChange(client)
+    expect(query).toHaveBeenCalledOnce()
+  })
+})
+
 describe('forgetHousehold (households H5b, task G.8)', () => {
   it('clears the cache and both keys, and stays on the page', async () => {
     // When the person is in no household any more
