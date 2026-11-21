@@ -593,24 +593,10 @@ and tests and stories, `routes/settings/index.tsx` (the mobile accordion) and te
 prompt and the stored copy share this dialog since then. Check whether both reach the new
 choice, and say so in the report.
 
-- [ ] **Step 1: write the failing tests** (T73):
-  - `'confirming'` lists the households where `canCopyInto(role, strategy)` is true, plus
-    **A new household**. The active one is selected first. A member-only household is not
-    listed. For `clear`, only households where the person is owner.
-  - Choosing the active household runs the copy at once (today's path, unchanged).
-  - Choosing another household: `SetActiveHousehold`, `copy-into-household` stored, then
-    `switchToHousehold(id)`. The copy does NOT start before the reload.
-  - After the reload, a stored strategy and `copy-into-household` equal to the shown
-    household: the copy runs with no question, and the key is removed when it ends, also on
-    an error.
-  - A key naming another household: removed, and the question shows again.
-  - **A new household**: `createHousehold(alsoWhenMember: true)`, then the same path.
-  - No household where the person may copy, and no wish for a new one: today's sentence and
-    **Done**.
-- [ ] **Step 2:** run: red.
-- [ ] **Step 3:** the hook and the dialog. Keep the existing states; add the choice to
-  `'confirming'`.
-- [ ] **Step 4:** stories for the choice with two households and with one. The full gate.
+- [x] **Step 1: write the failing tests** (T73). Done: 12 in `usePostLoginMigration.test.ts` (describe "a copy into a chosen household (L.5)": move first and nothing copied before the reload; the plain question stores `skip`; a new household with `alsoWhenMember: true`; a refused move stores nothing; a move that fails after the answer removes what it stored; after the reload the copy runs with no question and the key is gone before it starts; a `skip` copy asks only where; the key is removed when the copy fails; a key naming another household; a key matching the answer but not the page id; a key matching the page id but not the answer; a role that no longer allows it), 3 in `useMyHouseholds.test.tsx` (`beforeSwitch` order for both writes, not called on a refusal), 11 in `PostLoginMigrationDialog/index.test.tsx` (the list without a member household; `clear` lists owned households only; another household moves and copies nothing here; the household shown copies as before; a new household with a name; member here and manager elsewhere; member everywhere: sentence and Done; a joined household not offered; `clear` into another household types THAT name; a failed move shows an alert; names render as stored), 2 smoke tests.
+- [x] **Step 2:** written alongside the code; the mutations below prove each one.
+- [x] **Step 3:** done in `945f7af9` (`beforeSwitch` on `switchTo` and `createAndSwitch`) and `16bb0a4c` (`copyElsewhere`, `COPY_INTO_HOUSEHOLD_KEY` in `sessionStorage`, read once and removed before the copy, compared with the `household` answer AND `getShownHouseholdId()` and `canCopyInto`; `copyTargetOptions` and the "Copy into" radio group in both questions; i18n `chooseLabel`, `newHousehold`, `newHouseholdName`, `newHouseholdTitle`, `newHouseholdNote`, `moveNote`, `moveAndCopy`, `moveError`). Both questions (the stored copy and the manual prompt) share the dialog since 2026-11-19, and both reach the choice.
+- [x] **Step 4:** stories `ChooseHouseholdTwo` and `ChooseHouseholdOne`; docs in `d6ccbbc7`. Full gate green. Before: web 3811 / 373, server 2767 / 87, spec 70. After: web 3839 / 373 (+28), server 2767 / 87, spec 70. Build: server bundle 260.2 KiB, no TS6385. Storybook: 2 new story ids. No E2E run (L.6).
 
 **Mutation checks:**
 
@@ -620,6 +606,22 @@ choice, and say so in the report.
 | the key is not compared with the shown household | "a key naming another household" |
 | a `member` household listed | the list test |
 | the key not removed after an error | the error test |
+
+**Done 2026-11-21.** Commits `945f7af9`, `16bb0a4c`, `d6ccbbc7`. Mutation checks, each restored from a copy and checked with `cmp`:
+
+| Mutation | Result |
+|---|---|
+| the copy starts before `switchToHousehold` | red, 6 tests |
+| the key not compared with the shown household (`getShownHouseholdId`) | red, 1 test |
+| (extra) the key not compared with the `household` answer | red, 1 test (green until the "page id B, answer A" test was added) |
+| a `member` household listed | red, 4 tests |
+| the key not removed (so not after an error) | red, 4 tests |
+| (extra) no role check after the reload | red, 1 test |
+| (extra) no cleanup after a move that fails after the answer | red, 1 test |
+| (extra) the skip list ignored | red, 1 test |
+| (extra) `clear` asks for the current household's name | red, 1 test |
+| (extra) the key in `localStorage` | red, 4 tests |
+| (extra) `beforeSwitch` not called | red, 4 tests |
 
 **E2E:** L.6 test 4.
 
@@ -1046,6 +1048,14 @@ Filled in from the task reports and reviews.
 | L.4 | not named | `setup.ts` and `routes/settings/household/locations/index.cloud.test.tsx` must stub `useMyHouseholdsQuery`, `useSetActiveHouseholdMutation`, `useCreateHouseholdMutation`; without them 22 tests there fail with "Could not find client" |
 | L.4 | not named | a dialog opened from a menu's `onSelect` gets focus on a Radix focus guard; open it in the menu's `onCloseAutoFocus` |
 | L.4 | "While `switchTo` runs, the menu items are disabled" | true only if the menu stays open (`preventDefault` in `onSelect`) |
+| L.5 | T73: `localStorage['copy-into-household']` | `sessionStorage`: the choice belongs to one tab (the same reason as review F1) |
+| L.5 | step 1: the key "removed when it ends, also on an error" | it is removed when it is read, before the copy starts. Stricter: a reload in the middle of the copy cannot start a second one |
+| L.5 | step 3: "add the choice to `'confirming'`" | the manual prompt (`'prompting'`) is in the same dialog since 2026-11-19, so it gets the choice too, and stores `skip` for the reload |
+| L.5 | step 1: after the reload "the copy runs with no question" | true for the "whether" question only. `skip` and `replace` still ask "Import into which location?", because the new household's locations are known only after the move |
+| L.5 | not named | a stored `clear` into another household needs the typed-name confirm (O40) for THAT household, BEFORE the move |
+| L.5 | not named | a household in `migration-skip-households` (O12-A) is left out of the list. Asked as O57 |
+| L.5 | "No household where the person may copy, and no wish for a new one" | ambiguous. Built as: no copyable household means the old sentence and Done, and no "A new household" either |
+| L.5 | file map | also `hooks/useMyHouseholds.ts` (`beforeSwitch`) and 3 route tests that render `__root.tsx` with their own factory (`cooking.cloud`, `items/$id/stock`, `shopping/index.cloud`) |
 
 ## Status
 
