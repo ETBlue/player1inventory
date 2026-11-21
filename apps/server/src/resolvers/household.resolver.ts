@@ -110,8 +110,13 @@ export const householdResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
   Query: {
     // Any household role may read the name: `member` is the lowest. First
     // sign-in happens in `requireHousehold` for a new person.
+    //
+    // `ignoreShown` (households H7 task L.1, decision T67): this query answers
+    // even when the tab's `x-household-id` names another household. It is how
+    // a stale tab learns the household the person acts in now, so it must not
+    // be refused with HOUSEHOLD_CHANGED. It still checks the role below.
     household: async (_, __, ctx) => {
-      const householdId = await requireHousehold(ctx)
+      const householdId = await requireHousehold(ctx, { ignoreShown: true })
       const role = await requireHouseholdRole(ctx, householdId, 'member')
       const row = await prisma.household.findUnique({
         where: { id: householdId },
