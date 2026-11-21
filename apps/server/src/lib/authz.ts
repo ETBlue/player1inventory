@@ -40,7 +40,8 @@ export interface RequireHouseholdOptions {
   /**
    * Skip the shown-household compare (households H7 task L.1, decision T67).
    * Only for a field that must tell the web the TRUE household so a stale tab
-   * can recover: the `household` query (and, from task L.2, `myHouseholds`).
+   * can recover: the `household` query. `myHouseholds` and `setActiveHousehold`
+   * (task L.2) do not call `requireHousehold` at all, so they need no option.
    * Every other caller leaves it out.
    */
   ignoreShown?: boolean
