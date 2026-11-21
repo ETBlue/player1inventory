@@ -172,6 +172,11 @@ took 3.9 s and 2.9 s on this branch, and 3.9 s and 5.0 s on `develop` at `9701dd
 H7a. So the wait is older than H7a, and a slow answer from the Neon test branch is enough to
 fail it. Not fixed here.
 
+The second whole gate on the same branch, at `ef8982fb` (the same code; only docs after
+`82426224`), 2026-11-21, first try, no retry: `local` **178 passed / 11 skipped** in 3m40s,
+`cloud` **203 passed / 7 skipped** in 63m00s, `pwa` **73 passed** in 1m34s, all green. Load
+average 2.0 to 2.3.
+
 The gate before it, `pnpm test:e2e:all` on `feature/households-h6b` at `5cd82bf4` on
 2026-11-20 (households H6b task K.9), all three green on the first run, no retry, no flaky
 test: `local` **178 passed / 11 skipped** in 3m39s, `cloud` **197 passed / 7 skipped** in
