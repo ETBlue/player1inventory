@@ -118,7 +118,7 @@ that really set up that role.
 > | `Location.hasOrganizer` | `false` when no organizer of the location is still in the household (task F.1) |
 > | `householdLocations` | the settings list: every location of the household for an owner or manager (`myRole: null` = "No access"), the switcher's list for a member (tasks F.1, F.3) |
 > | `vendorCart` for a `viewer` | an unsaved empty cart instead of `FORBIDDEN`; it creates the cart only for `participant` (task F.2) |
-> | `reorderLocations` | refuses a list that is not the household's full set (`BAD_USER_INPUT`, task F.2) |
+> | `reorderLocations` | refuses a list that is not the household's full set (`BAD_USER_INPUT`, task F.2). **Since H7b task M.3 this row is out of date:** it writes the CALLER's own order, takes any household role, checks the caller's own settings list, and publishes nothing. See the H7b block below |
 > | `deleteLocation` | the LAST location can be deleted. `LAST_LOCATION` is gone (decision H13 lifted, task F.7). `lockHousehold` is still taken first |
 > | `createVendor(locationId:)` | optional. With no location the vendor is written with no cart. `""` is not "no location": it is refused like any unknown id |
 > | web: `usePermissions()` | one hook for "may I edit the catalog" and "may I edit this location" (`apps/web/src/hooks/CLAUDE.md`). It hides controls only; the server checks every write |
@@ -340,6 +340,41 @@ that really set up that role.
 > | tests | web **3840 / 373 files**, server **2767 / 87**, `scripts/spec` **70** |
 > | cloud spec files | **39 of 43** in `e2e/tests/`; the `cloud` project collects **210** tests |
 >
+> **Personal location order and the four sorts are built in H7b** (on
+> `feature/households-h7b`, from `develop` at `bf71f485`; **not merged, not deployed**; plan
+> `docs/global/permissions/2026-11-21-households-plan-h7.md`, tasks M.1 to M.6; deploy notes
+> in section 14 of the H4 runbook). **One additive migration with one backfill**,
+> `20261122000000_add_location_preferences`. It deploys with the server, and the **server
+> deploys before the web**. Owner decisions O52-A, O53-A, O54-B, O55-A and O58-A. What H7b
+> adds:
+>
+> | Part | What |
+> |---|---|
+> | the migration (decisions T74, T75, T79, task M.1) | one enum `LocationSort` (`name`, `lastUpdated`, `lastVisited`, `custom`); `User.locationSort` (nullable: `null` means the default, O52-A); `Location.dataUpdatedAt` (nullable, filled ONCE with the newest `ItemStock.updatedAt` of the location; a location with no stock row keeps `NULL`); the table `LocationPreference` (`userId`, `locationId`, `customOrder?`, `lastVisitedAt?`, `updatedAt`; primary key `(userId, locationId)`; both foreign keys `ON DELETE CASCADE`; an index on `locationId`). NOT in `emptyHouseholdWhere`: a preference is not data a person loses. The backfill on a nullable column is a named exception in `apps/server/prisma/CLAUDE.md` |
+> | `dataUpdatedAt` (T79, task M.2) | `publishChange` sets it to now on every location it publishes `STOCK`, `CART` or `LOG` to, in ONE `location.updateMany`, in `finally`, after the events, in its own guard (it never throws). `LOCATION` and `CATALOG` do not set it. Prisma's `updateMany` also moves `Location.updatedAt` (`@updatedAt`). It is written after the commit, so a crash between the two loses one timestamp |
+> | the personal order (T76, T77, task M.3) | no copy of `Location.order`. `inPersonalOrder` (`location.resolver.ts`) sorts by the caller's `customOrder`, then the rows with none by the shared `order`, then by `id`, and sets `order` to the row's place, 0 to n−1. `locations` and `householdLocations` use it. The caller's preference rows are read ONCE per request (`locationPreferencesOf` in `lib/locationPreferences.ts`, `RequestCache.locationPreferences`, cleared by `forgetLocationRoles`). The shared `Location.order` is still written by `createLocation` (max + 1) and by imports, and `firstLocationIdOf` (the old-bundle `isDefault` shim) still reads it |
+> | `reorderLocations` (T78) | writes the CALLER's own order: one `LocationPreference` upsert per id, in one transaction. Any household role (it was `manager`). A repeated id is `BAD_USER_INPUT`; an id outside the caller's own settings list (`householdLocations` for an owner or manager, `locations` for a member) is `FORBIDDEN`, the same answer as an unknown id; a list that is not the full set is `BAD_USER_INPUT`. It moved from `publishes` to `publishesNothing`: only this person sees the change |
+> | 2 fields (T82) | `Location.dataUpdatedAt` (ISO, shared) and `Location.lastVisitedAt` (ISO, the caller's own) |
+> | 1 query, 2 mutations (T74, T80) | `myLocationSort` (`custom` when the column is `null`, `DEFAULT_LOCATION_SORT`); `setLocationSort(sort)`; `markLocationVisited(locationId)` (`viewer` on a location of the household the caller acts in; writes `lastVisitedAt`, or nothing and answers `false` under 60 seconds, `VISIT_INTERVAL_MS`). All three publish nothing |
+> | web (T81, task M.4) | `sortLocations` (`lib/locationSort.ts`): names by `localeCompare` in the app language with `sensitivity: 'base'`, dates newest first with `null` last, ties by name then id. `useLocationSort()`: cloud reads `myLocationSort` and writes `setLocationSort`; local mode offers **Name** and **Custom** only, saved in `localStorage['location-sort']` (O54-B). **Sort by** (`LocationSortSelect`) on Settings › Locations; drag handles for every household role (`usePermissions().canReorderLocations`), only with **Custom**; the switcher uses the same sort (O53-A). `ActiveLocationProvider` sends `markLocationVisited` once per change of the active location, cloud only (O55-A). In cloud both lists set `order` from the row's place in the list the server sent. See `apps/web/src/routes/settings/household/locations/CLAUDE.md` and `apps/web/src/hooks/CLAUDE.md` |
+> | not live (O58-A) | "Last updated" does not move while a page is open: the location lists refetch only on `LOCATION`. They show new dates when they mount again |
+> | export | a cloud export writes the caller's own order as each location's `order`, because `GetLocations` answers it |
+> | E2E (task M.5) | `location-sort.spec.ts`, 7 cloud tests (own order with two people, last updated, last visited, by name, the same sort in a second browser, two axe scans), and 1 local test in `settings/locations.spec.ts`. `cleanup-endpoint.spec.ts` seeds a preference row. See `e2e/CLAUDE.md` |
+>
+> **Counts after H7b**, measured 2026-11-22 on `feature/households-h7b` at `14f9501c`. Count
+> them again rather than quote them (the commands are in the H6b table above):
+>
+> | Count | Value |
+> |---|---|
+> | live guard fields in `publishes` | **77** (78 after H7a; `reorderLocations` moved out) |
+> | live guard fields in `publishesNothing` | **7**: `recordImport`, `deleteHousehold`, `dismissOwnershipOffer`, `setActiveHousehold`, `markLocationVisited`, `reorderLocations`, `setLocationSort` |
+> | models `/e2e/cleanup` deletes | **22** (`LocationPreference` is new) |
+> | `.graphql` schema files | **15** (unchanged; the new fields are in `location.graphql`) |
+> | migration folders | **22** (`add_location_preferences` is new) |
+> | server bundle | **266.6 KiB**, 15 `.graphql` files copied |
+> | tests | web **3899 / 378 files**, server **2834 / 89**, `scripts/spec` **70** |
+> | cloud spec files | **40 of 44** in `e2e/tests/`; `--list` collects **218** in `cloud`, **190** in `local`, **73** in `pwa` |
+>
 > **`removeItemFromLocation` needs `organizer`, not `participant`** (owner decision 2026-11-11, `f4d993db`). It deletes every log of the item at that location, including other members' logs.
 >
 > **`ItemStock` carries no `userId` column at all**, by design from before households. It is scoped *through* its location: `requireLocationRole` for one location, `locationIdsWithRole` for several. Do not add a `userId` column there.
@@ -469,7 +504,7 @@ that really set up that role.
 > | `CART` | location | cart mutations, `checkout`, `removeItemFromLocation`, `deleteItem`, `createVendor`, `deleteVendor`, `removeAllLocationItems` (H6a) | the 5 cart queries |
 > | `STOCK` | location | `upsertItemStock`, `addItemToLocation`, `checkout`, `consumeRecipes`, `applyUnitSwitch`, stock imports, `deleteItem`, `removeAllLocationItems` (H6a) | `PantryData`, `ItemStocksForItem` |
 > | `LOG` | location | `addInventoryLog`, `checkout`, `consumeRecipes`, log imports, `deleteItem` | `ItemLogs`, `InventoryLogCountByItem`, `LastPurchaseDates` |
-> | `LOCATION` | household (`locationId: null`) | the location mutations and imports, `clearAllData`, `deleteAllLocations` (H6a), the household and member mutations (H5b, H5c), the four offer writes and the `user.deleted` hand-over (H6b) | **every active query** (`'all'`) |
+> | `LOCATION` | household (`locationId: null`) | the location mutations and imports (not `reorderLocations` since H7b: the order is personal), `clearAllData`, `deleteAllLocations` (H6a), the household and member mutations (H5b, H5c), the four offer writes and the `user.deleted` hand-over (H6b) | **every active query** (`'all'`) |
 > | `CATALOG` | household (`locationId: null`) | every catalog mutation and import, `renameHousehold`, `clearAllData` | `PantryData` and the 15 catalog queries |
 >
 > **Why `LOCATION` and `CATALOG` are household-level:** a deleted location cannot pass
@@ -484,14 +519,14 @@ that really set up that role.
 > carts sends `CART` too. The exception is when the kinds sit at different locations:
 > `deleteItem` reads, BEFORE the delete, where it has stock, logs and cart rows, and makes
 > one `publishChange` call per kind with its own list of locations. A write that changes
-> nothing (a refusal, a missing row, an empty reorder, an import that skips every row)
+> nothing (a refusal, a missing row, an import that skips every row)
 > sends nothing. Imports publish in `finally`, because they are not one transaction
 > (`withCatalogEvent` in `import.resolver.ts` for the catalog imports).
 >
 > | Part | Where | Rule |
 > |---|---|---|
 > | Event bus | `apps/server/src/lib/liveEvents.ts` | in memory, **one process only**. Before a second Railway instance, the bus must move to a shared service (Redis or similar); Neon's pooled connection has no `LISTEN/NOTIFY`. A listener that throws does not stop the others (a `Set`, not `EventEmitter`) |
-> | Publishing | `publishChange(ctx, kinds, locations)` and `publishHouseholdChange(ctx, kinds, householdId)` in `lib/publishChange.ts` | call it AFTER the write or the `$transaction` has resolved, never inside the callback. It never throws. One event per (kind, location), no duplicates. `publishChange` uses the LOCATION's household; both send `ctx.clientId` |
+> | Publishing | `publishChange(ctx, kinds, locations)` and `publishHouseholdChange(ctx, kinds, householdId)` in `lib/publishChange.ts` | call it AFTER the write or the `$transaction` has resolved, never inside the callback. It never throws. One event per (kind, location), no duplicates. `publishChange` uses the LOCATION's household; both send `ctx.clientId`. Since H7b `publishChange` also sets `Location.dataUpdatedAt` for `STOCK`, `CART` and `LOG` (decision T79) |
 > | Tab id | `Context.clientId`, from `x-client-id` (HTTP) or `connectionParams.clientId` (socket) | the server never sends a tab its own change. A socket without one is refused |
 > | Delivery | `shouldDeliver` in `resolvers/live.resolver.ts` | checks the role again for EVERY event: `viewer` on the location through `requireLocationRole`, or `member` of the household for a household-level event (`locationId: null`, any kind) |
 > | Socket | `lib/wsServer.ts`, same port and path as HTTP (`/graphql`) | sign-in through `identifyCaller`, shared with HTTP |
@@ -507,9 +542,13 @@ that really set up that role.
 >
 > **Every `Mutation` field must be in one of two lists** in
 > `apps/server/src/resolvers/live-publish.guard.test.ts`: `publishes` (with its kinds) or
-> `publishesNothing` (with a reason). A new mutation in no list fails the test. Today: 82
-> fields, 78 in `publishes` and 4 in `publishesNothing` (measured 2026-11-21 after
-> households H7a; count with the two commands in the H6b *Counts* table above). H7a added
+> `publishesNothing` (with a reason). A new mutation in no list fails the test. Today: 84
+> fields, 77 in `publishes` and 7 in `publishesNothing` (measured 2026-11-22 after
+> households H7b; count with the two commands in the H6b *Counts* table above). H7b added
+> `markLocationVisited` and `setLocationSort` to `publishesNothing`, and moved
+> `reorderLocations` there from `publishes`: the order is the person's own, so a
+> household-level `LOCATION` would make every member refetch for a change only one person
+> sees. Before H7b: 82, 78 and 4. H7a added
 > `setActiveHousehold` to `publishesNothing`: the person's other tabs learn of a switch on
 > their next request. Before H7a: 81, 78 and 3. H6b added
 > `offerOwnership`, `cancelOwnershipOffer`, `acceptOwnershipOffer` and
@@ -762,9 +801,11 @@ skips half the work. Nothing else in the gate checks `e2e/` formatting: `pnpm li
 `apps/server`'s build already carries a second pass for `scripts/`.
 
 **`pnpm test` runs both workspaces.** The root script is `pnpm -r test`, which recurses into
-every workspace package that defines a `test` script — today `apps/web` (**3729 tests**
-across 364 files) and `apps/server` (**2689** across 85). Measured 2026-11-20 on
-`feature/households-h6b`, after households H6b task K.9 (it said 3607 / 360 and 2563 / 83
+every workspace package that defines a `test` script — today `apps/web` (**3899 tests**
+across 378 files) and `apps/server` (**2834** across 89). Measured 2026-11-22 on
+`feature/households-h7b`, after households H7b task M.6 (it said 3840 / 373 and 2767 / 87
+on 2026-11-21 on `feature/households-h7a`, 3729 / 364 and 2689 / 85 on 2026-11-20 on
+`feature/households-h6b`, after households H6b task K.9, and 3607 / 360 and 2563 / 83
 the same day on `feature/households-h6a`, after households H6a task J.9, 3454 / 347 and 2401 / 78 on
 2026-11-19 on `feature/households-h5c`, after households H5c task H.9, 3319 / 337 and 2111 / 76
 at `develop` `712f76f6`, before H5c, 3102 / 325 and 2104 / 76 on 2026-11-18 on
@@ -1205,7 +1246,7 @@ each file is checked once.
   read the source, so none of them saw it. Now the server imports `cartIdFor`, `parseCartId`
   and `isBeingBought` from `@p1i/types`, and its own copies are deleted.
 - **`scripts/build.mjs`** bundles `src/index.ts` into `dist/index.js` (about 129 KiB when this was written, 236.0 KiB on
-  2026-11-20 after households H6a, 254.0 KiB the same day after households H6b, plus a source map). It bundles `workspace:` packages and keeps every other dependency external.
+  2026-11-20 after households H6a, 254.0 KiB the same day after households H6b, 260.2 KiB after households H7a, 266.6 KiB on 2026-11-22 after households H7b, plus a source map). It bundles `workspace:` packages and keeps every other dependency external.
   It copies the `.graphql` files (15 since H6b, 14 since H6a; 12 when this was written) **flat** into `dist/`, not `dist/schema/`, because
   `src/schema/index.ts` reads them from the folder of the running file. `dist/` no longer
   holds the 46 `*.test.js` files the old `tsc` emit shipped.
@@ -1987,8 +2028,10 @@ Note also that **no *unit* test executes the resolvers against real SQL** — ev
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
 Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
 branch), but only for the spec files listed in the `cloud` project's `testMatch` in
-`e2e/playwright.config.ts` — that list is opt-in and covers **38 of the 42 spec files in
-`e2e/tests/`** (measured 2026-11-20, after households H6b task K.8 added
+`e2e/playwright.config.ts` — that list is opt-in and covers **40 of the 44 spec files in
+`e2e/tests/`** (measured 2026-11-22, after households H7b task M.5 added
+`location-sort.spec.ts`; 39 of 43 on 2026-11-21, after households H7a task L.6 added
+`household-switch.spec.ts`; 38 of 42 on 2026-11-20, after households H6b task K.8 added
 `household-ownership.spec.ts`; 37 of 41 earlier that day, after households H6a task J.8 added
 `household-activity-purges.spec.ts`; 36 of 40 on 2026-11-19, after households H5c task H.8 added
 `location-people.spec.ts`; 35 of 39 on 2026-11-18, after households H5b task G.10 added
