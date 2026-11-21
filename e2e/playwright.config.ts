@@ -200,6 +200,9 @@ export default defineConfig({
       // danger zones (households H6 task J.8), which are cloud only too.
       // household-ownership.spec.ts tests the ownership transfer and the
       // hand-over (households H6b task K.8): local mode has no owner.
+      // household-switch.spec.ts tests Switch to…, Create new, the stale-tab
+      // refusal and the copy into a chosen household (households H7 task
+      // L.6): local mode has no households.
       testIgnore: [
         '**/settings/import-export-cloud.spec.ts',
         '**/pwa-offline.spec.ts',
@@ -220,6 +223,7 @@ export default defineConfig({
         '**/location-people.spec.ts',
         '**/household-activity-purges.spec.ts',
         '**/household-ownership.spec.ts',
+        '**/household-switch.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'], baseURL: LOCAL_WEB_URL },
     },
@@ -281,6 +285,7 @@ export default defineConfig({
         '**/location-people.spec.ts',
         '**/household-activity-purges.spec.ts',
         '**/household-ownership.spec.ts',
+        '**/household-switch.spec.ts',
       ],
     },
     {
