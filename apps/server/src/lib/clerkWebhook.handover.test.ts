@@ -176,6 +176,7 @@ function user(id: string, extra: Partial<UserRow> = {}): UserRow {
     deletedAt: null,
     householdSetupAt: T0,
     activeHouseholdId: null,
+    locationSort: null,
     createdAt: T0,
     updatedAt: T0,
     ...extra,

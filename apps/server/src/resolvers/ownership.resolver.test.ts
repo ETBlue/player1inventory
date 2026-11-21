@@ -114,6 +114,7 @@ function user(id: string, displayName: string, activeHouseholdId: string | null)
     deletedAt: null,
     householdSetupAt: T0,
     activeHouseholdId,
+    locationSort: null,
     createdAt: T0,
     updatedAt: T0,
   }

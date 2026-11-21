@@ -1,7 +1,8 @@
 // One Prisma double for the code that reads households and roles: `User`
 // (userFake), `Household`, `HouseholdMember`, `LocationMember`,
 // `HouseholdInvite`, `HouseholdActivity` and `OwnershipOffer` (householdFake), and `Location` and `ItemStock` (stockFake), joined into one
-// client with one `$transaction` (households H3a, task 3.5).
+// client with one `$transaction` (households H3a, task 3.5). Since households
+// H7b task M.1 also `LocationPreference` (locationPreferenceFake).
 //
 // `householdFake` reads the CURRENT location rows from `stockFake`, so a
 // location created in a test (or by the code under test) is at once visible
@@ -29,6 +30,7 @@ import {
   type HouseholdContents,
   type HouseholdFakeOptions,
 } from './householdFake.js'
+import { createLocationPreferenceFake } from './locationPreferenceFake.js'
 import { createStockFake, runInTransaction, type RollbackStore } from './stockFake.js'
 import { createUserFake } from './userFake.js'
 
@@ -74,6 +76,12 @@ export function createHouseholdWorld() {
   // one query). The fake reads the CURRENT member rows of this world. And
   // every person a member row names has a `User` row, as the foreign key
   // makes it in Postgres (`rowForEveryMember`, see userFake.ts).
+  // Each person's own order and last visit for a location (households H7b,
+  // task M.1). Its foreign key reads the CURRENT location rows, and its
+  // ON DELETE CASCADE from `Location` is modelled below, with the role rows.
+  const locationPreferences = createLocationPreferenceFake({
+    locations: () => stock.state.locations,
+  })
   const users = createUserFake([], {
     householdMembers: () => households.state.householdMembers,
     rowForEveryMember: true,
@@ -101,6 +109,9 @@ export function createHouseholdWorld() {
     // `households.state`: they roll back with the rest, and
     // `household.deleteMany` deletes them with their household.
     ownershipOffer: households.client.ownershipOffer,
+    // The location preferences (households H7b, task M.1). Their store is
+    // registered with `$transaction` below, so they roll back with the rest.
+    locationPreference: locationPreferences.client,
     location: {
       ...stock.client.location,
       delete: deleteLocation,
@@ -120,6 +131,8 @@ export function createHouseholdWorld() {
     households.state.locationMembers = households.state.locationMembers.filter(
       (m) => m.locationId !== row.id,
     )
+    // The same cascade for the preference rows (households H7b, task M.1).
+    locationPreferences.forgetLocations([row.id])
     return row
   }
 
@@ -135,13 +148,15 @@ export function createHouseholdWorld() {
     households.state.locationMembers = households.state.locationMembers.filter(
       (m) => !ids.includes(m.locationId),
     )
+    locationPreferences.forgetLocations(ids)
     return result
   }
 
   // `household.deleteMany` (households H5b, task G.4). The household fake
   // deletes the household and its own child rows (member rows, invites,
   // location role rows). Postgres also cascades from the household to its
-  // locations, from a location to its stock rows, logs and carts, from a cart
+  // locations, from a location to its stock rows, logs, carts and preference
+  // rows (households H7b, task M.1), from a cart
   // to its rows, and from the household to its catalog rows. And it sets
   // `User.activeHouseholdId` to null where it named the household
   // (`onDelete: SetNull`). Those stores live here, so it is modelled here.
@@ -159,6 +174,7 @@ export function createHouseholdWorld() {
     )
     stock.state.locations = stock.state.locations.filter((l) => !locationIds.has(l.id))
     stock.state.itemStocks = stock.state.itemStocks.filter((s) => !locationIds.has(s.locationId))
+    locationPreferences.forgetLocations(locationIds)
     const c = contents.rows
     const cartIds = new Set(c.carts.filter((x) => locationIds.has(x.locationId)).map((x) => x.id))
     contents.rows = {
@@ -188,6 +204,7 @@ export function createHouseholdWorld() {
           households.state as unknown as RollbackStore,
           stock.state as unknown as RollbackStore,
           contents as unknown as RollbackStore,
+          locationPreferences.state as unknown as RollbackStore,
           ...extraStores,
         ],
         client,
@@ -230,6 +247,7 @@ export function createHouseholdWorld() {
     users.reset()
     stock.reset([], [])
     households.reset()
+    locationPreferences.reset()
     contents.rows = emptyContents()
     serialTransactions(false)
   }
@@ -266,6 +284,7 @@ export function createHouseholdWorld() {
       deletedAt: null,
       householdSetupAt: T,
       activeHouseholdId: householdId,
+      locationSort: null,
       createdAt: T,
       updatedAt: T,
     })
@@ -275,6 +294,7 @@ export function createHouseholdWorld() {
     users,
     stock,
     households,
+    locationPreferences,
     /** See `WorldContents`. Write to `contents.rows`; `reset` empties it. */
     contents,
     client,

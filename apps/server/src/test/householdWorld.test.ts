@@ -313,3 +313,87 @@ describe('householdWorld: household.deleteMany cascades across the fakes (househ
     expect(world.households.state.ownershipOffers.map((r) => r.householdId)).toEqual(['hh-2'])
   })
 })
+
+describe('householdWorld holds the location preference store (households H7b, task M.1, decision T75)', () => {
+  /** Two households, three locations, and four preference rows. */
+  function preferenceWorld() {
+    const world = createHouseholdWorld()
+    world.stock.reset(
+      [
+        { id: 'loc-1', householdId: 'hh-1', name: 'A', order: 0 },
+        { id: 'loc-2', householdId: 'hh-1', name: 'B', order: 1 },
+        { id: 'loc-3', householdId: 'hh-2', name: 'C', order: 0 },
+      ],
+      [],
+    )
+    world.seedHouseholds({
+      households: [household('hh-1', 'u1'), household('hh-2', 'u2')],
+      householdMembers: [
+        { householdId: 'hh-1', userId: 'u1', role: 'owner', joinedAt: T },
+        { householdId: 'hh-2', userId: 'u2', role: 'owner', joinedAt: T },
+      ],
+    })
+    world.locationPreferences.reset([
+      { userId: 'u1', locationId: 'loc-1', customOrder: 1, lastVisitedAt: null, updatedAt: T },
+      { userId: 'u1', locationId: 'loc-2', customOrder: 0, lastVisitedAt: null, updatedAt: T },
+      { userId: 'u2', locationId: 'loc-2', customOrder: null, lastVisitedAt: T, updatedAt: T },
+      { userId: 'u2', locationId: 'loc-3', customOrder: 0, lastVisitedAt: null, updatedAt: T },
+    ])
+    return world
+  }
+
+  function rowKeys(world: ReturnType<typeof preferenceWorld>): string[] {
+    return world.locationPreferences.state.rows.map((r) => `${r.userId}@${r.locationId}`).sort()
+  }
+
+  it('deleting a location deletes its preference rows, as the foreign key cascade does', async () => {
+    const world = preferenceWorld()
+    await world.client.location.delete({ where: { id: 'loc-2' } })
+    expect(rowKeys(world)).toEqual(['u1@loc-1', 'u2@loc-3'])
+  })
+
+  it('deleteMany on locations deletes their preference rows too, and no others', async () => {
+    const world = preferenceWorld()
+    await world.client.location.deleteMany({ where: { householdId: 'hh-2' } })
+    expect(rowKeys(world)).toEqual(['u1@loc-1', 'u1@loc-2', 'u2@loc-2'])
+  })
+
+  it('deleting a household deletes the preference rows of its locations', async () => {
+    const world = preferenceWorld()
+    await world.client.household.deleteMany({ where: { id: { in: ['hh-1'] } } })
+    expect(rowKeys(world)).toEqual(['u2@loc-3'])
+  })
+
+  it('a row for a location the world does not hold raises P2003', async () => {
+    const world = preferenceWorld()
+    await expect(
+      world.client.locationPreference.upsert({
+        where: { userId_locationId: { userId: 'u1', locationId: 'loc-gone' } },
+        create: { userId: 'u1', locationId: 'loc-gone' },
+        update: {},
+      }),
+    ).rejects.toMatchObject({ code: 'P2003' })
+  })
+
+  it('its rows roll back with a transaction, and the tx client has the model', async () => {
+    const world = preferenceWorld()
+    await expect(
+      world.client.$transaction(async (tx: typeof world.client) => {
+        await tx.locationPreference.deleteMany({ where: { userId: 'u1' } })
+        await tx.locationPreference.upsert({
+          where: { userId_locationId: { userId: 'u2', locationId: 'loc-1' } },
+          create: { userId: 'u2', locationId: 'loc-1', customOrder: 5 },
+          update: {},
+        })
+        throw new Error('boom')
+      }),
+    ).rejects.toThrow('boom')
+    expect(rowKeys(world)).toEqual(['u1@loc-1', 'u1@loc-2', 'u2@loc-2', 'u2@loc-3'])
+  })
+
+  it('reset empties the store', () => {
+    const world = preferenceWorld()
+    world.reset()
+    expect(world.locationPreferences.state.rows).toEqual([])
+  })
+})

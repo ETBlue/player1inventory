@@ -261,21 +261,31 @@ model Shelf {
 }
 
 model Location {
-  id          String   @id @default(cuid())
-  name        String
-  order       Int
+  id            String    @id @default(cuid())
+  name          String
+  order         Int
   // No `isDefault` and no `userId` since the drop_user_scope migration
   // (households H3a task 3.14). A location belongs to a household, and a
   // person's rights on it come from LocationMember.
-  householdId String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  householdId   String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  // When the data at this location last changed: its stock, carts or logs
+  // (households H7b, decision T79). The "Last updated" sort reads it.
+  // `publishChange` sets it after a write that sends STOCK, CART or LOG for
+  // this location. Null means nothing has changed here since the column was
+  // added, and the location had no stock row then. The add_location_preferences
+  // migration fills it once from the newest `ItemStock.updatedAt`.
+  dataUpdatedAt DateTime?
 
-  household     Household        @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  household     Household            @relation(fields: [householdId], references: [id], onDelete: Cascade)
   members       LocationMember[]
   itemStocks    ItemStock[]
   inventoryLogs InventoryLog[]
   carts         Cart[]
+  // Each person's own order and last visit for this location (households
+  // H7b, decision T75). Deleted with the location (Cascade).
+  preferences   LocationPreference[]
 
   @@index([householdId, order])
 }
@@ -321,7 +331,7 @@ model User {
   // The Clerk user id. Since H2 the webhook and ensureUser create this row
   // before first sign-in runs, so this key cannot be the first sign-in race
   // guard. householdSetupAt below is (decision H1).
-  id                String     @id
+  id                String        @id
   displayName       String
   // Optional: a Clerk account may sign in by phone or username, and the
   // user.deleted event carries no email.
@@ -343,23 +353,31 @@ model User {
   // joinedAt, then householdId, so null needs no backfill and every request
   // gives the same answer. Joining or creating a household sets it.
   activeHouseholdId String?
-  activeHousehold   Household? @relation("ActiveHousehold", fields: [activeHouseholdId], references: [id], onDelete: SetNull)
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
+  activeHousehold   Household?    @relation("ActiveHousehold", fields: [activeHouseholdId], references: [id], onDelete: SetNull)
+  // How this person sorts their location list (households H7b, decision
+  // T74). Null means "the default" (owner decision O52). The server fills in
+  // the default when it reads the value, so the default can change later
+  // with no data step.
+  locationSort      LocationSort?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   // Households whose ownerId is this person. Named, because the relation from
   // Household to User is not the only path between them: HouseholdMember joins
   // them too. The name keeps the two apart for a reader.
-  ownedHouseholds      Household[]       @relation("HouseholdOwner")
+  ownedHouseholds      Household[]          @relation("HouseholdOwner")
   householdMemberships HouseholdMember[]
   locationMemberships  LocationMember[]
   // Invites this person made, and invites this person used (decision T26).
   // Named, because HouseholdInvite points at User twice.
-  invitesCreated       HouseholdInvite[] @relation("InviteCreatedBy")
-  invitesUsed          HouseholdInvite[] @relation("InviteUsedBy")
+  invitesCreated       HouseholdInvite[]    @relation("InviteCreatedBy")
+  invitesUsed          HouseholdInvite[]    @relation("InviteUsedBy")
   // Offers to take over a household, made TO this person (households H6b,
   // decision T58). Deleted with this row (Cascade).
   ownershipOffers      OwnershipOffer[]
+  // This person's own order and last visit, one row per location (households
+  // H7b, decision T75). Deleted with this row (Cascade).
+  locationPreferences  LocationPreference[]
 
   // Serves the ON DELETE SET NULL on activeHouseholdId, which Postgres runs
   // as a lookup by that column when a household is deleted.
@@ -603,4 +621,53 @@ model OwnershipOffer {
   // Lists the offers TO one person (`myOwnershipOffers`, decision T65), and
   // serves the ON DELETE CASCADE from `User`.
   @@index([toUserId])
+}
+
+// How a person sorts their location list (households H7b, decision T74).
+//   name:        by name.
+//   lastUpdated: newest `Location.dataUpdatedAt` first.
+//   lastVisited: newest `LocationPreference.lastVisitedAt` first.
+//   custom:      the person's own order (`LocationPreference.customOrder`).
+enum LocationSort {
+  name
+  lastUpdated
+  lastVisited
+  custom
+}
+
+// One person's own settings for one location (households H7b, decision T75
+// of docs/global/permissions/2026-11-21-households-plan-h7.md).
+//
+// `customOrder`: the person's own position for the location. Null until the
+// person reorders their list. A location with no `customOrder` sorts after
+// every location that has one, by the shared `Location.order`, then by `id`
+// (decision T76). So no row is needed until someone reorders.
+//
+// `lastVisitedAt`: when the person last made this location their active one
+// (decision T80). Null until then.
+//
+// Foreign keys, both Cascade:
+//   - `userId` to `User`: `/e2e/cleanup` deletes `User` rows, and a
+//     preference row must not block it. Production never deletes a `User`
+//     row (H2 sets `deletedAt`), so in production this never fires.
+//   - `locationId` to `Location`: the rows go with their location, also when
+//     a household delete removes its locations.
+//
+// NOT in `emptyHouseholdWhere` (lib/invite.ts, decision T75): a preference is
+// not data a person would lose, so a household that holds only preference
+// rows is still "empty" at a join, and the rows go with it.
+model LocationPreference {
+  userId        String
+  locationId    String
+  customOrder   Int?
+  lastVisitedAt DateTime?
+  updatedAt     DateTime  @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@id([userId, locationId])
+  // Serves the ON DELETE CASCADE from `Location`. The primary key starts
+  // with `userId`, so it already serves the one from `User`.
+  @@index([locationId])
 }

@@ -221,7 +221,7 @@ const DATA_MODELS = Object.keys(MODEL_PATHS).sort()
 const OWNED_SCOPE = '{ householdId: owned }'
 
 /**
- * `/e2e/cleanup`'s six filters that are not the scope. Each is allowed on
+ * `/e2e/cleanup`'s eight filters that are not the scope. Each is allowed on
  * its one model only.
  *
  * - `locationMember` and `householdMember`: every role row in the owned
@@ -229,6 +229,13 @@ const OWNED_SCOPE = '{ householdId: owned }'
  *   RESTRICT foreign key to `User`, so the `User` row cannot go while one
  *   exists. The `{ userId }` half is allowed here and nowhere else: it picks
  *   the user's own membership, not rows the user wrote.
+ * - `locationPreference` (households H7b, task M.1, decision T75): every
+ *   preference row on the owned households' locations, and the user's OWN
+ *   rows on any other location. The same shape as `locationMember`. Both
+ *   foreign keys are ON DELETE CASCADE, so the `location` and `user` deletes
+ *   would remove these rows anyway; the route deletes them first so the count
+ *   shows them. The `{ userId }` half picks the person's own settings, not
+ *   rows the user wrote.
  * - `householdInvite` (households H5b, task G.6): every invite of the owned
  *   households, and the invites the user MADE anywhere else.
  *   `createdById` is RESTRICT, so the `User` row cannot go while such an
@@ -256,6 +263,13 @@ const CLEANUP_EXCEPTIONS: readonly FilterException[] = [
   {
     model: 'householdMember',
     arg: '{ where: { OR: [{ userId }, { householdId: owned }] } }',
+  },
+  // Not in `MODEL_PATHS`: `deleteHouseholdData` keeps the preference rows
+  // (they go with their location by cascade), so the form is allowed on this
+  // path only (households H7b, task M.1).
+  {
+    model: 'locationPreference',
+    arg: '{ where: { OR: [{ userId }, { location: { householdId: owned } }] } }',
   },
   {
     model: 'householdInvite',
@@ -311,12 +325,19 @@ const PURGE_PATHS: readonly PurgePath[] = [
     // `ownershipOffer` (H6b task K.1) is kept: an offer is about who will own
     // the household, not about its data. A clear keeps the household and its
     // members, so an open offer stays valid.
+    //
+    // `locationPreference` (H7b task M.1, decision T75) needs no delete of its
+    // own: its `locationId` is ON DELETE CASCADE, so the rows go with their
+    // location when `tx.location.deleteMany` runs. A person's sort order is
+    // not household data, and the rows of the household's members on OTHER
+    // households' locations must stay.
     kept: [
       'household',
       'householdActivity',
       'householdInvite',
       'householdMember',
       'locationMember',
+      'locationPreference',
       'ownershipOffer',
       'user',
     ],
@@ -337,6 +358,7 @@ const PURGE_PATHS: readonly PurgePath[] = [
       'householdInvite',
       'householdMember',
       'locationMember',
+      'locationPreference',
       'ownershipOffer',
       'user',
     ].sort(),
@@ -376,6 +398,7 @@ describe('purge coverage against prisma/schema.prisma', () => {
         'itemVendor',
         'location',
         'locationMember',
+        'locationPreference',
         'ownershipOffer',
         'recipe',
         'recipeItem',

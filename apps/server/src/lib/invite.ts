@@ -146,6 +146,17 @@ export function alreadyMember(): GraphQLError {
  * ("an ownership offer does not keep it"). The household fake also has no
  * `ownershipOffers` key, so a join that asked it would throw in every join
  * test.
+ *
+ * The location preferences are left out too (`LocationPreference`,
+ * households H7b task M.1, decision T75). A person's own order and last visit
+ * are not data they would lose, so a household that holds only preference
+ * rows is still "empty", and the rows go with its locations (ON DELETE
+ * CASCADE). If the `locations: { every }` filter asked
+ * `preferences: { none: {} }`, a person who once opened their own empty
+ * household (which writes a last visit, decision T80) could never have it
+ * removed at a join. `invite-join.resolver.test.ts` pins it ("location
+ * preference rows do not keep it"). The household fake has no `preferences`
+ * key in that filter, so a join that asked it would throw in every join test.
  */
 export function emptyHouseholdWhere(
   userId: string,

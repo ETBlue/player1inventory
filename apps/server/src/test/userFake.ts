@@ -40,7 +40,8 @@
 //     not change the store, the same as with a real database.
 //   - `activeHouseholdId` (households H5b, decision T14) starts `null` on
 //     create, like every column the add_household_invites migration added to
-//     an existing table.
+//     an existing table. So does `locationSort` (households H7b, decision
+//     T74), which the add_location_preferences migration added.
 //   - `update` (households H5b, for G.4's `activeHouseholdId` write) acts on
 //     ONE row named by its string `id`, raises P2025 when no row matches,
 //     applies `data` with Prisma's `value !== undefined` rule, and honours
@@ -156,6 +157,7 @@ const USER_COLUMNS = [
   'deletedAt',
   'householdSetupAt',
   'activeHouseholdId',
+  'locationSort',
   'createdAt',
   'updatedAt',
 ] as const
@@ -338,6 +340,9 @@ export function createUserFake(rows: UserRow[] = [], options: UserFakeOptions = 
       householdSetupAt: null,
       // Added by add_household_invites (H5b). Nullable with no default.
       activeHouseholdId: null,
+      // Added by add_location_preferences (H7b). Nullable with no default:
+      // null means "the default sort" (decision T74).
+      locationSort: null,
       createdAt: now,
       ...stripUndefined(data),
       // @updatedAt: Prisma sets it on create too.
@@ -428,6 +433,7 @@ export function createUserFake(rows: UserRow[] = [], options: UserFakeOptions = 
         deletedAt: null,
         householdSetupAt: IMPLIED_ROW_TIME,
         activeHouseholdId: null,
+        locationSort: null,
         createdAt: IMPLIED_ROW_TIME,
         updatedAt: IMPLIED_ROW_TIME,
       })

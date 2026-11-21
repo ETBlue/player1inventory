@@ -35,6 +35,7 @@ function userRow(over: Partial<UserRow> & Pick<UserRow, 'id'>): UserRow {
     deletedAt: null,
     householdSetupAt: null,
     activeHouseholdId: null,
+    locationSort: null,
     createdAt: EARLIER,
     updatedAt: EARLIER,
     ...over,

@@ -18,7 +18,8 @@ import { makeGql } from '../utils/cloud'
 // user OWNS, plus the user's own role rows, and returns 18 counts (19 since
 // households H5b task G.6 added `householdInvites`, 20 since households H6
 // task J.1 added `householdActivities`, 21 since households H6b task K.1
-// added `ownershipOffers`). The seed
+// added `ownershipOffers`, 22 since households H7b task M.1 added
+// `locationPreferences`). The seed
 // below makes the user's household on the first request (first sign-in), so
 // the three new counts — `locationMembers`, `householdMembers` and
 // `households` — are at least 1 too. The rule "never delete a household the
@@ -377,6 +378,11 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     expect(deleted.householdActivities).toBeGreaterThanOrEqual(1)
     // And for the model households H6b task K.1 added.
     expect(deleted.ownershipOffers).toBeGreaterThanOrEqual(1)
+    // Households H7b task M.1 added `locationPreferences`. Nothing seeds a
+    // preference row yet: the writer, `markLocationVisited`, comes in task
+    // M.2, and task M.5 adds the seed. Until then the check above reports
+    // `"locationPreferences":0` and this spec FAILS, as it did for
+    // `ownershipOffers` between H6b tasks K.1 and K.8.
 
     // ── And nothing of the user's is left ────────────────────────────────────
     const after = await gql<ReadBack>(READ_BACK, { itemId })
