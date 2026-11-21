@@ -1074,8 +1074,8 @@
     "writeBlocked": "目前離線中，暫時無法儲存變更。"
   },
   "householdChanged": {
-    "notice": "你目前在 {{household}}。這個頁面還停留在 {{oldHousehold}}，所以剛才的變更沒有儲存。",
-    "noticeNoOldName": "你目前在 {{household}}。這個頁面還停留在另一個家庭，所以剛才的變更沒有儲存。",
+    "notice": "你目前在 {{household}}。這個頁面還停留在 {{oldHousehold}}，所以重新載入了。如果你剛才在儲存變更，那筆變更沒有儲存。",
+    "noticeNoOldName": "你目前在 {{household}}。這個頁面還停留在另一個家庭，所以重新載入了。如果你剛才在儲存變更，那筆變更沒有儲存。",
     "close": "關閉"
   },
   "noLocations": {

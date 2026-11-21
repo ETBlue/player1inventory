@@ -28,7 +28,7 @@ describe('HouseholdChangedNotice (households H7 task L.3, owner decision O51-A)'
 
     // Then the message shows, and is gone from storage
     expect(screen.getByRole('status')).toHaveTextContent(
-      'You are now in Chen flat. Your last change was not saved, because this page still showed The Lin home.',
+      'You are now in Chen flat. This page still showed The Lin home, so it was reloaded. If you were saving a change, it was not saved.',
     )
     expect(sessionStorage.getItem(HOUSEHOLD_CHANGED_NOTICE_KEY)).toBeNull()
 
@@ -75,7 +75,7 @@ describe('HouseholdChangedNotice (households H7 task L.3, owner decision O51-A)'
     render(<HouseholdChangedNotice />)
 
     expect(screen.getByRole('status')).toHaveTextContent(
-      '你目前在 陳家。這個頁面還停留在另一個家庭，所以剛才的變更沒有儲存。',
+      '你目前在 陳家。這個頁面還停留在另一個家庭，所以重新載入了。如果你剛才在儲存變更，那筆變更沒有儲存。',
     )
   })
 

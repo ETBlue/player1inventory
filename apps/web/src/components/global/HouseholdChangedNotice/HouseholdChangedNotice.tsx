@@ -8,7 +8,9 @@ import { Button } from '@/components/ui/button'
 
 /**
  * The one-time message after a tab was moved to another household
- * (households H7 task L.3, owner decision O51-A). Cloud mode only;
+ * (households H7 task L.3, owner decision O51-A; the wording is owner
+ * decision O56-A: it says the page was reloaded, and that a change being
+ * saved was not saved). Cloud mode only;
  * `__root.tsx` mounts it beside `OfflineBanner`.
  *
  * `recoverFromHouseholdChange` (`apollo/householdGuard.ts`) stores the

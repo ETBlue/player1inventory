@@ -13,7 +13,7 @@ describe('HouseholdChangedNotice stories smoke tests', () => {
   it('BothNames names the new and the old household', () => {
     render(<BothNames />)
     expect(screen.getByRole('status')).toHaveTextContent(
-      'You are now in Chen flat. Your last change was not saved, because this page still showed The Lin home.',
+      'You are now in Chen flat. This page still showed The Lin home, so it was reloaded. If you were saving a change, it was not saved.',
     )
     expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
   })
@@ -21,7 +21,7 @@ describe('HouseholdChangedNotice stories smoke tests', () => {
   it('OldNameUnknown says "another household"', () => {
     render(<OldNameUnknown />)
     expect(screen.getByRole('status')).toHaveTextContent(
-      'because this page showed another household.',
+      'This page still showed another household, so it was reloaded.',
     )
   })
 

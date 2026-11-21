@@ -95,11 +95,12 @@ export class HouseholdSwitcher {
   /**
    * The one-time message after a stale tab was moved (owner decision O51).
    *
-   * THE ONLY PLACE THAT MATCHES ITS TEXT. The sentence may still change
-   * (owner question O56), so this looks for the `<output>` (role `status`)
-   * that holds BOTH names, not for the full sentence. Today's English text
-   * (`householdChanged.notice`): "You are now in {household}. Your last
-   * change was not saved, because this page still showed {oldHousehold}."
+   * THE ONLY PLACE THAT MATCHES ITS TEXT. It looks for the `<output>` (role
+   * `status`) that holds BOTH names, not for the full sentence, so a later
+   * change of wording does not break it. The English text
+   * (`householdChanged.notice`, owner decision O56-A): "You are now in
+   * {household}. This page still showed {oldHousehold}, so it was reloaded.
+   * If you were saving a change, it was not saved."
    */
   changedNotice(nowIn: string, oldHousehold: string): Locator {
     return this.page
