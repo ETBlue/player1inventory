@@ -686,7 +686,7 @@ no migration, server first, what an old bundle sees, checks after deploy), and t
 
 - [x] Step 1: the docs. Done in `9c53c186` (the CLAUDE.md files), `c2fcdecf` (design, phase plan, H5b known gaps, INDEX), `041a5af7` (H4 runbook section 13), `972b2dad` (e2e/CLAUDE.md, the gate). Every count re-measured with its command. Before them, the two owner answers: `62c28086` (O56-A, the message wording) and `82426224` (O57-B, `copyTargetOptions` decided by `canCopyInto` alone; the `skipped` parameter removed).
 - [x] Step 2: `git log --oneline 9701ddff..HEAD -- apps/server/prisma/` is empty.
-- [x] Step 3: at `82426224`, each command alone: `pnpm lint` exit 0 (13 known warnings); `pnpm build` exit 0, server bundle 260.2 KiB, 15 `.graphql` files; no TS6385; `build-storybook` exit 0; `pnpm check` exit 0; `pnpm test` web 3840 / 373, server 2767 / 87, spec 70. `pnpm test:e2e:all`: local 178 passed / 11 skipped (3m42s), cloud 201 passed / 7 skipped / 2 failed (67m53s), pwa 73 passed (1m34s), load 1.7–3.4. The two failures are not caused by H7a (see below). A green whole gate is still owed before the push.
+- [x] Step 3: at `82426224`, each command alone: `pnpm lint` exit 0 (13 known warnings); `pnpm build` exit 0, server bundle 260.2 KiB, 15 `.graphql` files; no TS6385; `build-storybook` exit 0; `pnpm check` exit 0; `pnpm test` web 3840 / 373, server 2767 / 87, spec 70. `pnpm test:e2e:all`: local 178 passed / 11 skipped (3m42s), cloud 201 passed / 7 skipped / 2 failed (67m53s), pwa 73 passed (1m34s), load 1.7–3.4. The two failures are not caused by H7a (see below). Second `pnpm test:e2e:all` at `ef8982fb` (code the same as `82426224`; only docs after it), first try, no retry: local 178 passed / 11 skipped (3m40s), cloud 203 passed / 7 skipped (63m00s), pwa 73 passed (1m34s), load 2.0–2.3. All three green.
 - [x] Step 4: `git status` clean; `git show --stat` checked for each commit.
 
 **Done 2026-11-21.** Commits `62c28086`, `82426224`, `9c53c186`, `c2fcdecf`, `041a5af7`, `972b2dad`. Mutation checks, each restored from a copy and checked with `cmp`:
@@ -1096,7 +1096,7 @@ Filled in from the task reports and reviews.
 (plus `5cc4e741`, which records H6b as merged). Owner decisions O49–O55 answered 2026-11-21: all A, except **O54-B** (Name and Custom in
 local mode, saved on the device). Nothing built.
 
-**H7a built 2026-11-21** on `feature/households-h7a` (tasks L.1–L.7), not merged, not deployed. Owner decisions O56-A and O57-B applied in L.7. No migration. Deploy notes: section 13 of the H4 runbook. One green `pnpm test:e2e:all` is still owed before the push (the first run failed 2 cloud tests not caused by H7a; see L.7). H7b (M.1–M.6) not built.
+**H7a built 2026-11-21** on `feature/households-h7a` (tasks L.1–L.7), not merged, not deployed. Owner decisions O56-A and O57-B applied in L.7. No migration. Deploy notes: section 13 of the H4 runbook. The first `pnpm test:e2e:all` failed 2 cloud tests not caused by H7a; the second, at `ef8982fb`, was green in all three projects (see L.7). H7b (M.1–M.6) not built.
 
 ---
 
