@@ -895,8 +895,12 @@ async function withCatalogEvent<T>(
 // (`requireOwnRowIdsOrUnclaimed`), the location checks (`resolveLogLocations`,
 // `resolveCartLocations`, `requireOwnLocationIdsOrUnclaimed`,
 // `requireOwnItemStockRefs`) and the cart item parents. So a location, a
-// stored row and an item must all be in that one household. Until H7's
-// household switch it is the caller's household (`requireHousehold`).
+// stored row and an item must all be in that one household. It is the
+// household the person acts in (`requireHousehold`), by design since H7
+// (decision T71): no import field takes a household argument. To copy into
+// another household the person switches first, and a tab that still shows
+// the old household is refused with HOUSEHOLD_CHANGED (decision T67), so an
+// import cannot finish in a household it did not start in.
 //
 // No row goes to a fallback location any more (decisions T10 and T11): a
 // log with no location and a cart id with no location prefix are refused

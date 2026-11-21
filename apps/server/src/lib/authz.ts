@@ -577,8 +577,11 @@ function catalogDelegate(model: CatalogModel): CatalogDelegate {
  * `requireHousehold(ctx)`, because a person can be a member of two
  * households, and then "the caller's household" has no fixed answer. Every
  * call site passes the id `requireCatalogRole` (or, for the import helpers
- * until H4 task E.3, `requireHousehold`) returned. H7's household switch will
- * fill it in.
+ * until H4 task E.3, `requireHousehold`) returned. Since H7 (decision T71)
+ * that IS the household the person acts in: there is no other target. To
+ * write into another household, the person switches to it first
+ * (`setActiveHousehold`), and `requireHousehold` refuses a tab that still
+ * shows the old one (`HOUSEHOLD_CHANGED`, decision T67).
  *
  * "A row the caller may write" means, since H4 task E.1 (decision T5), with
  * `writable` = the locations of the target household where the caller is
