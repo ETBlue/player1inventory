@@ -1032,6 +1032,12 @@ deploy), and this plan's *What this plan got wrong* and *Status*.
   is for the release after households, with the shim.
 - **No limit on how many households one person can create.** A family app; recheck if abuse
   appears.
+- `CreateHouseholdDialog` shows the name rule ("Enter a name of 1 to 100 characters.") for
+  every `BAD_USER_INPUT`, so an `ALREADY_IN_HOUSEHOLD` refusal would show the wrong text.
+  No current path reaches it: the dialog always sends `alsoWhenMember: true`. Fix when a
+  change makes the server send that refusal here (for example a limit on households per
+  person): read `extensions.reason`, and show the name rule only when there is none. Found in
+  L.6; the owner chose not to fix it in H7a (2026-11-21).
 - Carried over, still open: the old-bundle shim removal, the keyboard gap on `role="button"`
   badges, the activity table's size, and the other items in the H5, H5b, H5c and H6 plans'
   *Known gaps*.
