@@ -111,7 +111,12 @@ describe.each(BRANCHES)('createGraphQLContext — $name', (branch) => {
     ['missing', undefined],
     ['empty', ''],
     ['one over the limit', 'h'.repeat(65)],
-    ['sent twice', ['hh_a', 'hh_a']],
+    // Node joins a header sent twice into ONE string, "A, B" (measured on
+    // Node 22.17.1). Only `req.headersDistinct` gives an array.
+    ['sent twice (Node joins the values)', 'hh_a, hh_b'],
+    // `IncomingHttpHeaders` types the value as `string | string[]`, so an
+    // array is still handled, but Node gives one only for `set-cookie`.
+    ['an array', ['hh_a', 'hh_a']],
   ] as const)('an x-household-id that is %s gives no shown household', async (_label, value) => {
     const headers: Record<string, string | string[]> = { ...branch.headers }
     if (value !== undefined) headers['x-household-id'] = value as string | string[]
@@ -153,6 +158,9 @@ describe('appLanguageFrom', () => {
   })
 
   it('a header sent twice gives en', () => {
+    // Node joins the two values into one string (Node 22.17.1).
+    expect(appLanguageFrom('tw, tw')).toBe('en')
+    // The type also allows an array.
     expect(appLanguageFrom(['tw', 'tw'])).toBe('en')
   })
 })
@@ -171,7 +179,10 @@ describe('clientIdFrom', () => {
     ['missing', undefined],
     ['empty', ''],
     ['one over the limit', 'a'.repeat(CLIENT_ID_MAX_LENGTH + 1)],
-    ['sent twice', ['tab-1', 'tab-1']],
+    // The type allows an array. A header sent twice does NOT arrive as one:
+    // Node joins it into "tab-1, tab-2", which `clientIdFrom` keeps (see
+    // its comment).
+    ['an array', ['tab-1', 'tab-1']],
     ['a number', 42],
     ['an object', { id: 'tab-1' }],
   ] as const)('%s gives no tab id', (_label, value) => {
@@ -197,7 +208,14 @@ describe('householdIdFrom (households H7 task L.1)', () => {
     ['missing', undefined],
     ['empty', ''],
     ['65 characters', 'h'.repeat(65)],
-    ['sent twice', ['hh_a', 'hh_a']],
+    // How Node passes on a header sent twice (Node 22.17.1)
+    ['two values joined by Node', 'hh_a, hh_b'],
+    ['two values joined with no space', 'hh_a,hh_b'],
+    ['a space', 'hh a'],
+    ['a tab', 'hh\ta'],
+    ['a space at the end', 'hh_a '],
+    // The type allows an array; Node gives one only for `set-cookie`
+    ['an array', ['hh_a', 'hh_a']],
     ['a number', 42],
   ] as const)('%s gives no household', (_label, value) => {
     expect(householdIdFrom(value)).toBeUndefined()
