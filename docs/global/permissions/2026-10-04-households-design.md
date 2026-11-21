@@ -162,14 +162,16 @@ in that PR.
 | `HouseholdInvite` | `id`, `householdId`, `token` (unique), `householdRole`, `locationRoles` (JSON list of `{locationId, role}`), `createdBy`, `expiresAt`, `usedAt?`, `usedBy?`, `revokedAt?` | Single use, 7 days | H5 |
 | `OwnershipOffer` | `householdId`, `toUserId`, `fromUserId?`, `kind` (`transfer` / `handover`), `createdAt`, `dismissedAt?` | `transfer`: the owner offered it. `handover`: the owner's account was deleted. Drives the prompt banner | H6 |
 | `HouseholdActivity` | `id`, `householdId`, `actorId`, `action`, `targetUserId?`, `locationId?`, `details` (JSON), `createdAt` | See *Activity log* | H6 |
-| `LocationPreference` | `userId`, `locationId`, `customOrder?`, `lastVisitedAt?` | Per-person location order and last visit | **H7** (decision H6) |
-| `UserPreference` | `userId`, `locationSort` (`name` / `lastUpdated` / `lastVisited` / `custom`) | Per-person sort mode. May be merged into `User` | **H7** (decision H6) |
+| `LocationPreference` | `userId`, `locationId`, `customOrder?`, `lastVisitedAt?`, `updatedAt` | Per-person location order and last visit. Primary key `(userId, locationId)`; both foreign keys `ON DELETE CASCADE`; an index on `locationId`. No row until the person reorders or visits | **H7** (decision H6; built in H7b on `feature/households-h7b`, not merged, not deployed, H7 plan decision T75) |
+| ~~`UserPreference`~~ | merged into `User` as `User.locationSort` (`name` / `lastUpdated` / `lastVisited` / `custom`, a Prisma enum `LocationSort`), nullable: `null` means the default, Custom (owner decision O52-A) | Per-person sort mode. One value per person needs no table | **H7** (decision H6; built in H7b on `feature/households-h7b`, not merged, not deployed, H7 plan decision T74) |
 
 **Role names are Prisma enums** (decision H14): `HouseholdRole` = `owner | manager | member`,
 `LocationRole` = `organizer | participant | viewer`. An enum makes a typo fail at `tsc`.
 
 **`LocationPreference` and `UserPreference` moved from H3 to H7** (decision H6). Nothing reads
-them before H7's sorts. A column nobody reads is a column nobody tests.
+them before H7's sorts. A column nobody reads is a column nobody tests. H7b built the first as
+a table and the second as one column on `User` (H7 plan decisions T74 and T75), in the
+migration `20261122000000_add_location_preferences`.
 
 **The `user` side of both member tables has no `onDelete`.** So a `User` row that still has
 member rows cannot be deleted. Production never deletes a `User` row (phase H2 sets
@@ -180,7 +182,7 @@ member rows first. (H3a plan task 3.3.)
 
 | Model | Change |
 |---|---|
-| `Location` | `userId` → `householdId`. **Drops** `isDefault` and the partial unique index on `isDefault` (H3a). **Keeps `order` until H7** (decision H5, see below). **Adds `dataUpdatedAt` in H7, not H3** (decision H6) |
+| `Location` | `userId` → `householdId`. **Drops** `isDefault` and the partial unique index on `isDefault` (H3a). **Keeps `order` until H7** (decision H5, see below). **Adds `dataUpdatedAt` in H7, not H3** (decision H6). H7b adds it nullable and fills it once from the newest `ItemStock.updatedAt` of the location (H7 plan decision T79) |
 | `Item`, `Tag`, `TagType`, `Vendor`, `Recipe`, `Shelf` | `userId` → `householdId` (H3a). `Shelf.order` stays shared, because shelves are catalog |
 | `InventoryLog` | `userId` stays, and now means **the author**. Its scope comes from `locationId` |
 | `Cart` | **Drops** `userId` — in **H3b**, not H3a. A cart belongs to its location and is shared by everyone there. The composite id `${locationId}:${vendorId \| 'no-vendor'}` stays |
@@ -192,6 +194,15 @@ the order becomes personal (`LocationPreference.customOrder`). But personal orde
 in H7. Dropping `order` in H3 would remove drag-to-reorder, a working feature, for four phases.
 Nobody shares a location before H5, so a shared order is harmless until then. Until H7,
 `reorderLocations` needs the household role `manager`.
+
+**Since H7b** (built in H7b on `feature/households-h7b`, not merged, not deployed; H7 plan decisions T76–T78) the order is personal, and
+`Location.order` is NOT dropped. It stays as the fallback: a location the person has not
+placed sorts after the placed ones, by the shared `Location.order`, then by `id`. No row is
+copied from it into `customOrder`. `Location.order` in GraphQL now answers the caller's own
+position, 0 to n−1, so an old bundle's switcher shows the person's own order with no change.
+`reorderLocations` takes any household role and writes one `LocationPreference` row per id;
+it never writes `Location.order`. `createLocation` and imports still write it, and the
+old-bundle `isDefault` shim reads it. Dropping it is for the release after households.
 
 **The `userId` → `householdId` change uses two migrations in one PR** (decision H16). Dropping
 `userId` breaks the compile of every resolver at once, so no task in between could pass the
@@ -214,6 +225,16 @@ before H5 starts (see *Sequencing*).
 **Moved to H7** (decision H6). Only H7's "sort by last updated" reads `dataUpdatedAt`, so H3a
 does not add the column or touch its writers. The list below is still what H7 must cover.
 Re-check it when H7 is planned, because H3b changes `checkout` and `consumeRecipes`.
+
+**How H7b built it** (built in H7b on `feature/households-h7b`, not merged, not deployed; H7 plan decision T79): neither a helper per writer
+nor a trigger. `publishChange` (`apps/server/src/lib/publishChange.ts`) sets
+`dataUpdatedAt = now` on every location it publishes `STOCK`, `CART` or `LOG` to, in one
+`location.updateMany`, after the commit, and never throws. Every writer below already
+publishes one of those kinds, and `live-publish.guard.test.ts` makes every mutation say what
+it publishes, so a new writer cannot be added without a decision. Household-level events
+(`LOCATION`, `CATALOG`) do not set it. A server crash between the commit and the update
+loses one timestamp. "Last updated" does not move while a page is open: the location lists
+refetch only on `LOCATION` (owner decision O58-A).
 
 PR 5 added `writeStock` in `apps/server/src/lib/itemStockWrite.ts`, but it is **not** the only
 place stock is written. Its own plan says so. Each of these must set `Location.dataUpdatedAt`,
@@ -239,7 +260,7 @@ migration" with six steps. What changed, and why:
 |---|---|---|
 | One migration | Two migrations in H3a, `add_households` and `drop_user_scope` | decision H16 (see *Changed models*) |
 | A `User` row for every `userId` in the data | **Every** `User` row gets a household. A `userId` found in data with no `User` row first gets one, with `displayName` `'User'` | decision H2. Since phase H2, a person can have a `User` row and no data. Without a household they would land on the empty "no household" screen |
-| Copy `order` into `LocationPreference.customOrder` (step 5) | Not done in H3a. `Location.order` stays | decisions H5 and H6. Both the column and the table belong to H7 |
+| Copy `order` into `LocationPreference.customOrder` (step 5) | Not done in H3a. `Location.order` stays. **H7b does not copy it either** (H7 plan decision T76): a person with no row sees the shared order, which is the same order a copy would give, with no row per person per location. H7b's migration has one other backfill: `Location.dataUpdatedAt` from the newest `ItemStock.updatedAt` | decisions H5 and H6. Both the column and the table belong to H7 |
 | Drop `isDefault` and its index (step 6) | Done in the second migration, `drop_user_scope` | decision H16 |
 | The household name is translated | The migration writes `<displayName>'s Household` **in English** | decision H3. SQL cannot translate. Only first sign-in knows the user's language. The owner can rename it (decision H4) |
 
@@ -799,7 +820,11 @@ dates come from Clerk's `useUser()`.
 - **Sort by** name, last updated, last visited or custom. Drag handles show only for custom.
   The order is personal. (Built in H7. Until then the list keeps today's shared
   `Location.order` and drag-to-reorder, which needs the household role `manager` — decision
-  H5.)
+  H5.) **Built in H7b on `feature/households-h7b`, not merged, not deployed:** the **Sort by** control (`LocationSortSelect`)
+  starts on Custom (O52-A); every household role may drag its own order; in local mode only
+  **Name** and **Custom**, saved on the device (O54-B). "Last updated" uses
+  `Location.dataUpdatedAt`; "Last visited" uses the person's `lastVisitedAt`, written when a
+  location becomes the active one, at most once a minute (O55-A).
 - Each row shows the name and the person's role. Owner and manager also see locations where they
   have no role, marked **No access**, and a **No organizer** warning where it applies.
 - **Create location** for everyone. **Delete** for owner and manager.
@@ -820,7 +845,8 @@ and shows "You no longer have access to {location}." once (O27-A).
 
 ### Location switcher
 
-- Lists only locations where the person has a role, in their own order.
+- Lists only locations where the person has a role, in their own order. Since H7b it uses the
+  same sort as Settings › Locations (owner decision O53-A).
 - Shows a **View only** badge for a viewer.
 - "Manage locations" links to `/settings/household/locations`.
 - With no locations: pantry, shopping and cooking show "You have no locations in this household
@@ -1053,7 +1079,7 @@ and the owner agreed to the order below. Detail:
 | H4 | ✅ **Merged into `develop` 2026-11-17 (#382, merge `bf87e839`), not deployed.** Import and export: the new id rule, and `requireOwnRowOrUnclaimed` moved to the target household scope (#327 itself is already fixed by #354). Replaces H3a's import fallback location (decision H12) | The "Import into which location?" dialog |
 | H5 | Split in three PRs (H5 decision O1), [plan](2026-11-17-households-plan-h5.md). **H5a ✅ merged into `develop` (#384, merge `4307d30a`, 2026-11-18), not deployed:** `Location.myRole`, `Location.hasOrganizer`, the `householdLocations` query, a location viewer reads carts, `usePermissions` and read-only views for a household `member` and a location `viewer`, the **View only** badge in the switcher (the switcher already listed only locations with a role, so there was nothing to filter), H13 lifted with an empty locations screen, and a browser context per test user in E2E. **H5b ✅ merged into `develop` (#385, merge `938fa2aa`, 2026-11-18), not deployed** ([plan](2026-11-18-households-plan-h5b.md)): one migration (`HouseholdInvite`, `User.activeHouseholdId`), invite links, the join page, the Members page, leave and remove, a fixed rule for a person in two households, and the no-household screen with **Create a household**. Follow-ups merged after it: #386 (a failed refresh no longer fails a saved write), #387 (screens show save errors), #388 (the join keeps the copy question), #389 (the copy question names the household), #390 (`isPending` tests). **H5c ✅ merged into `develop` (#391, merge `7dbaeca9`, 2026-11-20), not deployed** ([plan](2026-11-19-households-plan-h5c.md)): no migration; the `locationPeople` query, `HouseholdPerson.hasLocationRole`, `setLocationRole`, `removeLocationRole` and `leaveLocation`; one shared rule for who may change a role (`canChangeLocationRole` in `@p1i/types`); the page `/settings/household/locations/$id`; name links on the locations list; the **No location roles** mark on the Members page; a short message when a tab loses its active location; `location-people.spec.ts` (9 cloud tests). Owner decisions O23–O31 all A | H5a alone: the last location can be deleted. **H5a + H5b + H5c: sharing works** |
 | H6 | Transfer, hand-over, offers banner, purges, activity log. Split in two PRs (owner decision O32-A), [plan](2026-11-20-households-plan-h6.md). **H6a ✅ built 2026-11-20, merged into `develop` (2026-11-20, #392, merge `c0f096ed`), not deployed:** one additive migration (`HouseholdActivity`), the activity log and its page, the purges **Delete all locations** and **Remove all items**, **Delete household** (O38-A), the danger zones, and the household lock taken first by every owner-only write. **H6b ✅ built 2026-11-20, merged into `develop` (2026-11-21, #393, merge `9701ddff`), not deployed:** one additive migration (`OwnershipOffer`), transfer with the offer banner and the Members page, the hand-over on `user.deleted`, a deleted account no longer counting, the last person's leave deleting an ownerless household (O37-A), and "Clear & import" asking for the typed name (O40) | Yes: story 2 (H6b) |
-| H7 | Personal location order and sort, household switch and create. Now also `LocationPreference`, `UserPreference` and `dataUpdatedAt` (decision H6), and the end of the shared `Location.order` (decision H5). Split in two PRs (owner decision O49-A), [plan](2026-11-21-households-plan-h7.md). **H7a ✅ merged into `develop` (2026-11-22, #394, merge `bf71f485`), not deployed:** no migration; **Switch to…** and **Create new**; the `x-household-id` header and `HOUSEHOLD_CHANGED`, so a stale tab cannot read or write the other household (O21); the reload message (O51-A, wording O56-A); copying offline data into a chosen household or a new one (O22-A, O57-B). **H7b** (personal location order and the four sorts, one migration) is not built yet | H7a: yes, the switch, create and the copy choice |
+| H7 | Personal location order and sort, household switch and create. Now also `LocationPreference`, `UserPreference` and `dataUpdatedAt` (decision H6), and the end of the shared `Location.order` (decision H5). Split in two PRs (owner decision O49-A), [plan](2026-11-21-households-plan-h7.md). **H7a ✅ merged into `develop` (2026-11-22, #394, merge `bf71f485`), not deployed:** no migration; **Switch to…** and **Create new**; the `x-household-id` header and `HOUSEHOLD_CHANGED`, so a stale tab cannot read or write the other household (O21); the reload message (O51-A, wording O56-A); copying offline data into a chosen household or a new one (O22-A, O57-B). **H7b** (personal location order and the four sorts, one migration with one backfill) is built on `feature/households-h7b`, not merged, not deployed | H7a: yes, the switch, create and the copy choice |
 
 **H3a's GraphQL change is breaking, so deploy order matters** (issue #359). Six types declare
 `userId: String!`: `Item`, `TagType`, `Tag`, `Vendor`, `Recipe`, `Shelf`. Removing a field that a
@@ -1109,7 +1135,8 @@ The root `CLAUDE.md` rules apply. Points special to this design:
 - **No email.** A person learns of an invite only from the link, and of an offer only by opening
   the app.
 - **`UserPreference` may be merged into `User`.** Left for the plan. The table moved to H7
-  (decision H6), so H7's plan decides.
+  (decision H6), so H7's plan decides. **Decided in H7** (plan decision T74): it is one column,
+  `User.locationSort`.
 - **Household switch shows the previous household's cart — FIXED in H7a** (task L.3 reuses
   H5b's `switchToHousehold`; E2E `household-switch.spec.ts` test 1 switches with a cart in
   the old household and finds no old cart row on the page or in the saved cache). The
