@@ -182,6 +182,48 @@ describe('useSwitchHousehold', () => {
   })
 })
 
+describe('beforeSwitch (task L.5)', () => {
+  it('switchTo runs it with the id the server answered, between the answer and the move', async () => {
+    const { result } = renderHook(() => useSwitchHousehold(), { wrapper })
+
+    await act(() =>
+      result.current.switchTo('hh-chen', {
+        beforeSwitch: (id) => events.push(`before ${id}`),
+      }),
+    )
+
+    expect(events).toEqual(['answered', 'before hh-chen', 'switched'])
+  })
+
+  it('createAndSwitch runs it with the NEW household id', async () => {
+    const { result } = renderHook(() => useCreateAnotherHousehold(), {
+      wrapper,
+    })
+
+    await act(() =>
+      result.current.createAndSwitch('Camp', {
+        beforeSwitch: (id) => events.push(`before ${id}`),
+      }),
+    )
+
+    expect(events).toEqual(['answered', 'before hh-new', 'switched'])
+  })
+
+  it('is not run when the server refuses', async () => {
+    writeFails = true
+    const before = vi.fn()
+    const { result } = renderHook(() => useSwitchHousehold(), { wrapper })
+
+    await act(async () => {
+      await result.current
+        .switchTo('hh-chen', { beforeSwitch: before })
+        .catch(() => {})
+    })
+
+    expect(before).not.toHaveBeenCalled()
+  })
+})
+
 describe('useCreateAnotherHousehold', () => {
   it('user can create a household while in one: it sends alsoWhenMember: true', async () => {
     const { result } = renderHook(() => useCreateAnotherHousehold(), {

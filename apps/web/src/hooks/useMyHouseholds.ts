@@ -28,6 +28,12 @@ import { useDataMode } from './useDataMode'
 //
 // `isPending` stays `true` after a write that worked, until the page goes
 // away, so a second click cannot start a second switch.
+//
+// Both writes take an optional `beforeSwitch(id)`. It runs after the server
+// has answered and just before `switchToHousehold`, with the id of the
+// household the page moves to. The copy of offline data into a chosen
+// household (task L.5, decision T73) uses it to store that id, so the copy
+// runs after the reload. A new household's id is known only at that moment.
 
 export type HouseholdChoice = MyHouseholdsQuery['myHouseholds'][number]
 
@@ -56,6 +62,11 @@ export function useMyHouseholds(): {
   }
 }
 
+export type SwitchOptions = {
+  /** Runs after the server answered, before the page moves. Must not throw. */
+  beforeSwitch?: (householdId: string) => void
+}
+
 /**
  * Make another household the one the caller acts in, on every device (owner
  * decision O50-A), then move this device there.
@@ -65,12 +76,16 @@ export function useSwitchHousehold() {
   const [isPending, setPending] = useState(false)
 
   return {
-    switchTo: async (householdId: string): Promise<void> => {
+    switchTo: async (
+      householdId: string,
+      options: SwitchOptions = {},
+    ): Promise<void> => {
       setPending(true)
       try {
         const result = await setActive({ variables: { householdId } })
         const household = result.data?.setActiveHousehold
         if (!household) throw new Error('setActiveHousehold returned nothing')
+        options.beforeSwitch?.(household.id)
         await switchToHousehold(household.id, { to: '/' })
       } catch (err) {
         setPending(false)
@@ -97,7 +112,10 @@ export function useCreateAnotherHousehold() {
   const [isPending, setPending] = useState(false)
 
   return {
-    createAndSwitch: async (name: string): Promise<void> => {
+    createAndSwitch: async (
+      name: string,
+      options: SwitchOptions = {},
+    ): Promise<void> => {
       setPending(true)
       try {
         const trimmed = name.trim()
@@ -109,6 +127,7 @@ export function useCreateAnotherHousehold() {
         })
         const created = result.data?.createHousehold
         if (!created) throw new Error('createHousehold returned no household')
+        options.beforeSwitch?.(created.id)
         await switchToHousehold(created.id, { to: '/' })
       } catch (err) {
         setPending(false)
