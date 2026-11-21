@@ -156,7 +156,23 @@ The last E2E counts on the H3a branch, 2026-11-11, from **three separate runs** 
 `pnpm test:e2e:all`): `cloud` **126 passed / 7 skipped**, `local` **178 passed / 6 skipped**,
 `pwa` **73 passed**. Re-measure rather than quote.
 
-The last whole gate, `pnpm test:e2e:all` on `feature/households-h6b` at `5cd82bf4` on
+The last whole gate, `pnpm test:e2e:all` on `feature/households-h7a` at `82426224` on
+2026-11-21 (households H7 task L.7), first run: `local` **178 passed / 11 skipped** in
+3m42s, `cloud` **201 passed / 7 skipped / 2 failed** in 67m53s, `pwa` **73 passed** in
+1m34s. Load average between 1.7 and 3.4 during the run. Neither failure was caused by H7a:
+
+| Failed test | Error | Alone |
+|---|---|---|
+| `location-switcher.spec.ts:168` ("Manage" navigates…) | `toBeVisible` on `getByRole('main').getByText('Home')` timed out at 5 s; the page snapshot at the failure shows the row | the file passed 17 of 17 once; another run failed a DIFFERENT test of the file (`:121`) on the same line of `seedOfficeLocation` |
+| `shared-household.spec.ts:338` | `apiRequestContext.delete: socket hang up` on `DELETE /e2e/cleanup`, in the `afterEach` | passed |
+
+**`location-switcher.spec.ts` waits close to Playwright's 5 s `expect` budget for the cloud
+locations list**, right after first sign-in. Measured with `--trace on`, the same `expect`
+took 3.9 s and 2.9 s on this branch, and 3.9 s and 5.0 s on `develop` at `9701ddff`, before
+H7a. So the wait is older than H7a, and a slow answer from the Neon test branch is enough to
+fail it. Not fixed here.
+
+The gate before it, `pnpm test:e2e:all` on `feature/households-h6b` at `5cd82bf4` on
 2026-11-20 (households H6b task K.9), all three green on the first run, no retry, no flaky
 test: `local` **178 passed / 11 skipped** in 3m39s, `cloud` **197 passed / 7 skipped** in
 58m43s, `pwa` **73 passed** in 1m34s; 63m56s in all. Load average 2.70 at the start, 2.81 at
