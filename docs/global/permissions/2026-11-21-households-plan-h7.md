@@ -470,29 +470,12 @@ and `householdGuard.test.ts`, `apollo/operations/household.graphql`, a new
 `components/global/HouseholdChangedNotice/` (component, stories, smoke test),
 `routes/__root.tsx`, `i18n/locales/en.json`, `tw.json`.
 
-- [ ] **Step 1: write the failing tests.**
-  - `client.test.ts`: a request carries `x-household-id` equal to
-    `localStorage['last-household-id']`; with no stored id it carries no such header (not an
-    empty string); in local mode no request is made at all, so nothing to test there.
-  - `householdGuard.test.ts`: `recoverFromHouseholdChange()` with a `GetHousehold` answer of
-    B calls `switchToHousehold('B')` and sets `household-changed-notice`; with `NO_HOUSEHOLD`
-    calls `forgetHousehold()` and reloads; a second call in the same page load does nothing.
-  - `client.test.ts`: an operation that fails with `HOUSEHOLD_CHANGED` calls the recovery
-    once; a `FORBIDDEN` does not.
-  - `useMyHouseholds.test.ts`: the list; `switchTo(id)` calls `SetActiveHousehold` then
-    `switchToHousehold(id, { to: '/' })`, and does NOT call it when the mutation fails (the
-    error reaches the caller); `createAndSwitch(name)` sends `alsoWhenMember: true`.
-  - `HouseholdChangedNotice`: shows the O51 text once when the key is set, removes the key,
-    shows nothing without it.
-- [ ] **Step 2:** run: red.
-- [ ] **Step 3:** the `householdIdLink` beside `clientIdLink`, in both the Clerk client and
-  the E2E client. The `ErrorLink` (the Apollo 4 class) before the HTTP link.
-- [ ] **Step 4:** the documents `MyHouseholds`, `SetActiveHousehold`, and
-  `CreateHousehold($name, $alsoWhenMember)`. The no-household screen keeps sending no
-  `alsoWhenMember`.
-- [ ] **Step 5:** the hooks, the notice in `__root.tsx` beside `OfflineBanner`, the texts
-  (O51).
-- [ ] **Step 6:** the full gate.
+- [x] **Step 1: write the failing tests.** Done: 8 in `client.test.ts` (the header for both clients, no header with nothing stored, the per-page id when another tab stores a new one, the recovery once for `HOUSEHOLD_CHANGED` for both clients, not for `FORBIDDEN`), 12 in `householdGuard.test.ts` (`getShownHouseholdId`, the recovery: switch with both names, no old name for another cached household, `NO_HOUSEHOLD`, a second call, a burst of five, the same household, a failed question then a retry, a cache that cannot be cleared; the stored message, also with storage that throws), 7 in the new `hooks/useMyHouseholds.test.tsx`, 5 in `HouseholdChangedNotice.test.tsx`, 3 in its smoke test.
+- [x] **Step 2:** written alongside the code; the mutations below prove each one.
+- [x] **Step 3:** done in `75d6b259`. `householdIdLink` and `householdChangedLink` (the Apollo 4 `ErrorLink`) in one `httpChain()` shared by the Clerk client and the E2E client. The header is `getShownHouseholdId()`, the id this page shows, read once per page load, not `getLastHouseholdId()`.
+- [x] **Step 4:** done in `d065264b`. `MyHouseholds`, `SetActiveHousehold`, `CreateHousehold($name, $alsoWhenMember)`. The no-household screen sends no `alsoWhenMember`.
+- [x] **Step 5:** done in `d065264b` (hooks, `MyHouseholds` in `CATALOG`) and `75d6b259` (`recoverFromHouseholdChange`, `HouseholdChangedNotice` in `__root.tsx` beside `OfflineBanner`, the O51 texts).
+- [x] **Step 6:** full gate green. After: web 3764 / 367 (+35), server 2760 / 87, spec 70. Build: server bundle 260.2 KiB, no TS6385. Storybook: 3 new stories.
 
 **Mutation checks:**
 
@@ -502,6 +485,25 @@ and `householdGuard.test.ts`, `apollo/operations/household.graphql`, a new
 | the module flag removed (recovery runs per error) | "a second call does nothing" |
 | `switchTo` calls `switchToHousehold` before the mutation resolves | "does NOT call it when the mutation fails" |
 | `createAndSwitch` drops `alsoWhenMember` | its variables test |
+
+**Done 2026-11-21.** Commits `d065264b`, `75d6b259`. Mutation checks, each restored from a copy:
+
+| Mutation | Result |
+|---|---|
+| the header and error links not added to the E2E client | red, 2 tests (e2e header, e2e recovery) |
+| the module flag removed (recovery runs per error) | red, 2 tests ("a second call does nothing"; the burst test by timeout) |
+| `switchTo` calls `switchToHousehold` before the mutation resolves | red, 2 tests ("does NOT call it when the mutation fails" included) |
+| `createAndSwitch` drops `alsoWhenMember` | red, 2 tests (its variables tests) |
+| (extra) the header reads the shared key on every request | red, 2 tests (the other-tab test) |
+| (extra) the recovery reads with `network-only` | red, 1 test |
+| (extra) the error link does not call the recovery | red, 2 tests |
+| (extra) the error link fires on any code | red, 1 test (`FORBIDDEN`) |
+| (extra) the notice key is not removed | red, 1 test |
+| (extra) no notice stored before the reload | red, 2 tests |
+| (extra) the old name used for another cached household | red, 1 test |
+| (extra) the flag not reset after a failed question | red, 1 test |
+| (extra) a reload when the answer is the shown household | red, 1 test |
+| (extra) `forgetHousehold` keeps the page id | red, 1 test |
 
 **E2E:** L.6.
 
@@ -982,6 +984,13 @@ Filled in from the task reports and reviews.
 | L.2 | step 4: `myHouseholds` "reads memberships with one `findMany` (include the household name)" | two reads share `pickHousehold` directly (`user.findUnique` with ordered memberships, then `household.findMany`); the member fake has no `orderBy` or relation select |
 | L.2 | T67: `myHouseholds` calls `requireHousehold(ctx, { ignoreShown: true })` | it must not call `requireHousehold` at all: that runs first sign-in. The `ignoreShown` comment in `lib/authz.ts` was fixed by the main session after L.2 |
 | L.2 | step 2 "run: red" for every test | 4 of 25 are green before the code (old behaviour, negative controls) |
+| L.3 | T66: send `localStorage['last-household-id']` (`getLastHouseholdId()`) on every request | that key is shared by every tab, and a switching tab writes the new id just before it reloads. A stale tab would send the NEW id and be accepted: the O21 hole. The header is the id THIS PAGE shows (`getShownHouseholdId`), read once per page load, changed only by `setLastHouseholdId` and `forgetHousehold` |
+| L.3 | T72: fetch `GetHousehold` with `fetchPolicy: 'network-only'` | `no-cache`: a cache write reaches the watched `GetHousehold`, and `HouseholdChangeGuard` would start a second switch and reload |
+| L.3 | T72: store `household-changed-notice = '1'` | the message needs both names, and the old name is gone after the reload. The value is JSON `{ household, oldHousehold }`, written before the reload |
+| L.3 | step 1: the notice is shown "by the root" | a component, `HouseholdChangedNotice`, in `__root.tsx` beside `OfflineBanner`, with stories and a smoke test |
+| L.3 | O51: no tw text for "another household" | `你目前在 {{household}}。這個頁面還停留在另一個家庭，所以剛才的變更沒有儲存。` |
+| L.3 | file map: `hooks/useHousehold.ts` changes | nothing changed there. The new hooks are in `hooks/useMyHouseholds.ts` |
+| L.3 | not named | `MyHouseholds` must be in `CATALOG` in `QUERIES_BY_KIND` (a rename publishes `CATALOG` only), and in `liveUpdates.test.ts` |
 
 ## Status
 
