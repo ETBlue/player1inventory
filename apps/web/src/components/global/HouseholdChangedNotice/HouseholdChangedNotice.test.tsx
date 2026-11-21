@@ -6,7 +6,7 @@ import i18n from '@/i18n'
 import { HouseholdChangedNotice } from './HouseholdChangedNotice'
 
 function store(household: string, oldHousehold: string | null) {
-  localStorage.setItem(
+  sessionStorage.setItem(
     HOUSEHOLD_CHANGED_NOTICE_KEY,
     JSON.stringify({ household, oldHousehold }),
   )
@@ -14,6 +14,7 @@ function store(household: string, oldHousehold: string | null) {
 
 afterEach(async () => {
   localStorage.clear()
+  sessionStorage.clear()
   await act(() => i18n.changeLanguage('en'))
 })
 
@@ -29,7 +30,7 @@ describe('HouseholdChangedNotice (households H7 task L.3, owner decision O51-A)'
     expect(screen.getByRole('status')).toHaveTextContent(
       'You are now in Chen flat. Your last change was not saved, because this page still showed The Lin home.',
     )
-    expect(localStorage.getItem(HOUSEHOLD_CHANGED_NOTICE_KEY)).toBeNull()
+    expect(sessionStorage.getItem(HOUSEHOLD_CHANGED_NOTICE_KEY)).toBeNull()
 
     // And a later load shows nothing
     first.unmount()
@@ -44,6 +45,22 @@ describe('HouseholdChangedNotice (households H7 task L.3, owner decision O51-A)'
     await userEvent.click(screen.getByRole('button', { name: 'Close' }))
 
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it("shows nothing for a message in another tab's storage, and leaves it there", () => {
+    // Given a value under the key in localStorage, which every tab shares
+    localStorage.setItem(
+      HOUSEHOLD_CHANGED_NOTICE_KEY,
+      JSON.stringify({ household: 'Chen flat', oldHousehold: 'The Lin home' }),
+    )
+
+    // When this tab loads
+    render(<HouseholdChangedNotice />)
+
+    // Then it shows nothing and removes nothing: the message is for the tab
+    // that recovered, and it lives in that tab's sessionStorage
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(localStorage.getItem(HOUSEHOLD_CHANGED_NOTICE_KEY)).not.toBeNull()
   })
 
   it('shows nothing when no message is stored', () => {

@@ -13,7 +13,8 @@ import { Button } from '@/components/ui/button'
  *
  * `recoverFromHouseholdChange` (`apollo/householdGuard.ts`) stores the
  * message just before it reloads the page. This component reads it once,
- * when it mounts, and removes it from storage at once. So the message shows
+ * when it mounts, and removes it from this tab's `sessionStorage` at once
+ * (not `localStorage`: the message is for this tab only). So the message shows
  * on the first load after the move and never again, also when the person
  * reloads while it is on screen. It stays on screen until the person
  * closes it.

@@ -14,28 +14,40 @@ import { clearCache } from './persistence'
  */
 export const LAST_HOUSEHOLD_ID_KEY = 'last-household-id'
 
-// `localStorage` can throw (a private window, blocked site data, a full
-// disk). These three never throw, so a storage problem never breaks a
-// request or a switch. A failed read counts as "nothing stored".
-function readStorage(key: string): string | null {
+// Storage can throw (a private window, blocked site data, a full disk), and
+// so can reading the `localStorage` or `sessionStorage` property itself.
+// These three never throw, so a storage problem never breaks a request or a
+// switch. A failed read counts as "nothing stored". `area` picks the storage:
+// `localStorage` (every tab of the site shares it) unless told otherwise.
+type StorageArea = 'local' | 'session'
+
+function storageOf(area: StorageArea): Storage {
+  return area === 'session' ? sessionStorage : localStorage
+}
+
+function readStorage(key: string, area: StorageArea = 'local'): string | null {
   try {
-    return localStorage.getItem(key)
+    return storageOf(area).getItem(key)
   } catch {
     return null
   }
 }
 
-function writeStorage(key: string, value: string): void {
+function writeStorage(
+  key: string,
+  value: string,
+  area: StorageArea = 'local',
+): void {
   try {
-    localStorage.setItem(key, value)
+    storageOf(area).setItem(key, value)
   } catch {
     // Nothing to do: the value is lost, and the next load reads nothing.
   }
 }
 
-function removeStorage(key: string): void {
+function removeStorage(key: string, area: StorageArea = 'local'): void {
   try {
-    localStorage.removeItem(key)
+    storageOf(area).removeItem(key)
   } catch {
     // Nothing to do.
   }
@@ -145,6 +157,13 @@ export async function forgetHousehold(): Promise<void> {
  * `HOUSEHOLD_CHANGED` (owner decision O51-A). `HouseholdChangedNotice`
  * shows it once and removes it.
  *
+ * It lives in `sessionStorage`, not `localStorage`. The message is for the
+ * ONE tab that recovered. `sessionStorage` belongs to one tab and survives
+ * that tab's reload (and its `location.replace`). In `localStorage`, which
+ * every tab shares, a second tab that loads at the same moment (for example
+ * after **Create new**) would show the message or remove it before the
+ * recovered tab reads it.
+ *
  * The value is JSON, `{ household, oldHousehold }`: the name of the household
  * the person is in now, and the name the page showed before, or `null` when
  * it is not known. Both names must be stored BEFORE the reload: the reload
@@ -162,7 +181,7 @@ export interface HouseholdChangedNotice {
  * read. It does not remove it; `clearHouseholdChangedNotice` does.
  */
 export function readHouseholdChangedNotice(): HouseholdChangedNotice | null {
-  const raw = readStorage(HOUSEHOLD_CHANGED_NOTICE_KEY)
+  const raw = readStorage(HOUSEHOLD_CHANGED_NOTICE_KEY, 'session')
   if (raw === null) return null
   try {
     const value: unknown = JSON.parse(raw)
@@ -179,7 +198,7 @@ export function readHouseholdChangedNotice(): HouseholdChangedNotice | null {
 }
 
 export function clearHouseholdChangedNotice(): void {
-  removeStorage(HOUSEHOLD_CHANGED_NOTICE_KEY)
+  removeStorage(HOUSEHOLD_CHANGED_NOTICE_KEY, 'session')
 }
 
 // `true` from the first `HOUSEHOLD_CHANGED` of this page load until the page
@@ -271,6 +290,7 @@ export async function recoverFromHouseholdChange(
   writeStorage(
     HOUSEHOLD_CHANGED_NOTICE_KEY,
     JSON.stringify({ household: now.name, oldHousehold }),
+    'session',
   )
   try {
     await switchToHousehold(now.id)

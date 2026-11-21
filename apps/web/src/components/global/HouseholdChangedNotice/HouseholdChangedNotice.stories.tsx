@@ -7,8 +7,8 @@ import { HouseholdChangedNotice } from './HouseholdChangedNotice'
 // these stories show the real read, not a copy of the markup.
 function storeNotice(value: string | null) {
   try {
-    if (value === null) localStorage.removeItem(HOUSEHOLD_CHANGED_NOTICE_KEY)
-    else localStorage.setItem(HOUSEHOLD_CHANGED_NOTICE_KEY, value)
+    if (value === null) sessionStorage.removeItem(HOUSEHOLD_CHANGED_NOTICE_KEY)
+    else sessionStorage.setItem(HOUSEHOLD_CHANGED_NOTICE_KEY, value)
   } catch {
     // Storage blocked: the story shows nothing.
   }

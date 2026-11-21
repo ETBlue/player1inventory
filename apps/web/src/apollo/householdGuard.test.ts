@@ -46,6 +46,7 @@ afterEach(() => {
     configurable: true,
   })
   localStorage.clear()
+  sessionStorage.clear()
   reloadMock.mockReset()
   replaceMock.mockReset()
   clearCacheMock.mockClear()
@@ -171,6 +172,22 @@ describe('recoverFromHouseholdChange (households H7 task L.3, decision T72)', ()
     expect(reloadMock).toHaveBeenCalledOnce()
   })
 
+  it('stores the message for this tab only, in sessionStorage', async () => {
+    // Given a stale page that recovers
+    const { client } = fakeClient({
+      cached: household('h-old', 'Old home'),
+      answer: async () => household('h-new', 'New home'),
+    })
+
+    await recoverFromHouseholdChange(client)
+
+    // Then the message is in this tab's sessionStorage, which survives the
+    // reload. It is NOT in localStorage, which every tab shares: another tab
+    // loading at the same moment would show it or remove it
+    expect(sessionStorage.getItem(HOUSEHOLD_CHANGED_NOTICE_KEY)).not.toBeNull()
+    expect(localStorage.getItem(HOUSEHOLD_CHANGED_NOTICE_KEY)).toBeNull()
+  })
+
   it('stores no old name when the cache holds another household', async () => {
     // Given a cached household that is not the one this page shows
     const { client } = fakeClient({
@@ -201,7 +218,7 @@ describe('recoverFromHouseholdChange (households H7 task L.3, decision T72)', ()
     // no-household screen
     expect(clearCacheMock).toHaveBeenCalledOnce()
     expect(localStorage.getItem(LAST_HOUSEHOLD_ID_KEY)).toBeNull()
-    expect(localStorage.getItem(HOUSEHOLD_CHANGED_NOTICE_KEY)).toBeNull()
+    expect(sessionStorage.getItem(HOUSEHOLD_CHANGED_NOTICE_KEY)).toBeNull()
     expect(reloadMock).toHaveBeenCalledOnce()
   })
 
@@ -253,7 +270,7 @@ describe('recoverFromHouseholdChange (households H7 task L.3, decision T72)', ()
     // Then there is nothing to move: no clear, no reload, no message
     expect(clearCacheMock).not.toHaveBeenCalled()
     expect(reloadMock).not.toHaveBeenCalled()
-    expect(localStorage.getItem(HOUSEHOLD_CHANGED_NOTICE_KEY)).toBeNull()
+    expect(sessionStorage.getItem(HOUSEHOLD_CHANGED_NOTICE_KEY)).toBeNull()
   })
 
   it('tries again on a later refusal when the question failed', async () => {
@@ -289,14 +306,14 @@ describe('recoverFromHouseholdChange (households H7 task L.3, decision T72)', ()
 
     // A reload would bring the old saved copy back
     expect(reloadMock).not.toHaveBeenCalled()
-    expect(localStorage.getItem(HOUSEHOLD_CHANGED_NOTICE_KEY)).toBeNull()
+    expect(sessionStorage.getItem(HOUSEHOLD_CHANGED_NOTICE_KEY)).toBeNull()
     error.mockRestore()
   })
 })
 
 describe('the household changed message (households H7 task L.3)', () => {
   it('reads both names, and null for a missing old name', () => {
-    localStorage.setItem(
+    sessionStorage.setItem(
       HOUSEHOLD_CHANGED_NOTICE_KEY,
       JSON.stringify({ household: 'New home', oldHousehold: null }),
     )
@@ -308,10 +325,23 @@ describe('the household changed message (households H7 task L.3)', () => {
     expect(readHouseholdChangedNotice()).toBeNull()
   })
 
-  it('reads a broken value as no message', () => {
-    localStorage.setItem(HOUSEHOLD_CHANGED_NOTICE_KEY, '1')
+  it("does not read or remove a message in localStorage (another tab's key)", () => {
+    // Given a value under the key in the storage every tab shares
+    localStorage.setItem(
+      HOUSEHOLD_CHANGED_NOTICE_KEY,
+      JSON.stringify({ household: 'New home', oldHousehold: null }),
+    )
+
+    // Then this tab reads no message, and clearing leaves the value alone
     expect(readHouseholdChangedNotice()).toBeNull()
-    localStorage.setItem(HOUSEHOLD_CHANGED_NOTICE_KEY, '{not json')
+    clearHouseholdChangedNotice()
+    expect(localStorage.getItem(HOUSEHOLD_CHANGED_NOTICE_KEY)).not.toBeNull()
+  })
+
+  it('reads a broken value as no message', () => {
+    sessionStorage.setItem(HOUSEHOLD_CHANGED_NOTICE_KEY, '1')
+    expect(readHouseholdChangedNotice()).toBeNull()
+    sessionStorage.setItem(HOUSEHOLD_CHANGED_NOTICE_KEY, '{not json')
     expect(readHouseholdChangedNotice()).toBeNull()
   })
 
