@@ -3,6 +3,7 @@ import { checkA11y, injectAxe } from 'axe-playwright'
 import { CLOUD_WEB_URL, homeLocationName } from '../../constants'
 import { AXE_OPTIONS } from '../../helpers/axe'
 import { cleanupCloudData } from '../../helpers/cloudTeardown'
+import { LocationsPage } from '../../pages/settings/LocationsPage'
 import { makeGql } from '../../utils/cloud'
 
 // Runs in BOTH projects, local and cloud.
@@ -343,4 +344,57 @@ test.describe('cloud: the empty locations screen is accessible', () => {
     })
     await scanEmptyPantry(page)
   })
+})
+
+// Local mode's Sort by (households H7b task M.5, owner decision O54-B): Name
+// and Custom only, saved on the device in `localStorage['location-sort']`.
+// The cloud sorts, with four choices saved per person, are tested in
+// `location-sort.spec.ts`.
+test('user can sort locations by name in local mode', async ({
+  page,
+  baseURL,
+}) => {
+  test.skip(
+    baseURL === CLOUD_WEB_URL,
+    'cloud sorts are tested in location-sort.spec.ts',
+  )
+  const locationsPage = new LocationsPage(page)
+
+  // Given three more locations, added in the order Cellar, Attic, Dock. The
+  // list is in that order, after the default "My Home", which is not the
+  // order by name
+  await locationsPage.navigateTo()
+  await expect(
+    locationsPage.main().getByText('My Home', { exact: true }),
+  ).toBeVisible()
+  for (const name of ['Cellar', 'Attic', 'Dock']) {
+    await page.getByRole('button', { name: 'Add location' }).click()
+    await page.getByRole('dialog').getByLabel('Name').fill(name)
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /^add$/i })
+      .click()
+    await expect(
+      locationsPage.main().getByText(name, { exact: true }),
+    ).toBeVisible()
+  }
+  const names = ['My Home', 'Cellar', 'Attic', 'Dock']
+  await locationsPage.expectOrder(names)
+
+  // When the user sorts by Name, which offers only two choices here
+  await locationsPage.openSortSelect()
+  await expect(locationsPage.sortOptions().getByRole('option')).toHaveCount(2)
+  await page.keyboard.press('Escape')
+  await locationsPage.chooseSort('Name')
+
+  // Then the list is by name, and it still is after a reload
+  const byName = ['Attic', 'Cellar', 'Dock', 'My Home']
+  await locationsPage.expectOrder(byName)
+  await page.reload()
+  await expect(locationsPage.sortSelect()).toHaveText('Name')
+  await locationsPage.expectOrder(byName)
+
+  // And the switcher on the pantry uses the same order (owner decision O53-A)
+  await locationsPage.openPantry()
+  expect(await locationsPage.switcherNames(names)).toEqual(byName)
 })
