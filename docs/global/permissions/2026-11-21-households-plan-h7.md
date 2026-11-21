@@ -767,6 +767,8 @@ their tests), `src/lib/e2eCleanup.ts` and test, `resolvers/purge-coverage.test.t
 
 **E2E:** none in this task.
 
+**Done 2026-11-22** at `77e1103c` (one commit). Baseline at `8a0aa7f1`: web 3840 / 373, server 2767 / 87, `scripts/spec` 70. After: web 3840 / 373, server 2795 / 88, `scripts/spec` 70. The full gate is green without E2E. Migration `20261122000000_add_location_preferences`: the enum `LocationSort`, the nullable `User.locationSort` and `Location.dataUpdatedAt`, one backfill from the newest `ItemStock.updatedAt`, and the table `LocationPreference` (primary key `(userId, locationId)`, two `CASCADE` foreign keys, an index on `locationId`). Every statement except the backfill matches `prisma migrate diff` from schema to schema. Relations: `Location.preferences` and `User.locationPreferences`. It is in the `last` group of `migrationDeploys.ts`. `verify-migration.ts` has `seedLocationPreferenceBackfill`, `assertLocationDataUpdatedAtBackfill` (first after the last deploy) and `assertLocationPreferences`. It also narrows 5 `Location` reads that run before the last deploy (they would ask for `dataUpdatedAt` before it exists, `P2022`). **`verify:migration` was not run; it is owed (M.6).** A new `src/test/locationPreferenceFake.ts` (19 tests) is joined into `householdWorld` (6 tests), with the cascade from `location.delete`, `location.deleteMany` and `household.deleteMany`. `/e2e/cleanup` deletes 22 models (`locationPreferences` before `locations` and `user`). `cloudTeardown.ts` and `purge-coverage.test.ts` were updated. `deleteHouseholdData` keeps the model, because the rows go by cascade. The `emptyHouseholdWhere` comment was updated, and the T75 join test added. `userFake` knows `locationSort` (2 tests), and 21 test files' `UserRow` fixtures set `locationSort: null`. Mutations: the fake's `where` check removed → 2 red; the cleanup delete removed → 6 red (key count included); `preferences: { none: {} }` in `emptyHouseholdWhere` → the T75 test red (with every join test: the fake throws on the key); and 3 more (household cascade, `upsert` branches, the `userFake` column). The backfill mutation is owed with `verify:migration`. `cleanup-endpoint.spec.ts` reports `locationPreferences: 0` and fails until M.5.
+
 ---
 
 ## Task M.2 — server: `dataUpdatedAt`, `lastVisitedAt` and `markLocationVisited`
@@ -1089,6 +1091,12 @@ Filled in from the task reports and reviews.
 | O57 | the copy list skips a household joined on this device | owner decision O57-B: the list is decided by `canCopyInto` alone; the skip list stops only the automatic question (O12-A). No E2E covers it: the spec joins through an API helper |
 | L.7 | step 3 ends with a green `pnpm test:e2e:all` | the first run failed 2 cloud tests, neither caused by H7a; `location-switcher.spec.ts` waits 3–5 s of a 5 s budget on `develop` too |
 | L.7 | "Copy `test-results/` aside before re-running" | `run-all.sh` runs `pwa` right after `cloud`, and that deletes the cloud `test-results/`. A cloud failure late in the run survives only in the log, unless you copy the folder while the gate is still running |
+| M.1 | mutation: `locationPreferences: { none: {} }` "(or the relation's real name)" in `emptyHouseholdWhere` | the relation is `Location.preferences` (and `User.locationPreferences`); the key goes inside `locations: { every }` |
+| M.1 | files: the fakes, cleanup, `invite.ts` | a new `User` column breaks every typed `UserRow` fixture: 24 type errors in 23 files at the root build. `userFake` needed the column, and 21 test files needed `locationSort: null` |
+| M.1 | step 4: assertions in `verify-migration.ts` | 5 `Location` reads and deletes there run BEFORE the last deploy, and the client from the final schema would ask for `dataUpdatedAt` (`P2022`). Each got a `select` |
+| M.1 | step 4: "a location with stock rows has `dataUpdatedAt` equal to its newest `ItemStock.updatedAt`" | the fixture had no stock rows with known times before the last deploy; a seed step (`seedLocationPreferenceBackfill`) writes them, and the check runs first after the deploy |
+| M.1 | step 2 "run: red" | the `deleteHouseholdData` coverage case is green at once, because the model goes into its `kept` list |
+| M.2 | not named | `stockFake`'s `LOCATION_COLUMNS` has no `dataUpdatedAt`; `publishChange`'s `updateMany` needs it added |
 
 ## Status
 
