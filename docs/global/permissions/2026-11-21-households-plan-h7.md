@@ -1096,7 +1096,7 @@ Filled in from the task reports and reviews.
 (plus `5cc4e741`, which records H6b as merged). Owner decisions O49–O55 answered 2026-11-21: all A, except **O54-B** (Name and Custom in
 local mode, saved on the device). Nothing built.
 
-**H7a built 2026-11-21** on `feature/households-h7a` (tasks L.1–L.7), not merged, not deployed. Owner decisions O56-A and O57-B applied in L.7. No migration. Deploy notes: section 13 of the H4 runbook. The first `pnpm test:e2e:all` failed 2 cloud tests not caused by H7a; the second, at `ef8982fb`, was green in all three projects (see L.7). H7b (M.1–M.6) not built.
+**H7a built 2026-11-21** on `feature/households-h7a` (tasks L.1–L.7), merged into `develop` (2026-11-22, #394, merge `bf71f485`), not deployed. Owner decisions O56-A and O57-B applied in L.7. No migration. Deploy notes: section 13 of the H4 runbook. The first `pnpm test:e2e:all` failed 2 cloud tests not caused by H7a; the second, at `ef8982fb`, was green in all three projects (see L.7). H7b (M.1–M.6) not built.
 
 ---
 

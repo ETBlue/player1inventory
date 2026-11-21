@@ -309,7 +309,7 @@ that really set up that role.
 > but only with the `publishesNothing` count added. That is why there are two rows above.
 >
 > **Household switch, Create new, the stale-tab fix and the copy choice are built in H7a**
-> (on `feature/households-h7a`, from `develop` at `9701ddff`; **not merged, not deployed**;
+> (on `feature/households-h7a`, from `develop` at `9701ddff`; **merged into `develop` (2026-11-22, #394, merge `bf71f485`), not deployed**;
 > plan `docs/global/permissions/2026-11-21-households-plan-h7.md`, tasks L.1 to L.7; deploy
 > notes in section 13 of the H4 runbook). **No migration.** The new web bundle selects a new
 > query and sends a new argument, so the **server deploys before the web**. Owner decisions
