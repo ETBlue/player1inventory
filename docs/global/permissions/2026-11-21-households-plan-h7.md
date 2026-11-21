@@ -426,35 +426,11 @@ new `resolvers/household-switch.resolver.test.ts`, `lib/household.ts` (the comme
 `:281`), `resolvers/live-publish.guard.test.ts`, `src/test/oldBundleCompat.test.ts` (run,
 expect no change).
 
-- [ ] **Step 1: write the failing tests** (`household-switch.resolver.test.ts`, with the
-  `householdWorld` fakes; three people: Mia in A (owner) and B (member), Bea in B only
-  (owner), Cy in no household):
-  - `myHouseholds`: Mia gets A and B in `joinedAt` order, with `owner` and `member`, and
-    `isActive` true on the one `requireHousehold` picks; Cy gets `[]` with no error and no
-    household made (it must not call `ensureHousehold`); a header naming the other household
-    does not refuse it.
-  - `setActiveHousehold(B)` by Mia: `User.activeHouseholdId` is B, the answer is B with role
-    `member`; the next `requireHousehold` in a new request gives B. By Bea for A: `FORBIDDEN`,
-    and her row is unchanged. An unknown id: `FORBIDDEN`. Cy: `FORBIDDEN`. The lock order:
-    `lockUser` is the first write (a call-order spy, as in H5b G.5). No household lock is
-    taken. No event is published.
-  - `createHousehold(name: "Second", alsoWhenMember: true)` by Mia: a third household,
-    owner Mia, a first location "Home" with an organizer row, `activeHouseholdId` = the new
-    one, household-level `LOCATION` for the new household only. Without the argument, Mia
-    still gets `ALREADY_IN_HOUSEHOLD` and nothing is written. Cy without the argument:
-    works as today.
-  - Live guard: `setActiveHousehold` in `publishesNothing` with its reason.
-- [ ] **Step 2:** run: red.
-- [ ] **Step 3: schema.** `type HouseholdChoice`, `myHouseholds: [HouseholdChoice!]!`,
-  `setActiveHousehold(householdId: ID!): Household!`, and `alsoWhenMember: Boolean = false` on
-  `createHousehold`. Comment each with who may call it and what it writes.
-- [ ] **Step 4: resolvers.** `myHouseholds` reads memberships with one `findMany` (include
-  the household name) and works out `isActive` with the same rule as `ensureHousehold`
-  (share the function; do not copy it). `setActiveHousehold` per T68.
-  `createHousehold` skips the count only when `alsoWhenMember` is `true`. Update the comment
-  at `lib/household.ts:281`.
-- [ ] **Step 5:** `pnpm codegen`, then run `oldBundleCompat.test.ts`: no new breaking or
-  dangerous change. The full gate.
+- [x] **Step 1: write the failing tests.** Done: 25 tests in the new `resolvers/household-switch.resolver.test.ts` (Mia in hh_a owner and hh_b member, Bea in hh_b owner, Cy in none and never set up): 7 for `myHouseholds`, 10 for `setActiveHousehold`, 8 for `createHousehold(alsoWhenMember:)`; plus `setActiveHousehold` in `publishesNothing`.
+- [x] **Step 2:** red. Done: 21 of 25 were red against the HEAD resolver and schema. The 4 green ones describe old behaviour or are negative controls; the mutations below prove them.
+- [x] **Step 3:** done in `ac18190e`.
+- [x] **Step 4:** done in `ac18190e`. `myHouseholds` and `setActiveHousehold` do not call `requireHousehold` at all (not `ignoreShown`): it would run first sign-in for a person in no household. `pickHousehold` and `MEMBERSHIP_ORDER` are exported from `lib/household.ts`. `myHouseholds` makes two reads (the `User` row with ordered memberships, then the names), not one `findMany`.
+- [x] **Step 5:** codegen clean; `oldBundleCompat.test.ts` 7/7 with no list change. Full gate green. After: web 3729 / 364, server 2760 / 87 (+25), spec 70. Live guard 78 `publishes`, 4 `publishesNothing`. Server bundle 260.2 KiB, no TS6385.
 
 **Mutation checks:**
 
@@ -466,6 +442,21 @@ expect no change).
 | `createHousehold` skips the count always | "without the argument, Mia still gets `ALREADY_IN_HOUSEHOLD`" |
 | `myHouseholds` calls `requireHousehold` | Cy gets `[]` with no household made |
 | `isActive` true on the first membership always | Mia with `activeHouseholdId` = B |
+
+**Done 2026-11-21.** Commit `ac18190e`. Mutation checks, each restored from a copy:
+
+| Mutation | Result |
+|---|---|
+| `setActiveHousehold` skips the membership read | red, 5 tests, Bea-for-A `FORBIDDEN` included |
+| `setActiveHousehold` reads the membership with the global `prisma` | red, 2 tests (the `tx` spy, the lock order) |
+| `createHousehold` ignores `alsoWhenMember` | red, 2 tests (Mia "Second" included) |
+| `createHousehold` skips the count always | red, 3 tests ("without the argument, Mia still gets ALREADY_IN_HOUSEHOLD", `false`, `null`) |
+| `myHouseholds` calls `requireHousehold` | red, 3 tests (Cy gets `[]` with no household made included) |
+| `isActive` true on the first membership always | red, 2 tests (Mia with active = hh_b) |
+| (extra) no `lockUser` in `setActiveHousehold` | red, 1 test (lock order) |
+| (extra) `setActiveHousehold` calls `requireHousehold` | red, 4 tests (stale-tab switches, Cy) |
+| (extra) `myHouseholds` without `orderBy` | red, 3 tests |
+| (extra) `setActiveHousehold` left out of the live guard | red, the guard |
 
 **E2E:** L.6 tests 1 and 2.
 
@@ -988,6 +979,9 @@ Filled in from the task reports and reviews.
 | L.1 | test "as `mutationRoleCache.test.ts` does" | the fitting pattern is `import-role-gate.resolver.test.ts` (`executeOperation` with stateful fakes) |
 | L.1 | step 2 "run: red" for every test of step 1 | the "header B", "no header" and "household answers B" tests are green before the code; only the mutations prove them |
 | L.1 | no fixture work named | `clearAllData` through `deleteHouseholdData` needs recorder doubles for the 6 relation-filtered models, because `ownedRowFake` throws on `{ location: { householdId } }` |
+| L.2 | step 4: `myHouseholds` "reads memberships with one `findMany` (include the household name)" | two reads share `pickHousehold` directly (`user.findUnique` with ordered memberships, then `household.findMany`); the member fake has no `orderBy` or relation select |
+| L.2 | T67: `myHouseholds` calls `requireHousehold(ctx, { ignoreShown: true })` | it must not call `requireHousehold` at all: that runs first sign-in. The `ignoreShown` comment in `lib/authz.ts` was fixed by the main session after L.2 |
+| L.2 | step 2 "run: red" for every test | 4 of 25 are green before the code (old behaviour, negative controls) |
 
 ## Status
 
