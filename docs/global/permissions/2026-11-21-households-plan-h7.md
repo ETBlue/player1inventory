@@ -960,6 +960,8 @@ because their reorder tests now write a personal order in cloud.
 - [ ] Step 4: `cleanup-endpoint.spec.ts` now seeds one preference row through
   `markLocationVisited` and expects a count of at least 1.
 
+**Done 2026-11-22** at `33fa3160` (three commits: `4dc9ea07` the spec, its page object and the config; `795f657c` the local test; `33fa3160` the cleanup seed). New `e2e/tests/location-sort.spec.ts`, cloud only (cloud `testMatch`, local `testIgnore`), with 7 tests: own order (Mia the owner and Bea a member, two browsers), last updated, last visited, by name (list and switcher), the same sort in a second browser, and axe scans of the page and of the open Sort by list, in light and dark. The fixture is Cellar, Attic and Dock with "Home" deleted, so the shared order (Cellar, Attic, Dock) and the name order (Attic, Cellar, Dock) differ, and each test expects a third order. New page object `e2e/pages/settings/LocationsPage.ts`. Test 7 (local Name survives a reload, and the switcher agrees) is in `settings/locations.spec.ts` and skipped in cloud. `cleanup-endpoint.spec.ts` seeds one preference row through `markLocationVisited` and checks `locationPreferences` is at least 1; it is green again. `--list`: local 189 to 190 tests (23 files), cloud 210 to 218 (39 to 40 files), pwa 73. Runs: `location-sort.spec.ts` 7 passed in 1.9m (load 2.4); step 3 local (`settings/locations`, `location-switcher`) 20 passed, 6 skipped in 24.7s; step 3 cloud (the same two files and `cleanup-endpoint`) 25 passed, 2 skipped in 4.9m. No existing test changed. Mutations, all red: reorder writes `Location.order` (Bea gets Dock first); `publishChange` never sets `dataUpdatedAt` (name order shown); `markLocationVisited` answers `true` and writes nothing; `name` sorts like `custom`; `setLocationSort` kept in the browser only (server poll `"custom"`, and with the poll off, the second browser shows `Custom`); local `location-sort` never read back (red after the reload); the cleanup's preference filter matches nobody (`locationPreferences: 0`). `pnpm lint`, `pnpm check` and `pnpm build` are green; no source under `apps/` changed. `pnpm test:e2e:all` is owed (M.6).
+
 ---
 
 ## Task M.6 — H7b docs, deploy notes and the final gate
@@ -1134,6 +1136,12 @@ Filled in from the task reports and reviews.
 | M.3 / M.4 | the gap was "a single `Location` from a write overwrites the cached `order`" | The larger race is between the two LIST queries. Since T77 each gives a position in its own list, and both write one cached `Location`. M.4 reads `order` from the array position instead |
 | M.4 | nothing about refusals | Once every role may reorder, `FORBIDDEN` means "your list is out of date", not "no right". The hook and the page had to change |
 | M.4 | nothing about live updates | "Last updated" needs the location lists to refetch on `STOCK`, `CART` and `LOG`. Not done: owner decision O58-A keeps it so |
+| M.5 | test 3: "Mia picks the third in the switcher" | the settings pages show the household sidebar, which has no location switcher; the pick is made on the pantry (`openPantry`) |
+| M.5 | test 3 mutation: `markLocationVisited` "a no-op that answers `true`" | it goes red only when the order is read after a new page load: a `true` answer writes `lastVisitedAt` into the cache, which would sort the same page correctly |
+| M.5 | test 5 mutation: "`setLocationSort` replaced by a `localStorage` write" | a wait for the `SetLocationSort` response makes it fail as a timeout; the test polls `myLocationSort` on the server instead, so it fails on the value |
+| M.5 | *Files*: "`e2e/pages/LocationsPage.ts` (or the existing page object)" | there was none; the new one is `e2e/pages/settings/LocationsPage.ts` |
+| M.5 | step 3: "Fix a cloud test that expected a shared order" | none needed a change: the only cloud reorder test reads back the person's own order after a reload |
+| M.5 | not named | reading the switcher's rows with `allTextContents()` right after the click once gave `[]`; the page object waits for each expected row first |
 
 ## Status
 
