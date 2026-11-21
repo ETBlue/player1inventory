@@ -157,7 +157,14 @@ The last E2E counts on the H3a branch, 2026-11-11, from **three separate runs** 
 `pnpm test:e2e:all`): `cloud` **126 passed / 7 skipped**, `local` **178 passed / 6 skipped**,
 `pwa` **73 passed**. Re-measure rather than quote.
 
-The last whole gate, `pnpm test:e2e:all` on `feature/households-h7a` at `82426224` on
+The last whole gate, `pnpm test:e2e:all` on `feature/households-h7b` at `14f9501c` on
+2026-11-22 (households H7 task M.6), first try, no retry, **all green**: `local` **179
+passed / 11 skipped** in 3m46s, `cloud` **210 passed / 8 skipped** in 65m39s, `pwa` **73
+passed** in 1m36s. Load average 11.2 at the start (falling, from the `pnpm test` run just
+before it), then 1.6 to 2.9 for the rest of the run. The `location-switcher.spec.ts` wait for
+"Home" (below) did not fail this time.
+
+The gate before it, `pnpm test:e2e:all` on `feature/households-h7a` at `82426224` on
 2026-11-21 (households H7 task L.7), first run: `local` **178 passed / 11 skipped** in
 3m42s, `cloud` **201 passed / 7 skipped / 2 failed** in 67m53s, `pwa` **73 passed** in
 1m34s. Load average between 1.7 and 3.4 during the run. Neither failure was caused by H7a:
